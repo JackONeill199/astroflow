@@ -55,6 +55,7 @@ def build_router(mod) -> APIRouter:
         out = {k: v for k, v in e.items() if k not in ("file", "preview_file")}
         out["image"] = url(e.get("preview_file"))
         out["audio"] = {p: url(a["file"]) for p, a in (e.get("audio") or {}).items()}
+        out["audio_variant"] = {p: a.get("variant") for p, a in (e.get("audio") or {}).items()}
         return out
 
     # ---- Ablauf einer Analyse ------------------------------------------------------
@@ -265,19 +266,56 @@ def build_router(mod) -> APIRouter:
         mod.ctx.store.update("sage", vals)
         return mod.public_config()
 
+    # ---- Modelle (Auswahlfelder) --------------------------------------------------------
+    @r.get("/models")
+    def models(kind: str = "story", provider: str | None = None, base_url: str | None = None):
+        """Modelle für die Auswahlfelder: story (Erzähl-KI des gewählten Anbieters), speech (OpenRouter), elevenlabs."""
+        from ...core.models import ModelListError, list_models
+        c = mod.config()
+        try:
+            if kind == "speech":
+                return list_models(clients.OPENROUTER, clients.openrouter_key(c), "speech")
+            if kind == "elevenlabs":
+                if not clients.configured_key(c.get("elevenlabs_key")):
+                    raise HTTPException(400, "Erst den ElevenLabs-Schlüssel speichern.")
+                return clients.eleven_models(c["elevenlabs_key"])
+            base, key = clients.story_endpoint(c, provider, base_url)
+            return list_models(base, key, "text")
+        except (ModelListError, clients.ServiceError) as e:
+            raise HTTPException(502, str(e))
+
     # ---- Vorlesen ---------------------------------------------------------------------
+    def variant(c: dict, provider: str) -> str:
+        """Kennung von Modell + Stimme – eine gespeicherte Vertonung passt nur zur selben Kennung."""
+        if provider == "openrouter":
+            return f"{c.get('openrouter_tts_model')}|{c.get('openrouter_tts_voice')}"
+        if provider == "elevenlabs":
+            return f"{c.get('elevenlabs_model')}|{c.get('elevenlabs_voice')}"
+        q = clients.qwen_cfg(c)
+        return f"{q['model']}|{q['voice']}"
+
     @r.get("/tts/config")
     def tts_config():
         c = mod.config()
         q = clients.qwen_cfg(c)
         return {"default": c["tts_provider"],
                 "qwen": {"available": clients.qwen_health(c), "base_url": q["base"], "voice": q["voice"]},
-                "elevenlabs": {"available": clients.configured_key(c.get("elevenlabs_key")), "voice": c.get("elevenlabs_voice") or None}}
+                "elevenlabs": {"available": clients.configured_key(c.get("elevenlabs_key")), "voice": c.get("elevenlabs_voice") or None},
+                "openrouter": {"available": bool(clients.openrouter_key(c)), "model": c.get("openrouter_tts_model"),
+                               "voice": c.get("openrouter_tts_voice")}}
 
     @r.get("/tts/voices")
-    def tts_voices(provider: str = "qwen"):
+    def tts_voices(provider: str = "qwen", model: str | None = None):
         c = mod.config()
         try:
+            if provider == "openrouter":
+                from ...core.models import ModelListError, list_models
+                model = model or c.get("openrouter_tts_model")
+                try:
+                    m = next((x for x in list_models(clients.OPENROUTER, clients.openrouter_key(c), "speech") if x["id"] == model), None)
+                except ModelListError as e:
+                    raise clients.ServiceError(str(e))
+                return [{"id": v, "name": v} for v in (m or {}).get("voices", [])]
             if provider == "elevenlabs":
                 if not clients.configured_key(c.get("elevenlabs_key")):
                     raise HTTPException(400, "ElevenLabs-API-Schlüssel nicht eingetragen.")
@@ -285,30 +323,43 @@ def build_router(mod) -> APIRouter:
             return clients.qwen_voices(c)
         except clients.ServiceError as e:
             raise HTTPException(502, str(e))
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(502, f"Stimmen nicht abrufbar: {e}")
 
+    SPEAK = {"elevenlabs": clients.eleven_speak, "openrouter": clients.openrouter_speak, "qwen": clients.qwen_speak}
+
     @r.post("/tts/speak")
     def speak(body: dict = Body(...)):
-        provider = body.get("provider") or mod.config()["tts_provider"]
+        c = mod.config()
+        provider = body.get("provider") or c["tts_provider"]
+        if provider == "local":
+            provider = "qwen"
+        if provider not in SPEAK:
+            raise HTTPException(400, "Unbekannter Sprachdienst.")
         hid = body.get("history_id")
         e = st.get(hid) if hid else None
         if hid and not e:
             raise HTTPException(404, "Verlaufseintrag nicht gefunden.")
-        if e and (e.get("audio") or {}).get(provider) and (st.root / e["audio"][provider]["file"]).is_file():
-            return {"url": url(e["audio"][provider]["file"]), "cached": True}
+        var = variant(c, provider)
+        have = (e or {}).get("audio", {}).get(provider)
+        if have and not body.get("force") and have.get("variant", var) == var and (st.root / have["file"]).is_file():
+            return {"url": url(have["file"]), "cached": True, "variant": var}
         text = plain(body.get("text") or (e or {}).get("story") or "")
         if not text:
             raise HTTPException(400, "Kein Text zum Vorlesen vorhanden.")
         try:
-            audio = clients.eleven_speak(mod.config(), text) if provider == "elevenlabs" else clients.qwen_speak(mod.config(), text)
+            audio = SPEAK[provider](c, text)
         except clients.ServiceError as x:
-            raise HTTPException(503 if "nicht erreichbar" in str(x) or "nicht eingetragen" in str(x) else 502, str(x))
+            raise HTTPException(503 if "nicht erreichbar" in str(x) or "nicht eingetragen" in str(x) or "Kein " in str(x) else 502, str(x))
         if not e:
             return Response(audio, media_type="audio/mpeg")
-        rel = f"audio/{re.sub(r'[^A-Za-z0-9_-]', '', hid)}-{provider}.mp3"
+        if have:
+            (st.root / have["file"]).unlink(missing_ok=True)
+        rel = f"audio/{re.sub(r'[^A-Za-z0-9_-]', '', hid)}-{provider}-{secrets.token_hex(3)}.mp3"
         (st.root / rel).write_bytes(audio)
-        st.update(hid, audio={**(e.get("audio") or {}), provider: {"file": rel, "created": time.time()}})
-        return {"url": url(rel), "cached": False}
+        st.update(hid, audio={**(e.get("audio") or {}), provider: {"file": rel, "created": time.time(), "variant": var}})
+        return {"url": url(rel), "cached": False, "variant": var}
 
     return r

@@ -14,12 +14,13 @@ from ...core.modules import BaseModule
 ENV = {"story_api_key": "OPENAI_API_KEY", "story_model": "OPENAI_MODEL", "nova_key": "ASTROMETRY_API_KEY",
        "elevenlabs_key": "ELEVENLABS_API_KEY", "elevenlabs_voice": "ELEVENLABS_VOICE_ID", "elevenlabs_model": "ELEVENLABS_MODEL",
        "qwen_base_url": "QWEN_TTS_BASE_URL", "qwen_voice": "QWEN_TTS_VOICE", "qwen_model": "QWEN_TTS_MODEL",
-       "qwen_language": "QWEN_TTS_LANGUAGE", "qwen_api_key": "QWEN_TTS_API_KEY"}
+       "qwen_language": "QWEN_TTS_LANGUAGE", "qwen_api_key": "QWEN_TTS_API_KEY", "openrouter_key": "OPENROUTER_API_KEY"}
 DEFAULTS = {"story_provider": "openai", "story_base_url": "", "story_model": "gpt-4o", "story_api_key": "",
-            "online_solve": False, "nova_key": "", "tts_provider": "qwen",
+            "online_solve": False, "nova_key": "", "tts_provider": "openrouter",
             "qwen_base_url": "http://127.0.0.1:8880", "qwen_voice": "Ryan", "qwen_model": "tts-1", "qwen_language": "German",
-            "qwen_api_key": "", "elevenlabs_key": "", "elevenlabs_voice": "", "elevenlabs_model": "eleven_flash_v2_5"}
-SECRETS = ("story_api_key", "nova_key", "elevenlabs_key", "qwen_api_key")
+            "qwen_api_key": "", "elevenlabs_key": "", "elevenlabs_voice": "", "elevenlabs_model": "eleven_flash_v2_5",
+            "openrouter_key": "", "openrouter_tts_model": "elevenlabs/eleven-v4", "openrouter_tts_voice": "george"}
+SECRETS = ("story_api_key", "nova_key", "elevenlabs_key", "qwen_api_key", "openrouter_key")
 
 
 class Module(BaseModule):
@@ -50,6 +51,8 @@ class Module(BaseModule):
         out.update({f"has_{k}": bool(c.get(k)) for k in SECRETS})
         solver = self.ctx.service("plate_solver")
         out["local_solver"] = bool(solver and solver.available)
+        from .clients import openrouter_key
+        out["openrouter_speech_key"] = bool(openrouter_key(c))      # eigener Schlüssel oder der der Erzähl-KI
         return out
 
     # ---- Aufträge -----------------------------------------------------------------

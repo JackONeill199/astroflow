@@ -84,7 +84,76 @@ def write_story(cfg: dict, data: dict, timeout: float = 300) -> str:
     return text
 
 
+def story_endpoint(cfg: dict, provider: str | None = None, base_url: str | None = None) -> tuple[str, str]:
+    """Adresse + Schlüssel der Erzähl-KI (für die Modellliste auch mit noch nicht gespeicherter Auswahl)."""
+    provider = provider or cfg.get("story_provider") or "openai"
+    base = (base_url if base_url is not None else cfg.get("story_base_url")) or PROVIDERS.get(provider) or ""
+    saved = cfg.get("story_provider") or "openai"
+    if provider == "lmstudio":
+        key = ""
+    elif provider == saved:
+        key = cfg.get("story_api_key") or ""
+    else:                                   # Anbieter gewechselt, aber noch nicht gespeichert: nur passende Schlüssel verwenden
+        key = openrouter_key(cfg) if provider == "openrouter" else ""
+    return base.rstrip("/"), key
+
+
 # -------------------------------------------------------------------- Vorlesen -- #
+OPENROUTER = "https://openrouter.ai/api/v1"
+OPENROUTER_CHUNK = 4000          # Zeichen je Anfrage (ElevenLabs v4 erlaubt 10 000; kürzere Stücke antworten schneller)
+
+
+def openrouter_key(cfg: dict) -> str:
+    """Eigener Schlüssel für die Sprachausgabe, sonst der OpenRouter-Schlüssel der Erzähl-KI."""
+    if configured_key(cfg.get("openrouter_key")):
+        return cfg["openrouter_key"].strip()
+    if cfg.get("story_provider") == "openrouter" and configured_key(cfg.get("story_api_key")):
+        return cfg["story_api_key"].strip()
+    return ""
+
+
+def chunks(text: str, size: int = OPENROUTER_CHUNK) -> list[str]:
+    """Text an Absatz- bzw. Satzgrenzen in Stücke ≤ size teilen (kurze Texte bleiben unverändert)."""
+    if len(text) <= size:
+        return [text]
+    out, cur = [], ""
+    for part in re.split(r"(?<=[.!?…])\s+|\n{2,}", text):
+        if len(cur) + len(part) + 1 > size and cur:
+            out.append(cur.strip())
+            cur = ""
+        while len(part) > size:
+            out.append(part[:size])
+            part = part[size:]
+        cur += part + " "
+    return [c for c in [*out, cur.strip()] if c]
+
+
+def openrouter_speak(cfg: dict, text: str) -> bytes:
+    key = openrouter_key(cfg)
+    if not key:
+        raise ServiceError("Kein OpenRouter-Schlüssel eingetragen (Einstellungen → Sage).")
+    model = cfg.get("openrouter_tts_model") or "elevenlabs/eleven-v4"
+    audio = b""
+    for part in chunks(text):
+        body = {"model": model, "input": part, "response_format": "mp3"}
+        if cfg.get("openrouter_tts_voice"):
+            body["voice"] = cfg["openrouter_tts_voice"]
+        try:
+            r = httpx.post(f"{OPENROUTER}/audio/speech", json=body, timeout=300,
+                           headers={"Authorization": f"Bearer {key}", "X-Title": "AstroFlow"})
+        except httpx.HTTPError as e:
+            raise ServiceError(f"OpenRouter nicht erreichbar: {e}") from None
+        if r.status_code >= 400 or not r.headers.get("content-type", "").startswith("audio/"):
+            try:
+                msg = r.json().get("error", {}).get("message") or r.text
+            except ValueError:
+                msg = r.text
+            hint = {401: " – Schlüssel ungültig", 402: " – Guthaben aufgebraucht", 404: " – Modell unbekannt"}.get(r.status_code, "")
+            raise ServiceError(f"OpenRouter-Sprachausgabe (HTTP {r.status_code}){hint}: {str(msg)[:200]}")
+        audio += r.content                                    # MP3-Stücke lassen sich direkt aneinanderhängen
+    return audio
+
+
 def qwen_cfg(cfg: dict) -> dict:
     return {"base": (cfg.get("qwen_base_url") or "http://127.0.0.1:8880").rstrip("/"), "voice": cfg.get("qwen_voice") or "Ryan",
             "model": cfg.get("qwen_model") or "tts-1", "language": cfg.get("qwen_language") or "German",
@@ -150,6 +219,15 @@ def eleven_voices(key: str) -> list[dict]:
         raise ServiceError(_eleven_error(r))
     return [{"id": v["voice_id"], "name": v["name"], "category": v.get("category"), "recommended": v.get("category") == "generated"}
             for v in r.json().get("voices", [])]
+
+
+def eleven_models(key: str) -> list[dict]:
+    r = httpx.get(f"{ELEVEN}/models", headers={"xi-api-key": key}, timeout=30)
+    if r.status_code >= 400:
+        raise ServiceError(_eleven_error(r))
+    return [{"id": m["model_id"], "name": m.get("name") or m["model_id"],
+             "info": "Deutsch" if any(l.get("language_id") == "de" for l in m.get("languages") or []) else ""}
+            for m in r.json() if m.get("can_do_text_to_speech", True)]
 
 
 def eleven_speak(cfg: dict, text: str) -> bytes:

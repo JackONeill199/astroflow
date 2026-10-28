@@ -105,3 +105,67 @@ def test_bildausschnitt_im_stack_finden():
     small = big[37:337, 52:552] * 1.7 + 5                      # anders gestreckt, aber gleicher Ausschnitt
     dy, dx, q = services.locate(services._stretch(small, 4), services._stretch(big, 4))
     assert abs(dy * 4 - 37) <= 4 and abs(dx * 4 - 52) <= 4 and q > 8
+
+
+class _Resp:
+    def __init__(self, status=200, data=None, content=b"", ctype="application/json"):
+        self.status_code, self._data, self.content, self.headers, self.text = status, data, content, {"content-type": ctype}, ""
+
+    def json(self):
+        return self._data
+
+
+def test_modelllisten_filtern(monkeypatch):
+    from astroflow.core import models
+    seen = {}
+
+    def get(url, params=None, headers=None, timeout=None):
+        seen["params"], seen["auth"] = params, headers
+        return _Resp(data={"data": [
+            {"id": "elevenlabs/eleven-v4", "name": "ElevenLabs: Eleven v4", "architecture": {"output_modalities": ["speech"]},
+             "pricing": {"prompt": "0.00008"}, "supported_voices": ["george", "sarah"]},
+            {"id": "openai/gpt-4o", "name": "GPT-4o", "architecture": {"input_modalities": ["text", "image"], "output_modalities": ["text"]},
+             "pricing": {"prompt": "0.0000025", "completion": "0.00001"}, "context_length": 128000},
+            {"id": "x/nur-text", "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]}},
+            {"id": "text-embedding-3-small"}, {"id": "gpt-4.1-mini"}]})
+
+    monkeypatch.setattr(models.httpx, "get", get)
+    models._cache.clear()
+    sp = models.list_models("https://openrouter.ai/api/v1", "", "speech")
+    assert [m["id"] for m in sp] == ["elevenlabs/eleven-v4"] and sp[0]["voices"] == ["george", "sarah"]
+    assert seen["params"] == {"output_modalities": "speech"} and "0,080 $" in sp[0]["info"]
+    txt = models.list_models("https://openrouter.ai/api/v1", "k", "text")
+    assert [m["id"] for m in txt] == ["gpt-4.1-mini", "openai/gpt-4o", "x/nur-text"] and seen["auth"] == {"Authorization": "Bearer k"}
+    assert [m["id"] for m in models.list_models("https://openrouter.ai/api/v1", "k", "vision")] == ["gpt-4.1-mini", "openai/gpt-4o"]
+
+
+def test_openrouter_sprachausgabe(tmp_path, monkeypatch):
+    monkeypatch.setenv("ASTROFLOW_MODULES", "stacking,sage")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    calls = []
+
+    def post(url, json=None, headers=None, timeout=None):
+        calls.append((url, json, headers))
+        return _Resp(content=b"ID3" + json["input"][:3].encode(), ctype="audio/mpeg")
+
+    monkeypatch.setattr(clients.httpx, "post", post)
+    assert len(clients.chunks("Satz eins. " * 900, 4000)) == 3 and all(len(c) <= 4000 for c in clients.chunks("x" * 9000))
+    with TestClient(create_app(load_settings(tmp_path))) as c:
+        cfg = c.get("/api/sage/config").json()
+        assert cfg["tts_provider"] == "openrouter" and not cfg["openrouter_speech_key"]
+        assert c.post("/api/sage/tts/speak", json={"provider": "openrouter", "text": "Hallo"}).status_code == 503
+        # Schlüssel der Erzähl-KI (OpenRouter) wird mitbenutzt
+        c.post("/api/sage/config", json={"story_provider": "openrouter", "story_api_key": "sk-or-test", "openrouter_tts_voice": "sarah"})
+        assert c.get("/api/sage/tts/config").json()["openrouter"]["available"]
+        e = SageStore(tmp_path / "sage").add({"objects": [], "story": "## Titel\n\nDer **Orionnebel** leuchtet."})
+        r = c.post("/api/sage/tts/speak", json={"provider": "openrouter", "history_id": e["id"]}).json()
+        assert r["variant"] == "elevenlabs/eleven-v4|sarah" and not r["cached"]
+        url, body, headers = calls[-1]
+        assert url.endswith("/audio/speech") and body == {"model": "elevenlabs/eleven-v4", "input": "Titel\n\nDer Orionnebel leuchtet.",
+                                                          "response_format": "mp3", "voice": "sarah"}
+        assert headers["Authorization"] == "Bearer sk-or-test" and c.get(r["url"]).content.startswith(b"ID3")
+        assert c.post("/api/sage/tts/speak", json={"provider": "openrouter", "history_id": e["id"]}).json()["cached"]
+        # andere Stimme → neu vertonen, alte Datei wird ersetzt
+        c.post("/api/sage/config", json={"openrouter_tts_voice": "george"})
+        r2 = c.post("/api/sage/tts/speak", json={"provider": "openrouter", "history_id": e["id"]}).json()
+        assert not r2["cached"] and r2["variant"].endswith("|george") and len(list((tmp_path / "sage" / "audio").iterdir())) == 1

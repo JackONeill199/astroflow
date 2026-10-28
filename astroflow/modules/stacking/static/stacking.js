@@ -654,7 +654,7 @@ async function stackingSettings(el) {
         Bei <b>LM Studio</b> bleibt alles lokal; bei <b>OpenRouter</b> wird eine verkleinerte Vorschau an den Dienst gesendet.</p>
       <label class="field"><span>Anbieter</span><select name="provider"><option value="off">Aus</option><option value="lmstudio">LM Studio (lokal)</option><option value="openrouter">OpenRouter (Cloud)</option></select></label>
       <label class="field"><span>Server-URL</span><input name="base_url" value="${esc(c.base_url)}" placeholder="leer = Standard des Anbieters"></label>
-      <label class="field"><span>Modell</span><input name="model" value="${esc(c.model)}" placeholder="z. B. qwen2.5-vl-7b-instruct"><small>Muss Bildeingabe unterstützen.</small></label>
+      <div class="field"><span>Modell</span><div id="rmodel"></div><small>Nur Modelle mit Bildeingabe; Liste kommt vom gewählten Anbieter.</small></div>
       <label class="field"><span>API-Key</span><input name="api_key" type="password" autocomplete="off" placeholder="${c.has_key ? '•••••• (gesetzt – leer lassen zum Behalten)' : 'nur für OpenRouter'}"></label>
       <label class="field"><span>Maximale Prüfrunden</span><input name="max_rounds" type="number" min="1" max="6" value="${c.max_rounds}" style="width:100px"></label>
       <div class="row"><button class="btn" type="submit">Speichern</button><span class="mut sm">Wird gespeichert und gilt auch nach einem Neustart.</span></div>
@@ -729,6 +729,12 @@ async function stackingSettings(el) {
     } catch (err) { toast('Fehler: ' + err.message, 'err'); }
   };
   $('[name=provider]').value = c.provider;
+  // Modell-Auswahl: Liste vom gewählten (auch noch nicht gespeicherten) Anbieter
+  const rf = $('#rf');
+  const mp = picker($('#rmodel'), { name: 'model', value: c.model, placeholder: 'Modell wählen …',
+    load: () => api(`/stacking/reviewer/models?provider=${encodeURIComponent(rf.elements.provider.value)}&base_url=${encodeURIComponent(rf.elements.base_url.value)}`) });
+  rf.elements.provider.addEventListener('change', () => mp.reload());
+  rf.elements.base_url.addEventListener('change', () => mp.reload());
   $('[name=backend]').value = sv.backend;
   $('#sf').onsubmit = async (e) => {
     e.preventDefault();

@@ -73,3 +73,7 @@
 .sg-coll a:hover { transform: translateY(-3px); border-color: var(--line2) }
 .sg-coll img, .sg-coll .ph { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 9px; margin-bottom: 6px; background: #04060c; display: grid; place-items: center; color: var(--dim) }
 .sg-coll small { font-size: 11.5px }
+.sg-fs { transition: border-color .25s, background .25s }
+.sg-fs.active { border-color: color-mix(in srgb, var(--acc2) 45%, transparent); background: color-mix(in srgb, var(--acc2) 5%, transparent) }
+.sg-fs.active legend { color: var(--fg) }
+#probeAudio { height: 34px; flex: 1; min-width: 200px }

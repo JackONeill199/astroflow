@@ -142,7 +142,7 @@ async function entryView(el, id) {
           <span class="mut sm">${sol.ra != null ? `Bildmitte ${sexa(sol.ra, true)} · ${sexa(sol.dec, false)}${sol.fov_w ? ` · Feld ${(sol.fov_w * 60).toFixed(0)}′ × ${(sol.fov_h * 60).toFixed(0)}′` : ''}` : ''}</span></div>
         <article class="panel sg-story">${e.story ? md(e.story.replace(/^\s*#{1,4}\s+.+\n+/, '')) : `<div class="empty" style="border:0">${icon('book')}<h2>Noch keine Geschichte</h2>${esc(e.story_error || 'Die Objekte sind bestimmt – die Erzähl-KI war nicht verfügbar.')}</div>`}</article></div>
       <div>${e.story ? `<div class="panel sg-player"><div class="panel-h"><h2>${icon('volume')}Vorlesen</h2><span class="grow"></span>
-          <select id="ttsp">${[['qwen', 'Qwen3 (lokal)'], ['elevenlabs', 'ElevenLabs']].map(([k, l]) => `<option value="${k}" ${(tts?.default || store.get('sage.tts', 'qwen')) === k ? 'selected' : ''} ${tts && !tts[k]?.available ? 'disabled' : ''}>${l}${tts && !tts[k]?.available ? ' – nicht verfügbar' : ''}</option>`).join('')}</select></div>
+          <select id="ttsp">${[['openrouter', 'OpenRouter'], ['qwen', 'Qwen3 (lokal)'], ['elevenlabs', 'ElevenLabs']].map(([k, l]) => `<option value="${k}" ${(tts?.default || store.get('sage.tts', 'qwen')) === k ? 'selected' : ''} ${tts && !tts[k]?.available ? 'disabled' : ''}>${l}${tts && !tts[k]?.available ? ' – nicht verfügbar' : ''}</option>`).join('')}</select></div>
           <div id="ttsBody"></div></div>` : ''}
         <div class="panel"><div class="panel-h"><h2>Im Bild</h2><span class="grow"></span><span class="mut sm">${objs.length}</span></div>
           ${objs.length ? `<ul class="sg-objs">${objs.map((o, i) => `<li data-i="${i}">${fresh.has(o.name) ? `<span class="chip acc">${icon('sparkle')}neu</span>` : ''}<b>${esc(o.name)}</b>
@@ -169,19 +169,26 @@ async function entryView(el, id) {
     const show = () => {
       const p = sel.value, have = e.audio?.[p];
       if (!have && tts && !tts[p]?.available) {
-        body.innerHTML = `<p class="mut sm" style="margin:0">Kein Sprachdienst erreichbar. Lokalen Qwen3-TTS-Server starten oder einen ElevenLabs-Schlüssel eintragen – <a href="#/settings/sage">Einstellungen → Sage</a>.</p>`;
+        body.innerHTML = `<p class="mut sm" style="margin:0">Dieser Sprachdienst ist noch nicht eingerichtet (Schlüssel bzw. lokaler Server) – <a href="#/settings/sage">Einstellungen → Sage</a>.</p>`;
         return;
       }
-      body.innerHTML = have ? `<audio controls src="${have}" preload="none"></audio>`
-        : `<button class="btn" id="speak">${icon('play')}Vorlesen lassen</button><span class="mut sm" style="margin-left:8px">${p === 'qwen' ? 'lokal, ohne Upload' : 'Text wird an ElevenLabs gesendet'}</span>`;
-      $('#speak')?.addEventListener('click', speak);
+      const cur = tts?.[p]?.model ? `${tts[p].model}${tts[p].voice ? ' · ' + tts[p].voice : ''}` : '';
+      const stale = have && cur && p === 'openrouter' && e.audio_variant?.[p] && e.audio_variant[p] !== `${tts[p].model}|${tts[p].voice}`;
+      body.innerHTML = have ? `<audio controls src="${have}" preload="none"></audio>
+          <div class="row sm" style="margin-top:6px"><span class="mut">${esc((e.audio_variant?.[p] || '').replace('|', ' · '))}</span><span class="grow"></span>
+          <button class="linkbtn" id="redo">${stale ? 'Mit neuer Stimme vertonen' : 'Neu vertonen'}</button></div>`
+        : `<button class="btn" id="speak">${icon('play')}Vorlesen lassen</button><span class="mut sm" style="margin-left:8px">${p === 'qwen' ? 'lokal, ohne Upload'
+          : p === 'openrouter' ? 'über OpenRouter' + (cur ? ' · ' + esc(cur) : '') : 'Text wird an ElevenLabs gesendet'}</span>`;
+      $('#speak')?.addEventListener('click', () => speak(false));
+      $('#redo')?.addEventListener('click', () => { body.innerHTML = `<button class="btn" id="speak"></button>`; speak(true); });
     };
-    async function speak() {
+    async function speak(force) {
       const b = $('#speak');
       b.disabled = true; b.classList.add('busy'); b.innerHTML = `<span class="spinner"></span>Stimme wird erzeugt …`;
       try {
-        const r = await send(G + '/tts/speak', { history_id: e.id, provider: sel.value });
+        const r = await send(G + '/tts/speak', { history_id: e.id, provider: sel.value, force });
         e.audio = { ...(e.audio || {}), [sel.value]: r.url };
+        e.audio_variant = { ...(e.audio_variant || {}), [sel.value]: r.variant };
         show();
         audio = $('audio', body); audio?.play().catch(() => {});
       } catch (err) { toast(err.message, 'err'); show(); }
@@ -242,8 +249,8 @@ async function settings(el) {
         bei OpenAI/OpenRouter gehen nur Objektnamen und Koordinaten an den Dienst, nie das Bild.</p>
       <label class="field"><span>Anbieter</span><select name="story_provider"><option value="openai">OpenAI</option><option value="lmstudio">LM Studio (lokal)</option><option value="openrouter">OpenRouter</option><option value="custom">Eigener OpenAI-kompatibler Server</option></select></label>
       <label class="field"><span>Server-URL</span><input name="story_base_url" value="${esc(c.story_base_url)}" placeholder="leer = Standard des Anbieters"></label>
-      <label class="field"><span>Modell</span><input name="story_model" value="${esc(c.story_model)}" placeholder="z. B. gpt-4o"></label>
       <label class="field"><span>API-Schlüssel</span><input name="story_api_key" type="password" autocomplete="off" placeholder="${sec('story_api_key') || 'für OpenAI/OpenRouter'}"></label>
+      <div class="field"><span>Modell</span><div id="pStory"></div><small>Liste vom gewählten Anbieter – bei OpenAI erst nach dem Speichern des Schlüssels.</small></div>
       <div class="row"><button class="btn" type="submit">Speichern</button></div></form>
     <form class="panel" id="sgs2"><h2>Bildbestimmung</h2><p class="mut sm" style="margin:6px 0 14px">Zuerst wird lokal gelöst (ASTAP aus Einstellungen → Bilder):
         <b class="${c.local_solver ? 'ok' : 'warn'}">${c.local_solver ? 'bereit' : 'nicht eingerichtet'}</b>. Optional springt nova.astrometry.net ein – dabei wird das Bild hochgeladen (nicht öffentlich).</p>
@@ -251,38 +258,81 @@ async function settings(el) {
       <label class="field"><span>nova.astrometry.net API-Key</span><input name="nova_key" type="password" autocomplete="off" placeholder="${sec('nova_key') || 'nova.astrometry.net → Profil → API-Key'}"></label>
       <div class="row"><button class="btn" type="submit">Speichern</button></div></form></div>
     <div><form class="panel" id="sgs3"><div class="panel-h"><h2>Vorlesen</h2><span class="grow"></span><span class="mut sm" id="ttsState">prüfe …</span></div>
-      <label class="field"><span>Standard</span><select name="tts_provider"><option value="qwen">Qwen3-TTS (lokal)</option><option value="elevenlabs">ElevenLabs (Cloud)</option></select></label>
-      <fieldset class="sg-fs"><legend>Qwen3-TTS · OpenAI-kompatibler Sprachserver</legend>
+      <label class="field"><span>Standard-Sprachdienst</span><select name="tts_provider"><option value="openrouter">OpenRouter (ElevenLabs v4 u. a.)</option>
+        <option value="qwen">Qwen3-TTS (lokal)</option><option value="elevenlabs">ElevenLabs (direkt)</option></select></label>
+      <fieldset class="sg-fs" data-p="openrouter"><legend>OpenRouter · Sprachmodelle vieler Anbieter</legend>
+        <label class="field"><span>API-Schlüssel</span><input name="openrouter_key" type="password" autocomplete="off"
+          placeholder="${c.has_openrouter_key ? sec('openrouter_key') : c.openrouter_speech_key ? 'leer = Schlüssel der Erzähl-KI (OpenRouter)' : 'openrouter.ai → Keys'}"></label>
+        <div class="field"><span>Modell</span><div id="pOrModel"></div></div>
+        <div class="field"><span>Stimme</span><div id="pOrVoice"></div><small>Der Text wird an OpenRouter und den Modellanbieter gesendet; abgerechnet wird je Zeichen.</small></div></fieldset>
+      <fieldset class="sg-fs" data-p="qwen"><legend>Qwen3-TTS · lokaler OpenAI-kompatibler Sprachserver</legend>
         <label class="field"><span>Server-URL</span><input name="qwen_base_url" value="${esc(c.qwen_base_url)}"></label>
-        <div class="row" style="flex-wrap:nowrap;gap:12px"><label class="field" style="flex:1"><span>Stimme</span><input name="qwen_voice" value="${esc(c.qwen_voice)}" list="qv"><datalist id="qv"></datalist></label>
+        <div class="row" style="flex-wrap:nowrap;gap:12px;align-items:start"><div class="field" style="flex:1"><span>Stimme</span><div id="pQwenVoice"></div></div>
           <label class="field" style="flex:1"><span>Sprache</span><input name="qwen_language" value="${esc(c.qwen_language)}"></label></div>
         <label class="field"><span>Modell</span><input name="qwen_model" value="${esc(c.qwen_model)}"></label></fieldset>
-      <fieldset class="sg-fs"><legend>ElevenLabs</legend>
+      <fieldset class="sg-fs" data-p="elevenlabs"><legend>ElevenLabs · direkt mit eigenem Konto</legend>
         <label class="field"><span>API-Schlüssel</span><input name="elevenlabs_key" type="password" autocomplete="off" placeholder="${sec('elevenlabs_key') || 'elevenlabs.io → Profil'}"></label>
-        <div class="row" style="flex-wrap:nowrap;gap:12px"><label class="field" style="flex:1"><span>Stimme</span><select name="elevenlabs_voice"><option value="">Automatisch (erste eigene Stimme)</option>${c.elevenlabs_voice ? `<option value="${esc(c.elevenlabs_voice)}" selected>${esc(c.elevenlabs_voice)}</option>` : ''}</select></label>
-          <label class="field" style="flex:1"><span>Modell</span><input name="elevenlabs_model" value="${esc(c.elevenlabs_model)}"></label></div>
-        <button type="button" class="linkbtn" id="ev">Stimmen laden</button></fieldset>
-      <div class="row"><button class="btn" type="submit">Speichern</button></div></form></div></div>`;
-  $('[name=story_provider]').value = c.story_provider;
-  $('[name=tts_provider]').value = c.tts_provider;
-  const save = async (e) => {
-    e.preventDefault();
-    const f = e.target, body = {};
-    for (const x of f.elements) if (x.name) body[x.name] = x.type === 'checkbox' ? x.checked : x.value;
-    try { await send(G + '/config', body); toast('Gespeichert.', 'ok'); for (const x of f.elements) if (x.type === 'password' && x.value) { x.value = ''; x.placeholder = '•••••• (gesetzt – leer lassen zum Behalten)'; } }
-    catch (err) { toast(err.message, 'err'); }
+        <div class="row" style="flex-wrap:nowrap;gap:12px;align-items:start"><div class="field" style="flex:1"><span>Stimme</span><div id="pElVoice"></div></div>
+          <div class="field" style="flex:1"><span>Modell</span><div id="pElModel"></div></div></div></fieldset>
+      <div class="row"><button class="btn" type="submit">Speichern</button><button class="btn ghost" type="button" id="probe">${icon('volume')}Speichern &amp; Probe hören</button>
+        <audio id="probeAudio" hidden></audio></div></form></div></div>`;
+  const f1 = $('#sgs1'), f3 = $('#sgs3');
+  f1.elements.story_provider.value = c.story_provider;
+  f3.elements.tts_provider.value = c.tts_provider;
+  const fail = (e) => { throw e; };
+
+  // Auswahlfelder: Modelle und Stimmen kommen live vom jeweiligen Dienst
+  const story = picker($('#pStory'), { name: 'story_model', value: c.story_model, placeholder: 'Modell wählen …',
+    load: () => api(`${G}/models?kind=story&provider=${encodeURIComponent(f1.elements.story_provider.value)}&base_url=${encodeURIComponent(f1.elements.story_base_url.value)}`) });
+  f1.elements.story_provider.addEventListener('change', () => story.reload());
+  f1.elements.story_base_url.addEventListener('change', () => story.reload());
+
+  let speech = null;                                     // OpenRouter-Sprachmodelle samt Stimmen
+  const speechModels = async () => speech || (speech = await api(`${G}/models?kind=speech`).catch(fail));
+  const orModel = picker($('#pOrModel'), { name: 'openrouter_tts_model', value: c.openrouter_tts_model, load: speechModels });
+  const orVoice = picker($('#pOrVoice'), { name: 'openrouter_tts_voice', value: c.openrouter_tts_voice, empty: 'Standardstimme des Modells',
+    load: async () => ((await speechModels()).find(m => m.id === f3.elements.openrouter_tts_model.value)?.voices || []).map(v => ({ id: v, name: v })) });
+  f3.elements.openrouter_tts_model.addEventListener('change', async () => {
+    orVoice.reload();
+    const voices = (await speechModels()).find(m => m.id === f3.elements.openrouter_tts_model.value)?.voices || [];
+    if (!voices.includes(f3.elements.openrouter_tts_voice.value)) orVoice.set(voices[0] || '', false);
+  });
+  picker($('#pQwenVoice'), { name: 'qwen_voice', value: c.qwen_voice, load: () => api(`${G}/tts/voices?provider=qwen`) });
+  picker($('#pElVoice'), { name: 'elevenlabs_voice', value: c.elevenlabs_voice, empty: 'Automatisch (erste eigene Stimme)',
+    load: async () => (await api(`${G}/tts/voices?provider=elevenlabs`)).map(v => ({ id: v.id, name: v.name, info: (v.recommended ? '★ ' : '') + (v.category || '') })) });
+  picker($('#pElModel'), { name: 'elevenlabs_model', value: c.elevenlabs_model, load: () => api(`${G}/models?kind=elevenlabs`) });
+  orModel.preload();
+  const markProvider = () => $$('.sg-fs', f3).forEach(fs => fs.classList.toggle('active', fs.dataset.p === f3.elements.tts_provider.value));
+  f3.elements.tts_provider.addEventListener('change', markProvider);
+  markProvider();
+
+  const save = async (form, quiet) => {
+    const body = {};
+    for (const x of form.elements) if (x.name) body[x.name] = x.type === 'checkbox' ? x.checked : x.value;
+    await send(G + '/config', body);
+    for (const x of form.elements) if (x.type === 'password' && x.value) { x.value = ''; x.placeholder = '•••••• (gesetzt – leer lassen zum Behalten)'; }
+    if (!quiet) toast('Gespeichert.', 'ok');
   };
-  ['#sgs1', '#sgs2', '#sgs3'].forEach(s => { $(s).onsubmit = save; });
-  api(G + '/tts/config').then(t => { $('#ttsState').innerHTML = `Qwen3 <b class="${t.qwen.available ? 'ok' : 'dim'}">${t.qwen.available ? 'erreichbar' : 'nicht erreichbar'}</b> · ElevenLabs <b class="${t.elevenlabs.available ? 'ok' : 'dim'}">${t.elevenlabs.available ? 'eingerichtet' : 'ohne Schlüssel'}</b>`;
-    if (t.qwen.available) api(G + '/tts/voices?provider=qwen').then(v => { $('#qv').innerHTML = v.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join(''); }).catch(() => {}); }).catch(() => {});
-  $('#ev').onclick = async () => {
+  for (const s of ['#sgs1', '#sgs2', '#sgs3']) $(s).onsubmit = async (e) => { e.preventDefault(); try { await save(e.target); } catch (err) { toast(err.message, 'err'); } };
+  $('#probe').onclick = async () => {
+    const b = $('#probe');
+    b.disabled = true; b.classList.add('busy');
     try {
-      const v = await api(G + '/tts/voices?provider=elevenlabs'), s = $('[name=elevenlabs_voice]'), cur = s.value;
-      s.innerHTML = '<option value="">Automatisch (erste eigene Stimme)</option>' + v.map(x => `<option value="${esc(x.id)}">${esc(x.name)}${x.recommended ? ' ★' : ''} · ${esc(x.category || '')}</option>`).join('');
-      s.value = cur;
-      toast(`${v.length} Stimmen geladen.`, 'ok');
+      await save(f3, true);
+      const r = await fetch('/api' + G + '/tts/speak', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: f3.elements.tts_provider.value, text: 'Hallo! So klingt die Stimme für deine Himmelsgeschichten. Der Orionnebel ist rund 1350 Lichtjahre entfernt.' }) });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || 'Probe fehlgeschlagen.');
+      const a = $('#probeAudio');
+      a.src = URL.createObjectURL(await r.blob());
+      a.hidden = false; a.controls = true;
+      a.play().catch(() => {});
     } catch (err) { toast(err.message, 'err'); }
+    b.disabled = false; b.classList.remove('busy');
   };
+  api(G + '/tts/config').then(t => {
+    const s = (ok, a, b) => `<b class="${ok ? 'ok' : 'dim'}">${ok ? a : b}</b>`;
+    $('#ttsState').innerHTML = `OpenRouter ${s(t.openrouter.available, 'bereit', 'ohne Schlüssel')} · Qwen3 ${s(t.qwen.available, 'erreichbar', 'nicht erreichbar')} · ElevenLabs ${s(t.elevenlabs.available, 'bereit', 'ohne Schlüssel')}`;
+  }).catch(() => {});
 }
 
 // ---------------------------------------------------------- Registrierung --- //

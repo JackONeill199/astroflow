@@ -520,6 +520,32 @@ input:focus-visible + .switch { outline: 2px solid var(--acc); outline-offset: 2
   .hero { padding: 22px 20px } .hero h1 { font-size: 26px }
 }
 
+/* Auswahlfeld mit Suche (picker) */
+.pick { position: relative; display: block }
+.pick-btn { width: 100%; display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 6px 10px 6px 12px; border-radius: var(--r-sm); border: 1px solid var(--line2);
+  background: color-mix(in srgb, var(--panel2) 60%, transparent); color: var(--fg); font: inherit; text-align: left; cursor: pointer; transition: border-color .2s, box-shadow .2s }
+.pick-btn:hover { border-color: color-mix(in srgb, var(--acc) 45%, var(--line2)) }
+.pick.open .pick-btn { border-color: var(--acc); box-shadow: 0 0 0 3px color-mix(in srgb, var(--acc) 22%, transparent) }
+.pick-btn > svg { margin-left: auto; color: var(--mut); transition: transform .25s var(--ease) }
+.pick.open .pick-btn > svg { transform: rotate(180deg) }
+.pick-v { min-width: 0; display: flex; align-items: baseline; gap: 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis }
+.pick-v small { color: var(--dim); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis }
+.pick-pop { position: absolute; z-index: 40; left: 0; right: 0; top: calc(100% + 6px); background: var(--panel-s); border: 1px solid var(--line2); border-radius: 12px;
+  box-shadow: var(--shadow); overflow: hidden; animation: pop .18s var(--ease) }
+.pick-q { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line) }
+.pick-q svg { color: var(--mut) }
+.pick-q input { flex: 1; border: 0; background: none; height: 28px; padding: 0; box-shadow: none !important }
+.pick-pop ul { list-style: none; margin: 0; padding: 4px; max-height: 300px; overflow: auto }
+.pick-pop li { display: grid; grid-template-columns: 1fr auto; gap: 1px 10px; padding: 7px 10px; border-radius: 8px; cursor: pointer }
+.pick-pop li b { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.pick-pop li code { grid-column: 1; font-size: 11px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.pick-pop li small { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--mut); font-size: 11.5px; text-align: right }
+.pick-pop li.on { background: color-mix(in srgb, var(--acc) 14%, transparent) }
+.pick-pop li.cur b::before { content: "✓ "; color: var(--acc) }
+.pick-pop li.own b { color: var(--acc) }
+.pick-pop li.pick-msg { display: flex; gap: 8px; align-items: center; color: var(--mut); cursor: default; font-size: 13px }
+.field .pick + small { margin-top: 6px }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important }
 }

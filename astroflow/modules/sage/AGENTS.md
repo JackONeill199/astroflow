@@ -28,5 +28,15 @@ Aufträge laufen in Threads (`Module.tasks`, im Speicher), Fortschritt per Polli
 
 ## Einstellungen (Abschnitt `sage` in `data/settings.json`; Umgebungsvariablen wie im Original als Vorgabe)
 `story_provider|story_base_url|story_model|story_api_key` (`OPENAI_API_KEY`, `OPENAI_MODEL`), `online_solve`, `nova_key` (`ASTROMETRY_API_KEY`),
-`tts_provider`, `qwen_*` (`QWEN_TTS_*`, lokaler OpenAI-kompatibler Sprachserver, Standard `http://127.0.0.1:8880`), `elevenlabs_*` (`ELEVENLABS_*`).
+`tts_provider` (Standard `openrouter`), `openrouter_key` (`OPENROUTER_API_KEY`; leer = Schlüssel der Erzähl-KI, wenn diese OpenRouter nutzt),
+`openrouter_tts_model` (Standard `elevenlabs/eleven-v4`), `openrouter_tts_voice` (Standard `george`), `qwen_*` (`QWEN_TTS_*`, lokaler
+OpenAI-kompatibler Sprachserver, Standard `http://127.0.0.1:8880`), `elevenlabs_*` (`ELEVENLABS_*`, direkt mit eigenem Konto).
+
+## Modelle und Sprachausgabe
+- Auswahlfelder (Shell-Baustein `picker` in `app.js`) holen Listen über `GET /api/sage/models?kind=story|speech|elevenlabs` bzw.
+  `GET /api/stacking/reviewer/models` (Bildeingabe). Gemeinsamer Abruf: `core/models.list_models` (OpenAI-kompatibles `/models`, 5 min Cache;
+  OpenRouter liefert Preise, Kontext und bei Sprachmodellen `supported_voices`).
+- OpenRouter-Sprachausgabe: `POST https://openrouter.ai/api/v1/audio/speech` `{model, input, voice, response_format: "mp3"}` → MP3-Bytes.
+  Lange Texte in Stücken ≤ 4000 Zeichen (`clients.chunks`), MP3 einfach aneinandergehängt. Kosten je Zeichen (Eleven v4 ~0,08 $/1000).
+- Gespeicherte Vertonung merkt sich `variant` (Modell|Stimme); bei anderer Stimme wird neu vertont, die alte Datei ersetzt.
 Schlüssel werden nie an die Oberfläche ausgeliefert (`has_<key>`); leer speichern behält den alten Wert.

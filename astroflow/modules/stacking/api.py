@@ -372,6 +372,21 @@ def build_router(eng: Engine) -> APIRouter:
         c = eng.review_cfg
         return {"provider": c.provider, "base_url": c.base_url, "model": c.model, "max_rounds": c.max_rounds, "has_key": bool(c.api_key)}
 
+    @r.get("/reviewer/models")
+    def reviewer_models(provider: str | None = None, base_url: str | None = None):
+        """Modelle mit Bildeingabe für den KI-Prüfer (auch für eine noch nicht gespeicherte Anbieterwahl)."""
+        from dataclasses import replace
+        from ...core.models import ModelListError, list_models
+        c = eng.review_cfg
+        prov = provider or c.provider
+        if prov not in ("lmstudio", "openrouter"):
+            raise HTTPException(400, "Erst einen Anbieter wählen.")
+        cfg = replace(c, provider=prov, base_url=c.base_url if base_url is None else base_url).resolved()
+        try:
+            return list_models(cfg.base_url, c.api_key if prov == "openrouter" else "", "vision")
+        except ModelListError as e:
+            raise HTTPException(502, str(e))
+
     @r.post("/reviewer")
     def set_reviewer(body: dict = Body(...)):
         c = eng.review_cfg

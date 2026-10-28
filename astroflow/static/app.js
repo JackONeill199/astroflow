@@ -107,6 +107,60 @@ document.addEventListener('click', (e) => {
   if (b) { e.stopPropagation(); const m = b.parentElement; $$('.menu.open').forEach(o => o !== m && o.classList.remove('open')); m.classList.toggle('open'); return; }
   if (!e.target.closest('.menu')) $$('.menu.open').forEach(m => m.classList.remove('open'));
 });
+// Auswahlfeld mit Suche für lange Listen (Modelle, Stimmen). Der Wert steht in einem versteckten <input name>, damit
+// Formulare ihn wie ein normales Feld lesen. load() liefert [{id, name, info}] und wird beim ersten Öffnen bzw. nach reload() geholt.
+// custom: eigene Eingabe erlauben (z. B. Modell, das der Server nicht auflistet). Gibt { set(v), reload(), value } zurück.
+function picker(host, { name, value = '', placeholder = 'Bitte wählen …', load, custom = true, empty = '' }) {
+  host.classList.add('pick');
+  host.innerHTML = `<input type="hidden" name="${esc(name)}" value="${esc(value)}"><button type="button" class="pick-btn"><span class="pick-v"></span>${icon('chev')}</button>
+    <div class="pick-pop" hidden><div class="pick-q">${icon('search')}<input placeholder="Suchen …" autocomplete="off" spellcheck="false"></div><ul></ul></div>`;
+  const hid = $('input[type=hidden]', host), btn = $('.pick-btn', host), pop = $('.pick-pop', host), q = $('.pick-q input', host), ul = $('ul', host);
+  let items = null, err = '', loading = null, sel = 0, shown = [];
+  const label = () => {
+    const it = items?.find(i => i.id === hid.value);
+    $('.pick-v', host).innerHTML = hid.value ? `${esc(it?.name || hid.value)}${it?.info ? `<small>${esc(it.info)}</small>` : ''}` : `<span class="dim">${esc(empty || placeholder)}</span>`;
+  };
+  const set = (v, fire = true) => {
+    hid.value = v; label();
+    if (fire) { hid.dispatchEvent(new Event('input', { bubbles: true })); hid.dispatchEvent(new Event('change', { bubbles: true })); }
+  };
+  const fetchItems = async () => {
+    if (items || loading) return loading;
+    loading = (async () => { try { items = await load(); err = ''; } catch (e) { items = []; err = e.message; } loading = null; label(); draw(); })();
+    return loading;
+  };
+  function draw() {
+    const words = q.value.toLowerCase().split(/\s+/).filter(Boolean);
+    shown = (items || []).filter(i => words.every(w => (i.id + ' ' + i.name + ' ' + (i.info || '')).toLowerCase().includes(w))).slice(0, 300);
+    const own = custom && q.value.trim() && !shown.some(i => i.id === q.value.trim());
+    if (own) shown = [{ id: q.value.trim(), name: q.value.trim(), info: 'eigene Eingabe übernehmen', own: true }, ...shown];
+    if (empty && !words.length) shown = [{ id: '', name: empty, info: '' }, ...shown];
+    sel = Math.min(sel, Math.max(0, shown.length - 1));
+    ul.innerHTML = (items === null ? '<li class="pick-msg"><span class="spinner"></span>Lädt …</li>' : '')
+      + (err ? `<li class="pick-msg bad">${esc(err)}</li>` : '')
+      + shown.map((i, k) => `<li data-k="${k}" class="${k === sel ? 'on' : ''} ${i.id === hid.value ? 'cur' : ''} ${i.own ? 'own' : ''}"><b>${esc(i.name)}</b>${i.name !== i.id && i.id ? `<code>${esc(i.id)}</code>` : ''}${i.info ? `<small>${esc(i.info)}</small>` : ''}</li>`).join('')
+      + (items && !shown.length && !err ? '<li class="pick-msg">Nichts gefunden</li>' : '');
+    $('li.on', ul)?.scrollIntoView({ block: 'nearest' });
+  }
+  const close = () => { pop.hidden = true; host.classList.remove('open'); document.removeEventListener('pointerdown', outside, true); };
+  const outside = (e) => { if (!host.contains(e.target)) close(); };
+  const open = () => {
+    pop.hidden = false; host.classList.add('open'); q.value = ''; sel = Math.max(0, (items || []).findIndex(i => i.id === hid.value));
+    draw(); fetchItems(); q.focus();
+    document.addEventListener('pointerdown', outside, true);
+  };
+  btn.onclick = () => pop.hidden ? open() : close();
+  q.oninput = () => { sel = 0; draw(); };
+  q.onkeydown = (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); sel = (sel + (e.key === 'ArrowDown' ? 1 : -1) + shown.length) % Math.max(1, shown.length); draw(); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (shown[sel]) { set(shown[sel].id); close(); btn.focus(); } }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); btn.focus(); }
+  };
+  ul.onclick = (e) => { const li = e.target.closest('li[data-k]'); if (li) { set(shown[+li.dataset.k].id); close(); } };
+  label();
+  return { get value() { return hid.value; }, set, reload() { items = null; err = ''; label(); if (!pop.hidden) { draw(); fetchItems(); } }, preload: fetchItems };
+}
+
 // Abgelegte Dateien inkl. Unterordnern einsammeln; relativer Pfad landet in f.relPath
 async function droppedFiles(dt) {
   const entries = [...(dt?.items || [])].map(i => i.webkitGetAsEntry?.()).filter(Boolean);
