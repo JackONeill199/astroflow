@@ -1,0 +1,521 @@
+"""SkyTrace-API (unter /api/skytrace): Läufe, Kandidaten, Analyseprozess, Standort- und Katalogeinstellungen.
+Portiert aus SkyTrace `web_server.py`; die fachliche Logik bleibt in der Engine."""
+from __future__ import annotations
+
+import datetime as dt
+import json
+import os
+import subprocess
+import threading
+import time
+from pathlib import Path
+from urllib.parse import quote
+
+from fastapi import APIRouter, Body, HTTPException, Request
+from fastapi.responses import FileResponse, Response
+
+DEFAULT_SOURCE = r"D:\Astro\Stellina" if os.name == "nt" else str(Path.home())
+MODES = ("Bildfolge → Ereignisvideo", "Fotos", "Videos")
+DEFAULT_PREFS = dict(source=DEFAULT_SOURCE, observation="", samples=0, fps=8, mode=MODES[0], solve=True)
+
+
+def short_name(name: str | None) -> str:
+    return (name or "Beobachtung").split("_observation_")[-1].replace("_", " ")
+
+
+def within(root: Path, relative: str) -> Path:
+    path = (root / relative).resolve()
+    if not path.is_relative_to(root.resolve()):
+        raise ValueError("Ungültiger Dateipfad")
+    return path
+
+
+def _read_json(path: Path, default):
+    from json_store import read_json
+    return read_json(path, default)
+
+
+def list_runs(results: Path, limit: int = 80) -> list[dict]:
+    paths = sorted(results.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True) if results.exists() else []
+    runs = []
+    for path in paths:
+        if not path.is_dir() or not (path / "bericht.html").exists():
+            continue
+        summaries = _read_json(path / "videos.json", []) or []
+        runs.append(dict(id=path.name, modified=path.stat().st_mtime, sessions=len(summaries),
+                         frames=sum(s.get("frames", 0) for s in summaries),
+                         excluded=sum(s.get("excluded", 0) or 0 for s in summaries),
+                         candidates=sum(s.get("candidate_count", s.get("persistent_trails", 0)) for s in summaries),
+                         title=summaries[0]["session"] if len(summaries) == 1 else path.name,
+                         preview=next((f"{path.name}/{Path(s['video']).parent.as_posix()}/live.jpg" for s in summaries
+                                       if s.get("video") and (path / Path(s["video"]).parent / "live.jpg").exists()), None)))
+        if len(runs) >= limit:
+            break
+    return runs
+
+
+class Controller:
+    """Startet und überwacht genau einen Analyseprozess (JSON-Zeilen über stdout, Stopp über STOP-Datei)."""
+
+    def __init__(self, mod):
+        self.mod = mod
+        self.results = mod.home / "Ergebnisse"
+        self.prefs = mod.home / "web_preferences.json"
+        self.latest = mod.home / "letzter-lauf.txt"
+        self.lock = threading.RLock()
+        self.process = None
+        self.cancel = None
+        self.sequence = 0
+        self.video_seen = {}
+        self.mode = None
+        self.current = self.latest_run()
+        self.status = "Bereit für deine nächste Entdeckung."
+        self.logs = []
+        self.row = None
+        self.stats = dict(processed=0, total=0, hits=0, excluded=0, candidates=0)
+        self.stopping = False
+        self.failed = False
+        self.started = self.finished = self.operation = None
+
+    def latest_run(self):
+        try:
+            path = Path(self.latest.read_text(encoding="utf-8").strip()).resolve()
+            if path.is_dir() and path.parent == self.results.resolve():
+                return path.name
+        except OSError:
+            pass
+        return None
+
+    def media_url(self, path) -> str | None:
+        try:
+            return "/api/skytrace/media/" + quote(Path(path).resolve().relative_to(self.results.resolve()).as_posix(), safe="/")
+        except ValueError:
+            return None
+
+    def snapshot(self, logs: bool = True) -> dict:
+        with self.lock:
+            return dict(mode=self.mode, revision=self.sequence, running=self.process is not None, stopping=self.stopping,
+                        failed=self.failed, run=self.current, status=self.status, logs=self.logs[-100:] if logs else [],
+                        row=self.row, stats=dict(self.stats), started=self.started, finished=self.finished, operation=self.operation)
+
+    def receive(self, row):
+        with self.lock:
+            self.sequence += 1
+            kind = row.get("type", "log")
+            if row.get("text"):
+                self.status = row["text"]
+                self.logs.append(dict(id=self.sequence, time=time.time(), type=kind, text=row["text"]))
+            if len(self.logs) > 600:
+                self.logs = self.logs[-400:]
+            if kind in ("sequence", "video", "result", "rejected"):
+                safe = {k: v for k, v in row.items() if k != "meta"}
+                safe["preview_url"] = self.media_url(row["preview_absolute"]) if row.get("preview_absolute") else None
+                safe["clean_preview_url"] = self.media_url(row["preview_clean_absolute"]) if row.get("preview_clean_absolute") else None
+                safe["filename"] = Path(row.get("file", "")).name
+                self.row = safe
+                if kind == "video":
+                    key = row.get("file", "")
+                    current = int(row.get("frame", 0)) + 1
+                    self.stats["processed"] += max(0, current - self.video_seen.get(key, 0))
+                    self.video_seen[key] = current
+                    self.stats["total"] = row.get("frame_total", 0)
+                    self.stats["current"] = current
+                else:
+                    self.stats["processed"] += 1
+                    self.stats["total"] = row.get("total", self.stats["total"])
+                    self.stats["current"] = row.get("current", self.stats["processed"])
+                self.stats["excluded"] += int(kind == "rejected")
+                detections = row.get("detections", [])
+                self.stats["hits"] += int(bool(detections))
+                self.stats["candidates"] += len(detections)
+
+    def run_path(self, name: str) -> Path:
+        if not name or Path(name).name != name:
+            raise ValueError("Ungültiger Lauf")
+        path = within(self.results, name)
+        if not path.is_dir():
+            raise ValueError("Lauf nicht gefunden")
+        return path
+
+    def launch(self, options: dict, refresh: bool = False) -> dict:
+        from json_store import write_json
+        with self.lock:
+            if self.process is not None:
+                raise ValueError("Eine Analyse läuft bereits.")
+            py, code = self.mod.python, Path(__file__).parent / "engine"
+            if refresh:
+                out = self.run_path(options.get("run") or self.current)
+                if not (out / "videos.json").exists():
+                    raise ValueError("Dieser Lauf hat keine Bildfolgen.")
+                cancel = out / ("STOP-update-" + str(time.time_ns()))
+                cmd = [py, "-u", str(code / "candidate_report.py"), str(out), "--stop-file", str(cancel)]
+                mode = None
+            else:
+                source = Path(options.get("source") or DEFAULT_SOURCE).expanduser().resolve()
+                if not source.is_dir():
+                    raise ValueError("Der Beobachtungsordner existiert nicht.")
+                parent = source
+                observation = options.get("observation", "")
+                if observation:
+                    source = within(parent, observation)
+                    if source.parent != parent or not source.is_dir():
+                        raise ValueError("Beobachtung nicht gefunden.")
+                try:
+                    count = float(options.get("samples", 0))
+                    samples = int(count)
+                    fps = float(options.get("fps", 8))
+                except (TypeError, ValueError, OverflowError):
+                    raise ValueError("Ungültige Bilderzahl oder Bildrate.") from None
+                if count != samples:
+                    raise ValueError("Die Bilderzahl muss eine ganze Zahl sein.")
+                mode = options.get("mode", MODES[0])
+                if mode not in MODES or not 0 <= samples <= 100000 or not 1 <= fps <= 60:
+                    raise ValueError("Ungültige Analyse-Einstellungen.")
+                self.results.mkdir(parents=True, exist_ok=True)
+                if source.is_relative_to(self.results.resolve()) or self.results.resolve().is_relative_to(source):
+                    raise ValueError("Originalordner und Ergebnisordner müssen getrennt sein.")
+                out = self.results / dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")
+                out.mkdir()
+                cancel = out / "STOP"
+                cmd = [py, "-u", str(code / "analyse.py"), "--source", str(source), "--output", str(out), "--mode", mode,
+                       "--samples", str(samples), "--fps", str(fps)]
+                if mode == MODES[0] and samples:
+                    cmd.extend(["--limit", str(samples)])
+                if options.get("solve", True):
+                    cmd.append("--solve")
+                if options.get("remember", True):        # automatische Läufe ändern die Formularvorgaben nicht
+                    write_json(self.prefs, dict(source=str(parent), observation=observation, samples=samples, fps=fps, mode=mode,
+                                                solve=bool(options.get("solve", True))))
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+                                    errors="replace", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                                    cwd=self.mod.home, env=self.mod.engine_env())
+            self.process, self.cancel, self.current = proc, cancel, out.name
+            self.operation = "refresh" if refresh else "analysis"
+            self.stopping = self.failed = False
+            self.started, self.finished = time.time(), None
+            self.logs, self.row = [], None
+            self.stats = dict(processed=0, total=0, hits=0, excluded=0, candidates=0)
+            self.video_seen, self.mode = {}, mode
+            self.status = "Kandidatenbericht wird aktualisiert …" if refresh else "Analyse wird vorbereitet …"
+            self.sequence += 1
+            self.latest.write_text(str(out), encoding="utf-8")
+            threading.Thread(target=self.read_process, args=(proc,), daemon=True).start()
+            return self.snapshot()
+
+    def read_process(self, proc):
+        try:
+            for line in proc.stdout:
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    row = dict(type="log", text=line.strip())
+                if isinstance(row, dict):
+                    self.receive(row)
+        finally:
+            code = proc.wait()
+            with self.lock:
+                self.process = None
+                self.finished = time.time()
+                self.sequence += 1
+                self.failed = bool(code) and not self.stopping
+                if self.stopping:
+                    self.status = "Angehalten. Deine Teilergebnisse sind gespeichert."
+                elif code:
+                    self.status = "Analyse unterbrochen. Details stehen im Protokoll."
+                elif self.operation == "refresh":
+                    self.status = "Zeitreihen und Katalogstatus sind aktualisiert."
+                else:
+                    self.status = "Analyse abgeschlossen. Deine Ergebnisse sind bereit."
+
+    def stop(self) -> dict:
+        with self.lock:
+            if self.process is not None:
+                self.cancel.touch()
+                self.stopping = True
+                self.sequence += 1
+                self.status = "Wird angehalten · aktuelles Bild und Video werden gespeichert …"
+            return self.snapshot()
+
+    # ---- Lauf lesen ---------------------------------------------------------
+    def run_data(self, name: str) -> dict:
+        path = self.run_path(name)
+        summaries = _read_json(path / "videos.json", []) or []
+        sessions, candidates = [], []
+        url = self.media_url
+        for summary in summaries:
+            item = dict(summary)
+            folder = within(path, str(Path(summary["video"]).parent))
+            item["video_url"] = url(within(path, summary["video"]))
+            item["clean_url"] = url(within(path, summary["clean_video"])) if summary.get("clean_video") else None
+            preview = folder / "live.jpg"
+            item["preview_url"] = url(preview) if preview.exists() else None
+            clean_preview = folder / "live-clean.jpg"
+            if not clean_preview.exists() and summary.get("clean_video"):
+                try:                                     # letztes Videobild als saubere Vorschau (nur mit OpenCV)
+                    import cv2
+                    capture = cv2.VideoCapture(str(within(path, summary["clean_video"])))
+                    try:
+                        count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+                        if count:
+                            capture.set(cv2.CAP_PROP_POS_FRAMES, count - 1)
+                        ok, frame = capture.read()
+                        if ok:
+                            cv2.imwrite(str(clean_preview), frame)
+                    finally:
+                        capture.release()
+                except ImportError:
+                    pass
+            item["clean_preview_url"] = url(clean_preview) if clean_preview.exists() else None
+            items = _read_json(within(path, summary["candidates_file"]), []) if summary.get("candidates_file") else []
+            try:
+                from video_overlays import timeline
+                item["overlay_timeline"] = timeline(folder, items or [])
+            except ImportError:
+                item["overlay_timeline"] = None
+            for c in items or []:
+                c["key"] = folder.name + "/" + c["id"]
+                if c.get("context_image"):
+                    c["context_image"]["url"] = url(within(path, c["context_image"]["image"]))
+                for frame in c.get("frames", []):
+                    frame["url"] = url(within(path, frame["image"]))
+                candidates.append(c)
+            sessions.append(item)
+        if not summaries and (path / "messwerte.jsonl").exists():
+            grouped = {}
+            for line in (path / "messwerte.jsonl").read_text(encoding="utf-8").splitlines():
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                session = row.get("session") or "Videoanalyse"
+                item = grouped.setdefault(session, dict(session=session, frames=0, hits=0, excluded=0, state="Foto-/Videoanalyse",
+                                                        video_url=None, clean_url=None, preview_url=None, clean_preview_url=None))
+                item["frames"] += 1
+                item["hits"] += int(bool(row.get("detections") or row.get("meta", {}).get("detections")))
+                if row.get("preview"):
+                    preview = within(path, row["preview"])
+                    item["preview_url"] = url(preview)
+                    clean = preview.with_name(preview.stem + "-clean" + preview.suffix)
+                    item["clean_preview_url"] = url(clean) if clean.exists() else None
+            sessions.extend(grouped.values())
+        return dict(id=name, sessions=sessions, candidates=candidates, report_url=url(path / "bericht.html"),
+                    modified=(path / "videos.json").stat().st_mtime if (path / "videos.json").exists() else 0)
+
+    def observation_history(self, source: Path, names: list[str]) -> dict:
+        """Gespeicherte Bildfolgen ihrem Originalordner zuordnen, auch aus älteren Läufen."""
+        from json_store import open_read
+        history = {}
+        for manifest in self.results.glob("*/videos.json"):
+            summaries = _read_json(manifest, [])
+            if not isinstance(summaries, list):
+                continue
+            for summary in summaries:
+                if not isinstance(summary, dict) or summary.get("session") not in names:
+                    continue
+                name = summary["session"]
+                try:
+                    folder = within(manifest.parent, str(Path(summary["video"]).parent))
+                    original = summary.get("source_folder")
+                    if original:
+                        matches = Path(original).resolve() == (source / name).resolve()
+                    else:
+                        matches = False
+                        for filename in ("frames.jsonl", "ausgeschlossen.jsonl"):
+                            try:
+                                with open_read(folder / filename) as rows:
+                                    first = json.loads(next(rows))
+                                matches = (source / name).resolve() in Path(first["file"]).resolve().parents
+                            except (OSError, ValueError, KeyError, StopIteration, TypeError):
+                                continue
+                            if matches:
+                                break
+                    if not matches:
+                        continue
+                    complete = summary.get("state") == "Fertig" and not summary.get("limited", False)
+                    if history.get(name, {}).get("status") == "completed":
+                        continue
+                    history[name] = dict(status="completed" if complete else "partial", run=manifest.parent.name)
+                except (ValueError, KeyError, TypeError):
+                    continue
+        return history
+
+
+def build_router(mod) -> APIRouter:
+    r = APIRouter()
+    ctl = mod.ctl
+
+    def bad(e: Exception):
+        raise HTTPException(400, str(e)[:250])
+
+    def settings():
+        from observation_settings import load_settings
+        return load_settings()
+
+    @r.get("/bootstrap")
+    def bootstrap():
+        try:
+            return dict(preferences=_read_json(ctl.prefs, DEFAULT_PREFS) or DEFAULT_PREFS, settings=settings(),
+                        state=ctl.snapshot(), runs=list_runs(ctl.results), engine=mod.health, home=str(mod.home))
+        except (OSError, ValueError) as e:
+            bad(e)
+
+    @r.get("/state")
+    def state():
+        return ctl.snapshot()
+
+    @r.get("/runs")
+    def runs():
+        return list_runs(ctl.results)
+
+    @r.get("/run")
+    def run(id: str):
+        try:
+            return ctl.run_data(id)
+        except (OSError, ValueError, KeyError) as e:
+            bad(e)
+
+    @r.get("/observations")
+    def observations(source: str = DEFAULT_SOURCE):
+        path = Path(source).resolve()
+        if not path.is_dir():
+            raise HTTPException(400, "Ordner nicht gefunden.")
+        names = sorted(p.name for p in path.iterdir() if p.is_dir() and not p.name.startswith("."))
+        return dict(source=str(path), observations=names, history=ctl.observation_history(path, names))
+
+    @r.get("/folders")
+    def folders(path: str = DEFAULT_SOURCE):
+        p = Path(path).resolve()
+        if not p.is_dir():
+            raise HTTPException(400, "Ordner nicht gefunden.")
+        entries = []
+        for x in sorted(p.iterdir(), key=lambda q: q.name.lower()):
+            try:
+                if x.is_dir() and not x.name.startswith("."):
+                    entries.append(dict(name=x.name, path=str(x)))
+            except OSError:
+                pass
+        return dict(path=str(p), parent=str(p.parent), folders=entries[:500])
+
+    @r.get("/settings")
+    def get_settings():
+        return settings()
+
+    @r.post("/settings")
+    def set_settings(body: dict = Body(...)):
+        from observation_settings import update_settings
+        try:
+            return update_settings(body)
+        except (ValueError, TypeError, KeyError) as e:
+            bad(e)
+
+    @r.get("/engine")
+    def engine():
+        return {**mod.health, "home": str(mod.home), "python": mod.python, "configured": mod.ctx.store.get("skytrace")}
+
+    @r.post("/engine")
+    def set_engine(body: dict = Body(...)):
+        """Datenordner/Interpreter der Engine. Der Datenordner wirkt nach einem Neustart."""
+        vals = {}
+        for k in ("home", "python"):
+            if k in body:
+                v = str(body[k] or "").strip()
+                if v and k == "home" and not Path(v).is_dir():
+                    raise HTTPException(400, f"Ordner nicht gefunden: {v}")
+                if v and k == "python" and not Path(v).is_file():
+                    raise HTTPException(400, f"Python nicht gefunden: {v}")
+                vals[k] = v or None
+        if "auto" in body:                                      # gestackte Aufnahmen automatisch analysieren
+            vals["auto"] = bool(body["auto"])
+        mod.ctx.store.update("skytrace", vals)
+        if "home" in vals or "python" in vals:
+            threading.Thread(target=mod.check_engine, daemon=True).start()
+        return {"saved": True, "restart": "home" in vals}
+
+    @r.get("/catalog/status")
+    def catalog_status():
+        cache = mod.home / "catalog_cache" / "archives"
+        files = list(cache.glob("*")) if cache.exists() else []
+        conn = _read_json(mod.home / "catalog_cache" / "opensky-connection.json",
+                          {"status": "not_connected", "detail": "Noch kein OpenSky-Trino-Konto verbunden."})
+        return dict(opensky=conn, satellite_time_queries=sum(p.name.startswith("eth-") and p.suffix == ".json" for p in files),
+                    satellite_years=[p.stem.removeprefix("tle_") for p in files if p.suffix == ".parquet"],
+                    meteor_months=[p.stem.removeprefix("traj_summary_monthly_") for p in files
+                                   if p.suffix == ".sqlite" and ".building." not in p.name],
+                    bytes=sum(p.stat().st_size for p in files if p.is_file()))
+
+    @r.post("/catalog/connect")
+    def catalog_connect(body: dict = Body(...)):
+        from observation_settings import update_settings
+        try:
+            user = update_settings({"opensky_user": body.get("user", "")})["opensky_user"]
+        except (ValueError, TypeError) as e:
+            bad(e)
+        # OAuth-Anmeldung läuft im Engine-Interpreter (braucht trino/requests) und wartet dort auf den Abschluss
+        code = ("import sys,opensky_archive as o;o.start_connection(sys.argv[1]);"
+                "o.WORKER and o.WORKER.join(900)")
+        subprocess.Popen([mod.python, "-c", code, user], cwd=str(Path(__file__).parent / "engine"), env=mod.engine_env(),
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        time.sleep(1.5)
+        return catalog_status()["opensky"]
+
+    @r.get("/geocode")
+    def geocode(q: str = ""):
+        import httpx
+        q = q.strip()
+        if len(q) < 2 or len(q) > 250:
+            raise HTTPException(400, "Bitte einen Ort oder eine Adresse eingeben.")
+        try:
+            data = httpx.get("https://photon.komoot.io/api/", params={"q": q, "limit": 5, "lang": "de"}, timeout=15,
+                             headers={"User-Agent": "AstroFlow-SkyTrace"}).json()
+        except Exception as e:
+            raise HTTPException(502, f"Adresssuche nicht erreichbar: {e}")
+        rows = []
+        for feature in data.get("features", []):
+            p = feature["properties"]
+            lon, lat = feature["geometry"]["coordinates"]
+            label = ", ".join(str(p[k]) for k in ("name", "street", "housenumber", "postcode", "city", "country") if p.get(k))
+            rows.append(dict(name=label, lat=lat, lon=lon, alt_m=0, source="Adresse via Photon/OpenStreetMap"))
+        return rows
+
+    @r.post("/start")
+    def start(body: dict = Body(...)):
+        try:
+            return ctl.launch(body)
+        except (ValueError, OSError) as e:
+            bad(e)
+
+    @r.post("/refresh")
+    def refresh(body: dict = Body(...)):
+        try:
+            return ctl.launch(body, refresh=True)
+        except (ValueError, OSError) as e:
+            bad(e)
+
+    @r.post("/stop")
+    def stop():
+        return ctl.stop()
+
+    @r.get("/media/{path:path}")
+    def media(path: str, request: Request):
+        try:
+            p = within(ctl.results, path)
+        except ValueError as e:
+            bad(e)
+        if not p.is_file():
+            raise HTTPException(404, "Datei noch nicht verfügbar")
+        headers = {"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer"}
+        if p.suffix == ".html":
+            headers["Content-Security-Policy"] = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+                                                  "img-src 'self' data:; media-src 'self'; connect-src 'self'; frame-ancestors 'self'")
+        if p.stat().st_size <= 8 * 1024 * 1024 and not request.headers.get("range"):
+            # kleine Vorschauen sofort lesen: Windows-Dateihandle nicht offen halten, während die Engine schreibt
+            from json_store import open_read
+            import mimetypes
+            with open_read(p) as f:
+                data = f.read()
+            ctype = mimetypes.guess_type(p.name)[0] or "application/octet-stream"
+            return Response(data, media_type=ctype, headers=headers)
+        return FileResponse(p, headers=headers)                # mit Range-Unterstützung für Videos
+
+    return r

@@ -2,7 +2,7 @@
 import numpy as np
 from scipy import ndimage as ndi
 
-from astroflow import processing
+from astroflow.modules.stacking import processing
 
 
 def _starfield(rng, H=400, W=600, n=120, fwhm=4.0):

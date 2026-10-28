@@ -5,8 +5,8 @@ import httpx
 import numpy as np
 from fastapi.testclient import TestClient
 
-from astroflow import demo, reviewer
-from astroflow.config import load_settings
+from astroflow.modules.stacking import demo, reviewer
+from astroflow.core.config import load_settings
 from astroflow.server import create_app
 
 
@@ -15,18 +15,18 @@ def test_api_end_to_end(tmp_path):
     s.auto = True
     demo.generate(s.input_dir / "n", n_lights=14, n_darks=4, n_flats=4)
     with TestClient(create_app(s)) as c:
-        c.post("/api/scan")
-        ps = c.get("/api/projects").json()
+        c.post("/api/stacking/scan")
+        ps = c.get("/api/stacking/projects").json()
         assert len(ps) == 1 and ps[0]["name"].startswith("M31")
         for _ in range(120):                       # Auto-Verarbeitung abwarten
-            p = c.get("/api/projects").json()[0]
+            p = c.get("/api/stacking/projects").json()[0]
             if p["result"] or (p["job"] and p["job"]["state"] == "error"):
                 break
             time.sleep(0.5)
         assert p["result"], p["job"]
         rid = p["result"]["id"]
-        assert c.get(f"/api/results/{rid}/jpg").headers["content-type"] == "image/jpeg"
-        assert len(c.get(f"/api/projects/{p['id']}/frames").json()) == 14
+        assert c.get(f"/api/stacking/results/{rid}/jpg").headers["content-type"] == "image/jpeg"
+        assert len(c.get(f"/api/stacking/projects/{p['id']}/frames").json()) == 14
         assert c.get("/").status_code == 200
 
 
@@ -74,7 +74,7 @@ def test_upload_keeps_folders_and_blocks_traversal(tmp_path):
     fits.PrimaryHDU(np.zeros((8, 8), np.uint16)).writeto(buf)
     data = buf.getvalue()
     with TestClient(create_app(s)) as c:
-        r = c.post("/api/upload", files=[("files", ("2022-08-06_observation_M57/img-0001r.fits", data)),
+        r = c.post("/api/stacking/upload", files=[("files", ("2022-08-06_observation_M57/img-0001r.fits", data)),
                                          ("files", ("../../evil.fits", data)), ("files", ("notes.txt", b"x"))])
         assert r.json()["saved"] == 2
     up = s.input_dir / "uploads"
@@ -112,11 +112,11 @@ def test_settings_survive_restart(tmp_path):
     s = load_settings(tmp_path / "d")
     s.auto = False
     with TestClient(create_app(s)) as c:
-        c.post("/api/reviewer", json={"provider": "lmstudio", "model": "bonsai", "max_rounds": 2})
-        c.post("/api/storage", json={"delete_uploads": False})
+        c.post("/api/stacking/reviewer", json={"provider": "lmstudio", "model": "bonsai", "max_rounds": 2})
+        c.post("/api/stacking/storage", json={"delete_uploads": False})
     s2 = load_settings(tmp_path / "d")
     s2.auto = False
     with TestClient(create_app(s2)) as c:
-        r = c.get("/api/reviewer").json()
+        r = c.get("/api/stacking/reviewer").json()
         assert (r["provider"], r["model"], r["max_rounds"]) == ("lmstudio", "bonsai", 2)
-        assert c.get("/api/status").json()["delete_uploads"] is False
+        assert c.get("/api/stacking/status").json()["delete_uploads"] is False

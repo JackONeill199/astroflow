@@ -5,8 +5,8 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from astroflow import photometry, stars
-from astroflow.config import load_settings
+from astroflow.modules.stacking import photometry, stars
+from astroflow.core.config import load_settings
 from astroflow.server import create_app
 
 H, W = 400, 600
@@ -82,12 +82,12 @@ def test_starnet_api(tmp_path, monkeypatch):
     s = load_settings(tmp_path / "d")
     s.auto = False
     with TestClient(create_app(s)) as c:
-        assert c.get("/api/starnet").json()["found"] is False
+        assert c.get("/api/stacking/starnet").json()["found"] is False
         z = tmp_path / "sn.zip"
         with zipfile.ZipFile(z, "w") as f:
             f.writestr("starnet2.exe", b"MZ")
-        r = c.post("/api/starnet/install", files={"file": ("sn.zip", z.read_bytes(), "application/zip")}).json()
+        r = c.post("/api/stacking/starnet/install", files={"file": ("sn.zip", z.read_bytes(), "application/zip")}).json()
         assert r["found"] and r["installed_here"]
-        assert c.post("/api/starnet", json={"path": str(tmp_path / "fehlt.exe")}).status_code == 400
-        assert c.delete("/api/starnet").json()["found"] is False
+        assert c.post("/api/stacking/starnet", json={"path": str(tmp_path / "fehlt.exe")}).status_code == 400
+        assert c.delete("/api/stacking/starnet").json()["found"] is False
     stars.STARNET.path = ""

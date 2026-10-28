@@ -1,11 +1,19 @@
 # AstroFlow
 
-**Vollautomatische Astrofotografie für alle.** Vom FITS-Rohbild zum fertigen Astrofoto – lokal, im Browser, ohne manuelle Nachbearbeitung.
+**Deine Astrofotografie, lokal und an einem Ort.** Rohbilder werden zu fertigen Astrofotos, Bildfolgen zu Entdeckungen,
+Himmelsobjekte zu Geschichten – im Browser, auf deinem Rechner oder NAS, ohne Konto und ohne Cloud-Zwang.
 
-AstroFlow läuft vollständig lokal (Docker auf NAS/PC oder direkt mit Python). Du legst FITS-Aufnahmen
-(Seestar, Stellina, Vespera oder klassische Astrokameras) in den Eingangsordner – den Rest erledigt die Software.
+| Modul | Was es tut |
+|---|---|
+| **Bilder** | FITS-Aufnahmen (Seestar, Stellina, Vespera, Astrokameras) automatisch sortieren, kalibrieren, stacken und entwickeln – inklusive Nachstacken neuer Nächte |
+| **SkyTrace** | Bildfolgen sternregistriert auf Lichtspuren und bewegte Objekte untersuchen; Kandidaten mit Zeitreihen, Messdetails und Abgleich gegen Satelliten-, Meteor-, Asteroiden- und Flugkataloge zur echten Aufnahmezeit |
+| **Sage** | Himmelsobjekte im Bild bestimmen, von einer KI als Geschichte erzählen und vorlesen lassen; Sammlung aller Entdeckungen mit Erfolgen |
 
-## Was automatisch passiert
+Alle Module teilen sich eine Oberfläche: Übersicht, gemeinsame Aktivität aller Aufträge, eine Einstellungsseite, Befehlspalette (Strg+K)
+und Drag & Drop überall (FITS → Bilder, Fotos → Sage). Aus einem fertigen Bild der Galerie erzählt Sage mit einem Klick die Geschichte
+(„Mehr → Geschichte erzählen“) – die Objekte kommen dabei aus der Plate-Solving-Lösung des Stacks.
+
+## Modul Bilder – was automatisch passiert
 
 | Schritt | Umsetzung |
 |---|---|
@@ -32,6 +40,15 @@ AstroFlow läuft vollständig lokal (Docker auf NAS/PC oder direkt mit Python). 
 1. In `docker-compose.yml` den Pfad zu deinen FITS-Dateien eintragen.
 2. `docker compose up -d --build`
 3. Browser: <http://localhost:8080>
+
+### Windows: Doppelklick
+
+`Start.bat` startet AstroFlow im Hintergrund (Port 8766, Daten in `data/`, Protokoll `data/server.log.err`) und öffnet den Browser;
+läuft es schon, wird nur der Browser geöffnet. `Stop.bat` beendet den Server. Anpassbar über `ASTROFLOW_PORT` und `ASTROFLOW_DATA`.
+**Im Heimnetz nutzen:** Der Server lauscht auf allen Netzwerkkarten; `Start.bat` zeigt die Adresse für andere Geräte an (z. B. `http://192.168.…:8766`).
+Einmalig `Netzwerk-freigeben.bat` ausführen (fragt nach Administratorrechten): legt die Firewall-Regel „AstroFlow LAN“ an – nur privates Netzwerkprofil,
+nur Geräte im eigenen Subnetz, keine Freigabe ins Internet. Es gibt kein Passwort; jedes Gerät im Heimnetz kann AstroFlow bedienen.
+Rückgängig: `Netzwerk-freigeben.bat entfernen`.
 
 ### Ohne Docker
 
@@ -61,7 +78,7 @@ ASTROFLOW_REVIEW_URL: http://host.docker.internal:1234/v1   # optional, Standard
 ASTROFLOW_REVIEW_KEY: sk-or-...                # nur OpenRouter
 ```
 
-Oder in der Web-UI unter **KI-Prüfer** – dort gesetzte Werte (wie auch Plate-Solving und Speicher) werden in
+Oder in der Web-UI unter **Einstellungen → Bilder → KI-Bildprüfer** – dort gesetzte Werte (wie auch Plate-Solving und Speicher) werden in
 `data/settings.json` gespeichert und überleben Neustarts; sie haben Vorrang vor den Umgebungsvariablen.
 Denkmodelle (z. B. Qwen3, Bonsai) überlegen oft 2 000–3 000 Tokens vor der Antwort: Standardlimit daher
 `ASTROFLOW_REVIEW_MAX_TOKENS=8000`, Zeitlimit `ASTROFLOW_REVIEW_TIMEOUT=300` s. **Datenschutz:** LM Studio bleibt komplett lokal. Bei OpenRouter wird die
@@ -96,6 +113,7 @@ dabei wird ein verkleinertes Graustufenbild (nicht öffentlich markiert) hochgel
 
 Die Oberfläche (<http://localhost:8080>) ist eine installierbare Web-App (PWA) für Desktop und Smartphone:
 
+- **Übersicht** mit dem Stand aller Module, **Aktivität** mit allen Aufträgen (Verarbeitung, Spurenanalysen, Geschichten), **Einstellungen** je Modul
 - **Galerie** aller Objekte mit Suche, Filter nach Objekttyp und Sortierung; Live-Fortschritt laufender Verarbeitungen
 - **Objektseite** mit Zoom-/Pan-Betrachter (Mausrad, Ziehen, Pinch, Doppelklick = 100 %, Vollbild), Kanalübersicht (Belichtung je Filter), Details und KI-Prüfprotokoll
 - **Aufnahmen**: Qualitätsdiagramm über alle Nächte, filter- und sortierbare Tabelle, Einzelbilder ein-/ausschließen
@@ -108,18 +126,43 @@ Die Oberfläche (<http://localhost:8080>) ist eine installierbare Web-App (PWA) 
 `ASTROFLOW_AUTO=0` (nicht automatisch verarbeiten), `ASTROFLOW_SCAN_INTERVAL`, `ASTROFLOW_THREADS` (Standard: Kerne − 1, max. 12), `ASTROFLOW_BATCH_MB` (RAM pro Stacking-Stapel, Standard 1/8 des Arbeitsspeichers bzw. des Docker-Limits, 700–4000 MB – auf kleinen NAS ggf. senken).
 Pro Objekt in der UI: Profil, Farbpalette (`auto | RGB | LRGB | SHO | HOO | mono`), „beste X %“, 2×-Auflösung; einzelne Aufnahmen lassen sich ein-/ausschließen.
 
+## SkyTrace
+
+Bildfolgen (z. B. ein Stellina-Beobachtungsordner) werden chronologisch zu einem Ereignisvideo; Teleskopbewegung wird über das Sternfeld
+kompensiert, unscharfe Aufnahmen fallen heraus. Erkannte Spuren erscheinen als **Kandidaten** mit Vorher-/Nachher-Ausschnitten, Messdetails
+(„Warum wurde diese Spur erkannt?“) und Katalogabgleich. Ein Kandidat ist kein bestätigtes Objekt, ein Katalogtreffer bleibt ein Hinweis.
+Originale werden nur gelesen. Standort und Kataloge: Einstellungen → SkyTrace.
+
+Die Analyse braucht zusätzliche Pakete (OpenCV, PyTorch/YOLO, PyAV, Skyfield …): `pip install -r astroflow/modules/skytrace/requirements.txt`
+oder unter Einstellungen → SkyTrace den Python-Interpreter einer bestehenden SkyTrace-Installation wählen. Docker: `docker compose build --build-arg SKYTRACE=1`.
+Ohne diese Pakete startet AstroFlow trotzdem; vorhandene Ergebnisse lassen sich ansehen. Ein bestehender SkyTrace-Datenordner (mit `Ergebnisse/`)
+kann als Datenordner eingetragen werden.
+
+## Sage
+
+Foto hochladen (JPG, PNG, TIFF, FITS) oder ein Bild aus der Galerie wählen → Sage bestimmt die Objekte, schreibt die Geschichte und liest sie vor.
+- **Bestimmen:** Galerie-Bilder über die gespeicherte Stack-Lösung; FITS mit WCS direkt; sonst lokal mit ASTAP, wenn der Dateiname das Objekt nennt
+  (z. B. `M42.jpg`). Fertig bearbeitete JPGs ohne Hinweis löst zuverlässig nur nova.astrometry.net – dafür „Online-Lösen erlauben“ und Schlüssel eintragen.
+- **Erzählen:** OpenAI, OpenRouter oder lokal mit LM Studio (dann verlässt nichts den Rechner). Es gehen nur Objektnamen und Koordinaten an die KI, nie das Bild.
+- **Vorlesen:** lokal über einen OpenAI-kompatiblen Sprachserver (Qwen3-TTS) oder ElevenLabs. Vertonungen werden gespeichert.
+
 ## Architektur
 
 ```
 astroflow/
-  fits_io.py      FITS lesen, Header, Debayering        scanner.py       Scan, Klassifikation, Gruppierung
-  channels.py     Filter erkennen, Kanäle kombinieren   platesolve.py    ASTAP / astrometry.net / nova
-  objects.py      Katalog + Profile                     calibration.py   Master-Frames
-  quality.py      Sterne, Metriken, Auswahl             registration.py  Triangle-Matching + Warp
-  stacking.py     inkrementelles Sigma-Clip-Stacking    processing.py    automatische Bildbearbeitung
-  reviewer.py     KI-Prüfer (LM Studio/OpenRouter)      pipeline.py      Orchestrierung
-  server.py       FastAPI + Worker + Watcher            static/          Web-UI
+  server.py            Kompositionswurzel: Module laden, gemeinsame Endpunkte (/api/app, /api/status, /api/activity), Oberfläche
+  core/                Einstellungen (data/settings.json), Modul-Basisklasse und Registry
+  modules/
+    stacking/          Pipeline (scanner, calibration, registration, stacking, processing, develop, platesolve …), API, Oberfläche
+    skytrace/          Engine (aus SkyTrace), API, Oberfläche, Erkennungsmodell
+    sage/              Verlauf/Entdeckungen, KI-/Sprach-/nova-Anbindung, API, Oberfläche
+  static/              Shell: Navigation, Übersicht, Aktivität, Einstellungen, Befehlspalette, Bildbetrachter, Design-System
 ```
+
+Jedes Modul bringt API (`/api/<modul>`), Oberfläche (`/m/<modul>/`), Einstellungen, Status und Aktivitäten selbst mit und registriert sich
+im Frontend mit `AF.register(...)`. Module sprechen über benannte Dienste miteinander (z. B. stellt „Bilder“ den Plate-Solver bereit), nicht per Import.
+Module lassen sich unter Einstellungen → Module & System abschalten. **Neues Modul:** Unterpaket `astroflow/modules/<id>/` mit `class Module(BaseModule)`,
+in `core/modules.AVAILABLE` eintragen, `static/<id>.js` mit `AF.register` – fertig.
 
 ## Tests
 
@@ -128,11 +171,11 @@ pip install pytest && python -m pytest tests
 ```
 Die Tests erzeugen synthetische Aufnahmen (Galaxie, Bayer-Sensor, Mono-Kamera mit LRGB- und SHO-Filtern, Feldrotation über zwei Nächte, Wolken-/Schlieren-/Satellitenframes, Darks/Flats) und prüfen die ganze Kette inkl. inkrementellem Nachstacken.
 
-## Grenzen (v0.3)
+## Grenzen
 
 - Objektkatalog ist klein (erweiterbar in `objects.py`); gelöste Felder ohne Katalogobjekt heißen „Feld RA … Dec …“.
 - Die Stack-Fläche entspricht dem Referenzbild; Mosaike und stark versetzte Sessions werden nicht erweitert.
 - Kein echtes Drizzle (2×-Option interpoliert); keine Komet-/Planeten-/Mond-Modi.
 - Ohne Flats bleibt multiplikative Vignettierung teilweise sichtbar (additive Gradienten werden entfernt).
 
-Lizenz: MIT
+Lizenz: MIT. Das SkyTrace-Erkennungsmodell (`astroflow/modules/skytrace/models/night-detector`) stammt aus OpenSkyCam und steht unter AGPL-3.0.

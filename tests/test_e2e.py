@@ -4,11 +4,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from astroflow import demo, registration, quality
-from astroflow.config import load_settings
-from astroflow.db import DB
-from astroflow.pipeline import Pipeline
-from astroflow.reviewer import ReviewerConfig, parse_reply
+from astroflow.modules.stacking import demo, registration, quality
+from astroflow.core.config import load_settings
+from astroflow.modules.stacking.db import DB
+from astroflow.modules.stacking.pipeline import Pipeline
+from astroflow.modules.stacking.reviewer import ReviewerConfig, parse_reply
 
 
 @pytest.fixture(scope="module")

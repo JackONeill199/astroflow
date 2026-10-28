@@ -3,23 +3,54 @@
 Kompakter Einstieg für KI-Agenten und neue Sessions. Nutzerdoku: `README.md`.
 
 ## Was ist das
-AstroFlow: lokale, vollautomatische Astrofotografie-Pipeline (FITS-Rohbilder → fertiges Astrofoto), Web-App im Browser.
-Zielgruppe: Smart-Teleskope (Seestar, Vespera, Stellina) und klassische Astrokameras (Farbe/Bayer und Mono mit Filtern).
-Stack: Python 3.12+ · numpy/scipy/astropy · FastAPI + uvicorn · SQLite · Vanilla-JS-SPA ohne Build-Schritt. Lizenz MIT. Version 0.3.0.
+AstroFlow: lokale Astro-Plattform im Browser aus drei Modulen (seit v0.6, 28.10.2026 – Nutzerwunsch: „ein Produkt, einheitliche UI,
+Module einfach wartbar und erweiterbar“):
+- **Bilder** (`modules/stacking`, Kernmodul): vollautomatische Pipeline FITS-Rohbilder → fertiges Astrofoto.
+- **SkyTrace** (`modules/skytrace`, aus Repo `JackONeill199/SkyTrace`): Lichtspuren/bewegte Objekte in Bildfolgen, Katalogabgleich. Details: `astroflow/modules/skytrace/AGENTS.md`.
+- **Sage** (`modules/sage`, aus Repo `JackONeill199/starlight-sage`, Node → Python portiert): Objekte im Bild bestimmen, KI-Geschichte, Vorlesen, Entdeckungen. Details: `astroflow/modules/sage/AGENTS.md`.
+Zielgruppe: Smart-Teleskope (Seestar, Vespera, Stellina) und klassische Astrokameras. Lokal, ein Nutzer, keine Konten.
+Stack: Python 3.12+ · numpy/scipy/astropy · FastAPI + uvicorn · SQLite · Vanilla-JS-SPA ohne Build-Schritt. Lizenz MIT (Detektormodell in SkyTrace: AGPL-3.0, siehe `models/`). Version 0.6.0.
 
 **Sprache:** UI, README, Kommentare und Fehlermeldungen auf **Deutsch**. Der Nutzer schreibt Deutsch.
+
+## Produkt-Architektur (Kern + Module)
+```
+astroflow/server.py        Kompositionswurzel: lädt Module, /api/app|status|activity|modules, Herkunftsschutz, statische Dateien
+astroflow/core/            config.py (Settings), store.py (data/settings.json, ein Abschnitt je Thema), modules.py (BaseModule, Context, Registry)
+astroflow/modules/<id>/    __init__.py (class Module), api.py (Router → /api/<id>), static/ (→ /m/<id>/), AGENTS.md
+astroflow/static/          Shell: index.html, app.js (Router, Navigation, Übersicht, Aktivität, Einstellungen, Palette, Viewer, Helfer), style.css
+```
+- **Modul-Vertrag Backend** (`core/modules.py`): `router()`, `start()/stop()`, `status()` (klein, wird alle 2,5 s gepollt; `busy_jobs` zählt für die Anzeige),
+  `activity()` (gemeinsames Format `{key,title,kind,detail,state,progress,started,finished,href}`), `scripts/styles`. Reihenfolge/Liste: `AVAILABLE`.
+- **Module reden nicht per Import miteinander**, sondern über Dienste in `ctx.services`: Stacking stellt `plate_solver` (`PictureSolver`),
+  `project_picture`, `project_solution` und `project_frames` bereit; Sage und SkyTrace nutzen sie. Fehlt ein Dienst, muss das Modul trotzdem laufen.
+- **Ereignisse** (`ctx.on` / `ctx.emit`, Liste in `core/modules.py`): `stacking.stacked(project_id, result_id, name)` kommt aus
+  `Pipeline.process` nach dem Entwickeln und **vor** dem Löschen hochgeladener Rohbilder (`Pipeline.on_stacked`). Empfänger (seit 28.10.2026,
+  Nutzerwunsch „gestackte Aufnahmen automatisch durch SkyTrace und in die Entdeckungen, mit animierten Erfolgen“):
+  SkyTrace `auto.AutoAnalysis` (Hardlinks je Nacht → Warteschlange, Einstellung `skytrace.auto`) und Sage `Module._stacked`
+  (Bild bestimmen → Entdeckungen, Einstellungen `sage.auto_discover`/`auto_story`). Empfänger kehren sofort zurück (eigene Threads).
+- **Modul-Vertrag Frontend** (`AF.register(id, {nav, routes, home, settings, palette, status, drop})`, Kommentar in `app.js`): Helfer (`api`, `send`, `toast`,
+  `createViewer`, `picker` (Dropdown mit Suche für Modelle/Stimmen, Listen aus `core/models.list_models`), `jobLine`, `confirmDlg`, `crumbs`, `store` …) sind global. Modul-Skripte lädt die Shell aus `/api/app` mit `?v=<build>`
+  (Build-Kennung aus Dateizeiten) – nur `index.html` braucht weiter das manuelle `?v=`.
+- Module ein/aus: Einstellungen → Module & System bzw. `ASTROFLOW_MODULES=stacking,skytrace`; ein defektes Modul erscheint mit Fehler, die App läuft weiter.
+- Sicherheit: schreibende Anfragen mit fremdem `Origin` → 403 (Middleware `guard`). Schlüssel stehen im Klartext in `data/settings.json`.
+- **Neues Modul:** Unterpaket mit `Module(BaseModule)` anlegen, in `AVAILABLE` eintragen, `static/<id>.js` mit `AF.register`, Tests in `tests/`.
 
 ## Befehle
 ```bash
 .venv/Scripts/python -m pytest -q tests          # Windows-venv liegt im Repo (.venv); ~30 s, muss grün sein
-python -m astroflow serve --port 8080 --data ./data   # Web-UI
+python -m astroflow serve --port 8080 --data ./data   # Web-UI (alle Module)
 python -m astroflow process --data ./data             # alles per CLI verarbeiten
+Start.bat / Stop.bat                                  # Windows: Server im Hintergrund starten/beenden (Port 8766, ./data)
+Netzwerk-freigeben.bat [entfernen]                    # Firewall-Regel „AstroFlow LAN“ (TCP 8766, privat, LocalSubnet; braucht Admin – Nutzer führt aus)
 python -m astroflow demo ./data/input/demo            # synthetische Testdaten (Bayer, 2 Nächte, Darks/Flats)
 docker compose up -d --build                          # Image enthält ASTAP + D05 (ARG ASTAP_DB=d05|d50)
 ```
-Git-Repo: github.com/JackONeill199/astroflow (privat, Branch main; `data/`, `data_real/`, `.venv` per .gitignore ausgeschlossen). Kein Linter/Formatter konfiguriert – Stil des umliegenden Codes übernehmen (knapp, deutsche Kommentare).
+Git-Repo: github.com/JackONeill199/astroflow (privat, Branch main; `data/`, `data_real/`, `.venv` per .gitignore ausgeschlossen).
+Tests laden standardmäßig nur das Stacking-Modul (`tests/conftest.py`); Modultests: `test_modules.py`, `test_sage.py`, `test_skytrace.py`.
+SkyTrace-Engine-Pakete (OpenCV, PyTorch …) sind **nicht** in `requirements.txt` – siehe `astroflow/modules/skytrace/requirements.txt`. Kein Linter/Formatter konfiguriert – Stil des umliegenden Codes übernehmen (knapp, deutsche Kommentare).
 
-## Ablauf (`pipeline.py`)
+## Modul Bilder – Ablauf (`modules/stacking/pipeline.py`; alle Pipeline-Dateien liegen in `astroflow/modules/stacking/`)
 Zwei getrennte Engines: `Pipeline.stack()` (Schritte 1–6, Ergebnis = linearer Master-Stack in `work/p<id>/stack*`) und
 `Pipeline.develop()` (Schritte 7–9, nur aus dem Master-Stack, braucht keine Rohdaten). `process()` = beides + Upload-Aufräumen;
 Job-Option `{"mode": "develop"}` = nur neu entwickeln (UI: „Mehr → Neu entwickeln“, Optionen speichern ohne Stack-relevante Änderung).
@@ -109,7 +140,7 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    reanalysiert; Nachstacken neuer Nächte und Bearbeitung laufen normal (nur Stack + `state.json`-Referenzsterne nötig). Eingebundene Ordner
    und Kalibrierbilder werden nie gelöscht. DB-Spalten kommen über `db.MIGRATIONS` (einfaches ALTER TABLE beim Start).
 
-## Plate-Solving (`platesolve.py`)
+## Plate-Solving (`modules/stacking/platesolve.py`)
 - Backends: `astap` (empfohlen) · `astrometry` (lokales `solve-field`) · `nova` (Online, **nie** automatisch – Datenschutz). `auto` = verfügbare lokale.
 - Gelöst wird **eine Aufnahme je Gruppe** (Ordner + Kamera + Bildgröße + Nacht), Ergebnis in Tabelle `solves` gecacht; Fehlschläge werden nicht
   bei jedem Scan wiederholt (erst nach Speichern der Solver-Einstellungen oder per „Jetzt bestimmen“ → `Pipeline.solve_project`, verschiebt Frames ins richtige Projekt).
@@ -125,27 +156,29 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
 - Env: `ASTROFLOW_DATA/INPUT/OUTPUT`, `ASTROFLOW_AUTO`, `ASTROFLOW_SCAN_INTERVAL`, `ASTROFLOW_THREADS`, `ASTROFLOW_BATCH_MB`,
   `ASTROFLOW_REVIEW_PROVIDER/MODEL/URL/KEY/ROUNDS`, `ASTROFLOW_SOLVER`, `ASTROFLOW_ASTAP`, `ASTROFLOW_ASTAP_DB`, `ASTROFLOW_NOVA_KEY`,
   `ASTROFLOW_SOLVE_TIMEOUT`, `ASTROFLOW_DEEPSKY`, `ASTROFLOW_REVIEW_MAX_TOKENS/TIMEOUT`. In der UI geänderte Reviewer-/Solver-/Speicher-
-  Einstellungen landen in `data/settings.json` (`server.PERSIST`) und haben Vorrang vor Env (API-Schlüssel dort im Klartext).
+  Einstellungen landen in `data/settings.json` (`modules/stacking/api.PERSIST`, über `core/store.py`) und haben Vorrang vor Env (API-Schlüssel dort im Klartext).
 
-## Server (`server.py`)
-Ein Worker-Thread (Job-Queue, `jobs`-Tabelle; Option `{"action":"solve"}` = Plate-Solving-Job) + Watcher-Thread (Scan alle N s, Auto-Verarbeitung).
-`Pipeline._scan_lock` serialisiert Scan und Nach-Solving (vorher gab es Doppel-Inserts). Beim Start werden unterbrochene Jobs wieder eingereiht (Stacking setzt am letzten Checkpoint an).
-Objekt löschen (`DELETE /api/projects/{id}` → `Pipeline.delete_project`, 409 während eines Jobs): Ergebnisse, Stack, Jobs, hochgeladene
-Rohbilder weg; Frames aus eingebundenen Ordnern bleiben als `kind='ignored'` in der DB (sonst legt der nächste Scan das Objekt neu an),
-`_fingerprints` überspringt sie, damit ein erneuter Upload normal verarbeitet wird. UI: Papierkorb auf der Galerie-Karte + „Mehr → Objekt löschen“.
-REST unter `/api`: `status`, `scan`, `projects[/{id}]` (GET/PATCH/DELETE), `projects/{id}/process|solve|frames`, `frames/{id}` (PATCH manual),
-`jobs`, `upload` (behält bis zu 4 Ordnerebenen, blockt `..`), `results/{id}/{tif|png|jpg|thumb|fits|before}`, `reviewer`, `solver`, `storage`.
+## Server (`server.py` + `modules/stacking/api.py`)
+Stacking: ein Worker-Thread (Job-Queue, `jobs`-Tabelle; Option `{"action":"solve"}` = Plate-Solving-Job) + Watcher-Thread (Scan alle N s, Auto-Verarbeitung),
+beide in `modules/stacking/api.py` (`Engine`). `Pipeline._scan_lock` serialisiert Scan und Nach-Solving. Beim Start werden unterbrochene Jobs wieder eingereiht.
+Objekt löschen (`DELETE /api/stacking/projects/{id}` → `Pipeline.delete_project`, 409 während eines Jobs): Ergebnisse, Stack, Jobs, hochgeladene
+Rohbilder weg; Frames aus eingebundenen Ordnern bleiben als `kind='ignored'` in der DB, `_fingerprints` überspringt sie.
+REST unter `/api/stacking`: `status`, `scan`, `projects[/{id}]` (GET/PATCH/DELETE), `projects/{id}/process|solve|frames`, `frames/{id}` (PATCH manual),
+`jobs`, `upload` (behält bis zu 4 Ordnerebenen, blockt `..`), `results/{id}/{tif|png|jpg|thumb|fits|before}`, `reviewer`, `solver`, `storage`, `starnet`.
+Kern: `/api/app` (Module, Build), `/api/status` (`{version, busy, modules:{id: status}}`), `/api/activity` (alle Module), `/api/modules` (ein/aus).
+**Achtung:** Zwei Server auf demselben Datenordner = zwei Worker (beim Start werden „running“-Jobs des anderen neu eingereiht) – Tests/Vorschauen mit eigenem Datenordner.
 
-## Web-UI (`astroflow/static/`)
-`index.html` + `app.js` (Hash-Routing: `#/`, `#/p/<id>/<bild|aufnahmen|versionen|optionen>`, `#/activity`, `#/import`, `#/settings`) + `style.css` (Tokens, Dark/Light) + PWA-Manifest.
-Polling alle 2,5 s, Ansichten zeichnen nur bei geänderter Signatur neu (Formulare/Zoom bleiben erhalten). Bildbetrachter mit Zoom/Pan/Pinch,
-Versionsvergleich und Vorher/Nachher (`createViewer(host, src, cmpSrc, labels)`); Panel „Bildqualität“ (`qualityPanel`) aus `stats.quality`.
-Achtung: in `createViewer` keine lokale Variable `esc` – überschattet die globale Escape-Funktion (TDZ-Fehler, Viewer bleibt leer).
-Seit v0.5 (UI): Ansichten dürfen `navigate(path)` (Tabwechsel ohne Neuladen) und `actions()` (Einträge für die Befehlspalette Strg+K) liefern.
-Globale Job-Anzeige oben (`showJobPill`, pollt `/jobs` nur bei laufenden Jobs) + Toast mit Aktion beim Fertigwerden (`toast(msg, kind, {label, href|fn})`).
-Galerie aktualisiert Karten einzeln (Hash je Karte) statt neu zu zeichnen – sonst flackern Bilder bei jedem Poll. `createViewer(…, ph)` = Thumb als Blur-Vorschau.
-Tastenkürzel: `/` Galerie-Suche, `1–4` Tabs, `F` Vollbild, `B` Vorher/Nachher. Server schickt `Cache-Control: no-cache` für `/` (sonst alte `?v=`).
-**Nach Änderungen an statischen Dateien `?v=` in `index.html` hochzählen** (Browser-Cache).
+## Web-UI (`astroflow/static/` + `modules/*/static/`)
+Hash-Routing: `#/` Übersicht (Karten aller Module), `#/bilder`, `#/p/<id>/<bild|aufnahmen|versionen|optionen>`, `#/import`,
+`#/skytrace[/neu|/<lauf>/<vorschau|kandidaten|beobachtungen|protokoll>]`, `#/sage[/entdeckungen|/<eintrag>]`, `#/activity`, `#/settings/<modul|module>`.
+Navigation wird aus den Modulen gebaut (Gruppe je Modul; `sec`-Einträge sind auf dem Handy ausgeblendet).
+Polling alle 2,5 s (`/api/status`), Ansichten zeichnen nur bei geänderter Signatur neu (Formulare/Zoom bleiben erhalten). `route()` verwirft Ansichten, die erst
+nach einem weiteren Klick fertig werden (`routeTicket`). Bildbetrachter `createViewer(host, src, cmpSrc, labels, ph, {overlay})` mit Zoom/Pan/Pinch, Vergleich
+und optionalem SVG-Overlay in Bildpixeln (Sage-Objektmarken). Achtung: in `createViewer` keine lokale Variable `esc` (TDZ-Fehler).
+Globale Auftragsanzeige oben (`showJobPill` aus `/api/activity`, alle Module) + Toast beim Fertigwerden. Dateien überall ablegen: FITS → Bilder-Import, Fotos → Sage.
+Befehlspalette Strg+K: Einträge aller Module (`palette()`) + Aktionen der aktuellen Ansicht (`actions()`).
+Tastenkürzel: `/` Suche in Listen, `1–4` Tabs (Objekt, SkyTrace-Lauf), `F` Vollbild, `B` Vorher/Nachher. Server schickt `Cache-Control: no-cache` für `/`.
+**Nach Änderungen an `index.html`/`app.js`/`style.css` `?v=` in `index.html` hochzählen**; Modul-Dateien bekommen die Build-Kennung automatisch.
 
 ## Tests (`tests/`)
 Synthetische Daten aus `demo.py` (`generate`, `generate(anonymous=True)` ohne Koordinaten, `generate_mono` mit Filtern).
@@ -160,6 +193,9 @@ Plate-Solving-Tests nutzen eine ASTAP-Attrappe (Python-Skript, schreibt echtes `
 ## Echte Daten des Nutzers / laufende Instanz
 - **Arbeitsinstanz:** Datenordner `astroflow/data/` (seit 2026-10-27; vorher Temp – umgezogen, DB-Pfade umgeschrieben, Sicherung `data/astroflow.db.vor-umzug`).
   Start über `.claude/launch.json` im Elternordner (`Claude Code/.claude`), Konfiguration „astroflow“, Port 8766, `--data …/astroflow/data`.
+  Testinstanz: Konfiguration „astroflow-test“ (Port 8768, Datenordner im Scratchpad, `SKYTRACE_HOME` = `AstroAnalyse/` nur lesend ansehen – keine Analysen starten).
+- SkyTrace-Daten des Nutzers: `C:\Users\nutzer\Documents\Claude Code\AstroAnalyse` (Ergebnisse, Katalog-Cache, Standort, `.venv` mit allen Engine-Paketen,
+  ASTAP unter `tools/`). Das alte SkyTrace läuft dort weiter auf Port 8765 – nicht gleichzeitig Analysen aus beiden Oberflächen starten.
   **Nie Testdaten in diese Instanz schreiben** – Experimente in eigenem Datenordner (z. B. Scratchpad) mit kopierten Frames.
 - Projekte: NGC 1579 (422 Stellina-Frames, 404 gestackt, per ASTAP gelöst), M3, M74, IC 405, M39 – Rohdaten nach dem Stacking gelöscht,
   also nur noch Nachstacken neuer Nächte und Neu-Entwickeln möglich.

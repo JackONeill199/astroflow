@@ -1,7 +1,7 @@
 """Hotpixel ohne Darks: Die Registrierung darf sich nicht an ortsfesten Sensorfehlern ausrichten."""
 import numpy as np
 
-from astroflow import calibration, demo, quality, registration
+from astroflow.modules.stacking import calibration, demo, quality, registration
 
 
 def _scene(seed=3, n_hot=400):

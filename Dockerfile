@@ -20,6 +20,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY astroflow ./astroflow
+# SkyTrace-Analyse-Engine (OpenCV, PyTorch/YOLO, PyAV …, mehrere GB) nur auf Wunsch: docker compose build --build-arg SKYTRACE=1
+ARG SKYTRACE=0
+RUN if [ "$SKYTRACE" = "1" ]; then pip install --no-cache-dir -r astroflow/modules/skytrace/requirements.txt; fi
 ENV ASTROFLOW_DATA=/data
 VOLUME /data
 EXPOSE 8080

@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from astroflow import demo
-from astroflow.config import load_settings
-from astroflow.db import DB
-from astroflow.pipeline import Pipeline
-from astroflow.reviewer import ReviewerConfig
+from astroflow.modules.stacking import demo
+from astroflow.core.config import load_settings
+from astroflow.modules.stacking.db import DB
+from astroflow.modules.stacking.pipeline import Pipeline
+from astroflow.modules.stacking.reviewer import ReviewerConfig
 
 
 def _env(tmp_path, delete=True):
@@ -24,7 +24,10 @@ def test_uploaded_lights_deleted_after_stacking_and_stack_keeps_growing(tmp_path
     demo.generate(s.uploads_dir / "nacht1", n_lights=16, n_darks=3, n_flats=3)
     pl.scan()
     pid = db.one("SELECT id FROM projects")["id"]
+    seen = []                                         # andere Module (SkyTrace) bekommen die Rohbilder vor dem Löschen
+    pl.on_stacked = lambda p, rid: seen.append((p, rid, len(list((s.uploads_dir / "nacht1" / "lights").glob("*.fit")))))
     pl.process(pid)
+    assert seen and seen[0][0] == pid and seen[0][1] and seen[0][2] == 16
     lights = db.q("SELECT * FROM frames WHERE kind='light'")
     assert all(f["deleted"] for f in lights if f["stacked"] or f["status"] == "rejected")
     assert not list((s.uploads_dir / "nacht1" / "lights").glob("*.fit")), "Lights sollten gelöscht sein"
