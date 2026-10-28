@@ -45,6 +45,10 @@ und Drag & Drop überall (FITS → Bilder, Fotos → Sage). Aus einem fertigen B
 
 `Start.bat` startet AstroFlow im Hintergrund (Port 8766, Daten in `data/`, Protokoll `data/server.log.err`) und öffnet den Browser;
 läuft es schon, wird nur der Browser geöffnet. `Stop.bat` beendet den Server. Anpassbar über `ASTROFLOW_PORT` und `ASTROFLOW_DATA`.
+**Im Heimnetz nutzen:** Der Server lauscht auf allen Netzwerkkarten; `Start.bat` zeigt die Adresse für andere Geräte an (z. B. `http://192.168.…:8766`).
+Einmalig `Netzwerk-freigeben.bat` ausführen (fragt nach Administratorrechten): legt die Firewall-Regel „AstroFlow LAN“ an – nur privates Netzwerkprofil,
+nur Geräte im eigenen Subnetz, keine Freigabe ins Internet. Es gibt kein Passwort; jedes Gerät im Heimnetz kann AstroFlow bedienen.
+Rückgängig: `Netzwerk-freigeben.bat entfernen`.
 
 ### Ohne Docker
 

@@ -26,7 +26,7 @@ if %errorlevel%==0 (
 
 if not exist "%ASTROFLOW_DATA%" mkdir "%ASTROFLOW_DATA%"
 echo AstroFlow wird gestartet (Port %ASTROFLOW_PORT%, Daten: %ASTROFLOW_DATA%) ...
-powershell -NoProfile -Command "Start-Process -FilePath '%PY%' -ArgumentList '-m','astroflow','serve','--port','%ASTROFLOW_PORT%','--data','\"%ASTROFLOW_DATA%\"' -WorkingDirectory '%~dp0.' -WindowStyle Hidden -RedirectStandardOutput '%LOG%' -RedirectStandardError '%LOG%.err'"
+powershell -NoProfile -Command "Start-Process -FilePath '%PY%' -ArgumentList '-m','astroflow','serve','--host','0.0.0.0','--port','%ASTROFLOW_PORT%','--data','\"%ASTROFLOW_DATA%\"' -WorkingDirectory '%~dp0.' -WindowStyle Hidden -RedirectStandardOutput '%LOG%' -RedirectStandardError '%LOG%.err'"
 
 rem Warten, bis der Server antwortet (max. 60 s)
 powershell -NoProfile -Command "for ($i=0; $i -lt 120; $i++) { if (Get-NetTCPConnection -LocalPort %ASTROFLOW_PORT% -State Listen -ErrorAction SilentlyContinue) { exit 0 }; Start-Sleep -Milliseconds 500 }; exit 1"
@@ -38,6 +38,17 @@ if not %errorlevel%==0 (
 echo AstroFlow läuft: %URL%   (beenden mit Stop.bat)
 
 :browser
-if not "%ASTROFLOW_NO_BROWSER%"=="1" start "" "%URL%"
+rem Adresse für andere Geräte im Heimnetz (Netzwerkkarten mit Standardgateway) + Hinweis, falls die Firewall noch sperrt
+powershell -NoProfile -Command ^
+  "$ips = Get-NetIPConfiguration | Where-Object { $_.IPv4DefaultGateway -and $_.NetAdapter.Status -eq 'Up' } | ForEach-Object { $_.IPv4Address.IPAddress };" ^
+  "foreach ($ip in $ips) { Write-Host ('Im Heimnetz:     http://' + $ip + ':%ASTROFLOW_PORT%') };" ^
+  "$ok = Get-NetFirewallRule -DisplayName 'AstroFlow LAN' -ErrorAction SilentlyContinue | Where-Object { $_.Enabled -eq 'True' };" ^
+  "if (-not $ok) { Write-Host 'Hinweis: Die Windows-Firewall sperrt den Zugriff von anderen PCs noch – einmalig Netzwerk-freigeben.bat ausführen.' }"
+if not "%ASTROFLOW_NO_BROWSER%"=="1" (
+  start "" "%URL%"
+  echo.
+  echo Dieses Fenster schließt sich in 20 Sekunden – AstroFlow läuft im Hintergrund weiter.
+  timeout /t 20 >nul
+)
 endlocal
 exit /b 0

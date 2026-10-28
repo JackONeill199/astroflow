@@ -37,6 +37,7 @@ astroflow/static/          Shell: index.html, app.js (Router, Navigation, Übers
 python -m astroflow serve --port 8080 --data ./data   # Web-UI (alle Module)
 python -m astroflow process --data ./data             # alles per CLI verarbeiten
 Start.bat / Stop.bat                                  # Windows: Server im Hintergrund starten/beenden (Port 8766, ./data)
+Netzwerk-freigeben.bat [entfernen]                    # Firewall-Regel „AstroFlow LAN“ (TCP 8766, privat, LocalSubnet; braucht Admin – Nutzer führt aus)
 python -m astroflow demo ./data/input/demo            # synthetische Testdaten (Bayer, 2 Nächte, Darks/Flats)
 docker compose up -d --build                          # Image enthält ASTAP + D05 (ARG ASTAP_DB=d05|d50)
 ```
