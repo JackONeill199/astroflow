@@ -1,0 +1,19 @@
+services:
+  astroflow:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data                  # Datenbank, Zwischenstände, Ergebnisse
+      - /pfad/zu/deinen/fits:/data/input   # Eingangsordner (Rohaufnahmen) – anpassen!
+    environment:
+      ASTROFLOW_AUTO: "1"             # neue Aufnahmen automatisch verarbeiten
+      ASTROFLOW_SCAN_INTERVAL: "60"
+      # Optionaler KI-Bildprüfer (Vision-LLM):
+      # ASTROFLOW_REVIEW_PROVIDER: lmstudio        # oder openrouter
+      # ASTROFLOW_REVIEW_MODEL: qwen2.5-vl-7b-instruct
+      # ASTROFLOW_REVIEW_URL: http://host.docker.internal:1234/v1
+      # ASTROFLOW_REVIEW_KEY: sk-or-...            # nur OpenRouter
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

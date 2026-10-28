@@ -1,0 +1,152 @@
+"""Synthetische Demo-Aufnahmen (Galaxie + Sternfeld, Bayer-Sensor, Rotation, defekte Frames)."""
+from __future__ import annotations
+
+import datetime as dt
+from pathlib import Path
+
+import numpy as np
+from scipy import ndimage as ndi
+
+from .fits_io import write_fits
+
+H, W = 360, 480
+
+
+def _sky(rng, size=(620, 800)):
+    sh, sw = size
+    n = 450
+    stars = np.column_stack([
+        rng.uniform(0, sw, n), rng.uniform(0, sh, n),
+        10 ** rng.uniform(2.9, 4.6, n),                       # Fluss
+        rng.uniform(0.0, 1.0, n),                              # Farbe: 0 = blau, 1 = rot
+    ])
+    yy, xx = np.mgrid[0:sh, 0:sw].astype(np.float32)
+    cy, cx = sh / 2, sw / 2
+    th = np.deg2rad(35)
+    u = (xx - cx) * np.cos(th) + (yy - cy) * np.sin(th)
+    v = -(xx - cx) * np.sin(th) + (yy - cy) * np.cos(th)
+    r = np.sqrt((u / 1.0) ** 2 + (v / 0.4) ** 2)
+    gal = 70 * np.exp(-7.67 * ((r / 110) ** 0.25 - 1)) * (r < 330)
+    arms = ndi.gaussian_filter(rng.normal(size=(sh, sw)), 6) * 90
+    ext = np.stack([gal * 1.05 + np.clip(arms, 0, None) * 0.6 * (r < 220),
+                    gal * 0.95 + np.clip(arms, 0, None) * 0.5 * (r < 220),
+                    gal * 0.75 + np.clip(arms, 0, None) * 0.8 * (r < 220)]).astype(np.float32)
+    return stars, ext
+
+
+def _frame(rng, stars, ext, angle_deg, shift, fwhm, trail=0.0, clouds=1.0, sat_trail=False):
+    sh, sw = ext.shape[1:]
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    th = np.deg2rad(angle_deg)
+    c, s = np.cos(th), np.sin(th)
+    cf = np.array([W / 2, H / 2])
+    cs = np.array([sw / 2, sh / 2]) + shift
+    sx = c * (xx - cf[0]) - s * (yy - cf[1]) + cs[0]
+    sy = s * (xx - cf[0]) + c * (yy - cf[1]) + cs[1]
+    img = np.stack([ndi.map_coordinates(e, [sy, sx], order=1, mode="constant") for e in ext])
+    img = ndi.gaussian_filter(img, (0, fwhm / 2.355, fwhm / 2.355))
+    # Sterne
+    sig = fwhm / 2.355
+    R = 7
+    d = np.arange(-R, R + 1)
+    for x, y, f, col in stars:
+        dx, dy = x - cs[0], y - cs[1]
+        px = c * dx + s * dy + cf[0]
+        py = -s * dx + c * dy + cf[1]
+        if not (R < px < W - R - 1 and R < py < H - R - 1):
+            continue
+        ix, iy = int(px), int(py)
+        gx = np.exp(-((d + ix - px) ** 2) / (2 * (sig * (1 + trail)) ** 2))
+        gy = np.exp(-((d + iy - py) ** 2) / (2 * sig**2))
+        psf = np.outer(gy, gx)
+        psf /= psf.sum()
+        rgb = np.array([0.5 + col, 1.0, 1.5 - col])
+        rgb /= rgb.mean()
+        for ch in range(3):
+            img[ch, iy - R : iy + R + 1, ix - R : ix + R + 1] += f * rgb[ch] * psf
+    if sat_trail:
+        for t in np.linspace(0, 1, 800):
+            x, y = int(t * W), int(40 + t * 200)
+            if 0 <= y < H and x < W:
+                img[:, y, x] += 800
+    return img * clouds
+
+
+def _mosaic(img3):  # RGGB
+    raw = np.empty((H, W), np.float32)
+    raw[0::2, 0::2] = img3[0, 0::2, 0::2]
+    raw[0::2, 1::2] = img3[1, 0::2, 1::2]
+    raw[1::2, 0::2] = img3[1, 1::2, 0::2]
+    raw[1::2, 1::2] = img3[2, 1::2, 1::2]
+    return raw
+
+
+def generate(out: Path, n_lights=30, n_darks=8, n_flats=8, seed=1, anonymous=False) -> Path:
+    """anonymous=True: Lights ohne OBJECT/RA/DEC (wie bei Kameras ohne Montierungsanbindung)."""
+    rng = np.random.default_rng(seed)
+    out = Path(out)
+    (out / "lights").mkdir(parents=True, exist_ok=True)
+    (out / "darks").mkdir(exist_ok=True)
+    (out / "flats").mkdir(exist_ok=True)
+    stars, ext = _sky(rng)
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    vign = 1 - 0.45 * (((xx - W / 2) / (W / 2)) ** 2 + ((yy - H / 2) / (H / 2)) ** 2) / 2
+    hot = np.zeros((H, W), np.float32)
+    idx = rng.integers(0, H * W, 60)
+    hot.ravel()[idx] = rng.uniform(300, 2500, 60)
+    fixed = 100 + hot + 30 * (xx / W)                         # Dunkelstrom + Offset
+    hdr = dict(INSTRUME="DemoScope", BAYERPAT="RGGB", EXPTIME=10.0, GAIN=80.0)
+    t0 = dt.datetime(2026, 8, 12, 22, 0, 0)
+    for i in range(n_lights):
+        night2 = i >= int(n_lights * 0.65)                   # zweite Nacht, andere Feldrotation
+        ang = (i * 0.35 if not night2 else 40 + (i - int(n_lights * 0.65)) * 0.35)
+        shift = rng.normal(0, 6, 2)
+        fw, tr, cl, st = rng.normal(3.6, 0.2), 0.0, 1.0, False
+        if i % 11 == 7:
+            fw, kind = 7.5, "seeing"
+        if i % 13 == 5:
+            cl = 0.25
+        if i % 17 == 9:
+            tr = 1.2
+        if i % 19 == 3:
+            st = True
+        sky = _frame(rng, stars, ext, ang, shift, fw, tr, cl, st)
+        sky = sky * vign
+        raw = _mosaic(sky) + fixed + 40 * (cl < 1) + rng.normal(0, 14, (H, W))
+        d = t0 + dt.timedelta(minutes=i * 10 + (24 * 60 if night2 else 0))
+        write_fits(out / "lights" / f"Light_M31_{i:03d}.fit", np.clip(raw, 0, 65535).astype(np.uint16),
+                   dict(hdr, **({} if anonymous else dict(OBJECT="M 31", RA=10.684, DEC=41.269)), **{"DATE-OBS": d.isoformat()}, IMAGETYP="Light"))
+    for i in range(n_darks):
+        write_fits(out / "darks" / f"Dark_{i:02d}.fit", (fixed + rng.normal(0, 14, (H, W))).astype(np.uint16),
+                   dict(hdr, IMAGETYP="Dark", **{"DATE-OBS": t0.isoformat()}))
+    for i in range(n_flats):
+        fl = 20000 * vign + rng.normal(0, 60, (H, W)) + fixed * 0.0
+        write_fits(out / "flats" / f"Flat_{i:02d}.fit", (fl + 100).astype(np.uint16),
+                   dict(hdr, IMAGETYP="Flat", EXPTIME=0.5, **{"DATE-OBS": t0.isoformat()}))
+    return out
+
+
+# Mono-Kamera mit Filterrad: Kanalgewichte (R,G,B des Himmelsmodells) je Filter
+BAND_WEIGHTS = {"L": (0.34, 0.33, 0.33), "R": (1, 0, 0), "G": (0, 1, 0), "B": (0, 0, 1),
+                "Ha": (0.35, 0, 0), "OIII": (0, 0.12, 0.2), "SII": (0.15, 0, 0)}
+
+
+def generate_mono(out: Path, bands=("L", "R", "G", "B"), per_band=6, seed=2, obj="M 31") -> Path:
+    """Mono-Aufnahmen mit mehreren Filtern (eine Nacht, leichte Drift/Rotation zwischen den Filtern)."""
+    rng = np.random.default_rng(seed)
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    stars, ext = _sky(rng)
+    t0 = dt.datetime(2026, 9, 3, 21, 0, 0)
+    n = 0
+    for b in bands:
+        wts = np.array(BAND_WEIGHTS[b], np.float32)
+        for i in range(per_band):
+            sky = _frame(rng, stars, ext, n * 0.3, rng.normal(0, 5, 2), rng.normal(3.4, 0.15))
+            img = np.tensordot(wts, sky, 1) * 3 + 300 + rng.normal(0, 10, (H, W))
+            d = t0 + dt.timedelta(minutes=5 * n)
+            write_fits(out / f"M31_{b}_{i:03d}.fit", np.clip(img, 0, 65535).astype(np.uint16),
+                       dict(INSTRUME="MonoCam", OBJECT=obj, FILTER=b, EXPTIME=60.0, GAIN=100.0,
+                            IMAGETYP="Light", **{"DATE-OBS": d.isoformat()}))
+            n += 1
+    return out

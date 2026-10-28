@@ -1,0 +1,11 @@
+{
+  "name": "AstroFlow",
+  "short_name": "AstroFlow",
+  "description": "Vollautomatische Astrofotografie – vom FITS-Rohbild zum fertigen Astrofoto.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0a0d16",
+  "theme_color": "#0a0d16",
+  "lang": "de",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

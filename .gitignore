@@ -1,0 +1,17 @@
+# Umgebung
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Daten – Rohbilder, Stacks, Ergebnisse, Datenbank, settings.json (API-Schlüssel im Klartext)
+data/
+data_real/
+*.db
+*.fits
+*.fit
+*.fts
+
+# System
+.DS_Store
+Thumbs.db

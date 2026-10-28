@@ -1,0 +1,279 @@
+"""AstroFlow Develop Engine: linearer Master-Stack -> fertiges Astrofoto.
+
+Unabhängig von der Stack Engine: arbeitet nur mit dem gespeicherten Master-Stack (mean, cov),
+eine erneute Entwicklung braucht also nie ein erneutes Stacking.
+
+Ablauf
+  1. measure(): Signal, Rauschen und Dynamik des linearen Stacks messen.
+  2. adapt():   Profilwerte (objects.PROFILES) an die Messwerte anpassen.
+  3. Qualitätskontrolle: rendern -> assess() -> gezielt nachregeln (deterministisch, max. QC_ROUNDS Renderings).
+  4. optional der KI-Prüfer (reviewer.py) obendrauf.
+
+Alles ist reproduzierbar (gleiche Daten -> gleiche Parameter) und verändert nur Helligkeit, Kontrast,
+Farbe und Rauschen – es werden keine Strukturen erzeugt.
+"""
+from __future__ import annotations
+
+import numpy as np
+from scipy import ndimage as ndi
+
+from . import processing
+from .processing import crop_to_coverage, luminance
+from .quality import noise_sigma
+
+QC_ROUNDS = 3
+PREVIEW_SIDE = 1400
+
+# Zielbereiche der Qualitätskontrolle (Anzeigewerte 0..1 nach der Entwicklung)
+BG_RANGE = (0.02, 0.10)        # Himmelshintergrund: dunkel wie bei Stellina (~0,03), aber nicht abgeschnitten
+NOISE_MAX = 0.016              # sichtbares Hintergrundrauschen (σ)
+CAST_MAX = 0.012               # Farbstich des Hintergrunds
+CHROMA_NOISE_MAX = 0.007       # Farbrauschen (Flecken) im Hintergrund
+GRADIENT_MAX = 0.03            # Helligkeitsunterschied im Hintergrund (Kacheln)
+BLACK_CLIP_MAX = 0.005         # Anteil abgeschnittener Schwarzwerte
+WHITE_CLIP_MAX = 0.003         # Anteil ausgebrannter Pixel
+SAT_RANGE = (0.10, 0.55)       # Farbigkeit des Objekts
+
+
+def _bin(a: np.ndarray, f: int) -> np.ndarray:
+    if f <= 1:
+        return a
+    h, w = a.shape[-2] // f * f, a.shape[-1] // f * f
+    a = a[..., :h, :w]
+    return a.reshape(*a.shape[:-2], h // f, f, w // f, f).mean((-3, -1))
+
+
+def preview(mean: np.ndarray, cov: np.ndarray, side: int = PREVIEW_SIDE) -> tuple[np.ndarray, np.ndarray, int]:
+    """Verkleinerter Stack (Mittelwert-Binning) für schnelle Messungen."""
+    f = max(1, int(np.ceil(max(mean.shape[-2:]) / side)))
+    return _bin(mean.astype(np.float32), f), _bin(cov.astype(np.float32), f), f
+
+
+# ----------------------------------------------------------------- messen #
+def measure(mean: np.ndarray, cov: np.ndarray) -> dict:
+    """Kennzahlen des linearen Stacks (nach Gradientenentfernung, auf der Vorschau)."""
+    img = crop_to_coverage(mean, cov).astype(np.float32)
+    img = processing.remove_gradient(img, 2)
+    L = img[0] if img.shape[0] == 1 else luminance(img)
+    med = float(np.median(L))
+    sig = noise_sigma(L)                                  # Pixelrauschen
+    sm = ndi.gaussian_filter(L, 2.0)
+    sig_sm = 1.4826 * float(np.median(np.abs(sm - np.median(sm)))) + 1e-12
+    signal = sm > med + 3 * sig_sm                         # flächiges Signal (Nebel, Galaxie, Sterne)
+    stars = sm > med + 60 * sig_sm
+    ext = signal & ~ndi.binary_dilation(stars, iterations=3)
+    obj = float(np.percentile(sm[ext], 90) - med) if ext.sum() > 50 else float(np.percentile(sm, 99) - med)
+    peak = float(np.percentile(L, 99.95) - med)
+    return {
+        "snr": round(max(obj, 0) / sig, 2),                         # Objekt (helle 10 %) zu Pixelrauschen
+        "signal_frac": round(float(ext.mean()), 4),                 # Fläche mit flächigem Signal
+        "dynamic": round(peak / max(obj, sig), 1),                  # Sterne/Kerne relativ zum Objekt
+    }
+
+
+def adapt(params: dict, m: dict, mono: bool = False) -> tuple[dict, list[str]]:
+    """Startparameter aus Profil + Messwerten. Gibt (params, Begründungen)."""
+    p = dict(params)
+    why = []
+    snr = max(m["snr"], 0.1)
+    # Rauschen: schwaches Signal -> stärker entrauschen, starkes Signal -> Details schonen
+    f = float(np.clip((12 / snr) ** 0.35, 0.65, 1.5))
+    if abs(f - 1) > 0.05:
+        p["denoise"] = round(float(np.clip(p["denoise"] * f, 0.2, 0.9)), 3)
+        p["chroma_denoise"] = round(float(np.clip(p["chroma_denoise"] * f, 1.0, 5.0)), 2)
+        why.append(f"Entrauschen {'verstärkt' if f > 1 else 'reduziert'} (Objekt-SNR {snr:.0f})")
+    # lineares Entrauschen vor dem Stretch: holt schwaches Signal aus dem Rauschen (stärker bei wenig Signal)
+    # (bei hohem SNR kaum: es hebt sonst auch schwache Restgradienten und Streifen hervor)
+    p["linear_denoise"] = round(float(np.clip((10 / snr) ** 1.5, 0.0, 1.0)), 2)
+    if p["linear_denoise"] >= 0.1:
+        why.append(f"lineares Entrauschen {p['linear_denoise']:.2f} (Objekt-SNR {snr:.0f})")
+    # sehr schwaches Signal: dunklerer Hintergrund versteckt Restrauschen, Sättigung vorsichtiger
+    if snr < 6:
+        p["target_bg"] = round(max(0.05, p["target_bg"] - 0.015), 3)
+        why.append("dunklerer Hintergrund wegen schwachem Signal")
+    if not mono:
+        g = float(np.clip(snr / 10, 0.5, 1.15))
+        if abs(g - 1) > 0.05:
+            p["saturation"] = round(1 + (p["saturation"] - 1) * g, 3)
+            why.append(f"Sättigung {'erhöht' if g > 1 else 'gedämpft'} (Farbrauschen)")
+    # hohe Dynamik (helle Kerne/Sterne neben schwachem Nebel): mehr Highlight-Kompression
+    if m["dynamic"] > 40:
+        k = float(np.clip((m["dynamic"] / 40) ** 0.5, 1.0, 2.5))
+        p["asinh"] = round(float(np.clip(p["asinh"] * k, 5, 400)), 1)
+        why.append(f"Highlight-Kompression erhöht (Dynamik {m['dynamic']:.0f}×)")
+    # Entfaltung nur mit genug Signal – sonst schärft sie Rauschen
+    if p.get("deconv", 0) > 0 and snr < 8:
+        p["deconv"] = 0
+        why.append("keine Entfaltung (zu wenig Signal)")
+    return p, why
+
+
+# ------------------------------------------------------------- bewerten #
+def assess(rgb: np.ndarray, mono: bool = False) -> dict:
+    """Messbare Qualitätskontrolle eines entwickelten Bildes (3,H,W) 0..1.
+    Gibt Kennzahlen, Score 0..10 und Probleme (code, Text) zurück."""
+    f = max(1, int(np.ceil(max(rgb.shape[1:]) / 1200)))
+    img = _bin(rgb.astype(np.float32), f)
+    L = luminance(img)
+    sky = L <= np.percentile(L, 50)
+    bg = float(np.median(L[sky]))
+    # sichtbares Rauschen: feine + fleckige Struktur (Hochpass bis ~6 px) nur auf Himmelspixeln
+    hp = L - ndi.gaussian_filter(L, 3.0)
+    core = ndi.binary_erosion(sky, iterations=3)
+    v = hp[core] if core.sum() > 500 else hp[sky]
+    noise = 1.4826 * float(np.median(np.abs(v - np.median(v))))
+    cast = float(max(abs(np.median(img[c][sky]) - bg) for c in range(3))) if not mono else 0.0
+    # Farbrauschen: fleckige Chrominanz im Himmel
+    chroma_noise = 0.0
+    if not mono:
+        c0 = img - L[None]
+        ch = ndi.gaussian_filter(c0, (0, 2, 2)) - ndi.gaussian_filter(c0, (0, 12, 12))   # Flecken, nicht Nebelfarbe
+        chroma_noise = float(max(1.4826 * np.median(np.abs(c[sky] - np.median(c[sky]))) for c in ch))
+    # Restgradient: Median des Hintergrunds in 6x6 Kacheln (nur Himmelspixel)
+    h, w = L.shape
+    tiles = []
+    for i in range(6):
+        for j in range(6):
+            t = L[i * h // 6 : (i + 1) * h // 6, j * w // 6 : (j + 1) * w // 6]
+            s = sky[i * h // 6 : (i + 1) * h // 6, j * w // 6 : (j + 1) * w // 6]
+            if s.mean() > 0.2:
+                tiles.append(np.median(t[s]))
+    gradient = float(np.percentile(tiles, 95) - np.percentile(tiles, 5)) if len(tiles) >= 6 else 0.0
+    black = float((L < 0.004).mean())
+    white = float((rgb.max(0) >= 0.999).mean())
+    sig = ndi.gaussian_filter(L, 1.5) > bg + 0.12
+    if not mono and sig.sum() > 100:
+        mx, mn = img.max(0)[sig], img.min(0)[sig]
+        satur = float(np.median((mx - mn) / np.maximum(mx, 1e-3)))
+    else:
+        satur = None
+    m = {"bg": round(bg, 4), "noise": round(noise, 4), "cast": round(cast, 4), "chroma_noise": round(chroma_noise, 4), "gradient": round(gradient, 4),
+         "black_clip": round(black, 5), "white_clip": round(white, 5),
+         "saturation": None if satur is None else round(satur, 3), "signal": round(float(sig.mean()), 4)}
+
+    issues: list[tuple[str, str, float]] = []      # (code, Text, Abzug)
+    if bg < BG_RANGE[0]:
+        issues.append(("bg_dark", "Hintergrund zu dunkel – schwache Strukturen gehen verloren", 1.5))
+    elif bg > BG_RANGE[1]:
+        issues.append(("bg_bright", "Hintergrund zu hell (grau, flau)", 1.5))
+    if noise > NOISE_MAX:
+        issues.append(("noisy", "Hintergrund sichtbar verrauscht", min(3.0, 1.0 + 60 * (noise - NOISE_MAX))))
+    if cast > CAST_MAX:
+        issues.append(("cast", "Farbstich im Hintergrund", min(2.0, 60 * (cast - CAST_MAX) + 0.5)))
+    if chroma_noise > CHROMA_NOISE_MAX:
+        issues.append(("chroma_noise", "Farbrauschen (bunte Flecken) im Hintergrund", min(2.0, 0.5 + 150 * (chroma_noise - CHROMA_NOISE_MAX))))
+    if gradient > GRADIENT_MAX:
+        issues.append(("gradient", "Ungleichmäßiger Hintergrund (Restgradient/Vignettierung)", min(2.5, 30 * (gradient - GRADIENT_MAX) + 0.5)))
+    if black > BLACK_CLIP_MAX:
+        issues.append(("black_clip", "Schwarzwerte abgeschnitten", 1.0))
+    if white > WHITE_CLIP_MAX:
+        issues.append(("white_clip", "Helle Bereiche ausgebrannt", min(2.0, 0.5 + 100 * (white - WHITE_CLIP_MAX))))
+    if satur is not None and satur > SAT_RANGE[1]:
+        issues.append(("oversat", "Farben übersättigt", 1.0))
+    elif satur is not None and satur < SAT_RANGE[0]:
+        issues.append(("undersat", "Farben blass", 0.5))
+    if m["signal"] < 0.002:
+        issues.append(("faint", "Objekt kaum sichtbar", 1.5))
+    score = max(0.0, 10.0 - sum(i[2] for i in issues))
+    return {"metrics": m, "score": round(score, 1), "issues": [{"code": c, "text": t} for c, t, _ in issues]}
+
+
+def corrections(qc: dict, p: dict) -> dict:
+    """Parameteränderungen, die gemessene Probleme beheben (nur bei Problemen, kleine Schritte)."""
+    codes = {i["code"] for i in qc["issues"]}
+    m = qc["metrics"]
+    adj: dict = {}
+    # Hintergrundhelligkeit: über den Schwarzpunkt (bg_dark), falls aktiv – so bleibt das Signal unverändert hell
+    if "bg_dark" in codes or "black_clip" in codes:
+        if p.get("bg_dark") is not None:
+            adj["bg_dark"] = min(0.08, p["bg_dark"] + 0.015)
+        else:
+            adj["target_bg"] = min(0.2, p["target_bg"] + max(0.015, BG_RANGE[0] + 0.02 - m["bg"]))
+    elif "bg_bright" in codes:
+        if p.get("bg_dark") is not None:
+            adj["bg_dark"] = max(0.0, min(p["bg_dark"], BG_RANGE[1]) - 0.015)
+        else:
+            adj["target_bg"] = max(0.04, p["target_bg"] - max(0.015, m["bg"] - BG_RANGE[1] + 0.02))
+    if "noisy" in codes:
+        if p["denoise"] < 0.9:
+            adj["denoise"] = min(0.9, p["denoise"] + 0.15)
+            adj["chroma_denoise"] = min(5.0, p["chroma_denoise"] + 0.5)
+        elif "bg_dark" not in codes:
+            adj["target_bg"] = max(0.05, adj.get("target_bg", p["target_bg"]) - 0.015)
+    if "white_clip" in codes:
+        if p.get("star_separation", "auto") not in ("off", None, False):
+            adj["star_brightness"] = max(0.5, p.get("star_brightness", 0.85) - 0.1)
+        else:
+            adj["asinh"] = min(400.0, p["asinh"] * 1.6)
+    if "oversat" in codes:
+        adj["saturation"] = max(1.0, p["saturation"] - 0.15)
+    elif "undersat" in codes and "noisy" not in codes:
+        adj["saturation"] = min(1.9, p["saturation"] + 0.15)
+    if "chroma_noise" in codes:
+        if p["chroma_denoise"] < 5.0:
+            adj["chroma_denoise"] = min(5.0, adj.get("chroma_denoise", p["chroma_denoise"]) + 1.0)
+        elif p.get("linear_denoise", 0) > 0.4:
+            adj["linear_denoise"] = max(0.4, p["linear_denoise"] - 0.25)
+    # Restgradient wird nur gemeldet: Nebel im Feld verfälscht die Messung, ein höherer Polynomgrad würde ihn abtragen
+    return {k: (round(v, 3) if isinstance(v, float) else v) for k, v in adj.items() if v != p.get(k)}
+
+
+HINTS = {
+    "noisy": "Mehr Belichtungszeit (weitere Nächte) verringert das Rauschen am wirksamsten.",
+    "gradient": "Flat-Frames würden Vignettierung und Staub zuverlässig entfernen; Mond und Streulicht meiden.",
+    "faint": "Das Objekt ist sehr schwach – deutlich mehr Belichtungszeit oder ein dunklerer Himmel helfen.",
+    "chroma_noise": "Mehr Belichtungszeit verringert Farbrauschen; Dithering zwischen den Aufnahmen hilft zusätzlich.",
+    "cast": "Ein Lichtverschmutzungsfilter oder Aufnahmen bei dunklerem Himmel verringern Farbstiche.",
+    "white_clip": "Kürzere Einzelbelichtungen schützen helle Sterne und Kerne vor dem Ausbrennen.",
+}
+
+
+def hints(qc: dict, ctx: dict) -> list[str]:
+    """Verbesserungsvorschläge für den Nutzer (nur aus gemessenen Problemen und echten Daten)."""
+    out = []
+    for i in qc["issues"]:
+        h = HINTS.get(i["code"])
+        if i["code"] == "gradient" and ctx.get("has_flats"):
+            h = "Restgradient trotz Flats – Mond, Streulicht oder Tau prüfen."
+        if h and h not in out:
+            out.append(h)
+    exp = ctx.get("exposure_s") or 0
+    if exp and exp < 3600 and "noisy" not in {i["code"] for i in qc["issues"]}:
+        out.append(f"Bisher {exp / 60:.0f} min Belichtung – mit mehr Nächten werden schwache Bereiche deutlich klarer.")
+    if ctx.get("rejected_pct", 0) > 30:
+        out.append(f"{ctx['rejected_pct']:.0f} % der Aufnahmen wurden aussortiert (Wolken, Unschärfe, Nachführung).")
+    return out
+
+
+# --------------------------------------------------------------- entwickeln #
+def develop(mean: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool, palette: str | None,
+            ctx: dict | None = None, fixed: dict | None = None, log=lambda m: None, render_log=lambda m: None):
+    """Gibt (rgb, stats, params, qc_verlauf) zurück. ctx: exposure_s, has_flats, rejected_pct.
+    fixed: vom Nutzer gesetzte Parameter – werden weder angepasst noch nachgeregelt."""
+    ctx = ctx or {}
+    fixed = fixed or {}
+    pm, pc, f = preview(mean, cov)
+    log("Bilddaten vermessen")
+    m = measure(pm, pc)
+    params, why = adapt(params, m, mono=mean.shape[0] == 1)
+    params.update(fixed)
+    history = [{"round": 0, "measure": m, "adapt": why, "params": dict(params)}]
+
+    def render(p, a, c, lg):
+        return processing.process(a, c, p, narrowband=narrowband, palette=palette, log=lg, want_before=True)
+
+    # Kontrolle in voller Auflösung: Entrauschen und Farbe wirken pixelbezogen, eine Vorschau bewertet sie falsch
+    for rnd in range(1, QC_ROUNDS + 1):
+        log(f"Entwicklung und Qualitätskontrolle {rnd}")
+        rgb, stats = render(params, mean, cov, render_log)
+        qc = assess(rgb, mono=mean.shape[0] == 1)
+        adj = {k: v for k, v in corrections(qc, params).items() if k not in fixed} if rnd < QC_ROUNDS else {}
+        history.append({"round": rnd, "score": qc["score"], "issues": [i["text"] for i in qc["issues"]], "adjust": adj})
+        if not adj:
+            break
+        params = {**params, **adj}
+    qc["hints"] = hints(qc, ctx)
+    qc["measure"] = m
+    stats["quality"] = qc
+    stats["qc"] = history
+    return rgb, stats, params, history
