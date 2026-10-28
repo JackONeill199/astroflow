@@ -21,6 +21,26 @@ Messgrafiken/Zoomdialoge (`static/evidence.js/css`) sind unverändert und werden
   und laufen mit gesetztem `SKYTRACE_HOME` (nutzen teils echte Daten unter `D:\Astro\Stellina`).
 - Abhängigkeiten der Engine: `requirements.txt` (Lock aus SkyTrace). Docker: `--build-arg SKYTRACE=1`.
 
+## Erkennung im Teleskop-Bildfeld (28.10.2026, Nutzerbefund M74 2022-08-07)
+Anlass: Ein schwacher Meteor (img-0041, ~120 px, ~1,5σ/px) wurde übersehen, ein langsames Objekt in sechs Aufnahmen (img-0177…0182)
+als „Meteor“ gemeldet. Vergleichslauf: `Ergebnisse/2026-10-28_18-47-38-352557` (alt) gegen `2026-10-28_19-47-22-527055` (neu).
+- **Kurze schwache Spuren** (`line_detection.py`): ab zwei 24-px-Abschnitten, Schwelle `required_score(bins)` = 5,2 + 0,9 je Abschnitt
+  (ab 7 Abschnitten unverändert 10,5), Mindestlänge 90 statt 160 px, Hough-Stimmen 22. Kurze Spuren nur in **ruhigem Hintergrund**
+  (`local_structure` ≤ 1,5: lokales/globales Rauschen ohne das Spurband, im Differenz- und im Originalbild) und nicht innerhalb 1° einer
+  Sensorachse (Ausleseartefakt img-0292). Kalibriert: Meteor 5,5 gefunden; IC59/IC405/M103/NGC884 ohne neue Treffer (dortige kurze
+  Fehlspuren lagen alle an hellen Sternen/Nebeln, Unruhe ≥ 2). Kurze Fragmente entlang einer stärkeren Spur gelten als dieselbe Spur.
+  Kandidaten tragen `line_threshold` (in Messdetails als Schwelle) und `short_trail`.
+- **Spurverkettung** (`trail_tracks.link_tracks`, aufgerufen in `candidate_report.extract_candidates` vor dem Gruppieren – wirkt also
+  auch beim Aktualisieren alter Läufe): gemessene Segmente in verschiedenen Aufnahmen ≤ 180 s, parallel (≤ 8°), kollinear, Fortschritt
+  = eigene Länge/Belichtung × Zeitabstand (Faktor 0,55–1,6), gleichmäßige Bewegung → ein Kandidat `kind='plane'`, `track_id='L…'`,
+  `linked_track` (Bilder, Dauer, Rate, Begründung). Ein Meteor leuchtet nur in einer Aufnahme; verkettete Spuren sind nie Meteorkandidaten.
+- **YOLO nur als Hinweis bei Teleskopen** (`motion_plausibility.narrow_field`: Bildfeld aus FOCAL/PIXSZ/NAXIS < 5°): Das OpenSkyCam-Modell
+  ist für Weitwinkel-Himmelskameras trainiert. Erkennungen erhalten `model_scope='narrow_field'`; reine Modellboxen werden
+  „Modellvorschlag (im Teleskopbild unsicher)“ (`kind='trail'`, Klasse in `model_hints`). `evidence.js classification`: Kataloghinweis →
+  verkettete Spur → Modellhinweis (bei schmalem Bildfeld nur als Quelle/Notiz, nicht als Klassenname) → `kind`.
+- Prüfen: `tests/test_skytrace.py` (Verkettung, Bildfeld), Engine-Checks `check_banding`, `check_streak_merging`, `check_trail_validation`,
+  `check_motion_plausibility` mit `SKYTRACE_HOME` und dem AstroAnalyse-Interpreter.
+
 Das folgende Projektwissen stammt aus dem Original und gilt fachlich weiter (Pfadangaben beziehen sich auf den alten Projektordner).
 
 ---

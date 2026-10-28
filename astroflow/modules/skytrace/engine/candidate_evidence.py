@@ -16,7 +16,7 @@ def enrich(item,anchor,detection,rows,loader,width,height):
     item['model_hints']=detection.get('model_hints',[])
     points=np.asarray(detection.get('segment') or detection.get('path') or [],dtype=float)
     quality=anchor.get('quality',{});stars=anchor.get('star_field',{})
-    evidence=dict(version=1,detector_score=detection.get('line_snr'),detector_threshold=LINE_SCORE_THRESHOLD if detection.get('line_snr') is not None else None,
+    evidence=dict(version=1,detector_score=detection.get('line_snr'),detector_threshold=detection.get('line_threshold',LINE_SCORE_THRESHOLD) if detection.get('line_snr') is not None else None,
                   quality=quality,registration=stars,hit_frames=len(item['hit_indices']),analysis_pixels='Pixel der Analyse-/Videoauflösung; Bayer-Bilder können gebinnt sein',
                   source_frame=anchor['index']+1,segment=points.tolist(),temporal=[],profile=None)
     evidence['shape_validation']=detection.get('shape_validation')

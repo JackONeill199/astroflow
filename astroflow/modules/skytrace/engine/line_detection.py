@@ -4,6 +4,32 @@ import numpy as np
 from scipy.ndimage import gaussian_filter, gaussian_filter1d, maximum_filter
 
 LINE_SCORE_THRESHOLD=10.5
+SHORT_BINS=7          # Abschnitte unter 7×24 px (Analyse-Maßstab ≤768 px) gelten als kurze Spur
+CALM_LIMIT=1.5        # kurze Spuren nur in ruhigem Hintergrund (lokales/globales Rauschen)
+
+
+def required_score(bins):
+    """Integrated contrast required for a section of `bins` 24px bins.
+
+    Long streaks keep the calibrated 10.5. Telescope fields are narrow, so a faint
+    meteor may cross only ~100 px: from two bins 5.2, +0.9 per bin. Short sections
+    must additionally lie in a calm background (`local_structure`). Calibrated
+    28.10.2026: M74 img-0041 meteor 5.5 found; no new short false alarm in IC59,
+    IC405, M103, NGC884 (all short noise there lies at bright stars/nebulae, ≥2.0).
+    """
+    return min(LINE_SCORE_THRESHOLD,5.2+.9*(bins-2))
+
+
+def local_structure(field, points, normal):
+    """Robust local noise around a segment (in global-noise units), the segment band excluded."""
+    h,w=field.shape
+    x0,y0=np.floor(points.min(axis=0)-20).astype(int).clip(0); x1,y1=np.ceil(points.max(axis=0)+21).astype(int)
+    x1,y1=min(w,x1),min(h,y1)
+    yy,xx=np.mgrid[y0:y1,x0:x1]
+    offset=np.abs((xx-points[0][0])*normal[0]+(yy-points[0][1])*normal[1])
+    values=field[y0:y1,x0:x1][offset>5]
+    if values.size<50: return np.inf
+    return float(1.4826*np.median(np.abs(values-np.median(values))))
 
 
 def merge_streak_detections(model_detections, lines, shape):
@@ -93,10 +119,11 @@ def detect_lines(image, comparison=None, transform=None):
             stars[ridge]=False
     votes=((z>1.35)&~stars).astype('uint8')*255
     votes[:12]=votes[-12:]=0; votes[:,:12]=votes[:,-12:]=0
-    lines=cv2.HoughLines(votes,1,np.pi/720,max(35,int(min(small.shape)*.075)))
+    # Low vote threshold so ~100 px meteors get a line; the contrast score decides.
+    lines=cv2.HoughLines(votes,1,np.pi/720,max(22,int(min(small.shape)*.042)))
     if lines is None: return []
     h,w=small.shape; candidates=[]
-    for rho,theta in lines.reshape(-1,2)[:160]:
+    for rho,theta in lines.reshape(-1,2)[:600]:
         normal=np.array([np.cos(theta),np.sin(theta)]); direction=np.array([-normal[1],normal[0]])
         center=normal*rho
         t=np.arange(-max(h,w)*2,max(h,w)*2,dtype='float32')
@@ -124,13 +151,20 @@ def detect_lines(image, comparison=None, transform=None):
         good=bins>.32
         best=None
         for start in np.where(good)[0]:
-            for end in range(start+3,len(bins)+1):
+            for end in range(start+2,len(bins)+1):
                 section=good[start:end]
                 if section.mean()<.65 or not section[-1]: continue
                 strength=float(np.mean(bins[start:end])*np.sqrt((end-start)*24/4))
+                if strength<required_score(end-start): continue
                 if best is None or strength>best[0]: best=(strength,start,end)
-        if best is None or best[0]<LINE_SCORE_THRESHOLD: continue
+        if best is None: continue
         snr,start,end=best
+        short=bool(end-start<SHORT_BINS)
+        # Partial readout rows/columns (M74 img-0292) mimic short faint streaks. Only short
+        # sections within 1° of a sensor axis are dropped; long axis-parallel streaks stay.
+        if short and min(abs(direction[0]),abs(direction[1]))<.0175: continue
+        # Short sections near bright stars, halos or nebula edges are the typical false alarm.
+        if short and max(local_structure(z,xy[start*24:end*24],normal),local_structure(source,xy[start*24:end*24],normal))>CALM_LIMIT: continue
         # Subtracting a bright trail in the previous exposure can create positive
         # side lobes. A candidate also needs a narrow ridge in this exposure itself.
         source_signal=sum(sample(k,source) for k in (-1,0,1))/3
@@ -144,22 +178,24 @@ def detect_lines(image, comparison=None, transform=None):
             source_bins.append(float(np.mean(values)) if len(values)>=12 else 0.)
         if np.mean(source_bins)*np.sqrt((end-start)*24/4)<5 or np.mean(np.asarray(source_bins)>.2)<.5: continue
         p1=xy[start*24]/scale; p2=xy[min(len(xy)-1,end*24-1)]/scale
-        if np.linalg.norm(p2-p1)<160: continue
+        if np.linalg.norm(p2-p1)<90: continue
         # Nearby parallel Hough solutions describe the same measured streak.
         midpoint=(p1+p2)/2
         if any(abs(np.dot(midpoint-np.mean(c['segment'],axis=0),normal))<12 and abs(np.dot(direction,c['_direction']))>.995 for c in candidates): continue
         height,width=image.shape
-        candidates.append(dict(kind='trail',label='Einzelbild-Spur (Meteor/Satellit/Flugzeug?)',confidence=None,box=[float(max(0,min(p1[0],p2[0])-8)/width),float(max(0,min(p1[1],p2[1])-8)/height),float(min(width,max(p1[0],p2[0])+8)/width),float(min(height,max(p1[1],p2[1])+8)/height)],segment=[p1.tolist(),p2.tolist()],line_snr=round(snr,2),method='Einzelbild: Sensorbanding-Korrektur + Hintergrundabzug + Hough + integrierter Linienkontrast',_direction=direction))
-        if len(candidates)>=8: break
+        candidates.append(dict(kind='trail',label='Einzelbild-Spur (Meteor/Satellit/Flugzeug?)',confidence=None,box=[float(max(0,min(p1[0],p2[0])-8)/width),float(max(0,min(p1[1],p2[1])-8)/height),float(min(width,max(p1[0],p2[0])+8)/width),float(min(height,max(p1[1],p2[1])+8)/height)],segment=[p1.tolist(),p2.tolist()],line_snr=round(snr,2),line_threshold=round(required_score(end-start),2),short_trail=short,method='Einzelbild: Sensorbanding-Korrektur + Hintergrundabzug + Hough + integrierter Linienkontrast',_direction=direction))
+        if len(candidates)>=12: break
     merged=[]
     for candidate in sorted(candidates,key=lambda c:c['line_snr'],reverse=True):
         segment=np.asarray(candidate['segment']); midpoint=segment.mean(axis=0)
         duplicate=False
         for kept in merged:
             other=np.asarray(kept['segment']); direction=kept['_direction']; normal=np.array([-direction[1],direction[0]])
-            if abs(np.dot(candidate['_direction'],direction))>.99 and abs(np.dot(midpoint-other.mean(axis=0),normal))<14:
-                a=segment@direction; b=other@direction
-                if min(a.max(),b.max())>max(a.min(),b.min()): duplicate=True; break
+            a=segment@direction; b=other@direction
+            overlapping=min(a.max(),b.max())>max(a.min(),b.min())
+            if abs(np.dot(candidate['_direction'],direction))>.99 and abs(np.dot(midpoint-other.mean(axis=0),normal))<14 and overlapping: duplicate=True; break
+            # A short fragment at a slight angle along a stronger streak is the same streak.
+            if candidate['short_trail'] and abs(np.dot(midpoint-other.mean(axis=0),normal))<16 and b.min()-8<=midpoint@direction<=b.max()+8: duplicate=True; break
         if not duplicate: merged.append(candidate)
     for candidate in merged: candidate.pop('_direction')
     return merged

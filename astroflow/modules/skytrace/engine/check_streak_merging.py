@@ -24,7 +24,8 @@ assert len(detect_lines(bright))==2
 assert not detect_lines(base,bright,np.eye(2,3)),'Disappearing bright trails created ghosts'
 print('OK: fragments merged; distinct parallel/crossing trails and unrelated candidates retained; bright trails detected; disappearing-trail ghosts rejected')
 
-root=Path(__file__).resolve().parent.parent/'Ergebnisse/2026-10-27_20-59-42-652459'
+from project_paths import BASE
+root=BASE/'Ergebnisse/2026-10-27_20-59-42-652459'
 summary=json.loads((root/'videos.json').read_text(encoding='utf-8'))[0]
 rows=[json.loads(s) for s in (root/Path(summary['video']).parent/'frames.jsonl').read_text(encoding='utf-8').splitlines()]
 for index in (30,31):

@@ -16,6 +16,7 @@ from image_store import write_image
 from astro_motion import EnsembleMotion
 from line_detection import detect_lines, merge_streak_detections
 from frame_quality import measure_quality,assess_quality,calibrate
+from motion_plausibility import narrow_field
 
 FITS = {'.fits', '.fit', '.fts'}
 
@@ -393,6 +394,13 @@ def run_sequences(args):
                 detections.extend(movers)
                 from trail_validation import validate_detections
                 detections,rejected_shapes,frame_validation=validate_detections(line_data,detections,quality)
+                if narrow_field(meta):
+                    # OpenSkyCam was trained on wide all-sky cameras; in telescope fields its class is only a hint.
+                    for detection in detections:
+                        detection['model_scope']='narrow_field'
+                        if detection.get('confidence') is not None and detection.get('line_snr') is None and detection.get('track_id') is None:
+                            detection.setdefault('model_hints',[]).append(dict(kind=detection['kind'],confidence=detection['confidence']))
+                            detection.update(kind='trail',label='Modellvorschlag (im Teleskopbild unsicher)')
                 if rejected_shapes:
                     summary['shape_rejected']=summary.get('shape_rejected',0)+len(rejected_shapes)
                     with (folder/'formartefakte.jsonl').open('a',encoding='utf-8') as rejected_shapes_file:

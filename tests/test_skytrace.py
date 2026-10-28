@@ -55,3 +55,30 @@ def test_laeufe_und_medien(tmp_path, monkeypatch):
         assert acts[0]["href"] == f"#/skytrace/{rid}" and acts[0]["state"] == "done"
         obs = c.get("/api/skytrace/observations", params={"source": str(home / "Ergebnisse" / rid)}).json()
         assert obs["observations"] == ["M103"]
+
+
+def test_spuren_ueber_mehrere_aufnahmen_verketten():
+    """M74 2022-08-07: ein langsames Objekt in vier Aufnahmen (gemessene Segmente) wird verkettet, der Meteor bleibt einzeln."""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parents[1] / "astroflow" / "modules" / "skytrace" / "engine"))
+    from motion_plausibility import narrow_field
+    from trail_tracks import link_tracks
+
+    meta = {"EXPOSURE": "10000", "INSTRUME": "stellina-a1b2c3", "FOCAL": "400", "PIXSZ": "2.4", "NAXIS1": "3072", "NAXIS2": "2080"}
+    def row(index, t, *segments):
+        return {"index": index, "timestamp": t, "meta": meta,
+                "detections": [{"kind": "trail", "segment": s, "line_snr": 9.0, "model_hints": [{"kind": "meteor", "confidence": .8}]} for s in segments]}
+    rows = [row(40, 1659913500, [[538, 112], [491, 193]]),
+            row(176, 1659916067, [[1507, 463], [1418, 433]]), row(177, 1659916082, [[1412, 433], [1320, 415]]),
+            row(179, 1659916112, [[996, 343], [858, 307]]), row(181, 1659916171, [[160, 129], [70, 105]]),
+            row(217, 1659916700, [[1369, 143], [1278, 119]])]
+    assert link_tracks(rows) == 1
+    linked = [r["index"] for r in rows if r["detections"][0].get("track_id") == "L1"]
+    assert linked == [176, 177, 179, 181]
+    d = rows[1]["detections"][0]
+    assert d["kind"] == "plane" and d["single_frame_kind"] == "trail" and d["linked_track"]["frames"] == [177, 178, 180, 182]
+    assert rows[0]["detections"][0]["kind"] == "trail" and "track_id" not in rows[5]["detections"][0]
+    # Teleskop (Stellina, ~1°) vs. Weitwinkel-Himmelskamera
+    assert narrow_field(meta) and not narrow_field({"FOCAL": "4", "PIXSZ": "2.9", "NAXIS1": "1920", "NAXIS2": "1080"})
+    assert not narrow_field({})

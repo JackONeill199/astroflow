@@ -10,6 +10,23 @@ def positive(value):
     except (ValueError,TypeError,OverflowError): return None
 
 
+NARROW_FIELD_DEG=5.
+
+
+def field_of_view(meta):
+    """Full field of view [deg] (width, height) from FITS FOCAL [mm], PIXSZ [µm], NAXIS1/2; None if unknown."""
+    focal=positive(meta.get('FOCAL'));pixel=positive(meta.get('PIXSZ'))
+    native_width=positive(meta.get('NAXIS1'));native_height=positive(meta.get('NAXIS2'))
+    if not (focal and pixel and native_width and native_height): return None
+    return [math.degrees(2*math.atan(n*pixel/1000/(2*focal))) for n in (native_width,native_height)]
+
+
+def narrow_field(meta):
+    """Telescope field: the OpenSkyCam model was trained on wide all-sky cameras and is only a hint here."""
+    fov=field_of_view(meta or {})
+    return bool(fov and max(fov)<NARROW_FIELD_DEG)
+
+
 def exposure_info(meta):
     """EXPTIME is seconds; Stellina EXPOSURE is milliseconds. Never invent 10 s."""
     seconds=positive(meta.get('EXPTIME'))
