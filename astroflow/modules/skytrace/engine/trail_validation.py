@@ -60,6 +60,10 @@ def validate_detections(image,detections,quality):
     distributed=len(centers)>=3 and bool(np.ptp(centers,axis=0).min()>.35)
     star_supported=(quality.get('tail_stars',0)>=8 and quality.get('tail_fraction',0)>=.15 and
                     quality.get('tail_direction_coherence',0)>=.7 and quality.get('tail_quadrants',0)>=3)
+    # Elongated star cores in a common direction are independent evidence too (M45 img 36: 42 % elongated,
+    # coherence 0.84, but median axis ratio 1.29 just below the shake limit and tails measured incoherently).
+    core_supported=quality.get('elongated_fraction',0)>=.3 and quality.get('direction_coherence',0)>=.75
+    star_supported=star_supported or core_supported
     burst=bool(distributed and coherence>=.85 and star_supported)
     context=dict(simultaneous_detections=len(detections),distributed_model_proposals=bool(distributed),
                  proposal_direction_coherence=round(coherence,3),star_supported_burst=burst,

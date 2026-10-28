@@ -394,13 +394,18 @@ def run_sequences(args):
                 detections.extend(movers)
                 from trail_validation import validate_detections
                 detections,rejected_shapes,frame_validation=validate_detections(line_data,detections,quality)
+                model_proposals=[]
                 if narrow_field(meta):
-                    # OpenSkyCam was trained on wide all-sky cameras; in telescope fields its class is only a hint.
+                    # OpenSkyCam was trained on wide all-sky cameras. In telescope fields it flags star trails of
+                    # shaken frames and bright stars (M45 2022-09-22: 22 proposals, none real). Its class stays a hint
+                    # on measured streaks; a box without a measured line is kept for review only, not as a candidate.
+                    kept=[]
                     for detection in detections:
                         detection['model_scope']='narrow_field'
                         if detection.get('confidence') is not None and detection.get('line_snr') is None and detection.get('track_id') is None:
-                            detection.setdefault('model_hints',[]).append(dict(kind=detection['kind'],confidence=detection['confidence']))
-                            detection.update(kind='trail',label='Modellvorschlag (im Teleskopbild unsicher)')
+                            model_proposals.append(dict(kind=detection['kind'],confidence=detection['confidence'],box=detection['box']))
+                        else: kept.append(detection)
+                    detections=kept
                 if rejected_shapes:
                     summary['shape_rejected']=summary.get('shape_rejected',0)+len(rejected_shapes)
                     with (folder/'formartefakte.jsonl').open('a',encoding='utf-8') as rejected_shapes_file:
@@ -425,6 +430,7 @@ def run_sequences(args):
                 clean_writer.write(cv2.cvtColor(gray,cv2.COLOR_GRAY2BGR))
                 row=dict(file=str(path),index=index,video_frame=written-1,video_seconds=round((written-1)/args.fps,4),timestamp=stamp, timestamp_text=stamp_text,meta=meta,quality=quality,registration_inliers=inliers,star_field=ensemble.quality,detections=detections,persistent_trails=len(trails.records),previous_to_current=affine.tolist() if affine is not None else None,reference_to_current=reference_affine.tolist() if reference_valid else None)
                 row['frame_validation']=frame_validation
+                if model_proposals: row['model_proposals']=model_proposals
                 frames_file.write(json.dumps(row,ensure_ascii=False)+'\n'); frames_file.flush()
                 preview_file=folder/'live.jpg'
                 write_image(preview_file,drawn)

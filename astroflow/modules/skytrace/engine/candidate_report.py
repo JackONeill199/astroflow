@@ -71,6 +71,9 @@ def extract_candidates(out,summary,settings=None,make_clean=True):
     groups={}
     for row in rows:
         for number,detection in enumerate(row.get('detections',[])):
+            # Teleskop-Bildfeld: Modellbox ohne gemessene Linie ist kein Kandidat (auch für ältere Läufe beim Aktualisieren)
+            if narrow_field(row.get('meta')) and detection.get('confidence') is not None and detection.get('line_snr') is None and detection.get('track_id') is None:
+                continue
             key=(detection['kind'],detection['track_id']) if detection.get('track_id') is not None else ('hit',row['index'],number)
             groups.setdefault(key,[]).append((row,detection))
     all_rows={row['index']:row for row in rows}

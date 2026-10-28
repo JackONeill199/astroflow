@@ -14,6 +14,7 @@ import re
 import shutil
 import threading
 import time
+import traceback
 from pathlib import Path
 
 
@@ -120,7 +121,55 @@ class AutoAnalysis:
             snap = ctl.snapshot(logs=False)
             self._finish(item, "error" if snap.get("failed") else "stopped" if snap.get("stopping") else "done", snap.get("status"))
 
+    def _keep_frames(self, item: dict):
+        """Aufnahmen, die der Bericht braucht (erstes Bild, je zwei vor/nach jedem Treffer), in den Ergebnisordner
+        übernehmen und die Pfade im Lauf umschreiben – hochgeladene Rohbilder hat das Bilder-Modul oft schon gelöscht,
+        ohne sie ließe sich der Lauf nicht mehr aktualisieren (M45 2022-09-22)."""
+        run = self.mod.ctl.results / item["run"] if item.get("run") else None
+        staged = self.dir / item["folder"]
+        if not run or not run.is_dir() or not staged.is_dir():
+            return
+        for session in [p for p in run.iterdir() if (p / "frames.jsonl").exists()]:
+            files, hits = {}, set()
+            for name in ("frames.jsonl", "ausgeschlossen.jsonl"):
+                path = session / name
+                for line in path.read_text(encoding="utf-8").splitlines() if path.exists() else []:
+                    row = json.loads(line)
+                    files[row["index"]] = row["file"]
+                    if name == "frames.jsonl" and row.get("detections"):
+                        hits.add(row["index"])
+            if not files:
+                continue
+            keep = {min(files)} | {i + d for i in hits for d in range(-2, 3)}
+            target = session / "rohbilder"
+            moved = {}
+            for i in sorted(keep & files.keys()):
+                src = Path(files[i])
+                if src.parent != staged or not src.exists():
+                    continue
+                target.mkdir(exist_ok=True)
+                dst = target / src.name
+                try:
+                    os.replace(src, dst)
+                except OSError:
+                    shutil.copy2(src, dst)
+                moved[str(src)] = str(dst)
+            if not moved:
+                continue
+            for path in [*session.glob("*.jsonl"), *session.glob("kandidaten.json"), *session.glob("kandidaten/*/kandidat.json")]:
+                text = path.read_text(encoding="utf-8")
+                new = text
+                for old, dst in moved.items():   # JSON-Pfad und file://-Verweis
+                    new = new.replace(json.dumps(old)[1:-1], json.dumps(dst)[1:-1]).replace(Path(old).as_uri(), Path(dst).as_uri())
+                if new != text:
+                    path.write_text(new, encoding="utf-8")
+
     def _finish(self, item: dict, state: str, message: str | None):
+        if state == "done":
+            try:
+                self._keep_frames(item)
+            except Exception:
+                traceback.print_exc()
         shutil.rmtree(self.dir / item["folder"], ignore_errors=True)
         with self.lock:
             item.update(state=state, message=message, finished=time.time())
