@@ -22,13 +22,13 @@ def main(argv=None):
 
     if a.cmd == "serve":
         import uvicorn
-        from .config import load_settings
+        from .core.config import load_settings
         from .server import create_app
         uvicorn.run(create_app(load_settings(a.data)), host=a.host, port=a.port)
     elif a.cmd == "process":
-        from .config import load_settings
-        from .db import DB
-        from .pipeline import Pipeline
+        from .core.config import load_settings
+        from .modules.stacking.db import DB
+        from .modules.stacking.pipeline import Pipeline
         s = load_settings(a.data)
         db = DB(s.db_path)
         pl = Pipeline(s, db)
@@ -42,7 +42,7 @@ def main(argv=None):
             except Exception as e:
                 print("\n  Fehler:", e)
     elif a.cmd == "demo":
-        from .demo import generate
+        from .modules.stacking.demo import generate
         generate(Path(a.out), n_lights=a.lights)
         print("Demo-Daten in", a.out)
 

@@ -1,0 +1,153 @@
+# SkyTrace-Modul in AstroFlow
+
+Herkunft: Repo `JackONeill199/SkyTrace` (bleibt unverändert bestehen). Die Analyse-Engine liegt hier in `engine/`
+(flache Python-Module, unverändert bis auf Pfade), die Oberfläche ist in die AstroFlow-Shell portiert (`static/skytrace.js`),
+Messgrafiken/Zoomdialoge (`static/evidence.js/css`) sind unverändert und werden auch in den eigenständigen Bericht eingebettet.
+
+## Abweichungen gegenüber dem Original-Repo
+
+- **Pfade** (`engine/project_paths.py`): `CODE` = `engine/`, `ASSETS` = Modulordner (Modell unter `models/`, `static/evidence.*`),
+  `BASE` = Datenordner aus `SKYTRACE_HOME` (Standard `<AstroFlow-Daten>/skytrace`, einstellbar unter Einstellungen → SkyTrace;
+  beim Nutzer zeigt er auf den bestehenden Ordner `AstroAnalyse/`, damit alle Läufe sichtbar bleiben). Wirkt nach Neustart.
+- **Server:** `web_server.py` ist durch `api.py` (FastAPI-Router unter `/api/skytrace`) ersetzt; Medien unter `/api/skytrace/media/<Lauf>/…`
+  (Range-Anfragen für Videos über `FileResponse`). Token-/Host-Prüfung entfällt – der AstroFlow-Kern blockt schreibende Anfragen fremder Herkunft.
+  LAN-Freigabe regelt AstroFlow (`serve --host`).
+- **Interpreter:** Analysen laufen als Unterprozess mit dem Interpreter aus Einstellungen → SkyTrace, sonst `<SKYTRACE_HOME>/.venv`, sonst
+  AstroFlows Python. Der AstroFlow-Server importiert nur leichte Engine-Teile (`json_store`, `observation_settings`, `video_overlays`) –
+  ohne OpenCV/PyTorch startet die App trotzdem; die Engine-Prüfung (`Module.check_engine`) zeigt fehlende Pakete an.
+  OpenSky-Anmeldung läuft im Engine-Interpreter (braucht `trino`).
+- Nicht übernommen: Tk-Desktop-Oberfläche (`desktop_app.py`, `catalog_dialog.py`, `location_picker.py`), Starter (`*.cmd/*.vbs`),
+  Web-Prüfungen gegen den alten Server (`check_web.py`, `check_lan.py`, `check_preview_race.py`). Die übrigen `check_*.py` liegen in `engine/`
+  und laufen mit gesetztem `SKYTRACE_HOME` (nutzen teils echte Daten unter `D:\Astro\Stellina`).
+- Abhängigkeiten der Engine: `requirements.txt` (Lock aus SkyTrace). Docker: `--build-arg SKYTRACE=1`.
+
+Das folgende Projektwissen stammt aus dem Original und gilt fachlich weiter (Pfadangaben beziehen sich auf den alten Projektordner).
+
+---
+
+# SkyTrace – Projektwissen für Agenten
+
+Stand: 28.10.2026. Diese Datei gilt für `AstroAnalyse/`. Bei Änderungen an Architektur, Bedienung oder Datenquellen mitpflegen. Details: `README.md`, `Ereignisvideos.md`, `Bugpruefung.md`. Ältere README-Abschnitte beschreiben teilweise die frühere Desktop-/Fotooberfläche; aktueller Code und diese Übersicht haben Vorrang für den Projektstand.
+
+## Ziel und feste Nutzerentscheidungen
+
+- Projektname: **SkyTrace**. Englischer Untertitel: **Uncover what moves among the stars.** Der bestehende Projektordner heißt weiterhin `AstroAnalyse/`.
+- Lokale Windows-Webanwendung zur Analyse vorhandener Astrofotos und Videos. Standardquelle: `D:\Astro\Stellina`, mit Unterordnern je Beobachtung. Keine RTSP-Kamera, Cloudflare-Installation oder Domain erforderlich.
+- Deutsche, hochwertige Browseroberfläche; Analyse starten/anhalten, Livebild, Fortschritt, Protokoll, Beobachtungsvideos und Kandidatenberichte.
+- Viele FITS-Aufnahmen einer Beobachtung werden chronologisch zu einem H.264-Zeitraffervideo. Einzelbildstreifen müssen auch ohne wandernden Punkt erkannt werden. Erkannte Spuren bleiben als Overlay im weiteren Video sichtbar.
+- Teleskopbewegung über das gesamte Sternfeld kompensieren; gemeinsame Sternbewegung nicht als Asteroid interpretieren. Verwackelte/unscharfe Bilder aus Analyse und Video ausschließen.
+- Kandidaten mit echten UTC-Zeiten und Vorher-/Nachher-Ausschnitten; Overlays abschaltbar. Messdetails, grafische Erklärungen und vergrößerbare Ansichten gehören zum Produkt.
+- LAN-Zugriff **ohne Passwort ist ausdrücklich gewünscht**. Nur das konfigurierte Heimnetz, keine öffentliche Freigabe.
+- Standortbezogene Online-Daten bevorzugen. Ausdrücklich erlaubte Ausnahme (28.10.2026): Satellitenbahnen zeitlich eng zur erkannten UTC-Aufnahmezeit abrufen und lokal nach Standort/Bildfeld filtern. **Keine automatischen weltweiten Jahres-/Monatsdownloads** als Ersatz für fehlende räumliche Abfragen.
+
+## Unveränderliche Daten und wissenschaftliche Grenzen
+
+- **Originale unter `D:\Astro\Stellina` ausschließlich lesen.** Nicht löschen, verschieben, umbenennen oder mit Sidecars/ASTAP-Ergebnissen beschreiben. „Entfernen“ unscharfer Aufnahmen bedeutet Ausschluss aus der Verarbeitung.
+- Ausgaben ausschließlich in `AstroAnalyse/Ergebnisse/<Lauf>/`; bestehende Nutzerläufe erhalten. Für geänderte Detektion/Re-Rendering einen eigenen Ergebnislauf verwenden. Berichtsergänzungen im ausdrücklich bearbeiteten Lauf sind möglich.
+- Keine Fotos hochladen. Katalogabfragen benötigen nur Standort, UTC und Himmelskoordinaten. Zugangsdaten und genaue Standortwerte nicht in Dokumentation oder Diagnoseausgaben kopieren.
+- Plate Solving bestimmt Himmelskoordinaten, **keinen Erdstandort**. Standort aus FITS, Beobachtungseinstellung oder Standard beziehen; Adresse/Browser-Geolocation ist nur geeignet, wenn es der damalige Standort ist.
+- UTC-Aufnahmezeit und Belichtung nicht mit Videozeit verwechseln. Stellina-`EXPOSURE` kann Millisekunden enthalten. Bayer-FITS werden gegebenenfalls 2×2 gebinnt; Pixel/FWHM beziehen sich auf die jeweilige Analyseauflösung.
+- Kandidat ≠ bestätigtes Objekt. Modellkonfidenz ≠ Identität. `line_snr` ist hier ein integrierter **Detektorwert**, keine kalibrierte Sigma-Signifikanz oder Prozentwahrscheinlichkeit.
+- Fehlendes Archiv, Timeout und nicht prüfbar niemals als „kein Objekt vorhanden“ darstellen. Ein geometrischer Katalogtreffer bleibt ein Hinweis. Meteor und Meteorit nicht gleichsetzen.
+- Sichtbarkeit meint den geometrischen WGS84-Horizont; Gelände, Wetter, Beleuchtung und Nachweisgrenze sind damit nicht vollständig modelliert.
+
+## Start, Laufzeit und Betrieb
+
+Projektpfad: `C:\Users\nutzer\Documents\Claude Code\AstroAnalyse`.
+
+Eigene Python-Umgebung: `.venv\Scripts\python.exe` (derzeit Python 3.14). Abhängigkeiten: `requirements-lock.txt`; Einrichtung mit `Einrichten.cmd`. Die vorhandene Umgebung enthält eine eigenständige Kopie der zuvor verwendeten Pakete. Modellgewichte und unveränderte Herkunfts-/Lizenzdateien liegen in `models/night-detector/`. Keine Laufzeitpfade in das Nachbarprojekt OpenSkyCam verwenden.
+
+```powershell
+# Aus AstroAnalyse/:
+.venv\Scripts\python.exe python/web_server.py --port 8765 --no-browser
+# Normaler Nutzerstart: Starten.cmd, Starten.vbs oder AstroAnalyse.lnk
+```
+
+- `python/app.py` startet die Webanwendung; erneuter Start öffnet eine bereits laufende Instanz. `python/desktop_app.py` / `Desktop.cmd` sind die alte Tk-Oberfläche.
+- Lokal: `http://127.0.0.1:8765`; aktuelles LAN: `http://192.168.1.131:8765` (IP kann sich ändern).
+- `web_network.json`: LAN aktiv, Subnetz `192.168.1.0/24`. Bestehende Firewallregel: `StellinaAstroAnalyseLAN`, privates Netz, TCP 8765. Host-/Subnetzprüfung und Origin-/Token-Prüfung für Schreibzugriffe erhalten; Passwortlosigkeit ist kein Grund, diese Schutzprüfungen zu entfernen.
+- Browser-Geolocation funktioniert über LAN-HTTP gewöhnlich nicht; Adresssuche anbieten. Keine Router-Portweiterleitung einrichten.
+- Vor Serverneustart `/api/state` auf laufende Arbeit prüfen. Lauf nicht zur Bereitstellung einer Änderung abbrechen. Bei nötigem Neustart tatsächlichen Listener und dessen Kommandozeile verifizieren; `web-server.pid` kann den Launcher statt des Listener-Prozesses bezeichnen.
+- Browser schließen beendet keinen Job. Stopp erfolgt kooperativ über eine STOP-Datei, MP4 wird finalisiert. Worker importieren neuen Python-Code beim nächsten Start; statische UI-Dateien nach Browser-Neuladen.
+- Hintergrundprozesse auf Windows mit verborgenem Fenster starten. Netzwerk-/Socket-Prüfungen benötigen je nach Sandbox eine Eskalation; normale Dateien im Workspace sind beschreibbar.
+
+## Architektur und wichtigste Dateien
+
+Alle Python-Module, Startpunkte, Prüfungen und Wartungsskripte liegen unter `python/`. `python/project_paths.py` trennt `CODE` (Python-Ordner) und `BASE` (Projektwurzel). Daten, Konfiguration, `web/`, `models/`, `tools/` und `.venv/` bleiben unter der Projektwurzel. Unterprozesse über `CODE`, Daten über `BASE` adressieren; nicht vom aktuellen Arbeitsverzeichnis ableiten. Diagnosebilder und ältere Protokolle liegen lokal unter `diagnose/`; aktive Serverprotokolle können im Hauptordner neu entstehen.
+
+| Dateien | Aufgabe |
+|---|---|
+| `python/web_server.py` | Standardbibliothek-HTTP-Server, API, Prozesscontroller, Start/Stopp, LAN-/Pfadschutz, Medien-/MP4-Range-Auslieferung |
+| `web/index.html`, `web/app.js`, `web/style.css` | Browseroberfläche ohne Buildschritt; Polling, Live-/Archivansicht, Zeitreihen, Einstellungen |
+| `python/analyse.py` | Bild-/FITS-Laden, Metadaten, Foto-/Videoanalyse; JSONL-Ereignisse über stdout |
+| `python/sequence.py` | Bildfolgen, Registrierung, Detektion, bleibende Spuren, Qualitätsausschluss, Videos und Berichte |
+| `python/astro_motion.py`, `python/frame_quality.py` | Sternensemble-Registrierung und Bildschärfe/Verwacklung |
+| `python/line_detection.py` | Sensorbandkorrektur, Hintergrundvergleich, Hough-/Linienkontrastdetektion; `LINE_SCORE_THRESHOLD = 10.5` |
+| `python/solving.py` | Lokales ASTAP, WCS und Himmelsobjektbeschriftung; erzeugt FITS-Kopie im Ergebnisordner |
+| `python/candidate_report.py` | Kandidaten gruppieren, saubere Ausschnitte/Zeitreihen, WCS-Zuordnung, automatische Lösung bei fehlender WCS, Katalogprüfung |
+| `python/candidate_evidence.py` | Ursprünglichen Detektorwert, Bild-/Registrierqualität, Winkellänge, Querprofil und registrierten zeitlichen Kontrast speichern |
+| `web/evidence.js`, `web/evidence.css` | Gemeinsame Messgrafiken und Zoomdialoge für App und eigenständigen Bericht |
+| `python/report_view.py` | Eigenständiges HTML mit eingebettetem Evidence-JS/CSS; Ausschnitte/Videos bleiben relative Begleitdateien |
+| `python/catalog_matching.py`, `python/catalog_http.py` | Katalogvergleich, Cache, begrenzte/abbrechbare JPL-Abfragen und geometrische Diagnostik |
+| `python/archive_sources.py`, `python/satellite_archive.py` | Vorhandene historische Archive, lokaler Zeitindex, SGP4 und konservative Satellitenvorauswahl |
+| `python/opensky_archive.py`, `python/visibility.py` | OpenSky-Trino-OAuth, begrenzte Flugabfragen und gemeinsamer geometrischer Horizontfilter |
+| `python/observation_settings.py` | Validierte Standort-/Katalogeinstellungen, FITS-/Beobachtungs-/Standardstandort |
+| `python/json_store.py`, `python/image_store.py` | Atomare Veröffentlichung und Wiederholung bei vorübergehenden Windows-Dateisperren |
+
+Videos: PyAV/libx264. ASTAP: bevorzugt `tools/astap/astap_cli.exe`, sonst `C:/Program Files/astap/astap_cli.exe`; Sternkatalog unter `tools/astap/catalog/`. Deep-Sky-Beschriftung aus `C:/Program Files/astap/deep_sky.csv`.
+
+## Formate, Persistenz und bewährte Reparaturen
+
+- Beobachtungsauswahl markiert vorhandene Bildfolgen anhand aller `videos.json` als „Bereits analysiert“ bzw. „Teilweise bearbeitet“, auch nach Neustart. Zuordnung über `source_folder` (bei alten Läufen erste Originaldatei aus `frames.jsonl`/`ausgeschlossen.jsonl`), damit gleichnamige Ordner anderer Quellen nicht markiert werden. Neue Zusammenfassungen speichern `limited` für begrenzte Bildanzahl. Wiederholungen bleiben möglich; Originalordner werden nicht beschrieben.
+- Helle, zusammenhängende schmale Linien von der Sternmaske ausnehmen. Differenzbild-Spuren benötigen zusätzlich positiven Linienkontrast im aktuellen Originalbild, sonst entstehen Nebenloben nach dem Verschwinden einer hellen Spur. YOLO-Teilboxen über Schnitt mit gemessenen Segmenten zusammenfassen (`merge_streak_detections`), nicht allein über Box-IoU. Modellklassen bleiben `model_hints`; gemessene Linien bleiben unbestätigte Einzelbild-Spuren. `python/rebuild_trails.py --redetect-lines` misst alte Läufe neu in einen eigenen Ergebnisordner; danach Kandidatenausschnitte neu erzeugen.
+- `python/motion_plausibility.py`: lokale Vorprüfung aus FITS-NAXIS, FOCAL [mm], PIXSZ [µm], EXPTIME [s] bzw. Stellina EXPOSURE [ms], nach Messung und vor Katalogen; vorhandene WCS hat für Spurlängen Vorrang. Binning/Video-Verkleinerung berücksichtigen. Belichtungszeit ist nur Obergrenze der Sichtbarkeit, Winkelgeschwindigkeit daher Untergrenze. Drei explizite Vergleichsszenarien (Flugzeug 10 km/0,25 km/s; Satellit 500 km/7,8 km/s; Meteor 100 km/30 km/s) sind **keine Klassengrenzen**. Ein unpassendes Szenario schließt nicht die Klasse aus. Keine Entfernung aus Pixeln behaupten. Fehlende/widersprüchliche Belichtung verhindert zeitabhängige Katalogabfragen; niemals ersatzweise 10 s erfinden. In App und Bericht unter „Physikalische Vorprüfung“ sichtbar.
+- Browser-Overlays zeigen kompakt `≥ …″/s` (Mindest-Winkelgeschwindigkeit, niemals behauptete km/h). Zusatzinformationen nur beim Hover/Fokus auf Spur/Geschwindigkeit oder „Messdetails“. `python/video_overlays.py` rekonstruiert gemessene Dauerspuren samt Sterntransformation und echter `video_seconds`-Zeitachse aus gespeicherten Frames. App/Bericht verwenden dafür das saubere Video plus SVG; Overlay-Schalter, Rückwärtssuche und Vollbild des Containers erhalten. Heruntergeladenes altes MP4 bleibt unverändert. `python/check_video_overlays.py`, `node check_web_ui.cjs` prüfen Zeitzuordnung und Darstellung.
+- Sichtbarkeit von SVG mit `AstroEvidence.setOverlayVisible` steuern: `SVGElement.hidden` allein entfernt kein vorhandenes `hidden`-Attribut. Hauptvorschau erst bei tatsächlich rekonstruierten Spuren auf sauberes Bild/Video umstellen; andernfalls annotierte Medien beibehalten. Regression prüft den vollständigen `renderPreview`-Pfad sowie Aus-/Einschalten.
+- Overlay-Größe vor Beschriftung an die tatsächlich dargestellte Bildfläche anpassen. Bei Bildvorschau den Container (Vollbild/Resize) und Bildladen beobachten; ein `ResizeObserver` nur auf dem versteckten Video genügt nicht. Normale Ansicht und Vollbild müssen dieselben sternregistrierten Koordinaten zeigen.
+- Overlay benennt die Kandidatenklasse wieder: vorhandene geometrische Kataloghinweise, sonst Original-Modellhinweise (`model_hints`) bzw. ursprüngliche Klasse; niemals eine Klasse nur aus Beispielgeschwindigkeiten ableiten. „Meteorkandidat“ bleibt unbestätigter Modellvorschlag. `python/refresh_overlay_labels.py <Lauf>` übernimmt alte Modellhinweise offline aus den gespeicherten Erkennungen und erneuert den Bericht.
+- Einstellungen → Overlay-Anzeige: Winkelgeschwindigkeit oder `km/h*` mit explizit angenommener Entfernung in km; lineare Mindest-Schätzung = Winkelgeschwindigkeit [rad/s] × Entfernung [km] × 3600. Kein Entfernungsstandard erfinden. Annahme im Tooltip offenlegen. Anzeigepräferenz unter `stellina-overlay-display` pro Browser gespeichert; keine Veränderung von wissenschaftlichen Messwerten/Katalogprüfungen.
+- Gewünschter Overlay-Schriftstil: gelbe Arial/Helvetica-Schrift mit dunkler Kontur direkt im Bild, keine hinterlegten Beschriftungskästen. Plate-Solving-Objekte bleiben als blaue Positionskreise und Namen sichtbar. `python/video_overlays.py` nutzt gespeicherte WCS und lokalen Katalog, pro Frame über `reference_to_current` positioniert; keine erfundenen Positionen bei fehlender Registrierung. Auch reine Plate-Solving-Läufe ohne Ereigniskandidaten unterstützen. Kein erneutes Solving/Online-Abruf nötig.
+- Nutzeränderung: Messdetails dauerhaft geöffnet in der Analyse anzeigen (`analysisDetails`), nicht per Hover verstecken. Satellitenvergleich direkt über der echten vollständigen Aufnahme anzeigen, keine getrennte Satelliten-Grafik/kein separates Vergleichsfenster. `python/satellite_overlay.py` projiziert gespeicherte topozentrische Bahnen über WCS und Sternregistrierung in Bildpixel; außerhalb liegende Bahnen ausdrücklich kennzeichnen, niemals ins Bild verschieben. `context_image` bleibt unbeschriftet. `python/refresh_satellite_overlays.py <Lauf>` ergänzt vorhandene Berichte vollständig offline. Hauptvorschau zeigt die Prognosen des gewählten Kandidaten ab dessen Trefferbild mit expliziter Bildnummer.
+
+- Lauf: `videos.json`, `bericht.html`, `kandidaten.json`; je Beobachtung `frames.jsonl`, `ausgeschlossen.jsonl`, `ereignisse.mp4`, `original.mp4`, `live.jpg`, `live-clean.jpg`, `spuren.json`, `platesolve/` und `kandidaten/Kxxxx/` mit PNGs und `kandidat.json`.
+- `reference_to_current` bildet Referenz- auf aktuelle Bildkoordinaten ab. Für WCS aktuelle Spur zurück ins Referenzbild transformieren. Ausschnitt-/Analyse-/Originalkoordinaten und Bayer-Binning nicht vermischen.
+- `kandidat.json`: unter anderem `world_path`, `frames`, `catalogs`, `evidence`. Messprofile sind ergänzende Diagnosewerte aus linearen Bilddaten, kein nachträglich erfundener Detektorwert. Unscharfe oder unzuverlässig registrierte Nachbarn nicht vermessen.
+- JSON/Bilder atomar veröffentlichen; bei HTTP Content-Length und Inhalt aus demselben geöffneten Dateihandle. Windows kann während paralleler Vorschauzugriffe kurzzeitig `PermissionError` liefern; vorhandene Retry-Helfer nutzen. SQLite-Verbindungen ausdrücklich schließen.
+- UI: veraltete Requests dürfen keine neuere Auswahl überschreiben; Token-/Logzustand bei Serverneustart erneuern, fremd gestartete Jobs übernehmen. Videoposition nur beim Overlaywechsel derselben Beobachtung erhalten. Tests dürfen `letzter-lauf.txt` und echte Einstellungen nicht überschreiben.
+- Konfiguration: `catalog_settings.json`, `web_preferences.json`, `web_network.json`. Logs: `web-server.log`, `web-server-error.log`. Nicht mit Testdaten zurücksetzen.
+
+## Kataloge: aktueller Funktionsumfang und Grenzen
+
+- **Asteroiden:** JPL SB-Ident, echter Standort und Belichtungsmittelpunkt, tatsächliches Himmelsfeld, numerischer Zweipass-Abgleich. Anfragen seriell mit Dienstsperre und Cache. **45 s Gesamtzeitlimit inklusive Sperrwartezeit**, Fortschritt alle 5 s, stoppbarer HTTP-Unterprozess. Timeout betrifft die konkrete Abfrage; andere Felder weiter prüfen. Keine ungefähre Erstpassposition als Bestätigung ausgeben.
+- **Satelliten:** vorhandenes Space-Track-Archiv/Mirror Julien Simon (CC-BY-4.0) bevorzugen; bei fehlenden zeitnahen Bahnen dynamischer ETH-Abruf (`archive_sources.eth_tles`) anhand des UTC-Belichtungsmittelpunkts, auch bei aktuellen Aufnahmen. Eine UTC-Minute plus je höchstens 3 Tage für benachbarte TLEs; vollständige Pagination mit unverändertem Zeitfilter, maximal 120 Seiten/180 s einschließlich stoppbarer Sperrwartezeit. Nur vollständige, nichtleere Antworten atomar cachen. ETH sammelt seit 10.03.2023, mit möglichen Lücken; fehlende Abdeckung ist kein Ausschluss. Keine aktuellen TLEs als Ersatz für alte Daten. Vorhandene Nachbarjahre werden am Jahreswechsel lokal berücksichtigt. Gerundete lokale Bahnelemente bzw. ETH-TLEs mit SGP4; standardmäßig höchstens 3 Tage Bahnalter. Erst Standort/Zeit/Bildfeld vorauswählen, dann exakt propagieren. Vergleichstoleranz 360″, mindestens 50 % Spurabdeckung und passende Ausrichtung. Bis zu 8 nächste geprüfte Bahnen samt Ablehnungsgründen für Grafiken speichern.
+- **GMN:** vorhandene offizielle Monatsdateien mit gemessenen Meteorflugbahnen, lokaler SQLite-Zeitindex plus Standorthorizont. Kein vollständiger Meteorkatalog.
+- **CNEOS:** nur bereits vorhandener Zeitcache, weil der Dienst keinen räumlichen Serverfilter bietet; unterhalb des Horizonts liegende Ereignisse verwerfen.
+- **OpenSky:** Trino-OAuth ist implementiert, echter Flugabruf benötigt vom Anbieter freigeschalteten Archivzugang. Nutzer hat bislang **keinen solchen Zugang**; keine funktionsfähige Flugarchivprüfung behaupten. Keine Passwörter in App/Chat sammeln. Offizieller Client speichert Token im Windows-Anmeldespeicher. SQL auf Stundenpartition, Zeit, geografischen Bereich und WGS84-Horizont begrenzen.
+- Cache: `catalog_cache/`, Archive darunter `archives/`. Vorhandene globale Bestände erhalten, lokal filtern. `archive_sources.download()` darf fehlende Sammelarchive nicht automatisch herunterladen. Manuell konfigurierte TLE-/CSV-Dateien oder HTTPS-URLs sind ausdrücklich gewählte alternative Quellen.
+
+## Prüfen und Berichte ergänzen
+
+Aus `AstroAnalyse/` jeweils `.venv\Scripts\python.exe python/<Datei>` ausführen. Nur passende Tests zur Änderung; einige nutzen echte lokale FITS und können länger dauern.
+
+| Änderung | Relevante Prüfungen |
+|---|---|
+| UI/HTTP | `node check_web_ui.cjs`, `python/check_web.py`; Browser zusätzlich visuell prüfen |
+| Kataloge/Stopps | `python/check_dynamic_satellites.py`, `python/check_auto_catalogues.py`, `python/check_catalog_wait.py`, `python/check_candidates.py` |
+| Messdetails | `python/check_evidence.py`, `python/check_candidates.py`; App **und** eigenständigen Bericht mit Zoom/Overlay prüfen |
+| Physikalische Vorprüfung | `python/check_motion_plausibility.py`, `python/check_evidence.py`, `python/check_candidates.py`, `node check_web_ui.cjs`; Belichtungseinheiten, fehlende Metadaten, WCS und Binning sowie keine pauschalen Klassenausschlüsse |
+| Sensorstreifen | `python/check_banding.py` – echte IC405-Fehlspuren sowie echte/synthetische horizontale, vertikale und diagonale Linien erhalten |
+| Doppelte Spuren/helle Linien | `python/check_streak_merging.py`, `python/check_banding.py`, `python/check_sequence.py` – NGC884/869: acht Modellboxen in Bild 31 zu zwei Linien zusammenfassen; Differenz-Nebenloben in Bild 32 verwerfen |
+| Bewegung/Schärfe | `python/check_ensemble.py`, `python/check_quality.py`, `python/check_registration_data.py`, `python/check_sequence.py` |
+| Schwache Sternschweife/Formprüfung | `python/check_field_tails.py`, `python/check_trail_validation.py`, `python/check_quality.py`, `python/check_streak_merging.py`; IC59-Bild 114 verwerfen, echte NGC884-/M82-Spuren und mehrere gleichzeitige echte Linien erhalten |
+| Dateizugriff/LAN | `python/check_preview_race.py`, `python/check_lan.py` |
+
+Temporäre Testordner im Workspace anlegen; bei Windows-Dateisperren temporäre SQLite-/Bilddateien vor Cleanup schließen. HTTP-Tests müssen ausschließlich ihre temporären Einstellungen, Ergebnisordner und Laufmarker verwenden.
+
+- `python/refresh_evidence.py <Ergebnisordner>`: Messdetails bestehender Kandidaten und lokale Satellitendiagnostik ergänzen, **ohne neue Online-Abfragen**.
+- `python/candidate_report.py <Ergebnisordner> --stop-file <Pfad>`: vollständige Zeitreihen-/Katalogaktualisierung; kann Online-Abfragen auslösen.
+- `python/rebuild_trails.py <Quelllauf> <neuer Ziellauf> --filter-readout`: separat neu rendern und Sensorfehlspuren prüfen; Quelllauf erhalten.
+
+Wichtige reale Vergleichsfälle:
+- `Ergebnisse/2026-10-27_22-24-07-014274`: IC59, fünf Modellvorschläge nur in Bild 114. Schwache gleichgerichtete Schweife an 17/69 eindeutigen Sternkernen in vier Quadranten, Kohärenz 0,882; helle Kerne allein knapp unter alter Verwacklungsgrenze. `extended_star_tails` misst verbundene schwache Ausläufer jenseits der Kerne; schwache Nebenmaxima eines Schweifs dürfen nicht als zweite Referenzsterne gezählt werden. `assess_quality` verwirft belastbar globale Muster. `trail_validation` prüft gerade/gebogene Modellvorschläge und räumlich verteilte gleichzeitige Vorschläge nur zusammen mit unabhängigen Sternbefunden. Anzahl allein niemals Ausschlussgrund. Nachprüfung separat mit `python/rebuild_trails.py --validate-motion`; Quelle und Originale erhalten, sauberes und annotiertes Video beide neu erzeugen, ausgelassene Frames korrekt neu durchnummerieren.
+- `Ergebnisse/IC405-Sensorrauschen-korrigiert`: horizontales statisches Sensorrauschen wurde als Spur fehlinterpretiert. Nicht pauschal horizontale Linien verbieten! Korrektur verlangt Übereinstimmung unabhängiger Sensorstreifen und beider Ränder.
+- `Ergebnisse/2026-10-27_20-01-34-078878`: M103, K0001/Bild 99 und K0002/Bild 126. Detektorwerte 14,95/16,45, Winkellängen 35,612′/39,5795′. Messprofile und Zoom ergänzt; **keine bestätigte Objektidentität**. Nächste geprüfte Satellitenbahnen ca. 84,35′/27,73′ entfernt bei 6′ Toleranz.

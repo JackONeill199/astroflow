@@ -1,4 +1,4 @@
-from astroflow import scanner
+from astroflow.modules.stacking import scanner
 
 
 def test_stellina_refocus_folder_is_scanned(tmp_path):

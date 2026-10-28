@@ -1,6 +1,6 @@
 import numpy as np
 
-from astroflow.stacking import StackState, batch_size_for
+from astroflow.modules.stacking.stacking import StackState, batch_size_for
 
 
 def _frames(rng, B, shape=(3, 256, 384)):

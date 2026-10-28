@@ -3,11 +3,11 @@ import json
 
 import numpy as np
 
-from astroflow import calibration, demo
-from astroflow.config import load_settings
-from astroflow.db import DB
-from astroflow.pipeline import Pipeline
-from astroflow.reviewer import ReviewerConfig
+from astroflow.modules.stacking import calibration, demo
+from astroflow.core.config import load_settings
+from astroflow.modules.stacking.db import DB
+from astroflow.modules.stacking.pipeline import Pipeline
+from astroflow.modules.stacking.reviewer import ReviewerConfig
 
 H, W = 200, 300
 

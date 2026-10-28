@@ -15,7 +15,7 @@ import numpy as np
 from PIL import Image
 
 from . import calibration, channels, develop, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner
-from .config import Settings, free_ram_mb
+from ...core.config import Settings, free_ram_mb
 from .db import DB
 from .fits_io import FrameInfo, parse_date, read_data, to_channels, write_fits
 from .stacking import StackState, batch_size_for

@@ -1,0 +1,81 @@
+/* SkyTrace im AstroFlow-Design. evidence.css (gemeinsam mit dem eigenständigen Bericht) bleibt unverändert und wird hier nur angepasst. */
+.stlive { display: block; color: var(--fg); margin-bottom: 20px; border-color: color-mix(in srgb, var(--acc3) 40%, transparent) }
+.stlive .live { background: var(--acc3); color: var(--acc3) }
+.stlive .progress i { background: linear-gradient(90deg, var(--acc3), var(--acc)) }
+
+/* Himmelsansicht mit Bild/Video und Overlay */
+.sky { position: relative; aspect-ratio: 3/2; border-radius: var(--r); overflow: hidden; background: radial-gradient(circle at 50% 45%, #121a32, #02040a); border: 1px solid var(--line);
+  box-shadow: var(--shadow) }
+.sky img, .sky video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; animation: fadeIn .4s var(--ease) }
+.sky .motion-video-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none }
+.sky .motion-video-overlay:not([hidden]) { pointer-events: auto }
+.sky-empty { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 6px; text-align: center; color: var(--mut) }
+.sky-empty svg { width: 42px; height: 42px; color: var(--acc3); opacity: .7 }
+.sky-info { position: absolute; left: 14px; right: 60px; top: 12px; display: flex; gap: 12px; justify-content: space-between; font: 600 11px/1.4 ui-monospace, monospace;
+  letter-spacing: .06em; color: #cfe3eecc; text-shadow: 0 1px 3px #000; pointer-events: none }
+.sky-full { position: absolute; right: 10px; bottom: 10px; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; border: 1px solid #ffffff22;
+  background: #0b1020b3; color: #e8ebf5; cursor: pointer; backdrop-filter: blur(8px); transition: opacity .2s }
+.sky:not(:hover) .sky-full { opacity: .55 }
+.sky:fullscreen { border-radius: 0; aspect-ratio: auto }
+.sky::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 80px #000a; border-radius: inherit }
+.st-stats { margin-top: 0; grid-template-columns: repeat(2, 1fr) }
+
+/* Protokoll */
+.loglist { max-height: 520px; overflow: auto; font: 12px/1.6 ui-monospace, "Cascadia Mono", monospace; display: grid; gap: 1px }
+.loglist.mini { max-height: 220px }
+.logrow { display: grid; grid-template-columns: 70px 62px 1fr; gap: 8px; padding: 3px 6px; border-radius: 6px; animation: fadeIn .3s }
+.logrow:hover { background: color-mix(in srgb, var(--panel2) 60%, transparent) }
+.logrow time { color: var(--dim) }
+.ltag { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: var(--acc3) }
+.logrow.rejected .ltag, .logrow.error .ltag { color: var(--warn) }
+.logrow.fatal .ltag { color: var(--bad) }
+.logrow.done .ltag { color: var(--ok) }
+.loglist.mini .logrow { grid-template-columns: 62px 1fr }
+.loglist.mini .ltag { display: none }
+
+/* Kandidaten: Liste + Detail */
+.st-cands { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 18px; align-items: start }
+@media (max-width: 1000px) { .st-cands { grid-template-columns: 1fr } .st-clist { position: static; max-height: 260px } }
+.st-clist { display: grid; gap: 6px; position: sticky; top: 84px; max-height: calc(100vh - 110px); overflow: auto; padding-right: 4px }
+.ccard { display: flex; gap: 10px; align-items: center; text-align: left; padding: 8px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--fg);
+  cursor: pointer; font: inherit; transition: border-color .2s, background .2s, transform .3s var(--ease); animation: fadeUp .4s var(--ease) both; animation-delay: calc(min(var(--i, 0), 14) * 30ms) }
+.ccard:hover { border-color: var(--line2); transform: translateX(2px) }
+.ccard.on { border-color: color-mix(in srgb, var(--acc3) 60%, transparent); background: color-mix(in srgb, var(--acc3) 8%, var(--panel)) }
+.ccard img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; background: #000; flex: none }
+.ccard div { display: grid; gap: 1px; min-width: 0 }
+.ccard b { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.ccard span { font-size: 12.5px; color: var(--acc3) }
+.st-cdetail { min-width: 0 }
+.cstage { position: relative; border-radius: 12px; overflow: hidden; background: #000; cursor: zoom-in; margin: 4px 0 10px }
+.cstage img { display: block; width: 100%; max-height: 520px; object-fit: contain; image-rendering: auto }
+.cstage svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none }
+.cstage-zoom { position: absolute; right: 10px; bottom: 10px; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; border: 1px solid #ffffff22; background: #0b1020b3; color: #fff }
+.tl-ctrl { display: flex; align-items: center; gap: 6px; margin: 10px 0 }
+.tl-ctrl input[type=range] { flex: 1; accent-color: var(--acc3); height: auto; padding: 0; border: 0; background: none }
+.tl-thumbs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px }
+.tl-th { flex: none; width: 74px; border: 2px solid transparent; border-radius: 9px; padding: 0; background: #000; overflow: hidden; cursor: pointer; position: relative; color: #fff }
+.tl-th img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; opacity: .75; transition: opacity .2s }
+.tl-th span { position: absolute; inset: auto 0 0 0; font-size: 10px; background: #000a; padding: 1px 3px }
+.tl-th.hit { border-color: color-mix(in srgb, #f2d385 60%, transparent) }
+.tl-th.rej img { filter: grayscale(1) blur(1px) }
+.tl-th.on { border-color: var(--acc3) } .tl-th.on img, .tl-th:hover img { opacity: 1 }
+.acc { color: var(--acc3) }
+.st-catalogs { margin-top: 18px; display: grid; gap: 10px }
+.st-catalogs h3 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--mut) }
+.st-cat { padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: color-mix(in srgb, var(--panel2) 40%, transparent) }
+.st-cat p { margin: 6px 0 0 }
+.srcs { display: grid; gap: 6px; margin: 6px 0 12px; font-size: 12.5px; color: var(--mut) }
+.srcs b { color: var(--fg); display: inline-block; min-width: 54px }
+.addr { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 }
+.addr .chip { cursor: pointer }
+.addr .chip:hover { border-color: var(--acc) }
+
+/* Messdetails (evidence.js) an die App angleichen */
+.st-cdetail .analysis-details { margin: 0 -20px; }
+.st-cdetail .evidence-panel { border-top-color: var(--line); color: var(--mut); padding: 20px }
+.st-cdetail .evidence-panel h3 { color: var(--fg); font-size: 15px }
+.st-cdetail .evidence-metrics > div, .st-cdetail .evidence-chart { background: color-mix(in srgb, var(--panel2) 45%, transparent); border-color: var(--line); border-radius: 12px }
+@media (max-width: 760px) { .st-cdetail .evidence-metrics, .st-cdetail .evidence-graphs { grid-template-columns: 1fr 1fr } }
+@media (prefers-color-scheme: light) {
+  .st-cdetail .evidence-panel { background: #0b1220; border-radius: 12px; margin: 0 20px }
+}

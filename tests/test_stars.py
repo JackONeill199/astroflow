@@ -1,8 +1,8 @@
 """GHS-Stretch und Sternentrennung."""
 import numpy as np
 
-from astroflow import objects, processing
-from astroflow import stars as S
+from astroflow.modules.stacking import objects, processing
+from astroflow.modules.stacking import stars as S
 
 
 def test_ghs_monotonic_and_contrast_at_symmetry_point():

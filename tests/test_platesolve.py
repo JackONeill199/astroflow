@@ -6,11 +6,11 @@ import numpy as np
 import pytest
 from astropy.io import fits
 
-from astroflow import demo, platesolve
-from astroflow.config import load_settings
-from astroflow.db import DB
-from astroflow.pipeline import Pipeline
-from astroflow.reviewer import ReviewerConfig
+from astroflow.modules.stacking import demo, platesolve
+from astroflow.core.config import load_settings
+from astroflow.modules.stacking.db import DB
+from astroflow.modules.stacking.pipeline import Pipeline
+from astroflow.modules.stacking.reviewer import ReviewerConfig
 
 # Attrappe der ASTAP-CLI: schreibt eine .ini im echten ASTAP-Format neben das Eingabebild.
 # Modus steht in mode.txt (ok|fail), jeder Aufruf wird in calls.txt protokolliert.
@@ -123,9 +123,9 @@ def test_auto_chain_without_solvers_is_disabled(tmp_path):
 
 
 def test_extended_catalog_names_solved_field(tmp_path, monkeypatch):
-    from astroflow import objects
-    from astroflow.fits_io import FrameInfo
-    from astroflow.scanner import assign_project
+    from astroflow.modules.stacking import objects
+    from astroflow.modules.stacking.fits_io import FrameInfo
+    from astroflow.modules.stacking.scanner import assign_project
     csv = tmp_path / "deep_sky.csv"
     csv.write_text("header\nunits\n162142,127007,NGC1579/Sh2-222,120,80\n162520,127602,IC2067\n"
                    "680151,118907,M57/NGC6720/Ring_Nebula/PNG063.1+13.9,30,24,55\n", encoding="utf-8")
