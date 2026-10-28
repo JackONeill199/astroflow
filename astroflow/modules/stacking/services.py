@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 import math
 import re
+import shutil
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -98,6 +100,8 @@ class PictureSolver:
                     return describe(wcs, w, h, "header")
             except Exception:
                 pass
+        if not self.available:
+            raise platesolve.SolveError("kein lokaler Plate-Solver eingerichtet")
         hint = dict(hint or {})
         if "ra" not in hint:
             c = name_hint(filename or path.name)
@@ -107,12 +111,18 @@ class PictureSolver:
             raise platesolve.SolveError("ohne Positionshinweis nicht lokal lösbar – Objektnamen in den Dateinamen schreiben "
                                         "(z. B. „M42.jpg“) oder das Online-Lösen erlauben")
         errors = []
-        for fov in ([hint["fov_h"]] if hint.get("fov_h") else FOV_GUESSES):
-            try:
-                hdr = platesolve.solve_image(self.cfg, L, self.work / "picture_solve", hint["ra"], hint["dec"], fov)
-                return describe(WCS({**hdr, "NAXIS": 2, "NAXIS1": w, "NAXIS2": h}, naxis=2), w, h, self.cfg.chain()[0])
-            except platesolve.SolveError as e:
-                errors.append(str(e))
+        # eigener Arbeitsordner je Aufruf: solve_image schreibt/löscht feste Dateinamen (gleichzeitige Analysen)
+        (self.work / "picture_solve").mkdir(parents=True, exist_ok=True)
+        tmp = Path(tempfile.mkdtemp(dir=self.work / "picture_solve"))
+        try:
+            for fov in ([hint["fov_h"]] if hint.get("fov_h") else FOV_GUESSES):
+                try:
+                    hdr = platesolve.solve_image(self.cfg, L, tmp, hint["ra"], hint["dec"], fov)
+                    return describe(WCS({**hdr, "NAXIS": 2, "NAXIS1": w, "NAXIS2": h}, naxis=2), w, h, self.cfg.chain()[0])
+                except platesolve.SolveError as e:
+                    errors.append(str(e))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
         raise platesolve.SolveError(f"keine Lösung in der Nähe von {hint.get('name') or 'der vermuteten Position'} ({errors[-1]})")
 
 

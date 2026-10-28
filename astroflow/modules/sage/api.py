@@ -74,12 +74,13 @@ def build_router(mod) -> APIRouter:
                     sol = get(source["project"]) if get else None
                 except Exception as e:
                     local_err = str(e)
-            if sol is None and solver and solver.available:
+            if sol is None and solver:                         # WCS im FITS-Header braucht keinen eingerichteten Solver
                 hint = {"ra": source["ra"], "dec": source["dec"]} if source.get("ra") is not None else None
                 try:
                     sol = solver.solve(image, filename=source.get("filename") or source.get("name"), hint=hint)
                 except Exception as e:
-                    local_err = str(e)
+                    if solver.available:
+                        local_err = str(e)
             if sol is None and cfg.get("online_solve") and clients.configured_key(cfg.get("nova_key")):
                 step(0.25, "Bild wird an nova.astrometry.net übermittelt …", "solve")
                 sol = clients.nova_solve(cfg["nova_key"], image, step, lambda: task["cancel"])
@@ -158,7 +159,8 @@ def build_router(mod) -> APIRouter:
         pic = get(pid) if get else None
         if not pic:
             raise HTTPException(404, "Für dieses Objekt gibt es noch kein fertiges Bild.")
-        rel_prev = f"uploads/projekt-{pid}-{pic['result_id']}.jpg"
+        # eigene Vorschau je Analyse: Löschen eines Eintrags darf das Bild eines anderen nicht mitnehmen
+        rel_prev = f"uploads/projekt-{pid}-{pic['result_id']}-{secrets.token_hex(3)}.jpg"
         size = make_preview(Path(pic["image"]), st.root / rel_prev)
         src = {"type": "project", "project": pid, "result": pic["result_id"], "name": pic["name"], "kind_label": pic["kind_label"],
                "exposure": pic["exposure"], "n_frames": pic["n_frames"], "ra": pic["ra"], "dec": pic["dec"]}

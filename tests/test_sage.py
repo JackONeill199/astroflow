@@ -169,3 +169,22 @@ def test_openrouter_sprachausgabe(tmp_path, monkeypatch):
         c.post("/api/sage/config", json={"openrouter_tts_voice": "george"})
         r2 = c.post("/api/sage/tts/speak", json={"provider": "openrouter", "history_id": e["id"]}).json()
         assert not r2["cached"] and r2["variant"].endswith("|george") and len(list((tmp_path / "sage" / "audio").iterdir())) == 1
+
+
+def test_fits_mit_wcs_ohne_solver(tmp_path):
+    """Eingebettete WCS wird auch ohne eingerichteten Solver gelesen; ohne WCS klare Ablehnung."""
+    from astropy.io import fits
+    from astroflow.modules.stacking import platesolve
+    solver = services.PictureSolver(platesolve.SolverConfig(backend="off"), tmp_path)
+    assert not solver.available
+    hdr = fits.Header({"CTYPE1": "RA---TAN", "CTYPE2": "DEC--TAN", "CRVAL1": 83.82, "CRVAL2": -5.39, "CRPIX1": 32, "CRPIX2": 24,
+                       "CDELT1": -0.001, "CDELT2": 0.001})
+    fits.writeto(tmp_path / "m42.fits", np.random.default_rng(2).random((48, 64)).astype(np.float32), hdr)
+    sol = solver.solve(tmp_path / "m42.fits")
+    assert sol["solver"] == "header" and abs(sol["ra"] - 83.82) < 0.1
+    fits.writeto(tmp_path / "leer.fits", np.zeros((48, 64), np.float32))
+    try:
+        solver.solve(tmp_path / "leer.fits", filename="M42.fits")
+        raise AssertionError("ohne Solver darf nicht gelöst werden")
+    except platesolve.SolveError as e:
+        assert "kein lokaler" in str(e)
