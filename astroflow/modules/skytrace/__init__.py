@@ -38,7 +38,10 @@ class Module(BaseModule):
             sys.path.insert(0, str(ENGINE))
         self.health = {"checked": False}
         from .api import Controller
+        from .auto import AutoAnalysis
         self.ctl = Controller(self)
+        self.auto = AutoAnalysis(self)
+        ctx.on("stacking.stacked", self.auto.stacked)
 
     @property
     def python(self) -> str:
@@ -74,21 +77,24 @@ class Module(BaseModule):
 
     def start(self):
         threading.Thread(target=self.check_engine, daemon=True).start()
+        self.auto.start()
 
     def stop(self):
+        self.auto.stop()
         self.ctl.stop()
 
     def status(self) -> dict:
         s = self.ctl.snapshot(logs=False)
         return {"running": s["running"], "stopping": s["stopping"], "run": s["run"], "text": s["status"],
                 "stats": s["stats"], "operation": s["operation"], "busy_jobs": int(s["running"]),
-                "engine": self.health, "home": str(self.home)}
+                "engine": self.health, "home": str(self.home), "auto_waiting": self.auto.waiting()}
 
     def activity(self, limit: int = 30) -> list[dict]:
         from .api import list_runs, short_name
         s = self.ctl.snapshot(logs=False)
-        out = []
-        if s["running"] or (s["finished"] and s["run"]):
+        out = self.auto.activity()
+        current = bool(s["running"] or (s["finished"] and s["run"]))
+        if current:
             st = s["stats"]
             out.append({"key": f"skytrace:{s['run']}", "title": "Bildfolge analysieren" if s["operation"] == "analysis" else "Kandidatenbericht aktualisieren",
                         "kind": "Spurenanalyse", "detail": s["status"],
@@ -96,7 +102,7 @@ class Module(BaseModule):
                         "progress": (st.get("current", 0) / st["total"]) if s["running"] and st.get("total") else None,
                         "started": s["started"], "finished": s["finished"], "href": f"#/skytrace/{s['run']}"})
         for r in list_runs(self.ctl.results)[:limit]:
-            if r["id"] == s["run"] and out:
+            if r["id"] == s["run"] and current:
                 continue
             out.append({"key": f"skytrace:{r['id']}", "title": short_name(r["title"]), "kind": "Spurenanalyse",
                         "detail": f"{r['frames']} Aufnahmen · {r['candidates']} Kandidaten", "state": "done",

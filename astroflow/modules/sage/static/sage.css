@@ -77,3 +77,45 @@
 .sg-fs.active { border-color: color-mix(in srgb, var(--acc2) 45%, transparent); background: color-mix(in srgb, var(--acc2) 5%, transparent) }
 .sg-fs.active legend { color: var(--fg) }
 #probeAudio { height: 34px; flex: 1; min-width: 200px }
+
+/* ---- Erfolge feiern: wie Steam-Erfolge unten rechts hereingleiten, nach einigen Sekunden wieder weg ---- */
+.sg-cel { position: fixed; right: 20px; bottom: 20px; z-index: 320; display: flex; flex-direction: column; gap: 10px; width: min(360px, calc(100vw - 32px)); pointer-events: none }
+.sg-cel-card { pointer-events: auto; cursor: pointer; position: relative; overflow: hidden; display: flex; gap: 14px; align-items: center; padding: 12px 34px 14px 12px;
+  border-radius: 12px; border: 1px solid var(--line2); background: linear-gradient(135deg, color-mix(in srgb, var(--panel2) 96%, #000), color-mix(in srgb, var(--panel) 96%, #000));
+  box-shadow: 0 16px 40px -12px #000c, 0 0 0 1px #0004; animation: celIn .55s var(--spring) both; text-decoration: none; color: inherit }
+.sg-cel-card.gold { border-color: color-mix(in srgb, #fbbf24 45%, var(--line2)) }
+.sg-cel-card::after { content: ""; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 35%, #ffffff1c 50%, transparent 65%); transform: translateX(-120%);
+  animation: celShine 1.4s .45s var(--ease) both; pointer-events: none }
+.sg-cel-card.out { transition: opacity .4s, transform .4s var(--ease); opacity: 0; transform: translateY(40px) }
+.sg-cel-card .medal { position: relative; flex: none; width: 56px; height: 56px; border-radius: 10px; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(135deg, var(--acc), var(--acc2)); box-shadow: 0 6px 18px -6px var(--acc); animation: celMedal .9s .2s var(--spring) both }
+.sg-cel-card.gold .medal { background: linear-gradient(135deg, #fde68a, #fbbf24 45%, #f97316); color: #1a1205; box-shadow: 0 6px 20px -6px #f97316 }
+.sg-cel-card .medal svg { width: 28px; height: 28px }
+.sg-cel-card .burst { position: absolute; left: 40px; top: 50%; width: 0; height: 0; pointer-events: none }
+.sg-cel-card .burst i { position: absolute; width: 5px; height: 5px; margin: -2.5px; border-radius: 50%; background: #fbbf24; opacity: 0;
+  transform: rotate(var(--a)) translateY(0); animation: celBurst 1s calc(.3s + var(--d) * .06s) cubic-bezier(.15, .8, .3, 1) both }
+.sg-cel-card .burst i:nth-child(3n) { background: var(--acc) } .sg-cel-card .burst i:nth-child(3n+1) { background: #fff; width: 3px; height: 3px }
+.sg-cel-card .txt { display: grid; gap: 1px; min-width: 0 }
+.sg-cel-card .txt small { font-size: 12px; color: var(--mut) }
+.sg-cel-card .txt b { font-size: 15px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.sg-cel-card .txt span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.sg-cel-card .x { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border: 0; border-radius: 6px; background: none; color: var(--dim); cursor: pointer; font-size: 16px; line-height: 1 }
+.sg-cel-card .x:hover { background: var(--panel); color: var(--fg) }
+.sg-cel-card .bar { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; transform-origin: left; background: linear-gradient(90deg, var(--acc), var(--acc2));
+  animation: celBar var(--t, 7s) linear both }
+.sg-cel-card.gold .bar { background: linear-gradient(90deg, #fbbf24, #f97316) }
+.sg-cel-card:hover .bar { animation-play-state: paused }
+@keyframes celIn { from { opacity: 0; transform: translateY(110%) } to { opacity: 1; transform: none } }
+@keyframes celShine { to { transform: translateX(120%) } }
+@keyframes celMedal { 0% { transform: scale(.2) rotate(-25deg); opacity: 0 } 60% { transform: scale(1.15) rotate(6deg); opacity: 1 } 100% { transform: none } }
+@keyframes celBurst { 0% { opacity: 1; transform: rotate(var(--a)) translateY(0) scale(1) } 100% { opacity: 0; transform: rotate(var(--a)) translateY(-46px) scale(.4) } }
+@keyframes celBar { from { transform: scaleX(1) } to { transform: scaleX(0) } }
+/* frisch freigeschaltete Erfolge in den Entdeckungen */
+.ach.fresh { position: relative; overflow: hidden; animation: achGlow 2.4s var(--ease) 3 }
+.ach.fresh::after { content: "Neu"; position: absolute; top: 8px; right: 10px; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #1a1205;
+  background: #fbbf24; padding: 2px 7px; border-radius: 99px }
+.ach.fresh > span { animation: celMedal 1s var(--spring) both }
+@keyframes achGlow { 0%, 100% { box-shadow: 0 0 0 0 #fbbf2400 } 50% { box-shadow: 0 0 0 3px #fbbf2455, 0 10px 30px -10px #f97316 } }
+@media (prefers-reduced-motion: reduce) { .sg-cel-card, .sg-cel-card::after, .sg-cel-card .medal, .sg-cel-card .burst i, .ach.fresh, .ach.fresh > span { animation: none } .sg-cel-card .burst { display: none } }
+@media (max-width: 860px) { .sg-cel { left: 16px; right: 16px; bottom: 84px; width: auto } }
+.toasts > .sg-cel { position: static; width: min(360px, calc(100vw - 32px)) }

@@ -21,6 +21,15 @@ Messgrafiken/Zoomdialoge (`static/evidence.js/css`) sind unverändert und werden
   und laufen mit gesetztem `SKYTRACE_HOME` (nutzen teils echte Daten unter `D:\Astro\Stellina`).
 - Abhängigkeiten der Engine: `requirements.txt` (Lock aus SkyTrace). Docker: `--build-arg SKYTRACE=1`.
 
+## Automatisch nach dem Stacken (`auto.py`, 28.10.2026)
+- Ereignis `stacking.stacked` → `AutoAnalysis.stacked`: noch nicht übergebene Light-Aufnahmen (Dienst `project_frames`, Merkliste
+  `<AstroFlow-Daten>/skytrace/auto.json` → `sent`) je Nacht als Ordner `<Objekt>_observation_<Nacht>-p<id>-<zeit>` aus **Hardlinks**
+  (anderer Datenträger: Kopie) unter `<AstroFlow-Daten>/skytrace/auto/`. So überleben sie das Löschen hochgeladener Rohbilder.
+- Warteschlangen-Thread startet je Ordner einen normalen Lauf (`Controller.launch(..., remember=False)` – Formularvorgaben bleiben),
+  sobald SkyTrace frei und die Engine geprüft ist; danach wird der Ordner gelöscht. Unvollständige Engine → Eintrag mit Fehler in der Aktivität.
+  Wartende Ordner erscheinen in der Aktivität, `status.auto_waiting` zählt sie. Abschalten: Einstellungen → SkyTrace (`skytrace.auto`).
+- Achtung beim Nutzer: Ergebnisse landen im gemeinsamen `AstroAnalyse/Ergebnisse` – das alte SkyTrace (Port 8765) nicht gleichzeitig analysieren lassen.
+
 ## Erkennung im Teleskop-Bildfeld (28.10.2026, Nutzerbefund M74 2022-08-07)
 Anlass: Ein schwacher Meteor (img-0041, ~120 px, ~1,5σ/px) wurde übersehen, ein langsames Objekt in sechs Aufnahmen (img-0177…0182)
 als „Meteor“ gemeldet. Vergleichslauf: `Ergebnisse/2026-10-28_18-47-38-352557` (alt) gegen `2026-10-28_19-47-22-527055` (neu).

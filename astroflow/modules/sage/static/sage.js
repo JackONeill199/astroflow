@@ -98,7 +98,6 @@ async function mainView(el) {
       tasks.set(n.id, n);
       if (before.get(n.id) === 'running' && n.state === 'done') {
         hist = await api(G + '/history'); sig = ''; drawHist();
-        (n.discovery?.achievements || []).forEach(a => toast(`Erfolg freigeschaltet: ${a.title}`, 'ok', { label: 'Ansehen', href: '#/sage/entdeckungen' }));
       }
     }
     drawTasks();
@@ -224,7 +223,7 @@ async function discView(el) {
       <div class="progress static" style="margin-top:8px"><i style="width:${d.milestone_progress}%"></i></div>
       <div class="sg-messier" title="Messier-Katalog: ${s.messier} von 110">${Array.from({ length: 110 }, (_, i) => `<i class="${d.objects.some(o => o.category === 'messier' && new RegExp(`^m ?${i + 1}\\b`, 'i').test(o.name)) ? 'on' : ''}" title="M${i + 1}"></i>`).join('')}</div></div>
     <h2 class="sect">Erfolge</h2>
-    <div class="sg-ach stagger">${d.achievements.map((a, i) => `<div class="ach ${a.unlocked ? 'on' : ''}" style="--i:${i}"><span>${icon(a.icon)}</span><div><b>${esc(a.title)}</b><small class="mut">${esc(a.description)}</small>
+    <div class="sg-ach stagger">${d.achievements.map((a, i) => `<div class="ach ${a.unlocked ? 'on' : ''} ${a.unlocked && Date.now() - Date.parse(a.unlocked) < 3 * 864e5 ? 'fresh' : ''}" style="--i:${i}"><span>${icon(a.icon)}</span><div><b>${esc(a.title)}</b><small class="mut">${esc(a.description)}</small>
       ${a.unlocked ? `<small class="ok">${when(a.unlocked)}</small>` : ''}</div></div>`).join('')}</div>
     <div class="toolbar" style="margin-top:26px"><h2 class="sect" style="margin:0">Sammlung</h2><span class="grow"></span><div class="seg" id="dc"></div></div>
     <div id="dgrid"></div>`;
@@ -256,7 +255,10 @@ async function settings(el) {
         <b class="${c.local_solver ? 'ok' : 'warn'}">${c.local_solver ? 'bereit' : 'nicht eingerichtet'}</b>. Optional springt nova.astrometry.net ein – dabei wird das Bild hochgeladen (nicht öffentlich).</p>
       <label class="modrow"><div><b>Online-Lösen erlauben</b><div class="mut sm">nur wenn lokal nicht möglich</div></div><input type="checkbox" name="online_solve" ${c.online_solve ? 'checked' : ''}><span class="switch"></span></label>
       <label class="field"><span>nova.astrometry.net API-Key</span><input name="nova_key" type="password" autocomplete="off" placeholder="${sec('nova_key') || 'nova.astrometry.net → Profil → API-Key'}"></label>
-      <div class="row"><button class="btn" type="submit">Speichern</button></div></form></div>
+      <div class="row"><button class="btn" type="submit">Speichern</button></div></form>
+    <div class="panel" id="sgAuto"><h2 style="margin-bottom:10px">Nach dem Stacken</h2>
+      <label class="modrow"><div><b>Fertige Bilder automatisch eintragen</b><div class="mut sm">Jedes neu gestackte Bild wird bestimmt und landet mit seinen Objekten in den Entdeckungen</div></div><input type="checkbox" name="auto_discover" ${c.auto_discover !== false ? 'checked' : ''}><span class="switch"></span></label>
+      <label class="modrow"><div><b>Dabei eine Geschichte schreiben</b><div class="mut sm">nutzt die Erzähl-KI (bei Cloud-Anbietern kleine Kosten je Bild)</div></div><input type="checkbox" name="auto_story" ${c.auto_story !== false ? 'checked' : ''}><span class="switch"></span></label></div></div>
     <div><form class="panel" id="sgs3"><div class="panel-h"><h2>Vorlesen</h2><span class="grow"></span><span class="mut sm" id="ttsState">prüfe …</span></div>
       <label class="field"><span>Standard-Sprachdienst</span><select name="tts_provider"><option value="openrouter">OpenRouter (ElevenLabs v4 u. a.)</option>
         <option value="qwen">Qwen3-TTS (lokal)</option><option value="elevenlabs">ElevenLabs (direkt)</option></select></label>
@@ -313,6 +315,10 @@ async function settings(el) {
     for (const x of form.elements) if (x.type === 'password' && x.value) { x.value = ''; x.placeholder = '•••••• (gesetzt – leer lassen zum Behalten)'; }
     if (!quiet) toast('Gespeichert.', 'ok');
   };
+  $('#sgAuto').onchange = async (e) => {
+    try { await send(G + '/config', { [e.target.name]: e.target.checked }); toast('Gespeichert.', 'ok'); }
+    catch (err) { toast(err.message, 'err'); e.target.checked = !e.target.checked; }
+  };
   for (const s of ['#sgs1', '#sgs2', '#sgs3']) $(s).onsubmit = async (e) => { e.preventDefault(); try { await save(e.target); } catch (err) { toast(err.message, 'err'); } };
   $('#probe').onclick = async () => {
     const b = $('#probe');
@@ -335,6 +341,44 @@ async function settings(el) {
   }).catch(() => {});
 }
 
+// --------------------------------------------------------- Erfolge feiern --- //
+// Neue Objekte und Erfolge – auch aus automatischen Analysen nach dem Stacken – kommen mit dem Status-Polling
+// (`celebrate`) und gleiten wie Steam-Erfolge unten rechts herein. Nach einigen Sekunden verschwinden sie und gelten
+// als gesehen; mit der Maus darüber bleiben sie stehen, ein Klick öffnet die Entdeckungen bzw. die Geschichte.
+const celShown = new Set();
+function celebrate(list) {
+  const fresh = (list || []).filter(c => !celShown.has(c.id));
+  if (!fresh.length) return;
+  let host = document.getElementById('sgCel');
+  if (!host) { host = document.createElement('div'); host.id = 'sgCel'; host.className = 'sg-cel'; host.setAttribute('aria-live', 'polite');
+    const toasts = document.getElementById('toasts');                     // gleiche Ecke wie die Hinweise, ohne Überlappung
+    if (toasts) toasts.prepend(host); else document.body.append(host); }
+  fresh.forEach((c, n) => {
+    celShown.add(c.id);
+    const ach = c.achievements || [], gold = ach.length > 0, ms = 7000;
+    const card = document.createElement('a');
+    card.className = 'sg-cel-card' + (gold ? ' gold' : '');
+    card.href = `#/sage/${gold ? 'entdeckungen' : c.entry}`;
+    card.style.cssText = `--t:${ms}ms;animation-delay:${n * 350}ms`;
+    card.innerHTML = `<div class="burst">${Array.from({ length: 14 }, (_, i) => `<i style="--a:${i * 360 / 14}deg;--d:${i % 4}"></i>`).join('')}</div>
+      <div class="medal">${icon(ach[0]?.icon || 'sparkle')}</div>
+      <div class="txt"><small>${gold ? 'Erfolg freigeschaltet!' : 'Neue Entdeckung!'}${c.auto ? ' · nach dem Stacken' : ''}</small>
+        <b>${esc(gold ? ach.map(a => a.title).join(' · ') : c.new.join(', '))}</b>
+        <span class="mut sm">${esc(gold ? ach[0].description : c.title)}</span></div>
+      <button type="button" class="x" title="Schließen" aria-label="Schließen">×</button><i class="bar"></i>`;
+    let done = false;
+    const close = () => {
+      if (done) return; done = true;
+      card.classList.add('out'); setTimeout(() => card.remove(), 420);
+      send(G + '/celebrations/ack', { ids: [c.id] }).catch(() => {});
+    };
+    card.addEventListener('click', (e) => { if (e.target.closest('.x')) e.preventDefault(); close(); });
+    card.querySelector('.bar').addEventListener('animationend', close);     // Zeitbalken abgelaufen (pausiert beim Überfahren)
+    host.append(card);
+    while (host.children.length > 4) host.firstElementChild.remove();
+  });
+}
+
 // ---------------------------------------------------------- Registrierung --- //
 AF.register('sage', {
   nav: [{ href: '#/sage', label: 'Erzählen', icon: 'book', key: 'sage' }, { href: '#/sage/entdeckungen', label: 'Entdeckungen', icon: 'medal', key: 'sage-disc', sec: true }],
@@ -344,7 +388,7 @@ AF.register('sage', {
     [/^\/sage\/([\w-]+)$/, 'sage', entryView],
   ],
   settings,
-  status: (st, badge) => badge('sage', st.modules.sage?.busy_jobs, true),
+  status: (st, badge) => { badge('sage', st.modules.sage?.busy_jobs, true); celebrate(st.modules.sage?.celebrate); },
   async home(st) {
     const s = st.modules.sage || {}, [hist, d] = await Promise.all([api(G + '/history'), api(G + '/discoveries')]);
     const last = hist[0], next = d.achievements.find(a => !a.unlocked);

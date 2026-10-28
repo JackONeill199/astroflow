@@ -70,6 +70,7 @@ class Pipeline:
         self.review_cfg = review_cfg or reviewer.ReviewerConfig.from_env()
         self.solver_cfg = solver_cfg or platesolve.SolverConfig.from_env()
         self._scan_lock = threading.Lock()     # Watcher, API-Scan und Nach-Solving nie gleichzeitig
+        self.on_stacked = None                 # fn(project_id, result_id): neues Ergebnis, Rohbilder noch vorhanden
 
     # ------------------------------------------------------------------ scan #
     def scan(self) -> dict:
@@ -366,6 +367,8 @@ class Pipeline:
             return self.develop(project_id, extra, progress, start=0.05)
         self.stack(project_id, extra, progress)
         rid = self.develop(project_id, extra, progress, start=0.86)
+        if self.on_stacked:                    # z. B. SkyTrace übernimmt die Aufnahmen, bevor Uploads gelöscht werden
+            self.on_stacked(project_id, rid)
         # erst nach gespeichertem Stack und Ergebnis: hochgeladene Einzelbilder entfernen (Speicher)
         if self.s.delete_uploads:
             n, freed = self.delete_stacked_uploads(project_id)

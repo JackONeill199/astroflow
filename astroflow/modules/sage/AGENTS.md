@@ -18,6 +18,17 @@ Lokal für **einen** Nutzer: Konten, Login, Rechtsseiten (Impressum/DSGVO) und d
 
 Aufträge laufen in Threads (`Module.tasks`, im Speicher), Fortschritt per Polling (`/api/sage/tasks[/id]`) statt SSE wie im Original.
 
+## Automatisch nach dem Stacken + Erfolge feiern
+- Ereignis `stacking.stacked` → `Module._stacked` → `analyze_project(pid, auto=True)` (von `api.build_router` gesetzt). Quelle bekommt
+  `auto: true`; dasselbe Ergebnis (`source.result`) wird nicht doppelt eingetragen. Geschichte nur, wenn `auto_story` (Standard an) und
+  eine Erzähl-KI eingerichtet ist; sonst Eintrag ohne Geschichte („Neu erzählen“). Abschalten: `auto_discover`.
+- Galerie-Analysen bekommen eine eigene Vorschaudatei (`projekt-<pid>-<result>-<zufall>.jpg`), Löschen trifft nur den eigenen Eintrag.
+- Feiern: `SageStore.celebrate` merkt neue Objekte/Erfolge jeder Analyse in `celebrations.json` (max. 30); ungesehene gehen mit
+  `/api/status` → `modules.sage.celebrate` raus. `sage.js celebrate()` zeigt sie app-weit **wie Steam-Erfolge unten rechts**
+  (Nutzerwunsch; in der Hinweis-Spalte `#toasts`, Medaille, Funken, Glanz, Zeitbalken 7 s, beim Überfahren pausiert,
+  `prefers-reduced-motion` beachtet). Ablauf, Klick oder × → `POST /api/sage/celebrations/ack` (gesehen). In den Entdeckungen leuchten
+  Erfolge der letzten 3 Tage (`.ach.fresh`).
+
 ## Wichtige Erkenntnisse
 - **ASTAP löst gestreckte 8-Bit-Bilder (fertige JPG/PNG) beim Nutzer nicht** – auch nicht mit exakter Position und Bildfeld; der lineare Stack
   derselben Aufnahme löst in 0,7 s. Deshalb Galerie-Bilder über die Stack-Lösung, Uploads bevorzugt als FITS oder per nova.

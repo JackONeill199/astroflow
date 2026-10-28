@@ -3,7 +3,10 @@
 Ein Modul ist ein Unterpaket von `astroflow.modules` mit einer Klasse `Module` (Unterklasse von `BaseModule`).
 Der Kern (`astroflow.server`) lädt die Module, hängt ihre Router unter `/api/<id>` ein, liefert ihre statischen
 Dateien unter `/m/<id>/` aus und fasst Status und Aktivitäten aller Module zusammen. Module sprechen nicht direkt
-miteinander, sondern über benannte Dienste (`ctx.services`), z. B. stellt Stacking den Plate-Solver bereit.
+miteinander, sondern über benannte Dienste (`ctx.services`), z. B. stellt Stacking den Plate-Solver bereit,
+und über Ereignisse (`ctx.on` / `ctx.emit`):
+  stacking.stacked(project_id, result_id, name) – neues Ergebnis entwickelt; die Rohbilder existieren noch
+                                                  (hochgeladene werden direkt danach gelöscht).
 """
 from __future__ import annotations
 
@@ -27,6 +30,20 @@ class Context:
     settings: Settings
     store: SettingsStore
     services: dict[str, Any] = field(default_factory=dict)
+    listeners: dict[str, list[Callable]] = field(default_factory=dict)
+
+    def on(self, event: str, fn: Callable):
+        """Auf ein Ereignis eines anderen Moduls reagieren (z. B. `stacking.stacked`)."""
+        self.listeners.setdefault(event, []).append(fn)
+
+    def emit(self, event: str, **data):
+        """Ereignis melden. Fehler eines Empfängers stören weder den Absender noch andere Empfänger.
+        Empfänger kehren schnell zurück und lagern längere Arbeit in eigene Threads aus."""
+        for fn in self.listeners.get(event, []):
+            try:
+                fn(**data)
+            except Exception:
+                traceback.print_exc()
 
     @property
     def data_dir(self) -> Path:

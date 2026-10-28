@@ -98,7 +98,9 @@ def build_router(mod) -> APIRouter:
             story, story_err = None, None
             if task["cancel"]:
                 raise clients.ServiceError("Abgebrochen.")
-            if mod.story_ready():
+            if source.get("auto") and not cfg.get("auto_story", True):
+                story_err = "Automatisch eingetragen – Geschichte über „Neu erzählen“ schreiben lassen."
+            elif mod.story_ready():
                 step(0.9, "Die KI schreibt die Geschichte …", "story")
                 try:
                     story = clients.write_story(cfg, data)
@@ -115,6 +117,7 @@ def build_router(mod) -> APIRouter:
                             "story": story, "story_error": story_err, "title": title})
             disc = st.record(entry)
             st.update(entry["id"], discovery=disc)
+            st.celebrate(entry, disc)
             task.update(state="done", step="complete", progress=1, finished=time.time(), entry=entry["id"],
                         message="Analyse abgeschlossen" + (" (ohne Geschichte)" if not story else ""), discovery=disc,
                         title=entry["title"])
@@ -153,18 +156,27 @@ def build_router(mod) -> APIRouter:
                                {"type": "upload", "filename": name}))
 
     @r.post("/analyze/project/{pid}")
-    def analyze_project(pid: int):
-        """Geschichte zum neuesten Ergebnis eines Objekts aus dem Bilder-Modul."""
+    def analyze_project(pid: int, auto: bool = False):
+        """Geschichte zum neuesten Ergebnis eines Objekts aus dem Bilder-Modul (`auto`: nach dem Stacken eingetragen)."""
         get = mod.ctx.service("project_picture")
         pic = get(pid) if get else None
         if not pic:
             raise HTTPException(404, "Für dieses Objekt gibt es noch kein fertiges Bild.")
+        if auto and any((e.get("source") or {}).get("result") == pic["result_id"] for e in st.entries()):
+            return None                                           # dieses Ergebnis steht schon in den Entdeckungen
         # eigene Vorschau je Analyse: Löschen eines Eintrags darf das Bild eines anderen nicht mitnehmen
         rel_prev = f"uploads/projekt-{pid}-{pic['result_id']}-{secrets.token_hex(3)}.jpg"
         size = make_preview(Path(pic["image"]), st.root / rel_prev)
         src = {"type": "project", "project": pid, "result": pic["result_id"], "name": pic["name"], "kind_label": pic["kind_label"],
-               "exposure": pic["exposure"], "n_frames": pic["n_frames"], "ra": pic["ra"], "dec": pic["dec"]}
+               "exposure": pic["exposure"], "n_frames": pic["n_frames"], "ra": pic["ra"], "dec": pic["dec"], "auto": auto}
         return task_view(start(pic["name"], Path(pic["image"]), rel_prev, None, size, src))
+
+    mod.analyze_project = analyze_project
+
+    @r.post("/celebrations/ack")
+    def ack(body: dict = Body(...)):
+        st.ack([str(i) for i in body.get("ids") or []])
+        return {"ok": True}
 
     @r.get("/tasks")
     def tasks():

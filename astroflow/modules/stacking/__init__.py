@@ -23,6 +23,12 @@ class Module(BaseModule):
         ctx.services["plate_solver"] = PictureSolver(self.eng.pl.solver_cfg, ctx.settings.work_dir)
         ctx.services["project_picture"] = self.project_picture
         ctx.services["project_solution"] = self.project_solution
+        ctx.services["project_frames"] = self.project_frames
+        self.eng.pl.on_stacked = self._stacked
+
+    def _stacked(self, pid: int, rid: int):
+        p = self.eng.db.one("SELECT name FROM projects WHERE id=?", (pid,))
+        self.ctx.emit("stacking.stacked", project_id=pid, result_id=rid, name=p["name"] if p else "")
 
     def router(self):
         from .api import build_router
@@ -56,6 +62,12 @@ class Module(BaseModule):
         return {"name": p["name"], "kind": p["kind"], "kind_label": KIND_LABEL.get(p["kind"] or "generic"),
                 "image": img, "result_id": r["id"], "exposure": r["exposure"], "n_frames": r["n_frames"],
                 "ra": p["ra"], "dec": p["dec"], "files": files}
+
+    def project_frames(self, pid: int) -> list[dict]:
+        """Vorhandene Light-Aufnahmen eines Objekts (auch verworfene) für andere Module, z. B. SkyTrace."""
+        rows = self.eng.db.q("SELECT id, path, night, status FROM frames WHERE project_id=? AND kind='light' AND deleted=0 "
+                             "ORDER BY id", (pid,))
+        return [dict(r) for r in rows if Path(r["path"]).exists()]
 
     def project_solution(self, pid: int) -> dict | None:
         """Objekte im neuesten Bild eines Objekts aus der gespeicherten Stack-Lösung (None = keine Lösung gespeichert)."""

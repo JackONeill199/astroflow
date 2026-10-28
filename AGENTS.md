@@ -23,7 +23,12 @@ astroflow/static/          Shell: index.html, app.js (Router, Navigation, Übers
 - **Modul-Vertrag Backend** (`core/modules.py`): `router()`, `start()/stop()`, `status()` (klein, wird alle 2,5 s gepollt; `busy_jobs` zählt für die Anzeige),
   `activity()` (gemeinsames Format `{key,title,kind,detail,state,progress,started,finished,href}`), `scripts/styles`. Reihenfolge/Liste: `AVAILABLE`.
 - **Module reden nicht per Import miteinander**, sondern über Dienste in `ctx.services`: Stacking stellt `plate_solver` (`PictureSolver`),
-  `project_picture` und `project_solution` bereit; Sage nutzt sie. Fehlt ein Dienst, muss das Modul trotzdem laufen.
+  `project_picture`, `project_solution` und `project_frames` bereit; Sage und SkyTrace nutzen sie. Fehlt ein Dienst, muss das Modul trotzdem laufen.
+- **Ereignisse** (`ctx.on` / `ctx.emit`, Liste in `core/modules.py`): `stacking.stacked(project_id, result_id, name)` kommt aus
+  `Pipeline.process` nach dem Entwickeln und **vor** dem Löschen hochgeladener Rohbilder (`Pipeline.on_stacked`). Empfänger (seit 28.10.2026,
+  Nutzerwunsch „gestackte Aufnahmen automatisch durch SkyTrace und in die Entdeckungen, mit animierten Erfolgen“):
+  SkyTrace `auto.AutoAnalysis` (Hardlinks je Nacht → Warteschlange, Einstellung `skytrace.auto`) und Sage `Module._stacked`
+  (Bild bestimmen → Entdeckungen, Einstellungen `sage.auto_discover`/`auto_story`). Empfänger kehren sofort zurück (eigene Threads).
 - **Modul-Vertrag Frontend** (`AF.register(id, {nav, routes, home, settings, palette, status, drop})`, Kommentar in `app.js`): Helfer (`api`, `send`, `toast`,
   `createViewer`, `picker` (Dropdown mit Suche für Modelle/Stimmen, Listen aus `core/models.list_models`), `jobLine`, `confirmDlg`, `crumbs`, `store` …) sind global. Modul-Skripte lädt die Shell aus `/api/app` mit `?v=<build>`
   (Build-Kennung aus Dateizeiten) – nur `index.html` braucht weiter das manuelle `?v=`.

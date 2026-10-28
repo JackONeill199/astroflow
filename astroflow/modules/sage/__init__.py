@@ -19,7 +19,8 @@ DEFAULTS = {"story_provider": "openai", "story_base_url": "", "story_model": "gp
             "online_solve": False, "nova_key": "", "tts_provider": "openrouter",
             "qwen_base_url": "http://127.0.0.1:8880", "qwen_voice": "Ryan", "qwen_model": "tts-1", "qwen_language": "German",
             "qwen_api_key": "", "elevenlabs_key": "", "elevenlabs_voice": "", "elevenlabs_model": "eleven_flash_v2_5",
-            "openrouter_key": "", "openrouter_tts_model": "elevenlabs/eleven-v4", "openrouter_tts_voice": "george"}
+            "openrouter_key": "", "openrouter_tts_model": "elevenlabs/eleven-v4", "openrouter_tts_voice": "george",
+            "auto_discover": True, "auto_story": True}
 SECRETS = ("story_api_key", "nova_key", "elevenlabs_key", "qwen_api_key", "openrouter_key")
 
 
@@ -37,6 +38,13 @@ class Module(BaseModule):
         self.store = SageStore(ctx.module_dir("sage"))
         self.tasks: dict[str, dict] = {}
         self.lock = threading.RLock()
+        self.analyze_project = None                 # setzt api.build_router
+        ctx.on("stacking.stacked", self._stacked)
+
+    def _stacked(self, project_id: int, result_id: int, name: str = ""):
+        """Fertig gestacktes Bild automatisch bestimmen und in die Entdeckungen eintragen."""
+        if self.config().get("auto_discover", True) and self.analyze_project:
+            self.analyze_project(project_id, auto=True)
 
     # ---- Einstellungen ----------------------------------------------------------
     def config(self) -> dict:
@@ -72,8 +80,9 @@ class Module(BaseModule):
     def status(self) -> dict:
         running = [t for t in self.tasks.values() if t["state"] == "running"]
         ov = self.store.overview()["stats"]
+        cel = [{**c, "image": f"/api/sage/files/{c['image']}" if c.get("image") else None} for c in self.store.celebrations()]
         return {"busy_jobs": len(running), "entries": len(self.store.entries()), "objects": ov["total_objects"],
-                "story_ready": self.story_ready()}
+                "story_ready": self.story_ready(), "celebrate": cel}
 
     def story_ready(self) -> bool:
         from .clients import configured_key

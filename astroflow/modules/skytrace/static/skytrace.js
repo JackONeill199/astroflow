@@ -501,6 +501,9 @@ async function settings(el) {
       <label class="field"><span>Python-Interpreter</span><input name="python" value="${esc(eng.configured.python || '')}" placeholder="${esc(eng.python)}"><small>Leer = <code>.venv</code> im Datenordner, sonst der AstroFlow-Interpreter.</small></label>
       <label class="field"><span>Datenordner</span><input name="home" value="${esc(eng.configured.home || '')}" placeholder="${esc(eng.home)}"><small>Ergebnisse, Katalog-Cache und Standort. Ein bestehender SkyTrace-Ordner (mit <code>Ergebnisse/</code>) kann übernommen werden – wirkt nach einem Neustart.</small></label>
       <div class="row"><button class="btn" type="submit">Speichern &amp; prüfen</button></div></form>
+    <div class="panel"><label class="modrow" style="border:0;padding:0"><div><b>Gestackte Aufnahmen automatisch analysieren</b>
+        <div class="mut sm">Nach jedem Stacken sucht SkyTrace in den neuen Aufnahmen nach Meteoren und Satelliten – je Nacht ein Lauf, nacheinander im Hintergrund.</div></div>
+        <input type="checkbox" id="autoSt" ${eng.configured.auto !== false ? 'checked' : ''}><span class="switch"></span></label></div>
     <form class="panel" id="oskf"><h2 style="margin-bottom:8px">OpenSky verbinden</h2>
       <p class="mut sm" style="margin:0 0 12px">Der Anbieter muss dein Konto für historische Trino-Daten freischalten. Das Passwort gibst du nur auf der offiziellen HTTPS-Anmeldeseite ein.</p>
       <div class="row" style="flex-wrap:nowrap"><input name="user" placeholder="OpenSky-Benutzername" value="${esc(cfg.opensky_user || '')}" autocomplete="username" style="flex:1"><button class="btn ghost" type="submit">Verbinden</button></div>
@@ -545,6 +548,10 @@ async function settings(el) {
     for (const k of ['enabled', 'auto_solve', 'auto_satellites', 'auto_meteors', 'auto_aircraft']) body[k] = f[k].checked;
     for (const k of ['tle_file', 'tle_url', 'flight_file', 'flight_url']) body[k] = f[k].value;
     try { Object.assign(cfg, await send(T + '/settings', body)); toast('Katalogeinstellungen gespeichert.', 'ok'); } catch (err) { toast(err.message, 'err'); }
+  };
+  $('#autoSt').onchange = async (e) => {
+    try { await send(T + '/engine', { auto: e.target.checked }); toast(e.target.checked ? 'Neue Stacks werden automatisch analysiert.' : 'Automatische Analyse aus.', 'ok'); }
+    catch (err) { toast(err.message, 'err'); e.target.checked = !e.target.checked; }
   };
   $('#engf').onsubmit = async (e) => {
     e.preventDefault();

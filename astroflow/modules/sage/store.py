@@ -63,7 +63,10 @@ class SageStore:
             p.mkdir(parents=True, exist_ok=True)
         self.file = root / "history.json"
         self.disc_file = root / "discoveries.json"
+        self.cel_file = root / "celebrations.json"
         self._lock = threading.RLock()
+        cel = self._load(self.cel_file, [])
+        self._cel = cel if isinstance(cel, list) else []
         # Entdeckungen sofort anlegen: würden sie erst bei der nächsten Analyse aus dem Verlauf aufgebaut,
         # zählte die gerade gespeicherte Analyse schon mit und ihre Objekte gälten als „bekannt“
         if not isinstance(self._load(self.disc_file, None), dict):
@@ -199,6 +202,29 @@ class SageStore:
             unlocked = self._unlock(d["stats"], d["achievements"])
             self._save(self.disc_file, d)
             return {"new": new, "known": known, "achievements": unlocked}
+
+    # ---- Feiern: neue Objekte/Erfolge, bis der Nutzer sie gesehen hat ------------
+    def celebrate(self, entry: dict, disc: dict) -> dict | None:
+        if not disc.get("new") and not disc.get("achievements"):
+            return None
+        c = {"id": entry["id"], "entry": entry["id"], "title": entry.get("title") or "Analyse", "image": entry.get("preview_file"),
+             "new": disc.get("new") or [], "achievements": disc.get("achievements") or [], "auto": bool((entry.get("source") or {}).get("auto")),
+             "created": now_iso(), "seen": False}
+        with self._lock:
+            self._cel = [x for x in self._cel if x["id"] != c["id"]][-29:] + [c]
+            self._save(self.cel_file, self._cel)
+        return c
+
+    def celebrations(self) -> list[dict]:
+        """Noch nicht gesehene Feiern (klein – geht mit jedem Status-Polling raus)."""
+        return [c for c in self._cel if not c["seen"]][-5:]
+
+    def ack(self, ids: list[str]):
+        with self._lock:
+            for c in self._cel:
+                if c["id"] in ids:
+                    c["seen"] = True
+            self._save(self.cel_file, self._cel)
 
     def overview(self) -> dict:
         d = self._disc()

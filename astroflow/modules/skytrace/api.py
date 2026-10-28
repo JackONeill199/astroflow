@@ -183,8 +183,9 @@ class Controller:
                     cmd.extend(["--limit", str(samples)])
                 if options.get("solve", True):
                     cmd.append("--solve")
-                write_json(self.prefs, dict(source=str(parent), observation=observation, samples=samples, fps=fps, mode=mode,
-                                            solve=bool(options.get("solve", True))))
+                if options.get("remember", True):        # automatische Läufe ändern die Formularvorgaben nicht
+                    write_json(self.prefs, dict(source=str(parent), observation=observation, samples=samples, fps=fps, mode=mode,
+                                                solve=bool(options.get("solve", True))))
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
                                     errors="replace", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                                     cwd=self.mod.home, env=self.mod.engine_env())
@@ -423,8 +424,11 @@ def build_router(mod) -> APIRouter:
                 if v and k == "python" and not Path(v).is_file():
                     raise HTTPException(400, f"Python nicht gefunden: {v}")
                 vals[k] = v or None
+        if "auto" in body:                                      # gestackte Aufnahmen automatisch analysieren
+            vals["auto"] = bool(body["auto"])
         mod.ctx.store.update("skytrace", vals)
-        threading.Thread(target=mod.check_engine, daemon=True).start()
+        if "home" in vals or "python" in vals:
+            threading.Thread(target=mod.check_engine, daemon=True).start()
         return {"saved": True, "restart": "home" in vals}
 
     @r.get("/catalog/status")
