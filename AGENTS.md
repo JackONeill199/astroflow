@@ -161,6 +161,9 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
 ## Server (`server.py` + `modules/stacking/api.py`)
 Stacking: ein Worker-Thread (Job-Queue, `jobs`-Tabelle; Option `{"action":"solve"}` = Plate-Solving-Job) + Watcher-Thread (Scan alle N s, Auto-Verarbeitung),
 beide in `modules/stacking/api.py` (`Engine`). `Pipeline._scan_lock` serialisiert Scan und Nach-Solving. Beim Start werden unterbrochene Jobs wieder eingereiht.
+Während eines laufenden Jobs eingelesene Lights (`status='new'`) werden nach Erfolg automatisch in einem Folgelauf ergänzt;
+der Watcher berücksichtigt auch bereits gescannte, noch neue Frames. Letzte Fehler werden ohne weiteren Upload nicht endlos neu gestartet.
+`Engine._queue_lock` verhindert doppelte Aufträge durch gleichzeitig arbeitende Worker/Watcher.
 Objekt löschen (`DELETE /api/stacking/projects/{id}` → `Pipeline.delete_project`, 409 während eines Jobs): Ergebnisse, Stack, Jobs, hochgeladene
 Rohbilder weg; Frames aus eingebundenen Ordnern bleiben als `kind='ignored'` in der DB, `_fingerprints` überspringt sie.
 REST unter `/api/stacking`: `status`, `scan`, `projects[/{id}]` (GET/PATCH/DELETE), `projects/{id}/process|solve|frames`, `frames/{id}` (PATCH manual),

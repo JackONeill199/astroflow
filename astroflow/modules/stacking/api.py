@@ -35,6 +35,7 @@ class Engine:
         stars.STARNET.tools_dir = self.s.data_dir / "tools" / "starnet"
         self._apply_saved()
         self.q: queue.Queue[int] = queue.Queue()
+        self._queue_lock = threading.Lock()
         self.stop = threading.Event()
         self.last_scan = 0.0
         # unterbrochene Jobs fortsetzen: das Stacking macht am letzten Checkpoint weiter
@@ -58,13 +59,22 @@ class Engine:
 
     # ---- Jobs ----------------------------------------------------------------
     def enqueue(self, project_id: int, options: dict | None = None) -> int:
-        busy = self.db.one("SELECT id FROM jobs WHERE project_id=? AND state IN ('queued','running')", (project_id,))
-        if busy:
-            return busy["id"]
-        jid = self.db.x("INSERT INTO jobs(project_id,state,created,options) VALUES(?,?,?,?)",
-                        (project_id, "queued", time.time(), json.dumps(options or {})))
-        self.q.put(jid)
-        return jid
+        with self._queue_lock:
+            busy = self.db.one("SELECT id FROM jobs WHERE project_id=? AND state IN ('queued','running')", (project_id,))
+            if busy:
+                return busy["id"]
+            jid = self.db.x("INSERT INTO jobs(project_id,state,created,options) VALUES(?,?,?,?)",
+                            (project_id, "queued", time.time(), json.dumps(options or {})))
+            self.q.put(jid)
+            return jid
+
+    def pending_projects(self) -> set[int]:
+        """Während laufender Jobs eingelesene Aufnahmen nachholen; Fehler nicht endlos neu versuchen."""
+        return {r["project_id"] for r in self.db.q(
+            "SELECT DISTINCT f.project_id FROM frames f WHERE f.kind='light' AND f.status='new' "
+            "AND f.deleted=0 AND f.project_id IS NOT NULL AND NOT EXISTS "
+            "(SELECT 1 FROM jobs j WHERE j.project_id=f.project_id AND j.state='error' "
+            "AND j.id=(SELECT MAX(j2.id) FROM jobs j2 WHERE j2.project_id=f.project_id))")}
 
     def worker(self):
         while not self.stop.is_set():
@@ -90,6 +100,8 @@ class Engine:
                     continue
                 self.pl.process(job["project_id"], opts, prog)
                 self.db.x("UPDATE jobs SET state='done', progress=1, finished=? WHERE id=?", (time.time(), jid))
+                if self.s.auto and job["project_id"] in self.pending_projects():
+                    self.enqueue(job["project_id"])
             except Exception as e:
                 traceback.print_exc()
                 self.db.x("UPDATE jobs SET state='error', message=?, finished=? WHERE id=?", (str(e), time.time(), jid))
@@ -106,7 +118,7 @@ class Engine:
         r = self.pl.scan()
         self.last_scan = time.time()
         if self.s.auto:
-            for pid in r["new_by_project"]:
+            for pid in set(r["new_by_project"]) | self.pending_projects():
                 self.enqueue(pid)
         return r
 
