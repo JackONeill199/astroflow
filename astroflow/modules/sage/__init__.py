@@ -52,6 +52,7 @@ class Module(BaseModule):
         self.lock = threading.RLock()
         self.analyze_project = None                 # setzt api.build_router
         ctx.on("stacking.stacked", self._stacked)
+        ctx.on("stacking.imported", self._stacked)
 
     def _stacked(self, project_id: int, result_id: int, name: str = ""):
         """Fertig gestacktes Bild automatisch bestimmen und in die Entdeckungen eintragen."""

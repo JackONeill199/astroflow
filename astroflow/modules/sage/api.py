@@ -85,6 +85,8 @@ def build_router(mod) -> APIRouter:
                 step(0.25, "Bild wird an nova.astrometry.net übermittelt …", "solve")
                 sol = clients.nova_solve(cfg["nova_key"], image, step, lambda: task["cancel"])
             if sol is None and source.get("type") == "project":       # wenigstens das bekannte Hauptobjekt erzählen
+                if source.get("imported") and source.get("ra") is None:
+                    raise clients.ServiceError("Bild importiert, aber Himmelsposition nicht bestimmbar. Ein Objektname im Dateinamen (z. B. M42.jpg) oder ein eingerichteter Plate-Solver hilft bei der Bestimmung.")
                 sol = {"ra": source.get("ra"), "dec": source.get("dec"), "solver": "project", "fov_w": None, "fov_h": None,
                        "objects": [{"name": source["name"], "kind_label": source.get("kind_label") or ""}]}
             if sol is None:
@@ -172,6 +174,7 @@ def build_router(mod) -> APIRouter:
         rel_prev = f"uploads/projekt-{pid}-{pic['result_id']}-{secrets.token_hex(3)}.jpg"
         size = make_preview(Path(pic["image"]), st.root / rel_prev)
         src = {"type": "project", "project": pid, "result": pic["result_id"], "name": pic["name"], "kind_label": pic["kind_label"],
+               "imported": pic.get("imported", False),
                "exposure": pic["exposure"], "n_frames": pic["n_frames"], "ra": pic["ra"], "dec": pic["dec"], "auto": auto}
         return task_view(start(pic["name"], Path(pic["image"]), rel_prev, None, size, src))
 

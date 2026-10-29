@@ -31,7 +31,9 @@ Herkunft: Repo `JackONeill199/starlight-sage` („Astronomy Buddy“, Node/Expre
 Lokal für **einen** Nutzer: Konten, Login, Rechtsseiten (Impressum/DSGVO) und der Git-Updater wurden bewusst weggelassen (Nutzerentscheidung 28.10.2026).
 
 ## Ablauf (`api.py` → `run`)
-1. Upload (`POST /api/sage/analyze`, JPG/PNG/TIFF/GIF/FITS) → `data/sage/uploads/<stamp>.<ext>` + JPG-Vorschau (`make_preview`, FITS gestreckt und
+1. Standard: zentral unter **Import** → Bilder-Galerie (`stacking.imported` → `_stacked`, wie nach dem Stacken; nur mit `auto_discover`).
+   Sage zeigt **Zum Import** statt einer zweiten Uploadfläche. Ohne Bilder-Modul bleibt der direkte Upload verfügbar.
+   Kompatibler Upload (`POST /api/sage/analyze`, JPG/PNG/TIFF/GIF/FITS) → `data/sage/uploads/<stamp>.<ext>` + JPG-Vorschau (`make_preview`, FITS gestreckt und
    in Anzeige-Orientierung). Oder Bild aus der Galerie (`POST /api/sage/analyze/project/<id>`, Dienst `project_picture`).
 2. Bestimmen, in dieser Reihenfolge:
    - Galerie-Bild: gespeicherte Lösung des Master-Stacks (Dienst `project_solution` → `stacking/services.project_solution`: `work/p<id>/wcs.json`

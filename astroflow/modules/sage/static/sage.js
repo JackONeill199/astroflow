@@ -40,26 +40,29 @@ function stepper(t) {
 async function mainView(el) {
   crumbs([['Sage', '#/sage/wiki'], ['Bild bestimmen']]);
   const cfg = await api(G + '/config');
-  const projects = AF.on('stacking') ? (await api('/stacking/projects')).filter(p => p.result) : [];
+  const central = AF.on('stacking');
+  const projects = central ? (await api('/stacking/projects')).filter(p => p.result) : [];
   let hist = await api(G + '/history'), sig = '';
   const ready = cfg.local_solver || (cfg.online_solve && cfg.has_nova_key);
   el.innerHTML = `<div class="pagehead"><div><h1>Was ist auf deinem Bild?</h1><p class="mut">Sage löst das Bild astrometrisch, erkennt die Himmelsobjekte, verknüpft sie mit der Enzyklopädie und erzählt dir ihre Geschichte.</p></div>
       <span class="grow"></span><a class="btn ghost" href="#/sage/wiki">${icon('book')}Enzyklopädie</a><a class="btn ghost" href="#/sage/sammlung">${icon('medal')}Sammlung</a></div>
     ${!ready ? `<div class="notice">${icon('alert')}<div><b>Kein Plate-Solver bereit</b><div class="mut sm">Richte ASTAP unter Einstellungen → Bilder ein (lokal, empfohlen) oder erlaube unter Einstellungen → Sage das Online-Lösen über nova.astrometry.net.</div></div><span class="grow"></span><a class="btn sm ghost" href="#/settings/sage">Einrichten</a></div>` : ''}
     ${!cfg.has_story_api_key && cfg.story_provider !== 'lmstudio' && cfg.story_provider !== 'custom' ? `<div class="notice">${icon('book')}<div><b>Erzähl-KI noch nicht eingerichtet</b><div class="mut sm">Objekte werden trotzdem bestimmt; für die Geschichte einen OpenAI-Schlüssel eintragen oder LM Studio wählen.</div></div><span class="grow"></span><a class="btn sm ghost" href="#/settings/sage">Einrichten</a></div>` : ''}
-    <div class="split sg-top"><label class="dropzone" id="sgdz">${icon('upload')}<h2>Astrofoto hierher ziehen</h2>
-        <div class="mut">oder klicken · JPG, PNG, TIFF oder FITS</div><input type="file" id="sgfi" accept=".jpg,.jpeg,.png,.tif,.tiff,.gif,.fit,.fits,.fts" hidden></label>
+    <div class="split sg-top">${central ? `<div class="panel"><h2>Bilder zentral importieren</h2><p class="mut">Neue Astrofotos und Rohaufnahmen lädst du unter Import hoch. Fertige Bilder erscheinen in deiner Galerie und werden auf Wunsch automatisch von Sage bestimmt.</p><a class="btn" href="#/import">${icon('upload')}Zum Import</a></div>` : `<label class="dropzone" id="sgdz">${icon('upload')}<h2>Astrofoto hierher ziehen</h2>
+        <div class="mut">oder klicken · JPG, PNG, TIFF oder FITS</div><input type="file" id="sgfi" accept=".jpg,.jpeg,.png,.tif,.tiff,.gif,.fit,.fits,.fts" hidden></label>`}
       <div class="panel"><h2 style="margin-bottom:10px">Aus deinen Bildern</h2>
         ${projects.length ? `<div class="sg-pick">${projects.slice(0, 8).map(p => `<button data-p="${p.id}" title="Geschichte zu ${esc(p.name)} erzählen"><img src="/api/stacking/results/${p.result.id}/thumb" alt="" loading="lazy"><span>${esc(p.name)}</span></button>`).join('')}</div>`
           : '<p class="mut sm" style="margin:0">Fertige Bilder aus der Galerie erscheinen hier – ein Klick, und Sage erzählt ihre Geschichte.</p>'}</div></div>
     <div id="sgTasks"></div>
     <div class="toolbar" style="margin-top:26px"><h2 class="sect" style="margin:0">Deine Geschichten</h2><span class="grow"></span><input type="search" id="sgq" placeholder="Geschichte oder Objekt suchen …"></div>
     <div id="sgHist"></div>`;
-  $('#sgfi').onchange = (e) => { const f = e.target.files[0]; if (f) startUpload(f); e.target.value = ''; };
+  $('#sgfi')?.addEventListener('change', (e) => { const f = e.target.files[0]; if (f) startUpload(f); e.target.value = ''; });
   const dz = $('#sgdz');
+  if (dz) {
   dz.ondragover = (e) => { e.preventDefault(); dz.classList.add('over'); };
   dz.ondragleave = () => dz.classList.remove('over');
   dz.ondrop = async (e) => { e.preventDefault(); e.stopPropagation(); dz.classList.remove('over'); const f = (await droppedFiles(e.dataTransfer))[0]; if (f) startUpload(f); };
+  }
   el.querySelector('.sg-pick')?.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-p]');
     if (!b) return;
@@ -109,7 +112,7 @@ async function mainView(el) {
     async update(st) {
       if (st.modules.sage?.busy_jobs || [...tasks.values()].some(t => t.state === 'running')) await loadTasks();
     },
-    actions: () => [['upload', 'Bild hochladen', 'Sage bestimmt und erzählt', () => $('#sgfi').click()], ['medal', 'Sammlung & Erfolge', 'Gesammelte Objekte', () => { location.hash = '#/sage/sammlung'; }]],
+    actions: () => [['upload', central ? 'Bilder importieren' : 'Bild hochladen', 'Sage bestimmt und erzählt', () => { if (central) location.hash = '#/import'; else $('#sgfi').click(); }], ['medal', 'Sammlung & Erfolge', 'Gesammelte Objekte', () => { location.hash = '#/sage/sammlung'; }]],
   };
 }
 
@@ -416,6 +419,7 @@ AF.register('sage', {
     return [['upload', 'Bild erzählen lassen', 'Sage', '#/sage'], ...hist.map(h => ['book', h.title, `${h.objects} Objekte · ${when(h.created)}`, `#/sage/${h.id}`, h.image])];
   },
   drop(files) {
+    if (AF.on('stacking')) return false;    // zentraler Import übernimmt auch auf Sage-Seiten
     const pic = files.find(f => /\.(jpe?g|png|tiff?|gif)$/i.test(f.name));
     if (!pic) return false;
     startUpload(pic);

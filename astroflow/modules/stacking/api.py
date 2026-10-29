@@ -147,6 +147,7 @@ def build_router(eng: Engine) -> APIRouter:
     db = eng.db
 
     def project_view(p: dict) -> dict:
+        imported = json.loads(p["options"] or "{}").get("input_type") == "picture"
         fr = db.q("SELECT status, COUNT(*) n FROM frames WHERE project_id=? AND kind='light' GROUP BY status", (p["id"],))
         counts = {r["status"]: r["n"] for r in fr}
         last = db.one("SELECT * FROM results WHERE project_id=? ORDER BY id DESC LIMIT 1", (p["id"],))
@@ -165,11 +166,11 @@ def build_router(eng: Engine) -> APIRouter:
             "id": p["id"], "name": p["name"], "kind": p["kind"], "kind_label": objects.KIND_LABEL.get(p["kind"] or "generic"),
             "options": json.loads(p["options"] or "{}"), "frames": counts, "total": sum(counts.values()),
             "nights": [n["night"] for n in nights], "n_results": n_results, "created": p["created"],
-            "coords": coords, "can_solve": not p["obj_id"],
+            "coords": coords, "can_solve": not imported and not p["obj_id"], "imported": imported,
             # Einzelbilder nach dem Stacking gelöscht -> kein komplettes Neu-Stacken mehr möglich
-            "deleted": {"frames": dl["n"], "bytes": dl["b"], "can_restack": dl["s"] == 0},
+            "deleted": {"frames": dl["n"], "bytes": dl["b"], "can_restack": not imported and dl["s"] == 0},
             "result": {"id": last["id"], "created": last["created"], "n_frames": last["n_frames"], "exposure": last["exposure"],
-                       "stats": json.loads(last["stats"])} if last else None,
+                       "stats": json.loads(last["stats"]), "formats": list(json.loads(last["files"] or "{}"))} if last else None,
             "job": {k: job[k] for k in ("id", "state", "progress", "stage", "message", "finished")} if job else None,
         }
 
@@ -213,8 +214,11 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.post("/projects/{pid}/solve")
     def solve(pid: int):
-        if not db.one("SELECT id FROM projects WHERE id=?", (pid,)):
+        p = db.one("SELECT options FROM projects WHERE id=?", (pid,))
+        if not p:
             raise HTTPException(404)
+        if json.loads(p["options"] or "{}").get("input_type") == "picture":
+            raise HTTPException(409, "Fertige Bilder bitte mit Sage bestimmen lassen.")
         if not eng.pl.solver_cfg.enabled:
             raise HTTPException(400, "Kein Plate-Solver eingerichtet – siehe Einstellungen.")
         return {"job": eng.enqueue(pid, {"action": "solve"})}
@@ -266,8 +270,11 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.post("/projects/{pid}/process")
     def process(pid: int, body: dict = Body(default={})):
-        if not db.one("SELECT id FROM projects WHERE id=?", (pid,)):
+        p = db.one("SELECT options FROM projects WHERE id=?", (pid,))
+        if not p:
             raise HTTPException(404)
+        if json.loads(p["options"] or "{}").get("input_type") == "picture":
+            raise HTTPException(409, "Dieses Bild wurde fertig importiert. Zum Stacken oder Neu-Entwickeln sind Rohaufnahmen erforderlich.")
         if body.get("restack"):
             if db.one("SELECT id FROM frames WHERE project_id=? AND deleted=1 AND stacked=1 LIMIT 1", (pid,)):
                 raise HTTPException(409, "Komplett neu stacken ist nicht möglich: die hochgeladenen Einzelbilder wurden "
@@ -308,21 +315,32 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.post("/upload")
     async def upload(files: list[UploadFile] = File(...)):
+        from .picture_import import PICTURE_EXT, import_picture
         dest = eng.s.input_dir / "uploads" / time.strftime("%Y%m%d")
         dest.mkdir(parents=True, exist_ok=True)
-        n = 0
+        n, raw, pictures, errors = 0, 0, [], []
         for f in files:
             # relative Ordnerpfade behalten (z. B. „…_observation_M57/img-0001r.fits“ – der Ordner verrät das Objekt),
             # aber nur harmlose Pfadteile zulassen
             parts = [p for p in re.split(r"[\\/]+", f.filename or "") if p not in ("", ".", "..") and ":" not in p]
-            if not parts or not parts[-1].lower().endswith((".fit", ".fits", ".fts")):
+            if not parts:
+                continue
+            if parts[-1].lower().endswith(PICTURE_EXT):
+                try:
+                    pictures.append(await asyncio.to_thread(import_picture, eng, f.file, parts[-1]))
+                    n += 1
+                except Exception as e:
+                    errors.append(f"{parts[-1]}: Bild nicht importiert: {e}")
+                continue
+            if not parts[-1].lower().endswith((".fit", ".fits", ".fts")):
                 continue
             target = dest.joinpath(*parts[-4:])
             target.parent.mkdir(parents=True, exist_ok=True)
             with open(target, "wb") as out:
                 shutil.copyfileobj(f.file, out)
             n += 1
-        return {"saved": n}
+            raw += 1
+        return {"saved": n, "raw": raw, "pictures": pictures, "errors": errors}
 
     @r.get("/results/{rid}/{kind}")
     def result_file(rid: int, kind: str):
@@ -330,7 +348,7 @@ def build_router(eng: Engine) -> APIRouter:
         files = json.loads(x["files"]) if x else {}
         if kind not in files or not Path(files[kind]).exists():
             raise HTTPException(404)
-        return FileResponse(files[kind], filename=Path(files[kind]).name if kind in ("tif", "fits", "png") else None)
+        return FileResponse(files[kind], filename=Path(files[kind]).name if kind in ("tif", "fits", "png", "original") else None)
 
     @r.get("/starnet")
     def get_starnet():

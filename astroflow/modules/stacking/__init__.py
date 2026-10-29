@@ -65,6 +65,7 @@ class Module(BaseModule):
         from .objects import KIND_LABEL
         return {"name": p["name"], "kind": p["kind"], "kind_label": KIND_LABEL.get(p["kind"] or "generic"),
                 "image": img, "result_id": r["id"], "exposure": r["exposure"], "n_frames": r["n_frames"],
+                "imported": json.loads(p["options"] or "{}").get("input_type") == "picture",
                 "ra": p["ra"], "dec": p["dec"], "files": files}
 
     def project_frames(self, pid: int) -> list[dict]:

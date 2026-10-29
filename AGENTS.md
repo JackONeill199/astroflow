@@ -175,7 +175,10 @@ Navigation wird aus den Modulen gebaut (Gruppe je Modul; `sec`-Einträge sind au
 Polling alle 2,5 s (`/api/status`), Ansichten zeichnen nur bei geänderter Signatur neu (Formulare/Zoom bleiben erhalten). `route()` verwirft Ansichten, die erst
 nach einem weiteren Klick fertig werden (`routeTicket`). Bildbetrachter `createViewer(host, src, cmpSrc, labels, ph, {overlay})` mit Zoom/Pan/Pinch, Vergleich
 und optionalem SVG-Overlay in Bildpixeln (Sage-Objektmarken). Achtung: in `createViewer` keine lokale Variable `esc` (TDZ-Fehler).
-Globale Auftragsanzeige oben (`showJobPill` aus `/api/activity`, alle Module) + Toast beim Fertigwerden. Dateien überall ablegen: FITS → Bilder-Import, Fotos → Sage.
+Globale Auftragsanzeige oben (`showJobPill` aus `/api/activity`, alle Module) + Toast beim Fertigwerden. Dateien überall ablegen: zentraler Bilder-Import für FITS und JPG/PNG/TIFF.
+Fertige Bilder: `modules/stacking/picture_import.py`, Projektoption `input_type='picture'`, Original + Vorschauen als Ergebnis ohne Rohframes/Stack;
+SHA256 gegen doppelte Uploads, eigenes Ereignis `stacking.imported` → Sage (kein SkyTrace). Keine erfundenen Belichtungs-/Frame- oder Qualitätswerte.
+Sage zeigt einen Verweis zum zentralen Import; eigener Upload nur als Rückfall bei deaktiviertem Bilder-Modul. API `/sage/analyze` bleibt kompatibel.
 Befehlspalette Strg+K: Einträge aller Module (`palette()`) + Aktionen der aktuellen Ansicht (`actions()`).
 Tastenkürzel: `/` Suche in Listen, `1–4` Tabs (Objekt, SkyTrace-Lauf), `F` Vollbild, `B` Vorher/Nachher. Server schickt `Cache-Control: no-cache` für `/`.
 **Nach Änderungen an `index.html`/`app.js`/`style.css` `?v=` in `index.html` hochzählen**; Modul-Dateien bekommen die Build-Kennung automatisch.
