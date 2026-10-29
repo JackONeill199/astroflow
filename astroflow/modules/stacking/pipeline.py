@@ -365,15 +365,15 @@ class Pipeline:
         """Stack Engine + Develop Engine. extra["mode"] == "develop": nur neu entwickeln (kein Stacking)."""
         if (extra or {}).get("mode") == "develop":
             return self.develop(project_id, extra, progress, start=0.05)
-        stacked_before = {r["id"] for r in self.db.q(
-            "SELECT id FROM frames WHERE project_id=? AND stacked=1", (project_id,))}
         self.stack(project_id, extra, progress)
-        stacked_after = {r["id"] for r in self.db.q(
-            "SELECT id FROM frames WHERE project_id=? AND stacked=1", (project_id,))}
+        pending = self.db.q("SELECT id FROM frames WHERE project_id=? AND stacked=1 AND stack_notified=0", (project_id,))
         rid = self.develop(project_id, extra, progress, start=0.86)
-        # Eine neue Entwicklung allein ist keine neue Beobachtung (Sage-Erfolge, SkyTrace).
-        if self.on_stacked and stacked_after - stacked_before:
-            self.on_stacked(project_id, rid)
+        # Dauerhaft pro Aufnahme bestätigen: ein Checkpoint/Abbruch ist noch keine zugestellte Beobachtung.
+        # Bei Fehlern bleiben Meldung und Rohbilder für den nächsten Versuch erhalten.
+        if pending:
+            if self.on_stacked:
+                self.on_stacked(project_id, rid)
+            self.db.many("UPDATE frames SET stack_notified=1 WHERE id=?", [(r["id"],) for r in pending])
         # erst nach gespeichertem Stack und Ergebnis: hochgeladene Einzelbilder entfernen (Speicher)
         if self.s.delete_uploads:
             n, freed = self.delete_stacked_uploads(project_id)
