@@ -53,7 +53,15 @@ als „Meteor“ gemeldet. Vergleichslauf: `Ergebnisse/2026-10-28_18-47-38-35255
 - `trail_validation`: gleichgerichtet längliche Sternkerne (`elongated_fraction` ≥ 0,3, `direction_coherence` ≥ 0,75) zählen
   zusätzlich als unabhängiger Sternbefund für das Verwerfen verteilter Modellvorschläge (Bild 36: 0,425/0,84, Schweife inkohärent gemessen). `evidence.js classification`: Kataloghinweis →
   verkettete Spur → Modellhinweis (bei schmalem Bildfeld nur als Quelle/Notiz, nicht als Klassenname) → `kind`.
-- Prüfen: `tests/test_skytrace.py` (Verkettung, Bildfeld), Engine-Checks `check_banding`, `check_streak_merging`, `check_trail_validation`,
+- **Blinkende Flugzeuge** (`line_detection.blink_pattern`, Nutzerhinweis 29.10.2026, **ohne echtes Beispiel**, nur synthetisch
+  `check_blink_trails.py` und an den Vergleichsläufen auf Fehlalarme geprüft): Linienprofil mit ≥ 5 hellen Abschnitten auf einer Geraden,
+  echte Lücken, konstantem Takt (Abstände = Vielfache der Periode, Median-Abweichung ≤ 12 %; einzelne von Sternen verdeckte Blitze
+  erlaubt), Anteil ≤ 70 %, integrierter Kontrast ≥ `BLINK_SCORE` 8, auch im Originalbild; zwei Formen: gestrichelt oder Linie mit
+  Knoten. → `kind='plane'`, `blink` (Blitze, Takt in Analysepixeln, Form), Klasse „Flugzeugkandidat (Blinklichter)“; nie Meteor.
+  Taumelnde Satelliten können ähnlich aussehen. Kurze helle Striche bleiben in der Hough-Abstimmung und Blinkprüfung frei
+  (Maske `dashes`, ab ~12 px gestreckt 16:1); durchgehende Spuren werden weiter mit der strengen Sternmaske bewertet
+  (sonst wurden Sternschweife in IC59 Bild 114 zu kurzen Spuren). Mit erstem echten Flugzeugbeispiel nachkalibrieren.
+- Prüfen: `tests/test_skytrace.py` (Verkettung, Bildfeld), `check_blink_trails.py`, Engine-Checks `check_banding`, `check_streak_merging`, `check_trail_validation`,
   `check_motion_plausibility` mit `SKYTRACE_HOME` und dem AstroAnalyse-Interpreter.
 
 Das folgende Projektwissen stammt aus dem Original und gilt fachlich weiter (Pfadangaben beziehen sich auf den alten Projektordner).
