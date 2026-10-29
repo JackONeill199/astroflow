@@ -29,12 +29,14 @@ function qualityPanel(s) {
   const q = s.quality;
   if (!q) return '';
   const cls = q.score >= 8.5 ? 'ok' : q.score >= 6.5 ? 'warn' : 'bad';
-  const label = q.score >= 8.5 ? 'sehr gut' : q.score >= 6.5 ? 'gut, mit Schwächen' : 'verbesserungswürdig';
+  const label = q.score >= 8.5 ? 'Messwerte weitgehend im Zielbereich' : q.score >= 6.5 ? 'Einige Messwerte auffällig' : 'Mehrere Messwerte auffällig';
   const auto = (s.qc || []).flatMap(h => h.round === 0 ? (h.adapt || [])
     : Object.keys(h.adjust || {}).length ? [`Nachgeregelt (Runde ${h.round}): ${Object.entries(h.adjust).map(([k, v]) => `${k} → ${v}`).join(', ')}`] : []);
   const m = q.metrics || {}, snr = q.measure?.snr;
   return `<div class="panel"><div class="panel-h" style="margin-bottom:12px"><span class="qscore ${cls}" style="--p:${q.score * 10}" title="${q.score.toFixed(1)} von 10"><b class="tnum">${q.score.toFixed(1)}</b></span>
-      <div><h2>Bildqualität</h2><div class="mut sm">${label}${snr != null ? ` · Objekt-SNR ${Math.round(snr)}` : ''}</div></div></div>
+      <div><h2>Technische Bildprüfung</h2><div class="mut sm">${label}${snr != null ? ` · Objekt-SNR ${Math.round(snr)}` : ''}</div></div></div>
+    <p class="mut sm">Der Wert prüft technische Grenzwerte, nicht die gesamte Bildqualität. Fokus, Nachführung und großflächige Muster werden damit nicht vollständig bewertet.</p>
+    ${snr != null && snr < 8 ? '<p class="warn sm">Wenig Nutzsignal: Entrauschen kann Flecken glätten, aber keine fehlenden Details zurückholen. Mehr gute Aufnahmen verbessern die Grundlage.</p>' : ''}
     ${q.issues?.length ? `<ul class="qlist">${q.issues.map(i => `<li class="warn">${esc(i.text)}</li>`).join('')}</ul>` : '<p class="ok sm" style="margin:0 0 10px">Keine messbaren Probleme gefunden.</p>'}
     ${q.hints?.length ? `<div class="qhints"><small class="mut">Verbesserungsmöglichkeiten</small><ul>${q.hints.map(h => `<li>${esc(h)}</li>`).join('')}</ul></div>` : ''}
     <details class="qmore"><summary class="sm mut">Messwerte und automatische Anpassungen</summary>
@@ -73,6 +75,7 @@ async function galleryView(el) {
   const ui = JSON.parse(localStorage.getItem('af.gallery') || '{}');
   let q = ui.q || '', kind = ui.kind || 'all', sort = ui.sort || 'recent', projects = [], st = sst(), sig = '', order = '';
   el.innerHTML = `<div class="pagehead"><div><h1>Deine Objekte</h1><p class="mut" id="gsum"></p></div><span class="grow"></span>
+    <a class="btn ghost" href="#/bilder/statistik">${icon('pulse')}Statistik</a>
     <button class="btn ghost" id="gscan" title="Eingangsordner jetzt nach neuen Aufnahmen durchsuchen">${icon('refresh')}Scannen</button>
     <a class="btn" href="#/import">${icon('upload')}Aufnahmen hinzufügen</a></div>
     <div class="toolbar"><input type="search" id="gq" placeholder="Objekt suchen …" title="Taste /" value="${esc(q)}"><div class="seg" id="gkind"></div><span class="grow"></span>
@@ -754,11 +757,57 @@ async function stackingSettings(el) {
   };
 }
 
+// ------------------------------------------------ Beobachtungsstatistik --- //
+async function statisticsView(el) {
+  crumbs([['Bilder', '#/bilder'], ['Statistik']]);
+  let year = '', ticket = 0, signature = '';
+  const date = s => new Date(s + 'T12:00:00Z').toLocaleDateString('de-DE', { timeZone: 'UTC' });
+  const month = s => new Date(s + '-01T12:00:00Z').toLocaleDateString('de-DE', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+  const weekdays = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+  el.innerHTML = `<div class="pagehead"><div><h1>Deine Beobachtungsaktivität</h1><p class="mut">Wann du den Himmel am häufigsten aufgenommen hast.</p></div><span class="grow"></span>
+    <select id="obs-year" aria-label="Beobachtungsjahr"><option value="">Alle Jahre</option></select></div><div id="obs-body"></div>`;
+  const body = el.querySelector('#obs-body'), select = el.querySelector('#obs-year');
+  select.onchange = () => { year = select.value; signature = ''; load(); };
+  function bars(rows, label) {
+    const max = Math.max(1, ...rows.map(b => b.frames));
+    return `<div class="obs-bars">${rows.map(b => `<div class="obs-bar" title="${nf.format(b.frames)} Aufnahmen · ${dur(b.exposure)} Belichtung">
+      <span>${esc(label(b.key))}</span><div class="obs-track"><div class="obs-fill" style="width:${100 * b.frames / max}%;${b.frames ? '' : 'min-width:0'}"></div></div><span class="tnum">${nf.format(b.frames)}</span></div>`).join('')}</div>`;
+  }
+  async function load() {
+    const current = ++ticket;
+    try {
+      const d = await api('/stacking/statistics' + (year ? '?year=' + year : ''));
+      if (current !== ticket) return;
+      const sig = JSON.stringify(d);
+      if (sig === signature) return;
+      signature = sig;
+      select.innerHTML = '<option value="">Alle Jahre</option>' + d.years.map(y => `<option value="${y}">${y}</option>`).join('');
+      select.value = year;
+      const maxHour = Math.max(1, ...d.hours.map(b => b.frames));
+      body.innerHTML = `<div class="hstats obs-summary"><div><b class="tnum">${nf.format(d.frames)}</b><small>Aufnahmen</small></div><div><b class="tnum">${d.nights}</b><small>Beobachtungsnächte</small></div>
+        <div><b class="tnum">${dur(d.exposure)}</b><small>Belichtung</small></div><div><b class="tnum">${d.objects}</b><small>Objekte</small></div></div>
+        <p class="mut sm">Aufnahmezeit aus FITS (UTC), nicht der Uploadzeitpunkt. Nächte zählen von 12 bis 12 Uhr UTC; Monate und Wochentage gehören zum Nachtbeginn.
+        Gezählt werden alle importierten Light-Aufnahmen, einschließlich verworfener und inzwischen gelöschter Originale. Duplikate und Bildversionen zählen nicht.
+        ${d.missing_dates ? `${nf.format(d.missing_dates)} Aufnahmen ohne gültigen Aufnahmezeitpunkt sind ausgeschlossen (über alle Jahre).` : ''}</p>
+        ${d.frames ? `<p class="mut">${date(d.first)} – ${date(d.last)} · Aktivster Monat: <b>${esc(month(d.top_month.key))}</b> (${nf.format(d.top_month.frames)} Aufnahmen)</p>
+        <div class="obs-stats"><section class="panel"><h2>Aufnahmen je Monat</h2>${bars(d.months, month)}</section>
+        <section class="panel"><h2>Wochentage der Beobachtungsnächte</h2>${bars(d.weekdays, k => weekdays[k])}</section>
+        <section class="panel obs-wide"><h2>Aufnahmezeiten (UTC)</h2><div class="obs-hours">${d.hours.map(b => `<div class="obs-hour" title="${String(b.key).padStart(2, '0')}:00–${String(b.key).padStart(2, '0')}:59 UTC · ${nf.format(b.frames)} Aufnahmen · ${dur(b.exposure)}"><i style="height:${100 * b.frames / maxHour}%"></i><small>${b.key}</small></div>`).join('')}</div></section>
+        <section class="panel obs-wide"><h2>Deine aktivsten Nächte</h2><p class="mut sm">Nach Anzahl der Aufnahmen · Belichtung rechts</p>${d.top_nights.map(b => `<div class="obs-night"><b>${date(b.key)}</b><span class="tnum">${nf.format(b.frames)} Aufnahmen · ${dur(b.exposure)}</span></div>`).join('')}</section></div>`
+          : '<div class="empty"><h2>Noch keine Aufnahmezeitpunkte</h2>Für diesen Zeitraum liegen keine passenden FITS-Metadaten vor.</div>'}`;
+    } catch (e) { if (current === ticket) body.innerHTML = `<div class="panel">${esc(e.message)}</div>`; }
+  }
+  await load();
+  return { update: load, destroy: () => { ticket++; } };
+}
+
 // ---------------------------------------------------------- Registrierung --- //
 AF.register('stacking', {
-  nav: [{ href: '#/bilder', label: 'Galerie', icon: 'grid', key: 'gallery' }, { href: '#/import', label: 'Import', icon: 'upload', key: 'import', sec: true }],
+  nav: [{ href: '#/bilder', label: 'Galerie', icon: 'grid', key: 'gallery' }, { href: '#/import', label: 'Import', icon: 'upload', key: 'import', sec: true },
+    { href: '#/bilder/statistik', label: 'Statistik', icon: 'pulse', key: 'statistics', sec: true }],
   routes: [
     [/^\/bilder$/, 'gallery', galleryView],
+    [/^\/bilder\/statistik$/, 'statistics', statisticsView],
     [/^\/p\/(\d+)(?:\/(\w+))?$/, 'gallery', projectView],
     [/^\/import$/, 'import', importView],
   ],

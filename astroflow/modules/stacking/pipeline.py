@@ -70,7 +70,7 @@ class Pipeline:
         self.review_cfg = review_cfg or reviewer.ReviewerConfig.from_env()
         self.solver_cfg = solver_cfg or platesolve.SolverConfig.from_env()
         self._scan_lock = threading.Lock()     # Watcher, API-Scan und Nach-Solving nie gleichzeitig
-        self.on_stacked = None                 # fn(project_id, result_id): neues Ergebnis, Rohbilder noch vorhanden
+        self.on_stacked = None                 # fn(project_id, result_id): neue Aufnahmen gestackt, Rohbilder noch vorhanden
 
     # ------------------------------------------------------------------ scan #
     def scan(self) -> dict:
@@ -365,9 +365,14 @@ class Pipeline:
         """Stack Engine + Develop Engine. extra["mode"] == "develop": nur neu entwickeln (kein Stacking)."""
         if (extra or {}).get("mode") == "develop":
             return self.develop(project_id, extra, progress, start=0.05)
+        stacked_before = {r["id"] for r in self.db.q(
+            "SELECT id FROM frames WHERE project_id=? AND stacked=1", (project_id,))}
         self.stack(project_id, extra, progress)
+        stacked_after = {r["id"] for r in self.db.q(
+            "SELECT id FROM frames WHERE project_id=? AND stacked=1", (project_id,))}
         rid = self.develop(project_id, extra, progress, start=0.86)
-        if self.on_stacked:                    # z. B. SkyTrace übernimmt die Aufnahmen, bevor Uploads gelöscht werden
+        # Eine neue Entwicklung allein ist keine neue Beobachtung (Sage-Erfolge, SkyTrace).
+        if self.on_stacked and stacked_after - stacked_before:
             self.on_stacked(project_id, rid)
         # erst nach gespeichertem Stack und Ergebnis: hochgeladene Einzelbilder entfernen (Speicher)
         if self.s.delete_uploads:

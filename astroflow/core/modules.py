@@ -5,7 +5,7 @@ Der Kern (`astroflow.server`) lädt die Module, hängt ihre Router unter `/api/<
 Dateien unter `/m/<id>/` aus und fasst Status und Aktivitäten aller Module zusammen. Module sprechen nicht direkt
 miteinander, sondern über benannte Dienste (`ctx.services`), z. B. stellt Stacking den Plate-Solver bereit,
 und über Ereignisse (`ctx.on` / `ctx.emit`):
-  stacking.stacked(project_id, result_id, name) – neues Ergebnis entwickelt; die Rohbilder existieren noch
+  stacking.stacked(project_id, result_id, name) – neue Aufnahmen gestackt und entwickelt; vor dem Löschen der Rohbilder
                                                   (hochgeladene werden direkt danach gelöscht).
 """
 from __future__ import annotations

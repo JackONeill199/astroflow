@@ -177,6 +177,11 @@ def build_router(eng: Engine) -> APIRouter:
     def status():
         return eng.status()
 
+    @r.get("/statistics")
+    def statistics(year: int | None = None):
+        from .activity_stats import summarize
+        return summarize(db.q("SELECT kind,info,project_id FROM frames WHERE kind='light'"), year)
+
     @r.post("/storage")
     def set_storage(body: dict = Body(...)):
         for k in ("delete_uploads", "gaia"):

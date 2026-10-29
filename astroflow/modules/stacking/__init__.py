@@ -14,6 +14,7 @@ class Module(BaseModule):
     description = "Rohbilder automatisch kalibrieren, stacken und zum fertigen Astrofoto entwickeln."
     icon = "grid"
     scripts = ("stacking.js",)
+    styles = ("statistics.css",)
 
     def __init__(self, ctx):
         super().__init__(ctx)

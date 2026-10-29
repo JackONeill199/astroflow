@@ -37,6 +37,9 @@ def test_uploaded_lights_deleted_after_stacking_and_stack_keeps_growing(tmp_path
     # erneut verarbeiten ohne neue Aufnahmen: nur Bearbeitung aus dem gespeicherten Stack
     pl.process(pid)
     assert db.one("SELECT n_frames FROM results ORDER BY id DESC LIMIT 1")["n_frames"] == n1
+    assert len(seen) == 1, "Ohne neue Aufnahmen keine erneuten Entdeckungen/Erfolge"
+    pl.process(pid, {"mode": "develop"})
+    assert len(seen) == 1, "Auch explizites Neu-Entwickeln meldet keine neue Beobachtung"
 
     # neue Nacht wird auf den bestehenden Stack nachgestackt (gleiches Sternfeld wie Nacht 1)
     demo.generate(s.uploads_dir / "nacht2", n_lights=8, n_darks=0, n_flats=0, seed=1)
@@ -46,6 +49,7 @@ def test_uploaded_lights_deleted_after_stacking_and_stack_keeps_growing(tmp_path
     pl.process(pid)
     n2 = db.one("SELECT n_frames FROM results ORDER BY id DESC LIMIT 1")["n_frames"]
     assert n2 > n1
+    assert len(seen) == 2, "Neue gestackte Aufnahmen melden wieder eine Beobachtung"
     assert not list((s.uploads_dir / "nacht2" / "lights").glob("*.fit"))
 
     # komplett neu stacken geht nicht mehr – klare Meldung statt kaputtem Stack
@@ -71,6 +75,20 @@ def test_option_off_keeps_uploads(tmp_path):
     pl.scan()
     pl.process(db.one("SELECT id FROM projects")["id"])
     assert len(list((s.uploads_dir / "n" / "lights").glob("*.fit"))) == 10
+
+
+def test_restack_same_frames_does_not_report_new_observation(tmp_path):
+    s, db, pl = _env(tmp_path, delete=False)
+    demo.generate(s.uploads_dir / "n", n_lights=10, n_darks=0, n_flats=0)
+    pl.scan()
+    pid = db.one("SELECT id FROM projects")["id"]
+    seen = []
+    pl.on_stacked = lambda p, rid: seen.append((p, rid))
+    pl.process(pid)
+    assert len(seen) == 1
+    db.x("UPDATE projects SET restack=1 WHERE id=?", (pid,))
+    pl.process(pid)
+    assert len(seen) == 1, "Neu-Stacken derselben Aufnahmen ist keine neue Beobachtung"
 
 
 def test_duplicate_upload_removed_immediately(tmp_path):
