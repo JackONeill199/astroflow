@@ -134,17 +134,20 @@ class AutoAnalysis:
         if not run or not run.is_dir() or not staged.is_dir():
             return
         for session in [p for p in run.iterdir() if (p / "frames.jsonl").exists()]:
-            files, hits = {}, set()
+            files, hits, reference = {}, set(), None
             for name in ("frames.jsonl", "ausgeschlossen.jsonl"):
                 path = session / name
                 for line in path.read_text(encoding="utf-8").splitlines() if path.exists() else []:
                     row = json.loads(line)
                     files[row["index"]] = row["file"]
-                    if name == "frames.jsonl" and row.get("detections"):
-                        hits.add(row["index"])
-            if not files:
+                    if name == "frames.jsonl":
+                        reference = row["index"] if reference is None else reference   # erste akzeptierte Aufnahme
+                        if row.get("detections"):
+                            hits.add(row["index"])
+            if reference is None:
                 continue
-            keep = {min(files)} | {i + d for i in hits for d in range(-2, 3)}
+            # Referenz = erste Zeile in frames.jsonl (candidate_report lädt sie immer), nicht ein ausgeschlossenes Anfangsbild
+            keep = {reference} | {i + d for i in hits for d in range(-2, 3)}
             target = session / "rohbilder"
             moved = {}
             for i in sorted(keep & files.keys()):
@@ -160,13 +163,24 @@ class AutoAnalysis:
                 moved[str(src)] = str(dst)
             if not moved:
                 continue
-            for path in [*session.glob("*.jsonl"), *session.glob("kandidaten.json"), *session.glob("kandidaten/*/kandidat.json")]:
-                text = path.read_text(encoding="utf-8")
-                new = text
-                for old, dst in moved.items():   # JSON-Pfad und file://-Verweis
-                    new = new.replace(json.dumps(old)[1:-1], json.dumps(dst)[1:-1]).replace(Path(old).as_uri(), Path(dst).as_uri())
-                if new != text:
-                    path.write_text(new, encoding="utf-8")
+            uris = {Path(old).as_uri(): Path(dst).as_uri() for old, dst in moved.items()}
+
+            def swap(value):                      # Pfade und file://-Verweise in den dekodierten Werten (Unicode-sicher)
+                if isinstance(value, str):
+                    return moved.get(value) or uris.get(value) or value
+                if isinstance(value, list):
+                    return [swap(v) for v in value]
+                if isinstance(value, dict):
+                    return {k: swap(v) for k, v in value.items()}
+                return value
+            from json_store import replace_file, write_json
+            for path in session.glob("*.jsonl"):  # atomar veröffentlichen – Browser und Bericht lesen evtl. gleichzeitig
+                rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+                tmp = path.with_name(path.name + ".tmp")
+                tmp.write_text("".join(json.dumps(swap(r), ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+                replace_file(tmp, path)
+            for path in [*session.glob("kandidaten.json"), *session.glob("kandidaten/*/kandidat.json")]:
+                write_json(path, swap(json.loads(path.read_text(encoding="utf-8"))))
 
     def _finish(self, item: dict, state: str, message: str | None):
         if state == "done":

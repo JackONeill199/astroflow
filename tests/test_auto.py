@@ -84,29 +84,34 @@ def test_automatik_abschaltbar(tmp_path, monkeypatch):
 def test_aufnahmen_fuer_den_bericht_bleiben(tmp_path, monkeypatch):
     """Nach einem automatischen Lauf: erstes Bild und Treffer ±2 wandern in den Ergebnisordner, Pfade zeigen dorthin."""
     import json
-    raw = tmp_path / "raw"
+    raw = tmp_path / "Österreich"                                 # Nicht-ASCII im Pfad (JSON mit ensure_ascii=False)
     raw.mkdir()
-    frames = [{"id": f"f{i}", "path": str(raw / f"img-{i:02d}.fits"), "night": "n1", "status": "ok"} for i in range(12)]
+    frames = [{"id": f"f{i}", "path": str(raw / f"Bild-ä{i:02d}.fits"), "night": "n1", "status": "ok"} for i in range(12)]
     for f in frames:
         open(f["path"], "wb").write(b"FITS")
     app = _app(tmp_path, monkeypatch, frames)
     with TestClient(app) as c:
         c.post("/api/sage/config", json={"auto_discover": False})
-        app.state.ctx.emit("stacking.stacked", project_id=5, result_id=1, name="M45")
+        app.state.ctx.emit("stacking.stacked", project_id=5, result_id=1, name="Plejaden Süd")
         auto = app.state.ctx.listeners["stacking.stacked"][0].__self__
         item = auto.state["queue"][0]
         staged = sorted((auto.dir / item["folder"]).iterdir())
         session = auto.mod.ctl.results / "lauf1" / "M45-x"
         session.mkdir(parents=True)
         rows = [{"index": i, "file": str(p), "detections": [{"kind": "trail"}] if i == 7 else []} for i, p in enumerate(staged)]
-        (session / "frames.jsonl").write_text("\n".join(json.dumps(r) for r in rows if r["index"] != 6), encoding="utf-8")
-        (session / "ausgeschlossen.jsonl").write_text(json.dumps({"index": 6, "file": str(staged[6])}), encoding="utf-8")
-        (session / "kandidaten.json").write_text(json.dumps([{"source_file": str(staged[7]), "frames": [{"original": staged[7].as_uri()}]}]), encoding="utf-8")
+        dump = lambda v: json.dumps(v, ensure_ascii=False)                # wie sequence.py
+        # Bild 0 und 6 unscharf ausgeschlossen: Referenz ist die erste akzeptierte Aufnahme (Index 1)
+        (session / "frames.jsonl").write_text("\n".join(dump(r) for r in rows if r["index"] not in (0, 6)), encoding="utf-8")
+        (session / "ausgeschlossen.jsonl").write_text("\n".join(dump({"index": i, "file": str(staged[i])}) for i in (0, 6)), encoding="utf-8")
+        (session / "kandidaten.json").write_text(dump([{"source_file": str(staged[7]), "frames": [{"original": staged[7].as_uri()}]}]), encoding="utf-8")
         item["run"] = "lauf1"
         auto._finish(item, "done", "fertig")
         kept = sorted(p.name for p in (session / "rohbilder").iterdir())
-        assert kept == [staged[i].name for i in (0, 5, 6, 7, 8, 9)] and not (auto.dir / item["folder"]).exists()
+        assert kept == [staged[i].name for i in (1, 5, 6, 7, 8, 9)] and not (auto.dir / item["folder"]).exists()
+        first = json.loads((session / "frames.jsonl").read_text(encoding="utf-8").splitlines()[0])
+        assert first["file"] == str(session / "rohbilder" / staged[1].name)
         cand = json.loads((session / "kandidaten.json").read_text(encoding="utf-8"))[0]
         assert cand["source_file"] == str(session / "rohbilder" / staged[7].name)
         assert cand["frames"][0]["original"] == (session / "rohbilder" / staged[7].name).as_uri()
-        assert json.loads((session / "ausgeschlossen.jsonl").read_text(encoding="utf-8"))["file"] == str(session / "rohbilder" / staged[6].name)
+        excluded = [json.loads(x) for x in (session / "ausgeschlossen.jsonl").read_text(encoding="utf-8").splitlines()]
+        assert excluded[1]["file"] == str(session / "rohbilder" / staged[6].name) and excluded[0]["file"] == str(staged[0])
