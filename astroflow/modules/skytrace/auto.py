@@ -14,6 +14,7 @@ import re
 import shutil
 import threading
 import time
+import traceback
 from pathlib import Path
 
 
@@ -57,8 +58,12 @@ class AutoAnalysis:
                 if len(items) < 2:                 # eine Bildfolge braucht mindestens zwei Aufnahmen
                     continue
                 safe = re.sub(r"[^\w.-]+", "_", name or f"Objekt_{project_id}").strip("_")[:60]
-                folder = self.dir / f"{safe}_observation_{night}-p{project_id}-{int(time.time())}"
-                folder.mkdir(parents=True, exist_ok=True)
+                # wie Stellina „<Datum>_observation_<Objekt>“ – so zeigt SkyTrace den Objektnamen als Titel
+                folder = self.dir / f"{night}_observation_{safe}"
+                n = 2
+                while folder.exists():
+                    folder = self.dir / f"{night}_observation_{safe}_{n}"; n += 1
+                folder.mkdir(parents=True)
                 for i, f in enumerate(items):
                     src = Path(f["path"])
                     dst = folder / f"{i:05d}_{src.name}"
@@ -120,7 +125,69 @@ class AutoAnalysis:
             snap = ctl.snapshot(logs=False)
             self._finish(item, "error" if snap.get("failed") else "stopped" if snap.get("stopping") else "done", snap.get("status"))
 
+    def _keep_frames(self, item: dict):
+        """Aufnahmen, die der Bericht braucht (erstes Bild, je zwei vor/nach jedem Treffer), in den Ergebnisordner
+        übernehmen und die Pfade im Lauf umschreiben – hochgeladene Rohbilder hat das Bilder-Modul oft schon gelöscht,
+        ohne sie ließe sich der Lauf nicht mehr aktualisieren (M45 2022-09-22)."""
+        run = self.mod.ctl.results / item["run"] if item.get("run") else None
+        staged = self.dir / item["folder"]
+        if not run or not run.is_dir() or not staged.is_dir():
+            return
+        for session in [p for p in run.iterdir() if (p / "frames.jsonl").exists()]:
+            files, hits, reference = {}, set(), None
+            for name in ("frames.jsonl", "ausgeschlossen.jsonl"):
+                path = session / name
+                for line in path.read_text(encoding="utf-8").splitlines() if path.exists() else []:
+                    row = json.loads(line)
+                    files[row["index"]] = row["file"]
+                    if name == "frames.jsonl":
+                        reference = row["index"] if reference is None else reference   # erste akzeptierte Aufnahme
+                        if row.get("detections"):
+                            hits.add(row["index"])
+            if reference is None:
+                continue
+            # Referenz = erste Zeile in frames.jsonl (candidate_report lädt sie immer), nicht ein ausgeschlossenes Anfangsbild
+            keep = {reference} | {i + d for i in hits for d in range(-2, 3)}
+            target = session / "rohbilder"
+            moved = {}
+            for i in sorted(keep & files.keys()):
+                src = Path(files[i])
+                if src.parent != staged or not src.exists():
+                    continue
+                target.mkdir(exist_ok=True)
+                dst = target / src.name
+                try:
+                    os.replace(src, dst)
+                except OSError:
+                    shutil.copy2(src, dst)
+                moved[str(src)] = str(dst)
+            if not moved:
+                continue
+            uris = {Path(old).as_uri(): Path(dst).as_uri() for old, dst in moved.items()}
+
+            def swap(value):                      # Pfade und file://-Verweise in den dekodierten Werten (Unicode-sicher)
+                if isinstance(value, str):
+                    return moved.get(value) or uris.get(value) or value
+                if isinstance(value, list):
+                    return [swap(v) for v in value]
+                if isinstance(value, dict):
+                    return {k: swap(v) for k, v in value.items()}
+                return value
+            from json_store import replace_file, write_json
+            for path in session.glob("*.jsonl"):  # atomar veröffentlichen – Browser und Bericht lesen evtl. gleichzeitig
+                rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+                tmp = path.with_name(path.name + ".tmp")
+                tmp.write_text("".join(json.dumps(swap(r), ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+                replace_file(tmp, path)
+            for path in [*session.glob("kandidaten.json"), *session.glob("kandidaten/*/kandidat.json")]:
+                write_json(path, swap(json.loads(path.read_text(encoding="utf-8"))))
+
     def _finish(self, item: dict, state: str, message: str | None):
+        if state == "done":
+            try:
+                self._keep_frames(item)
+            except Exception:
+                traceback.print_exc()
         shutil.rmtree(self.dir / item["folder"], ignore_errors=True)
         with self.lock:
             item.update(state=state, message=message, finished=time.time())

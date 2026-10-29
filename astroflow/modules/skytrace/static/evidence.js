@@ -8,12 +8,15 @@ window.AstroEvidence=(()=>{
  const num=(n,d=2)=>Number.isFinite(n)?n.toLocaleString('de-DE',{maximumFractionDigits:d}):'nicht gespeichert';
  const button=(text,fn)=>{const b=node('button',text,'evidence-button');b.type='button';b.onclick=fn;return b;};
  function speed(c){const v=c.plausibility?.minimum_angular_speed_deg_s;return Number.isFinite(v)?v*3600:c.evidence?.minimum_angular_speed_arcsec_s;}
+ function blinkText(b){return `${b.flashes} Blitze im gleichen Takt (alle ${num(b.period_pixels,0)} Analysepixel, ${b.form}) – typisch für Blitz- und Positionslichter eines Flugzeugs; ein taumelnder Satellit kann ähnlich aussehen`;}
  function classification(c){
   const names={meteor:'Meteorkandidat',plane:'Flugzeug-/Satellitenkandidat',satellite:'Satellitenkandidat',moving:'Bewegungskandidat',trail:'Spurkandidat'};
   const compatible=(c.catalogs||[]).filter(r=>r.status==='compatible').map(r=>({satellites:'satellite',aircraft:'plane',meteors:'meteor',fireballs:'meteor'})[r.provider]).filter(Boolean);
   const kinds=[...new Set(compatible)];if(kinds.length===1)return {name:names[kinds[0]],source:'Geometrischer Kataloghinweis; Identität unbestätigt',kind:kinds[0]};
   // Über mehrere Aufnahmen verkettete Spur: ein Meteor leuchtet nur in einer Aufnahme.
   if(c.linked_track?.count>1)return {name:'Bewegtes Objekt in '+c.linked_track.count+' Aufnahmen',kind:'plane',source:c.linked_track.reason};
+  // Regelmäßig unterbrochene Spur: Blitz-/Positionslichter eines Flugzeugs (ein taumelnder Satellit kann ähnlich aussehen).
+  if(c.blink)return {name:'Flugzeugkandidat (Blinklichter)',kind:'plane',source:blinkText(c.blink)};
   const hints=[...(c.model_hints||[])].filter(h=>names[h.kind]&&Number.isFinite(h.confidence)).sort((a,b)=>b.confidence-a.confidence);
   // Das Modell ist für Weitwinkel-Himmelskameras trainiert; im Teleskopbild bleibt seine Klasse ein Hinweis.
   if(hints.length&&c.model_scope==='narrow_field')return {name:names[c.kind]||'Spurkandidat',kind:c.kind||'trail',confidence:c.confidence,source:'Modellhinweis „'+names[hints[0].kind]+'“ ('+num(hints[0].confidence*100,0)+' %) – Modell für Weitwinkel-Himmelskameras trainiert, im Teleskopbild nur Hinweis'};
@@ -158,7 +161,8 @@ window.AstroEvidence=(()=>{
   const reasons=[Number.isFinite(e.detector_score)?`Die Linienintegration ergibt ${num(e.detector_score)} bei einer Erkennungsschwelle von ${num(e.detector_threshold)}. Der Wert beschreibt den integrierten Linienkontrast und ist weder eine Prozentwahrscheinlichkeit noch eine kalibrierte Sigma-Signifikanz.`:c.confidence!=null?`Das Erkennungsmodell meldet ${num(c.confidence*100,1)} % Modellkonfidenz. Das bestätigt keinen Objekttyp.`:'Kein numerischer Detektorwert gespeichert.',
    r.accepted?`${num(r.inliers??r.matched,0)} Referenzsterne stützen die Sternfeldkorrektur. Der Medianfehler beträgt ${num(r.median_error,3)} px; gemeinsame Teleskopbewegung wurde berücksichtigt.`:'Die Sternfeldzuordnung ist unsicher. Sternreste und Bewegungsartefakte bleiben mögliche Ursachen.',
    q.excluded?'Das Trefferbild wurde als unscharf markiert; die Bewertung ist entsprechend eingeschränkt.':`Bildqualität: ${q.reason||'keine Bewertung gespeichert'}. Sternachsenverhältnis ${num(q.axis_ratio,3)}, FWHM ${num(q.fwhm,3)} Analysepixel.`,
-   c.linked_track?.count>1?`${num(e.hit_frames,0)} Bilder zeigen die Erkennung (Bilder ${c.linked_track.frames.join(', ')}, über ${num(c.linked_track.span_seconds,0)} s). ${c.linked_track.reason} Satellit oder Flugzeug sind dadurch noch nicht unterschieden.`
+   c.blink?`${num(e.hit_frames,0)} Bild zeigt die Erkennung. ${blinkText(c.blink)}. Ein Meteor zieht eine durchgehende Spur.`
+   :c.linked_track?.count>1?`${num(e.hit_frames,0)} Bilder zeigen die Erkennung (Bilder ${c.linked_track.frames.join(', ')}, über ${num(c.linked_track.span_seconds,0)} s). ${c.linked_track.reason} Satellit oder Flugzeug sind dadurch noch nicht unterschieden.`
    :`${num(e.hit_frames,0)} Bild(er) zeigen die Erkennung. Die Spur ist ein Kandidat; Meteor, Satellit, Flugzeug oder ein verbliebenes Artefakt sind dadurch noch nicht unterschieden.`];
   if(Number.isFinite(e.minimum_angular_speed_arcsec_s))reasons.push(`Die gemessene Winkellänge würde bei Ausnutzung der gesamten Belichtung mindestens ${num(e.minimum_angular_speed_arcsec_s,1)} Bogensekunden/s entsprechen. Bei kürzerer Leuchtdauer wäre sie schneller. Entfernung, reale Geschwindigkeit und Bewegungsrichtung sind aus einer Einzelspur nicht bestimmt.`);
   if(q.tail_reference_stars)reasons.push(`Sternschweifprüfung: ${num(q.tail_stars,0)} von ${num(q.tail_reference_stars,0)} untersuchten Sternen mit langen schwachen Ausläufern; Richtungskohärenz ${num(q.tail_direction_coherence,3)}, verteilt über ${num(q.tail_quadrants,0)} Bildquadranten. Gemeinsame Ausläufer sprechen für Bewegung während der Belichtung; eine reine Verschiebung zwischen Aufnahmen reicht dafür nicht.`);

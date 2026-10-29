@@ -20,6 +20,52 @@ def required_score(bins):
     return min(LINE_SCORE_THRESHOLD,5.2+.9*(bins-2))
 
 
+BLINK_SCORE=8.          # integrierter Kontrast der Blitze (wie line_snr, nur über die hellen Abschnitte)
+
+
+def blink_pattern(contrast, valid):
+    """Regelmäßig unterbrochene Spur auf einer Geraden: Blitz-/Positionslichter eines Flugzeugs (Nutzerhinweis 29.10.2026).
+
+    Zwei Formen: gestrichelt (helle Abschnitte mit dunklen Lücken) oder eine schwache Linie mit regelmäßigen hellen
+    Knoten. Verlangt ≥ 5 Blitze, echte Lücken, konstanten Takt (Median-Abweichung ≤ 12 % der Periode, ¾ der Abstände ≤ 25 %) und einen integrierten
+    Kontrast ≥ BLINK_SCORE. Einzelne verdeckte Blitze (Stern darüber) sind erlaubt, Abstände = Vielfache des Takts. Ohne echtes Beispiel eingestellt – deshalb streng; ein taumelnder Satellit kann ähnlich
+    aussehen. `contrast` ungekappt, je Abtastpunkt (Analyse-Maßstab ≤ 768 px), `valid` = kein Stern."""
+    c=np.convolve(np.where(valid,contrast,0.),np.ones(3)/3,'same')
+    for floor in (1.0,None):                       # None: Knoten relativ zur Grundhelligkeit der Linie
+        if floor is None:
+            lit=c[c>.8]
+            if len(lit)<30: return None
+            floor=max(1.,2.*float(np.median(lit)))
+        on=np.r_[False,c>floor,False]
+        edges=np.flatnonzero(np.diff(on.astype(int)))
+        runs=[]
+        for a,b in zip(edges[::2],edges[1::2]):
+            if runs and a-runs[-1][1]<3: runs[-1]=(runs[-1][0],b); continue     # Rauschlöcher in einem Blitz schließen
+            runs.append((a,b))
+        runs=[(a,b) for a,b in runs if b-a>=3 and c[a:b].mean()>=max(2.,floor+.5) and valid[a:b].mean()>=.8]
+        if len(runs)<3: continue
+        level=float(np.median([c[a:b].mean() for a,b in runs]))
+        runs=[(a,b) for a,b in runs if c[a:b].mean()>=.35*level]        # Rauschstücke zwischen den Blitzen
+        if len(runs)<5: continue
+        starts=np.array([a for a,_ in runs]);ends=np.array([b for _,b in runs])
+        centers=(starts+ends)/2;spacing=np.diff(centers)
+        gaps=starts[1:]-ends[:-1]
+        # Takt: Abstände sind ganzzahlige Vielfache der Periode – ein Stern über einem Blitz lässt einen ausfallen
+        period=float(np.min(spacing)) if len(spacing)<3 else float(np.median(spacing))
+        steps=np.maximum(1,np.round(spacing/period))
+        deviation=np.abs(spacing/period-steps)
+        regularity=float(np.median(deviation))                        # robust: ein von einem Stern geteilter Blitz stört nicht
+        missing=int((steps-1).sum())
+        lit=int((ends-starts).sum());span=int(ends[-1]-starts[0])
+        if (np.median(gaps)<5 or regularity>.12 or np.mean(deviation<=.25)<.75 or missing>len(runs)//2 or lit/span>.7): continue
+        spacing=np.full(1,period)
+        score=float(np.mean([c[a:b].mean() for a,b in runs])*np.sqrt(lit/4))
+        if score<BLINK_SCORE: continue
+        return dict(flashes=len(runs),period=period,regularity=round(regularity,3),duty=round(lit/span,3),
+                    score=round(score,2),start=int(starts[0]),end=int(ends[-1]),form='Knoten' if floor>1. else 'gestrichelt')
+    return None
+
+
 def local_structure(field, points, normal):
     """Robust local noise around a segment (in global-noise units), the segment band excluded."""
     h,w=field.shape
@@ -88,6 +134,15 @@ def correct_readout_banding(image):
     return data
 
 
+def _plane(p1,p2,width,height,blink,scale,direction,snr=None,threshold=BLINK_SCORE):
+    info={k:blink[k] for k in ('flashes','regularity','duty','score','form')}
+    info['period_pixels']=round(blink['period']/scale,1)                   # Analysepixel
+    return dict(kind='plane',label=f'Flugzeug? ({info["flashes"]} Blitze in gleichem Takt)',confidence=None,
+                box=[float(max(0,min(p1[0],p2[0])-8)/width),float(max(0,min(p1[1],p2[1])-8)/height),float(min(width,max(p1[0],p2[0])+8)/width),float(min(height,max(p1[1],p2[1])+8)/height)],
+                segment=[p1.tolist(),p2.tolist()],line_snr=round(max(snr or 0,blink['score']),2),line_threshold=round(threshold,2),
+                short_trail=False,blink=info,method='Einzelbild: Linienprofil mit regelmäßig wiederkehrenden Blitzen',_direction=direction)
+
+
 def detect_lines(image, comparison=None, transform=None):
     image=correct_readout_banding(image)
     original=image.copy()
@@ -106,6 +161,7 @@ def detect_lines(image, comparison=None, transform=None):
     # Mask compact bright stars instead of requiring every trail pixel to exceed a high threshold.
     peaks=(smooth==maximum_filter(smooth,7))&(z>7)
     stars=maximum_filter(peaks.astype('uint8'),9)>0
+    dashes=stars.copy()        # Maske für die Blinkprüfung: lässt auch kurze helle Striche frei
     # A bright continuous streak also has local maxima. Do not erase it as a chain
     # of stars: preserve elongated connected ridges before the Hough vote.
     count,components,stats,_=cv2.connectedComponentsWithStats((z>7).astype('uint8'),8)
@@ -114,10 +170,13 @@ def detect_lines(image, comparison=None, transform=None):
         yy,xx=np.where(components==component)
         coords=np.column_stack([xx,yy]).astype('float32')
         _,_,values=cv2.PCACompute2(coords,mean=None)
-        if values[0,0]>100 and values[0,0]>16*max(values[1,0],.1):
+        if values[0,0]>12 and values[0,0]>16*max(values[1,0],.1):
             ridge=cv2.dilate((components==component).astype('uint8'),np.ones((5,5),dtype='uint8'))>0
-            stars[ridge]=False
-    votes=((z>1.35)&~stars).astype('uint8')*255
+            dashes[ridge]=False    # ab ~12 px: kurze helle Striche blinkender Flugzeuge (Sterne sind rund)
+            # Für durchgehende Spuren nur lange Grate freigeben – kurze Sternschweife verwackelter Bilder
+            # (IC59 Bild 114) würden sonst zu kurzen Spuren.
+            if values[0,0]>100: stars[ridge]=False
+    votes=((z>1.35)&~dashes).astype('uint8')*255
     votes[:12]=votes[-12:]=0; votes[:,:12]=votes[:,-12:]=0
     # Low vote threshold so ~100 px meteors get a line; the contrast score decides.
     lines=cv2.HoughLines(votes,1,np.pi/720,max(22,int(min(small.shape)*.042)))
@@ -138,10 +197,18 @@ def detect_lines(image, comparison=None, transform=None):
         sides=np.asarray([sample(k) for k in (-9,-7,7,9)])
         contrast=signal-np.mean(sides,axis=0)
         narrow=signal-(sample(-4)+sample(4))/2
+        raw=np.minimum(contrast,narrow*1.4)
         # Extended galaxies/nebulae are not narrow ridges. Winsorization prevents one
         # bright stellar residual from giving an otherwise empty line a large score.
-        contrast=np.clip(np.minimum(contrast,narrow*1.4),-4,4)
+        contrast=np.clip(raw,-4,4)
         valid=cv2.remap((~stars).astype('uint8'),xy[:,0].astype('float32')[None],xy[:,1].astype('float32')[None],cv2.INTER_NEAREST)[0]>0
+        blink=blink_pattern(raw,cv2.remap((~dashes).astype('uint8'),xy[:,0].astype('float32')[None],xy[:,1].astype('float32')[None],cv2.INTER_NEAREST)[0]>0)
+        if blink and (min(abs(direction[0]),abs(direction[1]))<.0175 or      # Auslesezeilen/-spalten
+                      local_structure(z,xy[blink['start']:blink['end']],normal)>CALM_LIMIT):
+            blink=None
+        if blink:                                   # Blitze müssen auch in dieser Aufnahme selbst zu sehen sein
+            source_raw=sum(sample(k,source) for k in (-1,0,1))/3-sum(sample(k,source) for k in (-9,-7,7,9))/4
+            if blink_pattern(source_raw,cv2.remap((~dashes).astype('uint8'),xy[:,0].astype('float32')[None],xy[:,1].astype('float32')[None],cv2.INTER_NEAREST)[0]>0) is None: blink=None
         # Score contiguous 24px bins; a chance chain of stars cannot support an entire line.
         bins=[]
         for start in range(0,len(xy)-23,24):
@@ -157,6 +224,15 @@ def detect_lines(image, comparison=None, transform=None):
                 strength=float(np.mean(bins[start:end])*np.sqrt((end-start)*24/4))
                 if strength<required_score(end-start): continue
                 if best is None or strength>best[0]: best=(strength,start,end)
+        if best is None and blink:                  # gestrichelte Spur: als Ganzes kein durchgehender Abschnitt
+            p1=xy[blink['start']]/scale; p2=xy[blink['end']-1]/scale
+            if np.linalg.norm(p2-p1)<90: continue
+            midpoint=(p1+p2)/2
+            if any(abs(np.dot(midpoint-np.mean(c['segment'],axis=0),normal))<12 and abs(np.dot(direction,c['_direction']))>.995 for c in candidates): continue
+            height,width=image.shape
+            candidates.append(_plane(p1,p2,width,height,blink,scale,direction))
+            if len(candidates)>=12: break
+            continue
         if best is None: continue
         snr,start,end=best
         short=bool(end-start<SHORT_BINS)
@@ -183,10 +259,15 @@ def detect_lines(image, comparison=None, transform=None):
         midpoint=(p1+p2)/2
         if any(abs(np.dot(midpoint-np.mean(c['segment'],axis=0),normal))<12 and abs(np.dot(direction,c['_direction']))>.995 for c in candidates): continue
         height,width=image.shape
+        if blink and blink['end']>start*24 and blink['start']<end*24:     # durchgehender Abschnitt mit Blitzen
+            q1,q2=min(start*24,blink['start']),max(end*24,blink['end'])
+            candidates.append(_plane(xy[q1]/scale,xy[q2-1]/scale,width,height,blink,scale,direction,snr,required_score(end-start)))
+            if len(candidates)>=12: break
+            continue
         candidates.append(dict(kind='trail',label='Einzelbild-Spur (Meteor/Satellit/Flugzeug?)',confidence=None,box=[float(max(0,min(p1[0],p2[0])-8)/width),float(max(0,min(p1[1],p2[1])-8)/height),float(min(width,max(p1[0],p2[0])+8)/width),float(min(height,max(p1[1],p2[1])+8)/height)],segment=[p1.tolist(),p2.tolist()],line_snr=round(snr,2),line_threshold=round(required_score(end-start),2),short_trail=short,method='Einzelbild: Sensorbanding-Korrektur + Hintergrundabzug + Hough + integrierter Linienkontrast',_direction=direction))
         if len(candidates)>=12: break
     merged=[]
-    for candidate in sorted(candidates,key=lambda c:c['line_snr'],reverse=True):
+    for candidate in sorted(candidates,key=lambda c:(c.get('blink') is not None,c['line_snr']),reverse=True):
         segment=np.asarray(candidate['segment']); midpoint=segment.mean(axis=0)
         duplicate=False
         for kept in merged:

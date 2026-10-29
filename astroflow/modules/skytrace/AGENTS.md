@@ -21,12 +21,20 @@ Messgrafiken/Zoomdialoge (`static/evidence.js/css`) sind unverändert und werden
   und laufen mit gesetztem `SKYTRACE_HOME` (nutzen teils echte Daten unter `D:\Astro\Stellina`).
 - Abhängigkeiten der Engine: `requirements.txt` (Lock aus SkyTrace). Docker: `--build-arg SKYTRACE=1`.
 
+## Analysen löschen (29.10.2026, Nutzerwunsch)
+`DELETE /api/skytrace/run?id=<Lauf>` → `Controller.delete_run`: nur Ordner unter `Ergebnisse/` mit Laufdateien (`videos.json`,
+`bericht.html` oder `messwerte.jsonl`), nicht der gerade laufende; Windows-Sperren (Videowiedergabe) mit einem Wiederholversuch.
+Originalaufnahmen liegen nie im Ergebnisordner. UI: Papierkorb auf den Karten (bei Hover), in der Lauf-Ansicht und in der Befehlspalette,
+jeweils mit Bestätigungsdialog.
+
 ## Automatisch nach dem Stacken (`auto.py`, 28.10.2026)
 - Ereignis `stacking.stacked` → `AutoAnalysis.stacked`: noch nicht übergebene Light-Aufnahmen (Dienst `project_frames`, Merkliste
-  `<AstroFlow-Daten>/skytrace/auto.json` → `sent`) je Nacht als Ordner `<Objekt>_observation_<Nacht>-p<id>-<zeit>` aus **Hardlinks**
+  `<AstroFlow-Daten>/skytrace/auto.json` → `sent`) je Nacht als Ordner `<Nacht>_observation_<Objekt>` (wie Stellina, damit der Titel der Objektname ist; ältere Läufe `<Objekt>_observation_<Nacht>-p<id>-<zeit>` erkennt `short_name`) aus **Hardlinks**
   (anderer Datenträger: Kopie) unter `<AstroFlow-Daten>/skytrace/auto/`. So überleben sie das Löschen hochgeladener Rohbilder.
 - Warteschlangen-Thread startet je Ordner einen normalen Lauf (`Controller.launch(..., remember=False)` – Formularvorgaben bleiben),
-  sobald SkyTrace frei und die Engine geprüft ist; danach wird der Ordner gelöscht. Unvollständige Engine → Eintrag mit Fehler in der Aktivität.
+  sobald SkyTrace frei und die Engine geprüft ist; danach wird der Ordner gelöscht. Vorher übernimmt `_keep_frames` die Aufnahmen,
+  die der Bericht braucht (erstes Bild, Treffer ±2), nach `<Lauf>/<Beobachtung>/rohbilder/` und schreibt die Pfade in `*.jsonl`,
+  `kandidaten.json`, `kandidaten/*/kandidat.json` um – hochgeladene Rohbilder sind dann oft schon gelöscht (M45: Aktualisieren schlug fehl). Unvollständige Engine → Eintrag mit Fehler in der Aktivität.
   Wartende Ordner erscheinen in der Aktivität, `status.auto_waiting` zählt sie. Abschalten: Einstellungen → SkyTrace (`skytrace.auto`).
 - Achtung beim Nutzer: Ergebnisse landen im gemeinsamen `AstroAnalyse/Ergebnisse` – das alte SkyTrace (Port 8765) nicht gleichzeitig analysieren lassen.
 
@@ -44,10 +52,22 @@ als „Meteor“ gemeldet. Vergleichslauf: `Ergebnisse/2026-10-28_18-47-38-35255
   = eigene Länge/Belichtung × Zeitabstand (Faktor 0,55–1,6), gleichmäßige Bewegung → ein Kandidat `kind='plane'`, `track_id='L…'`,
   `linked_track` (Bilder, Dauer, Rate, Begründung). Ein Meteor leuchtet nur in einer Aufnahme; verkettete Spuren sind nie Meteorkandidaten.
 - **YOLO nur als Hinweis bei Teleskopen** (`motion_plausibility.narrow_field`: Bildfeld aus FOCAL/PIXSZ/NAXIS < 5°): Das OpenSkyCam-Modell
-  ist für Weitwinkel-Himmelskameras trainiert. Erkennungen erhalten `model_scope='narrow_field'`; reine Modellboxen werden
-  „Modellvorschlag (im Teleskopbild unsicher)“ (`kind='trail'`, Klasse in `model_hints`). `evidence.js classification`: Kataloghinweis →
+  ist für Weitwinkel-Himmelskameras trainiert. Erkennungen erhalten `model_scope='narrow_field'`; reine Modellboxen **ohne gemessene
+  Linie sind keine Kandidaten** (nur in `frames.jsonl` → `model_proposals`). Anlass M45 2022-09-22 (Lauf `2026-10-28_23-34-00-163934`):
+  22 Modellvorschläge auf Sternschweifen eines verwackelten Bildes (Bild 36) und auf hellen Plejadensternen, keiner echt; der
+  Liniendetektor fand dort nichts. Bestätigt eine gemessene Linie die Box, bleibt die Klasse als `model_hints` daran.
+- `trail_validation`: gleichgerichtet längliche Sternkerne (`elongated_fraction` ≥ 0,3, `direction_coherence` ≥ 0,75) zählen
+  zusätzlich als unabhängiger Sternbefund für das Verwerfen verteilter Modellvorschläge (Bild 36: 0,425/0,84, Schweife inkohärent gemessen). `evidence.js classification`: Kataloghinweis →
   verkettete Spur → Modellhinweis (bei schmalem Bildfeld nur als Quelle/Notiz, nicht als Klassenname) → `kind`.
-- Prüfen: `tests/test_skytrace.py` (Verkettung, Bildfeld), Engine-Checks `check_banding`, `check_streak_merging`, `check_trail_validation`,
+- **Blinkende Flugzeuge** (`line_detection.blink_pattern`, Nutzerhinweis 29.10.2026, **ohne echtes Beispiel**, nur synthetisch
+  `check_blink_trails.py` und an den Vergleichsläufen auf Fehlalarme geprüft): Linienprofil mit ≥ 5 hellen Abschnitten auf einer Geraden,
+  echte Lücken, konstantem Takt (Abstände = Vielfache der Periode, Median-Abweichung ≤ 12 %; einzelne von Sternen verdeckte Blitze
+  erlaubt), Anteil ≤ 70 %, integrierter Kontrast ≥ `BLINK_SCORE` 8, auch im Originalbild; zwei Formen: gestrichelt oder Linie mit
+  Knoten. → `kind='plane'`, `blink` (Blitze, Takt in Analysepixeln, Form), Klasse „Flugzeugkandidat (Blinklichter)“; nie Meteor.
+  Taumelnde Satelliten können ähnlich aussehen. Kurze helle Striche bleiben in der Hough-Abstimmung und Blinkprüfung frei
+  (Maske `dashes`, ab ~12 px gestreckt 16:1); durchgehende Spuren werden weiter mit der strengen Sternmaske bewertet
+  (sonst wurden Sternschweife in IC59 Bild 114 zu kurzen Spuren). Mit erstem echten Flugzeugbeispiel nachkalibrieren.
+- Prüfen: `tests/test_skytrace.py` (Verkettung, Bildfeld), `check_blink_trails.py`, Engine-Checks `check_banding`, `check_streak_merging`, `check_trail_validation`,
   `check_motion_plausibility` mit `SKYTRACE_HOME` und dem AstroAnalyse-Interpreter.
 
 Das folgende Projektwissen stammt aus dem Original und gilt fachlich weiter (Pfadangaben beziehen sich auf den alten Projektordner).
