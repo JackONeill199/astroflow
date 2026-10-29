@@ -4,7 +4,8 @@
 (() => {
 const T = '/skytrace';
 const EV = () => (typeof AstroEvidence !== 'undefined' ? AstroEvidence : null);
-const shortName = (n) => (n || 'Beobachtung').split('_observation_').pop().replaceAll('_', ' ');
+// Stellina-Ordner „<Datum>_observation_<Objekt>“; ältere automatische Läufe „<Objekt>_observation_<Nacht>-p<id>-<zeit>“
+const shortName = (n) => { const a = /^(.+)_observation_\d{4}-\d\d-\d\d-p\d+-\d+$/.exec(n || ''); return (a ? a[1] : (n || 'Beobachtung').split('_observation_').pop()).replaceAll('_', ' '); };
 const runDate = (id) => { const m = /^(\d{4})-(\d\d)-(\d\d)_(\d\d)-(\d\d)/.exec(id || ''); return m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : ''; };
 const media = (rel) => `/api/skytrace/media/${rel.split('/').map(encodeURIComponent).join('/')}`;
 const kindNames = { trail: 'Einzelbild-Spur', meteor: 'Meteorkandidat', plane: 'Flugzeugkandidat', moving: 'Langsamer Beweger' };
@@ -35,6 +36,17 @@ function engineNotice(eng) {
 }
 
 // ---------------------------------------------------------------- Übersicht --- //
+// Analyse löschen: Ergebnisordner mit Videos, Ausschnitten und Bericht – die Originalaufnahmen bleiben unberührt.
+async function deleteRun(id, title) {
+  if (!await confirmDlg(`„${title}“ löschen?`, `Entfernt diese Analyse mit Videos, Kandidaten-Ausschnitten und Bericht. Das lässt sich nicht rückgängig machen.<br><br>
+    <span class="sm">Deine Originalaufnahmen bleiben unberührt.</span>`, 'Endgültig löschen', true)) return false;
+  try {
+    const r = await send(`${T}/run?id=${encodeURIComponent(id)}`, null, 'DELETE');
+    toast(`„${title}“ gelöscht${r.bytes ? ` – ${fmb(r.bytes)} frei` : ''}.`, 'ok');
+    return true;
+  } catch (e) { toast(e.message, 'err'); return false; }
+}
+
 async function runsView(el) {
   crumbs([['SkyTrace'], ['Analysen']]);
   let boot = await api(T + '/bootstrap'), sig = '', liveSig = '';
@@ -46,6 +58,13 @@ async function runsView(el) {
     <div id="stRuns"></div>`;
   let q = '';
   $('#stq').oninput = (e) => { q = e.target.value.toLowerCase(); sig = ''; draw(); };
+  $('#stRuns').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-del]');
+    if (!b) return;
+    e.preventDefault(); e.stopPropagation();
+    const r = boot.runs.find(x => x.id === b.dataset.del);
+    if (r && await deleteRun(r.id, shortName(r.title))) { boot.runs = boot.runs.filter(x => x.id !== r.id); sig = ''; draw(); }
+  });
   function draw() {
     const runs = boot.runs.filter(r => (shortName(r.title) + ' ' + r.id).toLowerCase().includes(q));
     const s = JSON.stringify(runs.map(r => [r.id, r.frames, r.candidates, r.preview]));
@@ -56,7 +75,8 @@ async function runsView(el) {
         <div class="thumb">${r.preview ? `<img src="${media(r.preview)}" alt="" loading="lazy" decoding="async" onload="this.classList.add('ld')">` : `<div class="ph">${icon('orbit')}Foto-/Videoanalyse</div>`}
           ${r.candidates ? `<span class="chip acc badge">${r.candidates} Kandidat${r.candidates === 1 ? '' : 'en'}</span>` : ''}</div>
         <div class="body"><h3>${esc(shortName(r.title))}</h3><div class="meta"><span class="chip">${r.sessions} Beobachtung${r.sessions === 1 ? '' : 'en'}</span>${r.excluded ? `<span class="chip">${r.excluded} unscharf</span>` : ''}</div>
-          <div class="foot"><span>${nf.format(r.frames)} Aufnahmen</span><span>${esc(runDate(r.id) || ago(r.modified))}</span></div></div></a>`).join('')}</div>`
+          <div class="foot"><span>${nf.format(r.frames)} Aufnahmen</span><span>${esc(runDate(r.id) || ago(r.modified))}</span></div></div>
+        ${boot.state.running && boot.state.run === r.id ? '' : `<button type="button" class="card-del" data-del="${esc(r.id)}" title="Analyse löschen" aria-label="Analyse löschen">${icon('trash')}</button>`}</a>`).join('')}</div>`
       : boot.runs.length ? `<div class="empty">${icon('search')}<h2>Keine Treffer</h2></div>`
         : `<div class="empty">${icon('orbit')}<h2>Jede Spur hat eine Geschichte.</h2>Wähle einen Beobachtungsordner und starte deine erste Analyse.
           <div style="margin-top:18px"><a class="btn" href="#/skytrace/neu">${icon('play')}Neue Analyse</a></div></div>`;
@@ -182,9 +202,10 @@ async function runView(root, runId, tab = 'vorschau') {
   const session = () => S.run.sessions[S.session] || S.run.sessions[0];
   const cand = () => S.run.candidates.find(c => c.key === S.key);
 
+  const runTitle = () => S.run.sessions.length === 1 ? shortName(S.run.sessions[0].session) : shortName(runId);
   function head() {
     const ss = S.run.sessions, frames = ss.reduce((a, s) => a + (s.frames || 0), 0), excl = ss.reduce((a, s) => a + (s.excluded || 0), 0);
-    const live = isLive(), title = ss.length === 1 ? shortName(ss[0].session) : shortName(runId);
+    const live = isLive(), title = runTitle();
     return `<div class="pagehead"><div style="min-width:0"><h1>${esc(title)}</h1>
         <div class="row" style="margin-top:8px">${live ? '<span class="chip acc"><span class="live" style="width:7px;height:7px"></span>Live-Analyse</span>' : ''}
           <span class="chip">${esc(runDate(runId) || runId)}</span><span class="chip">${ss.length} Beobachtung${ss.length === 1 ? '' : 'en'}</span>
@@ -193,7 +214,8 @@ async function runView(root, runId, tab = 'vorschau') {
       <span class="grow"></span>
       <div class="row">${live ? `<button class="btn danger" id="stop" ${S.engine.stopping ? 'disabled' : ''}>${icon('stop')}${S.engine.stopping ? 'Wird angehalten …' : 'Anhalten'}</button>`
         : `<button class="btn ghost" id="refresh" ${S.engine.running || !ss.some(s => s.video_url) ? 'disabled' : ''} title="Zeitreihen, Ausschnitte und Katalogabgleich neu erzeugen">${icon('refresh')}Zeitreihen aktualisieren</button>`}
-        ${S.run.report_url ? `<a class="btn ghost" href="${S.run.report_url}" target="_blank" rel="noopener">Bericht öffnen${icon('arrow')}</a>` : ''}</div></div>
+        ${S.run.report_url ? `<a class="btn ghost" href="${S.run.report_url}" target="_blank" rel="noopener">Bericht öffnen${icon('arrow')}</a>` : ''}
+        ${live ? '' : `<button class="btn ghost icon" id="delRun" title="Analyse löschen" aria-label="Analyse löschen">${icon('trash')}</button>`}</div></div>
       <div id="stjob" style="margin:-8px 0 18px"></div>
       <nav class="tabs" id="tabs">${TABS.map(([k, l], i) => { const n = { kandidaten: S.run.candidates.length, beobachtungen: ss.length }[k];
         return `<a href="#/skytrace/${encodeURIComponent(runId)}/${k}" data-t="${k}" class="${tab === k ? 'on' : ''}" title="Taste ${i + 1}">${l}${n != null ? `<span>${n}</span>` : ''}</a>`; }).join('')}<i class="tab-ind" id="tabind"></i></nav>
@@ -208,6 +230,7 @@ async function runView(root, runId, tab = 'vorschau') {
     stopTimeline();
     root.innerHTML = head();
     $('#stop')?.addEventListener('click', async () => { try { S.engine = await send(T + '/stop'); draw(); } catch (e) { toast(e.message, 'err'); } });
+    $('#delRun')?.addEventListener('click', async () => { if (await deleteRun(runId, runTitle())) location.hash = '#/skytrace'; });
     $('#refresh')?.addEventListener('click', async () => {
       try { S.engine = await send(T + '/refresh', { run: runId }); S.logId = 0; toast('Zeitreihen und Katalogabgleich werden aktualisiert.'); poll(); draw(); }
       catch (e) { toast(e.message, 'err'); }
@@ -456,7 +479,8 @@ async function runView(root, runId, tab = 'vorschau') {
     actions: () => [
       ...TABS.map(([k, l], i) => ['arrow', `${l} anzeigen`, `Taste ${i + 1}`, () => { location.hash = `#/skytrace/${encodeURIComponent(runId)}/${k}`; }]),
       ...(S.run.report_url ? [['arrow', 'Bericht öffnen', 'eigenständiges HTML', () => window.open(S.run.report_url, '_blank', 'noopener')]] : []),
-      ...(isLive() ? [['stop', 'Analyse anhalten', 'Teilergebnisse bleiben', async () => { S.engine = await send(T + '/stop'); draw(); }]] : []),
+      ...(isLive() ? [['stop', 'Analyse anhalten', 'Teilergebnisse bleiben', async () => { S.engine = await send(T + '/stop'); draw(); }]]
+        : [['trash', 'Analyse löschen', 'mit Videos und Bericht', async () => { if (await deleteRun(runId, runTitle())) location.hash = '#/skytrace'; }]]),
     ],
     destroy: () => { stopTimeline(); document.removeEventListener('keydown', onKey); if (document.fullscreenElement) document.exitFullscreen(); },
   };

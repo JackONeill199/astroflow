@@ -55,7 +55,7 @@ def test_nach_dem_stacken(tmp_path, monkeypatch):
         # SkyTrace: Nacht mit 3 Aufnahmen als Beobachtungsordner aus Hardlinks, wartet auf die Engine
         auto = app.state.ctx.listeners["stacking.stacked"][0].__self__
         q = auto.state["queue"]
-        assert len(q) == 1 and q[0]["frames"] == 3 and q[0]["night"] == "2026-10-28" and "_observation_2026-10-28" in q[0]["folder"]
+        assert len(q) == 1 and q[0]["frames"] == 3 and q[0]["night"] == "2026-10-28" and q[0]["folder"] == "2026-10-28_observation_M74"
         folder = auto.dir / q[0]["folder"]
         assert sorted(x.name for x in folder.iterdir()) == ["00000_img-0.fits", "00001_img-1.fits", "00002_img-2.fits"]
         (raw / "img-0.fits").unlink()                              # Upload gelöscht → Analyse-Kopie bleibt

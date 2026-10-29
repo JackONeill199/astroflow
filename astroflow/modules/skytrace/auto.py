@@ -58,8 +58,12 @@ class AutoAnalysis:
                 if len(items) < 2:                 # eine Bildfolge braucht mindestens zwei Aufnahmen
                     continue
                 safe = re.sub(r"[^\w.-]+", "_", name or f"Objekt_{project_id}").strip("_")[:60]
-                folder = self.dir / f"{safe}_observation_{night}-p{project_id}-{int(time.time())}"
-                folder.mkdir(parents=True, exist_ok=True)
+                # wie Stellina „<Datum>_observation_<Objekt>“ – so zeigt SkyTrace den Objektnamen als Titel
+                folder = self.dir / f"{night}_observation_{safe}"
+                n = 2
+                while folder.exists():
+                    folder = self.dir / f"{night}_observation_{safe}_{n}"; n += 1
+                folder.mkdir(parents=True)
                 for i, f in enumerate(items):
                     src = Path(f["path"])
                     dst = folder / f"{i:05d}_{src.name}"

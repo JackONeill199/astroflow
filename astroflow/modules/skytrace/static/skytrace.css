@@ -79,3 +79,12 @@
 @media (prefers-color-scheme: light) {
   .st-cdetail .evidence-panel { background: #0b1220; border-radius: 12px; margin: 0 20px }
 }
+
+/* Analyse löschen (Karte in der Übersicht) */
+.card { position: relative }
+.card-del { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--line2); display: grid; place-items: center;
+  background: color-mix(in srgb, var(--panel2) 88%, transparent); backdrop-filter: blur(8px); color: var(--mut); cursor: pointer; opacity: 0; transition: opacity .15s, color .15s, background .15s }
+.card-del svg { width: 15px; height: 15px }
+.card:hover .card-del, .card:focus-within .card-del { opacity: 1 }
+.card-del:hover { color: #fff; background: var(--bad); border-color: var(--bad) }
+@media (hover: none) { .card-del { opacity: 1 } }

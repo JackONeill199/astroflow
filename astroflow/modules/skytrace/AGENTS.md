@@ -21,9 +21,15 @@ Messgrafiken/Zoomdialoge (`static/evidence.js/css`) sind unverändert und werden
   und laufen mit gesetztem `SKYTRACE_HOME` (nutzen teils echte Daten unter `D:\Astro\Stellina`).
 - Abhängigkeiten der Engine: `requirements.txt` (Lock aus SkyTrace). Docker: `--build-arg SKYTRACE=1`.
 
+## Analysen löschen (29.10.2026, Nutzerwunsch)
+`DELETE /api/skytrace/run?id=<Lauf>` → `Controller.delete_run`: nur Ordner unter `Ergebnisse/` mit Laufdateien (`videos.json`,
+`bericht.html` oder `messwerte.jsonl`), nicht der gerade laufende; Windows-Sperren (Videowiedergabe) mit einem Wiederholversuch.
+Originalaufnahmen liegen nie im Ergebnisordner. UI: Papierkorb auf den Karten (bei Hover), in der Lauf-Ansicht und in der Befehlspalette,
+jeweils mit Bestätigungsdialog.
+
 ## Automatisch nach dem Stacken (`auto.py`, 28.10.2026)
 - Ereignis `stacking.stacked` → `AutoAnalysis.stacked`: noch nicht übergebene Light-Aufnahmen (Dienst `project_frames`, Merkliste
-  `<AstroFlow-Daten>/skytrace/auto.json` → `sent`) je Nacht als Ordner `<Objekt>_observation_<Nacht>-p<id>-<zeit>` aus **Hardlinks**
+  `<AstroFlow-Daten>/skytrace/auto.json` → `sent`) je Nacht als Ordner `<Nacht>_observation_<Objekt>` (wie Stellina, damit der Titel der Objektname ist; ältere Läufe `<Objekt>_observation_<Nacht>-p<id>-<zeit>` erkennt `short_name`) aus **Hardlinks**
   (anderer Datenträger: Kopie) unter `<AstroFlow-Daten>/skytrace/auto/`. So überleben sie das Löschen hochgeladener Rohbilder.
 - Warteschlangen-Thread startet je Ordner einen normalen Lauf (`Controller.launch(..., remember=False)` – Formularvorgaben bleiben),
   sobald SkyTrace frei und die Engine geprüft ist; danach wird der Ordner gelöscht. Vorher übernimmt `_keep_frames` die Aufnahmen,

@@ -82,3 +82,18 @@ def test_spuren_ueber_mehrere_aufnahmen_verketten():
     # Teleskop (Stellina, ~1°) vs. Weitwinkel-Himmelskamera
     assert narrow_field(meta) and not narrow_field({"FOCAL": "4", "PIXSZ": "2.9", "NAXIS1": "1920", "NAXIS2": "1080"})
     assert not narrow_field({})
+
+
+def test_lauf_loeschen(tmp_path, monkeypatch):
+    monkeypatch.setenv("ASTROFLOW_MODULES", "stacking,skytrace")
+    home = tmp_path / "skytrace"
+    rid = _lauf(home)
+    (home / "Ergebnisse" / "kein-lauf").mkdir()                     # fremder Ordner ohne Laufdateien
+    monkeypatch.setenv("SKYTRACE_HOME", str(home))
+    with TestClient(create_app(load_settings(tmp_path / "data"))) as c:
+        assert c.delete("/api/skytrace/run", params={"id": "kein-lauf"}).status_code == 400
+        assert c.delete("/api/skytrace/run", params={"id": "../skytrace"}).status_code == 400
+        r = c.delete("/api/skytrace/run", params={"id": rid}).json()
+        assert r["deleted"] == rid and r["bytes"] > 0 and not (home / "Ergebnisse" / rid).exists()
+        assert [x["id"] for x in c.get("/api/skytrace/runs").json()] == []
+        assert (home / "Ergebnisse" / "kein-lauf").exists()

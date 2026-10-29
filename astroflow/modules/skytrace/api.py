@@ -5,6 +5,8 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import re
+import shutil
 import subprocess
 import threading
 import time
@@ -20,7 +22,8 @@ DEFAULT_PREFS = dict(source=DEFAULT_SOURCE, observation="", samples=0, fps=8, mo
 
 
 def short_name(name: str | None) -> str:
-    return (name or "Beobachtung").split("_observation_")[-1].replace("_", " ")
+    old = re.match(r"^(.+)_observation_\d{4}-\d\d-\d\d-p\d+-\d+$", name or "")    # ältere automatische Läufe
+    return (old.group(1) if old else (name or "Beobachtung").split("_observation_")[-1]).replace("_", " ")
 
 
 def within(root: Path, relative: str) -> Path:
@@ -227,6 +230,28 @@ class Controller:
                 else:
                     self.status = "Analyse abgeschlossen. Deine Ergebnisse sind bereit."
 
+    def delete_run(self, name: str) -> dict:
+        """Analyse-Lauf samt Videos, Ausschnitten und Bericht löschen. Originalaufnahmen liegen nie im Ergebnisordner
+        und bleiben unberührt; ein laufender oder gerade aktualisierter Lauf wird nicht gelöscht."""
+        path = self.run_path(name)
+        if not ((path / "videos.json").exists() or (path / "bericht.html").exists() or (path / "messwerte.jsonl").exists()):
+            raise ValueError("Kein SkyTrace-Lauf")
+        with self.lock:
+            if self.process is not None and self.current == name:
+                raise ValueError("Diese Analyse läuft gerade – erst anhalten.")
+            size = sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+            def retry(func, p, _exc):                    # Windows: Videos können kurz von einer Wiedergabe gesperrt sein
+                time.sleep(0.3)
+                os.chmod(p, 0o666)
+                func(p)
+            shutil.rmtree(path, onexc=retry)
+            if self.current == name:
+                self.current = None
+                self.latest.unlink(missing_ok=True)
+                self.status = "Bereit für deine nächste Entdeckung."
+                self.sequence += 1
+        return {"deleted": name, "bytes": size}
+
     def stop(self) -> dict:
         with self.lock:
             if self.process is not None:
@@ -372,6 +397,13 @@ def build_router(mod) -> APIRouter:
         try:
             return ctl.run_data(id)
         except (OSError, ValueError, KeyError) as e:
+            bad(e)
+
+    @r.delete("/run")
+    def delete_run(id: str):
+        try:
+            return ctl.delete_run(id)
+        except (OSError, ValueError) as e:
             bad(e)
 
     @r.get("/observations")
