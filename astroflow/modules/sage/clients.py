@@ -154,6 +154,16 @@ def openrouter_speak(cfg: dict, text: str) -> bytes:
     return audio
 
 
+def tts_variant(cfg: dict, provider: str) -> str:
+    """Kennung von Modell + Stimme – eine gespeicherte Vertonung passt nur zur selben Kennung."""
+    if provider == "openrouter":
+        return f"{cfg.get('openrouter_tts_model')}|{cfg.get('openrouter_tts_voice')}"
+    if provider == "elevenlabs":
+        return f"{cfg.get('elevenlabs_model')}|{cfg.get('elevenlabs_voice')}"
+    q = qwen_cfg(cfg)
+    return f"{q['model']}|{q['voice']}"
+
+
 def qwen_cfg(cfg: dict) -> dict:
     return {"base": (cfg.get("qwen_base_url") or "http://127.0.0.1:8880").rstrip("/"), "voice": cfg.get("qwen_voice") or "Ryan",
             "model": cfg.get("qwen_model") or "tts-1", "language": cfg.get("qwen_language") or "German",

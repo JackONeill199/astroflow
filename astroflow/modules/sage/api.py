@@ -85,6 +85,8 @@ def build_router(mod) -> APIRouter:
                 step(0.25, "Bild wird an nova.astrometry.net übermittelt …", "solve")
                 sol = clients.nova_solve(cfg["nova_key"], image, step, lambda: task["cancel"])
             if sol is None and source.get("type") == "project":       # wenigstens das bekannte Hauptobjekt erzählen
+                if source.get("imported") and source.get("ra") is None:
+                    raise clients.ServiceError("Bild importiert, aber Himmelsposition nicht bestimmbar. Ein Objektname im Dateinamen (z. B. M42.jpg) oder ein eingerichteter Plate-Solver hilft bei der Bestimmung.")
                 sol = {"ra": source.get("ra"), "dec": source.get("dec"), "solver": "project", "fov_w": None, "fov_h": None,
                        "objects": [{"name": source["name"], "kind_label": source.get("kind_label") or ""}]}
             if sol is None:
@@ -117,6 +119,10 @@ def build_router(mod) -> APIRouter:
                             "story": story, "story_error": story_err, "title": title})
             disc = st.record(entry)
             st.update(entry["id"], discovery=disc)
+            try:
+                mod.link_entry(entry)                                # Objekte → Enzyklopädie (fehlende im Hintergrund)
+            except Exception:
+                traceback.print_exc()
             st.celebrate(entry, disc)
             task.update(state="done", step="complete", progress=1, finished=time.time(), entry=entry["id"],
                         message="Analyse abgeschlossen" + (" (ohne Geschichte)" if not story else ""), discovery=disc,
@@ -168,10 +174,13 @@ def build_router(mod) -> APIRouter:
         rel_prev = f"uploads/projekt-{pid}-{pic['result_id']}-{secrets.token_hex(3)}.jpg"
         size = make_preview(Path(pic["image"]), st.root / rel_prev)
         src = {"type": "project", "project": pid, "result": pic["result_id"], "name": pic["name"], "kind_label": pic["kind_label"],
+               "imported": pic.get("imported", False),
                "exposure": pic["exposure"], "n_frames": pic["n_frames"], "ra": pic["ra"], "dec": pic["dec"], "auto": auto}
         return task_view(start(pic["name"], Path(pic["image"]), rel_prev, None, size, src))
 
     mod.analyze_project = analyze_project
+    from .kb_api import extend
+    extend(r, mod, url)
 
     @r.post("/celebrations/ack")
     def ack(body: dict = Body(...)):
@@ -273,7 +282,15 @@ def build_router(mod) -> APIRouter:
                 if v:                                     # leer = gespeicherten Schlüssel behalten
                     vals[k] = str(v).strip()
                 continue
-            vals[k] = bool(v) if isinstance(DEFAULTS[k], bool) else str(v).strip()
+            if isinstance(DEFAULTS[k], bool):
+                vals[k] = bool(v)
+            elif isinstance(DEFAULTS[k], (int, float)):
+                try:
+                    vals[k] = type(DEFAULTS[k])(float(str(v).replace(",", ".")))
+                except ValueError:
+                    raise HTTPException(400, f"Ungültige Zahl für {k}.") from None
+            else:
+                vals[k] = str(v).strip()
         for k in SECRETS:                                 # ausdrücklich löschen: {"clear": ["nova_key"]}
             if k in (body.get("clear") or []):
                 vals[k] = None
@@ -299,14 +316,7 @@ def build_router(mod) -> APIRouter:
             raise HTTPException(502, str(e))
 
     # ---- Vorlesen ---------------------------------------------------------------------
-    def variant(c: dict, provider: str) -> str:
-        """Kennung von Modell + Stimme – eine gespeicherte Vertonung passt nur zur selben Kennung."""
-        if provider == "openrouter":
-            return f"{c.get('openrouter_tts_model')}|{c.get('openrouter_tts_voice')}"
-        if provider == "elevenlabs":
-            return f"{c.get('elevenlabs_model')}|{c.get('elevenlabs_voice')}"
-        q = clients.qwen_cfg(c)
-        return f"{q['model']}|{q['voice']}"
+    variant = clients.tts_variant
 
     @r.get("/tts/config")
     def tts_config():

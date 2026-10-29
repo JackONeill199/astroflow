@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS results(
 MIGRATIONS = [
     ("frames", "deleted", "INTEGER DEFAULT 0"),      # 1 = Rohdatei nach dem Stacking gelöscht (Speicher sparen)
     ("frames", "size", "INTEGER DEFAULT 0"),         # Dateigröße in Bytes (für die Speicheranzeige)
+    ("frames", "stack_notified", "INTEGER DEFAULT 0"),  # Beobachtung nach gespeichertem Stack erfolgreich gemeldet
 ]
 
 
@@ -42,6 +43,14 @@ class DB:
                 cols = {r[1] for r in c.execute(f"PRAGMA table_info({table})")}
                 if col not in cols:
                     c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+                    if table == "frames" and col == "stack_notified":
+                        # Altbestand: gelöschte Uploads und erfolgreich abgeschlossene Jobs waren bereits gemeldet.
+                        # Unterbrochene/fehlgeschlagene Läufe bleiben vorsichtshalber offen.
+                        c.execute("UPDATE frames SET stack_notified=1 WHERE stacked=1 AND (deleted=1 OR EXISTS "
+                                  "(SELECT 1 FROM jobs j WHERE j.project_id=frames.project_id AND j.state='done' "
+                                  "AND COALESCE(json_extract(j.options,'$.mode'),'')!='develop' "
+                                  "AND COALESCE(json_extract(j.options,'$.action'),'')!='solve' "
+                                  "AND j.id=(SELECT MAX(j2.id) FROM jobs j2 WHERE j2.project_id=frames.project_id)))")
 
     @contextmanager
     def conn(self):

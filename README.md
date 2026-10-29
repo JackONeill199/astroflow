@@ -10,7 +10,7 @@ Himmelsobjekte zu Geschichten – im Browser, auf deinem Rechner oder NAS, ohne 
 | **Sage** | Himmelsobjekte im Bild bestimmen, von einer KI als Geschichte erzählen und vorlesen lassen; Sammlung aller Entdeckungen mit Erfolgen |
 
 Alle Module teilen sich eine Oberfläche: Übersicht, gemeinsame Aktivität aller Aufträge, eine Einstellungsseite, Befehlspalette (Strg+K)
-und Drag & Drop überall (FITS → Bilder, Fotos → Sage). Aus einem fertigen Bild der Galerie erzählt Sage mit einem Klick die Geschichte
+und Drag & Drop überall (FITS → Rohdaten-Pipeline, JPG/PNG/TIFF → fertige Bilder in der Galerie). Aus einem fertigen Bild der Galerie erzählt Sage mit einem Klick die Geschichte
 („Mehr → Geschichte erzählen“) – die Objekte kommen dabei aus der Plate-Solving-Lösung des Stacks.
 
 ## Modul Bilder – was automatisch passiert
@@ -119,7 +119,7 @@ Die Oberfläche (<http://localhost:8080>) ist eine installierbare Web-App (PWA) 
 - **Aufnahmen**: Qualitätsdiagramm über alle Nächte, filter- und sortierbare Tabelle, Einzelbilder ein-/ausschließen
 - **Versionen**: jede Verarbeitung bleibt erhalten; zwei Versionen per Schieberegler vergleichen
 - **Optionen** je Objekt (Profil, Farbpalette, Bildauswahl, Auflösung, Schmalband, KI-Prüfung) mit „Speichern & verarbeiten“
-- **Import** von Dateien oder ganzen Ordnern per Drag & Drop (überall auf der Seite) mit Upload-Fortschritt – Ordnernamen bleiben erhalten, **Aktivität** (Auftragsliste), **Einstellungen**
+- **Import** von Dateien oder ganzen Ordnern per Drag & Drop (überall auf der Seite), auch gemischt: FITS werden als Rohaufnahmen verarbeitet, JPG/PNG/TIFF als fertige Bilder direkt in die Galerie übernommen. Originaldateien bleiben unverändert, identische fertige Bilder werden nicht doppelt angelegt. 16-Bit-TIFFs bleiben als Original erhalten; Anzeigevorschauen sind 8 Bit. **Aktivität** (Auftragsliste), **Einstellungen**
 
 ## Weitere Einstellungen
 
@@ -140,7 +140,9 @@ kann als Datenordner eingetragen werden.
 
 ## Sage
 
-Foto hochladen (JPG, PNG, TIFF, FITS) oder ein Bild aus der Galerie wählen → Sage bestimmt die Objekte, schreibt die Geschichte und liest sie vor.
+Fotos zentral unter **Import** hochladen oder ein Bild aus der Galerie wählen → Sage bestimmt die Objekte, schreibt die Geschichte und liest sie vor.
+Bei fertigen Bildern startet Sage nach dem Import automatisch, sofern „Automatisch entdecken“ aktiv ist. In Sage führt **Zum Import** zum gemeinsamen Eingang;
+nur bei abgeschaltetem Bilder-Modul bleibt dort ein eigener Upload verfügbar. FITS-Master-Stacks werden vom zentralen Import noch nicht als fertige Bilder unterstützt.
 - **Bestimmen:** Galerie-Bilder über die gespeicherte Stack-Lösung; FITS mit WCS direkt; sonst lokal mit ASTAP, wenn der Dateiname das Objekt nennt
   (z. B. `M42.jpg`). Fertig bearbeitete JPGs ohne Hinweis löst zuverlässig nur nova.astrometry.net – dafür „Online-Lösen erlauben“ und Schlüssel eintragen.
 - **Erzählen:** OpenAI, OpenRouter oder lokal mit LM Studio (dann verlässt nichts den Rechner). Es gehen nur Objektnamen und Koordinaten an die KI, nie das Bild.

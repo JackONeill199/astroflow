@@ -7,6 +7,7 @@ const TABS = [['bild', 'Bild'], ['aufnahmen', 'Aufnahmen'], ['versionen', 'Versi
 const PROFILE_LABEL = { auto: 'Automatisch (nach Objekttyp)', generic: 'Allgemein', galaxy: 'Galaxie', emission: 'Emissionsnebel', reflection: 'Reflexionsnebel', planetary: 'Planetarischer Nebel', snr: 'Supernova-Überrest', globular: 'Kugelsternhaufen', open_cluster: 'Offener Sternhaufen' };
 const sst = () => AF.status?.modules?.stacking || {};
 const SOURCE_LABEL = { solve: 'Plate-Solving', catalog: 'Katalog (Objektname)', header: 'FITS-Header' };
+const IMPORT_FILE = /\.(fits?|fts|jpe?g|png|tiff?)$/i;
 const SOLVER_LABEL = { astap: 'ASTAP', astrometry: 'astrometry.net (lokal)', nova: 'nova.astrometry.net' };
 function coordsPanel(c) {
   if (!c) return '';
@@ -29,12 +30,14 @@ function qualityPanel(s) {
   const q = s.quality;
   if (!q) return '';
   const cls = q.score >= 8.5 ? 'ok' : q.score >= 6.5 ? 'warn' : 'bad';
-  const label = q.score >= 8.5 ? 'sehr gut' : q.score >= 6.5 ? 'gut, mit Schwächen' : 'verbesserungswürdig';
+  const label = q.score >= 8.5 ? 'Messwerte weitgehend im Zielbereich' : q.score >= 6.5 ? 'Einige Messwerte auffällig' : 'Mehrere Messwerte auffällig';
   const auto = (s.qc || []).flatMap(h => h.round === 0 ? (h.adapt || [])
     : Object.keys(h.adjust || {}).length ? [`Nachgeregelt (Runde ${h.round}): ${Object.entries(h.adjust).map(([k, v]) => `${k} → ${v}`).join(', ')}`] : []);
   const m = q.metrics || {}, snr = q.measure?.snr;
   return `<div class="panel"><div class="panel-h" style="margin-bottom:12px"><span class="qscore ${cls}" style="--p:${q.score * 10}" title="${q.score.toFixed(1)} von 10"><b class="tnum">${q.score.toFixed(1)}</b></span>
-      <div><h2>Bildqualität</h2><div class="mut sm">${label}${snr != null ? ` · Objekt-SNR ${Math.round(snr)}` : ''}</div></div></div>
+      <div><h2>Technische Bildprüfung</h2><div class="mut sm">${label}${snr != null ? ` · Objekt-SNR ${Math.round(snr)}` : ''}</div></div></div>
+    <p class="mut sm">Der Wert prüft technische Grenzwerte, nicht die gesamte Bildqualität. Fokus, Nachführung und großflächige Muster werden damit nicht vollständig bewertet.</p>
+    ${snr != null && snr < 8 ? '<p class="warn sm">Wenig Nutzsignal: Entrauschen kann Flecken glätten, aber keine fehlenden Details zurückholen. Mehr gute Aufnahmen verbessern die Grundlage.</p>' : ''}
     ${q.issues?.length ? `<ul class="qlist">${q.issues.map(i => `<li class="warn">${esc(i.text)}</li>`).join('')}</ul>` : '<p class="ok sm" style="margin:0 0 10px">Keine messbaren Probleme gefunden.</p>'}
     ${q.hints?.length ? `<div class="qhints"><small class="mut">Verbesserungsmöglichkeiten</small><ul>${q.hints.map(h => `<li>${esc(h)}</li>`).join('')}</ul></div>` : ''}
     <details class="qmore"><summary class="sm mut">Messwerte und automatische Anpassungen</summary>
@@ -73,6 +76,7 @@ async function galleryView(el) {
   const ui = JSON.parse(localStorage.getItem('af.gallery') || '{}');
   let q = ui.q || '', kind = ui.kind || 'all', sort = ui.sort || 'recent', projects = [], st = sst(), sig = '', order = '';
   el.innerHTML = `<div class="pagehead"><div><h1>Deine Objekte</h1><p class="mut" id="gsum"></p></div><span class="grow"></span>
+    <a class="btn ghost" href="#/bilder/statistik">${icon('pulse')}Statistik</a>
     <button class="btn ghost" id="gscan" title="Eingangsordner jetzt nach neuen Aufnahmen durchsuchen">${icon('refresh')}Scannen</button>
     <a class="btn" href="#/import">${icon('upload')}Aufnahmen hinzufügen</a></div>
     <div class="toolbar"><input type="search" id="gq" placeholder="Objekt suchen …" title="Taste /" value="${esc(q)}"><div class="seg" id="gkind"></div><span class="grow"></span>
@@ -155,9 +159,9 @@ async function galleryView(el) {
         ${pal && pal !== 'OSC' ? `<span class="chip acc badge">${esc(PALETTE_LABEL[pal] || pal)}</span>` : ''}
         ${busy ? `<span class="state">${p.job.state === 'queued' ? 'wartet' : `<span class="spinner" style="width:12px;height:12px"></span>${Math.round((p.job.progress || 0) * 100)} %`}</span>` : ''}</div>
       <div class="body"><h3>${esc(p.name)}</h3>
-        <div class="meta"><span class="chip">${esc(p.kind_label || 'Allgemein')}</span><span class="chip">${p.nights.length} ${p.nights.length === 1 ? 'Nacht' : 'Nächte'}</span>${p.n_results > 1 ? `<span class="chip">${p.n_results} Versionen</span>` : ''}</div>
-        ${busy ? jobLine(p.job) : `<div class="foot"><span>${r ? `${r.n_frames} von ${p.total} Aufnahmen` : `${p.total} Aufnahmen`}</span>
-          ${r ? `<span>${dur(r.exposure)}</span>` : `<button class="btn sm quick" data-run="${p.id}">${icon('play')}Verarbeiten</button>`}</div>`}
+        <div class="meta"><span class="chip">${esc(p.kind_label || 'Allgemein')}</span>${p.imported ? '<span class="chip acc">Fertiges Bild</span>' : `<span class="chip">${p.nights.length} ${p.nights.length === 1 ? 'Nacht' : 'Nächte'}</span>`}${p.n_results > 1 ? `<span class="chip">${p.n_results} Versionen</span>` : ''}</div>
+        ${busy ? jobLine(p.job) : `<div class="foot"><span>${p.imported ? 'Original erhalten' : r ? `${r.n_frames} von ${p.total} Aufnahmen` : `${p.total} Aufnahmen`}</span>
+          ${r ? `<span>${p.imported ? esc(r.stats?.imported?.format || '') : dur(r.exposure)}</span>` : `<button class="btn sm quick" data-run="${p.id}">${icon('play')}Verarbeiten</button>`}</div>`}
       </div>`;
   }
   async function load() {
@@ -184,17 +188,17 @@ async function projectView(el, id, tab = 'bild') {
         <button class="namebtn" id="rename" title="Umbenennen"><h1 style="display:inline">${esc(p.name)}</h1>${icon('edit')}</button>
         <div class="row" style="margin-top:8px"><span class="chip">${esc(p.kind_label || 'Allgemein')}</span>
           ${r?.stats?.palette ? `<span class="chip acc">${esc(PALETTE_LABEL[r.stats.palette] || r.stats.palette)}</span>` : ''}
-          <span class="chip">${p.total} Aufnahmen</span><span class="chip">${p.nights.length} ${p.nights.length === 1 ? 'Nacht' : 'Nächte'}</span>
-          ${r ? `<span class="chip">${dur(r.exposure)} integriert</span>` : ''}
+          ${p.imported ? '<span class="chip acc">Fertiges Bild · importiert</span>' : `<span class="chip">${p.total} Aufnahmen</span><span class="chip">${p.nights.length} ${p.nights.length === 1 ? 'Nacht' : 'Nächte'}</span>`}
+          ${r && !p.imported ? `<span class="chip">${dur(r.exposure)} integriert</span>` : ''}
           ${p.coords?.source === 'solve' ? `<span class="chip acc" title="Koordinaten per Plate-Solving bestimmt">${icon('star')}Plate-Solved</span>` : ''}</div></div>
       <span class="grow"></span>
-      <div class="row"><button class="btn ${busy ? 'busy' : ''}" id="run" ${busy ? 'disabled' : ''}>${icon(busy ? 'refresh' : 'play')}${busy ? 'Läuft …' : r ? 'Aktualisieren' : 'Verarbeiten'}</button>
+      <div class="row">${p.imported ? '' : `<button class="btn ${busy ? 'busy' : ''}" id="run" ${busy ? 'disabled' : ''}>${icon(busy ? 'refresh' : 'play')}${busy ? 'Läuft …' : r ? 'Aktualisieren' : 'Verarbeiten'}</button>`}
         ${r ? `<div class="menu" id="dl"><button class="btn ghost">${icon('down')}Export${icon('chev')}</button><div class="pop">
-          <a href="/api/stacking/results/${r.id}/tif">TIFF 16-bit <small>Druck/Bearbeitung</small></a><a href="/api/stacking/results/${r.id}/png">PNG <small>verlustfrei</small></a>
-          <a href="/api/stacking/results/${r.id}/jpg" download>JPEG <small>zum Teilen</small></a><a href="/api/stacking/results/${r.id}/fits">FITS linear <small>für PixInsight & Co.</small></a></div></div>` : ''}
+          ${p.imported ? `<a href="/api/stacking/results/${r.id}/original">Originaldatei <small>unverändert · ${esc(r.stats.imported.format)}</small></a>` : `<a href="/api/stacking/results/${r.id}/tif">TIFF 16-bit <small>Druck/Bearbeitung</small></a>`}<a href="/api/stacking/results/${r.id}/png">PNG <small>${p.imported ? 'Anzeigeversion' : 'verlustfrei'}</small></a>
+          <a href="/api/stacking/results/${r.id}/jpg" download>JPEG <small>zum Teilen</small></a>${p.imported ? '' : `<a href="/api/stacking/results/${r.id}/fits">FITS linear <small>für PixInsight & Co.</small></a>`}</div></div>` : ''}
         <div class="menu" id="more"><button class="btn ghost">Mehr${icon('chev')}</button><div class="pop">
-          ${r ? `<a href="#" data-act="develop">Neu entwickeln <small>ohne Stacking</small></a>` : ''}
-          ${p.deleted?.can_restack === false ? `<span class="pop-note">Komplett neu stacken nicht möglich – Einzelbilder nach dem Stacking gelöscht</span>`
+          ${r && !p.imported ? `<a href="#" data-act="develop">Neu entwickeln <small>ohne Stacking</small></a>` : ''}
+          ${p.imported ? '<span class="pop-note">Fertig importiert · keine Rohaufnahmen vorhanden</span>' : p.deleted?.can_restack === false ? `<span class="pop-note">Komplett neu stacken nicht möglich – Einzelbilder nach dem Stacking gelöscht</span>`
             : `<a href="#" data-act="restack">Komplett neu stacken <small>alle Aufnahmen</small></a>`}
           ${p.can_solve ? `<a href="#" data-act="solve">Objekt per Plate-Solving bestimmen <small>Sternmuster</small></a>` : ''}
           ${r && AF.on('sage') ? `<a href="#" data-act="story">Geschichte erzählen <small>Sage · Objekte im Bild + KI</small></a>` : ''}
@@ -206,7 +210,7 @@ async function projectView(el, id, tab = 'bild') {
         <button class="btn sm" id="solveBtn">Jetzt bestimmen</button></div>` : ''}
       ${p.job?.state === 'error' && !busy ? `<div class="notice err"><div><b>Letzter Durchlauf fehlgeschlagen</b><div class="mut sm">${esc(p.job.message)}</div></div></div>` : ''}
       <div id="job" style="margin:-8px 0 18px">${jobLine(p.job)}</div>
-      <nav class="tabs" id="tabs">${TABS.map(([k, l], i) => { const n = { aufnahmen: p.total, versionen: p.results.length }[k];
+      <nav class="tabs" id="tabs">${TABS.filter(([k]) => !p.imported || k === 'bild').map(([k, l], i) => { const n = { aufnahmen: p.total, versionen: p.results.length }[k];
         return `<a href="#/p/${id}/${k}" data-t="${k}" class="${tab === k ? 'on' : ''}" title="Taste ${i + 1}">${l}${n != null ? `<span>${n}</span>` : ''}</a>`; }).join('')}<i class="tab-ind" id="tabind"></i></nav>
       <div id="tab"></div>`;
   }
@@ -214,7 +218,7 @@ async function projectView(el, id, tab = 'bild') {
   function draw() {
     el.innerHTML = head();
     $('#rename').onclick = rename;
-    $('#run').onclick = () => run(false);
+    $('#run')?.addEventListener('click', () => run(false));
     $$('.menu', el).forEach(m => {
       $('button', m).onclick = (e) => { e.stopPropagation(); $$('.menu.open').forEach(o => o !== m && o.classList.remove('open')); m.classList.toggle('open'); };
     });
@@ -228,6 +232,7 @@ async function projectView(el, id, tab = 'bild') {
   }
   // Nur den Tab-Inhalt neu zeichnen – Kopf, Jobzeile und Marker bleiben stehen
   function drawTab(animate = true) {
+    if (p.imported) tab = 'bild';
     viewer?.destroy();
     viewer = null;
     $$('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.t === tab));
@@ -257,12 +262,13 @@ async function projectView(el, id, tab = 'bild') {
           ${before ? '<span class="mut sm">Links der unbearbeitete Master-Stack, rechts das entwickelte Bild – Trennlinie ziehen</span>' : ''}</div>` : ''}
         ${r.id !== p.results[0].id || c ? `<div class="row sm mut" style="margin-top:8px">${c ? `Vergleich: links Version vom ${fdate(c.created)}, rechts ${fdate(r.created)}` : `Ältere Version vom ${fdate(r.created)}`}
           <span class="grow"></span><button class="linkbtn" id="latest">Neueste Version zeigen</button></div>` : ''}
-        <div class="stats">
+        ${p.imported ? `<div class="notice" style="margin-top:14px"><div><b>Fertig importiertes Bild</b><div class="mut sm">Das Original bleibt unverändert. AstroFlow führt kein erneutes Stacking und keine automatische Entwicklung durch.</div>
+          ${AF.on('sage') ? '<button class="btn ghost sm" id="importedSage" style="margin-top:8px">Mit Sage bestimmen und erzählen</button>' : ''}</div></div>` : `<div class="stats">
           <div class="stat"><small>Integration</small><b>${dur(r.exposure)}</b></div>
           <div class="stat"><small>Gestackt</small><b class="tnum">${r.n_frames}</b></div>
           <div class="stat"><small>Sternschärfe (FWHM)</small><b class="tnum">${s.fwhm_px ?? '–'} px</b></div>
           <div class="stat"><small>Auflösung</small><b class="tnum">${s.shape ? s.shape[1] + '×' + s.shape[0] : '–'}</b></div>
-        </div></div>
+        </div>`}</div>
       <div>
         ${Object.keys(bands).length > 1 || (Object.keys(bands).length === 1 && !bands.RGB) ? `<div class="panel"><div class="panel-h"><h2>Kanäle</h2><span class="grow"></span><span class="chip acc">${esc(PALETTE_LABEL[s.palette] || s.palette || '')}</span></div>
           <div class="bands">${Object.entries(bands).map(([b, v]) => `<div class="band"><span><span class="chip"><i style="background:${BAND_COLOR[b] || '#999'}"></i>${esc(b)}</span></span>
@@ -270,14 +276,15 @@ async function projectView(el, id, tab = 'bild') {
         ${qualityPanel(s)}
         <div class="panel"><h2 style="margin-bottom:12px">Details</h2><dl class="kv">
           <dt>Erstellt</dt><dd>${fdate(r.created)}</dd>
-          <dt>Bearbeitungsprofil</dt><dd>${esc(PROFILE_LABEL[s.profile] || s.profile || '–')}</dd>
+          ${p.imported ? `<dt>Dateiname</dt><dd>${esc(s.imported.filename)}</dd><dt>Format</dt><dd>${esc(s.imported.format)} · ${s.imported.bit_depth} Bit</dd>
+          <dt>Auflösung</dt><dd>${s.shape[1]} × ${s.shape[0]} px</dd>${s.imported.date_obs ? `<dt>Aufnahmezeit (Dateimetadaten)</dt><dd>${esc(s.imported.date_obs)}</dd>` : ''}` : `<dt>Bearbeitungsprofil</dt><dd>${esc(PROFILE_LABEL[s.profile] || s.profile || '–')}</dd>
           <dt>Aufnahmetyp</dt><dd>${s.palette === 'OSC' || !s.palette ? 'Farbkamera' : 'Mono + Filter'}${s.narrowband ? ' · Schmalband' : ''}</dd>
           <dt>Sterne erkannt</dt><dd class="tnum">${s.stars ?? '–'}</dd>
           <dt>Sterne</dt><dd>${s.star_separation ? `getrennt bearbeitet (${s.star_separation === 'starnet' ? 'StarNet' : 'eigene Trennung'})` : 'mit dem Bild bearbeitet'}</dd>
           ${s.wb_gains ? `<dt>Weißabgleich (R/G/B)</dt><dd class="tnum">${s.wb_gains.join(' / ')}</dd>` : ''}
           ${s.color_cal ? `<dt>Farbkalibrierung</dt><dd>${s.color_cal.verfahren === 'gaia' ? `fotometrisch (Gaia, ${s.color_cal.sterne} Sterne)`
             : s.color_cal.verfahren === 'manuell' ? 'manuell' : `Sternfarben-Mittel${s.color_cal.grund ? `<div class="dim sm">${esc(s.color_cal.grund)}</div>` : ''}`}</dd>` : ''}
-          <dt>Nächte</dt><dd>${p.nights.map(fnight).join(', ') || '–'}</dd>
+          <dt>Nächte</dt><dd>${p.nights.map(fnight).join(', ') || '–'}</dd>`}
           ${p.deleted?.frames ? `<dt>Einzelbilder</dt><dd>${p.deleted.frames} gelöscht · ${fmb(p.deleted.bytes)} frei</dd>` : ''}
         </dl></div>
         ${coordsPanel(p.coords)}
@@ -293,6 +300,7 @@ async function projectView(el, id, tab = 'bild') {
       : createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, null, undefined, ph);
     $('#ba')?.addEventListener('click', (e) => { const b = e.target.closest('[data-b]'); if (b) { before = b.dataset.b === '1'; drawTab(false); } });
     $('#latest')?.addEventListener('click', () => { sel = null; cmp = null; drawTab(); });
+    $('#importedSage')?.addEventListener('click', story);
   }
 
   // ---- Tab: Aufnahmen ----
@@ -551,11 +559,11 @@ async function projectView(el, id, tab = 'bild') {
       return true;
     },
     actions: () => [
-      ...(running(p.job) ? [] : [['play', p.result ? 'Aktualisieren' : 'Verarbeiten', 'neue Aufnahmen nachstacken', () => run(false)]]),
-      ...(p.result && !running(p.job) ? [['refresh', 'Neu entwickeln', 'ohne Stacking', develop]] : []),
-      ...TABS.map(([k, l], i) => ['arrow', `${l} anzeigen`, `Taste ${i + 1}`, () => { location.hash = `#/p/${id}/${k}`; }]),
+      ...(running(p.job) || p.imported ? [] : [['play', p.result ? 'Aktualisieren' : 'Verarbeiten', 'neue Aufnahmen nachstacken', () => run(false)]]),
+      ...(p.result && !running(p.job) && !p.imported ? [['refresh', 'Neu entwickeln', 'ohne Stacking', develop]] : []),
+      ...TABS.filter(([k]) => !p.imported || k === 'bild').map(([k, l], i) => ['arrow', `${l} anzeigen`, `Taste ${i + 1}`, () => { location.hash = `#/p/${id}/${k}`; }]),
       ...(p.result ? [['expand', 'Vollbild', 'Taste F', () => { location.hash = `#/p/${id}/bild`; setTimeout(() => $('.viewer [data-a=full]')?.click(), 60); }],
-        ['down', 'TIFF herunterladen', '16 bit', () => { location.href = `/api/stacking/results/${p.result.id}/tif`; }]] : []),
+        ['down', p.imported ? 'Original herunterladen' : 'TIFF herunterladen', p.imported ? 'unverändert' : '16 bit', () => { location.href = `/api/stacking/results/${p.result.id}/${p.imported ? 'original' : 'tif'}`; }]] : []),
       ...(p.result && AF.on('sage') ? [['book', 'Geschichte erzählen', 'Sage', story]] : []),
       ['edit', 'Umbenennen', p.name, rename],
     ],
@@ -566,18 +574,18 @@ async function projectView(el, id, tab = 'bild') {
 // ------------------------------------------------------------------ Import --- //
 async function importView(el) {
   crumbs([['Bilder', '#/bilder'], ['Import']]);
-  const st = sst();
-  el.innerHTML = `<div class="pagehead"><div><h1>Aufnahmen importieren</h1><p class="mut">Rohbilder (FITS) von Seestar, Vespera, Stellina oder deiner Astrokamera.</p></div></div>
-    <label class="dropzone" id="dz">${icon('upload')}<h2>FITS-Dateien oder ganze Ordner hierher ziehen</h2>
-      <div class="mut">oder klicken, um Dateien auszuwählen · Lights, Darks, Flats und Bias gemischt sind okay</div>
-      <input type="file" id="fi" multiple accept=".fit,.fits,.fts" hidden></label>
+  const st = await api('/stacking/status');
+  el.innerHTML = `<div class="pagehead"><div><h1>Bilder und Aufnahmen importieren</h1><p class="mut">Ein Eingang für Rohaufnahmen und fertige Astrofotos – AstroFlow ordnet sie automatisch zu.</p></div></div>
+    <label class="dropzone" id="dz">${icon('upload')}<h2>Bilder oder ganze Ordner hierher ziehen</h2>
+      <div class="mut">oder klicken · FITS, JPG, PNG und TIFF dürfen gemischt sein</div>
+      <input type="file" id="fi" multiple accept=".fit,.fits,.fts,.jpg,.jpeg,.png,.tif,.tiff" hidden></label>
     <div class="row" style="justify-content:center;margin-top:12px"><label class="btn ghost sm">Ordner auswählen…<input type="file" id="fd" webkitdirectory multiple hidden></label>
       <span class="mut sm">Ordnernamen bleiben erhalten – z. B. verrät „…_observation_M57“ bei Stellina das Objekt.</span></div>
     <div class="uploads" id="ups"></div>
     <div class="infogrid">
-      <div><b>Oder: Ordner einbinden</b>Lege Dateien direkt in <code>${esc(st.input_dir)}</code> – AstroFlow schaut alle ${st.scan_interval} s nach.</div>
-      <div><b>Automatische Sortierung</b>Objekt, Kamera und Nacht werden aus den Headern erkannt. Kalibrierframes über IMAGETYP oder Ordnernamen.</div>
-      <div><b>Mehrere Nächte</b>Neue Sessions eines Objekts werden auf den bestehenden Stack nachgestackt.</div>
+      <div><b>Oder: Rohdaten-Ordner einbinden</b>Lege FITS-Dateien direkt in <code>${esc(st.input_dir)}</code> – AstroFlow schaut alle ${st.scan_interval} s nach.</div>
+      <div><b>FITS → Rohaufnahmen</b>Objekt, Kamera und Nacht werden aus den Headern erkannt. Lights, Darks, Flats und Bias sind gemischt möglich; neue Nächte werden nachgestackt.</div>
+      <div><b>JPG, PNG, TIFF → fertige Bilder</b>Direkt in die Galerie, ohne erneutes Stacking oder Stretch. Das Original bleibt erhalten. Sage bestimmt die Bilder automatisch, wenn „Automatisch entdecken“ aktiv ist.</div>
     </div>`;
   const dz = $('#dz');
   $('#fi').onchange = (e) => { upload([...e.target.files]); e.target.value = ''; };
@@ -587,8 +595,8 @@ async function importView(el) {
   dz.ondrop = async (e) => { e.preventDefault(); e.stopPropagation(); dz.classList.remove('over'); upload(await droppedFiles(e.dataTransfer)); };
 }
 function upload(files) {
-  files = files.filter(f => /\.(fits?|fts)$/i.test(f.name));
-  if (!files.length) { toast('Keine FITS-Dateien dabei (.fit, .fits, .fts).', 'err'); return; }
+  files = files.filter(f => IMPORT_FILE.test(f.name));
+  if (!files.length) { toast('Keine unterstützten Dateien dabei (FITS, JPG, PNG, TIFF).', 'err'); return; }
   const total = files.reduce((a, f) => a + f.size, 0);
   const box = document.createElement('div');
   box.className = 'upl';
@@ -605,15 +613,19 @@ function upload(files) {
     const r = JSON.parse(xhr.responseText);
     $('.pct', box).innerHTML = `<span class="row" style="gap:6px"><span class="spinner"></span>wird einsortiert …</span>`;
     try {
-      const s = await send('/stacking/scan'), ids = Object.keys(s.new_by_project || {}).map(Number);
+      const s = r.raw ? await send('/stacking/scan') : { new_by_project: {} };
+      const pictures = r.pictures || [], ids = [...new Set([...Object.keys(s.new_by_project || {}).map(Number), ...pictures.map(p => p.id)])];
       const projects = ids.length ? await api('/stacking/projects') : [];
       box.classList.add('done');
-      $('.pct', box).innerHTML = `<span class="ok row" style="gap:6px">${icon('check')}${r.saved} gespeichert</span>`;
+      const fresh = pictures.filter(p => !p.duplicate).length, duplicates = pictures.length - fresh;
+      $('.pct', box).innerHTML = `<span class="ok row" style="gap:6px">${icon('check')}${r.raw || 0} Rohdateien · ${fresh} fertige Bilder${duplicates ? ` · ${duplicates} bereits vorhanden` : ''}</span>`;
+      (r.errors || []).forEach(message => toast(message, 'err'));
+      if (r.errors?.length) box.insertAdjacentHTML('beforeend', `<p class="bad sm">${r.errors.map(esc).join('<br>')}</p>`);
       // direkt zu den erkannten Objekten springen
       if (ids.length) box.insertAdjacentHTML('beforeend', `<div class="found"><span class="mut sm" style="align-self:center">Erkannt:</span>${projects.filter(p => ids.includes(p.id))
-        .map((p, i) => `<a class="chip acc" href="#/p/${p.id}" style="animation-delay:${i * 60}ms">${esc(p.name)} · ${s.new_by_project[p.id]} neu ${icon('arrow')}</a>`).join('')}</div>`);
+        .map((p, i) => `<a class="chip acc" href="#/p/${p.id}" style="animation-delay:${i * 60}ms">${esc(p.name)} · ${p.imported ? 'fertiges Bild' : `${s.new_by_project[p.id]} neue Aufnahmen`} ${icon('arrow')}</a>`).join('')}</div>`);
       const one = ids.length === 1 && projects.find(p => p.id === ids[0]);
-      toast(`${r.saved} Dateien hochgeladen – ${ids.length} Objekt${ids.length === 1 ? '' : 'e'} ${sst().auto ? 'werden verarbeitet' : 'erkannt'}.`, 'ok', one ? { label: 'Öffnen', href: `#/p/${one.id}` } : null);
+      toast(`${r.saved} Dateien übernommen${fresh ? ` · ${fresh} fertige Bilder in der Galerie` : ''}${duplicates ? ` · ${duplicates} bereits vorhanden` : ''}.`, r.saved ? 'ok' : 'err', one ? { label: 'Öffnen', href: `#/p/${one.id}` } : null);
       poll();
     } catch (e) { $('.pct', box).innerHTML = '<span class="bad">Einsortieren fehlgeschlagen</span>'; toast(e.message, 'err'); }
   };
@@ -754,11 +766,57 @@ async function stackingSettings(el) {
   };
 }
 
+// ------------------------------------------------ Beobachtungsstatistik --- //
+async function statisticsView(el) {
+  crumbs([['Bilder', '#/bilder'], ['Statistik']]);
+  let year = '', ticket = 0, signature = '';
+  const date = s => new Date(s + 'T12:00:00Z').toLocaleDateString('de-DE', { timeZone: 'UTC' });
+  const month = s => new Date(s + '-01T12:00:00Z').toLocaleDateString('de-DE', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+  const weekdays = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+  el.innerHTML = `<div class="pagehead"><div><h1>Deine Beobachtungsaktivität</h1><p class="mut">Wann du den Himmel am häufigsten aufgenommen hast.</p></div><span class="grow"></span>
+    <select id="obs-year" aria-label="Beobachtungsjahr"><option value="">Alle Jahre</option></select></div><div id="obs-body"></div>`;
+  const body = el.querySelector('#obs-body'), select = el.querySelector('#obs-year');
+  select.onchange = () => { year = select.value; signature = ''; load(); };
+  function bars(rows, label) {
+    const max = Math.max(1, ...rows.map(b => b.frames));
+    return `<div class="obs-bars">${rows.map(b => `<div class="obs-bar" title="${nf.format(b.frames)} Aufnahmen · ${dur(b.exposure)} Belichtung">
+      <span>${esc(label(b.key))}</span><div class="obs-track"><div class="obs-fill" style="width:${100 * b.frames / max}%;${b.frames ? '' : 'min-width:0'}"></div></div><span class="tnum">${nf.format(b.frames)}</span></div>`).join('')}</div>`;
+  }
+  async function load() {
+    const current = ++ticket;
+    try {
+      const d = await api('/stacking/statistics' + (year ? '?year=' + year : ''));
+      if (current !== ticket) return;
+      const sig = JSON.stringify(d);
+      if (sig === signature) return;
+      signature = sig;
+      select.innerHTML = '<option value="">Alle Jahre</option>' + d.years.map(y => `<option value="${y}">${y}</option>`).join('');
+      select.value = year;
+      const maxHour = Math.max(1, ...d.hours.map(b => b.frames));
+      body.innerHTML = `<div class="hstats obs-summary"><div><b class="tnum">${nf.format(d.frames)}</b><small>Aufnahmen</small></div><div><b class="tnum">${d.nights}</b><small>Beobachtungsnächte</small></div>
+        <div><b class="tnum">${dur(d.exposure)}</b><small>Belichtung</small></div><div><b class="tnum">${d.objects}</b><small>Objekte</small></div></div>
+        <p class="mut sm">Aufnahmezeit aus FITS (UTC), nicht der Uploadzeitpunkt. Nächte zählen von 12 bis 12 Uhr UTC; Monate und Wochentage gehören zum Nachtbeginn.
+        Gezählt werden alle importierten Light-Aufnahmen, einschließlich verworfener und inzwischen gelöschter Originale. Duplikate und Bildversionen zählen nicht.
+        ${d.missing_dates ? `${nf.format(d.missing_dates)} Aufnahmen ohne gültigen Aufnahmezeitpunkt sind ausgeschlossen (über alle Jahre).` : ''}</p>
+        ${d.frames ? `<p class="mut">${date(d.first)} – ${date(d.last)} · Aktivster Monat: <b>${esc(month(d.top_month.key))}</b> (${nf.format(d.top_month.frames)} Aufnahmen)</p>
+        <div class="obs-stats"><section class="panel"><h2>Aufnahmen je Monat</h2>${bars(d.months, month)}</section>
+        <section class="panel"><h2>Wochentage der Beobachtungsnächte</h2>${bars(d.weekdays, k => weekdays[k])}</section>
+        <section class="panel obs-wide"><h2>Aufnahmezeiten (UTC)</h2><div class="obs-hours">${d.hours.map(b => `<div class="obs-hour" title="${String(b.key).padStart(2, '0')}:00–${String(b.key).padStart(2, '0')}:59 UTC · ${nf.format(b.frames)} Aufnahmen · ${dur(b.exposure)}"><i style="height:${100 * b.frames / maxHour}%"></i><small>${b.key}</small></div>`).join('')}</div></section>
+        <section class="panel obs-wide"><h2>Deine aktivsten Nächte</h2><p class="mut sm">Nach Anzahl der Aufnahmen · Belichtung rechts</p>${d.top_nights.map(b => `<div class="obs-night"><b>${date(b.key)}</b><span class="tnum">${nf.format(b.frames)} Aufnahmen · ${dur(b.exposure)}</span></div>`).join('')}</section></div>`
+          : '<div class="empty"><h2>Noch keine Aufnahmezeitpunkte</h2>Für diesen Zeitraum liegen keine passenden FITS-Metadaten vor.</div>'}`;
+    } catch (e) { if (current === ticket) body.innerHTML = `<div class="panel">${esc(e.message)}</div>`; }
+  }
+  await load();
+  return { update: load, destroy: () => { ticket++; } };
+}
+
 // ---------------------------------------------------------- Registrierung --- //
 AF.register('stacking', {
-  nav: [{ href: '#/bilder', label: 'Galerie', icon: 'grid', key: 'gallery' }, { href: '#/import', label: 'Import', icon: 'upload', key: 'import', sec: true }],
+  nav: [{ href: '#/bilder', label: 'Galerie', icon: 'grid', key: 'gallery' }, { href: '#/import', label: 'Import', icon: 'upload', key: 'import', sec: true },
+    { href: '#/bilder/statistik', label: 'Statistik', icon: 'pulse', key: 'statistics', sec: true }],
   routes: [
     [/^\/bilder$/, 'gallery', galleryView],
+    [/^\/bilder\/statistik$/, 'statistics', statisticsView],
     [/^\/p\/(\d+)(?:\/(\w+))?$/, 'gallery', projectView],
     [/^\/import$/, 'import', importView],
   ],
@@ -780,10 +838,10 @@ AF.register('stacking', {
       `#/p/${p.id}`, p.result ? `/api/stacking/results/${p.result.id}/thumb` : null])];
   },
   drop(files) {
-    const fits = files.filter(f => /\.(fits?|fts)$/i.test(f.name));
-    if (!fits.length) return false;
+    const supported = files.filter(f => IMPORT_FILE.test(f.name));
+    if (!supported.length) return false;
     location.hash = '#/import';
-    setTimeout(() => upload(fits), 150);
+    setTimeout(() => upload(supported), 150);
     return true;
   },
 });

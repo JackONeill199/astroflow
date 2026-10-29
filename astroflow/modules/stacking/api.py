@@ -35,6 +35,7 @@ class Engine:
         stars.STARNET.tools_dir = self.s.data_dir / "tools" / "starnet"
         self._apply_saved()
         self.q: queue.Queue[int] = queue.Queue()
+        self._queue_lock = threading.Lock()
         self.stop = threading.Event()
         self.last_scan = 0.0
         # unterbrochene Jobs fortsetzen: das Stacking macht am letzten Checkpoint weiter
@@ -58,13 +59,22 @@ class Engine:
 
     # ---- Jobs ----------------------------------------------------------------
     def enqueue(self, project_id: int, options: dict | None = None) -> int:
-        busy = self.db.one("SELECT id FROM jobs WHERE project_id=? AND state IN ('queued','running')", (project_id,))
-        if busy:
-            return busy["id"]
-        jid = self.db.x("INSERT INTO jobs(project_id,state,created,options) VALUES(?,?,?,?)",
-                        (project_id, "queued", time.time(), json.dumps(options or {})))
-        self.q.put(jid)
-        return jid
+        with self._queue_lock:
+            busy = self.db.one("SELECT id FROM jobs WHERE project_id=? AND state IN ('queued','running')", (project_id,))
+            if busy:
+                return busy["id"]
+            jid = self.db.x("INSERT INTO jobs(project_id,state,created,options) VALUES(?,?,?,?)",
+                            (project_id, "queued", time.time(), json.dumps(options or {})))
+            self.q.put(jid)
+            return jid
+
+    def pending_projects(self) -> set[int]:
+        """Während laufender Jobs eingelesene Aufnahmen nachholen; Fehler nicht endlos neu versuchen."""
+        return {r["project_id"] for r in self.db.q(
+            "SELECT DISTINCT f.project_id FROM frames f WHERE f.kind='light' AND f.status='new' "
+            "AND f.deleted=0 AND f.project_id IS NOT NULL AND NOT EXISTS "
+            "(SELECT 1 FROM jobs j WHERE j.project_id=f.project_id AND j.state='error' "
+            "AND j.id=(SELECT MAX(j2.id) FROM jobs j2 WHERE j2.project_id=f.project_id))")}
 
     def worker(self):
         while not self.stop.is_set():
@@ -90,6 +100,8 @@ class Engine:
                     continue
                 self.pl.process(job["project_id"], opts, prog)
                 self.db.x("UPDATE jobs SET state='done', progress=1, finished=? WHERE id=?", (time.time(), jid))
+                if self.s.auto and job["project_id"] in self.pending_projects():
+                    self.enqueue(job["project_id"])
             except Exception as e:
                 traceback.print_exc()
                 self.db.x("UPDATE jobs SET state='error', message=?, finished=? WHERE id=?", (str(e), time.time(), jid))
@@ -106,7 +118,7 @@ class Engine:
         r = self.pl.scan()
         self.last_scan = time.time()
         if self.s.auto:
-            for pid in r["new_by_project"]:
+            for pid in set(r["new_by_project"]) | self.pending_projects():
                 self.enqueue(pid)
         return r
 
@@ -147,6 +159,7 @@ def build_router(eng: Engine) -> APIRouter:
     db = eng.db
 
     def project_view(p: dict) -> dict:
+        imported = json.loads(p["options"] or "{}").get("input_type") == "picture"
         fr = db.q("SELECT status, COUNT(*) n FROM frames WHERE project_id=? AND kind='light' GROUP BY status", (p["id"],))
         counts = {r["status"]: r["n"] for r in fr}
         last = db.one("SELECT * FROM results WHERE project_id=? ORDER BY id DESC LIMIT 1", (p["id"],))
@@ -165,17 +178,22 @@ def build_router(eng: Engine) -> APIRouter:
             "id": p["id"], "name": p["name"], "kind": p["kind"], "kind_label": objects.KIND_LABEL.get(p["kind"] or "generic"),
             "options": json.loads(p["options"] or "{}"), "frames": counts, "total": sum(counts.values()),
             "nights": [n["night"] for n in nights], "n_results": n_results, "created": p["created"],
-            "coords": coords, "can_solve": not p["obj_id"],
+            "coords": coords, "can_solve": not imported and not p["obj_id"], "imported": imported,
             # Einzelbilder nach dem Stacking gelöscht -> kein komplettes Neu-Stacken mehr möglich
-            "deleted": {"frames": dl["n"], "bytes": dl["b"], "can_restack": dl["s"] == 0},
+            "deleted": {"frames": dl["n"], "bytes": dl["b"], "can_restack": not imported and dl["s"] == 0},
             "result": {"id": last["id"], "created": last["created"], "n_frames": last["n_frames"], "exposure": last["exposure"],
-                       "stats": json.loads(last["stats"])} if last else None,
+                       "stats": json.loads(last["stats"]), "formats": list(json.loads(last["files"] or "{}"))} if last else None,
             "job": {k: job[k] for k in ("id", "state", "progress", "stage", "message", "finished")} if job else None,
         }
 
     @r.get("/status")
     def status():
         return eng.status()
+
+    @r.get("/statistics")
+    def statistics(year: int | None = None):
+        from .activity_stats import summarize
+        return summarize(db.q("SELECT kind,info,project_id FROM frames WHERE kind='light'"), year)
 
     @r.post("/storage")
     def set_storage(body: dict = Body(...)):
@@ -208,8 +226,11 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.post("/projects/{pid}/solve")
     def solve(pid: int):
-        if not db.one("SELECT id FROM projects WHERE id=?", (pid,)):
+        p = db.one("SELECT options FROM projects WHERE id=?", (pid,))
+        if not p:
             raise HTTPException(404)
+        if json.loads(p["options"] or "{}").get("input_type") == "picture":
+            raise HTTPException(409, "Fertige Bilder bitte mit Sage bestimmen lassen.")
         if not eng.pl.solver_cfg.enabled:
             raise HTTPException(400, "Kein Plate-Solver eingerichtet – siehe Einstellungen.")
         return {"job": eng.enqueue(pid, {"action": "solve"})}
@@ -261,8 +282,11 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.post("/projects/{pid}/process")
     def process(pid: int, body: dict = Body(default={})):
-        if not db.one("SELECT id FROM projects WHERE id=?", (pid,)):
+        p = db.one("SELECT options FROM projects WHERE id=?", (pid,))
+        if not p:
             raise HTTPException(404)
+        if json.loads(p["options"] or "{}").get("input_type") == "picture":
+            raise HTTPException(409, "Dieses Bild wurde fertig importiert. Zum Stacken oder Neu-Entwickeln sind Rohaufnahmen erforderlich.")
         if body.get("restack"):
             if db.one("SELECT id FROM frames WHERE project_id=? AND deleted=1 AND stacked=1 LIMIT 1", (pid,)):
                 raise HTTPException(409, "Komplett neu stacken ist nicht möglich: die hochgeladenen Einzelbilder wurden "
@@ -303,21 +327,32 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.post("/upload")
     async def upload(files: list[UploadFile] = File(...)):
+        from .picture_import import PICTURE_EXT, import_picture
         dest = eng.s.input_dir / "uploads" / time.strftime("%Y%m%d")
         dest.mkdir(parents=True, exist_ok=True)
-        n = 0
+        n, raw, pictures, errors = 0, 0, [], []
         for f in files:
             # relative Ordnerpfade behalten (z. B. „…_observation_M57/img-0001r.fits“ – der Ordner verrät das Objekt),
             # aber nur harmlose Pfadteile zulassen
             parts = [p for p in re.split(r"[\\/]+", f.filename or "") if p not in ("", ".", "..") and ":" not in p]
-            if not parts or not parts[-1].lower().endswith((".fit", ".fits", ".fts")):
+            if not parts:
+                continue
+            if parts[-1].lower().endswith(PICTURE_EXT):
+                try:
+                    pictures.append(await asyncio.to_thread(import_picture, eng, f.file, parts[-1]))
+                    n += 1
+                except Exception as e:
+                    errors.append(f"{parts[-1]}: Bild nicht importiert: {e}")
+                continue
+            if not parts[-1].lower().endswith((".fit", ".fits", ".fts")):
                 continue
             target = dest.joinpath(*parts[-4:])
             target.parent.mkdir(parents=True, exist_ok=True)
             with open(target, "wb") as out:
                 shutil.copyfileobj(f.file, out)
             n += 1
-        return {"saved": n}
+            raw += 1
+        return {"saved": n, "raw": raw, "pictures": pictures, "errors": errors}
 
     @r.get("/results/{rid}/{kind}")
     def result_file(rid: int, kind: str):
@@ -325,7 +360,7 @@ def build_router(eng: Engine) -> APIRouter:
         files = json.loads(x["files"]) if x else {}
         if kind not in files or not Path(files[kind]).exists():
             raise HTTPException(404)
-        return FileResponse(files[kind], filename=Path(files[kind]).name if kind in ("tif", "fits", "png") else None)
+        return FileResponse(files[kind], filename=Path(files[kind]).name if kind in ("tif", "fits", "png", "original") else None)
 
     @r.get("/starnet")
     def get_starnet():

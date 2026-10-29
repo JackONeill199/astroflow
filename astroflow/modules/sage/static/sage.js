@@ -1,5 +1,6 @@
 'use strict';
-/* Modul „Sage“: Bild bestimmen lassen → KI-Geschichte → anhören; Verlauf und Entdeckungen. Portiert aus starlight-sage. */
+/* Modul „Sage“: Bild bestimmen lassen → KI-Geschichte → anhören; Sammlung und Erfolge. Portiert aus starlight-sage.
+   Enzyklopädie, Objektseiten, Wissensnetz, Entdeckungen und Chat: sage-wiki.js (window.SageWiki). */
 (() => {
 const G = '/sage';
 const STEPS = [['upload', 'Bild vorbereiten'], ['solve', 'Sternmuster bestimmen'], ['identify', 'Objekte erkennen'], ['story', 'Geschichte schreiben'], ['complete', 'Fertig']];
@@ -37,28 +38,31 @@ function stepper(t) {
 
 // ---------------------------------------------------------------- Erzählen --- //
 async function mainView(el) {
-  crumbs([['Sage'], ['Erzählen']]);
+  crumbs([['Sage', '#/sage/wiki'], ['Bild bestimmen']]);
   const cfg = await api(G + '/config');
-  const projects = AF.on('stacking') ? (await api('/stacking/projects')).filter(p => p.result) : [];
+  const central = AF.on('stacking');
+  const projects = central ? (await api('/stacking/projects')).filter(p => p.result) : [];
   let hist = await api(G + '/history'), sig = '';
   const ready = cfg.local_solver || (cfg.online_solve && cfg.has_nova_key);
-  el.innerHTML = `<div class="pagehead"><div><h1>Was ist auf deinem Bild?</h1><p class="mut">Sage bestimmt die Himmelsobjekte und erzählt dir ihre Geschichte – zum Lesen und Anhören.</p></div>
-      <span class="grow"></span><a class="btn ghost" href="#/sage/entdeckungen">${icon('medal')}Entdeckungen</a></div>
+  el.innerHTML = `<div class="pagehead"><div><h1>Was ist auf deinem Bild?</h1><p class="mut">Sage löst das Bild astrometrisch, erkennt die Himmelsobjekte, verknüpft sie mit der Enzyklopädie und erzählt dir ihre Geschichte.</p></div>
+      <span class="grow"></span><a class="btn ghost" href="#/sage/wiki">${icon('book')}Enzyklopädie</a><a class="btn ghost" href="#/sage/sammlung">${icon('medal')}Sammlung</a></div>
     ${!ready ? `<div class="notice">${icon('alert')}<div><b>Kein Plate-Solver bereit</b><div class="mut sm">Richte ASTAP unter Einstellungen → Bilder ein (lokal, empfohlen) oder erlaube unter Einstellungen → Sage das Online-Lösen über nova.astrometry.net.</div></div><span class="grow"></span><a class="btn sm ghost" href="#/settings/sage">Einrichten</a></div>` : ''}
     ${!cfg.has_story_api_key && cfg.story_provider !== 'lmstudio' && cfg.story_provider !== 'custom' ? `<div class="notice">${icon('book')}<div><b>Erzähl-KI noch nicht eingerichtet</b><div class="mut sm">Objekte werden trotzdem bestimmt; für die Geschichte einen OpenAI-Schlüssel eintragen oder LM Studio wählen.</div></div><span class="grow"></span><a class="btn sm ghost" href="#/settings/sage">Einrichten</a></div>` : ''}
-    <div class="split sg-top"><label class="dropzone" id="sgdz">${icon('upload')}<h2>Astrofoto hierher ziehen</h2>
-        <div class="mut">oder klicken · JPG, PNG, TIFF oder FITS</div><input type="file" id="sgfi" accept=".jpg,.jpeg,.png,.tif,.tiff,.gif,.fit,.fits,.fts" hidden></label>
+    <div class="split sg-top">${central ? `<div class="panel"><h2>Bilder zentral importieren</h2><p class="mut">Neue Astrofotos und Rohaufnahmen lädst du unter Import hoch. Fertige Bilder erscheinen in deiner Galerie und werden auf Wunsch automatisch von Sage bestimmt.</p><a class="btn" href="#/import">${icon('upload')}Zum Import</a></div>` : `<label class="dropzone" id="sgdz">${icon('upload')}<h2>Astrofoto hierher ziehen</h2>
+        <div class="mut">oder klicken · JPG, PNG, TIFF oder FITS</div><input type="file" id="sgfi" accept=".jpg,.jpeg,.png,.tif,.tiff,.gif,.fit,.fits,.fts" hidden></label>`}
       <div class="panel"><h2 style="margin-bottom:10px">Aus deinen Bildern</h2>
         ${projects.length ? `<div class="sg-pick">${projects.slice(0, 8).map(p => `<button data-p="${p.id}" title="Geschichte zu ${esc(p.name)} erzählen"><img src="/api/stacking/results/${p.result.id}/thumb" alt="" loading="lazy"><span>${esc(p.name)}</span></button>`).join('')}</div>`
           : '<p class="mut sm" style="margin:0">Fertige Bilder aus der Galerie erscheinen hier – ein Klick, und Sage erzählt ihre Geschichte.</p>'}</div></div>
     <div id="sgTasks"></div>
     <div class="toolbar" style="margin-top:26px"><h2 class="sect" style="margin:0">Deine Geschichten</h2><span class="grow"></span><input type="search" id="sgq" placeholder="Geschichte oder Objekt suchen …"></div>
     <div id="sgHist"></div>`;
-  $('#sgfi').onchange = (e) => { const f = e.target.files[0]; if (f) startUpload(f); e.target.value = ''; };
+  $('#sgfi')?.addEventListener('change', (e) => { const f = e.target.files[0]; if (f) startUpload(f); e.target.value = ''; });
   const dz = $('#sgdz');
+  if (dz) {
   dz.ondragover = (e) => { e.preventDefault(); dz.classList.add('over'); };
   dz.ondragleave = () => dz.classList.remove('over');
   dz.ondrop = async (e) => { e.preventDefault(); e.stopPropagation(); dz.classList.remove('over'); const f = (await droppedFiles(e.dataTransfer))[0]; if (f) startUpload(f); };
+  }
   el.querySelector('.sg-pick')?.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-p]');
     if (!b) return;
@@ -108,7 +112,7 @@ async function mainView(el) {
     async update(st) {
       if (st.modules.sage?.busy_jobs || [...tasks.values()].some(t => t.state === 'running')) await loadTasks();
     },
-    actions: () => [['upload', 'Bild hochladen', 'Sage bestimmt und erzählt', () => $('#sgfi').click()], ['medal', 'Entdeckungen', 'Sammlung & Erfolge', () => { location.hash = '#/sage/entdeckungen'; }]],
+    actions: () => [['upload', central ? 'Bilder importieren' : 'Bild hochladen', 'Sage bestimmt und erzählt', () => { if (central) location.hash = '#/import'; else $('#sgfi').click(); }], ['medal', 'Sammlung & Erfolge', 'Gesammelte Objekte', () => { location.hash = '#/sage/sammlung'; }]],
   };
 }
 
@@ -134,6 +138,7 @@ async function entryView(el, id) {
           ${sol.solver ? `<span class="chip acc">${icon('star')}${sol.solver === 'nova' ? 'nova.astrometry.net' : 'lokal gelöst (' + esc(sol.solver.toUpperCase()) + ')'}</span>` : ''}
           ${e.source?.type === 'project' ? `<a class="chip" href="#/p/${e.source.project}">${icon('grid')}${esc(e.source.name)}</a>` : e.source?.filename ? `<span class="chip">${esc(e.source.filename)}</span>` : ''}</div></div>
       <span class="grow"></span><div class="row"><button class="btn ghost" id="retell">${icon('refresh')}${e.story ? 'Neu erzählen' : 'Geschichte schreiben'}</button>
+        <button class="btn ghost" id="askImg">${icon('sparkle')}Frag Sage</button>
         <div class="menu"><button class="btn ghost">Mehr${icon('chev')}</button><div class="pop"><a href="${e.image}" download>Bild herunterladen</a><hr><a href="#" class="danger" id="del">Löschen <small>mit Bild und Audio</small></a></div></div></div></div>
       <div class="split sg-entry"><div>
         <div id="sgv"></div>
@@ -143,16 +148,20 @@ async function entryView(el, id) {
       <div>${e.story ? `<div class="panel sg-player"><div class="panel-h"><h2>${icon('volume')}Vorlesen</h2><span class="grow"></span>
           <select id="ttsp">${[['openrouter', 'OpenRouter'], ['qwen', 'Qwen3 (lokal)'], ['elevenlabs', 'ElevenLabs']].map(([k, l]) => `<option value="${k}" ${(tts?.default || store.get('sage.tts', 'qwen')) === k ? 'selected' : ''} ${tts && !tts[k]?.available ? 'disabled' : ''}>${l}${tts && !tts[k]?.available ? ' – nicht verfügbar' : ''}</option>`).join('')}</select></div>
           <div id="ttsBody"></div></div>` : ''}
-        <div class="panel"><div class="panel-h"><h2>Im Bild</h2><span class="grow"></span><span class="mut sm">${objs.length}</span></div>
-          ${objs.length ? `<ul class="sg-objs">${objs.map((o, i) => `<li data-i="${i}">${fresh.has(o.name) ? `<span class="chip acc">${icon('sparkle')}neu</span>` : ''}<b>${esc(o.name)}</b>
+        <div class="panel"><div class="panel-h"><h2>Im Bild</h2><span class="grow"></span><span class="mut sm">${objs.length} · antippen für Wissen</span></div>
+          ${objs.length ? `<ul class="sg-objs">${objs.map((o, i) => `<li data-i="${i}" tabindex="0" role="button">${fresh.has(o.name) ? `<span class="chip acc">${icon('sparkle')}neu</span>` : ''}<b>${esc(o.name)}</b>
             <span class="mut sm">${esc(o.kind_label || '')}${o.size ? ` · ${o.size >= 60 ? (o.size / 60).toFixed(1) + '°' : Math.round(o.size) + '′'}` : ''}</span></li>`).join('')}</ul>`
             : '<p class="mut sm" style="margin:0">Keine Katalogobjekte im Bildfeld gefunden.</p>'}</div>
-        <a class="panel sg-disc" href="#/sage/entdeckungen">${icon('medal')}<div><b>Deine Entdeckungen</b><div class="mut sm">Sammlung, Fortschritt und Erfolge</div></div>${icon('arrow')}</a></div></div>`;
+        <a class="panel sg-disc" href="#/sage/sammlung">${icon('medal')}<div><b>Sammlung & Erfolge</b><div class="mut sm">Gesammelte Objekte und Fortschritt</div></div>${icon('arrow')}</a></div></div>`;
     const marked = objs.filter(o => o.x != null);
-    viewer = createViewer($('#sgv'), e.image, null, undefined, null, marked.length ? { overlay: (svg, w, h) => drawLabels(svg, w, h, marked) } : {});
+    const tapObj = (t, ev) => { const g = window.SageWiki?.pick(viewer?.overlay, ev); if (g) window.SageWiki.card(objs[+g.dataset.i].name, ev, { image: e.id }); };
+    viewer = createViewer($('#sgv'), e.image, null, undefined, null, marked.length ? { overlay: (svg, w, h) => drawLabels(svg, w, h, marked), onTap: tapObj } : {});
+    $('#askImg').onclick = () => window.SageWiki?.chat({ scope: 'image:' + e.id, image: e.id, title: e.title });
     $('#labels').onchange = (ev) => { if (viewer.overlay) viewer.overlay.style.display = ev.target.checked ? '' : 'none'; };
     $('#retell').onclick = retell;
     $('#del').onclick = async (ev) => { ev.preventDefault(); if (await confirmDlg('Geschichte löschen?', 'Bild, Geschichte und Vertonung werden entfernt; die Entdeckungen werden neu berechnet.', 'Löschen', true)) { await send(`${G}/history/${e.id}`, null, 'DELETE'); toast('Gelöscht.', 'ok'); location.hash = '#/sage'; } };
+    $$('.sg-objs li').forEach(li => { li.onclick = (ev) => window.SageWiki?.card(objs[+li.dataset.i].name, ev, { image: e.id });
+      li.onkeydown = (ev) => { if (ev.key === 'Enter') li.click(); }; });
     $$('.sg-objs li').forEach(li => { li.onmouseenter = () => $$(`.vov [data-i="${li.dataset.i}"]`).forEach(n => n.classList.add('hi')); li.onmouseleave = () => $$('.vov .hi').forEach(n => n.classList.remove('hi')); });
     if (e.story) player();
   }
@@ -161,7 +170,7 @@ async function entryView(el, id) {
     const W = e.width || w, sc = w / W, fs = Math.max(12, w / 70);
     const objIndex = (o) => (e.objects || []).indexOf(o);
     svg.innerHTML = objs.map(o => { const x = o.x * sc, y = o.y * sc, r = Math.max(fs * .6, (o.radius || 8) * sc);
-      return `<g data-i="${objIndex(o)}" class="${fresh.has(o.name) ? 'new' : ''}"><circle cx="${x}" cy="${y}" r="${r}"/><text x="${x + r * .75 + fs * .3}" y="${y - r * .75}" font-size="${fs}">${esc(o.name)}</text></g>`; }).join('');
+      return `<g data-i="${objIndex(o)}" class="tap ${fresh.has(o.name) ? 'new' : ''}"><circle cx="${x}" cy="${y}" r="${r}"/><text x="${x + r * .75 + fs * .3}" y="${y - r * .75}" font-size="${fs}">${esc(o.name)}</text></g>`; }).join('');
   }
   function player() {
     const body = $('#ttsBody'), sel = $('#ttsp');
@@ -211,11 +220,11 @@ async function entryView(el, id) {
 
 // ------------------------------------------------------------ Entdeckungen --- //
 async function discView(el) {
-  crumbs([['Sage', '#/sage'], ['Entdeckungen']]);
+  crumbs([['Sage', '#/sage/wiki'], ['Sammlung & Erfolge']]);
   const d = await api(G + '/discoveries'), s = d.stats;
   let cat = 'all';
   const unlocked = d.achievements.filter(a => a.unlocked).length;
-  el.innerHTML = `<div class="pagehead"><div><h1>Deine Entdeckungen</h1><p class="mut">Jedes bestimmte Objekt wandert in deine Sammlung – aus hochgeladenen Fotos und deinen eigenen Bildern.</p></div></div>
+  el.innerHTML = `<div class="pagehead"><div><h1>Sammlung & Erfolge</h1><p class="mut">Jedes bestimmte Objekt wandert in deine Sammlung – aus hochgeladenen Fotos und deinen eigenen Bildern.</p></div></div>
     <div class="stats sg-kpi">
       <div class="stat"><small>Objekte</small><b class="tnum">${s.total_objects}</b></div><div class="stat"><small>Analysen</small><b class="tnum">${s.analyses}</b></div>
       <div class="stat"><small>Messier</small><b class="tnum">${s.messier} <span class="dim sm">/ 110</span></b></div><div class="stat"><small>Erfolge</small><b class="tnum">${unlocked} <span class="dim sm">/ ${d.achievements.length}</span></b></div></div>
@@ -358,7 +367,7 @@ function celebrate(list) {
     const ach = c.achievements || [], gold = ach.length > 0, ms = 7000;
     const card = document.createElement('a');
     card.className = 'sg-cel-card' + (gold ? ' gold' : '');
-    card.href = `#/sage/${gold ? 'entdeckungen' : c.entry}`;
+    card.href = `#/sage/${gold ? 'sammlung' : c.entry}`;
     card.style.cssText = `--t:${ms}ms;animation-delay:${n * 350}ms`;
     card.innerHTML = `<div class="burst">${Array.from({ length: 14 }, (_, i) => `<i style="--a:${i * 360 / 14}deg;--d:${i % 4}"></i>`).join('')}</div>
       <div class="medal">${icon(ach[0]?.icon || 'sparkle')}</div>
@@ -381,24 +390,28 @@ function celebrate(list) {
 
 // ---------------------------------------------------------- Registrierung --- //
 AF.register('sage', {
-  nav: [{ href: '#/sage', label: 'Erzählen', icon: 'book', key: 'sage' }, { href: '#/sage/entdeckungen', label: 'Entdeckungen', icon: 'medal', key: 'sage-disc', sec: true }],
+  nav: [{ href: '#/sage/wiki', label: 'Enzyklopädie', icon: 'book', key: 'sage-wiki' }, { href: '#/sage', label: 'Bild bestimmen', icon: 'target', key: 'sage' },
+    { href: '#/sage/entdeckungen', label: 'Meine Entdeckungen', icon: 'sparkle', key: 'sage-ins' },
+    { href: '#/sage/netz', label: 'Wissensnetz', icon: 'orbit', key: 'sage-net', sec: true },
+    { href: '#/sage/sammlung', label: 'Sammlung & Erfolge', icon: 'medal', key: 'sage-disc', sec: true }],
   routes: [
     [/^\/sage$/, 'sage', mainView],
-    [/^\/sage\/entdeckungen$/, 'sage-disc', discView],
+    [/^\/sage\/sammlung$/, 'sage-disc', discView],
     [/^\/sage\/([\w-]+)$/, 'sage', entryView],
   ],
   settings,
-  status: (st, badge) => { badge('sage', st.modules.sage?.busy_jobs, true); celebrate(st.modules.sage?.celebrate); },
+  status: (st, badge) => { badge('sage', st.modules.sage?.busy_jobs, true); badge('sage-ins', st.modules.sage?.insights); celebrate(st.modules.sage?.celebrate); },
   async home(st) {
     const s = st.modules.sage || {}, [hist, d] = await Promise.all([api(G + '/history'), api(G + '/discoveries')]);
     const last = hist[0], next = d.achievements.find(a => !a.unlocked);
-    return `<div class="hhead">${icon('book')}<div><h2>Sage</h2><div class="mut sm">Objekte bestimmen · Geschichten hören</div></div><span class="grow"></span><a class="linkbtn" href="#/sage">Erzählen ${icon('arrow')}</a></div>
+    return `<div class="hhead">${icon('book')}<div><h2>Sage</h2><div class="mut sm">Enzyklopädie · Bilder bestimmen · Geschichten</div></div><span class="grow"></span><a class="linkbtn" href="#/sage/wiki">Enzyklopädie ${icon('arrow')}</a></div>
       <div class="hstats"><div><b class="tnum">${d.stats.total_objects}</b><small>Objekte entdeckt</small></div><div><b class="tnum">${hist.length}</b><small>Geschichten</small></div>
         <div><b class="tnum">${d.achievements.filter(a => a.unlocked).length}/${d.achievements.length}</b><small>Erfolge</small></div></div>
       ${s.busy_jobs ? `<div class="hlist"><a href="#/sage"><span class="spinner"></span><b>Sage arbeitet</b><span class="mut sm">${s.busy_jobs} Auftrag${s.busy_jobs > 1 ? 'e' : ''}</span></a></div>` : ''}
       ${last ? `<a class="hfeature" href="#/sage/${last.id}">${last.image ? `<img src="${last.image}" alt="" loading="lazy">` : ''}<div><small class="mut">Zuletzt erzählt</small><b>${esc(last.title)}</b>
           <span class="mut sm">${esc(last.preview.slice(0, 90))}${last.preview.length > 90 ? '…' : ''}</span></div></a>`
         : `<p class="mut sm">Lade ein Astrofoto hoch – Sage erzählt dir, was darauf zu sehen ist.</p>`}
+      ${s.insights ? `<a class="hnext" href="#/sage/entdeckungen">${icon('sparkle')}<span><b>${s.insights} neue Entdeckung${s.insights > 1 ? 'en' : ''}</b> <span class="mut">– Sage hat für dich recherchiert</span></span></a>` : ''}
       ${next ? `<div class="hnext">${icon(next.icon)}<span><b>Nächster Erfolg:</b> ${esc(next.title)} <span class="mut">– ${esc(next.description)}</span></span></div>` : ''}`;
   },
   async palette() {
@@ -406,6 +419,7 @@ AF.register('sage', {
     return [['upload', 'Bild erzählen lassen', 'Sage', '#/sage'], ...hist.map(h => ['book', h.title, `${h.objects} Objekte · ${when(h.created)}`, `#/sage/${h.id}`, h.image])];
   },
   drop(files) {
+    if (AF.on('stacking')) return false;    // zentraler Import übernimmt auch auf Sage-Seiten
     const pic = files.find(f => /\.(jpe?g|png|tiff?|gif)$/i.test(f.name));
     if (!pic) return false;
     startUpload(pic);

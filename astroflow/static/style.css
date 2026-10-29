@@ -399,7 +399,7 @@ dialog::backdrop { background: #02040ab3; backdrop-filter: blur(4px); animation:
 .dirty::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; color: var(--acc); animation: pulse 1.8s infinite }
 
 /* Bildqualität: Ring-Anzeige */
-.qscore { --c: var(--ok); display: grid; place-items: center; width: 58px; height: 58px; border-radius: 50%; position: relative;
+.qscore { --c: var(--ok); display: grid; place-items: center; flex-shrink: 0; width: 58px; height: 58px; border-radius: 50%; position: relative;
   background: conic-gradient(var(--c) calc(var(--p) * 1%), var(--line) 0); animation: ring 1.2s var(--ease) both }
 .qscore::before { content: ""; position: absolute; inset: 5px; border-radius: 50%; background: var(--panel-s) }
 .qscore b { position: relative; font-size: 17px; font-weight: 750; color: var(--fg) }

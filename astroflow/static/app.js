@@ -186,7 +186,8 @@ async function droppedFiles(dt) {
 
 // ------------------------------------------------------- Bildbetrachter --- //
 // ph = kleines Vorschaubild, das unscharf angezeigt wird, bis das große Bild geladen ist;
-// opts.overlay(svg, w, h) zeichnet Markierungen in Bildkoordinaten (wandern mit Zoom/Verschieben)
+// opts.overlay(svg, w, h) zeichnet Markierungen in Bildkoordinaten (wandern mit Zoom/Verschieben);
+// opts.onTap(target, event) meldet ein kurzes Antippen ohne Ziehen (z. B. Klick auf eine Objektmarke)
 function createViewer(host, src, cmpSrc, labels = ['älter', 'neuer'], ph = null, opts = {}) {
   host.innerHTML = `<div class="viewer">${ph ? `<img class="phimg" src="${ph}" alt="">` : ''}<span class="vload"><span class="spinner"></span>Lädt Bild in voller Auflösung …</span>
     ${cmpSrc ? `<img class="a" src="${cmpSrc}" alt=""><div class="cmp"><img class="b" src="${src}" alt=""></div><div class="cmpline"></div>
@@ -197,7 +198,7 @@ function createViewer(host, src, cmpSrc, labels = ['älter', 'neuer'], ph = null
       <a href="${src}" download title="Herunterladen" style="display:grid;place-items:center;width:32px;height:32px;color:#e8ebf5">${icon('down')}</a></div></div>`;
   const v = $('.viewer', host), main = $('img.b', v), clip = $('.cmp', v), line = $('.cmpline', v), zl = $('.z', v), ov = $('.vov', v);
   const imgs = [...$$('img.a, img.b', v), ...(ov ? [ov] : [])];
-  let s = 1, x = 0, y = 0, fitS = 1, iw = 0, ih = 0, split = 0.5, ptrs = new Map(), last = null, pinch = null;
+  let s = 1, x = 0, y = 0, fitS = 1, iw = 0, ih = 0, split = 0.5, ptrs = new Map(), last = null, pinch = null, tap = null;
   const apply = () => {
     imgs.forEach(i => { i.style.transform = `translate(${x}px,${y}px) scale(${s})`; });
     zl.textContent = Math.round(s * 100) + ' %';
@@ -210,7 +211,7 @@ function createViewer(host, src, cmpSrc, labels = ['älter', 'neuer'], ph = null
   };
   const fit = () => { if (!iw) return; fitS = Math.min(v.clientWidth / iw, v.clientHeight / ih); s = fitS; clamp(); apply(); };
   const zoomAt = (f, cx, cy) => {
-    const ns = Math.min(8, Math.max(fitS * 0.5, s * f));
+    const ns = Math.min(8, Math.max(fitS, s * f));                 // nie kleiner als eingepasst (sonst nur schwarzer Rand)
     x = cx - (cx - x) * ns / s; y = cy - (cy - y) * ns / s; s = ns; clamp(); apply();
   };
   // weiche Übergänge nur für Knöpfe/Doppelklick – Ziehen und Mausrad folgen direkt
@@ -231,6 +232,7 @@ function createViewer(host, src, cmpSrc, labels = ['älter', 'neuer'], ph = null
     if (e.target.closest('.vbar')) return;
     if (e.target === line) { const mv = (ev) => { const r = v.getBoundingClientRect(); split = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)); apply(); };
       const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); }; addEventListener('pointermove', mv); addEventListener('pointerup', up); return; }
+    tap = ptrs.size ? null : { t: e.target, x: e.clientX, y: e.clientY };
     v.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); last = [e.clientX, e.clientY]; v.classList.add('drag');
     if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = Math.hypot(a[0] - b[0], a[1] - b[1]); }
   });
@@ -243,7 +245,10 @@ function createViewer(host, src, cmpSrc, labels = ['älter', 'neuer'], ph = null
     }
     x += e.clientX - last[0]; y += e.clientY - last[1]; last = [e.clientX, e.clientY]; clamp(); apply();
   });
-  const end = (e) => { ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null; if (!ptrs.size) v.classList.remove('drag'); else last = [...ptrs.values()][0]; };
+  const end = (e) => {
+    if (tap && opts.onTap && e.type === 'pointerup' && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 5) opts.onTap(tap.t, e);
+    tap = null;
+    ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null; if (!ptrs.size) v.classList.remove('drag'); else last = [...ptrs.values()][0]; };
   v.addEventListener('pointerup', end); v.addEventListener('pointercancel', end);
   const onKey = (e) => { if (e.key === 'Escape' && v.classList.contains('full')) { v.classList.remove('full'); requestAnimationFrame(fit); } };
   document.addEventListener('keydown', onKey);
