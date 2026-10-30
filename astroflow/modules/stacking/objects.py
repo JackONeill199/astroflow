@@ -129,6 +129,7 @@ def nearest(ra: float, dec: float, slack_deg: float = 0.3) -> CatObject | None:
 # Erweiterter Katalog: ASTAPs deep_sky.csv (~30 000 Objekte), falls installiert
 # --------------------------------------------------------------------------- #
 _EXT: list[CatObject] | None = None
+_EXT_ALIAS: dict[str, CatObject] = {}
 _EXT_KIND = [(r"^(PK|PN|PNG)", "planetary"), (r"^(Sh2|LBN|RCW|Ced)", "emission"), (r"^(vdB|LDN|B\d)", "reflection"),
              (r"^(PGC|UGC|MCG|ESO|LEDA|HCG|Arp)", "galaxy"), (r"^(Mel|Cr|Tr|Stock|King|Berk)", "open_cluster"), (r"^(GC|Pal)", "globular")]
 
@@ -170,8 +171,24 @@ def extended_catalog() -> list[CatObject]:
             if kind == "generic" and re.match(r"^(M|NGC|IC)\d", names[0]) and any(n.startswith("PGC") for n in names):
                 kind = "galaxy"
             disp = _pretty(names[0]) + (f" {common.replace('_', ' ')}" if common else "")
-            _EXT.append(CatObject(normalize_name(names[0]), disp, ra, dec, kind, size))
+            obj = CatObject(normalize_name(names[0]), disp, ra, dec, kind, size)
+            _EXT.append(obj)
+            for n in names:
+                if not re.match(r"^(PK|PNG)", n):
+                    _EXT_ALIAS.setdefault(normalize_name(n), obj)
     return _EXT
+
+
+def resolve_extended(name: str | None) -> CatObject | None:
+    """Objekt im großen Katalog (ASTAP) über einen seiner Namen – z. B. Ordnername „NGC4490“, den der kleine Katalog nicht kennt."""
+    if not name:
+        return None
+    extended_catalog()
+    n = re.sub(r"^MESSIER", "M", normalize_name(name))
+    if n in _EXT_ALIAS:
+        return _EXT_ALIAS[n]
+    tok = re.match(r"\s*([A-Za-z]{1,4})\s*0*(\d+)", name)
+    return _EXT_ALIAS.get((tok.group(1) + tok.group(2)).upper()) if tok else None
 
 
 def nearest_extended(ra: float, dec: float, radius_deg: float = 0.3, min_size: float = 1.0) -> CatObject | None:

@@ -339,7 +339,7 @@ class Pipeline:
         used = {}
         for (key, night), items in groups.items():
             have = [(r, i) for r, i in items if not r["deleted"] and Path(r["path"]).exists()]
-            if night not in glib.nights(key) and len(have) >= calibration.GLOW_MIN_FRAMES:
+            if night not in glib.nights(key, with_map=True) and len(have) >= calibration.GLOW_MIN_FRAMES:
                 sample = have[:: max(1, len(have) // GLOW_SAMPLE)][:GLOW_SAMPLE]
                 progress(0.02, "Analyse", f"Sensorglühen messen ({night}, {len(sample)} Aufnahmen)")
 
@@ -570,6 +570,9 @@ class Pipeline:
             filt = (json.loads(stacked[0]["info"]).get("filter") or "") if stacked else ""
             narrow = opt["narrowband"] if opt["narrowband"] is not None else bool(re.search(r"ha|oiii|duo|dual|nb|lp|lenhance|l-extreme|uv/ir", filt, re.I))
         kind = proj["kind"]
+        if not kind and (ext := objects.resolve_extended(proj["name"])) and ext.kind != "generic":
+            kind = ext.kind                                 # ältere Projekte: Typ nachträglich aus dem großen Katalog
+            self.db.x("UPDATE projects SET kind=? WHERE id=?", (kind, project_id))
         pname = opt["profile"] if opt["profile"] != "auto" else (kind or "generic")
         user = opt.get("params") or {}
         params = {**objects.profile_for(pname), **user}

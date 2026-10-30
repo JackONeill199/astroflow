@@ -196,6 +196,12 @@ def apply(raw: np.ndarray, m: Masters) -> np.ndarray:
 # Perzentil + Median heraus) messen und nur in den Randbändern abziehen – die Bildmitte mit dem Objekt bleibt unberührt.
 GLOW_BAND = 0.25          # Randanteil, in dem korrigiert wird (zur Mitte hin weich ausgeblendet)
 GLOW_MIN_FRAMES = 12
+# Was Zeilen-/Spaltenprofile nicht erfassen (Eckglühen, Flecken an einer Seite – NGC 4490: Ecke +18 ADU, Seite −7 ADU
+# nach dem Profilabzug, so groß wie das Stack-Rauschen), misst eine grobe 2D-Karte des Rests: Kacheln GLOW_BIN px je
+# Farbebene. Sie wirkt außerhalb des mittleren Rechtecks (voll bis GLOW_MAP_FULL, ausgeblendet bis GLOW_MAP_BAND) –
+# dort steht das Objekt, das sich bei der Feldrotation kaum bewegt und sonst als „Glühen“ abgezogen würde.
+GLOW_BIN = 32
+GLOW_MAP_FULL, GLOW_MAP_BAND = 0.18, 0.35
 
 
 def _planes(raw: np.ndarray, bayer: bool) -> list[tuple]:
@@ -212,10 +218,19 @@ def _plane(raw, idx):
     return raw[c][ys, xs] if c is not None else raw[ys, xs]
 
 
-def glow_profiles(raw: np.ndarray, bayer: bool) -> list[tuple[np.ndarray, np.ndarray]]:
-    """Je Farbebene (Zeilenprofil, Spaltenprofil) des Hintergrunds (30-%-Perzentil: robust gegen Sterne und Nebel)."""
-    return [(np.percentile(p, 30, axis=1).astype(np.float32), np.percentile(p, 30, axis=0).astype(np.float32))
-            for p in (_plane(raw, idx) for idx in _planes(raw, bayer))]
+def _bin_percentile(a: np.ndarray, b: int, q: float = 30) -> np.ndarray:
+    eh, ew = max(1, a.shape[0] // b), max(1, a.shape[1] // b)
+    t = a[: eh * b, : ew * b].reshape(eh, b, ew, b).transpose(0, 2, 1, 3).reshape(eh, ew, -1)
+    return np.percentile(t, q, axis=2).astype(np.float32)
+
+
+def glow_profiles(raw: np.ndarray, bayer: bool) -> list[tuple[np.ndarray, ...]]:
+    """Je Farbebene (Zeilenprofil, Spaltenprofil, 2D-Restkarte) des Hintergrunds (30-%-Perzentil: robust gegen Sterne und Nebel)."""
+    out = []
+    for p in (_plane(raw, idx) for idx in _planes(raw, bayer)):
+        r, c = np.percentile(p, 30, axis=1).astype(np.float32), np.percentile(p, 30, axis=0).astype(np.float32)
+        out.append((r, c, _bin_percentile(p - r[:, None] - c[None, :], GLOW_BIN)))
+    return out
 
 
 def _taper(n: int) -> np.ndarray:
@@ -224,16 +239,40 @@ def _taper(n: int) -> np.ndarray:
     return np.where(d < b, 0.5 * (1 + np.cos(np.pi * d / b)), 0.0).astype(np.float32)
 
 
-def median_profiles(profiles: list[list[tuple[np.ndarray, np.ndarray]]]) -> list[tuple[np.ndarray, np.ndarray]] | None:
+def median_profiles(profiles: list[list[tuple[np.ndarray, ...]]]) -> list[tuple[np.ndarray, ...]] | None:
     """Median der Profile vieler Frames je Ebene – das ortsfeste Muster einer Nacht. None bei zu wenigen Frames."""
     if len(profiles) < GLOW_MIN_FRAMES:
         return None
-    return [tuple(np.median([p[k][axis] for p in profiles], axis=0).astype(np.float32) for axis in (0, 1))
+    return [tuple(np.median([p[k][axis] for p in profiles], axis=0).astype(np.float32) for axis in range(len(profiles[0][k])))
             for k in range(len(profiles[0]))]
 
 
-def model_from(medians: list[tuple[np.ndarray, np.ndarray]] | None) -> list[tuple[np.ndarray, np.ndarray]] | None:
-    """Abzugsmodell: auf das Niveau der Bildmitte bezogen, geglättet, nur in den Randbändern."""
+def _bin_mean(v: np.ndarray, n: int) -> np.ndarray:
+    return v[: n * GLOW_BIN].reshape(n, GLOW_BIN).mean(1)
+
+
+def _rest_map(pl: tuple, applied: tuple) -> np.ndarray:
+    """2D-Karte dessen, was nach dem (ausgeblendeten) Profilabzug noch übrig ist – gemessen als Gesamtmuster aus Profilen +
+    Restkarte. Kompakte helle Objekte (Galaxie, Sternhaufen, die sich kaum mitdrehen) werden durch die Umgebung ersetzt,
+    die Karte leicht geglättet und auf die unberührte Bildmitte bezogen."""
+    from scipy import ndimage as ndi
+
+    r, c, e = pl
+    eh, ew = e.shape
+    rest = (_bin_mean(r, eh)[:, None] + _bin_mean(c, ew)[None, :] + e
+            - _bin_mean(applied[0], eh)[:, None] - _bin_mean(applied[1], ew)[None, :])
+    bg = ndi.median_filter(rest, size=5, mode="nearest")
+    d = rest - bg
+    s = 1.4826 * float(np.median(np.abs(d - np.median(d)))) + 1e-6
+    inner = np.zeros(rest.shape, bool)
+    inner[2:-2, 2:-2] = True                             # äußerste Kacheln: dort sitzt das Glühen selbst (Ecken)
+    rest = ndi.gaussian_filter(np.where((d > 3 * s) & inner, bg, rest), 1.0, mode="nearest")
+    return (rest - np.median(rest[eh // 3 : eh - eh // 3, ew // 3 : ew - ew // 3])).astype(np.float32)
+
+
+def model_from(medians: list[tuple[np.ndarray, ...]] | None) -> list[tuple[np.ndarray, ...]] | None:
+    """Abzugsmodell: Profile auf das Niveau der Bildmitte bezogen, geglättet, nur in den Randbändern; dazu die bereinigte
+    2D-Restkarte (falls gemessen – ältere Bibliothekseinträge haben nur Profile)."""
     from scipy.ndimage import gaussian_filter1d
 
     if not medians:
@@ -241,12 +280,33 @@ def model_from(medians: list[tuple[np.ndarray, np.ndarray]] | None) -> list[tupl
     model = []
     for pl in medians:
         out = []
-        for v in pl:
+        for v in pl[:2]:
             n = len(v)
             v = gaussian_filter1d(v - np.median(v[n // 3 : 2 * n // 3]), 3, mode="nearest")
             out.append((v * _taper(n)).astype(np.float32))
+        if len(pl) > 2 and min(pl[2].shape) >= 5:
+            out.append(_rest_map(pl, out))
         model.append(tuple(out))
     return model
+
+
+def _map_weight(h: int, w: int) -> np.ndarray:
+    """1 außen, 0 im mittleren Rechteck, weicher Übergang dazwischen."""
+    def t(n):
+        d = np.minimum(np.arange(n), n - 1 - np.arange(n)) / n
+        x = np.clip((d - GLOW_MAP_FULL) / (GLOW_MAP_BAND - GLOW_MAP_FULL), 0, 1)
+        return (0.5 * (1 + np.cos(np.pi * x))).astype(np.float32)
+    return np.maximum(t(h)[:, None], t(w)[None, :])
+
+
+def _upsample_map(e: np.ndarray, h: int, w: int) -> np.ndarray:
+    """Kachelkarte (Kachelmitten) bilinear auf (h, w); außerhalb der Kachelfläche wird der Rand gehalten."""
+    from scipy.ndimage import map_coordinates
+
+    ys = np.clip((np.arange(h) + 0.5) / GLOW_BIN - 0.5, 0, e.shape[0] - 1)
+    xs = np.clip((np.arange(w) + 0.5) / GLOW_BIN - 0.5, 0, e.shape[1] - 1)
+    yy, xx = np.meshgrid(ys, xs, indexing="ij")
+    return map_coordinates(e, [yy, xx], order=1, mode="nearest").astype(np.float32)
 
 
 def glow_model(profiles):
@@ -280,17 +340,19 @@ class GlowLibrary:
             out: dict = {}
             for name in z.files:                        # n<night>_<ebene>_<achse>
                 night, k, ax = name[1:].rsplit("_", 2)
-                out.setdefault(night, {}).setdefault(int(k), [None, None])[int(ax)] = z[name]
-        return {n: [tuple(v[k]) for k in sorted(v)] for n, v in out.items()}
+                out.setdefault(night, {}).setdefault(int(k), [None, None, None])[int(ax)] = z[name]
+        # Achse 2 = 2D-Restkarte; Nächte von vor der Karte haben nur Profile
+        return {n: [tuple(a for a in v[k] if a is not None) for k in sorted(v)] for n, v in out.items()}
 
-    def nights(self, key: str) -> list[str]:
-        return sorted(self._read(key))
+    def nights(self, key: str, with_map: bool = False) -> list[str]:
+        """Gemessene Nächte; with_map: nur solche mit 2D-Restkarte (ältere werden bei vorhandenen Rohbildern neu gemessen)."""
+        return sorted(n for n, planes in self._read(key).items() if not with_map or len(planes[0]) > 2)
 
-    def add(self, key: str, night: str, medians: list[tuple[np.ndarray, np.ndarray]]) -> None:
+    def add(self, key: str, night: str, medians: list[tuple[np.ndarray, ...]]) -> None:
         data = self._read(key)
         data[night] = medians
         self.root.mkdir(parents=True, exist_ok=True)
-        arrays = {f"n{n}_{k}_{ax}": pl[ax] for n, planes in data.items() for k, pl in enumerate(planes) for ax in (0, 1)}
+        arrays = {f"n{n}_{k}_{ax}": a for n, planes in data.items() for k, pl in enumerate(planes) for ax, a in enumerate(pl)}
         tmp = self._file(key).with_suffix(".tmp.npz")
         np.savez_compressed(tmp, **arrays)
         os.replace(tmp, self._file(key))
@@ -304,24 +366,47 @@ class GlowLibrary:
             return None, ""
         planes = list(data.values())
         try:
-            return [tuple(np.median([p[k][ax] for p in planes], axis=0) for ax in (0, 1)) for k in range(len(planes[0]))], f"bibliothek ({len(planes)} Nächte)"
+            prof = [[np.median([p[k][ax] for p in planes], axis=0) for ax in (0, 1)] for k in range(len(planes[0]))]
+            maps = [p for p in planes if len(p[0]) > 2]
+            if maps:
+                for k, pl in enumerate(prof):
+                    pl.append(np.median([p[k][2] for p in maps], axis=0))
+            return [tuple(pl) for pl in prof], f"bibliothek ({len(planes)} Nächte)"
         except ValueError:                                # uneinheitliche Formate
             return None, ""
 
 
 def glow_amplitude(model) -> float:
     """Stärkstes Randglühen des Modells (ADU) – für Protokoll und Tests."""
-    return float(max(max(np.abs(r).max(), np.abs(c).max()) for r, c in model)) if model else 0.0
+    return float(max(max(np.abs(a).max() for a in pl) for pl in model)) if model else 0.0
 
 
 def remove_glow(raw: np.ndarray, bayer: bool, model) -> np.ndarray:
     if not model:
         return raw
     out = np.array(raw, dtype=np.float32, copy=True)
-    for (c, ys, xs), (r, col) in zip(_planes(out, bayer), model):
+    for (c, ys, xs), pl in zip(_planes(out, bayer), model):
+        r, col = pl[0], pl[1]
         tgt = out[c] if c is not None else out
         p = tgt[ys, xs]
         if p.shape != (len(r), len(col)):
             return raw                                   # anderes Bildformat -> Modell passt nicht
-        tgt[ys, xs] = p - r[:, None] - col[None, :]
+        p = p - r[:, None] - col[None, :]
+        if len(pl) > 2:
+            p -= _full_map(pl[2], p.shape)
+        tgt[ys, xs] = p
     return out
+
+
+_MAP_CACHE: dict = {}
+
+
+def _full_map(e: np.ndarray, shape: tuple) -> np.ndarray:
+    """Gewichtete Restkarte in Ebenengröße – einmal je Modell gerechnet, gilt für alle Frames der Nacht."""
+    key = (id(e), shape)
+    hit = _MAP_CACHE.get(key)
+    if hit is None or hit[0] is not e:
+        if len(_MAP_CACHE) > 32:
+            _MAP_CACHE.clear()
+        hit = _MAP_CACHE[key] = (e, _upsample_map(e, *shape) * _map_weight(*shape))
+    return hit[1]

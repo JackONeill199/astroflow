@@ -335,14 +335,15 @@ def stretch(img: np.ndarray, target_bg: float, asinh_k: float, color_preserve: b
     return (out / mx).astype(np.float32)
 
 
-def channel_curve(ref: np.ndarray, target_bg: float, asinh_k: float):
+def channel_curve(ref: np.ndarray, target_bg: float, asinh_k: float, white_pct: float = 99.9):
     """Kanalweise Kurve (asinh + Mittelton) mit verknüpften Schwarz-/Weißpunkten aus `ref`; als Funktion, damit
-    Original und sternloses Bild exakt dieselbe Kurve bekommen. Sternkerne laufen nach Weiß und bleiben knackig."""
+    Original und sternloses Bild exakt dieselbe Kurve bekommen. Sternkerne laufen nach Weiß und bleiben knackig.
+    white_pct: Weißpunkt als Perzentil – alles darüber wird Weiß; die Qualitätskontrolle hebt ihn bei ausgebrannten Kernen."""
     L = luminance(ref)
     med = float(np.median(L))
     sig = 1.4826 * float(np.median(np.abs(L - med))) + 1e-12
     black = med - 2.8 * sig
-    white = max(float(np.percentile(L, 99.9)), med + 10 * sig)
+    white = max(float(np.percentile(L, white_pct)), med + 10 * sig)
     y0 = np.arcsinh(asinh_k * np.clip((L[::3, ::3] - black) / (white - black), 0, None)) / np.arcsinh(asinh_k)
     m0 = float(np.clip(np.median(y0), 1e-5, 0.9))
     t = target_bg
@@ -354,8 +355,8 @@ def channel_curve(ref: np.ndarray, target_bg: float, asinh_k: float):
     return curve
 
 
-def _stretch_channels(img: np.ndarray, target_bg: float, asinh_k: float) -> np.ndarray:
-    return channel_curve(img, target_bg, asinh_k)(img)
+def _stretch_channels(img: np.ndarray, target_bg: float, asinh_k: float, white_pct: float = 99.9) -> np.ndarray:
+    return channel_curve(img, target_bg, asinh_k, white_pct)(img)
 
 
 def _atrous(a: np.ndarray, scales: int):
@@ -617,13 +618,13 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
         stats["star_separation"] = how
         T = starsep.Stretch(starless, float(p["target_bg"]), full=img)
         # Sterne mit der kanalweisen Kurve (knackig, Kerne weiß – wie Stellina), Nebel mit GHS
-        Ts = channel_curve(img, float(p["target_bg"]), float(p["asinh"]))
+        Ts = channel_curve(img, float(p["target_bg"]), float(p["asinh"]), float(p.get("white_pct", 99.9)))
         stars_s = np.clip(Ts(img) - Ts(starless), 0, 1)
         img = T(starless)
         stats["ghs"] = T.steps
         del starless
     else:                                                  # ohne Trennung (Sternhaufen): knackige Kanalkurve
-        img = channel_curve(img, float(p["target_bg"]), float(p["asinh"]))(img)
+        img = channel_curve(img, float(p["target_bg"]), float(p["asinh"]), float(p.get("white_pct", 99.9)))(img)
     L = luminance(img)
     star = np.clip(ndi.gaussian_filter(ndi.binary_dilation(L > 0.7, iterations=2).astype(np.float32), 1.5) * 2, 0, 1)
     protect = np.maximum(smoothstep(L, 0.25, 0.7) * 0.6, star)

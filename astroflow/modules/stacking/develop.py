@@ -33,6 +33,23 @@ GRADIENT_MAX = 0.03            # Helligkeitsunterschied im Hintergrund (Kacheln)
 BLACK_CLIP_MAX = 0.005         # Anteil abgeschnittener Schwarzwerte
 WHITE_CLIP_MAX = 0.003         # Anteil ausgebrannter Pixel
 SAT_RANGE = (0.10, 0.55)       # Farbigkeit des Objekts
+# Ausgebrannter Kern: größte weiße Fläche (L > 0,95) mindestens CORE_MIN_FRAC des Bildes und CORE_STAR_RATIO-mal so groß
+# wie typische Sternkerne. Gemessen (Vorschau ~1200 px): NGC 4490 114 px gegen Sterne ~20, M31/M3 ~390 gegen ~10;
+# helle Sterne (M45 223 gegen ~140, IC 405 94 gegen ~25) bleiben darunter – Sternkerne dürfen weiß sein.
+CORE_MIN_FRAC = 1e-4
+CORE_STAR_RATIO = 4.0
+WHITE_STEPS = (99.9, 99.98, 99.995)   # Weißpunkt-Perzentile, die die Kontrolle bei ausgebranntem Kern nacheinander probiert
+
+
+def burnt_core(L: np.ndarray) -> float:
+    """Anteil des Bildes, den eine ausgebrannte flächige Region (Galaxien-/Nebelkern) einnimmt; 0 = keine."""
+    lab, n = ndi.label(L > 0.95)
+    if not n:
+        return 0.0
+    areas = np.sort(ndi.sum(np.ones_like(L), lab, np.arange(1, n + 1)))[::-1]
+    stars = float(np.median(areas[1:11])) if n > 1 else 1.0
+    big = float(areas[0])
+    return big / L.size if big >= CORE_MIN_FRAC * L.size and big >= CORE_STAR_RATIO * max(stars, 1.0) else 0.0
 
 
 def _bin(a: np.ndarray, f: int) -> np.ndarray:
@@ -141,14 +158,15 @@ def assess(rgb: np.ndarray, mono: bool = False) -> dict:
     gradient = float(np.percentile(tiles, 95) - np.percentile(tiles, 5)) if len(tiles) >= 6 else 0.0
     black = float((L < 0.004).mean())
     white = float((rgb.max(0) >= 0.999).mean())
-    sig = ndi.gaussian_filter(L, 1.5) > bg + 0.12
+    core = burnt_core(L)
+    sig =ndi.gaussian_filter(L, 1.5) > bg + 0.12
     if not mono and sig.sum() > 100:
         mx, mn = img.max(0)[sig], img.min(0)[sig]
         satur = float(np.median((mx - mn) / np.maximum(mx, 1e-3)))
     else:
         satur = None
     m = {"bg": round(bg, 4), "noise": round(noise, 4), "cast": round(cast, 4), "chroma_noise": round(chroma_noise, 4), "gradient": round(gradient, 4),
-         "black_clip": round(black, 5), "white_clip": round(white, 5),
+         "black_clip": round(black, 5), "white_clip": round(white, 5), "burnt_core": round(core, 5),
          "saturation": None if satur is None else round(satur, 3), "signal": round(float(sig.mean()), 4)}
 
     issues: list[tuple[str, str, float]] = []      # (code, Text, Abzug)
@@ -168,6 +186,8 @@ def assess(rgb: np.ndarray, mono: bool = False) -> dict:
         issues.append(("black_clip", "Schwarzwerte abgeschnitten", 1.0))
     if white > WHITE_CLIP_MAX:
         issues.append(("white_clip", "Helle Bereiche ausgebrannt", min(2.0, 0.5 + 100 * (white - WHITE_CLIP_MAX))))
+    if core:
+        issues.append(("burnt_core", "Objektkern ausgebrannt (keine Zeichnung im Kern)", 1.5))
     if satur is not None and satur > SAT_RANGE[1]:
         issues.append(("oversat", "Farben übersättigt", 1.0))
     elif satur is not None and satur < SAT_RANGE[0]:
@@ -205,6 +225,13 @@ def corrections(qc: dict, p: dict) -> dict:
             adj["star_brightness"] = max(0.5, p.get("star_brightness", 0.85) - 0.1)
         else:
             adj["asinh"] = min(400.0, p["asinh"] * 1.6)
+    if "burnt_core" in codes:
+        # Alles über dem Weißpunkt wird hart weiß – mehr asinh allein hilft nicht. Weißpunkt anheben, asinh hält die
+        # schwachen Bereiche dabei hell.
+        nxt = [w for w in WHITE_STEPS if w > p.get("white_pct", WHITE_STEPS[0])]
+        if nxt:
+            adj["white_pct"] = nxt[0]
+            adj["asinh"] = min(400.0, max(adj.get("asinh", p["asinh"]), p["asinh"] * 1.5))
     if "oversat" in codes:
         adj["saturation"] = max(1.0, p["saturation"] - 0.15)
     elif "undersat" in codes and "noisy" not in codes:
@@ -225,6 +252,7 @@ HINTS = {
     "chroma_noise": "Mehr Belichtungszeit verringert Farbrauschen; Dithering zwischen den Aufnahmen hilft zusätzlich.",
     "cast": "Ein Lichtverschmutzungsfilter oder Aufnahmen bei dunklerem Himmel verringern Farbstiche.",
     "white_clip": "Kürzere Einzelbelichtungen schützen helle Sterne und Kerne vor dem Ausbrennen.",
+    "burnt_core": "Der Objektkern ist sehr hell – kürzere Einzelbelichtungen erhalten mehr Zeichnung im Kern.",
 }
 
 

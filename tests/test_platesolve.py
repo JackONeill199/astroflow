@@ -138,3 +138,20 @@ def test_extended_catalog_names_solved_field(tmp_path, monkeypatch):
     info.solve = None                               # ohne Plate-Solving kein Raten im großen Katalog
     assert assign_project(info, {}).obj_id is None
     monkeypatch.setattr(objects, "_EXT", None)
+
+
+def test_folder_name_gets_kind_from_extended_catalog(tmp_path, monkeypatch):
+    """Ordnername „…_observation_NGC4490“: Name bleibt, Profil (Galaxie) kommt aus dem großen Katalog."""
+    from astroflow.modules.stacking import objects
+    from astroflow.modules.stacking.fits_io import FrameInfo
+    from astroflow.modules.stacking.scanner import assign_project
+    csv = tmp_path / "deep_sky.csv"
+    csv.write_text("header\nunits\n450361,149914,NGC4490/PGC41333,64,32,125\n", encoding="utf-8")
+    monkeypatch.setenv("ASTROFLOW_DEEPSKY", str(csv))
+    monkeypatch.setattr(objects, "_EXT", None)
+    monkeypatch.setattr(objects, "_EXT_ALIAS", {})
+    a = assign_project(FrameInfo(path="x", shape=(2080, 3072), object="NGC4490"), {})
+    assert a.name == "NGC4490" and a.kind == "galaxy"
+    assert objects.resolve_extended("PGC 41333").id == "NGC4490"
+    monkeypatch.setattr(objects, "_EXT", None)
+    monkeypatch.setattr(objects, "_EXT_ALIAS", {})
