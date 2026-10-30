@@ -50,3 +50,22 @@ def test_assess_flags_measurable_problems():
     blotchy = good.copy()
     blotchy[0] += np.kron(rng.normal(0, 0.03, (30, 30)), np.ones((10, 10))).astype(np.float32)
     assert "chroma_noise" in {i["code"] for i in develop.assess(np.clip(blotchy, 0, 1))["issues"]}
+
+
+def test_burnt_core_detected_and_white_point_raised():
+    rng = np.random.default_rng(1)
+    L = np.full((400, 600), 0.04, np.float32)
+    for _ in range(30):                                          # Sternkerne dürfen weiß sein
+        y, x = rng.integers(10, 390), rng.integers(10, 590)
+        L[y - 2 : y + 3, x - 2 : x + 3] = 1.0
+    assert develop.burnt_core(L) == 0.0
+    yy, xx = np.mgrid[0:400, 0:600]
+    L[((yy - 200) / 9) ** 2 + ((xx - 300) / 14) ** 2 < 1] = 1.0  # flächiger weißer Galaxienkern
+    assert develop.burnt_core(L) > 0
+    qc = develop.assess(np.repeat(L[None], 3, axis=0))
+    assert "burnt_core" in {i["code"] for i in qc["issues"]}
+    adj = develop.corrections(qc, {"asinh": 30, "denoise": 0.5, "chroma_denoise": 2, "saturation": 1.3, "target_bg": 0.07})
+    assert adj["white_pct"] > 99.9 and adj["asinh"] > 30
+    last = develop.corrections(qc, {"asinh": 30, "white_pct": develop.WHITE_STEPS[-1], "denoise": 0.5, "chroma_denoise": 2,
+                                    "saturation": 1.3, "target_bg": 0.07})
+    assert "white_pct" not in last                               # Ende der Stufen: nicht endlos nachregeln

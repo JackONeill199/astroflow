@@ -48,7 +48,7 @@ function qualityPanel(s) {
 async function deleteProject(p) {
   const what = [p.n_results ? `${p.n_results} Version${p.n_results > 1 ? 'en' : ''} des Bildes` : '', 'den Master-Stack',
     'hochgeladene Einzelbilder'].filter(Boolean).join(', ');
-  if (!await confirmDlg(`„${p.name}“ löschen?`, `Entfernt ${esc(what)}. Das lässt sich nicht rückgängig machen.<br><br>
+  if (!await confirmDlg(`„${p.name}“ löschen?`, `Entfernt ${esc(what)}. Das lässt sich nicht rückgängig machen.${(p.companions ?? p.options?.companion_ids?.length ?? 0) ? '<br>Die zugeordneten Teleskopbilder bleiben erhalten und erscheinen danach einzeln in der Galerie.' : ''}<br><br>
     <span class="sm">Aufnahmen aus eingebundenen Ordnern bleiben auf der Festplatte und werden künftig ignoriert.</span>`, 'Endgültig löschen', true)) return false;
   try {
     const r = await send(`/stacking/projects/${p.id}`, null, 'DELETE');
@@ -165,7 +165,7 @@ async function galleryView(el) {
       </div>`;
   }
   async function load() {
-    projects = await api('/stacking/projects');
+    projects = (await api('/stacking/projects')).filter(p => !p.options?.gallery_parent);
     const s = JSON.stringify(projects);
     if (s !== sig) { sig = s; draw(); }
   }
@@ -180,6 +180,8 @@ async function projectView(el, id, tab = 'bild') {
   id = +id;
   let p = await api('/stacking/projects/' + id), frames = null, sel = null, cmp = null, viewer = null, sig = '', before = false;
   let fFilter = 'all', fBand = 'all', fSort = ['date', 1];
+  const tabs = () => [...TABS.filter(([k]) => !p.imported || k === 'bild' || (k === 'versionen' && p.results.length > 1)),
+    ...((p.companions ?? p.options?.companion_ids?.length ?? 0) ? [['teleskopbilder', 'Teleskopbilder']] : [])];
   crumbs([['Galerie', '#/bilder'], [p.name]]);
 
   function head() {
@@ -210,7 +212,7 @@ async function projectView(el, id, tab = 'bild') {
         <button class="btn sm" id="solveBtn">Jetzt bestimmen</button></div>` : ''}
       ${p.job?.state === 'error' && !busy ? `<div class="notice err"><div><b>Letzter Durchlauf fehlgeschlagen</b><div class="mut sm">${esc(p.job.message)}</div></div></div>` : ''}
       <div id="job" style="margin:-8px 0 18px">${jobLine(p.job)}</div>
-      <nav class="tabs" id="tabs">${TABS.filter(([k]) => !p.imported || k === 'bild').map(([k, l], i) => { const n = { aufnahmen: p.total, versionen: p.results.length }[k];
+      <nav class="tabs" id="tabs">${tabs().map(([k, l], i) => { const n = { aufnahmen: p.total, versionen: p.results.length, teleskopbilder: p.companions ?? p.options?.companion_ids?.length }[k];
         return `<a href="#/p/${id}/${k}" data-t="${k}" class="${tab === k ? 'on' : ''}" title="Taste ${i + 1}">${l}${n != null ? `<span>${n}</span>` : ''}</a>`; }).join('')}<i class="tab-ind" id="tabind"></i></nav>
       <div id="tab"></div>`;
   }
@@ -232,14 +234,14 @@ async function projectView(el, id, tab = 'bild') {
   }
   // Nur den Tab-Inhalt neu zeichnen – Kopf, Jobzeile und Marker bleiben stehen
   function drawTab(animate = true) {
-    if (p.imported) tab = 'bild';
+    if (p.imported && !['bild', 'versionen'].includes(tab)) tab = 'bild';
     viewer?.destroy();
     viewer = null;
     $$('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.t === tab));
     requestAnimationFrame(() => slideInd($('#tabind'), $('#tabs a.on'), true));
     const t = $('#tab');
     t.classList.remove('enter');
-    ({ bild: tabImage, aufnahmen: tabFrames, versionen: tabVersions, optionen: tabOptions }[tab] || tabImage)(t);
+    ({ bild: tabImage, aufnahmen: tabFrames, versionen: tabVersions, optionen: tabOptions, teleskopbilder: tabCompanions }[tab] || tabImage)(t);
     if (animate) { void t.offsetWidth; t.classList.add('enter'); }
   }
 
@@ -373,7 +375,7 @@ async function projectView(el, id, tab = 'bild') {
     t.innerHTML = `<div class="row mut sm" style="margin-bottom:14px">Klick zeigt eine Version. Mit ${icon('compare')} zwei Versionen nebeneinander vergleichen (Schieberegler).</div>
       <div class="versions">${p.results.map((r, i) => `<div class="ver ${r.id === cur ? 'on' : ''} ${r.id === cmp ? 'cmp' : ''}" data-id="${r.id}" role="button" tabindex="0">
         <img src="/api/stacking/results/${r.id}/thumb" alt="" loading="lazy"><div><b>${i === 0 ? 'Aktuell' : fdate(r.created)}</b>
-        <span class="mut">${r.n_frames} Aufnahmen · ${dur(r.exposure)}</span>
+        <span class="mut">${r.stats?.imported ? esc(r.stats.imported.filename) : `${r.n_frames} Aufnahmen · ${dur(r.exposure)}`}</span>
         <span class="row" style="justify-content:space-between"><span class="dim">${esc(PROFILE_LABEL[r.stats?.profile] || r.stats?.profile || '')}</span>
         ${r.id !== cur ? `<button class="linkbtn" data-cmp="${r.id}" title="Mit angezeigter Version vergleichen">${icon('compare')}</button>` : ''}</span></div></div>`).join('')}</div>`;
     t.onclick = (e) => {
@@ -382,6 +384,24 @@ async function projectView(el, id, tab = 'bild') {
       const v = e.target.closest('.ver');
       if (v) { sel = +v.dataset.id; cmp = null; location.hash = `#/p/${id}/bild`; }
     };
+  }
+
+  async function tabCompanions(t) {
+    t.innerHTML = '<div class="panel"><span class="spinner"></span> Teleskopbilder laden …</div>';
+    try {
+      const pictures = (await api('/stacking/projects?parent_id=' + id)).filter(x => x.options?.gallery_parent === id && x.result)
+        .sort((a, b) => String(b.options.imported?.date_obs || '').localeCompare(String(a.options.imported?.date_obs || '')) || b.id - a.id);
+      if (!t.isConnected || tab !== 'teleskopbilder') return;
+      let count = 48;
+      function drawPictures() {
+        t.innerHTML = `<p class="mut">${pictures.length} vom Teleskop erzeugte Begleitbilder. Sie gehören zu dieser Aufnahme und bleiben mit ihren Originaldateien erhalten.</p>
+          <div class="gallery">${pictures.slice(0, count).map(x => `<a class="card" href="#/p/${x.id}"><div class="thumb"><img src="/api/stacking/results/${x.result.id}/thumb" alt="" loading="lazy"></div>
+            <div class="body"><h3>${esc(x.options.imported?.filename || x.name)}</h3><p class="mut sm">${x.n_results > 1 ? `${x.n_results} Versionen` : 'Teleskop-Vorschau'}</p></div></a>`).join('')}</div>
+          ${count < pictures.length ? '<button class="btn ghost" id="moreCompanions" style="margin-top:16px">Weitere anzeigen</button>' : ''}`;
+        t.querySelector('#moreCompanions')?.addEventListener('click', () => { count += 48; drawPictures(); });
+      }
+      drawPictures();
+    } catch (e) { if (t.isConnected) t.innerHTML = `<div class="panel">${esc(e.message)}</div>`; }
   }
 
   // ---- Tab: Optionen ----
@@ -541,7 +561,7 @@ async function projectView(el, id, tab = 'bild') {
     if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input,select,textarea') || $('dialog[open]')) return;
     const k = e.key.toLowerCase();
     if (k === 'escape') $$('.menu.open').forEach(m => m.classList.remove('open'));
-    else if (/^[1-4]$/.test(k)) location.hash = `#/p/${id}/${TABS[+k - 1][0]}`;
+    else if (/^[1-9]$/.test(k) && tabs()[+k - 1]) location.hash = `#/p/${id}/${tabs()[+k - 1][0]}`;
     else if (k === 'f' && tab === 'bild') $('.viewer [data-a=full]')?.click();
     else if (k === 'b' && tab === 'bild' && $('#ba')) { before = !before; drawTab(false); }
     else return;
@@ -561,7 +581,7 @@ async function projectView(el, id, tab = 'bild') {
     actions: () => [
       ...(running(p.job) || p.imported ? [] : [['play', p.result ? 'Aktualisieren' : 'Verarbeiten', 'neue Aufnahmen nachstacken', () => run(false)]]),
       ...(p.result && !running(p.job) && !p.imported ? [['refresh', 'Neu entwickeln', 'ohne Stacking', develop]] : []),
-      ...TABS.filter(([k]) => !p.imported || k === 'bild').map(([k, l], i) => ['arrow', `${l} anzeigen`, `Taste ${i + 1}`, () => { location.hash = `#/p/${id}/${k}`; }]),
+      ...tabs().map(([k, l], i) => ['arrow', `${l} anzeigen`, `Taste ${i + 1}`, () => { location.hash = `#/p/${id}/${k}`; }]),
       ...(p.result ? [['expand', 'Vollbild', 'Taste F', () => { location.hash = `#/p/${id}/bild`; setTimeout(() => $('.viewer [data-a=full]')?.click(), 60); }],
         ['down', p.imported ? 'Original herunterladen' : 'TIFF herunterladen', p.imported ? 'unverändert' : '16 bit', () => { location.href = `/api/stacking/results/${p.result.id}/${p.imported ? 'original' : 'tif'}`; }]] : []),
       ...(p.result && AF.on('sage') ? [['book', 'Geschichte erzählen', 'Sage', story]] : []),
@@ -596,11 +616,31 @@ async function importView(el) {
 }
 function upload(files) {
   files = files.filter(f => IMPORT_FILE.test(f.name));
+  // Teleskop-Ordner enthalten oft hunderte kumulative JPEG-Zwischenstände neben den eigentlichen FITS.
+  // Bei Rohdaten sind diese kein zusätzlicher Import; ohne Rohdaten genügt die letzte Vorschau je Ordner.
+  const observation = f => {
+    const parts = (f.relPath || f.webkitRelativePath || '').split(/[\\/]/);
+    const i = parts.findIndex(p => /_observation_/i.test(p));
+    return i < 0 ? null : parts.slice(0, i + 1).join('/');
+  };
+  const rawFolders = new Set(files.filter(f => /\.(fits?|fts)$/i.test(f.name)).map(observation).filter(Boolean));
+  const previews = new Map(), latest = new Map();
+  for (const f of files) {
+    const folder = observation(f), m = f.name.match(/^img-(\d+)-output\.(jpe?g|png|tiff?)$/i);
+    if (!folder || !m) continue;
+    previews.set(f, folder);
+    if (!latest.has(folder) || +m[1] > latest.get(folder).sequence) latest.set(folder, { file: f, sequence: +m[1] });
+  }
+  const before = files.length;
+  files = files.filter(f => !previews.has(f) || (!rawFolders.has(previews.get(f)) && latest.get(previews.get(f)).file === f));
+  const skipped = before - files.length;
+  if (skipped) toast(`${skipped} Teleskop-Zwischenstände übersprungen – mit FITS werden nur die Rohdaten importiert, sonst die letzte Vorschau. Quelldateien bleiben unverändert.`);
   if (!files.length) { toast('Keine unterstützten Dateien dabei (FITS, JPG, PNG, TIFF).', 'err'); return; }
   const total = files.reduce((a, f) => a + f.size, 0);
   const box = document.createElement('div');
   box.className = 'upl';
   box.innerHTML = `<div class="row"><b>${files.length} Datei${files.length > 1 ? 'en' : ''}</b><span class="mut">${fmb(total)}</span><span class="grow"></span><span class="tnum pct">0 %</span></div><div class="progress"><i style="width:0"></i></div>`;
+  if (skipped) box.insertAdjacentHTML('beforeend', `<p class="mut sm">${skipped} automatisch erzeugte Teleskop-Zwischenstände nicht mit hochgeladen. Die Quelldateien bleiben unverändert.</p>`);
   ($('#ups') || document.body).prepend(box);
   if (!$('#ups')) { location.hash = '#/import'; }
   const fd = new FormData();
@@ -614,18 +654,19 @@ function upload(files) {
     $('.pct', box).innerHTML = `<span class="row" style="gap:6px"><span class="spinner"></span>wird einsortiert …</span>`;
     try {
       const s = r.raw ? await send('/stacking/scan') : { new_by_project: {} };
-      const pictures = r.pictures || [], ids = [...new Set([...Object.keys(s.new_by_project || {}).map(Number), ...pictures.map(p => p.id)])];
+      const pictures = r.pictures || [], ids = [...new Set([...Object.keys(s.new_by_project || {}).map(Number), ...pictures.map(p => p.parent_id || p.id)])];
       const projects = ids.length ? await api('/stacking/projects') : [];
       box.classList.add('done');
-      const fresh = pictures.filter(p => !p.duplicate).length, duplicates = pictures.length - fresh;
-      $('.pct', box).innerHTML = `<span class="ok row" style="gap:6px">${icon('check')}${r.raw || 0} Rohdateien · ${fresh} fertige Bilder${duplicates ? ` · ${duplicates} bereits vorhanden` : ''}</span>`;
+      const fresh = pictures.filter(p => !p.duplicate && !p.series).length, duplicates = pictures.filter(p => p.duplicate).length;
+      const series = pictures.filter(p => !p.duplicate && p.series).length;
+      $('.pct', box).innerHTML = `<span class="ok row" style="gap:6px">${icon('check')}${r.raw || 0} Rohdateien · ${fresh} fertige Bilder${series ? ` · ${series} Teleskop-Verlaufsbilder` : ''}${duplicates ? ` · ${duplicates} bereits vorhanden` : ''}</span>`;
       (r.errors || []).forEach(message => toast(message, 'err'));
       if (r.errors?.length) box.insertAdjacentHTML('beforeend', `<p class="bad sm">${r.errors.map(esc).join('<br>')}</p>`);
       // direkt zu den erkannten Objekten springen
       if (ids.length) box.insertAdjacentHTML('beforeend', `<div class="found"><span class="mut sm" style="align-self:center">Erkannt:</span>${projects.filter(p => ids.includes(p.id))
         .map((p, i) => `<a class="chip acc" href="#/p/${p.id}" style="animation-delay:${i * 60}ms">${esc(p.name)} · ${p.imported ? 'fertiges Bild' : `${s.new_by_project[p.id]} neue Aufnahmen`} ${icon('arrow')}</a>`).join('')}</div>`);
       const one = ids.length === 1 && projects.find(p => p.id === ids[0]);
-      toast(`${r.saved} Dateien übernommen${fresh ? ` · ${fresh} fertige Bilder in der Galerie` : ''}${duplicates ? ` · ${duplicates} bereits vorhanden` : ''}.`, r.saved ? 'ok' : 'err', one ? { label: 'Öffnen', href: `#/p/${one.id}` } : null);
+      toast(`${r.saved} Dateien übernommen${fresh ? ` · ${fresh} fertige Bilder in der Galerie` : ''}${series ? ` · ${series} Teleskop-Verlaufsbilder zusammengefasst` : ''}${duplicates ? ` · ${duplicates} bereits vorhanden` : ''}.`, r.saved ? 'ok' : 'err', one ? { label: 'Öffnen', href: `#/p/${one.id}` } : null);
       poll();
     } catch (e) { $('.pct', box).innerHTML = '<span class="bad">Einsortieren fehlgeschlagen</span>'; toast(e.message, 'err'); }
   };
@@ -823,7 +864,7 @@ AF.register('stacking', {
   settings: stackingSettings,
   status: (st, badge) => badge('gallery', st.modules.stacking?.busy_jobs, true),
   async home(st) {
-    const s = st.modules.stacking || {}, projects = await api('/stacking/projects');
+    const s = st.modules.stacking || {}, projects = (await api('/stacking/projects')).filter(p => !p.options?.gallery_parent);
     const done = projects.filter(p => p.result).sort((a, b) => b.result.created - a.result.created);
     const tot = projects.reduce((a, p) => a + (p.result?.exposure || 0), 0), busy = projects.filter(p => running(p.job));
     return `<div class="hhead">${icon('grid')}<div><h2>Bilder</h2><div class="mut sm">Rohbilder → fertiges Astrofoto</div></div><span class="grow"></span><a class="linkbtn" href="#/bilder">Galerie ${icon('arrow')}</a></div>
@@ -833,7 +874,7 @@ AF.register('stacking', {
         : `<p class="mut sm">Noch keine fertigen Bilder. Lege FITS-Dateien in den Eingangsordner oder <a href="#/import">importiere sie</a>.</p>`}`;
   },
   async palette() {
-    const projects = await api('/stacking/projects');
+    const projects = (await api('/stacking/projects')).filter(p => !p.options?.gallery_parent);
     return [['refresh', 'Eingangsordner scannen', 'nach neuen Aufnahmen suchen', () => scan()], ...projects.map(p => ['star', p.name, running(p.job) ? 'wird verarbeitet' : `${p.total} Aufnahmen${p.result ? ' · ' + dur(p.result.exposure) : ''}`,
       `#/p/${p.id}`, p.result ? `/api/stacking/results/${p.result.id}/thumb` : null])];
   },

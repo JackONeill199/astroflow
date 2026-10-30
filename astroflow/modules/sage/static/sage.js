@@ -41,7 +41,7 @@ async function mainView(el) {
   crumbs([['Sage', '#/sage/wiki'], ['Bild bestimmen']]);
   const cfg = await api(G + '/config');
   const central = AF.on('stacking');
-  const projects = central ? (await api('/stacking/projects')).filter(p => p.result) : [];
+  const projects = central ? (await api('/stacking/projects')).filter(p => p.result && !p.options?.gallery_parent) : [];
   let hist = await api(G + '/history'), sig = '';
   const ready = cfg.local_solver || (cfg.online_solve && cfg.has_nova_key);
   el.innerHTML = `<div class="pagehead"><div><h1>Was ist auf deinem Bild?</h1><p class="mut">Sage löst das Bild astrometrisch, erkennt die Himmelsobjekte, verknüpft sie mit der Enzyklopädie und erzählt dir ihre Geschichte.</p></div>

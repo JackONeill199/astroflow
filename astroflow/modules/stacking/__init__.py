@@ -55,7 +55,7 @@ class Module(BaseModule):
         """Neuestes Ergebnis eines Objekts für andere Module (z. B. Sage erzählt dazu eine Geschichte)."""
         db = self.eng.db
         p = db.one("SELECT * FROM projects WHERE id=?", (pid,))
-        r = p and db.one("SELECT * FROM results WHERE project_id=? ORDER BY id DESC LIMIT 1", (pid,))
+        r = p and db.one("SELECT * FROM results WHERE project_id=? ORDER BY COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC,id DESC LIMIT 1", (pid,))
         if not r:
             return None
         files = json.loads(r["files"] or "{}")
@@ -79,7 +79,7 @@ class Module(BaseModule):
         Filter, Bildqualität; dazu die entwickelten Versionen mit gemessenem Objekt-SNR. Gilt auch für gelöschte Rohbilder."""
         db = self.eng.db
         out = []
-        for p in db.q("SELECT id, name, obj_id, kind, ra, dec, created FROM projects ORDER BY id"):
+        for p in db.q("SELECT id, name, obj_id, kind, ra, dec, created FROM projects WHERE json_extract(options,'$.gallery_parent') IS NULL ORDER BY id"):
             nights: dict[str, dict] = {}
             for f in db.q("SELECT night, info, metrics, status, stacked FROM frames WHERE project_id=? AND kind='light'", (p["id"],)):
                 info, met = json.loads(f["info"] or "{}"), json.loads(f["metrics"] or "{}")

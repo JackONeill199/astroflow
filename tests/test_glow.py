@@ -43,6 +43,41 @@ def test_glow_measured_and_removed_only_at_edges():
     assert calibration.glow_model([calibration.glow_profiles(f, True) for f in frames[:5]]) is None   # zu wenige Frames
 
 
+def test_corner_glow_removed_by_map_center_untouched():
+    """Eckglühen ist nicht als Zeilen + Spalten darstellbar – die 2D-Restkarte erfasst es; das Objekt in der Mitte bleibt."""
+    rng = np.random.default_rng(3)
+    Hb, Wb = 640, 960
+    y, x = np.mgrid[0:Hb, 0:Wb].astype(np.float32)
+    corner = 60 * np.exp(-np.hypot(y, x) / 220)                                    # Stellina: Ecke über ~1/8 des Bildes
+    gal = 400 * np.exp(-((y - Hb / 2) ** 2 + (x - Wb / 2) ** 2) / (2 * 25 ** 2))     # ortsfeste Galaxie in der Mitte
+    frames = [500 + corner + gal + rng.normal(0, 20, (Hb, Wb)).astype(np.float32) for _ in range(14)]
+    model = calibration.glow_model([calibration.glow_profiles(f, True) for f in frames])
+    assert len(model[0]) == 3
+    clean = calibration.remove_glow(np.median(frames, axis=0), True, model)
+    mid = np.median(clean[Hb // 3 : 2 * Hb // 3, : Wb // 4])
+    before = np.median(np.median(frames, axis=0)[:80, :80]) - mid
+    assert before > 25 and abs(np.median(clean[:80, :80]) - mid) < 6
+    c = (slice(int(0.36 * Hb), int(0.64 * Hb)), slice(int(0.36 * Wb), int(0.64 * Wb)))   # innerhalb GLOW_MAP_BAND
+    assert np.allclose(clean[c], np.median(frames, axis=0)[c])                       # Galaxie unberührt
+
+
+def test_library_keeps_old_profile_nights(tmp_path):
+    """Ältere Bibliotheksnächte haben nur Profile: weiter nutzbar, aber ohne Karte (werden bei Rohdaten neu gemessen)."""
+    rng = np.random.default_rng(4)
+    lib = calibration.GlowLibrary(tmp_path)
+    key = "k"
+    big = [500 + rng.normal(0, 20, (400, 400)).astype(np.float32) for _ in range(15)]      # groß genug für die Karte
+    med = calibration.median_profiles([calibration.glow_profiles(f, True) for f in big])
+    lib.add(key, "2022-01-01", [pl[:2] for pl in med])
+    assert lib.nights(key) == ["2022-01-01"] and lib.nights(key, with_map=True) == []
+    lib.add(key, "2022-02-01", med)
+    assert lib.nights(key, with_map=True) == ["2022-02-01"]
+    old, _ = lib.medians(key, "2022-01-01")
+    assert len(old[0]) == 2 and len(calibration.model_from(old)[0]) == 2
+    mix, src = lib.medians(key, "2022-03-01")                    # Mittel: Profile aus beiden, Karte aus der neuen Nacht
+    assert src.startswith("bibliothek") and len(mix[0]) == 3
+
+
 def test_library_grows_per_night_and_falls_back(tmp_path):
     rng = np.random.default_rng(1)
     lib = calibration.GlowLibrary(tmp_path)
@@ -83,3 +118,12 @@ def test_pipeline_builds_library_and_skips_with_darks(tmp_path):
     pid2 = db2.one("SELECT id FROM projects")["id"]
     pl2.process(pid2)
     assert "glow_info" not in json.loads(db2.one("SELECT options FROM projects WHERE id=?", (pid2,))["options"])
+
+
+def test_small_frames_fall_back_to_profiles():
+    """Ebenen kleiner als die Kachelkarte (48×48 Bayer → 24×24): nur Profile, kein Absturz."""
+    rng = np.random.default_rng(5)
+    frames = [500 + rng.normal(0, 20, (48, 48)).astype(np.float32) for _ in range(14)]
+    model = calibration.glow_model([calibration.glow_profiles(f, True) for f in frames])
+    assert all(len(pl) == 2 for pl in model)
+    assert calibration.remove_glow(frames[0], True, model).shape == (48, 48)

@@ -134,7 +134,8 @@ def assign_project(info: FrameInfo, centers: dict[str, tuple[float, float, float
         return Assignment(f"{entry.id}|{cam}", entry.display, entry.id, entry.kind, entry.ra, entry.dec)
     if info.object and info.object.strip():
         nm = info.object.strip()
-        return Assignment(f"{objects.normalize_name(nm)}|{cam}", nm, None, None, info.ra, info.dec)
+        ext = objects.resolve_extended(nm)                     # Objekttyp (Profil) aus dem großen Katalog, Name bleibt
+        return Assignment(f"{objects.normalize_name(nm)}|{cam}", nm, None, ext.kind if ext else None, info.ra, info.dec)
     if info.ra is not None and info.dec is not None:
         for key, (ra, dec, rad) in centers.items():
             if key.endswith("|" + cam) and objects.ang_sep(info.ra, info.dec, ra, dec) < rad:

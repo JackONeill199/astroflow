@@ -116,6 +116,8 @@ class Engine:
 
     def scan_and_queue(self) -> dict:
         r = self.pl.scan()
+        from .picture_import import attach_previews
+        attach_previews(self)
         self.last_scan = time.time()
         if self.s.auto:
             for pid in set(r["new_by_project"]) | self.pending_projects():
@@ -126,8 +128,9 @@ class Engine:
     def status(self) -> dict:
         frames = {r["kind"]: r["n"] for r in self.db.q("SELECT kind, COUNT(*) n FROM frames GROUP BY kind")}
         busy = self.db.one("SELECT COUNT(*) n FROM jobs WHERE state IN ('queued','running')")["n"]
-        n_proj = self.db.one("SELECT COUNT(*) n FROM projects")["n"]
-        n_res = self.db.one("SELECT COUNT(DISTINCT project_id) n FROM results")["n"]
+        n_proj = self.db.one("SELECT COUNT(*) n FROM projects WHERE json_extract(options,'$.gallery_parent') IS NULL")["n"]
+        n_res = self.db.one("SELECT COUNT(DISTINCT r.project_id) n FROM results r JOIN projects p ON p.id=r.project_id "
+                            "WHERE json_extract(p.options,'$.gallery_parent') IS NULL")["n"]
         try:
             du = shutil.disk_usage(self.s.data_dir)
             disk = {"free": du.free, "total": du.total}
@@ -162,7 +165,7 @@ def build_router(eng: Engine) -> APIRouter:
         imported = json.loads(p["options"] or "{}").get("input_type") == "picture"
         fr = db.q("SELECT status, COUNT(*) n FROM frames WHERE project_id=? AND kind='light' GROUP BY status", (p["id"],))
         counts = {r["status"]: r["n"] for r in fr}
-        last = db.one("SELECT * FROM results WHERE project_id=? ORDER BY id DESC LIMIT 1", (p["id"],))
+        last = db.one("SELECT * FROM results WHERE project_id=? ORDER BY COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC,id DESC LIMIT 1", (p["id"],))
         job = db.one("SELECT * FROM jobs WHERE project_id=? ORDER BY id DESC LIMIT 1", (p["id"],))
         nights = db.q("SELECT DISTINCT night FROM frames WHERE project_id=? AND kind='light' ORDER BY night", (p["id"],))
         n_results = db.one("SELECT COUNT(*) n FROM results WHERE project_id=?", (p["id"],))["n"]
@@ -177,6 +180,7 @@ def build_router(eng: Engine) -> APIRouter:
         return {
             "id": p["id"], "name": p["name"], "kind": p["kind"], "kind_label": objects.KIND_LABEL.get(p["kind"] or "generic"),
             "options": json.loads(p["options"] or "{}"), "frames": counts, "total": sum(counts.values()),
+            "companions": db.one("SELECT COUNT(*) n FROM projects WHERE json_extract(options,'$.gallery_parent')=?", (p["id"],))["n"],
             "nights": [n["night"] for n in nights], "n_results": n_results, "created": p["created"],
             "coords": coords, "can_solve": not imported and not p["obj_id"], "imported": imported,
             # Einzelbilder nach dem Stacking gelöscht -> kein komplettes Neu-Stacken mehr möglich
@@ -240,8 +244,10 @@ def build_router(eng: Engine) -> APIRouter:
         return eng.scan_and_queue()
 
     @r.get("/projects")
-    def projects():
-        return [project_view(p) for p in db.q("SELECT * FROM projects ORDER BY name")]
+    def projects(parent_id: int | None = None):
+        rows = db.q("SELECT * FROM projects WHERE json_extract(options,'$.gallery_parent') IS NULL ORDER BY name") if parent_id is None else db.q(
+            "SELECT * FROM projects WHERE json_extract(options,'$.gallery_parent')=? ORDER BY id DESC", (parent_id,))
+        return [project_view(p) for p in rows]
 
     @r.get("/projects/{pid}")
     def project(pid: int):
@@ -252,7 +258,7 @@ def build_router(eng: Engine) -> APIRouter:
         v["results"] = [{"id": x["id"], "created": x["created"], "n_frames": x["n_frames"], "exposure": x["exposure"],
                          "stats": json.loads(x["stats"]), "review": json.loads(x["review"] or "[]"),
                          "has_before": "before" in json.loads(x["files"] or "{}")}
-                        for x in db.q("SELECT * FROM results WHERE project_id=? ORDER BY id DESC", (pid,))]
+                        for x in db.q("SELECT * FROM results WHERE project_id=? ORDER BY COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC,id DESC", (pid,))]
         v["profiles"] = list(objects.PROFILES)
         v["palettes"] = list(channels.PALETTES)
         v["kind_labels"] = objects.KIND_LABEL
@@ -327,7 +333,7 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.post("/upload")
     async def upload(files: list[UploadFile] = File(...)):
-        from .picture_import import PICTURE_EXT, import_picture
+        from .picture_import import PICTURE_EXT, import_picture, attach_previews
         dest = eng.s.input_dir / "uploads" / time.strftime("%Y%m%d")
         dest.mkdir(parents=True, exist_ok=True)
         n, raw, pictures, errors = 0, 0, [], []
@@ -339,7 +345,7 @@ def build_router(eng: Engine) -> APIRouter:
                 continue
             if parts[-1].lower().endswith(PICTURE_EXT):
                 try:
-                    pictures.append(await asyncio.to_thread(import_picture, eng, f.file, parts[-1]))
+                    pictures.append(await asyncio.to_thread(import_picture, eng, f.file, parts[-1], False))
                     n += 1
                 except Exception as e:
                     errors.append(f"{parts[-1]}: Bild nicht importiert: {e}")
@@ -352,6 +358,17 @@ def build_router(eng: Engine) -> APIRouter:
                 shutil.copyfileobj(f.file, out)
             n += 1
             raw += 1
+        await asyncio.to_thread(attach_previews, eng)
+        for item in pictures:
+            opt = json.loads(db.one("SELECT options FROM projects WHERE id=?", (item["id"],))["options"])
+            item["series"] = bool((opt.get("imported") or {}).get("series"))
+            item["parent_id"] = opt.get("gallery_parent")
+        for pid in {p["id"] for p in pictures if not p.get("duplicate")}:
+            p = db.one("SELECT * FROM projects WHERE id=?", (pid,))
+            opt = json.loads(p["options"] or "{}")
+            if not opt.get("gallery_parent") and not (raw and (opt.get("imported") or {}).get("series")):
+                last = db.one("SELECT id FROM results WHERE project_id=? ORDER BY COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC,id DESC LIMIT 1", (pid,))
+                eng.ctx.emit("stacking.imported", project_id=pid, result_id=last["id"], name=p["name"])
         return {"saved": n, "raw": raw, "pictures": pictures, "errors": errors}
 
     @r.get("/results/{rid}/{kind}")
