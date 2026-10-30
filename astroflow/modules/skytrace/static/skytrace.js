@@ -116,7 +116,7 @@ async function newView(el) {
   el.innerHTML = `<div class="pagehead"><div><h1>Neue Analyse</h1><p class="mut">Originale werden nur gelesen – Ergebnisse landen im SkyTrace-Datenordner.</p></div></div>
     ${engineNotice(boot.engine)}
     <div class="split"><form class="panel" id="stf">
-      <label class="field"><span>Quellordner</span><div class="row" style="flex-wrap:nowrap"><input name="source" spellcheck="false" style="flex:1" value="${esc(p.source || '')}">
+      <label class="field"><span>Quellordner</span><div class="row" style="flex-wrap:nowrap"><input name="source" spellcheck="false" style="flex:1;min-width:0" value="${esc(p.source || '')}">
         <button type="button" class="btn ghost" id="browse">${icon('folder')}Durchsuchen</button></div><small>Ordner mit einer Beobachtung je Unterordner (z. B. Stellina-Export).</small></label>
       <label class="field"><span>Beobachtung</span><select name="observation"><option value="">Alle Beobachtungen</option></select></label>
       <label class="field"><span>Analysemodus</span><select name="mode"><option>Bildfolge → Ereignisvideo</option><option>Fotos</option><option>Videos</option></select></label>

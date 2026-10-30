@@ -268,7 +268,7 @@ async function settings(el) {
     <div class="panel" id="sgAuto"><h2 style="margin-bottom:10px">Nach dem Stacken</h2>
       <label class="modrow"><div><b>Fertige Bilder automatisch eintragen</b><div class="mut sm">Jedes neu gestackte Bild wird bestimmt und landet mit seinen Objekten in den Entdeckungen</div></div><input type="checkbox" name="auto_discover" ${c.auto_discover !== false ? 'checked' : ''}><span class="switch"></span></label>
       <label class="modrow"><div><b>Dabei eine Geschichte schreiben</b><div class="mut sm">nutzt die Erzähl-KI (bei Cloud-Anbietern kleine Kosten je Bild)</div></div><input type="checkbox" name="auto_story" ${c.auto_story !== false ? 'checked' : ''}><span class="switch"></span></label></div></div>
-    <div><form class="panel" id="sgs3"><div class="panel-h"><h2>Vorlesen</h2><span class="grow"></span><span class="mut sm" id="ttsState">prüfe …</span></div>
+    <div><form class="panel" id="sgs3"><div class="panel-h"><h2>Vorlesen</h2></div><p class="mut sm" id="ttsState" style="margin:-6px 0 14px">prüfe …</p>
       <label class="field"><span>Standard-Sprachdienst</span><select name="tts_provider"><option value="openrouter">OpenRouter (ElevenLabs v4 u. a.)</option>
         <option value="qwen">Qwen3-TTS (lokal)</option><option value="elevenlabs">ElevenLabs (direkt)</option></select></label>
       <fieldset class="sg-fs" data-p="openrouter"><legend>OpenRouter · Sprachmodelle vieler Anbieter</legend>

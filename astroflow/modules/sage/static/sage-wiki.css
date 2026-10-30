@@ -241,7 +241,7 @@ sup .cite { vertical-align: baseline }
 
 /* Einstellungen */
 .sw-usage { padding: 12px 14px; border-radius: 12px; background: var(--panel2); margin-bottom: 16px; font-size: 13px }
-.sw-tasks { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; margin-bottom: 12px }
+.sw-tasks { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 0 16px; margin-bottom: 12px }   /* schmale Spalte: einspaltig */
 
 @media (max-width: 1100px) { .sw-insl { grid-template-columns: 1fr } }
 @media (max-width: 700px) {

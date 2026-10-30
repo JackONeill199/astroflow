@@ -325,6 +325,7 @@ async function route() {
     if (!m) continue;
     $$('#nav a').forEach(a => a.classList.toggle('on', a.dataset.r === nav));
     slideInd($('#navind'), $('#nav a.on'));
+    $('#nav a.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });   // Handy: aktiven Eintrag in der Leiste zeigen
     main.classList.remove('enter');
     main.innerHTML = '<div class="skel" style="height:64px;max-width:420px;margin-bottom:26px"></div><div class="skel-grid">' + '<div class="skel"></div>'.repeat(3) + '</div>';
     const ticket = ++routeTicket;
