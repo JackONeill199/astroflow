@@ -59,7 +59,7 @@ def _vizier(ra, dec, radius, gmag_max, timeout) -> list:
 
 
 def gaia_stars(ra: float, dec: float, radius_deg: float, cache_dir: Path, gmag_max: float = 14.5,
-               timeout: float = 30.0) -> np.ndarray:
+               timeout: float = 120.0) -> np.ndarray:   # ESA-Archiv brauchte am 30.10.2026 ~70 s
     """(N,3) Array RA, Dec, BP−RP der Gaia-DR3-Sterne im Feld (heller als gmag_max). Mit lokalem Zwischenspeicher."""
     key = hashlib.sha1(f"{ra:.3f}|{dec:.3f}|{radius_deg:.3f}|{gmag_max}".encode()).hexdigest()[:16]
     f = Path(cache_dir) / f"gaia_{key}.json"
