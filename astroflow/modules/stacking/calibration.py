@@ -219,7 +219,7 @@ def _plane(raw, idx):
 
 
 def _bin_percentile(a: np.ndarray, b: int, q: float = 30) -> np.ndarray:
-    eh, ew = max(1, a.shape[0] // b), max(1, a.shape[1] // b)
+    eh, ew = a.shape[0] // b, a.shape[1] // b
     t = a[: eh * b, : ew * b].reshape(eh, b, ew, b).transpose(0, 2, 1, 3).reshape(eh, ew, -1)
     return np.percentile(t, q, axis=2).astype(np.float32)
 
@@ -229,7 +229,10 @@ def glow_profiles(raw: np.ndarray, bayer: bool) -> list[tuple[np.ndarray, ...]]:
     out = []
     for p in (_plane(raw, idx) for idx in _planes(raw, bayer)):
         r, c = np.percentile(p, 30, axis=1).astype(np.float32), np.percentile(p, 30, axis=0).astype(np.float32)
-        out.append((r, c, _bin_percentile(p - r[:, None] - c[None, :], GLOW_BIN)))
+        if min(p.shape) >= 5 * GLOW_BIN:
+            out.append((r, c, _bin_percentile(p - r[:, None] - c[None, :], GLOW_BIN)))
+        else:                                            # zu klein für eine Kachelkarte: nur Profile
+            out.append((r, c))
     return out
 
 

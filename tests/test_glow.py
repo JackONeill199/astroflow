@@ -66,7 +66,8 @@ def test_library_keeps_old_profile_nights(tmp_path):
     rng = np.random.default_rng(4)
     lib = calibration.GlowLibrary(tmp_path)
     key = "k"
-    med = calibration.median_profiles([calibration.glow_profiles(f, True) for f in _frames(15, rng)])
+    big = [500 + rng.normal(0, 20, (400, 400)).astype(np.float32) for _ in range(15)]      # groß genug für die Karte
+    med = calibration.median_profiles([calibration.glow_profiles(f, True) for f in big])
     lib.add(key, "2022-01-01", [pl[:2] for pl in med])
     assert lib.nights(key) == ["2022-01-01"] and lib.nights(key, with_map=True) == []
     lib.add(key, "2022-02-01", med)
@@ -117,3 +118,12 @@ def test_pipeline_builds_library_and_skips_with_darks(tmp_path):
     pid2 = db2.one("SELECT id FROM projects")["id"]
     pl2.process(pid2)
     assert "glow_info" not in json.loads(db2.one("SELECT options FROM projects WHERE id=?", (pid2,))["options"])
+
+
+def test_small_frames_fall_back_to_profiles():
+    """Ebenen kleiner als die Kachelkarte (48×48 Bayer → 24×24): nur Profile, kein Absturz."""
+    rng = np.random.default_rng(5)
+    frames = [500 + rng.normal(0, 20, (48, 48)).astype(np.float32) for _ in range(14)]
+    model = calibration.glow_model([calibration.glow_profiles(f, True) for f in frames])
+    assert all(len(pl) == 2 for pl in model)
+    assert calibration.remove_glow(frames[0], True, model).shape == (48, 48)
