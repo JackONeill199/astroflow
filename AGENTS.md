@@ -153,6 +153,10 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    Profil planetary: target_bg 0,10, denoise 0,25, white_pct 99,98 (Korn und schwache Sterne bleiben wie bei Stellina).
    Entfaltung erst ab Objekt-SNR `DECONV_MIN_SNR` 15, Schärfen ab SNR 10 anlaufend bis 25 (sonst dunkle Ringe um Sterne).
    Kern weiter ausgebrannt, obwohl `WHITE_STEPS` ausgereizt → `corrections` erhöht asinh weiter.
+   Danach alle Profile: `denoise` 0,3 / `chroma_denoise` 1,5 (vorher 0,4–0,6 / 1,5–2,5) – an 10 Projekten gemessen: Objekthelligkeit
+   gleich (Nutzer: „ohne dass sie dunkler werden“), 10–35 % mehr schwache Sterne, Sterngröße gleich. `linear_denoise_max` 0,5 für alle
+   getestet und verworfen (M63/M101/NGC 1579 dunkler). `CORE_STAR_RATIO` 4 → 5: AE Aurigae in IC 405 (4,4) galt als ausgebrannter Kern.
+   Offen: NGC 1579 (Stack-FWHM 6,5 px gegen Stellina 3,2) und M101 (Achsverhältnis 1,59 gegen 1,33) – mehrere Nächte, Stack-Problem.
 8. **KI-Prüfer** (`reviewer.py`, optional, Standard aus): Vision-LLM (LM Studio/OpenRouter) bewertet Vorschau, darf nur Whitelist-Parameter in festen Grenzen ändern.
    Läuft nach der messbaren Kontrolle (`first=` = bereits gerendertes Bild). Denkmodelle (Bonsai, Qwen3) brauchen ~2 500 Tokens vor der
    Antwort → `max_tokens` 8000, Timeout 300 s; `<think>`-Blöcke und `reasoning_content` werden behandelt. Beim Nutzer: LM Studio, `prism-ml/bonsai-27b` (~55 s/Runde).
@@ -208,6 +212,8 @@ SHA256 gegen doppelte Uploads, eigenes Ereignis `stacking.imported` → Sage (ke
 Stellina-Verlaufsbilder: EXIF Make/Model/ImageDescription/DateTime + `img-…-output` → `imported.series`, ein Projekt je Objekt/Gerät/Nacht mit geordneten Versionen.
 `picture_import.attach_previews` ordnet diese bei passenden Rohdaten per `options.gallery_parent` zu (nach Upload und Scan); Hauptgalerie/Statistik/Sage-Auswahl zeigen nur eigenständige Projekte.
 Begleitbilder bleiben über den Tab `teleskopbilder` erreichbar; beim Löschen des Elternprojekts wird die Zuordnung aufgehoben, keine Begleitdatei mitgelöscht.
+Zusätzlicher Schutz (`picture_import.skip_previews`, Server + Frontend): enthält ein Upload > 10 TIFF/FITS, werden alle JPG/PNG übersprungen
+(am 30.10.2026 landeten 233 Stellina-Vorschauen in der Galerie – der Server lief noch ohne die Verlaufsbild-Erkennung).
 Sage zeigt einen Verweis zum zentralen Import; eigener Upload nur als Rückfall bei deaktiviertem Bilder-Modul. API `/sage/analyze` bleibt kompatibel.
 Befehlspalette Strg+K: Einträge aller Module (`palette()`) + Aktionen der aktuellen Ansicht (`actions()`).
 Tastenkürzel: `/` Suche in Listen, `1–4` Tabs (Objekt, SkyTrace-Lauf), `F` Vollbild, `B` Vorher/Nachher. Server schickt `Cache-Control: no-cache` für `/`.

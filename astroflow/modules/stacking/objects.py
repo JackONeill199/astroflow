@@ -227,16 +227,21 @@ def nearest_extended(ra: float, dec: float, radius_deg: float = 0.3, min_size: f
 # white_pct       : Weißpunkt als Perzentil (Standard 99,9; die Kontrolle hebt ihn bei ausgebranntem Kern)
 # linear_denoise_max: Obergrenze für das automatische lineare Entrauschen (Standard 1,0)
 PROFILES: dict[str, dict] = {
-    "generic":      dict(gradient_degree=3, target_bg=0.08, asinh=30, denoise=0.55, chroma_denoise=2.0, saturation=1.35, contrast=0.25, sharpen=0.3, deconv=0, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=0.85),
-    "galaxy":       dict(gradient_degree=2, target_bg=0.07, asinh=120, denoise=0.55, chroma_denoise=2.5, saturation=1.30, contrast=0.35, sharpen=0.4, deconv=8, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=0.85),
-    "emission":     dict(gradient_degree=3, target_bg=0.08, asinh=40, denoise=0.6, chroma_denoise=2.5, saturation=1.50, contrast=0.35, sharpen=0.3, deconv=0, star_reduction=0.35, scnr=0.4, bg_dark=0.03, star_separation="off", star_brightness=0.85),
-    "reflection":   dict(gradient_degree=3, target_bg=0.08, asinh=30, denoise=0.6, chroma_denoise=2.5, saturation=1.40, contrast=0.3, sharpen=0.25, deconv=0, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=0.85),
-    "snr":          dict(gradient_degree=3, target_bg=0.08, asinh=40, denoise=0.6, chroma_denoise=2.5, saturation=1.50, contrast=0.35, sharpen=0.3, deconv=0, star_reduction=0.3, scnr=0.4, bg_dark=0.03, star_separation="off", star_brightness=0.85),
+    # denoise/chroma_denoise seit 2026-10-30 etwa halbiert (vorher 0,4–0,6 / 1,5–2,5): gleiche Objekthelligkeit, 15–35 % mehr
+    # schwache Sterne, feines Korn statt glattem Himmel (wie Stellina) – gemessen an 10 Projekten, keines wurde dunkler
+    # emission: lineares Entrauschen höchstens 0,3 – NGC 2359 (SNR 11, sonst 0,84) wurde weich, Filamente verwaschen, Sterne
+    # aufgebläht (FWHM 6,0 statt 5,5 px bei Stellina, Stack 5,0); mit 0,3 knackiger, Nebel bleibt sichtbar. Übrige
+    # Emissionsnebel (IC 405, NGC 6888, NGC 7000: 0,12–0,21) liegen darunter. M101 (Galaxie, SNR 11) braucht es weiter.
+    "generic":      dict(gradient_degree=3, target_bg=0.08, asinh=30, denoise=0.3, chroma_denoise=1.5, saturation=1.35, contrast=0.25, sharpen=0.3, deconv=0, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=0.85),
+    "galaxy":       dict(gradient_degree=2, target_bg=0.07, asinh=120, denoise=0.3, chroma_denoise=1.5, saturation=1.30, contrast=0.35, sharpen=0.4, deconv=8, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=0.85),
+    "emission":     dict(gradient_degree=3, target_bg=0.08, asinh=40, denoise=0.3, chroma_denoise=1.5, saturation=1.50, contrast=0.35, sharpen=0.3, deconv=0, star_reduction=0.35, scnr=0.4, bg_dark=0.03, star_separation="off", star_brightness=0.85, linear_denoise_max=0.3),
+    "reflection":   dict(gradient_degree=3, target_bg=0.08, asinh=30, denoise=0.3, chroma_denoise=1.5, saturation=1.40, contrast=0.3, sharpen=0.25, deconv=0, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=0.85),
+    "snr":          dict(gradient_degree=3, target_bg=0.08, asinh=40, denoise=0.3, chroma_denoise=1.5, saturation=1.50, contrast=0.35, sharpen=0.3, deconv=0, star_reduction=0.3, scnr=0.4, bg_dark=0.03, star_separation="off", star_brightness=0.85),
     # planetary: kleines, helles Objekt im Sternfeld – Weißpunkt höher und kein lineares Entrauschen (Ring brennt sonst
     # aus, Sterne blähen auf), wenig glätten und höheres target_bg: Korn und schwache Sterne bleiben (M57 gegen Stellina, 2026-10-30)
     "planetary":    dict(gradient_degree=3, target_bg=0.10, asinh=150, denoise=0.25, chroma_denoise=1.5, saturation=1.30, contrast=0.3, sharpen=0.5, deconv=12, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=0.85, white_pct=99.98, linear_denoise_max=0.0),
-    "globular":     dict(gradient_degree=2, target_bg=0.06, asinh=200, denoise=0.4, chroma_denoise=1.5, saturation=1.25, contrast=0.2, sharpen=0.4, deconv=6, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=1.0),
-    "open_cluster": dict(gradient_degree=3, target_bg=0.06, asinh=60, denoise=0.4, chroma_denoise=1.5, saturation=1.30, contrast=0.2, sharpen=0.3, deconv=0, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=1.0),
+    "globular":     dict(gradient_degree=2, target_bg=0.06, asinh=200, denoise=0.3, chroma_denoise=1.5, saturation=1.25, contrast=0.2, sharpen=0.4, deconv=6, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=1.0),
+    "open_cluster": dict(gradient_degree=3, target_bg=0.06, asinh=60, denoise=0.3, chroma_denoise=1.5, saturation=1.30, contrast=0.2, sharpen=0.3, deconv=0, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=1.0),
 }
 
 KIND_LABEL = {

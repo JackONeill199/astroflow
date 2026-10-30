@@ -36,8 +36,10 @@ SAT_RANGE = (0.10, 0.55)       # Farbigkeit des Objekts
 # Ausgebrannter Kern: größte weiße Fläche (L > 0,95) mindestens CORE_MIN_FRAC des Bildes und CORE_STAR_RATIO-mal so groß
 # wie typische Sternkerne. Gemessen (Vorschau ~1200 px): NGC 4490 114 px gegen Sterne ~20, M31/M3 ~390 gegen ~10;
 # helle Sterne (M45 223 gegen ~140, IC 405 94 gegen ~25) bleiben darunter – Sternkerne dürfen weiß sein.
+# 2026-10-30 nachgemessen (Verhältnis zu den 10 nächstgrößten Flächen): M57 24, M63 12, M3 48, M31 90 gegen
+# AE Aurigae in IC 405 4,4 (galt bei 4,0 als ausgebrannter Kern) -> 5,0; NGC 4490 (~5,7) bleibt erkannt
 CORE_MIN_FRAC = 1e-4
-CORE_STAR_RATIO = 4.0
+CORE_STAR_RATIO = 5.0
 WHITE_STEPS = (99.9, 99.98, 99.995)   # Weißpunkt-Perzentile, die die Kontrolle bei ausgebranntem Kern nacheinander probiert
 DECONV_MIN_SNR = 15                   # darunter keine Entfaltung (Objekt-SNR aus measure())
 
