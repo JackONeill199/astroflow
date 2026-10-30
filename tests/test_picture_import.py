@@ -118,3 +118,61 @@ def test_unknown_filename_is_not_invented_as_a_discovered_object(tmp_path, monke
         assert t["state"] == "error" and "Himmelsposition" in t["error"]
         assert c.get("/api/sage/history").json() == []
         assert c.get(f"/api/stacking/projects/{d['pictures'][0]['id']}").json()["imported"]
+
+
+def telescope_jpg(sequence, name="M31", model="stellina-test", make="VAONIS"):
+    exif = Image.Exif()
+    exif[271], exif[272] = make, model
+    exif[270] = f"{name} ({sequence} exp)"
+    exif[306] = "2023/01/29 23:07:31"
+    buf = io.BytesIO()
+    Image.new("RGB", (40, 30), (sequence, 100, 140)).save(buf, "JPEG", exif=exif)
+    return buf.getvalue()
+
+
+def test_stellina_history_is_one_picture_with_ordered_versions(tmp_path):
+    app = app_at(tmp_path)
+    events = []
+    app.state.ctx.on("stacking.imported", lambda **kw: events.append(kw))
+    with TestClient(app) as c:
+        d = c.post("/api/stacking/upload", files=[("files", (f"img-{n:04d}-output.jpeg", telescope_jpg(n))) for n in [3, 1, 2]]).json()
+        projects = c.get("/api/stacking/projects").json()
+        assert d["saved"] == 3 and len(projects) == 1 and projects[0]["name"].startswith("M31")
+        pid = projects[0]["id"]
+        p = c.get(f"/api/stacking/projects/{pid}").json()
+        assert p["n_results"] == 3 and len(events) == 1
+        assert [r["stats"]["imported"]["series"]["sequence"] for r in p["results"]] == [3, 2, 1]
+        assert p["result"]["stats"]["imported"]["series"]["sequence"] == 3
+        again = c.post("/api/stacking/upload", files={"files": ("img-0001-output.jpeg", telescope_jpg(1))}).json()
+        assert again["pictures"][0]["duplicate"] and len(events) == 1
+
+
+def test_telescope_history_is_attached_after_raw_scan(tmp_path):
+    app = app_at(tmp_path)
+    events = []
+    app.state.ctx.on("stacking.imported", lambda **kw: events.append(kw))
+    buf = io.BytesIO()
+    fits.PrimaryHDU(np.ones((24, 32), np.uint16), header=fits.Header({
+        "OBJECT": "M31", "INSTRUME": "stellina-test", "DATE-OBS": "2023-01-29T23:07:21"})).writeto(buf)
+    with TestClient(app) as c:
+        d = c.post("/api/stacking/upload", files=[("files", ("img-0001-output.jpeg", telescope_jpg(1))),
+                    ("files", ("img-0002-output.jpeg", telescope_jpg(2))), ("files", ("img-0001r.fits", buf.getvalue()))]).json()
+        child = d["pictures"][0]["id"]
+        c.post("/api/stacking/scan")
+        projects = c.get("/api/stacking/projects").json()
+        assert len(projects) == 1 and not projects[0]["imported"]
+        parent = projects[0]["id"]
+        assert projects[0]["companions"] == 1 and not events
+        companions = c.get(f"/api/stacking/projects?parent_id={parent}").json()
+        assert len(companions) == 1 and companions[0]["id"] == child and companions[0]["n_results"] == 2
+        assert companions[0]["options"]["gallery_parent"] == parent
+        assert c.get(f"/api/stacking/projects/{child}").status_code == 200
+        assert c.delete(f"/api/stacking/projects/{parent}").status_code == 200
+        assert c.get("/api/stacking/projects").json()[0]["id"] == child, "Begleitbilder bleiben beim Löschen des Rohprojekts erhalten"
+
+
+def test_filename_alone_does_not_group_unrelated_photos(tmp_path):
+    with TestClient(app_at(tmp_path)) as c:
+        d = c.post("/api/stacking/upload", files=[("files", ("img-0001-output.jpeg", picture("JPEG"))),
+                    ("files", ("img-0002-output.jpeg", telescope_jpg(2, make="ANDERE")))]).json()
+        assert d["saved"] == 2 and len(c.get("/api/stacking/projects").json()) == 2
