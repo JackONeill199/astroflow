@@ -333,15 +333,19 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.post("/upload")
     async def upload(files: list[UploadFile] = File(...)):
-        from .picture_import import PICTURE_EXT, import_picture, attach_previews
+        from .picture_import import PICTURE_EXT, PREVIEW_EXT, attach_previews, import_picture, skip_previews
         dest = eng.s.input_dir / "uploads" / time.strftime("%Y%m%d")
         dest.mkdir(parents=True, exist_ok=True)
-        n, raw, pictures, errors = 0, 0, [], []
+        n, raw, skipped, pictures, errors = 0, 0, 0, [], []
+        no_previews = skip_previews([f.filename or "" for f in files])
         for f in files:
             # relative Ordnerpfade behalten (z. B. „…_observation_M57/img-0001r.fits“ – der Ordner verrät das Objekt),
             # aber nur harmlose Pfadteile zulassen
             parts = [p for p in re.split(r"[\\/]+", f.filename or "") if p not in ("", ".", "..") and ":" not in p]
             if not parts:
+                continue
+            if no_previews and parts[-1].lower().endswith(PREVIEW_EXT):
+                skipped += 1
                 continue
             if parts[-1].lower().endswith(PICTURE_EXT):
                 try:
@@ -369,7 +373,7 @@ def build_router(eng: Engine) -> APIRouter:
             if not opt.get("gallery_parent") and not (raw and (opt.get("imported") or {}).get("series")):
                 last = db.one("SELECT id FROM results WHERE project_id=? ORDER BY COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC,id DESC LIMIT 1", (pid,))
                 eng.ctx.emit("stacking.imported", project_id=pid, result_id=last["id"], name=p["name"])
-        return {"saved": n, "raw": raw, "pictures": pictures, "errors": errors}
+        return {"saved": n, "raw": raw, "skipped": skipped, "pictures": pictures, "errors": errors}
 
     @r.get("/results/{rid}/{kind}")
     def result_file(rid: int, kind: str):

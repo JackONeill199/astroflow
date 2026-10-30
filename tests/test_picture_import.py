@@ -176,3 +176,14 @@ def test_filename_alone_does_not_group_unrelated_photos(tmp_path):
         d = c.post("/api/stacking/upload", files=[("files", ("img-0001-output.jpeg", picture("JPEG"))),
                     ("files", ("img-0002-output.jpeg", telescope_jpg(2, make="ANDERE")))]).json()
         assert d["saved"] == 2 and len(c.get("/api/stacking/projects").json()) == 2
+
+
+def test_previews_skipped_in_frame_folder(tmp_path):
+    """Mehr als 10 TIFF/FITS in der Quelle: JPG/PNG daneben sind Einzelbild-Vorschauen, keine fertigen Bilder."""
+    from astroflow.modules.stacking.picture_import import skip_previews
+    assert not skip_previews([f"img-{i}.tif" for i in range(10)] + ["a.jpg"])
+    assert skip_previews([f"img-{i}.fits" for i in range(11)])
+    with TestClient(app_at(tmp_path)) as c:
+        files = [("files", (f"obs/img-{i:04}.fits", b"x")) for i in range(11)] + [("files", ("obs/img-0001-output.jpeg", picture()))]
+        d = c.post("/api/stacking/upload", files=files).json()
+        assert d["skipped"] == 1 and d["raw"] == 11 and not d["pictures"]

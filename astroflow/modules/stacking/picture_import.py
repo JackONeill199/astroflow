@@ -16,6 +16,15 @@ from PIL import Image, ImageOps
 from . import objects
 
 PICTURE_EXT = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
+PREVIEW_EXT = (".jpg", ".jpeg", ".png")
+SOURCE_EXT = (".tif", ".tiff", ".fit", ".fits", ".fts")
+SOURCE_LIMIT = 10        # ab mehr als so vielen TIFF/FITS gilt die Quelle als Aufnahmeordner
+
+
+def skip_previews(names: list[str]) -> bool:
+    """Aufnahmeordner (z. B. Stellina) enthalten neben den Einzelbildern je Frame eine JPG-Vorschau –
+    die gehören nicht als fertige Bilder in die Galerie."""
+    return sum(n.lower().endswith(SOURCE_EXT) for n in names) > SOURCE_LIMIT
 
 
 def telescope_series(filename: str, exif) -> dict | None:
