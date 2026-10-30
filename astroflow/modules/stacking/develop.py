@@ -39,6 +39,7 @@ SAT_RANGE = (0.10, 0.55)       # Farbigkeit des Objekts
 CORE_MIN_FRAC = 1e-4
 CORE_STAR_RATIO = 4.0
 WHITE_STEPS = (99.9, 99.98, 99.995)   # Weißpunkt-Perzentile, die die Kontrolle bei ausgebranntem Kern nacheinander probiert
+DECONV_MIN_SNR = 15                   # darunter keine Entfaltung (Objekt-SNR aus measure())
 
 
 def burnt_core(L: np.ndarray) -> float:
@@ -100,8 +101,11 @@ def adapt(params: dict, m: dict, mono: bool = False) -> tuple[dict, list[str]]:
         p["chroma_denoise"] = round(float(np.clip(p["chroma_denoise"] * f, 1.0, 5.0)), 2)
         why.append(f"Entrauschen {'verstärkt' if f > 1 else 'reduziert'} (Objekt-SNR {snr:.0f})")
     # lineares Entrauschen vor dem Stretch: holt schwaches Signal aus dem Rauschen (stärker bei wenig Signal)
-    # (bei hohem SNR kaum: es hebt sonst auch schwache Restgradienten und Streifen hervor)
-    p["linear_denoise"] = round(float(np.clip((10 / snr) ** 1.5, 0.0, 1.0)), 2)
+    # (bei hohem SNR kaum: es hebt sonst auch schwache Restgradienten und Streifen hervor).
+    # Es senkt das gemessene Rauschen -> Schwarzpunkt (Median − 2,8σ) rückt an den Himmel, die Kurve streckt härter.
+    # Das macht schwache Galaxien/Nebel erst sichtbar (M63, NGC 1579, M101 ohne diesen Effekt fast unsichtbar), bläht
+    # bei kompakten hellen Objekten aber Sterne auf und brennt sie aus (M57) -> Obergrenze je Profil
+    p["linear_denoise"] = round(float(np.clip((10 / snr) ** 1.5, 0.0, p.get("linear_denoise_max", 1.0))), 2)
     if p["linear_denoise"] >= 0.1:
         why.append(f"lineares Entrauschen {p['linear_denoise']:.2f} (Objekt-SNR {snr:.0f})")
     # sehr schwaches Signal: dunklerer Hintergrund versteckt Restrauschen, Sättigung vorsichtiger
@@ -118,10 +122,15 @@ def adapt(params: dict, m: dict, mono: bool = False) -> tuple[dict, list[str]]:
         k = float(np.clip((m["dynamic"] / 40) ** 0.5, 1.0, 2.5))
         p["asinh"] = round(float(np.clip(p["asinh"] * k, 5, 400)), 1)
         why.append(f"Highlight-Kompression erhöht (Dynamik {m['dynamic']:.0f}×)")
-    # Entfaltung nur mit genug Signal – sonst schärft sie Rauschen
-    if p.get("deconv", 0) > 0 and snr < 8:
+    # Entfaltung und Schärfen nur mit genug Signal – sonst schärfen sie Rauschen und ziehen dunkle Ringe um Sterne
+    # (M57, SNR 10: Entfaltung 12 + Schärfen 0,5 -> Ringe, verzogene Sterne betont)
+    if p.get("deconv", 0) > 0 and snr < DECONV_MIN_SNR:
         p["deconv"] = 0
         why.append("keine Entfaltung (zu wenig Signal)")
+    k = float(np.clip((snr - 10) / 15, 0.0, 1.0))
+    if p.get("sharpen", 0) > 0 and k < 1:
+        p["sharpen"] = round(p["sharpen"] * k, 2)
+        why.append("weniger Schärfen (zu wenig Signal)" if k > 0 else "kein Schärfen (zu wenig Signal)")
     return p, why
 
 
@@ -231,6 +240,8 @@ def corrections(qc: dict, p: dict) -> dict:
         nxt = [w for w in WHITE_STEPS if w > p.get("white_pct", WHITE_STEPS[0])]
         if nxt:
             adj["white_pct"] = nxt[0]
+            adj["asinh"] = min(400.0, max(adj.get("asinh", p["asinh"]), p["asinh"] * 1.5))
+        else:                                        # Weißpunkt ausgereizt: Lichter stärker komprimieren
             adj["asinh"] = min(400.0, max(adj.get("asinh", p["asinh"]), p["asinh"] * 1.5))
     if "oversat" in codes:
         adj["saturation"] = max(1.0, p["saturation"] - 0.15)

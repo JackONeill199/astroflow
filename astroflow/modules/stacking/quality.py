@@ -7,6 +7,10 @@ import numpy as np
 from scipy import ndimage as ndi
 
 METRICS_VERSION = 2      # erhöhen, wenn sich die Analyse ändert -> bestehende Frames werden neu analysiert
+# Feste Grenze für verzogene Sterne: ecc 0,8 ≈ Achsverhältnis 1,7:1 (an M57 gemessen: 1,5:1 ≈ 0,71, 2:1 ≈ 0,85).
+# Höchstens dieser Anteil der Frames fällt deswegen heraus – sonst verlöre z. B. NGC 7000 zwei Drittel seiner Daten
+ECC_MAX = 0.8
+ECC_MAX_REJECT = 1 / 3
 
 
 @dataclass
@@ -173,6 +177,10 @@ def select_frames(metrics: dict[str, dict], keep_percent: float | None = None) -
     g_med = max(float(np.median([m["grad"] for m in ok.values()])), 1.0) if has_snr else 1.0
     f_lim = f_med + max(3 * _mad_sigma(fw), 0.25 * f_med)
     e_lim = max(0.6, e_med + 3 * _mad_sigma(ec))
+    # Rein relativ ließ die Grenze durch, was die meisten Frames haben: M57 (Wind/Nachführung) – 89 von 133 gestackten
+    # Frames mit Sternen ≥ 1,5:1, Stack 1,5:1. Daher zusätzlich absolut, aber höchstens ECC_MAX_REJECT der Frames
+    if e_lim > ECC_MAX:
+        e_lim = max(ECC_MAX, float(np.quantile(ec, 1 - ECC_MAX_REJECT)))
     b_lim = b_med + max(4 * _mad_sigma(bg), 0.3 * abs(b_med)) if len(ok) >= 8 else np.inf
     scores = {}
     for k, m in ok.items():
