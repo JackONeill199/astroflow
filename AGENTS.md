@@ -228,6 +228,10 @@ Tastenkürzel: `/` Suche in Listen, `1–4` Tabs (Objekt, SkyTrace-Lauf), `F` Vo
 ## Tests (`tests/`)
 Synthetische Daten aus `demo.py` (`generate`, `generate(anonymous=True)` ohne Koordinaten, `generate_mono` mit Filtern).
 Plate-Solving-Tests nutzen eine ASTAP-Attrappe (Python-Skript, schreibt echtes `.ini`-Format) über `SolverConfig(cmd_prefix=[...])` – kein echtes ASTAP nötig.
+**Oberfläche** (`test_ui_layout.py`, seit 31.10.2026): echter Chromium über Playwright (nur in der `.venv`, nicht in `requirements.txt`;
+fehlt es, wird übersprungen – `pip install playwright && python -m playwright install chromium`). Alle Ansichten mit Demodaten bei 375/790/1440 px:
+nichts darf über seinen Kasten (nächster Vorfahr mit Rahmen/Hintergrund) oder die Seite ragen, keine JS-Fehler; Schalterzeilen müssen per Klick umschalten.
+Neue Ansichten in `ROUTES` eintragen. Achtung: globales `td { white-space: nowrap }` – Namensspalten in schmalen Tabellen brauchen `white-space: normal`.
 
 ## Stolperfallen (Windows-Umgebung des Nutzers)
 - Shell ist Git-Bash: In Heredocs/`python -c` werden Backslashes umgedeutet (`\a` wurde zu BEL). Windows-Pfade in Skripten → Skript per Datei schreiben, raw strings.
