@@ -333,18 +333,18 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.post("/upload")
     async def upload(files: list[UploadFile] = File(...)):
-        from .picture_import import PICTURE_EXT, PREVIEW_EXT, attach_previews, import_picture, skip_previews
+        from .picture_import import PICTURE_EXT, attach_previews, import_picture, skipped_pictures
         dest = eng.s.input_dir / "uploads" / time.strftime("%Y%m%d")
         dest.mkdir(parents=True, exist_ok=True)
         n, raw, skipped, pictures, errors = 0, 0, 0, [], []
-        no_previews = skip_previews([f.filename or "" for f in files])
+        skip_ext = skipped_pictures([f.filename or "" for f in files])
         for f in files:
             # relative Ordnerpfade behalten (z. B. „…_observation_M57/img-0001r.fits“ – der Ordner verrät das Objekt),
             # aber nur harmlose Pfadteile zulassen
             parts = [p for p in re.split(r"[\\/]+", f.filename or "") if p not in ("", ".", "..") and ":" not in p]
             if not parts:
                 continue
-            if no_previews and parts[-1].lower().endswith(PREVIEW_EXT):
+            if skip_ext and parts[-1].lower().endswith(skip_ext):
                 skipped += 1
                 continue
             if parts[-1].lower().endswith(PICTURE_EXT):

@@ -179,11 +179,13 @@ def test_filename_alone_does_not_group_unrelated_photos(tmp_path):
 
 
 def test_previews_skipped_in_frame_folder(tmp_path):
-    """Mehr als 10 TIFF/FITS in der Quelle: JPG/PNG daneben sind Einzelbild-Vorschauen, keine fertigen Bilder."""
-    from astroflow.modules.stacking.picture_import import skip_previews
-    assert not skip_previews([f"img-{i}.tif" for i in range(10)] + ["a.jpg"])
-    assert skip_previews([f"img-{i}.fits" for i in range(11)])
+    """> 10 FITS: nur die FITS (JPG/PNG/TIFF daneben sind Vorschauen/Zwischenstände); > 10 TIFF: keine JPG/PNG."""
+    from astroflow.modules.stacking.picture_import import PICTURE_EXT, PREVIEW_EXT, skipped_pictures
+    assert skipped_pictures([f"img-{i}.tif" for i in range(10)] + ["a.jpg"]) == ()
+    assert skipped_pictures([f"img-{i}.tif" for i in range(11)] + ["a.jpg"]) == PREVIEW_EXT
+    assert skipped_pictures([f"img-{i}.fits" for i in range(11)] + ["a.tif"]) == PICTURE_EXT
     with TestClient(app_at(tmp_path)) as c:
-        files = [("files", (f"obs/img-{i:04}.fits", b"x")) for i in range(11)] + [("files", ("obs/img-0001-output.jpeg", picture()))]
+        files = [("files", (f"obs/img-{i:04}.fits", b"x")) for i in range(11)] + [("files", ("obs/img-0001-output.jpeg", picture())),
+                 ("files", ("obs/img-0354.tif", picture("TIFF")))]
         d = c.post("/api/stacking/upload", files=files).json()
-        assert d["skipped"] == 1 and d["raw"] == 11 and not d["pictures"]
+        assert d["skipped"] == 2 and d["raw"] == 11 and not d["pictures"]

@@ -212,7 +212,8 @@ SHA256 gegen doppelte Uploads, eigenes Ereignis `stacking.imported` → Sage (ke
 Stellina-Verlaufsbilder: EXIF Make/Model/ImageDescription/DateTime + `img-…-output` → `imported.series`, ein Projekt je Objekt/Gerät/Nacht mit geordneten Versionen.
 `picture_import.attach_previews` ordnet diese bei passenden Rohdaten per `options.gallery_parent` zu (nach Upload und Scan); Hauptgalerie/Statistik/Sage-Auswahl zeigen nur eigenständige Projekte.
 Begleitbilder bleiben über den Tab `teleskopbilder` erreichbar; beim Löschen des Elternprojekts wird die Zuordnung aufgehoben, keine Begleitdatei mitgelöscht.
-Zusätzlicher Schutz (`picture_import.skip_previews`, Server + Frontend): enthält ein Upload > 10 TIFF/FITS, werden alle JPG/PNG übersprungen
+Zusätzlicher Schutz (`picture_import.skipped_pictures`, Server + Frontend): > 10 FITS im Upload → nur FITS (auch kein TIFF, Nutzerwunsch 31.10.);
+sonst > 10 TIFF/FITS → alle JPG/PNG übersprungen
 (am 30.10.2026 landeten 233 Stellina-Vorschauen in der Galerie – der Server lief noch ohne die Verlaufsbild-Erkennung).
 Sage zeigt einen Verweis zum zentralen Import; eigener Upload nur als Rückfall bei deaktiviertem Bilder-Modul. API `/sage/analyze` bleibt kompatibel.
 Befehlspalette Strg+K: Einträge aller Module (`palette()`) + Aktionen der aktuellen Ansicht (`actions()`).

@@ -9,7 +9,7 @@ const sst = () => AF.status?.modules?.stacking || {};
 const SOURCE_LABEL = { solve: 'Plate-Solving', catalog: 'Katalog (Objektname)', header: 'FITS-Header' };
 const IMPORT_FILE = /\.(fits?|fts|jpe?g|png|tiff?)$/i;
 // Aufnahmeordner (mehr als 10 TIFF/FITS) bringen oft je Frame eine JPG/PNG-Vorschau mit – die nicht importieren (Server prüft ebenso)
-const PREVIEW_FILE = /\.(jpe?g|png)$/i, SOURCE_FILE = /\.(tiff?|fits?|fts)$/i, SOURCE_LIMIT = 10;
+const PREVIEW_FILE = /\.(jpe?g|png)$/i, SOURCE_FILE = /\.(tiff?|fits?|fts)$/i, FITS_FILE = /\.(fits?|fts)$/i, SOURCE_LIMIT = 10;
 const SOLVER_LABEL = { astap: 'ASTAP', astrometry: 'astrometry.net (lokal)', nova: 'nova.astrometry.net' };
 function coordsPanel(c) {
   if (!c) return '';
@@ -635,16 +635,17 @@ function upload(files) {
   }
   const before = files.length;
   files = files.filter(f => !previews.has(f) || (!rawFolders.has(previews.get(f)) && latest.get(previews.get(f)).file === f));
-  // allgemein: Quellen mit mehr als SOURCE_LIMIT TIFF/FITS sind Aufnahmeordner – JPG/PNG daneben sind Vorschauen
-  if (files.filter(f => SOURCE_FILE.test(f.name)).length > SOURCE_LIMIT) files = files.filter(f => !PREVIEW_FILE.test(f.name));
+  // allgemein (wie picture_import.skipped_pictures): > SOURCE_LIMIT FITS → nur FITS; sonst > SOURCE_LIMIT TIFF/FITS → keine JPG/PNG
+  if (files.filter(f => FITS_FILE.test(f.name)).length > SOURCE_LIMIT) files = files.filter(f => FITS_FILE.test(f.name));
+  else if (files.filter(f => SOURCE_FILE.test(f.name)).length > SOURCE_LIMIT) files = files.filter(f => !PREVIEW_FILE.test(f.name));
   const skipped = before - files.length;
-  if (skipped) toast(`${skipped} Teleskop-Zwischenstände übersprungen – mit FITS werden nur die Rohdaten importiert, sonst die letzte Vorschau. Quelldateien bleiben unverändert.`);
+  if (skipped) toast(`${skipped} Vorschau-/Zwischenbilder übersprungen – mit vielen FITS werden nur die Rohdaten importiert. Quelldateien bleiben unverändert.`);
   if (!files.length) { toast('Keine unterstützten Dateien dabei (FITS, JPG, PNG, TIFF).', 'err'); return; }
   const total = files.reduce((a, f) => a + f.size, 0);
   const box = document.createElement('div');
   box.className = 'upl';
   box.innerHTML = `<div class="row"><b>${files.length} Datei${files.length > 1 ? 'en' : ''}</b><span class="mut">${fmb(total)}</span><span class="grow"></span><span class="tnum pct">0 %</span></div><div class="progress"><i style="width:0"></i></div>`;
-  if (skipped) box.insertAdjacentHTML('beforeend', `<p class="mut sm">${skipped} automatisch erzeugte Teleskop-Zwischenstände nicht mit hochgeladen. Die Quelldateien bleiben unverändert.</p>`);
+  if (skipped) box.insertAdjacentHTML('beforeend', `<p class="mut sm">${skipped} Vorschau-/Zwischenbilder (JPG/PNG/TIFF) nicht mit hochgeladen. Die Quelldateien bleiben unverändert.</p>`);
   ($('#ups') || document.body).prepend(box);
   if (!$('#ups')) { location.hash = '#/import'; }
   const fd = new FormData();

@@ -17,14 +17,19 @@ from . import objects
 
 PICTURE_EXT = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
 PREVIEW_EXT = (".jpg", ".jpeg", ".png")
-SOURCE_EXT = (".tif", ".tiff", ".fit", ".fits", ".fts")
-SOURCE_LIMIT = 10        # ab mehr als so vielen TIFF/FITS gilt die Quelle als Aufnahmeordner
+FITS_EXT = (".fit", ".fits", ".fts")
+SOURCE_EXT = (".tif", ".tiff") + FITS_EXT
+SOURCE_LIMIT = 10        # ab mehr als so vielen Dateien gilt die Quelle als Aufnahmeordner
 
 
-def skip_previews(names: list[str]) -> bool:
-    """Aufnahmeordner (z. B. Stellina) enthalten neben den Einzelbildern je Frame eine JPG-Vorschau –
-    die gehören nicht als fertige Bilder in die Galerie."""
-    return sum(n.lower().endswith(SOURCE_EXT) for n in names) > SOURCE_LIMIT
+def skipped_pictures(names: list[str]) -> tuple[str, ...]:
+    """Endungen, die bei diesem Upload nicht als fertige Bilder importiert werden. Aufnahmeordner (z. B. Stellina) enthalten
+    neben den Einzelbildern Vorschauen und Zwischenstände – die gehören nicht in die Galerie:
+    > 10 FITS → nur die FITS (auch kein TIFF), sonst > 10 TIFF/FITS → keine JPG/PNG."""
+    low = [n.lower() for n in names]
+    if sum(n.endswith(FITS_EXT) for n in low) > SOURCE_LIMIT:
+        return PICTURE_EXT
+    return PREVIEW_EXT if sum(n.endswith(SOURCE_EXT) for n in low) > SOURCE_LIMIT else ()
 
 
 def telescope_series(filename: str, exif) -> dict | None:
