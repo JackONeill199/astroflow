@@ -606,6 +606,10 @@ async function importView(el) {
     <div class="row" style="justify-content:center;margin-top:12px"><label class="btn ghost sm">Ordner auswählen…<input type="file" id="fd" webkitdirectory multiple hidden></label>
       <span class="mut sm">Ordnernamen bleiben erhalten – z. B. verrät „…_observation_M57“ bei Stellina das Objekt.</span></div>
     <div class="uploads" id="ups"></div>
+    <section class="panel" id="lib" style="margin-top:20px"><div class="panel-h"><h2 style="margin:0">Hauptordner durchsuchen</h2></div>
+      <p class="mut sm" style="margin-top:0">Pfad zu einem Ordner mit allen Beobachtungen (Stellina, FITS, TIFF …). AstroFlow findet die Objekte darin und zeigt, was noch nicht oder nicht fertig gestackt in AstroFlow ist. Die Dateien bleiben unverändert.</p>
+      <div class="lib-form"><input id="libRoot" type="text" placeholder="z. B. D:\\Astro\\Stellina" spellcheck="false" autocomplete="off"><button class="btn" id="libGo">${icon('search')}Durchsuchen</button></div>
+      <div id="libBody"></div></section>
     <div class="infogrid">
       <div><b>Oder: Rohdaten-Ordner einbinden</b>Lege FITS-Dateien direkt in <code>${esc(st.input_dir)}</code> – AstroFlow schaut alle ${st.scan_interval} s nach.</div>
       <div><b>FITS → Rohaufnahmen</b>Objekt, Kamera und Nacht werden aus den Headern erkannt. Lights, Darks, Flats und Bias sind gemischt möglich; neue Nächte werden nachgestackt.</div>
@@ -617,6 +621,71 @@ async function importView(el) {
   dz.ondragover = (e) => { e.preventDefault(); dz.classList.add('over'); };
   dz.ondragleave = () => dz.classList.remove('over');
   dz.ondrop = async (e) => { e.preventDefault(); e.stopPropagation(); dz.classList.remove('over'); upload(await droppedFiles(e.dataTransfer)); };
+  libraryPanel(el);
+}
+
+// Hauptordner durchsuchen: Gruppen (Objekte) finden, Stand in AstroFlow anzeigen, Auswahl importieren
+const LIB_STATE = { new: ['neu', 'acc'], partial: ['teilweise vorhanden', 'warn'], unstacked: ['nicht gestackt', 'warn'], done: ['fertig', 'ok'] };
+const LIB_KIND = { lights: 'Aufnahmen', calibration: 'Kalibrierung', pictures: 'Fertige Bilder' };
+async function libraryPanel(view) {
+  const body = $('#libBody', view), input = $('#libRoot', view), go = $('#libGo', view);
+  const picked = new Set();
+  let timer = null, seen = false;
+  const done = (g) => g.state === 'done';
+  const draw = (st) => {
+    if (!body.isConnected) return clearTimeout(timer);
+    const busy = st.state === 'scanning' || st.state === 'importing';
+    go.disabled = busy;
+    if (busy) {
+      body.innerHTML = `<div class="lib-bar"><span class="spinner"></span><span>${esc(st.message || '')}</span><span class="grow"></span><span class="tnum">${Math.round((st.progress || 0) * 100)} %</span></div><div class="progress"><i style="width:${(st.progress || 0) * 100}%"></i></div>`;
+      return;
+    }
+    if (st.state === 'error') { body.innerHTML = `<p class="bad sm">${esc(st.message)}</p>`; return; }
+    const groups = st.groups || [];
+    if (!seen) { seen = true; groups.forEach(g => { if (!done(g) && g.n_new) picked.add(g.id); }); }
+    [...picked].forEach(id => { const g = groups.find(x => x.id === id); if (!g || !g.n_new) picked.delete(id); });
+    if (!groups.length) { body.innerHTML = st.message ? `<p class="mut sm">${esc(st.message)}</p>` : ''; return; }
+    const sel = groups.filter(g => picked.has(g.id));
+    const imp = st.imported;
+    body.innerHTML = `${imp ? `<div class="notice lib-done"><div><b>${icon('check')} Import abgeschlossen</b><div class="mut sm">${esc(st.message)}${imp.errors?.length ? `<br><span class="bad">${imp.errors.map(esc).join('<br>')}</span>` : ''}</div>
+        ${Object.keys(imp.projects || {}).length ? '<div style="margin-top:8px"><a class="btn ghost sm" href="#/bilder">Zur Galerie</a></div>' : ''}</div></div>` : ''}
+      <div class="lib-bar"><span class="mut sm">${imp ? '' : esc(st.message)}</span><span class="grow"></span>
+        <button class="btn ghost sm" id="libNew">Nur Neues wählen</button><button class="btn ghost sm" id="libNone">Keine</button>
+        <button class="btn" id="libImp" ${sel.length ? '' : 'disabled'}>${icon('upload')}${sel.length ? `${sel.length} ${sel.length === 1 ? 'Gruppe' : 'Gruppen'} importieren` : 'Importieren'}</button></div>
+      <div class="lib-list">${groups.map(g => {
+        const [lab, cls] = LIB_STATE[g.state] || [g.state, ''], off = !g.n_new;
+        return `<label class="lib-row ${off ? 'off' : ''}"><input type="checkbox" data-id="${g.id}" ${picked.has(g.id) ? 'checked' : ''} ${off ? 'disabled' : ''}>
+          <div class="lib-main"><div class="lib-title"><b>${esc(g.name)}</b><span class="chip ${cls}">${lab}</span><span class="chip">${LIB_KIND[g.kind] || g.kind}</span>${g.project?.name ? `<a class="chip acc" href="#/p/${g.project.id}">in AstroFlow: ${esc(g.project.name)}</a>` : ''}</div>
+            <div class="lib-meta"><span class="chip">${g.n_files} Dateien · ${fmb(g.bytes)}</span>${g.n_known && g.n_new ? `<span class="chip">${g.n_new} davon neu</span>` : ''}${g.night ? `<span class="chip">${esc(g.night)}</span>` : ''}${g.camera ? `<span class="chip">${esc(g.camera)}</span>` : ''}</div>
+            <div class="lib-path">${esc(g.rel)}</div></div></label>`;
+      }).join('')}</div>`;
+    body.onchange = (e) => { const id = e.target.dataset?.id; if (!id) return; e.target.checked ? picked.add(id) : picked.delete(id); draw(st); };
+    $('#libNew', body).onclick = () => { picked.clear(); groups.forEach(g => { if (g.n_new && !done(g)) picked.add(g.id); }); draw(st); };
+    $('#libNone', body).onclick = () => { picked.clear(); draw(st); };
+    $('#libImp', body).onclick = async () => {
+      try { draw(await send('/stacking/library/import', { ids: [...picked] })); follow(); }
+      catch (e) { toast(e.message, 'err'); }
+    };
+  };
+  const follow = async () => {
+    clearTimeout(timer);
+    try {
+      const st = await api('/stacking/library');
+      draw(st);
+      if (st.state === 'scanning' || st.state === 'importing') timer = setTimeout(follow, 800);
+      else if (st.imported && body.isConnected) poll();
+    } catch (e) { if (body.isConnected) timer = setTimeout(follow, 2000); }
+  };
+  go.onclick = async () => {
+    const root = input.value.trim();
+    if (!root) { toast('Bitte den Pfad zum Hauptordner eingeben.', 'err'); return; }
+    picked.clear(); seen = false;
+    try { draw(await send('/stacking/library/scan', { root })); follow(); } catch (e) { toast(e.message, 'err'); }
+  };
+  input.onkeydown = (e) => { if (e.key === 'Enter') go.click(); };
+  const st = await api('/stacking/library');
+  input.value = st.root || '';
+  if (st.state !== 'idle') { seen = st.state === 'done' && !st.imported ? false : true; draw(st); if (st.state === 'scanning' || st.state === 'importing') follow(); }
 }
 function upload(files) {
   files = files.filter(f => IMPORT_FILE.test(f.name));

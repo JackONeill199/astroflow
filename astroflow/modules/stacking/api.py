@@ -32,6 +32,8 @@ class Engine:
         self.db = DB(self.s.db_path)
         self.review_cfg = reviewer.ReviewerConfig.from_env()
         self.pl = Pipeline(self.s, self.db, self.review_cfg)
+        from .library import Library
+        self.library = Library(self)
         stars.STARNET.tools_dir = self.s.data_dir / "tools" / "starnet"
         self._apply_saved()
         self.q: queue.Queue[int] = queue.Queue()
@@ -389,6 +391,31 @@ def build_router(eng: Engine) -> APIRouter:
                 last = db.one("SELECT id FROM results WHERE project_id=? ORDER BY COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC,id DESC LIMIT 1", (pid,))
                 eng.ctx.emit("stacking.imported", project_id=pid, result_id=last["id"], name=p["name"])
         return {"saved": n, "raw": raw, "skipped": skipped, "pictures": pictures, "errors": errors}
+
+    @r.get("/library")
+    def library_state():
+        return eng.library.view()
+
+    @r.post("/library/scan")
+    def library_scan(body: dict = Body(...)):
+        try:
+            eng.library.start_scan(str(body.get("root") or ""))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except RuntimeError as e:
+            raise HTTPException(409, str(e))
+        return eng.library.view()
+
+    @r.post("/library/import")
+    def library_import(body: dict = Body(...)):
+        ids = [i for i in body.get("ids") or [] if isinstance(i, str)]
+        try:
+            n = eng.library.start_import(ids)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except RuntimeError as e:
+            raise HTTPException(409, str(e))
+        return {"groups": n, **eng.library.view()}
 
     @r.get("/results/{rid}/{kind}")
     def result_file(rid: int, kind: str):

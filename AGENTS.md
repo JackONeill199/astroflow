@@ -173,6 +173,15 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    (neueste `keep` je Objekt bleiben, nicht bei importierten Bildern) und Sicherungen – nur auf Wunsch. Client schickt nur Schlüssel, der Server
    ermittelt die Pfade neu und löscht nur innerhalb des Datenordners; 409 während eines Jobs. Rohdaten und Stacks bestehender Objekte nie.
 
+## Hauptordner durchsuchen (`modules/stacking/library.py`, seit 31.10.2026)
+Import-Ansicht → „Hauptordner durchsuchen“: Pfad eines Ordners auf dem Server-Rechner (z. B. ganze Stellina-Platte). Hintergrund-Thread findet Gruppen
+(`find_groups`: „…_observation_X“ = eine Gruppe samt Unterordnern, sonst je Ordner mit FITS; Ordnernamen dark/flat/bias → Kalibrierung; Ordner nur mit
+JPG/PNG/TIFF → fertige Bilder, nicht unterhalb von FITS-Gruppen), bildet je Datei den Inhalts-Fingerabdruck (`scanner.fingerprint`, Bilder SHA256) und
+gleicht mit `frames.info.fp` bzw. `results.stats.imported.sha256` ab → Zustand `new|partial|unstacked|done` (fertig = gestackt/verworfen/Rohbild gelöscht/Duplikat).
+Import legt nur **unbekannte** Dateien als Hardlink (Rückfall Kopie) unter `input/uploads/bibliothek/<hash>/<Gruppenordner>/…` ab, dann `scan_and_queue()`;
+Bilder gehen über `import_picture`. Quelldateien bleiben unberührt. API: `GET /library`, `POST /library/scan {root}`, `POST /library/import {ids}` (Ids stammen
+aus dem letzten Suchlauf im Speicher). Zuletzt genutzter Pfad: `data/settings.json` → `library.root`. Test: `tests/test_library.py`.
+
 ## Plate-Solving (`modules/stacking/platesolve.py`)
 - Backends: `astap` (empfohlen) · `astrometry` (lokales `solve-field`) · `nova` (Online, **nie** automatisch – Datenschutz). `auto` = verfügbare lokale.
 - Gelöst wird **eine Aufnahme je Gruppe** (Ordner + Kamera + Bildgröße + Nacht), Ergebnis in Tabelle `solves` gecacht; Fehlschläge werden nicht

@@ -1,0 +1,15 @@
+/* Hauptordner durchsuchen (Import) */
+.lib-form { display: flex; gap: 10px; flex-wrap: wrap }
+.lib-form input { flex: 1 1 260px }
+.lib-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 14px 0 8px }
+.lib-list { display: grid; gap: 6px }
+.lib-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; align-items: start; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); cursor: pointer; background: color-mix(in srgb, var(--panel2) 40%, transparent) }
+.lib-row:hover { border-color: var(--line2) }
+.lib-row.off { opacity: .6; cursor: default }
+.lib-row input { margin-top: 3px }
+.lib-main { min-width: 0; display: grid; gap: 4px }
+.lib-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0 }
+.lib-title b { overflow-wrap: anywhere }
+.lib-path { font-size: 12px; color: var(--dim); overflow-wrap: anywhere }
+.lib-meta { display: flex; gap: 6px; flex-wrap: wrap }
+.lib-done { margin-top: 12px }
