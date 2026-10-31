@@ -327,11 +327,15 @@ async function route() {
     slideInd($('#navind'), $('#nav a.on'));
     $('#nav a.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });   // Handy: aktiven Eintrag in der Leiste zeigen
     main.classList.remove('enter');
-    main.innerHTML = '<div class="skel" style="height:64px;max-width:420px;margin-bottom:26px"></div><div class="skel-grid">' + '<div class="skel"></div>'.repeat(3) + '</div>';
+    // eigener Behälter je Aufruf: eine verworfene, noch ladende Ansicht schreibt danach nur in ihren abgehängten Behälter,
+    // nicht über die aktuelle (Layout-Test fand das beim schnellen Wechseln)
+    const host = document.createElement('div');
+    host.innerHTML = '<div class="skel" style="height:64px;max-width:420px;margin-bottom:26px"></div><div class="skel-grid">' + '<div class="skel"></div>'.repeat(3) + '</div>';
+    main.replaceChildren(host);
     const ticket = ++routeTicket;
     let v = null;
-    try { v = await fn(main, ...m.slice(1)); } catch (e) {
-      if (ticket === routeTicket) { console.error(e); main.innerHTML = `<div class="empty">${icon('alert')}<h2>Fehler</h2>${esc(e.message)}</div>`; }
+    try { v = await fn(host, ...m.slice(1)); } catch (e) {
+      if (ticket === routeTicket) { console.error(e); host.innerHTML = `<div class="empty">${icon('alert')}<h2>Fehler</h2>${esc(e.message)}</div>`; }
     }
     if (ticket !== routeTicket) { v?.destroy?.(); return; }      // inzwischen weiternavigiert – diese Ansicht verwerfen
     view = v;

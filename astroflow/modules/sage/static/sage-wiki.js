@@ -237,7 +237,8 @@ async function wikiView(el) {
         <span class="grow"></span><button class="btn" id="swDo">${icon('sparkle')}Recherchieren</button></div>` : '';
     $('#swSearchRes').innerHTML = q ? cta + (items.length ? `<div class="sw-grid stagger" style="margin-bottom:22px">${items.slice(0, 8).map(entCard).join('')}</div>` : '') : '';
     $('#swDo')?.addEventListener('click', async () => { const t = await startResearch(q, true); if (t) showTask(t); });
-    if (!q) $('#swGrid').innerHTML = items.length ? `<div class="sw-grid stagger">${items.map(entCard).join('')}</div>`
+    const hid = d.stats.hidden_stubs ? `<p class="dim sm" style="margin-top:14px">${d.stats.hidden_stubs} Grundeinträge ohne eigenes Bild (z. B. Galaxiengruppen aus SIMBAD) sind ausgeblendet – über die Suche und das Wissensnetz erreichbar.</p>` : '';
+    if (!q) $('#swGrid').innerHTML = items.length ? `<div class="sw-grid stagger">${items.map(entCard).join('')}</div>${hid}`
       : `<div class="empty">${icon('book')}<h2>Die Enzyklopädie ist noch leer</h2>Bestimme ein Bild oder suche oben nach einem Objekt – Sage legt die Einträge an.</div>`;
   };
   const showTask = (t) => {

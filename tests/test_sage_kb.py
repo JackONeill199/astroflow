@@ -134,6 +134,11 @@ def test_recherche_katalog_und_seite(client):
     assert "dreimal aufgenommen" in texts and "2026-10-25" in texts and "12 auf 26 gestiegen" in texts
     assert client.get("/api/sage/kb/entities", params={"q": "Plejaden"}).json()["items"][0]["id"] == "m45"
     assert client.get("/api/sage/kb/entities", params={"q": "Seven Sisters"}).json()["items"][0]["id"] == "m45"
+    # Grundeinträge aus der Hierarchie ohne eigenes Bild: nicht im Raster, aber über die Suche
+    lst = client.get("/api/sage/kb/entities").json()
+    assert "m45" in [i["id"] for i in lst["items"]] and "pleiadesmovinggroup" not in [i["id"] for i in lst["items"]]
+    assert lst["stats"]["hidden_stubs"] >= 1
+    assert "pleiadesmovinggroup" in [i["id"] for i in client.get("/api/sage/kb/entities", params={"q": "Pleiades Moving"}).json()["items"]]
     # Dashboard: Helligkeit, berechneter Durchmesser, Bezeichnungen, Fokus, Himmelskarte, Export
     facts = {f["key"]: f for f in d["facts"] if f["status"] != "alternative"}
     assert facts["mag"]["value"] == "1,6 mag (V)" and 9 < facts["diameter"]["num"] < 11 and facts["diameter"]["origin"] == "derived"

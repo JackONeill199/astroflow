@@ -65,6 +65,11 @@ def extend(r, mod, url):
         pics, mine = picture_index(), observed_ids()
         rows = kb.search(q, limit) if q else kb.q("SELECT * FROM entities WHERE kind='object' ORDER BY updated DESC LIMIT ?", (limit,))
         items = [card(e, pics, mine) for e in rows]
+        hidden = 0
+        if filter == "all" and not q:
+            # Grundeinträge ohne eigenes Bild (meist SIMBAD-Gruppen aus der Hierarchie) nur über Suche/Wissensnetz – füllten sonst das Raster
+            shown = [i for i in items if i["status"] != "stub" or i["image"] or i["observed"]]
+            hidden, items = len(items) - len(shown), shown
         if filter == "observed":
             items = [i for i in items if i["observed"]]
         elif filter == "ai":
@@ -73,7 +78,7 @@ def extend(r, mod, url):
             items = [card(e) for e in kb.q("SELECT * FROM entities WHERE kind='concept' ORDER BY name")]
         stats = kb.one("SELECT COUNT(*) AS n, SUM(status='researched') AS ai, SUM(status='reviewed') AS ok FROM entities WHERE kind='object'")
         return {"items": items, "stats": {"objects": stats["n"], "researched": stats["ai"] or 0, "reviewed": stats["ok"] or 0,
-                                          "observed": len(mine), "sources": kb.one("SELECT COUNT(*) AS n FROM sources")["n"]}}
+                                          "observed": len(mine), "hidden_stubs": hidden, "sources": kb.one("SELECT COUNT(*) AS n FROM sources")["n"]}}
 
     @r.get("/kb/card")
     def knowledge_card(name: str):

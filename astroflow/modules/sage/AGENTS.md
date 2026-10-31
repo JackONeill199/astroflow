@@ -24,7 +24,9 @@ insights/runs/usage/stories/chats/http_cache. Regeln: **Messwerte nur aus Fachqu
   Objektkopf: Titelbild (`data.hero`, wählbar), Kurzname, Bezeichnungen (`designations`), Faktenkarte, Himmelskarte (`/kb/skymap`).
   Übersicht: Bild + Galerie (`gallery`), KI-Zusammenfassung/Forschung/Persönlicher Kontext, Beschreibung, Schnellfakten
   (Durchmesser aus Winkelgröße × Entfernung, Helligkeit aus SIMBAD `flux` – fehlt z. B. für M45), Verwandte, Notizen, Aufnahmen.
-  Export als Markdown mit Quellen: `/kb/entities/<id>/export.md`. SIMBAD `h_link` liefert eine Zeile je Beleg → nach `main_id` deduplizieren.
+  Export als Markdown mit Quellen: `/kb/entities/<id>/export.md`.
+  Raster „Alle“ (`/kb/entities` ohne `q`) blendet Grundeinträge ohne eigenes Bild aus (`stats.hidden_stubs`; meist SIMBAD-Gruppen aus
+  `_related_stub`, beim Nutzer 67 von 90 – Nutzerwunsch 31.10.2026); Suche, Wissensnetz und „Verwandte“ zeigen sie weiter. SIMBAD `h_link` liefert eine Zeile je Beleg → nach `main_id` deduplizieren.
 - Tests: `tests/test_sage_kb.py` (SIMBAD/arXiv/KI als Attrappen). `ASTROFLOW_SAGE_OFFLINE=1` (conftest) schaltet Fachdienste ab.
 
 Herkunft: Repo `JackONeill199/starlight-sage` („Astronomy Buddy“, Node/Express – bleibt unverändert bestehen), hier nach Python portiert.

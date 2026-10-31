@@ -111,10 +111,11 @@ def test_nothing_overflows(server, browser, size):
     base, pid = server
     w, h = SIZES[size]
     page = browser.new_page(viewport={"width": w, "height": h})
-    errors = []
-    page.on("pageerror", lambda e: errors.append(str(e)))
+    errors, cur = [], [""]
+    page.on("pageerror", lambda e: errors.append(f"{cur[0]}: {e.stack or e}"))
     problems = {}
     for route in ROUTES:
+        cur[0] = route
         page.goto(f"{base}/{route.format(pid=pid)}")
         page.wait_for_load_state("networkidle")
         page.wait_for_timeout(600)                           # Einblend-Animationen, nachgeladene Abschnitte
@@ -124,6 +125,27 @@ def test_nothing_overflows(server, browser, size):
     page.close()
     assert not errors, errors
     assert not problems, "\n".join(f"{r}:\n  " + "\n  ".join(p) for r, p in problems.items())
+
+
+def test_fast_navigation(server, browser):
+    """Schnell weiterklicken, bevor eine Ansicht fertig geladen ist: keine JS-Fehler, die zuletzt gewählte Ansicht bleibt stehen.
+    (Verworfene Ansichten schrieben früher nach dem Laden über die aktuelle bzw. griffen auf schon entfernte Elemente zu.)"""
+    base, pid = server
+    page = browser.new_page(viewport={"width": 1440, "height": 900})
+    errors, cur = [], [""]
+    page.on("pageerror", lambda e: errors.append(f"{cur[0]}: {e.stack or e}"))
+    page.goto(f"{base}/#/")
+    for wait in (0, 60, 200):
+        for route in ROUTES:
+            cur[0] = route
+            page.goto(f"{base}/{route.format(pid=pid)}")
+            page.wait_for_timeout(wait)
+    page.goto(f"{base}/#/settings/stacking")
+    page.wait_for_selector("#hkForm")
+    page.wait_for_timeout(1500)                              # späte Antworten verworfener Ansichten abwarten
+    assert page.locator("#hkForm").count() == 1 and page.locator("#view > div").count() == 1
+    page.close()
+    assert not errors, "\n".join(sorted(set(errors))[:10])
 
 
 def test_switch_rows_toggle(server, browser):

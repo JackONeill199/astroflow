@@ -242,6 +242,7 @@ async function projectView(el, id, tab = 'bild') {
     $$('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.t === tab));
     requestAnimationFrame(() => slideInd($('#tabind'), $('#tabs a.on'), true));
     const t = $('#tab');
+    if (!t) return;
     t.classList.remove('enter');
     ({ bild: tabImage, aufnahmen: tabFrames, versionen: tabVersions, optionen: tabOptions, teleskopbilder: tabCompanions }[tab] || tabImage)(t);
     if (animate) { void t.offsetWidth; t.classList.add('enter'); }
@@ -310,6 +311,7 @@ async function projectView(el, id, tab = 'bild') {
   // ---- Tab: Aufnahmen ----
   async function tabFrames(t) {
     if (!frames) { t.innerHTML = '<div class="skel" style="height:300px"></div>'; frames = await api(`/stacking/projects/${id}/frames`); }
+    if (!t.isConnected) return;
     const bands = [...new Set(frames.map(f => f.band || 'RGB'))];
     const n = (fn) => frames.filter(fn).length;
     t.innerHTML = `<div class="panel"><div class="panel-h"><h2>Qualität je Aufnahme</h2><span class="grow"></span>
@@ -804,6 +806,7 @@ async function stackingSettings(el) {
       <dt>Lights</dt><dd>${st.frames?.light || 0}</dd>
       <dt>Darks / Flats / Bias</dt><dd>${st.frames?.dark || 0} / ${st.frames?.flat || 0} / ${st.frames?.bias || 0}</dd>
     </dl><p class="mut sm" style="margin:14px 0 0">Tipp: Im Browser-Menü „App installieren“ wählen – AstroFlow läuft dann wie eine eigene App.</p></div></div></div>`;
+  if (!el.isConnected) return;      // inzwischen weiternavigiert – die Abfragen unten gingen ins Leere
   housekeeping($('#hk'));
   $('#stf [name=gaia]').onchange = async (e) => {
     try {
