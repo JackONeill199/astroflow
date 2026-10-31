@@ -207,6 +207,21 @@ def build_router(eng: Engine) -> APIRouter:
         eng.save_settings()
         return {"delete_uploads": eng.s.delete_uploads, "gaia": eng.s.gaia}
 
+    @r.get("/housekeeping")
+    def housekeeping_scan(keep: int = 2):
+        """Speicherbelegung + aufräumbare Bereiche (nur lesen)."""
+        from . import housekeeping
+        return {"usage": housekeeping.usage(eng.s, db), "unused": housekeeping.scan(eng.s, db, max(1, keep))}
+
+    @r.post("/housekeeping/cleanup")
+    def housekeeping_cleanup(body: dict = Body(...)):
+        from . import housekeeping
+        if db.one("SELECT id FROM jobs WHERE state IN ('queued','running') LIMIT 1"):
+            raise HTTPException(409, "Gerade läuft eine Verarbeitung – bitte danach aufräumen.")
+        keys = [k for k in body.get("keys") or [] if isinstance(k, str)]
+        with eng.pl._scan_lock:                          # kein Scan/Import gleichzeitig
+            return housekeeping.cleanup(eng.s, db, keys, int(body.get("keep") or housekeeping.KEEP_VERSIONS))
+
     @r.get("/solver")
     def get_solver():
         return eng.pl.solver_cfg.status()

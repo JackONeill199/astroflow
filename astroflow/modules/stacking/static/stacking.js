@@ -680,6 +680,54 @@ function upload(files) {
   xhr.send(fd);
 }
 
+// ------------------------------------------------------------ Speicherbelegung --- //
+const HK_COLORS = ['var(--acc)', 'var(--acc2)', 'var(--acc3)', 'var(--warn)', 'var(--ok)', 'var(--bad)', '#f0abfc', '#93c5fd', 'var(--dim)'];
+async function housekeeping(panel) {
+  const body = $('#hkBody', panel), keepOf = () => +($('#hkKeep', panel)?.value || 2);
+  const load = async (keep = 2) => {
+    body.innerHTML = '<div class="skel" style="height:120px"></div>';
+    let d;
+    try { d = await api(`/stacking/housekeeping?keep=${keep}`); } catch (e) { body.innerHTML = `<p class="bad sm">${esc(e.message)}</p>`; return; }
+    const u = d.usage, cats = u.categories;
+    $('#hkTotal', panel).textContent = `${fmb(u.total)} belegt`;
+    const big = u.projects.filter(p => p.output + p.stack > 0);
+    body.innerHTML = `<div class="hk-bar">${cats.map((c, i) => `<i style="flex:${c.bytes};background:${HK_COLORS[i % HK_COLORS.length]}" title="${esc(c.label)}: ${fmb(c.bytes)}"></i>`).join('')}</div>
+      <ul class="hk-legend">${cats.map((c, i) => `<li><i style="background:${HK_COLORS[i % HK_COLORS.length]}"></i><span><b>${esc(c.label)}</b>${c.detail ? `<small>${esc(c.detail)}</small>` : ''}</span><span class="tnum">${fmb(c.bytes)}</span></li>`).join('')}</ul>
+      ${u.disk ? `<p class="mut sm" style="margin:4px 0 0">Frei auf dem Laufwerk: <b>${fmb(u.disk.free)}</b> von ${fmb(u.disk.total)}</p>` : ''}
+      ${big.length ? `<h3 class="hk-h">Größte Objekte</h3><table class="hk-tab"><thead><tr><th>Objekt</th><th>Versionen</th><th>Bilder</th><th>Master-Stack</th></tr></thead><tbody>
+        ${big.map(p => `<tr><td><a href="#/p/${p.id}/versionen">${esc(p.name)}</a></td><td class="tnum">${p.versions}</td><td class="tnum">${fmb(p.output)}</td><td class="tnum">${p.stack ? fmb(p.stack) : '–'}</td></tr>`).join('')}</tbody></table>` : ''}
+      <h3 class="hk-h">Ungenutzte Daten</h3>
+      ${d.unused.length ? `<form id="hkForm"><div class="hk-items">${d.unused.map(i => `<label class="modrow hk-item"><div><b>${esc(i.label)}</b><div class="mut sm">${esc(i.detail)}${i.count > 1 ? ` · ${i.count} Einträge` : ''}</div>
+          ${i.key === 'old_versions' ? `<div class="row sm" style="margin-top:6px;gap:6px"><span class="mut">Neueste behalten:</span><select id="hkKeep" style="width:auto;height:30px">${[1, 2, 3, 5].map(n => `<option ${n === i.keep ? 'selected' : ''}>${n}</option>`).join('')}</select></div>` : ''}</div>
+          <span class="tnum hk-size">${i.bytes ? fmb(i.bytes) : '–'}</span><input type="checkbox" name="${i.key}" data-b="${i.bytes}" ${i.default ? 'checked' : ''}><span class="switch"></span></label>`).join('')}</div>
+        <div class="row" style="margin-top:12px"><button class="btn" type="submit" id="hkGo"></button><span class="mut sm">Rohdaten, Master-Stacks bestehender Objekte und die neuesten Ergebnisse bleiben immer erhalten.</span></div></form>`
+      : `<p class="mut sm">${icon('check')} Nichts Ungenutztes gefunden.</p>`}`;
+    const form = $('#hkForm', body);
+    if (!form) return;
+    const sum = () => { const sel = $$('input[type=checkbox]:checked', form); $('#hkGo', form).disabled = !sel.length;
+      $('#hkGo', form).innerHTML = `${icon('trash')}Aufräumen${sel.length ? ` · ${fmb(sel.reduce((a, c) => a + +c.dataset.b, 0))}` : ''}`; };
+    form.onchange = (e) => { if (e.target.id === 'hkKeep') load(keepOf()); else sum(); };
+    sum();
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const sel = $$('input[type=checkbox]:checked', form).map(c => c.name);
+      const items = d.unused.filter(i => sel.includes(i.key));
+      const risky = items.filter(i => !i.default);
+      if (!await confirmDlg('Ungenutzte Daten aufräumen?', `${items.map(i => `• ${esc(i.label)}${i.bytes ? ` (${fmb(i.bytes)})` : ''}`).join('<br>')}
+          ${risky.length ? `<br><br><b class="bad">${risky.map(i => esc(i.label)).join(', ')} lassen sich nicht wiederherstellen.</b>` : ''}`, 'Aufräumen', !!risky.length)) return;
+      $('#hkGo', form).disabled = true;
+      $('#hkGo', form).innerHTML = '<span class="spinner"></span>wird aufgeräumt …';
+      try {
+        const r = await send('/stacking/housekeeping/cleanup', { keys: sel, keep: keepOf() });
+        toast(`Aufgeräumt – ${fmb(r.freed)} freigegeben.`, 'ok');
+      } catch (err) { toast(err.message, 'err'); }
+      load(keepOf());
+    };
+  };
+  $('#hkScan', panel).onclick = () => load(keepOf());
+  load();
+}
+
 // ------------------------------------------------------------ Einstellungen --- //
 async function stackingSettings(el) {
   const [c, st, sv, sn] = await Promise.all([api('/stacking/reviewer'), api('/stacking/status'), api('/stacking/solver'), api('/stacking/starnet')]);
@@ -717,7 +765,9 @@ async function stackingSettings(el) {
       <label class="field"><span>API-Key</span><input name="api_key" type="password" autocomplete="off" placeholder="${c.has_key ? '•••••• (gesetzt – leer lassen zum Behalten)' : 'nur für OpenRouter'}"></label>
       <label class="field"><span>Maximale Prüfrunden</span><input name="max_rounds" type="number" min="1" max="6" value="${c.max_rounds}" style="width:100px"></label>
       <div class="row"><button class="btn" type="submit">Speichern</button><span class="mut sm">Wird gespeichert und gilt auch nach einem Neustart.</span></div>
-    </form></div>
+    </form>
+    <div class="panel" id="hk"><div class="panel-h"><h2>Speicherbelegung</h2><span class="grow"></span><span class="chip" id="hkTotal">wird gemessen …</span>
+      <button class="btn sm ghost" type="button" id="hkScan">${icon('refresh')}Neu scannen</button></div><div id="hkBody"><div class="skel" style="height:120px"></div></div></div></div>
     <div><div class="panel" id="snp">
       <div class="panel-h"><h2>Sternentrennung</h2><span class="grow"></span>
         <span class="chip ${sn.found ? 'ok' : ''}">${sn.found ? 'StarNet aktiv' : 'eigene Trennung'}</span></div>
@@ -754,6 +804,7 @@ async function stackingSettings(el) {
       <dt>Lights</dt><dd>${st.frames?.light || 0}</dd>
       <dt>Darks / Flats / Bias</dt><dd>${st.frames?.dark || 0} / ${st.frames?.flat || 0} / ${st.frames?.bias || 0}</dd>
     </dl><p class="mut sm" style="margin:14px 0 0">Tipp: Im Browser-Menü „App installieren“ wählen – AstroFlow läuft dann wie eine eigene App.</p></div></div></div>`;
+  housekeeping($('#hk'));
   $('#stf [name=gaia]').onchange = async (e) => {
     try {
       const r = await send('/stacking/storage', { gaia: e.target.checked });
