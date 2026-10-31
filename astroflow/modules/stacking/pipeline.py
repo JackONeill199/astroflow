@@ -90,7 +90,11 @@ class Pipeline:
                 if f.info.fp:
                     seen[f.info.fp] = f.path
                 unique.append(f)
+        dup_by_proj: dict[int, int] = {}                     # Rückmeldung an den Import: „bereits in Objekt X“
+        owner = {r["path"]: r["project_id"] for r in self.db.q("SELECT path, project_id FROM frames WHERE project_id IS NOT NULL")} if dups else {}
         for f, orig in dups:
+            if owner.get(orig):
+                dup_by_proj[owner[orig]] = dup_by_proj.get(owner[orig], 0) + 1
             if self.s.delete_uploads and self._is_upload(f.path):
                 Path(f.path).unlink(missing_ok=True)       # hochgeladene Kopie: sofort Speicher freigeben
                 continue
@@ -117,7 +121,7 @@ class Pipeline:
             self.db.x("INSERT OR IGNORE INTO frames(id,project_id,path,kind,night,info) VALUES(?,?,?,?,?,?)",
                       (f.id, pid, f.path, f.kind, f.night, json.dumps(f.info.to_dict())))
         return {"new_frames": len(frames), "new_by_project": new_by_proj, "errors": errors, "solved": solved,
-                "duplicates": len(dups)}
+                "duplicates": len(dups), "duplicates_by_project": dup_by_proj}
 
     def _is_upload(self, path: str) -> bool:
         try:

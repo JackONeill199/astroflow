@@ -658,19 +658,20 @@ function upload(files) {
     $('.pct', box).innerHTML = `<span class="row" style="gap:6px"><span class="spinner"></span>wird einsortiert …</span>`;
     try {
       const s = r.raw ? await send('/stacking/scan') : { new_by_project: {} };
-      const pictures = r.pictures || [], ids = [...new Set([...Object.keys(s.new_by_project || {}).map(Number), ...pictures.map(p => p.parent_id || p.id)])];
+      const dupBy = s.duplicates_by_project || {}, rawDup = s.duplicates || 0;   // Rohdaten, die schon einmal importiert wurden
+      const pictures = r.pictures || [], ids = [...new Set([...Object.keys(s.new_by_project || {}).map(Number), ...Object.keys(dupBy).map(Number), ...pictures.map(p => p.parent_id || p.id)])];
       const projects = ids.length ? await api('/stacking/projects') : [];
       box.classList.add('done');
-      const fresh = pictures.filter(p => !p.duplicate && !p.series).length, duplicates = pictures.filter(p => p.duplicate).length;
+      const fresh = pictures.filter(p => !p.duplicate && !p.series).length, duplicates = pictures.filter(p => p.duplicate).length + rawDup;
       const series = pictures.filter(p => !p.duplicate && p.series).length;
-      $('.pct', box).innerHTML = `<span class="ok row" style="gap:6px">${icon('check')}${r.raw || 0} Rohdateien · ${fresh} fertige Bilder${series ? ` · ${series} Teleskop-Verlaufsbilder` : ''}${duplicates ? ` · ${duplicates} bereits vorhanden` : ''}</span>`;
+      $('.pct', box).innerHTML = `<span class="ok row" style="gap:6px">${icon('check')}${(r.raw || 0) - rawDup} neue Rohdateien · ${fresh} fertige Bilder${series ? ` · ${series} Teleskop-Verlaufsbilder` : ''}${duplicates ? ` · ${duplicates} bereits vorhanden` : ''}</span>`;
       (r.errors || []).forEach(message => toast(message, 'err'));
       if (r.errors?.length) box.insertAdjacentHTML('beforeend', `<p class="bad sm">${r.errors.map(esc).join('<br>')}</p>`);
       // direkt zu den erkannten Objekten springen
       if (ids.length) box.insertAdjacentHTML('beforeend', `<div class="found"><span class="mut sm" style="align-self:center">Erkannt:</span>${projects.filter(p => ids.includes(p.id))
-        .map((p, i) => `<a class="chip acc" href="#/p/${p.id}" style="animation-delay:${i * 60}ms">${esc(p.name)} · ${p.imported ? 'fertiges Bild' : `${s.new_by_project[p.id]} neue Aufnahmen`} ${icon('arrow')}</a>`).join('')}</div>`);
+        .map((p, i) => `<a class="chip acc" href="#/p/${p.id}" style="animation-delay:${i * 60}ms">${esc(p.name)} · ${p.imported ? 'fertiges Bild' : [s.new_by_project[p.id] && `${s.new_by_project[p.id]} neue Aufnahmen`, dupBy[p.id] && `${dupBy[p.id]} bereits vorhanden`].filter(Boolean).join(' · ')} ${icon('arrow')}</a>`).join('')}</div>`);
       const one = ids.length === 1 && projects.find(p => p.id === ids[0]);
-      toast(`${r.saved} Dateien übernommen${fresh ? ` · ${fresh} fertige Bilder in der Galerie` : ''}${series ? ` · ${series} Teleskop-Verlaufsbilder zusammengefasst` : ''}${duplicates ? ` · ${duplicates} bereits vorhanden` : ''}.`, r.saved ? 'ok' : 'err', one ? { label: 'Öffnen', href: `#/p/${one.id}` } : null);
+      toast(rawDup && rawDup === r.raw && !fresh && !series ? `Nichts Neues: alle ${rawDup} Rohdateien waren schon importiert.` : `${r.saved - rawDup} Dateien übernommen${fresh ? ` · ${fresh} fertige Bilder in der Galerie` : ''}${series ? ` · ${series} Teleskop-Verlaufsbilder zusammengefasst` : ''}${duplicates ? ` · ${duplicates} bereits vorhanden` : ''}.`, r.saved ? 'ok' : 'err', one ? { label: 'Öffnen', href: `#/p/${one.id}` } : null);
       poll();
     } catch (e) { $('.pct', box).innerHTML = '<span class="bad">Einsortieren fehlgeschlagen</span>'; toast(e.message, 'err'); }
   };

@@ -89,6 +89,8 @@ def test_duplicate_upload_is_not_stacked_twice(tmp_path):
     shutil.copytree(s.input_dir / "nacht1", s.input_dir / "uploads" / "nochmal")   # gleicher Ordner erneut hochgeladen
     r = pl.scan()
     assert r["duplicates"] == 6 and r["new_frames"] == 0
+    pid = db.one("SELECT id FROM projects")["id"]
+    assert r["duplicates_by_project"] == {pid: 6}                                  # Import zeigt „bereits in Objekt X“
     assert db.one("SELECT COUNT(*) n FROM frames WHERE kind='light'")["n"] == 6
     assert pl.scan()["new_frames"] == 0                                             # bleibt erkannt
 
