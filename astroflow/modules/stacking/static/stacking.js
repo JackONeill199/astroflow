@@ -697,9 +697,9 @@ async function housekeeping(panel) {
       ${big.length ? `<h3 class="hk-h">Größte Objekte</h3><table class="hk-tab"><thead><tr><th>Objekt</th><th>Versionen</th><th>Bilder</th><th>Master-Stack</th></tr></thead><tbody>
         ${big.map(p => `<tr><td><a href="#/p/${p.id}/versionen">${esc(p.name)}</a></td><td class="tnum">${p.versions}</td><td class="tnum">${fmb(p.output)}</td><td class="tnum">${p.stack ? fmb(p.stack) : '–'}</td></tr>`).join('')}</tbody></table>` : ''}
       <h3 class="hk-h">Ungenutzte Daten</h3>
-      ${d.unused.length ? `<form id="hkForm"><div class="hk-items">${d.unused.map(i => `<label class="modrow hk-item"><div><b>${esc(i.label)}</b><div class="mut sm">${esc(i.detail)}${i.count > 1 ? ` · ${i.count} Einträge` : ''}</div>
+      ${d.unused.length ? `<form id="hkForm"><div class="hk-items">${d.unused.map(i => `<label class="modrow hk-item" for="hk_${i.key}"><div><b>${esc(i.label)}</b><div class="mut sm">${esc(i.detail)}${i.count > 1 ? ` · ${i.count} Einträge` : ''}</div>
           ${i.key === 'old_versions' ? `<div class="row sm" style="margin-top:6px;gap:6px"><span class="mut">Neueste behalten:</span><select id="hkKeep" style="width:auto;height:30px">${[1, 2, 3, 5].map(n => `<option ${n === i.keep ? 'selected' : ''}>${n}</option>`).join('')}</select></div>` : ''}</div>
-          <span class="tnum hk-size">${i.bytes ? fmb(i.bytes) : '–'}</span><input type="checkbox" name="${i.key}" data-b="${i.bytes}" ${i.default ? 'checked' : ''}><span class="switch"></span></label>`).join('')}</div>
+          <span class="tnum hk-size">${i.bytes ? fmb(i.bytes) : '–'}</span><input type="checkbox" id="hk_${i.key}" name="${i.key}" data-b="${i.bytes}" ${i.default ? 'checked' : ''}><span class="switch"></span></label>`).join('')}</div>
         <div class="row" style="margin-top:12px"><button class="btn" type="submit" id="hkGo"></button><span class="mut sm">Rohdaten, Master-Stacks bestehender Objekte und die neuesten Ergebnisse bleiben immer erhalten.</span></div></form>`
       : `<p class="mut sm">${icon('check')} Nichts Ungenutztes gefunden.</p>`}`;
     const form = $('#hkForm', body);

@@ -10,5 +10,7 @@
 .hk-tab { width: 100%; border-collapse: collapse; font-size: 13px }
 .hk-tab th { text-align: left; font-weight: 500; color: var(--dim); font-size: 12px; padding: 4px 8px 6px 0 }
 .hk-tab td { padding: 6px 8px 6px 0; border-top: 1px solid var(--line) }
+.hk-tab th:last-child, .hk-tab td:last-child { padding-right: 0 }
+.hk-tab td:first-child { white-space: normal; overflow-wrap: anywhere }   /* globales nowrap ließ lange Namen über den Rand ragen */
 .hk-tab th:not(:first-child), .hk-tab td:not(:first-child) { text-align: right }
 .hk-item .hk-size { font-weight: 600; white-space: nowrap }
