@@ -204,41 +204,95 @@ const entCard = (c, i) => `<a class="sw-card" href="#/sage/o/${c.id}" style="--i
     <p class="sm sw-sum">${esc(noCite(c.summary))}</p>${c.distance ? `<div class="foot"><span>${icon('orbit')}${esc(c.distance)}</span>${c.distance_conflict ? '<span class="warn">Messungen streuen</span>' : ''}</div>` : ''}</div></a>`;
 
 // --------------------------------------------------------------- Enzyklopädie --- //
-// Startseite: Suchleiste, Dashboard des Fokus-Objekts (zuletzt fotografiert, umschaltbar), darunter die Enzyklopädie
+// Startseite als Portal (Vorbild: Hauptseiten von Wikipedia, Telescopius, Stellarium): Suche, Objekt im Fokus
+// (zuletzt fotografiert, umschaltbar), „Heute Nacht am Himmel“, neueste Entdeckungen, Stöbern nach Objektart, darunter alle Einträge
+const KIND_PL = { galaxy: 'Galaxien', emission: 'Emissionsnebel', reflection: 'Reflexionsnebel', planetary: 'Planetarische Nebel', snr: 'Supernova-Überreste',
+  globular: 'Kugelsternhaufen', open_cluster: 'Offene Sternhaufen', star: 'Sterne', dark: 'Dunkelnebel' };
+const hhmm = (h) => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h % 1) * 60) % 60).padStart(2, '0')}`;
 async function wikiView(el) {
   crumbs([['Sage', '#/sage/wiki'], ['Enzyklopädie']]);
-  let filter = store.get('sage.wf', 'all'), q = '', seq = 0, inner = null;
-  const [d0, feat] = await Promise.all([api(`${K}/entities?filter=${filter}`), api(`${K}/featured`).catch(() => [])]);
-  let d = d0;
-  const s = d.stats;
+  let filter = store.get('sage.wf', 'all'), kindF = null, q = '', seq = 0;
+  const [all, home, ins] = await Promise.all([api(`${K}/entities?filter=all`), api(`${K}/home`).catch(() => ({ featured: [], tonight: { items: [] } })),
+    api(`${K}/insights`).catch(() => ({ items: [] }))]);
+  if (!el.isConnected) return;
+  let d = filter === 'all' ? all : await api(`${K}/entities?filter=${filter}`);
+  const s = all.stats, feat = home.featured;
   let focus = feat.some(f => f.id === store.get('sage.focus')) ? store.get('sage.focus') : feat[0]?.id;
-  el.innerHTML = `<div class="sw-wtop"><div class="sw-search"><input type="search" id="swQ" placeholder="Suche in deiner Enzyklopädie – z. B. M45, Plejaden, NGC 7000, Reflexionsnebel" autocomplete="off"></div>
+  // Objektarten zum Stöbern: Anzahl + erstes eigenes Bild
+  const kinds = {};
+  all.items.forEach(i => { if (!KIND_PL[i.af_kind]) return; const k = kinds[i.af_kind] ||= { n: 0, img: null }; k.n++; k.img ||= i.image; });
+  const kindList = Object.entries(kinds).sort((a, b) => b[1].n - a[1].n);
+  // Neueste Entdeckungen: je Art zuerst die jüngste, damit nicht vier gleichartige Hinweise den Platz füllen
+  const news = [], used = new Set();
+  ins.items.forEach(x => { if (!used.has(x.kind) && news.length < 6) { used.add(x.kind); news.push(x); } });
+  ins.items.forEach(x => { if (news.length < 6 && !news.includes(x)) news.push(x); });
+  const tn = home.tonight;
+  el.innerHTML = `<div class="sw-home">
+    <div class="sw-hhead"><div><div class="eyebrow"><span></span>SAGE · LEBENDE ENZYKLOPÄDIE</div><h1>Enzyklopädie</h1>
+        <div class="sw-hstats">${[[s.objects, 'Objekte'], [s.observed, 'fotografiert'], [s.researched + s.reviewed, 'recherchiert'], [s.sources, 'Quellen']]
+          .map(([n, l]) => `<span><b>${n.toLocaleString('de-DE')}</b> ${l}</span>`).join('')}</div></div>
+      <a class="linkbtn" href="#/sage/netz">${icon('orbit')}Wissensnetz</a></div>
+    <div class="sw-wtop"><div class="sw-search"><input type="search" id="swQ" placeholder="Suche in deiner Enzyklopädie – z. B. M45, Plejaden, NGC 7000, Reflexionsnebel" autocomplete="off"></div>
       <button class="btn ghost" id="swAskAll">${icon('sparkle')}Frag Sage</button></div>
-    <div id="swSearchRes"></div>
-    ${feat.length ? `<div class="sw-focus"><span class="mut sm">Im Fokus</span>${feat.slice(0, 10).map(f => `<button data-f="${f.id}" class="${f.id === focus ? 'on' : ''}">${esc(shortName(f.name))}</button>`).join('')}</div>
-      <div id="swFocus"></div>` : `<section class="sw-hero"><div class="eyebrow"><span></span>SAGE · LEBENDE ENZYKLOPÄDIE</div>
+    <div id="swSearchRes"></div><div id="swTasks"></div>
+    <div id="swPortal">
+      ${feat.length ? `<section class="sw-feat" id="swFeat"></section>
+        <div class="sw-fstrip">${feat.map(f => `<button data-f="${f.id}" title="${esc(f.name)}">${f.image ? `<img src="${f.image}" alt="" loading="lazy">` : ph(f.af_kind)}<span>${esc(shortName(f.name))}</span></button>`).join('')}</div>`
+      : `<section class="sw-hero"><div class="eyebrow"><span></span>DEINE ENZYKLOPÄDIE</div>
         <h1>Der Himmel, deine Bilder, die Forschung – <span class="sw-grad">verbunden</span>.</h1>
         <p class="mut">Fachkataloge liefern die Messwerte, ein recherchierender Agent liest die Literatur, und alles verknüpft sich mit deinen eigenen Aufnahmen. Bestimme ein Bild oder suche oben nach einem Objekt.</p></section>`}
-    <div class="sw-encl"><div class="toolbar"><h2 class="sect" style="margin:0">Enzyklopädie</h2>
-        <span class="mut sm">${s.objects} Objekte · ${s.observed} fotografiert · ${s.researched} KI-recherchiert · ${s.reviewed} geprüft · ${s.sources} Quellen</span><span class="grow"></span>
-        <div class="seg" id="swF">${[['all', 'Alle'], ['observed', 'Meine Objekte'], ['ai', 'KI-recherchiert'], ['concepts', 'Grundbegriffe']].map(([k, l]) => `<button data-k="${k}" class="${k === filter ? 'on' : ''}">${l}</button>`).join('')}</div>
-        <a class="linkbtn" href="#/sage/netz">${icon('orbit')}Wissensnetz</a></div>
-      <div id="swTasks"></div><div id="swGrid"></div></div>`;
-  const showFocus = async (fid) => {
-    inner?.destroy?.(); inner = null;
-    if (!fid || !$('#swFocus')) return;
+      <div class="sw-hgrid">
+        <section class="panel sw-tonight"><div class="sw-ph2">${icon('globe')}<div><h3>Heute Nacht am Himmel</h3>
+            <div class="mut sm">Hoch um Mitternacht · ${tn.assumed ? `für ${tn.lat}° N angenommen` : `${String(tn.lat).replace('.', ',')}° Breite`}</div></div></div>
+          ${tn.items.length ? `<div class="sw-tn">${tn.items.map((t, i) => `<button class="sw-tnr" data-i="${i}">
+              <span class="sw-tni">${t.image ? `<img src="${t.image}" alt="" loading="lazy">` : ph(t.kind)}</span>
+              <span class="sw-tnn"><b>${esc(t.name)}</b><span class="mut sm">${esc(t.kind_label || '')}${t.mine ? ` · <span class="sw-tnm">${icon('camera')}fotografiert</span>` : ''}</span></span>
+              <span class="sw-tna" title="Größte Höhe über dem Horizont"><span class="sw-alt"><i style="width:${Math.round(t.alt / 90 * 100)}%"></i></span><span class="sm">${t.alt}°</span></span>
+              <span class="sw-tnt mut sm" title="Kulmination (mittlere Ortszeit, ungefähr)">${hhmm(t.transit)}</span></button>`).join('')}</div>`
+            : '<p class="mut sm">Gerade steht keines der Katalogobjekte günstig.</p>'}
+          ${tn.assumed ? `<p class="dim sm sw-pfoot">Genauer mit deinem Standort: <a href="#/settings/sage">Breitengrad eintragen</a></p>` : ''}</section>
+        <section class="panel sw-news"><div class="sw-ph2">${icon('sparkle')}<div><h3>Neu entdeckt</h3><div class="mut sm">Sage forscht im Hintergrund weiter</div></div>
+            <span class="grow"></span><a class="linkbtn" href="#/sage/entdeckungen">Alle ${icon('arrow')}</a></div>
+          ${news.length ? news.map(x => `<a class="sw-nw" href="#/sage/entdeckungen"><span class="sw-nwi">${icon(INS_ICON[x.kind] || 'sparkle')}</span>
+              <span><b>${esc(x.title)}</b><span class="mut sm">${ago(x.created)}${x.entities.length ? ' · ' + x.entities.slice(0, 3).map(e => esc(shortName(x.entity_names[e] || e))).join(', ') : ''}</span></span></a>`).join('')
+            : `<p class="mut sm">Noch nichts – Sage sucht regelmäßig nach neuen Arbeiten zu deinen Objekten, fehlenden Einträgen und Zusammenhängen.</p>`}</section>
+      </div>
+      ${kindList.length > 1 ? `<h2 class="sect sw-hsect">Nach Objektart stöbern</h2><div class="sw-kinds stagger">${kindList.map(([k, v], i) => `<button class="sw-kind k-${k}" data-kind="${k}" style="--i:${i}">
+          ${v.img ? `<img src="${v.img}" alt="" loading="lazy">` : ph(k)}<span><b>${KIND_PL[k]}</b><span class="sm">${v.n} ${v.n === 1 ? 'Eintrag' : 'Einträge'}</span></span></button>`).join('')}</div>` : ''}
+    </div>
+    <div class="sw-encl" id="swEncl"><div class="toolbar"><h2 class="sect" style="margin:0">Alle Einträge</h2><span id="swKF"></span><span class="grow"></span>
+        <div class="seg" id="swF">${[['all', 'Alle'], ['observed', 'Meine Objekte'], ['ai', 'KI-recherchiert'], ['concepts', 'Grundbegriffe']].map(([k, l]) => `<button data-k="${k}" class="${k === filter ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+      <div id="swGrid"></div></div></div>`;
+  const showFocus = (fid) => {
+    const f = feat.find(x => x.id === fid), host = $('#swFeat');
+    if (!f || !host) return;
     focus = fid; store.set('sage.focus', fid);
-    $$('.sw-focus button').forEach(b => b.classList.toggle('on', b.dataset.f === fid));
-    try { inner = await objectView($('#swFocus'), fid, 'uebersicht', { embedded: true }); } catch (err) { $('#swFocus').innerHTML = `<div class="notice">${icon('alert')}${esc(err.message)}</div>`; }
+    $$('.sw-fstrip button').forEach(b => b.classList.toggle('on', b.dataset.f === fid));
+    const facts = [[icon('orbit'), f.distance, 'Entfernung'], [icon('camera'), f.nights ? `${f.nights} ${f.nights === 1 ? 'Nacht' : 'Nächte'}` : null, f.hours ? `${String(f.hours).replace('.', ',')} h belichtet` : 'Aufnahmen'],
+      [icon('pin'), f.last ? fnight(f.last) : null, 'zuletzt fotografiert'], [icon('globe'), f.constellation, 'Sternbild']].filter(x => x[1]);
+    host.innerHTML = `<div class="sw-fbg" style="${f.image ? `background-image:url('${f.image}')` : ''}"></div>
+      <a class="sw-fimg" href="#/sage/o/${f.id}">${f.picture ? `<img src="${f.picture}" alt="${esc(f.name)}" onload="this.classList.add('ld')">` : ph(f.af_kind)}</a>
+      <div class="sw-ftxt"><div class="eyebrow"><span></span>IM FOKUS · ZULETZT FOTOGRAFIERT</div>
+        <h2>${esc(f.name)}</h2><div class="mut">${esc(f.otype_label || '')}${f.constellation ? ' im Sternbild ' + esc(f.constellation) : ''} ${statusChip(f.status)}</div>
+        <p class="sw-fsum">${esc(noCite(f.summary)) || '<span class="mut">Noch ohne Beschreibung – Sage kann recherchieren.</span>'}</p>
+        <div class="sw-ffacts">${facts.map(([ic, v, l]) => `<div>${ic}<b>${esc(v)}</b><span>${l}</span></div>`).join('')}</div>
+        <div class="row sw-fbtn"><a class="btn" href="#/sage/o/${f.id}">${icon('book')}Artikel lesen</a>
+          <button class="btn ghost" data-ask>${icon('sparkle')}Frag Sage</button><a class="btn ghost" href="#/sage/netz/${f.id}">${icon('orbit')}Zusammenhänge</a></div></div>`;
+    host.querySelector('[data-ask]').onclick = () => chat({ scope: 'entity:' + f.id, entity: f.id, title: f.name });
   };
   const draw = () => {
     const items = d.items, exact = q && items.some(i => i.name.toLowerCase().includes(q.toLowerCase()) && i.kind === 'object');
     const cta = q && !exact ? `<div class="panel sw-cta">${icon('search')}<div><b>„${esc(q)}“ recherchieren</b><div class="mut sm">Sage löst die Kennung in SIMBAD auf, sammelt Messwerte mit Belegen und aktuelle Literatur – mit KI zusätzlich ein belegter Artikel.</div></div>
         <span class="grow"></span><button class="btn" id="swDo">${icon('sparkle')}Recherchieren</button></div>` : '';
     $('#swSearchRes').innerHTML = q ? cta + (items.length ? `<div class="sw-grid stagger" style="margin-bottom:22px">${items.slice(0, 8).map(entCard).join('')}</div>` : '') : '';
+    $('#swPortal').hidden = $('#swEncl').hidden = !!q;
     $('#swDo')?.addEventListener('click', async () => { const t = await startResearch(q, true); if (t) showTask(t); });
-    const hid = d.stats.hidden_stubs ? `<p class="dim sm" style="margin-top:14px">${d.stats.hidden_stubs} Grundeinträge ohne eigenes Bild (z. B. Galaxiengruppen aus SIMBAD) sind ausgeblendet – über die Suche und das Wissensnetz erreichbar.</p>` : '';
-    if (!q) $('#swGrid').innerHTML = items.length ? `<div class="sw-grid stagger">${items.map(entCard).join('')}</div>${hid}`
+    if (q) return;
+    const shown = kindF ? items.filter(i => i.af_kind === kindF) : items;
+    $('#swKF').innerHTML = kindF ? `<button class="chip acc sw-kfx" title="Filter entfernen">${KIND_PL[kindF]} ×</button>` : '';
+    const hid = d.stats.hidden_stubs && !kindF ? `<p class="dim sm" style="margin-top:14px">${d.stats.hidden_stubs} Grundeinträge ohne eigenes Bild (z. B. Galaxiengruppen aus SIMBAD) sind ausgeblendet – über die Suche und das Wissensnetz erreichbar.</p>` : '';
+    $('#swGrid').innerHTML = shown.length ? `<div class="sw-grid stagger">${shown.map(entCard).join('')}</div>${hid}`
+      : items.length ? `<p class="mut">Keine ${KIND_PL[kindF] || 'Einträge'} in dieser Auswahl.</p>`
       : `<div class="empty">${icon('book')}<h2>Die Enzyklopädie ist noch leer</h2>Bestimme ein Bild oder suche oben nach einem Objekt – Sage legt die Einträge an.</div>`;
   };
   const showTask = (t) => {
@@ -253,13 +307,18 @@ async function wikiView(el) {
   $('#swQ').onkeydown = (ev) => { if (ev.key === 'Enter' && $('#swDo')) $('#swDo').click(); else if (ev.key === 'Enter' && q && d.items[0]) location.hash = `#/sage/o/${d.items[0].id}`; };
   $('#swF').onclick = async (ev) => { const b = ev.target.closest('[data-k]'); if (!b) return; filter = b.dataset.k; store.set('sage.wf', filter);
     $$('#swF button').forEach(x => x.classList.toggle('on', x === b)); d = await api(`${K}/entities?filter=${filter}`); q = ''; $('#swQ').value = ''; draw(); };
-  $('.sw-focus')?.addEventListener('click', (ev) => { const b = ev.target.closest('[data-f]'); if (b && b.dataset.f !== focus) showFocus(b.dataset.f); });
+  $('.sw-fstrip')?.addEventListener('click', (ev) => { const b = ev.target.closest('[data-f]'); if (b && b.dataset.f !== focus) showFocus(b.dataset.f); });
+  // Objekt ohne Enzyklopädie-Eintrag → Wissenskarte (legt bei Bedarf eine Recherche an)
+  $('.sw-tn')?.addEventListener('click', (ev) => { const b = ev.target.closest('[data-i]'); if (!b) return; const t = tn.items[b.dataset.i];
+    if (t.id) location.hash = `#/sage/o/${t.id}`; else card(t.name, ev); });
+  $('.sw-kinds')?.addEventListener('click', (ev) => { const b = ev.target.closest('[data-kind]'); if (!b) return; kindF = b.dataset.kind;
+    if (filter === 'concepts') $('#swF [data-k="all"]').click(); else draw();
+    $('#swEncl').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); });
+  $('#swKF').onclick = () => { kindF = null; draw(); };
   $('#swAskAll').onclick = () => chat({ scope: 'global' });
   draw();
-  await showFocus(focus);
-  crumbs([['Sage', '#/sage/wiki'], ['Enzyklopädie']]);
-  return { actions: () => [['search', 'Objekt recherchieren', 'Fachkataloge + KI', () => $('#swQ').focus()], ['sparkle', 'Frag Sage', 'Assistent', () => chat({ scope: 'global' })]],
-    destroy: () => inner?.destroy?.() };
+  showFocus(focus);
+  return { actions: () => [['search', 'Objekt recherchieren', 'Fachkataloge + KI', () => $('#swQ').focus()], ['sparkle', 'Frag Sage', 'Assistent', () => chat({ scope: 'global' })]] };
 }
 
 // Himmelskarte: Rektaszension nach links wachsend (Blick nach Süden), Gitter, helle Katalogobjekte, eigene hervorgehoben.

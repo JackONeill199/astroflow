@@ -196,6 +196,48 @@ def extend(r, mod, url):
         objs.sort(key=lambda o: max(o.get("last") or "", imgs.get(o["entity"], "")), reverse=True)
         return [{"id": o["entity"], "name": o["name"], "last": o.get("last")} for o in objs]
 
+    @r.get("/kb/home")
+    def home():
+        """Startseite der Enzyklopädie: Fokus-Objekte (zuletzt fotografiert, mit Aufnahmedaten und großem Bild) und
+        „Heute Nacht am Himmel“ (Kulmination um Mitternacht aus der Sonnen-RA, ohne Standort für 50° N)."""
+        from .insights import sun_ra
+        pics, mine = picture_index(), observed_ids()
+        prof = {o["entity"]: o for o in memory.profile(mod)["objects"] if o["entity"]}
+        feat = []
+        for f in featured()[:10]:
+            e = kb.entity(f["id"])
+            if not e:
+                continue
+            c, o = card(e, pics, mine), prof.get(f["id"], {})
+            thumb = c["image"] or ""
+            feat.append({**c, "last": f["last"], "nights": o.get("nights", 0), "hours": round(o.get("hours", 0.0), 1),
+                         "picture": thumb[:-6] + "/jpg" if thumb.startswith("/api/stacking/results/") and thumb.endswith("/thumb") else thumb})
+        try:
+            lat, assumed = float(str(mod.config().get("observer_lat") or "").replace(",", ".")), False
+        except ValueError:
+            lat, assumed = 50.0, True
+        mid = (sun_ra() + 180) % 360
+        cand = {}
+        cat = mod.ctx.service("catalog_objects")
+        pts = [(c["id"], c["display"], c["ra"], c["dec"], c["kind"], c["kind_label"], c["size"]) for c in (cat() if cat else [])]
+        pts += [(x["id"], x["name"], x["ra"], x["dec"], (x["data"] or {}).get("af_kind"), x["otype_label"], 0)
+                for x in kb.q("SELECT id, name, ra, dec, data, otype_label FROM entities WHERE kind='object' AND ra IS NOT NULL")
+                if x["id"] in mine]
+        for cid, name, ra, dec, kind, label, size in pts:
+            alt, dra = 90 - abs(lat - dec), (ra - mid + 180) % 360 - 180
+            if alt < 30 or abs(dra) > 75:
+                continue
+            e = kb.entity(cid) or kb.resolve(cid)
+            key = e["id"] if e else cid
+            if key in cand:
+                continue
+            seen = bool(e and e["id"] in mine)
+            cand[key] = {"id": e and e["id"], "name": e["name"] if e else name, "kind": kind, "kind_label": label, "alt": round(alt),
+                         "transit": round((24 + dra / 15) % 24, 1) % 24, "mine": seen, "image": e and pics.get(e["id"], {}).get("thumb"),
+                         "score": alt / 90 - abs(dra) / 150 + min(size or 0, 60) / 150 + (0.25 if seen else 0)}
+        tonight = sorted(cand.values(), key=lambda c: -c["score"])[:8]
+        return {"featured": feat, "tonight": {"lat": lat, "assumed": assumed, "items": tonight}}
+
     @r.get("/kb/skymap/{eid}")
     def skymap(eid: str, radius: float = 22):
         """Umgebung am Himmel: helle Katalogobjekte und eigene Objekte im Umkreis (für die Positionskarte)."""

@@ -144,6 +144,12 @@ def test_recherche_katalog_und_seite(client):
     assert facts["mag"]["value"] == "1,6 mag (V)" and 9 < facts["diameter"]["num"] < 11 and facts["diameter"]["origin"] == "derived"
     assert d["designations"][0] == "M45" and "Pleiades" in d["designations"]
     assert client.get("/api/sage/kb/featured").json()[0]["id"] == "m45"
+    home = client.get("/api/sage/kb/home").json()                     # Startseite: Fokus mit Aufnahmedaten, Himmel heute Nacht
+    f0 = home["featured"][0]
+    assert f0["id"] == "m45" and f0["nights"] >= 2 and "443" in f0["distance"]
+    tn = home["tonight"]
+    assert tn["assumed"] and tn["lat"] == 50.0 and len(tn["items"]) <= 8
+    assert all(t["alt"] >= 30 and 0 <= t["transit"] < 24 for t in tn["items"])
     sm = client.get("/api/sage/kb/skymap/m45").json()
     assert sm["center"]["id"] == "m45" and any(o["id"] == "m45" for o in sm["objects"])
     # zwei Versionen aus verschiedenen Frame-Mengen = zwei Aufnahmen; dieselbe neu entwickelt bliebe eine

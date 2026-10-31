@@ -19,8 +19,13 @@ insights/runs/usage/stories/chats/http_cache. Regeln: **Messwerte nur aus Fachqu
 - `kb_api.py` → `/api/sage/kb/…`; Oberfläche `static/sage-wiki.js|css` (Routen `#/sage/wiki`, `#/sage/o/<id>/<tab>`, `#/sage/entdeckungen`,
   `#/sage/netz[/<id>]`; Sammlung & Erfolge jetzt `#/sage/sammlung`). Klick ins Bild: Shell-`createViewer(…, {onTap})` + `SageWiki.pick`
   (geometrisch – Kreise sind ungefüllt). Beim Start `Module.backfill`: alte Bildbestimmungen/Aufnahmen verknüpfen, fehlende im Hintergrund aus SIMBAD.
-- **Dashboard** (Nutzerwunsch 29.10.2026, Vorlage: Mockup „Plejaden“): Startseite `#/sage/wiki` = Suchleiste + „Im Fokus“-Chips
-  (`/kb/featured`, zuletzt fotografiert) + eingebettete Objektseite (`objectView(…, {embedded: true})`) + Enzyklopädie-Raster.
+- **Startseite als Portal** (seit 31.10.2026, Nutzerwunsch „Beispiel an anderen Projekten nehmen“ – Vorbild Wikipedia-Hauptseite,
+  Telescopius, Stellarium): `#/sage/wiki` = Kopf mit Kennzahlen + Suche, Fokus-Banner (großes Bild `picture` = Ergebnis-JPG, Kurztext,
+  Nächte/Belichtung/zuletzt, umschaltbar über Bildleiste), „Heute Nacht am Himmel“ (Kulmination um Mitternacht aus `insights.sun_ra`,
+  ohne `observer_lat` für 50° N; Objekte ohne Eintrag öffnen die Wissenskarte), „Neu entdeckt“ (jüngste Entdeckung je Art),
+  „Nach Objektart stöbern“ (filtert das Raster), „Alle Einträge“. Daten: `/kb/home` (`featured` + `tonight`), `/kb/entities`, `/kb/insights`.
+  Vorher war hier die komplette Objektseite eingebettet (~3000 px vor dem Raster). Vorschaubilder sind um 1,3× hineingezoomt (Objekt klein in der Feldmitte). Das Bannerfoto dagegen nie zuschneiden (Nutzerwunsch: Seitenverhältnis behalten; auf 2560 px wirkte `cover` + Zoom wie ein Panorama-Streifen).
+- **Dashboard der Objektseite** (Nutzerwunsch 29.10.2026, Vorlage: Mockup „Plejaden“; `objectView(…, {embedded: true})` bettet sie ohne Brotkrumen ein).
   Objektkopf: Titelbild (`data.hero`, wählbar), Kurzname, Bezeichnungen (`designations`), Faktenkarte, Himmelskarte (`/kb/skymap`).
   Übersicht: Bild + Galerie (`gallery`), KI-Zusammenfassung/Forschung/Persönlicher Kontext, Beschreibung, Schnellfakten
   (Durchmesser aus Winkelgröße × Entfernung, Helligkeit aus SIMBAD `flux` – fehlt z. B. für M45), Verwandte, Notizen, Aufnahmen.
