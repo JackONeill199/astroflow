@@ -74,3 +74,61 @@ def test_cleanup_api_refuses_while_job_runs(tmp_path):
         db = DB(Path(tmp_path / "data" / "astroflow.db"))
         db.x("INSERT INTO jobs(project_id, state, created) VALUES(NULL, 'running', 0)")
         assert c.post("/api/stacking/housekeeping/cleanup", json={"keys": ["temp"]}).status_code == 409
+
+
+def test_delete_single_version(tmp_path):
+    """Einzelne Version löschen: eigene Dateien weg, gemeinsam genutzte bleiben, letzte Version nicht löschbar."""
+    from fastapi.testclient import TestClient
+    from astroflow.server import create_app
+    s = load_settings(tmp_path / "data")
+    s.auto = False
+    with TestClient(create_app(s)) as c:
+        db = DB(Path(tmp_path / "data" / "astroflow.db"))
+        pid = db.x("INSERT INTO projects(key, name, created) VALUES('m1', 'M1', 0)")
+        out = s.output_dir / "M1"
+        out.mkdir(parents=True)
+        shared = out / "M1_stack.fits"
+        shared.write_bytes(b"x" * 100)
+        rids = []
+        for i in range(2):
+            jpg = out / f"M1_v{i}.jpg"
+            jpg.write_bytes(b"x" * 300)
+            rids.append(db.x("INSERT INTO results(project_id, created, n_frames, exposure, files, stats) VALUES(?,?,1,1,?,'{}')",
+                             (pid, i, json.dumps({"jpg": str(jpg), "fits": str(shared)}))))
+        r = c.delete(f"/api/stacking/results/{rids[1]}")
+        assert r.status_code == 200 and r.json()["freed"] == 300
+        assert not (out / "M1_v1.jpg").exists() and shared.exists() and (out / "M1_v0.jpg").exists()
+        assert [x["id"] for x in db.q("SELECT id FROM results")] == [rids[0]]
+        assert c.delete(f"/api/stacking/results/{rids[0]}").status_code == 409        # einzige Version bleibt
+        assert c.delete("/api/stacking/results/9999").status_code == 404
+
+
+def test_delete_version_concurrent_keeps_last(tmp_path, monkeypatch):
+    """Zwei gleichzeitige Löschungen bei zwei Versionen: genau eine gelingt, eine Version bleibt."""
+    import threading
+    s = load_settings(tmp_path / "data")
+    db = DB(s.db_path)
+    pid = db.x("INSERT INTO projects(key, name, created) VALUES('m1', 'M1', 0)")
+    rids = [db.x("INSERT INTO results(project_id, created, n_frames, exposure, files, stats) VALUES(?,?,1,1,'{}','{}')", (pid, i))
+            for i in range(2)]
+    barrier, real = threading.Barrier(2, timeout=2), housekeeping._results
+
+    def slow_results(d):                    # beide Anfragen lesen gleichzeitig – ohne Sperre sähen beide zwei Versionen
+        try:
+            barrier.wait()
+        except threading.BrokenBarrierError:
+            pass
+        return real(d)
+    monkeypatch.setattr(housekeeping, "_results", slow_results)
+    out = []
+
+    def run(rid):
+        try:
+            out.append(housekeeping.delete_version(s, db, rid))
+        except (ValueError, KeyError) as e:
+            out.append(e)
+    ts = [threading.Thread(target=run, args=(r,)) for r in rids]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert sum(isinstance(x, dict) for x in out) == 1
+    assert db.one("SELECT COUNT(*) n FROM results")["n"] == 1

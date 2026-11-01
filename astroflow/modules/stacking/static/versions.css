@@ -1,0 +1,4 @@
+/* Versionen eines Objekts: Aktionen je Karte */
+.ver-act { display: inline-flex; gap: 10px; align-items: center }
+.linkbtn.danger { color: var(--bad) }
+.linkbtn.danger:hover { background: color-mix(in srgb, var(--bad) 12%, transparent) }
