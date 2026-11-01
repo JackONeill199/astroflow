@@ -3,6 +3,17 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.10.1 – 01.11.2026
+
+### Behoben
+- **SkyTrace: Satellitennamen fehlten** („Satellit NORAD 51779“ statt Name): CelesTrak hatte die Namensabfrage für den
+  Internetanschluss gesperrt (HTTP 403), weil jede Katalognummer einzeln abgefragt wurde und nach der Sperre jeder weitere
+  Kandidat erneut anfragte. Jetzt wird eine Sperre erkannt und 24 Stunden lang nicht mehr angefragt (andere Fehler:
+  15 Minuten), es werden weniger Nummern abgefragt (Treffer und die drei nächsten Bahnen, mit kurzer Pause), und auch
+  „nicht im Katalog“ wird gemerkt. Die Zuordnung zur Bahn ist davon nicht betroffen – nur der Name.
+- Fehlen Namen, steht der Grund jetzt sichtbar im Satellitenabgleich des Kandidaten und im Laufstatus, statt
+  stillschweigend nur die Nummer zu zeigen.
+
 ## 0.10.0 – 01.11.2026
 
 ### Neu

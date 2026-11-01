@@ -34,28 +34,57 @@ SATCAT='https://celestrak.org/satcat/records.php'
 SATCAT_TYPES={'PAY':'Satellit','R/B':'Raketenstufe','DEB':'Trümmerteil','UNK':'unbekanntes Objekt'}
 
 
+SATCAT_PAUSE_S=0.5           # Abstand zwischen Einzelabfragen
+SATCAT_BLOCK_S=24*3600       # HTTP 403: CelesTrak sperrt den Anschluss wegen zu vieler Abfragen (Nutzungsregeln)
+SATCAT_RETRY_S=15*60         # andere Fehler (Netz, 429/5xx): nicht bei jedem Kandidaten erneut versuchen
+
+
 def satellite_names(ids,settings,limit=12):
     """Namen und Objektart je NORAD-Nummer aus dem CelesTrak-SATCAT (nur die Nummer wird gesendet, kein Standort/Zeit).
-    Cache `satcat-names.json`; nicht erreichbar → bekannte Namen, sonst leer (Nummer bleibt sichtbar)."""
+    Cache `satcat-names.json` (auch „nicht im Katalog“). Ergebnis `(namen, hinweis)` – Hinweis None oder Grund, warum
+    Namen fehlen. Nach einer Sperre (403; Anlass 01.11.2026: viele Einzelabfragen beim Nachrechnen aller Läufe, danach
+    fragte jeder Kandidat erneut an) bzw. einem Fehler fragt `satcat-pause.json` bis zum Ablauf nicht mehr an."""
     from json_store import read_json
     import requests
-    path=CACHE/'satcat-names.json'
+    path=CACHE/'satcat-names.json';pause_path=CACHE/'satcat-pause.json'
     try:known=read_json(path) if path.exists() else {}
     except (OSError,ValueError):known={}
     # `satcat_offline`: nur Cache (Wartungswerkzeuge, die keine Dienste kontaktieren dürfen).
-    missing=[] if settings.get('satcat_offline') else [str(i) for i in ids if str(i) not in known][:limit];added=False
-    for norad in missing:
+    missing=[] if settings.get('satcat_offline') else [str(i) for i in ids if str(i) not in known][:limit]
+    try:pause=read_json(pause_path) if pause_path.exists() else {}
+    except (OSError,ValueError):pause={}
+    note=None
+    if missing and float(pause.get('until',0))>time.time():
+        missing=[];note=pause.get('reason')
+    added=False
+    for index,norad in enumerate(missing):
         check_stop(settings)
+        if index:time.sleep(SATCAT_PAUSE_S)
         try:
             response=requests.get(SATCAT,params={'CATNR':norad,'FORMAT':'json'},timeout=8)
-            response.raise_for_status();rows=response.json()
-        except (requests.RequestException,ValueError):break
-        if rows:
-            row=rows[0];known[norad]=dict(name=str(row.get('OBJECT_NAME') or '').strip(),type=SATCAT_TYPES.get(row.get('OBJECT_TYPE'),row.get('OBJECT_TYPE')),
-                                           cospar=row.get('OBJECT_ID'),launch=row.get('LAUNCH_DATE'));added=True
+            if response.status_code==403:
+                until=time.time()+SATCAT_BLOCK_S
+                note=('Namen nicht abrufbar: CelesTrak sperrt die Katalogabfrage für diesen Internetanschluss (HTTP 403, zu viele Abfragen). '
+                      f'Nächster Versuch ab {dt.datetime.fromtimestamp(until):%d.%m.%Y %H:%M}; bis dahin nur NORAD-Nummern.')
+            else:
+                response.raise_for_status()
+                try:rows=response.json()
+                except ValueError:rows=[]   # unbekannte Nummer: Klartext statt JSON
+                if not isinstance(rows,list):rows=[]
+        except requests.RequestException as error:
+            until=time.time()+SATCAT_RETRY_S
+            note=f'Namen nicht abrufbar: CelesTrak-Katalog nicht erreichbar ({error.__class__.__name__}). Nächster Versuch in {SATCAT_RETRY_S//60} min.'
+        if note:
+            CACHE.mkdir(parents=True,exist_ok=True);write_json(pause_path,dict(until=until,reason=note))
+            event('status',text=note)
+            break
+        row=rows[0] if rows else {}
+        known[norad]=dict(name=str(row.get('OBJECT_NAME') or '').strip(),type=SATCAT_TYPES.get(row.get('OBJECT_TYPE'),row.get('OBJECT_TYPE')),
+                          cospar=row.get('OBJECT_ID'),launch=row.get('LAUNCH_DATE'))
+        added=True
     if added:
         CACHE.mkdir(parents=True,exist_ok=True);write_json(path,known)
-    return {str(i):known[str(i)] for i in ids if str(i) in known}
+    return {str(i):known[str(i)] for i in ids if str(i) in known},note
 
 
 def eth_tles(stamp,settings):

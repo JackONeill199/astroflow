@@ -159,3 +159,41 @@ def test_satellitenbahn_trotz_uhrversatz_zuordnen(tmp_path, monkeypatch):
     m = cm.satellite_check(late, site, settings)["matches"][0]
     assert 6 < m["time_offset_s"] < 10
     assert cm.satellite_check(late, site, dict(settings, satellite_clock_slack_s=3))["status"] == "checked_no_match"
+
+
+def test_satcat_sperre_wird_beachtet(tmp_path, monkeypatch):
+    """CelesTrak sperrt bei zu vielen Einzelabfragen mit HTTP 403: Hinweis statt stummem Abbruch, danach keine Abfragen bis zum Ablauf."""
+    import sys
+    from pathlib import Path
+    import pytest
+    pytest.importorskip("filelock"); requests = pytest.importorskip("requests")   # Engine-Pakete (skytrace/requirements.txt)
+    sys.path.insert(0, str(Path(__file__).parents[1] / "astroflow" / "modules" / "skytrace" / "engine"))
+    import archive_sources
+
+    class Antwort:
+        def __init__(self, code, data=None, text=""):
+            self.status_code, self.data, self.text = code, data, text
+        def raise_for_status(self):
+            if self.status_code >= 400: raise requests.HTTPError(str(self.status_code))
+        def json(self):
+            if self.data is None: raise ValueError("kein JSON")
+            return self.data
+
+    aufrufe = []
+    antworten = {"25165": Antwort(200, [{"OBJECT_NAME": "GLOBALSTAR M003", "OBJECT_TYPE": "PAY"}]),
+                 "99999": Antwort(200, text="No SATCAT records found"), "28498": Antwort(403, text="blocked")}
+    def get(url, params, timeout):
+        aufrufe.append(params["CATNR"]); return antworten[params["CATNR"]]
+    monkeypatch.setattr(archive_sources, "CACHE", tmp_path)
+    monkeypatch.setattr(archive_sources, "SATCAT_PAUSE_S", 0)
+    monkeypatch.setattr(requests, "get", get)
+
+    names, note = archive_sources.satellite_names([25165, 99999, 28498, 51779], {})
+    assert names["25165"] == {"name": "GLOBALSTAR M003", "type": "Satellit", "cospar": None, "launch": None}
+    assert names["99999"]["name"] == ""            # nicht im Katalog: gemerkt, nicht erneut gefragt
+    assert "HTTP 403" in note and "28498" not in names and aufrufe == ["25165", "99999", "28498"]
+    # Während der Sperre: nur Cache, keine Abfrage, gleicher Hinweis
+    names, note2 = archive_sources.satellite_names([25165, 28498], {})
+    assert aufrufe == ["25165", "99999", "28498"] and note2 == note and "25165" in names
+    # Alles im Cache → kein Hinweis
+    assert archive_sources.satellite_names([25165, 99999], {}) == ({"25165": names["25165"], "99999": {"name": "", "type": None, "cospar": None, "launch": None}}, None)
