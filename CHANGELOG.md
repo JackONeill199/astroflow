@@ -3,6 +3,23 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.9.0 – 01.11.2026
+
+### Neu
+- **SkyTrace erkennt Satelliten jetzt zuverlässig:** Spuren werden über ihre Bahn einem Satelliten zugeordnet und mit
+  Namen angezeigt, z. B. „Satellit STARLINK-1277“, „Raketenstufe SL-3 R/B“ oder „Trümmerteil“ (Namen aus dem
+  CelesTrak-Katalog, nur die Katalognummer wird abgefragt). Kandidatenliste und Detailansicht zeigen die Objektart
+  statt „K0001“ als Titel; neuer Filter „Satelliten“; die Bahntabelle nennt, ob die Bahn während der Belichtung passt.
+- **Alte Läufe neu abgleichen:** „Zeitreihen aktualisieren“ oder offline für viele Läufe
+  `engine/refresh_satellites.py <Lauf> …` (nur lokale Bahnarchive, keine Originalbilder nötig).
+
+### Behoben
+- **Satellitenabgleich fand fast nie etwas** (11 Treffer bei 173 Prüfungen in allen bisherigen Läufen): Stellina schreibt in `DATE-OBS`
+  das *Ende* der Belichtung, der Abgleich suchte die 10 s danach. Außerdem gehen die Kamerauhren um einige Sekunden
+  falsch. Jetzt wird die Belichtung richtig gelegt und ±20 s Uhrtoleranz zugelassen; bewertet werden Abstand quer zur
+  Bahn, Richtung an der Durchgangsstelle und die nötige Zeit. Beispiel M31 (11.06.2022): 12 von 13 Spuren zugeordnet,
+  vorher keine.
+
 ## 0.8.2 – 01.11.2026
 
 ### Behoben

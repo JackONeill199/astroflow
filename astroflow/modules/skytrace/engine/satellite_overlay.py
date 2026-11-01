@@ -27,7 +27,7 @@ def project_paths(solution,size,matrix,catalogs):
     if not diagnostics:return result
     if not solution or matrix is None:
         result['reason']='WCS oder zuverlässige Sternregistrierung fehlt; keine verlässliche Bildprojektion.';return result
-    result.update(status='projected',reason='Gestrichelte Bahnen sind Prognosen für die Belichtung des Trefferbildes, keine erkannten Objekte.')
+    result.update(status='projected',reason='Gestrichelte Bahnen sind Prognosen um die Belichtung des Trefferbildes (einschließlich Uhrtoleranz), keine erkannten Objekte.')
     for diagnostic in diagnostics:
         world=diagnostic.get('world_path') or []
         if len(world)<2:continue

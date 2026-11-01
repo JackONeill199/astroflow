@@ -18,6 +18,13 @@ CACHE=BASE/'catalog_cache'
 TS=load.timescale(builtin=True)
 SOURCES={'meteors':'https://globalmeteornetwork.org/data/traj_summary_data/monthly/','asteroids':'https://ssd-api.jpl.nasa.gov/doc/sb_ident.html','fireballs':'https://ssd-api.jpl.nasa.gov/doc/fireball.html','satellites':'https://celestrak.org/NORAD/archives/','aircraft':'https://opensky-network.org/data'}
 
+# Satellitenabgleich: Querabstand zur Bahn (TLE-Fehler quer ~1 km ≈ 6′ bei 600 km), Richtung an der Durchgangsstelle,
+# Uhrtoleranz um die Belichtung; Rangfolge Abstand + 20″ je Sekunde außerhalb der Belichtung.
+SATELLITE_TOLERANCE_ARCSEC=360
+SATELLITE_MAX_ANGLE=15
+SATELLITE_CLOCK_SLACK_S=20
+SECONDS_WEIGHT_ARCSEC=20
+
 def iso(timestamp): return dt.datetime.fromtimestamp(timestamp,dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
 
 def _bounded_jpl(url,params,text,settings,deadline,service='JPL-Asteroiden'):
@@ -113,16 +120,17 @@ def status(provider,state,detail,matches=None,**extra):
 def _times(candidate):
     stamp=candidate.get('timestamp')
     if stamp is None or 'unbekannt' in candidate.get('timestamp_text',''): raise ValueError('Keine gesicherte UTC-Aufnahmezeit')
-    from motion_plausibility import positive
+    from motion_plausibility import positive,exposure_start
     seconds=positive(candidate.get('exposure_seconds'))
     if seconds is None: raise ValueError('Keine gesicherte Belichtungszeit')
-    return float(stamp),seconds
+    return exposure_start(candidate),seconds
 
 def _world_polyline(candidate):
     return np.asarray(candidate['world_path'],dtype=float)
 
-def angular_match(candidate,ra,dec,tolerance_arcsec):
-    """Tangent-plane separation and coverage of the observed trail by a predicted path."""
+def angular_match(candidate,ra,dec,tolerance_arcsec,max_angle=30,times=None):
+    """Tangent-plane separation and coverage of the observed trail by a predicted path.
+    Mit `times` (je Bahnpunkt) zusätzlich `passage` = Zeitpunkte, zu denen die Bahn Anfang und Ende der Spur passiert."""
     observed=_world_polyline(candidate)
     origin=SkyCoord(float(observed[0,0])*u.deg,float(observed[0,1])*u.deg)
     obs=SkyCoord(observed[:,0]*u.deg,observed[:,1]*u.deg)
@@ -130,6 +138,7 @@ def angular_match(candidate,ra,dec,tolerance_arcsec):
     nearby=origin.separation(pred).deg<10
     if not np.any(nearby): return dict(separation_arcsec=None,coverage=0.,compatible=False,alignment_degrees=None,reasons=['Vorhergesagte Spur liegt mehr als 10° vom Spuranfang entfernt'])
     pred=pred[nearby]
+    if times is not None: times=np.asarray(times,dtype=float)[nearby]
     ox,oy=origin.spherical_offsets_to(obs); px,py=origin.spherical_offsets_to(pred)
     a=np.column_stack([ox.arcsec,oy.arcsec]); b=np.column_stack([px.arcsec,py.arcsec])
     def distances(points,line):
@@ -141,17 +150,30 @@ def angular_match(candidate,ra,dec,tolerance_arcsec):
         return result
     if len(a)==2: a=np.linspace(a[0],a[1],21)
     nearest=float(distances(b,a).min())
-    coverage=float(np.mean(distances(a,b)<=tolerance_arcsec))
+    offsets=distances(a,b)
+    coverage=float(np.mean(offsets<=tolerance_arcsec))
     aligned=True;angle=None
     if len(a)>1 and len(b)>1 and np.linalg.norm(a[-1]-a[0])>2*tolerance_arcsec:
-        v1=a[-1]-a[0]; v2=b[-1]-b[0]
+        v1=a[-1]-a[0]
+        if times is not None and len(b)>2:
+            # Richtung der Bahn dort, wo sie die Spur passiert (die Bahn über das ganze Zeitfenster ist gekrümmt).
+            k=int(np.argmin(np.linalg.norm(b-a[len(a)//2],axis=1)));k=min(max(k,1),len(b)-2);v2=b[k+1]-b[k-1]
+        else: v2=b[-1]-b[0]
         cosine=abs(v1@v2)/max(np.linalg.norm(v1)*np.linalg.norm(v2),1e-12)
-        aligned=bool(cosine>.866);angle=round(float(np.degrees(np.arccos(np.clip(cosine,0,1)))),2)
+        aligned=bool(cosine>np.cos(np.radians(max_angle)));angle=round(float(np.degrees(np.arccos(np.clip(cosine,0,1)))),2)
     reasons=[]
     if nearest>tolerance_arcsec:reasons.append('Winkelabstand überschreitet die Toleranz')
     if coverage<.5:reasons.append('Weniger als 50 % der gemessenen Spur werden abgedeckt')
-    if not aligned:reasons.append('Spurausrichtung weicht um mehr als 30° ab')
-    return dict(separation_arcsec=round(nearest,2),coverage=round(coverage,3),compatible=bool(nearest<=tolerance_arcsec and coverage>=.5 and aligned),alignment_degrees=angle,reasons=reasons)
+    if not aligned:reasons.append(f'Spurausrichtung weicht um mehr als {max_angle:g}° ab')
+    result=dict(separation_arcsec=round(nearest,2),mean_offset_arcsec=round(float(np.mean(np.minimum(offsets,1e6))),2),coverage=round(coverage,3),compatible=bool(nearest<=tolerance_arcsec and coverage>=.5 and aligned),alignment_degrees=angle,reasons=reasons)
+    if times is not None and len(b)>1:
+        def passage(point):
+            # Zeitpunkt des nächstgelegenen Bahnpunkts, linear zwischen den Stützstellen.
+            v=b[1:]-b[:-1];t=np.clip(((point-b[:-1])*v).sum(1)/np.maximum((v*v).sum(1),1e-12),0,1)
+            k=int(np.argmin(np.linalg.norm(point-(b[:-1]+t[:,None]*v),axis=1)))
+            return float(times[k]+t[k]*(times[k+1]-times[k]))
+        result['passage']=sorted([passage(a[0]),passage(a[-1])])
+    return result
 
 def asteroid_check(candidate,site,settings):
     if not site: return status('asteroids','not_checkable','Beobachtungsstandort fehlt; keine topozentrische Ephemeride abgefragt.')
@@ -236,11 +258,16 @@ def satellite_check(candidate,site,settings):
         key=sat.model.satnum
         if key not in satellites or age<satellites[key][1]: satellites[key]=(sat,age)
     if not satellites: return status('satellites','not_checkable','Keine Bahnelemente nahe genug an der Aufnahmezeit (max. '+str(settings.get('max_tle_age_days',3))+' Tage).',archive=source,stale_records=stale)
-    stamps=np.linspace(start,start+duration,max(21,int(duration*5)+1))
+    # Zeitfenster = Belichtung ± Uhrtoleranz: Kameras ohne GPS (Stellina stellt die Uhr übers Handy) und Bahnelemente
+    # mit Fehlern entlang der Bahn verschieben den Durchgang um Sekunden – bei LEO-Satelliten (~0,5°/s) sind das Grad.
+    # Vorher wurde nur exakt die Belichtung propagiert, die Bahn lag dann neben der Spur (quer < 6′, längs 1–6°).
+    slack=float(settings.get('satellite_clock_slack_s',SATELLITE_CLOCK_SLACK_S))
+    first,last=start-slack,start+duration+slack
+    stamps=np.linspace(first,last,max(21,int((last-first)*5)+1))
     times=TS.from_datetimes([dt.datetime.fromtimestamp(float(s),dt.timezone.utc) for s in stamps])
     observer=_observer(site); matches=[];diagnostics=[]
     from satellite_archive import sky_prefilter
-    possible=sky_prefilter(list(satellites.values()),start,duration,site,candidate)
+    possible=sky_prefilter(list(satellites.values()),first,last-first,site,candidate)
     for sat,age in possible:
         from archive_sources import check_stop
         check_stop(settings)
@@ -249,12 +276,34 @@ def satellite_check(candidate,site,settings):
         ra,dec,_=vector.radec()
         valid=np.isfinite(ra.hours)&np.isfinite(dec.degrees)&(altitude.degrees>0)
         if not valid.any(): continue
-        geometry=angular_match(candidate,ra.hours[valid]*15,dec.degrees[valid],360)
-        diagnostics.append(dict(name=sat.name or 'NORAD '+str(sat.model.satnum),norad_id=int(sat.model.satnum),tle_age_days=round(age,3),world_path=np.column_stack([ra.hours[valid]*15,dec.degrees[valid]]).round(8).tolist(),tolerance_arcsec=360,**geometry))
+        geometry=angular_match(candidate,ra.hours[valid]*15,dec.degrees[valid],SATELLITE_TOLERANCE_ARCSEC,max_angle=SATELLITE_MAX_ANGLE,times=stamps[valid])
+        passage=geometry.pop('passage',None)
+        if passage:
+            # Sekunden außerhalb der nominellen Belichtung (0 = Durchgang während der Belichtung).
+            geometry['passage_seconds']=[round(p-start,2) for p in passage]
+            geometry['time_offset_s']=round(max(start-passage[1],passage[0]-(start+duration),0.),2)
+            if geometry['compatible'] and passage[1]-passage[0]>duration*1.2+1:
+                geometry['compatible']=False;geometry['reasons'].append('Satellit bräuchte für die Spur länger als die Belichtung')
+        diagnostics.append(dict(name=sat.name or 'NORAD '+str(sat.model.satnum),norad_id=int(sat.model.satnum),tle_age_days=round(age,3),world_path=np.column_stack([ra.hours[valid]*15,dec.degrees[valid]]).round(8).tolist(),tolerance_arcsec=SATELLITE_TOLERANCE_ARCSEC,**geometry))
         if geometry['compatible']:
-            matches.append(dict(name=sat.name,norad_id=int(sat.model.satnum),tle_age_days=round(age,3),evidence='Historische SGP4-Bahn, Zeit und Spur geometrisch vereinbar; Sichtbarkeit nicht bestätigt',**geometry))
-    diagnostics.sort(key=lambda r:float('inf') if r['separation_arcsec'] is None else r['separation_arcsec'])
-    return status('satellites','compatible' if matches else 'checked_no_match',f'Bahndaten zur Aufnahmezeit {iso(start)} UTC: {len(possible)} mögliche Spuren nach Standort-, Zeit- und Bildfeldfilter genau geprüft. Archivabdeckung kann unvollständig sein; begrenzte Bahngenauigkeit. Ein geometrischer Treffer ist kein Beweis.',sorted(matches,key=lambda m:m['separation_arcsec'])[:20],archive=source,source=source or SOURCES['satellites'],stale_records=stale,archive_records=archive_total,checked_trajectories=len(diagnostics),diagnostics=diagnostics[:8],tolerance_arcsec=360)
+            matches.append(dict(name=sat.name,norad_id=int(sat.model.satnum),tle_age_days=round(age,3),evidence='Historische SGP4-Bahn passiert die Spur in Lage, Richtung und Zeit; Sichtbarkeit nicht bestätigt',**geometry))
+    rank=lambda r:float('inf') if r.get('separation_arcsec') is None else r.get('mean_offset_arcsec',r['separation_arcsec'])+SECONDS_WEIGHT_ARCSEC*r.get('time_offset_s',0)
+    diagnostics.sort(key=lambda r:(not r['compatible'],rank(r)));matches.sort(key=rank)
+    _name_satellites(matches+diagnostics[:8],settings)
+    return status('satellites','compatible' if matches else 'checked_no_match',f'Bahndaten zur Aufnahmezeit {iso(start)} UTC (Belichtung ±{slack:g} s Uhrtoleranz): {len(possible)} mögliche Spuren nach Standort-, Zeit- und Bildfeldfilter genau geprüft. Archivabdeckung kann unvollständig sein (militärische Satelliten fehlen); begrenzte Bahngenauigkeit. Ein geometrischer Treffer ist kein Beweis.',matches[:20],archive=source,source=source or SOURCES['satellites'],stale_records=stale,archive_records=archive_total,checked_trajectories=len(diagnostics),diagnostics=diagnostics[:8],tolerance_arcsec=SATELLITE_TOLERANCE_ARCSEC,clock_slack_s=slack,exposure_start=start)
+
+
+def _name_satellites(rows,settings):
+    """Archivbahnen tragen nur NORAD-Nummern; Namen und Objektart aus dem SATCAT nachtragen (Fehler → Nummer bleibt)."""
+    ids=sorted({r['norad_id'] for r in rows if not r.get('name') or str(r['name']).startswith('NORAD ') or str(r['name'])==str(r['norad_id'])})
+    if not ids: return
+    try:
+        from archive_sources import satellite_names
+        names=satellite_names(ids,settings)
+    except Exception: return
+    for r in rows:
+        info=names.get(str(r['norad_id']))
+        if info and info.get('name'): r['name']=info['name'];r['object_type']=info.get('type')
 
 def _stamp(value):
     try: return float(value)

@@ -291,7 +291,7 @@ async function runView(root, runId, tab = 'vorschau') {
 
   // ---- Kandidaten: Liste + Zeitreihe + Messdetails + Katalogabgleich ----
   function tabCandidates(t) {
-    t.innerHTML = `<div class="toolbar"><select id="kf"><option value="all">Alle Objekttypen</option><option value="trail">Einzelbild-Spuren</option><option value="meteor">Meteorkandidaten</option>
+    t.innerHTML = `<div class="toolbar"><select id="kf"><option value="all">Alle Objekttypen</option><option value="trail">Einzelbild-Spuren</option><option value="satellite">Satelliten</option><option value="meteor">Meteorkandidaten</option>
       <option value="plane">Flugzeugkandidaten</option><option value="moving">Langsame Beweger</option></select><span class="grow"></span>
       <label class="tgl"><input type="checkbox" id="covl" ${S.overlay ? 'checked' : ''}><span class="switch"></span>Overlay</label></div>
       <div class="st-cands"><div class="st-clist" id="clist"></div><div class="panel st-cdetail" id="cdetail"></div></div>`;
@@ -301,12 +301,12 @@ async function runView(root, runId, tab = 'vorschau') {
     drawList();
   }
   function drawList() {
-    const ev = EV(), list = S.run.candidates.filter(c => S.filter === 'all' || c.kind === S.filter || (ev && ev.classification(c).kind === S.filter));
+    const ev = EV(), list = S.run.candidates.filter(c => S.filter === 'all' || (ev ? ev.classification(c).kind : c.kind) === S.filter);
     if (!list.some(c => c.key === S.key)) { S.key = list[0]?.key || null; S.frame = null; }
     const host = $('#clist');
     host.innerHTML = list.length ? list.map((c, i) => { const hit = c.frames[c.initial_frame] || c.frames[0];
       return `<button class="ccard ${c.key === S.key ? 'on' : ''}" data-k="${esc(c.key)}" style="--i:${i}"><img src="${hit.url}" alt="" loading="lazy">
-        <div><b>${esc(c.id)} · ${esc(shortName(c.session))}</b><span>${esc(candidateName(c))}</span><small class="mut">${c.timestamp ? new Date(c.timestamp * 1000).toLocaleTimeString('de-DE', { timeZone: 'UTC' }) + ' UTC' : 'Zeit unbekannt'}</small></div></button>`; }).join('')
+        <div><b>${esc(candidateName(c))}</b><span>${esc(c.id)} · ${esc(shortName(c.session))}</span><small class="mut">${c.timestamp ? new Date(c.timestamp * 1000).toLocaleTimeString('de-DE', { timeZone: 'UTC' }) + ' UTC' : 'Zeit unbekannt'}</small></div></button>`; }).join('')
       : `<div class="empty" style="padding:30px 16px">${S.run.candidates.length ? 'Keine Kandidaten dieses Typs.' : S.run.sessions.some(s => s.hits) ? 'Die Treffer sind gespeichert. Mit „Zeitreihen aktualisieren“ entstehen ihre Bildausschnitte.' : 'Noch keine Kandidaten. Hier erscheinen erkannte Spuren mit ihrem zeitlichen Kontext.'}</div>`;
     host.onclick = (e) => { const b = e.target.closest('[data-k]'); if (!b) return; S.key = b.dataset.k; S.frame = null; $$('.ccard', host).forEach(x => x.classList.toggle('on', x === b)); drawDetail(); };
     drawDetail();
@@ -320,7 +320,7 @@ async function runView(root, runId, tab = 'vorschau') {
     if (!c) { host.innerHTML = `<div class="empty" style="border:0">${icon('orbit')}<h2>Jede Spur hat eine Geschichte.</h2>Wähle einen Kandidaten, um seine Zeitreihe und den Katalogabgleich anzusehen.</div>`; return; }
     S.frame = Math.min(c.frames.length - 1, Math.max(0, S.frame ?? c.initial_frame ?? 0));
     const top = el('div', undefined, 'panel-h');
-    const hd = el('div'); hd.append(el('h2', c.id + ' · ' + candidateName(c)), el('div', observedDate(c) + ' · ' + (Number.isFinite(c.exposure_seconds) ? c.exposure_seconds + ' s Belichtung' : 'Belichtungszeit unbekannt'), 'mut sm'));
+    const hd = el('div'); hd.append(el('h2', candidateName(c)), el('div', c.id + ' · ' + observedDate(c) + ' · ' + (Number.isFinite(c.exposure_seconds) ? c.exposure_seconds + ' s Belichtung' : 'Belichtungszeit unbekannt'), 'mut sm'));
     top.append(hd); host.append(top);
     const stage = el('div', undefined, 'cstage'), image = el('img'), svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     image.alt = 'Unbeschrifteter Kandidatenausschnitt';

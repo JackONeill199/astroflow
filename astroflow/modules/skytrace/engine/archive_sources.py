@@ -30,6 +30,34 @@ def download(url,path,settings,max_bytes=1200*1024**2):
     raise ArchiveAccessError('needs_archive','Diese öffentliche Quelle bietet nur weltweite Sammelarchive ohne Standortfilter. Automatischer Vollarchiv-Download ist gesperrt; passenden lokalen Bestand oder eine eigene Archivquelle verwenden.')
 
 
+SATCAT='https://celestrak.org/satcat/records.php'
+SATCAT_TYPES={'PAY':'Satellit','R/B':'Raketenstufe','DEB':'Trümmerteil','UNK':'unbekanntes Objekt'}
+
+
+def satellite_names(ids,settings,limit=12):
+    """Namen und Objektart je NORAD-Nummer aus dem CelesTrak-SATCAT (nur die Nummer wird gesendet, kein Standort/Zeit).
+    Cache `satcat-names.json`; nicht erreichbar → bekannte Namen, sonst leer (Nummer bleibt sichtbar)."""
+    from json_store import read_json
+    import requests
+    path=CACHE/'satcat-names.json'
+    try:known=read_json(path) if path.exists() else {}
+    except (OSError,ValueError):known={}
+    # `satcat_offline`: nur Cache (Wartungswerkzeuge, die keine Dienste kontaktieren dürfen).
+    missing=[] if settings.get('satcat_offline') else [str(i) for i in ids if str(i) not in known][:limit];added=False
+    for norad in missing:
+        check_stop(settings)
+        try:
+            response=requests.get(SATCAT,params={'CATNR':norad,'FORMAT':'json'},timeout=8)
+            response.raise_for_status();rows=response.json()
+        except (requests.RequestException,ValueError):break
+        if rows:
+            row=rows[0];known[norad]=dict(name=str(row.get('OBJECT_NAME') or '').strip(),type=SATCAT_TYPES.get(row.get('OBJECT_TYPE'),row.get('OBJECT_TYPE')),
+                                           cospar=row.get('OBJECT_ID'),launch=row.get('LAUNCH_DATE'));added=True
+    if added:
+        CACHE.mkdir(parents=True,exist_ok=True);write_json(path,known)
+    return {str(i):known[str(i)] for i in ids if str(i) in known}
+
+
 def eth_tles(stamp,settings):
     """Fetch a minute at the observation epoch plus bounded bracketing TLEs.
 
