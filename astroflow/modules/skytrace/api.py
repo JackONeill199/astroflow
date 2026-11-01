@@ -16,7 +16,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 
-DEFAULT_SOURCE = r"D:\Astro\Stellina" if os.name == "nt" else str(Path.home())
+DEFAULT_SOURCE = str(Path.home())
 MODES = ("Bildfolge → Ereignisvideo", "Fotos", "Videos")
 DEFAULT_PREFS = dict(source=DEFAULT_SOURCE, observation="", samples=0, fps=8, mode=MODES[0], solve=True)
 

@@ -1,6 +1,6 @@
 # AGENTS.md – AstroFlow
 
-Kompakter Einstieg für KI-Agenten und neue Sessions. Nutzerdoku: `README.md`, Änderungen: `CHANGELOG.md` (bei Nutzer-sichtbaren Änderungen ergänzen).
+Kompakter Einstieg für KI-Agenten und neue Sessions. Falls vorhanden zusätzlich `AGENTS.local.md` lesen (lokal, nicht im Repo). Nutzerdoku: `README.md`, Änderungen: `CHANGELOG.md` (bei Nutzer-sichtbaren Änderungen ergänzen).
 
 ## Was ist das
 AstroFlow: lokale Astro-Plattform im Browser aus drei Modulen (seit v0.6, 28.10.2026 – Nutzerwunsch: „ein Produkt, einheitliche UI,
@@ -59,7 +59,7 @@ Netzwerk-freigeben.bat [entfernen]                    # Firewall-Regel „AstroF
 python -m astroflow demo ./data/input/demo            # synthetische Testdaten (Bayer, 2 Nächte, Darks/Flats)
 docker compose up -d --build                          # Image enthält ASTAP + D05 (ARG ASTAP_DB=d05|d50)
 ```
-Git-Repo: github.com/JackONeill199/astroflow (privat, Branch main; `data/`, `data_real/`, `.venv` per .gitignore ausgeschlossen).
+Git-Repo: github.com/JackONeill199/astroflow (Branch main; `data/`, `data_real/`, `.venv`, `AGENTS.local.md` per .gitignore ausgeschlossen).
 Tests laden standardmäßig nur das Stacking-Modul (`tests/conftest.py`); Modultests: `test_modules.py`, `test_sage.py`, `test_skytrace.py`.
 SkyTrace-Engine-Pakete (OpenCV, PyTorch …) sind **nicht** in `requirements.txt` – siehe `astroflow/modules/skytrace/requirements.txt`. Kein Linter/Formatter konfiguriert – Stil des umliegenden Codes übernehmen (knapp, deutsche Kommentare).
 
@@ -165,7 +165,7 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    **Fotometrische Farbkalibrierung** (`photometry.py`, `Pipeline._photometric`, Einstellung `gaia` / `ASTROFLOW_GAIA`): Master-Stack mit
    `platesolve.solve_image` lösen (WCS auf vollem Pixelraster, Cache `work/p<id>/wcs.json` je Referenzbild), Gaia-DR3-Farben BP−RP
    per TAP/ADQL, Reihenfolge GAVO-Spiegel (`gaia.dr3lite`, BP−RP aus den Mittelwerten, Timeout 20 s) → ARI Heidelberg (30 s) → ESA-Archiv → VizieR
-   (gemessen 01.11.2026: 0,6 s / ~8 s / 131 s / beim Nutzer nicht erreichbar), Cache `work/gaia/`.
+   (gemessen 01.11.2026: 0,6 s / ~8 s / 131 s / nicht erreichbar), Cache `work/gaia/`.
    Zuordnung ≤ max(3 px, FWHM), Aperturphotometrie, robuste Gerade log(R/G), log(B/G) gegen BP−RP, Weiß = G2V (0,82).
    Ergebnis als `params.wb_gains` + `_pcc`; ohne Solver/Netz/Sterne → Sternmittel mit Grund in `stats.color_cal`.
    Stellina-Werte (5 Objekte): R ≈ 0,97, B ≈ 0,88, Streuung ~3 %. Tests offline (`tests/conftest.py` setzt ASTROFLOW_GAIA=0).
@@ -217,8 +217,7 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    der Median-Frame (NGC 1579 6,8 gegen 8,2; M101 5,9 gegen 10,1), über das Feld gleichmäßig (Mitte = Rand), Exzentrizität = die der Frames
    (Sternform kommt aus den Rohbildern, nicht aus der Registrierung). Frame- und Stack-FWHM (`stats.fwhm_px`, ungebinnt) nie direkt vergleichen.
    M101 Versuch mit fester FWHM-Grenze (≤ k × 10-%-Quantil): k 1,5 → 232 statt 504 Frames, FWHM −6 %, Rauschen +28 %; k 1,25 → −8 % / +54 %
-   → Auswahl bleibt relativ (Gewichtung reicht; wer Schärfe will: Option „Nur die besten X %“). Auf `D:\Astro\Stellina` liegen ungenutzte
-   Nächte: NGC 1579 2022-08-07 (422 Frames), M101 2023-02-07 (247) – Import über „Hauptordner durchsuchen“.
+   → Auswahl bleibt relativ (Gewichtung reicht; wer Schärfe will: Option „Nur die besten X %“).
    **Farbverlauf im Himmel** (seit 01.11.2026, NGC 891 bekam trotz rötlichem rechtem Rand 10/10 – `cast` misst nur den
    globalen Median): `develop.color_gradient` = Ebene durch R−G/B−G der Himmelskacheln (8×8, getrimmtes Mittel), Stärke =
    Änderung über die Bildbreite, dazu Seite/Farbton. Gemessen an allen Ergebnissen: sauber ≤ 0,010, NGC 891 0,019, NGC 7318 0,022,
@@ -233,13 +232,13 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    je Nacht: Sonne/Mond/Objekthöhe, Mondphase aus Elongation; Frame-Verlauf aus `frames.metrics`: Sternzahl-Einbrüche, `bg`/`fwhm`-Trend
    letztes/erstes Fünftel, Exzentrizität > 0,8) + optional `fetch_weather` (Open-Meteo-Archiv/ERA5, Ort auf 0,1° gerundet, Cache
    `work/tutor/`) → `findings` (code, level bad|warn|info|ok, Erklärung, Tipps). Standort: `FrameInfo.site` (SITELAT/LONG, OBSGEO; Stellina
-   schreibt keinen) oder `settings.json` → `tutor.lat/lon`. NGC 891 (24./25.06.2022, 49° N): Sonne nur −10…−14°, Himmel ×3,2 heller →
+   schreibt keinen) oder `settings.json` → `tutor.lat/lon`. NGC 891 (24./25.06.2022, Mitteleuropa): Sonne nur −10…−14°, Himmel ×3,2 heller →
    Dämmerung als Ursache des Rotstichs. KI auf Knopfdruck (`POST …/tutor/ki`, `ask_llm` über `reviewer.chat`, eigener Anbieter/Modell
    `tutor.llm_provider/llm_model`, URL/Schlüssel vom KI-Prüfer), Ergebnis in `results.stats.tutor_ki`. Einstellung `tutor.mode`
    einsteiger|experte (UI: Befunde offen bzw. zugeklappt). Test: `test_tutor.py`.
 9. **KI-Prüfer** (`reviewer.py`, optional, Standard aus): Vision-LLM (LM Studio/OpenRouter) bewertet Vorschau, darf nur Whitelist-Parameter in festen Grenzen ändern.
    Läuft nach der messbaren Kontrolle (`first=` = bereits gerendertes Bild). Denkmodelle (Bonsai, Qwen3) brauchen ~2 500 Tokens vor der
-   Antwort → `max_tokens` 8000, Timeout 300 s; `<think>`-Blöcke und `reasoning_content` werden behandelt. Beim Nutzer: LM Studio, `prism-ml/bonsai-27b` (~55 s/Runde).
+   Antwort → `max_tokens` 8000, Timeout 300 s; `<think>`-Blöcke und `reasoning_content` werden behandelt. Lokal z. B. LM Studio mit einem Vision-Denkmodell (~1 min/Runde).
 10. **Ausgabe**: TIFF16/PNG/JPG/Thumb + linearer FITS in `output/<Objekt>/`, Zeile in `results` (Versionen). Bild wird beim Speichern vertikal gespiegelt (Norden oben).
 11. **Speicher** (`Settings.delete_uploads`, Env `ASTROFLOW_DELETE_UPLOADS`, Standard an, UI: Einstellungen → Speicher): nach erfolgreichem
    Durchlauf löscht `Pipeline.delete_stacked_uploads` hochgeladene Lights (nur unter `input/uploads`, gestackt oder verworfen) → `frames.deleted=1`,
@@ -335,22 +334,16 @@ fehlt es, wird übersprungen – `pip install playwright && python -m playwright
 nichts darf über seinen Kasten (nächster Vorfahr mit Rahmen/Hintergrund) oder die Seite ragen, keine JS-Fehler; Schalterzeilen müssen per Klick umschalten.
 Neue Ansichten in `ROUTES` eintragen. Achtung: globales `td { white-space: nowrap }` – Namensspalten in schmalen Tabellen brauchen `white-space: normal`.
 
-## Stolperfallen (Windows-Umgebung des Nutzers)
+## Stolperfallen (Windows)
 - Shell ist Git-Bash: In Heredocs/`python -c` werden Backslashes umgedeutet (`\a` wurde zu BEL). Windows-Pfade in Skripten → Skript per Datei schreiben, raw strings.
-- Port 8765 belegt ein anderes Programm des Nutzers; Vorschau-Server landen auf 8766/8767.
 - Python-Dateien explizit mit `encoding="utf-8"` schreiben (Standard ist cp1252).
-- ASTAP beim Nutzer: alte CLI (2022) in `C:\Program Files\astap` (nicht beschreibbar, hat `deep_sky.csv`), aktuelle `astap_cli.exe` + D05 in `%LOCALAPPDATA%\astap`.
+- ASTAP kann an mehreren Orten liegen (`C:\Program Files\astap` oft nicht beschreibbar, `%LOCALAPPDATA%\astap` für die aktuelle CLI + Datenbank).
 
-## Echte Daten des Nutzers / laufende Instanz
-- **Arbeitsinstanz:** Datenordner `astroflow/data/` (seit 2026-10-27; vorher Temp – umgezogen, DB-Pfade umgeschrieben, Sicherung `data/astroflow.db.vor-umzug`).
-  Start über `.claude/launch.json` im Elternordner (`Claude Code/.claude`), Konfiguration „astroflow“, Port 8766, `--data …/astroflow/data`.
-  Testinstanz: Konfiguration „astroflow-test“ (Port 8768, Datenordner im Scratchpad, `SKYTRACE_HOME` = `AstroAnalyse/` nur lesend ansehen – keine Analysen starten).
-- SkyTrace-Daten des Nutzers: `C:\Users\nutzer\Documents\Claude Code\AstroAnalyse` (Ergebnisse, Katalog-Cache, Standort, `.venv` mit allen Engine-Paketen,
-  ASTAP unter `tools/`). Das alte SkyTrace läuft dort weiter auf Port 8765 – nicht gleichzeitig Analysen aus beiden Oberflächen starten.
-  **Nie Testdaten in diese Instanz schreiben** – Experimente in eigenem Datenordner (z. B. Scratchpad) mit kopierten Frames.
-- Projekte: NGC 1579 (422 Stellina-Frames, 404 gestackt, per ASTAP gelöst), M3, M74, IC 405, M39 – Rohdaten nach dem Stacking gelöscht,
-  also nur noch Nachstacken neuer Nächte und Neu-Entwickeln möglich.
-- `data_real/` (im Projekt): ältere Stellina-M57-Session (Stack + Ergebnisse); `reproc.py` = Ad-hoc-Skript zum Nachbearbeiten.
+## Lokale Instanz und private Angaben
+**Persönliches gehört nie ins Repo** (Benutzerpfade, Laufwerke, Heimnetz/IP, Beobachtungsort, Schlüssel). Wer eine eigene Instanz betreibt,
+legt Pfade, laufende Server und echte Daten in **`AGENTS.local.md`** ab (steht in `.gitignore`) – Agenten lesen sie, falls vorhanden, zusätzlich.
+Tests und Beispiele nutzen erfundene Orte/Pfade; Screenshots nur mit maskierten Pfaden und Standort.
+- **Nie Testdaten in eine Arbeitsinstanz schreiben** – Experimente in eigenem Datenordner mit kopierten Frames (s. „Achtung“ unter Server).
 - Datenordner beim Verschieben: Pfade stehen absolut in `frames.path`, `frames.info.path`, `results.files`, `solves.key` → alle umschreiben.
   Frame-IDs hängen am Pfad relativ zum Eingangsordner – bleibt die Struktur unter `input/` gleich, werden Dateien nicht neu eingelesen.
 

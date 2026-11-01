@@ -8,7 +8,7 @@ Messgrafiken/Zoomdialoge (`static/evidence.js/css`) sind unverändert und werden
 
 - **Pfade** (`engine/project_paths.py`): `CODE` = `engine/`, `ASSETS` = Modulordner (Modell unter `models/`, `static/evidence.*`),
   `BASE` = Datenordner aus `SKYTRACE_HOME` (Standard `<AstroFlow-Daten>/skytrace`, einstellbar unter Einstellungen → SkyTrace;
-  beim Nutzer zeigt er auf den bestehenden Ordner `AstroAnalyse/`, damit alle Läufe sichtbar bleiben). Wirkt nach Neustart.
+  kann auf einen bestehenden SkyTrace-Ordner zeigen, damit alte Läufe sichtbar bleiben). Wirkt nach Neustart.
 - **Server:** `web_server.py` ist durch `api.py` (FastAPI-Router unter `/api/skytrace`) ersetzt; Medien unter `/api/skytrace/media/<Lauf>/…`
   (Range-Anfragen für Videos über `FileResponse`). Token-/Host-Prüfung entfällt – der AstroFlow-Kern blockt schreibende Anfragen fremder Herkunft.
   LAN-Freigabe regelt AstroFlow (`serve --host`).
@@ -18,7 +18,7 @@ Messgrafiken/Zoomdialoge (`static/evidence.js/css`) sind unverändert und werden
   OpenSky-Anmeldung läuft im Engine-Interpreter (braucht `trino`).
 - Nicht übernommen: Tk-Desktop-Oberfläche (`desktop_app.py`, `catalog_dialog.py`, `location_picker.py`), Starter (`*.cmd/*.vbs`),
   Web-Prüfungen gegen den alten Server (`check_web.py`, `check_lan.py`, `check_preview_race.py`). Die übrigen `check_*.py` liegen in `engine/`
-  und laufen mit gesetztem `SKYTRACE_HOME` (nutzen teils echte Daten unter `D:\Astro\Stellina`).
+  und laufen mit gesetztem `SKYTRACE_HOME` (manche brauchen echte Stellina-Daten: Ordner per `SKYTRACE_SAMPLES`).
 - Abhängigkeiten der Engine: `requirements.txt` (Lock aus SkyTrace). Docker: `--build-arg SKYTRACE=1`.
 
 ## Analysen löschen (29.10.2026, Nutzerwunsch)
@@ -36,7 +36,7 @@ jeweils mit Bestätigungsdialog.
   die der Bericht braucht (erstes Bild, Treffer ±2), nach `<Lauf>/<Beobachtung>/rohbilder/` und schreibt die Pfade in `*.jsonl`,
   `kandidaten.json`, `kandidaten/*/kandidat.json` um – hochgeladene Rohbilder sind dann oft schon gelöscht (M45: Aktualisieren schlug fehl). Unvollständige Engine → Eintrag mit Fehler in der Aktivität.
   Wartende Ordner erscheinen in der Aktivität, `status.auto_waiting` zählt sie. Abschalten: Einstellungen → SkyTrace (`skytrace.auto`).
-- Achtung beim Nutzer: Ergebnisse landen im gemeinsamen `AstroAnalyse/Ergebnisse` – das alte SkyTrace (Port 8765) nicht gleichzeitig analysieren lassen.
+- Achtung: Zeigt `SKYTRACE_HOME` auf den Ordner eines eigenständigen SkyTrace, nicht gleichzeitig aus beiden Oberflächen analysieren lassen.
 
 ## Satellitenabgleich: Zeitbezug und Uhrtoleranz (01.11.2026, Nutzerbefund „Satelliten werden nie zugeordnet“)
 - **Befund** (alle Läufe in `AstroAnalyse/Ergebnisse`, Prüfskript-Idee: Bahn der nächsten Diagnose ±60 s propagieren und die Zeit
@@ -104,7 +104,7 @@ Stand: 28.10.2026. Diese Datei gilt für `AstroAnalyse/`. Bei Änderungen an Arc
 ## Ziel und feste Nutzerentscheidungen
 
 - Projektname: **SkyTrace**. Englischer Untertitel: **Uncover what moves among the stars.** Der bestehende Projektordner heißt weiterhin `AstroAnalyse/`.
-- Lokale Windows-Webanwendung zur Analyse vorhandener Astrofotos und Videos. Standardquelle: `D:\Astro\Stellina`, mit Unterordnern je Beobachtung. Keine RTSP-Kamera, Cloudflare-Installation oder Domain erforderlich.
+- Lokale Windows-Webanwendung zur Analyse vorhandener Astrofotos und Videos. Standardquelle: ein Stellina-Stammordner mit Unterordnern je Beobachtung. Keine RTSP-Kamera, Cloudflare-Installation oder Domain erforderlich.
 - Deutsche, hochwertige Browseroberfläche; Analyse starten/anhalten, Livebild, Fortschritt, Protokoll, Beobachtungsvideos und Kandidatenberichte.
 - Viele FITS-Aufnahmen einer Beobachtung werden chronologisch zu einem H.264-Zeitraffervideo. Einzelbildstreifen müssen auch ohne wandernden Punkt erkannt werden. Erkannte Spuren bleiben als Overlay im weiteren Video sichtbar.
 - Teleskopbewegung über das gesamte Sternfeld kompensieren; gemeinsame Sternbewegung nicht als Asteroid interpretieren. Verwackelte/unscharfe Bilder aus Analyse und Video ausschließen.
@@ -114,7 +114,7 @@ Stand: 28.10.2026. Diese Datei gilt für `AstroAnalyse/`. Bei Änderungen an Arc
 
 ## Unveränderliche Daten und wissenschaftliche Grenzen
 
-- **Originale unter `D:\Astro\Stellina` ausschließlich lesen.** Nicht löschen, verschieben, umbenennen oder mit Sidecars/ASTAP-Ergebnissen beschreiben. „Entfernen“ unscharfer Aufnahmen bedeutet Ausschluss aus der Verarbeitung.
+- **Originale im Quellordner ausschließlich lesen.** Nicht löschen, verschieben, umbenennen oder mit Sidecars/ASTAP-Ergebnissen beschreiben. „Entfernen“ unscharfer Aufnahmen bedeutet Ausschluss aus der Verarbeitung.
 - Ausgaben ausschließlich in `AstroAnalyse/Ergebnisse/<Lauf>/`; bestehende Nutzerläufe erhalten. Für geänderte Detektion/Re-Rendering einen eigenen Ergebnislauf verwenden. Berichtsergänzungen im ausdrücklich bearbeiteten Lauf sind möglich.
 - Keine Fotos hochladen. Katalogabfragen benötigen nur Standort, UTC und Himmelskoordinaten. Zugangsdaten und genaue Standortwerte nicht in Dokumentation oder Diagnoseausgaben kopieren.
 - Plate Solving bestimmt Himmelskoordinaten, **keinen Erdstandort**. Standort aus FITS, Beobachtungseinstellung oder Standard beziehen; Adresse/Browser-Geolocation ist nur geeignet, wenn es der damalige Standort ist.
@@ -125,8 +125,6 @@ Stand: 28.10.2026. Diese Datei gilt für `AstroAnalyse/`. Bei Änderungen an Arc
 
 ## Start, Laufzeit und Betrieb
 
-Projektpfad: `C:\Users\nutzer\Documents\Claude Code\AstroAnalyse`.
-
 Eigene Python-Umgebung: `.venv\Scripts\python.exe` (derzeit Python 3.14). Abhängigkeiten: `requirements-lock.txt`; Einrichtung mit `Einrichten.cmd`. Die vorhandene Umgebung enthält eine eigenständige Kopie der zuvor verwendeten Pakete. Modellgewichte und unveränderte Herkunfts-/Lizenzdateien liegen in `models/night-detector/`. Keine Laufzeitpfade in das Nachbarprojekt OpenSkyCam verwenden.
 
 ```powershell
@@ -136,8 +134,8 @@ Eigene Python-Umgebung: `.venv\Scripts\python.exe` (derzeit Python 3.14). Abhän
 ```
 
 - `python/app.py` startet die Webanwendung; erneuter Start öffnet eine bereits laufende Instanz. `python/desktop_app.py` / `Desktop.cmd` sind die alte Tk-Oberfläche.
-- Lokal: `http://127.0.0.1:8765`; aktuelles LAN: `http://192.168.1.131:8765` (IP kann sich ändern).
-- `web_network.json`: LAN aktiv, Subnetz `192.168.1.0/24`. Bestehende Firewallregel: `StellinaAstroAnalyseLAN`, privates Netz, TCP 8765. Host-/Subnetzprüfung und Origin-/Token-Prüfung für Schreibzugriffe erhalten; Passwortlosigkeit ist kein Grund, diese Schutzprüfungen zu entfernen.
+- Lokal: `http://127.0.0.1:8765`; im LAN über die Adresse des Rechners.
+- `web_network.json`: LAN an/aus und erlaubtes Subnetz; Windows-Firewallregel nur für das private Netz, TCP 8765. Host-/Subnetzprüfung und Origin-/Token-Prüfung für Schreibzugriffe erhalten; Passwortlosigkeit ist kein Grund, diese Schutzprüfungen zu entfernen.
 - Browser-Geolocation funktioniert über LAN-HTTP gewöhnlich nicht; Adresssuche anbieten. Keine Router-Portweiterleitung einrichten.
 - Vor Serverneustart `/api/state` auf laufende Arbeit prüfen. Lauf nicht zur Bereitstellung einer Änderung abbrechen. Bei nötigem Neustart tatsächlichen Listener und dessen Kommandozeile verifizieren; `web-server.pid` kann den Launcher statt des Listener-Prozesses bezeichnen.
 - Browser schließen beendet keinen Job. Stopp erfolgt kooperativ über eine STOP-Datei, MP4 wird finalisiert. Worker importieren neuen Python-Code beim nächsten Start; statische UI-Dateien nach Browser-Neuladen.
@@ -194,7 +192,7 @@ Videos: PyAV/libx264. ASTAP: bevorzugt `tools/astap/astap_cli.exe`, sonst `C:/Pr
 - **Satelliten:** vorhandenes Space-Track-Archiv/Mirror Julien Simon (CC-BY-4.0) bevorzugen; bei fehlenden zeitnahen Bahnen dynamischer ETH-Abruf (`archive_sources.eth_tles`) anhand des UTC-Belichtungsmittelpunkts, auch bei aktuellen Aufnahmen. Eine UTC-Minute plus je höchstens 3 Tage für benachbarte TLEs; vollständige Pagination mit unverändertem Zeitfilter, maximal 120 Seiten/180 s einschließlich stoppbarer Sperrwartezeit. Nur vollständige, nichtleere Antworten atomar cachen. ETH sammelt seit 10.03.2023, mit möglichen Lücken; fehlende Abdeckung ist kein Ausschluss. Keine aktuellen TLEs als Ersatz für alte Daten. Vorhandene Nachbarjahre werden am Jahreswechsel lokal berücksichtigt. Gerundete lokale Bahnelemente bzw. ETH-TLEs mit SGP4; standardmäßig höchstens 3 Tage Bahnalter. Erst Standort/Zeit/Bildfeld vorauswählen, dann exakt propagieren. Vergleichstoleranz 360″, mindestens 50 % Spurabdeckung und passende Ausrichtung. Bis zu 8 nächste geprüfte Bahnen samt Ablehnungsgründen für Grafiken speichern.
 - **GMN:** vorhandene offizielle Monatsdateien mit gemessenen Meteorflugbahnen, lokaler SQLite-Zeitindex plus Standorthorizont. Kein vollständiger Meteorkatalog.
 - **CNEOS:** nur bereits vorhandener Zeitcache, weil der Dienst keinen räumlichen Serverfilter bietet; unterhalb des Horizonts liegende Ereignisse verwerfen.
-- **OpenSky:** Trino-OAuth ist implementiert, echter Flugabruf benötigt vom Anbieter freigeschalteten Archivzugang. Nutzer hat bislang **keinen solchen Zugang**; keine funktionsfähige Flugarchivprüfung behaupten. Keine Passwörter in App/Chat sammeln. Offizieller Client speichert Token im Windows-Anmeldespeicher. SQL auf Stundenpartition, Zeit, geografischen Bereich und WGS84-Horizont begrenzen.
+- **OpenSky:** Trino-OAuth ist implementiert, echter Flugabruf benötigt vom Anbieter freigeschalteten Archivzugang. Ohne solchen Zugang keine funktionsfähige Flugarchivprüfung behaupten. Keine Passwörter in App/Chat sammeln. Offizieller Client speichert Token im Windows-Anmeldespeicher. SQL auf Stundenpartition, Zeit, geografischen Bereich und WGS84-Horizont begrenzen.
 - Cache: `catalog_cache/`, Archive darunter `archives/`. Vorhandene globale Bestände erhalten, lokal filtern. `archive_sources.download()` darf fehlende Sammelarchive nicht automatisch herunterladen. Manuell konfigurierte TLE-/CSV-Dateien oder HTTPS-URLs sind ausdrücklich gewählte alternative Quellen.
 
 ## Prüfen und Berichte ergänzen

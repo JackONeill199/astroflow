@@ -20,6 +20,13 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   Bahn, Richtung an der Durchgangsstelle und die nötige Zeit. Beispiel M31 (11.06.2022): 12 von 13 Spuren zugeordnet,
   vorher keine.
 
+## 0.8.2 – 01.11.2026
+
+### Behoben
+- **Keine privaten Angaben mehr im Repository:** SkyTrace schlägt als Quellordner das Benutzerverzeichnis vor statt eines festen
+  Laufwerkspfads (gespeicherte Auswahl bleibt), Prüfskripte lesen echte Beispieldaten aus `SKYTRACE_SAMPLES`, Dokumentation ohne
+  Heimnetz-Adressen, Tests mit neutralen Koordinaten. Lokale Notizen für Agenten gehören in `AGENTS.local.md` (nicht im Repo).
+
 ## 0.8.1 – 01.11.2026
 
 ### Neu

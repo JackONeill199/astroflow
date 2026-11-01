@@ -16,3 +16,6 @@ astroflow/modules/skytrace/data/
 # System
 .DS_Store
 Thumbs.db
+
+# Lokale, private Agenten-Notizen (Pfade, Instanz, Standort)
+AGENTS.local.md
