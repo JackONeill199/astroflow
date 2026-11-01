@@ -186,3 +186,95 @@ def test_satellitenbahn_trotz_uhrversatz_zuordnen(tmp_path, monkeypatch):
     m = cm.satellite_check(late, site, settings)["matches"][0]
     assert 6 < m["time_offset_s"] < 10
     assert cm.satellite_check(late, site, dict(settings, satellite_clock_slack_s=3))["status"] == "checked_no_match"
+
+
+def test_satcat_sperre_wird_beachtet(tmp_path, monkeypatch):
+    """Namen aus lokaler SATCAT-Kopie (täglich bei Bedarf), Einzelabfrage nur für neuere Nummern; CelesTrak-Nutzungsregeln:
+    bei jeder Antwort außer HTTP 200 anhalten, bis ein Mensch freigibt – Hinweis statt stummem Abbruch."""
+    import os
+    import sys
+    import time
+    from pathlib import Path
+    import pytest
+    pytest.importorskip("filelock"); requests = pytest.importorskip("requests")   # Engine-Pakete (skytrace/requirements.txt)
+    sys.path.insert(0, str(Path(__file__).parents[1] / "astroflow" / "modules" / "skytrace" / "engine"))
+    import archive_sources
+
+    class Antwort:
+        def __init__(self, code, data=None, text=""):
+            self.status_code, self.data, self.text = code, data, text
+        def json(self):
+            if self.data is None: raise ValueError("kein JSON")
+            return self.data
+        def iter_content(self, size): yield self.text.encode("utf-8")
+        def close(self): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+
+    csv_text = ("OBJECT_NAME,OBJECT_ID,NORAD_CAT_ID,OBJECT_TYPE,OPS_STATUS_CODE,LAUNCH_DATE\n"
+                "GLOBALSTAR M003,1998-008D,25165,PAY,+,1998-02-14\nSL-16 R/B,1994-023B,23088,R/B,,1994-04-26\n"
+                '"FENGYUN 1C DEB",1999-025ABC,31000,DEB,,1999-05-10\n')
+    aufrufe, antworten = [], {}
+    def get(url, params=None, timeout=None, allow_redirects=True, stream=False):
+        assert allow_redirects is False                 # 301 nicht stillschweigend folgen
+        key = "csv" if url == archive_sources.SATCAT_CSV else params["CATNR"]
+        aufrufe.append(key)
+        if key == "33333": raise requests.ConnectionError("kein Netz")
+        return antworten[key]
+    monkeypatch.setattr(archive_sources, "CACHE", tmp_path)
+    monkeypatch.setattr(archive_sources, "SATCAT_PAUSE_S", 0)
+    monkeypatch.setattr(requests, "get", get)
+    pause, kopie = tmp_path / "satcat-pause.json", tmp_path / "satcat.csv"
+    leer = {"name": "", "type": None, "cospar": None, "launch": None}
+
+    # Erster Bedarf: ganze Liste laden, Namen/Objektart daraus; unbekannte Nummer einzeln („nicht im Katalog“ gemerkt)
+    antworten.update(csv=Antwort(200, text=csv_text), **{"99999": Antwort(200, text="No SATCAT records found")})
+    names, note = archive_sources.satellite_names([25165, 23088, 31000, 99999], {})
+    assert note is None and aufrufe == ["csv", "99999"] and kopie.exists()
+    assert names["25165"] == {"name": "GLOBALSTAR M003", "type": "Satellit", "cospar": "1998-008D", "launch": "1998-02-14"}
+    assert names["23088"]["type"] == "Raketenstufe" and names["31000"]["type"] == "Trümmerteil" and names["99999"] == leer
+    # Alles bekannt bzw. Kopie jünger als 24 h → keine Abfrage
+    assert archive_sources.satellite_names([25165, 99999], {})[1] is None and len(aufrufe) == 2
+    # Neue Nummer, Kopie frisch → nur Einzelabfrage; 403 → angehalten (ohne Ablauf), Hinweis, alte Namen bleiben
+    antworten["28498"] = Antwort(403, text="blocked")
+    names, note = archive_sources.satellite_names([25165, 28498], {})
+    assert aufrufe[2:] == ["28498"] and "HTTP 403" in note and "freigegeben" in note and "25165" in names
+    assert archive_sources.satellite_names([28498], {}) == ({}, note) and len(aufrufe) == 3
+    # Freigabe (Einstellungen löschen die Datei); Kopie älter als 24 h → neu laden, 301 hält ebenfalls an
+    pause.unlink()
+    alt = time.time() - archive_sources.SATCAT_MAX_AGE_S - 60
+    os.utime(kopie, (alt, alt))
+    antworten["csv"] = Antwort(301)
+    names, note = archive_sources.satellite_names([25165, 28498], {})
+    assert aufrufe[3:] == ["csv"] and "HTTP 301" in note and names["25165"]["name"] == "GLOBALSTAR M003" and kopie.exists()
+    # Kein HTTP-Fehler: unbrauchbare Liste / unbrauchbarer 200-Inhalt / kein Netz → nicht übernommen, nur kurze Pause
+    antworten.update(csv=Antwort(200, text="<html>Wartung</html>"), **{"11111": Antwort(200, text="<html>Wartung</html>")})
+    for nr, erwartet in ((28498, ["csv"]), (11111, ["11111"]), (33333, ["33333"])):
+        pause.unlink()
+        if nr != 28498: os.utime(kopie, None)
+        n = len(aufrufe)
+        names, note = archive_sources.satellite_names([nr], {})
+        assert aufrufe[n:] == erwartet and str(nr) not in names and "Nächster Versuch in 15 min" in note
+        assert archive_sources.satellite_names([nr], {})[0] == {} and len(aufrufe) == n + 1
+    assert "GLOBALSTAR M003" in kopie.read_text(encoding="utf-8")   # kaputte Liste ersetzt die gute Kopie nicht
+
+
+def test_satcat_freigeben(tmp_path, monkeypatch):
+    """Angehaltene Namensabfrage erscheint im Katalogstatus und lässt sich in den Einstellungen freigeben."""
+    monkeypatch.setenv("ASTROFLOW_MODULES", "stacking,skytrace")
+    home = tmp_path / "skytrace"
+    _lauf(home)
+    cache = home / "catalog_cache" / "archives"
+    cache.mkdir(parents=True)
+    (cache / "satcat-pause.json").write_text(json.dumps({"stopped": True, "http": 403, "reason": "HTTP 403"}), encoding="utf-8")
+    monkeypatch.setenv("SKYTRACE_HOME", str(home))
+    with TestClient(create_app(load_settings(tmp_path / "data"))) as c:
+        d = c.get("/api/skytrace/catalog/status").json()
+        assert d["satcat"]["reason"] == "HTTP 403" and d["satcat_file"] is None
+        (cache / "satcat.csv").write_text("OBJECT_NAME,NORAD_CAT_ID\n", encoding="utf-8")
+        assert c.get("/api/skytrace/catalog/status").json()["satcat_file"]["bytes"] > 0
+        assert c.post("/api/skytrace/catalog/satcat/release", json={}).json() == {}
+        assert not (cache / "satcat-pause.json").exists()
+        # abgelaufene kurze Pause zählt nicht
+        (cache / "satcat-pause.json").write_text(json.dumps({"until": 1, "reason": "alt"}), encoding="utf-8")
+        assert c.get("/api/skytrace/catalog/status").json()["satcat"] == {}

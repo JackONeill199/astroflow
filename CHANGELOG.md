@@ -11,6 +11,21 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   Uhrzeit der Kandidaten, Kandidaten je Monat und die ergiebigsten Beobachtungen – filterbar nach Jahr. Mehrfach
   analysierte Beobachtungen zählen nur einmal (neueste vollständige Analyse).
 
+## 0.10.1 – 01.11.2026
+
+### Behoben
+- **SkyTrace: Satellitennamen fehlten** („Satellit NORAD 51779“ statt Name): CelesTrak hatte die Namensabfrage für den
+  Internetanschluss gesperrt (HTTP 403), weil jede Katalognummer einzeln abgefragt wurde und nach der Sperre jeder weitere
+  Kandidat erneut anfragte. Die Zuordnung zur Bahn war davon nicht betroffen – nur der Name.
+- Namen kommen jetzt aus einer **lokalen Kopie des ganzen CelesTrak-Satellitenkatalogs**. Sie wird nur bei Bedarf
+  geladen und höchstens einmal am Tag erneuert; einzeln nachgefragt werden nur Nummern, die jünger sind als die Kopie.
+  CelesTrak erfährt so auch nicht mehr, welche Satelliten in deinen Aufnahmen vorkamen. Stand der Kopie:
+  Einstellungen → SkyTrace (Archivzeile).
+- Gemäß den CelesTrak-Nutzungsregeln hält SkyTrace die Abfrage bei **jeder** Fehlerantwort (z. B. 301, 403, 404, 5xx)
+  sofort an und zeigt den Grund im Satellitenabgleich des Kandidaten, im Laufstatus und unter Einstellungen → SkyTrace.
+  Dort lässt sie sich nach Prüfung wieder freigeben. Ohne Verbindung oder bei unbrauchbarer Antwort wird nach
+  15 Minuten erneut versucht; eine unbrauchbare Liste ersetzt nie die vorhandene Kopie.
+
 ## 0.10.0 – 01.11.2026
 
 ### Neu

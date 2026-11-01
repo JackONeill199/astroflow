@@ -31,31 +31,136 @@ def download(url,path,settings,max_bytes=1200*1024**2):
 
 
 SATCAT='https://celestrak.org/satcat/records.php'
+SATCAT_CSV='https://celestrak.org/pub/satcat.csv'
 SATCAT_TYPES={'PAY':'Satellit','R/B':'Raketenstufe','DEB':'Trümmerteil','UNK':'unbekanntes Objekt'}
 
 
-def satellite_names(ids,settings,limit=12):
-    """Namen und Objektart je NORAD-Nummer aus dem CelesTrak-SATCAT (nur die Nummer wird gesendet, kein Standort/Zeit).
-    Cache `satcat-names.json`; nicht erreichbar → bekannte Namen, sonst leer (Nummer bleibt sichtbar)."""
-    from json_store import read_json
+SATCAT_PAUSE_S=0.5           # Abstand zwischen Einzelabfragen
+SATCAT_RETRY_S=15*60         # keine HTTP-Antwort (Netz) bzw. unerwarteter Inhalt bei 200: nicht bei jedem Kandidaten erneut
+SATCAT_MAX_AGE_S=24*3600     # lokale Kopie höchstens täglich erneuern (SATCAT ändert sich 1–2× am Tag)
+SATCAT_MAX_BYTES=200*1024**2
+SATCAT_SINGLE=3              # Einzelabfragen nur für Nummern, die jünger sind als die lokale Kopie
+SATCAT_PAUSE='satcat-pause.json'
+SATCAT_FILE='satcat.csv'
+_SATCAT_TABLE={}             # Pfad → (mtime, {Nummer: Eintrag}); einmal je Engine-Prozess einlesen
+
+
+class SatcatError(Exception):
+    """Abruf gescheitert; `http` = Statuscode ≠ 200 (→ anhalten bis zur Freigabe) oder None (→ kurze Pause)."""
+    def __init__(self,detail,http=None):
+        super().__init__(detail);self.http=http
+
+
+def _satcat_get(url,params=None,stream=False):
+    """GET nach den CelesTrak-Nutzungsregeln: jede Antwort ≠ 200 ist ein Fehler. Weiterleitungen nicht folgen –
+    301 heißt laut CelesTrak „falsche/veraltete Adresse“."""
     import requests
+    try:response=requests.get(url,params=params,timeout=(10,120) if stream else 8,allow_redirects=False,stream=stream)
+    except requests.RequestException as error:raise SatcatError(str(error)) from error
+    if response.status_code!=200:
+        response.close();raise SatcatError(f'HTTP {response.status_code}',response.status_code)
+    return response
+
+
+def _satcat_entry(row):
+    return dict(name=str(row.get('OBJECT_NAME') or '').strip(),type=SATCAT_TYPES.get(row.get('OBJECT_TYPE'),row.get('OBJECT_TYPE')),
+                cospar=row.get('OBJECT_ID'),launch=row.get('LAUNCH_DATE'))
+
+
+def _satcat_table():
+    """Lokale Kopie des ganzen SATCAT (CSV, Spalten wie die JSON-Einträge) als {Nummer: Eintrag}; fehlt sie → {}."""
+    import csv
+    path=CACHE/SATCAT_FILE
+    try:mtime=path.stat().st_mtime
+    except OSError:return {}
+    cached=_SATCAT_TABLE.get(str(path))
+    if cached and cached[0]==mtime:return cached[1]
+    with open(path,encoding='utf-8',newline='') as handle:
+        table={str(int(row['NORAD_CAT_ID'])):_satcat_entry(row) for row in csv.DictReader(handle) if (row.get('NORAD_CAT_ID') or '').strip().isdigit()}
+    _SATCAT_TABLE[str(path)]=(mtime,table)
+    return table
+
+
+def _download_satcat(settings):
+    """Ganzen Katalog (geschätzt 12–15 MB) laden, prüfen und atomar ersetzen. Gesendet wird nichts außer der Anfrage –
+    keine Nummern, kein Standort. Ausdrückliche Ausnahme von „keine weltweiten Vollarchive“ (Nutzerwunsch 01.11.2026)."""
+    temporary=CACHE/(SATCAT_FILE+'.part')
+    event('status',text='Satellitenkatalog (CelesTrak-SATCAT) wird aktualisiert …')
+    response=_satcat_get(SATCAT_CSV,stream=True)
+    CACHE.mkdir(parents=True,exist_ok=True);size=0
+    try:
+        with response,open(temporary,'wb') as handle:
+            for chunk in response.iter_content(1<<20):
+                check_stop(settings);size+=len(chunk)
+                if size>SATCAT_MAX_BYTES:raise SatcatError('Datei unerwartet groß')
+                handle.write(chunk)
+        with open(temporary,encoding='utf-8',newline='') as handle:
+            header=handle.readline()
+        if 'NORAD_CAT_ID' not in header or 'OBJECT_NAME' not in header:raise SatcatError('keine SATCAT-CSV')
+        replace_file(temporary,CACHE/SATCAT_FILE)
+    except (OSError,UnicodeDecodeError) as error:raise SatcatError(str(error)) from error
+    finally:temporary.unlink(missing_ok=True)
+
+
+def _satcat_note(error):
+    if error.http:
+        return (f'Namen nicht abrufbar: CelesTrak antwortete mit HTTP {error.http}'+(' (Zugriff gesperrt, meist wegen zu vieler Abfragen)' if error.http==403 else '')+
+                '. Gemäß den CelesTrak-Nutzungsregeln ist die Namensabfrage angehalten, bis sie unter Einstellungen → SkyTrace '
+                'wieder freigegeben wird; bis dahin nur NORAD-Nummern.')
+    return f'Namen nicht abrufbar: CelesTrak-Katalog nicht erreichbar oder unerwartete Antwort ({error}). Nächster Versuch in {SATCAT_RETRY_S//60} min.'
+
+
+def satellite_names(ids,settings,limit=SATCAT_SINGLE):
+    """Namen und Objektart je NORAD-Nummer aus dem CelesTrak-SATCAT. Ergebnis `(namen, hinweis)` – Hinweis None oder Grund,
+    warum Namen fehlen. Quelle ist eine lokale Kopie des ganzen Katalogs (`satcat.csv`), höchstens täglich und nur bei
+    Bedarf erneuert (fehlende Nummer); Nummern, die jünger sind als die Kopie, einzeln (`records.php`, Cache
+    `satcat-names.json`, auch „nicht im Katalog“). Anlass 01.11.2026: Einzelabfragen je Nummer führten zur 403-Sperre.
+    CelesTrak-Nutzungsregeln: bei **jeder** Antwort außer HTTP 200 sofort aufhören und einem Menschen melden – daher
+    `satcat-pause.json` mit `stopped` bis zur Freigabe (`POST /api/skytrace/catalog/satcat/release` löscht die Datei);
+    nur ohne HTTP-Antwort bzw. bei unbrauchbarem 200-Inhalt eine kurze Pause."""
+    from json_store import read_json
     path=CACHE/'satcat-names.json'
     try:known=read_json(path) if path.exists() else {}
     except (OSError,ValueError):known={}
+    try:table=_satcat_table()
+    except (OSError,ValueError,KeyError):table={}
+    look=lambda:{str(i):table.get(str(i)) or known.get(str(i)) for i in ids if str(i) in table or str(i) in known}
+    missing=[str(i) for i in ids if str(i) not in look()]
     # `satcat_offline`: nur Cache (Wartungswerkzeuge, die keine Dienste kontaktieren dürfen).
-    missing=[] if settings.get('satcat_offline') else [str(i) for i in ids if str(i) not in known][:limit];added=False
-    for norad in missing:
-        check_stop(settings)
-        try:
-            response=requests.get(SATCAT,params={'CATNR':norad,'FORMAT':'json'},timeout=8)
-            response.raise_for_status();rows=response.json()
-        except (requests.RequestException,ValueError):break
-        if rows:
-            row=rows[0];known[norad]=dict(name=str(row.get('OBJECT_NAME') or '').strip(),type=SATCAT_TYPES.get(row.get('OBJECT_TYPE'),row.get('OBJECT_TYPE')),
-                                           cospar=row.get('OBJECT_ID'),launch=row.get('LAUNCH_DATE'));added=True
+    if not missing or settings.get('satcat_offline'):return look(),None
+    try:pause=read_json(CACHE/SATCAT_PAUSE) if (CACHE/SATCAT_PAUSE).exists() else {}
+    except (OSError,ValueError):pause={}
+    if pause.get('stopped') or float(pause.get('until') or 0)>time.time():return look(),pause.get('reason')
+    added=False
+    try:
+        try:age=time.time()-(CACHE/SATCAT_FILE).stat().st_mtime
+        except OSError:age=float('inf')
+        if age>SATCAT_MAX_AGE_S:
+            _download_satcat(settings)
+            try:table=_satcat_table()
+            except (KeyError,ValueError) as error:raise SatcatError(f'CSV nicht lesbar: {error}') from error
+            missing=[n for n in missing if n not in table]
+        for index,norad in enumerate(missing[:limit]):
+            check_stop(settings)
+            if index:time.sleep(SATCAT_PAUSE_S)
+            response=_satcat_get(SATCAT,{'CATNR':norad,'FORMAT':'json'})
+            # Nur eine erkannte „keine Einträge“-Antwort gilt als „nicht im Katalog“ (wird gecacht); unerwartete
+            # Antworten (HTML-Fehlerseite, kaputtes JSON, Fehlerobjekt) wie ein Fehler behandeln → später erneut.
+            try:rows=response.json()
+            except ValueError:
+                if 'no satcat records' not in (response.text or '').lower():raise SatcatError('kein SATCAT-Eintrag im JSON-Format')
+                rows=[]
+            if not isinstance(rows,list) or any(not isinstance(r,dict) for r in rows):raise SatcatError('kein SATCAT-Eintrag im JSON-Format')
+            known[norad]=_satcat_entry(rows[0] if rows else {});added=True
+        note=None
+    except SatcatError as error:
+        note=_satcat_note(error)
+        entry=dict(stopped=True,http=error.http,since=time.time(),reason=note) if error.http else dict(until=time.time()+SATCAT_RETRY_S,reason=note)
+        CACHE.mkdir(parents=True,exist_ok=True);write_json(CACHE/SATCAT_PAUSE,entry)
+        event('status',text=note)
     if added:
         CACHE.mkdir(parents=True,exist_ok=True);write_json(path,known)
-    return {str(i):known[str(i)] for i in ids if str(i) in known}
+    return look(),note
 
 
 def eth_tles(stamp,settings):

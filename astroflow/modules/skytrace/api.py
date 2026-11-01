@@ -475,11 +475,23 @@ def build_router(mod) -> APIRouter:
         files = list(cache.glob("*")) if cache.exists() else []
         conn = _read_json(mod.home / "catalog_cache" / "opensky-connection.json",
                           {"status": "not_connected", "detail": "Noch kein OpenSky-Trino-Konto verbunden."})
-        return dict(opensky=conn, satellite_time_queries=sum(p.name.startswith("eth-") and p.suffix == ".json" for p in files),
+        # Namensabfrage CelesTrak-SATCAT: angehalten (`stopped`, z. B. HTTP 403) bzw. kurz pausiert – engine/archive_sources.py
+        satcat = _read_json(cache / "satcat-pause.json", {}) or {}
+        if not satcat.get("stopped") and float(satcat.get("until") or 0) <= time.time():
+            satcat = {}
+        csv = cache / "satcat.csv"                  # lokale Kopie des Namenskatalogs (täglich bei Bedarf erneuert)
+        satcat_file = dict(updated=csv.stat().st_mtime, bytes=csv.stat().st_size) if csv.is_file() else None
+        return dict(opensky=conn, satcat=satcat, satcat_file=satcat_file, satellite_time_queries=sum(p.name.startswith("eth-") and p.suffix == ".json" for p in files),
                     satellite_years=[p.stem.removeprefix("tle_") for p in files if p.suffix == ".parquet"],
                     meteor_months=[p.stem.removeprefix("traj_summary_monthly_") for p in files
                                    if p.suffix == ".sqlite" and ".building." not in p.name],
                     bytes=sum(p.stat().st_size for p in files if p.is_file()))
+
+    @r.post("/catalog/satcat/release")
+    def satcat_release():
+        """Angehaltene Satelliten-Namensabfrage wieder freigeben (CelesTrak verlangt bei Fehlern eine Prüfung durch einen Menschen)."""
+        (mod.home / "catalog_cache" / "archives" / "satcat-pause.json").unlink(missing_ok=True)
+        return catalog_status()["satcat"]
 
     @r.post("/catalog/connect")
     def catalog_connect(body: dict = Body(...)):

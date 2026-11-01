@@ -216,6 +216,7 @@ window.AstroEvidence=(()=>{
    const table=node('table',undefined,'evidence-table'),thead=node('thead'),tr=node('tr');for(const text of ['Geprüfte Bahn','Abstand zur Spur','Abdeckung','Richtungsabweichung','Durchgang','Bahnalter','Bewertung'])tr.append(node('th',text));thead.append(tr);table.append(thead);const tbody=node('tbody');
    const passage=d=>!Array.isArray(d.passage_seconds)||d.separation_arcsec==null||d.coverage<.5?'–':d.time_offset_s>0?num(d.time_offset_s,1)+' s außerhalb der Belichtung':'während der Belichtung';
    for(const d of diagnostics){const row=node('tr');for(const text of [(d.name||'NORAD '+d.norad_id)+(d.object_type&&d.object_type!=='Satellit'?' ('+d.object_type+')':''),d.separation_arcsec==null?'> 10° ab Spuranfang':num(d.separation_arcsec/60,2)+'′',num(d.coverage*100,0)+' %',d.alignment_degrees==null?'nicht auswertbar':num(d.alignment_degrees,1)+'°',passage(d),num(d.tle_age_days,2)+' Tage',d.compatible?'geometrisch vereinbar':(d.reasons||[]).join('; ')||'Kriterien nicht erfüllt'])row.append(node('td',text));tbody.append(row);}table.append(tbody);const scroll=node('div',undefined,'evidence-table-scroll');scroll.append(table);section.append(scroll);
+   if(sat.names_note)section.append(node('p',sat.names_note,'evidence-note'));
   }
   const data=node('details'),summary=node('summary','Alle gespeicherten Messdaten und Grenzen');data.append(summary,node('pre',JSON.stringify({method:c.method,evidence:e,world_path:c.world_path,catalogs:c.catalogs},null,2)));section.append(data);host.append(section);
  }
