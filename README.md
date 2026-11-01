@@ -197,6 +197,8 @@ Bildfolgen (z. B. ein Stellina-Beobachtungsordner) werden chronologisch zu einem
 kompensiert, unscharfe Aufnahmen fallen heraus. Erkannte Spuren erscheinen als **Kandidaten** mit Vorher-/Nachher-Ausschnitten, Messdetails
 („Warum wurde diese Spur erkannt?“) und Katalogabgleich. Ein Kandidat ist kein bestätigtes Objekt, ein Katalogtreffer bleibt ein Hinweis.
 Originale werden nur gelesen. Standort und Kataloge: Einstellungen → SkyTrace.
+Die **Statistik** (SkyTrace → Statistik) fasst alle Analysen zusammen: Objektarten, häufigste Satelliten, Katalogabgleich je Quelle,
+Uhrzeiten und Monate der Kandidaten sowie die ergiebigsten Beobachtungen.
 
 Die Analyse braucht zusätzliche Pakete (OpenCV, PyTorch/YOLO, PyAV, Skyfield …): `pip install -r astroflow/modules/skytrace/requirements.txt`
 oder unter Einstellungen → SkyTrace den Python-Interpreter einer bestehenden SkyTrace-Installation wählen. Docker: `docker compose build --build-arg SKYTRACE=1`.

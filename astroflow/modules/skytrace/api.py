@@ -392,6 +392,12 @@ def build_router(mod) -> APIRouter:
     def runs():
         return list_runs(ctl.results)
 
+    @r.get("/statistics")
+    def statistics():
+        from .stats import collect
+        s = ctl.snapshot(logs=False)
+        return collect(ctl.results, skip=s["run"] if s["running"] else None)
+
     @r.get("/run")
     def run(id: str):
         try:
