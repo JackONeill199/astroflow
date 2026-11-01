@@ -188,7 +188,7 @@ async function galleryView(el) {
 // ---------------------------------------------------------------- Objekt --- //
 async function projectView(el, id, tab = 'bild') {
   id = +id;
-  let p = await api('/stacking/projects/' + id), frames = null, sel = null, cmp = null, viewer = null, sig = '', before = false;
+  let p = await api('/stacking/projects/' + id), frames = null, sel = null, cmp = null, viewer = null, sig = '', before = false, stage = null;
   let fFilter = 'all', fBand = 'all', fSort = ['date', 1];
   const tabs = () => [...TABS.filter(([k]) => !p.imported || k === 'bild' || (k === 'versionen' && p.results.length > 1)),
     ...((p.companions ?? p.options?.companion_ids?.length ?? 0) ? [['teleskopbilder', 'Teleskopbilder']] : [])];
@@ -268,8 +268,17 @@ async function projectView(el, id, tab = 'bild') {
     }
     const s = r.stats || {}, bands = s.bands || {}, bmax = Math.max(1, ...Object.values(bands).map(b => b.exposure));
     const rev = r.review || [];
+    // Stacking-Verlauf: Stufen mit weniger Aufnahmen, letzte Position = fertiges Bild (Standard)
+    const stages = !c && !before ? [...(s.stages || []), { n: r.n_frames, exposure: r.exposure, final: true }] : [];
+    if (stage?.rid !== r.id || !(stage.i >= 0 && stage.i < stages.length)) stage = { rid: r.id, i: stages.length - 1 };
+    const stageLabel = (x) => x.final ? `Alle ${x.n} Aufnahmen · ${dur(x.exposure)} – fertiges Bild` : `${x.n} ${x.n === 1 ? 'Aufnahme' : 'Aufnahmen'} · ${dur(x.exposure)}`;
+    const stageSrc = (x) => x.final ? `/api/stacking/results/${r.id}/jpg` : `/api/stacking/results/${r.id}/s${x.n}`;
     t.innerHTML = `<div class="split"><div>
         <div id="viewer"></div>
+        ${stages.length > 1 ? `<div class="stages"><div class="stages-h"><b>Stacking-Verlauf</b><span class="grow"></span><span class="sm tnum" id="stlbl">${stageLabel(stages[stage.i])}</span></div>
+          <input type="range" id="strange" min="0" max="${stages.length - 1}" step="1" value="${stage.i}" aria-label="Stacking-Stufe" style="--fill:${stage.i / (stages.length - 1) * 100}%">
+          <div class="stages-ticks">${stages.map((x, i) => `<span data-i="${i}" class="tnum${i === stage.i ? ' on' : ''}">${x.final ? 'Alle' : x.n}</span>`).join('')}</div>
+          <p class="mut sm">Dasselbe Objekt mit weniger Aufnahmen, gleich entwickelt – so sieht man, was mehr Belichtungszeit bringt.${s.stages_simplified ? ` Zwischenstufen ohne ${s.stages_simplified.join('/')} entwickelt.` : ''}</p></div>` : ''}
         ${r.has_before && !c ? `<div class="row" style="margin-top:10px"><div class="seg" id="ba"><button data-b="0" class="${before ? '' : 'on'}">Ergebnis</button>
           <button data-b="1" class="${before ? 'on' : ''}">Vorher / Nachher</button></div>
           ${before ? '<span class="mut sm">Links der unbearbeitete Master-Stack, rechts das entwickelte Bild – Trennlinie ziehen</span>' : ''}</div>` : ''}
@@ -313,6 +322,20 @@ async function projectView(el, id, tab = 'bild') {
       : before && r.has_before ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${r.id}/before`, ['vorher', 'nachher'], ph)
       : createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, null, undefined, ph);
     $('#ba')?.addEventListener('click', (e) => { const b = e.target.closest('[data-b]'); if (b) { before = b.dataset.b === '1'; drawTab(false); } });
+    if (stages.length > 1) {
+      let pre = null;                                    // alle Stufen vorladen, sobald der Regler benutzt wird
+      const show = (i) => {
+        if (!pre) pre = stages.map(x => Object.assign(new Image(), { src: stageSrc(x) }));
+        stage.i = i; $('#strange').value = i;
+        $('#strange').style.setProperty('--fill', i / (stages.length - 1) * 100 + '%');
+        $('#stlbl').textContent = stageLabel(stages[i]);
+        $$('.stages-ticks span').forEach(sp => sp.classList.toggle('on', +sp.dataset.i === i));
+        viewer.setSrc(stageSrc(stages[i]));
+      };
+      $('#strange').addEventListener('input', (e) => show(+e.target.value));
+      $('.stages-ticks').addEventListener('click', (e) => { const sp = e.target.closest('[data-i]'); if (sp) show(+sp.dataset.i); });
+      if (stage.i !== stages.length - 1) viewer.setSrc(stageSrc(stages[stage.i]));
+    }
     $('#latest')?.addEventListener('click', () => { sel = null; cmp = null; drawTab(); });
     $('#importedSage')?.addEventListener('click', story);
   }

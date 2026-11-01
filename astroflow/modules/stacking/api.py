@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from . import channels, graxpert, objects, platesolve, reviewer, stars
+from . import channels, diskspace, graxpert, objects, platesolve, reviewer, stars
 from .db import DB
 from .pipeline import Pipeline
 
@@ -38,8 +38,11 @@ class Engine:
         stars.STARNET.tools_dir = self.s.data_dir / "tools" / "starnet"
         self._apply_saved()
         self.q: queue.Queue[int] = queue.Queue()
+        self.dq: queue.Queue[int] = queue.Queue()      # gestackt, wartet auf die Endbearbeitung
         self._queue_lock = threading.Lock()
         self.stop = threading.Event()
+        self.cancel = threading.Event()               # laufenden Auftrag beim nächsten Fortschritt abbrechen
+        self.paused: str | None = None                # Grund, falls die Warteschlange angehalten ist
         self.last_scan = 0.0
         # unterbrochene Jobs fortsetzen: das Stacking macht am letzten Checkpoint weiter
         self.db.x("UPDATE jobs SET state='queued', message='wird fortgesetzt (Neustart)' WHERE state='running'")
@@ -80,38 +83,136 @@ class Engine:
             "(SELECT 1 FROM jobs j WHERE j.project_id=f.project_id AND j.state='error' "
             "AND j.id=(SELECT MAX(j2.id) FROM jobs j2 WHERE j2.project_id=f.project_id))")}
 
+    def hold(self) -> str | None:
+        """Warum gerade keine Aufträge starten (angehalten oder zu wenig Speicher) – sonst None."""
+        if self.paused:
+            return self.paused
+        f = diskspace.free(self.s.data_dir)
+        if f is not None and f < diskspace.MIN_FREE:
+            return (f"Nur noch {diskspace.gb(f)} frei auf dem Datenlaufwerk – Aufträge warten, bis wieder "
+                    f"mindestens {diskspace.gb(diskspace.MIN_FREE)} frei sind.")
+        return None
+
+    def set_paused(self, paused: bool, reason: str = "Warteschlange angehalten.") -> None:
+        self.paused = reason if paused else None
+        if paused:
+            self.cancel.set()
+        else:
+            self.cancel.clear()
+
     def worker(self):
+        """Stack-Thread. Ist ein Objekt gestackt, übernimmt der Entwicklungs-Thread (`developer`) die Endbearbeitung,
+        und hier beginnt sofort das Stacken des nächsten Objekts. Höchstens ein fertiger Stack wartet auf die Entwicklung."""
+        stacked_all = threading.Event()               # Entwicklungs-Thread endet erst, wenn hier nichts mehr nachkommt
+        dev = threading.Thread(target=self.developer, args=(stacked_all,), daemon=True, name="stacking-develop")
+        dev.start()
         while not self.stop.is_set():
+            if self.hold() or self.dq.qsize() >= 1:
+                self.stop.wait(1 if self.dq.qsize() else 3)
+                continue
             try:
                 jid = self.q.get(timeout=0.5)
             except queue.Empty:
                 continue
-            job = self.db.one("SELECT * FROM jobs WHERE id=?", (jid,))
-            self.db.x("UPDATE jobs SET state='running', started=? WHERE id=?", (time.time(), jid))
+            self._guarded(jid, self._stack_job)
+        stacked_all.set()
+        dev.join()
 
-            def prog(p, stage, msg=""):
-                self.db.x("UPDATE jobs SET progress=?, stage=?, message=? WHERE id=?", (round(p, 3), stage, msg, jid))
-
+    def developer(self, stacked_all: threading.Event):
+        while not (stacked_all.is_set() and self.dq.empty()):
             try:
-                opts = json.loads(job["options"] or "{}")
-                if opts.get("action") == "solve":
-                    r = self.pl.solve_project(job["project_id"], prog)
-                    n = sum(r["moved"].values())
-                    self.db.x("UPDATE jobs SET state='done', progress=1, finished=?, message=? WHERE id=?",
-                              (time.time(), f"{n} Aufnahmen zugeordnet", jid))
-                    for pid in r["moved"]:
-                        self.enqueue(pid)
-                    continue
-                self.pl.process(job["project_id"], opts, prog)
-                self.db.x("UPDATE jobs SET state='done', progress=1, finished=? WHERE id=?", (time.time(), jid))
-                if self.s.auto and job["project_id"] in self.pending_projects():
-                    self.enqueue(job["project_id"])
-            except Exception as e:
-                traceback.print_exc()
-                self.db.x("UPDATE jobs SET state='error', message=?, finished=? WHERE id=?", (str(e), time.time(), jid))
+                jid = self.dq.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            self._guarded(jid, self._develop_job)
+
+    def _guarded(self, jid: int, fn):
+        try:
+            fn(jid)
+        except Exception as e:                        # z. B. Datenbank bei voller Platte – der Thread muss weiterleben
+            traceback.print_exc()
+            if diskspace.is_full(e):
+                self._full()
+                self.q.put(jid)
+            self.stop.wait(5)
+
+    def _full(self):
+        f = diskspace.free(self.s.data_dir) or 0
+        self.set_paused(True, f"Datenlaufwerk voll ({diskspace.gb(f)} frei) – Warteschlange angehalten. "
+                              "Platz schaffen (Einstellungen → Bilder → Speicherbelegung) und dann fortsetzen.")
+
+    def _prog(self, jid: int):
+        checked = [0.0]
+
+        def prog(p, stage, msg=""):
+            if self.cancel.is_set():
+                raise InterruptedError("angehalten")
+            if time.time() - checked[0] > 5:          # Platte während des Auftrags im Blick behalten
+                checked[0] = time.time()
+                f = diskspace.free(self.s.data_dir)
+                if f is not None and f < diskspace.ABORT_FREE:
+                    raise diskspace.DiskFull(f"Nur noch {diskspace.gb(f)} frei")
+            self.db.x("UPDATE jobs SET progress=?, stage=?, message=? WHERE id=?", (round(p, 3), stage, msg, jid))
+        return prog
+
+    def _stack_job(self, jid: int):
+        job = self.db.one("SELECT * FROM jobs WHERE id=?", (jid,))
+        if not job or job["state"] not in ("queued", "running"):
+            return
+        self.db.x("UPDATE jobs SET state='running', started=? WHERE id=?", (time.time(), jid))
+        prog = self._prog(jid)
+        try:
+            opts = json.loads(job["options"] or "{}")
+            if opts.get("action") == "solve":
+                r = self.pl.solve_project(job["project_id"], prog)
+                n = sum(r["moved"].values())
+                self.db.x("UPDATE jobs SET state='done', progress=1, finished=?, message=? WHERE id=?",
+                          (time.time(), f"{n} Aufnahmen zugeordnet", jid))
+                for pid in r["moved"]:
+                    self.enqueue(pid)
+                return
+            if opts.get("mode") != "develop":
+                self.pl.stack(job["project_id"], opts, prog)
+                prog(0.86, "Bearbeitung", "wartet auf die Endbearbeitung")
+            self.dq.put(jid)
+        except Exception as e:
+            self._failed(jid, e)
+
+    def _develop_job(self, jid: int):
+        job = self.db.one("SELECT * FROM jobs WHERE id=?", (jid,))
+        if not job or job["state"] != "running":
+            return
+        prog = self._prog(jid)
+        try:
+            opts = json.loads(job["options"] or "{}")
+            if opts.get("mode") == "develop":
+                self.pl.develop(job["project_id"], opts, prog, start=0.05)
+            else:
+                self.pl.finish(job["project_id"], opts, prog)
+            self.db.x("UPDATE jobs SET state='done', progress=1, finished=? WHERE id=?", (time.time(), jid))
+            if self.s.auto and job["project_id"] in self.pending_projects():
+                self.enqueue(job["project_id"])
+        except Exception as e:
+            self._failed(jid, e)
+
+    def _failed(self, jid: int, e: Exception):
+        if isinstance(e, InterruptedError) or isinstance(e, diskspace.DiskFull) or diskspace.is_full(e):
+            # nichts verloren: Stacking setzt am letzten Checkpoint fort – Auftrag wartet wieder
+            if not isinstance(e, InterruptedError):
+                self._full()
+            self.db.x("UPDATE jobs SET state='queued', progress=0, message=? WHERE id=?",
+                      ("angehalten – geht beim Fortsetzen weiter", jid))
+            self.q.put(jid)
+            return
+        traceback.print_exc()
+        self.db.x("UPDATE jobs SET state='error', message=?, finished=? WHERE id=?", (str(e), time.time(), jid))
 
     def watcher(self):
         while not self.stop.is_set():
+            f = diskspace.free(self.s.data_dir)
+            if f is not None and f < diskspace.ABORT_FREE:       # volle Platte: nicht jede Runde Fehler produzieren
+                self.stop.wait(self.s.scan_interval)
+                continue
             try:
                 self.scan_and_queue()
             except Exception:
@@ -143,6 +244,7 @@ class Engine:
         return {"input_dir": str(self.s.input_dir), "output_dir": str(self.s.output_dir),
                 "auto": self.s.auto, "scan_interval": self.s.scan_interval, "threads": self.s.threads,
                 "last_scan": self.last_scan, "frames": frames, "busy_jobs": busy, "disk": disk,
+                "hold": self.hold(), "paused": bool(self.paused),
                 "projects": n_proj, "finished": n_res,
                 "delete_uploads": self.s.delete_uploads, "gaia": self.s.gaia,
                 "reviewer": {"enabled": self.review_cfg.enabled, "provider": self.review_cfg.provider, "model": self.review_cfg.model},
@@ -220,11 +322,22 @@ def build_router(eng: Engine) -> APIRouter:
     @r.post("/housekeeping/cleanup")
     def housekeeping_cleanup(body: dict = Body(...)):
         from . import housekeeping
-        if db.one("SELECT id FROM jobs WHERE state IN ('queued','running') LIMIT 1"):
-            raise HTTPException(409, "Gerade läuft eine Verarbeitung – bitte danach aufräumen.")
+        # wartende Aufträge stören nicht, solange die Warteschlange steht (angehalten oder Platte voll) –
+        # genau dann muss Aufräumen möglich sein; währenddessen bleibt sie angehalten
+        if db.one("SELECT id FROM jobs WHERE state='running' LIMIT 1") or (
+                not eng.hold() and db.one("SELECT id FROM jobs WHERE state='queued' LIMIT 1")):
+            raise HTTPException(409, "Gerade läuft eine Verarbeitung – bitte danach aufräumen oder die Aufträge anhalten.")
         keys = [k for k in body.get("keys") or [] if isinstance(k, str)]
-        with eng.pl._scan_lock:                          # kein Scan/Import gleichzeitig
-            return housekeeping.cleanup(eng.s, db, keys, int(body.get("keep") or housekeeping.KEEP_VERSIONS))
+        before = eng.paused
+        eng.set_paused(True, before or "Aufräumen läuft – Aufträge warten.")
+        try:
+            with eng.pl._scan_lock:                      # kein Scan/Import gleichzeitig
+                return housekeeping.cleanup(eng.s, db, keys, int(body.get("keep") or housekeeping.KEEP_VERSIONS))
+        finally:
+            if before:
+                eng.set_paused(True, before)
+            else:
+                eng.set_paused(False)
 
     @r.get("/solver")
     def get_solver():
@@ -405,6 +518,12 @@ def build_router(eng: Engine) -> APIRouter:
                 last = db.one("SELECT id FROM results WHERE project_id=? ORDER BY COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC,id DESC LIMIT 1", (pid,))
                 eng.ctx.emit("stacking.imported", project_id=pid, result_id=last["id"], name=p["name"])
         return {"saved": n, "raw": raw, "skipped": skipped, "pictures": pictures, "errors": errors}
+
+    @r.post("/queue")
+    def queue_state(body: dict = Body(...)):
+        """Warteschlange anhalten (bricht den laufenden Auftrag ab, er setzt später am Checkpoint fort) oder fortsetzen."""
+        eng.set_paused(bool(body.get("paused")))
+        return {"paused": bool(eng.paused), "hold": eng.hold()}
 
     @r.get("/library")
     def library_state():

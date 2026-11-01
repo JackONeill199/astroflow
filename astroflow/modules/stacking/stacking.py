@@ -66,6 +66,7 @@ class StackState:
         self.swx = np.zeros((C, H, W), np.float32)
         self.swx2 = np.zeros((C, H, W), np.float32)
         self.meta: dict = {"frames": {}, "ref_fid": None, "ref_stars": None, "ref_bg": None, "scale": 1}
+        self.snaps: dict = {}
 
     # ---- Speichern/Laden -------------------------------------------------- #
     def save(self, d: Path) -> None:
@@ -99,9 +100,12 @@ class StackState:
             return None
 
     # ---- Akkumulieren ------------------------------------------------------ #
-    def add_batch(self, X: np.ndarray, V: np.ndarray, w: np.ndarray, workers: int = 1) -> int:
+    def add_batch(self, X: np.ndarray, V: np.ndarray, w: np.ndarray, workers: int = 1, prefixes=()) -> int:
         """X (B,C,H,W) normierte Frames, V (B,H,W) gültig, w (B,) Gewichte. Gibt Zahl abgelehnter Pixel zurück.
-        Pixel sind unabhängig -> Verarbeitung in Zeilenstreifen, parallel auf `workers` Threads (numpy gibt den GIL frei)."""
+        Pixel sind unabhängig -> Verarbeitung in Zeilenstreifen, parallel auf `workers` Threads (numpy gibt den GIL frei).
+        prefixes: Stapelanteile k, für die der Zwischenstand „bisher + erste k Frames“ in self.snaps[k] = (Mittel, Gewichtsminimum)
+        landet (Stacking-Stufen; die Clipping-Maske stammt aus dem ganzen Stapel)."""
+        self.snaps = {k: (np.empty(self.shape, np.float32), np.empty(self.shape[1:], np.float32)) for k in prefixes}
         H = X.shape[2]
         w = w.astype(np.float32)
         # globale Größen einmal vorab (Streifen sollen sich nicht gegenseitig beeinflussen)
@@ -136,6 +140,10 @@ class StackState:
             keep &= ~((sw > 0)[None] & (np.abs(X - mean[None]) > 5 * sd[None]))
         wk = keep * w[:, None, None, None]
         Xk = np.where(keep, X, 0).astype(np.float32)
+        for k, (m, c) in self.snaps.items():
+            sw = self.sw[:, ys] + wk[:k].sum(0)
+            m[:, ys] = (self.swx[:, ys] + (wk[:k] * Xk[:k]).sum(0)) / np.maximum(sw, 1e-9)
+            c[ys] = sw.min(0)
         self.sw[:, ys] += wk.sum(0)
         self.swx[:, ys] += (wk * Xk).sum(0)
         self.swx2[:, ys] += (wk * Xk * Xk).sum(0)

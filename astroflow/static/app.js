@@ -265,7 +265,7 @@ function createViewer(host, src, cmpSrc, labels = ['älter', 'neuer'], ph = null
     if (ov) { ov.setAttribute('viewBox', `0 0 ${iw} ${ih}`); ov.style.width = iw + 'px'; ov.style.height = ih + 'px'; opts.overlay(ov, iw, ih); }
     fit(); requestAnimationFrame(() => v.classList.add('ready'));
   };
-  main.complete && main.naturalWidth ? onload() : main.addEventListener('load', onload);
+  main.complete && main.naturalWidth ? onload() : main.addEventListener('load', onload, { once: true });
   main.addEventListener('error', () => { $('.vload', v).innerHTML = 'Bild konnte nicht geladen werden.'; });
   const ro = new ResizeObserver(() => { const atFit = Math.abs(s - fitS) < 1e-3; if (atFit) fit(); else { clamp(); apply(); } });
   ro.observe(v);
@@ -301,7 +301,8 @@ function createViewer(host, src, cmpSrc, labels = ['älter', 'neuer'], ph = null
     if (a === 'in') smooth(() => zoomAt(1.5, cx, cy)); else if (a === 'out') smooth(() => zoomAt(1 / 1.5, cx, cy)); else if (a === 'fit') smooth(fit);
     else if (a === 'full') { v.classList.toggle('full'); requestAnimationFrame(fit); }
   });
-  return { el: v, overlay: ov, destroy: () => { ro.disconnect(); document.removeEventListener('keydown', onKey); } };
+  // setSrc: anderes Bild gleicher Größe zeigen (Zoom und Ausschnitt bleiben, z. B. Stacking-Stufen)
+  return { el: v, overlay: ov, setSrc: (u) => { if (main.getAttribute('src') !== u) main.src = u; }, destroy:() => { ro.disconnect(); document.removeEventListener('keydown', onKey); } };
 }
 
 // ----------------------------------------------------------- Modul-Vertrag --- //
@@ -408,7 +409,8 @@ async function poll() {
 function sideFoot(st) {
   const s = st.modules.stacking || {}, d = s.disk;
   $('#sidefoot').innerHTML = `<div><span class="dot${s.auto ? '' : ' off'}"></span>${s.auto ? 'Automatik aktiv' : 'Automatik aus'}</div>
-    <div>Letzter Scan: ${ago(s.last_scan)}</div>${d ? `<div>${fmb(d.free)} frei</div>` : ''}<div>AstroFlow ${esc(st.version)} · ${AF.order.length} Module</div>`;
+    <div>Letzter Scan: ${ago(s.last_scan)}</div>${d ? `<div class="${s.hold && /frei/.test(s.hold) ? 'bad' : ''}">${fmb(d.free)} frei</div>` : ''}
+    ${s.hold ? `<a class="warn" href="#/activity">${s.paused ? 'Aufträge angehalten' : 'Aufträge warten (Speicher)'}</a>` : ''}<div>AstroFlow ${esc(st.version)} · ${AF.order.length} Module</div>`;
 }
 async function pollActivity() {
   const items = await api('/activity?limit=25'), act = items.filter(running), now = new Map(act.map(a => [a.key, a]));
@@ -475,7 +477,9 @@ async function activityView(el) {
   crumbs([['Aktivität']]);
   const mods = AF.order.filter(id => id !== 'x');
   let filter = 'all', sig = '';
-  el.innerHTML = `<div class="pagehead"><div><h1>Aktivität</h1><p class="mut">Alle Aufträge aus allen Modulen – Verarbeitung, Spurenanalysen, Geschichten.</p></div></div>
+  el.innerHTML = `<div class="pagehead"><div><h1>Aktivität</h1><p class="mut">Alle Aufträge aus allen Modulen – Verarbeitung, Spurenanalysen, Geschichten.</p></div>
+      <div id="qctl"></div></div>
+    <div id="qhold"></div>
     <div class="toolbar"><div class="seg" id="af">${[['all', 'Alle'], ...mods.map(id => [id, AF.info(id).name])].map(([k, l]) => `<button data-v="${k}" class="${k === filter ? 'on' : ''}">${esc(l)}</button>`).join('')}</div></div>
     <div id="jobs"></div>`;
   $('#af').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; filter = b.dataset.v; $$('#af button').forEach(x => x.classList.toggle('on', x === b)); sig = ''; load(); };
@@ -489,7 +493,25 @@ async function activityView(el) {
         <div class="mut sm jmsg">${msg(j)}</div></div>
       <span class="chip ${label[j.state]?.[0] || ''}">${j.state === 'running' && j.progress != null ? `${Math.round(j.progress * 100)} %` : label[j.state]?.[1] || esc(j.state)}</span>
       ${running(j) ? `<div class="progress ${j.state === 'queued' || j.progress == null ? 'indet' : ''}"><i style="width:${(j.progress || 0) * 100}%"></i></div>` : ''}</a>`;
+  // Bilder-Warteschlange anhalten/fortsetzen (laufender Auftrag setzt später am Checkpoint fort)
+  let qsig = null;
+  const queueCtl = () => {
+    const s = AF.status?.modules?.stacking;
+    if (!AF.on('stacking') || !s || !$('#qctl')) return;
+    const k = JSON.stringify([s.paused, s.hold]);
+    if (k === qsig) return;
+    qsig = k;
+    $('#qctl').innerHTML = s.paused ? `<button class="btn" id="qbtn">${icon('play')}Aufträge fortsetzen</button>`
+      : `<button class="btn ghost" id="qbtn" title="Laufende Bildverarbeitung abbrechen und Warteschlange anhalten">${icon('pause')}Aufträge anhalten</button>`;
+    $('#qhold').innerHTML = s.hold ? `<div class="notice ${s.paused && !/voll/.test(s.hold) ? '' : 'err'}">${icon('alert')}<div>${esc(s.hold)}</div></div>` : '';
+    $('#qbtn').onclick = async () => {
+      const r = await send('/stacking/queue', { paused: !s.paused });
+      Object.assign(s, r); qsig = null; queueCtl();
+      toast(r.paused ? 'Warteschlange angehalten – der laufende Auftrag stoppt gleich.' : 'Aufträge laufen weiter.', 'ok');
+    };
+  };
   async function load() {
+    queueCtl();
     const items = (await api('/activity?limit=60')).filter(j => filter === 'all' || j.module === filter);
     const s = JSON.stringify(items.map(j => [j.key, j.state]));
     const act = items.filter(running), past = items.filter(j => !running(j));

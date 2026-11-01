@@ -26,9 +26,15 @@ def smoothstep(x, a, b):
 
 # ---------------------------------------------------------------------------- #
 def crop_to_coverage(img: np.ndarray, cov: np.ndarray, thr: float = 0.5) -> np.ndarray:
+    y0, y1, x0, x1 = coverage_box(cov, thr)
+    return img[:, y0:y1, x0:x1]
+
+
+def coverage_box(cov: np.ndarray, thr: float = 0.5) -> tuple[int, int, int, int]:
+    """Größtes Rechteck (y0, y1, x0, x1) mit (fast) voller Abdeckung."""
     mask = cov > thr
     if not mask.any():
-        return img
+        return 0, cov.shape[0], 0, cov.shape[1]
     rows, cols = np.nonzero(mask.any(1))[0], np.nonzero(mask.any(0))[0]
     y0, y1, x0, x1 = rows[0], rows[-1] + 1, cols[0], cols[-1] + 1
     while y1 - y0 > 16 and x1 - x0 > 16:
@@ -45,7 +51,7 @@ def crop_to_coverage(img: np.ndarray, cov: np.ndarray, thr: float = 0.5) -> np.n
             x0 += 1
         else:
             x1 -= 1
-    return img[:, y0:y1, x0:x1]
+    return int(y0), int(y1), int(x0), int(x1)
 
 
 def _star_mask(L: np.ndarray, grow: int = 3, sigma_k: float = 3.0) -> np.ndarray:
@@ -564,14 +570,20 @@ def auto_stretch(img: np.ndarray, target: float = 0.2) -> np.ndarray:
 
 
 def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool = False, palette: str | None = None,
-            log=lambda m: None, want_before: bool = False):
+            log=lambda m: None, want_before: bool = False, crop: list | None = None):
     """stack (C,H,W) linear, cov (H,H) 0..1. Gibt (rgb float32 (3,H,W) 0..1, Statistik).
-    want_before: stats["before"] = derselbe Ausschnitt nur linear gestreckt (Vorher-Nachher-Vergleich)."""
+    want_before: stats["before"] = derselbe Ausschnitt nur linear gestreckt (Vorher-Nachher-Vergleich).
+    crop: fester Ausschnitt (y0, y1, x0, x1) statt aus der Abdeckung – stats["crop"] eines früheren Laufs
+    (Stacking-Stufen haben so exakt den Ausschnitt des fertigen Bildes)."""
     p = dict(params)
-    img = crop_to_coverage(stack, cov).astype(np.float32)
-    m = max(8, int(0.015 * min(img.shape[1:])))      # Randzone (Vignettierung/Interpolationsränder) abschneiden
-    if min(img.shape[1:]) > 8 * m:
-        img = img[:, m:-m, m:-m]
+    if crop:
+        y0, y1, x0, x1 = crop
+    else:
+        y0, y1, x0, x1 = coverage_box(cov)
+        m = max(8, int(0.015 * min(y1 - y0, x1 - x0)))   # Randzone (Vignettierung/Interpolationsränder) abschneiden
+        if min(y1 - y0, x1 - x0) > 8 * m:
+            y0, y1, x0, x1 = y0 + m, y1 - m, x0 + m, x1 - m
+    img = stack[:, y0:y1, x0:x1].astype(np.float32)
     if img.shape[0] == 1:
         img = np.repeat(img, 3, axis=0)
         mono = True
@@ -597,7 +609,8 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
         img = remove_gradient(img, int(p["gradient_degree"]), edge_exclude=EDGE_EXCLUDE)
         img = remove_edge_glow(img)                  # steiles Randglühen, das das Polynom nicht erfasst
         img = remove_gradient(img, 2)                # Restneigung nach der Randkorrektur
-    img, trimmed = trim_bad_edges(img)
+    img, trimmed = (img, [0, 0, 0, 0]) if crop else trim_bad_edges(img)
+    stats["crop"] = [y0 + trimmed[0], y1 - trimmed[1], x0 + trimmed[2], x1 - trimmed[3]]
     if sat is not None:
         sat = sat[trimmed[0] : sat.shape[0] - trimmed[1], trimmed[2] : sat.shape[1] - trimmed[3]]
     if raw0 is not None:
