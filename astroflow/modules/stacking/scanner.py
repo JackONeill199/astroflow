@@ -17,7 +17,7 @@ from .fits_io import FITS_EXT, FrameInfo, parse_date, read_info
 class ScannedFrame:
     id: str
     path: str
-    kind: str          # light|dark|flat|bias
+    kind: str          # light|dark|flat|bias|processed
     info: FrameInfo
     night: str
 
@@ -46,6 +46,8 @@ def fingerprint(path: str | Path, block: int = 65536) -> str:
 
 
 def classify(info: FrameInfo, path: Path) -> str:
+    if info.processed:                               # fertiger Stack/Master anderer Software: nie stacken
+        return "processed"
     t = (info.imagetyp or "").lower()
     if "dark" in t:
         return "dark"

@@ -123,8 +123,9 @@ class Pipeline:
                 size = Path(f.path).stat().st_size                 # auch für den Namensabgleich der Hauptordner-Suche
             except OSError:
                 size = 0
-            self.db.x("INSERT OR IGNORE INTO frames(id,project_id,path,kind,night,info,size) VALUES(?,?,?,?,?,?,?)",
-                      (f.id, pid, f.path, f.kind, f.night, json.dumps(f.info.to_dict()), size))
+            self.db.x("INSERT OR IGNORE INTO frames(id,project_id,path,kind,night,info,size,status,reason) VALUES(?,?,?,?,?,?,?,?,?)",
+                      (f.id, pid, f.path, f.kind, f.night, json.dumps(f.info.to_dict()), size,
+                       "ignored" if f.kind == "processed" else "new", f.info.processed or ""))
         return {"new_frames": len(frames), "new_by_project": new_by_proj, "errors": errors, "solved": solved,
                 "duplicates": len(dups), "duplicates_by_project": dup_by_proj}
 
