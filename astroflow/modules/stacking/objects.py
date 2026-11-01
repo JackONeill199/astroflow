@@ -212,8 +212,10 @@ def nearest_extended(ra: float, dec: float, radius_deg: float = 0.3, min_size: f
 # gradient_degree : Polynomgrad der Hintergrundextraktion
 # target_bg       : Helligkeit des Himmelshintergrunds (0..1) nach dem Stretch – bestimmt, wie hell schwaches Signal wird
 # bg_dark         : Endgültige Hintergrundhelligkeit über den Schwarzpunkt (Stellina ~0,03; None = aus)
-# star_separation : off (Standard – Nutzer fand den Look ohne Trennung besser, NGC 7000) | auto (StarNet, falls
-#                   installiert, sonst eigene Trennung) | starnet | intern; je Objekt unter Optionen wählbar
+# star_separation : off | auto (StarNet, falls installiert, sonst eigene Trennung) | starnet (nur StarNet, sonst aus) |
+#                   intern; je Objekt unter Optionen wählbar. Nebel seit 01.11.2026 „starnet“ (NGC 7000 mit echtem StarNet
+#                   deutlich besser; die eigene Trennung fand der Nutzer matschiger), übrige Profile aus.
+# grade / vibrance: Endbearbeitung (processing.grade): Strukturen 4–64 px im Objekt anheben / blasse Farben sättigen
 # star_brightness : Helligkeit der wieder eingesetzten Sterne (1 = wie bei normaler Streckung)
 # asinh           : Stärke der asinh-Kompression (größer = mehr Highlight-Schutz)
 # denoise         : Rauschreduzierung 0..1
@@ -235,9 +237,9 @@ PROFILES: dict[str, dict] = {
     # Emissionsnebel (IC 405, NGC 6888, NGC 7000: 0,12–0,21) liegen darunter. M101 (Galaxie, SNR 11) braucht es weiter.
     "generic":      dict(gradient_degree=3, target_bg=0.08, asinh=30, denoise=0.3, chroma_denoise=1.5, saturation=1.35, contrast=0.25, sharpen=0.3, deconv=0, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=0.85),
     "galaxy":       dict(gradient_degree=2, target_bg=0.07, asinh=120, denoise=0.3, chroma_denoise=1.5, saturation=1.30, contrast=0.35, sharpen=0.4, deconv=8, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=0.85),
-    "emission":     dict(gradient_degree=3, target_bg=0.08, asinh=40, denoise=0.3, chroma_denoise=1.5, saturation=1.50, contrast=0.35, sharpen=0.3, deconv=0, star_reduction=0.35, scnr=0.4, bg_dark=0.03, star_separation="off", star_brightness=0.85, linear_denoise_max=0.3),
-    "reflection":   dict(gradient_degree=3, target_bg=0.08, asinh=30, denoise=0.3, chroma_denoise=1.5, saturation=1.40, contrast=0.3, sharpen=0.25, deconv=0, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=0.85),
-    "snr":          dict(gradient_degree=3, target_bg=0.08, asinh=40, denoise=0.3, chroma_denoise=1.5, saturation=1.50, contrast=0.35, sharpen=0.3, deconv=0, star_reduction=0.3, scnr=0.4, bg_dark=0.03, star_separation="off", star_brightness=0.85),
+    "emission":     dict(gradient_degree=3, target_bg=0.08, asinh=40, denoise=0.3, chroma_denoise=1.5, saturation=1.50, contrast=0.35, sharpen=0.3, deconv=0, star_reduction=0.35, scnr=0.4, bg_dark=0.03, star_separation="starnet", star_brightness=0.85, linear_denoise_max=0.3, grade=1.0, vibrance=0.5),
+    "reflection":   dict(gradient_degree=3, target_bg=0.08, asinh=30, denoise=0.3, chroma_denoise=1.5, saturation=1.40, contrast=0.3, sharpen=0.25, deconv=0, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="starnet", star_brightness=0.85, grade=1.0, vibrance=0.5),
+    "snr":          dict(gradient_degree=3, target_bg=0.08, asinh=40, denoise=0.3, chroma_denoise=1.5, saturation=1.50, contrast=0.35, sharpen=0.3, deconv=0, star_reduction=0.3, scnr=0.4, bg_dark=0.03, star_separation="starnet", star_brightness=0.85, grade=1.0, vibrance=0.5),
     # planetary: kleines, helles Objekt im Sternfeld – Weißpunkt höher und kein lineares Entrauschen (Ring brennt sonst
     # aus, Sterne blähen auf), wenig glätten und höheres target_bg: Korn und schwache Sterne bleiben (M57 gegen Stellina, 2026-10-30)
     "planetary":    dict(gradient_degree=3, target_bg=0.10, asinh=150, denoise=0.25, chroma_denoise=1.5, saturation=1.30, contrast=0.3, sharpen=0.5, deconv=12, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=0.85, white_pct=99.98, linear_denoise_max=0.0, ai_denoise=0.3),

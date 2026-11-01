@@ -120,7 +120,11 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    Quellen, Füllen per Öffnung + Versatzausgleich, nie heller als das Original, sternlos + Sterne = Original). Sternlos: `Stretch` =
    automatische GHS-Folge (3 Durchgänge, SP am Himmelshintergrund, D ≤ 25, Rest per MTF; Weißpunkt vom Bild **mit** Sternen).
    Sterne: `channel_curve(img) − channel_curve(sternlos)` (knackig, Kerne weiß), sättigen, × `star_brightness`, Screen-Mischung.
-   **Standard seit 2026-10-28: aus** (alle Profile `off`) – der Nutzer verglich NGC 7000 und fand die Trennung (eigenes Verfahren)
+   **Seit 01.11.2026 für Nebel (emission/reflection/snr) `starnet`** = nur echtes StarNet, ohne StarNet keine Trennung (`Pipeline.develop`
+   setzt dann `off`); NGC 7000 mit StarNet + GraXpert deutlich besser (Nebel ohne Sterne gestreckt, Sterne kleiner). Dazu **Endbearbeitung**
+   `processing.grade` (Profil `grade` 1,0 / `vibrance` 0,5, vor dem Einsetzen der Sterne): Wavelet-Ebenen 4–32 px ×(1+0,35…0,6) nur im Objekt
+   (Maske gegen 10-%-Perzentil der geglätteten Luminanz – Median/MAD versagte, wenn der Nebel das Bild füllt: 0,4 % Maske) und ohne helle
+   Sterne; Vibrance sättigt blasse Farben stärker. Galaxien/Haufen ohne beides. Früherer Stand: **Standard seit 2026-10-28: aus** (alle Profile `off`) – der Nutzer verglich NGC 7000 und fand die Trennung (eigenes Verfahren)
    matschiger und kontrastärmer; gewählt: ohne Trennung + Gaia-Farbe. Je Objekt per Option `star_separation` (auto/intern) zuschaltbar.
    Bei Sternhaufen brannte die Trennung den Kern aus (M3). Ohne Trennung: `channel_curve`.
    `darken_background` mit weichem Fuß (hartes Abschneiden ließ dunkle Nebelpartien schwarz werden).

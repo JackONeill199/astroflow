@@ -516,6 +516,32 @@ def darken_background(img: np.ndarray, level: float) -> np.ndarray:
     return np.clip(y / (1 - b), 0, 1).astype(np.float32)
 
 
+def grade(img: np.ndarray, amount: float, vibrance: float = 0.0) -> np.ndarray:
+    """Endbearbeitung wie in Affinity/Photoshop nach GraXpert+StarNet: Strukturen von 4–64 px (Staubbänder,
+    Spiralarme, Nebelfilamente) über Wavelet-Ebenen anheben – nur im Objekt, nicht im Himmel (Rauschen) und nicht in
+    Sternen –, dazu Vibrance: blasse Farben stärker sättigen als bereits kräftige."""
+    L = luminance(img)
+    # Objektmaske gegen den dunkelsten Himmel (10-%-Perzentil der geglätteten Luminanz): Median/Streuung taugen nicht,
+    # wenn der Nebel das ganze Bild füllt (NGC 7000: Maske sonst 0,4 % des Bildes)
+    Ls = ndi.gaussian_filter(L, 3.0)
+    sky = float(np.percentile(Ls, 10))
+    obj = smoothstep(Ls, sky + 0.012, sky + 0.10)
+    stars = ndi.grey_dilation(L, size=5) > 0.75                       # helle Sternkerne + Rand
+    obj = obj * (1 - ndi.gaussian_filter(stars.astype(np.float32), 2.0).clip(0, 1) * 0.8)
+    details, _ = _atrous(L, 6)
+    gains = (0.0, 0.0, 0.35, 0.6, 0.6, 0.4)                          # Skalen 1,2,4,8,16,32 px
+    Ln = L + amount * sum(g * d for g, d in zip(gains, details) if g) * obj
+    ratio = np.clip(np.maximum(Ln, 1e-4) / np.maximum(L, 1e-4), 0.6, 1.8)
+    out = np.clip(img * ratio, 0, 1)
+    if vibrance > 0:
+        L2 = luminance(out)
+        chroma = out - L2
+        s = np.sqrt((chroma ** 2).sum(0)) / np.maximum(L2, 0.02)        # relative Sättigung
+        k = 1 + vibrance * np.clip(1 - s / 0.6, 0, 1) * obj
+        out = np.clip(L2 + chroma * k, 0, 1)
+    return out.astype(np.float32)
+
+
 def saturate(img: np.ndarray, sat: float) -> np.ndarray:
     L = luminance(img)
     # schwache Pixel (Rauschen, Sternchen am Limit) nicht überfärben, Sternkerne auch nicht
@@ -639,6 +665,9 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
     log("Kontrast & Farbe")
     img = local_contrast(img, float(p["contrast"]), float(p["sharpen"]))
     img = saturate(img, float(p["saturation"]) if not mono else 1.0)
+    if p.get("grade", 0) > 0:
+        log("Endbearbeitung")
+        img = grade(img, float(p["grade"]), float(p.get("vibrance", 0.0)) if not mono else 0.0)
     if stars_s is not None:
         log("Sterne einsetzen")
         if p["star_reduction"] > 0:                          # Sterne kleiner: nur die Sternebene, Nebel unberührt

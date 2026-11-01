@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from . import calibration, channels, develop, graxpert, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner
+from . import calibration, channels, develop, graxpert, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner, stars
 from ...core.config import Settings, free_ram_mb
 from .db import DB
 from .fits_io import FrameInfo, parse_date, read_data, to_channels, write_fits
@@ -584,6 +584,8 @@ class Pipeline:
         params = {**objects.profile_for(pname), **user}
         if opt.get("star_separation"):
             params["star_separation"] = opt["star_separation"]
+        if params.get("star_separation") == "starnet" and not stars.starnet_path():
+            params["star_separation"] = "off"           # Profil „nur StarNet“: ohne StarNet keine eigene Trennung
         gx: dict = {}
         if (gmode := graxpert.mode_for(opt.get("graxpert"))) != "off" and (exe := graxpert.graxpert_path()):
             # einmal je Entwicklung auf dem linearen Stack (gecacht) – vor der Farbkalibrierung, damit die

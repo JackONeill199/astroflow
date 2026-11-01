@@ -56,3 +56,20 @@ def test_saturated_cores_become_neutral():
     core = out[:, 30, 30]
     assert core.max() - core.min() < 0.02 * core.max()      # Kern neutral statt cyan
     assert np.allclose(out[:, 5, 5], wb[:, 5, 5])           # Hintergrund unverändert
+
+
+def test_grade_lifts_nebula_structure_but_not_sky():
+    """Endbearbeitung: Strukturen im Nebel kräftiger, Himmel (Rauschen) unverändert – auch wenn der Nebel das Bild füllt."""
+    import numpy as np
+    from astroflow.modules.stacking import processing
+    rng = np.random.default_rng(1)
+    H, W = 256, 384
+    yy, xx = np.mgrid[0:H, 0:W]
+    sky = 0.05 + rng.normal(0, 0.004, (H, W))
+    neb = (xx > 96) * (0.12 + 0.04 * np.sin(xx / 6.0) * np.sin(yy / 7.0))       # Nebel mit Filamenten, 3/4 des Bildes
+    img = np.stack([sky + neb, sky + 0.5 * neb, sky + 0.4 * neb]).astype(np.float32)
+    out = processing.grade(img, 1.0, 0.5)
+    L0, L1 = processing.luminance(img), processing.luminance(out)
+    core = (slice(40, 220), slice(140, 360))
+    assert L1[core].std() > 1.15 * L0[core].std()                                  # mehr Struktur im Nebel
+    assert abs(float(L1[:, :80].std() - L0[:, :80].std())) < 0.1 * L0[:, :80].std()  # Himmelsrauschen nicht verstärkt
