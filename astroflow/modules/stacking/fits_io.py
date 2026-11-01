@@ -30,6 +30,7 @@ class FrameInfo:
     temp: float | None = None
     solve: dict | None = None     # Plate-Solving-Ergebnis, falls die Koordinaten daraus stammen
     fp: str | None = None         # Inhalts-Fingerabdruck (Duplikaterkennung, siehe scanner.fingerprint)
+    processed: str | None = None  # Grund, falls schon fertig verarbeitet (Stack/Master anderer Software) – kein Rohbild
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -141,8 +142,23 @@ def read_info(path: str | Path) -> FrameInfo:
             instrument=_clean(h.get("INSTRUME") or h.get("TELESCOP")),
             bayerpat=bp,
             temp=_float(h.get("CCD-TEMP", h.get("TEMPERAT"))),
+            processed=_processed(h, dims),
         )
         return info
+
+
+def _processed(h, dims: tuple) -> str | None:
+    """Fertige Ergebnisse anderer Software erkennen (z. B. Astro-Pixel-Processor-Integration, die im
+    Stellina-Beobachtungsordner neben den Rohbildern lag und sonst als eigenes Objekt „gestackt“ wurde)."""
+    for key in ("NUMFRAME", "STACKCNT", "NCOMBINE"):
+        n = _float(h.get(key))
+        if n and n > 1:
+            return f"bereits gestackt ({key} = {int(n)})"
+    if "INTEGRAT" in h:
+        return "bereits gestackt (Integration)"
+    if len(dims) == 3 and dims[0] == 3:
+        return "fertiges Farbbild (3 Farbebenen statt Rohbild)"
+    return None
 
 
 def parse_date(s: str | None) -> dt.datetime | None:

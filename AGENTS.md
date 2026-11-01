@@ -64,6 +64,10 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    **Duplikate:** Inhalts-Fingerabdruck (`scanner.fingerprint`: Größe + erste/letzte 64 KB) in `info.fp`; inhaltsgleiche Dateien werden
    `kind='duplicate'` (nie gestackt). Altbestand ohne Fingerabdruck wird beim nächsten Scan nachgetragen und nachträglich bereinigt
    (behalten: gestackter bzw. zuerst eingelesener Frame; war das Duplikat gestackt → `restack=1`).
+   **Fertige Bilder anderer Software** (`fits_io._processed` → `info.processed`, `classify` → `kind='processed'`, `status='ignored'`, nie gestackt):
+   `NUMFRAME`/`STACKCNT`/`NCOMBINE` > 1, `INTEGRAT` oder Farbwürfel mit 3 Ebenen. Anlass 01.11.2026: APP-Integrationen (`M17.fits`,
+   `M17-lpc-cbg*.fits`, 3263×2194×3) lagen direkt im Stellina-Ordner `…_observation_M17` (der `APP`-Ordnerausschluss griff nicht) →
+   zwei falsche Objekte M17 (596/597), 597 auch an Sage/SkyTrace gemeldet; bereinigt, Sicherung `data/backups/astroflow.db.vor-m17-bereinigung`.
 2. **Analyse** (`quality.py`, parallel): Sterne, FWHM, Exzentrizität, Hintergrund, Rauschen, `snr`, `grad` (Hintergrundgradient in
    Rauscheinheiten), `trails` → `frames.metrics`. `snr`/`grad` fließen in den Score, wenn alle Frames sie haben (ältere Analysen nicht).
    `detect_trails` erkennt die Demo-Satellitenspur noch NICHT zuverlässig (offener Punkt) – entfernt werden Spuren ohnehin per Clipping. Nur neue Frames – oder solche

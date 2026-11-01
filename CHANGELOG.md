@@ -64,6 +64,11 @@ Neueste zuerst. Technische Details stehen in `AGENTS.md`, die Bedienung in `READ
 - **Farbkalibrierung schneller**: Die Gaia-Sternfarben kommen jetzt zuerst von Spiegelservern in
   Heidelberg (GAVO, ARI) statt vom ESA-Archiv. Der Schritt „Gaia-Sternfarben abfragen“ dauert dadurch
   etwa 1 Sekunde statt rund 2 Minuten. Ist ein Spiegel nicht erreichbar, wird wie bisher die ESA gefragt.
+- **Fertige Bilder anderer Programme nicht mehr als Rohbilder stacken**: Bei M17 lagen im
+  Stellina-Beobachtungsordner neben den Rohbildern vier fertige Bilder aus Astro Pixel Processor. Sie
+  wurden als eigene Aufnahmen eingelesen und ergaben zwei zusätzliche Objekte „M17 Omeganebel“, die auch
+  an Sage und SkyTrace gingen. Fertige Stacks (`NUMFRAME`/`STACKCNT`/`NCOMBINE` > 1, `INTEGRAT`) und
+  Farbbilder mit drei Ebenen erkennt AstroFlow jetzt am Header und lässt sie beim Stacken aus.
 - SkyTrace-Einstellungen: Beim schnellen Wechseln der Einstellungsseiten trat gelegentlich ein
   Skriptfehler auf (Archivstatus wurde in eine nicht mehr angezeigte Seite geschrieben).
 
