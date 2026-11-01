@@ -132,6 +132,16 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    Stellina-Werte (5 Objekte): R ≈ 0,97, B ≈ 0,88, Streuung ~3 %. Tests offline (`tests/conftest.py` setzt ASTROFLOW_GAIA=0).
    **StarNet** optional: Einstellungen → „ZIP installieren“ (`stars.install_zip` → `data/tools/starnet`, Pfadprüfung, Selbsttest)
    oder Pfad (`settings.json` → `starnet.path`). Kein automatischer Download: Lizenz „all rights reserved“, Download-Links nur per JS.
+   **GraXpert** (`graxpert.py`, seit 01.11.2026, Nutzerwunsch nach Astrobiscuit-Vergleich – dessen Workflow: APP → GraXpert → StarNet2 → Affinity):
+   optionales externes Programm (GPL-3, Windows nur als MSI → Suche in `Program Files\GraXpert`, `%LOCALAPPDATA%\Programs\GraXpert`, PATH,
+   `ASTROFLOW_GRAXPERT`; `=0` schaltet ab, setzt `tests/conftest.py`). `Pipeline.develop` ruft `graxpert.apply` **einmal** auf dem linearen Stack auf
+   (vor Gaia-PCC, nicht je QC-Runde; Cache `work/p<id>/graxpert/`): KI-Hintergrund (`background-extraction`, Subtraction) und/oder KI-Entrauschen
+   (`denoising`, Stärke Profilwert `ai_denoise`, Standard 0,5, planetary 0,3). Ungedeckte Ränder werden vorher mit Himmelswert gefüllt. Ergebnis als
+   `params._ai` → `processing.process` überspringt dann Polynom/Randglühen bzw. `denoise_linear`; `stats.graxpert`. Modus global (Einstellungen →
+   Bilder, `settings.json` → `graxpert.mode/gpu/path`) und je Objekt (Option `graxpert`). Fehler → eigene Verfahren. Test: `test_graxpert.py` (Attrappe).
+   **M64 (01.11.2026, Nutzer: „um Welten besser“):** Restgradient 0,020 → 0,0017, Farbrauschen 0,0059 → 0,0037, Himmel 0,055 → 0,031,
+   diagonale Schlieren (Walking Noise, vom Polynom nicht erfassbar) fast weg. Halo schwächer (Signal 0,015 → 0,007; KI-Entrauschen senkt σ →
+   härterer Stretch), vom Nutzer aber als ausreichend erkennbar bewertet – so belassen.
    **Sensorglühen** (Schritt 0 in `stack()`, `Pipeline._glow`, `calibration.GlowLibrary`): ortsfestes Randglühen (Stellina oben/unten
    80–170 ADU) verschmiert sonst durch die Feldrotation zu Schlieren. Je Kamera (Gerät+Format+Gain+Belichtung+Filter) und Nacht:
    Zeilen-/Spaltenprofile (30-%-Perzentil je CFA-Ebene) aus ≤ 30 Lights, Median → `work/glow/<key>.npz` (wächst mit jeder Nacht,

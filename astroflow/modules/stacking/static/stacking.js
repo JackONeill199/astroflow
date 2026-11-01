@@ -4,6 +4,7 @@
 const BAND_COLOR = { L: '#d6dbe8', R: '#f87171', G: '#4ade80', B: '#60a5fa', Ha: '#fb7185', OIII: '#22d3ee', SII: '#f59e0b', RGB: '#a78bfa' };
 const PALETTE_LABEL = { auto: 'Automatisch', RGB: 'RGB', LRGB: 'LRGB', SHO: 'SHO (Hubble)', HOO: 'HOO (Bicolor)', mono: 'Mono', OSC: 'Farbkamera' };
 const TABS = [['bild', 'Bild'], ['aufnahmen', 'Aufnahmen'], ['versionen', 'Versionen'], ['optionen', 'Optionen']];
+const GX_LABEL = { default: 'Wie in den Einstellungen', all: 'Hintergrund + Entrauschen', bge: 'Nur Hintergrund', denoise: 'Nur Entrauschen', off: 'Aus (eigene Verfahren)' };
 const PROFILE_LABEL = { auto: 'Automatisch (nach Objekttyp)', generic: 'Allgemein', galaxy: 'Galaxie', emission: 'Emissionsnebel', reflection: 'Reflexionsnebel', planetary: 'Planetarischer Nebel', snr: 'Supernova-Überrest', globular: 'Kugelsternhaufen', open_cluster: 'Offener Sternhaufen' };
 const sst = () => AF.status?.modules?.stacking || {};
 const SOURCE_LABEL = { solve: 'Plate-Solving', catalog: 'Katalog (Objektname)', header: 'FITS-Header' };
@@ -285,6 +286,7 @@ async function projectView(el, id, tab = 'bild') {
           <dt>Auflösung</dt><dd>${s.shape[1]} × ${s.shape[0]} px</dd>${s.imported.date_obs ? `<dt>Aufnahmezeit (Dateimetadaten)</dt><dd>${esc(s.imported.date_obs)}</dd>` : ''}` : `<dt>Bearbeitungsprofil</dt><dd>${esc(PROFILE_LABEL[s.profile] || s.profile || '–')}</dd>
           <dt>Aufnahmetyp</dt><dd>${s.palette === 'OSC' || !s.palette ? 'Farbkamera' : 'Mono + Filter'}${s.narrowband ? ' · Schmalband' : ''}</dd>
           <dt>Sterne erkannt</dt><dd class="tnum">${s.stars ?? '–'}</dd>
+          ${s.graxpert ? `<dt>GraXpert-KI</dt><dd>${[s.graxpert.bge && 'Hintergrund', s.graxpert.denoise && `Entrauschen ${s.graxpert.denoise}`].filter(Boolean).join(' · ') || 'nicht angewendet'}${s.graxpert.error ? `<div class="dim sm">${esc(s.graxpert.error)}</div>` : ''}</dd>` : ''}
           <dt>Sterne</dt><dd>${s.star_separation ? `getrennt bearbeitet (${s.star_separation === 'starnet' ? 'StarNet' : 'eigene Trennung'})` : 'mit dem Bild bearbeitet'}</dd>
           ${s.wb_gains ? `<dt>Weißabgleich (R/G/B)</dt><dd class="tnum">${s.wb_gains.join(' / ')}</dd>` : ''}
           ${s.color_cal ? `<dt>Farbkalibrierung</dt><dd>${s.color_cal.verfahren === 'gaia' ? `fotometrisch (Gaia, ${s.color_cal.sterne} Sterne)`
@@ -423,6 +425,8 @@ async function projectView(el, id, tab = 'bild') {
         <label class="field"><span>Schmalband-Behandlung</span><select name="narrowband">${opt(['', 'true', 'false'], o.narrowband == null ? '' : String(o.narrowband), v => ({ '': 'Automatisch (nach Filter)', true: 'Ja – keine Sternfarben-Kalibrierung', false: 'Nein' }[v]))}</select></label>
         <label class="field"><span>Sterne getrennt bearbeiten</span><select name="star_separation">${opt(['', 'auto', 'intern'], o.star_separation || '', v => ({ '': 'Nein (Standard)', auto: 'Ja – StarNet, falls installiert, sonst eigene Trennung', intern: 'Ja – eigene Trennung' }[v]))}</select>
           <small>Nebel wird ohne Sterne gestreckt (mehr Nebel, Sterne kleiner). Kann bei flächigen Nebeln matter wirken – im Zweifel vergleichen.</small></label>
+        <label class="field"><span>GraXpert (KI-Hintergrund und -Entrauschen)</span><select name="graxpert">${opt(['', 'all', 'bge', 'denoise', 'off'], o.graxpert || '', v => GX_LABEL[v || 'default'])}</select>
+          <small>Nur wirksam, wenn GraXpert installiert ist (Einstellungen → Bilder).</small></label>
         <label class="field"><span>KI-Bildprüfung</span><select name="review">${opt(['true', 'false'], String(o.review ?? true), v => v === 'true' ? 'Verwenden, falls eingerichtet' : 'Für dieses Objekt aus')}</select></label>
         <div class="row" style="margin-top:6px"><button class="btn" type="submit" name="go" value="1" id="ogo"></button><button class="btn ghost" type="submit" id="osave">Nur speichern</button>
           <span class="grow"></span><span id="odirty"></span></div>
@@ -434,7 +438,7 @@ async function projectView(el, id, tab = 'bild') {
     // direkt aus den Elementen lesen – gesperrte Felder fehlen sonst in FormData
     const v = (k) => form.elements[k].value;
     const read = () => ({ profile: v('profile'), palette: v('palette'), keep_percent: v('keep_percent') ? +v('keep_percent') : null,
-      resolution_scale: +v('resolution_scale'), narrowband: v('narrowband') === '' ? null : v('narrowband') === 'true', review: v('review') === 'true', star_separation: v('star_separation') || null });
+      resolution_scale: +v('resolution_scale'), narrowband: v('narrowband') === '' ? null : v('narrowband') === 'true', review: v('review') === 'true', star_separation: v('star_separation') || null, graxpert: v('graxpert') || null });
     const init = Object.fromEntries($$('select,input', form).filter(x => x.name).map(x => [x.name, x.value]));
     let o2, needRestack, dirty;
     // Erkennt Änderungen und beschriftet die Hauptaktion passend: neu entwickeln (schnell) oder neu stacken
@@ -801,7 +805,7 @@ async function housekeeping(panel) {
 
 // ------------------------------------------------------------ Einstellungen --- //
 async function stackingSettings(el) {
-  const [c, st, sv, sn] = await Promise.all([api('/stacking/reviewer'), api('/stacking/status'), api('/stacking/solver'), api('/stacking/starnet')]);
+  const [c, st, sv, sn, gx] = await Promise.all([api('/stacking/reviewer'), api('/stacking/status'), api('/stacking/solver'), api('/stacking/starnet'), api('/stacking/graxpert')]);
   const astapOk = sv.astap && sv.astap_databases.length;
   el.innerHTML = `<div class="split"><div><form class="panel" id="sf">
       <div class="panel-h"><h2>Plate-Solving</h2><span class="grow"></span>
@@ -856,6 +860,22 @@ async function stackingSettings(el) {
         <details style="margin-top:10px"><summary class="sm mut" style="cursor:pointer">Schon installiert? Pfad angeben</summary>
           <form id="snpath" class="row" style="margin-top:8px"><input name="path" placeholder="z. B. C:\\starnet\\starnet2.exe" style="flex:1"><button class="btn sm">Übernehmen</button></form></details>`}
     </div>
+    <form class="panel" id="gxp">
+      <div class="panel-h"><h2>GraXpert (KI)</h2><span class="grow"></span>
+        <span class="chip ${gx.found && gx.mode !== 'off' ? 'ok' : ''}">${!gx.found ? 'nicht installiert' : gx.mode === 'off' ? 'aus' : 'aktiv'}</span></div>
+      <p class="mut sm" style="margin:-6px 0 12px">Entfernt Lichtverschmutzungs-Verläufe per KI, ohne großflächige Nebel abzutragen, und entrauscht den linearen Stack –
+        wie im Workflow vieler Smart-Teleskop-Fotografen. Läuft einmal je Entwicklung; ohne GraXpert nutzt AstroFlow die eigenen Verfahren.</p>
+      ${gx.found ? `<dl class="kv" style="margin-bottom:12px"><dt>Programm</dt><dd style="word-break:break-all">${esc(gx.path)}</dd></dl>`
+      : `<ol class="mut sm steps"><li>GraXpert (kostenlos, Open Source, GPL-3) für dein System laden und installieren:
+          <a class="btn sm ghost" href="${esc(gx.page)}" target="_blank" rel="noopener">${icon('down')}GitHub-Seite öffnen</a></li>
+        <li>AstroFlow findet es danach im üblichen Installationsordner automatisch – sonst unten den Pfad zur GraXpert.exe angeben.</li></ol>`}
+      <label class="field"><span>Standard für alle Objekte</span><select name="mode">${['all', 'bge', 'denoise', 'off'].map(v => `<option value="${v}" ${gx.mode === v ? 'selected' : ''}>${GX_LABEL[v]}</option>`).join('')}</select>
+        <small>Je Objekt unter „Optionen“ änderbar. Beim ersten Lauf lädt GraXpert seine KI-Modelle selbst herunter.</small></label>
+      <label class="row" style="gap:10px;cursor:pointer;flex-wrap:nowrap;margin-bottom:12px"><input type="checkbox" name="gpu" ${gx.gpu ? 'checked' : ''} style="height:auto">
+        <span>Grafikkarte nutzen (deutlich schneller beim Entrauschen)</span></label>
+      <label class="field"><span>GraXpert-Programm</span><input name="path" value="${esc(gx.custom || '')}" placeholder="leer = automatisch suchen"></label>
+      <div class="row"><button class="btn" type="submit">Speichern</button></div>
+    </form>
     <form class="panel" id="stf"><h2 style="margin-bottom:10px">Speicher &amp; Daten</h2>
       ${st.disk ? `<div class="row sm" style="justify-content:space-between"><span class="mut">Frei auf dem Datenlaufwerk</span><b>${fmb(st.disk.free)} von ${fmb(st.disk.total)}</b></div>
         <div class="progress" style="margin:6px 0 14px"><i style="width:${(1 - st.disk.free / st.disk.total) * 100}%"></i></div>` : ''}
@@ -883,6 +903,15 @@ async function stackingSettings(el) {
       toast(r.gaia ? 'Farbkalibrierung über Gaia an.' : 'Farbkalibrierung über Sternfarben-Mittel.', 'ok');
     } catch (err) { toast('Fehler: ' + err.message, 'err'); }
   };
+  $('#gxp').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target.elements;
+    try {
+      await send('/stacking/graxpert', { mode: f.mode.value, gpu: f.gpu.checked, path: f.path.value });
+      toast('GraXpert-Einstellungen gespeichert.', 'ok');
+      stackingSettings(el);
+    } catch (err) { toast(err.message, 'err'); }
+  });
   $('#snzip')?.addEventListener('change', async (e) => {
     const f = e.target.files[0];
     if (!f) return;

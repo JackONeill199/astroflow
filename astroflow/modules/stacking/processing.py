@@ -565,10 +565,12 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
         img, shifts = align_channels(img)
         if shifts:
             stats["channel_shift"] = shifts
-    log("Hintergrundgradient entfernen")
-    img = remove_gradient(img, int(p["gradient_degree"]), edge_exclude=EDGE_EXCLUDE)
-    img = remove_edge_glow(img)                      # steiles Randglühen, das das Polynom nicht erfasst
-    img = remove_gradient(img, 2)                    # Restneigung nach der Randkorrektur
+    ai = p.get("_ai") or {}                          # GraXpert lief schon auf dem linearen Stack (pipeline.develop)
+    if not ai.get("bge"):
+        log("Hintergrundgradient entfernen")
+        img = remove_gradient(img, int(p["gradient_degree"]), edge_exclude=EDGE_EXCLUDE)
+        img = remove_edge_glow(img)                  # steiles Randglühen, das das Polynom nicht erfasst
+        img = remove_gradient(img, 2)                # Restneigung nach der Randkorrektur
     img, trimmed = trim_bad_edges(img)
     if sat is not None:
         sat = sat[trimmed[0] : sat.shape[0] - trimmed[1], trimmed[2] : sat.shape[1] - trimmed[3]]
@@ -603,7 +605,7 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
         Lnew = L + (Ld - L) * blend
         img = img + (Lnew - L)[None]          # additiv, farbneutral
 
-    if p.get("linear_denoise", 0) > 0:
+    if p.get("linear_denoise", 0) > 0 and not ai.get("denoise"):
         log("Rauschreduzierung (linear)")
         img = denoise_linear(img, float(p["linear_denoise"]))
     # Sterne trennen (wie StarNet in Siril/PixInsight): Nebel/Galaxie werden ohne Sterne gestreckt und bearbeitet,

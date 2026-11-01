@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from . import channels, objects, platesolve, reviewer, stars
+from . import channels, graxpert, objects, platesolve, reviewer, stars
 from .db import DB
 from .pipeline import Pipeline
 
@@ -22,7 +22,8 @@ from .pipeline import Pipeline
 PERSIST = {"reviewer": ("provider", "base_url", "model", "api_key", "max_rounds"),
            "solver": ("backend", "astap", "astap_db", "nova_key", "timeout"),
            "storage": ("delete_uploads", "gaia"),
-           "starnet": ("path",)}
+           "starnet": ("path",),
+           "graxpert": ("path", "mode", "gpu")}
 
 
 class Engine:
@@ -47,7 +48,8 @@ class Engine:
 
     # ---- gespeicherte Einstellungen -------------------------------------------
     def _targets(self) -> dict:
-        return {"reviewer": self.review_cfg, "solver": self.pl.solver_cfg, "storage": self.s, "starnet": stars.STARNET}
+        return {"reviewer": self.review_cfg, "solver": self.pl.solver_cfg, "storage": self.s, "starnet": stars.STARNET,
+                "graxpert": graxpert.GRAXPERT}
 
     def _apply_saved(self):
         for sec, obj in self._targets().items():
@@ -464,6 +466,34 @@ def build_router(eng: Engine) -> APIRouter:
         stars.STARNET.path = ""
         eng.save_settings()
         return get_starnet()
+
+    @r.get("/graxpert")
+    def get_graxpert():
+        exe = graxpert.graxpert_path()
+        g = graxpert.GRAXPERT
+        return {"path": exe, "found": bool(exe), "custom": g.path, "mode": g.mode, "gpu": g.gpu, "page": graxpert.PAGE}
+
+    @r.post("/graxpert")
+    async def set_graxpert(body: dict = Body(...)):
+        g = graxpert.GRAXPERT
+        if "path" in body:
+            p = str(body.get("path") or "").strip().strip('"')
+            if p:
+                if not Path(p).is_file():
+                    raise HTTPException(400, f"Datei nicht gefunden: {p}")
+                try:
+                    await asyncio.to_thread(graxpert.selftest, p)
+                except Exception as e:
+                    raise HTTPException(400, f"GraXpert lässt sich nicht starten: {e}")
+            g.path = p
+        if "mode" in body:
+            if body["mode"] not in graxpert.MODES:
+                raise HTTPException(400, "Unbekannter Modus")
+            g.mode = body["mode"]
+        if "gpu" in body:
+            g.gpu = bool(body["gpu"])
+        eng.save_settings()
+        return get_graxpert()
 
     @r.get("/reviewer")
     def get_reviewer():

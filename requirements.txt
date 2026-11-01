@@ -3,6 +3,7 @@ scipy>=1.13
 astropy>=6.0
 pillow>=10.0
 tifffile>=2024.1
+imagecodecs>=2024.1      # StarNet2 schreibt LZW-komprimierte TIFFs
 fastapi>=0.110
 uvicorn>=0.29
 python-multipart>=0.0.9

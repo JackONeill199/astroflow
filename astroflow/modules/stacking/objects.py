@@ -225,6 +225,7 @@ def nearest_extended(ra: float, dec: float, radius_deg: float = 0.3, min_size: f
 # star_reduction  : Sterne verkleinern 0..1
 # scnr            : Grünstich-Entfernung 0..1
 # white_pct       : Weißpunkt als Perzentil (Standard 99,9; die Kontrolle hebt ihn bei ausgebranntem Kern)
+# ai_denoise : Stärke des GraXpert-Entrauschens 0..1 (Standard graxpert.DEFAULT_STRENGTH 0,5; nur wenn installiert)
 # linear_denoise_max: Obergrenze für das automatische lineare Entrauschen (Standard 1,0)
 PROFILES: dict[str, dict] = {
     # denoise/chroma_denoise seit 2026-10-30 etwa halbiert (vorher 0,4–0,6 / 1,5–2,5): gleiche Objekthelligkeit, 15–35 % mehr
@@ -239,7 +240,7 @@ PROFILES: dict[str, dict] = {
     "snr":          dict(gradient_degree=3, target_bg=0.08, asinh=40, denoise=0.3, chroma_denoise=1.5, saturation=1.50, contrast=0.35, sharpen=0.3, deconv=0, star_reduction=0.3, scnr=0.4, bg_dark=0.03, star_separation="off", star_brightness=0.85),
     # planetary: kleines, helles Objekt im Sternfeld – Weißpunkt höher und kein lineares Entrauschen (Ring brennt sonst
     # aus, Sterne blähen auf), wenig glätten und höheres target_bg: Korn und schwache Sterne bleiben (M57 gegen Stellina, 2026-10-30)
-    "planetary":    dict(gradient_degree=3, target_bg=0.10, asinh=150, denoise=0.25, chroma_denoise=1.5, saturation=1.30, contrast=0.3, sharpen=0.5, deconv=12, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=0.85, white_pct=99.98, linear_denoise_max=0.0),
+    "planetary":    dict(gradient_degree=3, target_bg=0.10, asinh=150, denoise=0.25, chroma_denoise=1.5, saturation=1.30, contrast=0.3, sharpen=0.5, deconv=12, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=0.85, white_pct=99.98, linear_denoise_max=0.0, ai_denoise=0.3),
     "globular":     dict(gradient_degree=2, target_bg=0.06, asinh=200, denoise=0.3, chroma_denoise=1.5, saturation=1.25, contrast=0.2, sharpen=0.4, deconv=6, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=1.0),
     "open_cluster": dict(gradient_degree=3, target_bg=0.06, asinh=60, denoise=0.3, chroma_denoise=1.5, saturation=1.30, contrast=0.2, sharpen=0.3, deconv=0, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=1.0),
 }

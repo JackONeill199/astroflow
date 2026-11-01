@@ -245,8 +245,11 @@ def separate_starnet(img: np.ndarray, exe: str, timeout: int = 900) -> tuple[np.
     with tempfile.TemporaryDirectory() as td:
         src, dst = Path(td) / "in.tif", Path(td) / "out.tif"
         tifffile.imwrite(src, (np.moveaxis(fwd(x), 0, -1) * 65535 + 0.5).astype(np.uint16), photometric="rgb")
-        subprocess.run([exe, "-i", str(src), "-o", str(dst)], cwd=str(Path(exe).parent), timeout=timeout,
-                       check=True, capture_output=True)
+        r = subprocess.run([exe, "-i", str(src), "-o", str(dst)], cwd=str(Path(exe).parent), timeout=timeout,
+                           capture_output=True, text=True, errors="replace")
+        if r.returncode != 0 or not dst.exists():
+            tail = " | ".join((r.stdout + r.stderr).strip().splitlines()[-4:])
+            raise RuntimeError(f"StarNet beendet mit Code {r.returncode & 0xFFFFFFFF:#x}: {tail or 'keine Ausgabe'}")
         y = tifffile.imread(dst).astype(np.float32) / 65535
     y = np.moveaxis(y, -1, 0) if y.ndim == 3 else np.repeat(y[None], 3, 0)
     starless = np.minimum(inv(np.clip(y, 0, 0.9999)) * (hi - lo) + lo, img)
@@ -287,10 +290,11 @@ def install_zip(zip_path: Path, target: Path) -> str:
 def selftest(exe: str) -> None:
     """Kleines künstliches Sternfeld durch StarNet schicken; wirft bei Fehlern."""
     rng = np.random.default_rng(0)
-    img = np.full((3, 256, 256), 100.0, np.float32) + rng.normal(0, 2, (3, 256, 256)).astype(np.float32)
-    yy, xx = np.mgrid[0:256, 0:256]
-    for _ in range(25):
-        x, y = rng.uniform(20, 236, 2)
+    n = 512                                               # StarNet arbeitet in Kacheln – kein zu kleines Probebild
+    img = np.full((3, n, n), 100.0, np.float32) + rng.normal(0, 2, (3, n, n)).astype(np.float32)
+    yy, xx = np.mgrid[0:n, 0:n]
+    for _ in range(60):
+        x, y = rng.uniform(20, n - 20, 2)
         img += (2000 * np.exp(-((xx - x) ** 2 + (yy - y) ** 2) / 4.5)).astype(np.float32)
     starless, _ = separate_starnet(img, exe, timeout=300)
     if not np.isfinite(starless).all() or starless.max() > img.max():

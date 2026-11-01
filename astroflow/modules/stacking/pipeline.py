@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from . import calibration, channels, develop, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner
+from . import calibration, channels, develop, graxpert, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner
 from ...core.config import Settings, free_ram_mb
 from .db import DB
 from .fits_io import FrameInfo, parse_date, read_data, to_channels, write_fits
@@ -30,6 +30,7 @@ DEFAULT_OPTIONS = {
     "review": True,             # KI-Prüfung, falls konfiguriert
     "sensor_glow": True,        # ortsfestes Randglühen vor der Registrierung abziehen (nur ohne Darks)
     "star_separation": None,    # None = Profil (aus) | off | auto | intern | starnet
+    "graxpert": None,           # None = Einstellung | off | bge | denoise | all (KI-Hintergrund/-Entrauschen, falls installiert)
 }
 GLOW_SAMPLE = 30                # Frames je Nacht für die Glühmessung
 CHECKPOINT_S = 120              # Stack-Zustand spätestens alle 2 min sichern (Wiederaufnahme nach Abbruch)
@@ -583,6 +584,14 @@ class Pipeline:
         params = {**objects.profile_for(pname), **user}
         if opt.get("star_separation"):
             params["star_separation"] = opt["star_separation"]
+        gx: dict = {}
+        if (gmode := graxpert.mode_for(opt.get("graxpert"))) != "off" and (exe := graxpert.graxpert_path()):
+            # einmal je Entwicklung auf dem linearen Stack (gecacht) – vor der Farbkalibrierung, damit die
+            # Sternfotometrie auf verlaufsfreiem Himmel misst
+            mean, gx = graxpert.apply(mean, cov, gmode, float(params.get("ai_denoise", graxpert.DEFAULT_STRENGTH)),
+                                      self.s.work_dir / f"p{project_id}" / "graxpert", exe,
+                                      log=lambda m: prog(0.05, "Bearbeitung", m))
+            params["_ai"] = {k: v for k, v in gx.items() if k in ("bge", "denoise")}
         if mean.shape[0] == 3 and not narrow and params.get("color_calibration", True) and "wb_gains" not in user:
             pcc = self._photometric(proj, states, mean, cov, lambda m: prog(0.1, "Farbkalibrierung", m))
             if pcc:
@@ -607,6 +616,8 @@ class Pipeline:
                 stats["quality"] = {**develop.assess(rgb, mono=mean.shape[0] == 1),
                                     "hints": quality["hints"], "measure": quality["measure"]}
                 stats["before"], stats["qc"] = before, qc_hist
+        if gx:
+            stats["graxpert"] = gx
         stats.update({"profile": pname, "narrowband": narrow, "frames": len(stacked), "exposure_s": exposure,
                       "palette": palette, "bands": band_stats})
 
