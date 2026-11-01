@@ -50,8 +50,22 @@ jeweils mit Bestätigungsdialog.
   liefert `passage` (Zeitpunkte an Spuranfang/-ende), Richtung an der Durchgangsstelle (`SATELLITE_MAX_ANGLE` 15°), Toleranz quer weiter 360″.
   Neu je Bahn: `mean_offset_arcsec`, `passage_seconds` (relativ zum Belichtungsbeginn), `time_offset_s` (0 = während der Belichtung);
   verworfen, wenn die Bahn für die Spur länger als die Belichtung bräuchte. Rang = mittlerer Abstand + 20″ je Sekunde außerhalb.
-- **Namen:** Archivbahnen (Space-Track-Spiegel) haben nur NORAD-Nummern → `archive_sources.satellite_names` fragt CelesTrak-SATCAT je Nummer ab
-  (nur die Nummer, kein Standort; Cache `catalog_cache/archives/satcat-names.json`; Fehler → Nummer bleibt). `object_type` Satellit/Raketenstufe/Trümmerteil.
+- **Namen:** Archivbahnen (Space-Track-Spiegel) haben nur NORAD-Nummern → `archive_sources.satellite_names` (seit 0.10.1):
+  lokale Kopie des ganzen SATCAT `catalog_cache/archives/satcat.csv` (`https://celestrak.org/pub/satcat.csv`, Spalten wie die
+  JSON-Einträge: `NORAD_CAT_ID`, `OBJECT_NAME`, `OBJECT_TYPE` …, geschätzt 12–15 MB) – nur geladen, wenn eine Nummer fehlt und die
+  Kopie älter als 24 h ist (SATCAT ändert sich 1–2×/Tag; Regel „nur einmal je Aktualisierung“), atomar ersetzt, Kopfzeile geprüft.
+  **Bewusste Ausnahme** von „keine weltweiten Vollarchive“ (Nutzerwunsch 01.11.2026): Namenskatalog ohne Ort/Zeit, ersetzt
+  Einzelabfragen und verrät nicht, welche Objekte im Bild waren. Nummern jünger als die Kopie: höchstens 3 Einzelabfragen
+  (`records.php`, Cache `satcat-names.json`, „nicht im Katalog“ nur bei leerer Liste bzw. „No SATCAT records found“).
+  `object_type` Satellit/Raketenstufe/Trümmerteil. Rückgabe `(namen, hinweis)` → Katalogtext + `names_note` (UI unter der
+  Bahntabelle) + `status`-Event. `catalog/status` → `satcat_file` (Datum/Größe der Kopie, Archivzeile in den Einstellungen).
+- **SATCAT-Sperre (01.11.2026):** Nach dem Nachrechnen aller Läufe (Einzelabfrage je Nummer) antwortete `records.php` mit 403
+  „Access from IP address … was blocked … Please be sure to follow our usage policy“ (Sperre je Anschluss, `gp.php` lief weiter –
+  **nicht** auf andere Endpunkte ausweichen). CelesTrak-Nutzungsregeln (celestrak.org/usage-policy.php): bei jeder Antwort ≠ 200
+  sofort aufhören und einem Menschen melden, sonst Firewall. Umsetzung `_satcat_get`: `allow_redirects=False`; ≠ 200 →
+  `satcat-pause.json` `{stopped, http, reason}` ohne Ablauf, Freigabe nur per Knopf (Einstellungen → SkyTrace,
+  `POST /catalog/satcat/release`, Status `GET /catalog/status` → `satcat`); keine HTTP-Antwort bzw. unbrauchbarer 200-Inhalt
+  → `until` +15 min. `jsonDir.php` (Dateiliste mit Datum) wird nicht genutzt – Format ungeprüft, 24-h-Regel reicht.
 - UI: `evidence.js classification` nennt bei passender Bahn „Satellit <Name>“ bzw. Objektart, Klasse `satellite` (Filter „Satelliten“);
   Kandidatenliste/Detail zeigen den Namen als Titel, K-Nummer klein. Bahntabelle mit Spalte „Durchgang“.
 - Nachrechnen: `engine/refresh_satellites.py <Lauf> …` (nur Kandidaten-JSON + lokale Archive, schreibt Kandidaten, Projektion, Bericht).

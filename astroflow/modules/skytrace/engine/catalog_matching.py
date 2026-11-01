@@ -289,21 +289,26 @@ def satellite_check(candidate,site,settings):
             matches.append(dict(name=sat.name,norad_id=int(sat.model.satnum),tle_age_days=round(age,3),evidence='Historische SGP4-Bahn passiert die Spur in Lage, Richtung und Zeit; Sichtbarkeit nicht bestätigt',**geometry))
     rank=lambda r:float('inf') if r.get('separation_arcsec') is None else r.get('mean_offset_arcsec',r['separation_arcsec'])+SECONDS_WEIGHT_ARCSEC*r.get('time_offset_s',0)
     diagnostics.sort(key=lambda r:(not r['compatible'],rank(r)));matches.sort(key=rank)
-    _name_satellites(matches+diagnostics[:8],settings)
-    return status('satellites','compatible' if matches else 'checked_no_match',f'Bahndaten zur Aufnahmezeit {iso(start)} UTC (Belichtung ±{slack:g} s Uhrtoleranz): {len(possible)} mögliche Spuren nach Standort-, Zeit- und Bildfeldfilter genau geprüft. Archivabdeckung kann unvollständig sein (militärische Satelliten fehlen); begrenzte Bahngenauigkeit. Ein geometrischer Treffer ist kein Beweis.',matches[:20],archive=source,source=source or SOURCES['satellites'],stale_records=stale,archive_records=archive_total,checked_trajectories=len(diagnostics),diagnostics=diagnostics[:8],tolerance_arcsec=SATELLITE_TOLERANCE_ARCSEC,clock_slack_s=slack,exposure_start=start)
+    # Namen aus der lokalen SATCAT-Kopie; Treffer zuerst (nur für sie reichen die wenigen Einzelabfragen bei neuen Nummern).
+    names_note=_name_satellites(matches+diagnostics[:8],settings)
+    detail=f'Bahndaten zur Aufnahmezeit {iso(start)} UTC (Belichtung ±{slack:g} s Uhrtoleranz): {len(possible)} mögliche Spuren nach Standort-, Zeit- und Bildfeldfilter genau geprüft. Archivabdeckung kann unvollständig sein (militärische Satelliten fehlen); begrenzte Bahngenauigkeit. Ein geometrischer Treffer ist kein Beweis.'
+    if names_note: detail+=' '+names_note
+    return status('satellites','compatible' if matches else 'checked_no_match',detail,matches[:20],archive=source,source=source or SOURCES['satellites'],stale_records=stale,archive_records=archive_total,checked_trajectories=len(diagnostics),diagnostics=diagnostics[:8],tolerance_arcsec=SATELLITE_TOLERANCE_ARCSEC,clock_slack_s=slack,exposure_start=start,names_note=names_note)
 
 
 def _name_satellites(rows,settings):
-    """Archivbahnen tragen nur NORAD-Nummern; Namen und Objektart aus dem SATCAT nachtragen (Fehler → Nummer bleibt)."""
-    ids=sorted({r['norad_id'] for r in rows if not r.get('name') or str(r['name']).startswith('NORAD ') or str(r['name'])==str(r['norad_id'])})
-    if not ids: return
+    """Archivbahnen tragen nur NORAD-Nummern; Namen und Objektart aus dem SATCAT nachtragen (Fehler → Nummer bleibt).
+    Ergebnis: None oder Hinweis, warum Namen fehlen (wird im Katalogtext angezeigt)."""
+    ids=list(dict.fromkeys(r['norad_id'] for r in rows if not r.get('name') or str(r['name']).startswith('NORAD ') or str(r['name'])==str(r['norad_id'])))
+    if not ids: return None
     try:
         from archive_sources import satellite_names
-        names=satellite_names(ids,settings)
-    except Exception: return
+        names,note=satellite_names(ids,settings)
+    except Exception as error: return f'Namen nicht abrufbar: {error.__class__.__name__}: {error}'
     for r in rows:
         info=names.get(str(r['norad_id']))
         if info and info.get('name'): r['name']=info['name'];r['object_type']=info.get('type')
+    return note if any(str(i) not in names for i in ids) else None
 
 def _stamp(value):
     try: return float(value)
