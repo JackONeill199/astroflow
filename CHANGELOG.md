@@ -1,10 +1,15 @@
 # Änderungen
 
-Neueste zuerst. Technische Details stehen in `AGENTS.md`, die Bedienung in `README.md`.
+Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
+stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
-## 01.11.2026 – Schutz vor vollem Laufwerk
+## 0.7.0 – 01.11.2026
 
-### Behoben
+Fasst alles seit 0.6.0 zusammen (dazu auch die Kurzfassungen vom 29. bis 31.10. weiter unten).
+
+### Schutz vor vollem Laufwerk
+
+#### Behoben
 - **Volles Datenlaufwerk legte alles lahm**: Der Import der ganzen Stellina-Platte (E:) hat die Aufnahmen
   nach C: kopiert – Verknüpfungen statt Kopien gehen nur auf demselben Laufwerk. C: lief voll, danach
   scheiterte jeder Auftrag, und die Fehler ließen sich nicht stoppen.
@@ -14,16 +19,16 @@ Neueste zuerst. Technische Details stehen in `AGENTS.md`, die Bedienung in `READ
   oder ist die Platte voll, hält die Warteschlange an. Der Auftrag wartet dann und setzt nach dem Fortsetzen
   am letzten Zwischenstand fort. Ein Hinweis erscheint in der Seitenleiste und unter „Aktivität“.
 
-### Neu
+#### Neu
 - **Stacken und Endbearbeitung laufen parallel**: Sobald ein Objekt gestackt ist, wird es im Hintergrund
   entwickelt, und das nächste Objekt in der Warteschlange wird sofort gestackt. Höchstens ein fertiger
   Stack wartet auf die Endbearbeitung.
 - **„Aufträge anhalten“ / „Aufträge fortsetzen“** unter „Aktivität“: bricht die laufende Bildverarbeitung ab
   (nichts geht verloren, das Stacking macht am letzten Zwischenstand weiter) und hält die Warteschlange an.
 
-## 01.11.2026 – Stacking-Verlauf
+### Stacking-Verlauf
 
-### Neu
+#### Neu
 - **Regler „Stacking-Verlauf“ unter dem Bild**: zeigt dasselbe Objekt nach 1, 3, 10, 30, 100, 300 …
   Aufnahmen – mit denselben Einstellungen und genau demselben Ausschnitt wie das fertige Bild. Man sieht
   direkt, wie das Rauschen mit jeder weiteren Aufnahme sinkt. Standardmäßig steht der Regler auf dem
@@ -34,9 +39,9 @@ Neueste zuerst. Technische Details stehen in `AGENTS.md`, die Bedienung in `READ
   im Arbeitsordner etwa 40 MB je Stufe. Wurde das fertige Bild mit GraXpert oder StarNet bearbeitet,
   werden die Stufen mit den eigenen Verfahren entwickelt (steht dann unter dem Regler).
 
-## 01.11.2026 – Ordner wählen statt Pfad eintippen
+### Ordner wählen statt Pfad eintippen
 
-### Neu
+#### Neu
 - **Stacking auf der Grafikkarte**: Ausrichten und Ausreißer-Erkennung laufen jetzt auf der GPU, wenn
   `pyopencl` installiert ist. Das funktioniert mit AMD-, NVIDIA- und Intel-Karten. Gemessen mit
   219 Stellina-Aufnahmen auf einer Radeon RX 9070 XT: Stacking 22 statt 67 Sekunden, der ganze Durchlauf
@@ -57,7 +62,7 @@ Neueste zuerst. Technische Details stehen in `AGENTS.md`, die Bedienung in `READ
 - **Schnellere Seitenwechsel**: Die Objektliste (Galerie, Übersicht, Statistik) lädt in rund 0,1 statt
   1,8 Sekunden, die Statusabfrage im Hintergrund in wenigen Millisekunden statt 0,4 Sekunden.
 
-### Behoben
+#### Behoben
 - **Stacken schneller**: Das Aussortieren von Ausreißern rechnet schneller, und die Hotpixel-Korrektur
   wird je Aufnahme nur noch einmal statt zweimal berechnet. Ein Durchlauf mit 219 Stellina-Aufnahmen
   ist dadurch etwa 13 % schneller, das Ergebnis bleibt bitgenau gleich.
@@ -72,13 +77,13 @@ Neueste zuerst. Technische Details stehen in `AGENTS.md`, die Bedienung in `READ
 - SkyTrace-Einstellungen: Beim schnellen Wechseln der Einstellungsseiten trat gelegentlich ein
   Skriptfehler auf (Archivstatus wurde in eine nicht mehr angezeigte Seite geschrieben).
 
-## 01.11.2026 – Bildqualität wie im Astrobiscuit-Workflow
+### Bildqualität wie im Astrobiscuit-Workflow
 
 Anlass: Astrobiscuit erreicht mit Smart-Teleskopen sehr saubere Bilder über
 Astro Pixel Processor → GraXpert → StarNet2 → Affinity. AstroFlow übernimmt die
 wirksamen Schritte automatisch.
 
-### Neu
+#### Neu
 - **GraXpert (KI) eingebunden** – optional, kostenlos, Open Source.
   - **KI-Hintergrund** entfernt Lichtverschmutzungsverläufe, ohne großflächige Nebel
     abzutragen. Bisher erledigte das ein Polynom, das bei höherem Grad Nebel mit abtrug.
@@ -110,7 +115,7 @@ wirksamen Schritte automatisch.
 - Objektoptionen „Sterne getrennt bearbeiten“: wie Profil / nur mit StarNet /
   StarNet oder eigene Trennung / eigene Trennung / nein.
 
-### Behoben
+#### Behoben
 - **StarNet-Installation** schlug fehl („exit status 4294967295“ bzw. „requires the
   'imagecodecs' package“):
   - StarNet 2.6 speichert LZW-komprimierte TIFFs; dafür ist jetzt `imagecodecs` in
@@ -118,7 +123,7 @@ wirksamen Schritte automatisch.
   - Das Probebild ist größer.
   - Fehlermeldungen zeigen StarNets eigene Ausgabe.
 
-### Hinweis zum Aktualisieren
+#### Hinweis zum Aktualisieren
 - `.venv\Scripts\pip install -r requirements.txt` ausführen (neu: `imagecodecs`).
 - GraXpert von https://github.com/Steffenhir/GraXpert/releases/latest installieren.
   Beim ersten Lauf lädt es seine KI-Modelle selbst herunter.

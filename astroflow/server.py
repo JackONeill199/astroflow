@@ -14,9 +14,9 @@ from fastapi.staticfiles import StaticFiles
 from .core.config import Settings, load_settings
 from .core.folders import list_folders
 from .core.modules import AVAILABLE, Context, load_modules
+from . import __version__ as VERSION
 from .core.store import SettingsStore
 
-VERSION = "0.6.0"
 STATIC = Path(__file__).parent / "static"
 
 

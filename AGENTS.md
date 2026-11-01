@@ -9,7 +9,7 @@ Module einfach wartbar und erweiterbar“):
 - **SkyTrace** (`modules/skytrace`, aus Repo `JackONeill199/SkyTrace`): Lichtspuren/bewegte Objekte in Bildfolgen, Katalogabgleich. Details: `astroflow/modules/skytrace/AGENTS.md`.
 - **Sage** (`modules/sage`, aus Repo `JackONeill199/starlight-sage`, Node → Python portiert): seit 2.0 lebende Astronomie-Enzyklopädie – Bilder bestimmen, Objekte aus Fachkatalogen + KI-Agent recherchieren (Belegpflicht), persönliches Beobachtungsgedächtnis, Wissensnetz, proaktive Entdeckungen, Chat, Geschichten/Audioführung. Details: `astroflow/modules/sage/AGENTS.md`, Architektur `docs/SAGE.md`.
 Zielgruppe: Smart-Teleskope (Seestar, Vespera, Stellina) und klassische Astrokameras. Lokal, ein Nutzer, keine Konten.
-Stack: Python 3.12+ · numpy/scipy/astropy · FastAPI + uvicorn · SQLite · Vanilla-JS-SPA ohne Build-Schritt. Lizenz MIT (Detektormodell in SkyTrace: AGPL-3.0, siehe `models/`). Version 0.6.0.
+Stack: Python 3.12+ · numpy/scipy/astropy · FastAPI + uvicorn · SQLite · Vanilla-JS-SPA ohne Build-Schritt. Lizenz MIT (Detektormodell in SkyTrace: AGPL-3.0, siehe `models/`). Version: `astroflow/__init__.py` (Regeln unter „Versionierung“).
 
 **Sprache:** UI, README, Kommentare und Fehlermeldungen auf **Deutsch**. Der Nutzer schreibt Deutsch.
 
@@ -35,6 +35,19 @@ astroflow/static/          Shell: index.html, app.js (Router, Navigation, Übers
 - Module ein/aus: Einstellungen → Module & System bzw. `ASTROFLOW_MODULES=stacking,skytrace`; ein defektes Modul erscheint mit Fehler, die App läuft weiter.
 - Sicherheit: schreibende Anfragen mit fremdem `Origin` → 403 (Middleware `guard`). Schlüssel stehen im Klartext in `data/settings.json`.
 - **Neues Modul:** Unterpaket mit `Module(BaseModule)` anlegen, in `AVAILABLE` eintragen, `static/<id>.js` mit `AF.register`, Tests in `tests/`.
+
+## Versionierung (verbindlich, seit 01.11.2026 – Nutzerwunsch)
+- **Eine Quelle:** `astroflow/__init__.py` → `__version__`. `server.py` (`VERSION`, `/api/app`, `/api/status`) liest sie; nirgends sonst
+  eine Nummer pflegen. Nicht verwechseln mit `quality.METRICS_VERSION`, `graxpert.GRAXPERT_VERSION` (Cache-Stände) und den Ergebnis-Versionen je Objekt.
+- **Schema `0.MINOR.PATCH`** (vor 1.0): PATCH = Fehlerbehebung, Leistung, Texte – ohne neue Funktion. MINOR = neue Funktion/Ansicht/Einstellung/Modul,
+  geänderte DB-Struktur, Datenformate oder API. 1.0 nur auf Entscheidung des Nutzers.
+- **Jede für Nutzer sichtbare Änderung, die nach `main` geht**, erhöht im selben Branch die Version und bekommt ganz oben im `CHANGELOG.md`
+  einen Abschnitt `## <Version> – <TT.MM.JJJJ>` (darunter `### Neu` / `### Behoben`). Mehrere Änderungen bis zum nächsten Merge = eine Version.
+  Rein interne Änderungen (Tests, AGENTS.md, Refactoring ohne Wirkung) ohne Erhöhung.
+- **Git:** Arbeit auf `feature/…` bzw. `fix/…` von aktuellem `main`, PR gegen `main`; direkt auf `main` nur auf ausdrücklichen Wunsch.
+  Sind zwei Branches mit Versionserhöhung offen, nimmt der später gemergte die nächste freie Nummer (beim Merge-Konflikt anpassen).
+- **Nach dem Merge in `main`:** annotiertes Tag auf den Merge-Commit – `git tag -a v<Version> -m "AstroFlow <Version>"` und `git push origin v<Version>`.
+- **Prüfung:** `tests/test_version.py` – Format, oberste CHANGELOG-Version = `__version__`, Server meldet dieselbe.
 
 ## Befehle
 ```bash
