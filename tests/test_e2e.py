@@ -47,6 +47,17 @@ def test_full_pipeline(env):
     stats = json.loads(res["stats"])
     assert 0.02 < stats["median"] < 0.35 and stats["clipped_pct"] < 2     # dunkler Hintergrund (bg_dark 0,03)
     assert "Flat" in db.q("SELECT metrics FROM frames WHERE status!='new' AND kind='light' LIMIT 1")[0]["metrics"]
+    # Stacking-Stufen für den Verlaufsregler: gleicher Ausschnitt wie das fertige Bild, weniger Aufnahmen = mehr Rauschen
+    assert [x["n"] for x in stats["stages"]] == [1, 3, 10]
+    from PIL import Image
+    final = np.asarray(Image.open(files["jpg"]), np.float32)
+    noise = []
+    for x in stats["stages"]:
+        img = np.asarray(Image.open(files[f"s{x['n']}"]), np.float32)
+        assert img.shape == final.shape and x["exposure"] > 0
+        noise.append(np.median(np.abs(np.diff(img.mean(2), axis=1))))
+    noise.append(np.median(np.abs(np.diff(final.mean(2), axis=1))))
+    assert noise[0] > noise[-1], noise
 
 
 def test_incremental_restack_adds_frames(env):
@@ -56,7 +67,14 @@ def test_incremental_restack_adds_frames(env):
     # ein bisher verworfenes Bild manuell einschließen -> nur dieses wird nachgestackt
     r = db.q("SELECT id FROM frames WHERE status='rejected' AND kind='light'")[0]["id"]
     db.set_frame(r, manual=1)
+    # Stack aus der Zeit vor den Stacking-Stufen: Belichtung wird aus der DB nachgetragen (Frame-IDs sind Texte)
+    sj = s.work_dir / f"p{pid}" / "stack" / "state.json"
+    meta = json.loads(sj.read_text())
+    exp = meta.pop("exposure")
+    sj.write_text(json.dumps(meta))
     pl.process(pid)
+    from astroflow.modules.stacking.stacking import StackState
+    assert StackState.load(sj.parent).meta["exposure"] > exp
     after = db.one("SELECT n_frames FROM results ORDER BY id DESC LIMIT 1")["n_frames"]
     assert after == before + 1
 

@@ -12,7 +12,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from . import scanner
+from . import diskspace, scanner
 from .fits_io import FITS_EXT
 from .picture_import import PICTURE_EXT, SOURCE_LIMIT, import_picture
 
@@ -284,7 +284,7 @@ class Library:
                 "n_files": total, "n_known": known, "n_done": stacked, "n_new": len(todo), "bytes": size,
                 "camera": camera, "night": night, "state": state,
                 "project": {"id": project, "name": names.get(project)} if project else None,
-                "to_import": todo}
+                "to_import": todo, "import_bytes": sum(g["stat"][f][0] for f in todo)}
 
     # ---------------------------------------------------------------- Import #
     def start_import(self, ids: list[str]) -> int:
@@ -294,6 +294,17 @@ class Library:
             chosen = [g for g in self.groups if g["id"] in set(ids) and g["to_import"]]
             if not chosen:
                 raise ValueError("Nichts zu importieren – die Auswahl ist leer oder schon vollständig vorhanden.")
+            # anderes Laufwerk -> keine Hardlinks, jede Datei wird kopiert: vorher prüfen, ob das passt
+            base = self.eng.s.uploads_dir
+            base.mkdir(parents=True, exist_ok=True)
+            copy = sum(g["import_bytes"] for g in chosen if g["kind"] != "pictures" and not diskspace.same_drive(g["dir"], base))
+            free = diskspace.free(base)
+            if copy and free is not None and free - copy < diskspace.IMPORT_RESERVE:
+                raise ValueError(
+                    f"Zu wenig Speicher: Die Aufnahmen liegen auf einem anderen Laufwerk und müssen kopiert werden "
+                    f"({diskspace.gb(copy)}), frei sind {diskspace.gb(free)}; danach sollen noch {diskspace.gb(diskspace.IMPORT_RESERVE)} "
+                    f"für Stacks und Ergebnisse bleiben. Bitte weniger Gruppen auswählen und nach dem Verarbeiten weitere "
+                    f"importieren (hochgeladene Einzelbilder werden nach dem Stacken gelöscht).")
             self.state.update(state="importing", progress=0.0, message="Import startet …", imported={}, started=time.time())
         threading.Thread(target=self._import, args=(chosen,), daemon=True, name="library-import").start()
         return len(chosen)
@@ -316,6 +327,10 @@ class Library:
             for g in chosen:
                 tag = hashlib.sha1(str(g["dir"]).encode()).hexdigest()[:6]
                 for f in g["to_import"]:
+                    left = diskspace.free(base.parent)
+                    if left is not None and left < diskspace.MIN_FREE:
+                        errors.append(f"Import nach {done} von {total} Dateien angehalten: nur noch {diskspace.gb(left)} frei.")
+                        break
                     try:
                         if g["kind"] == "pictures":
                             with open(f, "rb") as fh:

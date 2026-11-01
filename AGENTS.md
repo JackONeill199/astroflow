@@ -159,6 +159,14 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    Kachelreihen (dort sitzt das Eckglühen), auf die Mitte bezogen. Wirkt voll bis 18 %, ausgeblendet bis 35 % vom Rand
    (`GLOW_MAP_FULL/BAND`), Mitte unberührt. Ergebnis Rohbild NGC 4490: Rest überall ≤ ±4 ADU. Ältere Bibliotheksnächte (nur Profile)
    werden bei vorhandenen Rohbildern neu gemessen (`nights(with_map=True)`), sonst weiter ohne Karte genutzt.
+   **Stacking-Stufen** (seit 01.11.2026, Nutzerwunsch „Slider, was mehr Bilder ausmachen“): `_stack` sichert beim Überschreiten von
+   `STAGES` (1, 3, 10, 30, 100 … Frames, kumulativ über alle Läufe) den Zwischenstand – `StackState.add_batch(prefixes=…)` rechnet
+   „bisher + erste k Frames des Stapels“ (Clipping-Maske aus dem ganzen Stapel) → `work/p<id>/stufen[_<Band>]/n<t>.npz` (float16,
+   ADU/`STAGE_SCALE`, ~40 MB je Stufe bei Stellina) + `.json` (n, Belichtung). Neuaufbau löscht sie mit. `develop` rendert nach dem
+   Speichern (`_render_stages`, nur bei **einem** Kanal) alle Stufen < Frame-Zahl mit den Endparametern und festem Ausschnitt
+   (`processing.process(crop=stats.crop)` – gleiche Pixelgröße wie das fertige Bild) → `<base>_s<n>.jpg`, `results.files.s<n>`,
+   `stats.stages`; GraXpert (`_ai`) und StarNet werden dafür weggelassen (`stats.stages_simplified`). ~11 s je Stufe (3072×2080).
+   UI: Regler unter dem Viewer, Standard = fertiges Bild, `viewer.setSrc` tauscht das Bild ohne Zoomverlust.
    Schnelles Iterieren: `StackState.load(work/p<id>/stack).result()` → `processing.process(...)` (~10 s), kein Neu-Stacken nötig.
    **Schwaches Signal / M57-Vergleich mit Stellina (2026-10-30):** Lineare Stacks waren gleich gut, die Entwicklung schlechter.
    Ursache: `linear_denoise` senkt das gemessene σ → Schwarzpunkt der Kurve (Median − 2,8σ) rückt an den Himmel → viel härterer Stretch.
@@ -186,7 +194,14 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    `ValueError`, API 409, UI sperrt Menüpunkt/Auswahl/Auflösung/Ein-/Ausschließen); gelöschte Frames behalten Status und Analyse und werden nie
    reanalysiert; Nachstacken neuer Nächte und Bearbeitung laufen normal (nur Stack + `state.json`-Referenzsterne nötig). Eingebundene Ordner
    und Kalibrierbilder werden nie gelöscht. DB-Spalten kommen über `db.MIGRATIONS` (einfaches ALTER TABLE beim Start).
-11. **Speicherbelegung & Aufräumen** (`housekeeping.py`, API `GET /housekeeping?keep=`, `POST /housekeeping/cleanup {keys, keep}`,
+11. **Volles Laufwerk** (`diskspace.py`, seit 01.11.2026 – Hauptordner-Import von E: kopierte 95 GB nach C:, Platte voll, jeder Auftrag
+   scheiterte, auch SQLite): Worker startet nur ab `MIN_FREE` 5 GB (`Engine.hold()`), `prog` prüft alle 5 s und bricht unter `ABORT_FREE` 2 GB ab;
+   Volle-Platte-Fehler (`diskspace.is_full`, auch `sqlite3 … full`) und Abbruch → Job wieder `queued` + `Engine.paused` (Grund in
+   `status.hold`/`paused`). `POST /api/stacking/queue {paused}` (UI: Aktivität → „Aufträge anhalten/fortsetzen“; `cancel`-Event bricht beim
+   nächsten Fortschritt ab, Stacking setzt am Checkpoint fort). Pause ist nur im Speicher (Neustart = fortsetzen). Watcher scannt unter 2 GB nicht.
+   Import (`library.start_import`): Kopien über Laufwerksgrenzen (`same_drive`) müssen `IMPORT_RESERVE` 20 GB übrig lassen, sonst 400; beim
+   Kopieren Abbruch unter 5 GB. Test: `test_diskspace.py`.
+12. **Speicherbelegung & Aufräumen** (`housekeeping.py`, API `GET /housekeeping?keep=`, `POST /housekeeping/cleanup {keys, keep}`,
    UI: Einstellungen → Bilder → „Speicherbelegung“, seit 31.10.2026): Belegung je Bereich + größte Objekte; Aufräumbares: verwaiste
    Ausgabedateien, Stacks gelöschter Objekte, Temp (> 1 h), leere Ordner (> 1 h), DB verdichten (VACUUM) – vorausgewählt; ältere Versionen
    (neueste `keep` je Objekt bleiben, nicht bei importierten Bildern) und Sicherungen – nur auf Wunsch. Client schickt nur Schlüssel, der Server
@@ -220,7 +235,10 @@ aus dem letzten Suchlauf im Speicher). Zuletzt genutzter Pfad: `data/settings.js
   Einstellungen landen in `data/settings.json` (`modules/stacking/api.PERSIST`, über `core/store.py`) und haben Vorrang vor Env (API-Schlüssel dort im Klartext).
 
 ## Server (`server.py` + `modules/stacking/api.py`)
-Stacking: ein Worker-Thread (Job-Queue, `jobs`-Tabelle; Option `{"action":"solve"}` = Plate-Solving-Job) + Watcher-Thread (Scan alle N s, Auto-Verarbeitung),
+Stacking: Stack-Thread `Engine.worker` (Job-Queue `q`, `jobs`-Tabelle; Option `{"action":"solve"}` = Plate-Solving-Job) + Entwicklungs-Thread
+`Engine.developer` (Queue `dq`, seit 01.11.2026, Nutzerwunsch): nach `Pipeline.stack` übernimmt er `Pipeline.finish` (Entwickeln, Melden,
+Uploads löschen) bzw. reine Neu-Entwicklungen, während schon das nächste Objekt gestackt wird; höchstens ein fertiger Stack wartet
+(Job bleibt `running`, 86 %, „wartet auf die Endbearbeitung“). Abbruch/volle Platte in beiden Phasen → Job zurück in `q` + Watcher-Thread (Scan alle N s, Auto-Verarbeitung),
 beide in `modules/stacking/api.py` (`Engine`). `Pipeline._scan_lock` serialisiert Scan und Nach-Solving. Beim Start werden unterbrochene Jobs wieder eingereiht.
 Während eines laufenden Jobs eingelesene Lights (`status='new'`) werden nach Erfolg automatisch in einem Folgelauf ergänzt;
 der Watcher berücksichtigt auch bereits gescannte, noch neue Frames. Letzte Fehler werden ohne weiteren Upload nicht endlos neu gestartet.
