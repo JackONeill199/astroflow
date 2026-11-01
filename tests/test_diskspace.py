@@ -85,3 +85,41 @@ def test_import_refuses_copies_that_do_not_fit(tmp_path, monkeypatch):
     monkeypatch.setattr(diskspace, "same_drive", lambda a, b: True)      # Hardlinks kosten nichts
     monkeypatch.setattr(lib, "_import", lambda chosen: None)
     assert lib.start_import(["g0"]) == 1
+
+
+def test_cleanup_allowed_while_queue_is_held(tmp_path):
+    """Volle Platte: Aufräumen ist der Ausweg – wartende Aufträge dürfen es nicht blockieren."""
+    from fastapi.testclient import TestClient
+    s = load_settings(tmp_path / "data")
+    s.auto = False
+    app = create_app(s)
+    eng = app.state.modules["stacking"].eng
+    with TestClient(app) as c:
+        eng.set_paused(True)                        # Worker steht, bevor ein Auftrag dazukommt
+        eng.db.x("INSERT INTO jobs(project_id, state, created) VALUES(NULL, 'queued', 0)")
+        assert c.post("/api/stacking/housekeeping/cleanup", json={"keys": ["temp"]}).status_code == 200
+        assert eng.paused == "Warteschlange angehalten."              # bleibt angehalten
+        eng.set_paused(False)
+        assert c.post("/api/stacking/housekeeping/cleanup", json={"keys": ["temp"]}).status_code == 409
+        assert eng.paused is None
+
+
+def test_import_stopped_by_low_space_keeps_rest(tmp_path, monkeypatch):
+    eng, _ = engine(tmp_path)
+    lib = eng.library
+    src = tmp_path / "quelle"
+    src.mkdir()
+    files = []
+    for i in range(4):
+        f = src / f"img-{i}.fits"
+        f.write_bytes(b"x" * 10)
+        files.append(f)
+    g = {"id": "g0", "kind": "lights", "dir": src, "files": files, "to_import": list(files), "n_files": 4,
+         "n_known": 0, "n_new": 4, "stat": {f: (10, 0) for f in files}, "import_bytes": 40, "state": "new"}
+    lib.groups = [g]
+    left = iter([10e9, 10e9, 1e9])                   # nach zwei Dateien wird es knapp
+    monkeypatch.setattr(diskspace, "free", lambda p: next(left, 1e9))
+    monkeypatch.setattr(eng, "scan_and_queue", lambda: {"new_by_project": {}, "duplicates": 0})
+    lib._import([g])
+    assert lib.state["imported"]["raw"] == 2 and "angehalten" in lib.state["imported"]["errors"][0]
+    assert g["to_import"] == files[2:] and g["n_new"] == 2 and g["n_known"] == 2 and g["state"] == "partial"

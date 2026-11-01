@@ -322,11 +322,22 @@ def build_router(eng: Engine) -> APIRouter:
     @r.post("/housekeeping/cleanup")
     def housekeeping_cleanup(body: dict = Body(...)):
         from . import housekeeping
-        if db.one("SELECT id FROM jobs WHERE state IN ('queued','running') LIMIT 1"):
-            raise HTTPException(409, "Gerade läuft eine Verarbeitung – bitte danach aufräumen.")
+        # wartende Aufträge stören nicht, solange die Warteschlange steht (angehalten oder Platte voll) –
+        # genau dann muss Aufräumen möglich sein; währenddessen bleibt sie angehalten
+        if db.one("SELECT id FROM jobs WHERE state='running' LIMIT 1") or (
+                not eng.hold() and db.one("SELECT id FROM jobs WHERE state='queued' LIMIT 1")):
+            raise HTTPException(409, "Gerade läuft eine Verarbeitung – bitte danach aufräumen oder die Aufträge anhalten.")
         keys = [k for k in body.get("keys") or [] if isinstance(k, str)]
-        with eng.pl._scan_lock:                          # kein Scan/Import gleichzeitig
-            return housekeeping.cleanup(eng.s, db, keys, int(body.get("keep") or housekeeping.KEEP_VERSIONS))
+        before = eng.paused
+        eng.set_paused(True, before or "Aufräumen läuft – Aufträge warten.")
+        try:
+            with eng.pl._scan_lock:                      # kein Scan/Import gleichzeitig
+                return housekeeping.cleanup(eng.s, db, keys, int(body.get("keep") or housekeeping.KEEP_VERSIONS))
+        finally:
+            if before:
+                eng.set_paused(True, before)
+            else:
+                eng.set_paused(False)
 
     @r.get("/solver")
     def get_solver():

@@ -200,7 +200,9 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    `status.hold`/`paused`). `POST /api/stacking/queue {paused}` (UI: Aktivität → „Aufträge anhalten/fortsetzen“; `cancel`-Event bricht beim
    nächsten Fortschritt ab, Stacking setzt am Checkpoint fort). Pause ist nur im Speicher (Neustart = fortsetzen). Watcher scannt unter 2 GB nicht.
    Import (`library.start_import`): Kopien über Laufwerksgrenzen (`same_drive`) müssen `IMPORT_RESERVE` 20 GB übrig lassen, sonst 400; beim
-   Kopieren Abbruch unter 5 GB. Test: `test_diskspace.py`.
+   Kopieren Abbruch unter 5 GB – nicht übernommene Dateien bleiben in `to_import` (Gruppe `partial`), Import später fortsetzbar.
+   Aufräumen (`housekeeping/cleanup`) ist bei stehender Warteschlange (`hold()`) trotz wartender Aufträge erlaubt und hält sie währenddessen an.
+   Test: `test_diskspace.py`.
 12. **Speicherbelegung & Aufräumen** (`housekeeping.py`, API `GET /housekeeping?keep=`, `POST /housekeeping/cleanup {keys, keep}`,
    UI: Einstellungen → Bilder → „Speicherbelegung“, seit 31.10.2026): Belegung je Bereich + größte Objekte; Aufräumbares: verwaiste
    Ausgabedateien, Stacks gelöschter Objekte, Temp (> 1 h), leere Ordner (> 1 h), DB verdichten (VACUUM) – vorausgewählt; ältere Versionen
