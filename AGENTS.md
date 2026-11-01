@@ -170,7 +170,12 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    Danach alle Profile: `denoise` 0,3 / `chroma_denoise` 1,5 (vorher 0,4–0,6 / 1,5–2,5) – an 10 Projekten gemessen: Objekthelligkeit
    gleich (Nutzer: „ohne dass sie dunkler werden“), 10–35 % mehr schwache Sterne, Sterngröße gleich. `linear_denoise_max` 0,5 für alle
    getestet und verworfen (M63/M101/NGC 1579 dunkler). `CORE_STAR_RATIO` 4 → 5: AE Aurigae in IC 405 (4,4) galt als ausgebrannter Kern.
-   Offen: NGC 1579 (Stack-FWHM 6,5 px gegen Stellina 3,2) und M101 (Achsverhältnis 1,59 gegen 1,33) – mehrere Nächte, Stack-Problem.
+   **Stack-Schärfe nachgemessen (01.11.2026):** kein Stack-Problem. Gleiches Verfahren wie bei Frames (2×2 gebinnt, ×2): Stack schärfer als
+   der Median-Frame (NGC 1579 6,8 gegen 8,2; M101 5,9 gegen 10,1), über das Feld gleichmäßig (Mitte = Rand), Exzentrizität = die der Frames
+   (Sternform kommt aus den Rohbildern, nicht aus der Registrierung). Frame- und Stack-FWHM (`stats.fwhm_px`, ungebinnt) nie direkt vergleichen.
+   M101 Versuch mit fester FWHM-Grenze (≤ k × 10-%-Quantil): k 1,5 → 232 statt 504 Frames, FWHM −6 %, Rauschen +28 %; k 1,25 → −8 % / +54 %
+   → Auswahl bleibt relativ (Gewichtung reicht; wer Schärfe will: Option „Nur die besten X %“). Auf `D:\Astro\Stellina` liegen ungenutzte
+   Nächte: NGC 1579 2022-08-07 (422 Frames), M101 2023-02-07 (247) – Import über „Hauptordner durchsuchen“.
 8. **KI-Prüfer** (`reviewer.py`, optional, Standard aus): Vision-LLM (LM Studio/OpenRouter) bewertet Vorschau, darf nur Whitelist-Parameter in festen Grenzen ändern.
    Läuft nach der messbaren Kontrolle (`first=` = bereits gerendertes Bild). Denkmodelle (Bonsai, Qwen3) brauchen ~2 500 Tokens vor der
    Antwort → `max_tokens` 8000, Timeout 300 s; `<think>`-Blöcke und `reasoning_content` werden behandelt. Beim Nutzer: LM Studio, `prism-ml/bonsai-27b` (~55 s/Runde).
@@ -279,5 +284,4 @@ Neue Ansichten in `ROUTES` eintragen. Achtung: globales `td { white-space: nowra
 ## Grenzen / mögliche nächste Schritte
 Keine Mosaike (Stackfläche = Referenzbild), kein echtes Drizzle (2× interpoliert), keine Komet-/Planeten-/Mond-Modi, kleiner eingebauter Katalog
 (großer nur mit ASTAP-`deep_sky.csv`), Dockerfile (ASTAP-Download) noch nicht real gebaut/getestet, Satellitenspur-Erkennung unzuverlässig,
-GraXpert/StarNet nicht im Docker-Image, keine Verzerrungskorrektur, keine GPU, Stack über mehrere Nächte: NGC 1579 unscharf
-(FWHM 6,5 gegen Stellina 3,2 px) mit waagerechten Hintergrundstreifen, M101 ovale Sterne (1,59 gegen 1,33).
+GraXpert/StarNet nicht im Docker-Image, keine Verzerrungskorrektur, keine GPU, waagerechte Hintergrundstreifen bei NGC 1579 (Stack).
