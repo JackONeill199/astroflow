@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from . import calibration, channels, develop, gpu, graxpert, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner, stars
+from . import calibration, channels, develop, gpu, graxpert, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner, stars, tutor
 from ...core.config import Settings, free_ram_mb
 from .db import DB
 from .fits_io import FrameInfo, parse_date, read_data, to_channels, write_fits
@@ -642,7 +642,8 @@ class Pipeline:
                     params["wb_gains"] = pcc["gains"]
         cnt = self.db.one("SELECT COUNT(*) n, SUM(status='rejected') r FROM frames WHERE project_id=? AND kind='light'", (project_id,))
         ctx = {"exposure_s": exposure, "rejected_pct": 100 * (cnt["r"] or 0) / max(1, cnt["n"]),
-               "has_flats": bool(self.db.one("SELECT id FROM frames WHERE kind='flat' LIMIT 1"))}
+               "has_flats": bool(self.db.one("SELECT id FROM frames WHERE kind='flat' LIMIT 1")),
+               "neutral_sky": tutor.neutral_sky(proj["ra"], proj["dec"], kind)}
         rgb, stats, params, _ = develop.develop(
             mean, cov, params, narrow, palette, ctx, fixed=user,
             log=lambda m: prog(0.3, "Bearbeitung", m), render_log=lambda m: prog(0.5, "Bearbeitung", m))
@@ -655,7 +656,7 @@ class Pipeline:
                 self.review_cfg, render, params, proj["name"], kind, log=lambda m: prog(0.7, "KI-Prüfung", m),
                 first=(rgb, stats))
             if "quality" not in stats:                     # KI hat nachgebessert -> neu bewerten
-                stats["quality"] = {**develop.assess(rgb, mono=mean.shape[0] == 1),
+                stats["quality"] = {**develop.assess(rgb, mono=mean.shape[0] == 1, neutral_sky=ctx["neutral_sky"]),
                                     "hints": quality["hints"], "measure": quality["measure"]}
                 stats["before"], stats["qc"] = before, qc_hist
         if gx:

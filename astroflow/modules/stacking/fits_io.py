@@ -31,6 +31,7 @@ class FrameInfo:
     solve: dict | None = None     # Plate-Solving-Ergebnis, falls die Koordinaten daraus stammen
     fp: str | None = None         # Inhalts-Fingerabdruck (Duplikaterkennung, siehe scanner.fingerprint)
     processed: str | None = None  # Grund, falls schon fertig verarbeitet (Stack/Master anderer Software) – kein Rohbild
+    site: list | None = None      # Beobachtungsort [Breite, Länge] in Grad, falls im Header (Seestar, ASIAIR, NINA …)
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -143,8 +144,19 @@ def read_info(path: str | Path) -> FrameInfo:
             bayerpat=bp,
             temp=_float(h.get("CCD-TEMP", h.get("TEMPERAT"))),
             processed=_processed(h, dims),
+            site=_site(h),
         )
         return info
+
+
+def _site(h) -> list | None:
+    """Beobachtungsort aus SITELAT/SITELONG, LAT-OBS/LONG-OBS oder OBSGEO-B/L (Zahl oder „+50 12 30“). Stellina schreibt keinen."""
+    for kb, kl in (("SITELAT", "SITELONG"), ("LAT-OBS", "LONG-OBS"), ("OBSGEO-B", "OBSGEO-L")):
+        if kb in h and kl in h:
+            b, l = (_float(h[k]) if _float(h[k]) is not None else _sexagesimal(str(h[k])) for k in (kb, kl))
+            if b is not None and l is not None and -90 <= b <= 90 and (b, l) != (0, 0):
+                return [round(b, 4), round((l + 180) % 360 - 180, 4)]
+    return None
 
 
 def _processed(h, dims: tuple) -> str | None:

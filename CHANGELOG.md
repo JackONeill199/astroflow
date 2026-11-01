@@ -3,6 +3,29 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.8.0 – 01.11.2026
+
+### Neu
+- **Bild-Tutor** (Einstellungen → Bilder → „Bild-Tutor“, Darstellung *Einsteiger* oder *Erfahren*): erklärt jede
+  Auffälligkeit des Bildes mit Ursache und Tipps fürs nächste Mal und bewertet die Aufnahmenacht.
+  - **Gerät** wird automatisch erkannt (Stellina, Vespera, Seestar, Dwarf, eVscope, Astrokamera); Tipps passen
+    dazu (Filter, Wind, Tau, Bildfeldrotation azimutaler Montierungen). Stellina: kein Tau-Hinweis (eingebaute Heizung).
+  - **Nacht**: Dämmerung (Sonnenstand), Mondphase/-höhe/-abstand und Objekthöhe – offline berechnet, Standort aus
+    den Aufnahmen oder den Einstellungen. Dazu der Verlauf der Einzelaufnahmen (Himmel wird heller, Sterne
+    verschwinden = Wolken, Sterne werden unschärfer, verzogene Sterne = Wind).
+  - **Wetter** (optional): Wolken, Luftfeuchte/Taupunkt, Frost und Wind der Aufnahmenacht aus dem
+    Open-Meteo-Archiv; gesendet werden nur der auf ~10 km gerundete Ort und das Datum.
+  - **KI-Einschätzung** auf Knopfdruck: ein Vision-Modell (LM Studio oder OpenRouter) sieht das Bild mit allen
+    Messwerten und ergänzt, was es sieht.
+- **Farbverläufe im Himmel** werden erkannt (z. B. „rötlich nach rechts“) und beim Entwickeln automatisch
+  ausgeglichen, ohne die Helligkeit zu ändern. In der Milchstraße, wo farbiger Himmel echter Nebel sein kann,
+  gilt eine höhere Schwelle.
+
+### Behoben
+- Die Bildprüfung gab Bildern mit deutlichem Farbstich an einer Seite 10 von 10 Punkten (NGC 891: rötlicher
+  rechter Rand durch Morgendämmerung im Juni). Ältere Bewertungen werden beim Öffnen am gespeicherten Bild
+  nachgeprüft; „Mehr → Neu entwickeln“ gleicht den Verlauf aus.
+
 ## 0.7.0 – 01.11.2026
 
 Fasst alles seit 0.6.0 zusammen (dazu auch die Kurzfassungen vom 29. bis 31.10. weiter unten).
