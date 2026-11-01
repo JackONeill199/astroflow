@@ -10,11 +10,13 @@ import json
 import os
 import shutil
 import sqlite3
+import threading
 import time
 from pathlib import Path
 
 TEMP_AGE_S = 3600            # temporäre Dateien erst nach einer Stunde aufräumen (könnten noch in Arbeit sein)
 KEEP_VERSIONS = 2            # ältere Versionen: so viele neueste je Objekt bleiben
+_VERSIONS_LOCK = threading.Lock()   # Prüfen „bleibt eine Version?“ und Löschen gehören zusammen (parallele Anfragen)
 
 
 def _size(p: Path) -> int:
@@ -199,12 +201,13 @@ def _delete_results(s, db, rows: list[dict]) -> int:
 
 def delete_version(s, db, rid: int) -> dict:
     """Eine einzelne Version löschen. Die letzte Version eines Objekts bleibt (dafür das Objekt löschen)."""
-    r = next((x for x in _results(db) if x["id"] == rid), None)
-    if not r:
-        raise KeyError(rid)
-    if db.one("SELECT COUNT(*) n FROM results WHERE project_id=?", (r["project_id"],))["n"] < 2:
-        raise ValueError("Die einzige Version kann nicht gelöscht werden – dafür das ganze Objekt löschen.")
-    return {"freed": _delete_results(s, db, [r]), "project_id": r["project_id"]}
+    with _VERSIONS_LOCK:
+        r = next((x for x in _results(db) if x["id"] == rid), None)
+        if not r:
+            raise KeyError(rid)
+        if db.one("SELECT COUNT(*) n FROM results WHERE project_id=?", (r["project_id"],))["n"] < 2:
+            raise ValueError("Die einzige Version kann nicht gelöscht werden – dafür das ganze Objekt löschen.")
+        return {"freed": _delete_results(s, db, [r]), "project_id": r["project_id"]}
 
 
 def cleanup(s, db, keys: list[str], keep: int = KEEP_VERSIONS) -> dict:
@@ -212,8 +215,9 @@ def cleanup(s, db, keys: list[str], keep: int = KEEP_VERSIONS) -> dict:
     keep = max(1, int(keep))
     freed, removed = 0, {}
     if "old_versions" in keys:                        # zuerst: deren Dateien sollen nicht als „verwaist“ doppelt zählen
-        old = _old_versions(db, keep)
-        freed += _delete_results(s, db, old)
+        with _VERSIONS_LOCK:
+            old = _old_versions(db, keep)
+            freed += _delete_results(s, db, old)
         removed["old_versions"] = len(old)
     if "orphan_output" in keys:
         f = _orphan_output(s, db)

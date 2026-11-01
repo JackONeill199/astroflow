@@ -653,6 +653,8 @@ def build_router(eng: Engine) -> APIRouter:
         from . import housekeeping
         try:
             return housekeeping.delete_version(eng.s, db, rid)
+        except KeyError:                                 # inzwischen von einer anderen Anfrage gelöscht
+            raise HTTPException(404)
         except ValueError as e:
             raise HTTPException(409, str(e))
 

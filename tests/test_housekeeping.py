@@ -101,3 +101,34 @@ def test_delete_single_version(tmp_path):
         assert [x["id"] for x in db.q("SELECT id FROM results")] == [rids[0]]
         assert c.delete(f"/api/stacking/results/{rids[0]}").status_code == 409        # einzige Version bleibt
         assert c.delete("/api/stacking/results/9999").status_code == 404
+
+
+def test_delete_version_concurrent_keeps_last(tmp_path, monkeypatch):
+    """Zwei gleichzeitige Löschungen bei zwei Versionen: genau eine gelingt, eine Version bleibt."""
+    import threading
+    s = load_settings(tmp_path / "data")
+    db = DB(s.db_path)
+    pid = db.x("INSERT INTO projects(key, name, created) VALUES('m1', 'M1', 0)")
+    rids = [db.x("INSERT INTO results(project_id, created, n_frames, exposure, files, stats) VALUES(?,?,1,1,'{}','{}')", (pid, i))
+            for i in range(2)]
+    barrier, real = threading.Barrier(2, timeout=2), housekeeping._results
+
+    def slow_results(d):                    # beide Anfragen lesen gleichzeitig – ohne Sperre sähen beide zwei Versionen
+        try:
+            barrier.wait()
+        except threading.BrokenBarrierError:
+            pass
+        return real(d)
+    monkeypatch.setattr(housekeeping, "_results", slow_results)
+    out = []
+
+    def run(rid):
+        try:
+            out.append(housekeeping.delete_version(s, db, rid))
+        except (ValueError, KeyError) as e:
+            out.append(e)
+    ts = [threading.Thread(target=run, args=(r,)) for r in rids]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert sum(isinstance(x, dict) for x in out) == 1
+    assert db.one("SELECT COUNT(*) n FROM results")["n"] == 1
