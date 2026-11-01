@@ -116,10 +116,20 @@ def test_statistik_zaehlt_beobachtungen_einmal(tmp_path, monkeypatch):
         {"session": "2026_observation_M103", "frames": 50, "state": "Fertig", "limited": True, "candidates_file": "M103/kandidaten.json"},
         {"session": "2022-09-01_observation_M103", "frames": 80, "excluded": 2, "state": "Fertig", "candidates_file": "M103/kandidaten.json"}]),
         encoding="utf-8")
+    # automatische Läufe derselben Nacht: zweiter Stapel mit neuen Aufnahmen zählt zusätzlich, Wiederholung des ersten nicht
+    for rid, first in (("2026-10-29_10-00-00-000001", "img-0001.fits"), ("2026-10-29_11-00-00-000001", "img-0101.fits"),
+                       ("2026-10-29_12-00-00-000001", "img-0001.fits")):
+        obs = home / "Ergebnisse" / rid / "M45"
+        obs.mkdir(parents=True)
+        (obs / "frames.jsonl").write_text(json.dumps({"file": f"C:/auto/M45/{first}"}) + "\n", encoding="utf-8")
+        (obs.parent / "videos.json").write_text(json.dumps([{"session": "2022-10-05_observation_M45", "video": "M45/ereignisse.mp4",
+                                                             "frames": 100, "state": "Fertig"}]), encoding="utf-8")
     monkeypatch.setenv("SKYTRACE_HOME", str(home))
     with TestClient(create_app(load_settings(tmp_path / "data"))) as c:
         d = c.get("/api/skytrace/statistics").json()
-    assert d["repeated"] == 1 and d["all_runs"] == 2
+    assert d["repeated"] == 2 and d["all_runs"] == 5
+    assert sorted(s["run"] for s in d["sessions"] if s["session"] == "2022-10-05_observation_M45") == \
+        ["2026-10-29_11-00-00-000001", "2026-10-29_12-00-00-000001"]
     by = {s["session"]: s for s in d["sessions"]}
     assert by["2026_observation_M103"]["run"] == old and by["2026_observation_M103"]["frames"] == 120   # vollständige gewinnt
     assert by["2022-09-01_observation_M103"]["night"] == "2022-09-01"

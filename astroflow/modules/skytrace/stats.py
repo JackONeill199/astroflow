@@ -5,6 +5,7 @@ die Einordnung und Zählung macht die Oberfläche, damit sie mit Kandidatenliste
 from __future__ import annotations
 
 import datetime as dt
+import json
 import re
 import threading
 from pathlib import Path
@@ -47,6 +48,21 @@ def _night(session: str, stamps: list[float]) -> str | None:
     return None
 
 
+def _first_file(folder: Path) -> str | None:
+    """Name der ersten Aufnahme einer Bildfolge (erste Zeile von frames.jsonl bzw. ausgeschlossen.jsonl).
+    Gleicher Ordnername + gleiche erste Aufnahme = erneute Analyse derselben Daten; automatische Läufe einer Nacht
+    bekommen nur noch nicht übergebene Aufnahmen und unterscheiden sich darin."""
+    from json_store import open_read
+    names = []
+    for filename in ("frames.jsonl", "ausgeschlossen.jsonl"):
+        try:
+            with open_read(folder / filename) as rows:
+                names.append(Path(json.loads(next(rows))["file"]).name)
+        except (OSError, ValueError, KeyError, StopIteration, TypeError):
+            continue
+    return min(names, default=None)
+
+
 def _run(path: Path) -> dict:
     """Beobachtungen eines Laufs samt Kandidaten (gecacht nach Dateizeiten)."""
     summaries = _read(path / "videos.json", []) or []
@@ -62,7 +78,8 @@ def _run(path: Path) -> dict:
             continue
         items = _read(path / s["candidates_file"], []) if s.get("candidates_file") else []
         cands = [_candidate(c, path.name) for c in items or [] if isinstance(c, dict)]
-        sessions.append(dict(session=s["session"], run=path.name, frames=s.get("frames") or 0, excluded=s.get("excluded") or 0,
+        first = _first_file(path / Path(s["video"]).parent) if s.get("video") else None
+        sessions.append(dict(session=s["session"], run=path.name, first=first, frames=s.get("frames") or 0, excluded=s.get("excluded") or 0,
                              hits=s.get("hits") or 0, complete=s.get("state") == "Fertig" and not s.get("limited", False),
                              night=_night(s["session"], [c["timestamp"] for c in cands if isinstance(c["timestamp"], (int, float))]),
                              candidates=cands))
@@ -73,18 +90,19 @@ def _run(path: Path) -> dict:
 
 
 def collect(results: Path, skip: str | None = None) -> dict:
-    """Alle Läufe lesen; mehrfach analysierte Beobachtungen (gleicher Ordnername) nur einmal zählen.
-    `skip` = gerade laufende Analyse (Dateien noch unvollständig)."""
+    """Alle Läufe lesen; mehrfach analysierte Beobachtungen (gleicher Ordnername und gleiche erste Aufnahme) nur einmal
+    zählen. `skip` = gerade laufende Analyse (Dateien noch unvollständig)."""
     runs = sorted((p for p in results.iterdir() if p.is_dir() and (p / "videos.json").exists() and p.name != skip),
                   key=lambda p: p.name, reverse=True) if results.exists() else []
-    best: dict[str, dict] = {}
+    best: dict[tuple, dict] = {}
     total = 0
     for path in runs:                                   # Lauf-IDs sind Startzeiten → neueste zuerst
         for s in _run(path)["sessions"]:
             total += 1
-            old = best.get(s["session"])
+            key = (s["session"], s["first"])
+            old = best.get(key)
             if old is None or (s["complete"] and not old["complete"]):
-                best[s["session"]] = s
+                best[key] = s
     sessions = sorted(best.values(), key=lambda s: (s["night"] or "", s["session"]), reverse=True)
     candidates = [c for s in sessions for c in s["candidates"]]
     return dict(runs=len({s["run"] for s in sessions}), all_runs=len(runs), repeated=total - len(sessions),

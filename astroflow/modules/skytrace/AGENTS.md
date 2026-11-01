@@ -29,7 +29,9 @@ jeweils mit Bestätigungsdialog.
 
 ## Statistik (`stats.py`, 01.11.2026, Nutzerwunsch)
 `GET /api/skytrace/statistics` → `stats.collect`: alle Läufe mit `videos.json` (laufende Analyse ausgenommen), je Beobachtung
-(`session`) nur die neueste vollständige Analyse (sonst die neueste; `repeated` = nicht gezählte ältere). Kandidaten kommen schlank
+(`session` + Name der ersten Aufnahme aus `frames.jsonl`/`ausgeschlossen.jsonl`) nur die neueste vollständige Analyse (sonst die
+neueste; `repeated` = nicht gezählte ältere). Die erste Aufnahme trennt automatische Stapel derselben Nacht (gleicher Ordnername,
+aber nur neue Aufnahmen – Codex-Review PR #15) von echten Wiederholungen. Kandidaten kommen schlank
 zurück (nur Felder für `evidence.js classification`, Zeit, Geschwindigkeit, Katalogstatus) – **Einordnung und Zählung macht die
 Oberfläche** (`statsView` in `skytrace.js`), damit Zahlen und Kandidatenfilter übereinstimmen. Nacht = Datum im Ordnernamen,
 sonst früheste Kandidatenzeit − 12 h. Cache je Lauf nach Dateizeiten (Arbeitsinstanz: 119 Läufe, 0,4 s erstmals, danach 0,07 s).
