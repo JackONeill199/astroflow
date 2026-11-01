@@ -2,6 +2,38 @@
 
 Neueste zuerst. Technische Details stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 01.11.2026 – Schutz vor vollem Laufwerk
+
+### Behoben
+- **Volles Datenlaufwerk legte alles lahm**: Der Import der ganzen Stellina-Platte (E:) hat die Aufnahmen
+  nach C: kopiert – Verknüpfungen statt Kopien gehen nur auf demselben Laufwerk. C: lief voll, danach
+  scheiterte jeder Auftrag, und die Fehler ließen sich nicht stoppen.
+- Der Import rechnet jetzt vorher aus, wie viel kopiert werden muss, und lehnt ab, wenn danach weniger als
+  20 GB frei blieben (mit Hinweis, weniger Gruppen zu wählen). Während des Kopierens hält er bei unter 5 GB an.
+- Aufträge starten erst ab 5 GB freiem Speicher. Sinkt der freie Platz während eines Auftrags unter 2 GB
+  oder ist die Platte voll, hält die Warteschlange an. Der Auftrag wartet dann und setzt nach dem Fortsetzen
+  am letzten Zwischenstand fort. Ein Hinweis erscheint in der Seitenleiste und unter „Aktivität“.
+
+### Neu
+- **Stacken und Endbearbeitung laufen parallel**: Sobald ein Objekt gestackt ist, wird es im Hintergrund
+  entwickelt, und das nächste Objekt in der Warteschlange wird sofort gestackt. Höchstens ein fertiger
+  Stack wartet auf die Endbearbeitung.
+- **„Aufträge anhalten“ / „Aufträge fortsetzen“** unter „Aktivität“: bricht die laufende Bildverarbeitung ab
+  (nichts geht verloren, das Stacking macht am letzten Zwischenstand weiter) und hält die Warteschlange an.
+
+## 01.11.2026 – Stacking-Verlauf
+
+### Neu
+- **Regler „Stacking-Verlauf“ unter dem Bild**: zeigt dasselbe Objekt nach 1, 3, 10, 30, 100, 300 …
+  Aufnahmen – mit denselben Einstellungen und genau demselben Ausschnitt wie das fertige Bild. Man sieht
+  direkt, wie das Rauschen mit jeder weiteren Aufnahme sinkt. Standardmäßig steht der Regler auf dem
+  fertigen Bild; Zoom und Ausschnitt bleiben beim Verschieben erhalten.
+- Die Zwischenstände entstehen beim Stacken. Bei Objekten, deren Einzelbilder schon gelöscht sind, gibt es
+  sie erst für künftige Stufen (z. B. „300“, sobald neue Nächte die Zahl überschreiten).
+- Hinweise: Je Stufe dauert das Entwickeln etwas (Stellina-Format rund 11 s), die Zwischenstände belegen
+  im Arbeitsordner etwa 40 MB je Stufe. Wurde das fertige Bild mit GraXpert oder StarNet bearbeitet,
+  werden die Stufen mit den eigenen Verfahren entwickelt (steht dann unter dem Regler).
+
 ## 01.11.2026 – Ordner wählen statt Pfad eintippen
 
 ### Neu

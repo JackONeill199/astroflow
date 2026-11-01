@@ -12,7 +12,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from . import scanner
+from . import diskspace, scanner
 from .fits_io import FITS_EXT
 from .picture_import import PICTURE_EXT, SOURCE_LIMIT, import_picture
 
@@ -287,7 +287,7 @@ class Library:
                 "n_files": total, "n_known": known, "n_done": stacked, "n_new": len(todo), "bytes": size,
                 "camera": camera, "night": night, "state": state,
                 "project": {"id": project, "name": names.get(project)} if project else None,
-                "to_import": todo}
+                "to_import": todo, "import_bytes": sum(g["stat"][f][0] for f in todo)}
 
     # ---------------------------------------------------------------- Import #
     def start_import(self, ids: list[str]) -> int:
@@ -297,6 +297,17 @@ class Library:
             chosen = [g for g in self.groups if g["id"] in set(ids) and g["to_import"]]
             if not chosen:
                 raise ValueError("Nichts zu importieren – die Auswahl ist leer oder schon vollständig vorhanden.")
+            # anderes Laufwerk -> keine Hardlinks, jede Datei wird kopiert: vorher prüfen, ob das passt
+            base = self.eng.s.uploads_dir
+            base.mkdir(parents=True, exist_ok=True)
+            copy = sum(g["import_bytes"] for g in chosen if g["kind"] != "pictures" and not diskspace.same_drive(g["dir"], base))
+            free = diskspace.free(base)
+            if copy and free is not None and free - copy < diskspace.IMPORT_RESERVE:
+                raise ValueError(
+                    f"Zu wenig Speicher: Die Aufnahmen liegen auf einem anderen Laufwerk und müssen kopiert werden "
+                    f"({diskspace.gb(copy)}), frei sind {diskspace.gb(free)}; danach sollen noch {diskspace.gb(diskspace.IMPORT_RESERVE)} "
+                    f"für Stacks und Ergebnisse bleiben. Bitte weniger Gruppen auswählen und nach dem Verarbeiten weitere "
+                    f"importieren (hochgeladene Einzelbilder werden nach dem Stacken gelöscht).")
             self.state.update(state="importing", progress=0.0, message="Import startet …", imported={}, started=time.time())
         threading.Thread(target=self._import, args=(chosen,), daemon=True, name="library-import").start()
         return len(chosen)
@@ -315,10 +326,20 @@ class Library:
         total = sum(len(g["to_import"]) for g in chosen)
         done, raw, pics, errors = 0, 0, 0, []
         base = eng.s.uploads_dir / "bibliothek"
+        taken: dict[str, set] = {g["id"]: set() for g in chosen}   # tatsächlich übernommene Dateien je Gruppe
         try:
+            full = False
             for g in chosen:
+                if full:
+                    break
                 tag = hashlib.sha1(str(g["dir"]).encode()).hexdigest()[:6]
                 for f in g["to_import"]:
+                    left = diskspace.free(base.parent)
+                    if left is not None and left < diskspace.MIN_FREE:
+                        errors.append(f"Import nach {done} von {total} Dateien angehalten: nur noch {diskspace.gb(left)} frei. "
+                                      "Nach dem Freigeben von Speicher erneut importieren – der Rest bleibt ausgewählt.")
+                        full = True
+                        break
                     try:
                         if g["kind"] == "pictures":
                             with open(f, "rb") as fh:
@@ -327,6 +348,7 @@ class Library:
                         else:
                             self._put(f, base / tag / g["dir"].name / f.relative_to(g["dir"]))
                             raw += 1
+                        taken[g["id"]].add(f)
                     except Exception as e:
                         errors.append(f"{f.name}: {e}")
                     done += 1
@@ -334,9 +356,15 @@ class Library:
                         self._set(progress=round(done / total * 0.9, 3), message=f"{done} von {total} Dateien übernommen …")
             self._set(message="Aufnahmen werden einsortiert …", progress=0.92)
             scan = eng.scan_and_queue() if raw else {"new_by_project": {}, "duplicates": 0}
-            for g in chosen:                                     # übernommene Gruppen sind nun bekannt
-                g["n_known"], g["n_new"], g["to_import"] = g["n_files"], 0, []
-                if g["kind"] == "lights":
+            for g in chosen:                                     # übernommene Dateien sind nun bekannt, der Rest bleibt offen
+                got = taken[g["id"]]
+                g["to_import"] = [f for f in g["to_import"] if f not in got]
+                g["n_known"] += len(got)
+                g["n_new"] = len(g["to_import"])
+                g["import_bytes"] = sum(g["stat"][f][0] for f in g["to_import"]) if "stat" in g else 0
+                if g["to_import"]:
+                    g["state"] = "partial" if g["n_known"] else "new"
+                elif g["kind"] == "lights":
                     g["state"] = "unstacked"
                 else:
                     g["state"], g["n_done"] = "done", g["n_files"]

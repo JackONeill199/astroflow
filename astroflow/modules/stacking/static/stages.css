@@ -1,0 +1,20 @@
+/* Stacking-Verlauf (Regler unter dem Bild) */
+.stages { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-sm); background: color-mix(in srgb, var(--bg2) 70%, transparent) }
+.stages-h { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap }
+.stages-h b { font-size: 14px }
+.stages-h .grow { flex: 1 }
+/* eigener Regler: der eingebaute füllt nur bis zur Knopfmitte – bei „Alle“ blieb rechts ein Rest grau */
+.stages input[type=range] { --fill: 100%; -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 18px; margin: 10px 0 2px;
+  background: transparent; cursor: pointer }
+.stages input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 3px;
+  background: linear-gradient(90deg, var(--acc) var(--fill), var(--line) var(--fill)) }
+.stages input[type=range]::-moz-range-track { height: 6px; border-radius: 3px; background: var(--line) }
+.stages input[type=range]::-moz-range-progress { height: 6px; border-radius: 3px; background: var(--acc) }
+.stages input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -5px; border-radius: 50%;
+  background: var(--fg); border: 3px solid var(--acc); box-shadow: 0 1px 4px rgb(0 0 0 / .4) }
+.stages input[type=range]::-moz-range-thumb { width: 10px; height: 10px; border-radius: 50%; background: var(--fg); border: 3px solid var(--acc) }
+.stages input[type=range]:focus-visible { outline: 2px solid color-mix(in srgb, var(--acc) 60%, transparent); outline-offset: 4px; border-radius: 4px }
+.stages-ticks { display: flex; justify-content: space-between; font-size: 12px; color: var(--mut); padding: 0 2px }
+.stages-ticks span { cursor: pointer; min-width: 0 }
+.stages-ticks span.on { color: var(--fg); font-weight: 600 }
+.stages p { margin: 8px 0 0 }

@@ -34,6 +34,8 @@ DEFAULT_OPTIONS = {
 }
 GLOW_SAMPLE = 30                # Frames je Nacht für die Glühmessung
 CHECKPOINT_S = 120              # Stack-Zustand spätestens alle 2 min sichern (Wiederaufnahme nach Abbruch)
+STAGES = (1, 3, 10, 30, 100, 300, 1000, 3000)   # Stacking-Stufen (Aufnahmen) für den Verlaufsregler im Bild-Tab
+STAGE_SCALE = 8.0               # Stufen als float16 (Speicher); ADU / 8 bleibt sicher unter dem float16-Maximum
 
 
 def band_of_row(r: dict) -> str | None:
@@ -43,6 +45,21 @@ def band_of_row(r: dict) -> str | None:
 
 def stack_dir(wd: Path, band: str | None) -> Path:
     return wd / ("stack" if band is None else f"stack_{band}")
+
+
+def stage_dir(wd: Path, band: str | None) -> Path:
+    return wd / ("stufen" if band is None else f"stufen_{band}")
+
+
+def load_stages(d: Path) -> list[dict]:
+    """Gespeicherte Stacking-Stufen, aufsteigend: [{n, exposure, path}]."""
+    out = []
+    for f in sorted(d.glob("n*.json")):
+        try:
+            out.append({**json.loads(f.read_text()), "path": f.with_suffix(".npz")})
+        except Exception:
+            pass
+    return sorted((x for x in out if x["path"].exists()), key=lambda x: x["n"])
 
 
 def info_from_row(r: dict) -> FrameInfo:
@@ -387,6 +404,11 @@ class Pipeline:
         if (extra or {}).get("mode") == "develop":
             return self.develop(project_id, extra, progress, start=0.05)
         self.stack(project_id, extra, progress)
+        return self.finish(project_id, extra, progress)
+
+    def finish(self, project_id: int, extra: dict | None = None, progress=lambda p, stage, msg="": None) -> int:
+        """Nach stack(): entwickeln, an Sage/SkyTrace melden, hochgeladene Einzelbilder löschen. Der Server führt das
+        in einem eigenen Thread aus, während schon das nächste Objekt gestackt wird."""
         pending = self.db.q("SELECT id FROM frames WHERE project_id=? AND stacked=1 AND stack_notified=0", (project_id,))
         rid = self.develop(project_id, extra, progress, start=0.86)
         # Dauerhaft pro Aufnahme bestätigen: ein Checkpoint/Abbruch ist noch keine zugestellte Beobachtung.
@@ -500,6 +522,7 @@ class Pipeline:
                 for r in by_band[b]:
                     r["stacked"] = 0
                 shutil.rmtree(stack_dir(wd, b), ignore_errors=True)
+                shutil.rmtree(stage_dir(wd, b), ignore_errors=True)
         # Neuaufbau vorbereitet: nach einem Abbruch geht es an den Checkpoints weiter statt von vorn
         self.db.x("UPDATE projects SET restack=0 WHERE id=?", (project_id,))
         # Breitband zuerst (bestes Referenzbild), dann Schmalband; je Band nach Menge
@@ -516,7 +539,8 @@ class Pipeline:
                 lo, span = done_before / n_all, len(wanted[b]) / n_all
                 sub = lambda f, stage, msg="", lo=lo, span=span, b=b: progress(
                     0.36 + 0.48 * (lo + span * (f - 0.36) / 0.48), stage, (f"[{b}] " if b else "") + msg)
-                st = self._stack(project_id, todo or wanted[b], st, lib, cache, scale, sub, ref, save_dir=stack_dir(wd, b))
+                st = self._stack(project_id, todo or wanted[b], st, lib, cache, scale, sub, ref, save_dir=stack_dir(wd, b),
+                                 stages=stage_dir(wd, b))
                 states[b] = st
             done_before += len(wanted[b])
         if not states:
@@ -641,13 +665,56 @@ class Pipeline:
         # --- Ausgabe ----------------------------------------------------------
         prog(0.85, "Speichern")
         rid = self._save(proj, rgb, mean, cov, stats, review_hist, len(stacked), exposure, params)
+        # erst nach dem gespeicherten Ergebnis (ist schon sichtbar): Zwischenstufen für den Verlaufsregler
+        try:
+            self._render_stages(project_id, rid, states, params, narrow, palette, stats.get("crop"), len(stacked),
+                                lambda f, m: prog(0.88 + 0.12 * f, "Stacking-Stufen", m))
+        except Exception as e:                         # Stufen sind Beiwerk – das fertige Bild bleibt
+            print(f"Stacking-Stufen fehlgeschlagen: {e}")
         if start < 0.5:
             progress(1.0, "Fertig")
         return rid
 
+    def _render_stages(self, project_id, rid, states, params, narrow, palette, crop, n_total, log) -> None:
+        """Gespeicherte Stacking-Stufen (weniger Aufnahmen) mit den Parametern des fertigen Bildes und exakt dessen
+        Ausschnitt entwickeln -> <base>_s<n>.jpg, Liste in stats.stages. Nur bei einem Kanal (Farbkamera / ein Filter)."""
+        if len(states) != 1 or not crop:
+            return
+        (band, _), = states.items()
+        found = [x for x in load_stages(stage_dir(self.s.work_dir / f"p{project_id}", band)) if x["n"] < n_total]
+        if not found:
+            return
+        # externe KI-Werkzeuge kosten je Stufe Minuten -> eigene Verfahren (Hinweis in der Oberfläche)
+        p = {k: v for k, v in params.items() if k != "_ai"}
+        simplified = [n for n, on in (("GraXpert", "_ai" in params), ("StarNet", p.get("star_separation") == "starnet")) if on]
+        if p.get("star_separation") == "starnet":
+            p["star_separation"] = "off"
+        row = self.db.one("SELECT files, stats FROM results WHERE id=?", (rid,))
+        files, st = json.loads(row["files"]), json.loads(row["stats"])
+        base = files["jpg"][: -len(".jpg")]
+        done = []
+        for i, x in enumerate(found):
+            log(i / len(found), f"{x['n']} von {n_total} Aufnahmen entwickeln")
+            with np.load(x["path"]) as z:
+                mean = z["mean"].astype(np.float32) * STAGE_SCALE
+                cov = z["cov"].astype(np.float32)
+            cov /= max(float(cov.max()), 1e-9)
+            if band is not None:
+                mean, cov, _, _ = channels.combine({band: (mean, cov)}, palette)
+            rgb, _ = processing.process(mean, cov, p, narrowband=narrow, palette=palette, crop=crop)
+            del mean, cov
+            f = f"{base}_s{x['n']}.jpg"
+            Image.fromarray((np.moveaxis(rgb, 0, -1)[::-1] * 255 + 0.5).astype(np.uint8)).save(f, quality=90)
+            files[f"s{x['n']}"] = f
+            done.append({"n": x["n"], "exposure": x["exposure"]})
+        st["stages"] = done
+        if simplified:
+            st["stages_simplified"] = simplified
+        self.db.x("UPDATE results SET files=?, stats=? WHERE id=?", (json.dumps(files), json.dumps(st), rid))
+
     # -------------------------------------------------------------- stacking #
     def _stack(self, pid, todo, state, lib, cache, scale, progress, ref_meta: dict | None = None,
-               save_dir: Path | None = None) -> StackState:
+               save_dir: Path | None = None, stages: Path | None = None) -> StackState:
         if state is None and ref_meta is not None:
             # weiterer Filter: auf die Referenz des ersten Kanals registrieren, Fluss relativ zum eigenen ersten Batch
             i0 = json.loads(todo[0]["info"])
@@ -670,6 +737,12 @@ class Pipeline:
                               ref_bg=[float(np.median(rgb0[c])) for c in range(C)], ref_noise=rm["noise"],
                               ref_fwhm=rm["fwhm"])
         meta = state.meta
+        if "exposure" not in meta:                      # ältere Zustände: Belichtung der schon gestackten Frames nachtragen
+            ids = list(meta["frames"])
+            meta["exposure"] = sum((json.loads(r["info"]).get("exptime") or 0) for i in range(0, len(ids), 500)
+                                   for r in self.db.q(f"SELECT info FROM frames WHERE id IN ({','.join('?' * len(ids[i:i + 500]))})",
+                                                      tuple(ids[i:i + 500])))
+        exptime = {r["id"]: json.loads(r["info"]).get("exptime") or 0 for r in todo}
         ref_xy = np.array([[s[0], s[1]] for s in meta["ref_stars"]])
         ref_flux = np.array([s[2] for s in meta["ref_stars"]])
         C, H, W = meta["shape"]
@@ -734,11 +807,22 @@ class Pipeline:
                 ref_w = ws[0] if "ref_w" not in meta else meta["ref_w"]
                 meta.setdefault("ref_w", float(ref_w))
                 ws = np.clip(ws / meta["ref_w"], 0.1, 3.0)
-                state.add_batch(X, V, ws, workers=self.s.threads, gpu=g)
+                n0 = len(meta["frames"])
+                cut = {t: t - n0 for t in STAGES if n0 < t <= n0 + len(good)} if stages is not None else {}
+                state.add_batch(X, V, ws, workers=self.s.threads, prefixes=cut.values(), gpu=g)
                 del X, V
+                exp0 = meta["exposure"]
                 for (fid, _), w in zip(good, ws):
                     meta["frames"][fid] = float(w)
+                    meta["exposure"] += exptime.get(fid, 0)
                     unsaved.append(fid)
+                for t, k in cut.items():                 # Zwischenstand nach t Aufnahmen für den Verlaufsregler
+                    m, c = state.snaps.pop(k)
+                    stages.mkdir(parents=True, exist_ok=True)
+                    np.savez(stages / f"n{t:05d}.npz", mean=(m / STAGE_SCALE).astype(np.float16), cov=c.astype(np.float16))
+                    (stages / f"n{t:05d}.json").write_text(json.dumps(
+                        {"n": t, "exposure": exp0 + sum(exptime.get(fid, 0) for fid, _ in good[:k])}))
+                    del m, c
             done += len(chunk)
             # Checkpoint: Frames gelten erst als gestackt, wenn der Zustand mit ihnen gespeichert ist
             if save_dir is not None and unsaved and (ci == len(chunks) - 1 or time.time() - last_save > CHECKPOINT_S):
