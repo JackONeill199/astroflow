@@ -69,3 +69,22 @@ def test_burnt_core_detected_and_white_point_raised():
     last = develop.corrections(qc, {"asinh": 30, "white_pct": develop.WHITE_STEPS[-1], "denoise": 0.5, "chroma_denoise": 2,
                                     "saturation": 1.3, "target_bg": 0.07})
     assert "white_pct" not in last                               # Ende der Stufen: nicht endlos nachregeln
+
+
+def test_develop_all_queues_only_projects_with_stack(tmp_path):
+    from fastapi.testclient import TestClient
+    from astroflow.server import create_app
+    s = load_settings(tmp_path / "data")
+    s.auto = False
+    db = DB(s.db_path)
+    pl = Pipeline(s, db, ReviewerConfig())
+    demo.generate(s.uploads_dir / "n", n_lights=10, n_darks=0, n_flats=0)
+    pl.scan()
+    pid = db.one("SELECT id FROM projects")["id"]
+    pl.process(pid)
+    db.x("INSERT INTO projects(name, created) VALUES('ohne Stack', 0)")
+    db.x("INSERT INTO projects(name, created, options) VALUES('Foto', 0, ?)", (json.dumps({"input_type": "picture"}),))
+    with TestClient(create_app(s)) as c:
+        assert c.post("/api/stacking/develop-all", json={}).json() == {"queued": 1}
+        job = db.one("SELECT * FROM jobs ORDER BY id DESC LIMIT 1")
+        assert job["project_id"] == pid and json.loads(job["options"]) == {"mode": "develop"}

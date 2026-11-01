@@ -81,12 +81,19 @@ async function galleryView(el) {
   el.innerHTML = `<div class="pagehead"><div><h1>Deine Objekte</h1><p class="mut" id="gsum"></p></div><span class="grow"></span>
     <a class="btn ghost" href="#/bilder/statistik">${icon('pulse')}Statistik</a>
     <button class="btn ghost" id="gscan" title="Eingangsordner jetzt nach neuen Aufnahmen durchsuchen">${icon('refresh')}Scannen</button>
+    <button class="btn ghost" id="gdev" title="Alle Objekte aus ihrem Master-Stack neu entwickeln – ohne Stacking, z. B. nach neuen Bearbeitungsfunktionen">${icon('play')}Alle neu entwickeln</button>
     <a class="btn" href="#/import">${icon('upload')}Aufnahmen hinzufügen</a></div>
     <div class="toolbar"><input type="search" id="gq" placeholder="Objekt suchen …" title="Taste /" value="${esc(q)}"><div class="seg" id="gkind"></div><span class="grow"></span>
       <select id="gsort"><option value="recent">Zuletzt bearbeitet</option><option value="name">Name</option><option value="exposure">Belichtungszeit</option><option value="frames">Aufnahmen</option></select></div>
     <div id="gallery"></div>`;
   $('#gsort').value = sort;
   $('#gscan').onclick = async (e) => { await scan(e.currentTarget); await load(); };
+  $('#gdev').onclick = async () => {
+    if (!await confirmDlg('Alle Objekte neu entwickeln?', 'Jedes Objekt wird aus seinem gespeicherten Master-Stack neu bearbeitet (ohne Stacking). Die bisherigen Bilder bleiben als ältere Versionen erhalten. Das kann je nach Anzahl eine Weile dauern.', 'Neu entwickeln')) return;
+    try { const r = await send('/stacking/develop-all', {}); toast(`${r.queued} Objekte werden neu entwickelt.`, 'ok'); } catch (err) { toast(err.message, 'err'); }
+    await load();
+    poll();
+  };
   const save = () => { try { localStorage.setItem('af.gallery', JSON.stringify({ q, kind, sort })); } catch { /* egal */ } };
   $('#gq').oninput = (e) => { q = e.target.value; save(); draw(); };
   $('#gq').onkeydown = (e) => {

@@ -219,7 +219,7 @@ der Watcher berücksichtigt auch bereits gescannte, noch neue Frames. Letzte Feh
 Objekt löschen (`DELETE /api/stacking/projects/{id}` → `Pipeline.delete_project`, 409 während eines Jobs): Ergebnisse, Stack, Jobs, hochgeladene
 Rohbilder weg; Frames aus eingebundenen Ordnern bleiben als `kind='ignored'` in der DB, `_fingerprints` überspringt sie.
 REST unter `/api/stacking`: `status`, `scan`, `projects[/{id}]` (GET/PATCH/DELETE), `projects/{id}/process|solve|frames`, `frames/{id}` (PATCH manual),
-`jobs`, `upload` (behält bis zu 4 Ordnerebenen, blockt `..`), `results/{id}/{tif|png|jpg|thumb|fits|before}`, `reviewer`, `solver`, `storage`, `starnet`.
+`jobs`, `develop-all` (alle Objekte mit Master-Stack neu entwickeln, Galerie-Knopf), `upload` (behält bis zu 4 Ordnerebenen, blockt `..`), `results/{id}/{tif|png|jpg|thumb|fits|before}`, `reviewer`, `solver`, `storage`, `starnet`.
 Kern: `/api/app` (Module, Build), `/api/status` (`{version, busy, modules:{id: status}}`), `/api/activity` (alle Module), `/api/modules` (ein/aus).
 **Achtung:** Zwei Server auf demselben Datenordner = zwei Worker (beim Start werden „running“-Jobs des anderen neu eingereiht) – Tests/Vorschauen mit eigenem Datenordner.
 

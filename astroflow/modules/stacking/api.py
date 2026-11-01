@@ -305,6 +305,18 @@ def build_router(eng: Engine) -> APIRouter:
         with eng.pl._scan_lock:                          # kein gleichzeitiger Scan, der Frames neu zuordnet
             return eng.pl.delete_project(pid)
 
+    @r.post("/develop-all")
+    def develop_all():
+        """Alle Objekte mit Master-Stack aus dem Stack neu entwickeln (z. B. nach neuen Bearbeitungsfunktionen).
+        Fertig importierte Bilder und Objekte ohne Stack werden übersprungen."""
+        jobs = []
+        for p in db.q("SELECT id, options FROM projects ORDER BY id"):
+            if json.loads(p["options"] or "{}").get("input_type") == "picture":
+                continue
+            if any((eng.s.work_dir / f"p{p['id']}").glob("stack*/state.json")):
+                jobs.append(eng.enqueue(p["id"], {"mode": "develop"}))
+        return {"queued": len(jobs)}
+
     @r.post("/projects/{pid}/process")
     def process(pid: int, body: dict = Body(default={})):
         p = db.one("SELECT options FROM projects WHERE id=?", (pid,))
