@@ -36,7 +36,10 @@ def _walk(root: Path):
         for e in entries:
             try:
                 if e.is_dir():
-                    if not scanner.EXCLUDE_DIR.search(e.name):
+                    # verknüpfte Ordner (Symlink, Windows-Junction) nicht betreten – wie os.walk; ein Link auf einen
+                    # Elternordner liefe sonst endlos im Kreis
+                    linked = e.is_symlink() or (hasattr(e, "is_junction") and e.is_junction())
+                    if not linked and not scanner.EXCLUDE_DIR.search(e.name):
                         dirs.append(e.name)
                     continue
                 low = e.name.lower()

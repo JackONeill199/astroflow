@@ -133,3 +133,23 @@ def test_library_sample_hit_reads_whole_group(tmp_path, monkeypatch):
         assert len(reads) == 8 and st["skipped"] == 0, reads         # 4 Stichproben treffen -> restliche 4 auch lesen
         g = st["groups"][0]
         assert g["state"] == "unstacked" and g["n_new"] == 0
+
+
+def test_library_walk_skips_linked_dirs(tmp_path):
+    """Ordnerverknüpfung zurück auf einen Elternordner darf den Suchlauf nicht im Kreis schicken."""
+    import os
+    import subprocess
+    from astroflow.modules.stacking import library
+    root = tmp_path / "Platte"
+    obs = root / "2026-08-12_21-00-00_observation_M31"
+    demo.generate(obs, n_lights=2, n_darks=0, n_flats=0)
+    loop = obs / "lights" / "schleife"
+    if os.name == "nt":                                   # Junction braucht keine Admin-Rechte
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(loop), str(root)], check=True, capture_output=True)
+    else:
+        os.symlink(root, loop, target_is_directory=True)
+    try:
+        groups = library.find_groups(root)
+        assert len(groups) == 1 and len(groups[0]["files"]) == 2, [(str(g["dir"]), len(g["files"])) for g in groups]
+    finally:
+        os.rmdir(loop) if os.name == "nt" else loop.unlink()     # nur die Verknüpfung entfernen
