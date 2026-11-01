@@ -279,4 +279,5 @@ Neue Ansichten in `ROUTES` eintragen. Achtung: globales `td { white-space: nowra
 ## Grenzen / mögliche nächste Schritte
 Keine Mosaike (Stackfläche = Referenzbild), kein echtes Drizzle (2× interpoliert), keine Komet-/Planeten-/Mond-Modi, kleiner eingebauter Katalog
 (großer nur mit ASTAP-`deep_sky.csv`), Dockerfile (ASTAP-Download) noch nicht real gebaut/getestet, Satellitenspur-Erkennung unzuverlässig,
-keine fotometrische Farbkalibrierung (Gaia), keine Verzerrungskorrektur, keine GPU, waagerechte Hintergrundstreifen bei NGC 1579 (Stack).
+GraXpert/StarNet nicht im Docker-Image, keine Verzerrungskorrektur, keine GPU, Stack über mehrere Nächte: NGC 1579 unscharf
+(FWHM 6,5 gegen Stellina 3,2 px) mit waagerechten Hintergrundstreifen, M101 ovale Sterne (1,59 gegen 1,33).
