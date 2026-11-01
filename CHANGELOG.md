@@ -3,6 +3,14 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.8.1 – 01.11.2026
+
+### Neu
+- **README mit Rundgang:** 16 Screenshots aller Module (Galerie, Objektseite mit Bild-Tutor, Vorher/Nachher, SkyTrace,
+  Sage-Enzyklopädie, Entdeckungen, Sammlung, Befehlspalette, Einstellungen) mit kurzen Beschreibungen; Sage-Abschnitt
+  auf die Enzyklopädie aktualisiert.
+- **Lizenzdatei** `LICENSE` (MIT; Detektormodell von SkyTrace weiter AGPL-3.0).
+
 ## 0.8.0 – 01.11.2026
 
 ### Neu
