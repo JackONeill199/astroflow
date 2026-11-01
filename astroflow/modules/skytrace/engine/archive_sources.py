@@ -35,39 +35,43 @@ SATCAT_TYPES={'PAY':'Satellit','R/B':'Raketenstufe','DEB':'Trümmerteil','UNK':'
 
 
 SATCAT_PAUSE_S=0.5           # Abstand zwischen Einzelabfragen
-SATCAT_BLOCK_S=24*3600       # HTTP 403: CelesTrak sperrt den Anschluss wegen zu vieler Abfragen (Nutzungsregeln)
-SATCAT_RETRY_S=15*60         # andere Fehler (Netz, 429/5xx): nicht bei jedem Kandidaten erneut versuchen
+SATCAT_RETRY_S=15*60         # keine HTTP-Antwort (Netz) bzw. unerwarteter Inhalt bei 200: nicht bei jedem Kandidaten erneut
+SATCAT_PAUSE='satcat-pause.json'
 
 
 def satellite_names(ids,settings,limit=12):
     """Namen und Objektart je NORAD-Nummer aus dem CelesTrak-SATCAT (nur die Nummer wird gesendet, kein Standort/Zeit).
     Cache `satcat-names.json` (auch „nicht im Katalog“). Ergebnis `(namen, hinweis)` – Hinweis None oder Grund, warum
-    Namen fehlen. Nach einer Sperre (403; Anlass 01.11.2026: viele Einzelabfragen beim Nachrechnen aller Läufe, danach
-    fragte jeder Kandidat erneut an) bzw. einem Fehler fragt `satcat-pause.json` bis zum Ablauf nicht mehr an."""
+    Namen fehlen. CelesTrak-Nutzungsregeln: bei **jeder** Antwort außer HTTP 200 (301/403/404/50x …) sofort aufhören und
+    einem Menschen melden – sonst landet die IP in der Firewall (Anlass 01.11.2026: 403-Sperre nach vielen Einzelabfragen,
+    danach fragte jeder Kandidat erneut an). Daher `satcat-pause.json` mit `stopped` bis zur Freigabe in den Einstellungen
+    (`POST /api/skytrace/catalog/satcat/release` löscht die Datei); nur ohne HTTP-Antwort bzw. bei unbrauchbarem 200-Inhalt eine kurze Pause."""
     from json_store import read_json
     import requests
-    path=CACHE/'satcat-names.json';pause_path=CACHE/'satcat-pause.json'
+    path=CACHE/'satcat-names.json'
     try:known=read_json(path) if path.exists() else {}
     except (OSError,ValueError):known={}
     # `satcat_offline`: nur Cache (Wartungswerkzeuge, die keine Dienste kontaktieren dürfen).
     missing=[] if settings.get('satcat_offline') else [str(i) for i in ids if str(i) not in known][:limit]
-    try:pause=read_json(pause_path) if pause_path.exists() else {}
+    try:pause=read_json(CACHE/SATCAT_PAUSE) if (CACHE/SATCAT_PAUSE).exists() else {}
     except (OSError,ValueError):pause={}
     note=None
-    if missing and float(pause.get('until',0))>time.time():
+    if missing and (pause.get('stopped') or float(pause.get('until') or 0)>time.time()):
         missing=[];note=pause.get('reason')
     added=False
     for index,norad in enumerate(missing):
         check_stop(settings)
         if index:time.sleep(SATCAT_PAUSE_S)
+        stop=None
         try:
-            response=requests.get(SATCAT,params={'CATNR':norad,'FORMAT':'json'},timeout=8)
-            if response.status_code==403:
-                until=time.time()+SATCAT_BLOCK_S
-                note=('Namen nicht abrufbar: CelesTrak sperrt die Katalogabfrage für diesen Internetanschluss (HTTP 403, zu viele Abfragen). '
-                      f'Nächster Versuch ab {dt.datetime.fromtimestamp(until):%d.%m.%Y %H:%M}; bis dahin nur NORAD-Nummern.')
+            # Weiterleitungen nicht folgen: 301 heißt laut CelesTrak „falsche/veraltete Adresse“ → ebenfalls anhalten.
+            response=requests.get(SATCAT,params={'CATNR':norad,'FORMAT':'json'},timeout=8,allow_redirects=False)
+            if response.status_code!=200:
+                stop=response.status_code
+                note=(f'Namen nicht abrufbar: CelesTrak antwortete mit HTTP {stop}'+(' (Zugriff gesperrt, meist wegen zu vieler Abfragen)' if stop==403 else '')+
+                      '. Gemäß den CelesTrak-Nutzungsregeln ist die Namensabfrage angehalten, bis sie unter Einstellungen → SkyTrace '
+                      'wieder freigegeben wird; bis dahin nur NORAD-Nummern.')
             else:
-                response.raise_for_status()
                 # Nur eine erkannte „keine Einträge“-Antwort gilt als „nicht im Katalog“ (wird gecacht); unerwartete
                 # Antworten (HTML-Fehlerseite, kaputtes JSON, Fehlerobjekt) wie ein Fehler behandeln → später erneut.
                 try:rows=response.json()
@@ -76,10 +80,10 @@ def satellite_names(ids,settings,limit=12):
                     rows=[]
                 if not isinstance(rows,list) or any(not isinstance(r,dict) for r in rows):raise ValueError('kein SATCAT-Eintrag im JSON-Format')
         except (requests.RequestException,ValueError) as error:
-            until=time.time()+SATCAT_RETRY_S
             note=f'Namen nicht abrufbar: CelesTrak-Katalog nicht erreichbar oder unerwartete Antwort ({error}). Nächster Versuch in {SATCAT_RETRY_S//60} min.'
         if note:
-            CACHE.mkdir(parents=True,exist_ok=True);write_json(pause_path,dict(until=until,reason=note))
+            entry=dict(stopped=True,http=stop,since=time.time(),reason=note) if stop else dict(until=time.time()+SATCAT_RETRY_S,reason=note)
+            CACHE.mkdir(parents=True,exist_ok=True);write_json(CACHE/SATCAT_PAUSE,entry)
             event('status',text=note)
             break
         row=rows[0] if rows else {}

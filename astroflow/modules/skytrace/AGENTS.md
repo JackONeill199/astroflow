@@ -54,8 +54,12 @@ jeweils mit Bestätigungsdialog.
   (nur die Nummer, kein Standort; Cache `catalog_cache/archives/satcat-names.json`; Fehler → Nummer bleibt). `object_type` Satellit/Raketenstufe/Trümmerteil.
 - **SATCAT-Sperre (0.10.1):** Nach dem Nachrechnen aller Läufe antwortete `records.php` mit 403 „Access from IP address … was blocked …
   Please be sure to follow our usage policy“ (Sperre je Anschluss, `gp.php` lief weiter – **nicht** auf andere Endpunkte ausweichen).
-  Jetzt: 403 → `satcat-pause.json` 24 h keine Abfragen, andere Fehler 15 min; 0,5 s Pause je Nummer; nur Treffer + 3 nächste Bahnen;
-  „nicht im Katalog“ wird gecacht. Rückgabe `(namen, hinweis)` → Katalogtext + `names_note` (UI unter der Bahntabelle) + `status`-Event.
+  CelesTrak-Nutzungsregeln (celestrak.org/usage-policy.php): bei jeder Antwort ≠ 200 sofort aufhören und einem Menschen melden,
+  sonst Firewall; Daten nur einmal je Aktualisierung (SATCAT 1–2×/Tag). Umsetzung: `allow_redirects=False`; ≠ 200 →
+  `satcat-pause.json` `{stopped, http, reason}` ohne Ablauf, Freigabe nur per Knopf (Einstellungen → SkyTrace,
+  `POST /catalog/satcat/release`, Status in `GET /catalog/status` → `satcat`); keine HTTP-Antwort bzw. unbrauchbarer 200-Inhalt
+  → `until` +15 min. 0,5 s Pause je Nummer; nur Treffer + 3 nächste Bahnen; „nicht im Katalog“ nur bei leerer Liste bzw.
+  „No SATCAT records found“ gecacht. Rückgabe `(namen, hinweis)` → Katalogtext + `names_note` (UI unter der Bahntabelle) + `status`-Event.
 - UI: `evidence.js classification` nennt bei passender Bahn „Satellit <Name>“ bzw. Objektart, Klasse `satellite` (Filter „Satelliten“);
   Kandidatenliste/Detail zeigen den Namen als Titel, K-Nummer klein. Bahntabelle mit Spalte „Durchgang“.
 - Nachrechnen: `engine/refresh_satellites.py <Lauf> …` (nur Kandidaten-JSON + lokale Archive, schreibt Kandidaten, Projektion, Bericht).

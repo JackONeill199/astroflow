@@ -162,7 +162,7 @@ def test_satellitenbahn_trotz_uhrversatz_zuordnen(tmp_path, monkeypatch):
 
 
 def test_satcat_sperre_wird_beachtet(tmp_path, monkeypatch):
-    """CelesTrak sperrt bei zu vielen Einzelabfragen mit HTTP 403: Hinweis statt stummem Abbruch, danach keine Abfragen bis zum Ablauf."""
+    """CelesTrak-Nutzungsregeln: bei jeder Antwort außer HTTP 200 anhalten, bis ein Mensch freigibt; Hinweis statt stummem Abbruch."""
     import sys
     from pathlib import Path
     import pytest
@@ -173,33 +173,56 @@ def test_satcat_sperre_wird_beachtet(tmp_path, monkeypatch):
     class Antwort:
         def __init__(self, code, data=None, text=""):
             self.status_code, self.data, self.text = code, data, text
-        def raise_for_status(self):
-            if self.status_code >= 400: raise requests.HTTPError(str(self.status_code))
         def json(self):
             if self.data is None: raise ValueError("kein JSON")
             return self.data
 
     aufrufe = []
     antworten = {"25165": Antwort(200, [{"OBJECT_NAME": "GLOBALSTAR M003", "OBJECT_TYPE": "PAY"}]),
-                 "99999": Antwort(200, text="No SATCAT records found"), "28498": Antwort(403, text="blocked")}
-    def get(url, params, timeout):
-        aufrufe.append(params["CATNR"]); return antworten[params["CATNR"]]
+                 "99999": Antwort(200, text="No SATCAT records found"), "28498": Antwort(403, text="blocked"),
+                 "11111": Antwort(200, text="<html>Wartung</html>"), "22222": Antwort(301)}
+    def get(url, params, timeout, allow_redirects=True):
+        assert allow_redirects is False                 # 301 nicht stillschweigend folgen
+        aufrufe.append(params["CATNR"])
+        if params["CATNR"] == "33333": raise requests.ConnectionError("kein Netz")
+        return antworten[params["CATNR"]]
     monkeypatch.setattr(archive_sources, "CACHE", tmp_path)
     monkeypatch.setattr(archive_sources, "SATCAT_PAUSE_S", 0)
     monkeypatch.setattr(requests, "get", get)
+    pause = tmp_path / "satcat-pause.json"
+    leer = {"name": "", "type": None, "cospar": None, "launch": None}
 
     names, note = archive_sources.satellite_names([25165, 99999, 28498, 51779], {})
-    assert names["25165"] == {"name": "GLOBALSTAR M003", "type": "Satellit", "cospar": None, "launch": None}
-    assert names["99999"]["name"] == ""            # nicht im Katalog: gemerkt, nicht erneut gefragt
-    assert "HTTP 403" in note and "28498" not in names and aufrufe == ["25165", "99999", "28498"]
-    # Während der Sperre: nur Cache, keine Abfrage, gleicher Hinweis
+    assert names == {"25165": {"name": "GLOBALSTAR M003", "type": "Satellit", "cospar": None, "launch": None}, "99999": leer}
+    assert "HTTP 403" in note and "freigegeben" in note and aufrufe == ["25165", "99999", "28498"]
+    # Angehalten (ohne Ablaufzeit): keine Abfrage, gleicher Hinweis; was im Cache ist, kommt weiter
     names, note2 = archive_sources.satellite_names([25165, 28498], {})
-    assert aufrufe == ["25165", "99999", "28498"] and note2 == note and "25165" in names
-    # Alles im Cache → kein Hinweis
-    assert archive_sources.satellite_names([25165, 99999], {}) == ({"25165": names["25165"], "99999": {"name": "", "type": None, "cospar": None, "launch": None}}, None)
-    # Unerwartete Antwort (HTML-Seite mit 200) gilt nicht als „nicht im Katalog“: nicht gecacht, kurze Pause, Hinweis
-    (tmp_path / "satcat-pause.json").unlink()
-    antworten["11111"] = Antwort(200, text="<html>Wartung</html>")
-    names, note = archive_sources.satellite_names([11111], {})
-    assert "11111" not in names and "nicht erreichbar" in note
-    assert archive_sources.satellite_names([11111], {})[0] == {} and aufrufe[-1] == "11111" and aufrufe.count("11111") == 1
+    assert len(aufrufe) == 3 and note2 == note and "25165" in names
+    assert archive_sources.satellite_names([25165, 99999], {}) == ({"25165": names["25165"], "99999": leer}, None)
+    # Freigabe (Einstellungen löschen die Datei) → 301 hält ebenfalls an
+    pause.unlink()
+    assert "HTTP 301" in archive_sources.satellite_names([22222], {})[1] and len(aufrufe) == 4
+    # Kein HTTP-Fehler: unbrauchbarer 200-Inhalt bzw. kein Netz → nicht gecacht, nur kurze Pause
+    for nr in (11111, 33333):
+        pause.unlink()
+        names, note = archive_sources.satellite_names([nr], {})
+        assert str(nr) not in names and "Nächster Versuch in 15 min" in note
+        assert archive_sources.satellite_names([nr], {})[0] == {} and aufrufe.count(str(nr)) == 1
+
+
+def test_satcat_freigeben(tmp_path, monkeypatch):
+    """Angehaltene Namensabfrage erscheint im Katalogstatus und lässt sich in den Einstellungen freigeben."""
+    monkeypatch.setenv("ASTROFLOW_MODULES", "stacking,skytrace")
+    home = tmp_path / "skytrace"
+    _lauf(home)
+    cache = home / "catalog_cache" / "archives"
+    cache.mkdir(parents=True)
+    (cache / "satcat-pause.json").write_text(json.dumps({"stopped": True, "http": 403, "reason": "HTTP 403"}), encoding="utf-8")
+    monkeypatch.setenv("SKYTRACE_HOME", str(home))
+    with TestClient(create_app(load_settings(tmp_path / "data"))) as c:
+        assert c.get("/api/skytrace/catalog/status").json()["satcat"]["reason"] == "HTTP 403"
+        assert c.post("/api/skytrace/catalog/satcat/release", json={}).json() == {}
+        assert not (cache / "satcat-pause.json").exists()
+        # abgelaufene kurze Pause zählt nicht
+        (cache / "satcat-pause.json").write_text(json.dumps({"until": 1, "reason": "alt"}), encoding="utf-8")
+        assert c.get("/api/skytrace/catalog/status").json()["satcat"] == {}

@@ -509,6 +509,11 @@ async function settings(el) {
       <div class="row" style="flex-wrap:nowrap"><input name="user" placeholder="OpenSky-Benutzername" value="${esc(cfg.opensky_user || '')}" autocomplete="username" style="flex:1"><button class="btn ghost" type="submit">Verbinden</button></div>
       <p class="sm mut" id="oskState" style="margin:10px 0 0"></p><a class="btn sm" id="oskLogin" target="_blank" rel="noreferrer" hidden>Bei OpenSky anmelden ↗</a>
       <p class="sm" style="margin:8px 0 0"><a href="https://opensky-network.org/data/trino" target="_blank" rel="noreferrer">Archivzugang beim Anbieter beantragen ↗</a></p></form>
+    <div class="panel" id="satcatp" hidden><h2 style="margin-bottom:8px">Satellitennamen (CelesTrak)</h2>
+      <p class="sm warn" id="satcatState" style="margin:0 0 12px"></p>
+      <p class="mut sm" style="margin:0 0 12px">CelesTrak verlangt, nach einer Fehlerantwort nicht weiter abzufragen, bis ein Mensch die Ursache geprüft hat. Bei einer Sperre (HTTP 403) erst freigeben, wenn sie aufgehoben ist – sonst wird sie verlängert.</p>
+      <div class="row"><button class="btn ghost" type="button" id="satcatRelease">Namensabfrage wieder freigeben</button>
+        <a class="sm" href="https://celestrak.org/usage-policy.php" target="_blank" rel="noreferrer">Nutzungsregeln ↗</a></div></div>
     <form class="panel" id="ovf"><h2 style="margin-bottom:12px">Overlay-Anzeige</h2>
       <label class="field"><span>Geschwindigkeitseinheit</span><select name="unit"><option value="arcsec">Winkelgeschwindigkeit (″/s)</option><option value="kmh">Geschwindigkeitsschätzung (km/h*)</option></select></label>
       <label class="field"><span>Angenommene Entfernung (km)</span><input name="km" type="number" min="0.001" step="any" placeholder="z. B. 10" value="${esc(ov.distanceKm ?? '')}">
@@ -567,12 +572,17 @@ async function settings(el) {
       if (!$('#archive') || !$('#oskState')) return null;   // inzwischen weiternavigiert
       $('#archive').textContent = `Satelliten: ${d.satellite_time_queries} gespeicherte Zeitabfragen · lokale Jahre ${d.satellite_years.join(', ') || 'keine'} · GMN-Monate ${d.meteor_months.join(', ') || 'keine'} · ${Math.round(d.bytes / 1048576)} MB Cache`;
       $('#oskState').textContent = d.opensky.detail;
+      $('#satcatp').hidden = !d.satcat?.reason;
+      if (d.satcat?.reason) $('#satcatState').textContent = d.satcat.reason;
       $('#oskLogin').hidden = !d.opensky.auth_url;
       if (d.opensky.auth_url) $('#oskLogin').href = d.opensky.auth_url;
       return d.opensky.status;
     } catch { if ($('#archive')) $('#archive').textContent = 'Archivstatus vorübergehend nicht erreichbar.'; return null; }
   };
   archive();
+  $('#satcatRelease').onclick = async () => {
+    try { await send(T + '/catalog/satcat/release', {}); toast('Namensabfrage freigegeben – gilt für die nächste Analyse.', 'ok'); archive(); } catch (err) { toast(err.message, 'err'); }
+  };
   $('#oskf').onsubmit = async (e) => {
     e.preventDefault();
     try {

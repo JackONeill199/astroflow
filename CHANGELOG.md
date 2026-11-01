@@ -8,11 +8,12 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 ### Behoben
 - **SkyTrace: Satellitennamen fehlten** („Satellit NORAD 51779“ statt Name): CelesTrak hatte die Namensabfrage für den
   Internetanschluss gesperrt (HTTP 403), weil jede Katalognummer einzeln abgefragt wurde und nach der Sperre jeder weitere
-  Kandidat erneut anfragte. Jetzt wird eine Sperre erkannt und 24 Stunden lang nicht mehr angefragt (andere Fehler:
-  15 Minuten), es werden weniger Nummern abgefragt (Treffer und die drei nächsten Bahnen, mit kurzer Pause), und auch
-  „nicht im Katalog“ wird gemerkt. Die Zuordnung zur Bahn ist davon nicht betroffen – nur der Name.
-- Fehlen Namen, steht der Grund jetzt sichtbar im Satellitenabgleich des Kandidaten und im Laufstatus, statt
-  stillschweigend nur die Nummer zu zeigen.
+  Kandidat erneut anfragte. Die Zuordnung zur Bahn war davon nicht betroffen – nur der Name.
+- Gemäß den CelesTrak-Nutzungsregeln hält SkyTrace die Namensabfrage jetzt bei **jeder** Fehlerantwort (z. B. 301, 403,
+  404, 5xx) sofort an und zeigt den Grund im Satellitenabgleich des Kandidaten, im Laufstatus und unter
+  Einstellungen → SkyTrace. Dort lässt sie sich nach Prüfung wieder freigeben. Ohne Verbindung oder bei unbrauchbarer
+  Antwort wird nach 15 Minuten erneut versucht.
+- Weniger Abfragen: nur Treffer und die drei nächsten Bahnen, mit kurzer Pause; auch „nicht im Katalog“ wird gemerkt.
 
 ## 0.10.0 – 01.11.2026
 
