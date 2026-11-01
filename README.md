@@ -3,15 +3,73 @@
 **Deine Astrofotografie, lokal und an einem Ort.** Rohbilder werden zu fertigen Astrofotos, Bildfolgen zu Entdeckungen,
 Himmelsobjekte zu Geschichten – im Browser, auf deinem Rechner oder NAS, ohne Konto und ohne Cloud-Zwang.
 
+![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-Web--UI-009688?logo=fastapi&logoColor=white)
+![Lizenz MIT](https://img.shields.io/badge/Lizenz-MIT-green)
+![Lokal](https://img.shields.io/badge/Daten-bleiben%20lokal-6f42c1)
+
+![AstroFlow – Übersicht mit allen Modulen](docs/screenshots/uebersicht.jpg)
+
 | Modul | Was es tut |
 |---|---|
 | **Bilder** | FITS-Aufnahmen (Seestar, Stellina, Vespera, Astrokameras) automatisch sortieren, kalibrieren, stacken und entwickeln – inklusive Nachstacken neuer Nächte |
 | **SkyTrace** | Bildfolgen sternregistriert auf Lichtspuren und bewegte Objekte untersuchen; Kandidaten mit Zeitreihen, Messdetails und Abgleich gegen Satelliten-, Meteor-, Asteroiden- und Flugkataloge zur echten Aufnahmezeit |
-| **Sage** | Himmelsobjekte im Bild bestimmen, von einer KI als Geschichte erzählen und vorlesen lassen; Sammlung aller Entdeckungen mit Erfolgen |
+| **Sage** | Lebende Astronomie-Enzyklopädie: Objekte im Bild bestimmen, aus Fachkatalogen recherchieren (mit Quellen), Zusammenhänge zwischen deinen Aufnahmen entdecken, Geschichten erzählen und vorlesen lassen; Sammlung mit Erfolgen |
 
 Alle Module teilen sich eine Oberfläche: Übersicht, gemeinsame Aktivität aller Aufträge, eine Einstellungsseite, Befehlspalette (Strg+K)
 und Drag & Drop überall (FITS → Rohdaten-Pipeline, JPG/PNG/TIFF → fertige Bilder in der Galerie). Aus einem fertigen Bild der Galerie erzählt Sage mit einem Klick die Geschichte
 („Mehr → Geschichte erzählen“) – die Objekte kommen dabei aus der Plate-Solving-Lösung des Stacks.
+
+**Inhalt:** [Rundgang](#rundgang) · [Was automatisch passiert](#modul-bilder--was-automatisch-passiert) · [Schnellstart](#schnellstart) ·
+[KI-Bildprüfer](#ki-bildprüfer-lm-studio--openrouter) · [Plate-Solving](#plate-solving) · [Web-App](#web-app) · [SkyTrace](#skytrace) · [Sage](#sage) ·
+[Architektur](#architektur) · [Grenzen](#grenzen)
+
+## Rundgang
+
+Alle Bilder stammen aus einer echten Instanz: rund 22 000 Stellina-Aufnahmen aus 31 Nächten, 63 Objekte – ohne Nachbearbeitung in anderer Software.
+
+### Bilder – vom Rohbild zum fertigen Foto
+
+![Galerie aller Objekte](docs/screenshots/galerie.jpg)
+**Galerie:** Jedes Objekt erscheint automatisch, sobald seine Rohbilder im Eingangsordner liegen – Objekt, Kamera und Nacht erkennt AstroFlow selbst
+(Header, Ordnername oder Plate-Solving). Neue Nächte werden nachgestackt; jede Verarbeitung bleibt als Version erhalten.
+
+| | |
+|---|---|
+| ![Objektseite mit Bild-Tutor](docs/screenshots/objekt.jpg) | ![Vorher-Nachher-Vergleich](docs/screenshots/vorher-nachher.jpg) |
+| **Objektseite & Bild-Tutor:** Zoom-Betrachter, technische Bildprüfung mit Punktzahl und verständlichen Befunden – dazu die Bedingungen jeder Aufnahmenacht (Dämmerung, Mond, Objekthöhe, Wolken, Taupunkt, Wind). | **Vorher/Nachher:** links der unbearbeitete lineare Master-Stack, rechts das automatisch entwickelte Bild (Gradienten, Gaia-Farbkalibrierung, optional GraXpert und StarNet). |
+| ![Qualität je Aufnahme](docs/screenshots/aufnahmen.jpg) | ![Beobachtungsstatistik](docs/screenshots/statistik.jpg) |
+| **Aufnahmen:** Sternzahl und Schärfe jeder Einzelaufnahme über alle Nächte; Ausreißer (Wolken, Unschärfe, Nachführfehler) werden verworfen, einzelne Aufnahmen lassen sich ein- und ausschließen. | **Statistik:** wann du den Himmel aufgenommen hast – Monate, Wochentage, Uhrzeiten, Gesamtbelichtung. |
+
+![Import](docs/screenshots/import.jpg)
+**Import:** Dateien oder ganze Ordner per Drag & Drop, FITS und fertige JPG/PNG/TIFF gemischt. „Hauptordner durchsuchen“ findet auf einer ganzen
+Teleskop-Festplatte, was noch nicht (fertig) gestackt ist – die Quelldateien bleiben unverändert.
+
+### SkyTrace – was sich zwischen den Sternen bewegt
+
+| | |
+|---|---|
+| ![SkyTrace-Vorschau mit Spuren und Katalogobjekten](docs/screenshots/skytrace-vorschau.jpg) | ![SkyTrace-Kandidaten](docs/screenshots/skytrace-kandidaten.jpg) |
+| **Analyse einer Bildfolge:** Spuren mit gemessener Winkelgeschwindigkeit, Satellitenprognose zur Aufnahmezeit und Galaxien aus dem Katalog als Overlay; dazu ein Ereignisvideo. | **Kandidaten:** jede Spur mit Ausschnitt, Zeitpunkt und Einordnung (Satellit, Meteor, Flugzeug …) – ein Kandidat bleibt ein Hinweis, kein bestätigtes Objekt. |
+
+### Sage – die lebende Enzyklopädie deines Himmels
+
+![Sage-Enzyklopädie](docs/screenshots/sage-enzyklopaedie.jpg)
+**Enzyklopädie:** Jedes fotografierte Objekt bekommt einen Eintrag – mit deinem eigenen Bild, Katalogdaten und deinen Beobachtungen.
+
+| | |
+|---|---|
+| ![Objektartikel](docs/screenshots/sage-artikel.jpg) | ![Bild bestimmen und Geschichte](docs/screenshots/sage-geschichte.jpg) |
+| **Artikel:** Entfernung, Größe, Helligkeit, Position am Himmel, Forschung & Quellen, persönliche Daten und Zusammenhänge zu anderen Objekten. | **Bild bestimmen & erzählen:** Sage markiert alle Objekte im Bildfeld und erzählt ihre Geschichte – auf Wunsch vorgelesen, auch komplett lokal. |
+| ![Meine Entdeckungen](docs/screenshots/sage-entdeckungen.jpg) | ![Sammlung und Erfolge](docs/screenshots/sage-sammlung.jpg) |
+| **Entdeckungen:** Sage forscht im Hintergrund weiter – neue Fachartikel zu deinen Objekten, weitere Galaxien in deinen Bildfeldern, räumliche Nachbarn. Jede Aussage mit Begründung. | **Sammlung & Erfolge:** Messier-Fortschritt, Meilensteine und Erfolge für jedes neu bestimmte Objekt. |
+
+### Bedienung
+
+| | |
+|---|---|
+| ![Befehlspalette](docs/screenshots/befehlspalette.jpg) | ![Einstellungen](docs/screenshots/einstellungen.jpg) |
+| **Befehlspalette (Strg+K):** Objekte, Analysen und Aktionen aller Module mit einer Suche. | **Einstellungen:** je Modul an einem Ort – Bild-Tutor, StarNet, GraXpert, Plate-Solving, KI-Anbieter, Speicher, Module ein/aus. |
 
 ## Modul Bilder – was automatisch passiert
 
@@ -146,6 +204,11 @@ Ohne diese Pakete startet AstroFlow trotzdem; vorhandene Ergebnisse lassen sich 
 kann als Datenordner eingetragen werden.
 
 ## Sage
+
+Sage ist eine **lebende Enzyklopädie**: Jedes Objekt, das du fotografierst oder bestimmst, bekommt einen Eintrag mit Katalogdaten,
+deinen Bildern und Beobachtungen. Recherchen stützen sich auf Fachkataloge (z. B. SIMBAD) und arXiv; jede Aussage hat eine Quelle oder ist als
+KI-Vorschlag gekennzeichnet. Im Hintergrund sucht Sage nach neuen Arbeiten, weiteren Objekten in deinen Bildfeldern und Zusammenhängen
+zwischen deinen Aufnahmen (**Meine Entdeckungen**, **Wissensnetz**). Gestackte Aufnahmen aus dem Modul Bilder landen auf Wunsch automatisch in Sage.
 
 Fotos zentral unter **Import** hochladen oder ein Bild aus der Galerie wählen → Sage bestimmt die Objekte, schreibt die Geschichte und liest sie vor.
 Bei fertigen Bildern startet Sage nach dem Import automatisch, sofern „Automatisch entdecken“ aktiv ist. In Sage führt **Zum Import** zum gemeinsamen Eingang;
