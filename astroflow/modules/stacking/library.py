@@ -18,16 +18,50 @@ from .picture_import import PICTURE_EXT, SOURCE_LIMIT, import_picture
 
 CALIB = re.compile(r"dark|flat|bias|offset", re.I)
 MAX_GROUPS = 2000
+SAMPLE = 4                      # Stichprobe je unbekanntem Beobachtungsordner (je 2 vom Anfang und Ende)
 
 
 def _walk(root: Path):
-    """(Ordner, FITS-Dateien, Bilddateien) je Ordner; Ordner anderer Software (process, stacked …) fallen weg."""
-    for dp, dirs, files in os.walk(root):
-        dirs[:] = sorted(d for d in dirs if not scanner.EXCLUDE_DIR.search(d))
-        fits = sorted(Path(dp) / f for f in files if f.lower().endswith(FITS_EXT))
-        pics = sorted(Path(dp) / f for f in files if f.lower().endswith(PICTURE_EXT))
+    """(Ordner, FITS-Dateien, Bilddateien, {Datei: (Größe, mtime_ns)}) je Ordner; Ordner anderer Software (process,
+    stacked …) fallen weg. Größe/Zeit kommen aus dem Verzeichniseintrag – unter Windows ohne weiteren Plattenzugriff
+    (einzelnes stat() kostete auf der Stellina-Platte 3,5 ms je Datei)."""
+    todo = [root]
+    while todo:
+        d = todo.pop()
+        fits, pics, dirs, st = [], [], [], {}
+        try:
+            entries = list(os.scandir(d))
+        except OSError:
+            continue
+        for e in entries:
+            try:
+                if e.is_dir():
+                    if not scanner.EXCLUDE_DIR.search(e.name):
+                        dirs.append(e.name)
+                    continue
+                low = e.name.lower()
+                is_fits, is_pic = low.endswith(FITS_EXT), low.endswith(PICTURE_EXT)
+                if is_fits or is_pic:
+                    s = e.stat()
+                    f = Path(e.path)
+                    st[f] = (s.st_size, s.st_mtime_ns)
+                    (fits if is_fits else pics).append(f)
+            except OSError:
+                pass
         if fits or pics:
-            yield Path(dp), fits, pics
+            yield Path(d), sorted(fits), sorted(pics), st
+        todo.extend(Path(d) / n for n in sorted(dirs, reverse=True))
+
+
+def name_key(path: str | Path) -> str | None:
+    """Pfad ab dem nächsten „…_observation_X“-Ordner (klein geschrieben), z. B.
+    „2022-11-24_18-13-37_observation_ngc1579/01-images-initial/img-0001r.fits“. Stellina-Ordnernamen enthalten Datum,
+    Uhrzeit und Objekt – zusammen mit Dateiname und Größe erkennt das eine bekannte Aufnahme, ohne sie zu lesen."""
+    parts = Path(path).parts
+    for i in range(len(parts) - 2, -1, -1):
+        if scanner.OBSERVATION.search(parts[i]):
+            return "/".join(parts[i:]).lower()
+    return None
 
 
 def _group_dir(d: Path, root: Path) -> Path:
@@ -44,7 +78,9 @@ def find_groups(root: Path) -> list[dict]:
     """Rohdaten- und Bildgruppen unterhalb von root (ohne Datenbankabgleich)."""
     raw: dict[Path, list[Path]] = {}
     pic_dirs: dict[Path, list[Path]] = {}
-    for d, fits, pics in _walk(root):
+    stat: dict[Path, tuple[int, int]] = {}
+    for d, fits, pics, st in _walk(root):
+        stat.update(st)
         if fits:
             raw.setdefault(_group_dir(d, root), []).extend(fits)
         elif pics:
@@ -52,12 +88,14 @@ def find_groups(root: Path) -> list[dict]:
     groups = []
     for g, files in raw.items():
         calib = not scanner.OBSERVATION.search(g.name) and bool(CALIB.search(g.name))
-        groups.append({"dir": g, "kind": "calibration" if calib else "lights", "files": files})
+        files.sort()
+        groups.append({"dir": g, "kind": "calibration" if calib else "lights", "files": files,
+                       "stat": {f: stat[f] for f in files}})
     for d, pics in pic_dirs.items():
         # unterhalb einer Aufnahmegruppe (Vorschauen, Zwischenstände) sind es keine eigenständigen Fotos
         if any(g in d.parents for g in raw) or len(pics) > 4 * SOURCE_LIMIT:
             continue
-        groups.append({"dir": d, "kind": "pictures", "files": pics})
+        groups.append({"dir": d, "kind": "pictures", "files": pics, "stat": {f: stat[f] for f in pics}})
     return sorted(groups, key=lambda g: str(g["dir"]).lower())[:MAX_GROUPS]
 
 
@@ -97,61 +135,126 @@ class Library:
 
     def _known(self):
         fps: dict[str, dict] = {}
-        for r in self.db.q("SELECT project_id, kind, status, stacked, deleted, json_extract(info,'$.fp') fp "
-                           "FROM frames WHERE kind!='ignored' AND json_extract(info,'$.fp') IS NOT NULL"):
-            fps[r["fp"]] = r
+        by_name: dict[str, dict] = {}
+        for r in self.db.q("SELECT project_id, kind, status, stacked, deleted, path, size, json_extract(info,'$.fp') fp "
+                           "FROM frames WHERE kind!='ignored'"):
+            if r["fp"]:
+                fps[r["fp"]] = r
+            k = name_key(r["path"] or "")
+            if k:
+                by_name[k] = r
         shas = {r["h"] for r in self.db.q("SELECT json_extract(stats,'$.imported.sha256') h FROM results") if r["h"]}
         names = {r["id"]: r["name"] for r in self.db.q("SELECT id, name FROM projects")}
-        return fps, shas, names
+        return fps, by_name, shas, names
 
     def _scan(self, root: Path):
+        """Schnellpfade, damit nicht jede Datei gelesen werden muss (Stellina-Platte: 31 718 FITS, 35 ms je Fingerabdruck
+        ≈ 19 min): (1) bekannte Aufnahmen über Ordnername + Dateiname + Größe, (2) gemerkter Fingerabdruck bei gleicher
+        Größe und Änderungszeit, (3) Beobachtungsordner ohne Namenstreffer nur stichprobenartig lesen – erkennt keine
+        Stichprobe AstroFlow, ist der Rest neu. Doppelte Aufnahmen fängt der Scan beim Import ohnehin ab."""
         try:
             groups = find_groups(root)
-            fps, shas, names = self._known()
-            total = sum(len(g["files"]) for g in groups) or 1
-            done = [0]
+            fps, by_name, shas, names = self._known()
+            self._set(message="Abgleich mit AstroFlow …")
+            cache = {r["path"]: r for r in self.db.q("SELECT path, size, mtime, fp FROM library_index")}
+            rows: dict[Path, dict | None] = {}          # Rohdaten: Datenbankzeile der bekannten Aufnahme
+            prints: dict[Path, str | None] = {}         # Fingerabdruck bzw. SHA256 (Bilder)
+            unknown: list[tuple[dict, list[Path]]] = []
+            for g in groups:
+                unk = []
+                for f in g["files"]:
+                    size, mtime = g["stat"][f]
+                    # Größe muss passen, falls bekannt (ältere Einträge haben sie erst nach dem Löschen der Rohdatei)
+                    if g["kind"] != "pictures" and (k := name_key(f)) and (r := by_name.get(k)) and r["size"] in (0, None, size):
+                        rows[f] = r
+                        continue
+                    c = cache.get(str(f))
+                    if c and c["size"] == size and c["mtime"] == mtime:
+                        prints[f] = c["fp"]
+                    else:
+                        unk.append(f)
+                if unk:
+                    unknown.append((g, unk))
+            n_read = [0]
 
-            def fp_of(g, f):
-                try:
-                    if g["kind"] == "pictures":
-                        h = hashlib.sha256()
-                        with open(f, "rb") as fh:
-                            while b := fh.read(1 << 20):
-                                h.update(b)
-                        return h.hexdigest()
-                    return scanner.fingerprint(f)
-                except OSError:
-                    return None
-                finally:
-                    done[0] += 1
-                    if done[0] % 20 == 0:
-                        self._set(progress=round(done[0] / total, 3), message=f"{done[0]} von {total} Dateien geprüft …")
+            def read(items: list[tuple[dict, Path]], label: str):
+                total, done = len(items), [0]
 
-            out = []
-            with ThreadPoolExecutor(max(2, self.eng.s.threads)) as ex:
-                for n, g in enumerate(groups):
-                    files = g["files"]
-                    prints = list(ex.map(lambda f: fp_of(g, f), files))
-                    out.append(self._describe(g, files, prints, fps, shas, names, root, n))
+                def fp_of(item):
+                    g, f = item
+                    try:
+                        if g["kind"] == "pictures":
+                            h = hashlib.sha256()
+                            with open(f, "rb") as fh:
+                                while b := fh.read(1 << 20):
+                                    h.update(b)
+                            return h.hexdigest()
+                        return scanner.fingerprint(f)
+                    except OSError:
+                        return None
+                    finally:
+                        done[0] += 1
+                        if done[0] % 20 == 0:
+                            self._set(progress=round(done[0] / total, 3), message=f"{label}: {done[0]} von {total} Dateien …")
+
+                if not items:
+                    return
+                self._set(progress=0.0, message=f"{label}: {total} Dateien …")
+                with ThreadPoolExecutor(max(2, self.eng.s.threads)) as ex:
+                    new = list(ex.map(fp_of, items))
+                remember = []
+                for (g, f), fp in zip(items, new):
+                    prints[f] = fp
+                    if fp:
+                        remember.append((str(f), *g["stat"][f], fp))
+                self.db.many("INSERT OR REPLACE INTO library_index(path, size, mtime, fp) VALUES(?,?,?,?)", remember)
+                n_read[0] += total
+
+            # Stichproben je Beobachtungsordner (Anfang und Ende), übrige Gruppen vollständig
+            # (gemerkte Fingerabdrücke derselben Gruppe zählen als Stichprobe – sonst läse jeder Lauf 4 neue Dateien)
+            sampled = [(g, unk) for g, unk in unknown if g["kind"] != "pictures" and name_key(unk[0]) and len(g["files"]) > SAMPLE]
+            probe: dict[int, list[Path]] = {}
+            new_probe: list[tuple[dict, Path]] = []
+            for g, unk in sampled:
+                have = [f for f in g["files"] if f in prints][:SAMPLE]
+                need = SAMPLE - len(have)
+                pick = list(dict.fromkeys(unk[:(need + 1) // 2] + unk[len(unk) - need // 2:])) if need > 0 else []
+                probe[id(g)] = have + pick
+                new_probe += [(g, f) for f in pick]
+            read(new_probe, "Stichproben")
+            full: list[tuple[dict, Path]] = []
+            skipped = 0
+            for g, unk in unknown:
+                if id(g) in probe and not any(fps.get(prints.get(f)) for f in probe[id(g)]):
+                    skipped += sum(1 for f in unk if f not in prints)     # neu – Rest muss nicht gelesen werden
+                    continue
+                full += [(g, f) for f in unk if f not in prints]
+            read(full, "Unbekannte Dateien prüfen")
+            for f, fp in prints.items():
+                if f not in rows and fp:
+                    rows[f] = fps.get(fp)
+            out = [self._describe(g, rows, prints, shas, names, root, n) for n, g in enumerate(groups)]
             self.groups = out
-            fresh = sum(1 for g in out if g["state"] != "done")
-            self._set(state="done", progress=1.0, finished=time.time(),
-                      message=f"{len(out)} Gruppen gefunden, {fresh} davon noch nicht vollständig in AstroFlow." if out
+            open_groups = sum(1 for g in out if g["state"] != "done")
+            self._set(state="done", progress=1.0, finished=time.time(), read=n_read[0], skipped=skipped,
+                      message=(f"{len(out)} Gruppen gefunden, {open_groups} davon noch nicht vollständig in AstroFlow"
+                               + (f" ({n_read[0]} Dateien gelesen)." if n_read[0] else ".")) if out
                       else "Keine FITS-Dateien oder Bilder gefunden.")
         except Exception as e:
             traceback.print_exc()
             self._set(state="error", message=f"Suchlauf fehlgeschlagen: {e}")
 
-    def _describe(self, g, files, prints, fps, shas, names, root, n) -> dict:
+    def _describe(self, g, rows, prints, shas, names, root, n) -> dict:
         d: Path = g["dir"]
-        size = sum(f.stat().st_size for f in files if f.exists())
+        files = g["files"]
+        size = sum(g["stat"][f][0] for f in files)
         todo, known, stacked, owners = [], 0, 0, {}
-        for f, fp in zip(files, prints):
+        for f in files:
             if g["kind"] == "pictures":
-                hit = fp in shas
+                hit = prints.get(f) in shas
                 finished = hit
             else:
-                r = fps.get(fp) if fp else None
+                r = rows.get(f)
                 hit = r is not None
                 finished = bool(r) and (r["kind"] != "light" or r["stacked"] or r["deleted"] or r["status"] in ("rejected", "duplicate"))
                 if r and r["project_id"]:

@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS solves(
 CREATE TABLE IF NOT EXISTS results(
   id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER, created REAL, n_frames INTEGER,
   exposure REAL, files TEXT, stats TEXT, review TEXT);
+-- Hauptordner-Suche: einmal berechnete Fingerabdrücke je Quelldatei (gültig, solange Größe und Änderungszeit gleich sind)
+CREATE TABLE IF NOT EXISTS library_index(
+  path TEXT PRIMARY KEY, size INTEGER, mtime INTEGER, fp TEXT);
 """
 
 # Spalten, die nach der ersten Version dazukamen: (Tabelle, Spalte, Definition) – werden bei Bedarf ergänzt
