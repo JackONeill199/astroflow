@@ -49,10 +49,26 @@ def test_pcc_refuses_wrong_wcs():
 
 def test_gaia_cache_avoids_network(tmp_path, monkeypatch):
     calls = []
-    monkeypatch.setattr(photometry, "_esa", lambda *a: calls.append(a) or [[300.0, 40.0, 0.8]])
+    monkeypatch.setattr(photometry, "_gavo", lambda *a: calls.append(a) or [[300.0, 40.0, 0.8]])
     photometry.gaia_stars(300, 40, 0.2, tmp_path)
     photometry.gaia_stars(300, 40, 0.2, tmp_path)
     assert len(calls) == 1                                  # zweites Mal aus dem lokalen Zwischenspeicher
+
+
+def test_gaia_falls_back_in_order(tmp_path, monkeypatch):
+    used = []
+
+    def fail(name):
+        def f(*a):
+            used.append(name)
+            raise OSError("nicht erreichbar")
+        return f
+    monkeypatch.setattr(photometry, "_gavo", fail("gavo"))
+    monkeypatch.setattr(photometry, "_ari", fail("ari"))
+    monkeypatch.setattr(photometry, "_esa", lambda *a: used.append("esa") or [[300.0, 40.0, 0.8]])
+    monkeypatch.setattr(photometry, "_vizier", fail("vizier"))
+    assert photometry.gaia_stars(300, 40, 0.2, tmp_path).shape == (1, 3)
+    assert used == ["gavo", "ari", "esa"]
 
 
 def test_starnet_install_zip(tmp_path, monkeypatch):

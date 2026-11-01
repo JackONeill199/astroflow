@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from . import calibration, channels, develop, graxpert, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner, stars
+from . import calibration, channels, develop, gpu, graxpert, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner, stars
 from ...core.config import Settings, free_ram_mb
 from .db import DB
 from .fits_io import FrameInfo, parse_date, read_data, to_channels, write_fits
@@ -349,7 +349,18 @@ class Pipeline:
         if key not in cache:
             cache[key] = lib.masters_for(info["shape"], info["exptime"], info["gain"], info["filter"], night, info["bayerpat"])
         m = cache[key]
-        raw = calibration.cosmetic(calibration.apply(read_data(path), m), bool(info["bayerpat"]))
+        cal = calibration.apply(read_data(path), m)
+        # Hotpixel-Korrektur je Datei nur einmal je Lauf rechnen (Glühen, Analyse und Stacking laden dieselben Frames):
+        # gemerkt werden nur die ersetzten Pixel – Ergebnis bitgleich, spart ~10 % der Stacking-Rechenzeit
+        fix = cache.get(("cosmetic", path))
+        if fix is not None and fix[0] == cal.shape:
+            raw = cal.copy()
+            raw.flat[fix[1]] = fix[2]
+        else:
+            raw = calibration.cosmetic(cal, bool(info["bayerpat"]))
+            idx = np.flatnonzero(raw != cal)
+            if idx.size < raw.size // 100:
+                cache[("cosmetic", path)] = (cal.shape, idx, raw.flat[idx])
         glow = cache.get(("glow", calibration.GlowLibrary.key(info), night))
         if glow and m.dark is None:                    # echte Darks enthalten das Glühen bereits
             raw = calibration.remove_glow(raw, bool(info["bayerpat"]) and raw.ndim == 2, glow)
@@ -740,6 +751,7 @@ class Pipeline:
         free = free_ram_mb()
         budget = min(self.s.batch_mb, max(300, free // 5)) if free else self.s.batch_mb
         bsz = batch_size_for((C, H * scale, W * scale), budget)
+        g = gpu.engine()                               # Grafikkarte für Ausrichten + Clipping (sonst None = CPU)
 
         def work(r):
             try:
@@ -756,7 +768,7 @@ class Pipeline:
                     M, pairs, _ = res
                 raw, _ = self._load(r["path"], info, lib, r["night"], cache)
                 img = to_channels(raw, info["bayerpat"])
-                warped, valid = registration.warp(img, M, (H * scale, W * scale), scale)
+                warped, valid = registration.warp(img, M, (H * scale, W * scale), scale, gpu=g)
                 sub = valid.ravel()[::7]
                 bg = np.array([np.median(warped[c].ravel()[::7][sub]) for c in range(C)])
                 ratio = ref_flux[pairs[:, 1]] / np.maximum(tf[pairs[:, 0]], 1e-6)
@@ -797,7 +809,7 @@ class Pipeline:
                 ws = np.clip(ws / meta["ref_w"], 0.1, 3.0)
                 n0 = len(meta["frames"])
                 cut = {t: t - n0 for t in STAGES if n0 < t <= n0 + len(good)} if stages is not None else {}
-                state.add_batch(X, V, ws, workers=self.s.threads, prefixes=cut.values())
+                state.add_batch(X, V, ws, workers=self.s.threads, prefixes=cut.values(), gpu=g)
                 del X, V
                 exp0 = meta["exposure"]
                 for (fid, _), w in zip(good, ws):
@@ -817,8 +829,11 @@ class Pipeline:
                 state.save(save_dir)
                 self.db.many("UPDATE frames SET stacked=1 WHERE id=?", [(f,) for f in unsaved])
                 unsaved, last_save = [], time.time()
-            progress(0.36 + 0.48 * done / max(1, total), "Stacking", f"{done}/{total} Aufnahmen")
+            progress(0.36 + 0.48 * done / max(1, total), "Stacking",
+                     f"{done}/{total} Aufnahmen" + (f" · Grafikkarte {g.name}" if g and not g.broken else ""))
         ex.shutdown()
+        if g:
+            g.free()
         return state
 
     # ----------------------------------------------------------------- save #

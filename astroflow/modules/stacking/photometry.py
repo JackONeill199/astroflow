@@ -1,7 +1,7 @@
 """Fotometrische Farbkalibrierung (wie PCC in PixInsight bzw. Siril): Weißabgleich über Katalogfarben der Sterne.
 
 1. Master-Stack plate-solven (ASTAP) -> WCS: jedes Pixel hat eine Himmelskoordinate.
-2. Gaia DR3 (ESA-Gaia-Archiv, sonst VizieR) liefert für das Feld Positionen und Farbindizes BP−RP. Gesendet werden nur Feldmitte und
+2. Gaia DR3 (Spiegel GAVO/ARI Heidelberg, sonst ESA-Gaia-Archiv bzw. VizieR) liefert für das Feld Positionen und Farbindizes BP−RP. Gesendet werden nur Feldmitte und
    Radius, das Ergebnis wird lokal gespeichert. Abschaltbar (Einstellungen bzw. ASTROFLOW_GAIA=0).
 3. Katalogsterne den Sternen im Stack zuordnen, Fluss je Farbkanal messen (Apertur, lokaler Hintergrund).
 4. Für jeden Kanal log(Kanal/Grün) gegen BP−RP robust linear anpassen und so verstärken, dass ein sonnenähnlicher
@@ -20,15 +20,17 @@ G2V_BP_RP = 0.82
 MIN_STARS = 20
 VIZIER = "https://vizier.cds.unistra.fr/viz-bin/asu-tsv"
 ESA_TAP = "https://gea.esac.esa.int/tap-server/tap/sync"
+GAVO_TAP = "https://dc.zah.uni-heidelberg.de/tap/sync"
+ARI_TAP = "https://gaia.ari.uni-heidelberg.de/tap/sync"
 
 
-def _esa(ra, dec, radius, gmag_max, timeout) -> list:
+def _tap(url, table, color, ra, dec, radius, gmag_max, timeout, need="bp_rp IS NOT NULL") -> list:
     import httpx
 
-    q = (f"SELECT TOP 6000 ra, dec, bp_rp FROM gaiadr3.gaia_source WHERE 1=CONTAINS(POINT('ICRS', ra, dec), "
-         f"CIRCLE('ICRS', {ra:.5f}, {dec:.5f}, {radius:.4f})) AND phot_g_mean_mag < {gmag_max} AND bp_rp IS NOT NULL "
+    q = (f"SELECT TOP 6000 ra, dec, {color} FROM {table} WHERE 1=CONTAINS(POINT('ICRS', ra, dec), "
+         f"CIRCLE('ICRS', {ra:.5f}, {dec:.5f}, {radius:.4f})) AND phot_g_mean_mag < {gmag_max} AND {need} "
          f"ORDER BY phot_g_mean_mag")
-    r = httpx.post(ESA_TAP, data={"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "csv", "QUERY": q}, timeout=timeout)
+    r = httpx.post(url, data={"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "csv", "QUERY": q}, timeout=timeout)
     r.raise_for_status()
     rows = []
     for line in r.text.splitlines()[1:]:
@@ -37,6 +39,20 @@ def _esa(ra, dec, radius, gmag_max, timeout) -> list:
         except ValueError:
             continue
     return rows
+
+
+def _gavo(ra, dec, radius, gmag_max, timeout) -> list:
+    # GAVO-Spiegel (Heidelberg), Auszug gaia.dr3lite ohne Spalte bp_rp – gleiche Definition aus den Mittelwerten
+    return _tap(GAVO_TAP, "gaia.dr3lite", "phot_bp_mean_mag - phot_rp_mean_mag", ra, dec, radius, gmag_max, min(timeout, 20),
+                need="phot_bp_mean_mag IS NOT NULL AND phot_rp_mean_mag IS NOT NULL")
+
+
+def _ari(ra, dec, radius, gmag_max, timeout) -> list:
+    return _tap(ARI_TAP, "gaiadr3.gaia_source", "bp_rp", ra, dec, radius, gmag_max, min(timeout, 30))
+
+
+def _esa(ra, dec, radius, gmag_max, timeout) -> list:
+    return _tap(ESA_TAP, "gaiadr3.gaia_source", "bp_rp", ra, dec, radius, gmag_max, timeout)
 
 
 def _vizier(ra, dec, radius, gmag_max, timeout) -> list:
@@ -59,14 +75,14 @@ def _vizier(ra, dec, radius, gmag_max, timeout) -> list:
 
 
 def gaia_stars(ra: float, dec: float, radius_deg: float, cache_dir: Path, gmag_max: float = 14.5,
-               timeout: float = 120.0) -> np.ndarray:   # ESA-Archiv brauchte am 30.10.2026 ~70 s
+               timeout: float = 120.0) -> np.ndarray:   # gemessen 01.11.2026: GAVO 1,3 s, ARI ~9 s, ESA 131 s
     """(N,3) Array RA, Dec, BP−RP der Gaia-DR3-Sterne im Feld (heller als gmag_max). Mit lokalem Zwischenspeicher."""
     key = hashlib.sha1(f"{ra:.3f}|{dec:.3f}|{radius_deg:.3f}|{gmag_max}".encode()).hexdigest()[:16]
     f = Path(cache_dir) / f"gaia_{key}.json"
     if f.exists():
         return np.array(json.loads(f.read_text()), dtype=np.float64).reshape(-1, 3)
     rows, errors = None, []
-    for fetch in (_esa, _vizier):                          # ESA-Gaia-Archiv zuerst, VizieR als Ausweich
+    for fetch in (_gavo, _ari, _esa, _vizier):             # schnelle Spiegel zuerst, ESA/VizieR als Ausweich
         try:
             rows = fetch(ra, dec, radius_deg, gmag_max, timeout)
             break

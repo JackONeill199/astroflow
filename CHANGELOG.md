@@ -37,6 +37,12 @@ Neueste zuerst. Technische Details stehen in `AGENTS.md`, die Bedienung in `READ
 ## 01.11.2026 – Ordner wählen statt Pfad eintippen
 
 ### Neu
+- **Stacking auf der Grafikkarte**: Ausrichten und Ausreißer-Erkennung laufen jetzt auf der GPU, wenn
+  `pyopencl` installiert ist. Das funktioniert mit AMD-, NVIDIA- und Intel-Karten. Gemessen mit
+  219 Stellina-Aufnahmen auf einer Radeon RX 9070 XT: Stacking 22 statt 67 Sekunden, der ganze Durchlauf
+  49 statt 96 Sekunden. Das Ergebnis weicht im Mittel um weniger als ein Tausendstel des Bildrauschens ab.
+  Ein- und ausschalten unter Einstellungen → Bilder → System. Ohne geeignete Karte oder bei einem
+  Fehler rechnet wie bisher der Prozessor.
 - **Hauptordner-Suche viel schneller**: Bereits bekannte Aufnahmen erkennt AstroFlow am
   Beobachtungsordner und Dateinamen (Stellina: Datum, Uhrzeit und Objekt im Namen), ohne die Datei zu
   lesen. Neue Beobachtungsordner werden nur stichprobenartig angelesen, einmal Geprüftes wird gemerkt.
@@ -50,6 +56,12 @@ Neueste zuerst. Technische Details stehen in `AGENTS.md`, die Bedienung in `READ
 - SkyTrace nutzt denselben Dialog für den Beobachtungsordner (jetzt auch mit Laufwerkswechsel).
 
 ### Behoben
+- **Stacken schneller**: Das Aussortieren von Ausreißern rechnet schneller, und die Hotpixel-Korrektur
+  wird je Aufnahme nur noch einmal statt zweimal berechnet. Ein Durchlauf mit 219 Stellina-Aufnahmen
+  ist dadurch etwa 13 % schneller, das Ergebnis bleibt bitgenau gleich.
+- **Farbkalibrierung schneller**: Die Gaia-Sternfarben kommen jetzt zuerst von Spiegelservern in
+  Heidelberg (GAVO, ARI) statt vom ESA-Archiv. Der Schritt „Gaia-Sternfarben abfragen“ dauert dadurch
+  etwa 1 Sekunde statt rund 2 Minuten. Ist ein Spiegel nicht erreichbar, wird wie bisher die ESA gefragt.
 - SkyTrace-Einstellungen: Beim schnellen Wechseln der Einstellungsseiten trat gelegentlich ein
   Skriptfehler auf (Archivstatus wurde in eine nicht mehr angezeigte Seite geschrieben).
 

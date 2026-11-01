@@ -88,6 +88,23 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    `add_batch` arbeitet in Zeilenstreifen parallel, Stapelgröße aus RAM-Budget (`ASTROFLOW_BATCH_MB`, Standard RAM/8, 700–4000 MB; Docker-Limit wird beachtet).
    Clipping: Streuung nur einmal aus allen gültigen Werten schätzen, κ = 3/3 – die alte Variante (Streuung neu aus beschnittenen Werten, κhi 2,5)
    hob bei großen Stapeln das Rauschen um 4,5 %. Messskript-Idee: gleiche Frames vorher/nachher stacken, Hintergrundrauschen + Sternfluss vergleichen.
+   **Profil (01.11.2026, 219 M101-Frames, 9800X3D, 12 Threads; Rechenzeit über alle Threads):** `_add_rows` 539 s (davon `clip_batch` 399 s),
+   `warp` 424 s, `cosmetic` 148 s, Debayer 76 s, FITS lesen 44 s, Glühen 29 s, Dreiecke 10 s – Stacking-Phase CPU-gebunden (alle Kerne voll).
+   Bitgleich beschleunigt: Clip-Median per `np.sort` (`stacking._median0`, 2–3× schneller als `np.median` über Achse 0) und
+   Hotpixel-Korrektur je Datei nur einmal je Lauf (`Pipeline._load` merkt die ersetzten Pixel im `cache`) → `stack()` −12–14 % (A/B abwechselnd).
+   Offen: Thread-Überbelegung (12 Warp-Worker + 12 `add_batch`-Streifen auf 16 logischen Kernen) und Streifenhöhe (Cache) – nur auf
+   ruhigem Rechner messbar (seit GPU-Stacking weniger wichtig).
+   **GPU** (`gpu.py`, seit 01.11.2026, optional `pyopencl` – nicht in `requirements.txt`): OpenCL-Kernel für `registration.warp` (kubischer
+   B-Spline wie ndimage order=3: Vorfilter rekursiv je Zeile/Spalte mit Spiegelrand, außerhalb 0; Maske weiter auf der CPU) und
+   `StackState.add_batch` (`clip_stats` = Median/Streuung der gültigen Werte je Pixel, `clip_add` = 2 Clip-Runden + Abgleich mit dem Stack +
+   Aufsummieren; Rauschboden je Stapel statt je CPU-Streifen; Stapel ≤ 32 Frames, Upload in Streifen ≤ 1 GB, Zustand erst nach allen Streifen
+   übernommen). Eine `Engine`, Aufrufe per Lock serialisiert; Fehler → `Engine.fail` schaltet die GPU ab, CPU rechnet weiter.
+   Karte: größter Speicher × Recheneinheiten (iGPU fällt raus). Einstellung `settings.json` → `gpu.mode` auto|off (UI: Einstellungen → Bilder →
+   System), `ASTROFLOW_GPU=0` (setzt `tests/conftest.py`; Vergleich GPU↔CPU in `test_gpu.py`, ohne GPU übersprungen).
+   Gemessen M101 (219 Frames, RX 9070 XT, Rechner ruhig): Stacking-Phase 66,9 → 21,5 s, `stack()` 96 → 49 s; Stack-Abweichung mittel
+   0,0008 ADU bei 5,6 ADU Rauschen, 0,004 % der Pixel mit anderer Clip-Entscheidung. Danach begrenzen Lesen, `cosmetic`, Debayer (CPU).
+   **Nebenbefund:** Mit RMS um den Median kann ein einzelner Ausreißer in einem Stapel von B Frames höchstens √B·σ abweichen –
+   bei B ≤ 9 wird er im Stapel also nie verworfen, nur über den Abgleich mit dem bestehenden Stack (`check`, ab ~8 Frames Gewicht).
 6. **Kanäle** (`channels.py`): L/R/G/B/Ha/OIII/SII → RGB, LRGB, RGB+Hα, HOO, SHO oder Mono (Option `palette`).
 7. **Develop Engine** (`develop.py`): `measure()` (Objekt-SNR, Signalfläche, Dynamik auf gebinnter Vorschau) → `adapt()` passt
    Profilwerte an (Entrauschen, `linear_denoise` = (10/SNR)^1,5, Sättigung, asinh, keine Entfaltung bei wenig Signal) → bis zu 3 Renderings
@@ -130,7 +147,8 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    `darken_background` mit weichem Fuß (hartes Abschneiden ließ dunkle Nebelpartien schwarz werden).
    **Fotometrische Farbkalibrierung** (`photometry.py`, `Pipeline._photometric`, Einstellung `gaia` / `ASTROFLOW_GAIA`): Master-Stack mit
    `platesolve.solve_image` lösen (WCS auf vollem Pixelraster, Cache `work/p<id>/wcs.json` je Referenzbild), Gaia-DR3-Farben BP−RP
-   über das ESA-Gaia-Archiv (TAP/ADQL; VizieR als Ausweich – VizieR war beim Nutzer nicht erreichbar), Cache `work/gaia/`.
+   per TAP/ADQL, Reihenfolge GAVO-Spiegel (`gaia.dr3lite`, BP−RP aus den Mittelwerten, Timeout 20 s) → ARI Heidelberg (30 s) → ESA-Archiv → VizieR
+   (gemessen 01.11.2026: 0,6 s / ~8 s / 131 s / beim Nutzer nicht erreichbar), Cache `work/gaia/`.
    Zuordnung ≤ max(3 px, FWHM), Aperturphotometrie, robuste Gerade log(R/G), log(B/G) gegen BP−RP, Weiß = G2V (0,82).
    Ergebnis als `params.wb_gains` + `_pcc`; ohne Solver/Netz/Sterne → Sternmittel mit Grund in `stats.color_cal`.
    Stellina-Werte (5 Objekte): R ≈ 0,97, B ≈ 0,88, Streuung ~3 %. Tests offline (`tests/conftest.py` setzt ASTROFLOW_GAIA=0).

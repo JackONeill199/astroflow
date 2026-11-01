@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from . import channels, diskspace, graxpert, objects, platesolve, reviewer, stars
+from . import channels, diskspace, gpu, graxpert, objects, platesolve, reviewer, stars
 from .db import DB
 from .pipeline import Pipeline
 
@@ -23,7 +23,8 @@ PERSIST = {"reviewer": ("provider", "base_url", "model", "api_key", "max_rounds"
            "solver": ("backend", "astap", "astap_db", "nova_key", "timeout"),
            "storage": ("delete_uploads", "gaia"),
            "starnet": ("path",),
-           "graxpert": ("path", "mode", "gpu")}
+           "graxpert": ("path", "mode", "gpu"),
+           "gpu": ("mode",)}
 
 
 class Engine:
@@ -52,7 +53,7 @@ class Engine:
     # ---- gespeicherte Einstellungen -------------------------------------------
     def _targets(self) -> dict:
         return {"reviewer": self.review_cfg, "solver": self.pl.solver_cfg, "storage": self.s, "starnet": stars.STARNET,
-                "graxpert": graxpert.GRAXPERT}
+                "graxpert": graxpert.GRAXPERT, "gpu": gpu.GPU}
 
     def _apply_saved(self):
         for sec, obj in self._targets().items():
@@ -625,6 +626,18 @@ def build_router(eng: Engine) -> APIRouter:
             g.gpu = bool(body["gpu"])
         eng.save_settings()
         return get_graxpert()
+
+    @r.get("/gpu")
+    def get_gpu():
+        return gpu.status()
+
+    @r.post("/gpu")
+    def set_gpu(body: dict = Body(...)):
+        if body.get("mode") not in gpu.MODES:
+            raise HTTPException(400, "Unbekannter Modus")
+        gpu.GPU.mode = body["mode"]
+        eng.save_settings()
+        return gpu.status()
 
     @r.get("/reviewer")
     def get_reviewer():

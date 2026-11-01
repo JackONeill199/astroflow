@@ -79,7 +79,9 @@ def test_next_object_stacks_while_previous_develops(tmp_path):
 
     def stack(pid, opts, progress):
         if pid == p2:
-            overlap.append(developing.is_set())
+            # Entwicklungs-Thread kann das Objekt schon übernommen, finish() aber noch nicht betreten haben –
+            # kurz warten statt Momentaufnahme (lief sonst gelegentlich mit [False] durch); seriell bliebe es False
+            overlap.append(developing.wait(2))
 
     def finish(pid, opts, progress):
         if pid == p1:
