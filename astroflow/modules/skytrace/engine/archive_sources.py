@@ -72,9 +72,9 @@ def satellite_names(ids,settings,limit=12):
                 # Antworten (HTML-Fehlerseite, kaputtes JSON, Fehlerobjekt) wie ein Fehler behandeln → später erneut.
                 try:rows=response.json()
                 except ValueError:
-                    if 'no satcat records' not in (response.text or '').lower():raise ValueError('unerwartete Antwort')
+                    if 'no satcat records' not in (response.text or '').lower():raise ValueError('kein SATCAT-Eintrag im JSON-Format')
                     rows=[]
-                if not isinstance(rows,list) or any(not isinstance(r,dict) for r in rows):raise ValueError('unerwartete Antwort')
+                if not isinstance(rows,list) or any(not isinstance(r,dict) for r in rows):raise ValueError('kein SATCAT-Eintrag im JSON-Format')
         except (requests.RequestException,ValueError) as error:
             until=time.time()+SATCAT_RETRY_S
             note=f'Namen nicht abrufbar: CelesTrak-Katalog nicht erreichbar oder unerwartete Antwort ({error}). Nächster Versuch in {SATCAT_RETRY_S//60} min.'
