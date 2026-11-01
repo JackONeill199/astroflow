@@ -40,6 +40,10 @@ _ASTAP_CANDIDATES = (
 )
 
 
+AVAILABLE_TTL = 30            # s – erkannte Solver merken (neu installiertes ASTAP greift spätestens danach)
+_AVAILABLE: dict = {}
+
+
 class SolveError(Exception):
     pass
 
@@ -110,6 +114,19 @@ class SolverConfig:
         return shutil.which("solve-field")
 
     def available(self) -> list[str]:
+        # Suche über PATH/Dateisystem kostet unter Windows ~190 ms und /status (alle 2,5 s gepollt) fragt sie ab –
+        # deshalb kurz merken; geänderte Einstellungen oder PATH ergeben einen neuen Schlüssel
+        key = (self.backend, self.astap, self.astap_db, bool(self.nova_key), tuple(self.cmd_prefix),
+               os.environ.get("PATH"), os.environ.get("LOCALAPPDATA"))
+        hit = _AVAILABLE.get(key)
+        if hit and time.monotonic() - hit[0] < AVAILABLE_TTL:
+            return list(hit[1])
+        out = self._available()
+        _AVAILABLE.clear()
+        _AVAILABLE[key] = (time.monotonic(), out)
+        return list(out)
+
+    def _available(self) -> list[str]:
         out = []
         if self.astap_path() and self.astap_databases():
             out.append("astap")

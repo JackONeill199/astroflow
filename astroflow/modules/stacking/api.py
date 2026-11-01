@@ -165,34 +165,73 @@ def build_router(eng: Engine) -> APIRouter:
     r = APIRouter()
     db = eng.db
 
+    def project_views(rows: list[dict]) -> list[dict]:
+        """Listenansicht der Objekte. Alle Kennzahlen in wenigen gruppierten Abfragen über eine Verbindung –
+        je Objekt einzeln abzufragen kostete bei 58 Objekten ~1,8 s (≈ 460 Verbindungen) und bremste jeden Seitenwechsel."""
+        if not rows:
+            return []
+        ids = [p["id"] for p in rows]
+        ph = ",".join("?" * len(ids))
+        counts, nights, dl, last, job, n_results, solve, comp = {}, {}, {}, {}, {}, {}, {}, {}
+        with db.conn() as c:
+            for x in c.execute(f"SELECT project_id, status, COUNT(*) n FROM frames WHERE kind='light' AND project_id IN ({ph}) "
+                               "GROUP BY project_id, status", ids):
+                counts.setdefault(x["project_id"], {})[x["status"]] = x["n"]
+            for x in c.execute(f"SELECT DISTINCT project_id, night FROM frames WHERE kind='light' AND project_id IN ({ph}) "
+                               "ORDER BY night", ids):
+                nights.setdefault(x["project_id"], []).append(x["night"])
+            for x in c.execute(f"SELECT project_id, COUNT(*) n, COALESCE(SUM(size),0) b, COALESCE(SUM(stacked),0) s FROM frames "
+                               f"WHERE kind='light' AND deleted=1 AND project_id IN ({ph}) GROUP BY project_id", ids):
+                dl[x["project_id"]] = dict(x)
+            for x in c.execute(f"SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY "
+                               "COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC, id DESC) rn "
+                               f"FROM results WHERE project_id IN ({ph})) WHERE rn=1", ids):
+                last[x["project_id"]] = dict(x)
+            for x in c.execute(f"SELECT project_id, COUNT(*) n FROM results WHERE project_id IN ({ph}) GROUP BY project_id", ids):
+                n_results[x["project_id"]] = x["n"]
+            for x in c.execute(f"SELECT * FROM jobs WHERE id IN (SELECT MAX(id) FROM jobs WHERE project_id IN ({ph}) "
+                               "GROUP BY project_id)", ids):
+                job[x["project_id"]] = dict(x)
+            for x in c.execute("SELECT json_extract(options,'$.gallery_parent') gp, COUNT(*) n FROM projects "
+                               "WHERE json_extract(options,'$.gallery_parent') IS NOT NULL GROUP BY gp"):
+                comp[x["gp"]] = x["n"]
+            # Lösung nur für Objekte mit Koordinaten nötig (liest JSON je Frame – der teuerste Teil)
+            with_coords = [p["id"] for p in rows if p["ra"] is not None]
+            if with_coords:
+                for x in c.execute("SELECT p.id, (SELECT json_extract(f.info,'$.solve') FROM frames f WHERE f.project_id=p.id "
+                                   "AND json_extract(f.info,'$.solve') IS NOT NULL LIMIT 1) s FROM projects p "
+                                   f"WHERE p.id IN ({','.join('?' * len(with_coords))})", with_coords):
+                    if x["s"] is not None:
+                        solve[x["id"]] = x["s"]
+        out = []
+        for p in rows:
+            pid = p["id"]
+            imported = json.loads(p["options"] or "{}").get("input_type") == "picture"
+            fr = counts.get(pid, {})
+            sv = solve.get(pid)
+            d = dl.get(pid, {"n": 0, "b": 0, "s": 0})
+            lr, jb = last.get(pid), job.get(pid)
+            coords = None
+            if p["ra"] is not None:
+                coords = {"ra": p["ra"], "dec": p["dec"], "source": "solve" if sv else ("catalog" if p["obj_id"] else "header")}
+                if sv:
+                    coords["solve"] = json.loads(sv)
+            out.append({
+                "id": pid, "name": p["name"], "kind": p["kind"], "kind_label": objects.KIND_LABEL.get(p["kind"] or "generic"),
+                "options": json.loads(p["options"] or "{}"), "frames": fr, "total": sum(fr.values()),
+                "companions": comp.get(pid, 0),
+                "nights": nights.get(pid, []), "n_results": n_results.get(pid, 0), "created": p["created"],
+                "coords": coords, "can_solve": not imported and not p["obj_id"], "imported": imported,
+                # Einzelbilder nach dem Stacking gelöscht -> kein komplettes Neu-Stacken mehr möglich
+                "deleted": {"frames": d["n"], "bytes": d["b"], "can_restack": not imported and d["s"] == 0},
+                "result": {"id": lr["id"], "created": lr["created"], "n_frames": lr["n_frames"], "exposure": lr["exposure"],
+                           "stats": json.loads(lr["stats"]), "formats": list(json.loads(lr["files"] or "{}"))} if lr else None,
+                "job": {k: jb[k] for k in ("id", "state", "progress", "stage", "message", "finished")} if jb else None,
+            })
+        return out
+
     def project_view(p: dict) -> dict:
-        imported = json.loads(p["options"] or "{}").get("input_type") == "picture"
-        fr = db.q("SELECT status, COUNT(*) n FROM frames WHERE project_id=? AND kind='light' GROUP BY status", (p["id"],))
-        counts = {r["status"]: r["n"] for r in fr}
-        last = db.one("SELECT * FROM results WHERE project_id=? ORDER BY COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC,id DESC LIMIT 1", (p["id"],))
-        job = db.one("SELECT * FROM jobs WHERE project_id=? ORDER BY id DESC LIMIT 1", (p["id"],))
-        nights = db.q("SELECT DISTINCT night FROM frames WHERE project_id=? AND kind='light' ORDER BY night", (p["id"],))
-        n_results = db.one("SELECT COUNT(*) n FROM results WHERE project_id=?", (p["id"],))["n"]
-        sv = db.one("SELECT json_extract(info,'$.solve') s FROM frames WHERE project_id=? AND json_extract(info,'$.solve') IS NOT NULL LIMIT 1", (p["id"],))
-        dl = db.one("SELECT COUNT(*) n, COALESCE(SUM(size),0) b, COALESCE(SUM(stacked),0) s FROM frames "
-                    "WHERE project_id=? AND kind='light' AND deleted=1", (p["id"],))
-        coords = None
-        if p["ra"] is not None:
-            coords = {"ra": p["ra"], "dec": p["dec"], "source": "solve" if sv else ("catalog" if p["obj_id"] else "header")}
-            if sv:
-                coords["solve"] = json.loads(sv["s"])
-        return {
-            "id": p["id"], "name": p["name"], "kind": p["kind"], "kind_label": objects.KIND_LABEL.get(p["kind"] or "generic"),
-            "options": json.loads(p["options"] or "{}"), "frames": counts, "total": sum(counts.values()),
-            "companions": db.one("SELECT COUNT(*) n FROM projects WHERE json_extract(options,'$.gallery_parent')=?", (p["id"],))["n"],
-            "nights": [n["night"] for n in nights], "n_results": n_results, "created": p["created"],
-            "coords": coords, "can_solve": not imported and not p["obj_id"], "imported": imported,
-            # Einzelbilder nach dem Stacking gelöscht -> kein komplettes Neu-Stacken mehr möglich
-            "deleted": {"frames": dl["n"], "bytes": dl["b"], "can_restack": not imported and dl["s"] == 0},
-            "result": {"id": last["id"], "created": last["created"], "n_frames": last["n_frames"], "exposure": last["exposure"],
-                       "stats": json.loads(last["stats"]), "formats": list(json.loads(last["files"] or "{}"))} if last else None,
-            "job": {k: job[k] for k in ("id", "state", "progress", "stage", "message", "finished")} if job else None,
-        }
+        return project_views([p])[0]
 
     @r.get("/status")
     def status():
@@ -244,6 +283,7 @@ def build_router(eng: Engine) -> APIRouter:
             c.timeout = max(20, min(900, int(body["timeout"])))
         # fehlgeschlagene Lösungsversuche verwerfen, damit der nächste Scan es erneut versucht
         db.x("DELETE FROM solves WHERE status='failed'")
+        platesolve._AVAILABLE.clear()                    # z. B. ASTAP gerade installiert -> sofort neu suchen
         eng.save_settings()
         return get_solver()
 
@@ -266,7 +306,7 @@ def build_router(eng: Engine) -> APIRouter:
     def projects(parent_id: int | None = None):
         rows = db.q("SELECT * FROM projects WHERE json_extract(options,'$.gallery_parent') IS NULL ORDER BY name") if parent_id is None else db.q(
             "SELECT * FROM projects WHERE json_extract(options,'$.gallery_parent')=? ORDER BY id DESC", (parent_id,))
-        return [project_view(p) for p in rows]
+        return project_views(rows)
 
     @r.get("/projects/{pid}")
     def project(pid: int):

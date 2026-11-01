@@ -16,6 +16,8 @@ Neueste zuerst. Technische Details stehen in `AGENTS.md`, die Bedienung in `READ
   „Erneut durchsuchen“ wiederholt sie. Das funktioniert auch vom Handy oder einem anderen PC im
   Heimnetz, denn angezeigt werden die Ordner des Rechners, auf dem AstroFlow läuft.
 - SkyTrace nutzt denselben Dialog für den Beobachtungsordner (jetzt auch mit Laufwerkswechsel).
+- **Schnellere Seitenwechsel**: Die Objektliste (Galerie, Übersicht, Statistik) lädt in rund 0,1 statt
+  1,8 Sekunden, die Statusabfrage im Hintergrund in wenigen Millisekunden statt 0,4 Sekunden.
 
 ### Behoben
 - SkyTrace-Einstellungen: Beim schnellen Wechseln der Einstellungsseiten trat gelegentlich ein

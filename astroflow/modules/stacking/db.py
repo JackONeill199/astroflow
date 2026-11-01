@@ -54,6 +54,9 @@ class DB:
                                   "AND COALESCE(json_extract(j.options,'$.mode'),'')!='develop' "
                                   "AND COALESCE(json_extract(j.options,'$.action'),'')!='solve' "
                                   "AND j.id=(SELECT MAX(j2.id) FROM jobs j2 WHERE j2.project_id=frames.project_id)))")
+            # abdeckender Index für Objektliste/Status: Zählungen ohne die großen info/metrics-Zeilen zu lesen
+            # (nach den Migrationen, weil deleted/size erst dort entstehen; 20 000 Frames: ~90 ms -> ~1 ms je Abfrage)
+            c.execute("CREATE INDEX IF NOT EXISTS ix_frames_pk ON frames(project_id, kind, status, night, deleted, stacked, size)")
 
     @contextmanager
     def conn(self):
