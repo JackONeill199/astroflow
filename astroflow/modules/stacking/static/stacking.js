@@ -276,7 +276,7 @@ async function projectView(el, id, tab = 'bild') {
     t.innerHTML = `<div class="split"><div>
         <div id="viewer"></div>
         ${stages.length > 1 ? `<div class="stages"><div class="stages-h"><b>Stacking-Verlauf</b><span class="grow"></span><span class="sm tnum" id="stlbl">${stageLabel(stages[stage.i])}</span></div>
-          <input type="range" id="strange" min="0" max="${stages.length - 1}" step="1" value="${stage.i}" aria-label="Stacking-Stufe">
+          <input type="range" id="strange" min="0" max="${stages.length - 1}" step="1" value="${stage.i}" aria-label="Stacking-Stufe" style="--fill:${stage.i / (stages.length - 1) * 100}%">
           <div class="stages-ticks">${stages.map((x, i) => `<span data-i="${i}" class="tnum${i === stage.i ? ' on' : ''}">${x.final ? 'Alle' : x.n}</span>`).join('')}</div>
           <p class="mut sm">Dasselbe Objekt mit weniger Aufnahmen, gleich entwickelt – so sieht man, was mehr Belichtungszeit bringt.${s.stages_simplified ? ` Zwischenstufen ohne ${s.stages_simplified.join('/')} entwickelt.` : ''}</p></div>` : ''}
         ${r.has_before && !c ? `<div class="row" style="margin-top:10px"><div class="seg" id="ba"><button data-b="0" class="${before ? '' : 'on'}">Ergebnis</button>
@@ -327,6 +327,7 @@ async function projectView(el, id, tab = 'bild') {
       const show = (i) => {
         if (!pre) pre = stages.map(x => Object.assign(new Image(), { src: stageSrc(x) }));
         stage.i = i; $('#strange').value = i;
+        $('#strange').style.setProperty('--fill', i / (stages.length - 1) * 100 + '%');
         $('#stlbl').textContent = stageLabel(stages[i]);
         $$('.stages-ticks span').forEach(sp => sp.classList.toggle('on', +sp.dataset.i === i));
         viewer.setSrc(stageSrc(stages[i]));
