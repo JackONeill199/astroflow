@@ -519,6 +519,12 @@ input:focus-visible + .switch { outline: 2px solid var(--acc); outline-offset: 2
 .frow:hover { background: var(--panel2) }
 .frow svg { color: var(--acc) }
 #dlg:has(.folders) { width: min(640px, 94vw) }
+.fdrives { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px }
+.fdrives .chip { cursor: pointer; border: 1px solid var(--line) }
+.fnav { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; min-width: 0 }
+.fpath { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; min-width: 0; overflow-wrap: anywhere; font-size: 14px }
+.fcount { min-height: 18px; margin-top: 6px }
+.fmanual { margin-top: 6px }
 @media (max-width: 860px) {
   .side .nav-group, .side nav a.sec { display: none }
   .side nav a .nb { position: absolute; top: 0; right: 18%; margin: 0 }

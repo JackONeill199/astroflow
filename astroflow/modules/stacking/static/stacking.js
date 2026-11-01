@@ -618,8 +618,8 @@ async function importView(el) {
       <span class="mut sm">Ordnernamen bleiben erhalten – z. B. verrät „…_observation_M57“ bei Stellina das Objekt.</span></div>
     <div class="uploads" id="ups"></div>
     <section class="panel" id="lib" style="margin-top:20px"><div class="panel-h"><h2 style="margin:0">Hauptordner durchsuchen</h2></div>
-      <p class="mut sm" style="margin-top:0">Pfad zu einem Ordner mit allen Beobachtungen (Stellina, FITS, TIFF …). AstroFlow findet die Objekte darin und zeigt, was noch nicht oder nicht fertig gestackt in AstroFlow ist. Die Dateien bleiben unverändert.</p>
-      <div class="lib-form"><input id="libRoot" type="text" placeholder="z. B. D:\\Astro\\Stellina" spellcheck="false" autocomplete="off"><button class="btn" id="libGo">${icon('search')}Durchsuchen</button></div>
+      <p class="mut sm" style="margin-top:0">Ordner mit allen Beobachtungen wählen (z. B. die Stellina-Platte). AstroFlow findet die Objekte darin und zeigt, was noch nicht oder nicht fertig gestackt in AstroFlow ist. Die Dateien bleiben unverändert.</p>
+      <div class="lib-form"><button class="btn" id="libPick">${icon('folder')}Ordner wählen …</button><span class="lib-root" id="libRoot"></span><button class="btn ghost" id="libGo" hidden>${icon('refresh')}Erneut durchsuchen</button></div>
       <div id="libBody"></div></section>
     <div class="infogrid">
       <div><b>Oder: Rohdaten-Ordner einbinden</b>Lege FITS-Dateien direkt in <code>${esc(st.input_dir)}</code> – AstroFlow schaut alle ${st.scan_interval} s nach.</div>
@@ -639,7 +639,9 @@ async function importView(el) {
 const LIB_STATE = { new: ['neu', 'acc'], partial: ['teilweise vorhanden', 'warn'], unstacked: ['nicht gestackt', 'warn'], done: ['fertig', 'ok'] };
 const LIB_KIND = { lights: 'Aufnahmen', calibration: 'Kalibrierung', pictures: 'Fertige Bilder' };
 async function libraryPanel(view) {
-  const body = $('#libBody', view), input = $('#libRoot', view), go = $('#libGo', view);
+  const body = $('#libBody', view), shown = $('#libRoot', view), go = $('#libGo', view);
+  let root = '';
+  const setRoot = (r) => { root = r || ''; shown.textContent = root; shown.title = root; go.hidden = !root; };
   const picked = new Set();
   let timer = null, seen = false;
   const done = (g) => g.state === 'done';
@@ -647,6 +649,7 @@ async function libraryPanel(view) {
     if (!body.isConnected) return clearTimeout(timer);
     const busy = st.state === 'scanning' || st.state === 'importing';
     go.disabled = busy;
+    $('#libPick', view).disabled = busy;
     if (busy) {
       body.innerHTML = `<div class="lib-bar"><span class="spinner"></span><span>${esc(st.message || '')}</span><span class="grow"></span><span class="tnum">${Math.round((st.progress || 0) * 100)} %</span></div><div class="progress"><i style="width:${(st.progress || 0) * 100}%"></i></div>`;
       return;
@@ -687,15 +690,16 @@ async function libraryPanel(view) {
       else if (st.imported && body.isConnected) poll();
     } catch (e) { if (body.isConnected) timer = setTimeout(follow, 2000); }
   };
-  go.onclick = async () => {
-    const root = input.value.trim();
-    if (!root) { toast('Bitte den Pfad zum Hauptordner eingeben.', 'err'); return; }
+  const scan = async () => {
+    if (!root) return;
     picked.clear(); seen = false;
     try { draw(await send('/stacking/library/scan', { root })); follow(); } catch (e) { toast(e.message, 'err'); }
   };
-  input.onkeydown = (e) => { if (e.key === 'Enter') go.click(); };
+  go.onclick = scan;
+  $('#libPick', view).onclick = () => folderDialog(root, (p) => { setRoot(p); scan(); },
+    { title: 'Hauptordner wählen', ok: 'Diesen Ordner durchsuchen', hint: 'Unterordner werden mit durchsucht, Dateien nur gelesen.' });
   const st = await api('/stacking/library');
-  input.value = st.root || '';
+  setRoot(st.root);
   if (st.state !== 'idle') { seen = st.state === 'done' && !st.imported ? false : true; draw(st); if (st.state === 'scanning' || st.state === 'importing') follow(); }
 }
 function upload(files) {

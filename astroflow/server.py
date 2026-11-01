@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .core.config import Settings, load_settings
+from .core.folders import list_folders
 from .core.modules import AVAILABLE, Context, load_modules
 from .core.store import SettingsStore
 
@@ -84,6 +85,14 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
             raise HTTPException(400, "Unbekanntes Modul.")
         ctx.store.update("modules", vals)
         return {"saved": vals, "restart": True}
+
+    @app.get("/api/folders")
+    def folders(path: str = ""):
+        """Ordnerdialog: Unterordner auf dem Server-Rechner (leer = Laufwerke)."""
+        try:
+            return list_folders(path)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
 
     for m in active:
         r = m.module.router()

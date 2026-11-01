@@ -98,6 +98,49 @@ function confirmDlg(title, text, ok = 'OK', danger = false) {
     d.showModal();
   });
 }
+// Ordner auf dem Server-Rechner wählen (Browser geben keine echten Pfade heraus). pick(path) bekommt den gewählten Ordner.
+// opts: title, ok (Beschriftung), hint (Satz unten links).
+function folderDialog(start, pick, { title = 'Ordner wählen', ok = 'Diesen Ordner verwenden', hint = 'Dateien werden nur gelesen.' } = {}) {
+  const d = $('#dlg');
+  d.innerHTML = `<h2 style="font-size:18px;margin-bottom:12px">${esc(title)}</h2>
+    <div class="fdrives" id="fdr"></div>
+    <div class="fnav"><button class="btn ghost sm" id="fup" title="Übergeordneter Ordner">↑</button><div class="fpath" id="fcr"></div></div>
+    <div class="folders" id="fl"></div><div class="fcount mut sm" id="fct"></div>
+    <details class="fmanual"><summary class="mut sm">Pfad eingeben</summary><div class="row" style="flex-wrap:nowrap;margin-top:6px">
+      <input id="fp" style="flex:1" spellcheck="false" autocomplete="off"><button class="btn ghost sm" id="fgo">Öffnen</button></div></details>
+    <div class="row" style="justify-content:flex-end;margin-top:14px"><span class="mut sm grow">${esc(hint)}</span><button class="btn ghost" id="fx">Abbrechen</button><button class="btn" id="fok" disabled>${esc(ok)}</button></div>`;
+  let cur = '';
+  const browse = async (path) => {
+    try {
+      const r = await api('/folders?path=' + encodeURIComponent(path || ''));
+      cur = r.path;
+      $('#fp', d).value = r.path;
+      $('#fok', d).disabled = !r.path;
+      $('#fup', d).disabled = !r.path;
+      $('#fup', d).dataset.p = r.parent || '';
+      $('#fdr', d).innerHTML = r.drives.map(x => `<button class="chip${r.path.toLowerCase().startsWith(x.toLowerCase()) ? ' acc' : ''}" data-p="${esc(x)}">${esc(x)}</button>`).join('');
+      // Pfad als klickbare Brotkrumen; Trenner je nach System
+      const sep = r.path.includes('\\') ? '\\' : '/', parts = r.path.split(sep).filter(Boolean);
+      $('#fcr', d).innerHTML = r.path ? parts.map((x, i) => {
+        const p = (r.path.startsWith(sep) ? sep : '') + parts.slice(0, i + 1).join(sep) + (i === 0 && sep === '\\' ? sep : '');
+        return `<button class="linkbtn" data-p="${esc(p)}">${esc(x)}</button>`;
+      }).join(`<span class="dim">${esc(sep)}</span>`) || esc(sep) : '<span class="mut">Laufwerke</span>';
+      $('#fl', d).innerHTML = r.folders.map(x => `<button class="frow" data-p="${esc(x.path)}">${icon('folder')}<span>${esc(x.name)}</span></button>`).join('')
+        + (r.more ? `<p class="mut sm">… und ${r.more} weitere</p>` : '') || '<p class="mut sm" style="padding:8px">Keine Unterordner.</p>';
+      $('#fl', d).scrollTop = 0;
+      $('#fct', d).textContent = r.fits || r.pictures ? `In diesem Ordner: ${[r.fits && `${r.fits} FITS`, r.pictures && `${r.pictures} Bilder`].filter(Boolean).join(', ')}` : '';
+    } catch (e) { toast(e.message, 'err'); }
+  };
+  d.onclick = (e) => { const r = e.target.closest('[data-p]'); if (r && r.id !== 'fup') browse(r.dataset.p); };
+  $('#fup', d).onclick = (e) => { e.stopPropagation(); browse(e.currentTarget.dataset.p); };
+  $('#fgo', d).onclick = () => browse($('#fp', d).value);
+  $('#fp', d).onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); browse($('#fp', d).value); } };
+  $('#fx', d).onclick = () => d.close();
+  $('#fok', d).onclick = () => { if (cur) { d.close(); pick(cur); } };
+  d.onclose = null;
+  d.showModal();
+  browse(start || '');
+}
 function crumbs(parts) {
   $('#crumbs').innerHTML = parts.map((p, i) => i < parts.length - 1 ? `<a href="${p[1]}">${esc(p[0])}</a><span class="dim">/</span>` : `<b>${esc(p[0])}</b>`).join('');
 }
