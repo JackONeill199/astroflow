@@ -473,7 +473,9 @@ def build_router(mod) -> APIRouter:
         satcat = _read_json(cache / "satcat-pause.json", {}) or {}
         if not satcat.get("stopped") and float(satcat.get("until") or 0) <= time.time():
             satcat = {}
-        return dict(opensky=conn, satcat=satcat, satellite_time_queries=sum(p.name.startswith("eth-") and p.suffix == ".json" for p in files),
+        csv = cache / "satcat.csv"                  # lokale Kopie des Namenskatalogs (täglich bei Bedarf erneuert)
+        satcat_file = dict(updated=csv.stat().st_mtime, bytes=csv.stat().st_size) if csv.is_file() else None
+        return dict(opensky=conn, satcat=satcat, satcat_file=satcat_file, satellite_time_queries=sum(p.name.startswith("eth-") and p.suffix == ".json" for p in files),
                     satellite_years=[p.stem.removeprefix("tle_") for p in files if p.suffix == ".parquet"],
                     meteor_months=[p.stem.removeprefix("traj_summary_monthly_") for p in files
                                    if p.suffix == ".sqlite" and ".building." not in p.name],

@@ -289,11 +289,8 @@ def satellite_check(candidate,site,settings):
             matches.append(dict(name=sat.name,norad_id=int(sat.model.satnum),tle_age_days=round(age,3),evidence='Historische SGP4-Bahn passiert die Spur in Lage, Richtung und Zeit; Sichtbarkeit nicht bestätigt',**geometry))
     rank=lambda r:float('inf') if r.get('separation_arcsec') is None else r.get('mean_offset_arcsec',r['separation_arcsec'])+SECONDS_WEIGHT_ARCSEC*r.get('time_offset_s',0)
     diagnostics.sort(key=lambda r:(not r['compatible'],rank(r)));matches.sort(key=rank)
-    # Namen nur für Treffer und die nächsten 3 Bahnen – jede Nummer ist eine eigene SATCAT-Abfrage (Sperrgefahr).
-    names_note=_name_satellites(matches+diagnostics[:3],settings)
-    for d in diagnostics[3:8]:
-        info=next((r for r in matches if r['norad_id']==d['norad_id'] and r.get('name')),None)
-        if info: d['name'],d['object_type']=info['name'],info.get('object_type')
+    # Namen aus der lokalen SATCAT-Kopie; Treffer zuerst (nur für sie reichen die wenigen Einzelabfragen bei neuen Nummern).
+    names_note=_name_satellites(matches+diagnostics[:8],settings)
     detail=f'Bahndaten zur Aufnahmezeit {iso(start)} UTC (Belichtung ±{slack:g} s Uhrtoleranz): {len(possible)} mögliche Spuren nach Standort-, Zeit- und Bildfeldfilter genau geprüft. Archivabdeckung kann unvollständig sein (militärische Satelliten fehlen); begrenzte Bahngenauigkeit. Ein geometrischer Treffer ist kein Beweis.'
     if names_note: detail+=' '+names_note
     return status('satellites','compatible' if matches else 'checked_no_match',detail,matches[:20],archive=source,source=source or SOURCES['satellites'],stale_records=stale,archive_records=archive_total,checked_trajectories=len(diagnostics),diagnostics=diagnostics[:8],tolerance_arcsec=SATELLITE_TOLERANCE_ARCSEC,clock_slack_s=slack,exposure_start=start,names_note=names_note)

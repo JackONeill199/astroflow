@@ -570,7 +570,7 @@ async function settings(el) {
     try {
       const d = await api(T + '/catalog/status');
       if (!$('#archive') || !$('#oskState')) return null;   // inzwischen weiternavigiert
-      $('#archive').textContent = `Satelliten: ${d.satellite_time_queries} gespeicherte Zeitabfragen · lokale Jahre ${d.satellite_years.join(', ') || 'keine'} · GMN-Monate ${d.meteor_months.join(', ') || 'keine'} · ${Math.round(d.bytes / 1048576)} MB Cache`;
+      $('#archive').textContent = `Satelliten: ${d.satellite_time_queries} gespeicherte Zeitabfragen · lokale Jahre ${d.satellite_years.join(', ') || 'keine'} · GMN-Monate ${d.meteor_months.join(', ') || 'keine'} · Satellitennamen ${d.satcat_file ? 'vom ' + new Date(d.satcat_file.updated * 1000).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : 'noch nicht geladen'} · ${Math.round(d.bytes / 1048576)} MB Cache`;
       $('#oskState').textContent = d.opensky.detail;
       $('#satcatp').hidden = !d.satcat?.reason;
       if (d.satcat?.reason) $('#satcatState').textContent = d.satcat.reason;
