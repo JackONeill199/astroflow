@@ -1,6 +1,6 @@
 # AGENTS.md – AstroFlow
 
-Kompakter Einstieg für KI-Agenten und neue Sessions. Nutzerdoku: `README.md`.
+Kompakter Einstieg für KI-Agenten und neue Sessions. Nutzerdoku: `README.md`, Änderungen: `CHANGELOG.md` (bei Nutzer-sichtbaren Änderungen ergänzen).
 
 ## Was ist das
 AstroFlow: lokale Astro-Plattform im Browser aus drei Modulen (seit v0.6, 28.10.2026 – Nutzerwunsch: „ein Produkt, einheitliche UI,
