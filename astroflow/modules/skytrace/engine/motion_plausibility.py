@@ -37,7 +37,16 @@ def exposure_info(meta):
     if not values: return dict(seconds=None,source=None,status='missing')
     if max(values)-min(values)>max(values)*.01:
         return dict(seconds=None,source=None,status='conflicting')
-    return dict(seconds=values[0],source='EXPTIME [s]' if seconds else 'Stellina EXPOSURE [ms]' if milliseconds else 'exposure_seconds [s]',status='known')
+    # Stellina schreibt in DATE-OBS das Ende der Belichtung (gemessen an 80 Satellitenspuren 2022: Bahn kreuzt
+    # die Spur 0–20 s vor DATE-OBS, langsame Satelliten füllen genau [DATE-OBS − Belichtung, DATE-OBS]).
+    return dict(seconds=values[0],source='EXPTIME [s]' if seconds else 'Stellina EXPOSURE [ms]' if milliseconds else 'exposure_seconds [s]',status='known',
+                reference='end' if milliseconds else 'start')
+
+
+def exposure_start(candidate):
+    """Belichtungsbeginn aus Zeitstempel und Zeitbezug; ältere Kandidaten ohne `time_reference` über die Belichtungsquelle."""
+    reference=candidate.get('time_reference') or ('end' if (candidate.get('plausibility') or {}).get('exposure_source')=='Stellina EXPOSURE [ms]' else 'start')
+    return float(candidate['timestamp'])-(float(candidate['exposure_seconds']) if reference=='end' else 0.)
 
 
 def assess_motion(detection,meta,shape,world_path=None):

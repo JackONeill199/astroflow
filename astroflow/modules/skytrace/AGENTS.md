@@ -38,6 +38,29 @@ jeweils mit Bestätigungsdialog.
   Wartende Ordner erscheinen in der Aktivität, `status.auto_waiting` zählt sie. Abschalten: Einstellungen → SkyTrace (`skytrace.auto`).
 - Achtung beim Nutzer: Ergebnisse landen im gemeinsamen `AstroAnalyse/Ergebnisse` – das alte SkyTrace (Port 8765) nicht gleichzeitig analysieren lassen.
 
+## Satellitenabgleich: Zeitbezug und Uhrtoleranz (01.11.2026, Nutzerbefund „Satelliten werden nie zugeordnet“)
+- **Befund** (alle Läufe in `AstroAnalyse/Ergebnisse`, Prüfskript-Idee: Bahn der nächsten Diagnose ±60 s propagieren und die Zeit
+  suchen, zu der sie Spuranfang/-ende passiert): Bei ~90 von ~150 Spuren lag eine Bahn quer < 6′ und richtungsgleich (< 5°) auf der
+  Spur, aber 1–6° daneben **entlang** der Bahn. Langsame Objekte, deren Spur ganz im Bild liegt (NORAD 33437, 36120, 35499), füllen
+  genau [DATE-OBS − 10 s, DATE-OBS] → **Stellina-`DATE-OBS` ist das Belichtungsende**. Zusätzlich Uhrversatz je Nacht etwa −10…+14 s
+  (Stellina-Uhr kommt vom Handy; M85 2022-05-14 nach, M31 2022-06-11 vor), Bahnfehler längs (TLE 0,3–2 Tage alt) wenige Sekunden.
+- `motion_plausibility.exposure_info` → `reference` ('end' bei Stellina-EXPOSURE), Kandidat `time_reference`; `exposure_start(candidate)`
+  (ältere Kandidaten: über `plausibility.exposure_source`). `catalog_matching._times` liefert damit den echten Belichtungsbeginn (alle Kataloge).
+- `satellite_check` propagiert Belichtung ± `SATELLITE_CLOCK_SLACK_S` 20 s (Einstellung `satellite_clock_slack_s`), `angular_match(times=…)`
+  liefert `passage` (Zeitpunkte an Spuranfang/-ende), Richtung an der Durchgangsstelle (`SATELLITE_MAX_ANGLE` 15°), Toleranz quer weiter 360″.
+  Neu je Bahn: `mean_offset_arcsec`, `passage_seconds` (relativ zum Belichtungsbeginn), `time_offset_s` (0 = während der Belichtung);
+  verworfen, wenn die Bahn für die Spur länger als die Belichtung bräuchte. Rang = mittlerer Abstand + 20″ je Sekunde außerhalb.
+- **Namen:** Archivbahnen (Space-Track-Spiegel) haben nur NORAD-Nummern → `archive_sources.satellite_names` fragt CelesTrak-SATCAT je Nummer ab
+  (nur die Nummer, kein Standort; Cache `catalog_cache/archives/satcat-names.json`; Fehler → Nummer bleibt). `object_type` Satellit/Raketenstufe/Trümmerteil.
+- UI: `evidence.js classification` nennt bei passender Bahn „Satellit <Name>“ bzw. Objektart, Klasse `satellite` (Filter „Satelliten“);
+  Kandidatenliste/Detail zeigen den Namen als Titel, K-Nummer klein. Bahntabelle mit Spalte „Durchgang“.
+- Nachrechnen: `engine/refresh_satellites.py <Lauf> …` (nur Kandidaten-JSON + lokale Archive, schreibt Kandidaten, Projektion, Bericht).
+  Ergebnis M31 2022-06-11 (`2026-11-01_12-19-46-886388`): 12 von 13 Spuren zugeordnet (Starlink-Züge, Iridium 914, SL-3/SL-16 R/B), vorher 0.
+  M103 K0001/K0002 (unten als „84′/28′ entfernt“ beschrieben) = STARLINK-1484/-1062.
+- Offen: Uhrversatz je Nacht aus mehreren sicheren Treffern schätzen (dann engere Toleranz); bei einigen Nächten konstant 10–18′ quer
+  daneben (Standort der Nacht falsch? 1 km Standortfehler ≈ 7′ bei 500 km) – nicht untersucht. Test: `tests/test_skytrace.py`
+  (läuft nur mit skyfield/sgp4, also im Engine-Interpreter).
+
 ## Erkennung im Teleskop-Bildfeld (28.10.2026, Nutzerbefund M74 2022-08-07)
 Anlass: Ein schwacher Meteor (img-0041, ~120 px, ~1,5σ/px) wurde übersehen, ein langsames Objekt in sechs Aufnahmen (img-0177…0182)
 als „Meteor“ gemeldet. Vergleichslauf: `Ergebnisse/2026-10-28_18-47-38-352557` (alt) gegen `2026-10-28_19-47-22-527055` (neu).

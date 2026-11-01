@@ -109,7 +109,8 @@ def extract_candidates(out,summary,settings=None,make_clean=True):
         x1=max(0,int(all_boxes[:,0].min())-40); y1=max(0,int(all_boxes[:,1].min())-40)
         x2=min(width,int(all_boxes[:,2].max())+41); y2=min(height,int(all_boxes[:,3].max())+41)
         from motion_plausibility import exposure_info
-        item=dict(id=cid,session=summary['session'],kind=detection['kind'],label=detection['label'],confidence=detection.get('confidence'),method=detection.get('method'),timestamp=anchor.get('timestamp'),timestamp_text=anchor.get('timestamp_text',''),exposure_seconds=exposure_info(meta)['seconds'],source_file=anchor['file'],hit_indices=[row['index'] for row,_ in hits],crop=[x1,y1,x2,y2],frames=[],world_path=None,
+        exposure=exposure_info(meta)
+        item=dict(id=cid,session=summary['session'],kind=detection['kind'],label=detection['label'],confidence=detection.get('confidence'),method=detection.get('method'),timestamp=anchor.get('timestamp'),timestamp_text=anchor.get('timestamp_text',''),exposure_seconds=exposure['seconds'],time_reference=exposure.get('reference','start'),source_file=anchor['file'],hit_indices=[row['index'] for row,_ in hits],crop=[x1,y1,x2,y2],frames=[],world_path=None,
                   linked_track=detection.get('linked_track'),blink=detection.get('blink'),single_frame_kind=detection.get('single_frame_kind'),model_scope='narrow_field' if narrow_field(meta) else None)
         matrix=None
         if anchor['index']==rows[0]['index']: matrix=np.eye(2,3)

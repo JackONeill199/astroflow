@@ -11,6 +11,10 @@ window.AstroEvidence=(()=>{
  function blinkText(b){return `${b.flashes} Blitze im gleichen Takt (alle ${num(b.period_pixels,0)} Analysepixel, ${b.form}) – typisch für Blitz- und Positionslichter eines Flugzeugs; ein taumelnder Satellit kann ähnlich aussehen`;}
  function classification(c){
   const names={meteor:'Meteorkandidat',plane:'Flugzeug-/Satellitenkandidat',satellite:'Satellitenkandidat',moving:'Bewegungskandidat',trail:'Spurkandidat'};
+  // Passende Satellitenbahn: Namen nennen (bester Treffer nach Abstand und Zeitversatz).
+  const sat=(c.catalogs||[]).find(r=>r.provider==='satellites'&&r.status==='compatible'&&r.matches?.length);
+  if(sat){const m=sat.matches[0],what=m.object_type&&m.object_type!=='Satellit'?m.object_type:'Satellit',more=sat.matches.length>1?' (+'+(sat.matches.length-1)+' weitere Bahn'+(sat.matches.length>2?'en':'')+')':'';
+   return {name:what+' '+(m.name||'NORAD '+m.norad_id),kind:'satellite',norad:m.norad_id,source:'Bahn passt in Lage, Richtung und Zeit (Abstand '+num((m.mean_offset_arcsec??m.separation_arcsec)/60,1)+'′'+(m.time_offset_s>0?', '+num(m.time_offset_s,1)+' s außerhalb der Belichtung':'')+')'+more+' – Kataloghinweis, Identität unbestätigt'};}
   const compatible=(c.catalogs||[]).filter(r=>r.status==='compatible').map(r=>({satellites:'satellite',aircraft:'plane',meteors:'meteor',fireballs:'meteor'})[r.provider]).filter(Boolean);
   const kinds=[...new Set(compatible)];if(kinds.length===1)return {name:names[kinds[0]],source:'Geometrischer Kataloghinweis; Identität unbestätigt',kind:kinds[0]};
   // Über mehrere Aufnahmen verkettete Spur: ein Meteor leuchtet nur in einer Aufnahme.
@@ -207,10 +211,11 @@ window.AstroEvidence=(()=>{
      const observer=new ResizeObserver(()=>{if(stage.isConnected)draw();else observer.disconnect();});observer.observe(stage);
     }
    }
-   section.append(node('p',(projection?.reason||'Gespeicherte Bildprojektion fehlt. Zeitreihen aktualisieren, um sie zu ergänzen.')+' Gold: tatsächlich gemessene Spur. Gestrichelt: Katalogprognosen für dieselbe Belichtung. Bahnen außerhalb des Bildfelds werden nicht in die Aufnahme verschoben.','evidence-note'));
+   section.append(node('p',(projection?.reason||'Gespeicherte Bildprojektion fehlt. Zeitreihen aktualisieren, um sie zu ergänzen.')+' Gold: tatsächlich gemessene Spur. Gestrichelt: Katalogprognosen für dieselbe Belichtung samt Uhrtoleranz. Bahnen außerhalb des Bildfelds werden nicht in die Aufnahme verschoben.','evidence-note'));
    if(projection?.paths?.length){const legend=node('ul',undefined,'satellite-image-legend');projection.paths.forEach((p,i)=>{const entry=node('li',p.name+' · '+(p.in_frame?'im Bildfeld':'außerhalb des Bildfelds'));entry.style.color=satelliteColors[i%satelliteColors.length];legend.append(entry);});section.append(legend);}
-   const table=node('table',undefined,'evidence-table'),thead=node('thead'),tr=node('tr');for(const text of ['Geprüfte Bahn','Abstand zur Spur','Abdeckung','Richtungsabweichung','Bahnalter','Bewertung'])tr.append(node('th',text));thead.append(tr);table.append(thead);const tbody=node('tbody');
-   for(const d of diagnostics){const row=node('tr');for(const text of [d.name||'NORAD '+d.norad_id,d.separation_arcsec==null?'> 10° ab Spuranfang':num(d.separation_arcsec/60,2)+'′',num(d.coverage*100,0)+' %',d.alignment_degrees==null?'nicht auswertbar':num(d.alignment_degrees,1)+'°',num(d.tle_age_days,2)+' Tage',d.compatible?'geometrisch vereinbar':(d.reasons||[]).join('; ')||'Kriterien nicht erfüllt'])row.append(node('td',text));tbody.append(row);}table.append(tbody);const scroll=node('div',undefined,'evidence-table-scroll');scroll.append(table);section.append(scroll);
+   const table=node('table',undefined,'evidence-table'),thead=node('thead'),tr=node('tr');for(const text of ['Geprüfte Bahn','Abstand zur Spur','Abdeckung','Richtungsabweichung','Durchgang','Bahnalter','Bewertung'])tr.append(node('th',text));thead.append(tr);table.append(thead);const tbody=node('tbody');
+   const passage=d=>!Array.isArray(d.passage_seconds)||d.separation_arcsec==null||d.coverage<.5?'–':d.time_offset_s>0?num(d.time_offset_s,1)+' s außerhalb der Belichtung':'während der Belichtung';
+   for(const d of diagnostics){const row=node('tr');for(const text of [(d.name||'NORAD '+d.norad_id)+(d.object_type&&d.object_type!=='Satellit'?' ('+d.object_type+')':''),d.separation_arcsec==null?'> 10° ab Spuranfang':num(d.separation_arcsec/60,2)+'′',num(d.coverage*100,0)+' %',d.alignment_degrees==null?'nicht auswertbar':num(d.alignment_degrees,1)+'°',passage(d),num(d.tle_age_days,2)+' Tage',d.compatible?'geometrisch vereinbar':(d.reasons||[]).join('; ')||'Kriterien nicht erfüllt'])row.append(node('td',text));tbody.append(row);}table.append(tbody);const scroll=node('div',undefined,'evidence-table-scroll');scroll.append(table);section.append(scroll);
   }
   const data=node('details'),summary=node('summary','Alle gespeicherten Messdaten und Grenzen');data.append(summary,node('pre',JSON.stringify({method:c.method,evidence:e,world_path:c.world_path,catalogs:c.catalogs},null,2)));section.append(data);host.append(section);
  }
