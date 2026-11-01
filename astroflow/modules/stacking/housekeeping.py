@@ -184,18 +184,36 @@ def _rm(p: Path, root: Path) -> int:
     return n
 
 
+def _delete_results(s, db, rows: list[dict]) -> int:
+    """Ergebnisse samt Dateien löschen, die keine verbleibende Version mehr nutzt. Gibt freigegebene Bytes zurück."""
+    ids = {r["id"] for r in rows}
+    kept = {_norm(f) for r in _results(db) if r["id"] not in ids for f in r["files"].values()}
+    freed = 0
+    for r in rows:
+        for f in set(r["files"].values()):
+            if _norm(f) not in kept:
+                freed += _rm(Path(f), s.output_dir)
+        db.x("DELETE FROM results WHERE id=?", (r["id"],))
+    return freed
+
+
+def delete_version(s, db, rid: int) -> dict:
+    """Eine einzelne Version löschen. Die letzte Version eines Objekts bleibt (dafür das Objekt löschen)."""
+    r = next((x for x in _results(db) if x["id"] == rid), None)
+    if not r:
+        raise KeyError(rid)
+    if db.one("SELECT COUNT(*) n FROM results WHERE project_id=?", (r["project_id"],))["n"] < 2:
+        raise ValueError("Die einzige Version kann nicht gelöscht werden – dafür das ganze Objekt löschen.")
+    return {"freed": _delete_results(s, db, [r]), "project_id": r["project_id"]}
+
+
 def cleanup(s, db, keys: list[str], keep: int = KEEP_VERSIONS) -> dict:
     """Gewählte Bereiche aufräumen. Gibt {freed, removed: {key: Anzahl}} zurück."""
     keep = max(1, int(keep))
     freed, removed = 0, {}
     if "old_versions" in keys:                        # zuerst: deren Dateien sollen nicht als „verwaist“ doppelt zählen
         old = _old_versions(db, keep)
-        kept = {_norm(f) for r in _results(db) if r["id"] not in {o["id"] for o in old} for f in r["files"].values()}
-        for r in old:
-            for f in set(r["files"].values()):
-                if _norm(f) not in kept:
-                    freed += _rm(Path(f), s.output_dir)
-            db.x("DELETE FROM results WHERE id=?", (r["id"],))
+        freed += _delete_results(s, db, old)
         removed["old_versions"] = len(old)
     if "orphan_output" in keys:
         f = _orphan_output(s, db)

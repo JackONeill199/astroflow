@@ -14,3 +14,4 @@
 .lib-path { font-size: 12px; color: var(--dim); overflow-wrap: anywhere }
 .lib-meta { display: flex; gap: 6px; flex-wrap: wrap }
 .lib-done { margin-top: 12px }
+.lib-hidden { margin-top: 8px }

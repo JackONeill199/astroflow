@@ -500,8 +500,23 @@ async function projectView(el, id, tab = 'bild') {
         <img src="/api/stacking/results/${r.id}/thumb" alt="" loading="lazy"><div><b>${i === 0 ? 'Aktuell' : fdate(r.created)}</b>
         <span class="mut">${r.stats?.imported ? esc(r.stats.imported.filename) : `${r.n_frames} Aufnahmen · ${dur(r.exposure)}`}</span>
         <span class="row" style="justify-content:space-between"><span class="dim">${esc(PROFILE_LABEL[r.stats?.profile] || r.stats?.profile || '')}</span>
-        ${r.id !== cur ? `<button class="linkbtn" data-cmp="${r.id}" title="Mit angezeigter Version vergleichen">${icon('compare')}</button>` : ''}</span></div></div>`).join('')}</div>`;
-    t.onclick = (e) => {
+        <span class="ver-act">${r.id !== cur ? `<button class="linkbtn" data-cmp="${r.id}" title="Mit angezeigter Version vergleichen">${icon('compare')}</button>` : ''}
+        ${p.results.length > 1 ? `<button class="linkbtn danger" data-del="${r.id}" title="Diese Version löschen">${icon('trash')}</button>` : ''}</span></span></div></div>`).join('')}</div>`;
+    t.onclick = async (e) => {
+      const d = e.target.closest('[data-del]');
+      if (d) {
+        e.stopPropagation();
+        const rid = +d.dataset.del, i = p.results.findIndex(x => x.id === rid);
+        if (!await confirmDlg('Version löschen?', `Entfernt ${i === 0 ? 'die aktuelle Version' : `die Version vom ${esc(fdate(p.results[i].created))}`} samt Bilddateien. Das lässt sich nicht rückgängig machen.${i === 0 ? '<br>Danach gilt die nächstältere Version als aktuell.' : ''}`, 'Endgültig löschen', true)) return;
+        try {
+          const res = await send(`/stacking/results/${rid}`, null, 'DELETE');
+          if (sel === rid) sel = null;
+          if (cmp === rid) cmp = null;
+          toast(`Version gelöscht${res.freed ? ` – ${fmb(res.freed)} frei` : ''}.`, 'ok');
+          await refresh(true);
+        } catch (err) { toast(err.message, 'err'); }
+        return;
+      }
       const c = e.target.closest('[data-cmp]');
       if (c) { e.stopPropagation(); cmp = +c.dataset.cmp; sel = cur; location.hash = `#/p/${id}/bild`; return; }
       const v = e.target.closest('.ver');
@@ -753,7 +768,7 @@ async function libraryPanel(view) {
   let root = '';
   const setRoot = (r) => { root = r || ''; shown.textContent = root; shown.title = root; go.hidden = !root; };
   const picked = new Set();
-  let timer = null, seen = false;
+  let timer = null, seen = false, showKnown = false;
   const done = (g) => g.state === 'done';
   const draw = (st) => {
     if (!body.isConnected) return clearTimeout(timer);
@@ -771,18 +786,23 @@ async function libraryPanel(view) {
     if (!groups.length) { body.innerHTML = st.message ? `<p class="mut sm">${esc(st.message)}</p>` : ''; return; }
     const sel = groups.filter(g => picked.has(g.id));
     const imp = st.imported;
+    // Bereits vollständig in AstroFlow vorhandene Gruppen gibt es nicht zu importieren -> ausgeblendet
+    const known = groups.filter(g => !g.n_new), list = showKnown ? groups : groups.filter(g => g.n_new);
     body.innerHTML = `${imp ? `<div class="notice lib-done"><div><b>${icon('check')} Import abgeschlossen</b><div class="mut sm">${esc(st.message)}${imp.errors?.length ? `<br><span class="bad">${imp.errors.map(esc).join('<br>')}</span>` : ''}</div>
         ${Object.keys(imp.projects || {}).length ? '<div style="margin-top:8px"><a class="btn ghost sm" href="#/bilder">Zur Galerie</a></div>' : ''}</div></div>` : ''}
       <div class="lib-bar"><span class="mut sm">${imp ? '' : esc(st.message)}</span><span class="grow"></span>
         <button class="btn ghost sm" id="libNew">Nur Neues wählen</button><button class="btn ghost sm" id="libNone">Keine</button>
         <button class="btn" id="libImp" ${sel.length ? '' : 'disabled'}>${icon('upload')}${sel.length ? `${sel.length} ${sel.length === 1 ? 'Gruppe' : 'Gruppen'} importieren` : 'Importieren'}</button></div>
-      <div class="lib-list">${groups.map(g => {
+      ${list.length ? '' : '<p class="mut sm">Alles bereits in AstroFlow – nichts Neues zu importieren.</p>'}
+      <div class="lib-list">${list.map(g => {
         const [lab, cls] = LIB_STATE[g.state] || [g.state, ''], off = !g.n_new;
         return `<label class="lib-row ${off ? 'off' : ''}"><input type="checkbox" data-id="${g.id}" ${picked.has(g.id) ? 'checked' : ''} ${off ? 'disabled' : ''}>
           <div class="lib-main"><div class="lib-title"><b>${esc(g.name)}</b><span class="chip ${cls}">${lab}</span><span class="chip">${LIB_KIND[g.kind] || g.kind}</span>${g.project?.name ? `<a class="chip acc" href="#/p/${g.project.id}">in AstroFlow: ${esc(g.project.name)}</a>` : ''}</div>
             <div class="lib-meta"><span class="chip">${g.n_files} Dateien · ${fmb(g.bytes)}</span>${g.n_known && g.n_new ? `<span class="chip">${g.n_new} davon neu</span>` : ''}${g.night ? `<span class="chip">${esc(g.night)}</span>` : ''}${g.camera ? `<span class="chip">${esc(g.camera)}</span>` : ''}</div>
             <div class="lib-path">${esc(g.rel)}</div></div></label>`;
-      }).join('')}</div>`;
+      }).join('')}</div>
+      ${known.length ? `<button class="linkbtn lib-hidden" id="libKnown">${showKnown ? 'Bereits vorhandene ausblenden' : `${known.length} bereits vorhandene ${known.length === 1 ? 'Gruppe' : 'Gruppen'} anzeigen`}</button>` : ''}`;
+    $('#libKnown', body)?.addEventListener('click', () => { showKnown = !showKnown; draw(st); });
     body.onchange = (e) => { const id = e.target.dataset?.id; if (!id) return; e.target.checked ? picked.add(id) : picked.delete(id); draw(st); };
     $('#libNew', body).onclick = () => { picked.clear(); groups.forEach(g => { if (g.n_new && !done(g)) picked.add(g.id); }); draw(st); };
     $('#libNone', body).onclick = () => { picked.clear(); draw(st); };

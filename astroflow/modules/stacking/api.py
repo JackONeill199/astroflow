@@ -643,6 +643,19 @@ def build_router(eng: Engine) -> APIRouter:
         except Exception as e:                       # Netz, Modell, Zeitlimit
             raise HTTPException(502, f"KI nicht erreichbar: {str(e)[:200]}")
 
+    @r.delete("/results/{rid}")
+    def delete_result(rid: int):
+        x = db.one("SELECT project_id FROM results WHERE id=?", (rid,))
+        if not x:
+            raise HTTPException(404)
+        if db.one("SELECT id FROM jobs WHERE project_id=? AND state IN ('queued','running')", (x["project_id"],)):
+            raise HTTPException(409, "Das Objekt wird gerade verarbeitet – bitte warten, bis der Durchlauf fertig ist.")
+        from . import housekeeping
+        try:
+            return housekeeping.delete_version(eng.s, db, rid)
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+
     @r.get("/results/{rid}/{kind}")
     def result_file(rid: int, kind: str):
         x = db.one("SELECT files FROM results WHERE id=?", (rid,))

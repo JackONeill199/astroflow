@@ -3,6 +3,15 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.10.0 – 01.11.2026
+
+### Neu
+- **Bildversionen einzeln löschen:** Im Tab „Versionen“ eines Objekts hat jede Version einen Papierkorb. Gelöscht werden
+  Eintrag und Bilddateien dieser Version; Master-Stack und Rohdaten bleiben. Die einzige Version eines Objekts lässt sich
+  so nicht löschen (dafür „Objekt löschen“).
+- **Hauptordner durchsuchen zeigt nur noch Importierbares:** Gruppen, die schon vollständig in AstroFlow sind, werden
+  ausgeblendet statt ausgegraut; ein Link unter der Liste blendet sie bei Bedarf wieder ein.
+
 ## 0.9.0 – 01.11.2026
 
 ### Neu
