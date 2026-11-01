@@ -25,6 +25,7 @@ TUNABLE = {  # Parameter, die der Prüfer ändern darf, mit erlaubtem Bereich
     "target_bg": (0.05, 0.30), "asinh": (5, 400), "denoise": (0.0, 1.0), "chroma_denoise": (0.0, 6.0),
     "saturation": (0.8, 2.2), "contrast": (0.0, 0.8), "sharpen": (0.0, 0.8), "star_reduction": (0.0, 0.8),
     "scnr": (0.0, 1.0), "gradient_degree": (1, 4), "deconv": (0, 20), "bg_dark": (0.0, 0.12), "star_brightness": (0.3, 1.2),
+    "color_gradient": (0, 3),
 }
 
 SYSTEM = """Du bist ein erfahrener Astrofotograf und Bildbearbeiter und prüfst ein automatisch bearbeitetes Astrofoto.
@@ -37,7 +38,8 @@ Erlaubte Parameter in "adjust": target_bg (Helligkeit schwacher Strukturen 0.05-
 Himmelshintergrunds über den Schwarzpunkt 0-0.12, Standard 0.03), star_brightness (Helligkeit der Sterne gegenüber
 dem Nebel 0.3-1.2, Standard 0.85 – kleiner, wenn Sterne vom Objekt ablenken), asinh (Highlight-Kompression 5-400),
 denoise (0-1), chroma_denoise (0-6), saturation (0.8-2.2), contrast (0-0.8), sharpen (0-0.8),
-star_reduction (0-0.8), scnr (Grünstich-Entfernung 0-1), gradient_degree (1-4), deconv (0-20).
+star_reduction (0-0.8), scnr (Grünstich-Entfernung 0-1), gradient_degree (1-4), deconv (0-20),
+color_gradient (Farbverlauf im Himmel ausgleichen, z. B. eine rötliche Bildseite: 0 aus, 2-3 Polynomgrad).
 Setze ok=true, wenn das Bild ohne Änderung gut ist (dann adjust leer). Ändere nur wenige Parameter pro Runde und moderat."""
 
 
@@ -112,25 +114,21 @@ def limit_steps(params: dict, adjust: dict, frac: float = 0.15) -> dict:
         lo, hi = TUNABLE[k]
         cur = float(params.get(k, v))
         new = cur + max(-frac * (hi - lo), min(frac * (hi - lo), v - cur))
-        if k in ("gradient_degree", "deconv"):
+        if k in ("gradient_degree", "deconv", "color_gradient"):
             new = float(round(new))
         if abs(new - cur) > 1e-9:
             out[k] = new
     return out
 
 
-def review(cfg: ReviewerConfig, rgb: np.ndarray, params: dict, object_name: str, kind: str | None) -> dict:
+def chat(cfg: ReviewerConfig, system: str, user: list) -> str:
+    """Eine Chat-Anfrage (OpenAI-kompatibel) mit Bild; gibt den Antworttext zurück (auch bei Denkmodellen)."""
     c = cfg.resolved()
     headers = {"Content-Type": "application/json"}
     if c.api_key:
         headers["Authorization"] = f"Bearer {c.api_key}"
-    shown = {k: round(float(params[k]), 3) for k in TUNABLE if k in params}
-    user = [
-        {"type": "text", "text": f"Objekt: {object_name} ({kind or 'unbekannter Typ'}).\nAktuelle Parameter: {json.dumps(shown)}\nPrüfe das Bild."},
-        {"type": "image_url", "image_url": {"url": to_data_url(rgb)}},
-    ]
     body = {"model": c.model, "temperature": 0.2, "max_tokens": c.max_tokens,
-            "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}]}
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
     r = httpx.post(c.base_url.rstrip("/") + "/chat/completions", headers=headers, json=body, timeout=c.timeout)
     r.raise_for_status()
     ch = r.json()["choices"][0]
@@ -142,7 +140,16 @@ def review(cfg: ReviewerConfig, rgb: np.ndarray, params: dict, object_name: str,
             raise ValueError(f"Antwort abgeschnitten – das Modell hat das Limit von {c.max_tokens} Tokens beim Nachdenken "
                              "aufgebraucht (ASTROFLOW_REVIEW_MAX_TOKENS erhöhen oder ein Modell ohne Denkmodus wählen)")
         content = msg.get("reasoning_content") or msg.get("reasoning") or content
-    return parse_reply(content)
+    return content
+
+
+def review(cfg: ReviewerConfig, rgb: np.ndarray, params: dict, object_name: str, kind: str | None) -> dict:
+    shown = {k: round(float(params[k]), 3) for k in TUNABLE if k in params}
+    user = [
+        {"type": "text", "text": f"Objekt: {object_name} ({kind or 'unbekannter Typ'}).\nAktuelle Parameter: {json.dumps(shown)}\nPrüfe das Bild."},
+        {"type": "image_url", "image_url": {"url": to_data_url(rgb)}},
+    ]
+    return parse_reply(chat(cfg, SYSTEM, user))
 
 
 def review_loop(cfg: ReviewerConfig, render, params: dict, object_name: str, kind: str | None, log=lambda m: None,

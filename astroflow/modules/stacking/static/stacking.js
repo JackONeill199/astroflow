@@ -27,25 +27,111 @@ function coordsPanel(c) {
 
 const QC_METRIC = [['bg', 'Hintergrund', v => v.toFixed(3)], ['chroma_noise', 'Farbrauschen', v => v.toFixed(4)],
   ['gradient', 'Restgradient', v => v.toFixed(3)], ['white_clip', 'Ausgebrannt', v => (v * 100).toFixed(2) + ' %'],
-  ['saturation', 'Farbigkeit', v => v.toFixed(2)]];
+  ['saturation', 'Farbigkeit', v => v.toFixed(2)], ['color_gradient', 'Farbverlauf', v => v.toFixed(3)]];
+
+function qscoreHead(q, title, sub) {
+  const cls = q.score >= 8.5 ? 'ok' : q.score >= 6.5 ? 'warn' : 'bad';
+  return `<div class="panel-h" style="margin-bottom:12px"><span class="qscore ${cls}" style="--p:${q.score * 10}" title="${q.score.toFixed(1)} von 10"><b class="tnum">${q.score.toFixed(1)}</b></span>
+      <div><h2>${title}</h2><div class="mut sm">${sub}</div></div></div>`;
+}
+const qlabel = (q) => q.score >= 8.5 ? 'Messwerte weitgehend im Zielbereich' : q.score >= 6.5 ? 'Einige Messwerte auffällig' : 'Mehrere Messwerte auffällig';
+
+function qcDetails(s, q) {
+  const auto = (s.qc || []).flatMap(h => h.round === 0 ? (h.adapt || [])
+    : Object.keys(h.adjust || {}).length ? [`Nachgeregelt (Runde ${h.round}): ${Object.entries(h.adjust).map(([k, v]) => `${k} → ${v}`).join(', ')}`] : []);
+  const m = q.metrics || {};
+  return `<details class="qmore"><summary class="sm mut">Messwerte und automatische Anpassungen</summary>
+      <dl class="kv" style="margin-top:8px">${QC_METRIC.filter(([k]) => m[k] != null).map(([k, l, f]) => `<dt>${l}</dt><dd class="tnum">${f(m[k])}</dd>`).join('')}</dl>
+      ${q.rechecked ? '<p class="mut sm" style="margin:8px 0 0">Bewertung am gespeicherten Bild mit der aktuellen Prüfung nachgeholt.</p>' : ''}
+      ${auto.length ? `<ul class="qlist mut" style="margin-top:8px">${auto.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}</details>`;
+}
 
 function qualityPanel(s) {
   const q = s.quality;
   if (!q) return '';
-  const cls = q.score >= 8.5 ? 'ok' : q.score >= 6.5 ? 'warn' : 'bad';
-  const label = q.score >= 8.5 ? 'Messwerte weitgehend im Zielbereich' : q.score >= 6.5 ? 'Einige Messwerte auffällig' : 'Mehrere Messwerte auffällig';
-  const auto = (s.qc || []).flatMap(h => h.round === 0 ? (h.adapt || [])
-    : Object.keys(h.adjust || {}).length ? [`Nachgeregelt (Runde ${h.round}): ${Object.entries(h.adjust).map(([k, v]) => `${k} → ${v}`).join(', ')}`] : []);
-  const m = q.metrics || {}, snr = q.measure?.snr;
-  return `<div class="panel"><div class="panel-h" style="margin-bottom:12px"><span class="qscore ${cls}" style="--p:${q.score * 10}" title="${q.score.toFixed(1)} von 10"><b class="tnum">${q.score.toFixed(1)}</b></span>
-      <div><h2>Technische Bildprüfung</h2><div class="mut sm">${label}${snr != null ? ` · Objekt-SNR ${Math.round(snr)}` : ''}</div></div></div>
+  const snr = q.measure?.snr;
+  return `<div class="panel">${qscoreHead(q, 'Technische Bildprüfung', `${qlabel(q)}${snr != null ? ` · Objekt-SNR ${Math.round(snr)}` : ''}`)}
     <p class="mut sm">Der Wert prüft technische Grenzwerte, nicht die gesamte Bildqualität. Fokus, Nachführung und großflächige Muster werden damit nicht vollständig bewertet.</p>
     ${snr != null && snr < 8 ? '<p class="warn sm">Wenig Nutzsignal: Entrauschen kann Flecken glätten, aber keine fehlenden Details zurückholen. Mehr gute Aufnahmen verbessern die Grundlage.</p>' : ''}
     ${q.issues?.length ? `<ul class="qlist">${q.issues.map(i => `<li class="warn">${esc(i.text)}</li>`).join('')}</ul>` : '<p class="ok sm" style="margin:0 0 10px">Keine messbaren Probleme gefunden.</p>'}
     ${q.hints?.length ? `<div class="qhints"><small class="mut">Verbesserungsmöglichkeiten</small><ul>${q.hints.map(h => `<li>${esc(h)}</li>`).join('')}</ul></div>` : ''}
-    <details class="qmore"><summary class="sm mut">Messwerte und automatische Anpassungen</summary>
-      <dl class="kv" style="margin-top:8px">${QC_METRIC.filter(([k]) => m[k] != null).map(([k, l, f]) => `<dt>${l}</dt><dd class="tnum">${f(m[k])}</dd>`).join('')}</dl>
-      ${auto.length ? `<ul class="qlist mut" style="margin-top:8px">${auto.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}</details></div>`;
+    ${qcDetails(s, q)}</div>`;
+}
+
+// ------------------------------------------------------------- Bild-Tutor --- //
+// Bericht vom Server (Bildprüfung + Aufnahmenacht + Gerät), je Ergebnis zwischengespeichert; bis er da ist, steht qualityPanel.
+const tutorCache = new Map();
+const utcTime = (iso) => new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+const pct = (x) => Math.round(x * 100) + ' %';
+
+function nightChips(n, dev = {}) {
+  const c = [];
+  if (n.sun) c.push(n.sun.dark >= 0.9 ? ['ok', 'astronomisch dunkel'] : [n.sun.nautical > 0.3 ? 'bad' : 'warn',
+    `Dämmerung · Sonne nur ${Math.abs(n.sun.alt_min).toFixed(0)}° unter dem Horizont`]);
+  const m = n.moon;
+  c.push([m.illum < 0.3 || m.up === 0 ? 'ok' : m.illum > 0.7 && (m.up ?? 1) > 0.5 ? 'bad' : 'warn',
+    `Mond ${pct(m.illum)}${m.up != null ? (m.up ? ` · ${pct(m.up)} der Zeit am Himmel` : ' · unter dem Horizont') : ''}${m.sep != null ? ` · ${m.sep.toFixed(0)}° entfernt` : ''}`]);
+  if (n.target) c.push([n.target.alt_med < 25 ? 'warn' : '', `Objekthöhe ${n.target.alt_min.toFixed(0)}–${n.target.alt_max.toFixed(0)}°`]);
+  const w = n.weather;
+  if (w) c.push([w.cloud > 50 ? 'bad' : w.cloud > 20 ? 'warn' : 'ok', `Wolken ${w.cloud} %`],
+    [w.dew_spread < 2 && !dev.dew_heater ? 'warn' : '', `Luftfeuchte bis ${w.humidity} % · Taupunktabstand ${String(w.dew_spread).replace('.', ',')} °C`],
+    ['', `Wind ${w.wind} km/h, Böen ${w.gust} km/h`], [w.temp_min < 0 ? 'warn' : '', `Tiefst ${String(w.temp_min).replace('.', ',')} °C`]);
+  const tr = n.frames_trend || {};
+  if (tr.sensor_temp != null) c.push(['', `Sensor ${String(tr.sensor_temp).replace('.', ',')} °C`]);
+  return c.map(([k, t]) => `<span class="${k && 'lvl-' + k}">${esc(t)}</span>`).join('');
+}
+
+function tutorHtml(t, s) {
+  const q = t.quality, beginner = t.mode === 'einsteiger', snr = q.measure?.snr;
+  const dev = t.device || {};
+  const finds = t.findings.map(f => `<details class="tfind lvl-${f.level}" ${beginner && (f.level === 'bad' || f.level === 'warn') ? 'open' : ''}>
+      <summary><b>${esc(f.title)}</b></summary><p>${esc(f.text)}</p>
+      ${f.tips.length ? `${beginner ? '<small class="mut tips-h">So geht es beim nächsten Mal besser</small>' : ''}<ul>${f.tips.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</details>`).join('');
+  const nights = t.nights.slice(-4).map(n => `<div class="tnight"><div class="tnight-h"><b>${fnight(n.night)}</b>
+      <span class="mut sm">${utcTime(n.start)}–${utcTime(n.end)} UTC · ${n.frames} Aufnahmen${n.rejected ? `, ${n.rejected} aussortiert` : ''}</span></div>
+      <div class="tchips">${nightChips(n, dev)}</div></div>`).join('');
+  const ki = t.ki;
+  return `<div class="panel">${qscoreHead(q, beginner ? 'Bild-Tutor' : 'Technische Bildprüfung',
+      `${qlabel(q)}${snr != null ? ` · Objekt-SNR ${Math.round(snr)}` : ''}${dev.name ? ` · ${esc(dev.name)}${dev.guessed ? ' (am Bildformat erkannt)' : ''}` : ''}`)}
+    ${beginner ? `<p class="mut sm tutor-intro">Ich habe dein Bild und die Aufnahme${t.nights.length > 1 ? 'nächte' : 'nacht'} geprüft – das ist mir aufgefallen. Klick auf einen Punkt für Erklärung und Tipps.</p>` : ''}
+    <div class="tfinds">${finds}</div>
+    ${t.nights.length ? `<small class="mut tsec">${t.nights.length > 1 ? 'Aufnahmenächte' : 'Aufnahmenacht'}</small><div class="tnights">${nights}</div>` : ''}
+    ${!t.site ? `<p class="mut sm">Für Dämmerung, Mondhöhe und Wetter fehlt dein Standort – <a href="#/settings/stacking">in den Einstellungen eintragen</a>.</p>`
+      : !t.weather ? `<p class="mut sm">Wetterdaten (Wolken, Tau, Wind, Frost) lassen sich <a href="#/settings/stacking">in den Einstellungen</a> einschalten.</p>` : ''}
+    ${t.weather_error ? `<p class="warn sm">${esc(t.weather_error)}</p>` : ''}
+    ${ki ? `<details class="tki"><summary><b class="sm">KI-Einschätzung</b>${ki.summary ? `<span class="sm"> · ${esc(ki.summary)}</span>` : ''}</summary>
+        ${ki.seen?.length ? `<small class="mut tips-h">Gesehen</small><ul>${ki.seen.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+        ${ki.tips?.length ? `<small class="mut tips-h">Tipps</small><ul>${ki.tips.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+        <div class="dim sm" style="margin-top:6px">${esc(ki.model || '')}</div></details>` : ''}
+    <div class="row" style="margin-bottom:10px">${t.llm ? `<button class="btn sm ghost" id="tutorKi">${icon('sparkle')}${ki ? 'KI erneut fragen' : 'KI-Tutor fragen'}</button>`
+      : `<span class="mut sm">KI-Einschätzung: <a href="#/settings/stacking">Anbieter in den Einstellungen wählen</a></span>`}
+      <span class="grow"></span><button class="linkbtn sm" id="tutorRefresh">Neu prüfen</button></div>
+    ${qcDetails(s, q)}</div>`;
+}
+
+async function tutorPanel(box, r) {
+  const s = r.stats || {};
+  const draw = (t) => {
+    if (!box.isConnected || !t.available) return;
+    box.innerHTML = tutorHtml(t, s);
+    $('#tutorKi', box)?.addEventListener('click', async (e) => {
+      const b = e.currentTarget;
+      b.disabled = true;
+      b.innerHTML = '<span class="spinner"></span>KI sieht sich das Bild an …';
+      try { t.ki = await send(`/stacking/results/${r.id}/tutor/ki`, {}); draw(t); }
+      catch (err) { toast(err.message, 'err'); draw(t); }
+    });
+    $('#tutorRefresh', box).addEventListener('click', () => load(true));
+  };
+  const load = async (refresh = false) => {
+    try {
+      const t = await api(`/stacking/results/${r.id}/tutor${refresh ? '?refresh=true' : ''}`);
+      tutorCache.set(r.id, t);
+      draw(t);
+    } catch { /* ohne Bericht bleibt die einfache Bildprüfung stehen */ }
+  };
+  if (tutorCache.has(r.id)) draw(tutorCache.get(r.id));
+  else await load();
 }
 
 async function deleteProject(p) {
@@ -295,7 +381,7 @@ async function projectView(el, id, tab = 'bild') {
         ${Object.keys(bands).length > 1 || (Object.keys(bands).length === 1 && !bands.RGB) ? `<div class="panel"><div class="panel-h"><h2>Kanäle</h2><span class="grow"></span><span class="chip acc">${esc(PALETTE_LABEL[s.palette] || s.palette || '')}</span></div>
           <div class="bands">${Object.entries(bands).map(([b, v]) => `<div class="band"><span><span class="chip"><i style="background:${BAND_COLOR[b] || '#999'}"></i>${esc(b)}</span></span>
             <div class="progress"><i style="width:${v.exposure / bmax * 100}%;background:${BAND_COLOR[b] || 'var(--acc)'}"></i></div><span class="mut sm tnum">${v.frames} · ${dur(v.exposure)}</span></div>`).join('')}</div></div>` : ''}
-        ${qualityPanel(s)}
+        <div id="tutorBox">${qualityPanel(s)}</div>
         <div class="panel"><h2 style="margin-bottom:12px">Details</h2><dl class="kv">
           <dt>Erstellt</dt><dd>${fdate(r.created)}</dd>
           ${p.imported ? `<dt>Dateiname</dt><dd>${esc(s.imported.filename)}</dd><dt>Format</dt><dd>${esc(s.imported.format)} · ${s.imported.bit_depth} Bit</dd>
@@ -317,6 +403,7 @@ async function projectView(el, id, tab = 'bild') {
             ${x.issues?.length ? `<ul>${x.issues.map(i => `<li>${esc(i)}</li>`).join('')}</ul>` : ''}
             ${Object.keys(x.adjust || {}).length ? `<div class="mut sm">${Object.entries(x.adjust).map(([k, v]) => `${esc(k)} → ${esc(v)}`).join(' · ')}</div>` : ''}</div>`).join('')}</div></div>` : ''}
       </div></div>`;
+    if (s.quality) tutorPanel($('#tutorBox'), r);
     const ph = `/api/stacking/results/${r.id}/thumb`;
     viewer = c ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${c.id}/jpg`, undefined, ph)
       : before && r.has_before ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${r.id}/before`, ['vorher', 'nachher'], ph)
@@ -839,9 +926,27 @@ async function housekeeping(panel) {
 
 // ------------------------------------------------------------ Einstellungen --- //
 async function stackingSettings(el) {
-  const [c, st, sv, sn, gx, gp] = await Promise.all([api('/stacking/reviewer'), api('/stacking/status'), api('/stacking/solver'), api('/stacking/starnet'), api('/stacking/graxpert'), api('/stacking/gpu')]);
+  const [c, st, sv, sn, gx, gp, tu] = await Promise.all([api('/stacking/reviewer'), api('/stacking/status'), api('/stacking/solver'), api('/stacking/starnet'),
+    api('/stacking/graxpert'), api('/stacking/gpu'), api('/stacking/tutor')]);
   const astapOk = sv.astap && sv.astap_databases.length;
-  el.innerHTML = `<div class="split"><div><form class="panel" id="sf">
+  el.innerHTML = `<div class="split"><div><form class="panel" id="tf">
+      <div class="panel-h"><h2>Bild-Tutor</h2><span class="grow"></span><span class="chip ${tu.mode === 'einsteiger' ? 'acc' : ''}">${tu.mode === 'einsteiger' ? 'Einsteiger' : 'Erfahren'}</span></div>
+      <p class="mut sm" style="margin:-6px 0 14px">Prüft jedes fertige Bild, erklärt Auffälligkeiten und bewertet die Aufnahmenacht (Dämmerung, Mond, Objekthöhe, Wolken, Tau, Wind, Frost) –
+        mit Tipps passend zu deinem Gerät (Stellina, Vespera, Seestar … werden automatisch erkannt).</p>
+      <label class="field"><span>Darstellung</span><select name="mode"><option value="einsteiger">Einsteiger – mit Erklärungen und Tipps</option>
+        <option value="experte">Erfahren – kompakt, Details auf Klick</option></select></label>
+      <div class="field"><span>Beobachtungsort (Breite, Länge in Grad)</span><div class="row" style="flex-wrap:nowrap">
+        <input name="lat" inputmode="decimal" value="${tu.lat ?? ''}" placeholder="z. B. 49,1" style="width:120px"><input name="lon" inputmode="decimal" value="${tu.lon ?? ''}" placeholder="z. B. 8,5" style="width:120px"></div>
+        <small>Für Dämmerung, Mondhöhe und Objekthöhe. Seestar &amp; Co. schreiben den Ort in die Aufnahmen, Stellina nicht. Eine Stelle hinter dem Komma reicht.</small></div>
+      <label class="row" style="align-items:flex-start;gap:10px;cursor:pointer;flex-wrap:nowrap;margin-bottom:14px"><input type="checkbox" name="weather" ${tu.weather ? 'checked' : ''} style="height:auto;margin-top:4px">
+        <span><b>Wetter der Aufnahmenacht abrufen</b><br><span class="mut sm">Wolken, Luftfeuchte/Taupunkt, Temperatur und Wind aus dem Open-Meteo-Archiv (kostenlos, ohne Konto).
+        Dazu werden nur der auf ~10 km gerundete Ort und das Datum gesendet; Ergebnisse werden lokal gespeichert.</span></span></label>
+      <label class="field"><span>KI-Einschätzung</span><select name="llm_provider"><option value="off">Aus</option><option value="lmstudio">LM Studio (lokal)</option><option value="openrouter">OpenRouter (Cloud)</option></select>
+        <small>Auf Knopfdruck sieht sich ein Vision-Modell das Bild mit allen Messwerten an und ergänzt, was es sieht. Server-URL und API-Key kommen vom KI-Bildprüfer unten.</small></label>
+      <div class="field"><span>Modell</span><div id="tmodel"></div></div>
+      <div class="row"><button class="btn" type="submit">Speichern</button>${tu.llm_provider !== 'off' && !tu.llm_ready ? '<span class="warn sm">KI noch nicht bereit – Modell bzw. API-Key fehlt.</span>' : ''}</div>
+    </form>
+    <form class="panel" id="sf">
       <div class="panel-h"><h2>Plate-Solving</h2><span class="grow"></span>
         <span class="chip ${sv.active.length ? 'ok' : 'warn'}">${sv.active.length ? 'aktiv: ' + sv.active.map(b => SOLVER_LABEL[b] || b).join(', ') : 'nicht aktiv'}</span></div>
       <p class="mut sm" style="margin:-6px 0 14px">Erkennt Objekte aus dem Sternmuster, wenn die Aufnahmen keine Koordinaten oder keinen Objektnamen enthalten
@@ -993,6 +1098,26 @@ async function stackingSettings(el) {
     load: () => api(`/stacking/reviewer/models?provider=${encodeURIComponent(rf.elements.provider.value)}&base_url=${encodeURIComponent(rf.elements.base_url.value)}`) });
   rf.elements.provider.addEventListener('change', () => mp.reload());
   rf.elements.base_url.addEventListener('change', () => mp.reload());
+  const tf = $('#tf');
+  tf.elements.mode.value = tu.mode;
+  tf.elements.llm_provider.value = tu.llm_provider;
+  const tp = picker($('#tmodel'), { name: 'llm_model', value: tu.llm_model, placeholder: 'wie beim KI-Bildprüfer',
+    load: () => {             // gleiche Server-URL wie tutor.llm_config: die des KI-Prüfers, außer er nutzt einen anderen Anbieter
+      const prov = tf.elements.llm_provider.value, url = c.provider === prov || c.provider === 'off' ? c.base_url : '';
+      return api(`/stacking/reviewer/models?provider=${encodeURIComponent(prov)}&base_url=${encodeURIComponent(url)}`);
+    } });
+  tf.elements.llm_provider.addEventListener('change', () => tp.reload());
+  tf.onsubmit = async (e) => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(tf));
+    f.weather = tf.elements.weather.checked;
+    try {
+      await send('/stacking/tutor', f);
+      tutorCache.clear();
+      toast('Bild-Tutor gespeichert.', 'ok');
+      stackingSettings(el);
+    } catch (err) { toast(err.message, 'err'); }
+  };
   $('[name=backend]').value = sv.backend;
   $('#sf').onsubmit = async (e) => {
     e.preventDefault();

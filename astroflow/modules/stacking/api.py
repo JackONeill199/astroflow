@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from . import channels, diskspace, gpu, graxpert, objects, platesolve, reviewer, stars
+from . import channels, diskspace, gpu, graxpert, objects, platesolve, reviewer, stars, tutor
 from .db import DB
 from .pipeline import Pipeline
 
@@ -590,6 +590,58 @@ def build_router(eng: Engine) -> APIRouter:
         except RuntimeError as e:
             raise HTTPException(409, str(e))
         return {"groups": n, **eng.library.view()}
+
+    # ---- Bild-Tutor (vor /results/{rid}/{kind}, sonst fängt die Datei-Route „tutor“ ab) --------
+    @r.get("/tutor")
+    def get_tutor():
+        t = tutor.settings(eng.ctx.store)
+        return {**t, "llm_ready": tutor.llm_config(t, eng.review_cfg) is not None, "providers": ["off", "lmstudio", "openrouter"]}
+
+    @r.post("/tutor")
+    def set_tutor(body: dict = Body(...)):
+        upd = {}
+        if "mode" in body:
+            if body["mode"] not in tutor.MODES:
+                raise HTTPException(400, "Unbekannter Modus")
+            upd["mode"] = body["mode"]
+        for k in ("lat", "lon"):
+            if k in body:
+                v = str(body[k] if body[k] is not None else "").strip().replace(",", ".")
+                try:
+                    f = float(v) if v else None
+                except ValueError:
+                    raise HTTPException(400, "Breite/Länge als Zahl in Grad angeben, z. B. 49,1 und 8,5.")
+                if f is not None and not (-90 <= f <= 90 if k == "lat" else -180 <= f <= 180):
+                    raise HTTPException(400, "Breite −90…90°, Länge −180…180°.")
+                upd[k] = round(f, 3) if f is not None else None
+        if "weather" in body:
+            upd["weather"] = bool(body["weather"])
+        if "llm_provider" in body:
+            if body["llm_provider"] not in ("off", "lmstudio", "openrouter"):
+                raise HTTPException(400, "Unbekannter Anbieter")
+            upd["llm_provider"] = body["llm_provider"]
+        if "llm_model" in body:
+            upd["llm_model"] = str(body["llm_model"] or "")
+        eng.ctx.store.update("tutor", upd)              # None entfernt den Standort wieder
+        return get_tutor()
+
+    @r.get("/results/{rid}/tutor")
+    def result_tutor(rid: int, refresh: bool = False):
+        try:
+            return tutor.build_report(db, rid, tutor.settings(eng.ctx.store), eng.s.work_dir, refresh)
+        except KeyError:
+            raise HTTPException(404)
+
+    @r.post("/results/{rid}/tutor/ki")
+    def result_tutor_ki(rid: int):
+        try:
+            return tutor.ask_report(db, rid, tutor.settings(eng.ctx.store), eng.review_cfg, eng.s.work_dir)
+        except KeyError:
+            raise HTTPException(404)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:                       # Netz, Modell, Zeitlimit
+            raise HTTPException(502, f"KI nicht erreichbar: {str(e)[:200]}")
 
     @r.get("/results/{rid}/{kind}")
     def result_file(rid: int, kind: str):

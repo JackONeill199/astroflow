@@ -22,6 +22,7 @@ from .processing import crop_to_coverage, luminance
 from .quality import noise_sigma
 
 QC_ROUNDS = 3
+QC_VERSION = 2                 # Stand von assess(); ältere Bewertungen prüft der Tutor am gespeicherten Bild nach
 PREVIEW_SIDE = 1400
 
 # Zielbereiche der Qualitätskontrolle (Anzeigewerte 0..1 nach der Entwicklung)
@@ -33,6 +34,11 @@ GRADIENT_MAX = 0.03            # Helligkeitsunterschied im Hintergrund (Kacheln)
 BLACK_CLIP_MAX = 0.005         # Anteil abgeschnittener Schwarzwerte
 WHITE_CLIP_MAX = 0.003         # Anteil ausgebrannter Pixel
 SAT_RANGE = (0.10, 0.55)       # Farbigkeit des Objekts
+# Farbverlauf im Himmel (Ebene durch R−G/B−G der Himmelskacheln, Änderung über die Bildbreite). Gemessen 01.11.2026 an
+# allen Ergebnissen: saubere Galaxien/Haufen ≤ 0,010, sichtbar rötlicher Rand NGC 891 0,019, NGC 7318 0,022, M85 0,018.
+# In der Milchstraße ist farbiger Himmel oft echter Hα-Nebel (IC 1795 0,020, M103 0,018, NGC 2359 0,030) -> höhere Schwelle.
+COLOR_GRAD_MAX = 0.013
+COLOR_GRAD_MAX_NEBULA = 0.035
 # Ausgebrannter Kern: größte weiße Fläche (L > 0,95) mindestens CORE_MIN_FRAC des Bildes und CORE_STAR_RATIO-mal so groß
 # wie typische Sternkerne. Gemessen (Vorschau ~1200 px): NGC 4490 114 px gegen Sterne ~20, M31/M3 ~390 gegen ~10;
 # helle Sterne (M45 223 gegen ~140, IC 405 94 gegen ~25) bleiben darunter – Sternkerne dürfen weiß sein.
@@ -137,8 +143,48 @@ def adapt(params: dict, m: dict, mono: bool = False) -> tuple[dict, list[str]]:
 
 
 # ------------------------------------------------------------- bewerten #
-def assess(rgb: np.ndarray, mono: bool = False) -> dict:
+SIDES = ["rechts", "rechts oben", "oben", "links oben", "links", "links unten", "unten", "rechts unten"]
+
+
+def color_gradient(img: np.ndarray, L: np.ndarray, sky: np.ndarray, n: int = 8) -> dict | None:
+    """Farbverlauf des Himmels: Ebene durch R−G und B−G der Himmelskacheln. img in Array-Orientierung (Zeile 0 = unten,
+    wie es gespeichert wird: gespiegelt). Gibt Stärke (Änderung über die Bildbreite), Richtung und Farbton zurück."""
+    h, w = L.shape
+    pts = []
+    for i in range(n):
+        for j in range(n):
+            sl = (slice(i * h // n, (i + 1) * h // n), slice(j * w // n, (j + 1) * w // n))
+            s = sky[sl]
+            if s.mean() < 0.2:
+                continue
+            v = img[(slice(None),) + sl][:, s]
+            lo, hi = np.percentile(v, (20, 80), axis=1)
+            m = [float(v[c][(v[c] >= lo[c]) & (v[c] <= hi[c])].mean()) for c in range(3)]
+            pts.append(((j + 0.5) / n - 0.5, (i + 0.5) / n - 0.5, m[0] - m[1], m[2] - m[1]))
+    if len(pts) < 12:
+        return None
+    p = np.array(pts)
+    A = np.c_[np.ones(len(p)), p[:, 0], p[:, 1]]
+    cr = np.linalg.lstsq(A, p[:, 2], rcond=None)[0]
+    cb = np.linalg.lstsq(A, p[:, 3], rcond=None)[0]
+    ar, ab = float(np.hypot(cr[1], cr[2])), float(np.hypot(cb[1], cb[2]))
+    # Richtung, in die der stärkere Farbanteil zunimmt (gy > 0: zum oberen Bildrand, da Zeile 0 = unten)
+    if max(ar, ab) < 1e-9:                                      # völlig neutral (synthetische Bilder)
+        return {"amount": 0.0, "side": "", "tone": ""}
+    gx, gy = (cr[1], cr[2]) if ar >= ab else (cb[1], cb[2])
+    ang = float(np.degrees(np.arctan2(gy, gx)))
+    ux, uy = gx / max(ar, ab), gy / max(ar, ab)
+    dr, db = cr[1] * ux + cr[2] * uy, cb[1] * ux + cb[2] * uy   # Farbänderung in dieser Richtung
+    if dr > 0:
+        tone = "violett" if db > 0.5 * dr else "rötlich"
+    else:
+        tone = "bläulich" if db > 0 else "grünlich"
+    return {"amount": round(max(ar, ab), 4), "side": SIDES[int(round((ang % 360) / 45)) % 8], "tone": tone}
+
+
+def assess(rgb: np.ndarray, mono: bool = False, neutral_sky: bool = True) -> dict:
     """Messbare Qualitätskontrolle eines entwickelten Bildes (3,H,W) 0..1.
+    neutral_sky: Feld abseits der Milchstraße – ein Farbverlauf im Himmel ist dann sicher ein Fehler (sonst evtl. Nebel).
     Gibt Kennzahlen, Score 0..10 und Probleme (code, Text) zurück."""
     f = max(1, int(np.ceil(max(rgb.shape[1:]) / 1200)))
     img = _bin(rgb.astype(np.float32), f)
@@ -167,6 +213,7 @@ def assess(rgb: np.ndarray, mono: bool = False) -> dict:
             if s.mean() > 0.2:
                 tiles.append(np.median(t[s]))
     gradient = float(np.percentile(tiles, 95) - np.percentile(tiles, 5)) if len(tiles) >= 6 else 0.0
+    cg = color_gradient(img, L, sky) if not mono else None
     black = float((L < 0.004).mean())
     white = float((rgb.max(0) >= 0.999).mean())
     core = burnt_core(L)
@@ -178,7 +225,8 @@ def assess(rgb: np.ndarray, mono: bool = False) -> dict:
         satur = None
     m = {"bg": round(bg, 4), "noise": round(noise, 4), "cast": round(cast, 4), "chroma_noise": round(chroma_noise, 4), "gradient": round(gradient, 4),
          "black_clip": round(black, 5), "white_clip": round(white, 5), "burnt_core": round(core, 5),
-         "saturation": None if satur is None else round(satur, 3), "signal": round(float(sig.mean()), 4)}
+         "saturation": None if satur is None else round(satur, 3), "signal": round(float(sig.mean()), 4),
+         "color_gradient": cg["amount"] if cg else 0.0}
 
     issues: list[tuple[str, str, float]] = []      # (code, Text, Abzug)
     if bg < BG_RANGE[0]:
@@ -189,6 +237,10 @@ def assess(rgb: np.ndarray, mono: bool = False) -> dict:
         issues.append(("noisy", "Hintergrund sichtbar verrauscht", min(3.0, 1.0 + 60 * (noise - NOISE_MAX))))
     if cast > CAST_MAX:
         issues.append(("cast", "Farbstich im Hintergrund", min(2.0, 60 * (cast - CAST_MAX) + 0.5)))
+    cg_max = COLOR_GRAD_MAX if neutral_sky else COLOR_GRAD_MAX_NEBULA
+    if cg and cg["amount"] > cg_max:
+        issues.append(("color_gradient", f"Farbverlauf im Hintergrund: {cg['tone']} nach {cg['side']}",
+                       min(2.5, 0.8 + 80 * (cg["amount"] - cg_max))))
     if chroma_noise > CHROMA_NOISE_MAX:
         issues.append(("chroma_noise", "Farbrauschen (bunte Flecken) im Hintergrund", min(2.0, 0.5 + 150 * (chroma_noise - CHROMA_NOISE_MAX))))
     if gradient > GRADIENT_MAX:
@@ -206,7 +258,8 @@ def assess(rgb: np.ndarray, mono: bool = False) -> dict:
     if m["signal"] < 0.002:
         issues.append(("faint", "Objekt kaum sichtbar", 1.5))
     score = max(0.0, 10.0 - sum(i[2] for i in issues))
-    return {"metrics": m, "score": round(score, 1), "issues": [{"code": c, "text": t} for c, t, _ in issues]}
+    return {"metrics": m, "score": round(score, 1), "issues": [{"code": c, "text": t} for c, t, _ in issues], "v": QC_VERSION,
+            **({"color_gradient": {**cg, "limit": cg_max}} if cg else {})}
 
 
 def corrections(qc: dict, p: dict) -> dict:
@@ -245,6 +298,10 @@ def corrections(qc: dict, p: dict) -> dict:
             adj["asinh"] = min(400.0, max(adj.get("asinh", p["asinh"]), p["asinh"] * 1.5))
         else:                                        # Weißpunkt ausgereizt: Lichter stärker komprimieren
             adj["asinh"] = min(400.0, max(adj.get("asinh", p["asinh"]), p["asinh"] * 1.5))
+    if "color_gradient" in codes and p.get("color_gradient", 0) < 3:
+        # Polynomgrad des Farbausgleichs: Grad 2, dann 3. Eine Ebene überkorrigierte NGC 891 (Rotstich nur am Rand,
+        # 0,018 -> 0,017 zur Gegenseite), Grad 2: 0,004
+        adj["color_gradient"] = max(2, int(p.get("color_gradient", 0)) + 1)
     if "oversat" in codes:
         adj["saturation"] = max(1.0, p["saturation"] - 0.15)
     elif "undersat" in codes and "noisy" not in codes:
@@ -266,6 +323,7 @@ HINTS = {
     "cast": "Ein Lichtverschmutzungsfilter oder Aufnahmen bei dunklerem Himmel verringern Farbstiche.",
     "white_clip": "Kürzere Einzelbelichtungen schützen helle Sterne und Kerne vor dem Ausbrennen.",
     "burnt_core": "Der Objektkern ist sehr hell – kürzere Einzelbelichtungen erhalten mehr Zeichnung im Kern.",
+    "color_gradient": "Farbverläufe entstehen meist durch Dämmerung, Mondlicht oder Horizont-Lichtverschmutzung – dunkle, mondlose Nächte und höher stehende Objekte helfen.",
 }
 
 
@@ -289,7 +347,7 @@ def hints(qc: dict, ctx: dict) -> list[str]:
 # --------------------------------------------------------------- entwickeln #
 def develop(mean: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool, palette: str | None,
             ctx: dict | None = None, fixed: dict | None = None, log=lambda m: None, render_log=lambda m: None):
-    """Gibt (rgb, stats, params, qc_verlauf) zurück. ctx: exposure_s, has_flats, rejected_pct.
+    """Gibt (rgb, stats, params, qc_verlauf) zurück. ctx: exposure_s, has_flats, rejected_pct, neutral_sky.
     fixed: vom Nutzer gesetzte Parameter – werden weder angepasst noch nachgeregelt."""
     ctx = ctx or {}
     fixed = fixed or {}
@@ -307,7 +365,7 @@ def develop(mean: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool, p
     for rnd in range(1, QC_ROUNDS + 1):
         log(f"Entwicklung und Qualitätskontrolle {rnd}")
         rgb, stats = render(params, mean, cov, render_log)
-        qc = assess(rgb, mono=mean.shape[0] == 1)
+        qc = assess(rgb, mono=mean.shape[0] == 1, neutral_sky=ctx.get("neutral_sky", True))
         adj = {k: v for k, v in corrections(qc, params).items() if k not in fixed} if rnd < QC_ROUNDS else {}
         history.append({"round": rnd, "score": qc["score"], "issues": [i["text"] for i in qc["issues"]], "adjust": adj})
         if not adj:

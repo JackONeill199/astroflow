@@ -280,6 +280,51 @@ def neutralize_background(img: np.ndarray) -> np.ndarray:
     return img - (bg - bg.mean())[:, None, None]
 
 
+def remove_color_gradient(img: np.ndarray, degree: int = 1, grid: int = 12) -> np.ndarray:
+    """Farbverlauf des Himmels (z. B. rötlich zu einer Seite: Dämmerung, Mond, Horizontlicht) entfernen, ohne die
+    Helligkeit zu ändern: Polynom über die Farbabweichung (Kanal − Luminanz) der Himmelskacheln, ohne Mittelwert
+    abgezogen (den globalen Stich gleicht neutralize_background aus). Nur auf Anforderung der Qualitätskontrolle –
+    bei Nebelfeldern wäre ein Farbverlauf echt."""
+    C, H, W = img.shape
+    if C != 3:
+        return img
+    L = luminance(img)
+    d = img - L[None]
+    mask = _star_mask(L)
+    sky = L <= np.median(L) + 1.4826 * np.median(np.abs(L - np.median(L)))
+    ys, xs = np.linspace(0, H, grid + 1).astype(int), np.linspace(0, W, grid + 1).astype(int)
+    pts, vals = [], []
+    for i in range(grid):
+        for j in range(grid):
+            ok = sky[ys[i] : ys[i + 1], xs[j] : xs[j + 1]] & ~mask[ys[i] : ys[i + 1], xs[j] : xs[j + 1]]
+            if ok.mean() < 0.3:
+                continue
+            pts.append(((ys[i] + ys[i + 1]) / H - 1, (xs[j] + xs[j + 1]) / W - 1))
+            vals.append([np.median(d[c, ys[i] : ys[i + 1], xs[j] : xs[j + 1]][ok]) for c in range(C)])
+    nterm = (degree + 1) * (degree + 2) // 2
+    if len(pts) < nterm + 6:
+        return img
+    pts, vals = np.array(pts), np.array(vals)
+
+    def basis(y, x):
+        return np.stack([y**a * x**b for a in range(degree + 1) for b in range(degree + 1 - a)], axis=-1)
+
+    A = basis(pts[:, 0], pts[:, 1])
+    use = np.ones(len(pts), bool)
+    for _ in range(3):                           # Kacheln mit Nebel/Galaxie (echte Farbe) verwerfen
+        coef = np.linalg.lstsq(A[use], vals[use], rcond=None)[0]
+        r = np.abs(vals - A @ coef).max(1)
+        s = 1.4826 * np.median(np.abs(r[use] - np.median(r[use]))) + 1e-9
+        new = r < np.median(r[use]) + 2.5 * s
+        if new.sum() < nterm + 4 or (new == use).all():
+            break
+        use = new
+    yy, xx = np.meshgrid(np.linspace(-1, 1, H, dtype=np.float32), np.linspace(-1, 1, W, dtype=np.float32), indexing="ij")
+    model = basis(yy, xx) @ coef.astype(np.float32)            # (H,W,C)
+    model -= model.reshape(-1, C).mean(0)
+    return (img - np.moveaxis(model, -1, 0)).astype(np.float32)
+
+
 def scnr(img: np.ndarray, amount: float) -> np.ndarray:
     if amount <= 0 or img.shape[0] != 3:
         return img
@@ -633,6 +678,10 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
     if sat is not None and sat.any():
         img = neutral_saturated_cores(img, sat, fwhm)
         stats["saturated_px"] = int(sat.sum())
+    if not mono and p.get("color_gradient"):
+        log("Farbverlauf des Himmels ausgleichen")
+        img = remove_color_gradient(img, int(p["color_gradient"]))
+        stats["color_gradient"] = int(p["color_gradient"])
     img = neutralize_background(img)
 
     if p["deconv"] > 0 and fwhm > 1.5:

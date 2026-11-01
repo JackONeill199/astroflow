@@ -219,17 +219,35 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    M101 Versuch mit fester FWHM-Grenze (≤ k × 10-%-Quantil): k 1,5 → 232 statt 504 Frames, FWHM −6 %, Rauschen +28 %; k 1,25 → −8 % / +54 %
    → Auswahl bleibt relativ (Gewichtung reicht; wer Schärfe will: Option „Nur die besten X %“). Auf `D:\Astro\Stellina` liegen ungenutzte
    Nächte: NGC 1579 2022-08-07 (422 Frames), M101 2023-02-07 (247) – Import über „Hauptordner durchsuchen“.
-8. **KI-Prüfer** (`reviewer.py`, optional, Standard aus): Vision-LLM (LM Studio/OpenRouter) bewertet Vorschau, darf nur Whitelist-Parameter in festen Grenzen ändern.
+   **Farbverlauf im Himmel** (seit 01.11.2026, NGC 891 bekam trotz rötlichem rechtem Rand 10/10 – `cast` misst nur den
+   globalen Median): `develop.color_gradient` = Ebene durch R−G/B−G der Himmelskacheln (8×8, getrimmtes Mittel), Stärke =
+   Änderung über die Bildbreite, dazu Seite/Farbton. Gemessen an allen Ergebnissen: sauber ≤ 0,010, NGC 891 0,019, NGC 7318 0,022,
+   M85 0,018; in der Milchstraße echter Hα-Nebel bis 0,030 → `COLOR_GRAD_MAX` 0,013 bzw. `_NEBULA` 0,035, Auswahl über
+   `tutor.neutral_sky` (|b| ≥ 15° bzw. Galaxie/Kugelhaufen ab 8°). Korrektur `processing.remove_color_gradient` (Polynom über
+   Kanal − Luminanz, Helligkeit bleibt) per Parameter `color_gradient` = Grad; QC setzt erst 2, dann 3 (Ebene überkorrigierte NGC 891).
+   `assess` liefert `v` = `QC_VERSION` – **bei Änderungen an `assess` erhöhen**, der Tutor prüft ältere Ergebnisse dann am gespeicherten PNG nach.
+8. **Bild-Tutor** (`tutor.py`, seit 01.11.2026, Nutzerwunsch „Tutor für Anfänger, Hinweise passend zum Instrument, Mond/Wetter der Nacht“):
+   `build_report` (API `GET /results/{id}/tutor`, Cache in `results.stats.tutor` mit `TUTOR_VERSION`) = Gerät (`detect_device`:
+   INSTRUME/TELESCOP, Rückfall Bildformat; `DEVICES` mit vorsichtigen Tipps – nur Gesichertes; Stellina hat eine Tauheizung →
+   kein Tau-Befund aus Wetterdaten, Hinweis des Nutzers) + `night_conditions` (astropy offline, IERS-Download aus; ≤ 48 Stützzeiten
+   je Nacht: Sonne/Mond/Objekthöhe, Mondphase aus Elongation; Frame-Verlauf aus `frames.metrics`: Sternzahl-Einbrüche, `bg`/`fwhm`-Trend
+   letztes/erstes Fünftel, Exzentrizität > 0,8) + optional `fetch_weather` (Open-Meteo-Archiv/ERA5, Ort auf 0,1° gerundet, Cache
+   `work/tutor/`) → `findings` (code, level bad|warn|info|ok, Erklärung, Tipps). Standort: `FrameInfo.site` (SITELAT/LONG, OBSGEO; Stellina
+   schreibt keinen) oder `settings.json` → `tutor.lat/lon`. NGC 891 (24./25.06.2022, 49° N): Sonne nur −10…−14°, Himmel ×3,2 heller →
+   Dämmerung als Ursache des Rotstichs. KI auf Knopfdruck (`POST …/tutor/ki`, `ask_llm` über `reviewer.chat`, eigener Anbieter/Modell
+   `tutor.llm_provider/llm_model`, URL/Schlüssel vom KI-Prüfer), Ergebnis in `results.stats.tutor_ki`. Einstellung `tutor.mode`
+   einsteiger|experte (UI: Befunde offen bzw. zugeklappt). Test: `test_tutor.py`.
+9. **KI-Prüfer** (`reviewer.py`, optional, Standard aus): Vision-LLM (LM Studio/OpenRouter) bewertet Vorschau, darf nur Whitelist-Parameter in festen Grenzen ändern.
    Läuft nach der messbaren Kontrolle (`first=` = bereits gerendertes Bild). Denkmodelle (Bonsai, Qwen3) brauchen ~2 500 Tokens vor der
    Antwort → `max_tokens` 8000, Timeout 300 s; `<think>`-Blöcke und `reasoning_content` werden behandelt. Beim Nutzer: LM Studio, `prism-ml/bonsai-27b` (~55 s/Runde).
-9. **Ausgabe**: TIFF16/PNG/JPG/Thumb + linearer FITS in `output/<Objekt>/`, Zeile in `results` (Versionen). Bild wird beim Speichern vertikal gespiegelt (Norden oben).
-10. **Speicher** (`Settings.delete_uploads`, Env `ASTROFLOW_DELETE_UPLOADS`, Standard an, UI: Einstellungen → Speicher): nach erfolgreichem
+10. **Ausgabe**: TIFF16/PNG/JPG/Thumb + linearer FITS in `output/<Objekt>/`, Zeile in `results` (Versionen). Bild wird beim Speichern vertikal gespiegelt (Norden oben).
+11. **Speicher** (`Settings.delete_uploads`, Env `ASTROFLOW_DELETE_UPLOADS`, Standard an, UI: Einstellungen → Speicher): nach erfolgreichem
    Durchlauf löscht `Pipeline.delete_stacked_uploads` hochgeladene Lights (nur unter `input/uploads`, gestackt oder verworfen) → `frames.deleted=1`,
    `frames.size`. Hochgeladene Duplikate werden beim Scan sofort gelöscht. Folgen: kein komplettes Neu-Stacken mehr (Pipeline wirft klare
    `ValueError`, API 409, UI sperrt Menüpunkt/Auswahl/Auflösung/Ein-/Ausschließen); gelöschte Frames behalten Status und Analyse und werden nie
    reanalysiert; Nachstacken neuer Nächte und Bearbeitung laufen normal (nur Stack + `state.json`-Referenzsterne nötig). Eingebundene Ordner
    und Kalibrierbilder werden nie gelöscht. DB-Spalten kommen über `db.MIGRATIONS` (einfaches ALTER TABLE beim Start).
-11. **Volles Laufwerk** (`diskspace.py`, seit 01.11.2026 – Hauptordner-Import von E: kopierte 95 GB nach C:, Platte voll, jeder Auftrag
+12. **Volles Laufwerk** (`diskspace.py`, seit 01.11.2026 – Hauptordner-Import von E: kopierte 95 GB nach C:, Platte voll, jeder Auftrag
    scheiterte, auch SQLite): Worker startet nur ab `MIN_FREE` 5 GB (`Engine.hold()`), `prog` prüft alle 5 s und bricht unter `ABORT_FREE` 2 GB ab;
    Volle-Platte-Fehler (`diskspace.is_full`, auch `sqlite3 … full`) und Abbruch → Job wieder `queued` + `Engine.paused` (Grund in
    `status.hold`/`paused`). `POST /api/stacking/queue {paused}` (UI: Aktivität → „Aufträge anhalten/fortsetzen“; `cancel`-Event bricht beim
@@ -238,7 +256,7 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    Kopieren Abbruch unter 5 GB – nicht übernommene Dateien bleiben in `to_import` (Gruppe `partial`), Import später fortsetzbar.
    Aufräumen (`housekeeping/cleanup`) ist bei stehender Warteschlange (`hold()`) trotz wartender Aufträge erlaubt und hält sie währenddessen an.
    Test: `test_diskspace.py`.
-12. **Speicherbelegung & Aufräumen** (`housekeeping.py`, API `GET /housekeeping?keep=`, `POST /housekeeping/cleanup {keys, keep}`,
+13. **Speicherbelegung & Aufräumen** (`housekeeping.py`, API `GET /housekeeping?keep=`, `POST /housekeeping/cleanup {keys, keep}`,
    UI: Einstellungen → Bilder → „Speicherbelegung“, seit 31.10.2026): Belegung je Bereich + größte Objekte; Aufräumbares: verwaiste
    Ausgabedateien, Stacks gelöschter Objekte, Temp (> 1 h), leere Ordner (> 1 h), DB verdichten (VACUUM) – vorausgewählt; ältere Versionen
    (neueste `keep` je Objekt bleiben, nicht bei importierten Bildern) und Sicherungen – nur auf Wunsch. Client schickt nur Schlüssel, der Server
@@ -283,7 +301,7 @@ der Watcher berücksichtigt auch bereits gescannte, noch neue Frames. Letzte Feh
 Objekt löschen (`DELETE /api/stacking/projects/{id}` → `Pipeline.delete_project`, 409 während eines Jobs): Ergebnisse, Stack, Jobs, hochgeladene
 Rohbilder weg; Frames aus eingebundenen Ordnern bleiben als `kind='ignored'` in der DB, `_fingerprints` überspringt sie.
 REST unter `/api/stacking`: `status`, `scan`, `projects[/{id}]` (GET/PATCH/DELETE), `projects/{id}/process|solve|frames`, `frames/{id}` (PATCH manual),
-`jobs`, `develop-all` (alle Objekte mit Master-Stack neu entwickeln, Galerie-Knopf), `upload` (behält bis zu 4 Ordnerebenen, blockt `..`), `results/{id}/{tif|png|jpg|thumb|fits|before}`, `reviewer`, `solver`, `storage`, `starnet`.
+`jobs`, `develop-all` (alle Objekte mit Master-Stack neu entwickeln, Galerie-Knopf), `tutor`, `results/{id}/tutor[/ki]`, `upload` (behält bis zu 4 Ordnerebenen, blockt `..`), `results/{id}/{tif|png|jpg|thumb|fits|before}`, `reviewer`, `solver`, `storage`, `starnet`.
 Kern: `/api/app` (Module, Build), `/api/folders?path=` (Ordnerdialog), `/api/status` (`{version, busy, modules:{id: status}}`), `/api/activity` (alle Module), `/api/modules` (ein/aus).
 **Achtung:** Zwei Server auf demselben Datenordner = zwei Worker (beim Start werden „running“-Jobs des anderen neu eingereiht) – Tests/Vorschauen mit eigenem Datenordner.
 
