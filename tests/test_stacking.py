@@ -1,6 +1,6 @@
 import numpy as np
 
-from astroflow.modules.stacking.stacking import StackState, batch_size_for
+from astroflow.modules.stacking.stacking import StackState, _median0, batch_size_for
 
 
 def _frames(rng, B, shape=(3, 256, 384)):
@@ -39,3 +39,10 @@ def test_batch_size_scales_with_budget():
     shape = (3, 2080, 3072)
     assert batch_size_for(shape, 700) == 3
     assert batch_size_for(shape, 4000) >= 15
+
+
+def test_fast_median_matches_numpy():
+    rng = np.random.default_rng(2)
+    for B in (1, 2, 3, 4, 7, 8, 9, 16):
+        X = rng.normal(0, 1, (B, 3, 20, 30)).astype(np.float32)
+        assert np.array_equal(_median0(X), np.median(X, axis=0)), B

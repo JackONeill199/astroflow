@@ -2,6 +2,8 @@
 import numpy as np
 
 from astroflow.modules.stacking import calibration, demo, quality, registration
+from astroflow.modules.stacking.fits_io import write_fits
+from astroflow.modules.stacking.pipeline import Pipeline
 
 
 def _scene(seed=3, n_hot=400):
@@ -58,3 +60,16 @@ def test_registration_follows_stars_not_hot_pixels():
     # Szene um +shift verschoben -> M (tgt -> ref) verschiebt um +shift zurück
     assert np.allclose(M[:2, 2], shift, atol=1.0), M
     assert abs(M[0, 1]) < 0.01 and rms < 1.0
+
+
+def test_load_reuses_cosmetic_fix_bitexact(tmp_path):
+    frame, _ = _scene()
+    path = str(tmp_path / "f.fits")
+    write_fits(path, frame((0, 0)))
+    info = {"shape": [demo.H, demo.W], "exptime": 10.0, "gain": 0, "filter": None, "bayerpat": "RGGB"}
+    lib = calibration.CalibrationLibrary([], tmp_path / "cal")
+    cache: dict = {}
+    first, _ = Pipeline._load(path, info, lib, "2026-01-01", cache)
+    assert ("cosmetic", path) in cache
+    again, _ = Pipeline._load(path, info, lib, "2026-01-01", cache)    # aus dem Merker
+    assert np.array_equal(first, again)

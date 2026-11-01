@@ -816,7 +816,7 @@ async function housekeeping(panel) {
 
 // ------------------------------------------------------------ Einstellungen --- //
 async function stackingSettings(el) {
-  const [c, st, sv, sn, gx] = await Promise.all([api('/stacking/reviewer'), api('/stacking/status'), api('/stacking/solver'), api('/stacking/starnet'), api('/stacking/graxpert')]);
+  const [c, st, sv, sn, gx, gp] = await Promise.all([api('/stacking/reviewer'), api('/stacking/status'), api('/stacking/solver'), api('/stacking/starnet'), api('/stacking/graxpert'), api('/stacking/gpu')]);
   const astapOk = sv.astap && sv.astap_databases.length;
   el.innerHTML = `<div class="split"><div><form class="panel" id="sf">
       <div class="panel-h"><h2>Plate-Solving</h2><span class="grow"></span>
@@ -903,15 +903,28 @@ async function stackingSettings(el) {
       <dt>Ausgabeordner</dt><dd style="word-break:break-all">${esc(st.output_dir)}</dd>
       <dt>Automatik</dt><dd>${st.auto ? `an · alle ${st.scan_interval} s` : 'aus'}</dd>
       <dt>Rechen-Threads</dt><dd>${st.threads}</dd>
+      <dt>Grafikkarte</dt><dd>${gp.active ? `<span class="ok">${esc(gp.device)}</span>` : gp.error ? `<span class="warn">Fehler – Stacking auf der CPU</span><div class="dim sm">${esc(gp.error)}</div>`
+        : gp.mode === 'off' ? '<span class="dim">aus</span>' : !gp.pyopencl ? '<span class="dim">nicht eingerichtet (pyopencl fehlt)</span>' : '<span class="dim">keine geeignete gefunden</span>'}</dd>
       <dt>Lights</dt><dd>${st.frames?.light || 0}</dd>
       <dt>Darks / Flats / Bias</dt><dd>${st.frames?.dark || 0} / ${st.frames?.flat || 0} / ${st.frames?.bias || 0}</dd>
-    </dl><p class="mut sm" style="margin:14px 0 0">Tipp: Im Browser-Menü „App installieren“ wählen – AstroFlow läuft dann wie eine eigene App.</p></div></div></div>`;
+    </dl>
+      <label class="row" style="align-items:flex-start;gap:10px;cursor:pointer;flex-wrap:nowrap;margin-top:14px"><input type="checkbox" id="gpuOn" ${gp.mode !== 'off' ? 'checked' : ''} style="height:auto;margin-top:4px">
+        <span><b>Grafikkarte fürs Stacking nutzen</b><br><span class="mut sm">Ausrichten und Ausreißer-Erkennung laufen dann auf der GPU (OpenCL: AMD, NVIDIA, Intel) –
+        deutlich schneller. Ohne geeignete Karte oder bei Fehlern rechnet automatisch der Prozessor.</span></span></label>
+      <p class="mut sm" style="margin:14px 0 0">Tipp: Im Browser-Menü „App installieren“ wählen – AstroFlow läuft dann wie eine eigene App.</p></div></div></div>`;
   if (!el.isConnected) return;      // inzwischen weiternavigiert – die Abfragen unten gingen ins Leere
   housekeeping($('#hk'));
   $('#stf [name=gaia]').onchange = async (e) => {
     try {
       const r = await send('/stacking/storage', { gaia: e.target.checked });
       toast(r.gaia ? 'Farbkalibrierung über Gaia an.' : 'Farbkalibrierung über Sternfarben-Mittel.', 'ok');
+    } catch (err) { toast('Fehler: ' + err.message, 'err'); }
+  };
+  $('#gpuOn').onchange = async (e) => {
+    try {
+      const r = await send('/stacking/gpu', { mode: e.target.checked ? 'auto' : 'off' });
+      toast(r.active ? `Stacking auf der Grafikkarte (${r.device}).` : 'Stacking auf dem Prozessor.', 'ok');
+      stackingSettings(el);
     } catch (err) { toast('Fehler: ' + err.message, 'err'); }
   };
   $('#gxp').addEventListener('submit', async (e) => {

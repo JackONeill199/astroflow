@@ -91,18 +91,25 @@ def find_transform(ref_xy: np.ndarray, tgt_xy: np.ndarray, tol: float = 2.5, max
     return M, pairs, float(np.sqrt(np.mean(d[sel] ** 2)))
 
 
-def warp(img: np.ndarray, M: np.ndarray, out_shape: tuple[int, int], scale: int = 1, order: int = 3):
+def warp(img: np.ndarray, M: np.ndarray, out_shape: tuple[int, int], scale: int = 1, order: int = 3, gpu=None):
     """img (C,H,W) in Zielframe -> Referenzraster (optional x`scale` überabgetastet).
-    Gibt (warped, valid_mask) zurück."""
+    Gibt (warped, valid_mask) zurück. `gpu` (gpu.Engine): Interpolation auf der Grafikkarte, bei Fehlern CPU."""
     Ho, Wo = out_shape
     S = np.array([[1 / scale, 0, 0.5 / scale - 0.5], [0, 1 / scale, 0.5 / scale - 0.5], [0, 0, 1]])
     A = np.linalg.inv(M) @ S                       # Ausgabe-xy -> Quell-xy
     mat = np.array([[A[1, 1], A[1, 0]], [A[0, 1], A[0, 0]]])
     off = [A[1, 2], A[0, 2]]
-    out = np.empty((img.shape[0], Ho, Wo), np.float32)
-    for c in range(img.shape[0]):
-        out[c] = ndi.affine_transform(img[c], mat, offset=off, output_shape=(Ho, Wo), order=order,
-                                      mode="constant", cval=0.0, prefilter=order > 1)
+    out = None
+    if gpu is not None and not gpu.broken and order == 3:
+        try:
+            out = gpu.warp(img, mat, off, (Ho, Wo))
+        except Exception as e:
+            gpu.fail(e)
+    if out is None:
+        out = np.empty((img.shape[0], Ho, Wo), np.float32)
+        for c in range(img.shape[0]):
+            out[c] = ndi.affine_transform(img[c], mat, offset=off, output_shape=(Ho, Wo), order=order,
+                                          mode="constant", cval=0.0, prefilter=order > 1)
     # gültig = Quellkoordinate liegt mit Sicherheitsabstand im Quellbild (analytisch statt zweitem Warp + Erosion)
     H, W = img.shape[1:]
     m = 3.0 + (1.0 if order > 1 else 0.0)            # 2 px Rand wie zuvor die Erosion, +1 für den kubischen Kern

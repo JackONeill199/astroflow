@@ -25,10 +25,18 @@ def clip_batch(X: np.ndarray, V: np.ndarray, kappa_lo: float = 3.0, kappa_hi: fl
         return _clip(X, valid, kappa_lo, kappa_hi)
 
 
+def _median0(X: np.ndarray) -> np.ndarray:
+    """Median über Achse 0, bitgleich zu np.median, aber 2–3× schneller: np.sort über die kurze Stapelachse
+    schlägt die Partitionierung in np.median deutlich (8 Frames: 67 statt 147 ms je Streifen)."""
+    s = np.sort(X, axis=0)
+    B = X.shape[0]
+    return s[B // 2] if B % 2 else np.mean(s[B // 2 - 1 : B // 2 + 1], axis=0)
+
+
 def _masked_median(X: np.ndarray, valid: np.ndarray) -> np.ndarray:
-    """Median über Achse 0 nur gültiger Werte. Schnell: np.median für voll gültige Pixel,
+    """Median über Achse 0 nur gültiger Werte. Schnell: Median über alle Frames für voll gültige Pixel,
     nanmedian nur für die (wenigen) Randpixel mit teilweiser Abdeckung."""
-    med = np.median(X, axis=0)
+    med = _median0(X)
     part = ~valid.all(0)
     if part.any():
         idx = np.nonzero(part)
@@ -99,9 +107,10 @@ class StackState:
             return None
 
     # ---- Akkumulieren ------------------------------------------------------ #
-    def add_batch(self, X: np.ndarray, V: np.ndarray, w: np.ndarray, workers: int = 1) -> int:
+    def add_batch(self, X: np.ndarray, V: np.ndarray, w: np.ndarray, workers: int = 1, gpu=None) -> int:
         """X (B,C,H,W) normierte Frames, V (B,H,W) gültig, w (B,) Gewichte. Gibt Zahl abgelehnter Pixel zurück.
-        Pixel sind unabhängig -> Verarbeitung in Zeilenstreifen, parallel auf `workers` Threads (numpy gibt den GIL frei)."""
+        Pixel sind unabhängig -> Verarbeitung in Zeilenstreifen, parallel auf `workers` Threads (numpy gibt den GIL frei).
+        `gpu` (gpu.Engine): Clipping und Aufsummieren auf der Grafikkarte, bei Fehlern CPU."""
         H = X.shape[2]
         w = w.astype(np.float32)
         # globale Größen einmal vorab (Streifen sollen sich nicht gegenseitig beeinflussen)
@@ -114,6 +123,11 @@ class StackState:
             sd = np.sqrt(np.clip(self.swx2[:, s] / np.maximum(sw, 1e-9) - m**2, 0, None))
             if (sw > 0).any():
                 sd_floor = 0.5 * float(np.median(sd[sw > 0]))
+        if gpu is not None and not gpu.broken and X.shape[0] <= 32:
+            try:
+                return gpu.accumulate(self, X, V, w, check, sd_floor)
+            except Exception as e:
+                gpu.fail(e)
         n = max(1, min(workers, H // 64))
         bounds = np.linspace(0, H, n + 1).astype(int)
 
@@ -137,8 +151,9 @@ class StackState:
         wk = keep * w[:, None, None, None]
         Xk = np.where(keep, X, 0).astype(np.float32)
         self.sw[:, ys] += wk.sum(0)
-        self.swx[:, ys] += (wk * Xk).sum(0)
-        self.swx2[:, ys] += (wk * Xk * Xk).sum(0)
+        wx = wk * Xk
+        self.swx[:, ys] += wx.sum(0)
+        self.swx2[:, ys] += (wx * Xk).sum(0)
         return int(V.sum() * X.shape[1] - keep.sum())
 
     # ---- Ergebnis ---------------------------------------------------------- #
