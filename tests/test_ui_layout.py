@@ -59,6 +59,19 @@ def _free_port():
         return so.getsockname()[1]
 
 
+def _skytrace_run(run):
+    """Ein SkyTrace-Lauf mit langen Namen und Katalogergebnissen (für Statistik und Laufliste)."""
+    import json
+    (run / "obs").mkdir(parents=True)
+    sat = {"provider": "satellites", "status": "compatible", "matches": [{"name": "COSMOS 2251 DEB (Trümmerteil mit Langname)", "norad_id": 34427, "object_type": "Trümmerteil"}]}
+    cands = [{"id": f"K{i:04d}", "session": f"2022-09-01_observation_{LONG}", "kind": "trail", "timestamp": 1662069600.0 + 3600 * i,
+              "catalogs": [sat if i % 2 else {"provider": "satellites", "status": "checked_no_match"}, {"provider": "aircraft", "status": "needs_access"}]}
+             for i in range(5)]
+    (run / "obs" / "kandidaten.json").write_text(json.dumps(cands), encoding="utf-8")
+    (run / "videos.json").write_text(json.dumps([{"session": f"2022-09-01_observation_{LONG}", "frames": 1234, "excluded": 56,
+                                                  "state": "Fertig", "candidates_file": "obs/kandidaten.json"}]), encoding="utf-8")
+
+
 @pytest.fixture(scope="module")
 def server(tmp_path_factory):
     root = tmp_path_factory.mktemp("ui")
@@ -68,6 +81,7 @@ def server(tmp_path_factory):
         mp.delenv("SKYTRACE_HOME", raising=False)          # SkyTrace setzt sie beim Laden prozessweit – danach wieder entfernen
         s = load_settings(root / "data")
         SettingsStore(s.data_dir / "settings.json").update("skytrace", {"home": str(root / "skytrace")})
+        _skytrace_run(root / "skytrace" / "Ergebnisse" / "2026-10-28_10-00-00-000001")
         demo.generate(s.input_dir / "night", n_lights=16, n_darks=0, n_flats=0)
         db = DB(s.db_path)
         pl = Pipeline(s, db, ReviewerConfig())
@@ -102,7 +116,7 @@ def browser():
 
 
 ROUTES = ["#/", "#/bilder", "#/p/{pid}/bild", "#/p/{pid}/aufnahmen", "#/p/{pid}/versionen", "#/p/{pid}/optionen",
-          "#/import", "#/activity", "#/skytrace", "#/skytrace/neu", "#/sage", "#/sage/wiki", "#/sage/entdeckungen",
+          "#/import", "#/activity", "#/skytrace", "#/skytrace/neu", "#/skytrace/statistik", "#/sage", "#/sage/wiki", "#/sage/entdeckungen",
           "#/settings/stacking", "#/settings/skytrace", "#/settings/sage", "#/settings/module"]
 
 

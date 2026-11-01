@@ -100,6 +100,43 @@ def test_lauf_loeschen(tmp_path, monkeypatch):
         assert (home / "Ergebnisse" / "kein-lauf").exists()
 
 
+def test_statistik_zaehlt_beobachtungen_einmal(tmp_path, monkeypatch):
+    """Mehrfach analysierte Beobachtung zählt nur mit der neuesten vollständigen Analyse; Kandidaten kommen schlank zurück."""
+    monkeypatch.setenv("ASTROFLOW_MODULES", "stacking,skytrace")
+    home = tmp_path / "skytrace"
+    old = _lauf(home)
+    run = home / "Ergebnisse" / "2026-10-28_10-00-00-000001"          # neuer, aber nur teilweise analysiert
+    (run / "M103").mkdir(parents=True)
+    sat = {"provider": "satellites", "status": "compatible",
+           "matches": [{"name": "STARLINK-1484", "norad_id": 44933, "object_type": "Satellit", "mean_offset_arcsec": 40}]}
+    cands = [{"id": "K0001", "session": "2022-09-01_observation_M103", "kind": "trail", "timestamp": 1662069600.0,
+              "catalogs": [sat], "frames": [{"image": "x.png"}], "evidence": {"gross": "x" * 1000}}]
+    (run / "M103" / "kandidaten.json").write_text(json.dumps(cands), encoding="utf-8")
+    (run / "videos.json").write_text(json.dumps([
+        {"session": "2026_observation_M103", "frames": 50, "state": "Fertig", "limited": True, "candidates_file": "M103/kandidaten.json"},
+        {"session": "2022-09-01_observation_M103", "frames": 80, "excluded": 2, "state": "Fertig", "candidates_file": "M103/kandidaten.json"}]),
+        encoding="utf-8")
+    # automatische Läufe derselben Nacht: zweiter Stapel mit neuen Aufnahmen zählt zusätzlich, Wiederholung des ersten nicht
+    for rid, first in (("2026-10-29_10-00-00-000001", "img-0001.fits"), ("2026-10-29_11-00-00-000001", "img-0101.fits"),
+                       ("2026-10-29_12-00-00-000001", "img-0001.fits")):
+        obs = home / "Ergebnisse" / rid / "M45"
+        obs.mkdir(parents=True)
+        (obs / "frames.jsonl").write_text(json.dumps({"file": f"C:/auto/M45/{first}"}) + "\n", encoding="utf-8")
+        (obs.parent / "videos.json").write_text(json.dumps([{"session": "2022-10-05_observation_M45", "video": "M45/ereignisse.mp4",
+                                                             "frames": 100, "state": "Fertig"}]), encoding="utf-8")
+    monkeypatch.setenv("SKYTRACE_HOME", str(home))
+    with TestClient(create_app(load_settings(tmp_path / "data"))) as c:
+        d = c.get("/api/skytrace/statistics").json()
+    assert d["repeated"] == 2 and d["all_runs"] == 5
+    assert sorted(s["run"] for s in d["sessions"] if s["session"] == "2022-10-05_observation_M45") == \
+        ["2026-10-29_11-00-00-000001", "2026-10-29_12-00-00-000001"]
+    by = {s["session"]: s for s in d["sessions"]}
+    assert by["2026_observation_M103"]["run"] == old and by["2026_observation_M103"]["frames"] == 120   # vollständige gewinnt
+    assert by["2022-09-01_observation_M103"]["night"] == "2022-09-01"
+    k = next(x for x in d["candidates"] if x["session"] == "2022-09-01_observation_M103")
+    assert k["catalogs"][0]["matches"][0]["name"] == "STARLINK-1484" and "frames" not in k and "evidence" not in k
+
+
 def test_stellina_zeitstempel_ist_belichtungsende():
     """Stellina schreibt in DATE-OBS das Ende der Belichtung; Kataloge müssen davor suchen."""
     import sys

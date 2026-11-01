@@ -52,7 +52,7 @@ async function runsView(el) {
   let boot = await api(T + '/bootstrap'), sig = '', liveSig = '';
   el.innerHTML = `<div class="pagehead"><div><h1>Dem Unsichtbaren <em class="grad">auf der Spur</em></h1>
       <p class="mut">Bildfolgen werden sternregistriert, auf Lichtspuren untersucht und mit Meteor-, Satelliten-, Asteroiden- und Flugkatalogen verglichen.</p></div>
-      <span class="grow"></span><a class="btn ghost" href="#/settings/skytrace">${icon('pin')}Standort &amp; Kataloge</a><a class="btn" href="#/skytrace/neu">${icon('play')}Neue Analyse</a></div>
+      <span class="grow"></span><a class="btn ghost" href="#/skytrace/statistik">${icon('pulse')}Statistik</a><a class="btn ghost" href="#/settings/skytrace">${icon('pin')}Standort &amp; Kataloge</a><a class="btn" href="#/skytrace/neu">${icon('play')}Neue Analyse</a></div>
     <div id="stEngine">${engineNotice(boot.engine)}</div><div id="stLive"></div>
     <div class="toolbar"><input type="search" id="stq" placeholder="Analyse suchen …" title="Taste /"><span class="grow"></span><span class="mut sm" id="stsum"></span></div>
     <div id="stRuns"></div>`;
@@ -601,12 +601,119 @@ async function settings(el) {
   };
 }
 
+// --------------------------------------------------------------- Statistik --- //
+// Einordnung wie in der Kandidatenliste (AstroEvidence.classification), damit Zahlen und Filter übereinstimmen.
+const STAT_KINDS = [['satellite', 'Satelliten'], ['plane', 'Flugzeugkandidaten'], ['meteor', 'Meteorkandidaten'], ['moving', 'Langsame Beweger'], ['trail', 'Einzelbild-Spuren']];
+const CAT_PARTS = [['hit', 'Treffer'], ['hint', 'Zeitlicher Hinweis'], ['none', 'Geprüft, kein Treffer'], ['open', 'Nicht prüfbar']];
+const catPart = (s) => s === 'compatible' ? 'hit' : s === 'temporal_hint' ? 'hint' : s === 'checked_no_match' ? 'none' : 'open';
+
+async function statsView(el) {
+  crumbs([['SkyTrace', '#/skytrace'], ['Statistik']]);
+  let year = '', data = null, sig = '', wasRunning = false;
+  const month = s => new Date(s + '-01T12:00:00Z').toLocaleDateString('de-DE', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+  const date = s => s ? new Date(s + 'T12:00:00Z').toLocaleDateString('de-DE', { timeZone: 'UTC' }) : 'Nacht unbekannt';
+  const pct = (a, b) => b ? (100 * a / b).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' %' : '—';
+  el.innerHTML = `<div class="pagehead"><div><h1>Was sich <em class="grad">bewegt hat</em></h1><p class="mut">Erkannte Spuren, Satellitenzuordnungen und Katalogabgleiche über alle Analysen.</p></div>
+    <span class="grow"></span><select id="sts-year" aria-label="Beobachtungsjahr"><option value="">Alle Jahre</option></select></div><div id="sts-body"></div>`;
+  const body = $('#sts-body', el), select = $('#sts-year', el);
+  select.onchange = () => { year = select.value; draw(); };
+  function bars(rows) {
+    const max = Math.max(1, ...rows.map(r => r.n));
+    return `<div class="sts-bars">${rows.map(r => `<div class="sts-bar" title="${esc(r.title || '')}"><span>${esc(r.label)}</span>
+      <div class="sts-track"><div class="sts-fill" style="width:${100 * r.n / max}%;${r.n ? '' : 'min-width:0'}"></div></div><span class="tnum">${nf.format(r.n)}</span></div>`).join('')}</div>`;
+  }
+  function draw() {
+    if (!data) return;
+    const ev = EV(), sessions = data.sessions.filter(s => !year || s.night?.startsWith(year));
+    const keep = new Set(sessions.map(s => s.run + '|' + s.session));
+    const cands = data.candidates.filter(c => keep.has(c.run + '|' + c.session)).map(c => ({ ...c, cls: ev ? ev.classification(c) : { kind: c.kind || 'trail' } }));
+    const frames = sessions.reduce((a, s) => a + s.frames, 0), excluded = sessions.reduce((a, s) => a + s.excluded, 0);
+    const sats = cands.filter(c => c.cls.kind === 'satellite');
+    // Satelliten nach Bahn (NORAD) und Objektart
+    const byNorad = new Map(), types = {};
+    for (const c of sats) {
+      const m = (c.catalogs.find(r => r.provider === 'satellites' && r.status === 'compatible')?.matches || [])[0];
+      if (!m) continue;
+      const k = m.norad_id ?? m.name, t = m.object_type || 'Satellit';
+      types[t] = (types[t] || 0) + 1;
+      const e = byNorad.get(k) || { name: m.name || 'NORAD ' + m.norad_id, norad: m.norad_id, type: t, n: 0 };
+      e.n++; byNorad.set(k, e);
+    }
+    const topSats = [...byNorad.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)).slice(0, 10);
+    // Katalogabgleich je Quelle
+    const cat = Object.keys(providerNames).map(p => {
+      const parts = { hit: 0, hint: 0, none: 0, open: 0 }, reasons = {};
+      for (const c of cands) for (const r of c.catalogs) if (r.provider === p) {
+        const k = catPart(r.status); parts[k]++;
+        if (k === 'open') reasons[statusNames[r.status] || r.status] = (reasons[statusNames[r.status] || r.status] || 0) + 1;
+      }
+      return { p, parts, total: Object.values(parts).reduce((a, b) => a + b, 0), reasons };
+    }).filter(r => r.total);
+    const hours = Array.from({ length: 24 }, () => 0), months = {};
+    for (const c of cands) if (Number.isFinite(c.timestamp)) hours[new Date(c.timestamp * 1000).getUTCHours()]++;
+    for (const s of sessions) if (s.night) { const m = (months[s.night.slice(0, 7)] ||= { n: 0, frames: 0, obs: 0 }); m.n += s.candidate_count; m.frames += s.frames; m.obs++; }
+    const span = Object.keys(months).sort(), [y0, m0] = (year ? `${year}-01` : span[0] || '').split('-').map(Number);
+    for (let y = y0, m = m0, end = year ? `${year}-12` : span.at(-1); y && `${y}-${String(m).padStart(2, '0')}` <= end; m === 12 ? (y++, m = 1) : m++)
+      months[`${y}-${String(m).padStart(2, '0')}`] ||= { n: 0, frames: 0, obs: 0 };      // Monate ohne Beobachtung als Lücke zeigen
+    const maxHour = Math.max(1, ...hours), timed = hours.reduce((a, b) => a + b, 0);
+    const top = sessions.filter(s => s.candidate_count).sort((a, b) => b.candidate_count - a.candidate_count || b.frames - a.frames).slice(0, 8);
+    const s = JSON.stringify([year, sessions.length, cands.length, data.repeated, frames]);
+    if (s === sig) return;
+    sig = s;
+    body.innerHTML = `<div class="hstats sts-summary"><div><b class="tnum">${nf.format(sessions.length)}</b><small>Beobachtungen</small></div>
+        <div><b class="tnum">${nf.format(frames)}</b><small>Aufnahmen analysiert</small></div><div><b class="tnum">${nf.format(cands.length)}</b><small>Kandidaten</small></div>
+        <div><b class="tnum">${nf.format(sats.length)}</b><small>Satelliten zugeordnet</small></div></div>
+      <p class="mut sm">${frames ? `${pct(excluded, frames + excluded)} der Aufnahmen waren unscharf und wurden ausgelassen · ${(1000 * cands.length / frames).toLocaleString('de-DE', { maximumFractionDigits: 1 })} Kandidaten je 1 000 Aufnahmen · ` : ''}
+        ${cands.length ? `${pct(sats.length, cands.length)} der Spuren passen zu einer bekannten Satellitenbahn. ` : ''}
+        Mehrfach analysierte Beobachtungen zählen nur einmal (neueste vollständige Analyse)${data.repeated ? ` – ${nf.format(data.repeated)} ältere Auswertung${data.repeated === 1 ? '' : 'en'} nicht mitgezählt` : ''}.
+        Ein Kandidat ist kein bestätigtes Objekt, eine Katalogzuordnung bleibt ein geometrischer Hinweis.</p>
+      ${sessions.length ? `<div class="sts-grid">
+        <section class="panel"><h2>Kandidaten nach Objektart</h2>${bars(STAT_KINDS.map(([k, l]) => ({ label: l, n: cands.filter(c => c.cls.kind === k).length })))}</section>
+        <section class="panel"><h2>Häufigste Satelliten</h2>${Object.keys(types).length ? `<div class="row sts-types">${Object.entries(types).sort((a, b) => b[1] - a[1]).map(([t, n]) => `<span class="chip">${esc(t)} · ${nf.format(n)}</span>`).join('')}</div>` : ''}
+          ${topSats.length ? topSats.map(e => `<div class="sts-row"><b>${esc(e.name)}</b><span class="mut sm">${e.norad != null && !e.name.includes(String(e.norad)) ? 'NORAD ' + esc(e.norad) : ''}</span><span class="grow"></span><span class="tnum">${nf.format(e.n)}×</span></div>`).join('')
+            : '<p class="mut sm">Noch keine Spur einer Satellitenbahn zugeordnet. Mit Standort und Plate Solving prüft SkyTrace historische Bahnen zur Aufnahmezeit.</p>'}</section>
+        <section class="panel sts-wide"><h2>Katalogabgleich je Quelle</h2><div class="row sts-legend">${CAT_PARTS.map(([k, l]) => `<span><i class="sts-${k}"></i>${l}</span>`).join('')}</div>
+          ${cat.length ? cat.map(r => `<div class="sts-cat"><span>${esc(providerNames[r.p])}</span><div class="sts-stack" title="${esc(Object.entries(r.reasons).map(([k, n]) => `${k}: ${n}`).join(' · ') || 'alle Kandidaten geprüft')}">
+            ${CAT_PARTS.map(([k, l]) => r.parts[k] ? `<i class="sts-${k}" style="flex:${r.parts[k]}" title="${l}: ${r.parts[k]}"></i>` : '').join('')}</div>
+            <span class="tnum sm">${nf.format(r.parts.hit)} / ${nf.format(r.total)}</span></div>`).join('') : '<p class="mut sm">Noch keine Katalogabgleiche gespeichert.</p>'}
+          <p class="dim sm" style="margin:12px 0 0">„Nicht prüfbar“ heißt: Archivdaten, Zugang oder Standort fehlten – nicht, dass dort kein Objekt war. Gründe im Tooltip.</p></section>
+        <section class="panel sts-wide"><h2>Uhrzeit der Kandidaten (UTC)</h2>${timed ? `<div class="sts-hours">${hours.map((n, h) => `<div class="sts-hour" title="${String(h).padStart(2, '0')}:00–${String(h).padStart(2, '0')}:59 UTC · ${nf.format(n)} Kandidaten"><i style="height:${100 * n / maxHour}%"></i><small>${h}</small></div>`).join('')}</div>`
+          : '<p class="mut sm">Keine Kandidaten mit Aufnahmezeit.</p>'}</section>
+        <section class="panel"><h2>Kandidaten je Monat</h2>${Object.keys(months).length ? bars(Object.entries(months).sort().map(([k, m]) => ({ label: month(k), n: m.n, title: `${m.obs} Beobachtung${m.obs === 1 ? '' : 'en'} · ${nf.format(m.frames)} Aufnahmen` })))
+          : '<p class="mut sm">Keine Beobachtungsnächte bekannt.</p>'}</section>
+        <section class="panel"><h2>Ergiebigste Beobachtungen</h2>${top.length ? top.map(x => `<a class="sts-row" href="#/skytrace/${encodeURIComponent(x.run)}/kandidaten"><span class="sts-name"><b>${esc(shortName(x.session))}</b><small class="mut">${esc(date(x.night))} · ${nf.format(x.frames)} Aufnahmen</small></span>
+            <span class="grow"></span><span class="tnum">${nf.format(x.candidate_count)}</span>${icon('arrow')}</a>`).join('') : '<p class="mut sm">Noch keine Kandidaten.</p>'}</section></div>`
+        : `<div class="empty">${icon('orbit')}<h2>${data.sessions.length ? 'Keine Beobachtungen in diesem Jahr' : 'Noch keine Analysen'}</h2>${data.sessions.length ? '' : 'Sobald Bildfolgen analysiert sind, entsteht hier die Statistik.'}</div>`}`;
+  }
+  async function load() {
+    try { data = await api(T + '/statistics'); }
+    catch (e) { if (el.isConnected) body.innerHTML = `<div class="panel">${esc(e.message)}</div>`; return; }
+    if (!el.isConnected) return;
+    const years = [...new Set(data.sessions.map(s => s.night?.slice(0, 4)).filter(Boolean))].sort().reverse();
+    select.innerHTML = '<option value="">Alle Jahre</option>' + years.map(y => `<option>${y}</option>`).join('');
+    if (!years.includes(year)) year = '';
+    select.value = year;
+    sig = '';
+    draw();
+  }
+  await load();
+  return {
+    async update(st) {            // nach einer fertigen Analyse neu zählen
+      const r = !!st.modules.skytrace?.running;
+      if (wasRunning && !r) await load();
+      wasRunning = r;
+    },
+  };
+}
+
 // ---------------------------------------------------------- Registrierung --- //
 AF.register('skytrace', {
-  nav: [{ href: '#/skytrace', label: 'Analysen', icon: 'orbit', key: 'skytrace' }, { href: '#/skytrace/neu', label: 'Neue Analyse', icon: 'play', key: 'skytrace-new', sec: true }],
+  nav: [{ href: '#/skytrace', label: 'Analysen', icon: 'orbit', key: 'skytrace' }, { href: '#/skytrace/neu', label: 'Neue Analyse', icon: 'play', key: 'skytrace-new', sec: true },
+    { href: '#/skytrace/statistik', label: 'Statistik', icon: 'pulse', key: 'skytrace-stats', sec: true }],
   routes: [
     [/^\/skytrace$/, 'skytrace', runsView],
     [/^\/skytrace\/neu$/, 'skytrace-new', newView],
+    [/^\/skytrace\/statistik$/, 'skytrace-stats', statsView],
     [/^\/skytrace\/([^/]+)(?:\/(\w+))?$/, 'skytrace', runView],
   ],
   settings,
@@ -625,7 +732,7 @@ AF.register('skytrace', {
   },
   async palette() {
     const runs = await api(T + '/runs');
-    return [['play', 'Neue Spurenanalyse', 'SkyTrace', '#/skytrace/neu'],
+    return [['play', 'Neue Spurenanalyse', 'SkyTrace', '#/skytrace/neu'], ['pulse', 'SkyTrace-Statistik', 'Objektarten, Satelliten, Kataloge', '#/skytrace/statistik'],
       ...runs.map(r => ['orbit', shortName(r.title), `${r.candidates} Kandidaten · ${runDate(r.id)}`, `#/skytrace/${encodeURIComponent(r.id)}`, r.preview ? media(r.preview) : null])];
   },
 });

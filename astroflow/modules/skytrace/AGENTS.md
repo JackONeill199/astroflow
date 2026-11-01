@@ -27,6 +27,16 @@ Messgrafiken/Zoomdialoge (`static/evidence.js/css`) sind unverändert und werden
 Originalaufnahmen liegen nie im Ergebnisordner. UI: Papierkorb auf den Karten (bei Hover), in der Lauf-Ansicht und in der Befehlspalette,
 jeweils mit Bestätigungsdialog.
 
+## Statistik (`stats.py`, 01.11.2026, Nutzerwunsch)
+`GET /api/skytrace/statistics` → `stats.collect`: alle Läufe mit `videos.json` (laufende Analyse ausgenommen), je Beobachtung
+(`session` + Name der ersten Aufnahme aus `frames.jsonl`/`ausgeschlossen.jsonl`) nur die neueste vollständige Analyse (sonst die
+neueste; `repeated` = nicht gezählte ältere). Die erste Aufnahme trennt automatische Stapel derselben Nacht (gleicher Ordnername,
+aber nur neue Aufnahmen – Codex-Review PR #15) von echten Wiederholungen. Kandidaten kommen schlank
+zurück (nur Felder für `evidence.js classification`, Zeit, Geschwindigkeit, Katalogstatus) – **Einordnung und Zählung macht die
+Oberfläche** (`statsView` in `skytrace.js`), damit Zahlen und Kandidatenfilter übereinstimmen. Nacht = Datum im Ordnernamen,
+sonst früheste Kandidatenzeit − 12 h. Cache je Lauf nach Dateizeiten (Arbeitsinstanz: 119 Läufe, 0,4 s erstmals, danach 0,07 s).
+Route `#/skytrace/statistik` steht vor der Lauf-Route. Test: `test_skytrace.py`, Ansicht in `test_ui_layout.py`.
+
 ## Automatisch nach dem Stacken (`auto.py`, 28.10.2026)
 - Ereignis `stacking.stacked` → `AutoAnalysis.stacked`: noch nicht übergebene Light-Aufnahmen (Dienst `project_frames`, Merkliste
   `<AstroFlow-Daten>/skytrace/auto.json` → `sent`) je Nacht als Ordner `<Nacht>_observation_<Objekt>` (wie Stellina, damit der Titel der Objektname ist; ältere Läufe `<Objekt>_observation_<Nacht>-p<id>-<zeit>` erkennt `short_name`) aus **Hardlinks**

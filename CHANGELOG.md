@@ -3,6 +3,14 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.11.0 – 01.11.2026
+
+### Neu
+- **SkyTrace-Statistik** (SkyTrace → Statistik, auch über „Statistik“ in der Analysen-Übersicht): Kandidaten nach Objektart,
+  häufigste zugeordnete Satelliten, Katalogabgleich je Quelle (Treffer / kein Treffer / nicht prüfbar mit Grund),
+  Uhrzeit der Kandidaten, Kandidaten je Monat und die ergiebigsten Beobachtungen – filterbar nach Jahr. Mehrfach
+  analysierte Beobachtungen zählen nur einmal (neueste vollständige Analyse).
+
 ## 0.10.1 – 01.11.2026
 
 ### Behoben
