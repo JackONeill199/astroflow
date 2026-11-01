@@ -1102,7 +1102,10 @@ async function stackingSettings(el) {
   tf.elements.mode.value = tu.mode;
   tf.elements.llm_provider.value = tu.llm_provider;
   const tp = picker($('#tmodel'), { name: 'llm_model', value: tu.llm_model, placeholder: 'wie beim KI-Bildprüfer',
-    load: () => api(`/stacking/reviewer/models?provider=${encodeURIComponent(tf.elements.llm_provider.value)}`) });
+    load: () => {             // gleiche Server-URL wie tutor.llm_config: die des KI-Prüfers, außer er nutzt einen anderen Anbieter
+      const prov = tf.elements.llm_provider.value, url = c.provider === prov || c.provider === 'off' ? c.base_url : '';
+      return api(`/stacking/reviewer/models?provider=${encodeURIComponent(prov)}&base_url=${encodeURIComponent(url)}`);
+    } });
   tf.elements.llm_provider.addEventListener('change', () => tp.reload());
   tf.onsubmit = async (e) => {
     e.preventDefault();

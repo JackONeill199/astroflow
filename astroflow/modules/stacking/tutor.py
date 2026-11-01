@@ -531,6 +531,19 @@ def project_frames(db, pid: int) -> list[dict]:
     return out
 
 
+def result_frames(frames: list[dict], stats: dict, created: float) -> list[dict]:
+    """Nur Aufnahmen, die zu diesem Ergebnis gehören: Nächte aus stats.nights (seit 0.8.0 beim Entwickeln gespeichert);
+    ältere Ergebnisse: verarbeitete Aufnahmen, die vor dem Ergebnis entstanden sind – spätere Nächte zählen nicht."""
+    if stats.get("nights"):
+        keep = set(stats["nights"])
+        return [f for f in frames if f["night"] in keep]
+    out = []
+    for f, t in zip(frames, _times(frames)):
+        if f["status"] != "new" and t is not None and t.timestamp() <= created:
+            out.append(f)
+    return out
+
+
 def build_report(db, rid: int, cfg: dict, work_dir: Path, refresh: bool = False) -> dict:
     """Tutor-Bericht zu einem Ergebnis; Nachtdaten werden in results.stats.tutor zwischengespeichert."""
     r = db.one("SELECT r.*, p.id pid, p.name, p.kind, p.ra, p.dec, p.options FROM results r JOIN projects p ON p.id=r.project_id WHERE r.id=?", (rid,))
@@ -544,11 +557,11 @@ def build_report(db, rid: int, cfg: dict, work_dir: Path, refresh: bool = False)
     changed = False
     if q := recheck(stats, files, sky):
         stats["quality"], changed = q, True
-    frames = project_frames(db, r["pid"])
+    frames = result_frames(project_frames(db, r["pid"]), stats, r["created"])
     sites = [tuple(f["site"]) for f in frames if f.get("site")]
     site, site_src = (list(max(set(sites), key=sites.count)), "header") if sites else (
         ([float(cfg["lat"]), float(cfg["lon"])], "settings") if cfg.get("lat") not in (None, "") and cfg.get("lon") not in (None, "") else (None, None))
-    key = f"{TUTOR_VERSION}|{site}|{cfg['weather']}|{len(frames)}"
+    key = f"{TUTOR_VERSION}|{site}|{cfg['weather']}|{len(frames)}|{','.join(sorted({f['night'] or '' for f in frames}))}"
     cached = stats.get("tutor") or {}
     if refresh or cached.get("key") != key:
         weather, werr = {}, None
@@ -572,12 +585,13 @@ def build_report(db, rid: int, cfg: dict, work_dir: Path, refresh: bool = False)
 
 
 def llm_config(cfg: dict, review_cfg):
-    """KI-Verbindung des Tutors: eigener Anbieter/Modell, Server-URL und Schlüssel vom KI-Prüfer."""
+    """KI-Verbindung des Tutors: eigener Anbieter/Modell, Server-URL und Schlüssel vom KI-Prüfer. Die gespeicherte URL gilt
+    auch bei ausgeschaltetem Prüfer (eigener LM-Studio-Server); nur ein anderer aktiver Anbieter bekommt dessen Standard."""
     from dataclasses import replace
     if cfg["llm_provider"] not in ("lmstudio", "openrouter"):
         return None
     c = replace(review_cfg, provider=cfg["llm_provider"], model=cfg["llm_model"] or review_cfg.model,
-                base_url=review_cfg.base_url if review_cfg.provider == cfg["llm_provider"] else "")
+                base_url=review_cfg.base_url if review_cfg.provider in (cfg["llm_provider"], "off") else "")
     return c if c.enabled else None
 
 

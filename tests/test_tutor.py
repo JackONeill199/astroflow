@@ -121,3 +121,24 @@ def test_tutor_api(tmp_path, monkeypatch):
         ki = c.post(f"/api/stacking/results/{rid}/tutor/ki").json()
         assert ki["seen"] == ["rechte Hälfte rötlich"]
         assert c.get(f"/api/stacking/results/{rid}/tutor").json()["ki"]["summary"] == "Rötlicher Rand rechts."
+
+
+def test_report_uses_only_frames_of_the_result():
+    fr = _frames("2022-06-24T22:00:00", n=10) + _frames("2022-08-01T22:00:00", n=10)
+    for f in fr[10:]:
+        f["night"] = "2022-08-01"
+    assert {f["night"] for f in tutor.result_frames(fr, {"nights": ["2022-06-24"]}, 0)} == {"2022-06-24"}
+    # ältere Ergebnisse ohne stats.nights: nur Aufnahmen vor dem Ergebnis, keine noch unverarbeiteten
+    created = np.datetime64("2022-07-01T00:00:00").astype("datetime64[s]").astype(int)
+    fr[0]["status"] = "new"
+    old = tutor.result_frames(fr, {}, float(created))
+    assert len(old) == 9 and all(f["night"] == "2022-06-24" for f in old)
+
+
+def test_llm_config_keeps_custom_server_when_reviewer_off():
+    from astroflow.modules.stacking.reviewer import ReviewerConfig
+    cfg = {**tutor.DEFAULTS, "llm_provider": "lmstudio", "llm_model": "qwen-vl"}
+    off = ReviewerConfig(provider="off", base_url="http://pc:1234/v1", model="x")
+    assert tutor.llm_config(cfg, off).base_url == "http://pc:1234/v1"
+    other = ReviewerConfig(provider="openrouter", base_url="https://openrouter.ai/api/v1", model="x", api_key="k")
+    assert tutor.llm_config(cfg, other).base_url == ""          # LM-Studio-Standard statt OpenRouter-URL

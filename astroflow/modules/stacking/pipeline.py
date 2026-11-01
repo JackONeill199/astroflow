@@ -598,7 +598,7 @@ class Pipeline:
             raise ValueError("Noch kein Master-Stack vorhanden – bitte zuerst verarbeiten.")
         prog = lambda f, stage, msg="": progress(start + (1 - start) * f, stage, msg)
         prog(0.0, "Bearbeitung")
-        stacked = self.db.q("SELECT id,info FROM frames WHERE project_id=? AND stacked=1", (project_id,))
+        stacked = self.db.q("SELECT id,info,night FROM frames WHERE project_id=? AND stacked=1", (project_id,))
         exposure = sum((json.loads(r["info"]).get("exptime") or 0) for r in stacked)
         band_stats: dict = {}
         for r in stacked:
@@ -662,7 +662,8 @@ class Pipeline:
         if gx:
             stats["graxpert"] = gx
         stats.update({"profile": pname, "narrowband": narrow, "frames": len(stacked), "exposure_s": exposure,
-                      "palette": palette, "bands": band_stats})
+                      "palette": palette, "bands": band_stats,
+                      "nights": sorted({r["night"] for r in stacked if r["night"]})})   # Bild-Tutor: nur Nächte dieses Ergebnisses
 
         # --- Ausgabe ----------------------------------------------------------
         prog(0.85, "Speichern")
