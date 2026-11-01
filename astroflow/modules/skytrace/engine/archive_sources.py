@@ -42,7 +42,8 @@ def satellite_names(ids,settings,limit=12):
     path=CACHE/'satcat-names.json'
     try:known=read_json(path) if path.exists() else {}
     except (OSError,ValueError):known={}
-    missing=[str(i) for i in ids if str(i) not in known][:limit];added=False
+    # `satcat_offline`: nur Cache (Wartungswerkzeuge, die keine Dienste kontaktieren dürfen).
+    missing=[] if settings.get('satcat_offline') else [str(i) for i in ids if str(i) not in known][:limit];added=False
     for norad in missing:
         check_stop(settings)
         try:

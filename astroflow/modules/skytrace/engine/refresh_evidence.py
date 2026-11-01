@@ -15,7 +15,7 @@ from json_store import write_json
 def refresh(root):
     root=Path(root).resolve();summaries=json.loads((root/'videos.json').read_text(encoding='utf-8'));settings=load_settings()
     # This tool must never follow a user URL or contact a catalogue service.
-    settings.update(tle_file='',tle_url='')
+    settings.update(tle_file='',tle_url='',satcat_offline=True)
     for summary in summaries:
         if not summary.get('candidates_file'):continue
         folder=root/Path(summary['video']).parent;path=root/summary['candidates_file']
