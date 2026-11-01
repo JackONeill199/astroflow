@@ -1,5 +1,7 @@
 """Faint common star tails must be rejected without discarding independent streaks."""
 from pathlib import Path
+import os
+SAMPLES=os.environ.get('SKYTRACE_SAMPLES','Stellina')  # Stammordner mit echten Stellina-Beobachtungen
 import cv2
 import numpy as np
 from analyse import load_image
@@ -20,10 +22,10 @@ assert assess_quality(metrics)['excluded'],metrics
 several=sharp.copy()
 for start,end in [((30,90),(600,350)),((30,130),(600,390)),((30,170),(600,430))]:cv2.line(several,start,end,800,2)
 assert not assess_quality(measure_quality(several))['excluded'],'Three real lines must not be mistaken for whole-field shake'
-cases=[(r'D:\Astro\Stellina\2022-09-22_20-18-16_observation_IC59\01-images-initial\img-0114r.fits',True),
-       (r'D:\Astro\Stellina\2022-09-22_20-18-16_observation_IC59\01-images-initial\img-0113r.fits',False),
-       (r'D:\Astro\Stellina\2022-10-27_18-20-29_observation_NGC884_869\01-images-initial\img-0031r.fits',False),
-       (r'D:\Astro\Stellina\2022-05-06_19-55-42_observation_M82\01-images-initial\img-0019.fits',False)]
+cases=[(SAMPLES+r'\2022-09-22_20-18-16_observation_IC59\01-images-initial\img-0114r.fits',True),
+       (SAMPLES+r'\2022-09-22_20-18-16_observation_IC59\01-images-initial\img-0113r.fits',False),
+       (SAMPLES+r'\2022-10-27_18-20-29_observation_NGC884_869\01-images-initial\img-0031r.fits',False),
+       (SAMPLES+r'\2022-05-06_19-55-42_observation_M82\01-images-initial\img-0019.fits',False)]
 for name,excluded in cases:
     path=Path(name)
     if not path.exists():continue

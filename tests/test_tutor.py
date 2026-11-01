@@ -51,8 +51,8 @@ def test_detect_device_and_site_header():
     cam = tutor.detect_device(["ZWO ASI2600MC Pro"])
     assert cam["id"] == "camera" and cam["name"] == "ZWO ASI2600MC Pro"
     from astropy.io import fits
-    h = fits.Header({"SITELAT": "+49 06 00", "SITELONG": 8.5})
-    assert fits_io._site(h) == [49.1, 8.5]
+    h = fits.Header({"SITELAT": "+50 06 00", "SITELONG": 10.0})
+    assert fits_io._site(h) == [50.1, 10.0]
     assert fits_io._site(fits.Header({"SITELAT": 0, "SITELONG": 0})) is None
 
 
@@ -63,17 +63,17 @@ def _frames(start: str, n: int = 60, step_s: int = 30, bg_end: float = 1.0):
 
 
 def test_summer_twilight_and_humidity_findings():
-    # NGC 891 am 24./25.06.2022 von 49° Nord (wie beim Nutzer): keine astronomische Nacht, Himmel wird heller
+    # NGC 891 am 24./25.06.2022 von 50° Nord: keine astronomische Nacht, Himmel wird heller
     fr = _frames("2022-06-24T01:11:00", bg_end=3.0)
     for f in fr:
         f["night"] = "2022-06-24"
-    nights = tutor.night_conditions(fr, 35.64, 42.35, [49.1, 8.5],
+    nights = tutor.night_conditions(fr, 35.64, 42.35, [50.0, 10.0],
                                     {"2022-06-24": {"cloud": 5, "cloud_max": 10, "humidity": 92, "temp_min": 15.9, "dew_spread": 1.3,
                                                     "wind": 11, "gust": 24}})
     n = nights[0]
     assert n["sun"]["dark"] == 0 and -15 < n["sun"]["alt_min"] < -10 and n["frames_trend"]["bg_trend"] > 2
     q = {"score": 8.9, "issues": [{"code": "color_gradient", "text": "Farbverlauf im Hintergrund: rötlich nach rechts"}]}
-    ctx = {"exposure_s": 1310, "kind": "galaxy", "latitude": 49.1}
+    ctx = {"exposure_s": 1310, "kind": "galaxy", "latitude": 50.0}
     stellina = tutor.findings(q, nights, tutor.detect_device(["stellina-x"]), ctx)
     codes = [f["code"] for f in stellina]
     assert codes[0] == "twilight" and "color_gradient" in codes
@@ -105,8 +105,8 @@ def test_tutor_api(tmp_path, monkeypatch):
             time.sleep(0.5)
         rid = p["result"]["id"]
         assert c.post("/api/stacking/tutor", json={"lat": "abc"}).status_code == 400
-        t = c.post("/api/stacking/tutor", json={"mode": "experte", "lat": "49,1", "lon": "8,5", "weather": False}).json()
-        assert t["mode"] == "experte" and t["lat"] == 49.1 and t["llm_ready"] is False
+        t = c.post("/api/stacking/tutor", json={"mode": "experte", "lat": "50,1", "lon": "10,0", "weather": False}).json()
+        assert t["mode"] == "experte" and t["lat"] == 50.1 and t["llm_ready"] is False
         rep = c.get(f"/api/stacking/results/{rid}/tutor").json()
         assert rep["available"] and rep["mode"] == "experte" and rep["site"] == "settings" and rep["nights"]
         assert rep["findings"] and all({"code", "level", "title", "text", "tips"} <= set(f) for f in rep["findings"])

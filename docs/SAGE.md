@@ -39,7 +39,7 @@ Ein Umstieg auf PostgreSQL bleibt möglich, weil der Zugriff in `kb.py` gekapsel
 
 ## Bausteine (`astroflow/modules/sage/`)
 - `kb.py` – Wissensbasis (Schema, Suche, Graph-Abfragen, Budget-Summen).
-- `sources.py` – Fachquellen mit Cache: SIMBAD-TAP (CDS, **Spiegel Harvard** – CDS ist beim Nutzer nicht erreichbar), arXiv,
+- `sources.py` – Fachquellen mit Cache: SIMBAD-TAP (CDS, **Spiegel Harvard** – CDS war nicht erreichbar), arXiv,
   NASA ADS (Token optional), SkyView (NASA, DSS2-Farbbild als Himmelsansicht ohne eigenes Foto).
 - `agent.py` – OpenAI-kompatibler Werkzeug-Agent (OpenRouter, OpenAI, LM Studio): Werkzeugaufrufe, Budget, Protokoll,
   Rückfall ohne Werkzeuge für Modelle ohne Function Calling.
