@@ -1,5 +1,7 @@
 """Reject exposure blur while preserving sharp translated fields and a single trail."""
 from pathlib import Path
+import os
+SAMPLES=os.environ.get('SKYTRACE_SAMPLES','Stellina')  # Stammordner mit echten Stellina-Beobachtungen
 from types import SimpleNamespace
 from contextlib import redirect_stdout
 import io
@@ -33,13 +35,13 @@ single=sharp.copy(); cv2.line(single,(30,90),(600,350),500,2)
 assert not assess_quality(measure_quality(single),baseline)['excluded'],'Einzelner echter Streifen darf nicht als globale Verwacklung gelten'
 print('Scharf/verschoben/eine Spur behalten; globale Doppelbilder, Schmierbewegung und Unschärfe ausgeschlossen OK')
 
-root=Path('D:/Astro/Stellina/2022-08-07_20-32-32_observation_NGC6823/01-images-initial')
+root=Path(SAMPLES,'2022-08-07_20-32-32_observation_NGC6823/01-images-initial')
 if root.is_dir():
     from analyse import load_image
     for index,excluded in [(1,False),(8,True),(9,True),(12,True),(13,False),(14,True)]:
         data,_=load_image(root/f'img-{index:04d}r.fits')
         assert assess_quality(measure_quality(data),{'fwhm':2.265})['excluded']==excluded,index
-    data,_=load_image(Path('D:/Astro/Stellina/2022-05-06_19-55-42_observation_M82/01-images-initial/img-0019.fits'))
+    data,_=load_image(Path(SAMPLES,'2022-05-06_19-55-42_observation_M82/01-images-initial/img-0019.fits'))
     assert not assess_quality(measure_quality(data),{'fwhm':2.5})['excluded'],'M82-Einzelbildspur muss erhalten bleiben'
     print('Echte Problemframes 8/9/12/14 verworfen; scharfe 1/13 und M82-Meteorspur behalten OK')
 

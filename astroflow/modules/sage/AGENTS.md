@@ -3,7 +3,7 @@
 ## Sage 2.0 – Enzyklopädie (seit 29.10.2026, Architektur + Plan: `docs/SAGE.md`)
 Wissensbasis `data/sage/knowledge.db` (SQLite + FTS5, `kb.py`): entities/aliases/sources/facts/sections (versioniert)/edges/notes/
 insights/runs/usage/stories/chats/http_cache. Regeln: **Messwerte nur aus Fachquellen** (`sources.py`: SIMBAD-TAP – Spiegel
-**Harvard zuerst**, CDS ist beim Nutzer nicht erreichbar –, arXiv, ADS mit Token, SkyView/DSS2); KI-Texte sind `draft` mit Prüfhinweisen
+**Harvard zuerst**, CDS war nicht erreichbar –, arXiv, ADS mit Token, SkyView/DSS2); KI-Texte sind `draft` mit Prüfhinweisen
 (`research.validate`: unbelegt, unbekannte Quelle, Entfernung widerspricht Katalog); KI-Kanten `suggested`; Belege im Text als `[S<source_id>]`.
 - `research.Researcher`: `ensure_stub` (lokaler Katalog über Dienst `catalog_resolve`, ohne Netz) → `research(name, deep)`:
   SIMBAD-Fakten (Entfernung = Parallaxe oder Median `mesDistance`, Streuung > 1,5× = `conflict`), Hierarchie (`h_link`), Literatur,

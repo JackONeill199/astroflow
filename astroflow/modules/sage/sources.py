@@ -1,7 +1,7 @@
 """Fachquellen für die Recherche: SIMBAD (TAP), arXiv, NASA ADS, SkyView – mit Antwort-Cache in der Wissensbasis.
 
 Messwerte kommen von hier, nie aus dem Sprachmodell. Der Cache macht Läufe reproduzierbar (gleiche Antwort, Abrufzeit
-gespeichert) und spart Abfragen. CDS Straßburg ist beim Nutzer nicht erreichbar → SIMBAD-Spiegel in Harvard."""
+gespeichert) und spart Abfragen. CDS Straßburg war nicht erreichbar → SIMBAD-Spiegel in Harvard."""
 from __future__ import annotations
 
 import hashlib
