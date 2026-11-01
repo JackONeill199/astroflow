@@ -197,3 +197,9 @@ def test_satcat_sperre_wird_beachtet(tmp_path, monkeypatch):
     assert aufrufe == ["25165", "99999", "28498"] and note2 == note and "25165" in names
     # Alles im Cache → kein Hinweis
     assert archive_sources.satellite_names([25165, 99999], {}) == ({"25165": names["25165"], "99999": {"name": "", "type": None, "cospar": None, "launch": None}}, None)
+    # Unerwartete Antwort (HTML-Seite mit 200) gilt nicht als „nicht im Katalog“: nicht gecacht, kurze Pause, Hinweis
+    (tmp_path / "satcat-pause.json").unlink()
+    antworten["11111"] = Antwort(200, text="<html>Wartung</html>")
+    names, note = archive_sources.satellite_names([11111], {})
+    assert "11111" not in names and "nicht erreichbar" in note
+    assert archive_sources.satellite_names([11111], {})[0] == {} and aufrufe[-1] == "11111" and aufrufe.count("11111") == 1

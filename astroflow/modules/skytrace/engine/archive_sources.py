@@ -68,12 +68,16 @@ def satellite_names(ids,settings,limit=12):
                       f'Nächster Versuch ab {dt.datetime.fromtimestamp(until):%d.%m.%Y %H:%M}; bis dahin nur NORAD-Nummern.')
             else:
                 response.raise_for_status()
+                # Nur eine erkannte „keine Einträge“-Antwort gilt als „nicht im Katalog“ (wird gecacht); unerwartete
+                # Antworten (HTML-Fehlerseite, kaputtes JSON, Fehlerobjekt) wie ein Fehler behandeln → später erneut.
                 try:rows=response.json()
-                except ValueError:rows=[]   # unbekannte Nummer: Klartext statt JSON
-                if not isinstance(rows,list):rows=[]
-        except requests.RequestException as error:
+                except ValueError:
+                    if 'no satcat records' not in (response.text or '').lower():raise ValueError('unerwartete Antwort')
+                    rows=[]
+                if not isinstance(rows,list) or any(not isinstance(r,dict) for r in rows):raise ValueError('unerwartete Antwort')
+        except (requests.RequestException,ValueError) as error:
             until=time.time()+SATCAT_RETRY_S
-            note=f'Namen nicht abrufbar: CelesTrak-Katalog nicht erreichbar ({error.__class__.__name__}). Nächster Versuch in {SATCAT_RETRY_S//60} min.'
+            note=f'Namen nicht abrufbar: CelesTrak-Katalog nicht erreichbar oder unerwartete Antwort ({error}). Nächster Versuch in {SATCAT_RETRY_S//60} min.'
         if note:
             CACHE.mkdir(parents=True,exist_ok=True);write_json(pause_path,dict(until=until,reason=note))
             event('status',text=note)
