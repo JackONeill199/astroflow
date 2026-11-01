@@ -70,3 +70,86 @@ def test_library_scan_and_import(tmp_path):
         assert st["imported"]["raw"] == 10 and st["imported"]["pictures"] == 1, st
         names = [p["name"] for p in c.get("/api/stacking/projects").json()]
         assert len(names) == 3 and "M42 Orionnebel" in names, names      # M31 je Kamera ein Projekt + importiertes Bild
+
+
+def test_library_fast_paths_avoid_reading(tmp_path, monkeypatch):
+    """Bekannte Stellina-Aufnahmen per Ordnername+Größe ohne Lesen; zweiter Suchlauf liest nichts; geänderte Datei neu."""
+    import os
+    from astroflow.modules.stacking import library, scanner
+    reads = []
+    real = scanner.fingerprint
+    monkeypatch.setattr(scanner, "fingerprint", lambda p, *a: reads.append(str(p)) or real(p, *a))
+    root = tmp_path / "Platte"
+    obs = root / "2026-08-12_21-00-00_observation_M31"
+    demo.generate(obs, n_lights=6, n_darks=0, n_flats=0)
+    other = root / "lights_ohne_namen"
+    demo.generate(other, n_lights=3, n_darks=0, n_flats=0)
+    s = load_settings(tmp_path / "d")
+    s.auto = False
+    with TestClient(create_app(s)) as c:
+        c.post("/api/stacking/library/scan", json={"root": str(root)})
+        st = _wait(c)
+        assert len(reads) == 7 and st["read"] == 7                 # Stellina-Ordner: nur 4 Stichproben; Rest neu
+        assert st["skipped"] == 2 and all(g["state"] == "new" for g in st["groups"])
+        ids = [g["id"] for g in st["groups"]]
+        reads.clear()
+        c.post("/api/stacking/library/scan", json={"root": str(root)})
+        assert _wait(c)["read"] == 0 and reads == []               # unverändert: gemerkte Stichproben reichen
+        c.post("/api/stacking/library/import", json={"ids": ids})
+        _wait(c)
+        reads.clear()
+        c.post("/api/stacking/library/scan", json={"root": str(root)})
+        st = _wait(c)
+        assert reads == [] and st["read"] == 0, reads              # importiert: Namen bzw. Index, nichts gelesen
+        assert all(g["state"] == "unstacked" for g in st["groups"])
+        # Datei geändert (neue Zeit) -> nur sie wird neu gelesen; Stellina-Ordner bleibt beim Namensabgleich
+        f = sorted(other.rglob("*.fit"))[0]
+        os.utime(f, ns=(f.stat().st_atime_ns, f.stat().st_mtime_ns + 10**9))
+        c.post("/api/stacking/library/scan", json={"root": str(root)})
+        st = _wait(c)
+        assert reads == [str(f)], reads
+    assert library.name_key(obs / "lights" / "a.fit") == "2026-08-12_21-00-00_observation_m31/lights/a.fit"
+    assert library.name_key(other / "a.fit") is None
+
+
+def test_library_sample_hit_reads_whole_group(tmp_path, monkeypatch):
+    """Früher ohne Ordnernamen hochgeladen: Namen helfen nicht, aber eine Stichprobe trifft -> ganze Gruppe wird geprüft."""
+    import shutil
+    from astroflow.modules.stacking import scanner
+    reads = []
+    real = scanner.fingerprint
+    monkeypatch.setattr(scanner, "fingerprint", lambda p, *a: reads.append(str(p)) or real(p, *a))
+    root = tmp_path / "Platte"
+    obs = root / "2026-08-12_21-00-00_observation_M31"
+    demo.generate(obs, n_lights=8, n_darks=0, n_flats=0)
+    s = load_settings(tmp_path / "d")
+    s.auto = False
+    shutil.copytree(obs / "lights", s.input_dir / "uploads" / "alt" / "lights")      # früherer Upload ohne Beobachtungsnamen
+    with TestClient(create_app(s)) as c:
+        c.post("/api/stacking/scan")
+        reads.clear()
+        c.post("/api/stacking/library/scan", json={"root": str(root)})
+        st = _wait(c)
+        assert len(reads) == 8 and st["skipped"] == 0, reads         # 4 Stichproben treffen -> restliche 4 auch lesen
+        g = st["groups"][0]
+        assert g["state"] == "unstacked" and g["n_new"] == 0
+
+
+def test_library_walk_skips_linked_dirs(tmp_path):
+    """Ordnerverknüpfung zurück auf einen Elternordner darf den Suchlauf nicht im Kreis schicken."""
+    import os
+    import subprocess
+    from astroflow.modules.stacking import library
+    root = tmp_path / "Platte"
+    obs = root / "2026-08-12_21-00-00_observation_M31"
+    demo.generate(obs, n_lights=2, n_darks=0, n_flats=0)
+    loop = obs / "lights" / "schleife"
+    if os.name == "nt":                                   # Junction braucht keine Admin-Rechte
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(loop), str(root)], check=True, capture_output=True)
+    else:
+        os.symlink(root, loop, target_is_directory=True)
+    try:
+        groups = library.find_groups(root)
+        assert len(groups) == 1 and len(groups[0]["files"]) == 2, [(str(g["dir"]), len(g["files"])) for g in groups]
+    finally:
+        os.rmdir(loop) if os.name == "nt" else loop.unlink()     # nur die Verknüpfung entfernen

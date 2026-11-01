@@ -163,3 +163,26 @@ def test_switch_rows_toggle(server, browser):
         row.locator("b").first.click()
         assert box.is_checked() != before, row.inner_text()
     page.close()
+
+
+@pytest.mark.parametrize("size", ["handy", "desktop"])
+def test_folder_dialog(server, browser, size):
+    """Hauptordner wählen: Dialog zeigt Laufwerke, lässt sich in Ordner und zurück navigieren, passt aufs Handy."""
+    base, _ = server
+    w, h = SIZES[size]
+    page = browser.new_page(viewport={"width": w, "height": h})
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{base}/#/import")
+    page.click("#libPick")
+    page.wait_for_selector("#dlg[open] .frow")
+    assert page.locator("#fdr .chip").count() >= 1
+    page.locator("#fl .frow").first.click()                 # Laufwerk öffnen
+    page.wait_for_function("document.querySelector('#fcr button') !== null")
+    page.click("#fup")                                      # wieder hoch
+    page.wait_for_timeout(300)
+    assert page.evaluate("(() => { const d = document.querySelector('#dlg'); return d.scrollWidth <= d.clientWidth + 1 })()")
+    page.click("#fx")
+    assert not page.locator("#dlg[open]").count()
+    page.close()
+    assert not errors, errors

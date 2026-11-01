@@ -30,7 +30,7 @@ astroflow/static/          Shell: index.html, app.js (Router, Navigation, Übers
   SkyTrace `auto.AutoAnalysis` (Hardlinks je Nacht → Warteschlange, Einstellung `skytrace.auto`) und Sage `Module._stacked`
   (Bild bestimmen → Entdeckungen, Einstellungen `sage.auto_discover`/`auto_story`). Empfänger kehren sofort zurück (eigene Threads).
 - **Modul-Vertrag Frontend** (`AF.register(id, {nav, routes, home, settings, palette, status, drop})`, Kommentar in `app.js`): Helfer (`api`, `send`, `toast`,
-  `createViewer`, `picker` (Dropdown mit Suche für Modelle/Stimmen, Listen aus `core/models.list_models`), `jobLine`, `confirmDlg`, `crumbs`, `store` …) sind global. Modul-Skripte lädt die Shell aus `/api/app` mit `?v=<build>`
+  `createViewer`, `folderDialog(start, pick, {title, ok, hint})` (Ordner auf dem Server-Rechner wählen, über `/api/folders` → `core/folders.py`: Laufwerke, Unterordner, FITS-/Bildzählung; genutzt von Hauptordner und SkyTrace), `picker` (Dropdown mit Suche für Modelle/Stimmen, Listen aus `core/models.list_models`), `jobLine`, `confirmDlg`, `crumbs`, `store` …) sind global. Modul-Skripte lädt die Shell aus `/api/app` mit `?v=<build>`
   (Build-Kennung aus Dateizeiten) – nur `index.html` braucht weiter das manuelle `?v=`.
 - Module ein/aus: Einstellungen → Module & System bzw. `ASTROFLOW_MODULES=stacking,skytrace`; ein defektes Modul erscheint mit Fehler, die App läuft weiter.
 - Sicherheit: schreibende Anfragen mit fremdem `Origin` → 403 (Middleware `guard`). Schlüssel stehen im Klartext in `data/settings.json`.
@@ -170,7 +170,12 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    Danach alle Profile: `denoise` 0,3 / `chroma_denoise` 1,5 (vorher 0,4–0,6 / 1,5–2,5) – an 10 Projekten gemessen: Objekthelligkeit
    gleich (Nutzer: „ohne dass sie dunkler werden“), 10–35 % mehr schwache Sterne, Sterngröße gleich. `linear_denoise_max` 0,5 für alle
    getestet und verworfen (M63/M101/NGC 1579 dunkler). `CORE_STAR_RATIO` 4 → 5: AE Aurigae in IC 405 (4,4) galt als ausgebrannter Kern.
-   Offen: NGC 1579 (Stack-FWHM 6,5 px gegen Stellina 3,2) und M101 (Achsverhältnis 1,59 gegen 1,33) – mehrere Nächte, Stack-Problem.
+   **Stack-Schärfe nachgemessen (01.11.2026):** kein Stack-Problem. Gleiches Verfahren wie bei Frames (2×2 gebinnt, ×2): Stack schärfer als
+   der Median-Frame (NGC 1579 6,8 gegen 8,2; M101 5,9 gegen 10,1), über das Feld gleichmäßig (Mitte = Rand), Exzentrizität = die der Frames
+   (Sternform kommt aus den Rohbildern, nicht aus der Registrierung). Frame- und Stack-FWHM (`stats.fwhm_px`, ungebinnt) nie direkt vergleichen.
+   M101 Versuch mit fester FWHM-Grenze (≤ k × 10-%-Quantil): k 1,5 → 232 statt 504 Frames, FWHM −6 %, Rauschen +28 %; k 1,25 → −8 % / +54 %
+   → Auswahl bleibt relativ (Gewichtung reicht; wer Schärfe will: Option „Nur die besten X %“). Auf `D:\Astro\Stellina` liegen ungenutzte
+   Nächte: NGC 1579 2022-08-07 (422 Frames), M101 2023-02-07 (247) – Import über „Hauptordner durchsuchen“.
 8. **KI-Prüfer** (`reviewer.py`, optional, Standard aus): Vision-LLM (LM Studio/OpenRouter) bewertet Vorschau, darf nur Whitelist-Parameter in festen Grenzen ändern.
    Läuft nach der messbaren Kontrolle (`first=` = bereits gerendertes Bild). Denkmodelle (Bonsai, Qwen3) brauchen ~2 500 Tokens vor der
    Antwort → `max_tokens` 8000, Timeout 300 s; `<think>`-Blöcke und `reasoning_content` werden behandelt. Beim Nutzer: LM Studio, `prism-ml/bonsai-27b` (~55 s/Runde).
@@ -188,10 +193,10 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    ermittelt die Pfade neu und löscht nur innerhalb des Datenordners; 409 während eines Jobs. Rohdaten und Stacks bestehender Objekte nie.
 
 ## Hauptordner durchsuchen (`modules/stacking/library.py`, seit 31.10.2026)
-Import-Ansicht → „Hauptordner durchsuchen“: Pfad eines Ordners auf dem Server-Rechner (z. B. ganze Stellina-Platte). Hintergrund-Thread findet Gruppen
+Import-Ansicht → „Hauptordner durchsuchen“ → „Ordner wählen …“ (`folderDialog`, kein Pfad eintippen; Wahl startet die Suche): Ordner auf dem Server-Rechner (z. B. ganze Stellina-Platte). Hintergrund-Thread findet Gruppen
 (`find_groups`: „…_observation_X“ = eine Gruppe samt Unterordnern, sonst je Ordner mit FITS; Ordnernamen dark/flat/bias → Kalibrierung; Ordner nur mit
 JPG/PNG/TIFF → fertige Bilder, nicht unterhalb von FITS-Gruppen), bildet je Datei den Inhalts-Fingerabdruck (`scanner.fingerprint`, Bilder SHA256) und
-gleicht mit `frames.info.fp` bzw. `results.stats.imported.sha256` ab → Zustand `new|partial|unstacked|done` (fertig = gestackt/verworfen/Rohbild gelöscht/Duplikat).
+gleicht mit `frames.info.fp` bzw. `results.stats.imported.sha256` ab – **Schnellpfade** (seit 01.11.2026; Stellina-Platte 31 718 FITS: vorher ~19 min, erster Lauf 56 s, danach 1,1 s ohne Lesezugriff): (1) `name_key` = Pfad ab dem `…_observation_X`-Ordner + Dateiname (+ `frames.size`, falls bekannt – wird seit 01.11. beim Einlesen gesetzt, älter nur nach dem Löschen) → bekannt ohne Lesen; (2) Tabelle `library_index` (Pfad, Größe, mtime → Fingerabdruck); (3) Beobachtungsordner ohne Namenstreffer: nur `SAMPLE` = 4 Stichproben (gemerkte zählen mit) – trifft keine, ist der Rest neu (`skipped`), sonst ganze Gruppe lesen (z. B. M3: früher ohne Ordnernamen hochgeladen). Größen aus `os.scandir` (kein stat je Datei) → Zustand `new|partial|unstacked|done` (fertig = gestackt/verworfen/Rohbild gelöscht/Duplikat).
 Import legt nur **unbekannte** Dateien als Hardlink (Rückfall Kopie) unter `input/uploads/bibliothek/<hash>/<Gruppenordner>/…` ab, dann `scan_and_queue()`;
 Bilder gehen über `import_picture`. Quelldateien bleiben unberührt. API: `GET /library`, `POST /library/scan {root}`, `POST /library/import {ids}` (Ids stammen
 aus dem letzten Suchlauf im Speicher). Zuletzt genutzter Pfad: `data/settings.json` → `library.root`. Test: `tests/test_library.py`.
@@ -224,7 +229,7 @@ Objekt löschen (`DELETE /api/stacking/projects/{id}` → `Pipeline.delete_proje
 Rohbilder weg; Frames aus eingebundenen Ordnern bleiben als `kind='ignored'` in der DB, `_fingerprints` überspringt sie.
 REST unter `/api/stacking`: `status`, `scan`, `projects[/{id}]` (GET/PATCH/DELETE), `projects/{id}/process|solve|frames`, `frames/{id}` (PATCH manual),
 `jobs`, `develop-all` (alle Objekte mit Master-Stack neu entwickeln, Galerie-Knopf), `upload` (behält bis zu 4 Ordnerebenen, blockt `..`), `results/{id}/{tif|png|jpg|thumb|fits|before}`, `reviewer`, `solver`, `storage`, `starnet`.
-Kern: `/api/app` (Module, Build), `/api/status` (`{version, busy, modules:{id: status}}`), `/api/activity` (alle Module), `/api/modules` (ein/aus).
+Kern: `/api/app` (Module, Build), `/api/folders?path=` (Ordnerdialog), `/api/status` (`{version, busy, modules:{id: status}}`), `/api/activity` (alle Module), `/api/modules` (ein/aus).
 **Achtung:** Zwei Server auf demselben Datenordner = zwei Worker (beim Start werden „running“-Jobs des anderen neu eingereiht) – Tests/Vorschauen mit eigenem Datenordner.
 
 ## Web-UI (`astroflow/static/` + `modules/*/static/`)
@@ -279,4 +284,4 @@ Neue Ansichten in `ROUTES` eintragen. Achtung: globales `td { white-space: nowra
 ## Grenzen / mögliche nächste Schritte
 Keine Mosaike (Stackfläche = Referenzbild), kein echtes Drizzle (2× interpoliert), keine Komet-/Planeten-/Mond-Modi, kleiner eingebauter Katalog
 (großer nur mit ASTAP-`deep_sky.csv`), Dockerfile (ASTAP-Download) noch nicht real gebaut/getestet, Satellitenspur-Erkennung unzuverlässig,
-keine fotometrische Farbkalibrierung (Gaia), keine Verzerrungskorrektur, keine GPU, waagerechte Hintergrundstreifen bei NGC 1579 (Stack).
+GraXpert/StarNet nicht im Docker-Image, keine Verzerrungskorrektur, keine GPU, waagerechte Hintergrundstreifen bei NGC 1579 (Stack).

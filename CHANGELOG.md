@@ -2,6 +2,25 @@
 
 Neueste zuerst. Technische Details stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 01.11.2026 – Ordner wählen statt Pfad eintippen
+
+### Neu
+- **Hauptordner-Suche viel schneller**: Bereits bekannte Aufnahmen erkennt AstroFlow am
+  Beobachtungsordner und Dateinamen (Stellina: Datum, Uhrzeit und Objekt im Namen), ohne die Datei zu
+  lesen. Neue Beobachtungsordner werden nur stichprobenartig angelesen, einmal Geprüftes wird gemerkt.
+  Gemessen auf der Stellina-Platte (31 718 FITS): früher rund 19 Minuten, jetzt 56 Sekunden beim ersten
+  und gut 1 Sekunde bei jedem weiteren Suchlauf.
+- **„Hauptordner durchsuchen“ mit Ordnerauswahl**: Statt einen Pfad einzutippen, öffnet
+  „Ordner wählen …“ einen Dialog mit Laufwerken, anklickbarem Pfad und Unterordnern. Er zeigt
+  auch, wie viele FITS-Dateien und Bilder im Ordner liegen. Die Auswahl startet die Suche sofort,
+  „Erneut durchsuchen“ wiederholt sie. Das funktioniert auch vom Handy oder einem anderen PC im
+  Heimnetz, denn angezeigt werden die Ordner des Rechners, auf dem AstroFlow läuft.
+- SkyTrace nutzt denselben Dialog für den Beobachtungsordner (jetzt auch mit Laufwerkswechsel).
+
+### Behoben
+- SkyTrace-Einstellungen: Beim schnellen Wechseln der Einstellungsseiten trat gelegentlich ein
+  Skriptfehler auf (Archivstatus wurde in eine nicht mehr angezeigte Seite geschrieben).
+
 ## 01.11.2026 – Bildqualität wie im Astrobiscuit-Workflow
 
 Anlass: Astrobiscuit erreicht mit Smart-Teleskopen sehr saubere Bilder über

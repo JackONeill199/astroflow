@@ -150,7 +150,8 @@ async function newView(el) {
   }
   f.onchange = remember;
   E.source.onchange = async () => { await observations(); remember(); };
-  $('#browse').onclick = () => folderDialog(E.source.value, async (path) => { E.source.value = path; await observations(); remember(); });
+  $('#browse').onclick = () => folderDialog(E.source.value, async (path) => { E.source.value = path; await observations(); remember(); },
+    { title: 'Beobachtungsordner wählen', hint: 'Originaldateien werden nur gelesen.' });
   f.onsubmit = async (e) => {
     e.preventDefault();
     $('#go').disabled = true;
@@ -162,31 +163,6 @@ async function newView(el) {
     } catch (err) { toast(err.message, 'err'); $('#go').disabled = false; }
   };
   await observations(p.observation);
-}
-
-function folderDialog(start, pick) {
-  const d = $('#dlg');
-  d.innerHTML = `<h2 style="font-size:18px;margin-bottom:12px">Beobachtungsordner wählen</h2>
-    <div class="row" style="flex-wrap:nowrap"><input id="fp" style="flex:1" spellcheck="false"><button class="btn ghost sm" id="fgo">Öffnen</button></div>
-    <button class="linkbtn" id="fup" style="margin:10px 0">↑ Übergeordneter Ordner</button><div class="folders" id="fl"></div>
-    <div class="row" style="justify-content:flex-end;margin-top:14px"><span class="mut sm grow">Originaldateien werden nur gelesen.</span><button class="btn ghost" id="fx">Abbrechen</button><button class="btn" id="fok">Diesen Ordner verwenden</button></div>`;
-  const browse = async (path) => {
-    try {
-      const data = await api(T + '/folders?path=' + encodeURIComponent(path));
-      $('#fp', d).value = data.path;
-      $('#fup', d).dataset.path = data.parent;
-      $('#fl', d).innerHTML = data.folders.map(x => `<button class="frow" data-p="${esc(x.path)}">${icon('folder')}<span>${esc(x.name)}</span></button>`).join('') || '<p class="mut sm">Keine weiteren Unterordner.</p>';
-    } catch (e) { toast(e.message, 'err'); }
-  };
-  d.onclick = (e) => { const r = e.target.closest('[data-p]'); if (r) browse(r.dataset.p); };
-  $('#fgo', d).onclick = () => browse($('#fp', d).value);
-  $('#fp', d).onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); browse($('#fp', d).value); } };
-  $('#fup', d).onclick = () => browse($('#fup', d).dataset.path);
-  $('#fx', d).onclick = () => d.close();
-  $('#fok', d).onclick = () => { d.close(); pick($('#fp', d).value); };
-  d.onclose = null;
-  d.showModal();
-  browse(start || '');
 }
 
 // ------------------------------------------------------------- Laufdetail --- //
@@ -588,12 +564,13 @@ async function settings(el) {
   const archive = async () => {
     try {
       const d = await api(T + '/catalog/status');
+      if (!$('#archive') || !$('#oskState')) return null;   // inzwischen weiternavigiert
       $('#archive').textContent = `Satelliten: ${d.satellite_time_queries} gespeicherte Zeitabfragen · lokale Jahre ${d.satellite_years.join(', ') || 'keine'} · GMN-Monate ${d.meteor_months.join(', ') || 'keine'} · ${Math.round(d.bytes / 1048576)} MB Cache`;
       $('#oskState').textContent = d.opensky.detail;
       $('#oskLogin').hidden = !d.opensky.auth_url;
       if (d.opensky.auth_url) $('#oskLogin').href = d.opensky.auth_url;
       return d.opensky.status;
-    } catch { $('#archive').textContent = 'Archivstatus vorübergehend nicht erreichbar.'; return null; }
+    } catch { if ($('#archive')) $('#archive').textContent = 'Archivstatus vorübergehend nicht erreichbar.'; return null; }
   };
   archive();
   $('#oskf').onsubmit = async (e) => {

@@ -1,5 +1,8 @@
 # AstroFlow – Implementierungsplan (Stand 2026-10-27, v0.3 → v0.4)
 
+> **Historisch.** L1–L4, L6 und L7 (Gaia-Farbkalibrierung) sind inzwischen umgesetzt. Aktueller Stand und offene Punkte:
+> `AGENTS.md` (Abschnitt „Grenzen“) und `CHANGELOG.md`.
+
 Abgleich der Produktanforderungen mit der bestehenden Codebasis. Priorität: Qualität der
 astronomischen Bildverarbeitung vor zusätzlicher UI.
 
