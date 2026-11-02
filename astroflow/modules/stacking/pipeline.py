@@ -159,7 +159,7 @@ class Pipeline:
     def offline(rows: list[dict]) -> set[str]:
         """Frames, deren Rohdatei nicht gelöscht, aber gerade nicht erreichbar ist (z. B. USB-Platte mit am Ort
         eingebundenen Aufnahmen abgesteckt). Sie bleiben in der Datenbank unverändert und kommen später dran."""
-        return {r["id"] for r in rows if not r["deleted"] and not Path(r["path"]).exists()}
+        return {r["id"] for r in rows if not r["deleted"] and r["path"] and not Path(r["path"]).exists()}
 
     @staticmethod
     def offline_hint(rows: list[dict], ids: set[str]) -> str:

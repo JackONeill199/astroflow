@@ -84,7 +84,7 @@ class Engine:
             "SELECT f.project_id, f.path FROM frames f WHERE f.kind='light' AND f.status='new' "
             "AND f.deleted=0 AND f.project_id IS NOT NULL AND NOT EXISTS "
             "(SELECT 1 FROM jobs j WHERE j.project_id=f.project_id AND j.state='error' "
-            "AND j.id=(SELECT MAX(j2.id) FROM jobs j2 WHERE j2.project_id=f.project_id))") if Path(r["path"]).exists()}
+            "AND j.id=(SELECT MAX(j2.id) FROM jobs j2 WHERE j2.project_id=f.project_id))") if not r["path"] or Path(r["path"]).exists()}
 
     def hold(self) -> str | None:
         """Warum gerade keine Aufträge starten (angehalten oder zu wenig Speicher) – sonst None."""
@@ -502,7 +502,7 @@ def build_router(eng: Engine) -> APIRouter:
                         "band": channels.band_of(i.get("filter"), channels.is_color(i)), "filter": i.get("filter"),
                         "exptime": i.get("exptime"), "date": i.get("date_obs"),
                         "score": round(x["score"] or 0, 3), "manual": x["manual"], "stacked": x["stacked"], "deleted": x["deleted"],
-                        "offline": not x["deleted"] and not Path(x["path"]).exists(),
+                        "offline": bool(not x["deleted"] and x["path"] and not Path(x["path"]).exists()),
                         "n_stars": m.get("n_stars"), "fwhm": m.get("fwhm") and round(m["fwhm"], 2),
                         "ecc": m.get("ecc") and round(m["ecc"], 2), "bg": m.get("bg") and round(m["bg"], 1)})
         return out
