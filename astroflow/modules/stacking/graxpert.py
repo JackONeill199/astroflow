@@ -112,7 +112,7 @@ GRAXPERT_VERSION = 1                 # erhöhen, wenn sich die Vor-/Nachbereitun
 
 
 def apply(mean: np.ndarray, cov: np.ndarray, mode: str, strength: float = 0.5, cache_dir: Path | None = None,
-          exe: str | None = None, log=lambda m: None) -> tuple[np.ndarray, dict]:
+          exe: str | None = None, log=lambda m: None, preview=None) -> tuple[np.ndarray, dict]:
     """Linearen Stack (C,H,W) mit GraXpert bearbeiten. Gibt (Stack, Info). Info leer = nichts gemacht.
     Nicht abgedeckte Ränder (cov ≤ 0,5) werden vorher mit dem Himmelswert gefüllt, damit die KI keine
     harten Kanten als Hintergrund deutet, und nachher wieder eingesetzt."""
@@ -126,6 +126,7 @@ def apply(mean: np.ndarray, cov: np.ndarray, mode: str, strength: float = 0.5, c
         meta = cache_dir / f"{key}.json"
         if f.exists() and meta.exists():
             try:
+                log('GraXpert-Ergebnis aus dem Cache')
                 return np.load(f), {**json.loads(meta.read_text(encoding="utf-8")), "cache": True}
             except Exception:
                 pass
@@ -143,10 +144,16 @@ def apply(mean: np.ndarray, cov: np.ndarray, mode: str, strength: float = 0.5, c
             log("Hintergrund entfernen (GraXpert-KI)")
             x = _run(exe, x, "background-extraction", ["-correction", "Subtraction", "-smoothing", "0.1", *gpu_arg])
             info["bge"] = True
+            if preview:
+                from .live import optional, sample
+                optional(preview, sample(x) * scale + lo)
         if mode in ("denoise", "all") and strength > 0:
             log("Entrauschen (GraXpert-KI)")
             x = _run(exe, x, "denoising", ["-strength", f"{strength:.2f}", "-batch_size", "4", *gpu_arg])
             info["denoise"] = round(strength, 2)
+            if preview:
+                from .live import optional, sample
+                optional(preview, sample(x) * scale + lo)
     except Exception as e:                       # GraXpert-Fehler brechen die Bearbeitung nie ab
         log(f"GraXpert fehlgeschlagen ({e}) – eigene Verfahren")
         if not info.get("bge"):

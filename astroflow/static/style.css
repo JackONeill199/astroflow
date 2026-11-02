@@ -69,6 +69,29 @@ kbd { font: 600 11px/1 inherit; font-family: inherit; padding: 3px 6px; border-r
 .spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; animation: spin .8s linear infinite; flex: none }
 .live { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--acc); color: var(--acc); animation: pulse 1.8s infinite; flex: none }
 
+/* Symbolische SkyTrace-Schleife; vom Status-Polling unabhängig. */
+.sequence-loader { position: relative; display: inline-block; width: 26px; height: 20px; flex: none; color: var(--acc) }
+.sequence-loader em { position: absolute; display: block; font-style: normal }
+.sequence-loader .seq-back, .sequence-loader .seq-image { inset: 0; border: 1px solid color-mix(in srgb, currentColor 65%, transparent); border-radius: 3px; background-color: var(--panel-s) }
+.sequence-loader .seq-back-one { animation: seqBackOne 6s ease-in-out infinite }
+.sequence-loader .seq-back-two { animation: seqBackTwo 6s ease-in-out infinite; opacity: .4 }
+.sequence-loader .seq-image { overflow: hidden; background-image:
+  radial-gradient(circle at 18% 27%, var(--mut) 0 1px, transparent 1.5px),
+  radial-gradient(circle at 72% 19%, var(--mut) 0 1px, transparent 1.5px),
+  radial-gradient(circle at 42% 57%, var(--mut) 0 1px, transparent 1.5px),
+  radial-gradient(circle at 83% 78%, var(--mut) 0 1px, transparent 1.5px) }
+.sequence-loader .seq-scan { top: 0; bottom: 0; width: 22%; background: linear-gradient(90deg, transparent, color-mix(in srgb, currentColor 16%, transparent)); border-right: 1px solid currentColor; animation: seqScan 6s ease-in-out infinite }
+.sequence-loader .seq-trail, .sequence-loader .seq-path { left: 16%; width: 76%; height: 1px; transform: rotate(-30deg); transform-origin: left center }
+.sequence-loader .seq-trail { top: 72%; background: var(--acc); animation: seqTrail 6s ease-in-out infinite }
+.sequence-loader .seq-path { top: 66%; border-top: 1px dashed var(--acc3); animation: seqPath 6s ease-in-out infinite }
+.sequence-loader .seq-object { width: 3px; height: 3px; border-radius: 50%; background: var(--acc3); animation: seqObject 6s linear infinite }
+@keyframes seqBackOne { 0%, 8%, 100% { transform: translate(-7%, -8%) } 30%, 90% { transform: translate(0, 0) } }
+@keyframes seqBackTwo { 0%, 8%, 100% { transform: translate(-14%, -16%) } 30%, 90% { transform: translate(0, 0) } }
+@keyframes seqScan { 0% { left: -25%; opacity: 0 } 8% { opacity: 1 } 38% { left: 100%; opacity: 1 } 43%, 100% { left: 100%; opacity: 0 } }
+@keyframes seqTrail { 0%, 25% { opacity: 0; clip-path: inset(0 100% 0 0) } 48%, 85% { opacity: 1; clip-path: inset(-4px) } 98%, 100% { opacity: 0; clip-path: inset(-4px) } }
+@keyframes seqPath { 0%, 50% { opacity: 0; translate: 0 -5px } 65%, 85% { opacity: .8; translate: 0 0 } 98%, 100% { opacity: 0; translate: 0 0 } }
+@keyframes seqObject { 0%, 57% { opacity: 0; left: 16%; top: 66% } 63% { opacity: 1 } 85% { opacity: 1; left: 82%; top: 16% } 92%, 100% { opacity: 0; left: 82%; top: 16% } }
+
 /* ---- Shell ---------------------------------------------------------------- */
 .shell { display: grid; grid-template-columns: var(--side) 1fr; min-height: 100vh }
 .side { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 6px; padding: 18px 12px;
@@ -103,6 +126,8 @@ kbd { font: 600 11px/1 inherit; font-family: inherit; padding: 3px 6px; border-r
   background: color-mix(in srgb, var(--acc) 12%, var(--panel)); border: 1px solid color-mix(in srgb, var(--acc) 30%, transparent); position: relative; overflow: hidden; animation: pop .4s var(--spring) }
 .jobpill .spinner { color: var(--acc) }
 .jobpill span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0 }
+.jobpill .job-symbol { display: inline-flex; flex: none; overflow: visible }
+.jobpill .sequence-loader { overflow: visible }
 .jobpill b { font-weight: 600 }
 .jobpill i { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--grad); transition: width .6s var(--ease) }
 .jobpill:hover { border-color: color-mix(in srgb, var(--acc) 60%, transparent) }
@@ -452,6 +477,8 @@ details[open] > summary ~ * { animation: fadeUp .35s var(--ease) }
 .side nav { overflow-y: auto; scrollbar-width: none }
 .nav-group { padding: 16px 12px 5px; font-size: 10.5px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase; color: var(--dim) }
 .side nav a .nb.live { background: color-mix(in srgb, var(--acc) 22%, transparent); color: var(--acc) }
+.side nav a.sequence-running > svg { display: none }
+.side nav a .nb.sequence-badge { position: static; order: -1; margin: 0; padding: 0; min-width: 26px; height: 20px; border-radius: 0; background: none; color: var(--acc); animation: none }
 .drop-overlay small { display: block; margin-top: 6px; color: var(--mut) }
 em.grad { font-style: normal; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent }
 .eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 650; letter-spacing: .12em; color: var(--acc3); margin-bottom: 10px }
@@ -560,5 +587,7 @@ input:focus-visible + .switch { outline: 2px solid var(--acc); outline-offset: 2
 .field .pick + small { margin-top: 6px }
 
 @media (prefers-reduced-motion: reduce) {
+  .sequence-loader *, .sequence-loader .seq-object { animation: none !important }
+  .sequence-loader .seq-scan, .sequence-loader .seq-object { display: none }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important }
 }

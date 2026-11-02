@@ -31,10 +31,16 @@ def test_scan_groups_and_classifies(env):
     assert pl.scan()["new_frames"] == 0           # idempotent
 
 
-def test_full_pipeline(env):
+def test_full_pipeline(env, monkeypatch):
     s, db, pl = env
     pl.scan()
     pid = db.q("SELECT id FROM projects")[0]["id"]
+    from astroflow.modules.stacking import processing
+    real_process, renders = processing.process, []
+    def counted(*args, **kwargs):
+        renders.append(1)
+        return real_process(*args, **kwargs)
+    monkeypatch.setattr(processing, 'process', counted)
     rid = pl.process(pid)
     res = db.one("SELECT * FROM results WHERE id=?", (rid,))
     files = json.loads(res["files"])
@@ -47,14 +53,16 @@ def test_full_pipeline(env):
     stats = json.loads(res["stats"])
     assert 0.02 < stats["median"] < 0.35 and stats["clipped_pct"] < 2     # dunkler Hintergrund (bg_dark 0,03)
     assert "Flat" in db.q("SELECT metrics FROM frames WHERE status!='new' AND kind='light' LIMIT 1")[0]["metrics"]
-    # Stacking-Stufen für den Verlaufsregler: gleicher Ausschnitt wie das fertige Bild, weniger Aufnahmen = mehr Rauschen
+    # Der Verlauf übernimmt kleine Live-Vorschauen, ohne die Stufen erneut vollständig zu entwickeln.
     assert [x["n"] for x in stats["stages"]] == [1, 3, 10]
+    assert stats['stages_live']
+    assert len(renders) == len(stats['qc']) - 1       # keine zusätzlichen Renderings für Zwischenstufen
     from PIL import Image
     final = np.asarray(Image.open(files["jpg"]), np.float32)
     noise = []
     for x in stats["stages"]:
         img = np.asarray(Image.open(files[f"s{x['n']}"]), np.float32)
-        assert img.shape == final.shape and x["exposure"] > 0
+        assert max(img.shape[:2]) <= 800 and img.shape[2] == 3 and x["exposure"] > 0
         noise.append(np.median(np.abs(np.diff(img.mean(2), axis=1))))
     noise.append(np.median(np.abs(np.diff(final.mean(2), axis=1))))
     assert noise[0] > noise[-1], noise

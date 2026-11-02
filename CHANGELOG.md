@@ -3,6 +3,23 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.12.0 – 02.11.2026
+
+### Neu
+- **Live-Bildaufbau:** Im Bild-Tab erscheinen echte, verkleinerte Zwischenbilder während des Stackens und der
+  Entwicklung. Neue Vorschauen werden weich eingeblendet. Eine schmale Statuszeile zeigt den tatsächlichen Schritt
+  (auch GraXpert, Gaia, StarNet, Stretch und Qualitätskontrolle); der Verlauf steht unter „Details“.
+- **Schnellerer Stacking-Verlauf:** Kleine Live-Vorschauen werden direkt für den späteren Regler gespeichert.
+  Die zusätzliche vollständige Entwicklung jeder Zwischenstufe entfällt. Das fertige Bild erhält weiterhin die volle
+  Bearbeitung; die Vorschauen zeigen den tatsächlichen Bildaufbau und können in Farbe, Helligkeit und Ausschnitt abweichen.
+
+### Behoben
+- **Verlaufsregler:** Beim Wechsel zwischen kleinen Live-Vorschauen und dem hochauflösenden Endbild bleiben
+  die sichtbare Bildgröße, der relative Zoom und der gewählte Bildausschnitt erhalten.
+- **SkyTrace-Ladeanzeige:** Eine kompakte animierte Bildfolge mit Spur und Bahnvergleich ersetzt den Ladekreis
+  im laufenden Auftrag und den Punkt bei „Analysen“. Die Schleife zeigt den Ablauf symbolisch; der echte Fortschritt
+  bleibt separat sichtbar. Bei reduzierter Bewegung erscheint ein ruhiges Symbol.
+
 ## 0.11.0 – 01.11.2026
 
 ### Neu

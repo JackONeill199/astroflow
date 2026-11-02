@@ -7,6 +7,8 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const icon = (n) => `<svg><use href="#i-${n}"/></svg>`;
+// Kleine Bildfolge: vergleichen → Spur finden → Bahn darüberlegen (symbolisch, kein Fortschrittsmaß).
+const sequenceLoader = () => '<span class="sequence-loader" aria-hidden="true"><em class="seq-back seq-back-two"></em><em class="seq-back seq-back-one"></em><em class="seq-image"><em class="seq-scan"></em><em class="seq-trail"></em><em class="seq-path"></em><em class="seq-object"></em></em></span>';
 async function api(u, opt = {}) {
   const r = await fetch('/api' + u, opt);
   if (!r.ok) {
@@ -261,11 +263,19 @@ function createViewer(host, src, cmpSrc, labels = ['älter', 'neuer'], ph = null
   let animT = 0;
   const smooth = (fn) => { v.classList.add('anim'); fn(); clearTimeout(animT); animT = setTimeout(() => v.classList.remove('anim'), 400); };
   const onload = () => {
+    // Auflösung kann zwischen Live-Stufe und Endbild wechseln: relativen Zoom und Bildmittelpunkt erhalten.
+    const relative = iw ? s / fitS : 1;
+    const cx = iw ? (v.clientWidth / 2 - x) / (iw * s) : .5;
+    const cy = ih ? (v.clientHeight / 2 - y) / (ih * s) : .5;
     iw = main.naturalWidth; ih = main.naturalHeight;
     if (ov) { ov.setAttribute('viewBox', `0 0 ${iw} ${ih}`); ov.style.width = iw + 'px'; ov.style.height = ih + 'px'; opts.overlay(ov, iw, ih); }
-    fit(); requestAnimationFrame(() => v.classList.add('ready'));
+    fitS = Math.min(v.clientWidth / iw, v.clientHeight / ih);
+    s = fitS * relative;
+    x = v.clientWidth / 2 - cx * iw * s; y = v.clientHeight / 2 - cy * ih * s;
+    clamp(); apply(); requestAnimationFrame(() => v.classList.add('ready'));
   };
-  main.complete && main.naturalWidth ? onload() : main.addEventListener('load', onload, { once: true });
+  main.addEventListener('load', onload);
+  if (main.complete && main.naturalWidth) onload();
   main.addEventListener('error', () => { $('.vload', v).innerHTML = 'Bild konnte nicht geladen werden.'; });
   const ro = new ResizeObserver(() => { const atFit = Math.abs(s - fitS) < 1e-3; if (atFit) fit(); else { clamp(); apply(); } });
   ro.observe(v);
@@ -301,8 +311,8 @@ function createViewer(host, src, cmpSrc, labels = ['älter', 'neuer'], ph = null
     if (a === 'in') smooth(() => zoomAt(1.5, cx, cy)); else if (a === 'out') smooth(() => zoomAt(1 / 1.5, cx, cy)); else if (a === 'fit') smooth(fit);
     else if (a === 'full') { v.classList.toggle('full'); requestAnimationFrame(fit); }
   });
-  // setSrc: anderes Bild gleicher Größe zeigen (Zoom und Ausschnitt bleiben, z. B. Stacking-Stufen)
-  return { el: v, overlay: ov, setSrc: (u) => { if (main.getAttribute('src') !== u) main.src = u; }, destroy:() => { ro.disconnect(); document.removeEventListener('keydown', onKey); } };
+  // setSrc: Bild wechseln; auch bei anderer Pixelgröße bleiben relativer Zoom und Ausschnitt erhalten.
+  return { el: v, overlay: ov, setSrc: (u) => { if (main.getAttribute('src') !== u) main.src = u; }, destroy:() => { ro.disconnect(); main.removeEventListener('load', onload); document.removeEventListener('keydown', onKey); } };
 }
 
 // ----------------------------------------------------------- Modul-Vertrag --- //
@@ -345,7 +355,18 @@ function buildNav() {
     <a href="#/settings" data-r="settings">${icon('gear')}<span>Einstellungen</span></a>`;
   nav.innerHTML = h;
 }
-const navBadge = (key, n, live = false) => { const b = $(`[data-nb="${key}"]`); if (!b) return; b.hidden = !n; b.textContent = n || ''; b.classList.toggle('live', !!live); };
+const navBadge = (key, n, live = false) => {
+  const b = $(`[data-nb="${key}"]`); if (!b) return;
+  const sequence = key === 'skytrace' && !!n && live;
+  b.hidden = !n;
+  if (sequence) {
+    if (!b.classList.contains('sequence-badge')) b.innerHTML = sequenceLoader();
+    b.setAttribute('role', 'img'); b.setAttribute('aria-label', 'Spurenanalyse läuft');
+  } else { b.textContent = n || ''; b.removeAttribute('role'); b.removeAttribute('aria-label'); }
+  b.classList.toggle('live', !!live && !sequence);
+  b.classList.toggle('sequence-badge', sequence);
+  b.parentElement.classList.toggle('sequence-running', sequence);
+};
 
 // ---------------------------------------------------------------- Router --- //
 let view = null;      // { update?, navigate?, actions?, destroy? }
@@ -434,7 +455,10 @@ function showJobPill(a, n = 0) {
   const q = a.state === 'queued';
   pill.href = a.href || '#/activity';
   pill.title = 'Zum laufenden Auftrag';
-  if (pill.hidden || !$('.t', pill)) { pill.innerHTML = '<span class="spinner"></span><span class="t"></span><i></i>'; pill.hidden = false; }
+  if (!$('.t', pill)) pill.innerHTML = '<span class="job-symbol"></span><span class="t"></span><i></i>';
+  pill.hidden = false;
+  const symbol = $('.job-symbol', pill), loader = !q && a.key?.startsWith('skytrace:') ? 'sequence' : 'spinner';
+  if (symbol.dataset.loader !== loader) { symbol.innerHTML = loader === 'sequence' ? sequenceLoader() : '<span class="spinner" aria-hidden="true"></span>'; symbol.dataset.loader = loader; }
   $('.t', pill).innerHTML = `<b>${esc(a.title)}</b> · ${q ? 'wartet' : esc(a.stage || a.kind || 'läuft')}${!q && pc != null ? ` <span class="tnum">${pc} %</span>` : ''}${n > 1 ? ` <span class="mut">+${n - 1}</span>` : ''}`;
   requestAnimationFrame(() => { $('i', pill).style.width = (q || pc == null ? 0 : pc) + '%'; });
 }

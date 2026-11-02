@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from . import calibration, channels, develop, gpu, graxpert, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner, stars, tutor
+from . import calibration, channels, develop, gpu, graxpert, live, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner, stars, tutor
 from ...core.config import Settings, free_ram_mb
 from .db import DB
 from .fits_io import FrameInfo, parse_date, read_data, to_channels, write_fits
@@ -35,7 +35,7 @@ DEFAULT_OPTIONS = {
 GLOW_SAMPLE = 30                # Frames je Nacht für die Glühmessung
 CHECKPOINT_S = 120              # Stack-Zustand spätestens alle 2 min sichern (Wiederaufnahme nach Abbruch)
 STAGES = (1, 3, 10, 30, 100, 300, 1000, 3000)   # Stacking-Stufen (Aufnahmen) für den Verlaufsregler im Bild-Tab
-STAGE_SCALE = 8.0               # Stufen als float16 (Speicher); ADU / 8 bleibt sicher unter dem float16-Maximum
+STAGE_SCALE = 8.0               # nur zum Lesen älterer float16-Stufen; neue Stufen sind kleine Live-JPGs
 
 
 def band_of_row(r: dict) -> str | None:
@@ -56,7 +56,8 @@ def load_stages(d: Path) -> list[dict]:
     out = []
     for f in sorted(d.glob("n*.json")):
         try:
-            out.append({**json.loads(f.read_text()), "path": f.with_suffix(".npz")})
+            path = f.with_suffix('.jpg') if f.with_suffix('.jpg').exists() else f.with_suffix('.npz')
+            out.append({**json.loads(f.read_text()), "path": path})
         except Exception:
             pass
     return sorted((x for x in out if x["path"].exists()), key=lambda x: x["n"])
@@ -89,6 +90,26 @@ class Pipeline:
         self.solver_cfg = solver_cfg or platesolve.SolverConfig.from_env()
         self._scan_lock = threading.Lock()     # Watcher, API-Scan und Nach-Solving nie gleichzeitig
         self.on_stacked = None                 # fn(project_id, result_id): neue Aufnahmen gestackt, Rohbilder noch vorhanden
+        self.live_runs = {}                     # getrennt je Objekt: Stacking und Entwicklung laufen parallel
+
+    def begin_live(self, pid, job=None):
+        run = live.optional(live.LiveRun, self.s.work_dir, pid, job)
+        self.live_runs[pid] = run
+        return run
+
+    def _track_live(self, pid, progress):
+        run = self.live_runs.get(pid)
+        if run is None or run.finished:
+            run = self.begin_live(pid)
+
+        def prog(p, stage, msg=''):
+            if run:
+                p = max(p, run.data.get('progress', 0))
+                run.data['progress'] = p
+            progress(p, stage, msg)              # Abbruch/Plattenprüfung niemals als Vorschaufehler verschlucken
+            if run:
+                live.optional(run.event, stage, msg)
+        return run, prog
 
     # ------------------------------------------------------------------ scan #
     def scan(self) -> dict:
@@ -431,6 +452,7 @@ class Pipeline:
     def stack(self, project_id: int, extra: dict | None = None, progress=lambda p, stage, msg="": None) -> dict:
         """Analyse -> Auswahl -> Kalibrierung/Registrierung -> gewichtetes Sigma-Clip-Stacking.
         Ergebnis ist der lineare Master-Stack je Filter in work/p<id>/ (inkrementell, mit Checkpoints)."""
+        _, progress = self._track_live(project_id, progress)
         proj = self.db.one("SELECT * FROM projects WHERE id=?", (project_id,))
         if not proj:
             raise ValueError("Projekt nicht gefunden")
@@ -589,6 +611,8 @@ class Pipeline:
     def develop(self, project_id: int, extra: dict | None = None, progress=lambda p, stage, msg="": None,
                 start: float = 0.86) -> int:
         """Master-Stack -> fertiges Astrofoto. Braucht keine Rohdaten und kein Stacking."""
+        run, progress = self._track_live(project_id, progress)
+        view = (lambda img, linear=True: live.optional(run.picture, img, linear=linear)) if run else None
         proj = self.db.one("SELECT * FROM projects WHERE id=?", (project_id,))
         if not proj:
             raise ValueError("Projekt nicht gefunden")
@@ -627,12 +651,16 @@ class Pipeline:
         if params.get("star_separation") == "starnet" and not stars.starnet_path():
             params["star_separation"] = "off"           # Profil „nur StarNet“: ohne StarNet keine eigene Trennung
         gx: dict = {}
+        if run:
+            run.data.update(n=len(stacked), exposure=exposure, band=None)
+        if view:
+            view(mean)
         if (gmode := graxpert.mode_for(opt.get("graxpert"))) != "off" and (exe := graxpert.graxpert_path()):
             # einmal je Entwicklung auf dem linearen Stack (gecacht) – vor der Farbkalibrierung, damit die
             # Sternfotometrie auf verlaufsfreiem Himmel misst
             mean, gx = graxpert.apply(mean, cov, gmode, float(params.get("ai_denoise", graxpert.DEFAULT_STRENGTH)),
                                       self.s.work_dir / f"p{project_id}" / "graxpert", exe,
-                                      log=lambda m: prog(0.05, "Bearbeitung", m))
+                                      log=lambda m: prog(0.05, "Bearbeitung", m), preview=view)
             params["_ai"] = {k: v for k, v in gx.items() if k in ("bge", "denoise")}
         if mean.shape[0] == 3 and not narrow and params.get("color_calibration", True) and "wb_gains" not in user:
             pcc = self._photometric(proj, states, mean, cov, lambda m: prog(0.1, "Farbkalibrierung", m))
@@ -640,13 +668,15 @@ class Pipeline:
                 params["_pcc"] = pcc
                 if "gains" in pcc:
                     params["wb_gains"] = pcc["gains"]
+                elif pcc.get('fallback'):
+                    prog(0.15, 'Farbkalibrierung', 'Sternfarben-Mittel – ' + pcc['fallback'])
         cnt = self.db.one("SELECT COUNT(*) n, SUM(status='rejected') r FROM frames WHERE project_id=? AND kind='light'", (project_id,))
         ctx = {"exposure_s": exposure, "rejected_pct": 100 * (cnt["r"] or 0) / max(1, cnt["n"]),
                "has_flats": bool(self.db.one("SELECT id FROM frames WHERE kind='flat' LIMIT 1")),
                "neutral_sky": tutor.neutral_sky(proj["ra"], proj["dec"], kind)}
         rgb, stats, params, _ = develop.develop(
             mean, cov, params, narrow, palette, ctx, fixed=user,
-            log=lambda m: prog(0.3, "Bearbeitung", m), render_log=lambda m: prog(0.5, "Bearbeitung", m))
+            log=lambda m: prog(0.3, "Bearbeitung", m), render_log=lambda m: prog(0.5, "Bearbeitung", m), on_preview=view)
 
         review_hist = []
         if opt.get("review", True) and self.review_cfg.enabled:
@@ -667,8 +697,10 @@ class Pipeline:
 
         # --- Ausgabe ----------------------------------------------------------
         prog(0.85, "Speichern")
+        if run:
+            live.optional(run.picture, rgb, linear=False, force=True)
         rid = self._save(proj, rgb, mean, cov, stats, review_hist, len(stacked), exposure, params)
-        # erst nach dem gespeicherten Ergebnis (ist schon sichtbar): Zwischenstufen für den Verlaufsregler
+        # Live-JPGs nur übernehmen – keine erneute Entwicklung der Stacking-Stufen.
         try:
             self._render_stages(project_id, rid, states, params, narrow, palette, stats.get("crop"), len(stacked),
                                 lambda f, m: prog(0.88 + 0.12 * f, "Stacking-Stufen", m))
@@ -676,43 +708,36 @@ class Pipeline:
             print(f"Stacking-Stufen fehlgeschlagen: {e}")
         if start < 0.5:
             progress(1.0, "Fertig")
+        if run:
+            live.optional(run.event, 'Fertig')
         return rid
 
     def _render_stages(self, project_id, rid, states, params, narrow, palette, crop, n_total, log) -> None:
-        """Gespeicherte Stacking-Stufen (weniger Aufnahmen) mit den Parametern des fertigen Bildes und exakt dessen
-        Ausschnitt entwickeln -> <base>_s<n>.jpg, Liste in stats.stages. Nur bei einem Kanal (Farbkamera / ein Filter)."""
-        if len(states) != 1 or not crop:
+        """Live-Vorschauen archivieren; Altbestand nur verkleinert und einfach strecken."""
+        if len(states) != 1:
             return
         (band, _), = states.items()
         found = [x for x in load_stages(stage_dir(self.s.work_dir / f"p{project_id}", band)) if x["n"] < n_total]
         if not found:
             return
-        # externe KI-Werkzeuge kosten je Stufe Minuten -> eigene Verfahren (Hinweis in der Oberfläche)
-        p = {k: v for k, v in params.items() if k != "_ai"}
-        simplified = [n for n, on in (("GraXpert", "_ai" in params), ("StarNet", p.get("star_separation") == "starnet")) if on]
-        if p.get("star_separation") == "starnet":
-            p["star_separation"] = "off"
         row = self.db.one("SELECT files, stats FROM results WHERE id=?", (rid,))
         files, st = json.loads(row["files"]), json.loads(row["stats"])
         base = files["jpg"][: -len(".jpg")]
         done = []
         for i, x in enumerate(found):
-            log(i / len(found), f"{x['n']} von {n_total} Aufnahmen entwickeln")
-            with np.load(x["path"]) as z:
-                mean = z["mean"].astype(np.float32) * STAGE_SCALE
-                cov = z["cov"].astype(np.float32)
-            cov /= max(float(cov.max()), 1e-9)
-            if band is not None:
-                mean, cov, _, _ = channels.combine({band: (mean, cov)}, palette)
-            rgb, _ = processing.process(mean, cov, p, narrowband=narrow, palette=palette, crop=crop)
-            del mean, cov
+            log(i / len(found), f"Live-Verlauf sichern: {x['n']} Aufnahmen")
             f = f"{base}_s{x['n']}.jpg"
-            Image.fromarray((np.moveaxis(rgb, 0, -1)[::-1] * 255 + 0.5).astype(np.uint8)).save(f, quality=90)
+            if x['path'].suffix == '.jpg':
+                shutil.copyfile(x['path'], f)
+            else:
+                with np.load(x['path']) as z:
+                    mean = live.sample(z['mean']) * STAGE_SCALE
+                live.save_picture(Path(f), mean)
             files[f"s{x['n']}"] = f
             done.append({"n": x["n"], "exposure": x["exposure"]})
         st["stages"] = done
-        if simplified:
-            st["stages_simplified"] = simplified
+        st['stages_live'] = True
+        st.pop('stages_simplified', None)
         self.db.x("UPDATE results SET files=?, stats=? WHERE id=?", (json.dumps(files), json.dumps(st), rid))
 
     # -------------------------------------------------------------- stacking #
@@ -821,11 +846,19 @@ class Pipeline:
                     unsaved.append(fid)
                 for t, k in cut.items():                 # Zwischenstand nach t Aufnahmen für den Verlaufsregler
                     m, c = state.snaps.pop(k)
-                    stages.mkdir(parents=True, exist_ok=True)
-                    np.savez(stages / f"n{t:05d}.npz", mean=(m / STAGE_SCALE).astype(np.float16), cov=c.astype(np.float16))
-                    (stages / f"n{t:05d}.json").write_text(json.dumps(
-                        {"n": t, "exposure": exp0 + sum(exptime.get(fid, 0) for fid, _ in good[:k])}))
+                    def save_stage():
+                        stages.mkdir(parents=True, exist_ok=True)
+                        live.save_picture(stages / f'n{t:05d}.jpg', m)
+                        (stages / f'n{t:05d}.json').write_text(json.dumps(
+                            {'n': t, 'exposure': exp0 + sum(exptime.get(fid, 0) for fid, _ in good[:k])}), encoding='utf-8')
+                    live.optional(save_stage)
                     del m, c
+                run = self.live_runs.get(pid)
+                if run and (time.monotonic() - run.last_picture >= live.INTERVAL or ci == len(chunks) - 1):
+                    def show_stack():
+                        run.picture(live.stack_sample(state), n=len(meta['frames']), exposure=meta['exposure'],
+                                    band=stages.name.removeprefix('stufen_') if stages and stages.name != 'stufen' else None, force=True)
+                    live.optional(show_stack)
             done += len(chunk)
             # Checkpoint: Frames gelten erst als gestackt, wenn der Zustand mit ihnen gespeichert ist
             if save_dir is not None and unsaved and (ci == len(chunks) - 1 or time.time() - last_save > CHECKPOINT_S):

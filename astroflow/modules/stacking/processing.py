@@ -615,12 +615,16 @@ def auto_stretch(img: np.ndarray, target: float = 0.2) -> np.ndarray:
 
 
 def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool = False, palette: str | None = None,
-            log=lambda m: None, want_before: bool = False, crop: list | None = None):
+            log=lambda m: None, want_before: bool = False, crop: list | None = None, preview=None):
     """stack (C,H,W) linear, cov (H,H) 0..1. Gibt (rgb float32 (3,H,W) 0..1, Statistik).
     want_before: stats["before"] = derselbe Ausschnitt nur linear gestreckt (Vorher-Nachher-Vergleich).
     crop: fester Ausschnitt (y0, y1, x0, x1) statt aus der Abdeckung – stats["crop"] eines früheren Laufs
     (Stacking-Stufen haben so exakt den Ausschnitt des fertigen Bildes)."""
     p = dict(params)
+    def show(a, linear=True):
+        if preview:
+            from .live import optional
+            optional(preview, a, linear=linear)
     if crop:
         y0, y1, x0, x1 = crop
     else:
@@ -683,6 +687,7 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
         img = remove_color_gradient(img, int(p["color_gradient"]))
         stats["color_gradient"] = int(p["color_gradient"])
     img = neutralize_background(img)
+    show(img)
 
     if p["deconv"] > 0 and fwhm > 1.5:
         log("Entfaltung")
@@ -700,12 +705,14 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
     # die Sterne kommen am Ende mit eigener Helligkeit zurück. Ohne Trennung: GHS auf das ganze Bild.
     sep = p.get("star_separation", "auto") not in ("off", None, False)
     stars_s = None
-    log("Stretch")
     if p.get("color_preserve"):
+        log("Stretch")
         img = stretch(img, float(p["target_bg"]), float(p["asinh"]), True)
     elif sep:
         starless, _, how = starsep.separate(img, fwhm, str(p.get("star_separation", "auto")), log)
         stats["star_separation"] = how
+        show(starless)
+        log("Stretch (GHS)")
         T = starsep.Stretch(starless, float(p["target_bg"]), full=img)
         # Sterne mit der kanalweisen Kurve (knackig, Kerne weiß – wie Stellina), Nebel mit GHS
         Ts = channel_curve(img, float(p["target_bg"]), float(p["asinh"]), float(p.get("white_pct", 99.9)))
@@ -714,7 +721,9 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
         stats["ghs"] = T.steps
         del starless
     else:                                                  # ohne Trennung (Sternhaufen): knackige Kanalkurve
+        log("Stretch")
         img = channel_curve(img, float(p["target_bg"]), float(p["asinh"]), float(p.get("white_pct", 99.9)))(img)
+    show(img, linear=False)
     L = luminance(img)
     star = np.clip(ndi.gaussian_filter(ndi.binary_dilation(L > 0.7, iterations=2).astype(np.float32), 1.5) * 2, 0, 1)
     protect = np.maximum(smoothstep(L, 0.25, 0.7) * 0.6, star)
@@ -730,6 +739,7 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
     if p.get("grade", 0) > 0:
         log("Endbearbeitung")
         img = grade(img, float(p["grade"]), float(p.get("vibrance", 0.0)) if not mono else 0.0)
+    show(img, linear=False)
     if stars_s is not None:
         log("Sterne einsetzen")
         if p["star_reduction"] > 0:                          # Sterne kleiner: nur die Sternebene, Nebel unberührt
@@ -744,6 +754,7 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
         img = neutral_display_background(img)
     if p.get("bg_dark") is not None:
         img = darken_background(img, float(p["bg_dark"]))
+    show(img, linear=False)
     L = luminance(img)
     stats["median"] = round(float(np.median(L)), 4)
     stats["p99"] = round(float(np.percentile(L, 99)), 4)
