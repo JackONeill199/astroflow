@@ -43,7 +43,8 @@ Alle Bilder stammen aus einer echten Instanz: rund 22 000 Stellina-Aufnahmen aus
 
 ![Import](docs/screenshots/import.jpg)
 **Import:** Dateien oder ganze Ordner per Drag & Drop, FITS und fertige JPG/PNG/TIFF gemischt. „Hauptordner durchsuchen“ findet auf einer ganzen
-Teleskop-Festplatte, was noch nicht (fertig) gestackt ist – die Quelldateien bleiben unverändert.
+Teleskop-Festplatte, was noch nicht (fertig) gestackt ist – die Quelldateien bleiben unverändert am Ort und werden nicht kopiert
+(auch nicht von einer anderen Platte; zum Stacken neuer Aufnahmen muss sie angeschlossen sein).
 
 ### SkyTrace – was sich zwischen den Sternen bewegt
 

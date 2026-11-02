@@ -91,13 +91,15 @@ class Pipeline:
         self.on_stacked = None                 # fn(project_id, result_id): neue Aufnahmen gestackt, Rohbilder noch vorhanden
 
     # ------------------------------------------------------------------ scan #
-    def scan(self) -> dict:
+    def scan(self, extra: list[Path] | None = None) -> dict:
+        """extra: am Ort eingebundene Dateien außerhalb von input/ (Hauptordner-Import, nur einmal beim Import gelesen –
+        der Watcher sieht nur input/, eine abgesteckte Platte stört ihn also nicht)."""
         with self._scan_lock:
-            return self._scan()
+            return self._scan(extra)
 
-    def _scan(self) -> dict:
+    def _scan(self, extra: list[Path] | None = None) -> dict:
         known = {r["id"] for r in self.db.q("SELECT id FROM frames")}
-        frames, errors = scanner.scan_dir(self.s.input_dir, known, self.s.threads)
+        frames, errors = scanner.scan_dir(self.s.input_dir, known, self.s.threads, extra)
         # inhaltsgleiche Dateien (z. B. derselbe Ordner erneut hochgeladen) nie doppelt stacken
         seen = self._fingerprints()
         unique, dups = [], []
@@ -153,10 +155,25 @@ class Pipeline:
         except ValueError:
             return False
 
+    @staticmethod
+    def offline(rows: list[dict]) -> set[str]:
+        """Frames, deren Rohdatei nicht gelöscht, aber gerade nicht erreichbar ist (z. B. USB-Platte mit am Ort
+        eingebundenen Aufnahmen abgesteckt). Sie bleiben in der Datenbank unverändert und kommen später dran."""
+        return {r["id"] for r in rows if not r["deleted"] and r["path"] and not Path(r["path"]).exists()}
+
+    @staticmethod
+    def offline_hint(rows: list[dict], ids: set[str]) -> str:
+        dirs = sorted({str(Path(r["path"]).parent) for r in rows if r["id"] in ids})
+        return dirs[0] + (f" (und {len(dirs) - 1} weitere Ordner)" if len(dirs) > 1 else "") if dirs else ""
+
+    @staticmethod
+    def offline_error(rows: list[dict], ids: set[str]) -> calibration.SourceOffline:
+        return calibration.offline_error("Aufnahmen", [r["path"] for r in rows if r["id"] in ids])
+
     def delete_stacked_uploads(self, project_id: int) -> tuple[int, int]:
         """Hochgeladene Light-Aufnahmen löschen, deren Information im gespeicherten Stack steckt (gestackt)
-        oder die verworfen wurden. Nur Dateien unter input/uploads – eingebundene Ordner (NAS) bleiben unberührt,
-        Kalibrierbilder ebenso. Gibt (Anzahl, Bytes) zurück."""
+        oder die verworfen wurden. Nur Dateien unter input/uploads – eingebundene Ordner (NAS) und am Ort eingebundene
+        Originale aus „Hauptordner durchsuchen“ bleiben unberührt, Kalibrierbilder ebenso. Gibt (Anzahl, Bytes) zurück."""
         n = freed = 0
         for r in self.db.q("SELECT id, path, status, stacked FROM frames WHERE project_id=? AND kind='light' AND deleted=0 "
                            "AND (stacked=1 OR status='rejected')", (project_id,)):
@@ -453,12 +470,16 @@ class Pipeline:
         # --- 1. Analyse (nur neue Frames) ------------------------------------
         # neu analysieren: neue Frames und solche mit veralteter Analyse (z. B. vor der Hotpixel-Korrektur)
         # (gelöschte Rohdateien behalten ihre Analyse – sie lässt sich nicht wiederholen)
-        todo = [r for r in rows if not r["deleted"] and
+        # (nicht erreichbare Quellen ebenso: kein „Lesefehler“, sie kommen dran, sobald die Platte wieder da ist)
+        offline = self.offline(rows)
+        lights = rows
+        todo = [r for r in rows if not r["deleted"] and r["id"] not in offline and
                 (not r["metrics"] or json.loads(r["metrics"]).get("mv", 1) < quality.METRICS_VERSION)]
-        if any(r["metrics"] and r["stacked"] for r in todo) and not any(r["deleted"] and r["stacked"] for r in rows):
+        if any(r["metrics"] and r["stacked"] for r in todo) and not any((r["deleted"] or r["id"] in offline) and r["stacked"] for r in rows):
             self.db.x("UPDATE projects SET restack=1 WHERE id=?", (project_id,))
             proj["restack"] = 1
-        progress(0.02, "Analyse", f"{len(todo)} neue Aufnahmen analysieren")
+        progress(0.02, "Analyse", f"{len(todo)} neue Aufnahmen analysieren"
+                 + (f" ({len(offline)} nicht erreichbar: {self.offline_hint(rows, offline)})" if offline else ""))
 
         def analyze(r):
             try:
@@ -468,16 +489,23 @@ class Pipeline:
                 met["calib"] = m.desc
                 met["mv"] = quality.METRICS_VERSION
                 return r["id"], met, None
+            except calibration.SourceOffline as e:     # Kalibrierbilder auf abgesteckter Platte: kein Lesefehler
+                return r["id"], None, e
             except Exception as e:
                 return r["id"], None, str(e)
 
+        waiting = None
         with ThreadPoolExecutor(self.s.threads) as ex:
             for n, (fid, met, err) in enumerate(ex.map(analyze, todo)):
-                if err:
+                if isinstance(err, calibration.SourceOffline):
+                    waiting = err
+                elif err:
                     self.db.set_frame(fid, status="failed", reason=f"Lesefehler: {err}", metrics={"n_stars": 0})
                 else:
                     self.db.set_frame(fid, metrics=met, status="analyzed")
                 progress(0.02 + 0.30 * (n + 1) / max(1, len(todo)), "Analyse")
+        if waiting:
+            raise waiting
 
         # --- 2. Auswahl (je Filter getrennt) ---------------------------------
         rows = self.db.q("SELECT * FROM frames WHERE project_id=? AND kind='light'", (project_id,))
@@ -506,12 +534,16 @@ class Pipeline:
             by_band.setdefault(band_of_row(r), []).append(r)
         wanted = {b: [r for r in rs if r["status"] == "selected"] for b, rs in by_band.items()}
         if sum(len(w) for w in wanted.values()) < 3:
+            if offline:                                # erste Verarbeitung, Platte abgesteckt: warten statt Fehler
+                raise self.offline_error(lights, offline)
             raise ValueError(f"zu wenige brauchbare Aufnahmen ({sum(len(w) for w in wanted.values())})")
         states = {} if proj["restack"] else {b: StackState.load(stack_dir(wd, b)) for b in by_band}
         states = {b: st for b, st in states.items() if st is not None}
         if any(st.meta.get("scale") != scale for st in states.values()) or len({st.meta.get("ref_fid") for st in states.values()}) > 1:
             states = {}
         for b in by_band:
+            if b not in states and (gone := [r for r in by_band[b] if r["id"] in offline and r["status"] == "selected"]):
+                raise self.offline_error(gone, {r["id"] for r in gone})
             if b not in states and any(r["deleted"] and r["stacked"] for r in by_band[b]):
                 self.db.x("UPDATE projects SET restack=0 WHERE id=?", (project_id,))
                 raise ValueError("Komplett neu stacken ist nicht möglich: die hochgeladenen Einzelbilder wurden nach dem "
@@ -534,7 +566,7 @@ class Pipeline:
             st = states.get(b)
             if st is None and len(wanted[b]) < 3:
                 continue                               # zu wenig für einen eigenen Kanal
-            todo = [r for r in wanted[b] if not r["stacked"] and not r["deleted"]]
+            todo = [r for r in wanted[b] if not r["stacked"] and not r["deleted"] and r["id"] not in offline]
             if todo or st is None:
                 ref = next(iter(states.values())).meta if states else None
                 lo, span = done_before / n_all, len(wanted[b]) / n_all

@@ -244,15 +244,15 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    Durchlauf löscht `Pipeline.delete_stacked_uploads` hochgeladene Lights (nur unter `input/uploads`, gestackt oder verworfen) → `frames.deleted=1`,
    `frames.size`. Hochgeladene Duplikate werden beim Scan sofort gelöscht. Folgen: kein komplettes Neu-Stacken mehr (Pipeline wirft klare
    `ValueError`, API 409, UI sperrt Menüpunkt/Auswahl/Auflösung/Ein-/Ausschließen); gelöschte Frames behalten Status und Analyse und werden nie
-   reanalysiert; Nachstacken neuer Nächte und Bearbeitung laufen normal (nur Stack + `state.json`-Referenzsterne nötig). Eingebundene Ordner
-   und Kalibrierbilder werden nie gelöscht. DB-Spalten kommen über `db.MIGRATIONS` (einfaches ALTER TABLE beim Start).
+   reanalysiert; Nachstacken neuer Nächte und Bearbeitung laufen normal (nur Stack + `state.json`-Referenzsterne nötig). Eingebundene Ordner,
+   am Ort eingebundene Hauptordner-Dateien (Pfad außerhalb von `input/uploads`, `Pipeline._is_upload`) und Kalibrierbilder werden nie gelöscht. DB-Spalten kommen über `db.MIGRATIONS` (einfaches ALTER TABLE beim Start).
 12. **Volles Laufwerk** (`diskspace.py`, seit 01.11.2026 – Hauptordner-Import von E: kopierte 95 GB nach C:, Platte voll, jeder Auftrag
    scheiterte, auch SQLite): Worker startet nur ab `MIN_FREE` 5 GB (`Engine.hold()`), `prog` prüft alle 5 s und bricht unter `ABORT_FREE` 2 GB ab;
    Volle-Platte-Fehler (`diskspace.is_full`, auch `sqlite3 … full`) und Abbruch → Job wieder `queued` + `Engine.paused` (Grund in
    `status.hold`/`paused`). `POST /api/stacking/queue {paused}` (UI: Aktivität → „Aufträge anhalten/fortsetzen“; `cancel`-Event bricht beim
    nächsten Fortschritt ab, Stacking setzt am Checkpoint fort). Pause ist nur im Speicher (Neustart = fortsetzen). Watcher scannt unter 2 GB nicht.
-   Import (`library.start_import`): Kopien über Laufwerksgrenzen (`same_drive`) müssen `IMPORT_RESERVE` 20 GB übrig lassen, sonst 400; beim
-   Kopieren Abbruch unter 5 GB – nicht übernommene Dateien bleiben in `to_import` (Gruppe `partial`), Import später fortsetzbar.
+   Import (`library.start_import`): kopiert seit 0.12.0 keine Rohdaten mehr (s. „Hauptordner durchsuchen“) → nur noch `MIN_FREE`-Prüfung, sonst 400;
+   während des Imports Abbruch unter 5 GB – nicht übernommene Dateien bleiben in `to_import` (Gruppe `partial`), Import später fortsetzbar.
    Aufräumen (`housekeeping/cleanup`) ist bei stehender Warteschlange (`hold()`) trotz wartender Aufträge erlaubt und hält sie währenddessen an.
    Test: `test_diskspace.py`.
 13. **Speicherbelegung & Aufräumen** (`housekeeping.py`, API `GET /housekeeping?keep=`, `POST /housekeeping/cleanup {keys, keep}`,
@@ -266,8 +266,22 @@ Import-Ansicht → „Hauptordner durchsuchen“ → „Ordner wählen …“ (`
 (`find_groups`: „…_observation_X“ = eine Gruppe samt Unterordnern, sonst je Ordner mit FITS; Ordnernamen dark/flat/bias → Kalibrierung; Ordner nur mit
 JPG/PNG/TIFF → fertige Bilder, nicht unterhalb von FITS-Gruppen), bildet je Datei den Inhalts-Fingerabdruck (`scanner.fingerprint`, Bilder SHA256) und
 gleicht mit `frames.info.fp` bzw. `results.stats.imported.sha256` ab – **Schnellpfade** (seit 01.11.2026; Stellina-Platte 31 718 FITS: vorher ~19 min, erster Lauf 56 s, danach 1,1 s ohne Lesezugriff): (1) `name_key` = Pfad ab dem `…_observation_X`-Ordner + Dateiname (+ `frames.size`, falls bekannt – wird seit 01.11. beim Einlesen gesetzt, älter nur nach dem Löschen) → bekannt ohne Lesen; (2) Tabelle `library_index` (Pfad, Größe, mtime → Fingerabdruck); (3) Beobachtungsordner ohne Namenstreffer: nur `SAMPLE` = 4 Stichproben (gemerkte zählen mit) – trifft keine, ist der Rest neu (`skipped`), sonst ganze Gruppe lesen (z. B. M3: früher ohne Ordnernamen hochgeladen). Größen aus `os.scandir` (kein stat je Datei) → Zustand `new|partial|unstacked|done` (fertig = gestackt/verworfen/Rohbild gelöscht/Duplikat).
-Import legt nur **unbekannte** Dateien als Hardlink (Rückfall Kopie) unter `input/uploads/bibliothek/<hash>/<Gruppenordner>/…` ab, dann `scan_and_queue()`;
-Bilder gehen über `import_picture`. Quelldateien bleiben unberührt. API: `GET /library`, `POST /library/scan {root}`, `POST /library/import {ids}` (Ids stammen
+Import übernimmt nur **unbekannte** Dateien und **kopiert nie** (seit 0.12.0, Nutzerwunsch – vorher Rückfall Kopie, 95 GB von E: nach C:):
+gleiches Laufwerk (`diskspace.same_drive`) → Hardlink unter `input/uploads/bibliothek/<hash>/<Gruppenordner>/…` (wird nach dem Stacken wie ein
+Upload gelöscht, Original bleibt); sonst (anderes Laufwerk, exFAT, Netzlaufwerk, `os.link` scheitert) **am Ort eingebunden**:
+`scan_and_queue(extra=[Dateien])` → `scanner.scan_dir(..., extra)` liest genau diese Dateien einmal ein, Frame-ID = sha1(absoluter Pfad|Größe|mtime),
+`frames.path` zeigt auf das Original. Der Watcher sieht nur `input/` – solche Dateien werden nie erneut gescannt, also auch nicht doppelt
+oder als verschwunden behandelt. Gelöscht werden sie nie (`_is_upload`). Wiedererkennung beim nächsten Suchlauf über `name_key`/Fingerabdruck wie gehabt.
+**Quelle nicht erreichbar** (USB-Platte ab): `Pipeline.offline(rows)` = nicht gelöscht, Datei fehlt. `stack()` analysiert/stackt sie nicht (kein
+„Lesefehler“, Status bleibt), erzwingt wegen ihnen kein Neu-Stacken und wirft bei Neuaufbau mit fehlenden ausgewählten Frames einen klaren `ValueError`
+(API `process {restack}` → 409); `Engine.pending_projects` zählt sie nicht (sonst endlose Leerläufe), holt sie aber nach, sobald die Platte wieder da ist;
+`/projects/{id}/frames` liefert `offline`. Fehlen Aufnahmen bzw. Kalibrierbilder ganz, wirft die Pipeline `calibration.SourceOffline` (mit `dirs`):
+`Engine._failed` merkt die Ordner in `jobs.options.offline`, `pending_projects` gibt das Objekt erst wieder frei, wenn alle zurück sind (sonst gälte
+„letzter Auftrag Fehler → nicht neu versuchen“ für immer, die Dateien werden ja nie neu gescannt). Analyse markiert dabei nichts als `failed`.
+Master-Kalibrierung: `CalibrationLibrary._cached` merkt je Pfadliste den zuletzt gebauten Master (`<tag>_<hash>.ref`) – ohne erreichbare
+Quelle (keine Änderungszeit für den Schlüssel) wird er weiter genutzt; Bauen/Lesen unter `lock` (parallele Analyse-Threads).
+Test: `tests/test_import_in_place.py`.
+Bilder gehen über `import_picture` (Kopie in die Ausgabe). Quelldateien bleiben unberührt. API: `GET /library`, `POST /library/scan {root}`, `POST /library/import {ids}` (Ids stammen
 aus dem letzten Suchlauf im Speicher). Zuletzt genutzter Pfad: `data/settings.json` → `library.root`. Test: `tests/test_library.py`.
 
 ## Plate-Solving (`modules/stacking/platesolve.py`)

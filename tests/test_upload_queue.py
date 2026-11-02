@@ -45,7 +45,7 @@ def test_late_uploads_get_a_followup_after_running_job(tmp_path):
 def test_watcher_recovers_already_scanned_uploads_and_respects_auto(tmp_path):
     eng, pid = engine(tmp_path)
     add(eng, pid, "a")
-    eng.pl.scan = lambda: {"new_by_project": {}, "new_frames": 0}
+    eng.pl.scan = lambda extra=None: {"new_by_project": {}, "new_frames": 0}
     eng.s.auto = False
     eng.scan_and_queue()
     assert eng.db.q("SELECT id FROM jobs") == []
@@ -60,11 +60,11 @@ def test_failed_job_is_not_retried_without_another_upload(tmp_path):
     add(eng, pid, "a")
     jid = eng.enqueue(pid)
     eng.db.x("UPDATE jobs SET state='error' WHERE id=?", (jid,))
-    eng.pl.scan = lambda: {"new_by_project": {}, "new_frames": 0}
+    eng.pl.scan = lambda extra=None: {"new_by_project": {}, "new_frames": 0}
     eng.scan_and_queue()
     assert len(eng.db.q("SELECT id FROM jobs")) == 1
     add(eng, pid, "b")
-    eng.pl.scan = lambda: {"new_by_project": {pid: 1}, "new_frames": 1}
+    eng.pl.scan = lambda extra=None: {"new_by_project": {pid: 1}, "new_frames": 1}
     eng.scan_and_queue()
     assert len(eng.db.q("SELECT id FROM jobs")) == 2
 
