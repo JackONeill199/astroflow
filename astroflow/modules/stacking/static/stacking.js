@@ -457,7 +457,7 @@ async function projectView(el, id, tab = 'bild') {
       ${list.map(f => { const [sc, sl] = stat(f); return `<tr data-id="${f.id}"><td class="name" title="${esc(f.name)}">${esc(f.name)}</td>
         <td>${f.band ? `<span class="chip"><i style="background:${BAND_COLOR[f.band] || '#999'}"></i>${esc(f.band)}</span>` : '<span class="dim">Farbe</span>'}</td>
         <td>${fnight(f.night)}</td><td class="tnum">${f.n_stars ?? ''}</td><td class="tnum">${f.fwhm ?? ''}</td><td class="tnum">${f.ecc ?? ''}</td><td class="tnum">${f.score ? f.score.toFixed(2) : ''}</td>
-        <td><span class="status s-${sc}">${sl}${f.manual ? ' (manuell)' : ''}${f.deleted ? ' · Datei gelöscht' : ''}</span>${f.status === 'rejected' && f.reason ? `<div class="why">${esc(f.reason)}</div>` : ''}</td>
+        <td><span class="status s-${sc}">${sl}${f.manual ? ' (manuell)' : ''}${f.deleted ? ' · Datei gelöscht' : f.offline ? ' · <span title="Ordner gerade nicht erreichbar (z. B. Platte abgesteckt) – wird verarbeitet, sobald er wieder da ist">nicht erreichbar</span>' : ''}</span>${f.status === 'rejected' && f.reason ? `<div class="why">${esc(f.reason)}</div>` : ''}</td>
         <td>${f.deleted ? '' : f.status === 'rejected' ? `<button class="linkbtn" data-f="${f.id}" data-m="1">einschließen</button>` : f.status === 'selected' ? `<button class="linkbtn" data-f="${f.id}" data-m="-1">ausschließen</button>` : ''}</td></tr>`; }).join('')}
       </tbody></table>${list.length ? '' : '<div class="empty" style="border:0">Keine Aufnahmen in dieser Auswahl.</div>'}`;
     $('#ftable thead').onclick = (e) => { const th = e.target.closest('th[data-k]'); if (!th) return; const c = th.dataset.k; fSort = [c, fSort[0] === c ? -fSort[1] : (c === 'name' || c === 'night' ? 1 : -1)]; drawTable(); };
@@ -741,9 +741,12 @@ async function importView(el) {
       <input type="file" id="fi" multiple accept=".fit,.fits,.fts,.jpg,.jpeg,.png,.tif,.tiff" hidden></label>
     <div class="row" style="justify-content:center;margin-top:12px"><label class="btn ghost sm">Ordner auswählen…<input type="file" id="fd" webkitdirectory multiple hidden></label>
       <span class="mut sm">Ordnernamen bleiben erhalten – z. B. verrät „…_observation_M57“ bei Stellina das Objekt.</span></div>
+    <p class="mut sm imp-hint">Hochladen legt eine Kopie in AstroFlow an. Liegen viele Rohdaten schon auf diesem PC (auch auf einer anderen Platte),
+      besser <button class="linkbtn" id="toLib">Hauptordner durchsuchen</button> – dort bleiben die Dateien am Ort und es wird nichts kopiert.</p>
     <div class="uploads" id="ups"></div>
     <section class="panel" id="lib" style="margin-top:20px"><div class="panel-h"><h2 style="margin:0">Hauptordner durchsuchen</h2></div>
-      <p class="mut sm" style="margin-top:0">Ordner mit allen Beobachtungen wählen (z. B. die Stellina-Platte). AstroFlow findet die Objekte darin und zeigt, was noch nicht oder nicht fertig gestackt in AstroFlow ist. Die Dateien bleiben unverändert.</p>
+      <p class="mut sm" style="margin-top:0">Ordner mit allen Beobachtungen wählen (z. B. die Stellina-Platte). AstroFlow findet die Objekte darin und zeigt, was noch nicht oder nicht fertig gestackt in AstroFlow ist.
+        <b>Beim Import wird nichts kopiert:</b> die Dateien bleiben unverändert am Ort und werden von dort gelesen – auch von einer anderen Platte. Diese muss nur zum Stacken neuer Aufnahmen angeschlossen sein; fertige Stacks lassen sich ohne sie bearbeiten.</p>
       <div class="lib-form"><button class="btn" id="libPick">${icon('folder')}Ordner wählen …</button><span class="lib-root" id="libRoot"></span><button class="btn ghost" id="libGo" hidden>${icon('refresh')}Erneut durchsuchen</button></div>
       <div id="libBody"></div></section>
     <div class="infogrid">
@@ -757,6 +760,7 @@ async function importView(el) {
   dz.ondragover = (e) => { e.preventDefault(); dz.classList.add('over'); };
   dz.ondragleave = () => dz.classList.remove('over');
   dz.ondrop = async (e) => { e.preventDefault(); e.stopPropagation(); dz.classList.remove('over'); upload(await droppedFiles(e.dataTransfer)); };
+  $('#toLib').onclick = () => $('#lib').scrollIntoView({ behavior: 'smooth', block: 'start' });
   libraryPanel(el);
 }
 

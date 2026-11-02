@@ -97,9 +97,12 @@ def object_from_path(path: Path) -> str | None:
     return None
 
 
-def scan_dir(root: Path, known_ids: set[str], threads: int = 8) -> tuple[list[ScannedFrame], list[str]]:
-    """Gibt nur neue Frames zurück (id nicht in known_ids) und eine Liste von Fehlern."""
-    paths = [p for p in list_fits(root) if frame_id(p, root) not in known_ids]
+def scan_dir(root: Path, known_ids: set[str], threads: int = 8,
+             extra: list[Path] | None = None) -> tuple[list[ScannedFrame], list[str]]:
+    """Gibt nur neue Frames zurück (id nicht in known_ids) und eine Liste von Fehlern. extra: einzelne Dateien außerhalb
+    von root (am Ort eingebundene Aufnahmen aus „Hauptordner durchsuchen“) – ihre ID hängt am absoluten Pfad."""
+    paths = list_fits(root) + [Path(p) for p in extra or [] if Path(p).is_file()]
+    paths = [p for p in dict.fromkeys(paths) if frame_id(p, root) not in known_ids]
     errors: list[str] = []
 
     def one(p: Path):

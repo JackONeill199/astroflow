@@ -3,6 +3,25 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.12.0 – 02.11.2026
+
+### Neu
+- **„Hauptordner durchsuchen“ kopiert keine Rohdaten mehr.** Liegen die Aufnahmen auf einer anderen Platte als der
+  Datenordner (z. B. Stellina-Platte E: und AstroFlow auf C:), bindet der Import sie **am Ort** ein: AstroFlow liest die
+  FITS-Dateien direkt von dort, es wird kein Speicher auf dem Datenlaufwerk belegt. Auf derselben Platte bleibt es beim
+  Hardlink (kostet ebenfalls keinen Platz). Die Originale werden nie verändert oder gelöscht – auch nicht nach dem Stacken
+  oder beim Löschen eines Objekts.
+- Import-Ansicht: Hinweis, dass Hochladen über den Browser eine Kopie anlegt und für große Datenmengen auf demselben PC
+  „Hauptordner durchsuchen“ besser ist.
+
+### Behoben
+- Platte mit eingebundenen Aufnahmen abgesteckt: Bearbeiten und Nachstacken aus dem vorhandenen Stack laufen weiter,
+  nicht erreichbare Aufnahmen werden weder als gelöscht noch als fehlerhaft markiert und kommen dran, sobald die Platte
+  wieder da ist. Komplett neu stacken meldet klar, welcher Ordner fehlt. In der Aufnahmeliste steht
+  „nicht erreichbar“.
+- Der Import verlangte für Aufnahmen von einer anderen Platte bisher 20 GB Reserve zusätzlich zur vollen Datenmenge –
+  das entfällt.
+
 ## 0.11.0 – 01.11.2026
 
 ### Neu
