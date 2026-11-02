@@ -1,4 +1,4 @@
-"""Volles Datenlaufwerk: Aufträge halten an statt endlos zu scheitern, Import kopiert nicht über den Rand hinaus."""
+"""Volles Datenlaufwerk: Aufträge halten an statt endlos zu scheitern, Import hält bei knappem Speicher an."""
 import errno
 import threading
 
@@ -73,20 +73,6 @@ def test_low_space_holds_new_jobs(tmp_path, monkeypatch):
     assert "1,0 GB frei" in eng.hold()
 
 
-def test_import_refuses_copies_that_do_not_fit(tmp_path, monkeypatch):
-    eng, _ = engine(tmp_path)
-    lib = eng.library
-    lib.groups = [{"id": "g0", "kind": "lights", "dir": tmp_path / "quelle", "to_import": [tmp_path / "x.fits"],
-                   "import_bytes": 50e9}]
-    monkeypatch.setattr(diskspace, "same_drive", lambda a, b: False)
-    monkeypatch.setattr(diskspace, "free", lambda p: 60e9)
-    with pytest.raises(ValueError, match="Zu wenig Speicher"):
-        lib.start_import(["g0"])
-    monkeypatch.setattr(diskspace, "same_drive", lambda a, b: True)      # Hardlinks kosten nichts
-    monkeypatch.setattr(lib, "_import", lambda chosen: None)
-    assert lib.start_import(["g0"]) == 1
-
-
 def test_cleanup_allowed_while_queue_is_held(tmp_path):
     """Volle Platte: Aufräumen ist der Ausweg – wartende Aufträge dürfen es nicht blockieren."""
     from fastapi.testclient import TestClient
@@ -119,7 +105,7 @@ def test_import_stopped_by_low_space_keeps_rest(tmp_path, monkeypatch):
     lib.groups = [g]
     left = iter([10e9, 10e9, 1e9])                   # nach zwei Dateien wird es knapp
     monkeypatch.setattr(diskspace, "free", lambda p: next(left, 1e9))
-    monkeypatch.setattr(eng, "scan_and_queue", lambda: {"new_by_project": {}, "duplicates": 0})
+    monkeypatch.setattr(eng, "scan_and_queue", lambda extra=None: {"new_by_project": {}, "duplicates": 0})
     lib._import([g])
     assert lib.state["imported"]["raw"] == 2 and "angehalten" in lib.state["imported"]["errors"][0]
     assert g["to_import"] == files[2:] and g["n_new"] == 2 and g["n_known"] == 2 and g["state"] == "partial"

@@ -1,11 +1,15 @@
 """Hauptordner durchsuchen (z. B. alle Stellina-Beobachtungen auf einer Platte): Aufnahmegruppen finden,
-mit der Datenbank abgleichen und ausgewählte Gruppen importieren. Die Quelldateien bleiben unverändert."""
+mit der Datenbank abgleichen und ausgewählte Gruppen importieren. Die Quelldateien bleiben unverändert.
+
+Rohdaten werden nie kopiert (seit 0.12.0): auf demselben Laufwerk als Hardlink unter input/uploads/bibliothek
+(kostet keinen Platz, der Link wird nach dem Stacken wieder entfernt), sonst am Ort eingebunden – der Frame zeigt
+dann direkt auf die Originaldatei (z. B. auf der Stellina-Platte E:) und wird nie gelöscht. Anlass: der Import der
+ganzen Stellina-Platte kopierte 95 GB nach C:."""
 from __future__ import annotations
 
 import hashlib
 import os
 import re
-import shutil
 import threading
 import time
 import traceback
@@ -297,34 +301,37 @@ class Library:
             chosen = [g for g in self.groups if g["id"] in set(ids) and g["to_import"]]
             if not chosen:
                 raise ValueError("Nichts zu importieren – die Auswahl ist leer oder schon vollständig vorhanden.")
-            # anderes Laufwerk -> keine Hardlinks, jede Datei wird kopiert: vorher prüfen, ob das passt
+            # Rohdaten brauchen keinen Platz (Hardlink oder am Ort eingebunden) – nur fertige Bilder werden übernommen
             base = self.eng.s.uploads_dir
             base.mkdir(parents=True, exist_ok=True)
-            copy = sum(g["import_bytes"] for g in chosen if g["kind"] != "pictures" and not diskspace.same_drive(g["dir"], base))
             free = diskspace.free(base)
-            if copy and free is not None and free - copy < diskspace.IMPORT_RESERVE:
-                raise ValueError(
-                    f"Zu wenig Speicher: Die Aufnahmen liegen auf einem anderen Laufwerk und müssen kopiert werden "
-                    f"({diskspace.gb(copy)}), frei sind {diskspace.gb(free)}; danach sollen noch {diskspace.gb(diskspace.IMPORT_RESERVE)} "
-                    f"für Stacks und Ergebnisse bleiben. Bitte weniger Gruppen auswählen und nach dem Verarbeiten weitere "
-                    f"importieren (hochgeladene Einzelbilder werden nach dem Stacken gelöscht).")
+            if free is not None and free < diskspace.MIN_FREE:
+                raise ValueError(f"Zu wenig Speicher: frei sind nur {diskspace.gb(free)} auf dem Datenlaufwerk – für Stacks, "
+                                 f"Ergebnisse und die Datenbank sollten mindestens {diskspace.gb(diskspace.MIN_FREE)} frei sein.")
             self.state.update(state="importing", progress=0.0, message="Import startet …", imported={}, started=time.time())
         threading.Thread(target=self._import, args=(chosen,), daemon=True, name="library-import").start()
         return len(chosen)
 
-    def _put(self, src: Path, dst: Path):
-        dst.parent.mkdir(parents=True, exist_ok=True)
+    @staticmethod
+    def _put(src: Path, dst: Path, base: Path) -> bool:
+        """Hardlink unter input/uploads anlegen (gleiche Platte, kostet keinen Speicher). False = nicht möglich (anderes
+        Laufwerk, exFAT-USB-Platte, Netzlaufwerk) – dann wird die Datei am Ort eingebunden, nie kopiert."""
+        if not diskspace.same_drive(src, base):
+            return False
         if dst.exists() and dst.stat().st_size == src.stat().st_size:
-            return
+            return True
+        dst.parent.mkdir(parents=True, exist_ok=True)
         try:
-            os.link(src, dst)                       # gleiche Platte: kostet keinen Speicher
+            os.link(src, dst)
+            return True
         except OSError:
-            shutil.copy2(src, dst)
+            return False
 
     def _import(self, chosen: list[dict]):
         eng = self.eng
         total = sum(len(g["to_import"]) for g in chosen)
         done, raw, pics, errors = 0, 0, 0, []
+        in_place: list[Path] = []                                   # am Ort eingebunden (kein Hardlink möglich)
         base = eng.s.uploads_dir / "bibliothek"
         taken: dict[str, set] = {g["id"]: set() for g in chosen}   # tatsächlich übernommene Dateien je Gruppe
         try:
@@ -346,7 +353,8 @@ class Library:
                                 import_picture(eng, fh, f.name, True)
                             pics += 1
                         else:
-                            self._put(f, base / tag / g["dir"].name / f.relative_to(g["dir"]))
+                            if not self._put(f, base / tag / g["dir"].name / f.relative_to(g["dir"]), base.parent):
+                                in_place.append(f)
                             raw += 1
                         taken[g["id"]].add(f)
                     except Exception as e:
@@ -355,7 +363,7 @@ class Library:
                     if done % 5 == 0 or done == total:
                         self._set(progress=round(done / total * 0.9, 3), message=f"{done} von {total} Dateien übernommen …")
             self._set(message="Aufnahmen werden einsortiert …", progress=0.92)
-            scan = eng.scan_and_queue() if raw else {"new_by_project": {}, "duplicates": 0}
+            scan = eng.scan_and_queue(in_place) if raw else {"new_by_project": {}, "duplicates": 0}
             for g in chosen:                                     # übernommene Dateien sind nun bekannt, der Rest bleibt offen
                 got = taken[g["id"]]
                 g["to_import"] = [f for f in g["to_import"] if f not in got]
@@ -369,9 +377,11 @@ class Library:
                 else:
                     g["state"], g["n_done"] = "done", g["n_files"]
             self._set(state="done", progress=1.0, finished=time.time(),
-                      imported={"raw": raw, "pictures": pics, "projects": scan["new_by_project"],
+                      imported={"raw": raw, "pictures": pics, "in_place": len(in_place), "projects": scan["new_by_project"],
                                 "duplicates": scan.get("duplicates", 0), "errors": errors[:20]},
-                      message=f"{raw} Aufnahmen und {pics} Bilder übernommen" + (f" · {len(errors)} Fehler" if errors else "")
+                      message=f"{raw} Aufnahmen und {pics} Bilder übernommen"
+                      + (f" ({len(in_place)} Aufnahmen bleiben am Ort und werden von dort gelesen)" if in_place else "")
+                      + (f" · {len(errors)} Fehler" if errors else "")
                       + (" – die Verarbeitung startet automatisch." if raw and eng.s.auto else "."))
         except Exception as e:
             traceback.print_exc()

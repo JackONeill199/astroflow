@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from . import channels, diskspace, gpu, graxpert, objects, platesolve, reviewer, stars, tutor
+from . import calibration, channels, diskspace, gpu, graxpert, objects, platesolve, reviewer, stars, tutor
 from .db import DB
 from .pipeline import Pipeline
 
@@ -77,12 +77,23 @@ class Engine:
             return jid
 
     def pending_projects(self) -> set[int]:
-        """Während laufender Jobs eingelesene Aufnahmen nachholen; Fehler nicht endlos neu versuchen."""
-        return {r["project_id"] for r in self.db.q(
-            "SELECT DISTINCT f.project_id FROM frames f WHERE f.kind='light' AND f.status='new' "
-            "AND f.deleted=0 AND f.project_id IS NOT NULL AND NOT EXISTS "
-            "(SELECT 1 FROM jobs j WHERE j.project_id=f.project_id AND j.state='error' "
-            "AND j.id=(SELECT MAX(j2.id) FROM jobs j2 WHERE j2.project_id=f.project_id))")}
+        """Während laufender Jobs eingelesene Aufnahmen nachholen; Fehler nicht endlos neu versuchen. Nicht erreichbare
+        Quelldateien (abgesteckte Platte) zählen nicht – sonst liefe jede Scan-Runde ein leerer Auftrag; sobald die
+        Platte wieder da ist, holt der Watcher sie nach. Ein Auftrag, der an einer nicht erreichbaren Quelle scheiterte
+        (`options.offline` = fehlende Ordner), gilt erst dann wieder als offen, wenn diese Ordner zurück sind."""
+        out = set()
+        for r in self.db.q(
+                "SELECT f.project_id, f.path, j.state, j.options FROM frames f LEFT JOIN jobs j ON j.id=(SELECT MAX(j2.id) "
+                "FROM jobs j2 WHERE j2.project_id=f.project_id) WHERE f.kind='light' AND f.status='new' AND f.deleted=0 "
+                "AND f.project_id IS NOT NULL"):
+            if r["project_id"] in out or (r["path"] and not Path(r["path"]).exists()):
+                continue
+            if r["state"] == "error":
+                dirs = json.loads(r["options"] or "{}").get("offline")
+                if not dirs or not all(Path(d).exists() for d in dirs):
+                    continue
+            out.add(r["project_id"])
+        return out
 
     def hold(self) -> str | None:
         """Warum gerade keine Aufträge starten (angehalten oder zu wenig Speicher) – sonst None."""
@@ -207,7 +218,11 @@ class Engine:
                       ("angehalten – geht beim Fortsetzen weiter", jid))
             self.q.put(jid)
             return
-        traceback.print_exc()
+        if isinstance(e, calibration.SourceOffline):    # wartet auf die Platte – kein endgültiger Fehler
+            self.db.x("UPDATE jobs SET options=json_set(COALESCE(options,'{}'),'$.offline',json(?)) WHERE id=?",
+                      (json.dumps(e.dirs), jid))
+        else:
+            traceback.print_exc()
         self.db.x("UPDATE jobs SET state='error', message=?, finished=? WHERE id=?", (str(e), time.time(), jid))
 
     def watcher(self):
@@ -222,8 +237,8 @@ class Engine:
                 traceback.print_exc()
             self.stop.wait(self.s.scan_interval)
 
-    def scan_and_queue(self) -> dict:
-        r = self.pl.scan()
+    def scan_and_queue(self, extra: list[Path] | None = None) -> dict:
+        r = self.pl.scan(extra)
         from .picture_import import attach_previews
         attach_previews(self)
         self.last_scan = time.time()
@@ -497,6 +512,11 @@ def build_router(eng: Engine) -> APIRouter:
             if db.one("SELECT id FROM frames WHERE project_id=? AND deleted=1 AND stacked=1 LIMIT 1", (pid,)):
                 raise HTTPException(409, "Komplett neu stacken ist nicht möglich: die hochgeladenen Einzelbilder wurden "
                                          "nach dem Stacking gelöscht. Neue Aufnahmen werden weiterhin ergänzt.")
+            rows = db.q("SELECT id, path, deleted FROM frames WHERE project_id=? AND kind='light' AND stacked=1", (pid,))
+            if off := eng.pl.offline(rows):
+                raise HTTPException(409, f"Komplett neu stacken ist gerade nicht möglich: {len(off)} Aufnahmen liegen in einem "
+                                         f"Ordner, der nicht erreichbar ist ({eng.pl.offline_hint(rows, off)}) – z. B. "
+                                         "USB-Platte abgesteckt. Bitte anschließen und erneut versuchen.")
             db.x("UPDATE projects SET restack=1 WHERE id=?", (pid,))
         return {"job": eng.enqueue(pid, {k: v for k, v in body.items() if k != "restack"})}
 
@@ -510,6 +530,7 @@ def build_router(eng: Engine) -> APIRouter:
                         "band": channels.band_of(i.get("filter"), channels.is_color(i)), "filter": i.get("filter"),
                         "exptime": i.get("exptime"), "date": i.get("date_obs"),
                         "score": round(x["score"] or 0, 3), "manual": x["manual"], "stacked": x["stacked"], "deleted": x["deleted"],
+                        "offline": bool(not x["deleted"] and x["path"] and not Path(x["path"]).exists()),
                         "n_stars": m.get("n_stars"), "fwhm": m.get("fwhm") and round(m["fwhm"], 2),
                         "ecc": m.get("ecc") and round(m["ecc"], 2), "bg": m.get("bg") and round(m["bg"], 1)})
         return out

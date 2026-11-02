@@ -1,7 +1,8 @@
 """Freier Speicher auf dem Datenlaufwerk: Aufträge und Import halten an, bevor die Platte voll ist.
 
 Anlass (01.11.2026): Der Import der ganzen Stellina-Platte (E:) kopierte 95 GB nach C: – Hardlinks gehen nicht über
-Laufwerksgrenzen. C: lief voll, danach scheiterte jeder Auftrag (auch die Datenbank konnte nicht mehr schreiben)."""
+Laufwerksgrenzen. C: lief voll, danach scheiterte jeder Auftrag (auch die Datenbank konnte nicht mehr schreiben). Seit 0.12.0 bindet der
+Import solche Aufnahmen am Ort ein, statt sie zu kopieren (`library.py`)."""
 from __future__ import annotations
 
 import os
@@ -11,7 +12,6 @@ from pathlib import Path
 
 MIN_FREE = 5e9          # darunter starten keine Aufträge (Stacks, Ausgaben und Datenbank brauchen Platz)
 ABORT_FREE = 2e9        # darunter bricht ein laufender Auftrag ab und die Warteschlange hält an
-IMPORT_RESERVE = 20e9   # so viel muss nach einem Import (Kopien) noch frei sein – für Stacks und Ergebnisse
 
 
 def free(path: Path) -> float | None:
