@@ -48,6 +48,14 @@ Route `#/skytrace/statistik` steht vor der Lauf-Route. Test: `test_skytrace.py`,
   Wartende Ordner erscheinen in der Aktivität, `status.auto_waiting` zählt sie. Abschalten: Einstellungen → SkyTrace (`skytrace.auto`).
 - Achtung: Zeigt `SKYTRACE_HOME` auf den Ordner eines eigenständigen SkyTrace, nicht gleichzeitig aus beiden Oberflächen analysieren lassen.
 
+## Liniendetektor: Leistung (03.11.2026)
+`line_detection._best_section` prüft Abschnitte mit Präfixsummen vor und misst mögliche Gewinner mit der bisherigen
+`np.mean`-Rechnung exakt nach (Rundungspuffer, gleiche Reihenfolge/Gleichstände). Geometrie-Cache begrenzt auf 32 Größen;
+bei > 128 Abschnitten alte Schleife statt quadratischer Hilfsarrays. Stern-/Blinkmasken und Abtastachse nur einmal je Bild.
+Keine geänderten Detektionsschwellen. `tests/test_skytrace_performance.py` läuft mit pytest, sofern OpenCV vorhanden ist,
+oder direkt im Engine-Interpreter; vergleicht Grenzwerte und komplette Erkennungen mit der erschöpfenden Suche.
+Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 % weniger Zeit), kein Gesamtpipeline-Benchmark.
+
 ## Satellitenabgleich: Zeitbezug und Uhrtoleranz (01.11.2026, Nutzerbefund „Satelliten werden nie zugeordnet“)
 - **Befund** (alle Läufe in `AstroAnalyse/Ergebnisse`, Prüfskript-Idee: Bahn der nächsten Diagnose ±60 s propagieren und die Zeit
   suchen, zu der sie Spuranfang/-ende passiert): Bei ~90 von ~150 Spuren lag eine Bahn quer < 6′ und richtungsgleich (< 5°) auf der
