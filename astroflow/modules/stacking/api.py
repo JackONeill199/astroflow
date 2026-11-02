@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from . import channels, diskspace, gpu, graxpert, objects, platesolve, reviewer, stars, tutor
+from . import calibration, channels, diskspace, gpu, graxpert, objects, platesolve, reviewer, stars, tutor
 from .db import DB
 from .pipeline import Pipeline
 
@@ -79,12 +79,21 @@ class Engine:
     def pending_projects(self) -> set[int]:
         """Während laufender Jobs eingelesene Aufnahmen nachholen; Fehler nicht endlos neu versuchen. Nicht erreichbare
         Quelldateien (abgesteckte Platte) zählen nicht – sonst liefe jede Scan-Runde ein leerer Auftrag; sobald die
-        Platte wieder da ist, holt der Watcher sie nach."""
-        return {r["project_id"] for r in self.db.q(
-            "SELECT f.project_id, f.path FROM frames f WHERE f.kind='light' AND f.status='new' "
-            "AND f.deleted=0 AND f.project_id IS NOT NULL AND NOT EXISTS "
-            "(SELECT 1 FROM jobs j WHERE j.project_id=f.project_id AND j.state='error' "
-            "AND j.id=(SELECT MAX(j2.id) FROM jobs j2 WHERE j2.project_id=f.project_id))") if not r["path"] or Path(r["path"]).exists()}
+        Platte wieder da ist, holt der Watcher sie nach. Ein Auftrag, der an einer nicht erreichbaren Quelle scheiterte
+        (`options.offline` = fehlende Ordner), gilt erst dann wieder als offen, wenn diese Ordner zurück sind."""
+        out = set()
+        for r in self.db.q(
+                "SELECT f.project_id, f.path, j.state, j.options FROM frames f LEFT JOIN jobs j ON j.id=(SELECT MAX(j2.id) "
+                "FROM jobs j2 WHERE j2.project_id=f.project_id) WHERE f.kind='light' AND f.status='new' AND f.deleted=0 "
+                "AND f.project_id IS NOT NULL"):
+            if r["project_id"] in out or (r["path"] and not Path(r["path"]).exists()):
+                continue
+            if r["state"] == "error":
+                dirs = json.loads(r["options"] or "{}").get("offline")
+                if not dirs or not all(Path(d).exists() for d in dirs):
+                    continue
+            out.add(r["project_id"])
+        return out
 
     def hold(self) -> str | None:
         """Warum gerade keine Aufträge starten (angehalten oder zu wenig Speicher) – sonst None."""
@@ -207,7 +216,11 @@ class Engine:
                       ("angehalten – geht beim Fortsetzen weiter", jid))
             self.q.put(jid)
             return
-        traceback.print_exc()
+        if isinstance(e, calibration.SourceOffline):    # wartet auf die Platte – kein endgültiger Fehler
+            self.db.x("UPDATE jobs SET options=json_set(COALESCE(options,'{}'),'$.offline',json(?)) WHERE id=?",
+                      (json.dumps(e.dirs), jid))
+        else:
+            traceback.print_exc()
         self.db.x("UPDATE jobs SET state='error', message=?, finished=? WHERE id=?", (str(e), time.time(), jid))
 
     def watcher(self):

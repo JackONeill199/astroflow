@@ -166,6 +166,10 @@ class Pipeline:
         dirs = sorted({str(Path(r["path"]).parent) for r in rows if r["id"] in ids})
         return dirs[0] + (f" (und {len(dirs) - 1} weitere Ordner)" if len(dirs) > 1 else "") if dirs else ""
 
+    @staticmethod
+    def offline_error(rows: list[dict], ids: set[str]) -> calibration.SourceOffline:
+        return calibration.offline_error("Aufnahmen", [r["path"] for r in rows if r["id"] in ids])
+
     def delete_stacked_uploads(self, project_id: int) -> tuple[int, int]:
         """Hochgeladene Light-Aufnahmen löschen, deren Information im gespeicherten Stack steckt (gestackt)
         oder die verworfen wurden. Nur Dateien unter input/uploads – eingebundene Ordner (NAS) und am Ort eingebundene
@@ -468,6 +472,7 @@ class Pipeline:
         # (gelöschte Rohdateien behalten ihre Analyse – sie lässt sich nicht wiederholen)
         # (nicht erreichbare Quellen ebenso: kein „Lesefehler“, sie kommen dran, sobald die Platte wieder da ist)
         offline = self.offline(rows)
+        lights = rows
         todo = [r for r in rows if not r["deleted"] and r["id"] not in offline and
                 (not r["metrics"] or json.loads(r["metrics"]).get("mv", 1) < quality.METRICS_VERSION)]
         if any(r["metrics"] and r["stacked"] for r in todo) and not any((r["deleted"] or r["id"] in offline) and r["stacked"] for r in rows):
@@ -484,16 +489,23 @@ class Pipeline:
                 met["calib"] = m.desc
                 met["mv"] = quality.METRICS_VERSION
                 return r["id"], met, None
+            except calibration.SourceOffline as e:     # Kalibrierbilder auf abgesteckter Platte: kein Lesefehler
+                return r["id"], None, e
             except Exception as e:
                 return r["id"], None, str(e)
 
+        waiting = None
         with ThreadPoolExecutor(self.s.threads) as ex:
             for n, (fid, met, err) in enumerate(ex.map(analyze, todo)):
-                if err:
+                if isinstance(err, calibration.SourceOffline):
+                    waiting = err
+                elif err:
                     self.db.set_frame(fid, status="failed", reason=f"Lesefehler: {err}", metrics={"n_stars": 0})
                 else:
                     self.db.set_frame(fid, metrics=met, status="analyzed")
                 progress(0.02 + 0.30 * (n + 1) / max(1, len(todo)), "Analyse")
+        if waiting:
+            raise waiting
 
         # --- 2. Auswahl (je Filter getrennt) ---------------------------------
         rows = self.db.q("SELECT * FROM frames WHERE project_id=? AND kind='light'", (project_id,))
@@ -522,6 +534,8 @@ class Pipeline:
             by_band.setdefault(band_of_row(r), []).append(r)
         wanted = {b: [r for r in rs if r["status"] == "selected"] for b, rs in by_band.items()}
         if sum(len(w) for w in wanted.values()) < 3:
+            if offline:                                # erste Verarbeitung, Platte abgesteckt: warten statt Fehler
+                raise self.offline_error(lights, offline)
             raise ValueError(f"zu wenige brauchbare Aufnahmen ({sum(len(w) for w in wanted.values())})")
         states = {} if proj["restack"] else {b: StackState.load(stack_dir(wd, b)) for b in by_band}
         states = {b: st for b, st in states.items() if st is not None}
@@ -529,9 +543,7 @@ class Pipeline:
             states = {}
         for b in by_band:
             if b not in states and (gone := [r for r in by_band[b] if r["id"] in offline and r["status"] == "selected"]):
-                raise ValueError("Komplett neu stacken ist gerade nicht möglich: Aufnahmen liegen in einem Ordner, der nicht "
-                                 f"erreichbar ist ({self.offline_hint(gone, {r['id'] for r in gone})}) – z. B. USB-Platte "
-                                 "abgesteckt. Bitte anschließen und erneut verarbeiten.")
+                raise self.offline_error(gone, {r["id"] for r in gone})
             if b not in states and any(r["deleted"] and r["stacked"] for r in by_band[b]):
                 self.db.x("UPDATE projects SET restack=0 WHERE id=?", (project_id,))
                 raise ValueError("Komplett neu stacken ist nicht möglich: die hochgeladenen Einzelbilder wurden nach dem "

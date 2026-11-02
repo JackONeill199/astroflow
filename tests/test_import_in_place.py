@@ -1,5 +1,6 @@
 """Hauptordner-Import von einem anderen Laufwerk: Rohdaten werden am Ort eingebunden statt kopiert – nie gelöscht,
 und eine abgesteckte Platte macht nichts kaputt."""
+import json
 import time
 
 import pytest
@@ -126,3 +127,56 @@ def test_import_needs_no_space_for_raw_data(tmp_path, monkeypatch):
     monkeypatch.setattr(diskspace, "free", lambda p: 1e9)            # Datenlaufwerk fast voll: trotzdem ablehnen
     with pytest.raises(ValueError, match="Zu wenig Speicher"):
         lib.start_import(["g0"])
+
+
+def test_first_stack_waits_for_unplugged_drive(setup):
+    """Platte abgesteckt, bevor der erste Auftrag lief: kein endgültiger Fehler – nach dem Anstecken geht es weiter."""
+    s, app, eng, root = setup
+    with TestClient(app) as c:
+        _import_all(c, root)
+        pid = eng.db.one("SELECT id FROM projects")["id"]
+        jid = eng.enqueue(pid)
+        root.rename(root.with_name("abgesteckt"))
+        eng._stack_job(jid)
+        job = eng.db.one("SELECT * FROM jobs WHERE id=?", (jid,))
+        assert job["state"] == "error" and "nicht erreichbar" in job["message"]
+        assert json.loads(job["options"])["offline"]
+        assert eng.db.one("SELECT COUNT(*) n FROM frames WHERE status='failed'")["n"] == 0
+        assert eng.pending_projects() == set()
+        root.with_name("abgesteckt").rename(root)
+        assert eng.pending_projects() == {pid}, "nach dem Anstecken wieder offen"
+        eng.pl.process(pid)
+        assert eng.db.one("SELECT COUNT(*) n FROM frames WHERE stacked=1")["n"] >= 3
+
+
+def test_cached_masters_survive_unplugged_calibration(tmp_path, monkeypatch):
+    """Darks/Flats auf einer abgesteckten Platte: bereits gebaute Master bleiben nutzbar, sonst wartet der Auftrag."""
+    monkeypatch.setattr(diskspace, "same_drive", lambda a, b: False)
+    p1, p2 = tmp_path / "Platte1", tmp_path / "Platte2"
+    demo.generate(p1 / "2026-08-12_21-00-00_observation_M31", n_lights=8, n_darks=3, n_flats=3)
+    s = load_settings(tmp_path / "data")
+    s.auto = False
+    app = create_app(s)
+    eng = app.state.modules["stacking"].eng
+    with TestClient(app) as c:
+        _import_all(c, p1)
+        pid = eng.db.one("SELECT id FROM projects")["id"]
+        eng.pl.process(pid)
+        n1 = eng.db.one("SELECT COUNT(*) n FROM frames WHERE stacked=1")["n"]
+        assert "Dark" in eng.db.one("SELECT metrics FROM frames WHERE stacked=1 LIMIT 1")["metrics"]
+
+        demo.generate(p2 / "2026-08-13_21-00-00_observation_M31", n_lights=6, n_darks=0, n_flats=0, seed=1)
+        _import_all(c, p2)
+        p1.rename(p1.with_name("abgesteckt"))
+        eng.pl.process(pid)                                    # neue Lights + gecachte Master
+        assert eng.db.one("SELECT COUNT(*) n FROM frames WHERE stacked=1")["n"] > n1
+
+        # ohne gebauten Master: klar warten statt Lesefehler
+        for f in (s.work_dir / "calibration").glob("*"):
+            f.unlink()
+        demo.generate(p2 / "2026-08-14_21-00-00_observation_M31", n_lights=4, n_darks=0, n_flats=0, seed=2)
+        _import_all(c, p2)
+        from astroflow.modules.stacking.calibration import SourceOffline
+        with pytest.raises(SourceOffline, match="Kalibrierbilder"):
+            eng.pl.stack(pid)
+        assert eng.db.one("SELECT COUNT(*) n FROM frames WHERE status='failed'")["n"] == 0

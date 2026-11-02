@@ -275,7 +275,12 @@ oder als verschwunden behandelt. Gelöscht werden sie nie (`_is_upload`). Wieder
 **Quelle nicht erreichbar** (USB-Platte ab): `Pipeline.offline(rows)` = nicht gelöscht, Datei fehlt. `stack()` analysiert/stackt sie nicht (kein
 „Lesefehler“, Status bleibt), erzwingt wegen ihnen kein Neu-Stacken und wirft bei Neuaufbau mit fehlenden ausgewählten Frames einen klaren `ValueError`
 (API `process {restack}` → 409); `Engine.pending_projects` zählt sie nicht (sonst endlose Leerläufe), holt sie aber nach, sobald die Platte wieder da ist;
-`/projects/{id}/frames` liefert `offline`. Test: `tests/test_import_in_place.py`.
+`/projects/{id}/frames` liefert `offline`. Fehlen Aufnahmen bzw. Kalibrierbilder ganz, wirft die Pipeline `calibration.SourceOffline` (mit `dirs`):
+`Engine._failed` merkt die Ordner in `jobs.options.offline`, `pending_projects` gibt das Objekt erst wieder frei, wenn alle zurück sind (sonst gälte
+„letzter Auftrag Fehler → nicht neu versuchen“ für immer, die Dateien werden ja nie neu gescannt). Analyse markiert dabei nichts als `failed`.
+Master-Kalibrierung: `CalibrationLibrary._cached` merkt je Pfadliste den zuletzt gebauten Master (`<tag>_<hash>.ref`) – ohne erreichbare
+Quelle (keine Änderungszeit für den Schlüssel) wird er weiter genutzt; Bauen/Lesen unter `lock` (parallele Analyse-Threads).
+Test: `tests/test_import_in_place.py`.
 Bilder gehen über `import_picture` (Kopie in die Ausgabe). Quelldateien bleiben unberührt. API: `GET /library`, `POST /library/scan {root}`, `POST /library/import {ids}` (Ids stammen
 aus dem letzten Suchlauf im Speicher). Zuletzt genutzter Pfad: `data/settings.json` → `library.root`. Test: `tests/test_library.py`.
 

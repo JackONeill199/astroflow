@@ -17,7 +17,9 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 ### Behoben
 - Platte mit eingebundenen Aufnahmen abgesteckt: Bearbeiten und Nachstacken aus dem vorhandenen Stack laufen weiter,
   nicht erreichbare Aufnahmen werden weder als gelöscht noch als fehlerhaft markiert und kommen dran, sobald die Platte
-  wieder da ist. Komplett neu stacken meldet klar, welcher Ordner fehlt. In der Aufnahmeliste steht
+  wieder da ist – auch wenn die Platte schon vor der ersten Verarbeitung abgesteckt wurde (der Auftrag wartet und läuft
+  danach automatisch weiter). Bereits berechnete Master-Darks/-Flats bleiben nutzbar, wenn die Kalibrierbilder auf der
+  abgesteckten Platte liegen. Komplett neu stacken meldet klar, welcher Ordner fehlt. In der Aufnahmeliste steht
   „nicht erreichbar“.
 - Der Import verlangte für Aufnahmen von einer anderen Platte bisher 20 GB Reserve zusätzlich zur vollen Datenmenge –
   das entfällt.

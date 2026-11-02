@@ -3,12 +3,29 @@ from __future__ import annotations
 
 import hashlib
 import os
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 
 from .fits_io import read_data
+
+
+class SourceOffline(ValueError):
+    """Am Ort eingebundene Dateien gerade nicht erreichbar (z. B. USB-Platte abgesteckt). dirs: fehlende Ordner – der
+    Auftrag wartet, bis sie wieder da sind (`Engine.pending_projects`), statt als endgültiger Fehler liegen zu bleiben."""
+
+    def __init__(self, msg: str, dirs):
+        super().__init__(msg)
+        self.dirs = sorted({str(d) for d in dirs})
+
+
+def offline_error(what: str, paths) -> SourceOffline:
+    dirs = sorted({str(Path(p).parent) for p in paths})
+    where = dirs[0] + (f" (und {len(dirs) - 1} weitere Ordner)" if len(dirs) > 1 else "") if dirs else ""
+    return SourceOffline(f"{what} liegen in einem Ordner, der nicht erreichbar ist ({where}) – z. B. USB-Platte "
+                         "abgesteckt. Bitte anschließen; die Verarbeitung läuft dann automatisch weiter.", dirs)
 
 
 @dataclass
@@ -48,14 +65,29 @@ class CalibrationLibrary:
         self.frames = frames
         self.cache = Path(cache_dir)
         self.cache.mkdir(parents=True, exist_ok=True)
+        self.lock = threading.Lock()
 
     def _cached(self, paths: list[str], tag: str, build):
-        h = hashlib.sha1((tag + "|".join(f"{p}:{os.path.getmtime(p)}" for p in sorted(paths))).encode()).hexdigest()[:16]
+        ps = sorted(paths)
+        # Verweis Pfadliste -> zuletzt gebauter Master: so bleibt der Master nutzbar, wenn die Kalibrierbilder auf einer
+        # abgesteckten Platte liegen (der eigentliche Schlüssel braucht ihre Änderungszeit)
+        ref = self.cache / f"{tag}_{hashlib.sha1((tag + '|'.join(ps)).encode()).hexdigest()[:16]}.ref"
+        try:
+            h = hashlib.sha1((tag + "|".join(f"{p}:{os.path.getmtime(p)}" for p in ps)).encode()).hexdigest()[:16]
+        except OSError:
+            last = self.cache / ref.read_text().strip() if ref.exists() else None
+            if last and last.exists():
+                return np.load(last)
+            raise offline_error("Kalibrierbilder", [p for p in ps if not os.path.exists(p)]) from None
         f = self.cache / f"{tag}_{h}.npy"
-        if f.exists():
-            return np.load(f)
-        arr = build()
-        np.save(f, arr)
+        with self.lock:                     # parallele Analyse-Threads: einmal bauen, nie halb geschriebene Dateien lesen
+            if f.exists():
+                arr = np.load(f)
+            else:
+                arr = build()
+                np.save(f, arr)
+            if not ref.exists() or ref.read_text().strip() != f.name:
+                ref.write_text(f.name)
         return arr
 
     def _select(self, kind: str, shape, pred):
