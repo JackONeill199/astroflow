@@ -110,7 +110,10 @@ def browser():
         try:
             b = p.chromium.launch()
         except Exception as e:                               # Paket da, Browser nicht installiert
-            pytest.skip(f"Chromium fehlt: {e}")
+            try:
+                b = p.chromium.launch(channel='msedge')      # vorhandenes Windows-Edge geht ebenfalls
+            except Exception:
+                pytest.skip(f"Chromium/Edge fehlt: {e}")
         yield b
         b.close()
 
@@ -162,6 +165,54 @@ def test_fast_navigation(server, browser):
     assert not errors, "\n".join(sorted(set(errors))[:10])
 
 
+@pytest.mark.parametrize('size', ['handy', 'desktop'])
+def test_live_processing_is_compact_and_updates_in_place(server, browser, size, tmp_path):
+    """Echte Oberfläche mit kontrollierten Job-Antworten: Vorschauwechsel, Details und Abschluss."""
+    base, pid = server
+    w, h = SIZES[size]
+    page = browser.new_page(viewport={'width': w, 'height': h}, reduced_motion='reduce')
+    errors, state = [], {'step': 0, 'done': False, 'rid': None}
+    page.on('pageerror', lambda e: errors.append(str(e)))
+
+    def project_response(route):
+        response = route.fetch()
+        data = response.json()
+        state['rid'] = data['results'][0]['id']
+        label = 'Sterne trennen (StarNet)' if state['step'] else 'Entrauschen (GraXpert-KI)'
+        data['job'] = {'id': 999, 'state': 'done' if state['done'] else 'running', 'progress': .91,
+                       'stage': 'Bearbeitung', 'message': label}
+        data['live'] = {'job': 999, 'preview': f"1-{state['step'] + 1}.jpg", 'n': 12, 'exposure': 120,
+                        'steps': [{'stage': 'Bearbeitung', 'label': label, 'done': False}]}
+        route.fulfill(response=response, json=data)
+
+    def preview_response(route):
+        route.fulfill(response=route.fetch(url=f"{base}/api/stacking/results/{state['rid']}/jpg"))
+
+    page.route(f'**/api/stacking/projects/{pid}', project_response)
+    page.route(f'**/api/stacking/projects/{pid}/live/*', preview_response)
+    page.goto(f'{base}/#/p/{pid}/bild')
+    page.wait_for_selector('.sl-image.on')
+    assert page.locator('#job').is_hidden()                   # kein doppelter Fortschrittsbereich
+    assert page.locator('.sl-pop').is_hidden()
+    assert page.locator('.sl-status').bounding_box()['height'] <= 50
+    assert abs(page.locator('.sl-picture').bounding_box()['width'] - page.locator('.sl-status').bounding_box()['width']) <= 1
+    page.screenshot(path=str(tmp_path / 'live.png'))
+    assert page.evaluate("getComputedStyle(document.querySelector('.sl-pulse')).animationName") == 'none'
+    page.locator('.sl-details summary').click()
+    page.locator('.stack-live').evaluate("el => el.dataset.preserved = 'yes'")
+    state['step'] = 1
+    page.wait_for_function("document.querySelector('.sl-label')?.textContent.includes('StarNet')")
+    assert page.locator('.stack-live').get_attribute('data-preserved') == 'yes'
+    assert page.locator('.sl-details').get_attribute('open') is not None
+    page.wait_for_selector('.sl-image.on[src$="1-2.jpg"]')
+    assert not page.evaluate(FIND_OVERFLOW)
+    state['done'] = True
+    page.wait_for_selector('#viewer .viewer img.b')
+    assert not page.locator('.stack-live').count()
+    page.close()
+    assert not errors, errors
+
+
 def test_switch_rows_toggle(server, browser):
     """Ein Klick auf die Zeile schaltet ihren Schalter – auch wenn die Zeile noch eine Auswahl enthält (Ältere Versionen)."""
     base, _ = server
@@ -177,6 +228,64 @@ def test_switch_rows_toggle(server, browser):
         row.locator("b").first.click()
         assert box.is_checked() != before, row.inner_text()
     page.close()
+
+
+@pytest.mark.parametrize('size', ['handy', 'desktop'])
+def test_stage_slider_preserves_size_zoom_and_pan(server, browser, size):
+    """Kleine Stufen und großes Endbild bleiben beim Einpassen und Zoomen gleich groß sichtbar."""
+    import io
+    import re
+    from PIL import Image
+    base, pid = server
+    w, h = SIZES[size]
+    page = browser.new_page(viewport={'width': w, 'height': h}, reduced_motion='reduce')
+    errors = []
+    page.on('pageerror', lambda e: errors.append(str(e)))
+
+    def png(width, height):
+        out = io.BytesIO()
+        Image.new('RGB', (width, height), (40, 50, 70)).save(out, format='PNG')
+        return out.getvalue()
+
+    large, small = png(3200, 2000), png(800, 500)
+    page.route(re.compile(r'/api/stacking/results/\d+/jpg$'),
+               lambda route: route.fulfill(body=large, content_type='image/png'))
+    page.route(re.compile(r'/api/stacking/results/\d+/s\d+$'),
+               lambda route: route.fulfill(body=small, content_type='image/png'))
+    page.goto(f'{base}/#/p/{pid}/bild')
+    page.wait_for_selector('#viewer .viewer.ready')
+    page.wait_for_function("document.querySelector('#viewer img.b').naturalWidth === 3200")
+    max_stage = int(page.locator('#strange').get_attribute('max'))
+    assert max_stage >= 1
+    box = """() => { const i = document.querySelector('#viewer img.b').getBoundingClientRect();
+        const v = document.querySelector('#viewer .viewer').getBoundingClientRect();
+        return [i.x-v.x,i.y-v.y,i.width,i.height]; }"""
+    for zoomed in (False, True):
+        if zoomed:
+            page.locator('#viewer [data-a=in]').click()
+            page.locator('#viewer [data-a=in]').click()
+            page.wait_for_timeout(450)
+            view_box = page.locator('#viewer .viewer').bounding_box()
+            x, y = view_box['x'] + view_box['width'] / 2, view_box['y'] + view_box['height'] / 2
+            page.mouse.move(x, y)
+            page.mouse.down()
+            page.mouse.move(x - 35, y - 20)
+            page.mouse.up()
+        expected = page.evaluate(box)
+        for index in (0, max_stage, 0, max_stage):
+            page.locator('#strange').evaluate('(el, i) => { el.value = i; el.dispatchEvent(new Event("input", {bubbles:true})); }', index)
+            width = 3200 if index == max_stage else 800
+            page.wait_for_function("w => document.querySelector('#viewer img.b').naturalWidth === w", arg=width)
+            # naturalWidth steht bereits vor dem load-Handler fest; dessen neue Transformation abwarten.
+            page.wait_for_function("""expected => {
+                const i = document.querySelector('#viewer img.b').getBoundingClientRect();
+                const v = document.querySelector('#viewer .viewer').getBoundingClientRect();
+                return [i.x-v.x,i.y-v.y,i.width,i.height].every((n,j) => Math.abs(n-expected[j]) < 1);
+            }""", arg=expected, timeout=5000)
+            actual = page.evaluate(box)
+            assert all(abs(a-b) < 1 for a, b in zip(actual, expected)), (zoomed, index, actual, expected)
+    page.close()
+    assert not errors, errors
 
 
 @pytest.mark.parametrize("size", ["handy", "desktop"])

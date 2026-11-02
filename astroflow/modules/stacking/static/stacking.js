@@ -276,6 +276,13 @@ async function projectView(el, id, tab = 'bild') {
   id = +id;
   let p = await api('/stacking/projects/' + id), frames = null, sel = null, cmp = null, viewer = null, sig = '', before = false, stage = null;
   let fFilter = 'all', fBand = 'all', fSort = ['date', 1];
+  let liveView = null, livePoster = null;
+  function updateJob() {
+    const jobHost = $('#job', el);
+    if (jobHost) { setJobLine(jobHost, p.job); jobHost.hidden = tab === 'bild' && !!liveView; }
+    liveView?.update(p);
+    if (p.live?.preview) livePoster = `/api/stacking/projects/${id}/live/${encodeURIComponent(p.live.preview)}`;
+  }
   const tabs = () => [...TABS.filter(([k]) => !p.imported || k === 'bild' || (k === 'versionen' && p.results.length > 1)),
     ...((p.companions ?? p.options?.companion_ids?.length ?? 0) ? [['teleskopbilder', 'Teleskopbilder']] : [])];
   crumbs([['Galerie', '#/bilder'], [p.name]]);
@@ -332,6 +339,8 @@ async function projectView(el, id, tab = 'bild') {
   function drawTab(animate = true) {
     if (p.imported && !['bild', 'versionen'].includes(tab)) tab = 'bild';
     viewer?.destroy();
+    liveView?.destroy();
+    liveView = null;
     viewer = null;
     $$('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.t === tab));
     requestAnimationFrame(() => slideInd($('#tabind'), $('#tabs a.on'), true));
@@ -339,11 +348,17 @@ async function projectView(el, id, tab = 'bild') {
     if (!t) return;
     t.classList.remove('enter');
     ({ bild: tabImage, aufnahmen: tabFrames, versionen: tabVersions, optionen: tabOptions, teleskopbilder: tabCompanions }[tab] || tabImage)(t);
+    updateJob();
     if (animate) { void t.offsetWidth; t.classList.add('enter'); }
   }
 
   // ---- Tab: Bild ----
   function tabImage(t) {
+    if (running(p.job) && !p.imported && typeof createStackLive === 'function') {
+      liveView = createStackLive(t, id);
+      liveView.update(p);
+      return;
+    }
     const r = p.results.find(x => x.id === sel) || p.results[0];
     const c = cmp && p.results.find(x => x.id === cmp);
     if (!r) {
@@ -364,7 +379,7 @@ async function projectView(el, id, tab = 'bild') {
         ${stages.length > 1 ? `<div class="stages"><div class="stages-h"><b>Stacking-Verlauf</b><span class="grow"></span><span class="sm tnum" id="stlbl">${stageLabel(stages[stage.i])}</span></div>
           <input type="range" id="strange" min="0" max="${stages.length - 1}" step="1" value="${stage.i}" aria-label="Stacking-Stufe" style="--fill:${stage.i / (stages.length - 1) * 100}%">
           <div class="stages-ticks">${stages.map((x, i) => `<span data-i="${i}" class="tnum${i === stage.i ? ' on' : ''}">${x.final ? 'Alle' : x.n}</span>`).join('')}</div>
-          <p class="mut sm">Dasselbe Objekt mit weniger Aufnahmen, gleich entwickelt – so sieht man, was mehr Belichtungszeit bringt.${s.stages_simplified ? ` Zwischenstufen ohne ${s.stages_simplified.join('/')} entwickelt.` : ''}</p></div>` : ''}
+          <p class="mut sm">${s.stages_live ? 'Gespeicherte Live-Vorschauen zeigen den Bildaufbau. Das fertige Bild ist vollständig entwickelt; Helligkeit, Farben und Ausschnitt können abweichen.' : `Dasselbe Objekt mit weniger Aufnahmen, gleich entwickelt – so sieht man, was mehr Belichtungszeit bringt.${s.stages_simplified ? ` Zwischenstufen ohne ${s.stages_simplified.join('/')} entwickelt.` : ''}`}</p></div>` : ''}
         ${r.has_before && !c ? `<div class="row" style="margin-top:10px"><div class="seg" id="ba"><button data-b="0" class="${before ? '' : 'on'}">Ergebnis</button>
           <button data-b="1" class="${before ? 'on' : ''}">Vorher / Nachher</button></div>
           ${before ? '<span class="mut sm">Links der unbearbeitete Master-Stack, rechts das entwickelte Bild – Trennlinie ziehen</span>' : ''}</div>` : ''}
@@ -404,7 +419,8 @@ async function projectView(el, id, tab = 'bild') {
             ${Object.keys(x.adjust || {}).length ? `<div class="mut sm">${Object.entries(x.adjust).map(([k, v]) => `${esc(k)} → ${esc(v)}`).join(' · ')}</div>` : ''}</div>`).join('')}</div></div>` : ''}
       </div></div>`;
     if (s.quality) tutorPanel($('#tutorBox'), r);
-    const ph = `/api/stacking/results/${r.id}/thumb`;
+    const ph = !c && !before && livePoster ? livePoster : `/api/stacking/results/${r.id}/thumb`;
+    livePoster = null;
     viewer = c ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${c.id}/jpg`, undefined, ph)
       : before && r.has_before ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${r.id}/before`, ['vorher', 'nachher'], ph)
       : createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, null, undefined, ph);
@@ -598,6 +614,7 @@ async function projectView(el, id, tab = 'bild') {
         else toast('Optionen gespeichert.', 'ok');
       } catch (err) { toast(err.message, 'err'); return; }
       p = await api('/stacking/projects/' + id);
+      if (!el.isConnected) return;
       if (tab === 'optionen') drawTab(false);
     };
   }
@@ -660,6 +677,7 @@ async function projectView(el, id, tab = 'bild') {
       p = await api('/stacking/projects/' + id);
     } catch {
       // Projekt existiert nicht mehr: nach dem Plate-Solving wurden alle Aufnahmen anderen Objekten zugeordnet
+      if (!el.isConnected) return;
       toast('Alle Aufnahmen wurden einem erkannten Objekt zugeordnet.', 'ok');
       location.hash = '#/bilder';
       return;
@@ -680,14 +698,14 @@ async function projectView(el, id, tab = 'bild') {
       const y = window.scrollY;
       // im Optionen-Formular nicht neu zeichnen (Eingaben bleiben erhalten), nur Jobzeile
       if (framesOnly || (tab === 'optionen' && !force && !changedResults)) {
-        setJobLine($('#job'), p.job);
+        updateJob();
         if (framesOnly && tab === 'aufnahmen') drawTab(false);
         return;
       }
       draw();
       window.scrollTo(0, y);
     } else {
-      setJobLine($('#job'), p.job);
+      updateJob();
     }
   }
   sig = JSON.stringify([p.name, p.total, p.results.map(r => r.id), p.job?.state, p.frames, p.coords]);
@@ -727,7 +745,7 @@ async function projectView(el, id, tab = 'bild') {
       ...(p.result && AF.on('sage') ? [['book', 'Geschichte erzählen', 'Sage', story]] : []),
       ['edit', 'Umbenennen', p.name, rename],
     ],
-    destroy: () => { window.__afSel = { id, sel, cmp }; viewer?.destroy(); document.removeEventListener('click', closeMenu); document.removeEventListener('keydown', onKey); },
+    destroy: () => { window.__afSel = { id, sel, cmp }; viewer?.destroy(); liveView?.destroy(); document.removeEventListener('click', closeMenu); document.removeEventListener('keydown', onKey); },
   };
 }
 

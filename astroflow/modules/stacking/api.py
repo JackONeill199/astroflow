@@ -175,6 +175,8 @@ class Engine:
         prog = self._prog(jid)
         try:
             opts = json.loads(job["options"] or "{}")
+            if opts.get('action') != 'solve':
+                self.pl.begin_live(job['project_id'], jid)
             if opts.get("action") == "solve":
                 r = self.pl.solve_project(job["project_id"], prog)
                 n = sum(r["moved"].values())
@@ -443,6 +445,10 @@ def build_router(eng: Engine) -> APIRouter:
         if not p:
             raise HTTPException(404)
         v = project_view(p)
+        from .live import read_state
+        v['live'] = read_state(eng.s.work_dir, pid)
+        if v['live'].get('job') != (v.get('job') or {}).get('id'):
+            v['live'] = {}
         v["results"] = [{"id": x["id"], "created": x["created"], "n_frames": x["n_frames"], "exposure": x["exposure"],
                          "stats": json.loads(x["stats"]), "review": json.loads(x["review"] or "[]"),
                          "has_before": "before" in json.loads(x["files"] or "{}")}
@@ -451,6 +457,15 @@ def build_router(eng: Engine) -> APIRouter:
         v["palettes"] = list(channels.PALETTES)
         v["kind_labels"] = objects.KIND_LABEL
         return v
+
+    @r.get('/projects/{pid}/live/{name}')
+    def live_picture(pid: int, name: str):
+        if not re.fullmatch(r'\d+-\d+\.jpg', name):
+            raise HTTPException(404)
+        path = eng.s.work_dir / f'p{pid}' / 'live' / name
+        if not path.is_file():
+            raise HTTPException(404)
+        return FileResponse(path, media_type='image/jpeg', headers={'Cache-Control': 'no-store'})
 
     @r.patch("/projects/{pid}")
     def patch_project(pid: int, body: dict = Body(...)):

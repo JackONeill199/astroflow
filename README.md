@@ -180,8 +180,11 @@ Die Oberfläche (<http://localhost:8080>) ist eine installierbare Web-App (PWA) 
 - **Objektseite** mit Zoom-/Pan-Betrachter (Mausrad, Ziehen, Pinch, Doppelklick = 100 %, Vollbild), Kanalübersicht (Belichtung je Filter), Details und KI-Prüfprotokoll
 - **Aufnahmen**: Qualitätsdiagramm über alle Nächte, filter- und sortierbare Tabelle, Einzelbilder ein-/ausschließen
 - **Versionen**: jede Verarbeitung bleibt erhalten; zwei Versionen per Schieberegler vergleichen
-- **Stacking-Verlauf**: Regler unter dem Bild zeigt dasselbe Objekt nach 1, 3, 10, 30, 100 … Aufnahmen, gleich entwickelt –
-  so sieht man, was mehr Belichtungszeit bringt (Standard: fertiges Bild; nur für Stacks ab dieser Version)
+- **Live-Bildaufbau**: Echte Vorschauen erscheinen während des Stackens und Entwickelns im Bild-Tab. Eine kompakte
+  Statuszeile zeigt den aktiven Schritt, etwa GraXpert, Gaia, StarNet oder Stretch; „Details“ öffnet den bisherigen Ablauf.
+- **Stacking-Verlauf**: Der Regler unter dem fertigen Bild nutzt die gespeicherten Live-Vorschauen nach 1, 3, 10, 30, 100 …
+  Aufnahmen. Eine zusätzliche Entwicklung dieser Zwischenstände entfällt. Die Vorschauen können in Farbe, Helligkeit und
+  Ausschnitt vom vollständig entwickelten Endergebnis abweichen (Standard: fertiges Bild; ältere Ergebnisse bleiben erhalten).
 - **Optionen** je Objekt (Profil, Farbpalette, Bildauswahl, Auflösung, Schmalband, KI-Prüfung) mit „Speichern & verarbeiten“
 - **Import** von Dateien oder ganzen Ordnern per Drag & Drop (überall auf der Seite), auch gemischt: FITS werden als Rohaufnahmen verarbeitet, JPG/PNG/TIFF als fertige Bilder direkt in die Galerie übernommen. Originaldateien bleiben unverändert, identische fertige Bilder werden nicht doppelt angelegt. 16-Bit-TIFFs bleiben als Original erhalten; Anzeigevorschauen sind 8 Bit. **Aktivität** (Auftragsliste), **Einstellungen**
 - **Stellina-Verlaufsbilder** (`img-…-output.jpeg`) werden mit eindeutigen Vaonis-/Geräte-/Objekt-/Zeitmetadaten als Versionen einer Aufnahme zusammengefasst. Gibt es passende Rohdaten desselben Geräts, Objekts und derselben Nacht, stehen sie dort unter **Teleskopbilder** statt als separate Galeriekarten. Die Originale bleiben erhalten; der Dateiname allein reicht für eine Zuordnung nicht aus.

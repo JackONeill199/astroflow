@@ -196,11 +196,14 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    werden bei vorhandenen Rohbildern neu gemessen (`nights(with_map=True)`), sonst weiter ohne Karte genutzt.
    **Stacking-Stufen** (seit 01.11.2026, Nutzerwunsch „Slider, was mehr Bilder ausmachen“): `_stack` sichert beim Überschreiten von
    `STAGES` (1, 3, 10, 30, 100 … Frames, kumulativ über alle Läufe) den Zwischenstand – `StackState.add_batch(prefixes=…)` rechnet
-   „bisher + erste k Frames des Stapels“ (Clipping-Maske aus dem ganzen Stapel) → `work/p<id>/stufen[_<Band>]/n<t>.npz` (float16,
-   ADU/`STAGE_SCALE`, ~40 MB je Stufe bei Stellina) + `.json` (n, Belichtung). Neuaufbau löscht sie mit. `develop` rendert nach dem
-   Speichern (`_render_stages`, nur bei **einem** Kanal) alle Stufen < Frame-Zahl mit den Endparametern und festem Ausschnitt
-   (`processing.process(crop=stats.crop)` – gleiche Pixelgröße wie das fertige Bild) → `<base>_s<n>.jpg`, `results.files.s<n>`,
-   `stats.stages`; GraXpert (`_ai`) und StarNet werden dafür weggelassen (`stats.stages_simplified`). ~11 s je Stufe (3072×2080).
+   „bisher + erste k Frames des Stapels“ (Clipping-Maske aus dem ganzen Stapel). Seit 02.11.2026 direkt kleine JPGs (≤ 800 px)
+   in `work/p<id>/stufen[_<Band>]/n<t>.jpg` + `.json` (n, Belichtung), keine neuen Vollbild-NPZs. Neuaufbau löscht sie mit.
+   `_render_stages` kopiert sie nur noch zu `<base>_s<n>.jpg` (`results.files.s<n>`, `stats.stages`, `stats.stages_live`);
+   alte float16-NPZs (ADU / `STAGE_SCALE`) werden nur verkleinert gestreckt. Keine zusätzliche vollständige Entwicklung.
+   Live-Ansicht: `live.py` je Projekt/Auftrag, atomare `work/p<id>/live/state.json` und zwei aktuelle JPGs;
+   `_track_live` protokolliert echte Schritte, Vorschau-Hooks in GraXpert/Processing, höchstens alle 4 s plus Endergebnis.
+   `/projects/{pid}` liefert `live` nur für den neuesten Auftrag; `/projects/{pid}/live/{name}` liefert streng geprüfte JPG-Namen.
+   `static/live.js|css`: Bildwechsel auf zwei Ebenen, kompakte Statuszeile mit aufklappbarem Ablauf; reduzierte Bewegung beachtet.
    UI: Regler unter dem Viewer, Standard = fertiges Bild, `viewer.setSrc` tauscht das Bild ohne Zoomverlust.
    Schnelles Iterieren: `StackState.load(work/p<id>/stack).result()` → `processing.process(...)` (~10 s), kein Neu-Stacken nötig.
    **Schwaches Signal / M57-Vergleich mit Stellina (2026-10-30):** Lineare Stacks waren gleich gut, die Entwicklung schlechter.
