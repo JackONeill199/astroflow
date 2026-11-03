@@ -310,7 +310,7 @@ def test_folder_dialog(server, browser, size):
     page.close()
     assert not errors, errors
 
-@pytest.mark.parametrize('size', ['handy', 'desktop'])
+@pytest.mark.parametrize('size', ['handy', 'desktop', 'gross'])
 def test_tonight_recommendations_chart_and_links(server, browser, size, tmp_path):
     """Echte Nachtkurven mit festem Datum: Übersicht, responsive Grafik, lokale Katalogkarte und Sage-Klick."""
     from astroflow.modules.stacking import tonight
@@ -319,11 +319,14 @@ def test_tonight_recommendations_chart_and_links(server, browser, size, tmp_path
     d = tonight.plan([{**M31, 'exposure': 1800}], SITE, Path('unused'), EVENING,
                      {'name': 'Testgerät', 'fov': [1, .7], 'source': 'Testmessung'})
     base, pid = server
-    w, h = SIZES[size]
+    w, h = SIZES.get(size, (2560, 1273))
     page = browser.new_page(viewport={'width': w, 'height': h}, has_touch=size == 'handy')
     errors = []
     page.on('pageerror', lambda e: errors.append(str(e)))
     page.route('**/api/stacking/tonight', lambda r: r.fulfill(json=d))
+    projects = page.request.get(base + '/api/stacking/projects').json()
+    gallery = [{**projects[0], 'name': f'Testobjekt {i + 1}'} for i in range(6)]
+    page.route('**/api/stacking/projects', lambda r: r.fulfill(json=gallery))
     page.goto(base + '/#/')
     page.wait_for_selector('af-tonight-chart svg')
     assert page.locator('.tn-chart').bounding_box()['height'] >= 340
@@ -352,11 +355,15 @@ def test_tonight_recommendations_chart_and_links(server, browser, size, tmp_path
     slider.focus()
     slider.press('End')
     # Alle Module stehen auf Desktopbreite neben der größeren Grafik über dem unteren Fensterrand.
-    if size == 'desktop':
+    if size != 'handy':
         modules = page.locator('.home-modules').bounding_box()
         diagram = page.locator('.home-featured').bounding_box()
         assert modules['x'] > diagram['x'] + diagram['width']
         assert modules['y'] + modules['height'] <= h
+        assert page.locator('.hthumbs a').first.bounding_box()['width'] >= (140 if size == 'gross' else 85)
+        assert page.locator('.hthumbs span').first.is_visible()
+        if size == 'gross':
+            assert page.locator('.home-grid').bounding_box()['width'] > 1800
     assert not page.evaluate(FIND_OVERFLOW)
     page.screenshot(path=str(tmp_path / 'nacht.png'), full_page=True)
     # Kein Neuzeichnen der Grafik beim unveränderten Status-Polling.

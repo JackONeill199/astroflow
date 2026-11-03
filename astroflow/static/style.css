@@ -495,32 +495,37 @@ em.grad { font-style: normal; background: var(--grad); -webkit-background-clip: 
 .home-featured:empty { display: none }
 .home-featured, .home-modules { min-width: 0 }
 .home-modules { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; align-items: start }
+main:has(.home-grid) { max-width: 2040px }
 .hero.dashboard-hero { padding: 16px 20px; margin-bottom: 16px; align-items: center; gap: 14px }
 .hero.dashboard-hero > div:first-child { flex: 1 1 270px }
 .hero.dashboard-hero h1 { font-size: 25px }
 .dashboard-hero .eyebrow { margin-bottom: 5px }
 @media (min-width: 1200px) {
-  .home-grid.has-featured { grid-template-columns: minmax(0, 1fr) 310px; gap: 16px }
+  .home-grid.has-featured { grid-template-columns: minmax(0, 1fr) clamp(360px, 30%, 560px); gap: 16px }
   .has-featured .home-modules { grid-template-columns: minmax(0, 1fr); gap: 12px }
-  .has-featured .home-modules .hcard { padding: 14px; gap: 10px }
+  .has-featured .home-modules .hcard { padding: 16px; gap: 12px }
   .has-featured .home-modules .hhead { gap: 8px; flex-wrap: wrap }
   .has-featured .home-modules .hhead > svg { width: 28px; height: 28px; padding: 6px }
   .has-featured .home-modules .hhead .mut { display: none }
   .has-featured .home-modules .hhead h2 { font-size: 14px }
   .has-featured .home-modules .hhead .linkbtn { font-size: 12px }
   .has-featured .home-modules .hstats { gap: 6px }
-  .has-featured .home-modules .hstats div { padding: 6px }
-  .has-featured .home-modules .hstats b { font-size: 16px }
-  .has-featured .home-modules .hstats small { font-size: 10px }
-  .has-featured .home-modules .hthumbs { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px }
-  .has-featured .home-modules .hthumbs a { aspect-ratio: 1 }
-  .has-featured .home-modules .hthumbs span { display: none }
-  .has-featured .home-modules .hfeature { padding: 6px; gap: 8px }
-  .has-featured .home-modules .hfeature img { width: 46px; height: 38px }
+  .has-featured .home-modules .hstats div { padding: 8px }
+  .has-featured .home-modules .hstats b { font-size: 18px }
+  .has-featured .home-modules .hstats small { font-size: 11.5px }
+  .has-featured .home-modules .hthumbs { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px }
+  .has-featured .home-modules .hthumbs a { aspect-ratio: 3/2 }
+  .has-featured .home-modules .hthumbs span { padding: 12px 6px 4px; font-size: 11px }
+  .has-featured .home-modules .hfeature { padding: 8px; gap: 12px }
+  .has-featured .home-modules .hfeature img { width: 112px; height: 84px }
   .has-featured .home-modules .hfeature b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
   .has-featured .home-modules .hfeature span { display: none }
   .has-featured .home-modules .hnext:not(a) { display: none }
   .has-featured .home-modules p { margin: 0; font-size: 12px }
+}
+@media (min-width: 1200px) and (max-width: 1599px) {
+  .has-featured .home-modules .hcard { padding: 14px; gap: 8px }
+  .has-featured .home-modules .hstats div { padding: 6px }
 }
 .hcard { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 20px; box-shadow: var(--shadow), var(--hi); display: grid; gap: 16px;
   transition: border-color .25s, transform .35s var(--ease) }
