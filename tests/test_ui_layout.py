@@ -118,7 +118,7 @@ def browser():
         b.close()
 
 
-ROUTES = ["#/", "#/bilder", "#/p/{pid}/bild", "#/p/{pid}/aufnahmen", "#/p/{pid}/versionen", "#/p/{pid}/optionen",
+ROUTES = ["#/", "#/nacht", "#/bilder", "#/p/{pid}/bild", "#/p/{pid}/aufnahmen", "#/p/{pid}/versionen", "#/p/{pid}/optionen",
           "#/import", "#/activity", "#/skytrace", "#/skytrace/neu", "#/skytrace/statistik", "#/skytrace/erfolge", "#/sage", "#/sage/wiki", "#/sage/entdeckungen",
           "#/settings/stacking", "#/settings/skytrace", "#/settings/sage", "#/settings/module"]
 
@@ -307,5 +307,105 @@ def test_folder_dialog(server, browser, size):
     assert page.evaluate("(() => { const d = document.querySelector('#dlg'); return d.scrollWidth <= d.clientWidth + 1 })()")
     page.click("#fx")
     assert not page.locator("#dlg[open]").count()
+    page.close()
+    assert not errors, errors
+
+@pytest.mark.parametrize('size', ['handy', 'desktop', 'gross'])
+def test_tonight_recommendations_chart_and_links(server, browser, size, tmp_path):
+    """Echte Nachtkurven mit festem Datum: Übersicht, responsive Grafik, lokale Katalogkarte und Sage-Klick."""
+    from astroflow.modules.stacking import tonight
+    from tests.test_tonight import SITE, EVENING, M31
+    from pathlib import Path
+    d = tonight.plan([{**M31, 'exposure': 1800}], SITE, Path('unused'), EVENING,
+                     {'name': 'Testgerät', 'fov': [1, .7], 'source': 'Testmessung'})
+    base, pid = server
+    w, h = SIZES.get(size, (2560, 1273))
+    page = browser.new_page(viewport={'width': w, 'height': h}, has_touch=size == 'handy')
+    errors = []
+    page.on('pageerror', lambda e: errors.append(str(e)))
+    page.route('**/api/stacking/tonight', lambda r: r.fulfill(json=d))
+    projects = page.request.get(base + '/api/stacking/projects').json()
+    gallery = [{**projects[0], 'name': f'Testobjekt {i + 1}'} for i in range(6)]
+    page.route('**/api/stacking/projects', lambda r: r.fulfill(json=gallery))
+    page.goto(base + '/#/')
+    page.wait_for_selector('af-tonight-chart svg')
+    assert round(page.locator('.tn-chart').bounding_box()['height']) >= 340
+    total = len(d['recommendations'])
+    assert page.locator('.tn-choice').count() == total
+    visible = page.locator('.tn-series').count()
+    page.locator('[data-visible="0"]').uncheck()
+    assert page.locator('.tn-series').count() == visible - 1
+    page.locator('[data-visible="0"]').check()
+    page.locator('[data-select="1"]').click()
+    assert page.locator('[data-select="1"]').get_attribute('aria-pressed') == 'true'
+    page.locator('.tn-target summary').click()
+    assert page.locator('.tn-target').get_attribute('open') is not None
+    slider = page.locator('.tn-time')
+    slider.focus()
+    slider.press('End')
+    assert slider.input_value() == str(len(d['times']) - 1)
+    assert page.locator('.tn-tooltip').is_visible()
+    assert page.locator('.tn-cursor line').count() == 1
+    diagram = page.locator('.tn-chart')
+    diagram.hover(position={'x': 100, 'y': 120})
+    assert int(slider.input_value()) < len(d['times']) - 1
+    if size == 'handy':
+        diagram.tap(position={'x': 170, 'y': 150})
+        assert page.locator('.tn-tooltip').is_visible()
+    slider.focus()
+    slider.press('End')
+    # Alle Module stehen auf Desktopbreite neben der größeren Grafik über dem unteren Fensterrand.
+    if size != 'handy':
+        modules = page.locator('.home-modules').bounding_box()
+        diagram = page.locator('.home-featured').bounding_box()
+        assert modules['x'] > diagram['x'] + diagram['width']
+        assert modules['y'] + modules['height'] <= h
+        assert page.locator('.hthumbs a').first.bounding_box()['width'] >= (140 if size == 'gross' else 85)
+        assert page.locator('.hthumbs span').first.is_visible()
+        if size == 'gross':
+            assert page.locator('.home-grid').bounding_box()['width'] > 1800
+    # Aufteilung wechselt ohne Verlust der Kurvenauswahl oder des Zeitzeigers.
+    mode = page.get_by_label('Dashboard-Aufteilung')
+    chosen = page.locator('[data-select][aria-pressed="true"]').get_attribute('data-select')
+    host = page.locator('af-tonight-chart').element_handle()
+    for value in ['planning', 'library', 'balanced']:
+        mode.select_option(value)
+        page.wait_for_timeout(150)
+        assert host.evaluate('(e) => e.isConnected')
+        assert page.locator(f'[data-select="{chosen}"]').get_attribute('aria-pressed') == 'true'
+        assert page.locator('.tn-time').input_value() == str(len(d['times']) - 1)
+        assert not page.evaluate(FIND_OVERFLOW)
+    if size == 'gross':
+        sky = page.locator('.home-modules [data-m="skytrace"]').bounding_box()
+        sage = page.locator('.home-modules [data-m="sage"]').bounding_box()
+        assert abs(sky['y'] - sage['y']) < 2 and sage['x'] > sky['x']
+    assert not page.evaluate(FIND_OVERFLOW)
+    page.screenshot(path=str(tmp_path / 'nacht.png'), full_page=True)
+    # Kein Neuzeichnen der Grafik beim unveränderten Status-Polling.
+    chart = page.locator('af-tonight-chart').element_handle()
+    selected = page.locator('[data-select][aria-pressed="true"]').get_attribute('data-select')
+    page.route('**/api/stacking/projects', lambda r: r.fulfill(json=[]))
+    page.wait_for_timeout(3000)
+    assert chart.evaluate('(e) => e.isConnected')
+    assert page.locator(f'[data-select="{selected}"]').get_attribute('aria-pressed') == 'true'
+    assert slider.input_value() == str(len(d['times']) - 1)
+    page.unroute('**/api/stacking/projects')
+    page.goto(base + '/#/nacht')
+    page.wait_for_selector('af-tonight-chart svg')
+    assert page.locator('h1').inner_text() == 'Heute Nacht'
+    assert not page.evaluate(FIND_OVERFLOW)
+    new = next(x for x in d['recommendations'] if x['category'] == 'new')
+    page.goto(base + '/#/nacht/' + new['id'])
+    page.wait_for_selector('af-tonight-chart svg')
+    assert new['name'] in page.locator('#view').inner_text()
+    # Sage-Karten werden erst durch den Klick aufgelöst (keine automatische Recherche).
+    page.route('**/api/sage/kb/card?*', lambda r: r.fulfill(json={'found': True, 'id': 'test-target'}))
+    page.locator('.tn-selection a[data-night-catalog]').first.click()
+    page.wait_for_url('**/#/sage/o/test-target')
+    page.goto(base + '/#/')
+    page.get_by_label('Dashboard-Aufteilung').select_option('library')
+    page.reload()
+    page.wait_for_selector('af-tonight-chart svg')
+    assert page.get_by_label('Dashboard-Aufteilung').input_value() == 'library'
     page.close()
     assert not errors, errors

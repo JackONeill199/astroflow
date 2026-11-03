@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from . import calibration, channels, diskspace, gpu, graxpert, objects, platesolve, reviewer, stars, tutor
+from . import calibration, channels, diskspace, gpu, graxpert, objects, platesolve, reviewer, stars, tonight, tutor
 from .db import DB
 from .pipeline import Pipeline
 
@@ -626,6 +626,12 @@ def build_router(eng: Engine) -> APIRouter:
         except RuntimeError as e:
             raise HTTPException(409, str(e))
         return {"groups": n, **eng.library.view()}
+
+    # ---- Nachtplanung: Standort und optionale Wetterfreigabe aus dem Bild-Tutor ------------
+    @r.get("/tonight")
+    def get_tonight():
+        projects, device = tonight.library(db)
+        return tonight.plan(projects, tutor.settings(eng.ctx.store), eng.s.work_dir / "tutor", device=device)
 
     # ---- Bild-Tutor (vor /results/{rid}/{kind}, sonst fängt die Datei-Route „tutor“ ab) --------
     @r.get("/tutor")

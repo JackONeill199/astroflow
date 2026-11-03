@@ -26,6 +26,25 @@ und Drag & Drop überall (FITS → Rohdaten-Pipeline, JPG/PNG/TIFF → fertige B
 
 ## Rundgang
 
+### Heute Nacht – passende Aufnahmeziele
+
+Die Übersicht empfiehlt bis zu sechs heute noch gut sichtbare Ziele: neue Objekte aus dem eingebauten Katalog und
+eigene Aufnahmen, denen mehr Belichtungszeit bei Rauschen oder schwachem Signal helfen kann. Die Grafik zeigt
+Höhenverläufe, Dämmerung, dunkle Zeit, Mond und die Mindesthöhe von 30°. Links führen zum eigenen Bild bzw. zum
+Sage-Eintrag; ohne Sage erscheint eine lokale Katalogkarte.
+
+Mit Maus, Touch oder Zeitregler lassen sich die Höhen zu einer Uhrzeit ablesen. Die Zielnamen wählen eine Kurve aus,
+die Kontrollkästchen blenden einzelne Kurven aus. „Objekt öffnen“ führt zur Aufnahme bzw. zum Sage-Eintrag;
+die Begründung ist beim ausgewählten Ziel aufklappbar. Auf Desktopbreite stehen Bilder, SkyTrace und Sage kompakt
+neben der größeren Grafik. Unter **Ansicht** wählst du „Ausgewogen“, „Nachtplanung“ oder „Bilder & Module“;
+AstroFlow merkt sich die Aufteilung auf diesem Gerät. Auf großen Bildschirmen stehen SkyTrace und Sage nebeneinander
+unter den Bildvorschauen. Bildfeld und technische Angaben findest du unter „Berechnung & Bildfeld“.
+
+Zuerst unter **Einstellungen → Bilder → Bild-Tutor** den Beobachtungsort eintragen. AstroFlow nutzt das zuletzt
+verwendete Gerät: bekanntes Bildfeld aus Plate-Solving, bei Stellina ersatzweise einen Näherungswert. Bei unbekanntem
+Bildfeld wird die Objektgröße nicht gefiltert. „Heute Nacht“ öffnet Details und, bei aktivierter Wetterfreigabe im
+Bild-Tutor, eine Open-Meteo-Vorhersage mit auf 0,1° gerundetem Standort. Die Himmelsberechnung läuft offline.
+
 Alle Bilder stammen aus einer echten Instanz: rund 22 000 Stellina-Aufnahmen aus 31 Nächten, 63 Objekte – ohne Nachbearbeitung in anderer Software.
 
 ### Bilder – vom Rohbild zum fertigen Foto
