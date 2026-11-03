@@ -3,6 +3,15 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.19.1 – 04.11.2026
+
+### Behoben
+- **SkyTrace 3D-Lauf-Ansicht:** Bei Läufen ohne Kandidaten stimmten Blickrichtung, Bildlage und Teleskopweg nicht, wenn
+  das Analysebild verkleinert war; die Registrierung wird jetzt in Analysepixeln angewendet und erst danach umgerechnet.
+- Läuft `sgp4` nur im SkyTrace-Interpreter, öffnet die Lauf-Ansicht mit Satellitentreffern wieder (vorher Fehler 500);
+  scheitert die Bahnrechnung, erscheint ein Hinweis.
+- Ein in den Einstellungen nachgetragener Standort wirkt sofort, statt dass die Ansicht weiter „Standort fehlt“ meldet.
+
 ## 0.19.0 – 03.11.2026
 
 ### Neu
