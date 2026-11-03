@@ -13,6 +13,9 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 - **Heute Nacht:** Detailplanung mit Dämmerungszeiten, mondlosen Zeitfenstern und optionaler Wettervorhersage.
   Standort und Wetterfreigabe kommen aus dem Bild-Tutor. Berechnung offline; Wetter nur bei aktivierter Freigabe.
   Verlinkung zu eigenen Objekten und bei aktivem Sage zum Enzyklopädie-Eintrag; sonst zur lokalen Katalogkarte.
+- **Interaktive Nachtgrafik:** Größere Höhenkurven mit Zeitzeiger per Maus, Touch oder Tastaturregler, Höhenwerten
+  zur gewählten Zeit, Zielauswahl und einzeln ausblendbaren Kurven. Begründungen sind kompakt aufklappbar.
+  Auf Desktopbreite stehen die Modulkarten direkt neben der Planung; Statusänderungen erhalten die Diagrammauswahl.
 
 ## 0.16.1 – 03.11.2026
 

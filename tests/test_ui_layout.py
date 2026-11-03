@@ -320,19 +320,54 @@ def test_tonight_recommendations_chart_and_links(server, browser, size, tmp_path
                      {'name': 'Testgerät', 'fov': [1, .7], 'source': 'Testmessung'})
     base, pid = server
     w, h = SIZES[size]
-    page = browser.new_page(viewport={'width': w, 'height': h})
+    page = browser.new_page(viewport={'width': w, 'height': h}, has_touch=size == 'handy')
     errors = []
     page.on('pageerror', lambda e: errors.append(str(e)))
     page.route('**/api/stacking/tonight', lambda r: r.fulfill(json=d))
     page.goto(base + '/#/')
     page.wait_for_selector('af-tonight-chart svg')
-    assert page.locator('.tn-target').count() > 0
+    assert page.locator('.tn-chart').bounding_box()['height'] >= 340
+    total = len(d['recommendations'])
+    assert page.locator('.tn-choice').count() == total
+    visible = page.locator('.tn-series').count()
+    page.locator('[data-visible="0"]').uncheck()
+    assert page.locator('.tn-series').count() == visible - 1
+    page.locator('[data-visible="0"]').check()
+    page.locator('[data-select="1"]').click()
+    assert page.locator('[data-select="1"]').get_attribute('aria-pressed') == 'true'
+    page.locator('.tn-target summary').click()
+    assert page.locator('.tn-target').get_attribute('open') is not None
+    slider = page.locator('.tn-time')
+    slider.focus()
+    slider.press('End')
+    assert slider.input_value() == str(len(d['times']) - 1)
+    assert page.locator('.tn-tooltip').is_visible()
+    assert page.locator('.tn-cursor line').count() == 1
+    diagram = page.locator('.tn-chart')
+    diagram.hover(position={'x': 100, 'y': 120})
+    assert int(slider.input_value()) < len(d['times']) - 1
+    if size == 'handy':
+        diagram.tap(position={'x': 170, 'y': 150})
+        assert page.locator('.tn-tooltip').is_visible()
+    slider.focus()
+    slider.press('End')
+    # Alle Module stehen auf Desktopbreite neben der größeren Grafik über dem unteren Fensterrand.
+    if size == 'desktop':
+        modules = page.locator('.home-modules').bounding_box()
+        diagram = page.locator('.home-featured').bounding_box()
+        assert modules['x'] > diagram['x'] + diagram['width']
+        assert modules['y'] + modules['height'] <= h
     assert not page.evaluate(FIND_OVERFLOW)
     page.screenshot(path=str(tmp_path / 'nacht.png'), full_page=True)
     # Kein Neuzeichnen der Grafik beim unveränderten Status-Polling.
     chart = page.locator('af-tonight-chart').element_handle()
+    selected = page.locator('[data-select][aria-pressed="true"]').get_attribute('data-select')
+    page.route('**/api/stacking/projects', lambda r: r.fulfill(json=[]))
     page.wait_for_timeout(3000)
     assert chart.evaluate('(e) => e.isConnected')
+    assert page.locator(f'[data-select="{selected}"]').get_attribute('aria-pressed') == 'true'
+    assert slider.input_value() == str(len(d['times']) - 1)
+    page.unroute('**/api/stacking/projects')
     page.goto(base + '/#/nacht')
     page.wait_for_selector('af-tonight-chart svg')
     assert page.locator('h1').inner_text() == 'Heute Nacht'
@@ -343,7 +378,7 @@ def test_tonight_recommendations_chart_and_links(server, browser, size, tmp_path
     assert new['name'] in page.locator('#view').inner_text()
     # Sage-Karten werden erst durch den Klick aufgelöst (keine automatische Recherche).
     page.route('**/api/sage/kb/card?*', lambda r: r.fulfill(json={'found': True, 'id': 'test-target'}))
-    page.locator('.tn-target a[data-night-catalog]').first.click()
+    page.locator('.tn-selection a[data-night-catalog]').first.click()
     page.wait_for_url('**/#/sage/o/test-target')
     page.close()
     assert not errors, errors

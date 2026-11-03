@@ -469,32 +469,43 @@ async function homeView(el) {
   crumbs([['Übersicht']]);
   const h = new Date().getHours();
   const hello = h < 5 || h >= 21 ? 'Klarer Himmel heute Nacht?' : h < 11 ? 'Guten Morgen' : h < 17 ? 'Hallo' : 'Guten Abend';
-  el.innerHTML = `<section class="hero"><div><div class="eyebrow"><span></span>DEIN OBSERVATORIUM</div>
+  el.innerHTML = `<section class="hero dashboard-hero"><div><div class="eyebrow"><span></span>DEIN OBSERVATORIUM</div>
       <h1>${hello}${h < 5 || h >= 21 ? '' : '.'}</h1>
-      <p class="mut">Rohbilder werden zu Astrofotos, Bildfolgen zu Entdeckungen, Objekte zu Geschichten – alles lokal auf diesem Rechner.</p></div>
+      </div>
       <div class="hero-act" id="heroAct"></div></section>
-    <div class="home-grid stagger" id="homeGrid"></div>`;
+    <div class="home-grid" id="homeGrid"><div class="home-featured"></div><div class="home-modules stagger"></div></div>`;
   const acts = [];
   if (AF.on('stacking')) acts.push(`<a class="btn" href="#/import">${icon('upload')}Aufnahmen importieren</a>`);
   if (AF.on('skytrace')) acts.push(`<a class="btn ghost" href="#/skytrace/neu">${icon('orbit')}Bildfolge analysieren</a>`);
   if (AF.on('sage')) acts.push(`<a class="btn ghost" href="#/sage">${icon('book')}Bild erzählen lassen</a>`);
   $('#heroAct').innerHTML = acts.join('');
-  let sig = '';
   async function load(st) {
     st = st || AF.status || await api('/status');
-    const cards = await Promise.all(AF.order.map(async (id, i) => {
+    const cards = await Promise.all(AF.order.map(async (id) => {
       try {
-        const [c, featured] = await Promise.all([AF.modules[id].home?.(st), AF.modules[id].homeFeatured?.(st)]);
-        return `${featured ? `<section class="hcard featured" style="--i:${i}">${featured}</section>` : ''}${c ? `<section class="hcard" data-m="${id}" style="--i:${i}">${c}</section>` : ''}`;
-      }
-      catch (e) { return `<section class="hcard" style="--i:${i}"><div class="mut">${esc(AF.info(id).name)}: ${esc(e.message)}</div></section>`; }
+        const [body, featured] = await Promise.all([AF.modules[id].home?.(st), AF.modules[id].homeFeatured?.(st)]);
+        return {id, body, featured};
+      } catch (e) { return {id, body: `<div class="mut">${esc(AF.info(id).name)}: ${esc(e.message)}</div>`}; }
     }));
-    const html = cards.join('');
-    if (html === sig || !el.isConnected) return;
-    const first = !sig;
-    sig = html;
-    $('#homeGrid').classList.toggle('stagger', first);
-    $('#homeGrid').innerHTML = html;
+    if (!el.isConnected) return;
+    const grid = $('.home-grid', el);
+    // Jede Karte einzeln aktualisieren: laufende Module setzen die interaktive Nachtgrafik nicht zurück.
+    for (const [i, c] of cards.entries()) {
+      for (const [key, parent, featured] of [['featured', '.home-featured', true], ['body', '.home-modules', false]]) {
+        const group = $(parent, el);
+        let node = group.querySelector(`[data-m="${c.id}"]`);
+        if (!c[key]) { node?.remove(); continue; }
+        if (!node) {
+          node = document.createElement('section');
+          node.className = 'hcard' + (featured ? ' featured' : '');
+          node.dataset.m = c.id;
+          node.style.setProperty('--i', i);
+          group.append(node);
+        }
+        if (node.homeHTML !== c[key]) { node.homeHTML = c[key]; node.innerHTML = c[key]; }
+      }
+    }
+    grid.classList.toggle('has-featured', !!$('.home-featured', el).children.length);
   }
   await load();
   return { update: load };

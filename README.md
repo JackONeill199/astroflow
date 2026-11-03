@@ -30,8 +30,13 @@ und Drag & Drop überall (FITS → Rohdaten-Pipeline, JPG/PNG/TIFF → fertige B
 
 Die Übersicht empfiehlt bis zu sechs heute noch gut sichtbare Ziele: neue Objekte aus dem eingebauten Katalog und
 eigene Aufnahmen, denen mehr Belichtungszeit bei Rauschen oder schwachem Signal helfen kann. Die Grafik zeigt
-Höhenverläufe, Dämmerung, dunkle Zeit, Mond und die Mindesthöhe von 30°. Die farbigen Objektnamen öffnen das eigene
-Bild bzw. den Sage-Eintrag; ohne Sage erscheint eine lokale Katalogkarte.
+Höhenverläufe, Dämmerung, dunkle Zeit, Mond und die Mindesthöhe von 30°. Links führen zum eigenen Bild bzw. zum
+Sage-Eintrag; ohne Sage erscheint eine lokale Katalogkarte.
+
+Mit Maus, Touch oder Zeitregler lassen sich die Höhen zu einer Uhrzeit ablesen. Die Zielnamen wählen eine Kurve aus,
+die Kontrollkästchen blenden einzelne Kurven aus. „Objekt öffnen“ führt zur Aufnahme bzw. zum Sage-Eintrag;
+die Begründung ist beim ausgewählten Ziel aufklappbar. Auf Desktopbreite stehen Bilder, SkyTrace und Sage kompakt
+neben der größeren Grafik.
 
 Zuerst unter **Einstellungen → Bilder → Bild-Tutor** den Beobachtungsort eintragen. AstroFlow nutzt das zuletzt
 verwendete Gerät: bekanntes Bildfeld aus Plate-Solving, bei Stellina ersatzweise einen Näherungswert. Bei unbekanntem
