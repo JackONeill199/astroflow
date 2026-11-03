@@ -74,6 +74,32 @@ Für den Differenzvergleich hat die direkt gemessene Registrierung zum Nachbarbi
 globaler Referenzlösungen. Letztere können gegeneinander springen (bestätigt: lange blasse NGC-1499-Spur unten links,
 Videobild 57). Globale Astrometrie für bewegte Punkte bleibt getrennt. Regression mit künstlich springenden Referenzfits.
 
+## 3D-Ansicht (`orbit3d.py`, `static/skytrace-3d.js|css`, 03.11.2026, Nutzerwunsch „Spielerei“, Bahn muss stimmen)
+`GET /api/skytrace/orbit3d?run=<Lauf>&key=<Ordner>/<K-Nr>` → `Controller.orbit3d` → `orbit3d.payload_for` (Kandidat,
+WCS aus `<Beobachtung>/platesolve`, Bildecken der Trefferaufnahme über `context_image.reference_to_current`) → `build`.
+Fehlt etwas (Standort, Zuordnung, Zeit, Plate-Solving): `{ok:false, reason}` statt Fehler. `run_data` setzt je Kandidat
+`view3d` (`orbit3d.available`); nur dann zeigt das Detail den Knopf. Rechnung: numpy + erfa (aus astropy) + `sgp4`;
+fehlt `sgp4` im Server, läuft `orbit3d.py` als Skript im Engine-Interpreter (JSON stdin/stdout).
+- **Bezugssystem D** = erdfest (ECEF) zu t0, danach raumfest (TEME um GMST(t0) gedreht). Erde dreht sich darin mit
+  `earth_rate`·(t − t0); Bahnen geschlossen; das nachgeführte Blickfeld zeigt fest (ICRS → TEME per `pnm06a` + `eqeq94`),
+  sein Ursprung wandert mit dem Standort. Erdfestes (Standort, Meteore, Flugzeuge) kommt als ECEF. Frontend: three = (x, z, −y)/R.
+  UT1 ≈ UTC, keine Polbewegung. Geprüft gegen astropy: Satellit 9 m, Zenitrichtung 16″ (Aberration), Sonne 0,006°.
+- t0 = Belichtungsbeginn (`satellites.exposure_start`, sonst wie `motion_plausibility.exposure_start`) + Mittel von
+  `passage_seconds` des besten Treffers. Je Satellit (≤ 5 Treffer): Umlauf (360 Punkte), ±10 min alle 2 s
+  (Position, Höhe, Geschwindigkeit, Entfernung), Durchstoßstücke im Blickfeld (±2 min, 0,05 s, Punkt-im-Viereck in
+  gnomonischer Projektion, über dem Horizont).
+- **Bahnelemente:** neue Abgleiche speichern `matches[].tle` (`sgp4.exporter.export_tle`), Meteore `trajectory`
+  (GMN Anfang/Ende + Zeit), Flugzeuge `track` ([t, lat, lon, Höhe m]). Ältere Läufe: `archive_satrec` sucht ohne Netz in
+  `catalog_cache/archives/orbits-<Datum>.json` (wie `satellite_archive.model_from_record`) und `eth-<hash>.json`
+  (Schlüssel wie `eth_tles`); sonst `missing[].reason` → Hinweis in der Ansicht.
+- Frontend: eigener `<dialog class="st3d">` (keine Route, damit wenig Konflikte mit dem UI-Umbau), three.js r160 +
+  OrbitControls (Import auf `./three.module.min.js` umgeschrieben) und Erdtextur unter `static/vendor/` (Lizenzen in
+  `vendor/README.md`), erst beim Öffnen per `import()` geladen. Zeichnet nur bei Änderung; Kamerafahrten entfallen bei
+  `prefers-reduced-motion`, kein Auto-Drehen. Kegellänge = 1,35 × Entfernung des Satelliten im Blickfeld (echte Öffnung,
+  daher erst in „Blickfeld“ sichtbar). Atmosphärensaum blendet sich nahe der Erde aus. `dialog._st3d.state()` für Tests.
+- Tests: `test_skytrace_3d.py` (gegen astropy, alte Läufe, Hinweise), `test_skytrace_3d_ui.py` (Playwright, 375/1440 px).
+  Offen: Flugzeug- und Meteordarstellung nur mit synthetischen Daten geprüft; kein Uhrversatz-Ausgleich in der Ansicht.
+
 ## Automatisch nach dem Stacken (`auto.py`, 28.10.2026)
 - Ereignis `stacking.stacked` → `AutoAnalysis.stacked`: noch nicht übergebene Light-Aufnahmen (Dienst `project_frames`, Merkliste
   `<AstroFlow-Daten>/skytrace/auto.json` → `sent`) je Nacht als Ordner `<Nacht>_observation_<Objekt>` (wie Stellina, damit der Titel der Objektname ist; ältere Läufe `<Objekt>_observation_<Nacht>-p<id>-<zeit>` erkennt `short_name`) aus **Hardlinks**

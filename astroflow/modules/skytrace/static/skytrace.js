@@ -381,7 +381,12 @@ async function runView(root, runId, tab = 'vorschau') {
     S.frame = Math.min(c.frames.length - 1, Math.max(0, S.frame ?? c.initial_frame ?? 0));
     const top = el('div', undefined, 'panel-h');
     const hd = el('div'); hd.append(el('h2', candidateName(c)), el('div', c.id + ' · ' + observedDate(c) + ' · ' + (Number.isFinite(c.exposure_seconds) ? c.exposure_seconds + ' s Belichtung' : 'Belichtungszeit unbekannt'), 'mut sm'));
-    top.append(hd); host.append(top);
+    top.append(hd);
+    if (window.SkyTrace3D?.available(c)) {                // Bahn + Blickfeld räumlich (skytrace-3d.js)
+      const b3 = el('button', undefined, 'btn ghost sm st3d-open'); b3.innerHTML = icon('globe') + '3D-Ansicht'; b3.title = 'Bahn und Teleskop-Blickfeld auf der Erde ansehen';
+      b3.onclick = () => SkyTrace3D.open(runId, c); top.append(el('span', undefined, 'grow'), b3);
+    }
+    host.append(top);
     const options = el('div', undefined, 'row frame-options'), views = el('div', undefined, 'seg');
     const full = el('button', 'Ganzes Bild'), crop = el('button', 'Ausschnitt'), hit = el('button', 'Zum Treffer', 'linkbtn'), inVideo = el('button', 'Im Video öffnen', 'linkbtn');
     full.dataset.view = 'full'; crop.dataset.view = 'crop'; views.append(full, crop); options.append(views, hit, el('span', undefined, 'grow'), inVideo); host.append(options);
