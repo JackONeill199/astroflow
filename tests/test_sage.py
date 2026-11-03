@@ -188,3 +188,47 @@ def test_fits_mit_wcs_ohne_solver(tmp_path):
         raise AssertionError("ohne Solver darf nicht gelöst werden")
     except platesolve.SolveError as e:
         assert "kein lokaler" in str(e)
+
+
+def test_messier_zuordnung_ueber_namen_und_ngc():
+    from astroflow.modules.sage.collection import caldwell_number, messier_number
+    assert messier_number("M 31") == messier_number("M31 Andromedagalaxie") == messier_number("NGC 224") == messier_number("Messier 31") == 31
+    assert messier_number("NGC 1976 Orionnebel") == 42 and messier_number("IC 4725") == 25
+    assert messier_number("M45 Plejaden") == 45 and messier_number("Plejaden") == 45
+    assert messier_number("NGC 6888 Crescentnebel") is None and messier_number("M 1-92") is None and messier_number("M 111") is None
+    assert messier_number("NGC 999", aliases=["M 77x", "M 12"]) == 12                  # Kennung der Wissensbasis
+    assert caldwell_number("NGC 7000", ["NGC 7000", "C 20", "C 1339+286"]) == 20
+
+
+def _fill(st, names):
+    for n in names:
+        st.record(st.add({"objects": [{"name": n}]}))
+
+
+def test_erfolge_rueckwirkend_fortschritt_und_meilensteine(tmp_path):
+    from astroflow.modules.sage.store import ACHIEVEMENTS, MILESTONES
+    assert MILESTONES[-1] >= 1000 and len({a[0] for a in ACHIEVEMENTS}) == len(ACHIEVEMENTS)
+    st = SageStore(tmp_path)
+    # Altbestand: nur alte Erfolge freigeschaltet, M31 über den NGC-Namen
+    _fill(st, ["NGC 224", "M 31 Andromedagalaxie", "M42", "NGC 891"] + [f"IC {1000 + i}" for i in range(100)])
+    st.enrich = lambda names: {n: {"kind": "galaxy" if n == "NGC 891" else None, "con": "And" if n == "NGC 224" else "", "mly": 25.0 if n == "NGC 891" else 0} for n in names}
+    st.log_stats = lambda: {"nights": 6, "night_owl": 1, "seasons": 2, "max_obj_hours": 1.5, "total_hours": 8.0, "dates": {"nights_5": "2026-01-05T12:00:00+00:00"}}
+    d = st._disc()
+    d["achievements"].pop("explorer_100", None)
+    for k in ("nights_5", "first_galaxy", "dist_10m", "explorer_50"):
+        assert k not in d["achievements"] or d["achievements"].pop(k)
+    st._save(st.disc_file, d)
+    ov = st.overview()
+    by = {a["id"]: a for a in ov["achievements"]}
+    assert ov["stats"]["messier"] == 2 and ov["stats"]["total_objects"] == 104                       # M31 zählt einmal
+    assert by["explorer_100"]["unlocked"] and by["explorer_50"]["unlocked"] and by["first_galaxy"]["unlocked"]
+    assert by["nights_5"]["unlocked"] == "2026-01-05T12:00:00+00:00" and by["nights_10"]["progress"] == {"cur": 6, "goal": 10}
+    assert by["night_owl"]["unlocked"] and by["exposure_1h"]["unlocked"] and not by["exposure_10h"]["unlocked"]
+    assert by["messier_50"]["progress"] == {"cur": 2, "goal": 50} and not by["messier_50"]["unlocked"]
+    assert by["dist_10m"]["unlocked"] and not by["dist_100m"]["unlocked"]
+    assert ov["next_milestone"] == 150 and [m["n"] for m in ov["messier"] if m["have"]] == [31, 42]
+    assert next(m for m in ov["messier"] if m["n"] == 31)["name"] == "NGC 224"
+    # rückwirkende Vergabe wird einmal gefeiert und ist beim zweiten Laden stabil
+    assert st.celebrations() and st.celebrations()[-1]["achievements"]
+    again = st.overview()
+    assert [a["unlocked"] for a in again["achievements"]] == [a["unlocked"] for a in ov["achievements"]]

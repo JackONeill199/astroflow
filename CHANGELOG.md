@@ -3,6 +3,20 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.16.0 – 03.11.2026
+
+### Neu
+- **Sage · Sammlung & Erfolge verständlicher:** Das Kachelraster unter dem Meilenstein-Balken ist jetzt ein eigener Abschnitt
+  „Messier-Katalog · x von 110“ mit Erklärung, Nummer auf jeder Kachel, deinem eigenen Bild auf gefüllten Kacheln und dem Filter
+  „Fehlende“. Klick öffnet den Enzyklopädie-Eintrag, leere Kacheln ohne Eintrag melden „noch nicht fotografiert“.
+- **Messier-Zuordnung robuster:** Objekte zählen auch unter NGC/IC-Namen (NGC 224 = M31) oder über die Kennungen der Wissensbasis.
+- **26 neue Erfolge** in Gruppen (Sammlung, Kataloge, Objektarten, Himmel, Aktivität, Beobachtung): Messier 10/50/alle 110, Caldwell,
+  erste Galaxie/Planetarischer Nebel/Kugelsternhaufen/offener Haufen/Supernova-Überrest, Sternbilder, Entfernung über 10 bzw. 100 Mio.
+  Lichtjahre, Beobachtungsnächte, Nachteule, alle Jahreszeiten, Belichtung 1 h/10 h je Objekt und 100 h insgesamt u. a.
+  Gesperrte Erfolge zeigen ihren Fortschritt („17 / 25“). Für den Bestand werden neue Erfolge beim nächsten Laden rückwirkend
+  mit plausiblem Datum freigeschaltet und einmal gesammelt gefeiert.
+- **Meilensteine** gehen über 100 hinaus (150, 250, 500, 1000); „Alle erreicht“ erscheint erst nach dem letzten.
+
 ## 0.14.0 – 03.11.2026
 
 ### Neu

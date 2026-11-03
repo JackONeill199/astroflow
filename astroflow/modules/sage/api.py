@@ -257,6 +257,10 @@ def build_router(mod) -> APIRouter:
         imgs = {e["id"]: url(e.get("preview_file")) for e in st.entries()}
         for o in ov["objects"]:
             o["image"] = imgs.get(o["first_entry"])
+        for m in ov["messier"]:
+            e = mod.kb.resolve(f"M{m['n']}")
+            m["entity"] = e and e["id"]
+            m["image"] = imgs.get(m["entry"])
         return ov
 
     @r.get("/files/{path:path}")

@@ -65,6 +65,20 @@ Aufträge laufen in Threads (`Module.tasks`, im Speicher), Fortschritt per Polli
   `prefers-reduced-motion` beachtet). Ablauf, Klick oder × → `POST /api/sage/celebrations/ack` (gesehen). In den Entdeckungen leuchten
   Erfolge der letzten 3 Tage (`.ach.fresh`).
 
+## Sammlung & Erfolge (seit 0.16.0, `store.py` + `collection.py`)
+- `store.ACHIEVEMENTS` = `(id, Titel, Beschreibung, Symbol, Gruppe, Kennzahl, Ziel)` – jeder Erfolg ist ein Zähler gegen `stats[Kennzahl]`;
+  daraus kommt auch der Fortschritt („17 / 25“). **IDs bestehender Erfolge nie ändern.** Neue Erfolge: Zeile ergänzen, Kennzahl in
+  `SageStore._ext` bzw. `collection.log_stats` liefern; Kennzahlen, die nur von den Objekten abhängen, in `OBJECT_KEYS` (dann datiert `_dates` rückwirkend).
+- Statistik = gespeicherte Basis (`discoveries.json`) + `_full_stats`: Objekte über Hook `store.enrich` (`collection.enrich`: Wissensbasis →
+  Messier-/Caldwell-Nummer, Art, Sternbild, Entfernung) und Beobachtungsprotokoll über `store.log_stats` (Nächte, Nachteule = Aufnahme 2–6 Uhr
+  Ortszeit des Rechners, Jahreszeiten nach Nachtdatum, Belichtung). Ohne Hooks (Tests) zählen nur Namen + Tabelle. Messier-Nummer: Name
+  („M 31“, „M31 Andromedagalaxie“) → NGC/IC-Tabelle (`MESSIER_NGC`) → Kennungen der Wissensbasis; Messier zählt je Nummer einmal.
+- `refresh()` (bei jedem `overview()` und nach `backfill`) vergibt neue Erfolge rückwirkend (Datum: erreichter Stand in der Reihenfolge der
+  Entdeckungen bzw. Nacht aus dem Protokoll, sonst jetzt) und feiert sie einmal gesammelt (`erfolge-<ts>`). `status()` nutzt nur `store.stats()` (billig).
+- Caldwell nur über Kennungen der Wissensbasis (SIMBAD „C n“), keine eigene Tabelle – zählt also nur, was dort verzeichnet ist.
+- Oberfläche: `discView` – Meilenstein-Balken, eigener Messier-Abschnitt (`/api/sage/discoveries` → `messier[{n, have, name, entry, entity, image}]`),
+  Erfolge nach Gruppen. Sage-Erfolge beruhen nur auf echten Daten; SkyTrace-Erfolge fehlen bewusst (kein Dienst dafür).
+
 ## Wichtige Erkenntnisse
 - **ASTAP löst gestreckte 8-Bit-Bilder (fertige JPG/PNG) beim Nutzer nicht** – auch nicht mit exakter Position und Bildfeld; der lineare Stack
   derselben Aufnahme löst in 0,7 s. Deshalb Galerie-Bilder über die Stack-Lösung, Uploads bevorzugt als FITS oder per nova.
