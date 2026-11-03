@@ -92,7 +92,9 @@ function scene(d, data, { THREE, OrbitControls }) {
   const earth = new THREE.Group(); sc.add(earth);
   const tex = new THREE.TextureLoader().load(BASE + 'earth-2048.jpg', () => { S.dirty = true; });
   tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4; keep(tex);
-  earth.add(new THREE.Mesh(keep(new THREE.SphereGeometry(1, 96, 64)), keep(new THREE.MeshPhongMaterial({ map: tex, color: '#ffffff', specular: '#223044', shininess: 8 }))));
+  // WGS84-Ellipsoid (Polradius b/a): ECEF-Positionen von Standort, Flugzeugen, Meteoren liegen sonst in hohen Breiten unter der Kugel
+  const globe = new THREE.Mesh(keep(new THREE.SphereGeometry(1, 96, 64)), keep(new THREE.MeshPhongMaterial({ map: tex, color: '#ffffff', specular: '#223044', shininess: 8 })));
+  globe.scale.set(1, 6356.752 / R, 1); earth.add(globe);
   // Atmosphärensaum (additiv, Rückseite)
   const atmo = { value: 1 };                          // aus der Nähe ausblenden (Saum wird sonst grell)
   sc.add(new THREE.Mesh(keep(new THREE.SphereGeometry(1.035, 64, 48)), keep(new THREE.ShaderMaterial({

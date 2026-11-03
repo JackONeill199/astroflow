@@ -173,3 +173,18 @@ def test_hinweise_statt_fehler(client):
     assert not r["ok"] and "kein zugeordnetes Objekt" in r["reason"]
     assert c.get("/api/skytrace/orbit3d", params={"run": rid, "key": "Testfeld/K0099"}).status_code == 400
     assert c.get("/api/skytrace/orbit3d", params={"run": "../x", "key": "a/b"}).status_code == 400
+
+
+def test_eth_archiv_mit_zeitpunkt_des_abgleichs(tmp_path):
+    """ETH-Cache ist nach der UTC-Minute der Belichtungsmitte benannt; der Durchgang darf in der nächsten Minute liegen."""
+    import hashlib
+    minute = dt.datetime.fromtimestamp(T0 - 30, dt.timezone.utc).replace(second=0)
+    params = {"start-datetime": minute.strftime("%Y%m%dT%H%M"), "end-datetime": (minute + dt.timedelta(minutes=1)).strftime("%Y%m%dT%H%M"),
+              "before": 3, "after": 3, "without-frequency-data": "True"}
+    name = "eth-" + hashlib.sha256(json.dumps(params, sort_keys=True).encode()).hexdigest() + ".json"
+    (tmp_path / name).write_text(json.dumps({"tles": ["TESTSAT\n" + L1 + "\n" + L2]}), encoding="utf-8")
+    base = dict(site={"lat": 10.0, "lon": 20.0, "alt_m": 0}, t0=T0, fov=dict(center=[10.0, 10.0], radius_deg=.5),
+                satellites=[dict(name="TESTSAT", norad_id=99001)], cache=str(tmp_path))
+    assert orbit3d.build(base)["missing"]                                 # Durchgangsminute: kein Treffer
+    r = orbit3d.build(dict(base, archive_time=T0 - 30))
+    assert not r["missing"] and r["satellites"][0]["tle_source"] == "lokales Bahnarchiv (ETH Zürich)"

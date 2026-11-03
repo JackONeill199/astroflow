@@ -231,7 +231,8 @@ def build(payload: dict) -> dict:
             if s.get("tle"):
                 sat, origin = satrec_from_tle(*s["tle"]), "im Lauf gespeichert"
             else:
-                sat, origin = archive_satrec(cache, s["norad_id"], t0)
+                # gleicher Zeitpunkt wie beim Abgleich (Belichtungsmitte) → gleicher Archiv-/Cache-Schlüssel wie in historical_models
+                sat, origin = archive_satrec(cache, s["norad_id"], float(payload.get("archive_time") or t0))
         except (ValueError, KeyError, TypeError, OSError) as e:
             out["missing"].append(dict(name=s.get("name"), norad_id=s.get("norad_id"), reason=f"Bahnelemente unlesbar ({type(e).__name__})."))
             continue
@@ -349,7 +350,7 @@ def payload_for(folder: Path, c: dict, cache: Path | None) -> dict:
         t0 = float(meteors[0]["trajectory"]["start"])
     keys = ("name", "norad_id", "object_type", "tle_age_days", "tle", "separation_arcsec", "time_offset_s")
     return dict(site={k: site.get(k) for k in ("lat", "lon", "alt_m")}, t0=t0, exposure=dict(start=start, seconds=seconds), fov=fov,
-                trail=c.get("world_path"), satellites=[{k: m.get(k) for k in keys} for m in sats],
+                archive_time=start + seconds / 2, trail=c.get("world_path"), satellites=[{k: m.get(k) for k in keys} for m in sats],
                 meteors=[{k: m.get(k) for k in ("name", "shower", "trajectory")} for m in meteors],
                 aircraft=[{k: m.get(k) for k in ("name", "icao24", "track")} for m in aircraft],
                 cache=str(cache) if cache else None)
