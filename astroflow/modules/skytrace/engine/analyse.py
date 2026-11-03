@@ -264,6 +264,7 @@ if __name__ == '__main__':
     parser.add_argument('--limit', type=int, default=0)
     parser.add_argument('--fps', type=float, default=8)
     parser.add_argument('--solve', action='store_true')
+    parser.add_argument('--input-manifest')
     args = parser.parse_args()
     if args.samples < 0 or args.stride < 1 or not 1 <= args.fps <= 60:
         parser.error('samples >= 0, stride >= 1 und fps zwischen 1 und 60 erforderlich')

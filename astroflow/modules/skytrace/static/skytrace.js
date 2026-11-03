@@ -189,7 +189,10 @@ async function runView(root, runId, tab = 'vorschau') {
           <span class="chip ${S.run.candidates.length ? 'acc' : ''}">${S.run.candidates.length} Kandidaten</span></div></div>
       <span class="grow"></span>
       <div class="row">${live ? `<button class="btn danger" id="stop" ${S.engine.stopping ? 'disabled' : ''}>${icon('stop')}${S.engine.stopping ? 'Wird angehalten …' : 'Anhalten'}</button>`
-        : `<button class="btn ghost" id="refresh" ${S.engine.running || !ss.some(s => s.video_url) ? 'disabled' : ''} title="Zeitreihen, Ausschnitte und Katalogabgleich neu erzeugen">${icon('refresh')}Zeitreihen aktualisieren</button>`}
+        : `<div class="menu" id="analysisMenu"><button class="btn ghost" aria-haspopup="true" ${S.engine.running || !ss.some(s => s.video_url) ? 'disabled' : ''}>${icon('refresh')}Analyse${icon('chev')}</button><div class="pop">
+            <a href="#" id="reanalyse"><span>Erneut analysieren<small>Erkennung mit aktuellem Code</small></span>${icon('play')}</a>
+            <a href="#" id="refresh"><span>Zeitreihen aktualisieren<small>Berichte und Katalogabgleich</small></span>${icon('refresh')}</a>
+            <div class="pop-note">Erneute Analyse erstellt einen neuen Lauf. Der bisherige bleibt erhalten.</div></div></div>`}
         ${S.run.report_url ? `<a class="btn ghost" href="${S.run.report_url}" target="_blank" rel="noopener">Bericht öffnen${icon('arrow')}</a>` : ''}
         ${live ? '' : `<button class="btn ghost icon" id="delRun" title="Analyse löschen" aria-label="Analyse löschen">${icon('trash')}</button>`}</div></div>
       <div id="stjob" style="margin:-8px 0 18px"></div>
@@ -208,12 +211,31 @@ async function runView(root, runId, tab = 'vorschau') {
     root.innerHTML = head();
     $('#stop')?.addEventListener('click', async () => { try { S.engine = await send(T + '/stop'); draw(); } catch (e) { toast(e.message, 'err'); } });
     $('#delRun')?.addEventListener('click', async () => { if (await deleteRun(runId, runTitle())) location.hash = '#/skytrace'; });
-    $('#refresh')?.addEventListener('click', async () => {
+    $('#analysisMenu .pop')?.addEventListener('click', () => $('#analysisMenu').classList.remove('open'));
+    $('#reanalyse')?.addEventListener('click', async (e) => {
+      e.preventDefault();
+      try {
+        const plan = await send(T + '/reanalyse', { run: runId, check: true });
+        if (plan.missing) {
+          folderDialog('', startAgain, { title: 'Originalaufnahmen für erneute Analyse wählen', ok: 'Erneut analysieren',
+            hint: `${plan.missing} von ${plan.total} Originalaufnahmen fehlen am bisherigen Ort. Bitte den Ordner mit den Originalen wählen. Es werden nur die bisherigen Aufnahmen neu geprüft.` });
+        } else await startAgain();
+      } catch (e) { toast(e.message, 'err'); }
+    });
+    $('#refresh')?.addEventListener('click', async (e) => {
+      e.preventDefault();
       try { S.engine = await send(T + '/refresh', { run: runId }); S.logId = 0; toast('Zeitreihen und Katalogabgleich werden aktualisiert.'); poll(); draw(); }
       catch (e) { toast(e.message, 'err'); }
     });
     jobState();
     drawTab(false);
+  }
+  async function startAgain(source) {
+    try {
+      const result = await send(T + '/reanalyse', { run: runId, ...(source ? { source } : {}) });
+      toast('Neue Analyse mit aktuellem Code gestartet.', 'ok');
+      location.hash = `#/skytrace/${encodeURIComponent(result.run)}/vorschau`;
+    } catch (e) { toast(e.message, 'err'); }
   }
   function drawTab(animate = true) {
     cleanupMedia();

@@ -38,6 +38,11 @@ sonst früheste Kandidatenzeit − 12 h. Cache je Lauf nach Dateizeiten (Arbeits
 Route `#/skytrace/statistik` steht vor der Lauf-Route. Test: `test_skytrace.py`, Ansicht in `test_ui_layout.py`.
 
 ## Vollbild-Zeitreihe und Video (03.11.2026)
+Dropdown „Analyse“: `POST /reanalyse` (`check:true` prüft nur) liest über `reanalysis.prepare` alle akzeptierten und
+ausgeschlossenen Originale aus den Manifesten. Keine Teilausführung bei fehlenden oder mehrdeutigen Dateien; optionaler
+Ersatzordner ordnet Dateinamen zu (automatisches fünfstelliges Präfix darf fehlen). Neuer Lauf erhält `eingang.json`;
+`analyse --input-manifest` übergibt exakt diese Bildgruppen und Bildraten an `sequence`, ohne weitere Dateien aus dem
+Ordner einzulesen. Alte Ergebnisse und Formularvorgaben bleiben erhalten. „Zeitreihen aktualisieren“ bleibt `/refresh`.
 `candidate_report` speichert unbeschriftete JPG-Vollbilder in Analyseauflösung je Originalnummer einmal unter
 `<Beobachtung>/vollbilder/`; `frames[].full_image` enthält relativen Pfad und Maße. Ausschnitt-PNGs bleiben erhalten.
 API ergänzt sichere URLs, übernimmt ältere `context_image`-Trefferbilder und liefert echte `video_seconds` aus

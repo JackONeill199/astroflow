@@ -27,7 +27,7 @@ def test_playback_overlay_and_full_frame_timeline(server, browser, width, tmp_pa
     session=dict(session='Test',frames=3,excluded=1,hits=1,fps=8,video_url='/synthetic/video.mp4',clean_url='/synthetic/video.mp4',
                  preview_url='/synthetic/full.png',clean_preview_url='/synthetic/full.png',overlay_timeline=timeline)
     run=dict(id='synthetic',sessions=[session],candidates=[cand],report_url=None,modified=1)
-    page.route('**/api/skytrace/run?id=synthetic',lambda route:route.fulfill(json=run))
+    page.route('**/api/skytrace/run?id=synthetic*',lambda route:route.fulfill(json=run))
     def video_response(route):
         match=re.match(r'bytes=(\d+)-(\d*)',route.request.headers.get('range',''))
         if match:
@@ -72,5 +72,28 @@ def test_playback_overlay_and_full_frame_timeline(server, browser, width, tmp_pa
     page.locator('.frame-options button',has_text='Im Video öffnen').click()
     page.wait_for_function("document.querySelector('#skyVideo')?.readyState>=2 && Math.abs(document.querySelector('#skyVideo').currentTime-.5)<.05")
     assert not page.evaluate(FIND_OVERFLOW)
+    posted=[];needs_source={'value':False}
+    def reanalyse(route):
+        body=route.request.post_data_json;posted.append(body)
+        route.fulfill(json=dict(missing=int(needs_source['value']),total=3,observations=1) if body.get('check') else dict(run='synthetic-neu',running=True))
+    page.route('**/api/skytrace/reanalyse',reanalyse)
+    assert not page.locator('#refresh').is_visible()
+    page.locator('#analysisMenu > button').click()
+    assert page.locator('#refresh').is_visible()
+    assert not page.evaluate(FIND_OVERFLOW)
+    page.screenshot(path=str(tmp_path/f'skytrace-analyse-menu-{width}.png'),full_page=True)
+    page.locator('#reanalyse').click()
+    page.wait_for_url('**/#/skytrace/synthetic-neu/vorschau')
+    assert posted==[dict(run='synthetic',check=True),dict(run='synthetic')]
+    needs_source['value']=True
+    page.route('**/api/folders?path=*',lambda route:route.fulfill(json=dict(path='/synthetic/originale',parent='/synthetic',drives=['/'],folders=[],fits=3,pictures=0)))
+    page.locator('#analysisMenu > button').click()
+    page.locator('#reanalyse').click()
+    page.wait_for_selector('#dlg[open]')
+    assert '1 von 3 Originalaufnahmen fehlen' in page.locator('#dlg').inner_text()
+    assert posted[-1]==dict(run='synthetic-neu',check=True)    # noch kein unvollständiger Lauf gestartet
+    with page.expect_response('**/api/skytrace/reanalyse'):
+        page.locator('#fok').click()
+    assert posted[-1]==dict(run='synthetic-neu',source='/synthetic/originale')
     page.close()
     assert not errors,errors

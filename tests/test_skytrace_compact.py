@@ -69,15 +69,20 @@ def test_sequence_keeps_measured_neighbour_registration():
     with tempfile.TemporaryDirectory(dir=scratch) as temp:
         root=Path(temp);source=root/'source';source.mkdir();out=root/'output'
         image=field(13)
-        for i in range(3):
+        for i in range(4):
             header=fits.Header();header['DATE-OBS']=f'2022-05-06T20:00:{i*10:02d}';header['EXPTIME']=10
             fits.writeto(source/f'img-{i}.fits',image,header)
-        args=SimpleNamespace(source=str(source),output=str(out),fps=8,limit=0,solve=False)
+        manifest=root/'eingang.json'
+        manifest.write_text(json.dumps(dict(groups=[dict(session='Testbeobachtung',files=[str(source/f'img-{i}.fits') for i in range(3)],fps=6,source_first_file='00001_img-0.fits')])),encoding='utf-8')
+        args=SimpleNamespace(source=str(source),output=str(out),fps=8,limit=0,solve=False,input_manifest=str(manifest))
         with patch.dict(sys.modules,{'ultralytics':SimpleNamespace(YOLO=EmptyModel)}),patch.object(sequence,'EnsembleMotion',JumpingReference),patch.object(observation_settings,'load_settings',return_value={'enabled':False,'sites':{}}),contextlib.redirect_stdout(io.StringIO()):
             sequence.run_sequences(args)
         summary=json.loads((out/'videos.json').read_text(encoding='utf-8'))[0]
         rows=[json.loads(s) for s in (out/Path(summary['video']).parent/'frames.jsonl').read_text(encoding='utf-8').splitlines()]
         assert len(rows)==3
+        assert summary['session']=='Testbeobachtung' and summary['fps']==6
+        assert summary['source_first_file']=='00001_img-0.fits'
+        assert all(not row['file'].endswith('img-3.fits') for row in rows)  # neue Dateien im Ordner gehören nicht zum alten Lauf
         for row in rows[1:]:
             np.testing.assert_allclose(row['previous_to_current'],np.eye(2,3),atol=.05)
             assert not row['detections']

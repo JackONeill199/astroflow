@@ -201,6 +201,9 @@ Bildfolgen (z. B. ein Stellina-Beobachtungsordner) werden chronologisch zu einem
 kompensiert, unscharfe Aufnahmen fallen heraus. Erkannte Spuren erscheinen als **Kandidaten** mit Vorher-/Nachher-Ausschnitten, Messdetails
 („Warum wurde diese Spur erkannt?“) und Katalogabgleich. Ein Kandidat ist kein bestätigtes Objekt, ein Katalogtreffer bleibt ein Hinweis.
 Originale werden nur gelesen. Standort und Kataloge: Einstellungen → SkyTrace.
+Im Dropdown **Analyse → Erneut analysieren** startet die vollständige Erkennung mit aktuellem Code als neuer Lauf
+aus den bisherigen Aufnahmen. Fehlen Originaldateien, kann ihr Ordner ausgewählt werden. Der alte Lauf bleibt erhalten.
+**Analyse → Zeitreihen aktualisieren** erneuert nur die Berichte und den Katalogabgleich, ohne neue Objekterkennung.
 Bei Kandidaten lässt sich zwischen **Ganzes Bild** (Analyseauflösung) und **Ausschnitt** umschalten. Die Zeitreihe
 zeigt Treffer und benachbarte Aufnahmen; **Zum Treffer** und **Im Video öffnen** springen direkt zur passenden Stelle.
 Ältere Läufe nutzen vorhandene Vergleichsbilder oder das unbeschriftete Video. „Zeitreihen aktualisieren“ ergänzt

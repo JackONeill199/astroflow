@@ -6,6 +6,10 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 ## 0.14.0 – 03.11.2026
 
 ### Neu
+- **SkyTrace erneut analysieren:** Dropdown „Analyse“ mit vollständiger neuer Erkennung oder schneller Aktualisierung
+  der Zeitreihen. Neuer Lauf aus den bisherigen Originalaufnahmen einschließlich ausgeschlossener Bilder; fehlen
+  Originale, lässt sich ihr Ordner wählen. Mehrdeutige oder fehlende Dateien verhindern einen unvollständigen Neustart;
+  Wiederholungen zählen in der Statistik auch nach einem Ordnerwechsel nur einmal.
 - **SkyTrace-Vollbild-Zeitreihe:** Kandidaten zeigen wahlweise die ganze Aufnahme in Analyseauflösung oder den
   Ausschnitt. Miniaturen, Treffer-Sprung und „Im Video öffnen“ führen direkt zur gewählten Aufnahme; ausgelassene
   Bilder werden anhand der gespeicherten Videozeiten berücksichtigt. Neue Berichte speichern gemeinsame Vollbilder,

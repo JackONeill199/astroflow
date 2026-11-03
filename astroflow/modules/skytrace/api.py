@@ -159,7 +159,7 @@ class Controller:
             raise ValueError("Lauf nicht gefunden")
         return path
 
-    def launch(self, options: dict, refresh: bool = False) -> dict:
+    def launch(self, options: dict, refresh: bool = False, replay: dict | None = None) -> dict:
         from json_store import write_json
         with self.lock:
             if self.process is not None:
@@ -194,13 +194,16 @@ class Controller:
                 if mode not in MODES or not 0 <= samples <= 100000 or not 1 <= fps <= 60:
                     raise ValueError("Ungültige Analyse-Einstellungen.")
                 self.results.mkdir(parents=True, exist_ok=True)
-                if source.is_relative_to(self.results.resolve()) or self.results.resolve().is_relative_to(source):
+                if not replay and (source.is_relative_to(self.results.resolve()) or self.results.resolve().is_relative_to(source)):
                     raise ValueError("Originalordner und Ergebnisordner müssen getrennt sein.")
                 out = self.results / dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")
                 out.mkdir()
                 cancel = out / "STOP"
                 cmd = [py, "-u", str(code / "analyse.py"), "--source", str(source), "--output", str(out), "--mode", mode,
                        "--samples", str(samples), "--fps", str(fps)]
+                if replay:
+                    write_json(out / 'eingang.json', replay)
+                    cmd.extend(['--input-manifest', str(out / 'eingang.json')])
                 if mode == MODES[0] and samples:
                     cmd.extend(["--limit", str(samples)])
                 if options.get("solve", True):
@@ -577,6 +580,23 @@ def build_router(mod) -> APIRouter:
         try:
             return ctl.launch(body, refresh=True)
         except (ValueError, OSError) as e:
+            bad(e)
+
+    @r.post('/reanalyse')
+    def reanalyse(body: dict = Body(...)):
+        from .reanalysis import prepare
+        try:
+            with ctl.lock:
+                if ctl.process is not None:
+                    raise ValueError('Eine Analyse läuft bereits.')
+                plan = prepare(ctl.run_path(body.get('run')), body.get('source'))
+                if body.get('check'):
+                    return dict(missing=plan['missing'], total=plan['total'], observations=len(plan['groups']))
+                if plan['missing']:
+                    raise ValueError(f"{plan['missing']} von {plan['total']} Originalaufnahmen fehlen. Bitte ihren Originalordner auswählen; die Analyse wurde nicht gestartet.")
+                return ctl.launch(dict(source=str(Path(plan['groups'][0]['files'][0]).parent), samples=0,
+                                       mode=MODES[0], fps=plan['groups'][0]['fps'], solve=True, remember=False), replay=plan)
+        except (ValueError, OSError, KeyError, TypeError) as e:
             bad(e)
 
     @r.post("/stop")

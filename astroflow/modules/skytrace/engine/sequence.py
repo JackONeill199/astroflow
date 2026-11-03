@@ -273,7 +273,14 @@ def run_sequences(args):
     if not root.is_dir(): raise ValueError('Quellordner fehlt')
     if root==out or root in out.parents: raise ValueError('Ergebnisse müssen außerhalb der Quelldaten liegen')
     out.mkdir(parents=True,exist_ok=True)
-    groups=discover(root)
+    replay=None
+    if getattr(args,'input_manifest',None):
+        replay=json.loads(Path(args.input_manifest).read_text(encoding='utf-8'))
+        groups=[(g['session'],[Path(p) for p in g['files']]) for g in replay['groups']]
+        if any(len(paths)<2 or any(not p.is_file() for p in paths) for _,paths in groups):
+            raise ValueError('Originalaufnahmen fehlen. Die erneute Analyse wurde nicht gestartet.')
+    else:
+        groups=discover(root)
     event('status',text=f'{len(groups)} Bildfolgen gefunden. Zeitstempel werden gelesen; '+(f'maximal {args.limit} Bilder je Beobachtung.' if args.limit else 'es werden ALLE Bilder verwendet.'))
     if not groups:
         event('done',text='Keine Bildfolge mit mindestens zwei Bildern gefunden.'); return
@@ -283,6 +290,7 @@ def run_sequences(args):
     summaries=[]
     report(out,summaries)
     for group_index,(name,paths) in enumerate(groups):
+        if replay: args.fps=float(replay['groups'][group_index]['fps'])
         if (out/'STOP').exists(): break
         event('status',text=f'{name}: {len(paths)} Aufnahmezeiten lesen …')
         timed=[]
@@ -302,6 +310,7 @@ def run_sequences(args):
         writer=None; previous=None; previous_line_data=None; previous_field_matrix=None; reference=None; transform_total=np.eye(3); ensemble=EnsembleMotion(); limits=None; hits=written=0
         clean_writer=None
         summary=dict(session=name,video=f'{safe}/ereignisse.mp4',events=f'{safe}/ereignisse.jsonl',frames=0,hits=0,excluded=0,source_frames=len(timed),fps=args.fps,quality_reference=quality_baseline,state='In Bearbeitung')
+        if replay: summary['source_first_file']=replay['groups'][group_index].get('source_first_file')
         summaries.append(summary)
         summary['source_folder']=str(next((p for p in paths[0].parents if p.name==name),root))
         summary['limited']=len(timed)<len(paths)
