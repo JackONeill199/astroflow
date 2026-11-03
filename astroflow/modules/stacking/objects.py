@@ -136,6 +136,8 @@ _EXT_KIND = [(r"^(PK|PN|PNG)", "planetary"), (r"^(Sh2|LBN|RCW|Ced)", "emission")
 
 def _ext_paths() -> list[str]:
     import os
+    if os.environ.get("ASTROFLOW_DEEPSKY") == "0":                     # abgeschaltet (Tests)
+        return []
     out = [os.environ.get("ASTROFLOW_DEEPSKY", "")]
     if os.environ.get("LOCALAPPDATA"):
         out.append(os.path.join(os.environ["LOCALAPPDATA"], "astap", "deep_sky.csv"))
@@ -171,7 +173,8 @@ def extended_catalog() -> list[CatObject]:
             if kind == "generic" and re.match(r"^(M|NGC|IC)\d", names[0]) and any(n.startswith("PGC") for n in names):
                 kind = "galaxy"
             disp = _pretty(names[0]) + (f" {common.replace('_', ' ')}" if common else "")
-            obj = CatObject(normalize_name(names[0]), disp, ra, dec, kind, size)
+            obj = CatObject(normalize_name(names[0]), disp, ra, dec, kind, size,
+                            tuple(normalize_name(n) for n in names[1:] if not re.match(r"^(PK|PNG)", n)))   # Zweitnamen: M31 = NGC224
             _EXT.append(obj)
             for n in names:
                 if not re.match(r"^(PK|PNG)", n):

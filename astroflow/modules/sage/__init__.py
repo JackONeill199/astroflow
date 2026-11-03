@@ -58,6 +58,11 @@ class Module(BaseModule):
         ctx.on("stacking.stacked", self._stacked)
         ctx.on("stacking.imported", self._stacked)
         ctx.services["object_facts"] = self.object_facts     # SkyTrace-3D: Typ/Entfernung des Zielobjekts
+        ctx.services["collection_progress"] = self.collection_progress   # Bilder → „Heute Nacht“: Messier-Raster
+
+    def collection_progress(self) -> dict:
+        """Welche Messier-Objekte sind schon entdeckt (Raster der Entdeckungen)? Für die Nachtempfehlungen im Bilder-Modul."""
+        return {"messier": sorted(m["n"] for m in self.store.overview()["messier"] if m["have"])}
 
     def object_facts(self, name: str) -> dict | None:
         """Kurzsteckbrief aus der Wissensbasis (nur Gespeichertes, keine Netzabfrage)."""

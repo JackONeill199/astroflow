@@ -28,8 +28,13 @@ und Drag & Drop überall (FITS → Rohdaten-Pipeline, JPG/PNG/TIFF → fertige B
 
 ### Heute Nacht – passende Aufnahmeziele
 
-Die Übersicht empfiehlt bis zu sechs heute noch gut sichtbare Ziele: neue Objekte aus dem eingebauten Katalog und
-eigene Aufnahmen, denen mehr Belichtungszeit bei Rauschen oder schwachem Signal helfen kann. Die Grafik zeigt
+Die Übersicht empfiehlt bis zu sechs heute noch gut sichtbare Ziele: **neue Objekte** aus Messier (110), Caldwell (109)
+und – falls ASTAPs `deep_sky.csv` vorhanden ist – weiteren auffälligen Katalogobjekten (passend zu Helligkeitsgrenze deines
+Geräts und Bildfeld) und **eigene Aufnahmen, denen mehr Belichtungszeit** hilft („bisher 37 min, heute bis zu 5 h → Rauschen
+etwa −67 %“). Die Rangfolge zählt nur dunkle, mondarme (und bei Vorhersage klare) Stunden und wertet Zenitnähe bei Alt-Az-Geräten ab.
+Hinweise „Letzte Gelegenheit bis zum Frühjahr“ und „Bald gut sichtbar“ zeigen die Saison; ein Nachtplan teilt die Nacht
+in Abschnitte, weil ein Smart-Teleskop nur ein Ziel gleichzeitig aufnimmt. „Nicht interessiert“ blendet ein Ziel aus
+(lokal im Browser). Die Grafik zeigt
 Höhenverläufe, Dämmerung, dunkle Zeit, Mond und die Mindesthöhe von 30°. Links führen zum eigenen Bild bzw. zum
 Sage-Eintrag; ohne Sage erscheint eine lokale Katalogkarte.
 

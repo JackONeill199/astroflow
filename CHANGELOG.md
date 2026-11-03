@@ -3,6 +3,28 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.20.0 – 04.11.2026
+
+### Neu
+- **Bessere Empfehlungen für heute Nacht:** Neue Ziele kommen jetzt aus der **vollständigen Messier-Liste (110) und dem
+  Caldwell-Katalog (109)** – fest eingebaut, auch ohne ASTAP –, dazu auffällige Objekte aus ASTAPs `deep_sky.csv`.
+  Gefiltert wird nach Helligkeit (je Gerät: Stellina bis 11,5 mag, Vespera/Seestar 10,5, Dwarf 9,5, sonst 11) und nach
+  Größe zum Bildfeld (3–90 % der kurzen Seite). Doppelte Bezeichnungen (M31 = NGC 224) und Begleiter im selben Feld
+  (M32/M110 bei M31) werden zusammengeführt bzw. nicht vorgeschlagen.
+- **Neue Rangfolge:** zählt die nutzbaren Stunden in der dunklen Zeit, gewichtet mit Mondphase und -abstand, Wolken
+  (wenn die Vorhersage im Bild-Tutor an ist) und bei Alt-Az-Geräten der Zenitnähe (> 80°, Feldrotation); dazu Kulmination
+  im Dunkeln. Die Auswahl mischt Objektarten (höchstens zwei je Art) – „Neu“ und „Mehr Zeit“ stehen gleichwertig nebeneinander.
+- **„Mehr Zeit“ konkret:** „Bisher 37 min, heute bis zu 5 h möglich → Rauschen etwa −67 %“ (1/√Zeit-Regel). Ziele,
+  bei denen heute nur wenige Prozent zu holen wären, werden nicht mehr vorgeschlagen.
+- **Saison:** „Letzte Gelegenheit bis zum Frühjahr“ für Objekte, die in den nächsten Wochen aus dem dunklen Fenster
+  wandern, und eine Liste „Bald gut sichtbar“ auf der Seite „Heute Nacht“.
+- **Wetter:** Mit eingeschalteter Vorhersage zeigt die Grafik die Bewölkung als Streifen; bewölkte Stunden zählen weniger
+  (ab 80 % gar nicht), der Nachtplan legt die Ziele ins klare Fenster.
+- **Nachtplan:** Ein Smart-Teleskop nimmt nur ein Ziel gleichzeitig auf – die Seite „Heute Nacht“ teilt die Nacht in
+  1–4 Abschnitte („20:15–23:00 A, danach B“).
+- **„Nicht interessiert“** blendet ein Ziel aus (nur lokal im Browser gemerkt, wieder einblendbar).
+- **Sammlung:** Ist Sage aktiv, steht bei Messier-Zielen „Wäre dein 31. Messier-Objekt“ (neuer Dienst `collection_progress`).
+
 ## 0.19.1 – 04.11.2026
 
 ### Behoben
