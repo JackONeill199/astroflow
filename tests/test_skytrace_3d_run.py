@@ -102,3 +102,47 @@ def test_ohne_plate_solving_aus_dem_katalog(client):
     assert r["target"]["kind"] and r["pointing"]["ra"] == pytest.approx(10.68, abs=.1)
     assert r["pointing"]["size_deg"] == pytest.approx([.344, .275], abs=.01)    # 1000×800 px à 2,4 µm, 400 mm
     assert c.get("/api/skytrace/run3d", params={"run": "../x"}).status_code == 400
+
+
+def test_analysegroesse_ohne_kandidaten(tmp_path):
+    """WCS in voller Auflösung (3000×2000), Registrierung in Analysepixeln (1536×1024): Verschiebung muss skaliert werden."""
+    from astroflow.modules.skytrace import run3d
+    from test_skytrace_3d import _wcs
+    assert run3d._analysis_size({"width": 3000, "height": 2000}) == (1536, 1024)
+    assert run3d._analysis_size({"width": 1000, "height": 801}) == (1000, 800)
+    obs = tmp_path / "obs"
+    _wcs(obs, 100.0, 20.0, w=3000, h=2000, scale=1.5 / 3600)
+    shifted = [[1, 0, -768], [0, 1, 0]]                   # Aufnahme um halbe Analysebreite verschoben
+    rows = [dict(index=0, timestamp=T0, reference_to_current=[[1, 0, 0], [0, 1, 0]]), dict(index=1, timestamp=T0 + 20, reference_to_current=shifted)]
+    p = run3d._pointing(obs, rows, [], {})
+    a, b = (o for o in (p["samples"][0]["center"], p["samples"][1]["center"]))
+    # Bildmitte der zweiten Aufnahme = rechter Rand der Referenz: halbe Bildbreite (3000 px × 1,5″ / 2 = 0,625°)
+    assert math.hypot((b[0] - a[0]) * math.cos(math.radians(20)), b[1] - a[1]) == pytest.approx(.625, abs=.005)
+
+
+def test_standort_aus_den_einstellungen_wirkt_sofort(client):
+    """Zwischengespeicherter Hinweis „Standort fehlt“ verfällt, sobald der Standort in den Einstellungen gespeichert wird."""
+    c, home = client
+    rid, _ = _run(home, _site(), with_site=False)
+    _frames(home / "Ergebnisse" / rid / "Testfeld")
+    assert c.get("/api/skytrace/run3d", params={"run": rid}).json()["need_site"]
+    from astroflow.modules.skytrace.run3d import _settings_file
+    cfg = _settings_file(home)                               # Engine-Einstellungen (Ordner beim ersten Import festgelegt)
+    old = cfg.read_bytes() if cfg.is_file() else None
+    try:
+        assert c.post("/api/skytrace/settings", json={"site": {"lat": 12.0, "lon": 34.0, "alt_m": 0}}).status_code == 200
+        assert c.get("/api/skytrace/run3d", params={"run": rid}).json()["ok"]
+    finally:
+        cfg.write_bytes(old) if old is not None else cfg.unlink(missing_ok=True)
+
+
+def test_bahnrechnung_nicht_moeglich(tmp_path):
+    """Liefert die Bahnrechnung (z. B. ohne sgp4 im Engine-Interpreter) einen Hinweis, bleibt die Lauf-Ansicht nutzbar."""
+    from astroflow.modules.skytrace import run3d
+    home = tmp_path / "home"
+    rid, _ = _run(home, _site())
+    _frames(home / "Ergebnisse" / rid / "Testfeld")
+    run3d._cached.cache_clear()
+    r = run3d.build_run(home / "Ergebnisse" / rid, None, None, home, {}, scene=lambda p: dict(ok=False, reason="sgp4 fehlt"))
+    run3d._cached.cache_clear()
+    assert r["ok"] and r["hits"] == [] and r["missing"][0]["reason"] == "sgp4 fehlt"
