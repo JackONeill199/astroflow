@@ -1,6 +1,7 @@
 """Faint single-exposure streaks via line integration, independent of moving points."""
 import cv2
 import numpy as np
+from functools import lru_cache
 from scipy.ndimage import gaussian_filter, gaussian_filter1d, maximum_filter
 
 LINE_SCORE_THRESHOLD=10.5
@@ -18,6 +19,43 @@ def required_score(bins):
     IC405, M103, NGC884 (all short noise there lies at bright stars/nebulae, ≥2.0).
     """
     return min(LINE_SCORE_THRESHOLD,5.2+.9*(bins-2))
+
+
+@lru_cache(maxsize=32)
+def _section_geometry(n):
+    start,last=np.triu_indices(n,1)
+    end=last+1; length=end-start
+    return start,end,length,np.sqrt(length*24/4),np.minimum(LINE_SCORE_THRESHOLD,5.2+.9*(length-2))
+
+
+def _best_section(bins):
+    """Abschnitte gemeinsam vorfiltern, mögliche Gewinner mit der bisherigen Rechnung nachmessen."""
+    good=bins>.32
+    best=None
+    if len(bins)>128:                         # extrem hohe Bilder: keinen quadratischen Hilfsspeicher anlegen
+        for start in np.flatnonzero(good):
+            for end in range(start+2,len(bins)+1):
+                section=good[start:end]
+                if section.mean()<.65 or not section[-1]: continue
+                strength=float(np.mean(bins[start:end])*np.sqrt((end-start)*24/4))
+                if strength<required_score(end-start): continue
+                if best is None or strength>best[0]: best=(strength,start,end)
+        return best
+    if len(bins)<2: return None
+    start,end,length,factor,threshold=_section_geometry(len(bins))
+    counts=np.r_[0,np.cumsum(good)]
+    sums=np.r_[0.,np.cumsum(bins)]
+    score=(sums[end]-sums[start])/length*factor
+    # Präfixsummen runden anders als np.mean. Großzügiger Fehlerabstand hält auch Grenzfälle im exakten Nachtest.
+    epsilon=64*np.finfo(float).eps*max(1.,np.abs(bins).sum())*len(bins)
+    eligible=good[start]&good[end-1]&((counts[end]-counts[start])/length>=.65)&(score+epsilon>=threshold)
+    for i in np.flatnonzero(eligible):          # gleiche Reihenfolge und Gleichstandsentscheidung wie zuvor
+        if best is not None and score[i]+epsilon<best[0]: continue
+        a,b=int(start[i]),int(end[i])
+        strength=float(np.mean(bins[a:b])*np.sqrt((b-a)*24/4))
+        if strength<required_score(b-a): continue
+        if best is None or strength>best[0]: best=(strength,a,b)
+    return best
 
 
 BLINK_SCORE=8.          # integrierter Kontrast der Blitze (wie line_snr, nur über die hellen Abschnitte)
@@ -234,10 +272,11 @@ def detect_lines(image, comparison=None, transform=None):
     compact=compact_trails(original,image) if temporal else []
     if lines is None: return compact
     h,w=small.shape; candidates=[]
+    star_valid=(~stars).astype('uint8'); dash_valid=(~dashes).astype('uint8')
+    t=np.arange(-max(h,w)*2,max(h,w)*2,dtype='float32')
     for rho,theta in lines.reshape(-1,2)[:600]:
         normal=np.array([np.cos(theta),np.sin(theta)]); direction=np.array([-normal[1],normal[0]])
         center=normal*rho
-        t=np.arange(-max(h,w)*2,max(h,w)*2,dtype='float32')
         xy=center[None]+t[:,None]*direction
         inside=(xy[:,0]>14)&(xy[:,0]<w-14)&(xy[:,1]>14)&(xy[:,1]<h-14)
         xy=xy[inside]
@@ -253,29 +292,21 @@ def detect_lines(image, comparison=None, transform=None):
         # Extended galaxies/nebulae are not narrow ridges. Winsorization prevents one
         # bright stellar residual from giving an otherwise empty line a large score.
         contrast=np.clip(raw,-4,4)
-        valid=cv2.remap((~stars).astype('uint8'),xy[:,0].astype('float32')[None],xy[:,1].astype('float32')[None],cv2.INTER_NEAREST)[0]>0
-        blink=blink_pattern(raw,cv2.remap((~dashes).astype('uint8'),xy[:,0].astype('float32')[None],xy[:,1].astype('float32')[None],cv2.INTER_NEAREST)[0]>0)
+        valid=cv2.remap(star_valid,xy[:,0].astype('float32')[None],xy[:,1].astype('float32')[None],cv2.INTER_NEAREST)[0]>0
+        blink=blink_pattern(raw,cv2.remap(dash_valid,xy[:,0].astype('float32')[None],xy[:,1].astype('float32')[None],cv2.INTER_NEAREST)[0]>0)
         if blink and (min(abs(direction[0]),abs(direction[1]))<.0175 or      # Auslesezeilen/-spalten
                       local_structure(z,xy[blink['start']:blink['end']],normal)>CALM_LIMIT):
             blink=None
         if blink:                                   # Blitze müssen auch in dieser Aufnahme selbst zu sehen sein
             source_raw=sum(sample(k,source) for k in (-1,0,1))/3-sum(sample(k,source) for k in (-9,-7,7,9))/4
-            if blink_pattern(source_raw,cv2.remap((~dashes).astype('uint8'),xy[:,0].astype('float32')[None],xy[:,1].astype('float32')[None],cv2.INTER_NEAREST)[0]>0) is None: blink=None
+            if blink_pattern(source_raw,cv2.remap(dash_valid,xy[:,0].astype('float32')[None],xy[:,1].astype('float32')[None],cv2.INTER_NEAREST)[0]>0) is None: blink=None
         # Score contiguous 24px bins; a chance chain of stars cannot support an entire line.
         bins=[]
         for start in range(0,len(xy)-23,24):
             keep=valid[start:start+24]
             bins.append(float(np.mean(contrast[start:start+24][keep])) if keep.sum()>=12 else 0.)
         bins=np.asarray(bins)
-        good=bins>.32
-        best=None
-        for start in np.where(good)[0]:
-            for end in range(start+2,len(bins)+1):
-                section=good[start:end]
-                if section.mean()<.65 or not section[-1]: continue
-                strength=float(np.mean(bins[start:end])*np.sqrt((end-start)*24/4))
-                if strength<required_score(end-start): continue
-                if best is None or strength>best[0]: best=(strength,start,end)
+        best=_best_section(bins)
         if best is None and blink:                  # gestrichelte Spur: als Ganzes kein durchgehender Abschnitt
             p1=xy[blink['start']]/scale; p2=xy[blink['end']-1]/scale
             if np.linalg.norm(p2-p1)<90: continue

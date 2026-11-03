@@ -3,6 +3,14 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.16.1 – 03.11.2026
+
+### Behoben
+- **SkyTrace schneller:** Der Liniendetektor prüft mögliche Spurabschnitte gemeinsam vor und verwendet Sternmasken
+  mehrfach. Gewinner werden mit der bisherigen Rechnung exakt nachgeprüft; Schwellen, Messwerte und Erkennungsregeln
+  bleiben unverändert. Im synthetischen A/B-Test rund 22 % weniger Zeit für die Liniensuche; keine Aussage über die
+  Dauer eines gesamten Laufs mit Modell, Videos und Katalogabfragen.
+
 ## 0.16.0 – 03.11.2026
 
 ### Neu
