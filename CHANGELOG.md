@@ -3,6 +3,24 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.14.0 – 03.11.2026
+
+### Neu
+- **SkyTrace-Vollbild-Zeitreihe:** Kandidaten zeigen wahlweise die ganze Aufnahme in Analyseauflösung oder den
+  Ausschnitt. Miniaturen, Treffer-Sprung und „Im Video öffnen“ führen direkt zur gewählten Aufnahme; ausgelassene
+  Bilder werden anhand der gespeicherten Videozeiten berücksichtigt. Neue Berichte speichern gemeinsame Vollbilder,
+  ältere Läufe nutzen vorhandene Vergleichsbilder oder das unbeschriftete Video.
+
+### Behoben
+- **SkyTrace-Video mit Overlay:** Die transparente Overlay-Fläche blockiert die Videosteuerung nicht mehr;
+  Beschriftungen bleiben interaktiv. Wiedergabe und Position bleiben beim Umschalten erhalten.
+- **Kurze helle Spuren:** Zusätzliche Prüfung in nativer Analyseauflösung für schmale transiente Grate unterhalb
+  der bisherigen Hough-Mindestlänge. Verlangt übereinstimmende Form-/Kontrastbelege im Original und im registrierten
+  Differenzbild sowie ruhigen Hintergrund. Als unbestätigte Spur, ohne automatische Objektidentifikation.
+- **NGC-1499-Spur übersehen:** Für den Differenzvergleich bleibt die direkte Registrierung benachbarter Aufnahmen
+  erhalten. Sie wird nicht mehr durch die Differenz zweier unabhängig bestimmter Referenzlösungen ersetzt; ein
+  Sprung dieser Lösungen hatte im bestätigten Fall die Sterne um rund 22 Pixel versetzt und die schwache Spur verdeckt.
+
 ## 0.13.0 – 03.11.2026
 
 ### Neu

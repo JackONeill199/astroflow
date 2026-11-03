@@ -201,6 +201,10 @@ Bildfolgen (z. B. ein Stellina-Beobachtungsordner) werden chronologisch zu einem
 kompensiert, unscharfe Aufnahmen fallen heraus. Erkannte Spuren erscheinen als **Kandidaten** mit Vorher-/Nachher-Ausschnitten, Messdetails
 („Warum wurde diese Spur erkannt?“) und Katalogabgleich. Ein Kandidat ist kein bestätigtes Objekt, ein Katalogtreffer bleibt ein Hinweis.
 Originale werden nur gelesen. Standort und Kataloge: Einstellungen → SkyTrace.
+Bei Kandidaten lässt sich zwischen **Ganzes Bild** (Analyseauflösung) und **Ausschnitt** umschalten. Die Zeitreihe
+zeigt Treffer und benachbarte Aufnahmen; **Zum Treffer** und **Im Video öffnen** springen direkt zur passenden Stelle.
+Ältere Läufe nutzen vorhandene Vergleichsbilder oder das unbeschriftete Video. „Zeitreihen aktualisieren“ ergänzt
+gespeicherte Vollbilder, sofern die Rohaufnahmen noch erreichbar sind.
 Die **Statistik** (SkyTrace → Statistik) fasst alle Analysen zusammen: Objektarten, häufigste Satelliten, Katalogabgleich je Quelle,
 Uhrzeiten und Monate der Kandidaten sowie die ergiebigsten Beobachtungen.
 

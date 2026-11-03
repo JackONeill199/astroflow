@@ -9,7 +9,14 @@ def render(out,summaries):
     candidates=[]; cards=[]
     for summary in summaries:
         path=out/summary.get('candidates_file','__missing__')
-        if path.is_file(): candidates.extend(json.loads(path.read_text(encoding='utf-8')))
+        if path.is_file():
+            loaded=json.loads(path.read_text(encoding='utf-8'))
+            for c in loaded:
+                context=c.get('context_image')
+                for frame in c.get('frames',[]):
+                    if not frame.get('full_image') and context and context.get('frame')==frame.get('index'):
+                        frame['full_image']={k:context[k] for k in ('image','width','height') if k in context}
+            candidates.extend(loaded)
         annotated=html.escape(summary['video']); clean=html.escape(summary.get('clean_video',''))
         items=json.loads(path.read_text(encoding='utf-8')) if path.is_file() else []
         overlay=timeline(out/Path(summary['video']).parent,items)
@@ -40,16 +47,17 @@ candidates.forEach((c,number)=>{
  card.append(element('span',c.timestamp_text,'badge time'));card.append(element('span',c.frames.length+' Aufnahmen in der Zeitreihe','badge'));
  if(c.confidence!==null&&c.confidence!==undefined)card.append(element('span','Modellkonfidenz '+Math.round(c.confidence*100)+' %','badge'));
  const toggleLabel=element('label');const toggle=document.createElement('input');toggle.type='checkbox';toggle.checked=true;toggle.className='local-overlay';toggleLabel.append(toggle,document.createTextNode(' Overlay für diesen Kandidaten'));card.append(toggleLabel);
- const stage=element('div',undefined,'stage'),img=document.createElement('img'),svg=document.createElementNS('http://www.w3.org/2000/svg','svg');img.alt='Unbeschrifteter Kandidatenausschnitt';stage.append(img,svg);card.append(stage);
- const enlarge=element('button','Ausschnitt vergrößern ↗');enlarge.onclick=()=>{if(timer){clearInterval(timer);timer=null;play.textContent='Zeitreihe abspielen';}AstroEvidence.openImage(c,index,toggle.checked);};stage.style.cursor='zoom-in';stage.onclick=()=>enlarge.onclick();card.append(enlarge);
+ const fullLabel=element('label'),full=document.createElement('input');full.type='checkbox';full.checked=c.frames.some(f=>f.full_image);full.disabled=!full.checked;fullLabel.append(full,document.createTextNode(' Ganzes Bild'));card.append(fullLabel);
+ const stage=element('div',undefined,'stage'),img=document.createElement('img'),svg=document.createElementNS('http://www.w3.org/2000/svg','svg');img.alt='Himmelsaufnahme';stage.append(img,svg);card.append(stage);
+ const enlarge=element('button','Bild vergrößern ↗');enlarge.onclick=()=>{if(timer){clearInterval(timer);timer=null;play.textContent='Zeitreihe abspielen';}AstroEvidence.openImage(c,index,toggle.checked,full.checked);};stage.style.cursor='zoom-in';stage.onclick=()=>enlarge.onclick();card.append(enlarge);
  const caption=element('p',undefined,'time'),controls=element('div',undefined,'controls');const prev=element('button','◀'),play=element('button','Zeitreihe abspielen'),next=element('button','▶'),slider=document.createElement('input');slider.type='range';slider.min=0;slider.max=c.frames.length-1;slider.value=c.initial_frame;slider.setAttribute('aria-label','Aufnahme der Zeitreihe wählen');controls.append(prev,play,next,slider);card.append(caption,controls);
  const thumbs=element('div',undefined,'thumbs');card.append(thumbs);const original=element('a','Originaldatei öffnen');card.append(original);
  let index=c.initial_frame,timer=null;
  const buttons=c.frames.map((f,i)=>{const b=element('button');const thumb=document.createElement('img');thumb.src=f.image;thumb.alt='Bild '+f.index;thumb.loading='lazy';b.append(thumb,element('div','Bild '+f.index+(f.hit?' · Treffer':'')));b.onclick=()=>show(i);thumbs.append(b);return b;});
  function shape(tag,attrs){const e=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,v);return e;}
- function show(i){index=(i+c.frames.length)%c.frames.length;const f=c.frames[index];slider.value=index;img.src=f.image;svg.replaceChildren();svg.setAttribute('viewBox',`0 0 ${f.width} ${f.height}`);svg.style.display=toggle.checked?'':'none';caption.textContent=`Bild ${f.index} · ${f.timestamp_text} · ${f.hit?'Kandidat erkannt':'Kontextaufnahme'}${f.excluded?' · verwackelt/ausgeschlossen':''}`;original.href=f.original;buttons.forEach((b,j)=>b.classList.toggle('selected',j===index));
+ function show(i){index=(i+c.frames.length)%c.frames.length;const source=c.frames[index],f=AstroEvidence.frameImage(c,source,full.checked);slider.value=index;img.hidden=!f;svg.replaceChildren();caption.textContent=`Bild ${source.index} · ${source.timestamp_text} · ${source.hit?'Kandidat erkannt':'Kontextaufnahme'}${source.excluded?' · verwackelt/ausgeschlossen':''}${!f?' · Vollbild fehlt: Ganzes Bild ausschalten oder Zeitreihe aktualisieren':''}`;original.href=source.original;buttons.forEach((b,j)=>b.classList.toggle('selected',j===index));if(!f)return;img.src=f.url||f.image;svg.setAttribute('viewBox',`0 0 ${f.width} ${f.height}`);svg.style.display=toggle.checked?'':'none';
  if(f.overlay){if(f.overlay.points){const p=f.overlay.points;if(p.length>1)svg.append(shape('polyline',{points:p.map(x=>x.join(',')).join(' '),fill:'none',stroke:'#ffe56e','stroke-width':3}));else svg.append(shape('circle',{cx:p[0][0],cy:p[0][1],r:10,fill:'none',stroke:'#ffe56e','stroke-width':3}));}if(f.overlay.box){const [x,y,w,h]=f.overlay.box;svg.append(shape('rect',{x,y,width:w,height:h,fill:'none',stroke:'#ffe56e','stroke-width':3}));}AstroEvidence.motionLabel(svg,c,f.overlay.points,f.width,f.height);}}
- prev.onclick=()=>show(index-1);next.onclick=()=>show(index+1);slider.oninput=()=>show(Number(slider.value));toggle.onchange=()=>svg.style.display=toggle.checked?'':'none';
+ prev.onclick=()=>show(index-1);next.onclick=()=>show(index+1);slider.oninput=()=>show(Number(slider.value));toggle.onchange=()=>svg.style.display=toggle.checked?'':'none';full.onchange=()=>show(index);
  play.onclick=()=>{if(timer){clearInterval(timer);timer=null;play.textContent='Zeitreihe abspielen';}else{timer=setInterval(()=>show(index+1),650);play.textContent='Pause';}};show(index);
  const information=AstroEvidence.analysisDetails(c,card);
  const site=element('p',c.site?`Standort: ${c.site.name||'gespeicherte Position'} · ${c.site.lat}, ${c.site.lon} · ${c.site.alt_m} m`:'Beobachtungsstandort fehlt. Unter „Standort / Kataloge“ eintragen oder abfragen.','muted');information.append(site);

@@ -8,7 +8,8 @@
   box-shadow: var(--shadow) }
 .sky img, .sky video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; animation: fadeIn .4s var(--ease) }
 .sky .motion-video-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none }
-.sky .motion-video-overlay:not([hidden]) { pointer-events: auto }
+/* Nur beschriftete Objekte fangen Ereignisse ab; die freie SVG-Fläche lässt Video-Bedienelemente durch. */
+.sky .motion-video-overlay:not([hidden]) { pointer-events: none }
 .sky-empty { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 6px; text-align: center; color: var(--mut) }
 .sky-empty svg { width: 42px; height: 42px; color: var(--acc3); opacity: .7 }
 .sky-info { position: absolute; left: 14px; right: 60px; top: 12px; display: flex; gap: 12px; justify-content: space-between; font: 600 11px/1.4 ui-monospace, monospace;
@@ -59,6 +60,20 @@
 .tl-th.hit { border-color: color-mix(in srgb, #f2d385 60%, transparent) }
 .tl-th.rej img { filter: grayscale(1) blur(1px) }
 .tl-th.on { border-color: var(--acc3) } .tl-th.on img, .tl-th:hover img { opacity: 1 }
+.frame-options { margin: 8px 0 12px; flex-wrap: wrap }
+.frame-options .linkbtn:disabled { opacity: .4; cursor: default }
+.cstage video { display: block; width: 100%; max-height: 520px; object-fit: contain; background: #000 }
+.cstage:fullscreen { width: 100%; height: 100%; display: grid; place-items: center; margin: 0; border-radius: 0 }
+.cstage:fullscreen img, .cstage:fullscreen video { max-height: 100vh; width: 100%; height: 100%; object-fit: contain }
+.frame-missing { min-height: 180px; display: grid; place-items: center; padding: 24px; text-align: center; cursor: default }
+.tl-th { width: 96px }
+.tl-th img { aspect-ratio: 4/3 }
+.tl-th span { inset: auto 0 19px; font-size: 11px }
+.tl-th small { display: block; padding: 3px; font-size: 11px; background: var(--bg2); color: var(--mut); font-variant-numeric: tabular-nums }
+.sky-events { display: flex; gap: 7px; overflow-x: auto; padding: 10px 0 3px }
+.sky-event { border: 1px solid var(--line); border-radius: 20px; padding: 5px 11px; background: var(--panel); color: var(--mut); font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer }
+.sky-event.on { color: var(--fg); border-color: var(--acc3) }
+@media (max-width: 480px) { .frame-options { gap: 8px } .tl-th { width: 84px } }
 .acc { color: var(--acc3) }
 .st-catalogs { margin-top: 18px; display: grid; gap: 10px }
 .st-catalogs h3 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--mut) }

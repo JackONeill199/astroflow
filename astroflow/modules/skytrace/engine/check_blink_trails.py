@@ -45,6 +45,7 @@ for k, v in results.items():
     print(k, [(c['kind'], c['line_snr'], c.get('blink')) for c in v])
 print('Rauschen', [len(r) for r in noise])
 assert planes['gestrichelt'] and planes['gestrichelt'][0]['blink']['form'] == 'gestrichelt' and planes['gestrichelt'][0]['blink']['flashes'] >= 5
+assert len(results['gestrichelt']) == 1, 'Randblitz gehört zur selben Flugzeugspur'
 assert len(planes['Knoten']) == 1 and planes['Knoten'][0]['blink']['form'] == 'Knoten', 'keine zweite Linie quer durch die Knoten'
 assert results['durchgehend'] and not planes['durchgehend'], 'durchgehende Spur bleibt Meteor/Satellit-Kandidat'
 assert not planes['unregelmaessig'], 'unregelmäßige Lücken sind kein Blinktakt'

@@ -354,7 +354,9 @@ def run_sequences(args):
                 field_ok=ensemble.quality.get('accepted',False)
                 if field_ok:
                     reference_affine=ensemble.matrix
-                    if previous_field_matrix is not None:
+                    # Direkte Zuordnung zum tatsächlichen Nachbarbild hat Vorrang. Zwei unabhängig bestimmte
+                    # Referenzlösungen können trotz akzeptiertem Sternfit gegeneinander springen.
+                    if affine is None and previous_field_matrix is not None:
                         affine=(np.vstack([ensemble.matrix,[0,0,1]])@np.linalg.inv(previous_field_matrix))[:2]
                         registration=True
                 reference_valid=reference_affine is not None

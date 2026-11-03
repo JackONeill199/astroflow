@@ -37,6 +37,29 @@ Oberfläche** (`statsView` in `skytrace.js`), damit Zahlen und Kandidatenfilter 
 sonst früheste Kandidatenzeit − 12 h. Cache je Lauf nach Dateizeiten (Arbeitsinstanz: 119 Läufe, 0,4 s erstmals, danach 0,07 s).
 Route `#/skytrace/statistik` steht vor der Lauf-Route. Test: `test_skytrace.py`, Ansicht in `test_ui_layout.py`.
 
+## Vollbild-Zeitreihe und Video (03.11.2026)
+`candidate_report` speichert unbeschriftete JPG-Vollbilder in Analyseauflösung je Originalnummer einmal unter
+`<Beobachtung>/vollbilder/`; `frames[].full_image` enthält relativen Pfad und Maße. Ausschnitt-PNGs bleiben erhalten.
+API ergänzt sichere URLs, übernimmt ältere `context_image`-Trefferbilder und liefert echte `video_seconds` aus
+akzeptierten `frames.jsonl`-Einträgen (Cache nach Größe/Dateizeit). Niemals Originalnummer/fps rechnen: ausgelassene
+Aufnahmen stehen nicht im Video. Ausgeschlossene Kontextbilder haben keinen Video-Sprung.
+App: Ganzes Bild/Ausschnitt, Treffer-Markierungen, Sprung zur Videostelle; ältere Nachbarn ohne JPG aus dem sauberen
+Video anzeigen. `AstroEvidence.frameImage` verschiebt Ausschnitt-Markierungen um `crop` in Vollbildkoordinaten und
+wird auch im Bericht verwendet. SVG-Hintergrund bleibt `pointer-events:none`, nur Beschriftungen fangen Mausereignisse
+ab; sonst verdeckt die Overlay-Fläche die nativen Video-Bedienelemente. Medienbeobachter beim Tabwechsel aufräumen.
+Prüfungen: `test_skytrace_frames.py`, `test_skytrace_video_ui.py` (synthetisches 3-s-H.264-Video, auch Handybreite).
+
+## Kurze helle Spuren (03.11.2026)
+`line_detection.compact_trails` ergänzt nur bei registriertem Vergleich die bestehende Hough-Suche: native Auflösung,
+beidseitig > 6× robustes Rauschen in Original und Differenz, schmale gerade Komponenten mit 12–90 px Länge, mindestens
+4:1, keine Einzelpixel-Grate, lokale Struktur ≤ `CALM_LIMIT`, integrierter Kontrastwert ≥ 12. Lange Hough-Spuren und
+ihre Schwellen bleiben unverändert; kompakte Fragmente bereits erkannter Spuren werden zusammengeführt. Anlass:
+NGC 1499, kurze helle Spur im letzten Bild eines 61-Frame-Laufs (in Originalkopien geprüft). Keine Identitätsbehauptung.
+`tests/test_skytrace_compact.py` läuft bei vorhandenem OpenCV mit pytest oder direkt im Engine-Interpreter.
+Für den Differenzvergleich hat die direkt gemessene Registrierung zum Nachbarbild Vorrang vor der Differenz zweier
+globaler Referenzlösungen. Letztere können gegeneinander springen (bestätigt: lange blasse NGC-1499-Spur unten links,
+Videobild 57). Globale Astrometrie für bewegte Punkte bleibt getrennt. Regression mit künstlich springenden Referenzfits.
+
 ## Automatisch nach dem Stacken (`auto.py`, 28.10.2026)
 - Ereignis `stacking.stacked` → `AutoAnalysis.stacked`: noch nicht übergebene Light-Aufnahmen (Dienst `project_frames`, Merkliste
   `<AstroFlow-Daten>/skytrace/auto.json` → `sent`) je Nacht als Ordner `<Nacht>_observation_<Objekt>` (wie Stellina, damit der Titel der Objektname ist; ältere Läufe `<Objekt>_observation_<Nacht>-p<id>-<zeit>` erkennt `short_name`) aus **Hardlinks**

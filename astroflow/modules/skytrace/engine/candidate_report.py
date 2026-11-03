@@ -95,7 +95,7 @@ def extract_candidates(out,summary,settings=None,make_clean=True):
     initial_points=first_meta.get('_stellar_centroids')
     if initial_points is not None: initial_points=(np.asarray(initial_points).reshape(-1,2)*[width/first_data.shape[1],height/first_data.shape[0]]).tolist()
     motion.update(reference_linear,0,np.eye(2,3),initial_points)
-    candidates=[]
+    candidates=[]; full_written=set()
     for index,hits in enumerate(groups.values(),1):
         check_stop()
         cid=f'K{index:04d}'; target=folder/'kandidaten'/cid; target.mkdir(parents=True,exist_ok=True)
@@ -136,6 +136,12 @@ def extract_candidates(out,summary,settings=None,make_clean=True):
             check_stop()
             row=all_rows[frame_index]
             frame_data,_=_image(row['file']); frame_gray=stretch(frame_data,limits)
+            full_path=folder/'vollbilder'/f'bild-{frame_index+1:06d}.jpg'
+            if frame_index not in full_written:
+                from image_store import write_image
+                full_path.parent.mkdir(exist_ok=True)
+                write_image(full_path,frame_gray)
+                full_written.add(frame_index)
             image=frame_gray[y1:y2,x1:x2]
             image_path=target/f'bild-{frame_index+1:06d}.png'
             if not cv2.imwrite(str(image_path),image): raise OSError('Kandidatenausschnitt konnte nicht gespeichert werden')
@@ -148,6 +154,9 @@ def extract_candidates(out,summary,settings=None,make_clean=True):
                     b=np.asarray(d['box'])*[width,height,width,height]
                     overlay=dict(box=[float(b[0]-x1),float(b[1]-y1),float(b[2]-b[0]),float(b[3]-b[1])])
             item['frames'].append(dict(index=frame_index+1,timestamp_text=row.get('timestamp_text','Zeit unbekannt'),timestamp=row.get('timestamp'),image=image_path.relative_to(out).as_posix(),width=x2-x1,height=y2-y1,overlay=overlay,hit=frame_index in hits_by_index,excluded=bool(row.get('_excluded')),original=Path(row['file']).as_uri()))
+            item['frames'][-1]['full_image']=dict(image=full_path.relative_to(out).as_posix(),width=width,height=height)
+            if not row.get('_excluded') and isinstance(row.get('video_seconds'),(int,float)):
+                item['frames'][-1]['video_seconds']=row['video_seconds']
         item['initial_frame']=next((i for i,f in enumerate(item['frames']) if f['hit']),0)
         site=resolve_site(anchor['file'],summary['session'],settings)
         item['site']=site
