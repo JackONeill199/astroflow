@@ -389,7 +389,7 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
         i = n_own + k
         s = seasons[i]
         if s and s["kind"] == "soon":
-            soon.append({"id": c.id, "name": c.display, "kind_label": objects.KIND_LABEL.get(c.kind, ""), "mag": c.mag, "season": s,
+            soon.append({"id": c.id, "name": c.display, "kind_label": objects.KIND_LABEL.get(c.kind, ""), "mag": c.mag, "size": c.size, "season": s, "good": [], "reasons": [s["text"]],
                          "href": f"#/nacht/{c.id}", "_k": (s["from"][3:5] + s["from"][:2], c.mag if c.mag is not None else 99)})
     soon.sort(key=lambda x: x["_k"])
     for x in soon:
@@ -497,8 +497,8 @@ def _night_plan(recs, own, cands, n_own, weight, ts, now, clear, cloud) -> list[
     blocks = []
     for j, k in enumerate(choice or ()):
         seg = np.where(v[k, edges[j]:edges[j + 1]] > 0)[0] + edges[j]
-        if len(seg):
-            blocks.append({"k": k, "start": float(ts[seg[0]]), "end": float(ts[seg[-1]] + STEP_MIN * 60)})
+        for run in np.split(seg, np.where(np.diff(seg) > 1)[0] + 1) if len(seg) else []:       # getrennte klare Fenster = getrennte Blöcke
+            blocks.append({"k": k, "start": float(ts[run[0]]), "end": float(ts[run[-1]] + STEP_MIN * 60)})
     out = []
     for b in blocks:
         r = recs[b["k"]]

@@ -280,3 +280,15 @@ def test_collection_service_adds_messier_count(tmp_path):
     assert not {1, 2, 3, 4, 5} & {x.number for x in deepsky.fixed() if x.id in {s["id"] for s in d["suggestions"]} and x.source == "messier"}
     d2 = tonight.plan([], SITE, tmp_path, EVENING, STELLINA)
     assert not any("Messier-Objekt (bisher" in r for x in d2["suggestions"] for r in x["reasons"])        # ohne Dienst kein Satz
+
+
+def test_plan_blocks_never_span_cloudy_gaps(tmp_path, monkeypatch):
+    t0 = tonight.plan([], SITE, tmp_path, EVENING, STELLINA)["start"]
+    hours = [{"t": t0 + 3600 * i, "cloud": 100 if 5 <= i <= 8 else 0, "humidity": 50, "dew_spread": 5} for i in range(26)]
+    monkeypatch.setattr(tonight, "_forecast", lambda *a, **k: {"hours": hours, "source": "Test"})
+    tonight._cache.clear()
+    d = tonight.plan([], {**SITE, "weather": True}, tmp_path, EVENING, STELLINA)
+    times, cloud = d["times"], d["cloud"]
+    for b in d["plan"]:
+        inside = [c for t, c in zip(times, cloud) if b["start"] <= t < b["end"] and c is not None]
+        assert inside and max(inside) < 80
