@@ -41,11 +41,15 @@ class Module(BaseModule):
 
     def __init__(self, ctx):
         super().__init__(ctx)
+        from . import collection
+        from .memory import observation_log
         from .store import SageStore
         from .insights import Scheduler
         from .kb import KB
         self.store = SageStore(ctx.module_dir("sage"))
         self.kb = KB(self.store.root / "knowledge.db")
+        self.store.enrich = lambda names: collection.enrich(self, names)
+        self.store.log_stats = lambda: collection.log_stats(observation_log(self))
         self.scheduler = Scheduler(self)
         self._research_q: list[str] = []
         self.tasks: dict[str, dict] = {}
@@ -77,6 +81,7 @@ class Module(BaseModule):
             for e in self.store.entries():
                 objs += e.get("objects") or []
             self.link_entry({"objects": objs})
+            self.store.refresh()                    # neue Erfolgsarten rückwirkend für den Bestand vergeben
         except Exception:
             import traceback
             traceback.print_exc()
@@ -186,7 +191,7 @@ class Module(BaseModule):
 
     def status(self) -> dict:
         running = [t for t in self.tasks.values() if t["state"] == "running"]
-        ov = self.store.overview()["stats"]
+        ov = self.store.stats()
         cel = [{**c, "image": f"/api/sage/files/{c['image']}" if c.get("image") else None} for c in self.store.celebrations()]
         unseen = self.kb.one("SELECT COUNT(*) AS n FROM insights WHERE seen=0 AND dismissed=0")["n"]
         return {"busy_jobs": len(running), "entries": len(self.store.entries()), "objects": ov["total_objects"],
