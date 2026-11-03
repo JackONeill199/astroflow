@@ -118,7 +118,7 @@ def browser():
         b.close()
 
 
-ROUTES = ["#/", "#/bilder", "#/p/{pid}/bild", "#/p/{pid}/aufnahmen", "#/p/{pid}/versionen", "#/p/{pid}/optionen",
+ROUTES = ["#/", "#/nacht", "#/bilder", "#/p/{pid}/bild", "#/p/{pid}/aufnahmen", "#/p/{pid}/versionen", "#/p/{pid}/optionen",
           "#/import", "#/activity", "#/skytrace", "#/skytrace/neu", "#/skytrace/statistik", "#/sage", "#/sage/wiki", "#/sage/entdeckungen",
           "#/settings/stacking", "#/settings/skytrace", "#/settings/sage", "#/settings/module"]
 
@@ -307,5 +307,43 @@ def test_folder_dialog(server, browser, size):
     assert page.evaluate("(() => { const d = document.querySelector('#dlg'); return d.scrollWidth <= d.clientWidth + 1 })()")
     page.click("#fx")
     assert not page.locator("#dlg[open]").count()
+    page.close()
+    assert not errors, errors
+
+@pytest.mark.parametrize('size', ['handy', 'desktop'])
+def test_tonight_recommendations_chart_and_links(server, browser, size, tmp_path):
+    """Echte Nachtkurven mit festem Datum: Übersicht, responsive Grafik, lokale Katalogkarte und Sage-Klick."""
+    from astroflow.modules.stacking import tonight
+    from tests.test_tonight import SITE, EVENING, M31
+    from pathlib import Path
+    d = tonight.plan([{**M31, 'exposure': 1800}], SITE, Path('unused'), EVENING,
+                     {'name': 'Testgerät', 'fov': [1, .7], 'source': 'Testmessung'})
+    base, pid = server
+    w, h = SIZES[size]
+    page = browser.new_page(viewport={'width': w, 'height': h})
+    errors = []
+    page.on('pageerror', lambda e: errors.append(str(e)))
+    page.route('**/api/stacking/tonight', lambda r: r.fulfill(json=d))
+    page.goto(base + '/#/')
+    page.wait_for_selector('af-tonight-chart svg')
+    assert page.locator('.tn-target').count() > 0
+    assert not page.evaluate(FIND_OVERFLOW)
+    page.screenshot(path=str(tmp_path / 'nacht.png'), full_page=True)
+    # Kein Neuzeichnen der Grafik beim unveränderten Status-Polling.
+    chart = page.locator('af-tonight-chart').element_handle()
+    page.wait_for_timeout(3000)
+    assert chart.evaluate('(e) => e.isConnected')
+    page.goto(base + '/#/nacht')
+    page.wait_for_selector('af-tonight-chart svg')
+    assert page.locator('h1').inner_text() == 'Heute Nacht'
+    assert not page.evaluate(FIND_OVERFLOW)
+    new = next(x for x in d['recommendations'] if x['category'] == 'new')
+    page.goto(base + '/#/nacht/' + new['id'])
+    page.wait_for_selector('af-tonight-chart svg')
+    assert new['name'] in page.locator('#view').inner_text()
+    # Sage-Karten werden erst durch den Klick aufgelöst (keine automatische Recherche).
+    page.route('**/api/sage/kb/card?*', lambda r: r.fulfill(json={'found': True, 'id': 'test-target'}))
+    page.locator('.tn-target a[data-night-catalog]').first.click()
+    page.wait_for_url('**/#/sage/o/test-target')
     page.close()
     assert not errors, errors

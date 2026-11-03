@@ -3,6 +3,17 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.17.0 – 03.11.2026
+
+### Neu
+- **Empfohlene Ziele für heute Nacht:** Auf der Übersicht zeigt eine responsive Höhenkurve bis zu sechs Ziele,
+  Dämmerung, dunkle Zeit, Mond und die Mindesthöhe von 30°. Empfehlungen ergänzen die Bibliothek um bekannte helle
+  Katalogziele oder schlagen mehr Belichtung bei kurzer Integrationszeit, Rauschen und schwachem Signal vor.
+  Das zuletzt verwendete Gerät und sein bekanntes Bildfeld grenzen neue Ziele ein; unbekannte Bildfelder werden ausgewiesen.
+- **Heute Nacht:** Detailplanung mit Dämmerungszeiten, mondlosen Zeitfenstern und optionaler Wettervorhersage.
+  Standort und Wetterfreigabe kommen aus dem Bild-Tutor. Berechnung offline; Wetter nur bei aktivierter Freigabe.
+  Verlinkung zu eigenen Objekten und bei aktivem Sage zum Enzyklopädie-Eintrag; sonst zur lokalen Katalogkarte.
+
 ## 0.16.1 – 03.11.2026
 
 ### Behoben

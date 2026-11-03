@@ -320,6 +320,7 @@ function createViewer(host, src, cmpSrc, labels = ['älter', 'neuer'], ph = null
      nav: [{ href, label, icon, key }],          Einträge in der Seitenleiste (Gruppe = Modulname)
      routes: [[regex, navKey, async (el, ...m) => view]],   view = { update?(st), navigate?(path), actions?(), destroy?() }
      home: async (st) => html | '' ,             Karte auf der Übersicht
+     homeFeatured: async (st) => html | '',      Breite Karte vor den Modulkarten (optional)
      settings: async (el) => void,               Abschnitt in den Einstellungen
      palette: async () => [[icon, label, sub, fn|href, img?]],  Einträge der Befehlspalette (z. B. Objekte)
      status: (st, nav) => void,                  Polling-Hook (Zähler in der Navigation)
@@ -482,11 +483,14 @@ async function homeView(el) {
   async function load(st) {
     st = st || AF.status || await api('/status');
     const cards = await Promise.all(AF.order.map(async (id, i) => {
-      try { const c = await AF.modules[id].home?.(st); return c ? `<section class="hcard" data-m="${id}" style="--i:${i}">${c}</section>` : ''; }
+      try {
+        const [c, featured] = await Promise.all([AF.modules[id].home?.(st), AF.modules[id].homeFeatured?.(st)]);
+        return `${featured ? `<section class="hcard featured" style="--i:${i}">${featured}</section>` : ''}${c ? `<section class="hcard" data-m="${id}" style="--i:${i}">${c}</section>` : ''}`;
+      }
       catch (e) { return `<section class="hcard" style="--i:${i}"><div class="mut">${esc(AF.info(id).name)}: ${esc(e.message)}</div></section>`; }
     }));
     const html = cards.join('');
-    if (html === sig || !$('#homeGrid')) return;
+    if (html === sig || !el.isConnected) return;
     const first = !sig;
     sig = html;
     $('#homeGrid').classList.toggle('stagger', first);

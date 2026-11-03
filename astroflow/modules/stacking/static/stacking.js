@@ -981,7 +981,7 @@ async function stackingSettings(el) {
         <input name="lat" inputmode="decimal" value="${tu.lat ?? ''}" placeholder="z. B. 49,1" style="width:120px"><input name="lon" inputmode="decimal" value="${tu.lon ?? ''}" placeholder="z. B. 8,5" style="width:120px"></div>
         <small>Für Dämmerung, Mondhöhe und Objekthöhe. Seestar &amp; Co. schreiben den Ort in die Aufnahmen, Stellina nicht. Eine Stelle hinter dem Komma reicht.</small></div>
       <label class="row" style="align-items:flex-start;gap:10px;cursor:pointer;flex-wrap:nowrap;margin-bottom:14px"><input type="checkbox" name="weather" ${tu.weather ? 'checked' : ''} style="height:auto;margin-top:4px">
-        <span><b>Wetter der Aufnahmenacht abrufen</b><br><span class="mut sm">Wolken, Luftfeuchte/Taupunkt, Temperatur und Wind aus dem Open-Meteo-Archiv (kostenlos, ohne Konto).
+        <span><b>Wetter für Aufnahmen und Nachtplanung abrufen</b><br><span class="mut sm">Aufnahmewetter aus dem Open-Meteo-Archiv und Vorhersage für „Heute Nacht“ (kostenlos, ohne Konto).
         Dazu werden nur der auf ~10 km gerundete Ort und das Datum gesendet; Ergebnisse werden lokal gespeichert.</span></span></label>
       <label class="field"><span>KI-Einschätzung</span><select name="llm_provider"><option value="off">Aus</option><option value="lmstudio">LM Studio (lokal)</option><option value="openrouter">OpenRouter (Cloud)</option></select>
         <small>Auf Knopfdruck sieht sich ein Vision-Modell das Bild mit allen Messwerten an und ergänzt, was es sieht. Server-URL und API-Key kommen vom KI-Bildprüfer unten.</small></label>

@@ -26,6 +26,18 @@ und Drag & Drop überall (FITS → Rohdaten-Pipeline, JPG/PNG/TIFF → fertige B
 
 ## Rundgang
 
+### Heute Nacht – passende Aufnahmeziele
+
+Die Übersicht empfiehlt bis zu sechs heute noch gut sichtbare Ziele: neue Objekte aus dem eingebauten Katalog und
+eigene Aufnahmen, denen mehr Belichtungszeit bei Rauschen oder schwachem Signal helfen kann. Die Grafik zeigt
+Höhenverläufe, Dämmerung, dunkle Zeit, Mond und die Mindesthöhe von 30°. Die farbigen Objektnamen öffnen das eigene
+Bild bzw. den Sage-Eintrag; ohne Sage erscheint eine lokale Katalogkarte.
+
+Zuerst unter **Einstellungen → Bilder → Bild-Tutor** den Beobachtungsort eintragen. AstroFlow nutzt das zuletzt
+verwendete Gerät: bekanntes Bildfeld aus Plate-Solving, bei Stellina ersatzweise einen Näherungswert. Bei unbekanntem
+Bildfeld wird die Objektgröße nicht gefiltert. „Heute Nacht“ öffnet Details und, bei aktivierter Wetterfreigabe im
+Bild-Tutor, eine Open-Meteo-Vorhersage mit auf 0,1° gerundetem Standort. Die Himmelsberechnung läuft offline.
+
 Alle Bilder stammen aus einer echten Instanz: rund 22 000 Stellina-Aufnahmen aus 31 Nächten, 63 Objekte – ohne Nachbearbeitung in anderer Software.
 
 ### Bilder – vom Rohbild zum fertigen Foto
