@@ -502,7 +502,7 @@ def build_router(mod) -> APIRouter:
         """3D-Lauf-Ansicht: Teleskopweg, Zielobjekt, alle Treffer (`focus` = Kandidat im Fokus)."""
         from .run3d import build_run
         try:
-            return build_run(ctl.run_path(run), session, focus, mod.home, mod.ctx.services)
+            return build_run(ctl.run_path(run), session, focus, mod.home, mod.ctx.services, scene=lambda p: scene_3d(mod, p))
         except (OSError, ValueError, KeyError, TypeError) as e:
             bad(e)
 

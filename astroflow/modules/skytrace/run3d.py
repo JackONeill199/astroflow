@@ -51,6 +51,13 @@ def _wcs(folder: Path):
     return WCS(header, naxis=2), info
 
 
+def _analysis_size(info: dict) -> tuple[float, float]:
+    """Analysegröße wie engine/sequence.stretch: Plate-Solving-Bild auf höchstens 1536 px Breite, gerade Pixelzahl."""
+    w, h = float(info["width"]), float(info["height"])
+    scale = min(1., 1536 / w)
+    return max(2, int(w * scale) // 2 * 2), max(2, int(h * scale) // 2 * 2)
+
+
 def _exposure(meta: dict | None) -> tuple[float, str]:
     """Belichtung (s) und Zeitbezug; Stellina schreibt das Belichtungsende (engine/motion_plausibility.exposure_info)."""
     meta = meta or {}
@@ -117,7 +124,8 @@ def _pointing(folder: Path, accepted: list[dict], cands: list[dict], target: dic
         sample = [sample[i] for i in idx]
     if wcs is not None:
         ctx = next((c.get("context_image") for c in cands if (c.get("context_image") or {}).get("width")), None) or {}
-        w, h = float(ctx.get("width") or info["width"]), float(ctx.get("height") or info["height"])
+        # reference_to_current gilt in Analysepixeln; erst danach in WCS-Pixel skalieren
+        w, h = (float(ctx["width"]), float(ctx["height"])) if ctx else _analysis_size(info)
         base = np.array([[0, 0], [w, 0], [w, h], [0, h], [w / 2, h / 2], [w / 2, 0]])
         pix, keep = [], []
         for r in sample:
@@ -183,7 +191,17 @@ def _position_angle(center, top):
     return np.degrees(np.arctan2(y, x)) % 360
 
 
-def build_run(run_path: Path, session: str | None, focus: str | None, home: Path, services: dict) -> dict:
+def _settings_file(home: Path) -> Path:
+    """Einstellungsdatei, aus der die Engine den Standort liest (`observation_settings.CONFIG`)."""
+    try:
+        from observation_settings import CONFIG
+        return Path(CONFIG)
+    except Exception:
+        return home / "catalog_settings.json"
+
+
+def build_run(run_path: Path, session: str | None, focus: str | None, home: Path, services: dict, scene=None) -> dict:
+    """`scene(payload)` rechnet die Treffer (Standard `orbit3d.build`; die API übergibt `api.scene_3d` mit Engine-Rückfall)."""
     from .api import _read_json, within
     summaries = [s for s in _read_json(run_path / "videos.json", []) or [] if isinstance(s, dict) and s.get("video")]
     if not summaries:
@@ -195,8 +213,10 @@ def build_run(run_path: Path, session: str | None, focus: str | None, home: Path
         summary = next((s for s in summaries if s["session"] == session), summaries[0])
     folder = within(run_path, str(Path(summary["video"]).parent))
     stamp = tuple((p.stat().st_mtime_ns if p.is_file() else 0) for p in
-                  (folder / "frames.jsonl", folder / "ausgeschlossen.jsonl", folder / "kandidaten.json", folder / "platesolve" / "loesung.wcs"))
-    return _cached(str(run_path), str(folder), summary["session"], focus or "", str(home), stamp, tuple(names), _Services(services))
+                  (folder / "frames.jsonl", folder / "ausgeschlossen.jsonl", folder / "kandidaten.json", folder / "platesolve" / "loesung.wcs",
+                   _settings_file(home)))                           # Standort aus den Einstellungen geändert → neu rechnen
+    return _cached(str(run_path), str(folder), summary["session"], focus or "", str(home), stamp, tuple(names),
+                   _Services(dict(services, _scene=scene or o.build)))
 
 
 class _Services:
@@ -266,7 +286,10 @@ def _build(run_path, folder, session, focus, home, names, services):
         if not mine:
             payload["satellites"] = payload["satellites"][:1]
         payload.update(anchor=anchor, window_s=HIT_WINDOW_S, ring_points=HIT_RING)
-        scene = o.build(payload)
+        scene = services["_scene"](payload)
+        if not scene.get("ok", True):                          # z. B. sgp4 fehlt auch im Engine-Interpreter
+            out["missing"].append(dict(candidate=c["id"], name=c.get("label"), reason=scene.get("reason")))
+            continue
         key = folder.name + "/" + c["id"]
         common = dict(key=key, candidate=c["id"], label=c.get("label"), t_pass=scene["t0"], focus=mine,
                       fov_corners=scene["fov"]["corners"], window=scene["window"])
