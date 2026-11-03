@@ -24,8 +24,8 @@ class Module(BaseModule):
     name = "SkyTrace"
     description = "Lichtspuren und bewegte Objekte in Bildfolgen erkennen und mit Katalogen abgleichen."
     icon = "orbit"
-    scripts = ("evidence.js", "skytrace.js", "skytrace-3d.js")
-    styles = ("evidence.css", "skytrace.css", "skytrace-3d.css")
+    scripts = ("evidence.js", "skytrace.js", "skytrace-3d.js", "skytrace-erfolge.js")
+    styles = ("evidence.css", "skytrace.css", "skytrace-3d.css", "skytrace-erfolge.css")
 
     def __init__(self, ctx):
         super().__init__(ctx)
@@ -42,6 +42,27 @@ class Module(BaseModule):
         self.ctl = Controller(self)
         self.auto = AutoAnalysis(self)
         ctx.on("stacking.stacked", self.auto.stacked)
+        from .achievements import Achievements
+        self.ach = Achievements(self.home / "erfolge.json", self._stats)
+        self._was_running = False
+        ctx.services["skytrace_achievements"] = self.ach.overview      # optional: andere Module dürfen die Erfolge anzeigen
+
+    def _stats(self) -> dict:
+        from .stats import collect
+        s = self.ctl.snapshot(logs=False)
+        return collect(self.ctl.results, skip=s["run"] if s["running"] else None)
+
+    def _achievements_check(self, running: bool) -> None:
+        """Endet eine Analyse, werden die Erfolge im Hintergrund neu geprüft (Hinweis erscheint über `status`)."""
+        if self._was_running and not running:
+            threading.Thread(target=self._refresh_achievements, daemon=True).start()
+        self._was_running = running
+
+    def _refresh_achievements(self) -> None:
+        try:
+            self.ach.refresh()
+        except Exception:
+            pass
 
     @property
     def python(self) -> str:
@@ -85,9 +106,11 @@ class Module(BaseModule):
 
     def status(self) -> dict:
         s = self.ctl.snapshot(logs=False)
+        self._achievements_check(bool(s["running"]))
         return {"running": s["running"], "stopping": s["stopping"], "run": s["run"], "text": s["status"],
                 "stats": s["stats"], "operation": s["operation"], "busy_jobs": int(s["running"]),
-                "engine": self.health, "home": str(self.home), "auto_waiting": self.auto.waiting()}
+                "engine": self.health, "home": str(self.home), "auto_waiting": self.auto.waiting(),
+                "achievements_new": self.ach.new()}
 
     def activity(self, limit: int = 30) -> list[dict]:
         from .api import list_runs, short_name

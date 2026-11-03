@@ -3,6 +3,16 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.18.0 – 03.11.2026
+
+### Neu
+- **SkyTrace-Erfolge** (SkyTrace → Erfolge): 60 gestufte Erfolge mit Fortschritt („37 / 100“), Freischaltdatum und kleiner Animation für neue.
+  Ernste Meilensteine (erster Satellit, 10/100/1 000 Zuordnungen, verschiedene Bahnen und Satellitenfamilien, ISS, Raketenstufen und
+  Trümmerteile, Flugzeuge, Meteorkandidaten, Beobachtungen, Nächte, 10 000 Aufnahmen) und augenzwinkernde wie „Die Konstellation grüßt“
+  (100 Starlinks), „Zug verpasst? Nein, mittendrin“, „Kosmischer Verkehrsstau“, „Sternschnuppe? Nein, Flugzeug“ oder „Saubere Nacht“.
+  Gezählt wird nur, was SkyTrace gespeichert hat (Kataloghinweise, keine bestätigte Identität). Bestehende Analysen werden beim ersten Öffnen
+  rückwirkend nach dem Lauf datiert, der den Erfolg ausgelöst hat; endet später eine Analyse mit neuem Erfolg, meldet ihn ein Hinweis.
+
 ## 0.16.1 – 03.11.2026
 
 ### Behoben

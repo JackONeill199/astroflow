@@ -218,6 +218,10 @@ der Bahnelemente. Meteorbahnen (GMN) und Flugzeugspuren (ADS-B) erscheinen ebenf
 Die **Statistik** (SkyTrace → Statistik) fasst alle Analysen zusammen: Objektarten, häufigste Satelliten, Katalogabgleich je Quelle,
 Uhrzeiten und Monate der Kandidaten sowie die ergiebigsten Beobachtungen.
 
+Die **Erfolge** (SkyTrace → Erfolge) sammeln Meilensteine aus deinen Analysen – ernst (erster Satellit, 100 Zuordnungen, die ISS im Bild)
+und mit einem Augenzwinkern („Die Konstellation grüßt“ bei 100 Starlinks, „Kosmischer Verkehrsstau“, „Saubere Nacht“). Gesperrte Erfolge
+zeigen den Fortschritt; bestehende Analysen werden beim ersten Öffnen rückwirkend datiert, neue Erfolge melden sich nach einer Analyse als Hinweis.
+
 Die Analyse braucht zusätzliche Pakete (OpenCV, PyTorch/YOLO, PyAV, Skyfield …): `pip install -r astroflow/modules/skytrace/requirements.txt`
 oder unter Einstellungen → SkyTrace den Python-Interpreter einer bestehenden SkyTrace-Installation wählen. Docker: `docker compose build --build-arg SKYTRACE=1`.
 Ohne diese Pakete startet AstroFlow trotzdem; vorhandene Ergebnisse lassen sich ansehen. Ein bestehender SkyTrace-Datenordner (mit `Ergebnisse/`)
