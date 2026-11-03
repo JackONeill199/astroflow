@@ -3,6 +3,22 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.17.0 – 03.11.2026
+
+### Neu
+- **SkyTrace 3D-Ansicht für jeden Lauf:** Knopf „3D-Ansicht“ im Lauf-Kopf, auch ohne erkanntes Objekt. Der Zeitregler
+  reicht von der ersten bis zur letzten Aufnahme (Abspielen bis 1200×), eine Leiste zeigt genutzte und ausgelassene
+  Aufnahmen, Pausen und Treffer. Über dem Standort zeigt eine Himmelskuppel den Weg der Blickrichtung durch die Nacht
+  (Höhe/Azimut aus dem Plate-Solving je Aufnahme). Die Teleskopkarte nennt Bildlage, Feldrotation einer
+  Alt-Az-Montierung, Bildfeld und Pausen. Ohne Plate-Solving dient die Katalogkoordinate des Ziels als Schätzung.
+  Fehlt der Standort, verweist ein Hinweis auf die Einstellungen.
+- **Blickfeld bis zum Objekt:** Strahl vom Kegel ins Unendliche bis zum Zielobjekt auf der Sternkugel, beschriftet mit Name,
+  Typ und Entfernung, soweit Katalog und Sage-Wissensbasis sie kennen. Kennzeichnung „nicht maßstäblich“; Ansicht „Ziel“
+  blickt vom Standort entlang des Strahls.
+- **Alle Treffer eines Laufs zusammen:** Satelliten, Meteore und Flugzeuge aller Kandidaten in eigener Farbe, Durchgang
+  durchs Blickfeld markiert, Legende mit Uhrzeit zum Ein-/Ausblenden. Ein Eintrag springt zum Durchgang, „Kandidat
+  öffnen“ zum Kandidaten. Der Knopf im Kandidaten öffnet dieselbe Ansicht mit diesem Objekt im Fokus.
+
 ## 0.16.1 – 03.11.2026
 
 ### Behoben

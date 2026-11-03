@@ -202,26 +202,29 @@ def _r(a, n=1):
 # ---------------------------------------------------------------- Szene ---
 def build(payload: dict) -> dict:
     """payload: site{lat,lon,alt_m}, t0, exposure{start,seconds}, fov{center:[ra,dec], corners:[[ra,dec]×4], source},
-    trail:[[ra,dec]…], satellites:[{name,norad_id,tle?,…Abgleichswerte}], meteors:[…], aircraft:[…], cache (Ordner)."""
+    trail:[[ra,dec]…], satellites:[{name,norad_id,tle?,…Abgleichswerte}], meteors:[…], aircraft:[…], cache (Ordner).
+    `anchor` (Standard t0) = Bezugszeit des Systems D – die Lauf-Ansicht rechnet alle Treffer im selben System; `ring_points` dünnt den Umlauf aus."""
     site, t0 = payload["site"], float(payload["t0"])
+    anchor = float(payload.get("anchor") or t0)
+    ring_n = int(payload.get("ring_points") or RING_POINTS)
     window = float(payload.get("window_s", WINDOW_S))
     observer = geodetic_to_ecef(site["lat"], site["lon"], site.get("alt_m", 0) or 0)
     fov = payload.get("fov") or {}
-    corners = radec_to_d(*np.asarray(fov["corners"], float).T, t0) if fov.get("corners") else None
-    boresight = radec_to_d(*fov["center"], t0)
+    corners = radec_to_d(*np.asarray(fov["corners"], float).T, anchor) if fov.get("corners") else None
+    boresight = radec_to_d(*fov["center"], anchor)
     if corners is None:                                    # ohne Bildecken: Kreis aus der angegebenen Öffnung
         radius = math.radians(float(fov.get("radius_deg", .5)))
         e1, e2 = _basis(boresight)
         corners = np.array([boresight + math.tan(radius) * (math.cos(a) * e1 + math.sin(a) * e2) for a in np.radians([45, 135, 225, 315])])
         corners /= np.linalg.norm(corners, axis=1)[:, None]
     cache = Path(payload["cache"]) if payload.get("cache") else None
-    g0 = gmst(t0)
-    out = dict(ok=True, t0=t0, exposure=payload.get("exposure"), earth_rate=EARTH_RATE, window=[t0 - window, t0 + window],
+    g0 = gmst(anchor)
+    out = dict(ok=True, t0=t0, anchor=anchor, exposure=payload.get("exposure"), earth_rate=EARTH_RATE, window=[t0 - window, t0 + window],
                step=STEP_S, observer=_r(observer, 3), observer_height_km=round(float(site.get("alt_m", 0) or 0) / 1000, 3),
-               sun=_r(sun_d(t0), 5),
+               sun=_r(sun_d(anchor), 5),
                fov=dict(boresight=_r(boresight, 7), corners=_r(corners, 7), source=fov.get("source", "wcs"),
                         size_deg=fov.get("size_deg"), ra=fov["center"][0], dec=fov["center"][1]),
-               trail=_r(radec_to_d(*np.asarray(payload["trail"], float).T, t0), 7) if payload.get("trail") else None,
+               trail=_r(radec_to_d(*np.asarray(payload["trail"], float).T, anchor), 7) if payload.get("trail") else None,
                satellites=[], missing=[], meteors=[], aircraft=[])
     dense = t0 + np.arange(-window, window + STEP_S / 2, STEP_S)
     fine = t0 + np.arange(-120, 120.001, .05)
@@ -242,25 +245,25 @@ def build(payload: dict) -> dict:
                                               "Archiv. „Zeitreihen aktualisieren“ rechnet den Abgleich neu und speichert sie mit."))
             continue
         period = 2 * math.pi / sat.no_kozai * 60          # Sekunden
-        ring_t = t0 + np.linspace(-period / 2, period / 2, RING_POINTS + 1)
+        ring_t = t0 + np.linspace(-period / 2, period / 2, ring_n + 1)
         all_t = np.concatenate([ring_t, dense, fine])
         jd1, jd2 = _jd(all_t)
         err, r, v = sat.sgp4_array(jd1, jd2)
-        if np.any(err[RING_POINTS + 1:RING_POINTS + 1 + len(dense)]):
+        if np.any(err[ring_n + 1:ring_n + 1 + len(dense)]):
             out["missing"].append(dict(name=s.get("name"), norad_id=s.get("norad_id"), reason="SGP4 liefert für diese Zeit keine gültige Bahn."))
             continue
         pos = rot_z(-g0, r)                                 # TEME → D
-        ring, track, near = pos[:RING_POINTS + 1], pos[RING_POINTS + 1:RING_POINTS + 1 + len(dense)], pos[RING_POINTS + 1 + len(dense):]
+        ring, track, near = pos[:ring_n + 1], pos[ring_n + 1:ring_n + 1 + len(dense)], pos[ring_n + 1 + len(dense):]
         obs_d = rot_z(gmst(dense) - g0, observer)
         ecef = rot_z(-(gmst(dense) - g0), track)           # D → erdfest zur jeweiligen Zeit (für die Höhe)
         rng = np.linalg.norm(track - obs_d, axis=1)
-        speed = np.linalg.norm(v[RING_POINTS + 1:RING_POINTS + 1 + len(dense)], axis=1)
+        speed = np.linalg.norm(v[ring_n + 1:ring_n + 1 + len(dense)], axis=1)
         obs_f = rot_z(gmst(fine) - g0, observer)
         look = near - obs_f
         look /= np.linalg.norm(look, axis=1)[:, None]
         up = obs_f / np.linalg.norm(obs_f, axis=1)[:, None]
         visible = (look * up).sum(1) > 0
-        inside = inside_fov(look, boresight, corners) & visible & (err[RING_POINTS + 1 + len(dense):] == 0)
+        inside = inside_fov(look, boresight, corners) & visible & (err[ring_n + 1 + len(dense):] == 0)
         segments = [dict(t=_r(fine[a:b + 1] - t0, 2), pos=_r(near[a:b + 1], 2)) for a, b in _runs(inside)]
         k = int(np.argmin(abs(dense - t0)))
         out["satellites"].append(dict(
