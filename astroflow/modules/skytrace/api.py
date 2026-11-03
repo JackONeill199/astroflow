@@ -481,6 +481,15 @@ def build_router(mod) -> APIRouter:
         s = ctl.snapshot(logs=False)
         return collect(ctl.results, skip=s["run"] if s["running"] else None)
 
+    @r.get("/achievements")
+    def achievements():
+        return mod.ach.overview()
+
+    @r.post("/achievements/seen")
+    def achievements_seen():
+        mod.ach.mark_seen()
+        return {"ok": True}
+
     @r.get("/run")
     def run(id: str):
         try:
