@@ -469,16 +469,20 @@ async function homeView(el) {
   crumbs([['Übersicht']]);
   const h = new Date().getHours();
   const hello = h < 5 || h >= 21 ? 'Klarer Himmel heute Nacht?' : h < 11 ? 'Guten Morgen' : h < 17 ? 'Hallo' : 'Guten Abend';
-  el.innerHTML = `<section class="hero dashboard-hero"><div><div class="eyebrow"><span></span>DEIN OBSERVATORIUM</div>
+  el.innerHTML = `<section class="hero dashboard-hero"><div><div class="eyebrow"><span></span>DEIN OBSERVATORIUM · ${new Date().toLocaleDateString('de-DE', {weekday: 'long', day: 'numeric', month: 'long'})}</div>
       <h1>${hello}${h < 5 || h >= 21 ? '' : '.'}</h1>
       </div>
       <div class="hero-act" id="heroAct"></div></section>
     <div class="home-grid" id="homeGrid"><div class="home-featured"></div><div class="home-modules stagger"></div></div>`;
   const acts = [];
   if (AF.on('stacking')) acts.push(`<a class="btn" href="#/import">${icon('upload')}Aufnahmen importieren</a>`);
-  if (AF.on('skytrace')) acts.push(`<a class="btn ghost" href="#/skytrace/neu">${icon('orbit')}Bildfolge analysieren</a>`);
-  if (AF.on('sage')) acts.push(`<a class="btn ghost" href="#/sage">${icon('book')}Bild erzählen lassen</a>`);
+  acts.push(`<label class="dashboard-mode"><span>Ansicht</span><select aria-label="Dashboard-Aufteilung"><option value="balanced">Ausgewogen</option><option value="planning">Nachtplanung</option><option value="library">Bilder &amp; Module</option></select></label>`);
   $('#heroAct').innerHTML = acts.join('');
+  const layout = $('.dashboard-mode select', el), grid = $('.home-grid', el);
+  const saved = store.get('dashboard.layout', 'balanced');
+  layout.value = ['balanced', 'planning', 'library'].includes(saved) ? saved : 'balanced';
+  grid.dataset.layout = layout.value;
+  layout.onchange = () => { grid.dataset.layout = layout.value; store.set('dashboard.layout', layout.value); };
   async function load(st) {
     st = st || AF.status || await api('/status');
     const cards = await Promise.all(AF.order.map(async (id) => {

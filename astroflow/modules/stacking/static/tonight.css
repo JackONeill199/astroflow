@@ -6,6 +6,10 @@
 .tn-home .hhead > div { min-width: 0; flex: 1 1 220px }
 .tn-home .hhead h2 { font-size: 15px }
 .tn-home > p:first-of-type { margin: 10px 0 0 }
+.tn-overview { display: flex; flex-wrap: wrap; gap: 14px 26px; margin-top: 14px }
+.tn-overview > div { min-width: 0 }
+.tn-overview small { display: block; color: var(--mut); font-size: 11px }
+.tn-overview b { display: block; font-size: 15px; font-weight: 600; overflow-wrap: anywhere }
 af-tonight-chart { display: block; width: 100%; min-width: 0; margin-top: 10px }
 .tn-stage { position: relative; min-width: 0 }
 .tn-chart { width: 100%; height: auto; display: block; font: 12px var(--sans); cursor: crosshair }

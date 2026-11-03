@@ -329,7 +329,7 @@ def test_tonight_recommendations_chart_and_links(server, browser, size, tmp_path
     page.route('**/api/stacking/projects', lambda r: r.fulfill(json=gallery))
     page.goto(base + '/#/')
     page.wait_for_selector('af-tonight-chart svg')
-    assert page.locator('.tn-chart').bounding_box()['height'] >= 340
+    assert round(page.locator('.tn-chart').bounding_box()['height']) >= 340
     total = len(d['recommendations'])
     assert page.locator('.tn-choice').count() == total
     visible = page.locator('.tn-series').count()
@@ -364,6 +364,21 @@ def test_tonight_recommendations_chart_and_links(server, browser, size, tmp_path
         assert page.locator('.hthumbs span').first.is_visible()
         if size == 'gross':
             assert page.locator('.home-grid').bounding_box()['width'] > 1800
+    # Aufteilung wechselt ohne Verlust der Kurvenauswahl oder des Zeitzeigers.
+    mode = page.get_by_label('Dashboard-Aufteilung')
+    chosen = page.locator('[data-select][aria-pressed="true"]').get_attribute('data-select')
+    host = page.locator('af-tonight-chart').element_handle()
+    for value in ['planning', 'library', 'balanced']:
+        mode.select_option(value)
+        page.wait_for_timeout(150)
+        assert host.evaluate('(e) => e.isConnected')
+        assert page.locator(f'[data-select="{chosen}"]').get_attribute('aria-pressed') == 'true'
+        assert page.locator('.tn-time').input_value() == str(len(d['times']) - 1)
+        assert not page.evaluate(FIND_OVERFLOW)
+    if size == 'gross':
+        sky = page.locator('.home-modules [data-m="skytrace"]').bounding_box()
+        sage = page.locator('.home-modules [data-m="sage"]').bounding_box()
+        assert abs(sky['y'] - sage['y']) < 2 and sage['x'] > sky['x']
     assert not page.evaluate(FIND_OVERFLOW)
     page.screenshot(path=str(tmp_path / 'nacht.png'), full_page=True)
     # Kein Neuzeichnen der Grafik beim unveränderten Status-Polling.
@@ -387,5 +402,10 @@ def test_tonight_recommendations_chart_and_links(server, browser, size, tmp_path
     page.route('**/api/sage/kb/card?*', lambda r: r.fulfill(json={'found': True, 'id': 'test-target'}))
     page.locator('.tn-selection a[data-night-catalog]').first.click()
     page.wait_for_url('**/#/sage/o/test-target')
+    page.goto(base + '/#/')
+    page.get_by_label('Dashboard-Aufteilung').select_option('library')
+    page.reload()
+    page.wait_for_selector('af-tonight-chart svg')
+    assert page.get_by_label('Dashboard-Aufteilung').input_value() == 'library'
     page.close()
     assert not errors, errors

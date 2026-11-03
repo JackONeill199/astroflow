@@ -496,12 +496,16 @@ em.grad { font-style: normal; background: var(--grad); -webkit-background-clip: 
 .home-featured, .home-modules { min-width: 0 }
 .home-modules { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; align-items: start }
 main:has(.home-grid) { max-width: 2040px }
+.dashboard-mode { display: flex; align-items: center; gap: 9px; color: var(--mut); font-size: 12px }
+.dashboard-mode select { width: 172px; color: var(--fg) }
+.home-grid[data-layout=planning] { --dashboard-aside: clamp(360px, 30%, 560px) }
+.home-grid[data-layout=library] { --dashboard-aside: clamp(440px, 50%, 940px) }
 .hero.dashboard-hero { padding: 16px 20px; margin-bottom: 16px; align-items: center; gap: 14px }
 .hero.dashboard-hero > div:first-child { flex: 1 1 270px }
 .hero.dashboard-hero h1 { font-size: 25px }
 .dashboard-hero .eyebrow { margin-bottom: 5px }
 @media (min-width: 1200px) {
-  .home-grid.has-featured { grid-template-columns: minmax(0, 1fr) clamp(360px, 30%, 560px); gap: 16px }
+  .home-grid.has-featured { grid-template-columns: minmax(0, 1fr) var(--dashboard-aside, clamp(400px, 40%, 800px)); gap: 16px }
   .has-featured .home-modules { grid-template-columns: minmax(0, 1fr); gap: 12px }
   .has-featured .home-modules .hcard { padding: 16px; gap: 12px }
   .has-featured .home-modules .hhead { gap: 8px; flex-wrap: wrap }
@@ -514,7 +518,7 @@ main:has(.home-grid) { max-width: 2040px }
   .has-featured .home-modules .hstats b { font-size: 18px }
   .has-featured .home-modules .hstats small { font-size: 11.5px }
   .has-featured .home-modules .hthumbs { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px }
-  .has-featured .home-modules .hthumbs a { aspect-ratio: 3/2 }
+  .has-featured .home-modules .hthumbs a { aspect-ratio: 16/9 }
   .has-featured .home-modules .hthumbs span { padding: 12px 6px 4px; font-size: 11px }
   .has-featured .home-modules .hfeature { padding: 8px; gap: 12px }
   .has-featured .home-modules .hfeature img { width: 112px; height: 84px }
@@ -522,6 +526,16 @@ main:has(.home-grid) { max-width: 2040px }
   .has-featured .home-modules .hfeature span { display: none }
   .has-featured .home-modules .hnext:not(a) { display: none }
   .has-featured .home-modules p { margin: 0; font-size: 12px }
+}
+@media (min-width: 1800px) {
+  .home-grid.has-featured:not([data-layout=planning]) .home-modules { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px }
+  .home-grid.has-featured:not([data-layout=planning]) .home-modules .hcard[data-m=stacking] { grid-column: 1 / -1 }
+  .has-featured .home-modules .hhead h2 { font-size: 16px }
+  .has-featured .home-modules .hhead > svg { width: 34px; height: 34px; padding: 8px }
+  .has-featured .home-modules .hcard { padding: 18px; gap: 14px }
+  .has-featured .home-modules .hfeature { flex-wrap: wrap }
+  .has-featured .home-modules .hfeature img { width: 100%; height: 116px }
+  .has-featured .home-modules .hfeature div { width: 100% }
 }
 @media (min-width: 1200px) and (max-width: 1599px) {
   .has-featured .home-modules .hcard { padding: 14px; gap: 8px }

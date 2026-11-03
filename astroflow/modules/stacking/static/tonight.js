@@ -117,10 +117,10 @@ const graph = (d, initial_target) => `<af-tonight-chart>${esc(JSON.stringify({..
 function content(d, initial_target) {
   if (!d.site) return `<div class="tn-empty">${noSite()}</div>`;
   const dev = d.device;
-  return `<p class="mut sm">Dunkle Zeit: ${dur(d.dark_hours * 3600)} · Mond ${d.moon.illum} % beleuchtet · ${esc(dev.name)}${dev.fov ? ` · Bildfeld ca. ${dev.fov.map(v => v.toFixed(2).replace('.', ',') + '°').join(' × ')} (${esc(dev.source)})` : ' · Bildfeld unbekannt, Größenfilter aus'}</p>
-    ${graph(d, initial_target)}<p class="mut sm tn-legend">Dunkel: Sonne unter −18° · Mindesthöhe ${d.min_alt}° · gepunktet: Mond · Kurve anklicken oder Zeitregler bewegen</p>
+  return `<div class="tn-overview"><div><small>Dunkle Zeit</small><b>${dur(d.dark_hours * 3600)}</b></div><div><small>Mond beleuchtet</small><b>${d.moon.illum} %</b></div><div><small>Dein Gerät</small><b>${esc(dev.name)}</b></div></div>
+    ${graph(d, initial_target)}<p class="mut sm tn-legend">Dunkel: Sonne unter −18° · Mindesthöhe ${d.min_alt}° · gepunktet: Mond · Zeiten in deiner Ortszeit</p>
     ${d.recommendations.length ? '' : `<p class="mut">${d.dark_hours === 0 ? 'Heute gibt es hier keine astronomisch dunkle Zeit.' : 'Für den verbleibenden Teil der Nacht gibt es keine passenden Empfehlungen über 30°.'}</p>`}
-    <details class="tn-notes mut sm"><summary>Grundlagen der Empfehlung</summary>Auswahl aus dem eingebauten Katalog, kein vollständiger Messier-Katalog. Freier Horizont und klares Wetter werden vorausgesetzt.</details>`;
+    <details class="tn-notes mut sm"><summary>Berechnung &amp; Bildfeld</summary><p>${esc(dev.name)}${dev.fov ? ` · Bildfeld ca. ${dev.fov.map(v => v.toFixed(2).replace('.', ',') + '°').join(' × ')} (${esc(dev.source)})` : ' · Bildfeld unbekannt, Größenfilter aus'}</p><p>Auswahl aus dem eingebauten Katalog, kein vollständiger Messier-Katalog. Freier Horizont und klares Wetter werden vorausgesetzt.</p></details>`;
 }
 async function featured() {
   let body;

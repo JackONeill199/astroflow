@@ -18,6 +18,11 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   Auf Desktopbreite stehen die Modulkarten mit größeren, beschrifteten Vorschaubildern direkt neben der Planung.
   Große Bildschirme nutzen eine breitere Übersicht; Statusänderungen erhalten die Diagrammauswahl.
 
+- **Dashboard-Aufteilung:** „Ausgewogen“, „Nachtplanung“ oder „Bilder & Module“ wählen; die Auswahl bleibt lokal
+  gespeichert. Auf großen Bildschirmen stehen SkyTrace und Sage nebeneinander unter der größeren Bilderkarte.
+  Die Nachtplanung zeigt Dunkelzeit, Mond und Gerät als kompakte Kennzahlen; Bildfeld und Berechnungsgrundlagen
+  sind aufklappbar. Der Kopfbereich konzentriert sich auf Datum, Import und Ansicht.
+
 ## 0.16.1 – 03.11.2026
 
 ### Behoben
