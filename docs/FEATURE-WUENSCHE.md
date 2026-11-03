@@ -9,7 +9,7 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md`, Erledigtes im `CHANGELOG.md`.
 | 1 | 03.11.2026 | Bibliothek teilen (nur ansehen) | offen |
 | 2 | 03.11.2026 | Doppelte UI-Elemente vereinheitlichen | offen |
 | 3 | 03.11.2026 | Sage-Inhalte direkt in Bilder | offen |
-| 4 | 03.11.2026 | Übersicht: empfohlene Ziele für heute Nacht | umgesetzt in 0.17.0 |
+| 4 | 03.11.2026 | Übersicht: empfohlene Ziele für heute Nacht | Grundversion in 0.19.0 |
 
 ## 1. Bibliothek teilen (nur ansehen) – 03.11.2026
 
@@ -49,7 +49,7 @@ Objektseite in Bilder, mindestens der einfache Geschichtstext zum Objekt. Man mu
 
 ## 4. Übersicht: empfohlene Ziele für heute Nacht – 03.11.2026
 
-**Umgesetzt in 0.17.0:** Empfehlungen und Höhenkurven auf der Übersicht, Detailplanung unter „Heute Nacht“.
+**Grundversion in 0.19.0:** Empfehlungen und Höhenkurven auf der Übersicht, Detailplanung unter „Heute Nacht“.
 Berücksichtigt den verbleibenden dunklen Teil der Nacht, vorhandene Objekte (auch Katalognamen/Aliasse), letzte
 Ergebnisbelichtung und gespeicherte Signal-/Rauschbefunde. Das letzte Aufnahmegerät liefert das Bildfeld aus Plate-Solving,
 bei Stellina ersatzweise den bekannten Näherungswert. Ohne Bildfeld kein Größenfilter. Der eingebaute Katalog ist eine

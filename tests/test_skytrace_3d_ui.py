@@ -1,77 +1,85 @@
-"""3D-Ansicht im Browser: öffnen, Zeitregler, Infokarte, Hinweis bei fehlenden Daten – Desktop und Handy.
-Szene aus orbit3d.build mit erfundenem Ort und erfundener Bahn; Lauf und Endpunkt werden im Browser ersetzt."""
+"""3D-Lauf-Ansicht im Browser: Knopf im Lauf und im Kandidaten, Zeitregler über die Nacht, Teleskop-/Zielkarte, Treffer,
+Sprung zum Kandidaten, Hinweis ohne Standort – Desktop und Handy. Szene aus run3d mit erfundenem Ort und erfundener Bahn;
+Lauf und Endpunkt werden im Browser ersetzt."""
 import pytest
 
 from test_ui_layout import browser, server, FIND_OVERFLOW  # noqa: F401
-from test_skytrace_3d import L1, L2, T0
+from test_skytrace_3d import T0, _run, _site
 
 pytest.importorskip("sgp4")
 
 
-def _scene():
-    from astroflow.modules.skytrace import orbit3d
-    sat = orbit3d.satrec_from_tle(L1, L2)
-    import numpy as np
-    _, r, _ = sat.sgp4_array(*orbit3d._jd(np.array([T0])))
-    d = orbit3d.rot_z(-orbit3d.gmst(T0), r[0])                       # Satellit genau über einem erfundenen Ort
-    import erfa
-    lon, lat, _ = (float(np.degrees(x)) for x in erfa.gc2gd(1, d * 1000))
-    z = d - orbit3d.geodetic_to_ecef(lat, lon, 0)
-    z /= np.linalg.norm(z)
-    tm = orbit3d.icrs_to_teme(T0).T @ orbit3d.rot_z(orbit3d.gmst(T0), z)   # D → ICRS
-    ra, dec = float(np.degrees(np.arctan2(tm[1], tm[0])) % 360), float(np.degrees(np.arcsin(tm[2])))
-    return orbit3d.build(dict(site=dict(lat=lat, lon=lon, alt_m=0), t0=T0, exposure=dict(start=T0 - 5, seconds=10),
-                              fov=dict(center=[ra, dec], radius_deg=.6, source="wcs", size_deg=[1.2, .9]),
-                              trail=[[ra - .05, dec], [ra + .05, dec]],
-                              satellites=[dict(name="TESTSAT", norad_id=99001, tle=[L1, L2], tle_age_days=.4)]))
+def _scene(tmp_path):
+    from astroflow.modules.skytrace import run3d
+    from test_skytrace_3d_run import _frames
+    home = tmp_path / "home"
+    rid, _ = _run(home, _site())
+    _frames(home / "Ergebnisse" / rid / "Testfeld", n=60)
+    run3d._cached.cache_clear()
+    return run3d.build_run(home / "Ergebnisse" / rid, None, None, home, {})
 
 
 @pytest.mark.parametrize("width", [375, 1440])
-def test_3d_ansicht(server, browser, width, tmp_path):
+def test_3d_lauf_ansicht(server, browser, width, tmp_path):
     base, _ = server
-    scene = _scene()
-    assert scene["satellites"][0]["in_fov"]
+    scene = _scene(tmp_path)
+    assert scene["ok"] and scene["hits"][0]["in_fov"]
     page = browser.new_page(viewport={"width": width, "height": 900}, reduced_motion="reduce")
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
-    cand = dict(id="K0001", key="obs/K0001", session="Test", kind="trail", timestamp=T0 + 5, exposure_seconds=10, view3d=True,
-                frames=[dict(index=1, url="/synthetic/crop.png", width=40, height=30, hit=True, timestamp=T0, timestamp_text="Bild 1")],
-                initial_frame=0, hit_indices=[0], crop=[0, 0, 40, 30], plausibility={},
+    frame = dict(index=1, url="/synthetic/crop.png", width=40, height=30, hit=True, timestamp=T0, timestamp_text="Bild 1")
+    cand = dict(id="K0001", key="Testfeld/K0001", session="Testfeld", kind="trail", timestamp=T0 + 5, exposure_seconds=10, view3d=True,
+                frames=[frame], initial_frame=0, hit_indices=[0], crop=[0, 0, 40, 30], plausibility={},
                 catalogs=[dict(provider="satellites", status="compatible", detail="Test", matches=[dict(name="TESTSAT", norad_id=99001, separation_arcsec=12)])])
-    other = dict(cand, id="K0002", key="obs/K0002", view3d=False, catalogs=[])
-    run = dict(id="synthetic", sessions=[dict(session="Test", frames=1, excluded=0, hits=1)], candidates=[cand, other], report_url=None, modified=1)
+    other = dict(cand, id="K0002", key="Testfeld/K0002", view3d=False, catalogs=[])
+    run = dict(id="synthetic", sessions=[dict(session="Testfeld", frames=60, excluded=3, hits=1, video_url="/synthetic/v.mp4")],
+               candidates=[other, cand], report_url=None, modified=1)
+    asked = []
     page.route("**/api/skytrace/run?id=synthetic*", lambda route: route.fulfill(json=run))
-    page.route("**/api/skytrace/orbit3d?*", lambda route: route.fulfill(
-        json=scene if "K0001" in route.request.url else dict(ok=False, reason="Der Aufnahmestandort fehlt – Testhinweis.")))
-    page.goto(base + "/#/skytrace/synthetic/kandidaten")
-    page.wait_for_selector(".st3d-open")
+    page.route("**/api/skytrace/run3d?*", lambda route: (asked.append(route.request.url), route.fulfill(json=scene)))
+    page.goto(base + "/#/skytrace/synthetic/vorschau")
+    # Lauf-Knopf: Teleskopweg ohne Fokus
+    page.locator("#run3d").click()
+    page.wait_for_function("document.querySelector('dialog.st3d')?._st3d")
+    assert "focus=" not in asked[-1] and page.locator("dialog.st3d canvas").first.is_visible()
+    st = page.evaluate("document.querySelector('dialog.st3d')._st3d.state()")
+    assert st["t"] == pytest.approx(scene["pointing"]["t"][0]) and st["hits"] == 1
+    assert "Aufnahme 1" in page.locator(".st3d-time").inner_text()
+    # Zeitregler über die ganze Nacht, Pause wird erkannt
+    page.locator(".st3d-range input").evaluate(f"r => {{ r.value = {scene['gaps'][0][0] + 300}; r.dispatchEvent(new Event('input')); }}")
+    assert "Pause" in page.locator(".st3d-time").inner_text()
+    page.locator(".st3d-legend [data-k='0']").click()
+    card = page.locator(".st3d-card")
+    assert "Blickrichtung" in card.inner_text() and "Feldrotation" in card.inner_text() and "1 Pause" in card.inner_text()
+    page.locator(".st3d-views [data-v=scope]").click()
+    page.wait_for_function("document.querySelector('dialog.st3d')._st3d.state().mode === 'scope'")
+    # Ziel: Strahl entlang der Blickrichtung
+    page.locator(".st3d-legend [data-k='1']").click()
+    assert "nicht maßstäblich" in card.inner_text()
+    assert page.evaluate("document.querySelector('dialog.st3d')._st3d.state().mode") == "aim"
+    # Treffer: Sprung zum Durchgang, Ausblenden, Kandidat öffnen
+    page.locator(".st3d-legend [data-k='2']").click()
+    st = page.evaluate("document.querySelector('dialog.st3d')._st3d.state()")
+    assert st["t"] == pytest.approx(T0) and st["visible"] == 1 and "NORAD 99001" in card.inner_text()
+    assert not page.evaluate(FIND_OVERFLOW)
+    page.screenshot(path=str(tmp_path / f"skytrace-3d-lauf-{width}.png"))
+    page.locator(".st3d-legend input[type=checkbox]").uncheck()
+    assert page.evaluate("document.querySelector('dialog.st3d')._st3d.state().visible") == 0
+    page.locator(".st3d-legend input[type=checkbox]").check()
+    page.locator(".st3d-card [data-a=cand]").click()
+    page.wait_for_selector(".ccard.on")
+    assert page.locator("dialog.st3d").count() == 0 and "K0001" in page.locator(".ccard.on").inner_text()
+    # Kandidaten-Knopf: Lauf-Ansicht mit Fokus
     page.locator(".st3d-open").click()
     page.wait_for_function("document.querySelector('dialog.st3d')?._st3d")
-    assert page.locator("dialog.st3d canvas").is_visible() and page.locator(".st3d-msg").is_hidden()
-    labels = page.locator(".st3d-lbl")
-    assert labels.count() == 2 and "TESTSAT" in labels.all_inner_texts()
-    # Zeitregler: Satellit wandert, Zeit wird angezeigt
-    assert "21:00:00 UTC" in page.locator(".st3d-time").inner_text()
-    page.locator(".st3d-range input").evaluate("r => { r.value = +r.value + 30; r.dispatchEvent(new Event('input')); }")
-    assert "+0:30" in page.locator(".st3d-time").inner_text()
-    # Infokarte über die Legende, Blickfeld-Ansicht
-    page.locator(".st3d-legend button", has_text="TESTSAT").click()
-    card = page.locator(".st3d-card")
-    assert card.is_visible() and "NORAD 99001" in card.inner_text() and "km/s" in card.inner_text()
-    page.locator(".st3d-legend button", has_text="Teleskop").click()
-    assert "Blickrichtung" in card.inner_text() and "1,20° × 0,90°" in card.inner_text()
-    page.locator(".st3d-views [data-v=fov]").click()
-    page.wait_for_function("document.querySelector('dialog.st3d')._st3d.state().mode === 'fov'")
-    assert not page.evaluate(FIND_OVERFLOW)
-    page.screenshot(path=str(tmp_path / f"skytrace-3d-{width}.png"))
-    page.locator("dialog.st3d [data-x]").click()
-    assert page.locator("dialog.st3d").count() == 0
-    # Kandidat ohne Bahn: kein Knopf; Endpunkt mit Hinweis statt Fehler
-    page.locator(".ccard", has_text="K0002").click()
-    assert page.locator(".st3d-open").count() == 0
-    page.evaluate("SkyTrace3D.open('synthetic', {id: 'K0002', key: 'obs/K0002'})")
+    assert "focus=Testfeld%2FK0001" in asked[-1]
+    page.keyboard.press("Escape")
+    # ohne Standort: Hinweis mit Verweis auf die Einstellungen
+    page.unroute("**/api/skytrace/run3d?*")
+    page.route("**/api/skytrace/run3d?*", lambda route: route.fulfill(json=dict(ok=False, need_site=True, reason="Der Beobachtungsstandort fehlt.")))
+    page.evaluate("SkyTrace3D.openRun('synthetic')")
     page.wait_for_selector(".st3d-msg.hint")
-    assert "Testhinweis" in page.locator(".st3d-msg").inner_text()
+    assert page.locator(".st3d-msg a").get_attribute("href") == "#/settings/skytrace"
     page.keyboard.press("Escape")
     assert page.locator("dialog.st3d").count() == 0
     assert not errors, errors

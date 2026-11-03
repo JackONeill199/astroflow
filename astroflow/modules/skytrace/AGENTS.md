@@ -37,6 +37,23 @@ Oberfläche** (`statsView` in `skytrace.js`), damit Zahlen und Kandidatenfilter 
 sonst früheste Kandidatenzeit − 12 h. Cache je Lauf nach Dateizeiten (Arbeitsinstanz: 119 Läufe, 0,4 s erstmals, danach 0,07 s).
 Route `#/skytrace/statistik` steht vor der Lauf-Route. Test: `test_skytrace.py`, Ansicht in `test_ui_layout.py`.
 
+## Erfolge (`achievements.py`, `static/skytrace-erfolge.js|css`, 03.11.2026, Nutzerwunsch „auch sarkastische, die in der Astrofotoszene beliebt sind“)
+`GET /api/skytrace/achievements` → `Achievements.overview`, `POST …/achievements/seen`. Liste `ACHIEVEMENTS` (id, Titel, Beschreibung, Symbol, Gruppe,
+Kennzahl, Ziel, Spruch) – IDs bestehender Erfolge nie ändern. Rechnung `compute(stats.collect(...))`: Beobachtungen (neueste vollständige Analyse je
+Beobachtung, also dieselbe Datenbasis wie die Statistik) werden in Reihenfolge der Lauf-ID durchlaufen, laufende Kennzahlen (Summen, Mengen, Maxima je
+Beobachtung); der Erfolg bekommt das Datum des Laufs, in dem das Ziel erstmals erreicht war (**rückwirkend datiert**). Einordnung in Python nach dem
+Vorbild von `evidence.js classification` (`classify`): Satellit nur bei Kataloghinweis `compatible`; Starlink/ISS/R/B/DEB aus Name, NORAD-Nummer und
+SATCAT-Objektart; „Meteorvorschlag“ = Kandidat mit `kind == meteor` (kein Modellhinweis – im Teleskopbild nur Hinweis); „Nachtschicht“ = Ortszeit des
+Rechners 3–6 Uhr; „Saubere Nacht“ = ≥ 100 Aufnahmen ohne Kandidat; Starlink-Zug = Treffer innerhalb 300 s. Nicht umgesetzt (Daten fehlen):
+„Spur quer durchs Bildzentrum“ (Kandidaten speichern keine Bildgeometrie in Bildpixeln). Schwellen an den echten Läufen des Nutzers geeicht
+(141 Beobachtungen: 164 Satelliten, 84 Starlink, max. 8 je Beobachtung, Zug ≤ 4, 25 Raketenstufen, 10 Trümmerteile → 42 von 60 freigeschaltet).
+Zustand `<SKYTRACE_HOME>/erfolge.json` (`unlocked{id: {unlocked, seen}}`): einmal vergeben bleibt vergeben (auch wenn ein Lauf gelöscht wird),
+das Datum ändert sich nie. Erste Datei = alles rückwirkend und „gesehen“ (keine Feier-Flut); später neu erreichte sind ungesehen (`status.achievements_new`
+→ Hinweis über `toast`, Karte mit „Neu“ und Animation, nach 6 s bzw. Verlassen der Seite als gesehen markiert). Ein Hintergrund-Thread (`Module._achievements_loop`, unabhängig vom Browser) stellt beim Start den Ausgangsstand her und stößt die Prüfung an,
+wenn eine Analyse endet. Frontend hängt sich per `AF.modules.skytrace` ein (Route, Navigation, Palette, Status) – `skytrace.js` blieb unverändert.
+Optionaler Dienst `ctx.services["skytrace_achievements"]` (= `overview`) für andere Module; Sage nutzt ihn bisher nicht. Ton: freundlich-ironisch,
+keine Firmen-/Personennamen als Zielscheibe (Betreibernamen nur als Fakt aus dem Katalogtreffer). Test: `tests/test_skytrace_achievements.py`.
+
 ## Vollbild-Zeitreihe und Video (03.11.2026)
 Dropdown „Analyse“: `POST /reanalyse` (`check:true` prüft nur) liest über `reanalysis.prepare` alle akzeptierten und
 ausgeschlossenen Originale aus den Manifesten. Keine Teilausführung bei fehlenden oder mehrdeutigen Dateien; optionaler
@@ -97,7 +114,23 @@ fehlt `sgp4` im Server, läuft `orbit3d.py` als Skript im Engine-Interpreter (JS
   `vendor/README.md`), erst beim Öffnen per `import()` geladen. Zeichnet nur bei Änderung; Kamerafahrten entfallen bei
   `prefers-reduced-motion`, kein Auto-Drehen. Kegellänge = 1,35 × Entfernung des Satelliten im Blickfeld (echte Öffnung,
   daher erst in „Blickfeld“ sichtbar). Atmosphärensaum blendet sich nahe der Erde aus. `dialog._st3d.state()` für Tests.
-- Tests: `test_skytrace_3d.py` (gegen astropy, alte Läufe, Hinweise), `test_skytrace_3d_ui.py` (Playwright, 375/1440 px).
+- **Lauf-Ansicht (0.17.0, Nutzerwunsch: „unabhängig davon, ob ein Objekt erkannt wurde … wohin das Teleskop geschaut hat“):**
+  `GET /api/skytrace/run3d?run=&session=&focus=` → `run3d.build_run`. Je Beobachtung: Blickrichtung je Aufnahme aus
+  Referenz-WCS + `frames.jsonl.reference_to_current` (≤ `MAX_SAMPLES` 360 Stichproben, Ecken → Bildlage/Positionswinkel),
+  Az/Alt zur Belichtungsmitte (Stellina: Zeitstempel = Ende), parallaktischer Winkel (= Feldrotation einer Alt-Az-Montierung),
+  Lücken (> max(120 s, 5 × Median, 3 × Belichtung)), ausgelassene Aufnahmen aus `ausgeschlossen.jsonl`. Ohne WCS:
+  Zielkoordinate über `catalog_resolve` (Namensteile von lang nach kurz) und Bildfeld aus FOCAL/PIXSZ/NAXIS, `source='katalog'`.
+  Ziel: `catalog_resolve` (Typ) + Sage-Dienst `object_facts` (Entfernung, nur Gespeichertes). Standort: Kandidat → `resolve_site`
+  (FITS, sonst Einstellungen); fehlt er → `{ok:false, need_site}`. Treffer: `orbit3d.build` je Kandidat im gemeinsamen
+  System (`anchor` = erste Aufnahme), ±5 min, Umlauf 180 Punkte, bester Satellit je Kandidat (Fokus-Kandidat alle).
+  Ergebnis per `lru_cache` nach Dateizeiten (echter Lauf mit 8 Treffern: 0,3 s, dann 2 ms; 240 KB).
+- Frontend `SkyTrace3D.openRun(run, {focus, session, onCandidate})`; `open(run, c)` = Fokus auf den Kandidaten.
+  Kuppel (`DOME` 0,045 R) und Sternkugel (`SKY` 60 R) sind erdfest bzw. raumfest und nicht maßstäblich. Ansichten Erde/Teleskop/
+  Durchgang/Folgen, „Ziel“ beim Antippen des Ziels; Teleskop und Ziel mit lokaler Senkrechten als „oben“ (OrbitControls
+  liest `camera.up` nur beim Anlegen → `makeControls` legt sie neu an) und folgen dem Standort, wenn sich die Erde dreht.
+  „Kandidat öffnen“ setzt `focusNext` in `skytrace.js` und wechselt zum Reiter Kandidaten.
+- Tests: `test_skytrace_3d.py` (gegen astropy, alte Läufe, Hinweise), `test_skytrace_3d_run.py` (Teleskopweg gegen astropy,
+  Lücke, Bildlage, ohne Treffer/Standort/Plate-Solving), `test_skytrace_3d_ui.py` (Playwright, 375/1440 px).
   Offen: Flugzeug- und Meteordarstellung nur mit synthetischen Daten geprüft; kein Uhrversatz-Ausgleich in der Ansicht.
 
 ## Automatisch nach dem Stacken (`auto.py`, 28.10.2026)

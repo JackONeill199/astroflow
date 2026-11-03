@@ -166,6 +166,7 @@ async function newView(el) {
 }
 
 // ------------------------------------------------------------- Laufdetail --- //
+let focusNext = null;                                    // Kandidat, den die 3D-Ansicht öffnen will (nach dem Tabwechsel)
 async function runView(root, runId, tab = 'vorschau') {
   runId = decodeURIComponent(runId);
   const S = { run: null, engine: await api(T + '/state'), session: 0, key: null, frame: null, overlay: store.get('skytrace.overlay', true),
@@ -174,7 +175,8 @@ async function runView(root, runId, tab = 'vorschau') {
   try { S.run = await api(T + '/run?id=' + encodeURIComponent(runId)); }
   catch (e) { if (!isLive()) throw e; S.run = { id: runId, sessions: [], candidates: [], report_url: null }; }
   crumbs([['SkyTrace', '#/skytrace'], [shortName(S.run.sessions.length === 1 ? S.run.sessions[0].session : runId)]]);
-  if (S.run.candidates.length) S.key = S.run.candidates[0].key;
+  if (S.run.candidates.length) S.key = S.run.candidates.some(c => c.key === focusNext) ? focusNext : S.run.candidates[0].key;
+  focusNext = null;
   const session = () => S.run.sessions[S.session] || S.run.sessions[0];
   const cand = () => S.run.candidates.find(c => c.key === S.key);
 
@@ -193,6 +195,7 @@ async function runView(root, runId, tab = 'vorschau') {
             <a href="#" id="reanalyse"><span>Erneut analysieren<small>Erkennung mit aktuellem Code</small></span>${icon('play')}</a>
             <a href="#" id="refresh"><span>Zeitreihen aktualisieren<small>Berichte und Katalogabgleich</small></span>${icon('refresh')}</a>
             <div class="pop-note">Erneute Analyse erstellt einen neuen Lauf. Der bisherige bleibt erhalten.</div></div></div>`}
+        ${!live && window.SkyTrace3D && ss.some(s => s.video_url) ? `<button class="btn ghost" id="run3d" title="Teleskopweg, Blickfeld und zugeordnete Bahnen auf der Erde">${icon('globe')}3D-Ansicht</button>` : ''}
         ${S.run.report_url ? `<a class="btn ghost" href="${S.run.report_url}" target="_blank" rel="noopener">Bericht öffnen${icon('arrow')}</a>` : ''}
         ${live ? '' : `<button class="btn ghost icon" id="delRun" title="Analyse löschen" aria-label="Analyse löschen">${icon('trash')}</button>`}</div></div>
       <div id="stjob" style="margin:-8px 0 18px"></div>
@@ -210,6 +213,7 @@ async function runView(root, runId, tab = 'vorschau') {
     stopTimeline();
     root.innerHTML = head();
     $('#stop')?.addEventListener('click', async () => { try { S.engine = await send(T + '/stop'); draw(); } catch (e) { toast(e.message, 'err'); } });
+    $('#run3d')?.addEventListener('click', () => SkyTrace3D.openRun(runId, { session: session()?.session, onCandidate: focusCandidate }));
     $('#delRun')?.addEventListener('click', async () => { if (await deleteRun(runId, runTitle())) location.hash = '#/skytrace'; });
     $('#analysisMenu .pop')?.addEventListener('click', () => $('#analysisMenu').classList.remove('open'));
     $('#reanalyse')?.addEventListener('click', async (e) => {
@@ -236,6 +240,10 @@ async function runView(root, runId, tab = 'vorschau') {
       toast('Neue Analyse mit aktuellem Code gestartet.', 'ok');
       location.hash = `#/skytrace/${encodeURIComponent(result.run)}/vorschau`;
     } catch (e) { toast(e.message, 'err'); }
+  }
+  function focusCandidate(key) {                       // aus der 3D-Ansicht: Kandidat zeigen
+    if (tab === 'kandidaten' && $('#clist')) { S.key = key; S.frame = null; S.filter = 'all'; $('#kf') && ($('#kf').value = 'all'); drawList(); }
+    else { focusNext = key; location.hash = `#/skytrace/${encodeURIComponent(runId)}/kandidaten`; }
   }
   function drawTab(animate = true) {
     cleanupMedia();
@@ -354,6 +362,8 @@ async function runView(root, runId, tab = 'vorschau') {
       <option value="plane">Flugzeugkandidaten</option><option value="moving">Langsame Beweger</option></select><span class="grow"></span>
       <label class="tgl"><input type="checkbox" id="covl" ${S.overlay ? 'checked' : ''}><span class="switch"></span>Overlay</label></div>
       <div class="st-cands"><div class="st-clist" id="clist"></div><div class="panel st-cdetail" id="cdetail"></div></div>`;
+    if (focusNext && S.run.candidates.some(c => c.key === focusNext)) { S.key = focusNext; S.frame = null; S.filter = 'all'; }
+    focusNext = null;                                    // Wunsch aus der 3D-Ansicht (Tabwechsel innerhalb des Laufs)
     $('#kf').value = S.filter;
     $('#kf').onchange = (e) => { S.filter = e.target.value; drawList(); };
     $('#covl').onchange = (e) => { S.overlay = e.target.checked; store.set('skytrace.overlay', S.overlay); drawDetail(); };
@@ -384,7 +394,7 @@ async function runView(root, runId, tab = 'vorschau') {
     top.append(hd);
     if (window.SkyTrace3D?.available(c)) {                // Bahn + Blickfeld räumlich (skytrace-3d.js)
       const b3 = el('button', undefined, 'btn ghost sm st3d-open'); b3.innerHTML = icon('globe') + '3D-Ansicht'; b3.title = 'Bahn und Teleskop-Blickfeld auf der Erde ansehen';
-      b3.onclick = () => SkyTrace3D.open(runId, c); top.append(el('span', undefined, 'grow'), b3);
+      b3.onclick = () => SkyTrace3D.open(runId, c, { onCandidate: focusCandidate }); top.append(el('span', undefined, 'grow'), b3);
     }
     host.append(top);
     const options = el('div', undefined, 'row frame-options'), views = el('div', undefined, 'seg');

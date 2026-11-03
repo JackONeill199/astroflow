@@ -14,6 +14,9 @@ dialog.st3d { color-scheme: dark; color: #eef1fa; --fg: #eef1fa; --mut: #959dba;
 .st3d-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden }
 .st3d-lbl { position: absolute; left: 0; top: 0; pointer-events: auto; margin: 0; padding: 2px 8px 2px 7px; border-radius: 99px; border: 1px solid color-mix(in srgb, var(--c) 55%, transparent);
   background: #050815c4; color: #eef1fa; font: 600 11.5px/1.5 inherit; white-space: nowrap; cursor: pointer; translate: 10px -50%; backdrop-filter: blur(6px) }
+.st3d-lbl small { display: block; font-weight: 500; font-size: 10.5px; color: var(--mut); margin-left: 12px }
+.st3d-lbl.st3d-lbl-n { padding: 0 5px; font-size: 10px; translate: -50% -50%; border-color: #f8717188 }
+.st3d-lbl.st3d-lbl-n::before { display: none }
 .st3d-lbl::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--c); margin-right: 6px; vertical-align: 1px }
 .st3d-msg { position: absolute; left: 50%; top: 50%; translate: -50% -50%; display: flex; align-items: center; gap: 10px; max-width: min(460px, 86%); padding: 12px 16px;
   border-radius: 14px; background: #0b0f1ccc; border: 1px solid var(--line2); color: #dfe4f3; font-size: 13.5px }
@@ -30,20 +33,24 @@ dialog.st3d { color-scheme: dark; color: #eef1fa; --fg: #eef1fa; --mut: #959dba;
 .st3d-card-h small { display: block; color: var(--mut); font-size: 12px; margin-left: 17px }
 .st3d-card dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 8px 0 0; font-size: 12.5px }
 .st3d-card dt { color: var(--mut) }
+.st3d-card-a { margin-top: 10px; gap: 6px; flex-wrap: wrap }
 .st3d-card dd { margin: 0; font-variant-numeric: tabular-nums; min-width: 0; overflow-wrap: anywhere }
 .st3d-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--line) }
 .st3d-range { position: relative; flex: 1; min-width: 80px; display: flex; align-items: center }
 .st3d-range input { width: 100%; position: relative; z-index: 1; background: transparent }
-.st3d-exp { position: absolute; top: 50%; height: 14px; translate: 0 -50%; border-radius: 4px; background: color-mix(in srgb, #f2d385 45%, transparent); box-shadow: 0 0 10px #f2d38566 }
+.st3d-strip { position: absolute; left: 0; right: 0; top: 50%; width: 100%; height: 18px; translate: 0 -50%; pointer-events: none }
 .st3d-time { font-size: 13px; white-space: nowrap }
 .st3d-bar select { width: auto; padding: 4px 8px; font-size: 13px }
-.st3d-foot { display: flex; align-items: center; gap: 12px; padding: 0 14px 12px; min-width: 0 }
-.st3d-legend { display: flex; gap: 6px; flex-wrap: wrap; min-width: 0 }
+.st3d-foot { display: flex; flex-direction: column; gap: 6px; padding: 0 14px 12px; min-width: 0 }
+.st3d-legend { display: flex; gap: 6px; flex-wrap: wrap; min-width: 0; max-height: 66px; overflow: auto }
+.st3d-chip { display: inline-flex; align-items: center; gap: 4px }
+.st3d-chip input { margin: 0; accent-color: var(--c); width: 14px; height: 14px }
+.st3d-legend small { color: var(--mut); font-size: 11px; font-variant-numeric: tabular-nums }
 .st3d-legend button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line2); background: transparent; color: var(--fg); font: inherit; font-size: 12.5px;
   padding: 3px 10px; border-radius: 99px; cursor: pointer; white-space: nowrap }
 .st3d-legend button.on { background: color-mix(in srgb, var(--c) 22%, transparent); border-color: var(--c) }
 .st3d-legend i { width: 8px; height: 8px; border-radius: 50%; background: var(--c) }
-.st3d-note { margin: 0; flex: 1; min-width: 0; text-align: right }
+.st3d-note { margin: 0; min-width: 0 }
 @keyframes st3dIn { from { opacity: 0; transform: translateY(8px) } }
 @media (max-width: 640px) {
   dialog.st3d { width: 100vw; height: 100dvh; border-radius: 0; border: 0 }
