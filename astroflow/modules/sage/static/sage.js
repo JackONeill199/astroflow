@@ -228,14 +228,31 @@ async function discView(el) {
     <div class="stats sg-kpi">
       <div class="stat"><small>Objekte</small><b class="tnum">${s.total_objects}</b></div><div class="stat"><small>Analysen</small><b class="tnum">${s.analyses}</b></div>
       <div class="stat"><small>Messier</small><b class="tnum">${s.messier} <span class="dim sm">/ 110</span></b></div><div class="stat"><small>Erfolge</small><b class="tnum">${unlocked} <span class="dim sm">/ ${d.achievements.length}</span></b></div></div>
-    <div class="panel sg-mile"><div class="row"><b>${d.next_milestone ? `Nächstes Ziel: ${d.next_milestone} Objekte` : 'Alle Meilensteine erreicht'}</b><span class="grow"></span><span class="mut sm tnum">${s.total_objects}${d.next_milestone ? ' / ' + d.next_milestone : ''}</span></div>
-      <div class="progress static" style="margin-top:8px"><i style="width:${d.milestone_progress}%"></i></div>
-      <div class="sg-messier" title="Messier-Katalog: ${s.messier} von 110">${Array.from({ length: 110 }, (_, i) => `<i class="${d.objects.some(o => o.category === 'messier' && new RegExp(`^m ?${i + 1}\\b`, 'i').test(o.name)) ? 'on' : ''}" title="M${i + 1}"></i>`).join('')}</div></div>
-    <h2 class="sect">Erfolge</h2>
-    <div class="sg-ach stagger">${d.achievements.map((a, i) => `<div class="ach ${a.unlocked ? 'on' : ''} ${a.unlocked && Date.now() - Date.parse(a.unlocked) < 3 * 864e5 ? 'fresh' : ''}" style="--i:${i}"><span>${icon(a.icon)}</span><div><b>${esc(a.title)}</b><small class="mut">${esc(a.description)}</small>
-      ${a.unlocked ? `<small class="ok">${when(a.unlocked)}</small>` : ''}</div></div>`).join('')}</div>
+    <div class="panel sg-mile"><div class="row"><b>${d.next_milestone ? `Nächstes Ziel: ${d.next_milestone} Objekte` : `Alle Meilensteine erreicht (${d.milestones[d.milestones.length - 1]} Objekte)`}</b><span class="grow"></span><span class="mut sm tnum">${s.total_objects}${d.next_milestone ? ' / ' + d.next_milestone : ''}</span></div>
+      <div class="progress static" style="margin-top:8px"><i style="width:${d.milestone_progress}%"></i></div></div>
+    <div class="toolbar" style="margin-top:26px"><h2 class="sect" style="margin:0">Messier-Katalog · ${s.messier} von 110</h2><span class="grow"></span><div class="seg" id="mf"></div></div>
+    <p class="mut sm" style="margin:4px 0 12px">Die 110 Objekte des Messier-Katalogs. Gefüllte Kacheln zeigen dein eigenes Bild; die übrigen warten noch auf eine Aufnahme (Klick öffnet den Enzyklopädie-Eintrag).</p>
+    <div class="sg-messier" id="mgrid"></div>
+    <h2 class="sect" style="margin-top:26px">Erfolge</h2>
+    ${[...new Set(d.achievements.map(a => a.group))].map(g => { const list = d.achievements.filter(a => a.group === g);
+      return `<h3 class="sg-grp">${esc(g)} <span class="dim tnum">${list.filter(a => a.unlocked).length} / ${list.length}</span></h3>
+      <div class="sg-ach stagger">${list.map((a, i) => `<div class="ach ${a.unlocked ? 'on' : ''} ${a.unlocked && Date.now() - Date.parse(a.unlocked) < 3 * 864e5 ? 'fresh' : ''}" style="--i:${i}"><span>${icon(a.icon)}</span><div><b>${esc(a.title)}</b><small class="mut">${esc(a.description)}</small>
+      ${a.unlocked ? `<small class="ok">${when(a.unlocked)}</small>` : a.progress.goal > 1 ? `<small class="tnum">${a.progress.cur} / ${a.progress.goal}</small><div class="progress static sm"><i style="width:${Math.round(100 * a.progress.cur / a.progress.goal)}%"></i></div>` : ''}</div></div>`).join('')}</div>`; }).join('')}
     <div class="toolbar" style="margin-top:26px"><h2 class="sect" style="margin:0">Sammlung</h2><span class="grow"></span><div class="seg" id="dc"></div></div>
     <div id="dgrid"></div>`;
+  let mfilter = 'all';
+  const drawM = () => {
+    const miss = d.messier.filter(m => !m.have).length;
+    $('#mf').innerHTML = [['all', 'Alle', 110], ['missing', 'Fehlende', miss]].map(([k, l, n]) => `<button data-k="${k}" class="${k === mfilter ? 'on' : ''}">${l} <span class="dim">${n}</span></button>`).join('');
+    $('#mgrid').innerHTML = d.messier.filter(m => mfilter === 'all' || !m.have).map(m => {
+      const href = m.entity ? `#/sage/o/${m.entity}` : m.entry ? `#/sage/${m.entry}` : '';
+      const tip = m.have ? `M${m.n} · ${m.name}` : `M${m.n} · noch nicht fotografiert`;
+      return `<${href ? `a href="${href}"` : `button type="button" data-n="${m.n}"`} class="mt ${m.have ? 'on' : ''}" title="${esc(tip)}">${m.image ? `<img src="${m.image}" alt="" loading="lazy">` : ''}<b>M${m.n}</b></${href ? 'a' : 'button'}>`;
+    }).join('');
+  };
+  $('#mf').onclick = (e) => { const b = e.target.closest('[data-k]'); if (b) { mfilter = b.dataset.k; drawM(); } };
+  $('#mgrid').onclick = (e) => { const b = e.target.closest('button[data-n]'); if (b) toast(`M${b.dataset.n} ist noch nicht fotografiert.`); };
+  drawM();
   const cats = ['all', ...Object.keys(CAT).filter(k => d.objects.some(o => o.category === k))];
   const draw = () => {
     $('#dc').innerHTML = cats.map(k => `<button data-k="${k}" class="${k === cat ? 'on' : ''}">${k === 'all' ? 'Alle' : CAT[k]} <span class="dim">${k === 'all' ? d.objects.length : d.objects.filter(o => o.category === k).length}</span></button>`).join('');
@@ -372,8 +389,8 @@ function celebrate(list) {
     card.innerHTML = `<div class="burst">${Array.from({ length: 14 }, (_, i) => `<i style="--a:${i * 360 / 14}deg;--d:${i % 4}"></i>`).join('')}</div>
       <div class="medal">${icon(ach[0]?.icon || 'sparkle')}</div>
       <div class="txt"><small>${gold ? 'Erfolg freigeschaltet!' : 'Neue Entdeckung!'}${c.auto ? ' · nach dem Stacken' : ''}</small>
-        <b>${esc(gold ? ach.map(a => a.title).join(' · ') : c.new.join(', '))}</b>
-        <span class="mut sm">${esc(gold ? ach[0].description : c.title)}</span></div>
+        <b>${esc(gold ? (ach.length > 3 ? `${ach.length} neue Erfolge` : ach.map(a => a.title).join(' · ')) : c.new.join(', '))}</b>
+        <span class="mut sm">${esc(gold ? (ach.length > 3 ? ach.slice(0, 3).map(a => a.title).join(' · ') + ' …' : ach[0].description) : c.title)}</span></div>
       <button type="button" class="x" title="Schließen" aria-label="Schließen">×</button><i class="bar"></i>`;
     let done = false;
     const close = () => {

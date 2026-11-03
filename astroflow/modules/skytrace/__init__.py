@@ -24,8 +24,8 @@ class Module(BaseModule):
     name = "SkyTrace"
     description = "Lichtspuren und bewegte Objekte in Bildfolgen erkennen und mit Katalogen abgleichen."
     icon = "orbit"
-    scripts = ("evidence.js", "skytrace.js")
-    styles = ("evidence.css", "skytrace.css")
+    scripts = ("evidence.js", "skytrace.js", "skytrace-3d.js")
+    styles = ("evidence.css", "skytrace.css", "skytrace-3d.css")
 
     def __init__(self, ctx):
         super().__init__(ctx)

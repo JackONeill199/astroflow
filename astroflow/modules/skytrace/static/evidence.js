@@ -120,8 +120,17 @@ window.AstroEvidence=(()=>{
   viewport.onwheel=e=>{if(!e.ctrlKey)return;e.preventDefault();scale=Math.max(.05,Math.min(16,scale*(e.deltaY<0?1.15:1/1.15)));draw();};
   return {tools,label,set(element,width,height,reset=true){content=element;content.classList.add('inspection-content');content.style.transformOrigin='top left';canvas.replaceChildren(content);w=width;h=height;if(reset)fit();else draw();},fit};
  }
- function openImage(c,index=0,overlay=true){
-  const viewer=inspection(c.id+' · Originalausschnitt'),toggle=node('input');toggle.type='checkbox';toggle.checked=overlay;const label=node('label');label.append(toggle,document.createTextNode(' Overlay'));const frameLabel=node('span');
+ function frameImage(c,f,full=false){
+  if(!full)return f;
+  if(!f.full_image)return null;
+  const [x,y]=c.crop||[0,0],o=f.overlay,overlay=o?{...o}:null;
+  if(o?.points)overlay.points=o.points.map(p=>[p[0]+x,p[1]+y]);
+  if(o?.box)overlay.box=[o.box[0]+x,o.box[1]+y,o.box[2],o.box[3]];
+  return {...f,...f.full_image,url:f.full_image.url||f.full_image.image,overlay};
+ }
+ function openImage(c,index=0,overlay=true,full=false){
+  if(full){const current=c.frames[index]?.index,frames=c.frames.map(f=>frameImage(c,f,true)).filter(Boolean);if(!frames.length)return;index=Math.max(0,frames.findIndex(f=>f.index===current));c={...c,frames};}
+  const viewer=inspection(c.id+(full?' · Ganzes Bild':' · Originalausschnitt')),toggle=node('input');toggle.type='checkbox';toggle.checked=overlay;const label=node('label');label.append(toggle,document.createTextNode(' Overlay'));const frameLabel=node('span');
   viewer.tools.append(button('← Vorher',()=>show(index-1,false)),button('Nachher →',()=>show(index+1,false)),label,frameLabel);
   function show(i,reset){index=(i+c.frames.length)%c.frames.length;const f=c.frames[index],group=node('div',undefined,'inspection-image'),image=node('img');image.src=f.url||f.image;image.alt=c.id+' · Bild '+f.index;image.draggable=false;group.append(image);
    const svg=shape('svg',{viewBox:`0 0 ${f.width} ${f.height}`,preserveAspectRatio:'none'});svg.style.display=toggle.checked?'':'none';const o=f.overlay;
@@ -220,5 +229,5 @@ window.AstroEvidence=(()=>{
   }
   const data=node('details'),summary=node('summary','Alle gespeicherten Messdaten und Grenzen');data.append(summary,node('pre',JSON.stringify({method:c.method,evidence:e,world_path:c.world_path,catalogs:c.catalogs},null,2)));section.append(data);host.append(section);
  }
- return {render,openImage,skyPoint,motionLabel,analysisDetails,hoverDetails:analysisDetails,videoOverlay,speed,setOverlayVisible,classification,candidateName:c=>classification(c).name,displaySettings,setDisplaySettings,speedText,drawSatellites};
+ return {render,openImage,frameImage,skyPoint,motionLabel,analysisDetails,hoverDetails:analysisDetails,videoOverlay,speed,setOverlayVisible,classification,candidateName:c=>classification(c).name,displaySettings,setDisplaySettings,speedText,drawSatellites};
 })();

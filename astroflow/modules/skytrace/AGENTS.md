@@ -37,6 +37,69 @@ Oberfläche** (`statsView` in `skytrace.js`), damit Zahlen und Kandidatenfilter 
 sonst früheste Kandidatenzeit − 12 h. Cache je Lauf nach Dateizeiten (Arbeitsinstanz: 119 Läufe, 0,4 s erstmals, danach 0,07 s).
 Route `#/skytrace/statistik` steht vor der Lauf-Route. Test: `test_skytrace.py`, Ansicht in `test_ui_layout.py`.
 
+## Vollbild-Zeitreihe und Video (03.11.2026)
+Dropdown „Analyse“: `POST /reanalyse` (`check:true` prüft nur) liest über `reanalysis.prepare` alle akzeptierten und
+ausgeschlossenen Originale aus den Manifesten. Keine Teilausführung bei fehlenden oder mehrdeutigen Dateien; optionaler
+Ersatzordner ordnet Dateinamen zu (automatisches fünfstelliges Präfix darf fehlen). Neuer Lauf erhält `eingang.json`;
+`analyse --input-manifest` übergibt exakt diese Bildgruppen und Bildraten an `sequence`, ohne weitere Dateien aus dem
+Ordner einzulesen. Alte Ergebnisse und Formularvorgaben bleiben erhalten. „Zeitreihen aktualisieren“ bleibt `/refresh`.
+`candidate_report` speichert unbeschriftete JPG-Vollbilder in Analyseauflösung je Originalnummer einmal unter
+`<Beobachtung>/vollbilder/`; `frames[].full_image` enthält relativen Pfad und Maße. Ausschnitt-PNGs bleiben erhalten.
+API ergänzt sichere URLs, übernimmt ältere `context_image`-Trefferbilder und liefert echte `video_seconds` aus
+akzeptierten `frames.jsonl`-Einträgen (Cache nach Größe/Dateizeit). Niemals Originalnummer/fps rechnen: ausgelassene
+Aufnahmen stehen nicht im Video. Ausgeschlossene Kontextbilder haben keinen Video-Sprung.
+App: Ganzes Bild/Ausschnitt, Treffer-Markierungen, Sprung zur Videostelle; ältere Nachbarn ohne JPG aus dem sauberen
+Video anzeigen. `AstroEvidence.frameImage` verschiebt Ausschnitt-Markierungen um `crop` in Vollbildkoordinaten und
+wird auch im Bericht verwendet. SVG-Hintergrund bleibt `pointer-events:none`, nur Beschriftungen fangen Mausereignisse
+ab; sonst verdeckt die Overlay-Fläche die nativen Video-Bedienelemente. Medienbeobachter beim Tabwechsel aufräumen.
+Prüfungen: `test_skytrace_frames.py`, `test_skytrace_video_ui.py` (synthetisches 3-s-H.264-Video, auch Handybreite).
+
+## Kurze helle Spuren (03.11.2026)
+`line_detection.compact_trails` ergänzt nur bei registriertem Vergleich die bestehende Hough-Suche: native Auflösung,
+beidseitig > 6× robustes Rauschen in Original und Differenz, schmale gerade Komponenten mit 12–90 px Länge, mindestens
+4:1, keine Einzelpixel-Grate, lokale Struktur ≤ `CALM_LIMIT`, integrierter Kontrastwert ≥ 12. Lange Hough-Spuren und
+ihre Schwellen bleiben unverändert; kompakte Fragmente bereits erkannter Spuren werden zusammengeführt. Anlass:
+NGC 1499, kurze helle Spur im letzten Bild eines 61-Frame-Laufs (in Originalkopien geprüft). Keine Identitätsbehauptung.
+`tests/test_skytrace_compact.py` läuft bei vorhandenem OpenCV mit pytest oder direkt im Engine-Interpreter.
+`frame_quality.ensemble_star_tails` prüft zusätzlich bis zu 20 helle, isolierte Sternumgebungen (Radius 64 px):
+Median der auf Kernhelligkeit normierten Profile, Richtungsprofile von 10–56 px mit seitlichem Hintergrund.
+Verlangt Score ≥ 6, vier positive Radialabschnitte und deutliche Asymmetrie gegenüber der Gegenrichtung; zusätzlich
+mindestens fünf individuell belegte Schweife (Score ≥ 5) in drei Quadranten und über >35 % beider Bildachsen.
+So werden auch unterbrochene lange Schweife außerhalb der bisherigen Kernprüfung als globale Bewegung verworfen.
+Test: `test_skytrace_field_motion.py`; scharfe Felder, mehrere echte Linien, symmetrische Beugung und lokale/ungeordnete
+Schweife bleiben erhalten. Originalbefund: drei Fehlkandidaten in einem verwackelten NGC-1499-Bild.
+Ersatzdateien bei `/reanalyse` müssen anhand FITS-DATE-OBS zur gespeicherten UTC passen: gleiche Dateinamen werden
+in unterschiedlichen Nächten wiederverwendet. Ohne prüfbare Identität keine Zuordnung allein nach Namen.
+Für den Differenzvergleich hat die direkt gemessene Registrierung zum Nachbarbild Vorrang vor der Differenz zweier
+globaler Referenzlösungen. Letztere können gegeneinander springen (bestätigt: lange blasse NGC-1499-Spur unten links,
+Videobild 57). Globale Astrometrie für bewegte Punkte bleibt getrennt. Regression mit künstlich springenden Referenzfits.
+
+## 3D-Ansicht (`orbit3d.py`, `static/skytrace-3d.js|css`, 03.11.2026, Nutzerwunsch „Spielerei“, Bahn muss stimmen)
+`GET /api/skytrace/orbit3d?run=<Lauf>&key=<Ordner>/<K-Nr>` → `Controller.orbit3d` → `orbit3d.payload_for` (Kandidat,
+WCS aus `<Beobachtung>/platesolve`, Bildecken der Trefferaufnahme über `context_image.reference_to_current`) → `build`.
+Fehlt etwas (Standort, Zuordnung, Zeit, Plate-Solving): `{ok:false, reason}` statt Fehler. `run_data` setzt je Kandidat
+`view3d` (`orbit3d.available`); nur dann zeigt das Detail den Knopf. Rechnung: numpy + erfa (aus astropy) + `sgp4`;
+fehlt `sgp4` im Server, läuft `orbit3d.py` als Skript im Engine-Interpreter (JSON stdin/stdout).
+- **Bezugssystem D** = erdfest (ECEF) zu t0, danach raumfest (TEME um GMST(t0) gedreht). Erde dreht sich darin mit
+  `earth_rate`·(t − t0); Bahnen geschlossen; das nachgeführte Blickfeld zeigt fest (ICRS → TEME per `pnm06a` + `eqeq94`),
+  sein Ursprung wandert mit dem Standort. Erdfestes (Standort, Meteore, Flugzeuge) kommt als ECEF. Frontend: three = (x, z, −y)/R.
+  UT1 ≈ UTC, keine Polbewegung. Geprüft gegen astropy: Satellit 9 m, Zenitrichtung 16″ (Aberration), Sonne 0,006°.
+- t0 = Belichtungsbeginn (`satellites.exposure_start`, sonst wie `motion_plausibility.exposure_start`) + Mittel von
+  `passage_seconds` des besten Treffers. Je Satellit (≤ 5 Treffer): Umlauf (360 Punkte), ±10 min alle 2 s
+  (Position, Höhe, Geschwindigkeit, Entfernung), Durchstoßstücke im Blickfeld (±2 min, 0,05 s, Punkt-im-Viereck in
+  gnomonischer Projektion, über dem Horizont).
+- **Bahnelemente:** neue Abgleiche speichern `matches[].tle` (`sgp4.exporter.export_tle`), Meteore `trajectory`
+  (GMN Anfang/Ende + Zeit), Flugzeuge `track` ([t, lat, lon, Höhe m]). Ältere Läufe: `archive_satrec` sucht ohne Netz in
+  `catalog_cache/archives/orbits-<Datum>.json` (wie `satellite_archive.model_from_record`) und `eth-<hash>.json`
+  (Schlüssel wie `eth_tles`); sonst `missing[].reason` → Hinweis in der Ansicht.
+- Frontend: eigener `<dialog class="st3d">` (keine Route, damit wenig Konflikte mit dem UI-Umbau), three.js r160 +
+  OrbitControls (Import auf `./three.module.min.js` umgeschrieben) und Erdtextur unter `static/vendor/` (Lizenzen in
+  `vendor/README.md`), erst beim Öffnen per `import()` geladen. Zeichnet nur bei Änderung; Kamerafahrten entfallen bei
+  `prefers-reduced-motion`, kein Auto-Drehen. Kegellänge = 1,35 × Entfernung des Satelliten im Blickfeld (echte Öffnung,
+  daher erst in „Blickfeld“ sichtbar). Atmosphärensaum blendet sich nahe der Erde aus. `dialog._st3d.state()` für Tests.
+- Tests: `test_skytrace_3d.py` (gegen astropy, alte Läufe, Hinweise), `test_skytrace_3d_ui.py` (Playwright, 375/1440 px).
+  Offen: Flugzeug- und Meteordarstellung nur mit synthetischen Daten geprüft; kein Uhrversatz-Ausgleich in der Ansicht.
+
 ## Automatisch nach dem Stacken (`auto.py`, 28.10.2026)
 - Ereignis `stacking.stacked` → `AutoAnalysis.stacked`: noch nicht übergebene Light-Aufnahmen (Dienst `project_frames`, Merkliste
   `<AstroFlow-Daten>/skytrace/auto.json` → `sent`) je Nacht als Ordner `<Nacht>_observation_<Objekt>` (wie Stellina, damit der Titel der Objektname ist; ältere Läufe `<Objekt>_observation_<Nacht>-p<id>-<zeit>` erkennt `short_name`) aus **Hardlinks**

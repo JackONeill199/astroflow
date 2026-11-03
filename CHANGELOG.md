@@ -3,13 +3,67 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
-## 0.13.1 – 03.11.2026
+## 0.16.1 – 03.11.2026
 
 ### Behoben
 - **SkyTrace schneller:** Der Liniendetektor prüft mögliche Spurabschnitte gemeinsam vor und verwendet Sternmasken
   mehrfach. Gewinner werden mit der bisherigen Rechnung exakt nachgeprüft; Schwellen, Messwerte und Erkennungsregeln
   bleiben unverändert. Im synthetischen A/B-Test rund 22 % weniger Zeit für die Liniensuche; keine Aussage über die
   Dauer eines gesamten Laufs mit Modell, Videos und Katalogabfragen.
+
+## 0.16.0 – 03.11.2026
+
+### Neu
+- **SkyTrace 3D-Ansicht:** Kandidaten mit zugeordnetem Satelliten (bzw. Meteorbahn oder Flugzeugspur) zeigen
+  „3D-Ansicht“: drehbare Erde mit Tag-Nacht-Grenze zur Aufnahmezeit, Standort, Teleskop-Blickfeld als Kegel bis in
+  Satellitenhöhe und die per SGP4 berechnete Bahn – ganzer Umlauf, Stück im Blickfeld hervorgehoben. Zeitregler
+  ±10 min mit Abspielen, Ansichten Erde/Blickfeld/Folgen, Infokarte mit Höhe, Geschwindigkeit, Entfernung,
+  NORAD-Nummer und Alter der Bahnelemente. Läuft offline (three.js und Erdtextur liegen bei).
+- Neue Katalogabgleiche speichern die Bahnelemente (TLE), Meteor-Flugbahnen und Flugzeugspuren mit. Ältere Läufe
+  holen die Bahn aus dem lokalen Bahnarchiv, sonst erklärt ein Hinweis, dass „Zeitreihen aktualisieren“ sie ergänzt.
+- Python-Paket `sgp4` in `requirements.txt` (Bahnrechnung im Server; fehlt es, rechnet der SkyTrace-Interpreter).
+
+## 0.15.0 – 03.11.2026
+
+### Neu
+- **Sage · Sammlung & Erfolge verständlicher:** Das Kachelraster unter dem Meilenstein-Balken ist jetzt ein eigener Abschnitt
+  „Messier-Katalog · x von 110“ mit Erklärung, Nummer auf jeder Kachel, deinem eigenen Bild auf gefüllten Kacheln und dem Filter
+  „Fehlende“. Klick öffnet den Enzyklopädie-Eintrag, leere Kacheln ohne Eintrag melden „noch nicht fotografiert“.
+- **Messier-Zuordnung robuster:** Objekte zählen auch unter NGC/IC-Namen (NGC 224 = M31) oder über die Kennungen der Wissensbasis.
+- **26 neue Erfolge** in Gruppen (Sammlung, Kataloge, Objektarten, Himmel, Aktivität, Beobachtung): Messier 10/50/alle 110, Caldwell,
+  erste Galaxie/Planetarischer Nebel/Kugelsternhaufen/offener Haufen/Supernova-Überrest, Sternbilder, Entfernung über 10 bzw. 100 Mio.
+  Lichtjahre, Beobachtungsnächte, Nachteule, alle Jahreszeiten, Belichtung 1 h/10 h je Objekt und 100 h insgesamt u. a.
+  Gesperrte Erfolge zeigen ihren Fortschritt („17 / 25“). Für den Bestand werden neue Erfolge beim nächsten Laden rückwirkend
+  mit plausiblem Datum freigeschaltet und einmal gesammelt gefeiert.
+- **Meilensteine** gehen über 100 hinaus (150, 250, 500, 1000); „Alle erreicht“ erscheint erst nach dem letzten.
+
+## 0.14.0 – 03.11.2026
+
+### Neu
+- **SkyTrace erneut analysieren:** Dropdown „Analyse“ mit vollständiger neuer Erkennung oder schneller Aktualisierung
+  der Zeitreihen. Neuer Lauf aus den bisherigen Originalaufnahmen einschließlich ausgeschlossener Bilder; fehlen
+  Originale, lässt sich ihr Ordner wählen. Mehrdeutige oder fehlende Dateien verhindern einen unvollständigen Neustart;
+  Wiederholungen zählen in der Statistik auch nach einem Ordnerwechsel nur einmal.
+- **SkyTrace-Vollbild-Zeitreihe:** Kandidaten zeigen wahlweise die ganze Aufnahme in Analyseauflösung oder den
+  Ausschnitt. Miniaturen, Treffer-Sprung und „Im Video öffnen“ führen direkt zur gewählten Aufnahme; ausgelassene
+  Bilder werden anhand der gespeicherten Videozeiten berücksichtigt. Neue Berichte speichern gemeinsame Vollbilder,
+  ältere Läufe nutzen vorhandene Vergleichsbilder oder das unbeschriftete Video.
+
+### Behoben
+- **SkyTrace-Teleskopbewegung:** Zusätzliche Prüfung des gemeinsamen Profils heller Sterne erkennt auch lange,
+  schwache und unterbrochene Schweife bei noch runden Sternkernen. Verlangt ein asymmetrisches Muster im Medianprofil
+  und unabhängige Belege an mindestens fünf Sternen in drei Quadranten; betroffene Bilder werden als verwackelt
+  ausgeschlossen. Echte Einzelspuren und symmetrische Beugungsmuster bleiben geschützt.
+- **Originalordner aus falscher Nacht:** Bei Ersatzdateien genügt ein gleicher FITS-Dateiname nicht mehr.
+  Das tatsächliche Aufnahmedatum muss zur gespeicherten Originalaufnahme passen, sonst startet keine Wiederholung.
+- **SkyTrace-Video mit Overlay:** Die transparente Overlay-Fläche blockiert die Videosteuerung nicht mehr;
+  Beschriftungen bleiben interaktiv. Wiedergabe und Position bleiben beim Umschalten erhalten.
+- **Kurze helle Spuren:** Zusätzliche Prüfung in nativer Analyseauflösung für schmale transiente Grate unterhalb
+  der bisherigen Hough-Mindestlänge. Verlangt übereinstimmende Form-/Kontrastbelege im Original und im registrierten
+  Differenzbild sowie ruhigen Hintergrund. Als unbestätigte Spur, ohne automatische Objektidentifikation.
+- **NGC-1499-Spur übersehen:** Für den Differenzvergleich bleibt die direkte Registrierung benachbarter Aufnahmen
+  erhalten. Sie wird nicht mehr durch die Differenz zweier unabhängig bestimmter Referenzlösungen ersetzt; ein
+  Sprung dieser Lösungen hatte im bestätigten Fall die Sterne um rund 22 Pixel versetzt und die schwache Spur verdeckt.
 
 ## 0.13.0 – 03.11.2026
 

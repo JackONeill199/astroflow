@@ -181,10 +181,61 @@ def _plane(p1,p2,width,height,blink,scale,direction,snr=None,threshold=BLINK_SCO
                 short_trail=False,blink=info,method='Einzelbild: Linienprofil mit regelmäßig wiederkehrenden Blitzen',_direction=direction)
 
 
+def compact_trails(original,difference):
+    """Kurze, helle Grate in nativer Analyseauflösung; nur mit unabhängiger temporaler Bestätigung.
+
+    Die Hough-Suche verlangt lange Abschnitte. Hier müssen zugleich Original und registrierte Differenz
+    starkes Signal, eine schmale gerade Form und einen ruhigen lokalen Hintergrund zeigen.
+    """
+    smooth=gaussian_filter(original,.7)
+    source=smooth-gaussian_filter(smooth,8)
+    diff=gaussian_filter(difference,.7)
+    def noise(a):
+        sample=a[::2,::2]
+        return max(.1,float(1.4826*np.median(np.abs(sample-np.median(sample)))))
+    source_noise,diff_noise=noise(source),noise(diff)
+    normalized=source/source_noise
+    mask=((source>6*source_noise)&(diff>6*diff_noise)).astype('uint8')
+    mask[:16]=mask[-16:]=0;mask[:,:16]=mask[:,-16:]=0
+    count,labels,stats,_=cv2.connectedComponentsWithStats(mask,8)
+    height,width=original.shape;found=[]
+    for component in range(1,count):
+        x,y,w,h,area=stats[component]
+        if not 12<=area<=500 or max(w,h)<12 or max(w,h)>90: continue
+        yy,xx=np.where(labels[y:y+h,x:x+w]==component)
+        points=np.column_stack([xx+x,yy+y]).astype('float64')
+        values,vectors=np.linalg.eigh(np.cov(points.T))
+        if values[0]<.4 or values[1]<16*values[0]: continue  # keine Einzelpixel-Grate / runden Sternreste
+        direction=vectors[:,1];normal=np.array([-direction[1],direction[0]])
+        if min(abs(direction[0]),abs(direction[1]))<.0175: continue  # kurze Auslesezeilen/-spalten
+        center=points.mean(axis=0);along=(points-center)@direction
+        a,b=float(along.min()),float(along.max())
+        length=b-a
+        if not 12<=length<90: continue
+        positions=center+np.linspace(a,b,max(2,int(length)))[:,None]*direction
+        def sample(offset):
+            xy=positions+normal*offset
+            return cv2.remap(normalized,xy[:,0].astype('float32')[None],xy[:,1].astype('float32')[None],cv2.INTER_LINEAR)[0]
+        ridge=(sample(-1)+sample(0)+sample(1))/3
+        side=(sample(-7)+sample(-5)+sample(5)+sample(7))/4
+        score=float(np.mean(np.clip(ridge-side,-8,8))*np.sqrt(length/4))
+        if score<12: continue
+        # Sternhalos, Nebelkanten und lokale Unruhe sind keine kurze freie Spur.
+        if local_structure(normalized,positions,normal)>CALM_LIMIT: continue
+        p1=center+direction*a;p2=center+direction*b
+        found.append(dict(kind='trail',label='Kurze transiente Spur (unbestätigt)',confidence=None,
+            box=[max(0,float(points[:,0].min())-8)/width,max(0,float(points[:,1].min())-8)/height,
+                 min(width,float(points[:,0].max())+8)/width,min(height,float(points[:,1].max())+8)/height],
+            segment=[p1.tolist(),p2.tolist()],line_snr=round(score,2),line_threshold=12.,short_trail=True,
+            method='Kurze Spur: native Bildauflösung + registrierte Differenz + schmaler Grat im Original'))
+    return found
+
+
 def detect_lines(image, comparison=None, transform=None):
     image=correct_readout_banding(image)
     original=image.copy()
-    if comparison is not None and transform is not None and comparison.shape==image.shape:
+    temporal=comparison is not None and transform is not None and comparison.shape==image.shape
+    if temporal:
         previous=cv2.warpAffine(correct_readout_banding(comparison),transform,(image.shape[1],image.shape[0]),borderMode=cv2.BORDER_REFLECT)
         image=(image.astype('float32')-np.median(image))-(previous-np.median(previous))
     scale=min(1.,768/image.shape[1])
@@ -218,7 +269,8 @@ def detect_lines(image, comparison=None, transform=None):
     votes[:12]=votes[-12:]=0; votes[:,:12]=votes[:,-12:]=0
     # Low vote threshold so ~100 px meteors get a line; the contrast score decides.
     lines=cv2.HoughLines(votes,1,np.pi/720,max(22,int(min(small.shape)*.042)))
-    if lines is None: return []
+    compact=compact_trails(original,image) if temporal else []
+    if lines is None: return compact
     h,w=small.shape; candidates=[]
     star_valid=(~stars).astype('uint8'); dash_valid=(~dashes).astype('uint8')
     t=np.arange(-max(h,w)*2,max(h,w)*2,dtype='float32')
@@ -310,4 +362,17 @@ def detect_lines(image, comparison=None, transform=None):
             if candidate['short_trail'] and abs(np.dot(midpoint-other.mean(axis=0),normal))<16 and b.min()-8<=midpoint@direction<=b.max()+8: duplicate=True; break
         if not duplicate: merged.append(candidate)
     for candidate in merged: candidate.pop('_direction')
+    for candidate in compact:
+        center=np.mean(candidate['segment'],axis=0)
+        if not any(overlap_segment(center,candidate['segment'],other['segment'],other.get('blink',{}).get('period_pixels',0)) for other in merged): merged.append(candidate)
     return merged
+
+
+def overlap_segment(center,segment,other,period=0):
+    delta=np.asarray(other[1])-other[0];length=float(np.linalg.norm(delta))
+    if length<=0:return False
+    direction=delta/length;normal=np.array([-direction[1],direction[0]])
+    along=float(np.dot(np.asarray(center)-other[0],direction))
+    own=np.asarray(segment[1])-segment[0]
+    margin=max(8.,float(np.linalg.norm(own))*2,float(period))  # erster/letzter Blitz bis zu einer Periode außerhalb des Fits
+    return abs(float(np.dot(own/max(np.linalg.norm(own),1e-9),direction)))>.98 and abs(float(np.dot(np.asarray(center)-other[0],normal)))<12 and -margin<=along<=length+margin
