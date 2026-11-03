@@ -97,7 +97,23 @@ fehlt `sgp4` im Server, läuft `orbit3d.py` als Skript im Engine-Interpreter (JS
   `vendor/README.md`), erst beim Öffnen per `import()` geladen. Zeichnet nur bei Änderung; Kamerafahrten entfallen bei
   `prefers-reduced-motion`, kein Auto-Drehen. Kegellänge = 1,35 × Entfernung des Satelliten im Blickfeld (echte Öffnung,
   daher erst in „Blickfeld“ sichtbar). Atmosphärensaum blendet sich nahe der Erde aus. `dialog._st3d.state()` für Tests.
-- Tests: `test_skytrace_3d.py` (gegen astropy, alte Läufe, Hinweise), `test_skytrace_3d_ui.py` (Playwright, 375/1440 px).
+- **Lauf-Ansicht (0.17.0, Nutzerwunsch: „unabhängig davon, ob ein Objekt erkannt wurde … wohin das Teleskop geschaut hat“):**
+  `GET /api/skytrace/run3d?run=&session=&focus=` → `run3d.build_run`. Je Beobachtung: Blickrichtung je Aufnahme aus
+  Referenz-WCS + `frames.jsonl.reference_to_current` (≤ `MAX_SAMPLES` 360 Stichproben, Ecken → Bildlage/Positionswinkel),
+  Az/Alt zur Belichtungsmitte (Stellina: Zeitstempel = Ende), parallaktischer Winkel (= Feldrotation einer Alt-Az-Montierung),
+  Lücken (> max(120 s, 5 × Median, 3 × Belichtung)), ausgelassene Aufnahmen aus `ausgeschlossen.jsonl`. Ohne WCS:
+  Zielkoordinate über `catalog_resolve` (Namensteile von lang nach kurz) und Bildfeld aus FOCAL/PIXSZ/NAXIS, `source='katalog'`.
+  Ziel: `catalog_resolve` (Typ) + Sage-Dienst `object_facts` (Entfernung, nur Gespeichertes). Standort: Kandidat → `resolve_site`
+  (FITS, sonst Einstellungen); fehlt er → `{ok:false, need_site}`. Treffer: `orbit3d.build` je Kandidat im gemeinsamen
+  System (`anchor` = erste Aufnahme), ±5 min, Umlauf 180 Punkte, bester Satellit je Kandidat (Fokus-Kandidat alle).
+  Ergebnis per `lru_cache` nach Dateizeiten (echter Lauf mit 8 Treffern: 0,3 s, dann 2 ms; 240 KB).
+- Frontend `SkyTrace3D.openRun(run, {focus, session, onCandidate})`; `open(run, c)` = Fokus auf den Kandidaten.
+  Kuppel (`DOME` 0,045 R) und Sternkugel (`SKY` 60 R) sind erdfest bzw. raumfest und nicht maßstäblich. Ansichten Erde/Teleskop/
+  Durchgang/Folgen, „Ziel“ beim Antippen des Ziels; Teleskop und Ziel mit lokaler Senkrechten als „oben“ (OrbitControls
+  liest `camera.up` nur beim Anlegen → `makeControls` legt sie neu an) und folgen dem Standort, wenn sich die Erde dreht.
+  „Kandidat öffnen“ setzt `focusNext` in `skytrace.js` und wechselt zum Reiter Kandidaten.
+- Tests: `test_skytrace_3d.py` (gegen astropy, alte Läufe, Hinweise), `test_skytrace_3d_run.py` (Teleskopweg gegen astropy,
+  Lücke, Bildlage, ohne Treffer/Standort/Plate-Solving), `test_skytrace_3d_ui.py` (Playwright, 375/1440 px).
   Offen: Flugzeug- und Meteordarstellung nur mit synthetischen Daten geprüft; kein Uhrversatz-Ausgleich in der Ansicht.
 
 ## Automatisch nach dem Stacken (`auto.py`, 28.10.2026)

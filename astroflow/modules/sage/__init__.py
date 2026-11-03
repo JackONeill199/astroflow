@@ -57,6 +57,16 @@ class Module(BaseModule):
         self.analyze_project = None                 # setzt api.build_router
         ctx.on("stacking.stacked", self._stacked)
         ctx.on("stacking.imported", self._stacked)
+        ctx.services["object_facts"] = self.object_facts     # SkyTrace-3D: Typ/Entfernung des Zielobjekts
+
+    def object_facts(self, name: str) -> dict | None:
+        """Kurzsteckbrief aus der Wissensbasis (nur Gespeichertes, keine Netzabfrage)."""
+        e = self.kb.resolve(name)
+        if not e:
+            return None
+        d = self.kb.fact(e["id"], "distance_ly")
+        return {"id": e["id"], "name": e["name"], "otype": e.get("otype_label") or None,
+                "distance": d and d["value"], "distance_ly": d and d.get("num")}
 
     def _stacked(self, project_id: int, result_id: int, name: str = ""):
         """Fertig gestacktes Bild automatisch bestimmen und in die Entdeckungen eintragen."""

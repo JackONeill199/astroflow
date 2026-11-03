@@ -1,16 +1,21 @@
 'use strict';
-/* SkyTrace 3D-Ansicht: Erde zur Aufnahmezeit, Teleskop-Blickfeld und zugeordnete Bahnen (Satelliten, Meteore, Flugzeuge).
-   Die Bahnen rechnet der Server (`/api/skytrace/orbit3d`, orbit3d.py); hier wird nur gezeichnet. three.js liegt unter vendor/
-   und wird erst beim Öffnen geladen. Szene in Erdradien; Server-System D (km) → three: (x, z, −y), Nordpol = +y.
-   Die Erde dreht sich mit `earth_rate`·(t − t0), das nachgeführte Blickfeld bleibt raumfest, sein Ursprung wandert mit. */
+/* SkyTrace 3D-Ansicht eines Laufs: Erde zur Aufnahmezeit, Teleskopweg über die Nacht (Himmelskuppel über dem Standort),
+   Blickfeld mit Strahl zum Zielobjekt und alle zugeordneten Treffer (Satelliten, Meteore, Flugzeuge).
+   Gerechnet wird im Server (`/api/skytrace/run3d`, run3d.py/orbit3d.py); hier wird nur gezeichnet. three.js liegt unter
+   vendor/ und wird erst beim Öffnen geladen. Szene in Erdradien; Server-System D (km) → three: (x, z, −y), Nordpol = +y.
+   Die Erde dreht sich mit `earth_rate`·(t − anchor), das nachgeführte Blickfeld bleibt raumfest, sein Ursprung wandert mit. */
 (() => {
 const R = 6378.137, BASE = '/m/skytrace/vendor/';
+const DOME = .045, SKY = 60;                    // Himmelskuppel und Sternkugel – beide nicht maßstäblich
+const PALETTE = ['#7c9cff', '#5eead4', '#f2a6ff', '#b18cff', '#fbbf24', '#f87171', '#4ade80', '#60a5fa', '#fb923c', '#e879f9', '#a3e635', '#38bdf8'];
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const TYPES = { PAY: 'Satellit', 'R/B': 'Raketenstufe', DEB: 'Trümmerteil', Satellit: 'Satellit', Raketenstufe: 'Raketenstufe', 'Trümmerteil': 'Trümmerteil' };
 const fmt = (v, d = 0) => Number.isFinite(v) ? v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d }) : '–';
 const utc = (t) => new Date(t * 1000).toISOString().slice(11, 19) + ' UTC';
 const rel = (s) => { const a = Math.abs(Math.round(s)); return (s < -.5 ? '−' : '+') + Math.floor(a / 60) + ':' + String(a % 60).padStart(2, '0'); };
+const dur = (s) => s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} min` : `${Math.round(s / 60)} min`;
 const compass = (az) => ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'][Math.round(az / 45) % 8];
+const angleDiff = (a, b) => ((b - a + 540) % 360) - 180;
 let lib = null;
 
 async function load() {
@@ -21,19 +26,23 @@ async function load() {
 
 function available(c) { return !!c?.view3d; }
 
-async function open(runId, c) {
+// Kandidaten-Knopf: Lauf-Ansicht mit diesem Objekt im Fokus
+function open(runId, c, opts = {}) { return openRun(runId, { ...opts, focus: c.key }); }
+
+async function openRun(runId, { focus = null, session = null, onCandidate = null } = {}) {
   const d = document.createElement('dialog');
   d.className = 'st3d';
   d.innerHTML = `<header class="st3d-head"><div style="min-width:0"><h2>${icon('globe')}<span>3D-Ansicht</span></h2>
-      <div class="mut sm st3d-sub">${esc(c.id)} · Bahn und Teleskop-Blickfeld zur Aufnahmezeit</div></div><span class="grow"></span>
-      <div class="seg st3d-views" hidden><button data-v="earth" class="on">Erde</button><button data-v="fov">Blickfeld</button><button data-v="sat">Folgen</button></div>
+      <div class="mut sm st3d-sub">Teleskop, Blickfeld und Bahnen zur Aufnahmezeit</div></div><span class="grow"></span>
+      <div class="seg st3d-views" hidden><button data-v="earth" class="on">Erde</button><button data-v="scope">Teleskop</button><button data-v="pass">Durchgang</button><button data-v="sat">Folgen</button></div>
       <button class="btn ghost icon" data-x title="Schließen (Esc)" aria-label="Schließen">${icon('x')}</button></header>
-    <div class="st3d-stage"><canvas aria-label="Drehbare 3D-Erde mit Bahnen und Blickfeld"></canvas><div class="st3d-labels"></div>
-      <div class="st3d-msg"><span class="spinner"></span>Bahnen werden berechnet …</div><div class="st3d-card" hidden></div>
-      <div class="st3d-help mut">Ziehen dreht · Mausrad/zwei Finger zoomen · Antippen zeigt Details</div></div>
+    <div class="st3d-stage"><canvas aria-label="Drehbare 3D-Erde mit Teleskopweg, Blickfeld und Bahnen"></canvas><div class="st3d-labels"></div>
+      <div class="st3d-msg"><span class="spinner"></span>Teleskopweg und Bahnen werden berechnet …</div><div class="st3d-card" hidden></div>
+      <div class="st3d-help mut">Ziehen dreht · Mausrad/zwei Finger zoomen · Antippen zeigt Details · Kuppel und Himmel nicht maßstäblich</div></div>
     <div class="st3d-bar" hidden><button class="btn icon ghost sm" data-play title="Abspielen" aria-label="Abspielen">${icon('play')}</button>
-      <div class="st3d-range"><i class="st3d-exp"></i><input type="range" aria-label="Zeit um die Aufnahme"></div>
-      <span class="st3d-time tnum"></span><select aria-label="Abspielgeschwindigkeit"><option value="1">1×</option><option value="10" selected>10×</option><option value="60">60×</option></select></div>
+      <div class="st3d-range"><canvas class="st3d-strip" aria-hidden="true"></canvas><input type="range" aria-label="Zeit der Beobachtung"></div>
+      <span class="st3d-time tnum"></span><select aria-label="Abspielgeschwindigkeit"><option value="1">1×</option><option value="10">10×</option>
+        <option value="60">60×</option><option value="300" selected>300×</option><option value="1200">1200×</option></select></div>
     <div class="st3d-foot"><div class="st3d-legend"></div><p class="st3d-note mut sm"></p></div>`;
   document.body.append(d);
   const $d = (s) => d.querySelector(s);
@@ -42,16 +51,20 @@ async function open(runId, c) {
   $d('[data-x]').onclick = close;
   d.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
   d.showModal();
-  const fail = (text) => { $d('.st3d-msg').innerHTML = `${icon('alert')}<span>${esc(text)}</span>`; $d('.st3d-msg').classList.add('hint'); };
+  const fail = (text, link) => {
+    $d('.st3d-msg').innerHTML = `${icon('alert')}<span>${esc(text)}${link ? ` <a href="${link[1]}">${esc(link[0])}</a>` : ''}</span>`;
+    $d('.st3d-msg').classList.add('hint'); $d('.st3d-msg a')?.addEventListener('click', close);
+  };
   let data;
-  try { data = await api(`/skytrace/orbit3d?run=${encodeURIComponent(runId)}&key=${encodeURIComponent(c.key)}`); }
+  const q = `run=${encodeURIComponent(runId)}` + (focus ? `&focus=${encodeURIComponent(focus)}` : '') + (session ? `&session=${encodeURIComponent(session)}` : '');
+  try { data = await api('/skytrace/run3d?' + q); }
   catch (e) { fail(e.message); return; }
   if (!d.isConnected) return;
-  if (!data.ok) { fail(data.reason); return; }
+  if (!data.ok) { fail(data.reason, data.need_site ? ['Standort eintragen →', '#/settings/skytrace'] : null); return; }
   let mods;
   try { mods = await load(); } catch (e) { fail('3D-Bibliothek konnte nicht geladen werden: ' + e.message); return; }
   if (!d.isConnected) return;
-  try { view = scene(d, data, mods); d._st3d = view; }
+  try { view = scene(d, data, mods, { focus, onCandidate: onCandidate && ((key) => { close(); onCandidate(key); }) }); d._st3d = view; }
   catch (e) { fail('3D-Darstellung nicht möglich (WebGL nicht verfügbar?): ' + e.message); return; }
   $d('.st3d-msg').hidden = true;
 }
@@ -64,8 +77,8 @@ function glowTexture(THREE) {
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 
-function scene(d, data, { THREE, OrbitControls }) {
-  const $d = (s) => d.querySelector(s), stage = $d('.st3d-stage'), canvas = $d('canvas'), labelsHost = $d('.st3d-labels');
+function scene(d, data, { THREE, OrbitControls }, { focus, onCandidate }) {
+  const $d = (s) => d.querySelector(s), stage = $d('.st3d-stage'), canvas = $d('.st3d-stage canvas'), labelsHost = $d('.st3d-labels');
   const V = (p) => new THREE.Vector3(p[0] / R, p[2] / R, -p[1] / R);            // D (km) → Szene
   const U = (p) => new THREE.Vector3(p[0], p[2], -p[1]).normalize();            // Richtung
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -73,12 +86,21 @@ function scene(d, data, { THREE, OrbitControls }) {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   const sc = new THREE.Scene(); sc.background = new THREE.Color('#03050b');
   const camera = new THREE.PerspectiveCamera(40, 1, .001, 400);
-  const controls = new OrbitControls(camera, canvas);
-  controls.enableDamping = false; controls.rotateSpeed = .6; controls.zoomSpeed = .9; controls.minDistance = .002; controls.maxDistance = 60;
+  // OrbitControls übernimmt camera.up nur beim Anlegen → für die Teleskop-Ansicht (lokale Senkrechte oben) neu anlegen
+  let controls = null;
+  function makeControls(up) {
+    const target = controls ? controls.target.clone() : new THREE.Vector3();
+    controls?.dispose(); camera.up.copy(up);
+    controls = new OrbitControls(camera, canvas); controls.target.copy(target);
+    controls.enableDamping = false; controls.rotateSpeed = .6; controls.zoomSpeed = .9; controls.minDistance = .002; controls.maxDistance = 90;
+    controls.addEventListener('change', () => { S.dirty = true; });
+    controls.addEventListener('start', () => { S.fly = null; });
+  }
+  makeControls(new THREE.Vector3(0, 1, 0));
   const glow = glowTexture(THREE), disposables = [glow];
   const keep = (x) => { disposables.push(x); return x; };
-  const t0 = data.t0, [tMin, tMax] = data.window;
-  const S = { t: t0, playing: false, last: 0, raf: 0, dirty: true, sel: null, mode: 'earth' };
+  const anchor = data.anchor, [tMin, tMax] = data.window, P = data.pointing;
+  const S = { t: anchor, playing: false, last: 0, raf: 0, dirty: true, sel: null, mode: 'earth', k: 0 };
 
   // ---- Sterne, Licht, Erde ----
   { const n = 1600, pos = new Float32Array(n * 3); let s = 7;
@@ -95,7 +117,6 @@ function scene(d, data, { THREE, OrbitControls }) {
   // WGS84-Ellipsoid (Polradius b/a): ECEF-Positionen von Standort, Flugzeugen, Meteoren liegen sonst in hohen Breiten unter der Kugel
   const globe = new THREE.Mesh(keep(new THREE.SphereGeometry(1, 96, 64)), keep(new THREE.MeshPhongMaterial({ map: tex, color: '#ffffff', specular: '#223044', shininess: 8 })));
   globe.scale.set(1, 6356.752 / R, 1); earth.add(globe);
-  // Atmosphärensaum (additiv, Rückseite)
   const atmo = { value: 1 };                          // aus der Nähe ausblenden (Saum wird sonst grell)
   sc.add(new THREE.Mesh(keep(new THREE.SphereGeometry(1.035, 64, 48)), keep(new THREE.ShaderMaterial({
     side: THREE.BackSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, uniforms: { k: atmo },
@@ -107,179 +128,238 @@ function scene(d, data, { THREE, OrbitControls }) {
   const line = (pts, color, opacity = 1, parent = sc) => { const g = keep(new THREE.BufferGeometry().setFromPoints(pts));
     const l = new THREE.Line(g, keep(new THREE.LineBasicMaterial({ color, transparent: opacity < 1, opacity }))); parent.add(l); return l; };
   const labels = [];
-  const label = (text, color, obj, select) => { const b = document.createElement('button'); b.className = 'st3d-lbl'; b.textContent = text; b.style.setProperty('--c', color);
+  const label = (text, color, obj, select, sub) => { const b = document.createElement('button'); b.className = 'st3d-lbl'; b.textContent = text; b.style.setProperty('--c', color);
+    if (sub) { const s = document.createElement('small'); s.textContent = sub; b.append(s); }
     b.onclick = () => select(); labelsHost.append(b); const L = { el: b, obj }; labels.push(L); return L; };
 
-  // ---- Standort + Blickfeld ----
+  // ---- Standort und Himmelskuppel (erdfest, lokales Horizontsystem) ----
   const obsLocal = V(data.observer).multiplyScalar(1.0004);
-  const observer = sprite('#f2d385', .028, earth); observer.position.copy(obsLocal);
-  const items = [];
-  const scope = { kind: 'scope', name: 'Teleskop', color: '#f2d385', obj: observer };
-  items.push(scope);
-  const sats = data.satellites.map((s) => ({ ...s, kind: 'sat' }));
-  // Kegellänge: bis hinter den Satelliten, der das Blickfeld durchquert (sonst den besten Treffer)
-  const primary = sats.find(s => s.in_fov) || sats[0];
-  const reach = Math.max(600, ...(primary ? [primary.at_t0.range_km * 1.35] : []), ...(data.meteors.length ? [400] : []), ...(data.aircraft.length && !sats.length ? [80] : []));
-  const fov = new THREE.Group(); sc.add(fov);
-  const corners = data.fov.corners.map(U), bore = U(data.fov.boresight), L = reach / R;
-  { const far = corners.map(c => c.clone().multiplyScalar(L / c.dot(bore)));
-    const pos = [], edges = [];
-    for (let i = 0; i < 4; i++) { const a = far[i], b = far[(i + 1) % 4]; pos.push(0, 0, 0, a.x, a.y, a.z, b.x, b.y, b.z); edges.push(0, 0, 0, a.x, a.y, a.z, a.x, a.y, a.z, b.x, b.y, b.z); }
-    const g = keep(new THREE.BufferGeometry()); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    fov.add(new THREE.Mesh(g, keep(new THREE.MeshBasicMaterial({ color: '#f2d385', transparent: true, opacity: .14, side: THREE.DoubleSide, depthWrite: false }))));
-    const e = keep(new THREE.BufferGeometry()); e.setAttribute('position', new THREE.Float32BufferAttribute(edges, 3));
-    fov.add(new THREE.LineSegments(e, keep(new THREE.LineBasicMaterial({ color: '#f2d385', transparent: true, opacity: .75 }))));
-    line([new THREE.Vector3(), bore.clone().multiplyScalar(L * 1.08)], '#f2d385', .35, fov); }
-  if (data.trail?.length > 1) {                     // gemessene Spur, auf Satellitenentfernung abgetragen
-    const dist = (primary?.at_t0.range_km || reach / 1.35) / R;
-    line(data.trail.map(p => U(p).multiplyScalar(dist)), '#ffffff', .9, fov);
-  }
-
-  // ---- Satelliten ----
-  const idx = (t) => Math.min(Math.max((t - tMin) / data.step, 0), sats[0] ? sats[0].track.length - 1 : 0);
-  const lerp = (arr, f) => { const i = Math.floor(f), k = f - i, a = arr[i], b = arr[Math.min(i + 1, arr.length - 1)];
-    return Array.isArray(a) ? a.map((v, j) => v + (b[j] - v) * k) : a + (b - a) * k; };
-  for (const s of sats) {
-    line(s.ring.map(V), s.color, .38);
-    line(s.track.map(V), s.color, .9);
-    for (const seg of s.fov_segments) {
-      const pts = seg.pos.map(V);
-      if (pts.length > 1) { const tube = keep(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), Math.max(4, pts.length), .0003, 6));
-        sc.add(new THREE.Mesh(tube, keep(new THREE.MeshBasicMaterial({ color: '#ffffff' })))); }
-      const mark = sprite('#ffffff', .022); mark.position.copy(pts[Math.floor(pts.length / 2)]);
-      s.pierce = s.pierce || pts[Math.floor(pts.length / 2)];
+  const observer = sprite('#f2d385', .026, earth); observer.position.copy(obsLocal);
+  const E = U(data.enu.east), N = U(data.enu.north), Up = U(data.enu.up);
+  const dome = new THREE.Group(); dome.position.copy(obsLocal); earth.add(dome);
+  const onDome = (az, alt, r = DOME) => { const a = az * Math.PI / 180, h = alt * Math.PI / 180;
+    return N.clone().multiplyScalar(Math.cos(h) * Math.cos(a)).add(E.clone().multiplyScalar(Math.cos(h) * Math.sin(a))).add(Up.clone().multiplyScalar(Math.sin(h))).multiplyScalar(r); };
+  for (const alt of [0, 30, 60]) line(Array.from({ length: 73 }, (_, i) => onDome(i * 5, alt)), '#9fb0d9', alt ? .18 : .45, dome);
+  for (const az of [0, 90, 180, 270]) line(Array.from({ length: 19 }, (_, i) => onDome(az, i * 5)), az ? '#9fb0d9' : '#f87171', az ? .16 : .6, dome);
+  const domeN = new THREE.Object3D(); domeN.position.copy(onDome(0, 0, DOME * 1.12)); dome.add(domeN);
+  // Weg der Blickrichtung über die Nacht, an Lücken unterbrochen
+  const gapAt = (a, b) => data.gaps.some(([g1, g2]) => a <= g1 && b >= g2);
+  { const pathMat = keep(new THREE.MeshBasicMaterial({ color: '#f2d385' }));
+    const tube = (pts) => { if (pts.length < 2) return;
+      dome.add(new THREE.Mesh(keep(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), Math.min(400, pts.length * 2), DOME * .012, 6)), pathMat)); };
+    let part = [];
+    for (let i = 0; i < P.t.length; i++) {
+      if (i && gapAt(P.t[i - 1], P.t[i])) { tube(part); part = []; }
+      part.push(onDome(P.az[i], P.alt[i]));
     }
-    s.obj = sprite(s.color, .042);
-    s.sight = line([new THREE.Vector3(), new THREE.Vector3(1, 0, 0)], s.color, .45);
-    items.push(s);
+    tube(part); }
+  const domeMark = sprite('#ffffff', .028, dome);
+  const domeRay = line([new THREE.Vector3(), new THREE.Vector3(0, 0, 1)], '#f2d385', .8, dome);
+
+  // ---- Blickfeld, Strahl zum Ziel ----
+  const hits = data.hits.map((h, i) => ({ ...h, color: PALETTE[i % PALETTE.length], on: true }));
+  const sats = hits.filter(h => h.kind === 'sat');
+  const fov = new THREE.Group(); sc.add(fov);
+  const reachKm = Math.max(800, ...sats.filter(s => s.in_fov).map(s => s.at_t0.range_km * 1.35));
+  const L = Math.min(reachKm, 4000) / R;
+  const facePos = new THREE.Float32BufferAttribute(new Float32Array(36), 3), edgePos = new THREE.Float32BufferAttribute(new Float32Array(48), 3);
+  { const g = keep(new THREE.BufferGeometry()); g.setAttribute('position', facePos);
+    fov.add(new THREE.Mesh(g, keep(new THREE.MeshBasicMaterial({ color: '#f2d385', transparent: true, opacity: .14, side: THREE.DoubleSide, depthWrite: false }))));
+    const e = keep(new THREE.BufferGeometry()); e.setAttribute('position', edgePos);
+    fov.add(new THREE.LineSegments(e, keep(new THREE.LineBasicMaterial({ color: '#f2d385', transparent: true, opacity: .75 })))); }
+  const ray = new THREE.Line(keep(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(1, 0, 0)])),
+    keep(new THREE.LineDashedMaterial({ color: '#f2d385', dashSize: .6, gapSize: .45, transparent: true, opacity: .55 })));
+  sc.add(ray);
+  // Himmelsäquator auf der Sternkugel als Orientierung, Ziel als Punkt am Himmel
+  line(Array.from({ length: 121 }, (_, i) => new THREE.Vector3(Math.cos(i / 120 * Math.PI * 2) * SKY, 0, -Math.sin(i / 120 * Math.PI * 2) * SKY)), '#7c9cff', .22);
+  const target = sprite('#f2d385', .034);
+  const bore0 = U(P.center[0]); target.position.copy(bore0.clone().multiplyScalar(SKY));
+  const tg = data.target || {};
+  const targetSub = [tg.kind, tg.distance].filter(Boolean).join(' · ') || 'Zielrichtung';
+
+  // ---- Treffer ----
+  for (const h of hits) {
+    h.group = new THREE.Group(); sc.add(h.group);
+    if (h.kind === 'sat') {
+      line(h.ring.map(V), h.color, h.alternative ? .18 : .3, h.group);
+      line(h.track.map(V), h.color, .9, h.group);
+      for (const seg of h.fov_segments) {
+        const pts = seg.pos.map(V);
+        if (pts.length > 1) h.group.add(new THREE.Mesh(keep(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), Math.max(4, pts.length), .0003, 6)), keep(new THREE.MeshBasicMaterial({ color: '#ffffff' }))));
+        h.pierce = h.pierce || pts[Math.floor(pts.length / 2)];
+        sprite('#ffffff', .02, h.group).position.copy(pts[Math.floor(pts.length / 2)]);
+      }
+      h.obj = sprite(h.color, .04);
+    } else {
+      const pts = h.ecef.map(V);
+      line(pts, h.color, 1, earth); h.obj = sprite(h.color, .03, earth); h.obj.position.copy(pts.at(-1)); h.pts = pts;
+    }
+    h.name = h.name || (h.kind === 'meteor' ? 'Meteor' : 'Flugzeug');
   }
-  // ---- Meteore und Flugzeuge (erdfest) ----
-  for (const m of data.meteors) {
-    const a = V(m.ecef[0]), b = V(m.ecef[1]);
-    line([a, b], '#ff9f6e', 1, earth); const o = sprite('#ff9f6e', .03, earth); o.position.copy(b);
-    items.push({ ...m, kind: 'meteor', color: '#ff9f6e', obj: o, name: m.name || 'Meteor' });
-  }
-  for (const a of data.aircraft) {
-    const pts = a.ecef.map(V); line(pts, '#5eead4', 1, earth); const o = sprite('#5eead4', .026, earth); o.position.copy(pts[0]);
-    items.push({ ...a, kind: 'plane', color: '#5eead4', obj: o, pts, name: a.name || 'Flugzeug' });
-  }
-  for (const it of items) it.label = label(it.name, it.color, it.obj, () => select(it));
+  const items = [{ kind: 'scope', name: 'Teleskop', color: '#f2d385', obj: observer }, { kind: 'target', name: tg.name || 'Ziel', color: '#ffe8a8', obj: target }, ...hits];
+  for (const it of items) it.label = label(it.name, it.color, it.obj, () => select(it), it.kind === 'target' ? targetSub + ' · nicht maßstäblich' : null);
+  label('N', '#f87171', domeN, () => select(items[0])).el.classList.add('st3d-lbl-n');
 
   // ---- Zeit ----
   const range = $d('.st3d-range input'), timeEl = $d('.st3d-time'), playBtn = $d('[data-play]'), speedSel = $d('.st3d-bar select');
-  range.min = tMin; range.max = tMax; range.step = .5; range.value = t0;
-  { const ex = data.exposure, span = tMax - tMin, i = $d('.st3d-exp');
-    if (ex) { i.style.left = ((ex.start - tMin) / span * 100) + '%'; i.style.width = Math.max(.6, ex.seconds / span * 100) + '%'; i.title = 'Belichtung'; } }
+  range.min = tMin; range.max = tMax; range.step = 1; range.value = anchor;
   $d('.st3d-bar').hidden = false;
-  const tmp = new THREE.Vector3(), obsW = new THREE.Vector3();
+  const strip = $d('.st3d-strip');
+  function drawStrip() {
+    const w = strip.clientWidth, h = strip.clientHeight, dpr = Math.min(devicePixelRatio || 1, 2); if (!w) return;
+    strip.width = w * dpr; strip.height = h * dpr; const g = strip.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, w, h);
+    const x = (t) => (t - tMin) / (tMax - tMin) * w;
+    g.fillStyle = '#f2d385aa'; for (const t of P.t) g.fillRect(x(t), h * .3, 1.2, h * .4);
+    g.fillStyle = '#f8717188'; for (const t of data.frames.excluded_times) g.fillRect(x(t), h * .3, 1, h * .4);
+    g.fillStyle = '#ffffff18'; for (const [a, b] of data.gaps) g.fillRect(x(a), 0, x(b) - x(a), h);
+    for (const hh of hits) { g.fillStyle = hh.color; g.fillRect(x(hh.t_pass) - 1.5, 0, 3, h); }
+  }
+  const tmp = new THREE.Vector3(), obsW = new THREE.Vector3(), bore = new THREE.Vector3();
+  const sampleAt = (t) => { let lo = 0, hi = P.t.length - 1; if (t <= P.t[0]) return 0; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (P.t[m] <= t) lo = m; else hi = m - 1; } return lo; };
+  const inPause = (t) => t < P.t[0] - 1 || t > P.t.at(-1) + data.exposure + 1 || data.gaps.some(([a, b]) => t > a + data.exposure && t < b);
   function setTime(t) {
     S.t = Math.min(Math.max(t, tMin), tMax); range.value = S.t;
-    timeEl.innerHTML = `${utc(S.t)} <span class="mut">${rel(S.t - t0)}</span>`;
-    earth.rotation.y = data.earth_rate * (S.t - t0);
+    const k = S.k = sampleAt(S.t), pause = inPause(S.t);
+    timeEl.innerHTML = `${utc(S.t)} <span class="mut">${pause ? 'Pause' : 'Aufnahme ' + ((P.index[k] ?? k) + 1)}</span>`;
+    earth.rotation.y = data.earth_rate * (S.t - anchor);
     earth.updateMatrixWorld(true);
     obsW.copy(obsLocal); earth.localToWorld(obsW); fov.position.copy(obsW);
-    const f = idx(S.t);
-    for (const s of sats) {
-      s.obj.position.copy(V(lerp(s.track, f)));
-      const p = s.sight.geometry.attributes.position; p.setXYZ(0, obsW.x, obsW.y, obsW.z); p.setXYZ(1, s.obj.position.x, s.obj.position.y, s.obj.position.z); p.needsUpdate = true;
-      s.sight.geometry.computeBoundingSphere();
+    bore.copy(U(P.center[k]));
+    const c = P.corners[k].map(U).map(v => v.multiplyScalar(L / v.dot(bore))), f = facePos.array, e = edgePos.array;
+    for (let i = 0; i < 4; i++) { const a = c[i], b = c[(i + 1) % 4]; f.set([0, 0, 0, a.x, a.y, a.z, b.x, b.y, b.z], i * 9); e.set([0, 0, 0, a.x, a.y, a.z, a.x, a.y, a.z, b.x, b.y, b.z], i * 12); }
+    facePos.needsUpdate = edgePos.needsUpdate = true; fov.children.forEach(m => m.geometry.computeBoundingSphere());
+    fov.visible = !pause;
+    const rp = ray.geometry.attributes.position; tmp.copy(bore).multiplyScalar(L).add(obsW);
+    rp.setXYZ(0, tmp.x, tmp.y, tmp.z); rp.setXYZ(1, bore.x * SKY, bore.y * SKY, bore.z * SKY); rp.needsUpdate = true; ray.computeLineDistances(); ray.geometry.computeBoundingSphere();
+    target.position.copy(bore).multiplyScalar(SKY);
+    domeMark.position.copy(onDome(P.az[k], P.alt[k])); domeMark.visible = !pause;
+    const dr = domeRay.geometry.attributes.position; dr.setXYZ(1, domeMark.position.x, domeMark.position.y, domeMark.position.z); dr.needsUpdate = true; domeRay.geometry.computeBoundingSphere();
+    for (const h of hits) {
+      const inside = S.t >= h.window[0] && S.t <= h.window[1];
+      if (h.kind === 'sat') { h.obj.visible = h.on && inside; if (inside) h.obj.position.copy(V(lerp(h.track, (S.t - h.window[0]) / 2))); }
+      else { h.obj.visible = h.on && S.t >= h.times[0] - 60 && S.t <= h.times.at(-1) + 60;
+        if (h.kind === 'plane') { const j = h.times.findIndex(x => x >= S.t); h.obj.position.copy(h.pts[j < 0 ? h.pts.length - 1 : j]); } }
     }
-    for (const a of items.filter(x => x.kind === 'plane')) {
-      const k = a.times.findIndex(x => x >= S.t); const j = k < 0 ? a.pts.length - 1 : Math.max(0, k);
-      a.obj.position.copy(a.pts[j]); a.obj.visible = S.t >= a.times[0] - 30 && S.t <= a.times.at(-1) + 30;
-    }
-    if (S.mode === 'sat' && primary) follow();
+    if (S.mode === 'sat' || S.mode === 'scope' || S.mode === 'aim') follow();
     if (S.sel) card(S.sel);
     S.dirty = true;
   }
+  const lerp = (arr, f) => { f = Math.min(Math.max(f, 0), arr.length - 1); const i = Math.floor(f), k = f - i, a = arr[i], b = arr[Math.min(i + 1, arr.length - 1)];
+    return Array.isArray(a) ? a.map((v, j) => v + (b[j] - v) * k) : a + (b - a) * k; };
   range.oninput = () => { stop(); setTime(+range.value); };
   const stop = () => { S.playing = false; playBtn.innerHTML = icon('play'); playBtn.title = 'Abspielen'; };
   playBtn.onclick = () => { if (S.playing) return stop(); if (S.t >= tMax) setTime(tMin); S.playing = true; S.last = performance.now(); playBtn.innerHTML = icon('pause'); playBtn.title = 'Anhalten'; };
 
   // ---- Kamera ----
   const views = $d('.st3d-views'); views.hidden = false;
-  if (!sats.length) views.querySelector('[data-v=sat]').hidden = true;
-  const focus = () => sats.find(s => s.pierce)?.pierce || sats[0]?.obj.position.clone() || obsW.clone().multiplyScalar(1.02);
-  const followed = () => (S.sel?.kind === 'sat' ? S.sel : primary);
+  if (!sats.length) { views.querySelector('[data-v=sat]').hidden = true; }
+  if (!hits.length) views.querySelector('[data-v=pass]').hidden = true;
+  const chosen = () => (S.sel && S.sel.kind !== 'scope' && S.sel.kind !== 'target' ? S.sel : hits.find(h => h.focus) || hits[0]);
+  const followed = () => (S.sel?.kind === 'sat' ? S.sel : sats.find(h => h.focus) || sats[0]);
   let lastTarget = null;
-  function follow() { const p = followed().obj.position; if (lastTarget) { camera.position.add(tmp.copy(p).sub(lastTarget)); } controls.target.copy(p); lastTarget = p.clone(); }
+  // Kamera wandert mit (Satellit bzw. Standort, der sich mit der Erde dreht)
+  function follow() { const p = S.mode === 'scope' || S.mode === 'aim' ? obsW : followed()?.obj.position; if (!p) return;
+    if (lastTarget) { const dl = tmp.copy(p).sub(lastTarget); camera.position.add(dl); controls.target.add(dl); } lastTarget = p.clone(); }
   function setView(mode, animate = true) {
     S.mode = mode; lastTarget = null;
     views.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === mode));
     let target, pos;
+    const up = obsW.clone().normalize(), wantUp = mode === 'scope' || mode === 'aim' ? up : new THREE.Vector3(0, 1, 0);
+    if (camera.up.distanceTo(wantUp) > 1e-6) makeControls(wantUp);
+    const wide = stage.clientWidth < 520 ? 1.6 : 1;      // Handy: etwas mehr Abstand
     if (mode === 'earth') {
-      const dir = obsW.clone().normalize().add(primary ? primary.obj.position.clone().normalize() : new THREE.Vector3()).normalize();
+      const h = chosen(), dir = up.clone().add(h?.kind === 'sat' && h.obj.visible ? h.obj.position.clone().normalize() : new THREE.Vector3()).normalize();
       target = new THREE.Vector3(); pos = dir.multiplyScalar(stage.clientWidth < 520 ? 4.4 : 3.4).add(new THREE.Vector3(0, .5, 0));
       controls.minDistance = 1.05;
+    } else if (mode === 'aim') {                         // vom Standort entlang des Strahls zum Zielobjekt
+      target = obsW.clone().add(bore.clone().multiplyScalar(3));
+      pos = obsW.clone().sub(bore.clone().multiplyScalar(DOME * 3 * wide)).add(up.clone().multiplyScalar(DOME * 1.2 * wide));
+      controls.minDistance = .002;
+    } else if (mode === 'scope') {                       // hinter und über dem Standort, Blick in Zeigerichtung
+      const horiz = bore.clone().projectOnPlane(up).normalize(), side = new THREE.Vector3().crossVectors(horiz, up).normalize();
+      target = obsW.clone().add(up.clone().multiplyScalar(DOME * .4)).add(horiz.clone().multiplyScalar(DOME * .4));
+      pos = obsW.clone().sub(horiz.multiplyScalar(DOME * 2.6 * wide)).add(up.multiplyScalar(DOME * 1.9 * wide)).add(side.multiplyScalar(DOME * .9 * wide));
+      controls.minDistance = .002;
     } else {
-      target = mode === 'sat' ? followed().obj.position.clone() : focus();
-      const toObs = obsW.clone().sub(target), dist = toObs.length(), up = target.clone().normalize();
-      const side = new THREE.Vector3().crossVectors(toObs, up).normalize();
-      pos = target.clone().add(toObs.multiplyScalar(.45)).add(side.multiplyScalar(dist * .45)).add(up.multiplyScalar(dist * .12));
+      const h = mode === 'sat' ? followed() : chosen();
+      target = (mode === 'pass' && h?.pierce) ? h.pierce.clone() : (h?.obj.getWorldPosition(new THREE.Vector3()) || obsW.clone());
+      const toObs = obsW.clone().sub(target), dist = Math.max(toObs.length(), .02);
+      const side = new THREE.Vector3().crossVectors(toObs, target.clone().normalize()).normalize();
+      pos = target.clone().add(toObs.multiplyScalar(.45)).add(side.multiplyScalar(dist * .45)).add(target.clone().normalize().multiplyScalar(dist * .12));
       controls.minDistance = .002;
     }
-    const from = { p: camera.position.clone(), t: controls.target.clone() }, start = performance.now(), dur = animate && !reduced() ? 900 : 0;
-    S.fly = (now) => { const k = dur ? Math.min(1, (now - start) / dur) : 1, e = 1 - Math.pow(1 - k, 3);
+    const from = { p: camera.position.clone(), t: controls.target.clone() }, start = performance.now(), ms = animate && !reduced() ? 900 : 0;
+    S.fly = (now) => { const k = ms ? Math.min(1, (now - start) / ms) : 1, e = 1 - Math.pow(1 - k, 3);
       camera.position.lerpVectors(from.p, pos, e); controls.target.lerpVectors(from.t, target, e); controls.update();
-      if (k >= 1) { S.fly = null; if (mode === 'sat') lastTarget = target.clone(); } S.dirty = true; };
+      if (k >= 1) { S.fly = null; if (mode === 'sat') lastTarget = target.clone(); if (mode === 'scope' || mode === 'aim') lastTarget = obsW.clone(); } S.dirty = true; };
   }
   views.onclick = (e) => { const b = e.target.closest('[data-v]'); if (b) setView(b.dataset.v); };
-  controls.addEventListener('change', () => { S.dirty = true; });
-  controls.addEventListener('start', () => { S.fly = null; });
 
   // ---- Auswahl und Infokarte ----
   const cardEl = $d('.st3d-card');
   function card(it) {
-    const f = idx(S.t), rows = [];
-    let head;
+    const rows = [], k = S.k;
+    let head, actions = '';
     if (it.kind === 'sat') {
-      const type = TYPES[it.object_type] || it.object_type;
-      head = `<b style="--c:${it.color}">${esc(it.name)}</b><small>NORAD ${esc(it.norad_id)}${type ? ' · ' + esc(type) : ''}</small>`;
-      rows.push(['Höhe', fmt(lerp(it.height_km, f)) + ' km'], ['Geschwindigkeit', fmt(lerp(it.speed_kms, f), 2) + ' km/s'], ['Entfernung', fmt(lerp(it.range_km, f)) + ' km'],
-        ['Umlauf', fmt(it.period_min, 1) + ' min · ' + fmt(it.inclination_deg, 1) + '° Neigung'],
+      const type = TYPES[it.object_type] || it.object_type, inside = S.t >= it.window[0] && S.t <= it.window[1], f = (S.t - it.window[0]) / 2;
+      head = `<b style="--c:${it.color}">${esc(it.name)}</b><small>NORAD ${esc(it.norad_id)}${type ? ' · ' + esc(type) : ''} · ${esc(it.candidate)}${it.alternative ? ' · Alternative' : ''}</small>`;
+      rows.push(['Durchgang', `${utc(it.t_pass)} (${rel(S.t - it.t_pass)})`]);
+      if (inside) rows.push(['Höhe', fmt(lerp(it.height_km, f)) + ' km'], ['Geschwindigkeit', fmt(lerp(it.speed_kms, f), 2) + ' km/s'], ['Entfernung', fmt(lerp(it.range_km, f)) + ' km']);
+      else rows.push(['Höhe', fmt(it.at_t0.height_km) + ' km beim Durchgang']);
+      rows.push(['Umlauf', fmt(it.period_min, 1) + ' min · ' + fmt(it.inclination_deg, 1) + '° Neigung'],
         ['Bahnelemente', (Number.isFinite(it.tle_age_days) ? fmt(it.tle_age_days, 1) + ' Tage alt · ' : '') + esc(it.tle_source || '')],
-        ['Im Blickfeld', it.fov_segments.length ? `ja, ${fmt(it.fov_segments[0].t.at(-1) - it.fov_segments[0].t[0], 1)} s (${rel(it.fov_segments[0].t[0])} bis ${rel(it.fov_segments[0].t.at(-1))})` : 'nicht innerhalb ±2 min'],
-        ['Abgleich', (Number.isFinite(it.separation_arcsec) ? fmt(it.separation_arcsec) + '″ neben der Spur' : '–') + (it.time_offset_s ? ` · ${fmt(it.time_offset_s, 1)} s außerhalb der Belichtung` : ' · während der Belichtung')]);
-    } else if (it.kind === 'scope') {
-      head = `<b style="--c:${it.color}">Teleskop-Blickfeld</b><small>Bildmitte RA ${fmt(data.fov.ra, 3)}° · Dec ${fmt(data.fov.dec, 3)}°</small>`;
-      const up = obsW.clone().normalize(), north = new THREE.Vector3(0, 1, 0).projectOnPlane(up).normalize(), east = new THREE.Vector3().crossVectors(north, up);
-      const alt = Math.asin(bore.dot(up)) * 180 / Math.PI, az = (Math.atan2(bore.dot(east), bore.dot(north)) * 180 / Math.PI + 360) % 360;
-      rows.push(['Blickrichtung', `${fmt(alt, 1)}° hoch · Azimut ${fmt(az)}° (${compass(az)})`],
-        ['Bildfeld', data.fov.size_deg ? `${fmt(data.fov.size_deg[0], 2)}° × ${fmt(data.fov.size_deg[1], 2)}°` : 'geschätzt (ohne Plate-Solving)'],
-        ['Kegel', `bis ${fmt(reach)} km gezeichnet, nachgeführt`]);
-    } else if (it.kind === 'meteor') {
-      head = `<b style="--c:${it.color}">${esc(it.name)}</b><small>${esc(it.shower || 'GMN-Flugbahn')}</small>`;
-      rows.push(['Höhe', `${fmt(it.height_km[0])} → ${fmt(it.height_km[1])} km`], ['Zeit', utc(it.times[0])]);
+        ['Im Blickfeld', it.fov_segments.length ? `ja, ${fmt(it.fov_segments[0].t.at(-1) - it.fov_segments[0].t[0], 1)} s` : 'nicht innerhalb ±2 min'],
+        ['Abgleich', (Number.isFinite(it.separation_arcsec) ? fmt(it.separation_arcsec) + '″ neben der Spur' : '–') + (it.time_offset_s ? ` · ${fmt(it.time_offset_s, 1)} s außerhalb` : ' · während der Belichtung')]);
+    } else if (it.kind === 'meteor' || it.kind === 'plane') {
+      head = `<b style="--c:${it.color}">${esc(it.name)}</b><small>${it.kind === 'meteor' ? esc(it.shower || 'GMN-Flugbahn') : 'ADS-B ' + esc(it.icao24 || '')} · ${esc(it.candidate)}</small>`;
+      rows.push(['Zeit', utc(it.times[0])], ['Höhe', it.kind === 'meteor' ? `${fmt(it.height_km[0])} → ${fmt(it.height_km[1])} km` : `${fmt(it.height_km[0], 1)} km`]);
+    } else if (it.kind === 'target') {
+      head = `<b style="--c:${it.color}">${esc(tg.name || 'Zielobjekt')}</b><small>${esc(targetSub)}</small>`;
+      rows.push(['Richtung', `RA ${fmt(P.ra, 3)}° · Dec ${fmt(P.dec, 3)}°`], ['Darstellung', 'Strahl ins Unendliche – nicht maßstäblich']);
+      if (tg.distance) rows.push(['Entfernung', esc(tg.distance)]);
     } else {
-      head = `<b style="--c:${it.color}">${esc(it.name)}</b><small>ADS-B ${esc(it.icao24 || '')}</small>`;
-      rows.push(['Höhe', `${fmt(it.height_km[0], 1)} km`], ['Spur', `${utc(it.times[0])} – ${utc(it.times.at(-1))}`]);
+      const pause = inPause(S.t);
+      head = `<b style="--c:${it.color}">Teleskop</b><small>${pause ? 'Pause zwischen Aufnahmen' : 'Aufnahme ' + ((P.index[k] ?? k) + 1) + ' · ' + utc(P.t[k])}</small>`;
+      rows.push(['Blickrichtung', `${fmt(P.alt[k], 1)}° hoch · Azimut ${fmt(P.az[k])}° (${compass(P.az[k])})`],
+        ['Weg', `Höhe ${fmt(Math.min(...P.alt), 1)}–${fmt(Math.max(...P.alt), 1)}° · Azimut ${fmt(P.az[0])}° → ${fmt(P.az.at(-1))}°`],
+        ['Bildlage', `Positionswinkel ${fmt(P.pa[k], 1)}° (${angleDiff(P.pa[0], P.pa[k]) >= 0 ? '+' : ''}${fmt(angleDiff(P.pa[0], P.pa[k]), 1)}° seit Beginn)`],
+        ['Feldrotation', `Alt-Az: ${angleDiff(P.parallactic[0], P.parallactic[k]) >= 0 ? '+' : ''}${fmt(angleDiff(P.parallactic[0], P.parallactic[k]), 1)}° seit Beginn`],
+        ['Bildfeld', `${fmt(P.size_deg[0], 2)}° × ${fmt(P.size_deg[1], 2)}°` + (P.source === 'wcs' ? '' : ' (geschätzt)')],
+        ['Quelle', P.source === 'wcs' ? 'Plate-Solving je Aufnahme' : 'Katalogkoordinate des Ziels – ohne Plate-Solving geschätzt'],
+        ['Aufnahmen', `${data.frames.accepted} genutzt · ${data.frames.excluded} ausgelassen · ${dur(P.t.at(-1) - P.t[0] + data.exposure)}` + (data.gaps.length ? ` · ${data.gaps.length} Pause${data.gaps.length > 1 ? 'n' : ''}` : '')]);
     }
-    cardEl.innerHTML = `<div class="st3d-card-h"><div>${head}</div><button class="btn ghost icon sm" aria-label="Schließen">${icon('x')}</button></div>
-      <dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
-    cardEl.querySelector('button').onclick = () => select(null);
+    if (it.t_pass) actions += `<button class="btn ghost sm" data-a="pass">Zum Durchgang</button>`;
+    if (it.key && onCandidate) actions += `<button class="btn ghost sm" data-a="cand">Kandidat ${esc(it.candidate)} öffnen</button>`;
+    cardEl.innerHTML = `<div class="st3d-card-h"><div>${head}</div><button class="btn ghost icon sm" data-a="x" aria-label="Schließen">${icon('x')}</button></div>
+      <dl>${rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl>${actions ? `<div class="row st3d-card-a">${actions}</div>` : ''}`;
+    cardEl.onclick = (e) => { const a = e.target.closest('[data-a]')?.dataset.a;
+      if (a === 'x') select(null); else if (a === 'pass') { stop(); setTime(it.t_pass); setView('pass'); } else if (a === 'cand') onCandidate(it.key); };
     cardEl.hidden = false;
   }
   function select(it) {
-    S.sel = it; legend.querySelectorAll('button').forEach(b => b.classList.toggle('on', it && b.dataset.k === String(items.indexOf(it))));
+    S.sel = it; legend.querySelectorAll('[data-k]').forEach(b => b.classList.toggle('on', !!it && b.dataset.k === String(items.indexOf(it))));
     if (it) card(it); else cardEl.hidden = true;
-    if (S.mode === 'sat' && it?.kind === 'sat') setView('sat');       // „Folgen“ wechselt zum gewählten Satelliten
+    if (S.mode === 'sat' && it?.kind === 'sat') setView('sat');
+    if (it?.kind === 'target') setView('aim');
   }
   const legend = $d('.st3d-legend');
-  legend.innerHTML = items.map((it, i) => `<button data-k="${i}" style="--c:${it.color}"><i></i>${esc(it.name)}</button>`).join('');
-  legend.onclick = (e) => { const b = e.target.closest('[data-k]'); if (b) select(items[+b.dataset.k]); };
+  legend.innerHTML = items.map((it, i) => `<span class="st3d-chip" style="--c:${it.color}">${it.t_pass ? `<input type="checkbox" checked data-v="${i}" aria-label="${esc(it.name)} ein-/ausblenden">` : ''}<button data-k="${i}"><i></i>${esc(it.name)}${it.t_pass ? `<small>${utc(it.t_pass).slice(0, 8)}</small>` : ''}</button></span>`).join('');
+  legend.onclick = (e) => { const b = e.target.closest('[data-k]'); if (!b) return; const it = items[+b.dataset.k]; select(it); if (it.t_pass) { stop(); setTime(it.t_pass); } };
+  legend.onchange = (e) => { const it = items[+e.target.dataset.v]; if (!it) return; it.on = e.target.checked; it.group && (it.group.visible = it.on); it.label.el.dataset.off = it.on ? '' : '1'; setTime(S.t); };
   const notes = [];
-  if (data.missing.length) notes.push(...data.missing.map(m => `${m.name || 'NORAD ' + m.norad_id}: ${m.reason}`));
-  if (data.fov.source !== 'wcs') notes.push('Blickfeld aus der Spur geschätzt (kein Plate-Solving).');
-  notes.push('Bahn per SGP4 aus historischen Bahnelementen; Unsicherheit wenige km. Erde: NASA Blue Marble.');
+  if (data.missing.length) notes.push(...data.missing.map(m => `${m.candidate}: ${m.name || 'NORAD ' + m.norad_id} – ${m.reason}`));
+  if (P.source !== 'wcs') notes.push('Blickrichtung aus der Katalogkoordinate des Ziels geschätzt (kein Plate-Solving).');
+  notes.push(hits.length ? `${hits.length} zugeordnete${hits.length === 1 ? 's Objekt' : ' Objekte'}; Bahnen per SGP4, Unsicherheit wenige km.` : 'Keine Katalogtreffer in diesem Lauf – gezeigt wird der Weg des Teleskops.');
+  notes.push('Kuppel und Himmel nicht maßstäblich. Erde: NASA Blue Marble.');
   $d('.st3d-note').textContent = notes.join(' ');
-  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  const rc = new THREE.Raycaster(), ndc = new THREE.Vector2();
   let down = null;
   canvas.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; });
   canvas.addEventListener('pointerup', (e) => {
     if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6) return;
     const b = canvas.getBoundingClientRect(); ndc.set((e.clientX - b.left) / b.width * 2 - 1, -(e.clientY - b.top) / b.height * 2 + 1);
-    ray.setFromCamera(ndc, camera);
-    const hit = ray.intersectObjects(items.map(x => x.obj), false)[0];
+    rc.setFromCamera(ndc, camera);
+    const hit = rc.intersectObjects(items.map(x => x.obj).filter(o => o.visible), false)[0];
     select(hit ? items.find(x => x.obj === hit.object) : null);
   });
 
@@ -293,10 +373,10 @@ function scene(d, data, { THREE, OrbitControls }) {
     const ground = Math.max(camera.position.length() - 1, 1e-6);            // Nahebene an Abstand anpassen (Nahansicht ↔ Globus)
     camera.near = Math.min(Math.max(Math.min(dist, ground) * .3, 1e-5), .5); camera.far = 400;
     camera.updateProjectionMatrix(); camera.updateMatrixWorld();
-    for (const L of labels) {
-      L.obj.getWorldPosition(wp); const hidden = !L.obj.visible || behind(wp); wp.project(camera);
-      L.el.hidden = hidden || Math.abs(wp.z) > 1;
-      if (!L.el.hidden) L.el.style.transform = `translate(${(wp.x + 1) / 2 * w}px, ${(1 - wp.y) / 2 * h}px)`;
+    for (const Lb of labels) {
+      Lb.obj.getWorldPosition(wp); const hidden = !Lb.obj.visible || Lb.el.dataset.off === '1' || behind(wp); wp.project(camera);
+      Lb.el.hidden = hidden || Math.abs(wp.z) > 1;
+      if (!Lb.el.hidden) Lb.el.style.transform = `translate(${(wp.x + 1) / 2 * w}px, ${(1 - wp.y) / 2 * h}px)`;
     }
     atmo.value = Math.min(1, Math.max(0, (camera.position.length() - 1.6) / 1.2));
     renderer.render(sc, camera);
@@ -308,18 +388,21 @@ function scene(d, data, { THREE, OrbitControls }) {
     S.fly?.(now);
     if (S.dirty) { S.dirty = false; draw(); }
   }
-  const resize = () => { const w = stage.clientWidth, h = stage.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); S.dirty = true; };
+  const resize = () => { const w = stage.clientWidth, h = stage.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); drawStrip(); S.dirty = true; };
   const ro = new ResizeObserver(resize); ro.observe(stage);
   resize();
-  setTime(t0);
+  const start = hits.find(h => h.focus);
+  if (start) { speedSel.value = '10'; setTime(start.t_pass); } else setTime(P.t[0]);
   camera.position.set(0, 1.5, 6); controls.update();
-  setView('earth', true);
+  if (start) { select(start); setView('pass', true); } else setView('earth', true);
   S.raf = requestAnimationFrame(frame);
   return {
-    state: () => ({ t: S.t, mode: S.mode, sats: sats.length }),
-    dispose() { cancelAnimationFrame(S.raf); ro.disconnect(); controls.dispose(); for (const x of disposables) x.dispose?.(); renderer.dispose(); renderer.forceContextLoss?.(); },
+    state: () => ({ t: S.t, mode: S.mode, hits: hits.length, sample: S.k, visible: hits.filter(h => h.obj.visible).length,
+      // Prüfwerte: Höhe der Blickrichtung über dem lokalen Horizont, Kamera hinter dem Standort (< 0)
+      alt: Math.asin(bore.dot(obsW.clone().normalize())) * 180 / Math.PI, camAlong: camera.position.clone().sub(obsW).dot(bore) }),
+    dispose() { cancelAnimationFrame(S.raf); ro.disconnect(); controls?.dispose(); for (const x of disposables) x.dispose?.(); renderer.dispose(); renderer.forceContextLoss?.(); },
   };
 }
 
-window.SkyTrace3D = { available, open };
+window.SkyTrace3D = { available, open, openRun };
 })();

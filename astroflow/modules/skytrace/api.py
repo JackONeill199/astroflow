@@ -488,6 +488,15 @@ def build_router(mod) -> APIRouter:
         except (OSError, ValueError, KeyError) as e:
             bad(e)
 
+    @r.get("/run3d")
+    def run3d(run: str, session: str | None = None, focus: str | None = None):
+        """3D-Lauf-Ansicht: Teleskopweg, Zielobjekt, alle Treffer (`focus` = Kandidat im Fokus)."""
+        from .run3d import build_run
+        try:
+            return build_run(ctl.run_path(run), session, focus, mod.home, mod.ctx.services)
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            bad(e)
+
     @r.get("/orbit3d")
     def orbit3d(run: str, key: str):
         try:

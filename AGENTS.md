@@ -23,7 +23,7 @@ astroflow/static/          Shell: index.html, app.js (Router, Navigation, Übers
 - **Modul-Vertrag Backend** (`core/modules.py`): `router()`, `start()/stop()`, `status()` (klein, wird alle 2,5 s gepollt; `busy_jobs` zählt für die Anzeige),
   `activity()` (gemeinsames Format `{key,title,kind,detail,state,progress,started,finished,href}`), `scripts/styles`. Reihenfolge/Liste: `AVAILABLE`.
 - **Module reden nicht per Import miteinander**, sondern über Dienste in `ctx.services`: Stacking stellt `plate_solver` (`PictureSolver`),
-  `project_picture`, `project_solution`, `project_frames`, `observation_log`, `catalog_resolve` und `catalog_objects` bereit; Sage und SkyTrace nutzen sie. Fehlt ein Dienst, muss das Modul trotzdem laufen.
+  `project_picture`, `project_solution`, `project_frames`, `observation_log`, `catalog_resolve` und `catalog_objects` bereit, Sage `object_facts` (Typ/Entfernung aus der Wissensbasis); Sage und SkyTrace nutzen sie. Fehlt ein Dienst, muss das Modul trotzdem laufen.
 - **Ereignisse** (`ctx.on` / `ctx.emit`, Liste in `core/modules.py`): `stacking.stacked(project_id, result_id, name)` kommt aus
   `Pipeline.process` nach dem Entwickeln und **vor** dem Löschen hochgeladener Rohbilder (`Pipeline.on_stacked`). Empfänger (seit 28.10.2026,
   Nutzerwunsch „gestackte Aufnahmen automatisch durch SkyTrace und in die Entdeckungen, mit animierten Erfolgen“):

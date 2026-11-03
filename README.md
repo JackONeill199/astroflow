@@ -210,11 +210,12 @@ Bei Kandidaten lässt sich zwischen **Ganzes Bild** (Analyseauflösung) und **Au
 zeigt Treffer und benachbarte Aufnahmen; **Zum Treffer** und **Im Video öffnen** springen direkt zur passenden Stelle.
 Ältere Läufe nutzen vorhandene Vergleichsbilder oder das unbeschriftete Video. „Zeitreihen aktualisieren“ ergänzt
 gespeicherte Vollbilder, sofern die Rohaufnahmen noch erreichbar sind.
-Ist einem Kandidaten ein Satellit zugeordnet, öffnet **3D-Ansicht** eine drehbare Erde zur Aufnahmezeit: Standort,
-Teleskop-Blickfeld als schmaler Kegel und die Bahn des Satelliten (ganzer Umlauf, das Stück im Blickfeld hell).
-Mit dem Zeitregler (±10 min) oder „Abspielen“ wandert der Satellit, die Erde dreht sich darunter weg; „Blickfeld“ zoomt
-an die Stelle, an der die Bahn das Bildfeld durchstößt. Antippen zeigt Höhe, Geschwindigkeit, Entfernung und das Alter
-der Bahnelemente. Meteorbahnen (GMN) und Flugzeugspuren (ADS-B) erscheinen ebenfalls, sofern der Abgleich sie gespeichert hat.
+**3D-Ansicht** (Knopf im Lauf) zeigt die Erde zur Aufnahmezeit mit Standort und Teleskop-Blickfeld – auch ohne erkanntes Objekt.
+Der Zeitregler läuft von der ersten bis zur letzten Aufnahme; eine Himmelskuppel über dem Standort zeigt, wie das Teleskop
+über die Nacht nachgeführt hat (Höhe, Azimut, Bildlage, Feldrotation, Pausen). Ein Strahl verlängert das Blickfeld bis zum
+Zielobjekt (Name, Typ, Entfernung – nicht maßstäblich). Sind Satelliten, Meteore (GMN) oder Flugzeuge (ADS-B) zugeordnet,
+erscheinen alle mit ihrer Bahn (SGP4) und dem markierten Durchgang durchs Blickfeld; ein Eintrag der Legende springt zum
+Durchgang oder zum Kandidaten. Der Knopf im Kandidaten öffnet dieselbe Ansicht mit diesem Objekt im Fokus.
 Die **Statistik** (SkyTrace → Statistik) fasst alle Analysen zusammen: Objektarten, häufigste Satelliten, Katalogabgleich je Quelle,
 Uhrzeiten und Monate der Kandidaten sowie die ergiebigsten Beobachtungen.
 
