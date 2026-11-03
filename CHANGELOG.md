@@ -3,7 +3,7 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
-## 0.16.0 – 03.11.2026
+## 0.15.0 – 03.11.2026
 
 ### Neu
 - **Sage · Sammlung & Erfolge verständlicher:** Das Kachelraster unter dem Meilenstein-Balken ist jetzt ein eigener Abschnitt

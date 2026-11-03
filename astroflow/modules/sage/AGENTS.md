@@ -65,7 +65,7 @@ Aufträge laufen in Threads (`Module.tasks`, im Speicher), Fortschritt per Polli
   `prefers-reduced-motion` beachtet). Ablauf, Klick oder × → `POST /api/sage/celebrations/ack` (gesehen). In den Entdeckungen leuchten
   Erfolge der letzten 3 Tage (`.ach.fresh`).
 
-## Sammlung & Erfolge (seit 0.16.0, `store.py` + `collection.py`)
+## Sammlung & Erfolge (seit 0.15.0, `store.py` + `collection.py`)
 - `store.ACHIEVEMENTS` = `(id, Titel, Beschreibung, Symbol, Gruppe, Kennzahl, Ziel)` – jeder Erfolg ist ein Zähler gegen `stats[Kennzahl]`;
   daraus kommt auch der Fortschritt („17 / 25“). **IDs bestehender Erfolge nie ändern.** Neue Erfolge: Zeile ergänzen, Kennzahl in
   `SageStore._ext` bzw. `collection.log_stats` liefern; Kennzahlen, die nur von den Objekten abhängen, in `OBJECT_KEYS` (dann datiert `_dates` rückwirkend).
