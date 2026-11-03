@@ -333,7 +333,7 @@ class SageStore:
         progress = round(100 * (total - prev) / max(1, (nxt or prev) - prev)) if nxt else 100
         objs = sorted(d["objects"].values(), key=lambda o: o["first_seen"], reverse=True)
         ach = [{"id": a, "title": t, "description": de, "icon": i, "group": g, "unlocked": (d["achievements"].get(a) or {}).get("unlocked"),
-                "progress": {"cur": min(s.get(k) or 0, goal), "goal": goal}} for a, t, de, i, g, k, goal in ACHIEVEMENTS]
+                "progress": {"cur": min(int(s.get(k) or 0), goal), "goal": goal}} for a, t, de, i, g, k, goal in ACHIEVEMENTS]
         first = {}
         for o in sorted(d["objects"].values(), key=lambda o: o["first_seen"]):
             m = (attrs.get(o["name"]) or {}).get("m")

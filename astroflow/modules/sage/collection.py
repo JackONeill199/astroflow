@@ -114,7 +114,7 @@ def log_stats(log: list[dict]) -> dict:
     sessions = [(p, s) for p in log for s in p.get("sessions") or [] if s.get("frames") and s.get("night") not in (None, "?")]
     nights = sorted({s["night"] for _, s in sessions})
     owl = sorted(s["night"] for _, s in sessions
-                 if any(h is not None and 2 <= h < 6 for h in (_local_hour(s.get("first")), _local_hour(s.get("last")))))
+                 if s.get("owl") or (s.get("owl") is None and any(h is not None and 2 <= h < 6 for h in (_local_hour(s.get("first")), _local_hour(s.get("last"))))))
     seasons: dict[str, str] = {}
     for n in nights:
         try:
@@ -147,5 +147,5 @@ def log_stats(log: list[dict]) -> dict:
     if all_100:
         dates["total_100h"] = _at(all_100)
     return {"nights": len(nights), "night_owl": len(owl), "seasons": len(seasons), "season_list": sorted(seasons),
-            "max_obj_hours": round(max(per.values(), default=0) / 3600, 1), "total_hours": round(sum(
-                secs(s) for _, s in sessions) / 3600, 1), "dates": dates}
+            "max_obj_hours": max(per.values(), default=0) / 3600,
+            "total_hours": sum(secs(s) for _, s in sessions) / 3600, "dates": dates}

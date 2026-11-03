@@ -232,3 +232,12 @@ def test_erfolge_rueckwirkend_fortschritt_und_meilensteine(tmp_path):
     assert st.celebrations() and st.celebrations()[-1]["achievements"]
     again = st.overview()
     assert [a["unlocked"] for a in again["achievements"]] == [a["unlocked"] for a in ov["achievements"]]
+
+
+def test_belichtung_ungerundet_und_nachteule_aus_allen_frames():
+    from astroflow.modules.sage.collection import log_stats
+    ses = lambda used, **k: {"night": "2026-01-02", "frames": 5, "used_s": used, **k}
+    st = log_stats([{"id": 1, "sessions": [ses(3456)]}])
+    assert st["max_obj_hours"] < 1 and "exposure_1h" not in st["dates"] and st["night_owl"] == 0
+    st = log_stats([{"id": 1, "sessions": [ses(3600, owl=True, first="2026-01-02T01:00:00", last="2026-01-02T07:00:00")]}])
+    assert st["night_owl"] == 1 and st["max_obj_hours"] == 1
