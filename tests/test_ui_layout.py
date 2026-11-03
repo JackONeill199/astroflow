@@ -119,7 +119,7 @@ def browser():
 
 
 ROUTES = ["#/", "#/bilder", "#/p/{pid}/bild", "#/p/{pid}/aufnahmen", "#/p/{pid}/versionen", "#/p/{pid}/optionen",
-          "#/import", "#/activity", "#/skytrace", "#/skytrace/neu", "#/skytrace/statistik", "#/sage", "#/sage/wiki", "#/sage/entdeckungen",
+          "#/import", "#/activity", "#/skytrace", "#/skytrace/neu", "#/skytrace/statistik", "#/skytrace/erfolge", "#/sage", "#/sage/wiki", "#/sage/entdeckungen",
           "#/settings/stacking", "#/settings/skytrace", "#/settings/sage", "#/settings/module"]
 
 
