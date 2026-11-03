@@ -45,6 +45,7 @@ class Module(BaseModule):
         from .achievements import Achievements
         self.ach = Achievements(self.home / "erfolge.json", self._stats)
         self._was_running = False
+        self._stop = threading.Event()
         ctx.services["skytrace_achievements"] = self.ach.overview      # optional: andere Module dürfen die Erfolge anzeigen
 
     def _stats(self) -> dict:
@@ -57,6 +58,16 @@ class Module(BaseModule):
         if self._was_running and not running:
             threading.Thread(target=self._refresh_achievements, daemon=True).start()
         self._was_running = running
+
+    def _achievements_loop(self) -> None:
+        """Ausgangsstand beim Start herstellen (Altbestand = gesehen, ungesehene Erfolge nach Neustart wieder melden), danach Läufe
+        beobachten – unabhängig davon, ob ein Browser offen ist (automatische Analysen)."""
+        self._refresh_achievements()
+        while not self._stop.wait(3):
+            try:
+                self._achievements_check(bool(self.ctl.snapshot(logs=False)["running"]))
+            except Exception:
+                pass
 
     def _refresh_achievements(self) -> None:
         try:
@@ -99,14 +110,15 @@ class Module(BaseModule):
     def start(self):
         threading.Thread(target=self.check_engine, daemon=True).start()
         self.auto.start()
+        threading.Thread(target=self._achievements_loop, daemon=True).start()
 
     def stop(self):
+        self._stop.set()
         self.auto.stop()
         self.ctl.stop()
 
     def status(self) -> dict:
         s = self.ctl.snapshot(logs=False)
-        self._achievements_check(bool(s["running"]))
         return {"running": s["running"], "stopping": s["stopping"], "run": s["run"], "text": s["status"],
                 "stats": s["stats"], "operation": s["operation"], "busy_jobs": int(s["running"]),
                 "engine": self.health, "home": str(self.home), "auto_waiting": self.auto.waiting(),
