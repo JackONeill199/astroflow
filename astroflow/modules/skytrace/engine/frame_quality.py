@@ -1,6 +1,60 @@
 """Reject intra-exposure telescope shake using the shape of many stars."""
 import numpy as np
-from scipy.ndimage import gaussian_filter,maximum_filter,label
+from scipy.ndimage import gaussian_filter,maximum_filter,label,map_coordinates
+
+
+def ensemble_star_tails(smooth,noise,centers):
+    """Schwache, auch unterbrochene lange Schweife als gemeinsames Sternprofil prüfen.
+
+    Einzelne echte Spuren verschwinden im Median normalisierter Sternumgebungen. Ein globales Muster
+    braucht zusätzlich unabhängige Belege an mindestens fünf Sternen in drei Bildquadranten.
+    """
+    radius=64;patches=[];used=[]
+    height,width=smooth.shape
+    for x,y in centers:
+        if x<radius or y<radius or x>=width-radius or y>=height-radius:continue
+        peak=float(smooth[y,x])
+        if peak<20*noise:break  # Referenzliste ist nach Helligkeit sortiert
+        if any((x-u)**2+(y-v)**2<48**2 for u,v in used):continue
+        patch=smooth[y-radius:y+radius+1,x-radius:x+radius+1]
+        if peak<.5*float(patch.max()):continue
+        patches.append(patch/peak);used.append((x,y))
+        if len(used)>=20:break
+    result=dict(ensemble_motion=False,ensemble_tail_references=len(used))
+    if len(used)<12:return result
+    yy,xx=np.mgrid[-radius:radius+1,-radius:radius+1]
+    outer=np.hypot(xx,yy)>48
+    def scatter(image):
+        values=image[outer]
+        return max(1e-7,float(1.4826*np.median(np.abs(values-np.median(values)))))
+    angles=np.radians(np.arange(0,360,5))
+    directions=np.column_stack([np.cos(angles),np.sin(angles)])
+    normals=np.column_stack([-directions[:,1],directions[:,0]])
+    positions=directions[:,None,:]*np.arange(10,57)[None,:,None]+radius
+    def contrast(image,positions,normals):
+        def sample(offset):
+            xy=positions+normals[:,None,:]*offset
+            return map_coordinates(image,[xy[...,1],xy[...,0]],order=1,prefilter=False)
+        return (sample(-1)+sample(0)+sample(1))/3-(sample(-8)+sample(-6)+sample(6)+sample(8))/4
+    stack=np.median(patches,axis=0)
+    profiles=contrast(stack,positions,normals)/scatter(stack)
+    scores=profiles.mean(axis=1)*np.sqrt(profiles.shape[1]/4)
+    best=int(np.argmax(scores));score=float(scores[best])
+    bins=np.asarray([part.mean() for part in np.array_split(profiles[best],5)])
+    result.update(ensemble_tail_score=round(score,2),ensemble_tail_angle=best*5)
+    opposite=float(scores[(best+len(scores)//2)%len(scores)])
+    # Symmetrische Beugungsstrahlen/Halos sind kein einseitiger Bewegungsschweif.
+    if score<6 or score-max(0,opposite)<4 or np.count_nonzero(bins>.5)<4:return result
+    supporting=[]
+    for patch,point in zip(patches,used):
+        profile=contrast(patch,positions[best:best+1],normals[best:best+1])[0]/scatter(patch)
+        if profile.mean()*np.sqrt(len(profile)/4)>=5 and sum(part.mean()>.5 for part in np.array_split(profile,5))>=3:
+            supporting.append(point)
+    quadrants={(int(x>=width/2),int(y>=height/2)) for x,y in supporting}
+    distributed=len(supporting)>=5 and np.all(np.ptp(np.asarray(supporting)/[width,height],axis=0)>.35)
+    result.update(ensemble_tail_stars=len(supporting),ensemble_tail_quadrants=len(quadrants),
+                  ensemble_motion=bool(distributed and len(quadrants)>=3 and len(supporting)>=.2*len(used)))
+    return result
 
 
 def extended_star_tails(smooth,noise,centers):
@@ -82,7 +136,7 @@ def measure_quality(data):
     coherence=float(abs(np.mean(np.exp(2j*angles)))) if len(angles) else 0.
     doubles=[row[3] for row in measurements if row[3] is not None]
     double_coherence=float(abs(np.mean(np.exp(2j*np.asarray(doubles))))) if doubles else 0.
-    return dict(stars=len(measurements),measurable=True,axis_ratio=round(float(np.median(metrics[:,0])),3),elongated_fraction=round(float(elongated.mean()),3),direction_coherence=round(coherence,3),fwhm=round(float(np.median(metrics[:,1])),3),double_fraction=round(len(doubles)/len(measurements),3),double_coherence=round(double_coherence,3),**extended_star_tails(smooth,noise,used))
+    return dict(stars=len(measurements),measurable=True,axis_ratio=round(float(np.median(metrics[:,0])),3),elongated_fraction=round(float(elongated.mean()),3),direction_coherence=round(coherence,3),fwhm=round(float(np.median(metrics[:,1])),3),double_fraction=round(len(doubles)/len(measurements),3),double_coherence=round(double_coherence,3),**extended_star_tails(smooth,noise,used),**ensemble_star_tails(smooth,noise,list(zip(xs[order],ys[order]))))
 
 
 def baseline_from_metrics(metrics):
@@ -103,7 +157,9 @@ def assess_quality(metrics,baseline=None):
     broadened=baseline is not None and metrics['fwhm']>max(baseline['fwhm']*1.6,baseline['fwhm']+1.5)
     field_tails=(metrics.get('tail_reference_stars',0)>=20 and metrics.get('tail_stars',0)>=10 and
                  metrics.get('tail_fraction',0)>=.2 and metrics.get('tail_direction_coherence',0)>=.75 and metrics.get('tail_quadrants',0)>=3)
-    if field_tails:
+    if metrics.get('ensemble_motion'):
+        result.update(excluded=True,reason='Verwackelt: übereinstimmende lange Sternschweife im gesamten Bildfeld (Teleskopbewegung)',field_motion_evidence='ensemble_star_tails')
+    elif field_tails:
         result.update(excluded=True,reason='Verwackelt: gleichgerichtete schwache Sternschweife über das gesamte Bildfeld',field_motion_evidence='extended_star_tails')
     elif common_shake or severely_distorted or doubled:
         result.update(excluded=True,reason='Verwackelt: viele Sterne sind gleichgerichtet länglich oder doppelt')

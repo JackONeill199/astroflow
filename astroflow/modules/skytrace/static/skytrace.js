@@ -169,7 +169,7 @@ async function newView(el) {
 async function runView(root, runId, tab = 'vorschau') {
   runId = decodeURIComponent(runId);
   const S = { run: null, engine: await api(T + '/state'), session: 0, key: null, frame: null, overlay: store.get('skytrace.overlay', true),
-    mode: 'image', timer: null, logId: 0, filter: 'all', ticket: 0, runStamp: 0 };
+    mode: 'image', timer: null, logId: 0, filter: 'all', ticket: 0, runStamp: 0, full: true, seek: null, detailCleanup: null };
   const isLive = () => S.engine.running && S.engine.run === runId;
   try { S.run = await api(T + '/run?id=' + encodeURIComponent(runId)); }
   catch (e) { if (!isLive()) throw e; S.run = { id: runId, sessions: [], candidates: [], report_url: null }; }
@@ -189,7 +189,10 @@ async function runView(root, runId, tab = 'vorschau') {
           <span class="chip ${S.run.candidates.length ? 'acc' : ''}">${S.run.candidates.length} Kandidaten</span></div></div>
       <span class="grow"></span>
       <div class="row">${live ? `<button class="btn danger" id="stop" ${S.engine.stopping ? 'disabled' : ''}>${icon('stop')}${S.engine.stopping ? 'Wird angehalten …' : 'Anhalten'}</button>`
-        : `<button class="btn ghost" id="refresh" ${S.engine.running || !ss.some(s => s.video_url) ? 'disabled' : ''} title="Zeitreihen, Ausschnitte und Katalogabgleich neu erzeugen">${icon('refresh')}Zeitreihen aktualisieren</button>`}
+        : `<div class="menu" id="analysisMenu"><button class="btn ghost" aria-haspopup="true" ${S.engine.running || !ss.some(s => s.video_url) ? 'disabled' : ''}>${icon('refresh')}Analyse${icon('chev')}</button><div class="pop">
+            <a href="#" id="reanalyse"><span>Erneut analysieren<small>Erkennung mit aktuellem Code</small></span>${icon('play')}</a>
+            <a href="#" id="refresh"><span>Zeitreihen aktualisieren<small>Berichte und Katalogabgleich</small></span>${icon('refresh')}</a>
+            <div class="pop-note">Erneute Analyse erstellt einen neuen Lauf. Der bisherige bleibt erhalten.</div></div></div>`}
         ${S.run.report_url ? `<a class="btn ghost" href="${S.run.report_url}" target="_blank" rel="noopener">Bericht öffnen${icon('arrow')}</a>` : ''}
         ${live ? '' : `<button class="btn ghost icon" id="delRun" title="Analyse löschen" aria-label="Analyse löschen">${icon('trash')}</button>`}</div></div>
       <div id="stjob" style="margin:-8px 0 18px"></div>
@@ -203,18 +206,39 @@ async function runView(root, runId, tab = 'vorschau') {
       message: engineStatus(e), progress: st.total ? (st.current || 0) / st.total : null } : null);
   }
   function draw() {
+    cleanupMedia();
     stopTimeline();
     root.innerHTML = head();
     $('#stop')?.addEventListener('click', async () => { try { S.engine = await send(T + '/stop'); draw(); } catch (e) { toast(e.message, 'err'); } });
     $('#delRun')?.addEventListener('click', async () => { if (await deleteRun(runId, runTitle())) location.hash = '#/skytrace'; });
-    $('#refresh')?.addEventListener('click', async () => {
+    $('#analysisMenu .pop')?.addEventListener('click', () => $('#analysisMenu').classList.remove('open'));
+    $('#reanalyse')?.addEventListener('click', async (e) => {
+      e.preventDefault();
+      try {
+        const plan = await send(T + '/reanalyse', { run: runId, check: true });
+        if (plan.missing) {
+          folderDialog('', startAgain, { title: 'Originalaufnahmen für erneute Analyse wählen', ok: 'Erneut analysieren',
+            hint: `${plan.missing} von ${plan.total} Originalaufnahmen fehlen am bisherigen Ort. Bitte den Ordner der passenden Nacht wählen. Aufnahmedatum und Dateinamen müssen zum bisherigen Lauf passen.` });
+        } else await startAgain();
+      } catch (e) { toast(e.message, 'err'); }
+    });
+    $('#refresh')?.addEventListener('click', async (e) => {
+      e.preventDefault();
       try { S.engine = await send(T + '/refresh', { run: runId }); S.logId = 0; toast('Zeitreihen und Katalogabgleich werden aktualisiert.'); poll(); draw(); }
       catch (e) { toast(e.message, 'err'); }
     });
     jobState();
     drawTab(false);
   }
+  async function startAgain(source) {
+    try {
+      const result = await send(T + '/reanalyse', { run: runId, ...(source ? { source } : {}) });
+      toast('Neue Analyse mit aktuellem Code gestartet.', 'ok');
+      location.hash = `#/skytrace/${encodeURIComponent(result.run)}/vorschau`;
+    } catch (e) { toast(e.message, 'err'); }
+  }
   function drawTab(animate = true) {
+    cleanupMedia();
     stopTimeline();
     $$('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.t === tab));
     requestAnimationFrame(() => slideInd($('#tabind'), $('#tabs a.on'), true));
@@ -225,6 +249,25 @@ async function runView(root, runId, tab = 'vorschau') {
   }
 
   // ---- Vorschau: Livebild bzw. Ereignisvideo mit abschaltbaren Overlays ----
+  function cleanupMedia() {
+    const video = $('#skyVideo', root);
+    video?._motionCleanup?.();
+    video?.pause();
+    S.detailCleanup?.(); S.detailCleanup = null;
+  }
+  function videoTarget(c, f) {
+    const s = S.run.sessions.find(x => x.session === c.session);
+    return s && (s.clean_url || s.video_url) && !f?.excluded && Number.isFinite(f?.video_seconds) ? s : null;
+  }
+  function jumpToVideo(c, f) {
+    const s = videoTarget(c, f);
+    if (!s) return;
+    stopTimeline(); S.key = c.key; S.session = S.run.sessions.indexOf(s); S.mode = 'video';
+    S.seek = { session: s.session, seconds: f.video_seconds };
+    if (tab !== 'vorschau') { tab = 'vorschau'; location.hash = `#/skytrace/${encodeURIComponent(runId)}/vorschau`; drawTab(); }
+    else renderPreview();
+    requestAnimationFrame(() => $('#sky', root)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+  }
   function tabPreview(t) {
     const ss = S.run.sessions;
     t.innerHTML = `<div class="split st-split"><div>
@@ -236,7 +279,7 @@ async function runView(root, runId, tab = 'vorschau') {
         <div class="row" style="margin-top:10px"><label class="tgl"><input type="checkbox" id="ovl" ${S.overlay ? 'checked' : ''}><span class="switch"></span>Overlays</label>
           <div class="seg" id="vm"><button data-m="image">Vorschau</button><button data-m="video">Ereignisvideo</button></div>
           ${ss.length > 1 ? `<select id="sess">${ss.map((s, i) => `<option value="${i}">${esc(shortName(s.session))}</option>`).join('')}</select>` : ''}
-          <span class="grow"></span><span class="mut sm" id="skyNote"></span></div></div>
+          <span class="grow"></span><span class="mut sm" id="skyNote"></span></div><div class="sky-events" id="skyHits" aria-label="Zu Trefferbildern springen"></div></div>
       <div><div class="panel"><h2 style="margin-bottom:12px">Kennzahlen</h2><div class="stats st-stats" id="kpis"></div></div>
         <div class="panel"><div class="panel-h"><h2>Letzte Ereignisse</h2><span class="grow"></span><a class="linkbtn" href="#/skytrace/${encodeURIComponent(runId)}/protokoll">Protokoll ${icon('arrow')}</a></div><div class="loglist mini" id="miniLog"></div></div></div></div>`;
     if ($('#sess')) { $('#sess').value = S.session; $('#sess').onchange = (e) => { S.session = +e.target.value; renderPreview(); }; }
@@ -246,7 +289,7 @@ async function runView(root, runId, tab = 'vorschau') {
     renderPreview();
   }
   function renderPreview() {
-    if (!$('#sky')) return;
+    if (!root.isConnected || !$('#sky', root)) return;
     const e = S.engine, s = session(), live = isLive() && e.operation === 'analysis', row = live ? e.row : null, ev = EV();
     const img = $('#skyImg'), video = $('#skyVideo'), ov = $('#skyOv');
     let imgUrl = S.overlay ? (row?.preview_url || s?.preview_url) : (row?.clean_preview_url || s?.clean_preview_url);
@@ -264,9 +307,10 @@ async function runView(root, runId, tab = 'vorschau') {
       if (video.dataset.url !== videoUrl) {
         const same = video.dataset.session === s.session, t0 = same ? video.currentTime : 0, playing = same && !video.paused;
         video.dataset.url = videoUrl; video.dataset.session = s.session;
-        video.onloadedmetadata = () => { video.currentTime = Math.min(t0, video.duration || 0); if (playing) video.play().catch(() => {}); };
+        video.onloadedmetadata = () => { video.currentTime = Math.min(t0, video.duration || 0); if (!applySeek() && playing) video.play().catch(() => {}); };
         video.src = videoUrl;
       }
+      if (video.readyState >= 1) applySeek();
     } else {
       video.pause(); video.hidden = true;
       if (imgUrl) {
@@ -279,6 +323,21 @@ async function runView(root, runId, tab = 'vorschau') {
     const stars = row?.star_field?.inliers ?? row?.star_field?.matched;
     $('#skyCoord').textContent = stars !== undefined ? `${stars} Referenzsterne · ${row.star_field.accepted ? 'kompensiert' : 'unsicher'}` : live ? 'LIVE' : 'ARCHIV';
     $('#skyNote').textContent = row?.type === 'rejected' ? 'Unscharfe Aufnahme ausgeschlossen' : row?.timestamp_text || (s ? `${nf.format(s.frames || 0)} Aufnahmen${s.video_url ? ' · ' + (s.fps || 8) + ' Bilder/s' : ''}` : '');
+    function applySeek() {
+      if (!S.seek || S.seek.session !== s?.session || !Number.isFinite(video.duration)) return false;
+      video.pause(); video.currentTime = Math.min(S.seek.seconds, Math.max(0, video.duration - .001)); S.seek = null;
+      return true;
+    }
+    const hits = $('#skyHits', root);
+    hits.replaceChildren();
+    for (const c of S.run.candidates.filter(c => c.session === s?.session)) {
+      const f = c.frames[c.initial_frame] || c.frames.find(x => x.hit);
+      if (!videoTarget(c, f)) continue;
+      const b = el('button', `${c.id} · Bild ${f.index}`, 'sky-event' + (c.key === S.key ? ' on' : ''));
+      b.title = `${candidateName(c)} · ${f.timestamp_text || 'Aufnahmezeit unbekannt'}`;
+      b.onclick = () => jumpToVideo(c, f); hits.append(b);
+    }
+    hits.hidden = !hits.childElementCount;
     const ss = S.run.sessions, st = e.stats || {};
     const frames = live ? st.processed - st.excluded : ss.reduce((a, x) => a + (x.frames || 0), 0), excl = live ? st.excluded : ss.reduce((a, x) => a + (x.excluded || 0), 0);
     const quality = frames + excl ? Math.round(100 * frames / (frames + excl)) : null;
@@ -313,6 +372,7 @@ async function runView(root, runId, tab = 'vorschau') {
   }
   function drawDetail() {
     stopTimeline();
+    S.detailCleanup?.(); S.detailCleanup = null;
     const host = $('#cdetail');
     if (!host) return;
     host.replaceChildren();
@@ -322,11 +382,19 @@ async function runView(root, runId, tab = 'vorschau') {
     const top = el('div', undefined, 'panel-h');
     const hd = el('div'); hd.append(el('h2', candidateName(c)), el('div', c.id + ' · ' + observedDate(c) + ' · ' + (Number.isFinite(c.exposure_seconds) ? c.exposure_seconds + ' s Belichtung' : 'Belichtungszeit unbekannt'), 'mut sm'));
     top.append(hd); host.append(top);
-    const stage = el('div', undefined, 'cstage'), image = el('img'), svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const options = el('div', undefined, 'row frame-options'), views = el('div', undefined, 'seg');
+    const full = el('button', 'Ganzes Bild'), crop = el('button', 'Ausschnitt'), hit = el('button', 'Zum Treffer', 'linkbtn'), inVideo = el('button', 'Im Video öffnen', 'linkbtn');
+    full.dataset.view = 'full'; crop.dataset.view = 'crop'; views.append(full, crop); options.append(views, hit, el('span', undefined, 'grow'), inVideo); host.append(options);
+    const observation = S.run.sessions.find(s => s.session === c.session);
+    const hasFull = c.frames.some(f => f.full_image || (observation?.clean_url && Number.isFinite(f.video_seconds) && !f.excluded));
+    full.disabled = !hasFull;
+    if (!hasFull) S.full = false;
+    const stage = el('div', undefined, 'cstage'), image = el('img'), video = el('video'), missing = el('div', 'Vollbild für diese Aufnahme nicht verfügbar. Der Ausschnitt bleibt verfügbar.', 'frame-missing mut sm'), svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    video.muted = true; video.playsInline = true; video.preload = 'metadata'; video.hidden = true; missing.hidden = true;
     image.alt = 'Unbeschrifteter Kandidatenausschnitt';
     const zoom = el('button', undefined, 'cstage-zoom'); zoom.title = 'Ausschnitt vergrößern'; zoom.append(svgIcon('expand'));
-    stage.append(image, svg, zoom); host.append(stage);
-    const openZoom = () => { stopTimeline(); setPlay(false); ev?.openImage(c, S.frame, S.overlay); };
+    stage.append(image, video, missing, svg, zoom); host.append(stage);
+    const openZoom = () => { stopTimeline(); setPlay(false); if (S.full && !c.frames[S.frame].full_image) stage.requestFullscreen?.(); else ev?.openImage(c, S.frame, S.overlay, S.full); };
     stage.onclick = openZoom;
     const cap = el('div', undefined, 'row sm'), time = el('span', undefined, 'mut'), cls = el('b'); cap.append(time, el('span', undefined, 'grow'), cls); host.append(cap);
     const ctr = el('div', undefined, 'tl-ctrl'), prev = el('button', undefined, 'btn icon ghost sm'), play = el('button', undefined, 'btn icon ghost sm'), next = el('button', undefined, 'btn icon ghost sm'), slider = el('input'), counter = el('span', undefined, 'tnum mut sm');
@@ -334,27 +402,50 @@ async function runView(root, runId, tab = 'vorschau') {
     slider.type = 'range'; slider.min = 0; slider.max = c.frames.length - 1; slider.setAttribute('aria-label', 'Aufnahme der Zeitreihe');
     ctr.append(prev, play, next, slider, counter); host.append(ctr);
     const thumbs = el('div', undefined, 'tl-thumbs'), buttons = [];
-    c.frames.forEach((f, i) => { const b = el('button', undefined, 'tl-th' + (f.excluded ? ' rej' : '') + (f.hit ? ' hit' : '')), im = el('img'); im.src = f.url; im.loading = 'lazy'; im.alt = 'Bild ' + f.index;
-      b.append(im, el('span', 'Bild ' + f.index)); b.onclick = () => show(i); buttons.push(b); thumbs.append(b); });
+    c.frames.forEach((f, i) => { const b = el('button', undefined, 'tl-th' + (f.excluded ? ' rej' : '') + (f.hit ? ' hit' : '')), im = el('img'); im.src = f.full_image?.url || f.url; im.loading = 'lazy'; im.alt = 'Bild ' + f.index;
+      const utc = Number.isFinite(f.timestamp) ? new Date(f.timestamp * 1000).toLocaleTimeString('de-DE', { timeZone: 'UTC' }) : 'Zeit unbekannt';
+      b.append(im, el('span', 'Bild ' + f.index + (f.hit ? ' · Treffer' : '')), el('small', utc)); b.title = f.timestamp_text || utc; b.onclick = () => show(i); buttons.push(b); thumbs.append(b); });
     host.append(thumbs);
     const shape = (tag, attrs) => { const n = document.createElementNS(svg.namespaceURI, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
     function show(i) {
       S.frame = (i + c.frames.length) % c.frames.length;
       const f = c.frames[S.frame];
-      image.src = f.url; svg.replaceChildren(); svg.setAttribute('viewBox', `0 0 ${f.width} ${f.height}`); svg.style.display = S.overlay ? '' : 'none';
+      full.classList.toggle('on', S.full); crop.classList.toggle('on', !S.full);
+      inVideo.disabled = !videoTarget(c, f);
+      const display = ev?.frameImage(c, f, S.full) || (!S.full ? f : null);
+      const useVideo = S.full && !display && observation?.clean_url && Number.isFinite(f.video_seconds) && !f.excluded;
+      image.hidden = !display; video.hidden = !useVideo; missing.hidden = !!(display || useVideo);
+      video.pause();
+      if (display) { image.src = display.url; image.alt = S.full ? 'Vollständige Himmelsaufnahme' : 'Unbeschrifteter Kandidatenausschnitt'; }
+      function paint(width, height, overlay) {
+        svg.replaceChildren(); svg.setAttribute('viewBox', `0 0 ${width} ${height}`); svg.style.display = S.overlay ? '' : 'none';
+        const o = overlay;
+        if (o?.points?.length) {
+          const pts = o.points;
+          svg.append(pts.length > 1 ? shape('polyline', { points: pts.map(p => p.join(',')).join(' '), fill: 'none', stroke: '#f2d385', 'stroke-width': 2.5, 'stroke-linecap': 'round' })
+            : shape('circle', { cx: pts[0][0], cy: pts[0][1], r: 10, fill: 'none', stroke: '#f2d385', 'stroke-width': 2.5 }));
+          ev?.motionLabel(svg, c, pts, width, height);
+        }
+        if (o?.box) { const [x, y, w, h] = o.box; svg.append(shape('rect', { x, y, width: w, height: h, fill: 'none', stroke: '#f2d385', 'stroke-width': 2 })); }
+      }
+      if (display) paint(display.width, display.height, display.overlay); else svg.replaceChildren();
+      if (useVideo) {
+        const seek = () => { if (S.frame !== c.frames.indexOf(f)) return; video.currentTime = Math.min(f.video_seconds, Math.max(0, video.duration - .001));
+          const frame = ev?.frameImage(c, { ...f, full_image: { width: video.videoWidth, height: video.videoHeight } }, true);
+          paint(video.videoWidth, video.videoHeight, frame?.overlay); };
+        video.onloadedmetadata = seek;
+        video.onerror = () => { if (!video.hidden) { video.hidden = true; missing.hidden = false; } };
+        if (video.dataset.url !== observation.clean_url) { video.dataset.url = observation.clean_url; video.src = observation.clean_url; }
+        else if (video.readyState >= 1) seek();
+      }
       time.textContent = 'Bild ' + f.index + ' · ' + (f.timestamp_text || 'Zeit unbekannt');
       cls.textContent = f.hit ? 'TREFFER' : f.excluded ? 'UNSCHARFER KONTEXT' : 'KONTEXT'; cls.className = f.hit ? 'acc' : 'mut';
       slider.value = S.frame; counter.textContent = (S.frame + 1) + ' / ' + c.frames.length;
       buttons.forEach((b, j) => b.classList.toggle('on', j === S.frame));
-      const o = f.overlay;
-      if (o?.points?.length) {
-        const pts = o.points;
-        svg.append(pts.length > 1 ? shape('polyline', { points: pts.map(p => p.join(',')).join(' '), fill: 'none', stroke: '#f2d385', 'stroke-width': 2.5, 'stroke-linecap': 'round' })
-          : shape('circle', { cx: pts[0][0], cy: pts[0][1], r: 10, fill: 'none', stroke: '#f2d385', 'stroke-width': 2.5 }));
-        ev?.motionLabel(svg, c, pts, f.width, f.height);
-      }
-      if (o?.box) { const [x, y, w, h] = o.box; svg.append(shape('rect', { x, y, width: w, height: h, fill: 'none', stroke: '#f2d385', 'stroke-width': 2 })); }
     }
+    full.onclick = () => { S.full = true; show(S.frame); }; crop.onclick = () => { S.full = false; show(S.frame); };
+    hit.onclick = () => show(c.initial_frame || 0); inVideo.onclick = () => jumpToVideo(c, c.frames[S.frame]);
+    S.detailCleanup = () => { video.pause(); video.onloadedmetadata = video.onerror = null; };
     function setPlay(on) { play.replaceChildren(svgIcon(on ? 'stop' : 'play')); play.title = on ? 'Zeitreihe anhalten' : 'Zeitreihe abspielen'; }
     prev.onclick = () => show(S.frame - 1); next.onclick = () => show(S.frame + 1); slider.oninput = () => show(+slider.value);
     play.onclick = () => { if (S.timer) { stopTimeline(); setPlay(false); } else { S.timer = setInterval(() => show(S.frame + 1), 700); setPlay(true); } };
@@ -458,7 +549,7 @@ async function runView(root, runId, tab = 'vorschau') {
       ...(isLive() ? [['stop', 'Analyse anhalten', 'Teilergebnisse bleiben', async () => { S.engine = await send(T + '/stop'); draw(); }]]
         : [['trash', 'Analyse löschen', 'mit Videos und Bericht', async () => { if (await deleteRun(runId, runTitle())) location.hash = '#/skytrace'; }]]),
     ],
-    destroy: () => { stopTimeline(); document.removeEventListener('keydown', onKey); if (document.fullscreenElement) document.exitFullscreen(); },
+    destroy: () => { ++S.ticket; cleanupMedia(); stopTimeline(); document.removeEventListener('keydown', onKey); if (document.fullscreenElement) document.exitFullscreen(); },
   };
 }
 

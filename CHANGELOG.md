@@ -3,6 +3,34 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.14.0 – 03.11.2026
+
+### Neu
+- **SkyTrace erneut analysieren:** Dropdown „Analyse“ mit vollständiger neuer Erkennung oder schneller Aktualisierung
+  der Zeitreihen. Neuer Lauf aus den bisherigen Originalaufnahmen einschließlich ausgeschlossener Bilder; fehlen
+  Originale, lässt sich ihr Ordner wählen. Mehrdeutige oder fehlende Dateien verhindern einen unvollständigen Neustart;
+  Wiederholungen zählen in der Statistik auch nach einem Ordnerwechsel nur einmal.
+- **SkyTrace-Vollbild-Zeitreihe:** Kandidaten zeigen wahlweise die ganze Aufnahme in Analyseauflösung oder den
+  Ausschnitt. Miniaturen, Treffer-Sprung und „Im Video öffnen“ führen direkt zur gewählten Aufnahme; ausgelassene
+  Bilder werden anhand der gespeicherten Videozeiten berücksichtigt. Neue Berichte speichern gemeinsame Vollbilder,
+  ältere Läufe nutzen vorhandene Vergleichsbilder oder das unbeschriftete Video.
+
+### Behoben
+- **SkyTrace-Teleskopbewegung:** Zusätzliche Prüfung des gemeinsamen Profils heller Sterne erkennt auch lange,
+  schwache und unterbrochene Schweife bei noch runden Sternkernen. Verlangt ein asymmetrisches Muster im Medianprofil
+  und unabhängige Belege an mindestens fünf Sternen in drei Quadranten; betroffene Bilder werden als verwackelt
+  ausgeschlossen. Echte Einzelspuren und symmetrische Beugungsmuster bleiben geschützt.
+- **Originalordner aus falscher Nacht:** Bei Ersatzdateien genügt ein gleicher FITS-Dateiname nicht mehr.
+  Das tatsächliche Aufnahmedatum muss zur gespeicherten Originalaufnahme passen, sonst startet keine Wiederholung.
+- **SkyTrace-Video mit Overlay:** Die transparente Overlay-Fläche blockiert die Videosteuerung nicht mehr;
+  Beschriftungen bleiben interaktiv. Wiedergabe und Position bleiben beim Umschalten erhalten.
+- **Kurze helle Spuren:** Zusätzliche Prüfung in nativer Analyseauflösung für schmale transiente Grate unterhalb
+  der bisherigen Hough-Mindestlänge. Verlangt übereinstimmende Form-/Kontrastbelege im Original und im registrierten
+  Differenzbild sowie ruhigen Hintergrund. Als unbestätigte Spur, ohne automatische Objektidentifikation.
+- **NGC-1499-Spur übersehen:** Für den Differenzvergleich bleibt die direkte Registrierung benachbarter Aufnahmen
+  erhalten. Sie wird nicht mehr durch die Differenz zweier unabhängig bestimmter Referenzlösungen ersetzt; ein
+  Sprung dieser Lösungen hatte im bestätigten Fall die Sterne um rund 22 Pixel versetzt und die schwache Spur verdeckt.
+
 ## 0.13.0 – 03.11.2026
 
 ### Neu

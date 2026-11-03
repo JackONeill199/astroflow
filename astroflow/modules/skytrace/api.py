@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import math
 import os
 import re
 import shutil
@@ -11,6 +12,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
+from functools import lru_cache
 from urllib.parse import quote
 
 from fastapi import APIRouter, Body, HTTPException, Request
@@ -36,6 +38,23 @@ def within(root: Path, relative: str) -> Path:
 def _read_json(path: Path, default):
     from json_store import read_json
     return read_json(path, default)
+
+
+@lru_cache(maxsize=32)
+def _frame_times(path: str, stamp: int, size: int) -> dict:
+    """Original-Bildnummer auf gespeicherte Videozeit abbilden; ausgeschlossene Frames stehen hier nicht."""
+    from json_store import open_read
+    out = {}
+    with open_read(Path(path)) as stream:
+        for line in stream:
+            try:
+                row = json.loads(line)
+                seconds = row.get('video_seconds')
+                if isinstance(seconds, (int, float)) and math.isfinite(seconds) and seconds >= 0:
+                    out[int(row['index']) + 1] = seconds
+            except (ValueError, TypeError, KeyError):
+                continue
+    return out
 
 
 def list_runs(results: Path, limit: int = 80) -> list[dict]:
@@ -140,7 +159,7 @@ class Controller:
             raise ValueError("Lauf nicht gefunden")
         return path
 
-    def launch(self, options: dict, refresh: bool = False) -> dict:
+    def launch(self, options: dict, refresh: bool = False, replay: dict | None = None) -> dict:
         from json_store import write_json
         with self.lock:
             if self.process is not None:
@@ -175,13 +194,16 @@ class Controller:
                 if mode not in MODES or not 0 <= samples <= 100000 or not 1 <= fps <= 60:
                     raise ValueError("Ungültige Analyse-Einstellungen.")
                 self.results.mkdir(parents=True, exist_ok=True)
-                if source.is_relative_to(self.results.resolve()) or self.results.resolve().is_relative_to(source):
+                if not replay and (source.is_relative_to(self.results.resolve()) or self.results.resolve().is_relative_to(source)):
                     raise ValueError("Originalordner und Ergebnisordner müssen getrennt sein.")
                 out = self.results / dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")
                 out.mkdir()
                 cancel = out / "STOP"
                 cmd = [py, "-u", str(code / "analyse.py"), "--source", str(source), "--output", str(out), "--mode", mode,
                        "--samples", str(samples), "--fps", str(fps)]
+                if replay:
+                    write_json(out / 'eingang.json', replay)
+                    cmd.extend(['--input-manifest', str(out / 'eingang.json')])
                 if mode == MODES[0] and samples:
                     cmd.extend(["--limit", str(samples)])
                 if options.get("solve", True):
@@ -293,6 +315,12 @@ class Controller:
             item["clean_preview_url"] = url(clean_preview) if clean_preview.exists() else None
             items = _read_json(within(path, summary["candidates_file"]), []) if summary.get("candidates_file") else []
             try:
+                frame_path = folder / 'frames.jsonl'
+                stat = frame_path.stat()
+                frame_times = _frame_times(str(frame_path), stat.st_mtime_ns, stat.st_size)
+            except OSError:
+                frame_times = {}
+            try:
                 from video_overlays import timeline
                 item["overlay_timeline"] = timeline(folder, items or [])
             except ImportError:
@@ -303,6 +331,18 @@ class Controller:
                     c["context_image"]["url"] = url(within(path, c["context_image"]["image"]))
                 for frame in c.get("frames", []):
                     frame["url"] = url(within(path, frame["image"]))
+                    # Zeit aus akzeptierten Videoframes, nicht aus Originalnummer/fps ableiten (Lücken!).
+                    frame.pop('video_seconds', None)
+                    if not frame.get('excluded') and frame.get('index') in frame_times:
+                        frame['video_seconds'] = frame_times[frame['index']]
+                    full = frame.get('full_image')
+                    context = c.get('context_image')
+                    if not full and context and context.get('frame') == frame.get('index'):
+                        full = {k: context[k] for k in ('image', 'width', 'height') if k in context}
+                    if full and full.get('image') and within(path, full['image']).is_file():
+                        frame['full_image'] = {**full, 'url': url(within(path, full['image']))}
+                    else:
+                        frame.pop('full_image', None)
                 candidates.append(c)
             sessions.append(item)
         if not summaries and (path / "messwerte.jsonl").exists():
@@ -540,6 +580,23 @@ def build_router(mod) -> APIRouter:
         try:
             return ctl.launch(body, refresh=True)
         except (ValueError, OSError) as e:
+            bad(e)
+
+    @r.post('/reanalyse')
+    def reanalyse(body: dict = Body(...)):
+        from .reanalysis import prepare
+        try:
+            with ctl.lock:
+                if ctl.process is not None:
+                    raise ValueError('Eine Analyse läuft bereits.')
+                plan = prepare(ctl.run_path(body.get('run')), body.get('source'))
+                if body.get('check'):
+                    return dict(missing=plan['missing'], total=plan['total'], observations=len(plan['groups']))
+                if plan['missing']:
+                    raise ValueError(f"{plan['missing']} von {plan['total']} Originalaufnahmen fehlen. Bitte ihren Originalordner auswählen; die Analyse wurde nicht gestartet.")
+                return ctl.launch(dict(source=str(Path(plan['groups'][0]['files'][0]).parent), samples=0,
+                                       mode=MODES[0], fps=plan['groups'][0]['fps'], solve=True, remember=False), replay=plan)
+        except (ValueError, OSError, KeyError, TypeError) as e:
             bad(e)
 
     @r.post("/stop")
