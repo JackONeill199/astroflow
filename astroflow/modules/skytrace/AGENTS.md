@@ -61,6 +61,15 @@ beidseitig > 6× robustes Rauschen in Original und Differenz, schmale gerade Kom
 ihre Schwellen bleiben unverändert; kompakte Fragmente bereits erkannter Spuren werden zusammengeführt. Anlass:
 NGC 1499, kurze helle Spur im letzten Bild eines 61-Frame-Laufs (in Originalkopien geprüft). Keine Identitätsbehauptung.
 `tests/test_skytrace_compact.py` läuft bei vorhandenem OpenCV mit pytest oder direkt im Engine-Interpreter.
+`frame_quality.ensemble_star_tails` prüft zusätzlich bis zu 20 helle, isolierte Sternumgebungen (Radius 64 px):
+Median der auf Kernhelligkeit normierten Profile, Richtungsprofile von 10–56 px mit seitlichem Hintergrund.
+Verlangt Score ≥ 6, vier positive Radialabschnitte und deutliche Asymmetrie gegenüber der Gegenrichtung; zusätzlich
+mindestens fünf individuell belegte Schweife (Score ≥ 5) in drei Quadranten und über >35 % beider Bildachsen.
+So werden auch unterbrochene lange Schweife außerhalb der bisherigen Kernprüfung als globale Bewegung verworfen.
+Test: `test_skytrace_field_motion.py`; scharfe Felder, mehrere echte Linien, symmetrische Beugung und lokale/ungeordnete
+Schweife bleiben erhalten. Originalbefund: drei Fehlkandidaten in einem verwackelten NGC-1499-Bild.
+Ersatzdateien bei `/reanalyse` müssen anhand FITS-DATE-OBS zur gespeicherten UTC passen: gleiche Dateinamen werden
+in unterschiedlichen Nächten wiederverwendet. Ohne prüfbare Identität keine Zuordnung allein nach Namen.
 Für den Differenzvergleich hat die direkt gemessene Registrierung zum Nachbarbild Vorrang vor der Differenz zweier
 globaler Referenzlösungen. Letztere können gegeneinander springen (bestätigt: lange blasse NGC-1499-Spur unten links,
 Videobild 57). Globale Astrometrie für bewegte Punkte bleibt getrennt. Regression mit künstlich springenden Referenzfits.

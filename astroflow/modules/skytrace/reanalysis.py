@@ -1,8 +1,26 @@
 """Originalaufnahmen eines gespeicherten Laufs für eine vollständige neue Erkennung auflösen."""
 import json
+import datetime as dt
 import re
 from collections import defaultdict
 from pathlib import Path
+
+
+def check_replacement(path, row):
+    """Gleiche Stellina-Dateinamen kommen in jeder Nacht erneut vor: Zeit statt Namen allein prüfen."""
+    expected = row.get('timestamp')
+    if path.suffix.lower() not in ('.fits', '.fit', '.fts') or expected is None:
+        raise ValueError(f'Die Originalidentität von {path.name} lässt sich nicht sicher prüfen. Bitte den ursprünglichen Ordner wiederherstellen oder eine neue Analyse starten.')
+    from astropy.io import fits
+    try:
+        stamp = dt.datetime.fromisoformat(str(fits.getheader(path)['DATE-OBS']).replace('Z', '+00:00'))
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=dt.timezone.utc)
+    except (OSError, ValueError, KeyError) as e:
+        raise ValueError(f'Das Aufnahmedatum von {path.name} lässt sich nicht prüfen.') from e
+    if abs(stamp.timestamp() - float(expected)) > .001:
+        date = dt.datetime.fromtimestamp(float(expected), dt.timezone.utc).strftime('%d.%m.%Y %H:%M:%S UTC')
+        raise ValueError(f'{path.name} gehört nicht zur ursprünglichen Aufnahme vom {date}. Bitte den Originalordner der passenden Nacht wählen.')
 
 
 def prepare(run, source=None):
@@ -49,6 +67,7 @@ def prepare(run, source=None):
                     raise ValueError(f'Dateiname nicht eindeutig: {path.name}. Bitte einen engeren Originalordner auswählen.')
                 if matches:
                     path = matches.pop()
+                    check_replacement(path, row)
                 else:
                     missing += 1
                     continue

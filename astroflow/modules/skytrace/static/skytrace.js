@@ -218,7 +218,7 @@ async function runView(root, runId, tab = 'vorschau') {
         const plan = await send(T + '/reanalyse', { run: runId, check: true });
         if (plan.missing) {
           folderDialog('', startAgain, { title: 'Originalaufnahmen für erneute Analyse wählen', ok: 'Erneut analysieren',
-            hint: `${plan.missing} von ${plan.total} Originalaufnahmen fehlen am bisherigen Ort. Bitte den Ordner mit den Originalen wählen. Es werden nur die bisherigen Aufnahmen neu geprüft.` });
+            hint: `${plan.missing} von ${plan.total} Originalaufnahmen fehlen am bisherigen Ort. Bitte den Ordner der passenden Nacht wählen. Aufnahmedatum und Dateinamen müssen zum bisherigen Lauf passen.` });
         } else await startAgain();
       } catch (e) { toast(e.message, 'err'); }
     });

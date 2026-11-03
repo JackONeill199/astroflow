@@ -16,6 +16,12 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   ältere Läufe nutzen vorhandene Vergleichsbilder oder das unbeschriftete Video.
 
 ### Behoben
+- **SkyTrace-Teleskopbewegung:** Zusätzliche Prüfung des gemeinsamen Profils heller Sterne erkennt auch lange,
+  schwache und unterbrochene Schweife bei noch runden Sternkernen. Verlangt ein asymmetrisches Muster im Medianprofil
+  und unabhängige Belege an mindestens fünf Sternen in drei Quadranten; betroffene Bilder werden als verwackelt
+  ausgeschlossen. Echte Einzelspuren und symmetrische Beugungsmuster bleiben geschützt.
+- **Originalordner aus falscher Nacht:** Bei Ersatzdateien genügt ein gleicher FITS-Dateiname nicht mehr.
+  Das tatsächliche Aufnahmedatum muss zur gespeicherten Originalaufnahme passen, sonst startet keine Wiederholung.
 - **SkyTrace-Video mit Overlay:** Die transparente Overlay-Fläche blockiert die Videosteuerung nicht mehr;
   Beschriftungen bleiben interaktiv. Wiedergabe und Position bleiben beim Umschalten erhalten.
 - **Kurze helle Spuren:** Zusätzliche Prüfung in nativer Analyseauflösung für schmale transiente Grate unterhalb
