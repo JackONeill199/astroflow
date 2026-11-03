@@ -59,11 +59,18 @@
 .sg-kpi { margin: 0 0 18px }
 .sg-mile { margin-bottom: 8px }
 .sg-mile .progress i { background: linear-gradient(90deg, var(--warn), var(--acc2)) }
-.sg-messier { display: grid; grid-template-columns: repeat(22, 1fr); gap: 3px; margin-top: 14px }
-.sg-messier i { aspect-ratio: 1; border-radius: 3px; background: var(--line) }
-.sg-messier i.on { background: var(--grad); box-shadow: 0 0 8px color-mix(in srgb, var(--acc) 50%, transparent) }
+.sg-messier { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 6px }
+.sg-messier .mt { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; display: grid; place-items: end start; padding: 0; font: inherit; color: var(--mut);
+  background: color-mix(in srgb, var(--panel) 60%, transparent); border: 1px dashed color-mix(in srgb, var(--mut) 40%, transparent); cursor: pointer; text-decoration: none }
+.sg-messier .mt b { position: relative; z-index: 1; padding: 2px 5px; font-size: 11px; font-weight: 600 }
+.sg-messier .mt.on { border: 1px solid color-mix(in srgb, var(--acc) 55%, transparent); color: #fff; background: var(--grad); box-shadow: 0 0 8px color-mix(in srgb, var(--acc) 35%, transparent) }
+.sg-messier .mt.on b { text-shadow: 0 1px 3px #000c }
+.sg-messier .mt img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover }
+.sg-messier .mt:hover { border-color: var(--acc); color: var(--fg) }
+.sg-grp { margin: 18px 0 8px; font-size: 14px; font-weight: 600 }
+.ach .progress { margin-top: 5px; height: 4px }
 .sg-ach { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px }
-.ach { display: flex; gap: 12px; align-items: center; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); opacity: .55; filter: grayscale(.8) }
+.ach { display: flex; gap: 12px; align-items: center; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); opacity: .7; filter: grayscale(.8) }
 .ach > span { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: var(--panel2); flex: none }
 .ach div { display: grid; gap: 1px }
 .ach.on { opacity: 1; filter: none; border-color: color-mix(in srgb, var(--warn) 35%, transparent) }

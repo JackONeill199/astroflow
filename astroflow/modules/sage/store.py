@@ -9,20 +9,52 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import collection
+
+# (id, Titel, Beschreibung, Symbol, Gruppe, Kennzahl in den Statistiken, Ziel) – IDs bestehender Erfolge nie ändern
 ACHIEVEMENTS = [
-    ("first_star", "Erste Entdeckung", "Dein erstes Himmelsobjekt identifiziert", "star", lambda s: s["total_objects"] >= 1),
-    ("explorer_5", "Himmels-Forscher", "5 verschiedene Objekte entdeckt", "search", lambda s: s["total_objects"] >= 5),
-    ("explorer_10", "Sternenkundler", "10 verschiedene Objekte entdeckt", "orbit", lambda s: s["total_objects"] >= 10),
-    ("explorer_25", "Meister-Beobachter", "25 verschiedene Objekte entdeckt", "medal", lambda s: s["total_objects"] >= 25),
-    ("messier_first", "Messier-Jäger", "Erstes Messier-Objekt entdeckt", "target", lambda s: s["messier"] >= 1),
-    ("messier_5", "Messier-Sammler", "5 Messier-Objekte entdeckt", "grid", lambda s: s["messier"] >= 5),
-    ("ngc_first", "NGC-Entdecker", "Erstes NGC-Objekt identifiziert", "globe", lambda s: s["ngc"] >= 1),
-    ("return_visitor", "Wiederkehrer", "Ein Objekt in mehreren Analysen gefunden", "refresh", lambda s: s["repeat_objects"] >= 1),
-    ("analyses_5", "Fleißiger Beobachter", "5 Analysen durchgeführt", "camera", lambda s: s["analyses"] >= 5),
-    ("analyses_10", "Veteran", "10 Analysen durchgeführt", "medal", lambda s: s["analyses"] >= 10),
-    ("busy_field", "Reichhaltiges Feld", "Mindestens 5 Objekte in einer Analyse", "sparkle", lambda s: s["max_in_one"] >= 5),
+    ("first_star", "Erste Entdeckung", "Dein erstes Himmelsobjekt identifiziert", "star", "Sammlung", "total_objects", 1),
+    ("explorer_5", "Himmels-Forscher", "5 verschiedene Objekte entdeckt", "search", "Sammlung", "total_objects", 5),
+    ("explorer_10", "Sternenkundler", "10 verschiedene Objekte entdeckt", "orbit", "Sammlung", "total_objects", 10),
+    ("explorer_25", "Meister-Beobachter", "25 verschiedene Objekte entdeckt", "medal", "Sammlung", "total_objects", 25),
+    ("explorer_50", "Himmelsatlas", "50 verschiedene Objekte entdeckt", "grid", "Sammlung", "total_objects", 50),
+    ("explorer_100", "Kartograf des Himmels", "100 verschiedene Objekte entdeckt", "globe", "Sammlung", "total_objects", 100),
+    ("messier_first", "Messier-Jäger", "Erstes Messier-Objekt entdeckt", "target", "Kataloge", "messier", 1),
+    ("messier_5", "Messier-Sammler", "5 Messier-Objekte entdeckt", "grid", "Kataloge", "messier", 5),
+    ("messier_10", "Messier-Kenner", "10 Messier-Objekte entdeckt", "target", "Kataloge", "messier", 10),
+    ("messier_50", "Messier-Meister", "50 Messier-Objekte entdeckt", "medal", "Kataloge", "messier", 50),
+    ("messier_110", "Messier-Marathon", "Alle 110 Messier-Objekte entdeckt", "sparkle", "Kataloge", "messier", 110),
+    ("ngc_first", "NGC-Entdecker", "Erstes NGC-Objekt identifiziert", "globe", "Kataloge", "ngc", 1),
+    ("caldwell_first", "Caldwell-Entdecker", "Erstes Caldwell-Objekt entdeckt", "search", "Kataloge", "caldwell", 1),
+    ("first_galaxy", "Galaxienjäger", "Erste Galaxie in der Sammlung", "orbit", "Objektarten", "galaxy", 1),
+    ("galaxies_25", "Galaxienfreund", "25 Galaxien in der Sammlung", "orbit", "Objektarten", "galaxy", 25),
+    ("first_planetary", "Gashülle", "Ersten Planetarischen Nebel entdeckt", "sparkle", "Objektarten", "planetary", 1),
+    ("first_globular", "Sternenball", "Ersten Kugelsternhaufen entdeckt", "star", "Objektarten", "globular", 1),
+    ("first_cluster", "Sternenhaufen", "Ersten offenen Sternhaufen entdeckt", "star", "Objektarten", "open_cluster", 1),
+    ("first_snr", "Sternenreste", "Ersten Supernova-Überrest entdeckt", "pulse", "Objektarten", "snr", 1),
+    ("kinds_5", "Allrounder", "Objekte aus 5 verschiedenen Objektarten", "grid", "Objektarten", "kinds", 5),
+    ("constellations_5", "Sternbild-Wanderer", "Objekte in 5 verschiedenen Sternbildern", "pin", "Himmel", "constellations", 5),
+    ("constellations_10", "Sternbild-Kenner", "Objekte in 10 verschiedenen Sternbildern", "pin", "Himmel", "constellations", 10),
+    ("constellations_20", "Himmelskartograf", "Objekte in 20 verschiedenen Sternbildern", "pin", "Himmel", "constellations", 20),
+    ("dist_10m", "Ferne Welten", "Ein Objekt über 10 Millionen Lichtjahre entfernt", "globe", "Himmel", "max_mly", 10),
+    ("dist_100m", "Blick in die Tiefe", "Ein Objekt über 100 Millionen Lichtjahre entfernt", "globe", "Himmel", "max_mly", 100),
+    ("return_visitor", "Wiederkehrer", "Ein Objekt in mehreren Analysen gefunden", "refresh", "Aktivität", "repeat_objects", 1),
+    ("repeat_5", "Stammgast", "Dasselbe Objekt in 5 Analysen wiedergesehen", "refresh", "Aktivität", "max_seen", 5),
+    ("analyses_5", "Fleißiger Beobachter", "5 Analysen durchgeführt", "camera", "Aktivität", "analyses", 5),
+    ("analyses_10", "Veteran", "10 Analysen durchgeführt", "medal", "Aktivität", "analyses", 10),
+    ("busy_field", "Reichhaltiges Feld", "Mindestens 5 Objekte in einer Analyse", "sparkle", "Aktivität", "max_in_one", 5),
+    ("nights_5", "Nachtschicht", "In 5 verschiedenen Nächten fotografiert", "camera", "Beobachtung", "nights", 5),
+    ("nights_10", "Dauerbeobachter", "In 10 verschiedenen Nächten fotografiert", "camera", "Beobachtung", "nights", 10),
+    ("night_owl", "Nachteule", "Eine Aufnahme nach 2 Uhr nachts", "star", "Beobachtung", "night_owl", 1),
+    ("seasons_4", "Rund ums Jahr", "In allen vier Jahreszeiten fotografiert", "refresh", "Beobachtung", "seasons", 4),
+    ("exposure_1h", "Geduldsprobe", "1 Stunde Belichtung an einem Objekt", "pulse", "Beobachtung", "max_obj_hours", 1),
+    ("exposure_10h", "Langzeitbelichter", "10 Stunden Belichtung an einem Objekt", "pulse", "Beobachtung", "max_obj_hours", 10),
+    ("total_100h", "Hundert Stunden", "100 Stunden Belichtung insgesamt", "medal", "Beobachtung", "total_hours", 100),
 ]
-MILESTONES = (5, 10, 25, 50, 100)
+# Kennzahlen, die sich aus den Objekten allein ergeben und deshalb rückwirkend datiert werden können
+OBJECT_KEYS = {"total_objects", "messier", "ngc", "caldwell", "galaxy", "planetary", "globular", "open_cluster", "snr",
+               "kinds", "constellations", "max_mly"}
+MILESTONES = (5, 10, 25, 50, 100, 150, 250, 500, 1000)
 
 
 def now_iso() -> str:
@@ -65,6 +97,8 @@ class SageStore:
         self.disc_file = root / "discoveries.json"
         self.cel_file = root / "celebrations.json"
         self._lock = threading.RLock()
+        self.enrich = None        # (Namen) -> {Name: Katalog-/Art-/Sternbild-Angaben}, setzt das Modul (Wissensbasis)
+        self.log_stats = None     # () -> Kennzahlen des Aufnahmeprotokolls (Nächte, Belichtung)
         cel = self._load(self.cel_file, [])
         self._cel = cel if isinstance(cel, list) else []
         # Entdeckungen sofort anlegen: würden sie erst bei der nächsten Analyse aus dem Verlauf aufgebaut,
@@ -143,14 +177,74 @@ class SageStore:
                 "messier": sum(o["category"] == "messier" for o in v), "ngc": sum(o["category"] == "ngc" for o in v),
                 "ic": sum(o["category"] == "ic" for o in v), "repeat_objects": sum(o["seen"] > 1 for o in v)}
 
-    @staticmethod
-    def _unlock(stats: dict, have: dict) -> list[dict]:
+    def _ext(self, objs: list[dict], attrs: dict, extra: dict | None = None) -> dict:
+        """Kennzahlen für Erfolge aus den Objekten (Kataloge, Arten, Sternbilder, Entfernung) plus Protokollwerte."""
+        a = [attrs.get(o["name"]) or {} for o in objs]
+        kinds = [x.get("kind") for x in a if x.get("kind")]
+        st = {"total_objects": len(objs), "messier_list": sorted({x["m"] for x in a if x.get("m")}),
+              "caldwell": len({x["c"] for x in a if x.get("c")}), "kinds": len(set(kinds)),
+              "constellations": len({str(x["con"]).lower() for x in a if x.get("con")}),
+              "max_mly": max([x.get("mly") or 0 for x in a], default=0), "max_seen": max([o["seen"] for o in objs], default=0),
+              "ngc": sum(o["category"] == "ngc" for o in objs)}
+        st["messier"] = len(st["messier_list"])
+        for k in collection.KINDS:
+            st[k] = kinds.count(k)
+        return {**st, **{k: v for k, v in (extra or {}).items() if k != "dates"}}
+
+    def _attrs(self, objs: list[dict]) -> dict:
+        names = [o["name"] for o in objs]
+        out = {n: {"m": collection.messier_number(n)} for n in names}          # Namen allein reichen für „M 31“ und „NGC 224“
+        try:
+            for n, v in (self.enrich(names) if self.enrich else {}).items():
+                out[n] = {**v, "m": v.get("m") or out[n]["m"]}
+        except Exception:
+            pass
+        return out
+
+    def _full_stats(self, d: dict) -> tuple[dict, dict, dict]:
+        objs = list(d["objects"].values())
+        try:
+            log = (self.log_stats() if self.log_stats else None) or {}
+        except Exception:
+            log = {}
+        attrs = self._attrs(objs)
+        entries = self.entries()
+        extra = {**log, "stories": sum(bool(e.get("story")) for e in entries)}
+        return {**d["stats"], **self._ext(objs, attrs, extra)}, attrs, log
+
+    def _unlock(self, stats: dict, have: dict, when: dict | None = None) -> list[dict]:
         new = []
-        for aid, title, desc, icon, check in ACHIEVEMENTS:
-            if aid not in have and check(stats):
-                have[aid] = {"id": aid, "title": title, "description": desc, "icon": icon, "unlocked": now_iso()}
+        for aid, title, desc, icon, _grp, key, goal in ACHIEVEMENTS:
+            if aid not in have and (stats.get(key) or 0) >= goal:
+                have[aid] = {"id": aid, "title": title, "description": desc, "icon": icon, "unlocked": (when or {}).get(aid) or now_iso()}
                 new.append(have[aid])
         return new
+
+    def _dates(self, d: dict, attrs: dict, log: dict) -> dict:
+        """Plausible Zeitpunkte für rückwirkende Erfolge: wann das Ziel in der Reihenfolge der Entdeckungen erstmals erreicht war."""
+        when = dict(log.get("dates") or {})
+        objs = sorted(d["objects"].values(), key=lambda o: o["first_seen"])
+        todo = [a for a in ACHIEVEMENTS if a[0] not in d["achievements"] and a[0] not in when and a[5] in OBJECT_KEYS]
+        for i in range(1, len(objs) + 1):
+            if not todo:
+                break
+            st = self._ext(objs[:i], attrs)
+            for a in [a for a in todo if (st.get(a[5]) or 0) >= a[6]]:
+                when[a[0]] = objs[i - 1]["first_seen"]
+                todo.remove(a)
+        return when
+
+    def refresh(self, celebrate: bool = True) -> list[dict]:
+        """Erfolge für den Bestand prüfen (neue Erfolgsarten werden rückwirkend vergeben)."""
+        with self._lock:
+            d = self._disc()
+            stats, attrs, log = self._full_stats(d)
+            new = self._unlock(stats, d["achievements"], self._dates(d, attrs, log))
+            if new:
+                self._save(self.disc_file, d)
+                if celebrate:
+                    self.celebrate({"id": f"erfolge-{int(time.time())}", "title": "Neue Erfolge"}, {"achievements": new})
+            return new
 
     def rebuild(self) -> dict:
         """Entdeckungen vollständig aus dem Verlauf berechnen (nach dem Löschen eines Eintrags)."""
@@ -172,9 +266,8 @@ class SageStore:
                     kl = next((x.get("kind_label") for x in e["objects"] if x.get("name") == n and x.get("kind_label")), "")
                     o["kind_label"] = o["kind_label"] or kl
             ach = {k: v for k, v in (old.get("achievements") or {}).items()}
-            stats = self._stats(objs, analyses, max_in_one)
-            self._unlock(stats, ach)
-            d = {"objects": objs, "achievements": ach, "stats": stats}
+            d = {"objects": objs, "achievements": ach, "stats": self._stats(objs, analyses, max_in_one)}
+            self._unlock(self._full_stats(d)[0], ach)
             self._save(self.disc_file, d)
             return d
 
@@ -199,7 +292,7 @@ class SageStore:
                     known.append(n)
             st = d["stats"]
             d["stats"] = self._stats(d["objects"], st.get("analyses", 0) + 1, max(st.get("max_in_one", 0), len(names)))
-            unlocked = self._unlock(d["stats"], d["achievements"])
+            unlocked = self._unlock(self._full_stats(d)[0], d["achievements"])
             self._save(self.disc_file, d)
             return {"new": new, "known": known, "achievements": unlocked}
 
@@ -226,13 +319,27 @@ class SageStore:
                     c["seen"] = True
             self._save(self.cel_file, self._cel)
 
+    def stats(self) -> dict:
+        return self._disc()["stats"]
+
     def overview(self) -> dict:
-        d = self._disc()
-        s = d["stats"]
-        nxt = next((m for m in MILESTONES if m > s["total_objects"]), None)
-        prev = max([m for m in MILESTONES if m <= s["total_objects"]] or [0])
-        progress = round(100 * (s["total_objects"] - prev) / max(1, (nxt or prev) - prev)) if nxt else 100
+        with self._lock:
+            self.refresh()
+            d = self._disc()
+            s, attrs, _ = self._full_stats(d)
+        total = s["total_objects"]
+        nxt = next((m for m in MILESTONES if m > total), None)
+        prev = max([m for m in MILESTONES if m <= total] or [0])
+        progress = round(100 * (total - prev) / max(1, (nxt or prev) - prev)) if nxt else 100
         objs = sorted(d["objects"].values(), key=lambda o: o["first_seen"], reverse=True)
-        ach = [{"id": a, "title": t, "description": de, "icon": i, "unlocked": (d["achievements"].get(a) or {}).get("unlocked")}
-               for a, t, de, i, _ in ACHIEVEMENTS]
-        return {"stats": s, "objects": objs, "achievements": ach, "next_milestone": nxt, "milestone_progress": progress}
+        ach = [{"id": a, "title": t, "description": de, "icon": i, "group": g, "unlocked": (d["achievements"].get(a) or {}).get("unlocked"),
+                "progress": {"cur": min(int(s.get(k) or 0), goal), "goal": goal}} for a, t, de, i, g, k, goal in ACHIEVEMENTS]
+        first = {}
+        for o in sorted(d["objects"].values(), key=lambda o: o["first_seen"]):
+            m = (attrs.get(o["name"]) or {}).get("m")
+            if m and m not in first:
+                first[m] = o
+        messier = [{"n": n, "have": n in first, "name": first[n]["name"] if n in first else f"M{n}",
+                    "entry": first[n]["first_entry"] if n in first else None} for n in range(1, 111)]
+        return {"stats": s, "objects": objs, "achievements": ach, "next_milestone": nxt, "milestone_progress": progress,
+                "milestones": list(MILESTONES), "messier": messier}

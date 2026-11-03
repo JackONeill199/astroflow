@@ -84,7 +84,7 @@ class Module(BaseModule):
             for f in db.q("SELECT night, info, metrics, status, stacked FROM frames WHERE project_id=? AND kind='light'", (p["id"],)):
                 info, met = json.loads(f["info"] or "{}"), json.loads(f["metrics"] or "{}")
                 n = nights.setdefault(f["night"] or "?", {"night": f["night"], "frames": 0, "used": 0, "exposure_s": 0.0, "used_s": 0.0,
-                                                          "instruments": set(), "filters": set(), "fwhm": [], "first": None, "last": None})
+                                                          "instruments": set(), "filters": set(), "fwhm": [], "first": None, "last": None, "owl": False})
                 exp = float(info.get("exptime") or 0)
                 n["frames"] += 1
                 n["exposure_s"] += exp
@@ -101,6 +101,7 @@ class Module(BaseModule):
                 if d:
                     n["first"] = min(n["first"] or d, d)
                     n["last"] = max(n["last"] or d, d)
+                    n["owl"] = n["owl"] or _after_two(d)
             sessions = []
             for n in sorted(nights.values(), key=lambda n: n["night"] or ""):
                 fw = sorted(n.pop("fwhm"))
@@ -121,6 +122,16 @@ class Module(BaseModule):
         from .services import project_solution
         pic = self.project_picture(pid)
         return pic and project_solution(self.ctx.settings.work_dir, pid, pic["files"])
+
+
+def _after_two(date_obs: str) -> bool:
+    """Aufnahme zwischen 2 und 6 Uhr Ortszeit des Rechners (DATE-OBS ohne Zeitzone gilt als UTC)."""
+    from datetime import datetime, timezone
+    try:
+        t = datetime.fromisoformat(str(date_obs).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return 2 <= (t if t.tzinfo else t.replace(tzinfo=timezone.utc)).astimezone().hour < 6
 
 
 def catalog_resolve(name: str) -> dict | None:
