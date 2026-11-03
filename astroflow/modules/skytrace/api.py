@@ -57,6 +57,28 @@ def _frame_times(path: str, stamp: int, size: int) -> dict:
     return out
 
 
+def view3d_available(c: dict) -> bool:
+    from .orbit3d import available
+    return available(c)
+
+
+def scene_3d(mod, payload: dict) -> dict:
+    """Bahnrechnung im Server; ohne sgp4 hier im Engine-Interpreter (hat sgp4 über skyfield)."""
+    import importlib.util
+    import sys
+    if importlib.util.find_spec("sgp4") is not None:
+        from .orbit3d import build
+        return build(payload)
+    if mod.python == sys.executable:
+        return dict(ok=False, reason="Für die Bahnrechnung fehlt das Python-Paket sgp4 (pip install sgp4).")
+    out = subprocess.run([mod.python, str(Path(__file__).parent / "orbit3d.py")], input=json.dumps(payload), capture_output=True,
+                         text=True, encoding="utf-8", timeout=90, env=mod.engine_env(),
+                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    if out.returncode != 0:
+        return dict(ok=False, reason="Bahnrechnung im Engine-Interpreter fehlgeschlagen: " + (out.stderr.strip().splitlines() or ["?"])[-1][:200])
+    return json.loads(out.stdout)
+
+
 def list_runs(results: Path, limit: int = 80) -> list[dict]:
     paths = sorted(results.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True) if results.exists() else []
     runs = []
@@ -327,6 +349,7 @@ class Controller:
                 item["overlay_timeline"] = None
             for c in items or []:
                 c["key"] = folder.name + "/" + c["id"]
+                c["view3d"] = view3d_available(c)
                 if c.get("context_image"):
                     c["context_image"]["url"] = url(within(path, c["context_image"]["image"]))
                 for frame in c.get("frames", []):
@@ -365,6 +388,26 @@ class Controller:
             sessions.extend(grouped.values())
         return dict(id=name, sessions=sessions, candidates=candidates, report_url=url(path / "bericht.html"),
                     modified=(path / "videos.json").stat().st_mtime if (path / "videos.json").exists() else 0)
+
+    def orbit3d(self, name: str, key: str) -> dict:
+        """3D-Szene eines Kandidaten (Bahnen, Blickfeld, Standort). Fehlt etwas, kommt `ok: False` mit Grund statt eines Fehlers."""
+        from .orbit3d import payload_for
+        path = self.run_path(name)
+        folder_name, _, cid = (key or "").partition("/")
+        for summary in _read_json(path / "videos.json", []) or []:
+            if not summary.get("candidates_file"):
+                continue
+            folder = within(path, str(Path(summary["video"]).parent))
+            if folder.name != folder_name:
+                continue
+            c = next((x for x in _read_json(within(path, summary["candidates_file"]), []) or [] if x.get("id") == cid), None)
+            if c is None:
+                break
+            payload = payload_for(folder, c, self.mod.home / "catalog_cache" / "archives")
+            if payload.get("reason"):
+                return dict(ok=False, reason=payload["reason"])
+            return dict(scene_3d(self.mod, payload), candidate=dict(id=c["id"], name=c.get("label"), key=key))
+        raise ValueError("Kandidat nicht gefunden")
 
     def observation_history(self, source: Path, names: list[str]) -> dict:
         """Gespeicherte Bildfolgen ihrem Originalordner zuordnen, auch aus älteren Läufen."""
@@ -443,6 +486,13 @@ def build_router(mod) -> APIRouter:
         try:
             return ctl.run_data(id)
         except (OSError, ValueError, KeyError) as e:
+            bad(e)
+
+    @r.get("/orbit3d")
+    def orbit3d(run: str, key: str):
+        try:
+            return ctl.orbit3d(run, key)
+        except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as e:
             bad(e)
 
     @r.delete("/run")

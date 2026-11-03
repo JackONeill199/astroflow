@@ -286,7 +286,9 @@ def satellite_check(candidate,site,settings):
                 geometry['compatible']=False;geometry['reasons'].append('Satellit bräuchte für die Spur länger als die Belichtung')
         diagnostics.append(dict(name=sat.name or 'NORAD '+str(sat.model.satnum),norad_id=int(sat.model.satnum),tle_age_days=round(age,3),world_path=np.column_stack([ra.hours[valid]*15,dec.degrees[valid]]).round(8).tolist(),tolerance_arcsec=SATELLITE_TOLERANCE_ARCSEC,**geometry))
         if geometry['compatible']:
-            matches.append(dict(name=sat.name,norad_id=int(sat.model.satnum),tle_age_days=round(age,3),evidence='Historische SGP4-Bahn passiert die Spur in Lage, Richtung und Zeit; Sichtbarkeit nicht bestätigt',**geometry))
+            # Bahnelemente mitspeichern: 3D-Ansicht (orbit3d.py) rechnet die Bahn später ohne Archiv nach.
+            from sgp4.exporter import export_tle
+            matches.append(dict(name=sat.name,norad_id=int(sat.model.satnum),tle_age_days=round(age,3),tle=list(export_tle(sat.model)),evidence='Historische SGP4-Bahn passiert die Spur in Lage, Richtung und Zeit; Sichtbarkeit nicht bestätigt',**geometry))
     rank=lambda r:float('inf') if r.get('separation_arcsec') is None else r.get('mean_offset_arcsec',r['separation_arcsec'])+SECONDS_WEIGHT_ARCSEC*r.get('time_offset_s',0)
     diagnostics.sort(key=lambda r:(not r['compatible'],rank(r)));matches.sort(key=rank)
     # Namen aus der lokalen SATCAT-Kopie; Treffer zuerst (nur für sie reichen die wenigen Einzelabfragen bei neuen Nummern).
@@ -344,7 +346,7 @@ def aircraft_check(candidate,site,settings):
         if np.max(altitude.degrees)<=0: continue
         ra,dec,_=vector.radec(); checked+=1
         geometry=angular_match(candidate,ra.hours*15,dec.degrees,360)
-        if geometry['compatible']: matches.append(dict(name=rows[0][4] or icao,icao24=icao,evidence='Archivierte geometrische ADS-B-Positionen: Zeit und Spur vereinbar; keine eindeutige Identifikation',**geometry))
+        if geometry['compatible']: matches.append(dict(name=rows[0][4] or icao,icao24=icao,track=[[r[0],round(r[1],5),round(r[2],5),round(r[3],1)] for r in rows],evidence='Archivierte geometrische ADS-B-Positionen: Zeit und Spur vereinbar; keine eindeutige Identifikation',**geometry))
     return status('aircraft','compatible' if matches else ('checked_no_match' if checked else 'not_checkable'),f'{checked} ausreichend dichte historische Flugspuren im Belichtungsfenster geprüft. Fehlende Abdeckung schließt ein Flugzeug nicht aus.',matches,archive=source,source=source if source and source.startswith('https://') else SOURCES['aircraft'])
 
 
@@ -372,7 +374,8 @@ def meteor_check(candidate,site,settings):
         if not visible.any():continue
         vectors=vectors[:,visible];ra=np.degrees(np.arctan2(vectors[1],vectors[0]))%360;dec=np.degrees(np.arctan2(vectors[2],np.hypot(vectors[0],vectors[1])))
         geometry=angular_match(candidate,ra,dec,180)
-        if geometry['compatible']:matches.append(dict(hint,**geometry,evidence='GMN-Flugbahn: Zeit und topozentrische Spur innerhalb 3 Bogenminuten vereinbar; Identität nicht bestätigt'))
+        trajectory=dict(begin=[row['LatBeg'],row['LonBeg'],row['HtBeg']],end=[row['LatEnd'],row['LonEnd'],row['HtEnd']],start=row['timestamp'],duration=row['Duration'])
+        if geometry['compatible']:matches.append(dict(hint,**geometry,trajectory=trajectory,evidence='GMN-Flugbahn: Zeit und topozentrische Spur innerhalb 3 Bogenminuten vereinbar; Identität nicht bestätigt'))
     only_time=bool(hints) and (not site or not candidate.get('world_path'))
     return status('meteors','compatible' if matches else ('temporal_hint' if only_time else 'checked_no_match'),f'{len(records)} GMN-Flugbahnen im Zeitfenster über dem geometrischen Standorthorizont aus lokalem Bestand ausgewählt. Kein weltweiter Archivdownload. GMN ist kein vollständiger Meteorkatalog.',matches,source=GMN,temporal_hints=hints if only_time else [])
 

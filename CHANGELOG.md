@@ -3,6 +3,18 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.16.0 – 03.11.2026
+
+### Neu
+- **SkyTrace 3D-Ansicht:** Kandidaten mit zugeordnetem Satelliten (bzw. Meteorbahn oder Flugzeugspur) zeigen
+  „3D-Ansicht“: drehbare Erde mit Tag-Nacht-Grenze zur Aufnahmezeit, Standort, Teleskop-Blickfeld als Kegel bis in
+  Satellitenhöhe und die per SGP4 berechnete Bahn – ganzer Umlauf, Stück im Blickfeld hervorgehoben. Zeitregler
+  ±10 min mit Abspielen, Ansichten Erde/Blickfeld/Folgen, Infokarte mit Höhe, Geschwindigkeit, Entfernung,
+  NORAD-Nummer und Alter der Bahnelemente. Läuft offline (three.js und Erdtextur liegen bei).
+- Neue Katalogabgleiche speichern die Bahnelemente (TLE), Meteor-Flugbahnen und Flugzeugspuren mit. Ältere Läufe
+  holen die Bahn aus dem lokalen Bahnarchiv, sonst erklärt ein Hinweis, dass „Zeitreihen aktualisieren“ sie ergänzt.
+- Python-Paket `sgp4` in `requirements.txt` (Bahnrechnung im Server; fehlt es, rechnet der SkyTrace-Interpreter).
+
 ## 0.15.0 – 03.11.2026
 
 ### Neu
