@@ -49,6 +49,11 @@ Objektseite in Bilder, mindestens der einfache Geschichtstext zum Objekt. Man mu
 
 ## 4. Übersicht: empfohlene Ziele für heute Nacht – 03.11.2026
 
+**Ausbau in 0.20.0 (Status: umgesetzt):** vollständige Messier-/Caldwell-Liste + ASTAP, Helligkeits-/Größenfilter je Gerät, Rangfolge nach
+dunkel/mondarm/klar nutzbaren Stunden mit Zenit-Abwertung und Objektart-Mischung, konkrete „Mehr Zeit“-Rechnung (1/√t), Saison-Hinweise,
+Wetterstreifen, Nachtplan, „Nicht interessiert“ (lokal) und Sammlungsbezug über den Sage-Dienst `collection_progress`.
+Offen: Sage-Entdeckungen/Alter der letzten Aufnahme als weitere Gründe, Ausblenden serverseitig/geräteübergreifend, Horizontprofil.
+
 **Grundversion in 0.19.0:** Empfehlungen und Höhenkurven auf der Übersicht, Detailplanung unter „Heute Nacht“.
 Berücksichtigt den verbleibenden dunklen Teil der Nacht, vorhandene Objekte (auch Katalognamen/Aliasse), letzte
 Ergebnisbelichtung und gespeicherte Signal-/Rauschbefunde. Das letzte Aufnahmegerät liefert das Bildfeld aus Plate-Solving,

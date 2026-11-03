@@ -2,13 +2,27 @@
 import datetime as dt
 import json
 
+import numpy as np
 import pytest
 
-from astroflow.modules.stacking import tonight
+from astroflow.modules.stacking import deepsky, tonight
 
+STELLINA = {"id": "stellina", "name": "Testgerät", "alt_az": True, "fov": [1, .7], "source": "Test", "mag_limit": 11.5}
+CAMERA = {**STELLINA, "id": "camera", "alt_az": False}
 SITE = {"lat": 50.0, "lon": 10.0, "weather": False}
 EVENING = dt.datetime(2026, 11, 2, 19, 0, tzinfo=dt.timezone.utc).timestamp()
 M31 = {"id": 7, "name": "M31 Andromedagalaxie", "kind": "galaxy", "ra": 10.68, "dec": 41.27, "obj_id": "M31", "exposure": 3600}
+
+
+@pytest.fixture(autouse=True)
+def _no_astap(monkeypatch):
+    """Ohne ASTAP-Datei des Rechners: nur die fest eingebauten Kataloge (Tests mit Attrappe schalten sie gezielt ein)."""
+    monkeypatch.setenv("ASTROFLOW_DEEPSKY", "0")
+    deepsky.reset()
+    tonight._cache.clear()
+    yield
+    deepsky.reset()
+    tonight._cache.clear()
 
 
 def test_without_site_only_says_so(tmp_path):
@@ -24,7 +38,7 @@ def test_night_plan(tmp_path):
     m31 = r["targets"][0]
     assert m31["id"] == 7 and m31["max_alt"] > 75 and m31["good_hours"] > 6
     assert all(tw["dark_start"] - 1 <= b["start"] < b["end"] <= tw["dark_end"] + 700 for b in r["plan"])
-    assert r["plan"] and r["plan"][0]["name"] == "M31 Andromedagalaxie"
+    assert r["plan"]
     names = [s["name"] for s in r["suggestions"]]
     assert names and not any(n.startswith("M31") for n in names)    # schon fotografiert → kein Vorschlag
     assert all(s["good_hours"] >= 2 for s in r["suggestions"])
@@ -35,11 +49,12 @@ def test_after_midnight_still_same_night(tmp_path):
     late = EVENING + 7 * 3600                                         # 02:00 UTC am nächsten Morgen
     assert tonight.plan([M31], SITE, tmp_path, late)["start"] == tonight.plan([M31], SITE, tmp_path, EVENING)["start"]
 
+
 def test_recommendations_use_library_quality_and_field(tmp_path):
     poor = {**M31, 'exposure': 1800}
-    d = tonight.plan([poor], SITE, tmp_path, EVENING, {'name': 'Testgerät', 'fov': [1, .7]})
+    d = tonight.plan([poor], SITE, tmp_path, EVENING, {**STELLINA, 'name': 'Testgerät'})
     own = next(x for x in d['recommendations'] if x['category'] == 'more')
-    assert own['id'] == 7 and own['href'] == '#/p/7' and own['reasons']
+    assert own['id'] == 7 and own['href'] == '#/p/7' and own['reasons'] and own['gain']
     new = [x for x in d['recommendations'] if x['category'] == 'new']
     assert new and all(x['size'] <= .7 * 60 * .9 for x in new)
     assert len(d['recommendations']) <= 6
@@ -99,7 +114,7 @@ def test_api_uses_latest_result_not_sum_and_detects_device(tmp_path):
     db.x("INSERT INTO frames(id,project_id,kind,info,night) VALUES('f',?,'light',?,'2026-11-01')", (pid, json.dumps(info)))
     rows, device = tonight.library(db)
     assert rows[0]['exposure'] == 7200 and abs(rows[0]['ra'] - M31['ra']) < .01
-    assert device['fov'] == [1, .7]
+    assert device['fov'] == [1, .7] and device['id'] == 'stellina' and device['alt_az']
     info['solve'] = {'fov_w': 2, 'fov_h': 1.5}
     db.set_frame('f', info=info)
     assert tonight.library(db)[1]['fov'] == [2, 1.5]
@@ -108,3 +123,160 @@ def test_api_uses_latest_result_not_sum_and_detects_device(tmp_path):
         SettingsStore(s.data_dir / 'settings.json').update('tutor', SITE)
         r = client.get('/api/stacking/tonight')
         assert r.status_code == 200 and r.json()['device']['fov'] == [2, 1.5]
+        gone = r.json()['suggestions'][0]['id']                                   # ausgeblendete Ziele kommen nicht mehr
+        again = client.get('/api/stacking/tonight', params={'hide': f'{gone},'}).json()
+        assert gone not in {x['id'] for x in again['suggestions']} and again['hidden'] == [gone]
+
+
+# ---------------------------------------------------------------- Katalog (seit 0.20.0) #
+def test_builtin_catalog_has_messier_and_caldwell_without_astap():
+    t = deepsky.fixed()
+    assert {x.number for x in t if x.source == "messier"} >= set(range(1, 111)) - {24, 40, 73}      # Sternwolke/Doppelstern/Asterismus fehlen bewusst
+    assert {x.number for x in t if x.source == "caldwell"} >= {1, 14, 20, 27, 31, 49, 63, 65, 77, 106}
+    keys = [k for x in t for k in x.keys]
+    assert len(keys) == len(set(keys))                                  # keine doppelte Kennung zwischen Katalogeinträgen
+    assert deepsky.keys_for("NGC 224") >= {"M31", "NGC224"} and deepsky.keys_for("Messier 31 Andromeda") >= {"M31"}
+    assert "C20" in deepsky.keys_for("NGC 7000") and "C49" in deepsky.keys_for("NGC2244")
+
+
+def test_filters_follow_device_and_field():
+    t = {x.id: x for x in deepsky.fixed()}
+    assert deepsky.usable(t["M57"], STELLINA, [1, .7])                  # 3,8′ von 42′: passt
+    assert not deepsky.usable(t["M31"], STELLINA, [1, .7])              # 178′ passt nicht ins Bild
+    assert not deepsky.usable(t["C6"], STELLINA, [1, .7])               # Katzenauge 0,4′ = Pünktchen
+    assert not deepsky.usable(t["C24"], STELLINA, [1, .7])              # 11,9 mag: über der Grenze
+    assert deepsky.usable(t["M76"], {"id": "stellina"}, None) and not deepsky.usable(t["M76"], {"id": "dwarf"}, None)   # 10,1 mag
+    assert deepsky.mag_limit({"id": "vespera"}) < deepsky.mag_limit({"id": "stellina"})
+
+
+def test_recommendations_come_from_big_catalog_and_never_repeat_own_objects(tmp_path):
+    d = tonight.plan([M31], SITE, tmp_path, EVENING, STELLINA)
+    new = [x for x in d["recommendations"] if x["category"] == "new"]
+    assert len(new) >= 3 and d["catalog"]["messier"] > 30
+    assert not {s["id"] for s in d["suggestions"]} & {"M31", "M32", "M110"}     # M31 gehört mir, Begleiter im selben Feld auch nicht
+    assert all(("Caldwell" in x["reasons"][0] or "Messier" in x["reasons"][0]) for x in new)
+    d2 = tonight.plan([{**M31, "name": "NGC 224", "obj_id": None, "ra": None, "dec": None}], SITE, tmp_path, EVENING, STELLINA)
+    assert "M31" not in {s["id"] for s in d2["suggestions"]}            # Alias ohne Koordinaten
+
+
+def test_astap_csv_adds_named_and_large_objects_but_not_duplicates(tmp_path, monkeypatch):
+    csv = tmp_path / "deep_sky.csv"
+    csv.write_text("x\nRA,DEC,name,length\n"
+                   "25643,148568,M31/NGC224/Andromeda_Galaxy,1891,617,35\n"           # Messier: nicht doppelt
+                   "26000,100000,NGC999/Sh2-1/Test_Nebula,300\n"                           # benannt, 30′ → Kandidat
+                   "27000,90000,NGC998/PGC222,60\n"                                  # unbenannte Galaxie 6′ → nein
+                   "28000,95000,NGC997/PGC111,100\n", encoding="utf-8")              # unbenannte Galaxie 10′ → ja
+    monkeypatch.setenv("ASTROFLOW_DEEPSKY", str(csv))
+    deepsky.reset()
+    ex = {x.id: x for x in deepsky.astap_extras()}
+    assert "NGC999" in ex and ex["NGC999"].mag is None and ex["NGC999"].source == "astap"
+    assert "NGC997" in ex and "NGC224" not in ex and "NGC998" not in ex
+    tonight._cache.clear()
+    d = tonight.plan([], SITE, tmp_path, EVENING, STELLINA)
+    assert d["catalog"]["astap_found"] and d["catalog"]["astap"] >= 1
+
+
+# ---------------------------------------------------------------- Rangfolge #
+def test_mix_of_kinds_and_categories(tmp_path):
+    poor = {**M31, "exposure": 1800}
+    recs = tonight.plan([poor], SITE, tmp_path, EVENING, CAMERA)["recommendations"]
+    kinds = [x["kind"] for x in recs]
+    assert all(kinds.count(k) <= 2 for k in set(kinds)) and len(set(kinds)) >= 3
+    assert {x["category"] for x in recs} == {"more", "new"}
+    assert [x["rank"] for x in recs] == sorted((x["rank"] for x in recs), reverse=True)
+
+
+def test_zenith_penalty_only_for_alt_az(tmp_path):
+    zen = {**M31, "dec": 50.0, "exposure": 600}                          # steht bei 50° Breite im Zenit
+    alt_az = tonight.plan([zen], SITE, tmp_path, EVENING, STELLINA)["targets"][0]
+    eq = tonight.plan([zen], SITE, tmp_path, EVENING, CAMERA)["targets"][0]
+    assert alt_az["zenith_hours"] > 0 and alt_az["eff_hours"] < eq["eff_hours"]
+    assert eq["zenith_hours"] == 0
+
+
+def test_full_moon_lowers_effective_hours(tmp_path):
+    full = dt.datetime(2026, 11, 24, 19, tzinfo=dt.timezone.utc).timestamp()      # Vollmond-nah
+    new = dt.datetime(2026, 11, 9, 19, tzinfo=dt.timezone.utc).timestamp()        # Neumond-nah
+    a, b = (tonight.plan([M31], SITE, tmp_path, t, CAMERA) for t in (full, new))
+    assert a["moon"]["illum"] > 80 > 20 > b["moon"]["illum"]
+    ra, rb = a["targets"][0], b["targets"][0]
+    assert ra["eff_hours"] / ra["good_hours"] < rb["eff_hours"] / rb["good_hours"] <= 1.0
+
+
+# ---------------------------------------------------------------- Mehr Zeit #
+def test_gain_uses_sqrt_rule():
+    g = tonight._gain(37 * 60, 5)
+    assert g["noise_pct"] == 67 and g["add"] == 5 * 3600 and "37 min" in g["text"] and "5 h" in g["text"] and "−67 %" in g["text"]
+    assert tonight._gain(4 * 3600, 4)["noise_pct"] == 29                # doppelte Zeit = −29 %
+    assert tonight._gain(None, 5) is None and tonight._gain(600, 0) is None
+    assert tonight._dur(5400) == "1,5 h" and tonight._dur(1800) == "30 min"
+
+
+def test_more_time_skips_when_gain_is_tiny(tmp_path):
+    big = {**M31, "exposure": 40 * 3600, "stats": {"quality": {"issues": [{"code": "noisy"}]}}}
+    d = tonight.plan([big], SITE, tmp_path, EVENING, STELLINA)
+    assert not any(x["category"] == "more" for x in d["recommendations"])      # +8 h bei 40 h ≈ −9 %
+    d = tonight.plan([{**big, "exposure": 4 * 3600}], SITE, tmp_path, EVENING, STELLINA)
+    own = next(x for x in d["recommendations"] if x["category"] == "more")
+    assert own["gain"]["noise_pct"] >= 25 and own["benefit"] == own["gain"]["text"]
+
+
+# ---------------------------------------------------------------- Saison #
+def test_season_last_chance_and_soon():
+    t0 = dt.datetime(2026, 11, 2, 12, tzinfo=dt.timezone.utc).timestamp()
+    last = tonight._season(np.array([5, 4, 3, 2, 1, 0, 0, 0, 1, 2, 3, 4, 5, 5, 5]), t0, 50.0)
+    assert last["kind"] == "last" and "Letzte Gelegenheit bis zum" in last["text"] and last["from"]
+    soon = tonight._season(np.array([0, 1, 3, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]), t0, 50.0)
+    assert soon["kind"] == "soon" and soon["text"].startswith("Bald gut sichtbar")
+    assert tonight._season(np.array([6] * 15), t0, 50.0) is None
+    assert tonight._season_word(3, 50.0) == "Frühjahr" and tonight._season_word(3, -34.0) == "Herbst"
+
+
+def test_plan_marks_last_chance_and_soon_objects(tmp_path):
+    d = tonight.plan([], SITE, tmp_path, EVENING, CAMERA)
+    assert d["soon"] and all(s["season"]["kind"] == "soon" for s in d["soon"])
+    may = dt.datetime(2026, 5, 10, 19, tzinfo=dt.timezone.utc).timestamp()          # Winterobjekte gehen aus dem Dunkel
+    d = tonight.plan([], SITE, tmp_path, may, CAMERA)
+    assert any(x.get("season", {}) and x["season"]["kind"] == "last" for x in d["suggestions"])
+
+
+# ---------------------------------------------------------------- Ablauf, Wetter, Ausblenden #
+def test_night_plan_is_sequential_with_several_targets(tmp_path):
+    d = tonight.plan([], SITE, tmp_path, EVENING, STELLINA)
+    plan = d["plan"]
+    assert len(plan) >= 2
+    assert all(a["end"] <= b["start"] for a, b in zip(plan, plan[1:]))        # nie zwei Ziele gleichzeitig
+    assert all(b["end"] - b["start"] >= tonight.MIN_BLOCK for b in plan)
+    assert len({b["id"] for b in plan}) == len(plan)                          # jedes Ziel höchstens einmal
+    assert all(d["twilight"]["dark_start"] - 1 <= b["start"] and b["end"] <= d["twilight"]["dark_end"] + 700 for b in plan)
+
+
+def test_weather_adds_cloud_curve_and_prefers_clear_hours(tmp_path, monkeypatch):
+    base = tonight.plan([], SITE, tmp_path, EVENING, STELLINA)
+    t0 = base["start"]
+    hours = [{"t": t0 + 3600 * i, "cloud": 100 if i < 6 else 0, "humidity": 50, "dew_spread": 5} for i in range(26)]    # die ersten 6 Stunden zu
+    monkeypatch.setattr(tonight, "_forecast", lambda *a, **k: {"hours": hours, "source": "Test"})
+    tonight._cache.clear()
+    d = tonight.plan([], {**SITE, "weather": True}, tmp_path, EVENING, STELLINA)
+    assert d["cloud"] and len(d["cloud"]) == len(d["times"]) and max(d["cloud"]) == 100
+    assert sum(x["eff_hours"] for x in d["suggestions"]) < sum(x["eff_hours"] for x in base["suggestions"])
+    assert d["plan"] and all(b["cloud"] is not None for b in d["plan"])
+    first_clear = d["plan"][0]
+    assert first_clear["start"] >= t0 + 5 * 3600                              # zugezogene Stunden bekommen kein Ziel
+
+
+def test_hidden_targets_are_replaced(tmp_path):
+    d = tonight.plan([], SITE, tmp_path, EVENING, STELLINA)
+    gone = d["recommendations"][0]["id"]
+    d2 = tonight.plan([], SITE, tmp_path, EVENING, STELLINA, hidden={gone})
+    assert gone not in {x["id"] for x in d2["recommendations"] + d2["suggestions"]}
+    assert len(d2["recommendations"]) == len(d["recommendations"]) and d2["hidden"] == [gone]
+
+
+def test_collection_service_adds_messier_count(tmp_path):
+    d = tonight.plan([], SITE, tmp_path, EVENING, STELLINA, collection={"messier": [1, 2, 3, 4, 5]})
+    m = next(x for x in d["suggestions"] if x["source"] == "messier")
+    assert any("6. Messier-Objekt (bisher 5 von 110)" in r for r in m["reasons"])
+    assert not {1, 2, 3, 4, 5} & {x.number for x in deepsky.fixed() if x.id in {s["id"] for s in d["suggestions"]} and x.source == "messier"}
+    d2 = tonight.plan([], SITE, tmp_path, EVENING, STELLINA)
+    assert not any("Messier-Objekt (bisher" in r for x in d2["suggestions"] for r in x["reasons"])        # ohne Dienst kein Satz

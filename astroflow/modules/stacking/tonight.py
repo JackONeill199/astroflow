@@ -1,26 +1,45 @@
-"""Heute Nacht: Dämmerung, Mond, Höhenverlauf der eigenen Objekte, Ablaufvorschlag und noch nicht fotografierte Objekte.
+"""Heute Nacht: Dämmerung, Mond, Höhenverlauf der eigenen Objekte, Empfehlungen, Nachtplan und Saison.
 
 Alles offline mit astropy (IERS-Download aus, wie im Bild-Tutor). Standort aus Einstellungen → Bild-Tutor (tutor.lat/lon);
 ohne Standort liefert plan() nur {"site": None}. Wolkenvorhersage (Open-Meteo, Ort auf 0,1° gerundet) nur, wenn im Tutor
 „Wetter“ eingeschaltet ist – Cache 1 h in work/tutor/. Zeiten als Unix-Sekunden (UTC); die Oberfläche zeigt Ortszeit.
+
+Empfehlungen (seit 0.20.0):
+* **Neue Ziele** aus `deepsky` (Messier + Caldwell fest, dazu ASTAP deep_sky.csv), gefiltert nach Helligkeit (je Gerät) und
+  Größe zum Bildfeld; eigene Objekte werden über Katalog-Kennungen (M31 = NGC 224) und Position ausgeschlossen.
+* **Mehr Zeit** für eigene Objekte mit wenig Belichtung/Rauschen; Gewinn nach der √t-Regel aus bisheriger Belichtung und den
+  heute nutzbaren Stunden (`_gain`).
+* **Rangfolge:** nutzbare Stunden in der dunklen Zeit, gewichtet mit Mond (Phase × Abstand), Wolken (falls Vorhersage an) und
+  Zenitnähe (> 80° bei Alt-Az-Geräten: Feldrotation); Kulmination im Dunkeln; Auswahl mischt Objektarten und Kategorien.
+* **Saison:** Stunden im Dunkeln über Mindesthöhe für die nächsten Wochen → „Letzte Gelegenheit“ bzw. „bald gut sichtbar“.
+* **Nachtplan:** ein Ziel zur Zeit (Smart-Teleskop): Nacht in 1–4 Abschnitte, jedem das am besten stehende Ziel.
 """
 from __future__ import annotations
 
 import datetime as dt
+import itertools
 import json
+import math
 import time
 import warnings
 from pathlib import Path
 
 import numpy as np
 
-from . import objects, tutor
+from . import deepsky, objects, tutor
 
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 STEP_MIN = 10            # Abtastung der Nacht
 MIN_ALT = 30.0           # „gut sichtbar“ ab dieser Höhe
+ZENITH_ALT = 80.0        # darüber starke Feldrotation bei Alt-Az-Montierung
+ZENITH_WEIGHT = 0.4      # Gewicht dieser Stunden in der Rangfolge
 MAX_CURVES = 6           # maximale Anzahl Empfehlungen in der Grafik
+MIN_GAIN = 0.10          # „Mehr Zeit“ nur, wenn das Rauschen heute um ≥ 10 % sinken kann
+MIN_BLOCK = 2400         # Nachtplan: kürzere Blöcke entfallen (s)
+OFFSETS = list(range(0, 197, 14))      # Tage ab heute für den Saison-Ausblick (bis ~6 Monate)
+MONTHS = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
 _cache: dict = {}
+_CACHE_MAX = 4
 
 
 def library(db) -> tuple[list[dict], dict]:
@@ -36,8 +55,10 @@ def library(db) -> tuple[list[dict], dict]:
         cat = objects.resolve_name(p.get("obj_id") or p["name"])
         if cat:
             p["obj_id"] = cat.id
-            if p["ra"] is None or p["dec"] is None:
-                p["ra"], p["dec"] = cat.ra, cat.dec
+        if p["ra"] is None or p["dec"] is None:
+            ext = cat or objects.resolve_extended(p.get("obj_id") or p["name"])
+            if ext:
+                p["ra"], p["dec"] = ext.ra, ext.dec
     # Das zuletzt verwendete Gerät; ein Frame genügt, auch wenn seine Rohdatei schon gelöscht ist.
     f = db.one("SELECT info FROM frames WHERE kind='light' AND project_id IS NOT NULL "
                "ORDER BY night DESC, rowid DESC LIMIT 1")
@@ -50,7 +71,8 @@ def library(db) -> tuple[list[dict], dict]:
         # Gesicherter Rückfall aus tutor.DEVICES, keine pauschalen Werte für Gerätefamilien.
         field = [1.0, 0.7] if device["id"] == "stellina" else None
         source = "ungefähres Stellina-Bildfeld" if field else None
-    return rows, {"name": device["name"], "fov": field, "source": source}
+    return rows, {"id": device["id"], "name": device["name"], "alt_az": bool(device.get("alt_az")), "fov": field, "source": source,
+                  "mag_limit": deepsky.mag_limit(device)}
 
 
 def _need(p: dict) -> list[str]:
@@ -72,35 +94,26 @@ def _need(p: dict) -> list[str]:
     return reasons
 
 
-def _recommend(targets: list[dict], suggestions: list[dict], projects: list[dict], device: dict) -> list[dict]:
-    own = {p["id"]: p for p in projects}
-    out = []
-    for t in targets:
-        reasons = _need(own[t["id"]])
-        if not reasons or t["good_hours"] < 1:
-            continue
-        out.append({**t, "category": "more", "reasons": reasons,
-                    "benefit": "Doppelte Gesamtbelichtung senkt zufälliges Rauschen theoretisch um etwa 29 %; schwache Details werden klarer.",
-                    "href": f"#/p/{t['id']}", "rank": 3 + min(t["good_hours"], 6) / 6})
-    for s in suggestions:
-        field = device.get("fov")
-        if field and s["size"] > min(field) * 60 * 0.9:
-            continue
-        reasons = ["Fehlt noch in deiner Bibliothek (Auswahl bekannter heller Katalogziele)."]
-        if field:
-            reasons.append("Passt nach seiner Kataloggröße mit Rand ins zuletzt verwendete Bildfeld.")
-        out.append({**s, "category": "new", "reasons": reasons,
-                    "benefit": "Eine neue Aufnahme ergänzt deine Sammlung.",
-                    "href": f"#/nacht/{s['id']}", "rank": 2 + min(s["good_hours"], 6) / 6 + s["max_alt"] / 180})
-    for x in out:
-        x["moon_warning"] = x["moon_sep"] < 40
-        x["rank"] -= 1 if x["moon_warning"] else 0
-    # Beide Gründe sollen bei geeigneten Zielen auf der Übersicht vorkommen.
-    ranked = sorted(out, key=lambda x: -x["rank"])
-    selected = [next(x for x in ranked if x["category"] == c) for c in ("more", "new")
-                if any(x["category"] == c for x in ranked)]
-    selected += [x for x in ranked if x not in selected][:MAX_CURVES - len(selected)]
-    return selected
+def _dur(sec: float) -> str:
+    """„37 min“, „5 h“, „1,5 h“ – für Texte aus dem Server."""
+    if sec < 3600:
+        return f"{max(1, round(sec / 60))} min"
+    h = round(sec / 1800) / 2
+    return (f"{h:.1f}".replace(".", ",") if h != int(h) else f"{int(h)}") + " h"
+
+
+def _gain(exposure: float | None, hours: float) -> dict | None:
+    """Rauschgewinn durch heute mögliche Zusatzzeit. Zufälliges Rauschen im Stack sinkt mit 1/√t (gleiche Aufnahmequalität
+    vorausgesetzt): t_neu = t + Zusatz → Rauschen × √(t / t_neu). Ohne bekannte Belichtung kein Wert."""
+    if not exposure or exposure <= 0 or hours <= 0:
+        return None
+    add = round(hours * 2) / 2 * 3600                       # auf halbe Stunden gerundet
+    if add <= 0:
+        return None
+    pct = 1 - math.sqrt(exposure / (exposure + add))
+    return {"before": float(exposure), "add": float(add), "after": float(exposure + add), "noise_pct": round(pct * 100),
+            "text": f"Bisher {_dur(exposure)}, heute bis zu {_dur(add)} möglich → Rauschen etwa −{round(pct * 100)} % "
+                    f"(Rauschen sinkt mit 1/√Zeit)."}
 
 
 def _window(now: float, lon: float) -> tuple[float, float]:
@@ -161,48 +174,118 @@ def _forecast(site, cache: Path, t0: float, t1: float, timeout: float = 10.0) ->
     return {"hours": hours, "source": "Open-Meteo-Vorhersage (Raster ~10 km)"} if hours else None
 
 
-def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None, device: dict | None = None) -> dict:
-    """projects: Objektzeilen mit exposure (Sekunden des neuesten Ergebnisses) und optional gespeicherten Befunden."""
+# ------------------------------------------------------------------ Geometrie (numpy, ohne AltAz-Transformation) #
+def _alt(ra: np.ndarray, dec: np.ndarray, lst: np.ndarray, lat: float) -> np.ndarray:
+    """Höhe in Grad: Objekte (N) × Zeiten (T). ra/dec in rad, lst in rad (Ortssternzeit), lat in Grad."""
+    p = math.radians(lat)
+    s = math.sin(p) * np.sin(dec)[:, None] + math.cos(p) * np.cos(dec)[:, None] * np.cos(lst[None, :] - ra[:, None])
+    return np.degrees(np.arcsin(np.clip(s, -1, 1)))
+
+
+def _sep(ra: np.ndarray, dec: np.ndarray, mra: np.ndarray, mdec: np.ndarray) -> np.ndarray:
+    """Winkelabstand in Grad: Objekte (N) × Zeiten (T)."""
+    c = np.sin(dec)[:, None] * np.sin(mdec)[None, :] + np.cos(dec)[:, None] * np.cos(mdec)[None, :] * np.cos(ra[:, None] - mra[None, :])
+    return np.degrees(np.arccos(np.clip(c, -1, 1)))
+
+
+def _season_word(month: int, lat: float) -> str:
+    m = month if lat >= 0 else (month + 5) % 12 + 1          # Südhalbkugel: Jahreszeiten um ein halbes Jahr versetzt
+    return "Winter" if m in (12, 1, 2) else "Frühjahr" if m in (3, 4, 5) else "Sommer" if m in (6, 7, 8) else "Herbst"
+
+
+def _date(ts: float) -> dt.date:
+    return dt.datetime.fromtimestamp(ts, dt.timezone.utc).date()
+
+
+def _season(h: np.ndarray, t0: float, lat: float) -> dict | None:
+    """h: Stunden im Dunkeln über MIN_ALT in der Nacht von heute + OFFSETS. Letzte Gelegenheit / bald gut sichtbar."""
+    h0 = h[0]
+    day = lambda i: _date(t0 + OFFSETS[i] * 86400 + 43200)
+    if h0 >= 2.5:
+        # Verschwindet innerhalb von ~8 Wochen fast aus dem dunklen Fenster: Stunden sinken auf ≤ 40 % (mindestens aber unter 3 h)
+        i = next((k for k in range(1, 5) if h[k] <= max(1.5, 0.4 * h0) and h[k] < 3), None)
+        if i is None:
+            return None
+        back = next((k for k in range(i + 1, len(h)) if h[k] >= 3), None)
+        until = f"bis zum {_season_word(day(back).month, lat)}" if back is not None else "für diese Saison"
+        return {"kind": "last", "from": f"{day(i):%d.%m.}",
+                "text": f"Letzte Gelegenheit {until}: ab etwa {day(i):%d.%m.} nur noch rund {math.floor(h[i])} h im Dunkeln über {MIN_ALT:.0f}°."}
+    if h0 >= 2.5:
+        return None
+    i = next((k for k in range(1, 5) if h[k] >= max(3, 2 * h0 + 1)), None)
+    if i is None:
+        return None
+    return {"kind": "soon", "from": f"{day(i):%d.%m.}",
+            "text": f"Bald gut sichtbar: ab etwa {day(i):%d.%m.} über {math.floor(h[i])} h im Dunkeln über {MIN_ALT:.0f}°."}
+
+
+def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None, device: dict | None = None,
+         hidden: set | frozenset | None = None, collection: dict | None = None) -> dict:
+    """projects: Objektzeilen mit exposure (Sekunden des neuesten Ergebnisses) und optional gespeicherten Befunden.
+    hidden: Kennungen (Katalog-ID bzw. Projekt-ID als Text), die der Nutzer ausgeblendet hat.
+    collection: optionaler Dienst „collection_progress“ (Sage): {"messier": [Nummern bereits entdeckter Messier-Objekte]}."""
     if cfg.get("lat") is None or cfg.get("lon") is None:
         return {"site": None}
     now = time.time() if now is None else now
-    device = device or {"name": "Gerät unbekannt", "fov": None, "source": None}
+    device = device or {"id": "camera", "name": "Gerät unbekannt", "alt_az": False, "fov": None, "source": None, "mag_limit": deepsky.MAG_DEFAULT}
+    hidden = frozenset(str(h) for h in (hidden or ()))
+    collection = collection or {}
     site = [float(cfg["lat"]), float(cfg["lon"])]
     t0, t1 = _window(now, site[1])
-    key = (str(cache.resolve()), tuple(site), int(now // 600),
-           json.dumps(projects, sort_keys=True), json.dumps(device, sort_keys=True), bool(cfg.get("weather")))
+    key = (str(cache.resolve()), tuple(site), int(now // 600), json.dumps(projects, sort_keys=True), json.dumps(device, sort_keys=True),
+           bool(cfg.get("weather")), tuple(sorted(hidden)), json.dumps(collection, sort_keys=True), deepsky.signature())
     hit = _cache.get(key)
     if hit and time.time() - hit[0] < 600:
         return {**hit[1], "now": now}
 
     from astropy import units as u
-    from astropy.coordinates import AltAz, EarthLocation, SkyCoord, get_body
+    from astropy.coordinates import EarthLocation, get_body
     from astropy.time import Time
     from astropy.utils import iers
 
     ts = np.arange(t0, t1 + 1, STEP_MIN * 60, dtype=float)
+    own = [p for p in projects if p.get("ra") is not None and p.get("dec") is not None]
+    owned_keys: set[str] = set()
+    for p in projects:
+        owned_keys |= deepsky.keys_for(p.get("obj_id")) | deepsky.keys_for(p.get("name"))
+    owned_m = {int(n) for n in collection.get("messier") or []}
+    # Größe eigener Objekte aus dem Katalog: Begleiter im selben Feld (M32/M110 bei M31) sind kein neues Ziel
+    own_r = [max(0.3, max([t.size for t in deepsky.catalog() if t.keys & (deepsky.keys_for(p.get("obj_id")) | deepsky.keys_for(p.get("name")))] or [0]) / 120)
+             for p in own]
+    cands = [c for c in deepsky.catalog()
+             if not (c.keys & owned_keys) and not (c.source == "messier" and c.number in owned_m) and c.id not in hidden
+             and deepsky.usable(c, device, device.get("fov"))
+             and all(objects.ang_sep(c.ra, c.dec, p["ra"], p["dec"]) > max(r, c.size / 120) for p, r in zip(own, own_r))
+             and 90 - abs(site[0] - c.dec) >= MIN_ALT]                      # kommt am Ort überhaupt je über die Mindesthöhe
+    ras = np.radians([p["ra"] for p in own] + [c.ra for c in cands])
+    decs = np.radians([p["dec"] for p in own] + [c.dec for c in cands])
+    n_own = len(own)
+
     with warnings.catch_warnings(), iers.conf.set_temp("auto_download", False), iers.conf.set_temp("auto_max_age", None):
         warnings.simplefilter("ignore")
         t = Time(ts, format="unix")
         loc = EarthLocation(lat=site[0] * u.deg, lon=site[1] * u.deg)
-        frame = AltAz(obstime=t, location=loc)
-        sun_g, moon_g = get_body("sun", t), get_body("moon", t, loc)
-        sun = sun_g.transform_to(frame).alt.deg
-        moon = moon_g.transform_to(frame).alt.deg
-        illum = (1 - np.cos(sun_g.separation(get_body("moon", t)).rad)) / 2
-        own = [p for p in projects if p.get("ra") is not None and p.get("dec") is not None]
-        own_ids = {c.id for p in projects if (c := objects.resolve_name(p.get("obj_id") or p["name"]))}
-        cands = [c for c in objects.CATALOG if c.id not in own_ids
-                 and all(objects.ang_sep(c.ra, c.dec, p["ra"], p["dec"]) > max(0.3, c.size / 120) for p in own)]
-        ras = np.array([p["ra"] for p in own] + [c.ra for c in cands], float)
-        decs = np.array([p["dec"] for p in own] + [c.dec for c in cands], float)
-        if len(ras):
-            sc = SkyCoord(ras[:, None] * u.deg, decs[:, None] * u.deg)
-            sky = sc.transform_to(AltAz(obstime=t[None, :], location=loc))
-            alt = sky.alt.deg
-            msep = sky.separation(moon_g.transform_to(frame)[None, :]).deg
-        else:
-            alt, msep = np.zeros((0, len(ts))), np.zeros((0, len(ts)))
+        lst = t.sidereal_time("mean", longitude=site[1] * u.deg).rad
+        sun_g, moon_g, moon_c = get_body("sun", t), get_body("moon", t, loc), get_body("moon", t)
+        sra, sdec = sun_g.ra.rad, sun_g.dec.rad
+        mra, mdec = moon_g.ra.rad, moon_g.dec.rad
+        illum = (1 - np.cos(sun_g.separation(moon_c).rad)) / 2
+        # Höhe von Sonne/Mond: je Zeitpunkt eigene Koordinaten → Diagonale der Matrix
+        p_ = math.radians(site[0])
+        def body_alt(ra, dec):
+            return np.degrees(np.arcsin(np.clip(math.sin(p_) * np.sin(dec) + math.cos(p_) * np.cos(dec) * np.cos(lst - ra), -1, 1)))
+        sun, moon = body_alt(sra, sdec), body_alt(mra, mdec)
+        alt = _alt(ras, decs, lst, site[0]) if len(ras) else np.zeros((0, len(ts)))
+        msep = _sep(ras, decs, mra, mdec) if len(ras) else np.zeros((0, len(ts)))
+        # Saison-Ausblick: Nacht von heute + 0, 14, 28 … Tage in Stundenschritten
+        ots = (t0 + np.array(OFFSETS)[:, None] * 86400 + np.arange(25)[None, :] * 3600).ravel()
+        ot = Time(ots, format="unix")
+        olst = ot.sidereal_time("mean", longitude=site[1] * u.deg).rad
+        osun = get_body("sun", ot)
+        osun_alt = np.degrees(np.arcsin(np.clip(math.sin(p_) * np.sin(osun.dec.rad) + math.cos(p_) * np.cos(osun.dec.rad) * np.cos(olst - osun.ra.rad), -1, 1)))
+        o_dark = (osun_alt <= -18).reshape(len(OFFSETS), 25)
+        o_good = ((_alt(ras, decs, olst, site[0]) >= MIN_ALT).reshape(len(ras), len(OFFSETS), 25) & o_dark[None]) if len(ras) else None
+        o_hours = o_good.sum(axis=2) if o_good is not None else np.zeros((0, len(OFFSETS)))
 
     tw = {"sunset": _cross(ts, sun, -0.833, True), "civil": _cross(ts, sun, -6, True), "nautical": _cross(ts, sun, -12, True),
           "dark_start": _cross(ts, sun, -18, True), "dark_end": _cross(ts, sun, -18, False), "nautical_end": _cross(ts, sun, -12, False),
@@ -216,55 +299,213 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
     mid_dark = int(np.argmax(dark)) + int(dark.sum()) // 2 if dark.any() else len(ts) // 2
     waxing = bool(illum[min(mid_dark + 6, len(illum) - 1)] > illum[mid_dark])
 
-    def entry(i: int, info: dict) -> dict:
-        a = alt[i]
-        remaining = dark & (ts >= now)
-        good = remaining & (a >= MIN_ALT)
-        j = int(np.argmax(np.where(remaining, a, -90)))
-        moon_visible = good & (moon > 0)
-        sep = float(msep[i][moon_visible].min()) if moon_visible.any() else 180.0
-        spans = _spans(ts, good)
-        return {**info, "max_alt": round(float(a[j]), 1), "max_t": float(ts[j]),
-                "good_hours": round(sum(b - a for a, b in spans) / 3600, 2), "good": spans,
-                "moon_sep": round(sep, 1), "alt": [round(float(v), 1) for v in a[sel]]}
-
-    targets = [entry(i, {"id": p["id"], "name": p["name"], "kind": p.get("kind"), "exposure": p.get("exposure") or 0})
-               for i, p in enumerate(own)]
-    targets = sorted([x for x in targets if x["good_hours"] > 0], key=lambda x: -x["good_hours"])
-    sugg = [entry(len(own) + k, {"id": c.id, "name": c.display, "kind": c.kind, "kind_label": objects.KIND_LABEL.get(c.kind, ""), "size": c.size})
-            for k, c in enumerate(cands)]
-    sugg = sorted([x for x in sugg if x["good_hours"] >= 2], key=lambda x: (-x["good_hours"], -x["max_alt"]))
-    recommendations = _recommend(targets, sugg, projects, device)
-
-    # Ablaufvorschlag aus dem UI-Umbau: nur zusammenhängende Blöcke ab 40 min.
-    blocks = []
-    if targets:
-        own_alt = {x["id"]: alt[next(i for i, p in enumerate(own) if p["id"] == x["id"])] for x in targets[:MAX_CURVES]}
-        for k in np.where(dark & (ts >= now))[0]:
-            best = max(own_alt, key=lambda pid: own_alt[pid][k])
-            best = best if own_alt[best][k] >= MIN_ALT else None
-            if blocks and blocks[-1]["id"] == best:
-                blocks[-1]["end"] = float(ts[k] + STEP_MIN * 60)
-            else:
-                blocks.append({"id": best, "start": float(ts[k]), "end": float(ts[k] + STEP_MIN * 60)})
-        names = {x["id"]: x["name"] for x in targets}
-        blocks = [{**b, "name": names.get(b["id"])} for b in blocks if b["id"] is not None and b["end"] - b["start"] >= 2400]
-
+    # ---- Wetter: Wolken je Schritt (nur mit Vorhersage); unbekannte Stunden zählen als klar -------------------------
     weather, weather_error = None, None
     if cfg.get("weather"):
         try:
             weather = _forecast(site, cache, view[0], view[1])
         except Exception as e:                          # Netz weg: Planung geht trotzdem
             weather_error = f"Wettervorhersage nicht erreichbar ({type(e).__name__})"
+    cloud = None
+    if weather and weather.get("hours"):
+        hh = [h for h in weather["hours"] if h.get("cloud") is not None]
+        if hh:
+            cloud = np.interp(ts, [h["t"] for h in hh], [h["cloud"] for h in hh])
+            cloud = np.where((ts < hh[0]["t"] - 3600) | (ts > hh[-1]["t"] + 3600), np.nan, cloud)
+    clear = np.ones(len(ts)) if cloud is None else np.clip(1 - np.nan_to_num(cloud, nan=0.0) / 80, 0, 1)      # ab 80 % Wolken nicht nutzbar
+
+    # ---- Gewichtung je Objekt und Schritt ------------------------------------------------------------------------
+    future = ts >= now
+    good = dark[None, :] & (alt >= MIN_ALT) & future[None, :]
+    moon_up = (moon > 0)[None, :]
+    loss = illum[None, :] * np.clip(1 - msep / 80, 0, 1)                     # Phase × Nähe
+    w_moon = np.where(moon_up, (1 - 0.85 * loss) * (1 - 0.3 * illum[None, :]), 1.0)
+    w_zen = np.where((alt > ZENITH_ALT) & bool(device.get("alt_az", True)), ZENITH_WEIGHT, 1.0)
+    weight = good * w_moon * w_zen * clear[None, :]
+    eff = weight.sum(axis=1) * STEP_MIN / 60                                 # nutzbare Stunden
+    raw = good.sum(axis=1) * STEP_MIN / 60
+    zen_h = (good & (alt > ZENITH_ALT)).sum(axis=1) * STEP_MIN / 60 if bool(device.get("alt_az", True)) else np.zeros(len(alt))
+    jmax = np.argmax(np.where(dark[None, :] & future[None, :], alt, -90), axis=1) if len(alt) else np.zeros(0, int)
+    jtr = np.argmax(alt, axis=1) if len(alt) else np.zeros(0, int)           # Kulmination des ganzen Tages
+    culm = (dark[jtr] & (alt[np.arange(len(alt)), jtr] >= MIN_ALT)) if len(alt) else np.zeros(0, bool)
+    seasons = [_season(o_hours[i], t0, site[0]) for i in range(len(alt))]
+
+    def entry(i: int, info: dict) -> dict:
+        a = alt[i]
+        spans = _spans(ts, good[i])
+        moon_visible = good[i] & (moon > 0)
+        sep = float(msep[i][moon_visible].min()) if moon_visible.any() else 180.0
+        return {**info, "max_alt": round(float(a[jmax[i]]), 1), "max_t": float(ts[jmax[i]]),
+                "good_hours": round(float(raw[i]), 2), "eff_hours": round(float(eff[i]), 2), "good": spans,
+                "moon_sep": round(sep, 1), "alt": [round(float(v), 1) for v in a[sel]],
+                "culm_dark": bool(culm[i]), "zenith_hours": round(float(zen_h[i]), 2), "season": seasons[i]}
+
+    targets = [entry(i, {"id": p["id"], "name": p["name"], "kind": p.get("kind"), "exposure": p.get("exposure") or 0}) for i, p in enumerate(own)]
+    targets = sorted([x for x in targets if x["good_hours"] > 0], key=lambda x: -x["good_hours"])
+
+    # ---- Bewertung ----------------------------------------------------------------------------------------------------
+    pool = []
+    by_id = {p["id"]: p for p in projects}
+    for x in targets:
+        if str(x["id"]) in hidden:
+            continue
+        p = by_id[x["id"]]
+        reasons = _need(p)
+        g = _gain(p.get("exposure"), min(x["eff_hours"], 8))
+        if not reasons or x["eff_hours"] < 1 or (g and g["noise_pct"] < MIN_GAIN * 100):
+            continue
+        sc = _score(x["eff_hours"], x["max_alt"], x["culm_dark"], x["season"], (g["noise_pct"] / 100 * 2.2) if g else 0.6)
+        reasons = reasons + _visibility_reasons(x, device)
+        pool.append({**x, "category": "more", "reasons": reasons, "gain": g, "kind_label": objects.KIND_LABEL.get(x.get("kind") or "", ""),
+                     "benefit": g["text"] if g else "Mehr Gesamtbelichtung senkt das Rauschen (1/√Zeit) und macht schwache Details klarer.",
+                     "href": f"#/p/{x['id']}", "rank": sc})
+    new_pool = []
+    for k, c in enumerate(cands):
+        i = n_own + k
+        if eff[i] < 1.5 or raw[i] < 2:
+            continue
+        x = entry(i, {"id": c.id, "name": c.display, "kind": c.kind, "kind_label": objects.KIND_LABEL.get(c.kind, ""), "size": c.size,
+                      "mag": c.mag, "source": c.source})
+        lim = device.get("mag_limit") or deepsky.MAG_DEFAULT
+        bright = max(0.0, min(1.0, (lim - c.mag) / 6)) * 0.8 if c.mag is not None else (0.4 if c.source != "astap" else 0.0)
+        sc = _score(x["eff_hours"], x["max_alt"], x["culm_dark"], x["season"], bright) * (0.92 if c.source == "astap" else 1.0) * KIND_APPEAL.get(c.kind, 1.0)
+        new_pool.append({**x, "category": "new", "rank": sc})
+    new_pool.sort(key=lambda x: -x["rank"])
+    top_new = new_pool[:10]
+    for x in top_new:
+        x["reasons"] = _new_reasons(x, device, owned_m, collection)
+        x["benefit"] = "Eine neue Aufnahme ergänzt deine Sammlung."
+        x["href"] = f"#/nacht/{x['id']}"
+    for x in pool + top_new:
+        x["moon_warning"] = x["moon_sep"] < 40 and x["good_hours"] > 0
+    recommendations = _select(pool + top_new)
+
+    # ---- Ablaufplan: ein Ziel zur Zeit ---------------------------------------------------------------------------------
+    blocks = _night_plan(recommendations, own, cands, n_own, weight, ts, now, clear, cloud)
+
+    # ---- „Bald gut sichtbar“ ---------------------------------------------------------------------------------------------
+    soon = []
+    for k, c in enumerate(cands):
+        i = n_own + k
+        s = seasons[i]
+        if s and s["kind"] == "soon":
+            soon.append({"id": c.id, "name": c.display, "kind_label": objects.KIND_LABEL.get(c.kind, ""), "mag": c.mag, "season": s,
+                         "href": f"#/nacht/{c.id}", "_k": (s["from"][3:5] + s["from"][:2], c.mag if c.mag is not None else 99)})
+    soon.sort(key=lambda x: x["_k"])
+    for x in soon:
+        x.pop("_k")
 
     out = {"site": site, "start": view[0], "end": view[1], "step": STEP_MIN * 60, "times": [float(v) for v in ts[sel]],
            "twilight": tw, "dark_hours": round(sum(b - a for a, b in _spans(ts, dark)) / 3600, 2),
            "moon": {"illum": round(float(illum[mid_dark]) * 100), "waxing": waxing, "alt": [round(float(v), 1) for v in moon[sel]],
                     "rise": _cross(vt, vm, 0, False), "set": _cross(vt, vm, 0, True), "moonless": _spans(ts, moonless)},
            "targets": targets[:MAX_CURVES], "more_targets": max(0, len(targets) - MAX_CURVES), "plan": blocks,
-           "suggestions": sugg[:6], "recommendations": recommendations, "device": device,
-           "sun": [round(float(v), 1) for v in sun[sel]],
-           "weather": weather, "weather_error": weather_error, "weather_on": bool(cfg.get("weather")), "min_alt": MIN_ALT}
-    _cache.clear()
+           "suggestions": top_new, "recommendations": recommendations, "soon": soon[:5], "device": device,
+           "sun": [round(float(v), 1) for v in sun[sel]], "cloud": None if cloud is None else [None if np.isnan(v) else round(float(v)) for v in cloud[sel]],
+           "weather": weather, "weather_error": weather_error, "weather_on": bool(cfg.get("weather")), "min_alt": MIN_ALT,
+           "catalog": {"candidates": len(cands), "messier": sum(c.source == "messier" for c in cands), "astap": sum(c.source == "astap" for c in cands),
+                       "astap_found": bool(objects.extended_catalog()), "mag_limit": device.get("mag_limit")},
+           "hidden": sorted(hidden)}
+    if len(_cache) >= _CACHE_MAX:
+        _cache.pop(next(iter(_cache)))
     _cache[key] = (time.time(), out)
     return {**out, "now": now}
+
+
+KIND_APPEAL = {"open_cluster": 0.85, "globular": 0.95}      # offene Haufen wirken auf Smart-Teleskopen weniger spektakulär
+
+
+def _score(eff: float, max_alt: float, culm: bool, season: dict | None, extra: float) -> float:
+    """Gemeinsamer Maßstab für Neu und Mehr Zeit (≈ 0–6). extra: Helligkeit (neu) bzw. Rauschgewinn (mehr Zeit)."""
+    return (3.0 * min(eff, 7.0) / 7.0 + 0.8 * min(max_alt, 90) / 90 + (0.5 if culm else 0.0) + extra
+            + (0.6 if season and season["kind"] == "last" else 0.0))
+
+
+def _visibility_reasons(x: dict, device: dict) -> list[str]:
+    r = [f"Heute etwa {_dur(x['eff_hours'] * 3600)} nutzbar (dunkel, über {MIN_ALT:.0f}°), höchster Stand {round(x['max_alt'])}°."]
+    if x["culm_dark"]:
+        r.append("Kulminiert mitten in der dunklen Zeit.")
+    if x["zenith_hours"] >= 0.5:
+        r.append("Steht zeitweise sehr hoch (> 80°): bei Alt-Az-Montierung starke Feldrotation, diese Stunden zählen weniger.")
+    if x["season"]:
+        r.append(x["season"]["text"])
+    return r
+
+
+def _new_reasons(x: dict, device: dict, owned_m: set, collection: dict) -> list[str]:
+    src = {"messier": "Messier-Katalog", "caldwell": "Caldwell-Katalog", "astap": "ASTAP-Katalog (Helligkeit unbekannt, nach Größe/Name gewählt)"}[x["source"]]
+    r = [f"Fehlt noch in deiner Bibliothek ({src})."]
+    if x["source"] == "messier" and collection.get("messier") is not None:
+        r.append(f"Wäre dein {len(owned_m) + 1}. Messier-Objekt (bisher {len(owned_m)} von 110).")
+    if device.get("fov"):
+        r.append(f"Passt mit Rand ins Bildfeld (Objekt ca. {str(round(x['size'], 1)).rstrip('0').rstrip('.').replace('.', ',')}′, Bildfeld {min(device['fov']) * 60:.0f}′ kurze Seite).")
+    if x.get("mag") is not None:
+        de = lambda v: str(round(v, 1)).replace(".", ",")
+        r.append(f"Helligkeit ca. {de(x['mag'])} mag – für dein Gerät erreichbar (Grenze etwa {de(device.get('mag_limit', deepsky.MAG_DEFAULT))} mag).")
+    return r + _visibility_reasons(x, device)
+
+
+def _select(pool: list[dict]) -> list[dict]:
+    """Greedy: höchste Bewertung zuerst, aber Objektarten und Kategorien mischen. Beide Kategorien kommen vor, wenn vorhanden."""
+    ranked = sorted(pool, key=lambda x: -x["rank"])
+    picked: list[dict] = []
+    for cat in ("more", "new"):
+        first = next((x for x in ranked if x["category"] == cat), None)
+        if first:
+            picked.append(first)
+    left = [x for x in ranked if x not in picked]
+    while left and len(picked) < MAX_CURVES:
+        full = {k for k in {p.get("kind") for p in picked} if sum(1 for p in picked if p.get("kind") == k) >= 2}
+        if any(x.get("kind") not in full for x in left):               # höchstens 2 je Objektart, solange es Alternativen gibt
+            cand = [x for x in left if x.get("kind") not in full]
+        else:
+            cand = left
+        def adj(x):
+            same_kind = sum(1 for p in picked if p.get("kind") == x.get("kind"))
+            same_cat = sum(1 for p in picked if p["category"] == x["category"])
+            return x["rank"] - 0.7 * same_kind - 0.4 * max(0, same_cat - 2)
+        best = max(cand, key=adj)
+        picked.append(best)
+        left.remove(best)
+    return sorted(picked, key=lambda x: -x["rank"])
+
+
+def _night_plan(recs, own, cands, n_own, weight, ts, now, clear, cloud) -> list[dict]:
+    """Ein Smart-Teleskop nimmt nur ein Ziel gleichzeitig auf. Die nutzbare Nacht (ab jetzt, dunkel) wird in n gleich lange
+    Abschnitte (≈ 3 h, 1–4) geteilt; jedem Abschnitt kommt ein anderes Ziel zu, so dass die Summe der gewichteten Sichtbarkeit
+    (Höhe, Mond, Zenit, Wolken) maximal wird – Ziele, die früh untergehen, kommen früh, später aufgehende spät.
+    Jeder Wechsel kostet Aufstellen/Fokus, deshalb gibt es höchstens 4 Abschnitte; Abschnitte unter 40 min entfallen."""
+    if not recs:
+        return []
+    own_ix = {p["id"]: i for i, p in enumerate(own)}
+    cand_ix = {c.id: n_own + k for k, c in enumerate(cands)}
+    rows = [own_ix[r["id"]] if r["category"] == "more" else cand_ix[r["id"]] for r in recs]
+    top = max(r["rank"] for r in recs) or 1
+    v = np.array([weight[i] * (1 + 0.3 * r["rank"] / top) for i, r in zip(rows, recs)])         # K × T
+    active = np.where(v.max(axis=0) > 0)[0]
+    if not len(active):
+        return []
+    lo, hi = int(active[0]), int(active[-1]) + 1
+    n = int(min(4, max(1, round((hi - lo) * STEP_MIN / 60 / 3.0)), len(recs)))
+    edges = np.linspace(lo, hi, n + 1).round().astype(int)
+    gain = np.array([[v[k, edges[j]:edges[j + 1]].sum() for j in range(n)] for k in range(len(recs))])      # K × n
+    best, choice = -1.0, None
+    for perm in itertools.permutations(range(len(recs)), n):
+        total = sum(gain[k, j] for j, k in enumerate(perm))
+        if total > best:
+            best, choice = total, perm
+    blocks = []
+    for j, k in enumerate(choice or ()):
+        seg = np.where(v[k, edges[j]:edges[j + 1]] > 0)[0] + edges[j]
+        if len(seg):
+            blocks.append({"k": k, "start": float(ts[seg[0]]), "end": float(ts[seg[-1]] + STEP_MIN * 60)})
+    out = []
+    for b in blocks:
+        r = recs[b["k"]]
+        if b["end"] - b["start"] < MIN_BLOCK:
+            continue
+        mid = int(np.searchsorted(ts, (b["start"] + b["end"]) / 2))
+        c = None if cloud is None or np.isnan(cloud[min(mid, len(ts) - 1)]) else round(float(cloud[min(mid, len(ts) - 1)]))
+        out.append({"id": r["id"], "name": r["name"], "category": r["category"], "start": b["start"], "end": b["end"],
+                    "cloud": c, "href": r["href"]})
+    return out

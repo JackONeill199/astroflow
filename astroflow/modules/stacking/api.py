@@ -281,6 +281,9 @@ class Engine:
         return out
 
 
+_coll_cache: dict = {}          # Dienst collection_progress (Sage), 2 min zwischengespeichert
+
+
 def build_router(eng: Engine) -> APIRouter:
     r = APIRouter()
     db = eng.db
@@ -629,9 +632,22 @@ def build_router(eng: Engine) -> APIRouter:
 
     # ---- Nachtplanung: Standort und optionale Wetterfreigabe aus dem Bild-Tutor ------------
     @r.get("/tonight")
-    def get_tonight():
+    def get_tonight(hide: str = ""):
+        """hide: Kennungen, die der Nutzer ausgeblendet hat (kommagetrennt, lokal im Browser gemerkt)."""
         projects, device = tonight.library(db)
-        return tonight.plan(projects, tutor.settings(eng.ctx.store), eng.s.work_dir / "tutor", device=device)
+        hidden = {h.strip() for h in hide.split(",") if h.strip()}
+        coll = None
+        svc = eng.ctx.services.get("collection_progress")            # optional (Sage): schon entdeckte Messier-Objekte
+        if svc:
+            now = time.time()
+            if now - _coll_cache.get("t", 0) > 120:
+                try:
+                    _coll_cache.update(t=now, v=svc())
+                except Exception:
+                    _coll_cache.update(t=now, v=None)
+            coll = _coll_cache.get("v")
+        return tonight.plan(projects, tutor.settings(eng.ctx.store), eng.s.work_dir / "tutor", device=device,
+                            hidden=hidden, collection=coll)
 
     # ---- Bild-Tutor (vor /results/{rid}/{kind}, sonst fängt die Datei-Route „tutor“ ab) --------
     @r.get("/tutor")

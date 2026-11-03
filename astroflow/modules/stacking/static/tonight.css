@@ -39,4 +39,15 @@ af-tonight-chart { display: block; width: 100%; min-width: 0; margin-top: 10px }
 .tn-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px }
 .tn-weather { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px }
 .tn-empty { padding: 12px 0 }
+.tn-plan { margin-top: 12px }
+.tn-plan h3 { margin: 0 0 4px; font-size: 13px }
+.tn-plan ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; font-size: 13px }
+.tn-plan li { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; min-width: 0; overflow-wrap: anywhere }
+.tn-when { font-variant-numeric: tabular-nums; color: var(--mut); min-width: 100px }
+.tn-why { margin: 6px 0; padding-left: 18px; overflow-wrap: anywhere }
+.tn-gain { flex: 1 0 100%; margin: 4px 0 0; font-weight: 500 }
+.tn-tag { flex: 1 0 100%; margin: 4px 0 0; font-size: 12px }
+.tn-tag.last { color: var(--tn-orange) }
+.tn-tag.soon { color: var(--tn-blue) }
+.tn-hide { margin-left: auto; font-size: 12px; background: none; border: 0; cursor: pointer; color: var(--mut); text-decoration: underline; padding: 0 }
 @media (max-width: 750px) { .tn-choices { grid-template-columns: repeat(2, minmax(0, 1fr)) } .tn-facts { grid-template-columns: minmax(0, 1fr) } }

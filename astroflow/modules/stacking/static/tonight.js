@@ -5,6 +5,11 @@ const COLORS = ['var(--acc)', 'var(--acc3)', 'var(--acc2)', 'var(--tn-orange)', 
 const hm = t => t == null ? '–' : new Date(t * 1000).toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
 const period = s => s ? `${hm(s[0])} – ${hm(s[1])}` : '–';
 const targetLink = o => `href="${esc(o.href)}"${o.category === 'new' && AF.on('sage') ? ` data-night-catalog="${o.id}"` : ''}`;
+const HID = 'af.tonight.hidden';        // „nicht interessiert“: nur lokal im Browser
+const hiddenIds = () => { try { const a = JSON.parse(localStorage.getItem(HID) || '[]'); return Array.isArray(a) ? a.map(String) : []; } catch { return []; } };
+const setHidden = a => { try { localStorage.setItem(HID, JSON.stringify([...new Set(a)])); } catch {} };
+const query = () => { const h = hiddenIds(); return h.length ? '?hide=' + encodeURIComponent(h.join(',')) : ''; };
+const num = v => String(v).replace('.', ',');
 const noSite = () => `<p>Für die Nachtplanung fehlt dein Beobachtungsort.</p><a class="btn ghost sm" href="#/settings/stacking">Standort im Bild-Tutor eintragen</a>`;
 
 function chart(d, W, H, selected, hidden) {
@@ -22,6 +27,9 @@ function chart(d, W, H, selected, hidden) {
     g += `<line x1="${L}" x2="${W - R}" y1="${Y(a)}" y2="${Y(a)}" stroke="var(--mut)" stroke-opacity=".3" ${a === d.min_alt ? 'stroke-dasharray="3 4"' : ''}/>
       <text x="${L - 5}" y="${Y(a) + 4}" text-anchor="end" fill="var(--mut)">${a}°</text>`;
   }
+  if (d.cloud) d.cloud.slice(0, -1).forEach((c, i) => {
+    if (c != null) g += `<rect x="${X(d.times[i])}" y="${H - B - 8}" width="${X(d.times[i + 1]) - X(d.times[i]) + .2}" height="8" fill="var(--tn-blue)" opacity="${(c / 100 * .75).toFixed(2)}"><title>${c} % Wolken</title></rect>`;
+  });
   g += `<path d="${path(d.moon.alt)}" fill="none" stroke="var(--mut)" stroke-width="1.5" stroke-dasharray="2 5"><title>Mondhöhe</title></path>`;
   d.recommendations.forEach((o, k) => {
     if (!hidden.has(k)) g += `<path class="tn-series" data-target="${k}" d="${path(o.alt)}" fill="none" stroke="${COLORS[k]}" stroke-width="${selected === k ? 3.5 : 2}" opacity="${selected === k ? 1 : .65}"><title>${esc(o.name)}</title></path>`;
@@ -88,9 +96,11 @@ customElements.define('af-tonight-chart', class extends HTMLElement {
     const open = this.querySelector('.tn-target')?.open;
     this.innerHTML = `<div class="tn-stage">${chart(d, this.width, this.height, this.selected, this.hiddenTargets)}<div class="tn-tooltip" hidden></div></div>
       <div class="tn-scrub"><output class="tn-clock">${hm(d.times[this.index])}</output><input class="tn-time" type="range" min="0" max="${d.times.length - 1}" value="${this.index}" aria-label="Uhrzeit im Höhenverlauf" aria-valuetext="${hm(d.times[this.index])}"><span class="mut sm">${Math.round(d.moon.illum)} % Mond</span></div>
-      <div class="tn-choices">${d.recommendations.map((x, k) => `<div class="tn-choice" style="--target:${COLORS[k]}"><input type="checkbox" data-visible="${k}" ${this.hiddenTargets.has(k) ? '' : 'checked'} aria-label="Kurve ${esc(x.name)} anzeigen"><button type="button" data-select="${k}" aria-pressed="${this.selected === k}">${esc(x.name)}<small>${x.category === 'more' ? 'Mehr Zeit' : 'Neu'}</small></button></div>`).join('')}</div>
+      <div class="tn-choices">${d.recommendations.map((x, k) => `<div class="tn-choice" style="--target:${COLORS[k]}"><input type="checkbox" data-visible="${k}" ${this.hiddenTargets.has(k) ? '' : 'checked'} aria-label="Kurve ${esc(x.name)} anzeigen"><button type="button" data-select="${k}" aria-pressed="${this.selected === k}">${esc(x.name)}<small>${x.category === 'more' ? 'Mehr Zeit' : 'Neu'}${x.season?.kind === 'last' ? ' · letzte Chance' : ''}</small></button></div>`).join('')}</div>
       ${o ? `<div class="tn-selection"><a ${targetLink(o)}>Objekt öffnen ${icon('arrow')}</a><span class="mut sm">${o.good.map(period).join(', ')} · max. ${Math.round(o.max_alt)}°${o.exposure ? ' · bisher ' + dur(o.exposure) : ''}</span>
-        <details class="tn-target" ${open ? 'open' : ''}><summary>${o.category === 'more' ? 'Warum mehr Belichtung?' : 'Warum dieses Ziel?'}</summary><p>${esc(o.reasons.join(' '))}</p><p class="mut sm">${esc(o.benefit)}</p>${o.moon_warning ? '<p class="warn sm">Mond zeitweise näher als 40°: schwache Details können leiden.</p>' : ''}</details></div>` : ''}`;
+        <button type="button" class="tn-hide" data-tn-hide="${esc(o.id)}" title="Dieses Ziel nicht mehr vorschlagen">Nicht interessiert</button>
+        ${o.category === 'more' && o.gain ? `<p class="tn-gain">${esc(o.gain.text)}</p>` : ''}${o.season ? `<p class="tn-tag ${o.season.kind}">${esc(o.season.text)}</p>` : ''}
+        <details class="tn-target" ${open ? 'open' : ''}><summary>${o.category === 'more' ? 'Warum mehr Belichtung?' : 'Warum dieses Ziel?'}</summary><ul class="tn-why">${o.reasons.filter(r => r !== o.season?.text).map(r => `<li>${esc(r)}</li>`).join('')}</ul>${o.category === 'new' ? `<p class="mut sm">${esc(o.benefit)}</p>` : ''}${o.moon_warning ? '<p class="warn sm">Mond zeitweise näher als 40°: schwache Details können leiden.</p>' : ''}</details></div>` : ''}`;
     if (this.pinned) this.inspect();
   }
   inspect() {
@@ -114,33 +124,44 @@ customElements.define('af-tonight-chart', class extends HTMLElement {
   disconnectedCallback() { this.observer?.disconnect(); window.removeEventListener('resize', this.resizeChart); }
 });
 const graph = (d, initial_target) => `<af-tonight-chart>${esc(JSON.stringify({...d, initial_target, now: Math.floor(d.now / 300) * 300}))}</af-tonight-chart>`;
-function content(d, initial_target) {
+const planList = (d, full) => d.plan?.length ? `<div class="tn-plan"><h3>Nachtplan</h3><ol>${d.plan.map(b => `<li><span class="tn-when">${hm(b.start)} – ${hm(b.end)}</span> <a href="${esc(b.href)}">${esc(b.name)}</a> <small class="mut">${b.category === 'more' ? 'Mehr Zeit' : 'Neu'}${b.cloud != null ? ' · ' + b.cloud + ' % Wolken' : ''}</small></li>`).join('')}</ol>${full ? '<p class="mut sm">Ein Smart-Teleskop nimmt nur ein Ziel gleichzeitig auf: Die nutzbare Nacht ist in Abschnitte geteilt, jeder bekommt das Ziel, das dann am besten steht (Höhe, Mond, Wolken, Zenitnähe).</p>' : ''}</div>` : '';
+function content(d, initial_target, full) {
   if (!d.site) return `<div class="tn-empty">${noSite()}</div>`;
   const dev = d.device;
   return `<div class="tn-overview"><div><small>Dunkle Zeit</small><b>${dur(d.dark_hours * 3600)}</b></div><div><small>Mond beleuchtet</small><b>${d.moon.illum} %</b></div><div><small>Dein Gerät</small><b>${esc(dev.name)}</b></div></div>
-    ${graph(d, initial_target)}<p class="mut sm tn-legend">Dunkel: Sonne unter −18° · Mindesthöhe ${d.min_alt}° · gepunktet: Mond · Zeiten in deiner Ortszeit</p>
+    ${graph(d, initial_target)}<p class="mut sm tn-legend">Dunkel: Sonne unter −18° · Mindesthöhe ${d.min_alt}° · gepunktet: Mond${d.cloud ? ' · blauer Streifen unten: Bewölkung' : ''} · Zeiten in deiner Ortszeit</p>
+    ${planList(d, full)}
     ${d.recommendations.length ? '' : `<p class="mut">${d.dark_hours === 0 ? 'Heute gibt es hier keine astronomisch dunkle Zeit.' : 'Für den verbleibenden Teil der Nacht gibt es keine passenden Empfehlungen über 30°.'}</p>`}
-    <details class="tn-notes mut sm"><summary>Berechnung &amp; Bildfeld</summary><p>${esc(dev.name)}${dev.fov ? ` · Bildfeld ca. ${dev.fov.map(v => v.toFixed(2).replace('.', ',') + '°').join(' × ')} (${esc(dev.source)})` : ' · Bildfeld unbekannt, Größenfilter aus'}</p><p>Auswahl aus dem eingebauten Katalog, kein vollständiger Messier-Katalog. Freier Horizont und klares Wetter werden vorausgesetzt.</p></details>`;
+    <details class="tn-notes mut sm"><summary>Berechnung &amp; Bildfeld</summary><p>${esc(dev.name)}${dev.fov ? ` · Bildfeld ca. ${dev.fov.map(v => v.toFixed(2).replace('.', ',') + '°').join(' × ')} (${esc(dev.source)})` : ' · Bildfeld unbekannt, Größenfilter aus'}</p><p>Neue Ziele: Messier- und Caldwell-Katalog (fest eingebaut)${d.catalog?.astap_found ? ' plus auffällige Objekte aus ASTAPs deep_sky.csv (ohne Helligkeitsangabe, nach Größe und Name gewählt)' : ' – ohne ASTAPs deep_sky.csv keine weiteren Objekte'}. Helligkeitsgrenze für dieses Gerät etwa ${num(d.catalog?.mag_limit ?? 11)} mag; Größe 3–90 % der kurzen Bildfeldseite. ${d.catalog?.candidates ?? 0} Kandidaten passen zu Gerät und Bildfeld.</p><p>Rangfolge: nutzbare Stunden in der dunklen Zeit, gewichtet mit Mond (Phase × Abstand), Wolken (falls die Vorhersage im Tutor an ist) und – bei Alt-Az-Geräten – Zenitnähe über 80° (Feldrotation); dazu Kulmination im Dunkeln und Saison. „Mehr Zeit“ rechnet das Rauschen nach der 1/√Zeit-Regel. Freier Horizont wird vorausgesetzt.</p></details>`;
 }
 async function featured() {
   let body;
-  try { body = content(await api('/stacking/tonight')); }
+  try { body = content(await api('/stacking/tonight' + query())); }
   catch (e) { body = `<p class="mut">Nachtplanung gerade nicht verfügbar: ${esc(e.message)}</p>`; }
   return `<div class="tn-home"><div class="hhead">${icon('star')}<div><h2>Empfohlene Ziele für heute Nacht</h2></div><span class="grow"></span><a class="linkbtn" href="#/nacht">Planung öffnen ${icon('arrow')}</a></div>${body}</div>`;
 }
 async function nightView(el, catalogId) {
   crumbs([['Übersicht', '#/'], ['Heute Nacht']]);
-  const d = await api('/stacking/tonight');
+  const d = await api('/stacking/tonight' + query());
   if (!el.isConnected) return;
   const selected = catalogId && [...(d.recommendations || []), ...(d.suggestions || [])].find(x => x.id === catalogId);
   const tw = d.twilight;
   el.innerHTML = `<div class="pagehead"><div><h1>Heute Nacht</h1><p class="mut">Empfehlungen aus deiner Bibliothek und dem zuletzt verwendeten Gerät.</p></div></div>
-    ${selected ? `<section class="panel"><h2>${esc(selected.name)}</h2><p>${esc(selected.kind_label)} · Durchmesser ca. ${selected.size}′ · max. ${Math.round(selected.max_alt)}°</p><p>${selected.good.map(period).join(', ')} über ${d.min_alt}°</p><p class="mut">Katalogdaten aus dem eingebauten AstroFlow-Katalog.</p>${AF.on('sage') ? `<a href="#/sage/wiki">In der Enzyklopädie recherchieren</a>` : ''}</section>` : ''}
-    <section class="panel">${content(d, catalogId)}</section>
+    ${selected ? `<section class="panel"><h2>${esc(selected.name)}</h2><p>${esc(selected.kind_label)} · Durchmesser ca. ${num(selected.size)}′${selected.mag != null ? ' · ' + num(selected.mag) + ' mag' : ''} · max. ${Math.round(selected.max_alt)}°</p><p>${selected.good.map(period).join(', ')} über ${d.min_alt}°</p><ul class="tn-why">${(selected.reasons || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>${AF.on('sage') ? `<a href="#/sage/wiki">In der Enzyklopädie recherchieren</a>` : ''}</section>` : ''}
+    <section class="panel">${content(d, catalogId, true)}</section>
+    ${d.soon?.length ? `<section class="panel"><h2>Bald gut sichtbar</h2><ul class="tn-why">${d.soon.map(x => `<li><a href="${esc(x.href)}">${esc(x.name)}</a> <span class="mut sm">${esc(x.kind_label)}${x.mag != null ? ' · ' + num(x.mag) + ' mag' : ''} · ab etwa ${esc(x.season.from)}</span></li>`).join('')}</ul><p class="mut sm">Stehen heute zu kurz im Dunkeln, werden aber in den nächsten Wochen besser.</p></section>` : ''}
+    ${hiddenIds().length ? `<p class="mut sm">${hiddenIds().length} Ziel(e) ausgeblendet. <button type="button" class="tn-hide" data-tn-reset>Alle wieder zeigen</button></p>` : ''}
     ${d.site ? `<section class="panel"><h2>Dämmerung und Mond</h2><div class="tn-facts"><p>Sonnenuntergang: ${hm(tw.sunset)}<br>Nautische Dämmerung: ${hm(tw.nautical)}<br>Astronomisch dunkel: ${period([tw.dark_start, tw.dark_end])}<br>Sonnenaufgang: ${hm(tw.sunrise)}</p>
       <p>Mondaufgang: ${hm(d.moon.rise)}<br>Monduntergang: ${hm(d.moon.set)}<br>Dunkel ohne Mond: ${d.moon.moonless.length ? d.moon.moonless.map(period).join(', ') : 'keine Zeit'}</p></div></section>
       <section class="panel"><h2>Wetter</h2>${d.weather?.hours?.length ? `<p class="mut sm">${esc(d.weather.source)}</p><div class="tn-weather">${d.weather.hours.map(h => `<span>${hm(h.t)}<br>${h.cloud ?? '–'} % Wolken</span>`).join('')}</div>` : `<p class="mut">${esc(d.weather_error || (d.weather_on ? 'Keine Vorhersage für diese Nacht.' : 'Wettervorhersage ist aus. Unter Einstellungen → Bilder → Bild-Tutor → Wetter einschalten.'))}</p>`}</section>` : ''}`;
 }
+document.addEventListener('click', e => {
+  const hide = e.target.closest('[data-tn-hide]'), reset = e.target.closest('[data-tn-reset]');
+  if (!hide && !reset) return;
+  setHidden(hide ? [...hiddenIds(), hide.dataset.tnHide] : []);
+  if (typeof route === 'function') route(); else dispatchEvent(new HashChangeEvent('hashchange'));
+  if (hide) toast('Ausgeblendet – unter „Heute Nacht“ wieder einblendbar.');
+});
 document.addEventListener('click', async e => {
   const link = e.target.closest('[data-night-catalog]');
   if (!link || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;

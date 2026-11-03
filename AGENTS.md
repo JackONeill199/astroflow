@@ -23,7 +23,7 @@ astroflow/static/          Shell: index.html, app.js (Router, Navigation, Übers
 - **Modul-Vertrag Backend** (`core/modules.py`): `router()`, `start()/stop()`, `status()` (klein, wird alle 2,5 s gepollt; `busy_jobs` zählt für die Anzeige),
   `activity()` (gemeinsames Format `{key,title,kind,detail,state,progress,started,finished,href}`), `scripts/styles`. Reihenfolge/Liste: `AVAILABLE`.
 - **Module reden nicht per Import miteinander**, sondern über Dienste in `ctx.services`: Stacking stellt `plate_solver` (`PictureSolver`),
-  `project_picture`, `project_solution`, `project_frames`, `observation_log`, `catalog_resolve` und `catalog_objects` bereit, Sage `object_facts` (Typ/Entfernung aus der Wissensbasis); Sage und SkyTrace nutzen sie. Fehlt ein Dienst, muss das Modul trotzdem laufen.
+  `project_picture`, `project_solution`, `project_frames`, `observation_log`, `catalog_resolve` und `catalog_objects` bereit, Sage `object_facts` (Typ/Entfernung aus der Wissensbasis) und `collection_progress` (entdeckte Messier-Nummern, für „Heute Nacht“); Sage und SkyTrace nutzen sie. Fehlt ein Dienst, muss das Modul trotzdem laufen.
 - **Ereignisse** (`ctx.on` / `ctx.emit`, Liste in `core/modules.py`): `stacking.stacked(project_id, result_id, name)` kommt aus
   `Pipeline.process` nach dem Entwickeln und **vor** dem Löschen hochgeladener Rohbilder (`Pipeline.on_stacked`). Empfänger (seit 28.10.2026,
   Nutzerwunsch „gestackte Aufnahmen automatisch durch SkyTrace und in die Entdeckungen, mit animierten Erfolgen“):
@@ -263,6 +263,22 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    Ausgabedateien, Stacks gelöschter Objekte, Temp (> 1 h), leere Ordner (> 1 h), DB verdichten (VACUUM) – vorausgewählt; ältere Versionen
    (neueste `keep` je Objekt bleiben, nicht bei importierten Bildern) und Sicherungen – nur auf Wunsch. Client schickt nur Schlüssel, der Server
    ermittelt die Pfade neu und löscht nur innerhalb des Datenordners; 409 während eines Jobs. Rohdaten und Stacks bestehender Objekte nie.
+
+## Heute Nacht – Empfehlungen (`modules/stacking/tonight.py`, `deepsky.py`; seit 0.20.0)
+- **Katalog** (`deepsky.py`): `MESSIER` (110, M24/M40/M73 als Nicht-Ziele markiert) und `CALDWELL` (109, C50/C61 stecken in C49/C60) fest eingebaut mit
+  Helligkeit und Größe; ASTAPs `deep_sky.csv` hat **keine Helligkeit** → Koordinaten von dort nur zur Genauigkeit, weitere ASTAP-Objekte
+  (`astap_extras`) nur wenn benannt, Galaxie ≥ 8′ oder NGC/IC-Haufen 10–45′ (`mag=None`, Bewertung ×0,92). `ASTROFLOW_DEEPSKY=0` schaltet die
+  Datei ab (Tests), `deepsky.reset()` leert die Zwischenspeicher. Filter `usable`: Helligkeitsgrenze je Gerät (`MAG_LIMITS`), Größe 3–90 % der kurzen
+  Bildfeldseite, mind. 2′. Eigene Objekte: `keys_for(name)` (Schlüssel M/NGC/IC/C + Namen + ASTAP-Zweitnamen) und Position (Radius = Katalogausdehnung des
+  eigenen Objekts, damit M32/M110 bei M31 entfallen). `objects.extended_catalog` speichert nun die Zweitnamen in `aliases`.
+- **Rechnung** (`plan`): Höhen analytisch aus Ortssternzeit (numpy, kein AltAz je Objekt) → ~140–250 Kandidaten in ~1 s, Ergebnis 10 min gecacht (Schlüssel
+  enthält Projekte, Gerät, `hide`, `collection`). Nutzbare Stunden `eff_hours` = dunkel × Höhe ≥ 30° × Mondgewicht (Phase × Abstand, `w_moon`) × Zenit
+  (> 80° bei `alt_az`: 0,4) × Wolken (`clear = 1 − cloud/80`). `_score` ≈ 0–6 gemeinsam für „new“ und „more“; `_select` greedy, max. 2 je Objektart, beide
+  Kategorien vertreten. Saison: Nächte heute + 0…196 Tage (14-Tage-Schritte, stündlich) → `_season` (`last`/`soon`).
+- **Mehr Zeit** `_gain`: Rauschen × √(t/(t+Zusatz)), Zusatz = nutzbare Stunden (auf 0,5 h, max. 8); unter 10 % Gewinn entfällt das Ziel.
+- **Nachtplan** `_night_plan`: nutzbare Nacht in 1–4 Abschnitte (≈ 3 h), Zuordnung der Ziele per Permutation (Summe der gewichteten Sichtbarkeit); Blöcke < 40 min entfallen.
+- **API** `GET /api/stacking/tonight?hide=M35,12`: ausgeblendete Kennungen (localStorage `af.tonight.hidden`). Optionaler Dienst `collection_progress` (Sage →
+  `{"messier": [Nummern]}`, 2 min gecacht): „Wäre dein n. Messier-Objekt“, bereits entdeckte Messier-Nummern entfallen. Tests: `tests/test_tonight.py`.
 
 ## Hauptordner durchsuchen (`modules/stacking/library.py`, seit 31.10.2026)
 Import-Ansicht → „Hauptordner durchsuchen“ → „Ordner wählen …“ (`folderDialog`, kein Pfad eintippen; Wahl startet die Suche): Ordner auf dem Server-Rechner (z. B. ganze Stellina-Platte). Hintergrund-Thread findet Gruppen
