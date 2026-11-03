@@ -49,7 +49,7 @@ Rechners 3–6 Uhr; „Saubere Nacht“ = ≥ 100 Aufnahmen ohne Kandidat; Starl
 (141 Beobachtungen: 164 Satelliten, 84 Starlink, max. 8 je Beobachtung, Zug ≤ 4, 25 Raketenstufen, 10 Trümmerteile → 42 von 60 freigeschaltet).
 Zustand `<SKYTRACE_HOME>/erfolge.json` (`unlocked{id: {unlocked, seen}}`): einmal vergeben bleibt vergeben (auch wenn ein Lauf gelöscht wird),
 das Datum ändert sich nie. Erste Datei = alles rückwirkend und „gesehen“ (keine Feier-Flut); später neu erreichte sind ungesehen (`status.achievements_new`
-→ Hinweis über `toast`, Karte mit „Neu“ und Animation, nach 6 s bzw. Verlassen der Seite als gesehen markiert). `Module.status` stößt die Prüfung an,
+→ Hinweis über `toast`, Karte mit „Neu“ und Animation, nach 6 s bzw. Verlassen der Seite als gesehen markiert). Ein Hintergrund-Thread (`Module._achievements_loop`, unabhängig vom Browser) stellt beim Start den Ausgangsstand her und stößt die Prüfung an,
 wenn eine Analyse endet. Frontend hängt sich per `AF.modules.skytrace` ein (Route, Navigation, Palette, Status) – `skytrace.js` blieb unverändert.
 Optionaler Dienst `ctx.services["skytrace_achievements"]` (= `overview`) für andere Module; Sage nutzt ihn bisher nicht. Ton: freundlich-ironisch,
 keine Firmen-/Personennamen als Zielscheibe (Betreibernamen nur als Fakt aus dem Katalogtreffer). Test: `tests/test_skytrace_achievements.py`.
