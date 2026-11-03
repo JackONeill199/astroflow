@@ -80,6 +80,7 @@ def test_playback_overlay_and_full_frame_timeline(server, browser, width, tmp_pa
     assert not page.locator('#refresh').is_visible()
     page.locator('#analysisMenu > button').click()
     assert page.locator('#refresh').is_visible()
+    page.locator('#reanalyse small').wait_for(state='visible',timeout=3000)
     assert not page.evaluate(FIND_OVERFLOW)
     page.screenshot(path=str(tmp_path/f'skytrace-analyse-menu-{width}.png'),full_page=True)
     page.locator('#reanalyse').click()
