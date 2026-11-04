@@ -3,6 +3,19 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.24.0 – 05.11.2026
+
+### Neu
+- **Stil mit Atmosphäre:** Unter Einstellungen → Module & System → Darstellung gibt es drei Stile. „Dezent“ (Standard) und
+  „Nebula“ bringen einen ruhigen Navy-Violett-Verlauf im Hintergrund, halbtransparente Glasflächen mit feinem hellem Rand,
+  Primärknöpfe und aktive Navigation mit Violett-Blau-Verlauf. „Nebula“ ist kräftiger und hat ein kaum sichtbares Sternenfeld.
+  „Schlicht“ ist das neutrale Anthrazit von 0.21. Aufbau, Abstände und Lesbarkeit bleiben gleich.
+- **Sternschnuppen:** Ab und zu fliegt hinter den Inhalten eine Sternschnuppe durch das Bild (schnell, mit auslaufendem Schweif).
+  Abschaltbar unter Darstellung; aus bei „Bewegung reduzieren“ und im Stil „Schlicht“.
+- **Direktere Rückmeldung:** Knöpfe, Reiter, Schalter, Navigation und Karten geben beim Drücken leicht nach; Primärknöpfe heben sich beim
+  Überfahren an, Fokus zeigt einen weichen Leuchtrand. Löst ein Knopf eine Aktion beim Server aus, ist er sofort gesperrt und zeigt nach
+  0,15 s einen Kreisel, bis die Antwort da ist – kein doppeltes Klicken mehr, kein Rätseln, ob der Klick angekommen ist.
+
 ## 0.23.0 – 04.11.2026
 
 ### Neu
