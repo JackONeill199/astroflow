@@ -327,7 +327,7 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   Projektoption `comet_mode` auto|on|off (**nicht** `mode` – das ist bei Aufträgen „develop“), `comet_name` (Bezeichnung für Horizons).
 - **Ablauf** (`Pipeline._comet` am Ende von `stack()`, nur ein Band): Sterne-Stack wie immer (Fortschritt 36–60 %), dann
   `_comet_track`: Horizons (`comet.horizons`, Cache `work/komet/`, geozentrisch abgefragt, Parallaxe lokal per astropy
-  aus Standort `FrameInfo.site` bzw. Tutor-Einstellung – Standort verlässt den Rechner nie; WCS des Sterne-Stacks über
+  aus Standort `FrameInfo.site`, sonst Ort der Nacht aus der gemeinsamen Ortsliste (`services["sites"]`), sonst Tutor-Einstellung – Standort verlässt den Rechner nie; WCS des Sterne-Stacks über
   `_stack_wcs`, gleicher Cache `wcs.json` wie die Farbkalibrierung) und/oder Bildsuche: ≤ 36 Stichproben, Luminanz gebinnt
   auf ≤ 800 px, auf den Sterne-Stack registriert. Grob: Einzelbild − Sterne-Stack → Spitzen → RANSAC-Gerade. Fein (`locate`):
   Bahn so optimieren, dass der Kern im Mittel der entlang der Bahn ausgeschnittenen Differenzbilder (Referenz = Median der
@@ -440,7 +440,22 @@ Lesetext mit `.readable` / `--read` 42rem. Keine Karte in der Karte (`.panel .pa
 Spalte `.imgwrap > #imgSide` neben dem Bild (Standard sichtbar, `bild.details`); der „Details“-Knopf schaltet dort die Spalte (`data-side`). Galerie = Betrachter `#/galerie/<id>`
 (`pictureView`, Vor/Zurück aus `galleryOrder`), Bilder = Verarbeitung `#/p/<id>`; `objectKnowledge(host, name)` holt Sages Wissenskarte
 (`/api/sage/kb/card`, legt bei Bedarf einen Grundeintrag an) für Betrachter und Details-Panel. **Alle Maße in `rem`** (1rem = 16px; nur 1–2px-Rahmen und Media-Queries in px) – `html` wird ab 1800/2300/3200 px Breite größer
-(17,5/19,5/23 px) bzw. per Einstellung „Darstellung“ (`localStorage af.ui.scale`, `applyUiScale`); neue Stile daher in `rem` schreiben. Nur dunkel. Keine Verläufe, Glühen, Sternenhintergründe, Marketing-Überschriften. Aufwendige Animationen nur für echte Prozesse (`viz.js`, als „Schema“
+(17,5/19,5/23 px) bzw. per Einstellung „Darstellung“ (`localStorage af.ui.scale`, `applyUiScale`); neue Stile daher in `rem` schreiben. Nur dunkel. Keine Marketing-Überschriften. **Atmosphäre (seit 0.24.0, Nutzerwunsch „Farbverläufe und bisschen glassy look wie früher“):**
+`static/look.css` über `<html data-look="dezent|nebula">` (ohne Attribut = „Schlicht“, das Anthrazit von 0.21; `index.html` setzt es schon im `<head>`,
+`applyLook`/`UI_LOOKS` in `app.js`, `localStorage af.ui.look`, Standard „dezent“). Tokens `--bg-grad`, `--glass`, `--glass-bar`, `--glass-border`, `--glass-hi`,
+`--grad-acc`, `--grad-soft`, `--glow`. Verlauf nur im Seitenhintergrund (am `<html>`, `fixed`), auf Primärknöpfen, aktiver Navigation, Reiterstrich;
+Glühen nur auf Primärknöpfen. `backdrop-filter` nur auf Werkzeugleiste, Seitenleiste, Kontextpanel; Karten/Panels nur halbtransparent (Glasregeln per
+`:where(:root[data-look])` mit niedriger Spezifität, damit flache Varianten wie `.img-side .panel` gewinnen). Menüs, Dialoge, Eingaben deckend.
+Eingaben nur `background-color` setzen (Suchfeld trägt sein Symbol als `background-image`). `prefers-reduced-transparency` → deckend ohne Unschärfe.
+Sternschnuppen: `static/meteors.js` (`window.meteors`, Ebene `#meteors`, `z-index: -1` hinter allem; Nutzerwunsch „selten, Algorithmus nach
+echten Daten“): `sky(date, lat, lon)` rechnet die sichtbare Rate – `SHOWERS` (IAU-MDC: λ☉max, ZHR, Jenniskens-Profil 10^(−B·Δλ), Radiant, v, r),
+HR = ZHR · sin(Radiantenhöhe) · r^(Grenzgröße − 6,5), sporadisch 2 + 10·sin(Apexhöhe), Sonne über −6° → 0, Mondphase senkt die Grenzgröße.
+Ort aus `/api/sites/resolve` (sonst 50° N, Länge aus der Zeitzone). Alle 15 s Poisson-Ziehung mit Rate HR/5; Strom-Meteore fliegen vom Radianten weg
+(Blick Süd), Tempo/Länge/Farbe aus v. `info()` liefert den Text unter Darstellung. `localStorage af.ui.meteors`, aus bei reduzierter Bewegung und
+ohne Stil. Test: `test_meteors.py` (Geminiden-/Perseidenmaximum, Tag, Apex morgens > abends, Radiant unter dem Horizont).
+**Rückmeldung** (seit 0.24.0, Nutzerwunsch „responsiver“, Ende von `style.css`, gilt für alle Stile): Drücken = `scale(.94–.985)` in 120 ms, nur
+transform/opacity/Farben. `api()` merkt den zuletzt gedrückten Knopf (`lastPress`, ≤ 0,6 s) und setzt bei schreibenden Anfragen `.pending`
+(gesperrt, Kreisel nach 150 ms über `::before/::after`) – `.btn` darf daher keine eigenen `::before/::after` bekommen. Aufwendige Animationen nur für echte Prozesse (`viz.js`, als „Schema“
 gekennzeichnet, mit echten Zahlen aus Job/Engine), sonst 150–250 ms. AppShell: Grid `top / side main ctx`; Seite scrollt als Ganzes (Layout-Test braucht das),
 Sidebar/Panel `sticky`. Breiten: ≥ 1280 Panel im Raster, darunter Schublade (`.shell.ctx-shown`); 861–1100 Sidebar nur Symbole; ≤ 860 Leiste unten + `#subnav`.
 Navigation wird einmal gebaut (`buildNav`), `navState` setzt nur Klassen. Bilder-Objektseite: keine Schrittleiste im Kopf (Nutzerwunsch) – der Fortschritt steht in der Bildfläche (`live.js`); `pipeStep` bildet `jobs.stage` auf Schritte ab (für die Schema-Animation in den übrigen Reitern) (Kalibrierung und

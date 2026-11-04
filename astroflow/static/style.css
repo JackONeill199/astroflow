@@ -805,3 +805,22 @@ input:focus-visible + .switch { outline: 2px solid var(--acc); outline-offset: 2
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important }
 }
 .btn.ghost.on { background: var(--surface-3); color: var(--fg); border-color: var(--border) }
+
+/* ---- Rückmeldung (seit 0.24.0, Nutzerwunsch „responsiver“): jede Aktion spürbar quittieren ---------------------------
+   Nur transform/opacity/Farben, 120–180 ms. Drücken = leicht eindrücken, Überfahren = Farb-/Randwechsel.
+   .pending setzt api() am auslösenden Knopf (schreibende Anfrage): sofort gesperrt, Kreisel erst nach 150 ms (kein Flackern). */
+.btn, .tbtn, .seg button, .side nav a, .subnav a, .snav a, .chip, .card, .itile, a.modcard { -webkit-tap-highlight-color: transparent }
+.btn { transition: background var(--t), border-color var(--t), color var(--t), opacity var(--t), transform 120ms var(--ease), box-shadow var(--t) }
+.btn:active:not(:disabled) { transform: translateY(1px) scale(.97) }
+.tbtn { transition: background var(--t), color var(--t), border-color var(--t), transform 120ms var(--ease) }
+.tbtn:active, .seg button:active:not(:disabled) { transform: scale(.94) }
+.seg button { transition: background var(--t), color var(--t), transform 120ms var(--ease), box-shadow var(--t) }
+.side nav a, .subnav a, .snav a { transition: background var(--t), color var(--t), transform 120ms var(--ease) }
+.side nav a:active, .subnav a:active, .snav a:active { transform: scale(.98) }
+.chip { transition: background var(--t), border-color var(--t), color var(--t) }
+.card:active, a.modcard:active, .itile:active .ii { transform: scale(.985) !important; transition-duration: 90ms }
+.tabs a:active { transform: translateY(1px) }
+.btn.pending, .tbtn.pending { pointer-events: none }
+.btn.pending::after { content: ""; position: absolute; inset: -1px; border-radius: inherit; background: inherit; animation: fadeIn 120ms 150ms both }
+.btn.pending::before { content: ""; position: absolute; z-index: 1; left: 50%; top: 50%; width: 0.875rem; height: 0.875rem; margin: -0.4375rem 0 0 -0.4375rem; border-radius: 50%;
+  border: 2px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; animation: fadeIn 120ms 150ms both, spin .8s linear infinite }
