@@ -37,6 +37,8 @@ class Engine:
         self.pl.site_provider = self._site                # Kometenmodus: Parallaxe lokal am Standort rechnen
         from .library import Library
         self.library = Library(self)
+        from .insights import Insights
+        self.insights = Insights(self)                    # Tiefe und Vergleich fertiger Bilder (eigener Thread)
         stars.STARNET.tools_dir = self.s.data_dir / "tools" / "starnet"
         self._apply_saved()
         self.q: queue.Queue[int] = queue.Queue()
@@ -207,10 +209,11 @@ class Engine:
         try:
             opts = json.loads(job["options"] or "{}")
             if opts.get("mode") == "develop":
-                self.pl.develop(job["project_id"], opts, prog, start=0.05)
+                rid = self.pl.develop(job["project_id"], opts, prog, start=0.05)
             else:
-                self.pl.finish(job["project_id"], opts, prog)
+                rid = self.pl.finish(job["project_id"], opts, prog)
             self.db.x("UPDATE jobs SET state='done', progress=1, finished=? WHERE id=?", (time.time(), jid))
+            self.insights.after_develop(rid)
             if self.s.auto and job["project_id"] in self.pending_projects():
                 self.enqueue(job["project_id"])
         except Exception as e:
@@ -291,6 +294,14 @@ class Engine:
 _coll_cache: dict = {}          # Dienst collection_progress (Sage), 2 min zwischengespeichert
 
 
+def _slim(stats: str | None) -> dict:
+    """Ergebnis-Kennzahlen für Listen/Objektseite – ohne die großen Auswertungen (Tiefe, Vergleich: eigene Endpunkte)."""
+    st = json.loads(stats or "{}")
+    st.pop("depth", None)
+    st.pop("compare", None)
+    return st
+
+
 def build_router(eng: Engine) -> APIRouter:
     r = APIRouter()
     db = eng.db
@@ -356,7 +367,7 @@ def build_router(eng: Engine) -> APIRouter:
                 # Einzelbilder nach dem Stacking gelöscht -> kein komplettes Neu-Stacken mehr möglich
                 "deleted": {"frames": d["n"], "bytes": d["b"], "can_restack": not imported and d["s"] == 0},
                 "result": {"id": lr["id"], "created": lr["created"], "n_frames": lr["n_frames"], "exposure": lr["exposure"],
-                           "stats": json.loads(lr["stats"]), "formats": list(json.loads(lr["files"] or "{}"))} if lr else None,
+                           "stats": _slim(lr["stats"]), "formats": list(json.loads(lr["files"] or "{}"))} if lr else None,
                 "job": {k: jb[k] for k in ("id", "state", "progress", "stage", "message", "finished")} if jb else None,
             })
         return out
@@ -461,7 +472,7 @@ def build_router(eng: Engine) -> APIRouter:
         if v['live'].get('job') != (v.get('job') or {}).get('id'):
             v['live'] = {}
         v["results"] = [{"id": x["id"], "created": x["created"], "n_frames": x["n_frames"], "exposure": x["exposure"],
-                         "stats": json.loads(x["stats"]), "review": json.loads(x["review"] or "[]"),
+                         "stats": _slim(x["stats"]), "review": json.loads(x["review"] or "[]"),
                          "has_before": "before" in json.loads(x["files"] or "{}"),
                          "views": [k for k in ("stars", "comet") if k in json.loads(x["files"] or "{}")]}
                         for x in db.q("SELECT * FROM results WHERE project_id=? ORDER BY COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC,id DESC", (pid,))]
@@ -773,6 +784,69 @@ def build_router(eng: Engine) -> APIRouter:
         except OSError:
             pass
         return out
+
+    # ---- Wie tief schaust du? / Vergleich mit Referenz (insights.py) ----------------------------------
+    def _insight(rid: int, key: str, version: int):
+        x = db.one("SELECT project_id, stats FROM results WHERE id=?", (rid,))
+        if not x:
+            raise HTTPException(404)
+        st = eng.insights.status(key, rid)
+        data = json.loads(x["stats"] or "{}").get(key)
+        solved = (eng.s.work_dir / f"p{x['project_id']}" / "wcs.json").exists()
+        if st and st["state"] in ("queued", "running", "error"):
+            return {"state": st["state"], "message": st["message"], "solved": solved}
+        if data and data.get("ok") and data.get("v") == version:
+            return {"state": "done", "solved": solved, **data}
+        if data and not data.get("ok"):
+            return {"state": "error", "message": data.get("error"), "solved": solved}
+        return {"state": "old" if data else "none", "solved": solved}
+
+    @r.get("/results/{rid}/depth")
+    def get_depth(rid: int):
+        from .depth import DEPTH_VERSION
+        return _insight(rid, "depth", DEPTH_VERSION)
+
+    @r.post("/results/{rid}/depth")
+    def run_depth(rid: int):
+        if not db.one("SELECT id FROM results WHERE id=?", (rid,)):
+            raise HTTPException(404)
+        return eng.insights.submit("depth", rid)
+
+    @r.get("/results/{rid}/compare")
+    def get_compare(rid: int):
+        from .compare import COMPARE_VERSION, references
+        out = _insight(rid, "compare", COMPARE_VERSION)
+        out["refs"] = [{k: v for k, v in x.items() if k != "nights"} for x in references(db, eng.s.work_dir, rid)]
+        out["survey"] = eng.insights.settings()["survey"]
+        return out
+
+    @r.post("/results/{rid}/compare")
+    def run_compare(rid: int, body: dict = Body(default={})):
+        if not db.one("SELECT id FROM results WHERE id=?", (rid,)):
+            raise HTTPException(404)
+        ref = body.get("ref", "auto")
+        if ref not in ("auto", "survey") and not (isinstance(ref, int) or str(ref).isdigit()):
+            raise HTTPException(400, "Unbekannte Referenz")
+        return eng.insights.submit("compare", rid, ref=ref if ref in ("auto", "survey") else int(ref))
+
+    @r.get("/results/{rid}/compare/{name}")
+    def compare_file(rid: int, name: str):
+        import re as _re
+        if not _re.fullmatch(r"(aktuell|referenz)\.jpg|k\d{1,3}\.png", name):
+            raise HTTPException(404)
+        x = db.one("SELECT project_id FROM results WHERE id=?", (rid,))
+        f = x and eng.s.work_dir / f"p{x['project_id']}" / "vergleich" / f"r{rid}" / name
+        if not f or not f.exists():
+            raise HTTPException(404)
+        return FileResponse(f)
+
+    @r.get("/insights")
+    def get_insights():
+        return eng.insights.settings()
+
+    @r.post("/insights")
+    def set_insights(body: dict = Body(...)):
+        return eng.insights.save(body)
 
     @r.get("/results/{rid}/{kind}")
     def result_file(rid: int, kind: str):

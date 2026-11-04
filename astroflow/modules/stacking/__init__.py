@@ -13,8 +13,8 @@ class Module(BaseModule):
     name = "Bilder"
     description = "Rohbilder automatisch kalibrieren, stacken und zum fertigen Astrofoto entwickeln."
     icon = "grid"
-    scripts = ("live.js", "stacking.js", "tonight.js")
-    styles = ("statistics.css", "housekeeping.css", "library.css", "stages.css", "tutor.css", "versions.css", "live.css", "tonight.css")
+    scripts = ("live.js", "stacking.js", "tonight.js", "depth.js")
+    styles = ("depth.css", "statistics.css", "housekeeping.css", "library.css", "stages.css", "tutor.css", "versions.css", "live.css", "tonight.css")
 
     def __init__(self, ctx):
         super().__init__(ctx)
@@ -43,6 +43,7 @@ class Module(BaseModule):
     def start(self):
         threading.Thread(target=self.eng.worker, daemon=True).start()
         threading.Thread(target=self.eng.watcher, daemon=True).start()
+        threading.Thread(target=self.eng.insights.worker, daemon=True, name="stacking-insights").start()
 
     def stop(self):
         self.eng.stop.set()
