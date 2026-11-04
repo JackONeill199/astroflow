@@ -12,6 +12,7 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md`, Erledigtes im `CHANGELOG.md`.
 | 4 | 03.11.2026 | Übersicht: empfohlene Ziele für heute Nacht | Grundversion in 0.19.0 |
 | 5 | 04.11.2026 | Kometenmodus | umgesetzt in 0.22.0 |
 | 6 | 04.11.2026 | Planetenmodus (Lucky Imaging) | offen |
+| 7 | 04.11.2026 | Standorte nach Datum | umgesetzt in 0.23.0 (Kür Standort-Rückrechnung: Vorschlag, kein Automatismus) |
 
 ## 1. Bibliothek teilen (nur ansehen) – 03.11.2026
 
@@ -101,3 +102,14 @@ Zu klären:
 - Sinnvoll erst mit längerer Brennweite (Seestar-Planetenmodus, klassische Teleskope); bei Stellina/Vespera ist Jupiter nur
   wenige Dutzend Pixel groß – Hinweis statt enttäuschendem Ergebnis.
 - Ausgabe: Stack + geschärftes Bild, optional Derotation (Jupiter) als späterer Schritt.
+
+## 7. Standorte nach Datum – 04.11.2026
+
+„Man nimmt sein Teleskop oft an verschiedene Orte, deshalb müssen die Standorte flexibel sein bzw. nach Datum auswählbar.“
+Für Satelliten muss der Ort auf ~200–500 m stimmen (1 km ≈ 7′ quer bei 500 km), für Nachtplanung/Tutor/Wetter reichen 10 km.
+
+- **Umgesetzt (0.23.0):** gemeinsame Ortsliste mit Genauigkeit, Standard-Ort, Zeiträumen und Ort je Nacht; Heute Nacht,
+  Bild-Tutor und SkyTrace nutzen sie; SkyTrace weitet die Satelliten-Toleranz bei ungenauem Ort aus und kann Ort und
+  Uhrversatz einer Nacht aus Satellitenspuren zurückrechnen (nur Vorschlag).
+- Offen: Karte zum Anklicken (bisher Adresssuche, Koordinaten und Link zu OpenStreetMap), Höhe als dritte Unbekannte
+  der Rückrechnung, Vorschlag gleich für mehrere Nächte auf einmal übernehmen.

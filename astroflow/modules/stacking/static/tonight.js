@@ -10,7 +10,18 @@ const hiddenIds = () => { try { const a = JSON.parse(localStorage.getItem(HID) |
 const setHidden = a => { try { localStorage.setItem(HID, JSON.stringify([...new Set(a)])); } catch {} };
 const query = () => { const h = hiddenIds(); return h.length ? '?hide=' + encodeURIComponent(h.join(',')) : ''; };
 const num = v => String(v).replace('.', ',');
-const noSite = () => `<p>Für die Nachtplanung fehlt dein Beobachtungsort.</p><a class="btn ghost sm" href="#/settings/stacking">Standort im Bild-Tutor eintragen</a>`;
+const noSite = () => `<p>Für die Nachtplanung fehlt dein Beobachtungsort.</p><a class="btn ghost sm" href="#/settings/standorte">Standort eintragen</a>`;
+// „Heute bin ich in …“: Ort für die heutige Nacht wählen (gemeinsame Ortsliste, /api/sites/night)
+function sitePicker(sites, d) {
+  if (!sites?.list?.length) return '';
+  const night = d.night || sites.today;
+  const fixed = sites.periods.find(p => p.from === night && p.to === night);
+  const cur = d.site_info?.id;
+  return `<label class="tn-site"><span class="mut sm">Heute bin ich in</span><select id="tnSite" data-night="${esc(night)}" aria-label="Standort für heute Nacht">
+    ${fixed ? '' : `<option value="">${esc((sites.list.find(s => s.id === cur)?.name || 'Standard-Ort'))} (${esc(d.site_info?.detail || 'automatisch')})</option>`}
+    ${sites.list.map(s => `<option value="${esc(s.id)}" ${fixed && fixed.site_id === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}
+    ${fixed ? '<option value="">Automatisch (Zeitraum bzw. Standard-Ort)</option>' : ''}</select></label>`;
+}
 
 function chart(d, W, H, selected, hidden) {
   const L = 34, R = 12, T = 18, B = 30;
@@ -175,11 +186,11 @@ async function featured() {
 }
 async function nightView(el, catalogId) {
   crumbs([['Übersicht', '#/'], ['Heute Nacht']]);
-  const d = await api('/stacking/tonight' + query());
+  const [d, sites] = await Promise.all([api('/stacking/tonight' + query()), api('/sites?nights=false').catch(() => null)]);
   if (!el.isConnected) return;
   const selected = catalogId && [...(d.recommendations || []), ...(d.suggestions || []), ...(d.soon || [])].find(x => x.id === catalogId);
   const tw = d.twilight;
-  el.innerHTML = `<div class="pagehead"><div><h1>Heute Nacht</h1><p class="mut">Empfehlungen aus deiner Bibliothek und dem zuletzt verwendeten Gerät.</p></div></div>
+  el.innerHTML = `<div class="pagehead"><div><h1>Heute Nacht</h1><p class="mut">Empfehlungen aus deiner Bibliothek und dem zuletzt verwendeten Gerät.</p></div>${sitePicker(sites, d)}</div>
     ${selected ? `<section class="panel"><h2>${esc(selected.name)}</h2><p>${esc(selected.kind_label)} · Durchmesser ca. ${num(selected.size)}′${selected.mag != null ? ' · ' + num(selected.mag) + ' mag' : ''} ${selected.max_alt != null ? ' · max. ' + Math.round(selected.max_alt) + '°' : ''}</p>${selected.good?.length ? `<p>${selected.good.map(period).join(', ')} über ${d.min_alt}°</p>` : ''}<ul class="tn-why">${(selected.reasons || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>${AF.on('sage') ? `<a href="#/sage/wiki">In der Enzyklopädie recherchieren</a>` : ''}</section>` : ''}
     <section class="panel">${content(d, catalogId, true)}</section>
     ${d.soon?.length ? `<section class="panel"><h2>Bald gut sichtbar</h2><ul class="tn-why">${d.soon.map(x => `<li><a ${targetLink({...x, category: 'new'})}>${esc(x.name)}</a> <span class="mut sm">${esc(x.kind_label)}${x.mag != null ? ' · ' + num(x.mag) + ' mag' : ''} · ab etwa ${esc(x.season.from)}</span></li>`).join('')}</ul><p class="mut sm">Stehen heute zu kurz im Dunkeln, werden aber in den nächsten Wochen besser.</p></section>` : ''}
@@ -188,6 +199,15 @@ async function nightView(el, catalogId) {
       <p>Mondaufgang: ${hm(d.moon.rise)}<br>Monduntergang: ${hm(d.moon.set)}<br>Dunkel ohne Mond: ${d.moon.moonless.length ? d.moon.moonless.map(period).join(', ') : 'keine Zeit'}</p></div></section>
       <section class="panel"><h2>Wetter</h2>${d.weather?.hours?.length ? `<p class="mut sm">${esc(d.weather.source)}</p><div class="tn-weather">${d.weather.hours.map(h => `<span>${hm(h.t)}<br>${h.cloud ?? '–'} % Wolken</span>`).join('')}</div>` : `<p class="mut">${esc(d.weather_error || (d.weather_on ? 'Keine Vorhersage für diese Nacht.' : 'Wettervorhersage ist aus. Unter Einstellungen → Bilder → Bild-Tutor → Wetter einschalten.'))}</p>`}</section>` : ''}`;
 }
+document.addEventListener('change', async e => {
+  if (e.target.id !== 'tnSite') return;
+  const sel = e.target;
+  try {
+    await send('/sites/night', { night: sel.dataset.night, site_id: sel.value || null, nights: false });
+    toast(sel.value ? `Heute Nacht: ${sel.selectedOptions[0].textContent}` : 'Ort für heute wieder automatisch.', 'ok');
+    if (typeof route === 'function') route(); else dispatchEvent(new HashChangeEvent('hashchange'));
+  } catch (err) { toast(err.message, 'err'); }
+});
 document.addEventListener('click', e => {
   const hide = e.target.closest('[data-tn-hide]'), reset = e.target.closest('[data-tn-reset]');
   if (!hide && !reset) return;

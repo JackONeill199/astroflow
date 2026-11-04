@@ -336,6 +336,9 @@ class Controller:
                     pass
             item["clean_preview_url"] = url(clean_preview) if clean_preview.exists() else None
             items = _read_json(within(path, summary["candidates_file"]), []) if summary.get("candidates_file") else []
+            item["folder"] = folder.name
+            item["sat_matches"] = sum(1 for c in items or [] if any(r.get("provider") == "satellites" and r.get("status") == "compatible"
+                                                                      for r in c.get("catalogs") or []))
             try:
                 frame_path = folder / 'frames.jsonl'
                 stat = frame_path.stat()
@@ -408,6 +411,18 @@ class Controller:
                 return dict(ok=False, reason=payload["reason"])
             return dict(scene_3d(self.mod, payload), candidate=dict(id=c["id"], name=c.get("label"), key=key))
         raise ValueError("Kandidat nicht gefunden")
+
+    def sitefit(self, name: str, folder_name: str) -> dict:
+        """Standort/Uhrversatz der Nacht aus den zugeordneten Satellitenspuren schätzen (sitefit.py) – nur Vorschlag."""
+        path = self.run_path(name)
+        folder = within(path, folder_name)
+        if not (folder / "kandidaten.json").is_file():
+            raise ValueError("Beobachtung nicht gefunden")
+        try:
+            from .sitefit import fit_session
+        except ImportError as e:                              # sgp4/erfa fehlen im Server
+            return dict(ok=False, reason=f"Rückrechnung braucht sgp4 und erfa im AstroFlow-Python ({e.name}).")
+        return fit_session(folder, self.mod.home / "catalog_cache" / "archives")
 
     def observation_history(self, source: Path, names: list[str]) -> dict:
         """Gespeicherte Bildfolgen ihrem Originalordner zuordnen, auch aus älteren Läufen."""
@@ -511,6 +526,13 @@ def build_router(mod) -> APIRouter:
         try:
             return ctl.orbit3d(run, key)
         except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as e:
+            bad(e)
+
+    @r.get("/sitefit")
+    def sitefit(run: str, folder: str):
+        try:
+            return ctl.sitefit(run, folder)
+        except (OSError, ValueError, KeyError, TypeError, ArithmeticError) as e:
             bad(e)
 
     @r.delete("/run")

@@ -3,6 +3,28 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.23.0 – 04.11.2026
+
+### Neu
+- **Standorte für ganz AstroFlow** (Einstellungen → Standorte): eine gemeinsame Ortsliste für Heute Nacht, Bild-Tutor
+  und SkyTrace mit Name, Koordinaten, Höhe, **Genauigkeit** und Notiz, Adresssuche, Gerätestandort und Geländehöhe auf
+  Knopfdruck. Ein Standard-Ort, dazu **Zeiträume** („von–bis war das Teleskop hier“) als Zeitleiste und eine **Nachtliste**,
+  in der sich der Ort jeder Aufnahmenacht umstellen lässt. Je Nacht wird der passende Ort automatisch gewählt
+  (Ausnahme der Beobachtung → Ort aus den FITS-Daten → Nacht/Zeitraum → Standard-Ort).
+- **Heute Nacht:** „Heute bin ich in …“ wählt den Ort für die heutige Planung direkt in der Ansicht.
+- **Bild-Tutor** nimmt den Ort der jeweiligen Aufnahmenacht aus der Ortsliste und nennt ihn.
+- **SkyTrace:** Kandidaten und Laufbericht speichern, welcher Ort mit welcher Genauigkeit genutzt wurde. Ist der Ort
+  ungenau, weitet der Satellitenabgleich die Toleranz quer zur Bahn passend aus (höchstens 30′) und meldet
+  „Standort ungenau – Zuordnung unsicher“ statt „kein Treffer“. Bei genauem Ort bleibt alles wie bisher.
+- **SkyTrace → Beobachtungen → „Standort der Nacht prüfen“:** rechnet aus mehreren zugeordneten Satellitenspuren
+  Standort und Uhrversatz der Kamera zurück (mit Fehlerellipse) und schlägt einen besseren Ort vor – übernommen wird
+  nur auf Knopfdruck, als neuer Ort für diese Nacht.
+
+### Geändert
+- Bisherige Standorte (Bild-Tutor, SkyTrace) werden beim ersten Start einmalig übernommen; Orte näher als 200 m werden
+  zusammengefasst. Die alten Einstellungen bleiben erhalten. Das Standortfeld im Bild-Tutor verweist jetzt auf die Ortsliste,
+  in SkyTrace bleiben nur Ausnahmen für einzelne Beobachtungen.
+
 ## 0.22.0 – 04.11.2026
 
 ### Neu

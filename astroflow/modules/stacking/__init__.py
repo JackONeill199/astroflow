@@ -29,6 +29,8 @@ class Module(BaseModule):
         ctx.services["catalog_resolve"] = catalog_resolve
         ctx.services["catalog_objects"] = catalog_objects
         self.eng.pl.on_stacked = self._stacked
+        if isinstance(ctx.services.get("night_sources"), list):   # Einstellungen → Standorte: Nachtliste
+            ctx.services["night_sources"].append(self.nights)
 
     def _stacked(self, pid: int, rid: int):
         p = self.eng.db.one("SELECT name FROM projects WHERE id=?", (pid,))
@@ -67,6 +69,12 @@ class Module(BaseModule):
                 "image": img, "result_id": r["id"], "exposure": r["exposure"], "n_frames": r["n_frames"],
                 "imported": json.loads(p["options"] or "{}").get("input_type") == "picture",
                 "ra": p["ra"], "dec": p["dec"], "files": files}
+
+    def nights(self) -> list[dict]:
+        """Aufnahmenächte mit Objektnamen (für die Nachtliste unter Einstellungen → Standorte)."""
+        rows = self.eng.db.q("SELECT f.night, p.name, COUNT(*) n FROM frames f JOIN projects p ON p.id=f.project_id "
+                             "WHERE f.kind='light' AND f.night IS NOT NULL GROUP BY f.night, p.id ORDER BY f.night")
+        return [{"night": r["night"], "label": f"{r['name']} ({r['n']} Aufnahmen)", "module": "Bilder"} for r in rows]
 
     def project_frames(self, pid: int) -> list[dict]:
         """Vorhandene Light-Aufnahmen eines Objekts (auch verworfene) für andere Module, z. B. SkyTrace."""

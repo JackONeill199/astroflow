@@ -106,11 +106,12 @@ def _site(cands, rows, session):
             return c["site"]
     try:
         from observation_settings import resolve_site
-        first = next((r["file"] for r in rows if r.get("file")), "")
+        row = next((r for r in rows if r.get("file")), {})
+        when = next((r.get("timestamp") for r in rows if isinstance(r.get("timestamp"), (int, float))), None)
         try:
-            return resolve_site(first, session)
-        except OSError:                                 # Rohbild schon gelöscht → Standort aus den Einstellungen
-            return resolve_site("", session)
+            return resolve_site(row.get("file", ""), session, when=when)
+        except OSError:                                 # Rohbild schon gelöscht → Standort aus Ortsliste/Einstellungen
+            return resolve_site("", session, when=when)
     except Exception:
         return None
 

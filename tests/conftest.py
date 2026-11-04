@@ -87,6 +87,11 @@ def server(tmp_path_factory):
         mp.delenv("SKYTRACE_HOME", raising=False)          # SkyTrace setzt sie beim Laden prozessweit – danach wieder entfernen
         s = load_settings(root / "data")
         SettingsStore(s.data_dir / "settings.json").update("skytrace", {"home": str(root / "skytrace")})
+        SettingsStore(s.data_dir / "settings.json").update("sites", {       # erfundene Orte, langer Name für die Layoutprüfung
+            "list": [{"id": "a", "name": LONG, "lat": 47.5, "lon": 10.25, "alt_m": 400, "accuracy_m": 30, "note": LONG},
+                     {"id": "b", "name": "Beispielberg", "lat": 45.0, "lon": 6.0, "alt_m": 0, "accuracy_m": 2000, "note": ""}],
+            "default": "a", "periods": [{"id": "p1", "site_id": "b", "from": "2022-06-01", "to": "2022-06-20"},
+                                        {"id": "p2", "site_id": "b", "from": "2026-01-01", "to": "2026-01-01"}]})
         _skytrace_run(root / "skytrace" / "Ergebnisse" / "2026-10-28_10-00-00-000001")
         demo.generate(s.input_dir / "night", n_lights=16, n_darks=0, n_flats=0)
         db = DB(s.db_path)

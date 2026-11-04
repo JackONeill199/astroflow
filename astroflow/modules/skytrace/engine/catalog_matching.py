@@ -23,6 +23,10 @@ SOURCES={'meteors':'https://globalmeteornetwork.org/data/traj_summary_data/month
 SATELLITE_TOLERANCE_ARCSEC=360
 SATELLITE_MAX_ANGLE=15
 SATELLITE_CLOCK_SLACK_S=20
+# Standortgenauigkeit (Ortsliste `accuracy_m`): 1 km Fehler verschiebt eine LEO-Bahn in 500 km Entfernung um ≈ 7′.
+# Die Quer-Toleranz wächst auf 2 × Fehlerwinkel, sobald das mehr als die feste Toleranz ist – höchstens bis zum Deckel.
+SATELLITE_SITE_TOLERANCE_CAP_ARCSEC=1800
+SATELLITE_SITE_UNCERTAIN_KM=1000            # Bezugsentfernung für den Hinweis „Standort ungenau“
 SECONDS_WEIGHT_ARCSEC=20
 
 def iso(timestamp): return dt.datetime.fromtimestamp(timestamp,dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
@@ -238,6 +242,17 @@ def _file_or_url(settings,prefix):
         return retrieve(url,text=True),url.split('?')[0]
     return None,None
 
+def site_tolerance(accuracy_m,distance_km):
+    """Quer-Toleranz in Bogensekunden für eine Bahn in `distance_km` bei Standortfehler `accuracy_m` (Radius, ~1σ).
+    Bei genauem Standort (2 × Fehlerwinkel ≤ 360″) bleibt es bei der festen Toleranz."""
+    if not accuracy_m or not distance_km or distance_km<=0: return float(SATELLITE_TOLERANCE_ARCSEC)
+    shift=2*float(accuracy_m)/(float(distance_km)*1000)*206264.806
+    return float(min(SATELLITE_SITE_TOLERANCE_CAP_ARCSEC,max(SATELLITE_TOLERANCE_ARCSEC,shift)))
+
+def site_uncertain(accuracy_m):
+    """Ist der Standort so ungenau, dass selbst eine Bahn in 1000 km die feste Toleranz sprengt?"""
+    return bool(accuracy_m) and site_tolerance(accuracy_m,SATELLITE_SITE_UNCERTAIN_KM)>SATELLITE_TOLERANCE_ARCSEC
+
 def satellite_check(candidate,site,settings):
     if not site: return status('satellites','not_checkable','Standort fehlt. Plate Solving allein reicht für erdnahe Satelliten nicht.')
     start,duration=_times(candidate)
@@ -266,6 +281,7 @@ def satellite_check(candidate,site,settings):
     stamps=np.linspace(first,last,max(21,int((last-first)*5)+1))
     times=TS.from_datetimes([dt.datetime.fromtimestamp(float(s),dt.timezone.utc) for s in stamps])
     observer=_observer(site); matches=[];diagnostics=[]
+    accuracy=float(site.get('accuracy_m') or 0)
     from satellite_archive import sky_prefilter
     possible=sky_prefilter(list(satellites.values()),first,last-first,site,candidate)
     for sat,age in possible:
@@ -276,7 +292,12 @@ def satellite_check(candidate,site,settings):
         ra,dec,_=vector.radec()
         valid=np.isfinite(ra.hours)&np.isfinite(dec.degrees)&(altitude.degrees>0)
         if not valid.any(): continue
-        geometry=angular_match(candidate,ra.hours[valid]*15,dec.degrees[valid],SATELLITE_TOLERANCE_ARCSEC,max_angle=SATELLITE_MAX_ANGLE,times=stamps[valid])
+        distance_km=float(np.median(vector.distance().km[valid]))
+        tolerance=site_tolerance(accuracy,distance_km)
+        geometry=angular_match(candidate,ra.hours[valid]*15,dec.degrees[valid],tolerance,max_angle=SATELLITE_MAX_ANGLE,times=stamps[valid])
+        geometry['distance_km']=round(distance_km,1)
+        if geometry['compatible'] and (geometry.get('separation_arcsec') or 0)>SATELLITE_TOLERANCE_ARCSEC:
+            geometry['site_widened']=True               # nur wegen der Standortunsicherheit noch vereinbar
         passage=geometry.pop('passage',None)
         if passage:
             # Sekunden außerhalb der nominellen Belichtung (0 = Durchgang während der Belichtung).
@@ -284,18 +305,27 @@ def satellite_check(candidate,site,settings):
             geometry['time_offset_s']=round(max(start-passage[1],passage[0]-(start+duration),0.),2)
             if geometry['compatible'] and passage[1]-passage[0]>duration*1.2+1:
                 geometry['compatible']=False;geometry['reasons'].append('Satellit bräuchte für die Spur länger als die Belichtung')
-        diagnostics.append(dict(name=sat.name or 'NORAD '+str(sat.model.satnum),norad_id=int(sat.model.satnum),tle_age_days=round(age,3),world_path=np.column_stack([ra.hours[valid]*15,dec.degrees[valid]]).round(8).tolist(),tolerance_arcsec=SATELLITE_TOLERANCE_ARCSEC,**geometry))
+        diagnostics.append(dict(name=sat.name or 'NORAD '+str(sat.model.satnum),norad_id=int(sat.model.satnum),tle_age_days=round(age,3),world_path=np.column_stack([ra.hours[valid]*15,dec.degrees[valid]]).round(8).tolist(),tolerance_arcsec=round(tolerance,1),**geometry))
         if geometry['compatible']:
             # Bahnelemente mitspeichern: 3D-Ansicht (orbit3d.py) rechnet die Bahn später ohne Archiv nach.
             from sgp4.exporter import export_tle
-            matches.append(dict(name=sat.name,norad_id=int(sat.model.satnum),tle_age_days=round(age,3),tle=list(export_tle(sat.model)),evidence='Historische SGP4-Bahn passiert die Spur in Lage, Richtung und Zeit; Sichtbarkeit nicht bestätigt',**geometry))
+            evidence='Historische SGP4-Bahn passiert die Spur in Lage, Richtung und Zeit; Sichtbarkeit nicht bestätigt'
+            if geometry.get('site_widened'): evidence+=f'; nur mit der Standortunsicherheit (± {accuracy/1000:.1f} km) vereinbar'
+            matches.append(dict(name=sat.name,norad_id=int(sat.model.satnum),tle_age_days=round(age,3),tle=list(export_tle(sat.model)),tolerance_arcsec=round(tolerance,1),evidence=evidence,**geometry))
     rank=lambda r:float('inf') if r.get('separation_arcsec') is None else r.get('mean_offset_arcsec',r['separation_arcsec'])+SECONDS_WEIGHT_ARCSEC*r.get('time_offset_s',0)
     diagnostics.sort(key=lambda r:(not r['compatible'],rank(r)));matches.sort(key=rank)
     # Namen aus der lokalen SATCAT-Kopie; Treffer zuerst (nur für sie reichen die wenigen Einzelabfragen bei neuen Nummern).
     names_note=_name_satellites(matches+diagnostics[:8],settings)
     detail=f'Bahndaten zur Aufnahmezeit {iso(start)} UTC (Belichtung ±{slack:g} s Uhrtoleranz): {len(possible)} mögliche Spuren nach Standort-, Zeit- und Bildfeldfilter genau geprüft. Archivabdeckung kann unvollständig sein (militärische Satelliten fehlen); begrenzte Bahngenauigkeit. Ein geometrischer Treffer ist kein Beweis.'
     if names_note: detail+=' '+names_note
-    return status('satellites','compatible' if matches else 'checked_no_match',detail,matches[:20],archive=source,source=source or SOURCES['satellites'],stale_records=stale,archive_records=archive_total,checked_trajectories=len(diagnostics),diagnostics=diagnostics[:8],tolerance_arcsec=SATELLITE_TOLERANCE_ARCSEC,clock_slack_s=slack,exposure_start=start,names_note=names_note)
+    state='compatible' if matches else 'checked_no_match'
+    site_note=None
+    if accuracy and site_tolerance(accuracy,SATELLITE_SITE_UNCERTAIN_KM)>SATELLITE_TOLERANCE_ARCSEC:
+        site_note=f'Standort nur auf ± {accuracy/1000:.1f} km bekannt ({site.get("name") or "Standort"}): Toleranz quer je Bahn auf bis zu {SATELLITE_SITE_TOLERANCE_CAP_ARCSEC/60:.0f}′ erweitert.'
+        detail+=' '+site_note
+        if not matches and site_uncertain(accuracy):
+            state='site_uncertain'; detail='Standort ungenau – Zuordnung unsicher. '+detail
+    return status('satellites',state,detail,matches[:20],archive=source,source=source or SOURCES['satellites'],stale_records=stale,archive_records=archive_total,checked_trajectories=len(diagnostics),diagnostics=diagnostics[:8],tolerance_arcsec=SATELLITE_TOLERANCE_ARCSEC,clock_slack_s=slack,exposure_start=start,names_note=names_note,site_accuracy_m=accuracy or None,site_note=site_note)
 
 
 def _name_satellites(rows,settings):

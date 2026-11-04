@@ -563,7 +563,26 @@ def result_frames(frames: list[dict], stats: dict, created: float) -> list[dict]
     return out
 
 
-def build_report(db, rid: int, cfg: dict, work_dir: Path, refresh: bool = False) -> dict:
+def pick_site(frames: list[dict], cfg: dict, site_for=None) -> tuple[list | None, str | None, str | None]:
+    """Standort für den Bericht: FITS-Kopf der Frames → gemeinsame Ortsliste (Dienst `site_for`, Nacht mit den meisten
+    Frames) → alte Einstellung tutor.lat/lon. Rückgabe ([lat, lon] | None, Quelle, Name)."""
+    sites = [tuple(f["site"]) for f in frames if f.get("site")]
+    if sites:
+        return list(max(set(sites), key=sites.count)), "header", "Aufnahmestandort (FITS)"
+    if site_for:
+        nights = [f.get("night") for f in frames if f.get("night")]
+        try:
+            s = site_for(night=max(set(nights), key=nights.count) if nights else None)
+        except Exception:
+            s = None
+        if s:
+            return [round(float(s["lat"]), 3), round(float(s["lon"]), 3)], "sites", s.get("name")
+    if cfg.get("lat") not in (None, "") and cfg.get("lon") not in (None, ""):
+        return [float(cfg["lat"]), float(cfg["lon"])], "settings", None
+    return None, None, None
+
+
+def build_report(db, rid: int, cfg: dict, work_dir: Path, refresh: bool = False, site_for=None) -> dict:
     """Tutor-Bericht zu einem Ergebnis; Nachtdaten werden in results.stats.tutor zwischengespeichert."""
     r = db.one("SELECT r.*, p.id pid, p.name, p.kind, p.ra, p.dec, p.options FROM results r JOIN projects p ON p.id=r.project_id WHERE r.id=?", (rid,))
     if not r:
@@ -577,9 +596,7 @@ def build_report(db, rid: int, cfg: dict, work_dir: Path, refresh: bool = False)
     if q := recheck(stats, files, sky):
         stats["quality"], changed = q, True
     frames = result_frames(project_frames(db, r["pid"]), stats, r["created"])
-    sites = [tuple(f["site"]) for f in frames if f.get("site")]
-    site, site_src = (list(max(set(sites), key=sites.count)), "header") if sites else (
-        ([float(cfg["lat"]), float(cfg["lon"])], "settings") if cfg.get("lat") not in (None, "") and cfg.get("lon") not in (None, "") else (None, None))
+    site, site_src, site_name = pick_site(frames, cfg, site_for)
     key = f"{TUTOR_VERSION}|{site}|{cfg['weather']}|{len(frames)}|{','.join(sorted({f['night'] or '' for f in frames}))}"
     cached = stats.get("tutor") or {}
     if refresh or cached.get("key") != key:
@@ -600,7 +617,7 @@ def build_report(db, rid: int, cfg: dict, work_dir: Path, refresh: bool = False)
            "auto_fixed": bool(stats.get("color_gradient") or (stats.get("params") or {}).get("color_gradient")),
            "comet": stats.get("comet")}
     return {**base, "available": True, "quality": stats["quality"], "device": cached["device"], "nights": cached["nights"],
-            "site": site_src, "weather_error": cached.get("weather_error"), "neutral_sky": sky,
+            "site": site_src, "site_name": site_name, "weather_error": cached.get("weather_error"), "neutral_sky": sky,
             "findings": findings(stats["quality"], cached["nights"], cached["device"], ctx), "ki": stats.get("tutor_ki")}
 
 
@@ -615,11 +632,11 @@ def llm_config(cfg: dict, review_cfg):
     return c if c.enabled else None
 
 
-def ask_report(db, rid: int, cfg: dict, review_cfg, work_dir: Path) -> dict:
+def ask_report(db, rid: int, cfg: dict, review_cfg, work_dir: Path, site_for=None) -> dict:
     c = llm_config(cfg, review_cfg)
     if not c:
         raise ValueError("Für die KI-Einschätzung zuerst unter Einstellungen → Bilder → Bild-Tutor einen KI-Anbieter und ein Modell wählen.")
-    rep = build_report(db, rid, cfg, work_dir)
+    rep = build_report(db, rid, cfg, work_dir, site_for=site_for)
     if not rep.get("available"):
         raise ValueError("Für dieses Bild gibt es keine Bildprüfung.")
     r = db.one("SELECT r.files, r.stats, p.name, p.kind FROM results r JOIN projects p ON p.id=r.project_id WHERE r.id=?", (rid,))

@@ -119,7 +119,7 @@ def test_api_uses_latest_result_not_sum_and_detects_device(tmp_path):
     db.set_frame('f', info=info)
     assert tonight.library(db)[1]['fov'] == [2, 1.5]
     with TestClient(create_app(s)) as client:
-        assert client.get('/api/stacking/tonight').json() == {'site': None}
+        assert client.get('/api/stacking/tonight').json()['site'] is None
         SettingsStore(s.data_dir / 'settings.json').update('tutor', SITE)
         r = client.get('/api/stacking/tonight')
         assert r.status_code == 200 and r.json()['device']['fov'] == [2, 1.5]

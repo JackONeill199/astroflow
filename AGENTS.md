@@ -16,14 +16,14 @@ Stack: Python 3.12+ · numpy/scipy/astropy · FastAPI + uvicorn · SQLite · Van
 ## Produkt-Architektur (Kern + Module)
 ```
 astroflow/server.py        Kompositionswurzel: lädt Module, /api/app|status|activity|modules, Herkunftsschutz, statische Dateien
-astroflow/core/            config.py (Settings), store.py (data/settings.json, ein Abschnitt je Thema), modules.py (BaseModule, Context, Registry)
+astroflow/core/            config.py (Settings), store.py (data/settings.json, ein Abschnitt je Thema), modules.py (BaseModule, Context, Registry), sites.py (Ortsliste)
 astroflow/modules/<id>/    __init__.py (class Module), api.py (Router → /api/<id>), static/ (→ /m/<id>/), AGENTS.md
 astroflow/static/          Shell: index.html, app.js (Router, Navigation, Übersicht, Aktivität, Einstellungen, Palette, Viewer, Helfer), style.css
 ```
 - **Modul-Vertrag Backend** (`core/modules.py`): `router()`, `start()/stop()`, `status()` (klein, wird alle 2,5 s gepollt; `busy_jobs` zählt für die Anzeige),
   `activity()` (gemeinsames Format `{key,title,kind,detail,state,progress,started,finished,href}`), `scripts/styles`. Reihenfolge/Liste: `AVAILABLE`.
 - **Module reden nicht per Import miteinander**, sondern über Dienste in `ctx.services`: Stacking stellt `plate_solver` (`PictureSolver`),
-  `project_picture`, `project_solution`, `project_frames`, `observation_log`, `catalog_resolve` und `catalog_objects` bereit, Sage `object_facts` (Typ/Entfernung aus der Wissensbasis) und `collection_progress` (entdeckte Messier-Nummern, für „Heute Nacht“); Sage und SkyTrace nutzen sie. Fehlt ein Dienst, muss das Modul trotzdem laufen.
+  `project_picture`, `project_solution`, `project_frames`, `observation_log`, `catalog_resolve` und `catalog_objects` bereit, Sage `object_facts` (Typ/Entfernung aus der Wissensbasis) und `collection_progress` (entdeckte Messier-Nummern, für „Heute Nacht“); Sage und SkyTrace nutzen sie. Der Kern selbst stellt `sites` (`SiteBook`), `site_for` und die Liste `night_sources` bereit (s. „Standorte“). Fehlt ein Dienst, muss das Modul trotzdem laufen.
 - **Ereignisse** (`ctx.on` / `ctx.emit`, Liste in `core/modules.py`): `stacking.stacked(project_id, result_id, name)` kommt aus
   `Pipeline.process` nach dem Entwickeln und **vor** dem Löschen hochgeladener Rohbilder (`Pipeline.on_stacked`). Empfänger (seit 28.10.2026,
   Nutzerwunsch „gestackte Aufnahmen automatisch durch SkyTrace und in die Entdeckungen, mit animierten Erfolgen“):
@@ -268,6 +268,24 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    (neueste `keep` je Objekt bleiben, nicht bei importierten Bildern) und Sicherungen – nur auf Wunsch. Client schickt nur Schlüssel, der Server
    ermittelt die Pfade neu und löscht nur innerhalb des Datenordners; 409 während eines Jobs. Rohdaten und Stacks bestehender Objekte nie.
 
+## Standorte (`core/sites.py`, seit 0.23.0, Nutzerwunsch 04.11.2026 „Teleskop oft an verschiedenen Orten, Standorte nach Datum“)
+- **Ablage:** `data/settings.json` → Abschnitt `sites` = `{list: [{id, name, lat, lon, alt_m, accuracy_m, note}], default, periods: [{id, site_id,
+  from, to}], migrated: {quelle: zeit}}`. `to` leer = offen; `from == to` = einzelne Nacht („heute bin ich in …“, Nachtliste). Nacht-Datum wie im
+  Projekt (Zeit − 12 h, UTC). Überlappende Zeiträume: der kürzeste gewinnt. `accuracy_m` = Radius ~1σ (Standard 100 m, FITS 30 m).
+- **Auflösung** `site_for(when|night, header, override)`: Override → FITS-Kopf (OBSGEO-X/Y/Z, OBSGEO-B/L, SITELAT/SITELONG auch sexagesimal,
+  LAT-OBS; 0/0 = kein GPS-Fix) → Zeitraum → Standard-Ort. Rückgabe mit `source` (override|fits|period|default) und `detail`.
+- **Nur Standardbibliothek**, weil die SkyTrace-Engine (eigener Interpreter ohne AstroFlow-Paket) die Datei über den Pfad lädt
+  (`engine/observation_settings.sites_module`, Umgebung `ASTROFLOW_SITES` aus `skytrace.Module.engine_env`, im Server `observation_settings.SITES_FILE`).
+- **Migration** (einmalig, Marke in `migrated`): `tutor.lat/lon` (`server.create_app`) und SkyTrace `site`/`sites[Beobachtung]` (`skytrace.Module._sites_setup`,
+  Datum aus dem Beobachtungsnamen → Einzelnacht); Orte ≤ 200 m werden zusammengefasst, alte Felder bleiben unverändert.
+- **API (Kern):** `GET /api/sites[?nights=false]` (Liste, `today`, `today_site`, `nights` aus `night_sources`: Bilder = Frames je Nacht/Objekt,
+  SkyTrace = Datum im Beobachtungsnamen), `POST /api/sites` (ganzer Abschnitt, geprüft), `POST /api/sites/night {night, site_id|null}`,
+  `GET /api/sites/resolve`, `GET /api/sites/geocode?q=` (Photon/komoot, nur Suchtext), `GET /api/sites/elevation` (Open-Meteo, nur auf Knopfdruck).
+- **Nutzer:** `tutor.pick_site` (FITS → `site_for(night=häufigste Nacht)` → alte `tutor.lat/lon`), `GET /stacking/tonight` (Ort für jetzt,
+  `site_info`), SkyTrace `resolve_site` (s. `modules/skytrace/AGENTS.md`). UI: `static/sites.js|css` (Einstellungen → Standorte, Abschnitt des Kerns
+  in `settingsView`), `tonight.js` „Heute bin ich in …“, die Tutor-Einstellung verweist nur noch auf die Liste.
+- **Datenschutz:** Orte sind privat – Tests nur mit erfundenen Orten (`tests/test_sites.py`, UI-Fixture in `conftest.py`), Screenshots maskiert.
+
 ## Kometenmodus (`modules/stacking/comet.py`, seit 0.22.0 – Nutzerwunsch, nur noch Kometenaufnahmen fehlten)
 - **Erkennung:** `comet.designation/is_comet` (C/P/D/X/A/I + Jahr + Halbmonat, `12P`, Wörter Komet/Comet; `IC 1396`,
   `NGC 2024` nicht). `scanner.assign_project(info, centers, night)`: Kometen → Schlüssel `KOMET:<Name>|<Nacht>|<Kamera>`
@@ -373,12 +391,12 @@ Rohbilder weg; Frames aus eingebundenen Ordnern bleiben als `kind='ignored'` in 
 (nur beim Überfahren sichtbar). Seitenwechsel-Geist blendet `canvas`/`video` aus (freigegebenes WebGL wäre weiß). Test: `test_result_objects.py`.
 REST unter `/api/stacking`: `status`, `scan`, `projects[/{id}]` (GET/PATCH/DELETE), `projects/{id}/process|solve|frames`, `frames/{id}` (PATCH manual),
 `jobs`, `develop-all` (alle Objekte mit Master-Stack neu entwickeln, Galerie-Knopf), `tutor`, `results/{id}/tutor[/ki]`, `upload` (behält bis zu 4 Ordnerebenen, blockt `..`), `results/{id}/{tif|png|jpg|thumb|fits|before}`, `reviewer`, `solver`, `storage`, `starnet`.
-Kern: `/api/app` (Module, Build), `/api/folders?path=` (Ordnerdialog), `/api/status` (`{version, busy, modules:{id: status}}`), `/api/activity` (alle Module), `/api/modules` (ein/aus).
+Kern: `/api/app` (Module, Build), `/api/folders?path=` (Ordnerdialog), `/api/sites…` (Ortsliste), `/api/status` (`{version, busy, modules:{id: status}}`), `/api/activity` (alle Module), `/api/modules` (ein/aus).
 **Achtung:** Zwei Server auf demselben Datenordner = zwei Worker (beim Start werden „running“-Jobs des anderen neu eingereiht) – Tests/Vorschauen mit eigenem Datenordner.
 
 ## Web-UI (`astroflow/static/` + `modules/*/static/`)
 Hash-Routing: `#/` Übersicht, `#/nacht`, `#/bilder` (Sessions), `#/galerie` (fertige Bilder), `#/p/<id>/<bild|aufnahmen|versionen|optionen>`, `#/import`,
-`#/skytrace[/neu|/3d|/statistik|/<lauf>/<vorschau|kandidaten|beobachtungen|protokoll|3d>]`, `#/sage[/wiki|/entdeckungen|/sammlung|/<eintrag>]`, `#/activity` (Aufträge), `#/settings/<modul|module>`.
+`#/skytrace[/neu|/3d|/statistik|/<lauf>/<vorschau|kandidaten|beobachtungen|protokoll|3d>]`, `#/sage[/wiki|/entdeckungen|/sammlung|/<eintrag>]`, `#/activity` (Aufträge), `#/settings/<modul|standorte|module>`.
 **Designsystem (seit 0.21.0, Nutzerauftrag „professionelles, konsistentes Designsystem wie eine native Desktop-App“):** Tokens in `:root` von `style.css`
 (`--bg/--sidebar/--surface/--surface-2/--border/--fg/--mut/--dim/--acc/--ok/--warn/--bad`, Maße, `--t` 160 ms); alte Namen (`--panel`, `--grad`, `--acc2/3` …)
 sind Aliase. **Inhaltsbreiten:** der Router gibt jedem Ansichtsbehälter die Klasse `page` (zentriert, `--page-max` 80rem), `page wide`
