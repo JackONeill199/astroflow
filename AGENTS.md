@@ -350,9 +350,10 @@ Hash-Routing: `#/` Übersicht, `#/nacht`, `#/bilder` (Sessions), `#/galerie` (fe
 **Designsystem (seit 0.21.0, Nutzerauftrag „professionelles, konsistentes Designsystem wie eine native Desktop-App“):** Tokens in `:root` von `style.css`
 (`--bg/--sidebar/--surface/--surface-2/--border/--fg/--mut/--dim/--acc/--ok/--warn/--bad`, Maße, `--t` 160 ms); alte Namen (`--panel`, `--grad`, `--acc2/3` …)
 sind Aliase. **Inhaltsbreiten:** der Router gibt jedem Ansichtsbehälter die Klasse `page` (zentriert, `--page-max` 80rem), `page wide`
-(Arbeitsflächen: `PAGE_WIDE` in `app.js` – `#/p/…`, SkyTrace-Lauf und 3D) bzw. `page narrow` (`--page-narrow` 60rem, Einstellungen);
+(Arbeitsflächen: `PAGE_WIDE` in `app.js` – Galerie-Betrachter, SkyTrace-Lauf und 3D; die Objektseite `#/p/…` ist eine normale Seite) bzw. `page narrow` (`--page-narrow` 60rem, Einstellungen);
 Lesetext mit `.readable` / `--read` 42rem. Keine Karte in der Karte (`.panel .panel` ohne Fläche). Kontextpanel startet geschlossen
-(`AF.ctx.shown`, je Ansicht neu, nicht gespeichert), Knöpfe mit `data-ctx-toggle` öffnen es. Galerie = Betrachter `#/galerie/<id>`
+(`AF.ctx.shown`, je Ansicht neu, nicht gespeichert), Knöpfe mit `data-ctx-toggle` öffnen es. Objektseite, Reiter Bild: Details als
+Spalte `.imgwrap > #imgSide` neben dem Bild (Standard sichtbar, `bild.details`); der „Details“-Knopf schaltet dort die Spalte (`data-side`). Galerie = Betrachter `#/galerie/<id>`
 (`pictureView`, Vor/Zurück aus `galleryOrder`), Bilder = Verarbeitung `#/p/<id>`; `objectKnowledge(host, name)` holt Sages Wissenskarte
 (`/api/sage/kb/card`, legt bei Bedarf einen Grundeintrag an) für Betrachter und Details-Panel. **Alle Maße in `rem`** (1rem = 16px; nur 1–2px-Rahmen und Media-Queries in px) – `html` wird ab 1800/2300/3200 px Breite größer
 (17,5/19,5/23 px) bzw. per Einstellung „Darstellung“ (`localStorage af.ui.scale`, `applyUiScale`); neue Stile daher in `rem` schreiben. Nur dunkel. Keine Verläufe, Glühen, Sternenhintergründe, Marketing-Überschriften. Aufwendige Animationen nur für echte Prozesse (`viz.js`, als „Schema“

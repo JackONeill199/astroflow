@@ -200,6 +200,16 @@ main { grid-area: main; min-width: 0; padding: 1.75rem var(--pad) 4rem; outline:
 .ctx-b > * + * { margin-top: 0.75rem }
 .ctx .panel { background: transparent; border: 0; border-radius: 0; padding: 0 0 0.875rem; border-bottom: 1px solid var(--border-soft) }
 .ctx .panel:last-child { border-bottom: 0 }
+/* Bild-Details als Spalte neben dem Bild (Objektseite, Reiter Bild); gleiche ruhige Gliederung wie im Kontextpanel */
+.imgwrap { display: grid; grid-template-columns: minmax(0, 1fr) 21rem; gap: 1.75rem; align-items: start }
+.imgwrap.no-side { grid-template-columns: minmax(0, 1fr) }
+.imgwrap.no-side .img-side { display: none }
+.img-side { min-width: 0; position: sticky; top: calc(var(--top-h) + 1rem); max-height: calc(100vh - var(--top-h) - 2rem); overflow: auto; padding-right: 0.25rem; scrollbar-width: thin }
+.img-side > * + * { margin-top: 0.875rem }
+.img-side .panel { background: transparent; border: 0; border-radius: 0; padding: 0 0 0.875rem; border-bottom: 1px solid var(--border-soft) }
+.img-side .panel:last-child { border-bottom: 0 }
+.img-side .panel h2 { font-size: 0.875rem }
+@media (max-width: 1100px) { .imgwrap { grid-template-columns: minmax(0, 1fr) } .img-side { position: static; max-height: none; overflow: visible } }
 .ctx .panel + .panel { margin-top: 0.875rem }
 .ctx .panel h2 { font-size: 0.8125rem }
 .ctx-sec { font-size: 0.6875rem; font-weight: 600; letter-spacing: .04em; color: var(--dim); margin: 0 0 0.5rem; text-transform: uppercase }

@@ -40,7 +40,7 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   SkyTrace-Lauf, 3D) nutzen weiter die volle Breite. Größere Schrift, deutlichere Überschriften, weniger Rahmen und keine Karten in Karten.
 - **Übersicht:** zuletzt bearbeitete Bilder und Entdeckungen zuerst, Module kompakt darunter; ohne laufende Aufträge nur eine Zeile.
   „Heute Nacht“ zeigt kompakt Dunkelheit, Mond, Wetter und bis zu drei Ziele – die volle Grafik gibt es in der Aufteilung „Nachtplanung“.
-- **Bilddetails:** das Foto bekommt die ganze Fläche; Bild-Details und Tutor öffnen über „Details“. Der Tutor trennt **Bildqualität**
+- **Bilddetails:** Der Tutor trennt **Bildqualität**
   (Bewertung der Messwerte am fertigen Bild) und **Aufnahmebedingungen** (Hinweise zur Nacht, senken die Bewertung nicht); die
   Aufnahmenächte sind aufklappbar.
 - **Import:** zwei Einstiege mit kurzer Erklärung – „Dateien nach AstroFlow kopieren“ oder „Vorhandenen Ordner einbinden“;
@@ -48,8 +48,8 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 - **Galerie mit eigenem Betrachter:** Ein Klick auf ein Bild öffnet es groß (nicht mehr die Bearbeitungsseite). Daneben steht
   **„Über das Objekt“** aus Sage – Kurztext, Kernwerte, deine bisherigen Aufnahmen und der Link zum Artikel – sowie die Daten deiner
   Aufnahme. ← → blättert durch die Galerie, F für Vollbild, „Bearbeiten“ führt zur Verarbeitung unter „Bilder“.
-- **Bilder** dient der Verarbeitung: Die Details sind beim Öffnen eines Bildes immer eingeklappt und enthalten jetzt ebenfalls
-  „Über das Objekt“.
+- **Bilder** dient der Verarbeitung: Die Objektseite steht wie die Übersicht zentriert, die Bild-Details (Kennzahlen,
+  „Über das Objekt“, Bild-Tutor, Himmelsposition) stehen als Spalte neben dem Bild – „Details“ blendet sie aus und ein.
 - **SkyTrace:** gleichnamige Analysen heißen in der Liste „Variante n von m“ (die neueste „aktuell“); die Vorschau ist nie höher als
   das Fenster, Wiedergabe und Kandidatenwahl bleiben darunter sichtbar.
 - **Sage:** kompakter Objektkopf (Foto, Kurztext, Kernwerte), darunter eine Hauptspalte (Beschreibung, Schnellfakten, Forschung) und

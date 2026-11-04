@@ -369,7 +369,7 @@ function ctxSync() {
   const shown = has && (wide ? !$('#ctx').hidden : shell.classList.contains('ctx-shown'));
   $('#ctxBtn').classList.toggle('on', shown);
   $('#ctxBtn').setAttribute('aria-expanded', shown);
-  $$('[data-ctx-toggle]').forEach(b => { b.classList.toggle('on', shown); b.setAttribute('aria-pressed', shown); });
+  $$('[data-ctx-toggle]:not([data-side])').forEach(b => { b.classList.toggle('on', shown); b.setAttribute('aria-pressed', shown); });
 }
 
 async function loadModules() {
@@ -440,7 +440,7 @@ const coreRoutes = [
 const allRoutes = () => [...coreRoutes, ...AF.order.flatMap(id => AF.modules[id].routes || [])];
 // Inhaltsbreite je Ansicht: Arbeitsflächen (Bild bearbeiten, Spuren prüfen, 3D) nutzen die Breite, Formulare/Import bleiben schmal,
 // alles andere ist zentriert auf --page-max begrenzt (style.css → .page)
-const PAGE_WIDE = [/^\/p\//, /^\/galerie\/\d+$/, /^\/skytrace\/(?!neu$|statistik$|erfolge$)[^/]+/];
+const PAGE_WIDE = [/^\/galerie\/\d+$/, /^\/skytrace\/(?!neu$|statistik$|erfolge$)[^/]+/];
 const PAGE_NARROW = [/^\/settings/];
 async function route() {
   const path = location.hash.replace(/^#/, '') || '/';

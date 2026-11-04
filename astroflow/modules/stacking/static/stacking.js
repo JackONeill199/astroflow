@@ -509,7 +509,7 @@ async function projectView(el, id, tab = 'bild') {
     drawTab(false);
   }
   // Kontextpanel „Session“: Aufnahmen, Belichtung, Nächte, Status, Himmelsposition (aktualisiert sich mit dem Auftrag)
-  let sessionHtml = '';
+  let sessionHtml = '', sideOn = store.get('bild.details', true);
   function sessionCtx() {
     const r = p.result, fr = p.frames || {}, j = p.job;
     const status = running(j) ? `<span class="badge-dot run">${j.state === 'queued' ? 'wartet' : esc(j.stage || 'läuft')}</span>` : j?.state === 'error' ? '<span class="badge-dot bad">Fehler</span>'
@@ -526,6 +526,20 @@ async function projectView(el, id, tab = 'bild') {
       ${coordsPanel(p.coords)}`;
     if (html !== sessionHtml || $('#ctxTitle')?.textContent !== 'Session') { sessionHtml = html; AF.ctx.open(el, { title: 'Session', html }); }
   }
+  // „Details“-Knopf im Kopf: im Reiter Bild die Spalte neben dem Bild, in den anderen Reitern das Kontextpanel (Session)
+  function syncSideBtn() {
+    const b = $('[data-ctx-toggle]', el);
+    if (!b) return;
+    b.toggleAttribute('data-side', tab === 'bild');
+    if (tab === 'bild') { b.classList.toggle('on', sideOn); b.setAttribute('aria-pressed', sideOn); }
+  }
+  el.addEventListener('click', (e) => {
+    if (tab !== 'bild' || !e.target.closest('[data-ctx-toggle]')) return;
+    e.stopPropagation();
+    sideOn = !sideOn; store.set('bild.details', sideOn);
+    $('.imgwrap', el)?.classList.toggle('no-side', !sideOn);
+    syncSideBtn();
+  });
   // Nur den Tab-Inhalt neu zeichnen – Kopf, Jobzeile und Marker bleiben stehen
   function drawTab(animate = true) {
     if (p.imported && !['bild', 'versionen'].includes(tab)) tab = 'bild';
@@ -540,6 +554,7 @@ async function projectView(el, id, tab = 'bild') {
     t.classList.remove('enter');
     sessionCtx();
     ({ bild: tabImage, aufnahmen: tabFrames, versionen: tabVersions, optionen: tabOptions, teleskopbilder: tabCompanions }[tab] || tabImage)(t);
+    syncSideBtn();
     updateJob();
     if (animate) { void t.offsetWidth; t.classList.add('enter'); }
   }
@@ -566,7 +581,7 @@ async function projectView(el, id, tab = 'bild') {
     if (stage?.rid !== r.id || !(stage.i >= 0 && stage.i < stages.length)) stage = { rid: r.id, i: stages.length - 1 };
     const stageLabel = (x) => x.final ? `Alle ${x.n} Aufnahmen · ${dur(x.exposure)} – fertiges Bild` : `${x.n} ${x.n === 1 ? 'Aufnahme' : 'Aufnahmen'} · ${dur(x.exposure)}`;
     const stageSrc = (x) => x.final ? `/api/stacking/results/${r.id}/jpg` : `/api/stacking/results/${r.id}/s${x.n}`;
-    t.innerHTML = `<div class="imgwork">
+    t.innerHTML = `<div class="imgwrap${sideOn ? '' : ' no-side'}"><div class="imgwork">
         <div id="viewer"></div>
         ${stages.length > 1 ? `<div class="stages"><div class="stages-h"><b>Stacking-Verlauf</b><span class="grow"></span><span class="sm tnum" id="stlbl">${stageLabel(stages[stage.i])}</span></div>
           <input type="range" id="strange" min="0" max="${stages.length - 1}" step="1" value="${stage.i}" aria-label="Stacking-Stufe" style="--fill:${stage.i / (stages.length - 1) * 100}%">
@@ -579,9 +594,9 @@ async function projectView(el, id, tab = 'bild') {
           <span class="grow"></span><button class="linkbtn" id="latest">Neueste Version zeigen</button></div>` : ''}
         ${p.imported ? `<div class="notice" style="margin-top:14px"><div><b>Fertig importiertes Bild</b><div class="mut sm">Das Original bleibt unverändert. AstroFlow führt kein erneutes Stacking und keine automatische Entwicklung durch.</div>
           ${AF.on('sage') ? '<button class="btn ghost sm" id="importedSage" style="margin-top:8px">Mit Sage bestimmen und erzählen</button>' : ''}</div></div>` : ''}
-</div>`;
-    // Kontextpanel: Kennzahlen, Kanäle, Bild-Tutor, Details, Himmelsposition, KI-Prüfung
-    AF.ctx.open(el, { title: 'Bild-Details', html: `<div class="row ctx-acts"><a class="btn ghost sm" href="/api/stacking/results/${r.id}/jpg" download>${icon('down')}JPEG</a>
+</div><aside class="img-side" id="imgSide" aria-label="Bild-Details"></aside></div>`;
+    // Bild-Details neben dem Bild: Kennzahlen, Objektwissen, Kanäle, Bild-Tutor, Details, Himmelsposition, KI-Prüfung
+    $('#imgSide', t).innerHTML = `<div class="row ctx-acts"><a class="btn ghost sm" href="/api/stacking/results/${r.id}/jpg" download>${icon('down')}JPEG</a>
         ${AF.on('sage') ? `<button class="btn ghost sm" id="ctxStory" title="Sage nutzt die vorhandene Plate-Solving-Lösung und die erkannten Objekte">${icon('book')}Geschichte erzählen</button>` : ''}
         ${!p.imported && !running(p.job) ? `<button class="btn ghost sm" id="ctxDev">${icon('refresh')}Neu entwickeln</button>` : ''}</div>
       ${AF.on('sage') ? '<section class="panel ctx-know" id="ctxKnow"></section>' : ''}
@@ -615,7 +630,7 @@ async function projectView(el, id, tab = 'bild') {
           : `<div><b>Runde ${x.round}</b> · <span class="${x.ok ? 'ok' : 'warn'}">${x.ok ? 'in Ordnung' : 'nachgebessert'}</span> <span class="mut">(${esc(x.score)}/10)</span>
             ${x.issues?.length ? `<ul>${x.issues.map(i => `<li>${esc(i)}</li>`).join('')}</ul>` : ''}
             ${Object.keys(x.adjust || {}).length ? `<div class="mut sm">${Object.entries(x.adjust).map(([k, v]) => `${esc(k)} → ${esc(v)}`).join(' · ')}</div>` : ''}</div>`).join('')}</div></div>` : ''}
-` });
+`;
     $('#ctxStory')?.addEventListener('click', story);
     objectKnowledge($('#ctxKnow'), p.name);
     $('#ctxDev')?.addEventListener('click', develop);
