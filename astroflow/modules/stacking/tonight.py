@@ -432,23 +432,27 @@ def _clear_window(weather: dict | None, ts: np.ndarray, sun: np.ndarray, t0: flo
         return None
     pts = sorted([(h["t"], h["cloud"]) for h in weather.get("hours", []) if h.get("cloud") is not None]
                  + [(h["t"], h["cloud"]) for h in weather.get("later", [])])
-    run: list[float] = []
-    found = None
-
-    def done():
-        return {"start": run[0], "end": run[-1] + 3600, "tonight": run[0] < t0 + 86400}
+    # 10-Minuten-Schritte innerhalb klarer Stunden, nur im Dunkeln und ab jetzt; zusammenhängende Läufe ≥ 2 h
+    step = STEP_MIN * 60
+    samples = []
     for t, c in pts:
-        if t < now:
+        if c >= 50:
             continue
-        k = max(0, int((t - t0) // 86400))
-        dark = float(np.interp(t - k * 86400, ts, sun)) <= -18
-        if c < 50 and dark and (not run or t - run[-1] <= 3600):
-            run.append(t)
-        else:
-            if len(run) >= 2:
-                return done()
-            run = [t] if c < 50 and dark else []
-    return done() if len(run) >= 2 else found
+        for u in np.arange(t, t + 3600, step):
+            if u < now:
+                continue
+            k = max(0, int((u - t0) // 86400))
+            if float(np.interp(u - k * 86400, ts, sun)) <= -18:
+                samples.append(float(u))
+    run: list[float] = []
+    for u in sorted(set(samples)) + [None]:
+        if run and (u is None or u - run[-1] > step):
+            if run[-1] + step - run[0] >= 7200:
+                return {"start": run[0], "end": run[-1] + step, "tonight": run[0] < t0 + 86400}
+            run = []
+        if u is not None:
+            run.append(u)
+    return None
 
 
 def _sky(cloud, mask: np.ndarray, weather, ts, sun, t0, now) -> dict | None:
@@ -460,7 +464,9 @@ def _sky(cloud, mask: np.ndarray, weather, ts, sun, t0, now) -> dict | None:
         return None
     mean = float(cloud[m].mean())
     usable = float((cloud[m] < 80).sum() * STEP_MIN / 60)
-    state = "overcast" if mean >= 85 or usable < 1 else "partly" if mean >= 30 else "clear"
+    remaining = float(m.sum() * STEP_MIN / 60)
+    # „bedeckt“ nur nach der Wolkenlage – bleibt weniger als eine Stunde Dunkelheit, entscheidet allein der Mittelwert
+    state = "overcast" if mean >= 85 or (remaining >= 1 and usable < 1) else "partly" if mean >= 30 else "clear"
     return {"state": state, "mean": round(mean), "usable_hours": round(usable, 1),
             "next_clear": _clear_window(weather, ts, sun, t0, now) if state != "clear" else None}
 

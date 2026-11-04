@@ -347,3 +347,23 @@ def test_status_separates_height_from_night_over(tmp_path, monkeypatch):
     assert d["twilight"]["dark_end"] < dawn and d["status"]["code"] == "over"
     summer = dt.datetime(2026, 6, 21, 19, tzinfo=dt.timezone.utc).timestamp()
     assert tonight.plan([], {**SITE, "lat": 80}, tmp_path, summer, STELLINA)["status"]["code"] == "no_dark"
+
+
+def test_clear_forecast_with_short_remaining_dark_is_not_overcast(tmp_path, monkeypatch):
+    _weather(monkeypatch, lambda i: 0)
+    dawn = tonight.plan([], SITE, tmp_path, EVENING, STELLINA)["twilight"]["dark_end"] - 1800        # 30 min Dunkelheit übrig
+    d = tonight.plan([], {**SITE, "weather": True}, tmp_path, dawn, STELLINA)
+    assert d["sky"]["state"] == "clear" and d["status"]["code"] != "overcast"
+
+
+def test_next_clear_window_is_clipped_to_darkness(tmp_path, monkeypatch):
+    base = tonight.plan([], SITE, tmp_path, EVENING, STELLINA)
+    dark_end = base["twilight"]["dark_end"] + 86400                          # Ende der Dunkelheit der folgenden Nacht (±Minuten)
+    t0 = tonight._window(EVENING, SITE["lon"])[0]
+    _weather(monkeypatch, lambda i: 100, later_clear=False)
+    later = [{"t": float(int(dark_end // 3600) * 3600 - 3600 * k), "cloud": 0} for k in range(0, 2)]       # nur die beiden Stunden vor Morgengrauen
+    monkeypatch.setattr(tonight, "_forecast", lambda *a, **k: {"hours": [{"t": t0 + 3600 * i, "cloud": 100} for i in range(25)], "later": later, "source": "T"})
+    tonight._cache.clear()
+    d = tonight.plan([], {**SITE, "weather": True}, tmp_path, EVENING, STELLINA)
+    nc = d["sky"]["next_clear"]
+    assert nc is None or nc["end"] <= dark_end + 700          # nie über das Ende der Dunkelheit hinaus; < 2 h dunkel → kein Fenster
