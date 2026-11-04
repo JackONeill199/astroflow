@@ -283,3 +283,23 @@ def test_planning_night_matches_tonight_window():
     # Vormittag in Mitteleuropa: schon die kommende Nacht (night_of läge noch beim Vortag)
     now = dt.datetime(2026, 11, 4, 9, tzinfo=dt.timezone.utc).timestamp()
     assert sites.planning_night(now, 10.25) == "2026-11-04" and sites.night_of(now) == "2026-11-03"
+
+
+def test_comet_site_uses_night_from_site_list(tmp_path):
+    """Kometen-Parallaxe: FITS-Ort → Ort der häufigsten Nacht aus der Ortsliste → alte Tutor-Einstellung."""
+    data = tmp_path / "d"
+    data.mkdir()
+    (data / "settings.json").write_text(json.dumps({"tutor": {"lat": 1.0, "lon": 2.0}}), encoding="utf-8")
+    app = create_app(load_settings(data), only=("stacking",))
+    eng = app.state.modules["stacking"].eng
+    book = app.state.ctx.services["sites"]
+    book.save({"list": [HOME, TRIP], "default": "home", "periods": [{"site_id": "trip", "from": "2024-07-01", "to": "2024-07-14"}]})
+    assert eng._site("2024-07-05") == [TRIP["lat"], TRIP["lon"]]
+    assert eng._site("2024-08-01") == [HOME["lat"], HOME["lon"]]
+    rows = [{"info": "{}", "night": "2024-07-05"}, {"info": "{}", "night": "2024-07-05"}, {"info": "{}", "night": "2024-08-01"}]
+    assert eng.pl._site(rows) == [TRIP["lat"], TRIP["lon"]]                     # Mehrheit der Nächte
+    assert eng.pl._site([{"info": json.dumps({"site": [3.0, 4.0]}), "night": "2024-07-05"}]) == [3.0, 4.0]   # FITS gewinnt
+    book.save({"list": [], "periods": []})
+    assert eng._site("2024-07-05") == [1.0, 2.0]                                  # ohne Ortsliste: Tutor-Einstellung
+    app.state.ctx.services.pop("sites")
+    assert eng._site("2024-07-05") == [1.0, 2.0]                                  # ohne Dienst ebenso
