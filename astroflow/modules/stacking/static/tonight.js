@@ -32,7 +32,7 @@ function chart(d, W, H, selected, hidden) {
   });
   g += `<path d="${path(d.moon.alt)}" fill="none" stroke="var(--mut)" stroke-width="1.5" stroke-dasharray="2 5"><title>Mondhöhe</title></path>`;
   d.recommendations.forEach((o, k) => {
-    if (!hidden.has(k)) g += `<path class="tn-series" data-target="${k}" d="${path(o.alt)}" fill="none" stroke="${COLORS[k]}" stroke-width="${selected === k ? 3.5 : 2}" opacity="${selected === k ? 1 : .65}"><title>${esc(o.name)}</title></path>`;
+    if (!hidden.has(k)) g += `<path class="tn-series" data-target="${k}" d="${path(o.alt)}" fill="none" stroke="${COLORS[k]}" stroke-width="${selected === k ? 3.5 : 2}" ${o.weather_blocked ? 'stroke-dasharray="6 5"' : ''} opacity="${o.weather_blocked ? (selected === k ? .7 : .35) : selected === k ? 1 : .65}"><title>${esc(o.name)}</title></path>`;
   });
   if (d.now >= t0 && d.now <= t1) g += `<line x1="${X(d.now)}" x2="${X(d.now)}" y1="${T}" y2="${H - B}" stroke="var(--fg)" stroke-opacity=".5" stroke-dasharray="4 4"><title>Jetzt</title></line>`;
   const step = W < 500 ? 4 : 2;
@@ -96,10 +96,10 @@ customElements.define('af-tonight-chart', class extends HTMLElement {
     const open = this.querySelector('.tn-target')?.open;
     this.innerHTML = `<div class="tn-stage">${chart(d, this.width, this.height, this.selected, this.hiddenTargets)}<div class="tn-tooltip" hidden></div></div>
       <div class="tn-scrub"><output class="tn-clock">${hm(d.times[this.index])}</output><input class="tn-time" type="range" min="0" max="${d.times.length - 1}" value="${this.index}" aria-label="Uhrzeit im Höhenverlauf" aria-valuetext="${hm(d.times[this.index])}"><span class="mut sm">${Math.round(d.moon.illum)} % Mond</span></div>
-      <div class="tn-choices">${d.recommendations.map((x, k) => `<div class="tn-choice" style="--target:${COLORS[k]}"><input type="checkbox" data-visible="${k}" ${this.hiddenTargets.has(k) ? '' : 'checked'} aria-label="Kurve ${esc(x.name)} anzeigen"><button type="button" data-select="${k}" aria-pressed="${this.selected === k}">${esc(x.name)}<small>${x.category === 'more' ? 'Mehr Zeit' : 'Neu'}${x.season?.kind === 'last' ? ' · letzte Chance' : ''}</small></button></div>`).join('')}</div>
+      <div class="tn-choices">${d.recommendations.map((x, k) => `<div class="tn-choice" style="--target:${COLORS[k]}"><input type="checkbox" data-visible="${k}" ${this.hiddenTargets.has(k) ? '' : 'checked'} aria-label="Kurve ${esc(x.name)} anzeigen"><button type="button" data-select="${k}" aria-pressed="${this.selected === k}">${esc(x.name)}<small>${x.category === 'more' ? 'Mehr Zeit' : 'Neu'}${x.weather_blocked ? ' · bei klarem Himmel' : ''}${x.season?.kind === 'last' ? ' · letzte Chance' : ''}</small></button></div>`).join('')}</div>
       ${o ? `<div class="tn-selection"><a ${targetLink(o)}>Objekt öffnen ${icon('arrow')}</a><span class="mut sm">${o.good.map(period).join(', ')} · max. ${Math.round(o.max_alt)}°${o.exposure ? ' · bisher ' + dur(o.exposure) : ''}</span>
         <button type="button" class="tn-hide" data-tn-hide="${esc(o.id)}" title="Dieses Ziel nicht mehr vorschlagen">Nicht interessiert</button>
-        ${o.category === 'more' && o.gain ? `<p class="tn-gain">${esc(o.gain.text)}</p>` : ''}${o.season ? `<p class="tn-tag ${o.season.kind}">${esc(o.season.text)}</p>` : ''}
+        ${o.weather_blocked ? '<p class="tn-tag soon">Laut Vorhersage zu bewölkt – dieses Ziel gilt bei klarem Himmel.</p>' : ''}${o.category === 'more' && o.gain ? `<p class="tn-gain">${esc(o.gain.text)}</p>` : ''}${o.season ? `<p class="tn-tag ${o.season.kind}">${esc(o.season.text)}</p>` : ''}
         <details class="tn-target" ${open ? 'open' : ''}><summary>${o.category === 'more' ? 'Warum mehr Belichtung?' : 'Warum dieses Ziel?'}</summary><ul class="tn-why">${o.reasons.filter(r => r !== o.season?.text).map(r => `<li>${esc(r)}</li>`).join('')}</ul>${o.category === 'new' ? `<p class="mut sm">${esc(o.benefit)}</p>` : ''}${o.moon_warning ? '<p class="warn sm">Mond zeitweise näher als 40°: schwache Details können leiden.</p>' : ''}</details></div>` : ''}`;
     if (this.pinned) this.inspect();
   }
@@ -125,18 +125,40 @@ customElements.define('af-tonight-chart', class extends HTMLElement {
 });
 const graph = (d, initial_target) => `<af-tonight-chart>${esc(JSON.stringify({...d, initial_target, now: Math.floor(d.now / 300) * 300}))}</af-tonight-chart>`;
 const planList = (d, full) => d.plan?.length ? `<div class="tn-plan"><h3>Nachtplan</h3><ol>${d.plan.map(b => `<li><span class="tn-when">${hm(b.start)} – ${hm(b.end)}</span> <a href="${esc(b.href)}">${esc(b.name)}</a> <small class="mut">${b.category === 'more' ? 'Mehr Zeit' : 'Neu'}${b.cloud != null ? ' · ' + b.cloud + ' % Wolken' : ''}</small></li>`).join('')}</ol>${full ? '<p class="mut sm">Ein Smart-Teleskop nimmt nur ein Ziel gleichzeitig auf: Die nutzbare Nacht ist in Abschnitte geteilt, jeder bekommt das Ziel, das dann am besten steht (Höhe, Mond, Wolken, Zenitnähe).</p>' : ''}</div>` : '';
+const day = (t, tonight) => (tonight ? 'heute Nacht' : 'in der folgenden Nacht') + ` ${hm(t.start)} – ${hm(t.end)}`;
+// Meldung zur Lage – getrennt nach Ursache (bedeckt / teils bewölkt / Höhe / Nacht vorbei / keine Dunkelheit)
+function statusNote(d) {
+  const sky = d.sky, st = d.status?.code, nc = sky?.next_clear;
+  const next = nc ? `Nächstes klares Fenster: ${day(nc, nc.tonight)}.` : 'In den nächsten 48 Stunden zeigt die Vorhersage kein klares Fenster.';
+  if (st === 'no_dark') return '<p class="tn-note">Heute gibt es hier keine astronomisch dunkle Zeit.</p>';
+  if (st === 'over') return '<p class="tn-note">Die dunkle Zeit ist vorbei (Dämmerung bzw. Tag). Empfehlungen gelten wieder ab dem Abend.</p>';
+  if (st === 'overcast') return `<p class="tn-note cloudy"><b>Heute Nacht bedeckt</b> (${sky.mean} % Bewölkung laut Vorhersage). ${esc(next)} Die Ziele darunter gelten bei klarem Himmel.</p>`;
+  if (sky?.state === 'partly') return `<p class="tn-note"><b>Teils bewölkt</b> (${sky.mean} % im Mittel, etwa ${String(sky.usable_hours).replace('.', ',')} h klar nutzbar). Ziele in klaren Stunden stehen vorn; gestrichelte gelten bei klarem Himmel.</p>`;
+  if (st === 'low_alt') return `<p class="tn-note">Für den verbleibenden Teil der Nacht steht kein passendes Ziel höher als ${d.min_alt}° (Höhe, nicht Wetter).</p>`;
+  return '';
+}
 function content(d, initial_target, full) {
   if (!d.site) return `<div class="tn-empty">${noSite()}</div>`;
   const dev = d.device;
   return `<div class="tn-overview"><div><small>Dunkle Zeit</small><b>${dur(d.dark_hours * 3600)}</b></div><div><small>Mond beleuchtet</small><b>${d.moon.illum} %</b></div><div><small>Dein Gerät</small><b>${esc(dev.name)}</b></div></div>
+    ${statusNote(d)}
     ${graph(d, initial_target)}<p class="mut sm tn-legend">Dunkel: Sonne unter −18° · Mindesthöhe ${d.min_alt}° · gepunktet: Mond${d.cloud ? ' · blauer Streifen unten: Bewölkung' : ''} · Zeiten in deiner Ortszeit</p>
     ${planList(d, full)}
-    ${d.recommendations.length ? '' : `<p class="mut">${d.dark_hours === 0 ? 'Heute gibt es hier keine astronomisch dunkle Zeit.' : 'Für den verbleibenden Teil der Nacht gibt es keine passenden Empfehlungen über 30°.'}</p>`}
     <details class="tn-notes mut sm"><summary>Berechnung &amp; Bildfeld</summary><p>${esc(dev.name)}${dev.fov ? ` · Bildfeld ca. ${dev.fov.map(v => v.toFixed(2).replace('.', ',') + '°').join(' × ')} (${esc(dev.source)})` : ' · Bildfeld unbekannt, Größenfilter aus'}</p><p>Neue Ziele: Messier- und Caldwell-Katalog (fest eingebaut)${d.catalog?.astap_found ? ' plus auffällige Objekte aus ASTAPs deep_sky.csv (ohne Helligkeitsangabe, nach Größe und Name gewählt)' : ' – ohne ASTAPs deep_sky.csv keine weiteren Objekte'}. Helligkeitsgrenze für dieses Gerät etwa ${num(d.catalog?.mag_limit ?? 11)} mag; Größe 3–90 % der kurzen Bildfeldseite. ${d.catalog?.candidates ?? 0} Kandidaten passen zu Gerät und Bildfeld.</p><p>Rangfolge: nutzbare Stunden in der dunklen Zeit, gewichtet mit Mond (Phase × Abstand), Wolken (falls die Vorhersage im Tutor an ist) und – bei Alt-Az-Geräten – Zenitnähe über 80° (Feldrotation); dazu Kulmination im Dunkeln und Saison. „Mehr Zeit“ rechnet das Rauschen nach der 1/√Zeit-Regel. Freier Horizont wird vorausgesetzt.</p></details>`;
+}
+// Kopf der Übersicht („Klarer Himmel heute Nacht?“) an die Vorhersage anpassen; ohne Wetter neutral
+function heroText(d) {
+  const h1 = document.querySelector('.dashboard-hero h1');
+  if (!h1) return;
+  h1.dataset.orig ??= h1.textContent;
+  if (!/^(Klarer Himmel|Heute Nacht|Teils bewölkt|Bedeckt)/.test(h1.dataset.orig) && !h1.dataset.tn) return;   // nur die Nachtbegrüßung ersetzen
+  const s = d?.sky?.state, c = d?.status?.code;
+  h1.dataset.tn = '1';
+  h1.textContent = !d?.site || !s ? 'Was lohnt sich heute Nacht?' : c === 'overcast' ? 'Heute Nacht bedeckt' : s === 'partly' ? 'Teils bewölkt heute Nacht' : 'Klarer Himmel heute Nacht';
 }
 async function featured() {
   let body;
-  try { body = content(await api('/stacking/tonight' + query())); }
+  try { const d = await api('/stacking/tonight' + query()); heroText(d); body = content(d); }
   catch (e) { body = `<p class="mut">Nachtplanung gerade nicht verfügbar: ${esc(e.message)}</p>`; }
   return `<div class="tn-home"><div class="hhead">${icon('star')}<div><h2>Empfohlene Ziele für heute Nacht</h2></div><span class="grow"></span><a class="linkbtn" href="#/nacht">Planung öffnen ${icon('arrow')}</a></div>${body}</div>`;
 }

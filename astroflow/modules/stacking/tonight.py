@@ -34,6 +34,7 @@ MIN_ALT = 30.0           # „gut sichtbar“ ab dieser Höhe
 ZENITH_ALT = 80.0        # darüber starke Feldrotation bei Alt-Az-Montierung
 ZENITH_WEIGHT = 0.4      # Gewicht dieser Stunden in der Rangfolge
 MAX_CURVES = 6           # maximale Anzahl Empfehlungen in der Grafik
+BLOCKED_PENALTY = 1.5    # Ziele, die nur wegen Wolken ausfallen, stehen hinter klar erreichbaren
 MIN_GAIN = 0.10          # „Mehr Zeit“ nur, wenn das Rauschen heute um ≥ 10 % sinken kann
 MIN_BLOCK = 2400         # Nachtplan: kürzere Blöcke entfallen (s)
 OFFSETS = list(range(0, 197, 14))      # Tage ab heute für den Saison-Ausblick (bis ~6 Monate)
@@ -164,14 +165,16 @@ def _forecast(site, cache: Path, t0: float, t1: float, timeout: float = 10.0) ->
         data = r.json().get("hourly") or {}
         if data.get("time"):
             f.write_text(json.dumps(data), encoding="utf-8")
-    hours = []
+    hours, later = [], []
     for i, s in enumerate(data.get("time") or []):
         ts = dt.datetime.fromisoformat(s).replace(tzinfo=dt.timezone.utc).timestamp()
+        if t1 + 1800 < ts <= t1 + 48 * 3600 and (data.get("cloud_cover") or [None] * (i + 1))[i] is not None:
+            later.append({"t": ts, "cloud": data["cloud_cover"][i]})
         if t0 - 1800 <= ts <= t1 + 1800:
             g = lambda k: (data.get(k) or [None] * (i + 1))[i]
             hours.append({"t": ts, "cloud": g("cloud_cover"), "humidity": g("relative_humidity_2m"),
                           "dew_spread": None if g("temperature_2m") is None or g("dew_point_2m") is None else round(g("temperature_2m") - g("dew_point_2m"), 1)})
-    return {"hours": hours, "source": "Open-Meteo-Vorhersage (Raster ~10 km)"} if hours else None
+    return {"hours": hours, "later": later, "source": "Open-Meteo-Vorhersage (Raster ~10 km)"} if hours else None
 
 
 # ------------------------------------------------------------------ Geometrie (numpy, ohne AltAz-Transformation) #
@@ -323,6 +326,8 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
     w_zen = np.where((alt > ZENITH_ALT) & bool(device.get("alt_az", True)), ZENITH_WEIGHT, 1.0)
     weight = good * w_moon * w_zen * clear[None, :]
     eff = weight.sum(axis=1) * STEP_MIN / 60                                 # nutzbare Stunden
+    eff_clear = (good * w_moon * w_zen).sum(axis=1) * STEP_MIN / 60          # dieselben Stunden bei klarem Himmel (ohne Wetter)
+    sky = _sky(cloud, dark & (ts >= now), weather, ts, sun, t0, now)
     raw = good.sum(axis=1) * STEP_MIN / 60
     zen_h = (good & (alt > ZENITH_ALT)).sum(axis=1) * STEP_MIN / 60 if bool(device.get("alt_az", True)) else np.zeros(len(alt))
     jmax = np.argmax(np.where(dark[None, :] & future[None, :], alt, -90), axis=1) if len(alt) else np.zeros(0, int)
@@ -336,7 +341,7 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
         moon_visible = good[i] & (moon > 0)
         sep = float(msep[i][moon_visible].min()) if moon_visible.any() else 180.0
         return {**info, "max_alt": round(float(a[jmax[i]]), 1), "max_t": float(ts[jmax[i]]),
-                "good_hours": round(float(raw[i]), 2), "eff_hours": round(float(eff[i]), 2), "good": spans,
+                "good_hours": round(float(raw[i]), 2), "eff_hours": round(float(eff[i]), 2), "eff_clear": round(float(eff_clear[i]), 2), "good": spans,
                 "moon_sep": round(sep, 1), "alt": [round(float(v), 1) for v in a[sel]],
                 "culm_dark": bool(culm[i]), "zenith_hours": round(float(zen_h[i]), 2), "season": seasons[i]}
 
@@ -351,29 +356,33 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
             continue
         p = by_id[x["id"]]
         reasons = _need(p)
-        g = _gain(p.get("exposure"), min(x["eff_hours"], 8))
-        if not reasons or x["eff_hours"] < 1 or (g and g["noise_pct"] < MIN_GAIN * 100):
+        blocked = x["eff_hours"] < 1 <= x["eff_clear"] and cloud is not None          # nur wegen Wolken nicht nutzbar → „bei klarem Himmel“
+        h = x["eff_clear"] if blocked else x["eff_hours"]
+        g = _gain(p.get("exposure"), min(h, 8))
+        if not reasons or h < 1 or (g and g["noise_pct"] < MIN_GAIN * 100):
             continue
-        sc = _score(x["eff_hours"], x["max_alt"], x["culm_dark"], x["season"], (g["noise_pct"] / 100 * 2.2) if g else 0.6)
-        reasons = reasons + _visibility_reasons(x, device)
+        sc = _score(h, x["max_alt"], x["culm_dark"], x["season"], (g["noise_pct"] / 100 * 2.2) if g else 0.6) - (BLOCKED_PENALTY if blocked else 0)
+        reasons = reasons + _visibility_reasons({**x, "eff_hours": h}, device) + (["Laut Vorhersage zu bewölkt – gilt bei klarem Himmel."] if blocked else [])
         pool.append({**x, "category": "more", "reasons": reasons, "gain": g, "kind_label": objects.KIND_LABEL.get(x.get("kind") or "", ""),
                      "benefit": g["text"] if g else "Mehr Gesamtbelichtung senkt das Rauschen (1/√Zeit) und macht schwache Details klarer.",
-                     "href": f"#/p/{x['id']}", "rank": sc})
+                     "href": f"#/p/{x['id']}", "rank": sc, "weather_blocked": blocked})
     new_pool = []
     for k, c in enumerate(cands):
         i = n_own + k
-        if eff[i] < 1.5 or raw[i] < 2:
+        blocked = bool(eff[i] < 1.5 <= eff_clear[i] and cloud is not None)
+        if (eff[i] < 1.5 and not blocked) or raw[i] < 2:
             continue
         x = entry(i, {"id": c.id, "name": c.display, "kind": c.kind, "kind_label": objects.KIND_LABEL.get(c.kind, ""), "size": c.size,
                       "mag": c.mag, "source": c.source})
         lim = device.get("mag_limit") or deepsky.MAG_DEFAULT
         bright = max(0.0, min(1.0, (lim - c.mag) / 6)) * 0.8 if c.mag is not None else (0.4 if c.source != "astap" else 0.0)
-        sc = _score(x["eff_hours"], x["max_alt"], x["culm_dark"], x["season"], bright) * (0.92 if c.source == "astap" else 1.0) * KIND_APPEAL.get(c.kind, 1.0)
-        new_pool.append({**x, "category": "new", "rank": sc})
+        h = x["eff_clear"] if blocked else x["eff_hours"]
+        sc = _score(h, x["max_alt"], x["culm_dark"], x["season"], bright) * (0.92 if c.source == "astap" else 1.0) * KIND_APPEAL.get(c.kind, 1.0)
+        new_pool.append({**x, "category": "new", "rank": sc - (BLOCKED_PENALTY if blocked else 0), "weather_blocked": blocked, "eff_hours": h})
     new_pool.sort(key=lambda x: -x["rank"])
     top_new = new_pool[:10]
     for x in top_new:
-        x["reasons"] = _new_reasons(x, device, owned_m, collection)
+        x["reasons"] = _new_reasons(x, device, owned_m, collection) + (["Laut Vorhersage zu bewölkt – gilt bei klarem Himmel."] if x["weather_blocked"] else [])
         x["benefit"] = "Eine neue Aufnahme ergänzt deine Sammlung."
         x["href"] = f"#/nacht/{x['id']}"
     for x in pool + top_new:
@@ -381,7 +390,8 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
     recommendations = _select(pool + top_new)
 
     # ---- Ablaufplan: ein Ziel zur Zeit ---------------------------------------------------------------------------------
-    blocks = _night_plan(recommendations, own, cands, n_own, weight, ts, now, clear, cloud)
+    blocks = _night_plan([r for r in recommendations if not r["weather_blocked"]], own, cands, n_own, weight, ts, now, clear, cloud)
+    status = _status(tw, dark, ts, now, sky, recommendations, targets)
 
     # ---- „Bald gut sichtbar“ ---------------------------------------------------------------------------------------------
     soon = []
@@ -405,7 +415,7 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
            "weather": weather, "weather_error": weather_error, "weather_on": bool(cfg.get("weather")), "min_alt": MIN_ALT,
            "catalog": {"candidates": len(cands), "messier": sum(c.source == "messier" for c in cands), "astap": sum(c.source == "astap" for c in cands),
                        "astap_found": bool(objects.extended_catalog()), "mag_limit": device.get("mag_limit")},
-           "hidden": sorted(hidden)}
+           "hidden": sorted(hidden), "sky": sky, "status": status}
     if len(_cache) >= _CACHE_MAX:
         _cache.pop(next(iter(_cache)))
     _cache[key] = (time.time(), out)
@@ -413,6 +423,65 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
 
 
 KIND_APPEAL = {"open_cluster": 0.85, "globular": 0.95}      # offene Haufen wirken auf Smart-Teleskopen weniger spektakulär
+
+
+def _clear_window(weather: dict | None, ts: np.ndarray, sun: np.ndarray, t0: float, now: float) -> dict | None:
+    """Nächstes Fenster (≥ 2 h, Wolken < 50 %, dunkel) laut Vorhersage ab jetzt – auch in der folgenden Nacht (Sonnenstand um
+    ganze Tage zurückgerechnet, Fehler wenige Minuten)."""
+    if not weather:
+        return None
+    pts = sorted([(h["t"], h["cloud"]) for h in weather.get("hours", []) if h.get("cloud") is not None]
+                 + [(h["t"], h["cloud"]) for h in weather.get("later", [])])
+    # 10-Minuten-Schritte innerhalb klarer Stunden, nur im Dunkeln und ab jetzt; zusammenhängende Läufe ≥ 2 h
+    step = STEP_MIN * 60
+    samples = []
+    for t, c in pts:
+        if c >= 50:
+            continue
+        for u in np.arange(t, t + 3600, step):
+            if u < now:
+                continue
+            k = max(0, int((u - t0) // 86400))
+            if float(np.interp(u - k * 86400, ts, sun)) <= -18:
+                samples.append(float(u))
+    run: list[float] = []
+    for u in sorted(set(samples)) + [None]:
+        if run and (u is None or u - run[-1] > step):
+            if run[-1] + step - run[0] >= 7200:
+                return {"start": run[0], "end": run[-1] + step, "tonight": run[0] < t0 + 86400}
+            run = []
+        if u is not None:
+            run.append(u)
+    return None
+
+
+def _sky(cloud, mask: np.ndarray, weather, ts, sun, t0, now) -> dict | None:
+    """Wetterlage der verbleibenden dunklen Zeit: overcast | partly | clear (nur mit Vorhersage)."""
+    if cloud is None:
+        return None
+    m = mask & ~np.isnan(cloud)
+    if not m.any():
+        return None
+    mean = float(cloud[m].mean())
+    usable = float((cloud[m] < 80).sum() * STEP_MIN / 60)
+    remaining = float(m.sum() * STEP_MIN / 60)
+    # „bedeckt“ nur nach der Wolkenlage – bleibt weniger als eine Stunde Dunkelheit, entscheidet allein der Mittelwert
+    state = "overcast" if mean >= 85 or (remaining >= 1 and usable < 1) else "partly" if mean >= 30 else "clear"
+    return {"state": state, "mean": round(mean), "usable_hours": round(usable, 1),
+            "next_clear": _clear_window(weather, ts, sun, t0, now) if state != "clear" else None}
+
+
+def _status(tw, dark, ts, now, sky, recs, targets) -> dict:
+    """Warum es (keine) Empfehlungen gibt – getrennt nach Ursache: no_dark | over | overcast | partly | low_alt | ok."""
+    if not dark.any():
+        return {"code": "no_dark"}
+    if not (dark & (ts >= now)).any():
+        return {"code": "over"}
+    if sky and sky["state"] == "overcast":
+        return {"code": "overcast"}
+    if not recs:
+        return {"code": "low_alt"}
+    return {"code": "partly" if sky and sky["state"] == "partly" else "ok"}
 
 
 def _score(eff: float, max_alt: float, culm: bool, season: dict | None, extra: float) -> float:
