@@ -1,5 +1,6 @@
 """Kometenmodus: Erkennung, Bahn (Bildsuche, Ephemeride als Attrappe), zwei Stacks, Zusammensetzen, Tutor-Hinweis."""
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -219,3 +220,70 @@ def test_tutor_warns_about_motion():
     assert hit and hit[0]["level"] == "warn" and "2 s" in hit[0]["tips"][0]
     calm = tutor.findings({"issues": []}, [], {}, {"comet": {**cm, "per_exposure_px": 0.8}})
     assert not [x for x in calm if x["code"] == "comet_motion"]
+
+
+def test_designation_change_recomputes_track(comet_env):
+    """Neue Bezeichnung in den Optionen: Bahn wird neu bestimmt statt den alten Kometen-Stack ungeprüft zu übernehmen."""
+    s, db, pl, p, rid = comet_env
+    db.x("UPDATE projects SET options=? WHERE id=?", (json.dumps({"comet_name": "C/2026 B9"}), p["id"]))
+    try:
+        pl.stack(p["id"])
+        info = pl.comet_info(p["id"])
+        assert info["designation"] == "C/2026 B9" and info["frames"] == N
+    finally:
+        db.x("UPDATE projects SET options='{}' WHERE id=?", (p["id"],))
+        pl.stack(p["id"])
+
+
+def test_few_new_frames_after_deletion_keep_comet_stack(tmp_path):
+    """Einzelbilder nach dem Stacken gelöscht, dann 2 neue Aufnahmen: zu wenig für die Bildsuche – die bisherige Bahn
+    wird weiter genutzt und der Kometen-Stack ergänzt statt verworfen."""
+    import shutil
+    s = load_settings(tmp_path / "data")
+    s.delete_uploads = False
+    src = tmp_path / "src"
+    demo.generate_comet(src, n_lights=14, seed=7)
+    obs = next(src.glob("*_observation_*")) / "01-images-initial"
+    dst = s.input_dir / "komet" / obs.parent.name / obs.name
+    dst.mkdir(parents=True)
+    files = sorted(obs.glob("*.fits"))
+    for f in files[:12]:
+        shutil.copy(f, dst / f.name)
+    db = DB(s.db_path)
+    pl = Pipeline(s, db, ReviewerConfig(), SolverConfig(backend="off"))
+    pl.scan()
+    p = db.one("SELECT * FROM projects")
+    pl.process(p["id"])
+    assert pl.comet_info(p["id"])["frames"] == 12
+    for r in db.q("SELECT id, path FROM frames"):                # wie nach dem automatischen Löschen der Uploads
+        Path(r["path"]).unlink()
+        db.set_frame(r["id"], deleted=1)
+    for f in files[12:]:
+        shutil.copy(f, dst / f.name)
+    pl.scan()
+    rid = pl.process(p["id"])
+    info = pl.comet_info(p["id"])
+    assert not info.get("error") and info["frames"] == 14 and "track_note" in info
+    assert "comet" in json.loads(db.one("SELECT files FROM results WHERE id=?", (rid,))["files"])
+
+
+def test_mono_single_filter_composite_is_normalized(comet_env, tmp_path):
+    """Mono mit einem Filter: Sterne- und Kometen-Stack werden roh zusammengesetzt und gemeinsam normiert."""
+    import shutil
+    from astroflow.modules.stacking import channels
+    s, db, pl, p, rid = comet_env
+    wd = s.work_dir / f"p{p['id']}"
+    A = StackState.load(wd / "stack")
+    A.sw, A.swx, A.swx2 = (x[1:2] for x in (A.sw, A.swx, A.swx2))
+    B = StackState.load(wd / "stack_comet")
+    B.sw, B.swx, B.swx2 = (x[1:2] for x in (B.sw, B.swx, B.swx2))
+    pid = p["id"] + 1000
+    B.save(s.work_dir / f"p{pid}" / "stack_comet_L")
+    try:
+        mean, cov, *_ = channels.combine({"L": A.result()}, "mono")
+        out, ccov, singles = pl._comet_compose(pid, {"L": A}, mean, cov, dict(pl.comet_info(p["id"])), {}, lambda m: None)
+        ref = {k: float(np.percentile(v[0], 99.5)) for k, v in singles.items()}
+        assert abs(float(np.percentile(out, 99.5)) - ref["stars"]) < 0.5 * ref["stars"]     # gleiche Größenordnung
+        assert max(ref.values()) < 5 and out.max() < 50                                     # nicht mehr in ADU
+    finally:
+        shutil.rmtree(s.work_dir / f"p{pid}", ignore_errors=True)

@@ -673,11 +673,24 @@ class Pipeline:
         if old and (old.meta.get("ref_fid") != A.meta.get("ref_fid") or old.meta.get("scale") != scale):
             old = None
         otrack = comet.Track.from_dict(old.meta.get("comet")) if old else None
-        if old and otrack and all(f in old.meta["frames"] for f in times):
-            prev = self.comet_info(proj["id"]) or {}
+        prev = self.comet_info(proj["id"]) or {}
+        desig = comet.designation(opt.get("comet_name") or "") or comet.designation(proj["name"])
+        same_desig = (old.meta.get("comet") or {}).get("designation", prev.get("designation")) == desig if old else False
+        if old and otrack and same_desig and all(f in old.meta["frames"] for f in times):
             return {**prev, "active": True, "frames": len(old.meta["frames"])}
         progress(0.0, "Kometenbahn", "Kometenkern suchen")
-        track, info = self._comet_track(proj, opt, A, in_a, times, lib, cache, scale, offline, progress)
+        try:
+            track, info = self._comet_track(proj, opt, A, in_a, times, lib, cache, scale, offline, progress)
+        except (InterruptedError, diskspace.DiskFull, calibration.SourceOffline):
+            raise
+        except Exception as e:
+            if not (old and otrack):
+                raise
+            # z. B. nur 1–3 neue Aufnahmen, ältere Einzelbilder gelöscht: bisherige Bahn weiterverwenden, Stack behalten
+            track = otrack
+            info = {k: v for k, v in prev.items() if k not in ("frames", "error", "note", "active")}
+            info["track_note"] = f"Bahn nicht neu bestimmbar ({str(e)[:120]}) – bisherige Bahn weiter genutzt"
+        track.info["designation"] = info.get("designation")
         fwhm = float(A.meta.get("ref_fwhm") or 3.0)
         tt = np.array(sorted(times.values()))
         pos = track.at(tt)
@@ -690,10 +703,17 @@ class Pipeline:
             return info
         if old and otrack:
             dev = float(np.max(np.hypot(*(track.at(tt) - otrack.at(tt)).T)))
-            if dev > comet.REBUILD_PX:
+            gone = any(r["deleted"] or r["id"] in offline for r in in_a if r["id"] in old.meta["frames"])
+            if dev > comet.REBUILD_PX and not gone:
                 old = None                              # Bahn deutlich anders (neue Aufnahmen, Ephemeride) -> neu aufbauen
             else:
+                if dev > comet.REBUILD_PX:
+                    info["track_note"] = (f"Neue Bahn weicht um {dev:.1f} px ab, die gestackten Einzelbilder sind aber nicht "
+                                          "mehr verfügbar – der bisherige Kometen-Stack bleibt")
+                otrack.info["designation"] = track.info.get("designation")
                 track = otrack                          # bisherige Bahn beibehalten: der Stack bleibt in sich stimmig
+            if old is not None:
+                old.meta["comet"] = track.to_dict()
         if old is None:
             shutil.rmtree(cdir, ignore_errors=True)
             state = StackState(A.sw.shape)
@@ -991,6 +1011,10 @@ class Pipeline:
             return mean, cov, {}
         log("Sterne- und Kometen-Stack zusammensetzen")
         B, covB = cst.result()
+        if band is not None:
+            # Mono mit einem Filter: `mean` ist schon über channels.combine normiert, der Kometen-Stack noch in ADU –
+            # deshalb roh zusammensetzen und danach jedes Bild gleich normieren
+            mean, cov = A.result()
         sc = int(A.meta.get("scale") or 1)
         fw = float(A.meta.get("ref_fwhm") or 3.0) * sc
         pts = np.array(cinfo.get("track") or [cinfo["nucleus"]], float)
@@ -1000,7 +1024,12 @@ class Pipeline:
                                         lane_px=0.5 * motion + 2 * fw if motion < comet.COMPACT_FWHM * fw else 0.0,
                                         core_px=max(6 * fw, 20.0 * sc), method=method, log=log)
         cinfo.update(composite=True, frames_comet=len(cst.meta["frames"]), **meta)
-        return out, ccov, {"stars": (mean, cov), "comet": (B, covB)}
+        singles = {"stars": (mean, cov), "comet": (B, covB)}
+        if band is not None:
+            norm = lambda m, c: channels.combine({band: (m, c)}, "mono")[:2]
+            out, ccov = norm(out, ccov)
+            singles = {k: norm(*v) for k, v in singles.items()}
+        return out, ccov, singles
 
     def _save_singles(self, rid, singles, params, stats, narrow, palette, log) -> None:
         """Sterne- und Kometen-Stack mit denselben Parametern und Ausschnitt wie das Ergebnis entwickeln (Umschalter)."""
