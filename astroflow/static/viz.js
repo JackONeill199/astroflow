@@ -146,6 +146,7 @@ function vizProcess(host, data = {}) {
   }
   function loop(now = performance.now()) {
     if (dead || paused) return;
+    if (!fig.isConnected && now - t0 > 1000) { dead = true; ro.disconnect(); return; }   // Behälter verworfen: Schleife beenden
     if (!document.hidden && fig.isConnected && now - last > 33) { last = now; draw(now); }   // ≤ 30 Bilder/s
     raf = requestAnimationFrame(loop);
   }

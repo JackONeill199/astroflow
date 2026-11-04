@@ -53,7 +53,7 @@ async function runsView(el) {
   el.innerHTML = `<div class="pagehead"><div><h1>SkyTrace</h1>
       <p class="mut">Bildfolgen sternregistrieren, Lichtspuren erkennen und mit Meteor-, Satelliten-, Asteroiden- und Flugkatalogen abgleichen.</p></div>
       <div class="page-actions"><a class="btn ghost" href="#/settings/skytrace">${icon('pin')}Standort &amp; Kataloge</a><a class="btn" href="#/skytrace/neu">${icon('play')}Neue Analyse</a></div></div>
-    <div id="stEngine">${engineNotice(boot.engine)}</div><div id="stLive"></div>
+    <div id="stEngine">${engineNotice(boot.engine)}</div><div id="stLive"></div><div id="stViz" style="margin:-8px 0 20px" hidden></div>
     <div class="toolbar"><input type="search" id="stq" placeholder="Analyse suchen …" title="Taste /"><span class="mut sm" id="stsum"></span><span class="grow"></span>
       <div class="seg" id="stview" aria-label="Ansicht"><button data-v="table" title="Tabelle">${icon('list')}</button><button data-v="cards" title="Karten">${icon('grid')}</button></div></div>
     <div id="stRuns"></div>`;
@@ -99,8 +99,12 @@ async function runsView(el) {
     const html = s.running ? `<a class="panel stlive" href="#/skytrace/${encodeURIComponent(s.run)}"><div class="panel-h"><span class="live"></span><h2>${s.operation === 'refresh' ? 'Kandidatenbericht wird aktualisiert' : 'Analyse läuft'}</h2>
         <span class="grow"></span><span class="mut sm tnum">${s.stats.current || 0} / ${s.stats.total || '—'} Aufnahmen · ${s.stats.candidates} Erkennungen</span>${icon('arrow')}</div>
         <div class="progress ${s.stats.total ? '' : 'indet'}"><i style="width:${s.stats.total ? 100 * (s.stats.current || 0) / s.stats.total : 0}%"></i></div>
-        <div class="mut sm" style="margin-top:8px">${esc(engineStatus(s))}</div></a><div id="stViz" style="margin:-8px 0 20px"></div>` : '';
-    if (html !== liveSig) { liveSig = html; viz?.destroy(); viz = null; $('#stLive').innerHTML = html; if (s.running && s.operation !== 'refresh' && typeof vizProcess === 'function') viz = vizProcess($('#stViz'), { kind: 'trace' }); }
+        <div class="mut sm" style="margin-top:8px">${esc(engineStatus(s))}</div></a>` : '';
+    if (html !== liveSig) { liveSig = html; $('#stLive').innerHTML = html; }
+    // Schema bleibt über Fortschrittsmeldungen hinweg bestehen (Pause und Zeitachse bleiben erhalten)
+    const want = s.running && s.operation !== 'refresh' && typeof vizProcess === 'function';
+    if (want && !viz) { $('#stViz').hidden = false; viz = vizProcess($('#stViz'), { kind: 'trace' }); }
+    else if (!want && viz) { viz.destroy(); viz = null; $('#stViz').hidden = true; $('#stViz').replaceChildren(); }
     viz?.update({ n: s.stats?.current || 0, total: s.stats?.total || 0, found: s.stats?.candidates });
   }
   draw();
