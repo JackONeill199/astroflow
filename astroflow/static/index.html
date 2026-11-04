@@ -3,13 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#14171c">
+<meta name="theme-color" content="#0d1020">
 <meta name="description" content="AstroFlow – Astrofotografie, Spurenanalyse und Himmelsgeschichten in einer lokalen App">
 <title>AstroFlow</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="style.css?v=2.0.12">
-<link rel="stylesheet" href="sites.css?v=2.0.12">
+<link rel="stylesheet" href="style.css?v=2.0.15">
+<link rel="stylesheet" href="sites.css?v=2.0.15">
+<link rel="stylesheet" href="look.css?v=2.0.17">
+<script>try { const l = JSON.parse(localStorage.getItem('af.ui.look')) || 'dezent'; if (l !== 'schlicht') document.documentElement.dataset.look = l; } catch { document.documentElement.dataset.look = 'dezent'; }</script>
 </head>
 <body>
 <div class="shell" id="shell">
@@ -85,7 +87,8 @@
   </defs>
 </svg>
 <script src="viz.js?v=2.0.8"></script>
-<script src="app.js?v=2.0.12"></script>
-<script src="sites.js?v=2.0.12"></script>
+<script src="app.js?v=2.0.17"></script>
+<script src="meteors.js?v=2.0.17"></script>
+<script src="sites.js?v=2.0.15"></script>
 </body>
 </html>
