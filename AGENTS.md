@@ -396,6 +396,10 @@ Registrierung laufen innerhalb „Stacking“ und werden nicht getrennt gemeldet
 **Seitenwechsel** (`route`): neue Ansicht als `.page.pending` (unsichtbar) aufbauen, die alte bleibt als `.page-ghost` (fest positioniert,
 IDs entfernt, nicht klickbar) stehen; fertig → Geist sofort weg + `.swap` (kurze Einblendung von 70 %); dauert es > `SKEL_AFTER` 350 ms,
 Geist ausblenden und Skelett zeigen. Keine Kreuzblende (Text lag doppelt übereinander). Messen: Layout-Shift-Observer + Zwischenbilder.
+Ladebalken `loadbar` (unter der Werkzeugleiste, erst nach `LOADBAR_AFTER` 150 ms). **Langsame Ansichten nicht als Ganzes abwarten**
+(seit 0.21.1, Nutzerbefund „Übersicht ploppt auf einmal auf“): Gerüst sofort zurückgeben, Abschnitte einzeln füllen – Übersicht: `load()`
+startet je Abschnitt eigene Anfragen (`paintCard` je Modul, `paintFeatured` je homeFeatured), Platzhalter `.skel-*` in fester Höhe, erste Füllung `.fill`.
+Prüfen mit künstlich verzögerter API (Playwright async `page.route` + `asyncio.sleep` – synchron blockiert `time.sleep` alles).
 Polling alle 2,5 s (`/api/status`), Ansichten zeichnen nur bei geänderter Signatur neu (Formulare/Zoom bleiben erhalten). `route()` verwirft Ansichten, die erst
 nach einem weiteren Klick fertig werden (`routeTicket`), und gibt jeder Ansicht einen eigenen Behälter in `#view` (sonst schrieb eine
 verworfene, noch ladende Ansicht über die aktuelle). Ansichten, die nach `await` global per `$('#…')` suchen, vorher `el.isConnected` prüfen. Bildbetrachter `createViewer(host, src, cmpSrc, labels, ph, {overlay})` mit Zoom/Pan/Pinch, Vergleich
