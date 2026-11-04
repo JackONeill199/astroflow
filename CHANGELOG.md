@@ -35,6 +35,22 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   Fertig, Alle – Standard „Offen“) mit Anzahl, dazu Menüs „Art“ (Aufnahmen, fertige Bilder, Kalibrierung) und „Format“
   (FITS, JPG, PNG, TIFF …) mit Mehrfachauswahl. „Alle neuen“ und „Importieren“ wirken nur auf die angezeigten Gruppen;
   die Filterwahl bleibt gemerkt.
+- **Ruhigeres, offeneres Layout:** Übersichten, Listen, Wissensseiten und Import stehen zentriert mit begrenzter Breite;
+  auf großen Monitoren wachsen nur die Außenränder. Lesetexte haben eine angenehme Zeilenlänge, Arbeitsflächen (Bild bearbeiten,
+  SkyTrace-Lauf, 3D) nutzen weiter die volle Breite. Größere Schrift, deutlichere Überschriften, weniger Rahmen und keine Karten in Karten.
+- **Übersicht:** zuletzt bearbeitete Bilder und Entdeckungen zuerst, Module kompakt darunter; ohne laufende Aufträge nur eine Zeile.
+  „Heute Nacht“ zeigt kompakt Dunkelheit, Mond, Wetter und bis zu drei Ziele – die volle Grafik gibt es in der Aufteilung „Nachtplanung“.
+- **Bilddetails:** das Foto bekommt die ganze Fläche; Bild-Details und Tutor öffnen über „Details“. Der Tutor trennt **Bildqualität**
+  (Bewertung der Messwerte am fertigen Bild) und **Aufnahmebedingungen** (Hinweise zur Nacht, senken die Bewertung nicht); die
+  Aufnahmenächte sind aufklappbar.
+- **Import:** zwei Einstiege mit kurzer Erklärung – „Dateien nach AstroFlow kopieren“ oder „Vorhandenen Ordner einbinden“;
+  technische Erläuterungen aufklappbar.
+- **Bilder und Galerie** erklären ihre Rolle (verarbeiten/verwalten bzw. betrachten/zeigen).
+- **SkyTrace:** gleichnamige Analysen heißen in der Liste „Variante n von m“ (die neueste „aktuell“); die Vorschau ist nie höher als
+  das Fenster, Wiedergabe und Kandidatenwahl bleiben darunter sichtbar.
+- **Sage:** kompakter Objektkopf (Foto, Kurztext, Kernwerte), darunter eine Hauptspalte (Beschreibung, Schnellfakten, Forschung) und
+  rechts Himmelsposition, eigene Aufnahmen, Verwandtes und Notizen – ohne doppeltes Bild, doppelte Beschreibung oder doppelte Fakten.
+  Das Foto mit Objektmarken steht unter „Bilder & Aufnahmen“. Die Himmelskarte beschriftet nicht mehr überlappend.
 - **SkyTrace 3D-Ansicht als eigene Ansicht statt Fenster:** im Lauf als Reiter „3D“ mit großer Bühne, Zeitleiste und Objektliste
   daneben (Handy: darunter), dazu der Menüpunkt **SkyTrace → 3D-Ansicht** mit Auswahl der Analyse und ein Einstieg auf der
   SkyTrace-Startseite. Kamera (Erde, Teleskop, Durchgang, Folgen), Vollbild (Taste F), im neuen Design. „3D-Ansicht“ beim

@@ -15,7 +15,22 @@
 .lib-meta { display: flex; gap: 0.375rem; flex-wrap: wrap }
 .lib-done { margin-top: 0.75rem }
 .lib-hidden { margin-top: 0.5rem }
-.imp-hint { text-align: center; max-width: 40rem; margin: 0.625rem auto 0 }
+.imp-choice { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: 0.75rem; margin-bottom: 1.5rem }
+.imp-opt { display: flex; align-items: flex-start; gap: 0.875rem; padding: 1rem 1.125rem; border: 1px solid var(--border-soft); border-radius: var(--r-lg); background: var(--surface);
+  color: var(--fg); font: inherit; text-align: left; cursor: pointer; transition: border-color var(--t), background var(--t) }
+.imp-opt:hover { border-color: var(--border) }
+.imp-opt.on { border-color: var(--acc); background: color-mix(in srgb, var(--acc) 7%, var(--surface)) }
+.imp-opt b { display: block; font-size: 0.9375rem }
+.imp-opt small { display: block; margin-top: 0.25rem; color: var(--mut); font-size: 0.8125rem; line-height: 1.45 }
+.imp-ic { flex: none; width: 2.25rem; height: 2.25rem; display: grid; place-items: center; border-radius: var(--r); background: var(--surface-2); color: var(--mut) }
+.imp-opt.on .imp-ic { background: var(--acc-soft); color: var(--acc) }
+.imp-row { display: flex; align-items: center; justify-content: center; gap: 0.5rem 0.75rem; flex-wrap: wrap; margin-top: 0.875rem; text-align: center }
+.imp-more { margin-top: 1.25rem; font-size: 0.8125rem; color: var(--mut) }
+.imp-more summary { cursor: pointer; color: var(--mut); font-weight: 500 }
+.imp-more summary:hover { color: var(--fg) }
+.imp-more p { margin: 0.5rem 0 0; line-height: 1.55 }
+.imp-more code { overflow-wrap: anywhere }
+#lib .imp-more { margin: 0.875rem 0 0 }
 .lib-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 0.75rem; margin: 1rem 0 0.625rem;
   padding: 0.5rem 0; border-top: 1px solid var(--border-soft) }
 .lib-filt, .lib-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; min-width: 0 }

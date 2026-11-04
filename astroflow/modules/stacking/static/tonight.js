@@ -156,11 +156,22 @@ function heroText(d) {
   h1.dataset.tn = '1';
   h1.textContent = !d?.site || !s ? 'Was lohnt sich heute Nacht?' : c === 'overcast' ? 'Heute Nacht bedeckt' : s === 'partly' ? 'Teils bewölkt heute Nacht' : 'Klarer Himmel heute Nacht';
 }
+// Kompakte Karte für die Übersicht: Lage (Dunkelheit, Mond, Wetter), bis zu drei Ziele, Verweis auf die volle Planung.
+// Die interaktive Grafik zeigt die Übersicht nur in der Aufteilung „Nachtplanung“ (store dashboard.layout).
+function compact(d) {
+  if (!d.site) return `<div class="tn-empty">${noSite()}</div>`;
+  const sky = d.status?.code === 'overcast' ? `bedeckt (${d.sky.mean} %)` : d.sky?.state === 'partly' ? `teils bewölkt (${d.sky.mean} %)` : d.sky?.state ? 'klar' : null;
+  const recs = (d.recommendations || []).slice(0, 3);
+  return `<div class="tn-overview"><div><small>Dunkle Zeit</small><b>${dur(d.dark_hours * 3600)}</b></div><div><small>Mond</small><b>${d.moon.illum} %</b></div>${sky ? `<div><small>Wetter</small><b>${esc(sky)}</b></div>` : ''}</div>
+    ${statusNote(d)}
+    ${recs.length ? `<ol class="tn-top">${recs.map(x => `<li><a ${targetLink(x)}>${esc(x.name)}</a><small>${esc(x.kind_label || '')}${x.good?.length ? ' · ' + period(x.good[0]) : ''}${x.category === 'more' ? ' · mehr Zeit' : ''}${x.weather_blocked ? ' · bei klarem Himmel' : ''}</small></li>`).join('')}</ol>` : '<p class="mut sm">Heute keine passenden Ziele.</p>'}`;
+}
 async function featured() {
   let body;
-  try { const d = await api('/stacking/tonight' + query()); heroText(d); body = content(d); }
+  const full = store.get('dashboard.layout', 'balanced') === 'planning';
+  try { const d = await api('/stacking/tonight' + query()); heroText(d); body = full ? content(d) : compact(d); }
   catch (e) { body = `<p class="mut">Nachtplanung gerade nicht verfügbar: ${esc(e.message)}</p>`; }
-  return `<div class="tn-home"><div class="hhead">${icon('star')}<div><h2>Empfohlene Ziele für heute Nacht</h2></div><span class="grow"></span><a class="linkbtn" href="#/nacht">Planung öffnen ${icon('arrow')}</a></div>${body}</div>`;
+  return `<div class="tn-home"><div class="hhead">${icon('star')}<div><h2>Heute Nacht</h2></div><span class="grow"></span><a class="linkbtn" href="#/nacht">Volle Planung ${icon('arrow')}</a></div>${body}</div>`;
 }
 async function nightView(el, catalogId) {
   crumbs([['Übersicht', '#/'], ['Heute Nacht']]);

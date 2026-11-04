@@ -349,7 +349,10 @@ Hash-Routing: `#/` Übersicht, `#/nacht`, `#/bilder` (Sessions), `#/galerie` (fe
 `#/skytrace[/neu|/3d|/statistik|/<lauf>/<vorschau|kandidaten|beobachtungen|protokoll|3d>]`, `#/sage[/wiki|/entdeckungen|/sammlung|/<eintrag>]`, `#/activity` (Aufträge), `#/settings/<modul|module>`.
 **Designsystem (seit 0.21.0, Nutzerauftrag „professionelles, konsistentes Designsystem wie eine native Desktop-App“):** Tokens in `:root` von `style.css`
 (`--bg/--sidebar/--surface/--surface-2/--border/--fg/--mut/--dim/--acc/--ok/--warn/--bad`, Maße, `--t` 160 ms); alte Namen (`--panel`, `--grad`, `--acc2/3` …)
-sind Aliase. **Alle Maße in `rem`** (1rem = 16px; nur 1–2px-Rahmen und Media-Queries in px) – `html` wird ab 1800/2300/3200 px Breite größer
+sind Aliase. **Inhaltsbreiten:** der Router gibt jedem Ansichtsbehälter die Klasse `page` (zentriert, `--page-max` 80rem), `page wide`
+(Arbeitsflächen: `PAGE_WIDE` in `app.js` – `#/p/…`, SkyTrace-Lauf und 3D) bzw. `page narrow` (`--page-narrow` 60rem, Einstellungen);
+Lesetext mit `.readable` / `--read` 42rem. Keine Karte in der Karte (`.panel .panel` ohne Fläche). Kontextpanel startet geschlossen
+(`ctx.hidden`), Knöpfe mit `data-ctx-toggle` öffnen es. **Alle Maße in `rem`** (1rem = 16px; nur 1–2px-Rahmen und Media-Queries in px) – `html` wird ab 1800/2300/3200 px Breite größer
 (17,5/19,5/23 px) bzw. per Einstellung „Darstellung“ (`localStorage af.ui.scale`, `applyUiScale`); neue Stile daher in `rem` schreiben. Nur dunkel. Keine Verläufe, Glühen, Sternenhintergründe, Marketing-Überschriften. Aufwendige Animationen nur für echte Prozesse (`viz.js`, als „Schema“
 gekennzeichnet, mit echten Zahlen aus Job/Engine), sonst 150–250 ms. AppShell: Grid `top / side main ctx`; Seite scrollt als Ganzes (Layout-Test braucht das),
 Sidebar/Panel `sticky`. Breiten: ≥ 1280 Panel im Raster, darunter Schublade (`.shell.ctx-shown`); 861–1100 Sidebar nur Symbole; ≤ 860 Leiste unten + `#subnav`.

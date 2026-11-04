@@ -18,6 +18,8 @@
   background: #0b1020b3; color: #e8ebf5; cursor: pointer; backdrop-filter: blur(0.5rem); transition: opacity .2s }
 .sky:not(:hover) .sky-full { opacity: .55 }
 .sky:fullscreen { border-radius: 0; aspect-ratio: auto }
+/* Vorschau nie höher als das Fenster: Wiedergabe, Ebenen und Kandidatenwahl bleiben darunter sichtbar */
+.sky:not(:fullscreen) { width: min(100%, calc((100vh - var(--top-h) - 17rem) * 1.5)); margin-inline: auto }
 .sky::after { content: none }
 .st-stats { margin-top: 0; grid-template-columns: repeat(2, 1fr) }
 
@@ -48,7 +50,7 @@
 .ccard span { font-size: 0.7812rem; color: var(--acc3) }
 .st-cdetail { min-width: 0 }
 .cstage { position: relative; border-radius: 0.75rem; overflow: hidden; background: #000; cursor: zoom-in; margin: 0.25rem 0 0.625rem }
-.cstage img { display: block; width: 100%; max-height: 32.5rem; object-fit: contain; image-rendering: auto }
+.cstage img { display: block; width: 100%; max-height: min(32.5rem, calc(100vh - var(--top-h) - 18rem)); object-fit: contain; image-rendering: auto }
 .cstage svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none }
 .cstage-zoom { position: absolute; right: 0.625rem; bottom: 0.625rem; width: 2.125rem; height: 2.125rem; display: grid; place-items: center; border-radius: 0.5625rem; border: 1px solid #ffffff22; background: #0b1020b3; color: #fff }
 .tl-ctrl { display: flex; align-items: center; gap: 0.375rem; margin: 0.625rem 0 }
@@ -62,7 +64,7 @@
 .tl-th.on { border-color: var(--acc3) } .tl-th.on img, .tl-th:hover img { opacity: 1 }
 .frame-options { margin: 0.5rem 0 0.75rem; flex-wrap: wrap }
 .frame-options .linkbtn:disabled { opacity: .4; cursor: default }
-.cstage video { display: block; width: 100%; max-height: 32.5rem; object-fit: contain; background: #000 }
+.cstage video { display: block; width: 100%; max-height: min(32.5rem, calc(100vh - var(--top-h) - 18rem)); object-fit: contain; background: #000 }
 .cstage:fullscreen { width: 100%; height: 100%; display: grid; place-items: center; margin: 0; border-radius: 0 }
 .cstage:fullscreen img, .cstage:fullscreen video { max-height: 100vh; width: 100%; height: 100%; object-fit: contain }
 .frame-missing { min-height: 11.25rem; display: grid; place-items: center; padding: 1.5rem; text-align: center; cursor: default }

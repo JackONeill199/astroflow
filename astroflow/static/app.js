@@ -363,11 +363,12 @@ AF.ctx = {
 function ctxSync() {
   const has = AF.ctx.has, wide = wideCtx(), shell = $('#shell');
   $('#ctxBtn').hidden = !has;
-  $('#ctx').hidden = !has || (wide && store.get('ctx.hidden', false));
+  $('#ctx').hidden = !has || (wide && store.get('ctx.hidden', true));
   if (wide) shell.classList.remove('ctx-shown');
   const shown = has && (wide ? !$('#ctx').hidden : shell.classList.contains('ctx-shown'));
   $('#ctxBtn').classList.toggle('on', shown);
   $('#ctxBtn').setAttribute('aria-expanded', shown);
+  $$('[data-ctx-toggle]').forEach(b => { b.classList.toggle('on', shown); b.setAttribute('aria-pressed', shown); });
 }
 
 async function loadModules() {
@@ -436,6 +437,10 @@ const coreRoutes = [
   [/^\/settings(?:\/(\w+))?$/, 'settings', settingsView],
 ];
 const allRoutes = () => [...coreRoutes, ...AF.order.flatMap(id => AF.modules[id].routes || [])];
+// Inhaltsbreite je Ansicht: Arbeitsflächen (Bild bearbeiten, Spuren prüfen, 3D) nutzen die Breite, Formulare/Import bleiben schmal,
+// alles andere ist zentriert auf --page-max begrenzt (style.css → .page)
+const PAGE_WIDE = [/^\/p\//, /^\/skytrace\/(?!neu$|statistik$|erfolge$)[^/]+/];
+const PAGE_NARROW = [/^\/settings/];
 async function route() {
   const path = location.hash.replace(/^#/, '') || '/';
   $('#pal').open && $('#pal').close();
@@ -453,6 +458,7 @@ async function route() {
     // eigener Behälter je Aufruf: eine verworfene, noch ladende Ansicht schreibt danach nur in ihren abgehängten Behälter,
     // nicht über die aktuelle (Layout-Test fand das beim schnellen Wechseln)
     const host = document.createElement('div');
+    host.className = 'page' + (PAGE_WIDE.some(r => r.test(path)) ? ' wide' : PAGE_NARROW.some(r => r.test(path)) ? ' narrow' : '');
     host.innerHTML = '<div class="skel" style="height:40px;max-width:360px;margin-bottom:20px"></div><div class="skel-grid">' + '<div class="skel"></div>'.repeat(3) + '</div>';
     main.replaceChildren($('#subnav'), host);
     const ticket = ++routeTicket;
@@ -548,25 +554,26 @@ async function toggleJobPop(e) {
 }
 
 // --------------------------------------------------------------- Übersicht --- //
-// Dashboard: Modulkarten (summary), aktive Aufträge, zuletzt bearbeitete Bilder (recent), Entdeckungen (discoveries),
-// daneben „Heute Nacht“ (homeFeatured). Jeder Abschnitt wird nur bei geänderter Ausgabe neu geschrieben.
+// Dashboard (zentriert, eine klare Reihenfolge): laufende Aufträge (leer = eine Zeile), zuletzt bearbeitete Bilder (recent),
+// Entdeckungen (discoveries), kompakte Modulzeile (summary); daneben „Heute Nacht“ (homeFeatured, kompakt; volle Grafik in der
+// Aufteilung „Nachtplanung“). Jeder Abschnitt wird nur bei geänderter Ausgabe neu geschrieben.
 async function homeView(el) {
   crumbs([['Übersicht']]);
   const h = new Date().getHours();
   const hello = h < 5 || h >= 21 ? 'Gute Nacht' : h < 11 ? 'Guten Morgen' : h < 17 ? 'Willkommen zurück' : 'Guten Abend';
   el.innerHTML = `<div class="pagehead"><div><h1>Übersicht</h1><p class="welcome">${hello} – deine Aufnahmen, Analysen und Entdeckungen.</p></div>
       <div class="page-actions"><label class="dashboard-mode"><span>Aufteilung</span><select aria-label="Dashboard-Aufteilung"><option value="balanced">Ausgewogen</option><option value="planning">Nachtplanung</option><option value="library">Bilder &amp; Module</option></select></label></div></div>
+    <div id="hJobs"></div>
     <div class="home-grid" id="homeGrid"><div class="home-main">
-      <div class="home-modules"></div>
-      <section><h2 class="sect">Aktive Aufträge <a href="#/activity">Alle anzeigen</a></h2><div id="hJobs"></div></section>
       <section id="hRecentS"><h2 class="sect">Zuletzt bearbeitet <a href="${AF.on('stacking') ? '#/galerie' : '#/'}">Galerie öffnen</a></h2><div id="hRecent"></div></section>
       <section id="hDiscS"><h2 class="sect">Neueste Entdeckungen</h2><div id="hDisc"></div></section>
+      <section><h2 class="sect">Module</h2><div class="home-modules"></div></section>
     </div><div class="home-featured"></div></div>`;
   const layout = $('.dashboard-mode select', el), grid = $('.home-grid', el);
   const saved = store.get('dashboard.layout', 'balanced');
   layout.value = ['balanced', 'planning', 'library'].includes(saved) ? saved : 'balanced';
   grid.dataset.layout = layout.value;
-  layout.onchange = () => { grid.dataset.layout = layout.value; store.set('dashboard.layout', layout.value); };
+  layout.onchange = () => { grid.dataset.layout = layout.value; store.set('dashboard.layout', layout.value); load(); };
   const put = (node, html) => { if (node && node.homeHTML !== html) { node.homeHTML = html; node.innerHTML = html; } };
   const safe = async (fn, d) => { try { return (await fn()) ?? d; } catch { return d; } };
   async function load(st) {
@@ -583,11 +590,11 @@ async function homeView(el) {
       <div class="ms">${(c.stats || []).map(([v, l]) => `<div><b class="tnum">${esc(v)}</b><small>${esc(l)}</small></div>`).join('')}</div>
       <div class="ml">${c.live || esc(c.sub || '')}</div></a>`).join(''));
     const act = acts.filter(running);
-    put($('#hJobs', el), act.length ? `<div class="hjobs">${act.slice(0, 5).map(j => `<a class="hjob" href="${j.href || '#/activity'}"><b>${esc(j.title)}</b>
+    put($('#hJobs', el), act.length ? `<section class="home-jobs"><h2 class="sect">Laufende Aufträge <a href="#/activity">Alle anzeigen</a></h2><div class="hjobs">${act.slice(0, 5).map(j => `<a class="hjob" href="${j.href || '#/activity'}"><b>${esc(j.title)}</b>
         <span class="mut">${esc(AF.info(j.module)?.name || j.module)} · ${esc(j.state === 'queued' ? 'wartet' : j.stage || j.detail || 'läuft')}</span>
         <div class="progress ${j.state === 'queued' || j.progress == null ? 'indet' : ''}"><i style="width:${(j.progress || 0) * 100}%"></i></div>
-        <span class="pc">${j.state === 'running' && j.progress != null ? Math.round(j.progress * 100) + ' %' : ''}</span></a>`).join('')}</div>`
-      : `<div class="hnone">Gerade läuft nichts. ${acts[0] ? `Zuletzt: <a href="${acts[0].href || '#/activity'}">${esc(acts[0].title)}</a> · ${ago(acts[0].finished || acts[0].started)}` : ''}</div>`);
+        <span class="pc">${j.state === 'running' && j.progress != null ? Math.round(j.progress * 100) + ' %' : ''}</span></a>`).join('')}</div></section>`
+      : `<p class="hnone">${icon('check')}Keine laufenden Aufträge${acts[0] ? ` · zuletzt <a href="${acts[0].href || '#/activity'}">${esc(acts[0].title)}</a>, ${ago(acts[0].finished || acts[0].started)}` : ''} · <a href="#/activity">Aufträge</a></p>`);
     const rec = recent.flat().slice(0, 8);
     $('#hRecentS', el).hidden = !rec.length;
     put($('#hRecent', el), `<div class="hthumbs">${rec.map(r => `<a href="${r.href}" title="${esc(r.title)}"><span class="ii"><img src="${r.img}" alt="" loading="lazy"></span><span>${esc(r.title)}</span><small>${esc(r.sub || '')}</small></a>`).join('')}</div>`);
@@ -789,7 +796,7 @@ async function boot() {
   $('#ctxScrim').onclick = () => AF.ctx.hide();
   matchMedia('(min-width: 1280px)').addEventListener('change', ctxSync);
   $('#jobpill').onclick = toggleJobPop;
-  document.addEventListener('click', (e) => { if (e.target.closest('[data-ctx-open]')) AF.ctx.show(); });
+  document.addEventListener('click', (e) => { if (e.target.closest('[data-ctx-open]')) AF.ctx.show(); else if (e.target.closest('[data-ctx-toggle]')) AF.ctx.toggle(); });
   document.addEventListener('click', (e) => { if (!e.target.closest('.jobs-ind')) { $('#jobpop').classList.remove('open'); $('#jobpill').setAttribute('aria-expanded', false); } });
   addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('#jobpop').classList.remove('open'); if ($('#shell').classList.contains('ctx-shown')) AF.ctx.hide(); } });
   addEventListener('keydown', (e) => {

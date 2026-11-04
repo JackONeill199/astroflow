@@ -254,6 +254,7 @@ def test_folder_dialog(server, browser, size):
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.goto(f"{base}/#/import")
+    page.click(".imp-opt[data-m=link]")                     # Einstieg „Vorhandenen Ordner einbinden“
     page.click("#libPick")
     page.wait_for_selector("#dlg[open] .frow")
     assert page.locator("#fdr .chip").count() >= 1
@@ -285,6 +286,15 @@ def test_tonight_recommendations_chart_and_links(server, browser, size, tmp_path
     gallery = [{**projects[0], 'name': f'Testobjekt {i + 1}'} for i in range(6)]
     page.route('**/api/stacking/projects', lambda r: r.fulfill(json=gallery))
     page.goto(base + '/#/')
+    # Standard „Ausgewogen“: kompakte Karte (Lage + bis zu drei Ziele + Verweis), keine Grafik
+    page.wait_for_selector('.home-featured .tn-top li')
+    assert page.locator('.home-featured af-tonight-chart').count() == 0
+    assert 1 <= page.locator('.home-featured .tn-top li').count() <= 3
+    assert page.locator('.home-featured a[href="#/nacht"]').is_visible()
+    if size == 'gross':                                    # zentriert: Inhalt begrenzt, Außenränder wachsen
+        grid = page.locator('.home-grid').bounding_box()
+        assert grid['width'] < 1700 and grid['x'] > 400, grid
+    page.get_by_label('Dashboard-Aufteilung').select_option('planning')
     page.wait_for_selector('af-tonight-chart svg')
     assert round(page.locator('.tn-chart').bounding_box()['height']) >= 340
     total = len(d['recommendations'])
@@ -311,27 +321,30 @@ def test_tonight_recommendations_chart_and_links(server, browser, size, tmp_path
         assert page.locator('.tn-tooltip').is_visible()
     slider.focus()
     slider.press('End')
-    # Modulkarten stehen auf Desktopbreite links neben „Heute Nacht“ über dem unteren Fensterrand.
+    # Hauptspalte (Bilder, Entdeckungen, Module) steht auf Desktopbreite links neben „Heute Nacht“.
     if size != 'handy':
-        modules = page.locator('.home-modules').bounding_box()
+        main = page.locator('.home-main').bounding_box()
         diagram = page.locator('.home-featured').bounding_box()
-        assert diagram['x'] > modules['x'] + modules['width']
-        assert modules['y'] + modules['height'] <= h
+        assert diagram['x'] > main['x'] + main['width'] - 1
         assert page.locator('.hthumbs a').first.bounding_box()['width'] >= (140 if size == 'gross' else 85)
         assert page.locator('.hthumbs span').first.is_visible()
-        if size == 'gross':
-            assert page.locator('.home-grid').bounding_box()['width'] > 1800
     # Aufteilung wechselt ohne Verlust der Kurvenauswahl oder des Zeitzeigers.
     mode = page.get_by_label('Dashboard-Aufteilung')
     chosen = page.locator('[data-select][aria-pressed="true"]').get_attribute('data-select')
-    host = page.locator('af-tonight-chart').element_handle()
-    for value in ['planning', 'library', 'balanced']:
+    # Andere Aufteilungen zeigen die kompakte Karte; zurück auf „Nachtplanung“ kommt die Grafik mit derselben Auswahl wieder
+    for value in ['library', 'balanced']:
         mode.select_option(value)
-        page.wait_for_timeout(150)
-        assert host.evaluate('(e) => e.isConnected')
-        assert page.locator(f'[data-select="{chosen}"]').get_attribute('aria-pressed') == 'true'
-        assert page.locator('.tn-time').input_value() == str(len(d['times']) - 1)
+        page.wait_for_selector('.home-featured .tn-top li')
+        assert page.locator('.home-featured af-tonight-chart').count() == 0
         assert not page.evaluate(FIND_OVERFLOW)
+    mode.select_option('planning')
+    page.wait_for_selector('af-tonight-chart svg')
+    page.locator(f'[data-select="{chosen}"]').click()
+    assert page.locator(f'[data-select="{chosen}"]').get_attribute('aria-pressed') == 'true'
+    slider = page.locator('.tn-time')
+    slider.focus()
+    slider.press('End')
+    assert not page.evaluate(FIND_OVERFLOW)
     if size == 'gross':
         sky = page.locator('.home-modules [data-m="skytrace"]').bounding_box()
         sage = page.locator('.home-modules [data-m="sage"]').bounding_box()
@@ -362,7 +375,7 @@ def test_tonight_recommendations_chart_and_links(server, browser, size, tmp_path
     page.goto(base + '/#/')
     page.get_by_label('Dashboard-Aufteilung').select_option('library')
     page.reload()
-    page.wait_for_selector('af-tonight-chart svg')
+    page.wait_for_selector('.home-featured .tn-top li')
     assert page.get_by_label('Dashboard-Aufteilung').input_value() == 'library'
     page.close()
     assert not errors, errors

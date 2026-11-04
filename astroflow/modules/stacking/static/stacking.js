@@ -84,18 +84,24 @@ function nightChips(n, dev = {}) {
 function tutorHtml(t, s) {
   const q = t.quality, beginner = t.mode === 'einsteiger', snr = q.measure?.snr;
   const dev = t.device || {};
-  const finds = t.findings.map(f => `<details class="tfind lvl-${f.level}" ${beginner && (f.level === 'bad' || f.level === 'warn') ? 'open' : ''}>
+  const find = f => `<details class="tfind lvl-${f.level}" ${beginner && (f.level === 'bad' || f.level === 'warn') ? 'open' : ''}>
       <summary><b>${esc(f.title)}</b></summary><p>${esc(f.text)}</p>
-      ${f.tips.length ? `${beginner ? '<small class="mut tips-h">So geht es beim nächsten Mal besser</small>' : ''}<ul>${f.tips.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</details>`).join('');
+      ${f.tips.length ? `${beginner ? '<small class="mut tips-h">So geht es beim nächsten Mal besser</small>' : ''}<ul>${f.tips.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</details>`;
+  // Zwei getrennte Aussagen: Bildqualität (Messwerte am fertigen Bild → Bewertung) und Aufnahmebedingungen (Nacht, Gerät → Tipps)
+  const imgCodes = new Set([...(q.issues || []).map(i => i.code), 'good']);
+  const imgF = t.findings.filter(f => imgCodes.has(f.code)), condF = t.findings.filter(f => !imgCodes.has(f.code));
   const nights = t.nights.slice(-4).map(n => `<div class="tnight"><div class="tnight-h"><b>${fnight(n.night)}</b>
       <span class="mut sm">${utcTime(n.start)}–${utcTime(n.end)} UTC · ${n.frames} Aufnahmen${n.rejected ? `, ${n.rejected} aussortiert` : ''}</span></div>
       <div class="tchips">${nightChips(n, dev)}</div></div>`).join('');
   const ki = t.ki;
-  return `<div class="panel">${qscoreHead(q, beginner ? 'Bild-Tutor' : 'Technische Bildprüfung',
-      `${qlabel(q)}${snr != null ? ` · Objekt-SNR ${Math.round(snr)}` : ''}${dev.name ? ` · ${esc(dev.name)}${dev.guessed ? ' (am Bildformat erkannt)' : ''}` : ''}`)}
-    ${beginner ? `<p class="mut sm tutor-intro">Ich habe dein Bild und die Aufnahme${t.nights.length > 1 ? 'nächte' : 'nacht'} geprüft – das ist mir aufgefallen. Klick auf einen Punkt für Erklärung und Tipps.</p>` : ''}
-    <div class="tfinds">${finds}</div>
-    ${t.nights.length ? `<small class="mut tsec">${t.nights.length > 1 ? 'Aufnahmenächte' : 'Aufnahmenacht'}</small><div class="tnights">${nights}</div>` : ''}
+  const good = q.score >= 8.5, warnImg = imgF.some(f => f.level === 'warn' || f.level === 'bad');
+  return `<div class="panel">${qscoreHead(q, 'Bildqualität', `${qlabel(q)}${snr != null ? ` · Objekt-SNR ${Math.round(snr)}` : ''}`)}
+    <p class="mut sm tutor-intro">Die Zahl bewertet nur Messwerte am fertigen Bild (Himmel, Farbe, Rauschen, Verläufe, Clipping).${good && warnImg ? ' Sie ist gut – die Punkte darunter lassen sich trotzdem verbessern.' : ''}${condF.length ? ' Hinweise zur Aufnahmenacht stehen getrennt darunter und senken die Zahl nicht.' : ''}</p>
+    ${imgF.length ? `<div class="tfinds">${imgF.map(find).join('')}</div>` : '<p class="ok sm">Keine messbaren Probleme am Bild.</p>'}
+    ${condF.length || t.nights.length ? `<h3 class="tsec-h">Aufnahmebedingungen${dev.name ? ` <span class="mut sm">· ${esc(dev.name)}${dev.guessed ? ' (am Bildformat erkannt)' : ''}</span>` : ''}</h3>
+      ${beginner && condF.length ? `<p class="mut sm tutor-intro">Was in der Aufnahme${t.nights.length > 1 ? 'nächten' : 'nacht'} auffiel – mit Tipps für das nächste Mal.</p>` : ''}
+      ${condF.length ? `<div class="tfinds">${condF.map(find).join('')}</div>` : ''}
+      ${t.nights.length ? `<details class="tnights-d"><summary class="sm">${t.nights.length > 1 ? `${t.nights.length} Aufnahmenächte` : 'Aufnahmenacht'} · Dämmerung, Mond, Höhe${t.weather ? ', Wetter' : ''}</summary><div class="tnights">${nights}</div></details>` : ''}` : ''}
     ${!t.site ? `<p class="mut sm">Für Dämmerung, Mondhöhe und Wetter fehlt dein Standort – <a href="#/settings/stacking">in den Einstellungen eintragen</a>.</p>`
       : !t.weather ? `<p class="mut sm">Wetterdaten (Wolken, Tau, Wind, Frost) lassen sich <a href="#/settings/stacking">in den Einstellungen</a> einschalten.</p>` : ''}
     ${t.weather_error ? `<p class="warn sm">${esc(t.weather_error)}</p>` : ''}
@@ -165,7 +171,7 @@ async function galleryView(el) {
   crumbs([['Bilder']]);
   const ui = JSON.parse(localStorage.getItem('af.gallery') || '{}');
   let q = ui.q || '', kind = ui.kind || 'all', sort = ui.sort || 'recent', mode = ui.view || 'cards', projects = [], st = sst(), sig = '', order = '';
-  el.innerHTML = `<div class="pagehead"><div><h1>Bilder</h1><p class="mut" id="gsum"></p></div>
+  el.innerHTML = `<div class="pagehead"><div><h1>Bilder</h1><p>Aufnahmen verarbeiten und verwalten: Stacking, Entwicklung, Versionen. <span class="dim" id="gsum"></span></p></div>
     <div class="page-actions"><button class="btn ghost" id="gscan" title="Eingangsordner jetzt nach neuen Aufnahmen durchsuchen">${icon('refresh')}Scannen</button>
     <div class="menu"><button class="btn ghost">Mehr${icon('chev')}</button><div class="pop">
       <a href="#" id="gdev">Alle neu entwickeln <small>aus dem Master-Stack</small></a><a href="#/bilder/statistik">Statistik <small>Belichtung, Geräte, Nächte</small></a><a href="#/galerie">Galerie <small>nur fertige Bilder</small></a></div></div>
@@ -313,7 +319,7 @@ async function picturesView(el) {
   crumbs([['Galerie']]);
   const ui = store.get('pictures', {});
   let q = ui.q || '', kind = ui.kind || 'all', sort = ui.sort || 'recent', mode = ui.view || 'grid', list = [], sig = '';
-  el.innerHTML = `<div class="pagehead"><div><h1>Galerie</h1><p class="mut" id="psum"></p></div>
+  el.innerHTML = `<div class="pagehead"><div><h1>Galerie</h1><p>Fertige Ergebnisse betrachten und zeigen. <span class="dim" id="psum"></span></p></div>
     <div class="page-actions"><a class="btn" href="#/import">${icon('upload')}Bilder importieren</a></div></div>
     <div class="toolbar"><input type="search" id="pq" placeholder="Bild suchen …" title="Taste /" value="${esc(q)}">
       <select id="pkind" aria-label="Objekttyp"></select><span class="grow"></span>
@@ -404,6 +410,7 @@ async function projectView(el, id, tab = 'bild') {
         ${r ? `<div class="menu" id="dl"><button class="btn ghost">${icon('down')}Export${icon('chev')}</button><div class="pop">
           ${p.imported ? `<a href="/api/stacking/results/${r.id}/original">Originaldatei <small>unverändert · ${esc(r.stats.imported.format)}</small></a>` : `<a href="/api/stacking/results/${r.id}/tif">TIFF 16-bit <small>Druck/Bearbeitung</small></a>`}<a href="/api/stacking/results/${r.id}/png">PNG <small>${p.imported ? 'Anzeigeversion' : 'verlustfrei'}</small></a>
           <a href="/api/stacking/results/${r.id}/jpg" download>JPEG <small>zum Teilen</small></a>${p.imported ? '' : `<a href="/api/stacking/results/${r.id}/fits">FITS linear <small>für PixInsight & Co.</small></a>`}</div></div>` : ''}
+        ${r ? `<button class="btn ghost" data-ctx-toggle title="Bild-Details, Bild-Tutor und Himmelsposition ein-/ausblenden">${icon('panel')}Details</button>` : ''}
         <div class="menu" id="more"><button class="btn ghost">Mehr${icon('chev')}</button><div class="pop">
           ${r && !p.imported ? `<a href="#" data-act="develop">Neu entwickeln <small>ohne Stacking</small></a>` : ''}
           ${p.imported ? '<span class="pop-note">Fertig importiert · keine Rohaufnahmen vorhanden</span>' : p.deleted?.can_restack === false ? `<span class="pop-note">Komplett neu stacken nicht möglich – Einzelbilder nach dem Stacking gelöscht</span>`
@@ -511,7 +518,7 @@ async function projectView(el, id, tab = 'bild') {
           <span class="grow"></span><button class="linkbtn" id="latest">Neueste Version zeigen</button></div>` : ''}
         ${p.imported ? `<div class="notice" style="margin-top:14px"><div><b>Fertig importiertes Bild</b><div class="mut sm">Das Original bleibt unverändert. AstroFlow führt kein erneutes Stacking und keine automatische Entwicklung durch.</div>
           ${AF.on('sage') ? '<button class="btn ghost sm" id="importedSage" style="margin-top:8px">Mit Sage bestimmen und erzählen</button>' : ''}</div></div>` : ''}
-        <button class="btn ghost sm ctx-inline" data-ctx-open>${icon('panel')}Bild-Details und Bild-Tutor</button></div>`;
+</div>`;
     // Kontextpanel: Kennzahlen, Kanäle, Bild-Tutor, Details, Himmelsposition, KI-Prüfung
     AF.ctx.open(el, { title: 'Bild-Details', html: `<div class="row ctx-acts"><a class="btn ghost sm" href="/api/stacking/results/${r.id}/jpg" download>${icon('down')}JPEG</a>
         ${AF.on('sage') ? `<button class="btn ghost sm" id="ctxStory" title="Sage nutzt die vorhandene Plate-Solving-Lösung und die erkannten Objekte">${icon('book')}Geschichte erzählen</button>` : ''}
@@ -885,32 +892,46 @@ async function projectView(el, id, tab = 'bild') {
 async function importView(el) {
   crumbs([['Bilder', '#/bilder'], ['Import']]);
   const st = await api('/stacking/status');
-  el.innerHTML = `<div class="pagehead"><div><h1>Bilder und Aufnahmen importieren</h1><p class="mut">Ein Eingang für Rohaufnahmen und fertige Astrofotos – AstroFlow ordnet sie automatisch zu.</p></div></div>
-    <label class="dropzone" id="dz">${icon('upload')}<h2>Bilder oder ganze Ordner hierher ziehen</h2>
-      <div class="mut">oder klicken · FITS, JPG, PNG und TIFF dürfen gemischt sein</div>
-      <input type="file" id="fi" multiple accept=".fit,.fits,.fts,.jpg,.jpeg,.png,.tif,.tiff" hidden></label>
-    <div class="row" style="justify-content:center;margin-top:12px"><label class="btn ghost sm">Ordner auswählen…<input type="file" id="fd" webkitdirectory multiple hidden></label>
-      <span class="mut sm">Ordnernamen bleiben erhalten – z. B. verrät „…_observation_M57“ bei Stellina das Objekt.</span></div>
-    <p class="mut sm imp-hint">Hochladen legt eine Kopie in AstroFlow an. Liegen viele Rohdaten schon auf diesem PC (auch auf einer anderen Platte),
-      besser <button class="linkbtn" id="toLib">Hauptordner durchsuchen</button> – dort bleiben die Dateien am Ort und es wird nichts kopiert.</p>
-    <div class="uploads" id="ups"></div>
-    <section class="panel" id="lib" style="margin-top:20px"><div class="panel-h"><h2 style="margin:0">Hauptordner durchsuchen</h2></div>
-      <p class="mut sm" style="margin-top:0">Ordner mit allen Beobachtungen wählen (z. B. die Stellina-Platte). AstroFlow findet die Objekte darin und zeigt, was noch nicht oder nicht fertig gestackt in AstroFlow ist.
-        <b>Beim Import wird nichts kopiert:</b> die Dateien bleiben unverändert am Ort und werden von dort gelesen – auch von einer anderen Platte. Diese muss nur zum Stacken neuer Aufnahmen angeschlossen sein; fertige Stacks lassen sich ohne sie bearbeiten.</p>
+  // Zwei Einstiege: kopieren (Hochladen) oder vorhandenen Ordner einbinden (Hauptordner durchsuchen, nichts wird kopiert)
+  let mode = store.get('import.mode', 'copy') === 'link' ? 'link' : 'copy';
+  el.innerHTML = `<div class="pagehead"><div><h1>Importieren</h1><p>Rohaufnahmen (FITS) und fertige Astrofotos (JPG, PNG, TIFF). Objekt, Kamera und Nacht erkennt AstroFlow selbst.</p></div></div>
+    <div class="imp-choice" role="tablist" aria-label="Art des Imports">
+      <button class="imp-opt" role="tab" data-m="copy"><span class="imp-ic">${icon('upload')}</span><span><b>Dateien nach AstroFlow kopieren</b>
+        <small>Hochladen legt eine Kopie im Datenordner an – gut für einzelne Nächte und fertige Bilder.</small></span></button>
+      <button class="imp-opt" role="tab" data-m="link"><span class="imp-ic">${icon('folder')}</span><span><b>Vorhandenen Ordner einbinden</b>
+        <small>Die Dateien bleiben am Ort, nichts wird kopiert – gut für die ganze Teleskop-Platte oder eine externe Festplatte.</small></span></button>
+    </div>
+    <section id="impCopy" class="imp-sec">
+      <label class="dropzone" id="dz">${icon('upload')}<h2>Bilder oder ganze Ordner hierher ziehen</h2>
+        <div class="mut">oder klicken · FITS, JPG, PNG und TIFF dürfen gemischt sein</div>
+        <input type="file" id="fi" multiple accept=".fit,.fits,.fts,.jpg,.jpeg,.png,.tif,.tiff" hidden></label>
+      <div class="imp-row"><label class="btn ghost sm">${icon('folder')}Ordner auswählen …<input type="file" id="fd" webkitdirectory multiple hidden></label>
+        <span class="mut sm">Ordnernamen bleiben erhalten – z. B. verrät „…_observation_M57“ bei Stellina das Objekt.</span></div>
+      <div class="uploads" id="ups"></div>
+      <details class="imp-more"><summary>Wie AstroFlow die Dateien einordnet</summary><div class="readable">
+        <p><b>FITS → Rohaufnahmen.</b> Objekt, Kamera und Nacht kommen aus den Headern. Lights, Darks, Flats und Bias dürfen gemischt sein; neue Nächte werden nachgestackt.</p>
+        <p><b>JPG, PNG, TIFF → fertige Bilder.</b> Direkt in die Galerie, ohne erneutes Stacking oder Stretch. Das Original bleibt erhalten; Sage bestimmt die Bilder, wenn „Automatisch entdecken“ aktiv ist.</p>
+        <p><b>Ohne Hochladen:</b> FITS-Dateien direkt in <code>${esc(st.input_dir)}</code> legen – AstroFlow schaut alle ${st.scan_interval} s nach.</p></div></details>
+    </section>
+    <section id="lib" class="imp-sec">
       <div class="lib-form"><button class="btn" id="libPick">${icon('folder')}Ordner wählen …</button><span class="lib-root" id="libRoot"></span><button class="btn ghost" id="libGo" hidden>${icon('refresh')}Erneut durchsuchen</button></div>
-      <div id="libBody"></div></section>
-    <div class="infogrid">
-      <div><b>Oder: Rohdaten-Ordner einbinden</b>Lege FITS-Dateien direkt in <code>${esc(st.input_dir)}</code> – AstroFlow schaut alle ${st.scan_interval} s nach.</div>
-      <div><b>FITS → Rohaufnahmen</b>Objekt, Kamera und Nacht werden aus den Headern erkannt. Lights, Darks, Flats und Bias sind gemischt möglich; neue Nächte werden nachgestackt.</div>
-      <div><b>JPG, PNG, TIFF → fertige Bilder</b>Direkt in die Galerie, ohne erneutes Stacking oder Stretch. Das Original bleibt erhalten. Sage bestimmt die Bilder automatisch, wenn „Automatisch entdecken“ aktiv ist.</div>
-    </div>`;
+      <details class="imp-more"><summary>Was beim Einbinden passiert</summary><div class="readable">
+        <p>AstroFlow durchsucht den Ordner samt Unterordnern (z. B. die Stellina-Platte), findet die Objekte darin und zeigt, was noch nicht oder nicht fertig gestackt ist.</p>
+        <p><b>Es wird nichts kopiert:</b> Die Dateien bleiben unverändert am Ort und werden von dort gelesen – auch von einer anderen Platte. Diese muss nur zum Stacken neuer Aufnahmen angeschlossen sein; fertige Stacks lassen sich ohne sie bearbeiten.</p></div></details>
+      <div id="libBody"></div></section>`;
+  const setMode = (m) => {
+    mode = m; store.set('import.mode', m);
+    $$('.imp-opt', el).forEach(b => { b.classList.toggle('on', b.dataset.m === m); b.setAttribute('aria-selected', b.dataset.m === m); });
+    $('#impCopy', el).hidden = m !== 'copy'; $('#lib', el).hidden = m !== 'link';
+  };
+  $$('.imp-opt', el).forEach(b => b.onclick = () => setMode(b.dataset.m));
+  setMode(mode);
   const dz = $('#dz');
   $('#fi').onchange = (e) => { upload([...e.target.files]); e.target.value = ''; };
   $('#fd').onchange = (e) => { upload([...e.target.files]); e.target.value = ''; };
   dz.ondragover = (e) => { e.preventDefault(); dz.classList.add('over'); };
   dz.ondragleave = () => dz.classList.remove('over');
   dz.ondrop = async (e) => { e.preventDefault(); e.stopPropagation(); dz.classList.remove('over'); upload(await droppedFiles(e.dataTransfer)); };
-  $('#toLib').onclick = () => $('#lib').scrollIntoView({ behavior: 'smooth', block: 'start' });
   libraryPanel(el);
 }
 

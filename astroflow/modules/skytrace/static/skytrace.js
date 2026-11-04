@@ -47,6 +47,14 @@ async function deleteRun(id, title) {
   } catch (e) { toast(e.message, 'err'); return false; }
 }
 
+// Gleichnamige Analysen (z. B. „Erneut analysieren“) unterscheidbar machen: Variante n von m, die neueste ist „aktuell“
+function runVariants(all) {
+  const groups = new Map();
+  for (const r of all) { const k = shortName(r.title); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); }
+  for (const g of groups.values()) g.sort((a, b) => a.id < b.id ? -1 : 1);
+  return (r) => { const g = groups.get(shortName(r.title)); if (!g || g.length < 2) return '';
+    const i = g.indexOf(r) + 1; return ` <span class="chip ${i === g.length ? 'acc' : ''}" title="${g.length} Analysen derselben Beobachtung">${i === g.length ? 'aktuell · ' : ''}Variante ${i} von ${g.length}</span>`; };
+}
 async function runsView(el) {
   crumbs([['SkyTrace']]);
   let boot = await api(T + '/bootstrap'), sig = '', liveSig = '', mode = store.get('skytrace.view', 'table'), viz = null;
@@ -74,6 +82,7 @@ async function runsView(el) {
   });
   function draw() {
     const runs = boot.runs.filter(r => (shortName(r.title) + ' ' + r.id).toLowerCase().includes(q));
+    const variant = runVariants(boot.runs);
     const s = JSON.stringify([mode, runs.map(r => [r.id, r.frames, r.candidates, r.preview])]);
     $('#stsum').textContent = boot.runs.length ? `${boot.runs.length} Analyse${boot.runs.length === 1 ? '' : 'n'} · ${nf.format(boot.runs.reduce((a, r) => a + r.candidates, 0))} Kandidaten` : '';
     if (s === sig) return;
@@ -81,7 +90,7 @@ async function runsView(el) {
     const live = (r) => boot.state.running && boot.state.run === r.id;
     if (runs.length && mode === 'table') {
       $('#stRuns').innerHTML = `<div class="tablewrap free"><table><thead><tr><th class="nosort">Analyse</th><th class="nosort">Datum</th><th class="nosort num">Beobachtungen</th><th class="nosort num">Aufnahmen</th><th class="nosort num">Unscharf</th><th class="nosort num">Kandidaten</th><th class="nosort"></th></tr></thead><tbody>
-        ${runs.map(r => `<tr class="link" data-href="#/skytrace/${encodeURIComponent(r.id)}"><td class="name">${r.preview ? `<img class="tthumb" src="${media(r.preview)}" alt="" loading="lazy">` : '<span class="tthumb" style="display:inline-block"></span>'}<a href="#/skytrace/${encodeURIComponent(r.id)}">${esc(shortName(r.title))}</a>${live(r) ? ' <span class="badge-dot run">läuft</span>' : ''}</td>
+        ${runs.map(r => `<tr class="link" data-href="#/skytrace/${encodeURIComponent(r.id)}"><td class="name">${r.preview ? `<img class="tthumb" src="${media(r.preview)}" alt="" loading="lazy">` : '<span class="tthumb" style="display:inline-block"></span>'}<a href="#/skytrace/${encodeURIComponent(r.id)}">${esc(shortName(r.title))}</a>${variant(r)}${live(r) ? ' <span class="badge-dot run">läuft</span>' : ''}</td>
           <td>${esc(runDate(r.id) || ago(r.modified))}</td><td class="num">${r.sessions}</td><td class="num">${nf.format(r.frames)}</td><td class="num">${r.excluded ? nf.format(r.excluded) : '–'}</td>
           <td class="num">${r.candidates ? `<b class="acc">${r.candidates}</b>` : '0'}</td>
           <td>${live(r) ? '' : `<button type="button" class="linkbtn" data-del="${esc(r.id)}" title="Analyse löschen" aria-label="Analyse löschen">${icon('trash')}</button>`}</td></tr>`).join('')}</tbody></table></div>`;
@@ -90,7 +99,7 @@ async function runsView(el) {
     $('#stRuns').innerHTML = runs.length ? `<div class="gallery stagger">${runs.map((r, i) => `<a class="card" href="#/skytrace/${encodeURIComponent(r.id)}" style="--i:${i}">
         <div class="thumb">${r.preview ? `<img src="${media(r.preview)}" alt="" loading="lazy" decoding="async" onload="this.classList.add('ld')">` : `<div class="ph">${icon('orbit')}Foto-/Videoanalyse</div>`}
           ${r.candidates ? `<span class="chip acc badge">${r.candidates} Kandidat${r.candidates === 1 ? '' : 'en'}</span>` : ''}</div>
-        <div class="body"><h3>${esc(shortName(r.title))}</h3><div class="meta"><span class="chip">${r.sessions} Beobachtung${r.sessions === 1 ? '' : 'en'}</span>${r.excluded ? `<span class="chip">${r.excluded} unscharf</span>` : ''}</div>
+        <div class="body"><h3>${esc(shortName(r.title))}</h3><div class="meta">${variant(r)}<span class="chip">${r.sessions} Beobachtung${r.sessions === 1 ? '' : 'en'}</span>${r.excluded ? `<span class="chip">${r.excluded} unscharf</span>` : ''}</div>
           <div class="foot"><span>${nf.format(r.frames)} Aufnahmen</span><span>${esc(runDate(r.id) || ago(r.modified))}</span></div></div>
         ${boot.state.running && boot.state.run === r.id ? '' : `<button type="button" class="card-del" data-del="${esc(r.id)}" title="Analyse löschen" aria-label="Analyse löschen">${icon('trash')}</button>`}</a>`).join('')}</div>`
       : boot.runs.length ? `<div class="empty">${icon('search')}<h2>Keine Treffer</h2></div>`
