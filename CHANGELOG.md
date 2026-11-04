@@ -32,6 +32,16 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 - **Oberflächengröße:** Auf großen Monitoren (WQHD, 4K) werden Schrift und Bedienelemente automatisch größer;
   unter Einstellungen → Module & System → Darstellung fest wählbar (90–140 %, je Browser).
 
+## 0.20.1 – 04.11.2026
+
+### Behoben
+- **Heute Nacht bei Bewölkung:** Ist die Nacht laut Vorhersage bedeckt, bleibt die Übersicht nicht mehr leer mit dem irreführenden
+  „keine Empfehlungen über 30°“. Stattdessen steht „Heute Nacht bedeckt (x % Bewölkung laut Vorhersage)“, mit dem nächsten
+  klaren Fenster (auch in der folgenden Nacht) bzw. dem Hinweis, dass die Vorhersage keines zeigt. Die Ziele erscheinen trotzdem,
+  gestrichelt und als „bei klarem Himmel“ gekennzeichnet; bei teils bewölktem Himmel stehen Ziele in klaren Stunden vorn.
+- Der Kopf der Übersicht passt sich an („Heute Nacht bedeckt“ / „Teils bewölkt“ / „Klarer Himmel heute Nacht“, ohne Wetter
+  „Was lohnt sich heute Nacht?“). Meldungen unterscheiden bedeckt, zu niedrig (Höhe), Nacht schon vorbei und keine Dunkelheit.
+
 ## 0.20.0 – 04.11.2026
 
 ### Neu

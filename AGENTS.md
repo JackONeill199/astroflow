@@ -53,7 +53,9 @@ astroflow/static/          Shell: index.html, app.js (Router, Navigation, Übers
 
 ## Befehle
 ```bash
-.venv/Scripts/python -m pytest -q tests          # Windows-venv liegt im Repo (.venv); ~30 s, muss grün sein
+.venv/Scripts/python -m pytest -q                # Windows-venv liegt im Repo (.venv); parallel (xdist, pytest.ini) ~1,2 min auf 16 Kernen (seriell 5,5 min); muss grün sein
+.venv/Scripts/python -m pytest -q -m "not ui"    # schneller Teilsatz ohne Browser-Tests (~40 s)
+.venv/Scripts/python -m pytest -q -p no:xdist -o addopts=""   # seriell (zum Debuggen eines einzelnen Tests, `-s`, pdb)
 python -m astroflow serve --port 8080 --data ./data   # Web-UI (alle Module)
 python -m astroflow process --data ./data             # alles per CLI verarbeiten
 Start.bat / Stop.bat                                  # Windows: Server im Hintergrund starten/beenden (Port 8766, ./data)
@@ -369,9 +371,14 @@ Tastenkürzel: `/` Suche in Listen, `1–4` Tabs (Objekt, SkyTrace-Lauf), `F` Vo
 **Nach Änderungen an `index.html`/`app.js`/`style.css` `?v=` in `index.html` hochzählen**; Modul-Dateien bekommen die Build-Kennung automatisch.
 
 ## Tests (`tests/`)
+**Parallel (seit 04.11.2026):** `pytest.ini` setzt `-n auto --maxprocesses=8 --dist load` (höchstens 8 Worker; voller Lauf ~82 s, zusätzlicher RAM-Bedarf gemessen ~3,3 GB) (pytest-xdist, `requirements-dev.txt` – dort auch Playwright). Seriell 5,5 min → parallel ~1,2 min,
+gleiche 240 bestanden / 4 übersprungen. Regeln für neue Tests: nur `tmp_path`/`tmp_path_factory` für Dateien (nie feste Pfade oder die Arbeitsinstanz), Server auf Port 0/`_free_port()`,
+Umgebungsvariablen nur per `monkeypatch`, keine Abhängigkeit von der Reihenfolge oder anderen Tests. `conftest.py` begrenzt unter xdist BLAS-/Pipeline-Threads auf 2 je Worker
+(`ASTROFLOW_THREADS`), sonst bremsen sich viele Worker gegenseitig. `conftest.py` setzt `ASTROFLOW_GRAXPERT/GPU/GAIA=0` schon beim Import (vor allen Modul-/Session-Fixtures, von Unterprozessen geerbt) und verbietet per `subprocess.Popen`-Schutz echte `graxpert*`/`starnet*`-Programme außerhalb des Temp-Ordners (`test_no_real_tools.py`) – am 04.11.2026 starteten Browser-Fixtures ein installiertes GraXpert dutzendfach und ließen den Rechner abstürzen. Browser-Fixtures `server`/`browser` stehen in `conftest.py` (Session-Scope = je Worker einmal); alle Browser-Tests
+tragen automatisch den Marker `ui`. **Sitzungen:** vor dem PR den vollen Lauf; beim Entwickeln `-m "not ui"` bzw. nur die betroffene Datei.
 Synthetische Daten aus `demo.py` (`generate`, `generate(anonymous=True)` ohne Koordinaten, `generate_mono` mit Filtern).
 Plate-Solving-Tests nutzen eine ASTAP-Attrappe (Python-Skript, schreibt echtes `.ini`-Format) über `SolverConfig(cmd_prefix=[...])` – kein echtes ASTAP nötig.
-**Oberfläche** (`test_ui_layout.py`, seit 31.10.2026): echter Chromium über Playwright (nur in der `.venv`, nicht in `requirements.txt`;
+**Oberfläche** (`test_ui_layout.py`, seit 31.10.2026): echter Chromium über Playwright (in `requirements-dev.txt`, nicht in `requirements.txt`;
 fehlt es, wird übersprungen – `pip install playwright && python -m playwright install chromium`). Alle Ansichten mit Demodaten bei 375/790/1440 px:
 nichts darf über seinen Kasten (nächster Vorfahr mit Rahmen/Hintergrund) oder die Seite ragen, keine JS-Fehler; Schalterzeilen müssen per Klick umschalten.
 Neue Ansichten in `ROUTES` eintragen. Achtung: globales `td { white-space: nowrap }` – Namensspalten in schmalen Tabellen brauchen `white-space: normal`.

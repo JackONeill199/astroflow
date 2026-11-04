@@ -290,7 +290,9 @@ in `core/modules.AVAILABLE` eintragen, `static/<id>.js` mit `AF.register` – fe
 ## Tests
 
 ```bash
-pip install pytest && python -m pytest tests
+pip install -r requirements-dev.txt   # pytest, pytest-xdist, Playwright
+python -m pytest                       # läuft automatisch parallel auf allen Kernen (pytest.ini)
+python -m pytest -m "not ui"            # schneller Teilsatz ohne Browser-Tests
 ```
 Die Tests erzeugen synthetische Aufnahmen (Galaxie, Bayer-Sensor, Mono-Kamera mit LRGB- und SHO-Filtern, Feldrotation über zwei Nächte, Wolken-/Schlieren-/Satellitenframes, Darks/Flats) und prüfen die ganze Kette inkl. inkrementellem Nachstacken.
 
