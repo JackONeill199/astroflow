@@ -248,11 +248,15 @@ PROFILES: dict[str, dict] = {
     "planetary":    dict(gradient_degree=3, target_bg=0.10, asinh=150, denoise=0.25, chroma_denoise=1.5, saturation=1.30, contrast=0.3, sharpen=0.5, deconv=12, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=0.85, white_pct=99.98, linear_denoise_max=0.0, ai_denoise=0.3),
     "globular":     dict(gradient_degree=2, target_bg=0.06, asinh=200, denoise=0.3, chroma_denoise=1.5, saturation=1.25, contrast=0.2, sharpen=0.4, deconv=6, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=1.0),
     "open_cluster": dict(gradient_degree=3, target_bg=0.06, asinh=60, denoise=0.3, chroma_denoise=1.5, saturation=1.30, contrast=0.2, sharpen=0.3, deconv=0, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=1.0),
+    # comet: Koma und Schweif sanft strecken (Weißpunkt höher, asinh mäßig), kein SCNR (Grün der Koma ist echt: C2/CN),
+    # keine Sternreduktion/Endbearbeitung, Gradient nur Grad 2 (höhere Grade tragen den Schweif ab). Die Sterne setzt der
+    # Kometenmodus vorher ein (comet.compose) – keine weitere Sterntrennung.
+    "comet":        dict(gradient_degree=2, target_bg=0.07, asinh=60, denoise=0.3, chroma_denoise=1.5, saturation=1.35, contrast=0.2, sharpen=0.2, deconv=0, star_reduction=0.0, scnr=0.0, bg_dark=0.03, star_separation="off", star_brightness=0.85, white_pct=99.97, linear_denoise_max=0.5),
 }
 
 KIND_LABEL = {
     "galaxy": "Galaxie", "emission": "Emissionsnebel", "reflection": "Reflexionsnebel", "planetary": "Planetarischer Nebel",
-    "snr": "Supernova-Überrest", "globular": "Kugelsternhaufen", "open_cluster": "Offener Sternhaufen", "generic": "Allgemein",
+    "snr": "Supernova-Überrest", "globular": "Kugelsternhaufen", "open_cluster": "Offener Sternhaufen", "comet": "Komet", "generic": "Allgemein",
 }
 
 

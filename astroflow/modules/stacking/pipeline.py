@@ -14,8 +14,9 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from . import calibration, channels, develop, gpu, graxpert, live, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner, stars, tutor
+from . import calibration, channels, comet, develop, gpu, graxpert, live, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner, stars, tutor
 from ...core.config import Settings, free_ram_mb
+from . import diskspace
 from .db import DB
 from .fits_io import FrameInfo, parse_date, read_data, to_channels, write_fits
 from .stacking import StackState, batch_size_for
@@ -31,6 +32,8 @@ DEFAULT_OPTIONS = {
     "sensor_glow": True,        # ortsfestes Randglühen vor der Registrierung abziehen (nur ohne Darks)
     "star_separation": None,    # None = Profil (aus) | off | auto | intern | starnet
     "graxpert": None,           # None = Einstellung | off | bge | denoise | all (KI-Hintergrund/-Entrauschen, falls installiert)
+    "comet_mode": "auto",       # Kometenmodus: auto (nach Name/Typ) | on | off – nicht „mode“, das heißt bei Aufträgen „develop“
+    "comet_name": None,         # Bezeichnung für JPL Horizons, falls der Name keine enthält (z. B. „C/2022 E3“)
 }
 GLOW_SAMPLE = 30                # Frames je Nacht für die Glühmessung
 CHECKPOINT_S = 120              # Stack-Zustand spätestens alle 2 min sichern (Wiederaufnahme nach Abbruch)
@@ -45,6 +48,21 @@ def band_of_row(r: dict) -> str | None:
 
 def stack_dir(wd: Path, band: str | None) -> Path:
     return wd / ("stack" if band is None else f"stack_{band}")
+
+
+def comet_dir(wd: Path, band: str | None) -> Path:
+    return wd / ("stack_comet" if band is None else f"stack_comet_{band}")
+
+
+def frame_time(r: dict) -> float | None:
+    """Mitte der Belichtung als Unixzeit (DATE-OBS ist UTC)."""
+    i = json.loads(r["info"])
+    d = parse_date(i.get("date_obs"))
+    if d is None:
+        return None
+    from datetime import timezone
+    d = d.replace(tzinfo=timezone.utc) if d.tzinfo is None else d
+    return d.timestamp() + 0.5 * float(i.get("exptime") or 0)
 
 
 def stage_dir(wd: Path, band: str | None) -> Path:
@@ -91,6 +109,7 @@ class Pipeline:
         self._scan_lock = threading.Lock()     # Watcher, API-Scan und Nach-Solving nie gleichzeitig
         self.on_stacked = None                 # fn(project_id, result_id): neue Aufnahmen gestackt, Rohbilder noch vorhanden
         self.live_runs = {}                     # getrennt je Objekt: Stacking und Entwicklung laufen parallel
+        self.site_provider = None               # fn() -> [Breite, Länge] | None (Standort aus den Tutor-Einstellungen)
 
     def begin_live(self, pid, job=None):
         run = live.optional(live.LiveRun, self.s.work_dir, pid, job)
@@ -155,7 +174,7 @@ class Pipeline:
         new_by_proj: dict[int, int] = {}
         for f in sorted(frames, key=lambda f: f.info.date_obs or ""):
             if f.kind == "light":
-                pid = self._project_for(f.info, centers)
+                pid = self._project_for(f.info, centers, f.night)
                 new_by_proj[pid] = new_by_proj.get(pid, 0) + 1
             else:
                 pid = None
@@ -275,8 +294,8 @@ class Pipeline:
                 out[fp] = r["path"]
         return out
 
-    def _project_for(self, info: FrameInfo, centers: dict) -> int:
-        a = scanner.assign_project(info, centers)
+    def _project_for(self, info: FrameInfo, centers: dict, night: str | None = None) -> int:
+        a = scanner.assign_project(info, centers, night)
         row = self.db.one("SELECT id FROM projects WHERE key=?", (a.key,))
         if row:
             return row["id"]
@@ -286,7 +305,7 @@ class Pipeline:
             "INSERT OR IGNORE INTO projects(key,name,obj_id,kind,ra,dec,radius,options,created) VALUES(?,?,?,?,?,?,?,?,?)",
             (a.key, a.name or a.key.split("|")[0], a.obj_id, a.kind, a.ra, a.dec, radius, "{}", time.time()))
         pid = self.db.one("SELECT id FROM projects WHERE key=?", (a.key,))["id"]
-        if a.ra is not None:
+        if a.ra is not None and a.kind != "comet":
             centers[a.key] = (a.ra, a.dec, radius)
         return pid
 
@@ -351,7 +370,7 @@ class Pipeline:
         for r, info in items:
             if info.solve is None and not self._apply_solution(r["path"], info, r["night"], sols):
                 continue
-            pid = self._project_for(info, centers)
+            pid = self._project_for(info, centers, r["night"])
             self.db.set_frame(r["id"], info=info.to_dict())
             if pid != project_id:
                 self.db.set_frame(r["id"], project_id=pid, stacked=0)
@@ -578,11 +597,16 @@ class Pipeline:
                     r["stacked"] = 0
                 shutil.rmtree(stack_dir(wd, b), ignore_errors=True)
                 shutil.rmtree(stage_dir(wd, b), ignore_errors=True)
+                shutil.rmtree(comet_dir(wd, b), ignore_errors=True)
         # Neuaufbau vorbereitet: nach einem Abbruch geht es an den Checkpoints weiter statt von vorn
         self.db.x("UPDATE projects SET restack=0 WHERE id=?", (project_id,))
         # Breitband zuerst (bestes Referenzbild), dann Schmalband; je Band nach Menge
         order = sorted(by_band, key=lambda b: (b in channels.NARROW, -len(wanted[b])))
         n_all = sum(len(w) for w in wanted.values())
+        with_comet = comet.active(proj, opt)
+        full = progress
+        if with_comet:                                   # Sterne-Stack 36–60 %, Kometen-Stack 60–84 %
+            progress = lambda f, stage, msg="", _p=full: _p(0.36 + (f - 0.36) * 0.5 if f > 0.36 else f, stage, msg)
         done_before = 0
         for b in order:
             st = states.get(b)
@@ -600,7 +624,234 @@ class Pipeline:
             done_before += len(wanted[b])
         if not states:
             raise ValueError("kein Kanal mit genug brauchbaren Aufnahmen")
+        if with_comet:
+            self._comet(proj, opt, states, by_band, lib, cache, scale, offline,
+                        lambda f, stage, msg="": full(0.60 + 0.24 * f, stage, msg))
+        else:
+            (wd / "comet.json").unlink(missing_ok=True)
         return states
+
+    # ============================================================ Kometen #
+    def _comet(self, proj, opt, states, by_band, lib, cache, scale, offline, progress) -> None:
+        """Zweiter Stack auf den Kometenkern (work/p<id>/stack_comet). Fehler hier brechen das Stacking nie ab –
+        dann gibt es nur den Sterne-Stack und den Grund in work/p<id>/comet.json."""
+        wd = self.s.work_dir / f"p{proj['id']}"
+        info_f = wd / "comet.json"
+        info: dict = {"active": True}
+        try:
+            if len(states) != 1:
+                raise ValueError("Kometenmodus nur für Farbkameras bzw. einen Filter – mehrere Filter werden auf die Sterne gestackt")
+            (band, A), = states.items()
+            info.update(self._comet_stack(proj, opt, band, A, by_band[band], lib, cache, scale, offline, progress))
+        except (InterruptedError, diskspace.DiskFull, calibration.SourceOffline, MemoryError):
+            raise
+        except Exception as e:
+            info["error"] = str(e)[:300]
+            for b in by_band:
+                shutil.rmtree(comet_dir(wd, b), ignore_errors=True)
+        wd.mkdir(parents=True, exist_ok=True)
+        info_f.write_text(json.dumps(info), encoding="utf-8")
+
+    def _site(self, rows) -> list | None:
+        sites = [tuple(json.loads(r["info"]).get("site") or ()) for r in rows]
+        sites = [x for x in sites if len(x) == 2]
+        if sites:
+            return list(max(set(sites), key=sites.count))
+        try:
+            return self.site_provider() if self.site_provider else None
+        except Exception:
+            return None
+
+    def _comet_stack(self, proj, opt, band, A, rows, lib, cache, scale, offline, progress) -> dict:
+        wd = self.s.work_dir / f"p{proj['id']}"
+        cdir = comet_dir(wd, band)
+        in_a = [r for r in rows if r["id"] in A.meta["frames"]]
+        times = {r["id"]: frame_time(r) for r in in_a}
+        if len(in_a) < 3 or any(t is None for t in times.values()):
+            raise ValueError("zu wenige Aufnahmen mit Aufnahmezeit für den Kometen-Stack")
+        old = StackState.load(cdir)
+        if old and (old.meta.get("ref_fid") != A.meta.get("ref_fid") or old.meta.get("scale") != scale):
+            old = None
+        otrack = comet.Track.from_dict(old.meta.get("comet")) if old else None
+        prev = self.comet_info(proj["id"]) or {}
+        desig = comet.designation(opt.get("comet_name") or "") or comet.designation(proj["name"])
+        same_desig = (old.meta.get("comet") or {}).get("designation", prev.get("designation")) == desig if old else False
+        if old and otrack and same_desig and all(f in old.meta["frames"] for f in times):
+            return {**prev, "active": True, "frames": len(old.meta["frames"])}
+        progress(0.0, "Kometenbahn", "Kometenkern suchen")
+        try:
+            track, info = self._comet_track(proj, opt, A, in_a, times, lib, cache, scale, offline, progress)
+        except (InterruptedError, diskspace.DiskFull, calibration.SourceOffline):
+            raise
+        except Exception as e:
+            if not (old and otrack):
+                raise
+            # z. B. nur 1–3 neue Aufnahmen, ältere Einzelbilder gelöscht: bisherige Bahn weiterverwenden, Stack behalten
+            track = otrack
+            info = {k: v for k, v in prev.items() if k not in ("frames", "error", "note", "active")}
+            info["track_note"] = f"Bahn nicht neu bestimmbar ({str(e)[:120]}) – bisherige Bahn weiter genutzt"
+        track.info["designation"] = info.get("designation")
+        fwhm = float(A.meta.get("ref_fwhm") or 3.0)
+        tt = np.array(sorted(times.values()))
+        pos = track.at(tt)
+        motion = float(np.hypot(*(pos[-1] - pos[0])))
+        info.update(motion_px=round(motion, 1), span_s=round(float(tt[-1] - tt[0]), 1))
+        if motion < comet.MIN_MOTION_FWHM * fwhm:
+            shutil.rmtree(cdir, ignore_errors=True)
+            info["note"] = (f"Der Komet bewegte sich während der Aufnahmen nur um {motion:.1f} px (Sterne ~{fwhm:.1f} px) – "
+                            "ein Stack auf die Sterne zeigt ihn bereits scharf.")
+            return info
+        if old and otrack:
+            dev = float(np.max(np.hypot(*(track.at(tt) - otrack.at(tt)).T)))
+            gone = any(r["deleted"] or r["id"] in offline for r in in_a if r["id"] in old.meta["frames"])
+            if dev > comet.REBUILD_PX and not gone:
+                old = None                              # Bahn deutlich anders (neue Aufnahmen, Ephemeride) -> neu aufbauen
+            else:
+                if dev > comet.REBUILD_PX:
+                    info["track_note"] = (f"Neue Bahn weicht um {dev:.1f} px ab, die gestackten Einzelbilder sind aber nicht "
+                                          "mehr verfügbar – der bisherige Kometen-Stack bleibt")
+                otrack.info["designation"] = track.info.get("designation")
+                track = otrack                          # bisherige Bahn beibehalten: der Stack bleibt in sich stimmig
+            if old is not None:
+                old.meta["comet"] = track.to_dict()
+        if old is None:
+            shutil.rmtree(cdir, ignore_errors=True)
+            state = StackState(A.sw.shape)
+            state.meta.update({k: v for k, v in A.meta.items() if k not in ("frames", "exposure")}, frames={}, exposure=0.0)
+            state.meta.setdefault("flux_k0", 1.0)
+            state.meta["comet"] = track.to_dict()
+        else:
+            state = old
+        todo = [r for r in in_a if r["id"] not in state.meta["frames"] and not r["deleted"] and r["id"] not in offline]
+        if not todo and not state.meta["frames"]:
+            raise ValueError("Die Einzelbilder wurden nach dem Stacking gelöscht – ein Kometen-Stack ist nicht mehr möglich.")
+        # Verschiebung je Aufnahme (Referenzpixel): Kern zur Zeit t0 bleibt stehen
+        c0 = track.at(track.t0)
+        shifts = {fid: tuple((c0 - track.at(t)).tolist()) for fid, t in times.items()}
+        # Sterne des Sterne-Stacks ausblenden, Bahn ausgenommen (Raster ggf. überabgetastet)
+        meanA, _ = A.result()
+        # Bahn nur ausnehmen, wenn der Komet so langsam ist, dass er im Sterne-Stack kompakt bleibt (sonst wäre sein Kern
+        # maskiert); bei schnelleren bleiben dort sonst Sternspuren im Kometen-Stack stehen
+        prot = comet.corridor(meanA.shape[1:], (pos + 0.5) * scale - 0.5, (0.5 * motion + 2 * fwhm) * scale)             if motion < comet.COMPACT_FWHM * fwhm else None
+        lane = comet.corridor(meanA.shape[1:], (pos + 0.5) * scale - 0.5, 1.5 * fwhm * scale)
+        mask = comet.star_mask_for(meanA.mean(0), fwhm * scale, prot, lane)
+        info["masked_pct"] = round(100 * float(mask.mean()), 2)
+        # Kern im Kometen-Stack nie ausblenden (Absicherung, falls doch ein Teil der Kometenspur als Stern galt)
+        nuc = (c0 + 0.5) * scale - 0.5
+        yy, xx = np.ogrid[: mask.shape[0], : mask.shape[1]]
+        head = (xx - nuc[0]) ** 2 + (yy - nuc[1]) ** 2 <= (3 * fwhm * scale) ** 2
+        if todo:
+            progress(0.15, "Kometen-Stack", f"{len(todo)} Aufnahmen auf den Kometenkern ausrichten")
+            sub = lambda f, stage, msg="": progress(0.15 + 0.85 * min(1.0, max(0.0, (f - 0.36) / 0.48)), "Kometen-Stack", msg)
+            state = self._stack(proj["id"], todo, state, lib, cache, scale, sub, save_dir=cdir, stages=None,
+                                shifts=shifts, mask=mask, mark=False, unmasked=head)
+        info.update(frames=len(state.meta["frames"]), t0=track.t0, nucleus=[float(v) for v in (c0 + 0.5) * scale - 0.5],
+                    track=[[round(float(x), 2), round(float(y), 2)] for x, y in
+                           ((pos[np.unique(np.linspace(0, len(pos) - 1, 9).round().astype(int))] + 0.5) * scale - 0.5)])
+        return info
+
+    def _comet_track(self, proj, opt, A, rows, times, lib, cache, scale, offline, progress):
+        """Kometenbahn im Referenzraster: Horizons (falls möglich) und/oder Kernsuche in Stichproben."""
+        desig = comet.designation(opt.get("comet_name") or "") or comet.designation(proj["name"])
+        info: dict = {"designation": desig}
+        meanA, _ = A.result()
+        LA = comet.bin_image(meanA.mean(0), scale) if scale > 1 else meanA.mean(0)
+        fwhm = float(A.meta.get("ref_fwhm") or 3.0)
+        tt = np.array(sorted(times.values()))
+        prior = None
+        if desig and comet.horizons_enabled():
+            try:
+                progress(0.02, "Kometenbahn", f"Bahn von {desig} bei JPL Horizons abfragen")
+                hdr = self._stack_wcs(proj, A, meanA, lambda m: progress(0.02, "Kometenbahn", m))
+                xy, topo = comet.ephemeris_pixels(desig, tt, hdr, scale, self._site(rows), self.s.work_dir / "komet")
+                prior = comet.Track.fit(tt, xy, "horizons", deg=2 if tt[-1] - tt[0] > 1800 else 1)
+                info.update(topocentric=topo)
+            except (InterruptedError, diskspace.DiskFull):
+                raise
+            except Exception as e:
+                info["ephemeris_error"] = str(e)[:200]
+        elif desig:
+            info["ephemeris_error"] = "JPL Horizons abgeschaltet"
+        # Stichproben über die Zeit verteilt
+        avail = sorted((r for r in rows if not r["deleted"] and r["id"] not in offline), key=lambda r: times[r["id"]])
+        pick = [avail[int(i)] for i in np.unique(np.linspace(0, len(avail) - 1, min(comet.SAMPLE, len(avail))).round())] if avail else []
+        H, W = LA.shape
+        b = max(1, int(round(max(H, W) / 800)))
+        LAb = comet.bin_image(LA, b)
+        ref_xy = np.array([[s[0], s[1]] for s in A.meta["ref_stars"]])
+        ref_flux = np.array([s[2] for s in A.meta["ref_stars"]])
+        k0 = A.meta.get("flux_k0") or 1.0
+
+        def load(r):
+            m = json.loads(r["metrics"])
+            i = json.loads(r["info"])
+            tg = np.array([[s[0], s[1]] for s in m["stars"]])
+            tf = np.array([s[2] for s in m["stars"]])
+            if r["id"] == A.meta["ref_fid"]:
+                M, pairs = np.eye(3), np.stack([np.arange(len(tg))] * 2, 1)
+            else:
+                res = registration.find_transform(ref_xy, tg)
+                if res is None:
+                    return None
+                M, pairs, _ = res
+            raw, _ = self._load(r["path"], i, lib, r["night"], cache)
+            Lb = comet.bin_image(to_channels(raw, i["bayerpat"]).mean(0), b)
+            w, valid = registration.warp(Lb[None], comet.binned_transform(M, b), LAb.shape, 1, order=1)
+            k = float(np.clip(np.median(ref_flux[pairs[:, 1]] / np.maximum(tf[pairs[:, 0]], 1e-6)) / k0, 0.4, 2.5))
+            a = w[0] * k
+            a -= float(np.median(a[valid]))
+            a[~valid] = np.nan
+            return times[r["id"]], a
+
+        samples = []
+        if pick:
+            with ThreadPoolExecutor(max(1, self.s.threads)) as ex:
+                for n, s_ in enumerate(ex.map(load, pick)):
+                    if s_ is not None:
+                        samples.append(s_)
+                    progress(0.02 + 0.10 * (n + 1) / len(pick), "Kometenbahn", f"Kometenkern suchen ({n + 1}/{len(pick)})")
+        lab = LAb - float(np.median(LAb))
+        if len(samples) >= 4:
+            res = comet.locate(samples, lab, b, fwhm, prior=comet.unscale_track(prior, b) if prior else None)
+        else:
+            res = {"track": comet.unscale_track(prior, b) if prior else None, "refined": False,
+                   "error": "zu wenige Einzelbilder für die Kernsuche"}
+        if res.get("track") is None:
+            raise ValueError(res.get("error") or "Kometenbahn nicht bestimmbar")
+        track = comet.scale_track(res["track"], b)
+        src = ("horizons+bild" if res.get("refined") else "horizons") if prior else "bild"
+        track.source = src
+        info.update(source=src, samples=len(samples), points=len(res.get("points") or []),
+                    rms_px=round(res["rms"] * b, 2) if res.get("rms") is not None else None,
+                    offset_px=round(res["offset_px"] * b, 1) if res.get("offset_px") is not None else None,
+                    rate_px_s=round(track.rate(), 4), fwhm_px=round(fwhm, 2), sharpness=res.get("sharpness"),
+                    coma_px=round(res["coma_px"] * b, 1) if res.get("coma_px") else None)
+        ex_t = [float(json.loads(r["info"]).get("exptime") or 0) for r in rows]
+        info["exptime_s"] = float(np.median(ex_t)) if ex_t else None
+        info["per_exposure_px"] = round(track.rate() * (info["exptime_s"] or 0), 2)
+        return track, info
+
+    def _stack_wcs(self, proj, A, mean, log) -> dict:
+        """WCS des Sterne-Stacks (gecacht je Referenzbild in work/p<id>/wcs.json, wie die Farbkalibrierung)."""
+        if not self.solver_cfg.enabled:
+            raise ValueError("kein Plate-Solver eingerichtet")
+        wd = self.s.work_dir / f"p{proj['id']}"
+        key = f"{A.meta.get('ref_fid')}|{mean.shape[1]}x{mean.shape[2]}"
+        f = wd / "wcs.json"
+        cached = json.loads(f.read_text()) if f.exists() else {}
+        if cached.get("key") == key:
+            return cached["wcs"]
+        log("Stack plate-solven")
+        hdr = platesolve.solve_image(self.solver_cfg, mean.mean(0), wd / "solve", proj["ra"], proj["dec"])
+        f.write_text(json.dumps({"key": key, "wcs": hdr}))
+        return hdr
+
+    def comet_info(self, project_id: int) -> dict | None:
+        f = self.s.work_dir / f"p{project_id}" / "comet.json"
+        try:
+            return json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            return None
 
     def _master(self, project_id: int) -> dict:
         """Gespeicherte Master-Stacks je Filter (None = Farbkamera)."""
@@ -615,18 +866,8 @@ class Pipeline:
             return None
         if not self.solver_cfg.enabled:
             return {"fallback": "kein Plate-Solver eingerichtet"}
-        wd = self.s.work_dir / f"p{proj['id']}"
-        ref = next(iter(states.values())).meta.get("ref_fid")
-        key = f"{ref}|{mean.shape[1]}x{mean.shape[2]}"
-        f = wd / "wcs.json"
         try:
-            cached = json.loads(f.read_text()) if f.exists() else {}
-            if cached.get("key") == key:
-                hdr = cached["wcs"]
-            else:
-                log("Stack plate-solven")
-                hdr = platesolve.solve_image(self.solver_cfg, mean.mean(0), wd / "solve", proj["ra"], proj["dec"])
-                f.write_text(json.dumps({"key": key, "wcs": hdr}))
+            hdr = self._stack_wcs(proj, next(iter(states.values())), mean, log)
             w = photometry.wcs_from(hdr)
             H, W = mean.shape[1:]
             ra, dec = (float(v) for v in w.pixel_to_world_values((W - 1) / 2, (H - 1) / 2))
@@ -675,7 +916,8 @@ class Pipeline:
         if not kind and (ext := objects.resolve_extended(proj["name"])) and ext.kind != "generic":
             kind = ext.kind                                 # ältere Projekte: Typ nachträglich aus dem großen Katalog
             self.db.x("UPDATE projects SET kind=? WHERE id=?", (kind, project_id))
-        pname = opt["profile"] if opt["profile"] != "auto" else (kind or "generic")
+        is_comet = comet.active(proj, opt)
+        pname = opt["profile"] if opt["profile"] != "auto" else ("comet" if is_comet else (kind or "generic"))
         user = opt.get("params") or {}
         params = {**objects.profile_for(pname), **user}
         if opt.get("star_separation"):
@@ -685,9 +927,17 @@ class Pipeline:
         gx: dict = {}
         if run:
             run.data.update(n=len(stacked), exposure=exposure, band=None)
+        cinfo = self.comet_info(project_id) if is_comet else None
+        singles: dict = {}
+        if cinfo is not None:
+            mean, cov, singles = self._comet_compose(project_id, states, mean, cov, cinfo, opt,
+                                                     lambda m: prog(0.02, "Kometenmodus", m))
         if view:
             view(mean)
-        if (gmode := graxpert.mode_for(opt.get("graxpert"))) != "off" and (exe := graxpert.graxpert_path()):
+        gmode = graxpert.mode_for(opt.get("graxpert"))
+        if is_comet:                                    # KI-Hintergrund könnte den schwachen Schweif abtragen
+            gmode = {"bge": "off", "all": "denoise"}.get(gmode, gmode)
+        if gmode != "off" and (exe := graxpert.graxpert_path()):
             # einmal je Entwicklung auf dem linearen Stack (gecacht) – vor der Farbkalibrierung, damit die
             # Sternfotometrie auf verlaufsfreiem Himmel misst
             mean, gx = graxpert.apply(mean, cov, gmode, float(params.get("ai_denoise", graxpert.DEFAULT_STRENGTH)),
@@ -723,6 +973,8 @@ class Pipeline:
                 stats["before"], stats["qc"] = before, qc_hist
         if gx:
             stats["graxpert"] = gx
+        if cinfo is not None:
+            stats["comet"] = cinfo
         stats.update({"profile": pname, "narrowband": narrow, "frames": len(stacked), "exposure_s": exposure,
                       "palette": palette, "bands": band_stats,
                       "nights": sorted({r["night"] for r in stacked if r["night"]})})   # Bild-Tutor: nur Nächte dieses Ergebnisses
@@ -732,6 +984,11 @@ class Pipeline:
         if run:
             live.optional(run.picture, rgb, linear=False, force=True)
         rid = self._save(proj, rgb, mean, cov, stats, review_hist, len(stacked), exposure, params)
+        if singles:
+            try:
+                self._save_singles(rid, singles, params, stats, narrow, palette, lambda m: prog(0.86, "Speichern", m))
+            except Exception as e:                     # Einzelstacks sind Beiwerk – das fertige Bild bleibt
+                print(f"Kometen-Einzelstacks fehlgeschlagen: {e}")
         # Live-JPGs nur übernehmen – keine erneute Entwicklung der Stacking-Stufen.
         try:
             self._render_stages(project_id, rid, states, params, narrow, palette, stats.get("crop"), len(stacked),
@@ -743,6 +1000,57 @@ class Pipeline:
         if run:
             live.optional(run.event, 'Fertig')
         return rid
+
+    def _comet_compose(self, project_id, states, mean, cov, cinfo, opt, log):
+        """Sterne-Stack (mean) + Kometen-Stack -> linear zusammengesetztes Bild. Gibt (Bild, Abdeckung, Einzelstacks)."""
+        if len(states) != 1 or not cinfo.get("nucleus"):
+            return mean, cov, {}
+        (band, A), = states.items()
+        cst = StackState.load(comet_dir(self.s.work_dir / f"p{project_id}", band))
+        if cst is None or cst.meta.get("ref_fid") != A.meta.get("ref_fid") or not cst.meta.get("frames"):
+            return mean, cov, {}
+        log("Sterne- und Kometen-Stack zusammensetzen")
+        B, covB = cst.result()
+        if band is not None:
+            # Mono mit einem Filter: `mean` ist schon über channels.combine normiert, der Kometen-Stack noch in ADU –
+            # deshalb roh zusammensetzen und danach jedes Bild gleich normieren
+            mean, cov = A.result()
+        sc = int(A.meta.get("scale") or 1)
+        fw = float(A.meta.get("ref_fwhm") or 3.0) * sc
+        pts = np.array(cinfo.get("track") or [cinfo["nucleus"]], float)
+        motion = float(cinfo.get("motion_px") or 0) * sc
+        method = opt.get("star_separation") if opt.get("star_separation") in ("starnet", "intern", "auto") else "auto"
+        out, ccov, meta = comet.compose(mean, cov, B, covB, fw, tuple(cinfo["nucleus"]), pts,
+                                        lane_px=0.5 * motion + 2 * fw if motion < comet.COMPACT_FWHM * fw else 0.0,
+                                        core_px=max(6 * fw, 20.0 * sc), method=method, log=log)
+        cinfo.update(composite=True, frames_comet=len(cst.meta["frames"]), **meta)
+        singles = {"stars": (mean, cov), "comet": (B, covB)}
+        if band is not None:
+            norm = lambda m, c: channels.combine({band: (m, c)}, "mono")[:2]
+            out, ccov = norm(out, ccov)
+            singles = {k: norm(*v) for k, v in singles.items()}
+        return out, ccov, singles
+
+    def _save_singles(self, rid, singles, params, stats, narrow, palette, log) -> None:
+        """Sterne- und Kometen-Stack mit denselben Parametern und Ausschnitt wie das Ergebnis entwickeln (Umschalter)."""
+        row = self.db.one("SELECT files FROM results WHERE id=?", (rid,))
+        files = json.loads(row["files"])
+        base = files["jpg"][: -len(".jpg")]
+        sp = {k: v for k, v in params.items() if k != "_ai"}           # GraXpert lief nur auf dem Ergebnis
+        if stats.get("wb_gains") and "wb_gains" not in sp:
+            sp["wb_gains"] = stats["wb_gains"]                          # Kometen-Stack hat keine Sterne zum Kalibrieren
+        names = {"stars": "sterne", "comet": "komet"}
+        for k, (m, c) in singles.items():
+            log(f"{'Sterne' if k == 'stars' else 'Kometen'}-Stack entwickeln")
+            img, _ = processing.process(m, c, sp, narrowband=narrow, palette=palette, crop=stats.get("crop"))
+            disp = np.moveaxis(img, 0, -1)[::-1]                        # Norden oben wie das Ergebnis
+            f = f"{base}_{names[k]}.jpg"
+            Image.fromarray((np.clip(disp, 0, 1) * 255 + 0.5).astype(np.uint8)).save(f, quality=90)
+            files[k] = f
+        m, _ = singles["comet"]
+        write_fits(Path(f"{base}_komet_linear.fits"), m, {"NFRAMES": 0, "COMMENT": "AstroFlow Kometen-Stack (auf den Kern ausgerichtet)"})
+        files["comet_fits"] = f"{base}_komet_linear.fits"
+        self.db.x("UPDATE results SET files=? WHERE id=?", (json.dumps(files), rid))
 
     def _render_stages(self, project_id, rid, states, params, narrow, palette, crop, n_total, log) -> None:
         """Live-Vorschauen archivieren; Altbestand nur verkleinert und einfach strecken."""
@@ -774,7 +1082,11 @@ class Pipeline:
 
     # -------------------------------------------------------------- stacking #
     def _stack(self, pid, todo, state, lib, cache, scale, progress, ref_meta: dict | None = None,
-               save_dir: Path | None = None, stages: Path | None = None) -> StackState:
+               save_dir: Path | None = None, stages: Path | None = None, shifts: dict | None = None,
+               mask: np.ndarray | None = None, mark: bool = True, unmasked: np.ndarray | None = None) -> StackState:
+        """shifts: je Frame zusätzliche Verschiebung (Referenzpixel) nach der Sternregistrierung – Kometen-Stack;
+        mask: Pixel im Sterne-Raster, die nicht eingehen (Sterne), wird mitverschoben; mark=False: frames.stacked nicht setzen
+        (der Kometen-Stack führt seine Aufnahmen nur in state.json)."""
         if state is None and ref_meta is not None:
             # weiterer Filter: auf die Referenz des ersten Kanals registrieren, Fluss relativ zum eigenen ersten Batch
             i0 = json.loads(todo[0]["info"])
@@ -826,9 +1138,15 @@ class Pipeline:
                     if res is None:
                         return r["id"], None, "Registrierung fehlgeschlagen"
                     M, pairs, _ = res
+                d = shifts.get(r["id"]) if shifts else None
+                if d is not None:
+                    M = np.array([[1, 0, d[0]], [0, 1, d[1]], [0, 0, 1]], float) @ M
                 raw, _ = self._load(r["path"], info, lib, r["night"], cache)
                 img = to_channels(raw, info["bayerpat"])
                 warped, valid = registration.warp(img, M, (H * scale, W * scale), scale, gpu=g)
+                if mask is not None and d is not None:
+                    sm = comet.shift_mask(mask, d[0] * scale, d[1] * scale)
+                    valid &= ~(sm & ~unmasked) if unmasked is not None else ~sm
                 sub = valid.ravel()[::7]
                 bg = np.array([np.median(warped[c].ravel()[::7][sub]) for c in range(C)])
                 ratio = ref_flux[pairs[:, 1]] / np.maximum(tf[pairs[:, 0]], 1e-6)
@@ -851,7 +1169,7 @@ class Pipeline:
             pending = [ex.submit(work, r) for r in chunks[ci + 1]] if ci + 1 < len(chunks) else []
             good = [(fid, d) for fid, d, e in results if d is not None]
             for fid, d, e in results:
-                if d is None:
+                if d is None and mark:                   # Kometen-Stack: Auswahl der Aufnahmen nicht verändern
                     self.db.set_frame(fid, status="rejected", reason=e)
             if good:
                 X = np.stack([d[0] for _, d in good])
@@ -895,7 +1213,8 @@ class Pipeline:
             # Checkpoint: Frames gelten erst als gestackt, wenn der Zustand mit ihnen gespeichert ist
             if save_dir is not None and unsaved and (ci == len(chunks) - 1 or time.time() - last_save > CHECKPOINT_S):
                 state.save(save_dir)
-                self.db.many("UPDATE frames SET stacked=1 WHERE id=?", [(f,) for f in unsaved])
+                if mark:
+                    self.db.many("UPDATE frames SET stacked=1 WHERE id=?", [(f,) for f in unsaved])
                 unsaved, last_save = [], time.time()
             progress(0.36 + 0.48 * done / max(1, total), "Stacking",
                      f"{done}/{total} Aufnahmen" + (f" · Grafikkarte {g.name}" if g and not g.broken else ""))

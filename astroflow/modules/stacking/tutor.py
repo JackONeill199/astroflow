@@ -426,6 +426,25 @@ def findings(quality: dict, nights: list[dict], device: dict, ctx: dict) -> list
                       "bringt etwa 40 % weniger Rauschen.",
                       [f"Weitere Nächte auf dasselbe Objekt (bisher ~{_dur(nightly)} je Nacht) – AstroFlow stackt sie automatisch dazu."
                        + (" Mit Smart-Teleskopen sind 2–5 Stunden für Galaxien ein guter Richtwert." if device.get("smart") and kind == "galaxy" else "")]))
+    # --- Kometenmodus ------------------------------------------------------------
+    if (cm := ctx.get("comet")) and cm.get("active"):
+        per, fw, ex = cm.get("per_exposure_px"), cm.get("fwhm_px"), cm.get("exptime_s")
+        if per and fw and ex and per > max(1.5, 0.6 * fw):
+            short = max(1, int(ex * 0.5 * fw / per))
+            out.append(_f("comet_motion", "warn" if per > fw else "info", "Komet bewegt sich schon im Einzelbild",
+                          f"Der Komet wanderte während einer Belichtung von {_n(ex, 0)} s um etwa {_n(per)} Pixel – die Sterne sind "
+                          f"nur ~{_n(fw)} Pixel groß. Der Kometen-Stack richtet die Aufnahmen auf den Kern aus, gegen die "
+                          "Bewegung innerhalb jeder einzelnen Aufnahme hilft er aber nicht: der Kern bleibt leicht länglich.",
+                          [f"Bei diesem Kometen kürzer belichten, etwa {short} s je Aufnahme – dafür mehr Aufnahmen."
+                           if not device.get("smart") else
+                           f"Kürzere Einzelbelichtungen wählen, falls das Gerät es erlaubt (hier ~{short} s); sonst ist das bei sehr "
+                           "nahen, schnellen Kometen unvermeidlich.",
+                           "Je näher der Komet an der Erde steht, desto schneller zieht er vor den Sternen."]))
+        elif cm.get("error"):
+            out.append(_f("comet_failed", "info", "Kometen-Stack nicht möglich",
+                          f"{cm['error']}. Das Bild ist deshalb nur auf die Sterne gestackt; der Komet erscheint verschmiert.",
+                          ["Im Objekt unter Optionen die Kometen-Bezeichnung eintragen (z. B. „C/2022 E3“) – mit Plate-Solving "
+                           "rechnet AstroFlow die Bahn dann aus der JPL-Ephemeride."]))
     if not out:
         out.append(_f("good", "ok", "Gute Bedingungen, sauberes Bild", "Weder die Bildprüfung noch die Nachtdaten zeigen Auffälligkeiten.", []))
     order = {"bad": 0, "warn": 1, "info": 2, "ok": 3}
@@ -595,7 +614,8 @@ def build_report(db, rid: int, cfg: dict, work_dir: Path, refresh: bool = False,
     if changed:
         db.x("UPDATE results SET stats=? WHERE id=?", (json.dumps(stats), rid))
     ctx = {"exposure_s": r["exposure"], "kind": r["kind"], "latitude": site and site[0],
-           "auto_fixed": bool(stats.get("color_gradient") or (stats.get("params") or {}).get("color_gradient"))}
+           "auto_fixed": bool(stats.get("color_gradient") or (stats.get("params") or {}).get("color_gradient")),
+           "comet": stats.get("comet")}
     return {**base, "available": True, "quality": stats["quality"], "device": cached["device"], "nights": cached["nights"],
             "site": site_src, "site_name": site_name, "weather_error": cached.get("weather_error"), "neutral_sky": sky,
             "findings": findings(stats["quality"], cached["nights"], cached["device"], ctx), "ki": stats.get("tutor_ki")}
