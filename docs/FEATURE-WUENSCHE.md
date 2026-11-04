@@ -24,6 +24,7 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md`, Erledigtes im `CHANGELOG.md`.
 | 16 | 05.11.2026 | Seeing in Bogensekunden je Nacht und Standort | in Arbeit |
 | 17 | 05.11.2026 | Gerätediagnose: Nachführung, Fokusdrift, Sensorneigung | offen |
 | 18 | 05.11.2026 | SkyTrace: Satellitenhelligkeit und Satelliten pro Stunde | offen |
+| 19 | 05.11.2026 | Interaktive Bildführung: KI zeigt und erklärt im Bild | offen |
 
 ## 1. Bibliothek teilen (nur ansehen) – 03.11.2026
 
@@ -158,3 +159,21 @@ Gaia-Abgleich der Farbkalibrierung, Einzelbild-Zeitreihen über Stunden, SkyTrac
 
 **SkyTrace**
 - **18:** Helligkeit der Satellitenspuren in mag, Satelliten pro Stunde je Standort und Jahr („wie füllt sich der Himmel“).
+
+## 19. Interaktive Bildführung: KI zeigt und erklärt im Bild – 05.11.2026
+
+Die Erzählung/Audioführung von Sage interaktiv machen: Die KI „sieht“ die Elemente im Bild, reagiert darauf und stellt sie
+visuell dar. Grundlage ist nicht Bilderkennung, sondern Plate-Solving: Für jedes Pixel ist der Himmelsort bekannt
+(`work/p<id>/wcs.json`), Katalogobjekte stehen schon heute als Bildmarken bereit (`results/{id}/objects`, `plateLabels`),
+Sage liefert belegtes Wissen je Objekt – verlässlich, nichts erfunden.
+
+**Stufe 1 (mittel, eine Sitzung):**
+- **Geführte Tour:** Erzählung als Folge von Schritten {Text, Ziel in Bildpixeln, Zoom}; während der Audioführung fährt der
+  Viewer (`createViewer`) zum Objekt, zoomt und markiert es (Kreis, Pfeil, Umriss). Vor/Zurück, Pause, Untertitel.
+- **Fragen per Klick:** Stelle anklicken → Himmelskoordinaten → Katalogabfrage in der Umgebung (Sage, SIMBAD) → Antwort im Chat,
+  Stelle im Bild markiert („Was ist dieser rote Fleck?“).
+
+**Stufe 2 (schwerer):**
+- Strukturen ohne Katalogeintrag (Staubbänder, Nebelfilamente, Sternfarben) per Vision-LLM am Bildausschnitt, als
+  „KI-Einschätzung“ deutlich getrennt vom belegten Wissen (Belegpflicht von Sage); Umrisse im Bild.
+- Risiko: lokale Vision-Modelle sind bei Astrofotos unzuverlässig und erfinden – nur mit Kennzeichnung und Rückfall auf Stufe 1.
