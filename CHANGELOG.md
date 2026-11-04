@@ -3,6 +3,15 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.21.1 – 04.11.2026
+
+### Behoben
+- **Übersicht ohne Ladeanimation:** Die Übersicht wartete, bis alle Abschnitte geladen waren (auch „Heute Nacht“), und erschien dann
+  auf einmal. Jetzt steht das Gerüst sofort; jeder Abschnitt hat einen Platzhalter in fester Höhe und blendet ein, sobald seine Daten
+  da sind – schnelle Kacheln sofort, langsame (Heute Nacht, Sage, SkyTrace) danach. Schlägt ein Abschnitt fehl, steht der Hinweis nur dort.
+- **Rückmeldung beim Seitenwechsel:** Dauert ein Wechsel länger als 0,15 s, läuft unter der Werkzeugleiste ein schmaler Ladebalken.
+  Galerie und Bilder zeigen beim Laden Platzhalter-Kacheln statt einer leeren Fläche.
+
 ## 0.21.0 – 04.11.2026
 
 ### Neu
