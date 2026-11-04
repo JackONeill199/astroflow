@@ -178,7 +178,7 @@ async function galleryView(el) {
     <div class="page-actions"><button class="btn ghost" id="gscan" title="Eingangsordner jetzt nach neuen Aufnahmen durchsuchen">${icon('refresh')}Scannen</button>
     <div class="menu"><button class="btn ghost">Mehr${icon('chev')}</button><div class="pop">
       <a href="#" id="gdev">Alle neu entwickeln <small>aus dem Master-Stack</small></a><a href="#/bilder/statistik">Statistik <small>Belichtung, Geräte, Nächte</small></a><a href="#/galerie">Galerie <small>nur fertige Bilder</small></a></div></div>
-    <a class="btn" href="#/import">${icon('upload')}Aufnahmen importieren</a></div></div>
+    </div></div>
     <div class="toolbar"><input type="search" id="gq" placeholder="Objekt suchen …" title="Taste /" value="${esc(q)}"><div class="seg" id="gkind"></div><span class="grow"></span>
       <select id="gsort" aria-label="Sortierung"><option value="recent">Zuletzt bearbeitet</option><option value="name">Name</option><option value="exposure">Belichtungszeit</option><option value="frames">Aufnahmen</option></select>
       <div class="seg" id="gview" aria-label="Ansicht"><button data-v="cards" title="Karten">${icon('grid')}</button><button data-v="table" title="Tabelle">${icon('list')}</button></div></div>
@@ -412,7 +412,7 @@ async function picturesView(el) {
   const ui = store.get('pictures', {});
   let q = ui.q || '', kind = ui.kind || 'all', sort = ui.sort || 'recent', mode = ui.view || 'grid', list = [], sig = '';
   el.innerHTML = `<div class="pagehead"><div><h1>Galerie</h1><p>Fertige Ergebnisse betrachten und zeigen. <span class="dim" id="psum"></span></p></div>
-    <div class="page-actions"><a class="btn" href="#/import">${icon('upload')}Bilder importieren</a></div></div>
+    </div>
     <div class="toolbar"><input type="search" id="pq" placeholder="Bild suchen …" title="Taste /" value="${esc(q)}">
       <select id="pkind" aria-label="Objekttyp"></select><span class="grow"></span>
       <select id="psort" aria-label="Sortierung"><option value="recent">Neueste zuerst</option><option value="name">Name</option><option value="exposure">Belichtungszeit</option></select>

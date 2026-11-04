@@ -3,7 +3,7 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
-## 0.23.1 – 04.11.2026
+## 0.24.1 – 05.11.2026
 
 ### Behoben
 - **Kometen ohne „Objekt unbekannt“:** Am Namen erkannte Kometen (z. B. „C/2022 E3“ aus dem Stellina-Ordner) zeigten oben den
@@ -11,6 +11,27 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   „Objekt per Plate-Solving bestimmen“ entfallen bei Kometen. Stattdessen erscheint nur dann ein kurzer Hinweis, wenn die Bahn mangels
   Plate-Solver allein aus dem Bild gemessen wurde – mit eingerichtetem Solver kommt sie zusätzlich aus der JPL-Ephemeride.
 - Kometenmodus nutzt für die Parallaxe jetzt den Ort der Nacht aus der gemeinsamen Ortsliste (vorher nur die alte Tutor-Einstellung).
+
+## 0.24.0 – 05.11.2026
+
+### Neu
+- **Stil mit Atmosphäre:** Unter Einstellungen → Module & System → Darstellung gibt es drei Stile. „Dezent“ (Standard) und
+  „Nebula“ bringen einen ruhigen Navy-Violett-Verlauf im Hintergrund, halbtransparente Glasflächen mit feinem hellem Rand,
+  Primärknöpfe und aktive Navigation mit Violett-Blau-Verlauf. „Nebula“ ist kräftiger und hat ein kaum sichtbares Sternenfeld.
+  „Schlicht“ ist das neutrale Anthrazit von 0.21. Aufbau, Abstände und Lesbarkeit bleiben gleich.
+- **Sternschnuppen nach dem echten Himmel:** Selten fliegt hinter den Inhalten eine Sternschnuppe durch – so oft, wie es draußen gerade
+  passt: Die 13 großen Meteorströme (Aktivität nach Sonnenlänge, Höhe des Radianten über deinem Standort), sporadische Meteore (morgens
+  mehr als abends), Dämmerung und Mondlicht; tagsüber keine. Angezeigt wird etwa jede fünfte – in einer normalen Nacht ein, zwei pro
+  Stunde, im Maximum der Geminiden oder Perseiden alle paar Minuten. Strom-Meteore fliegen vom Radianten weg, schnelle (Leoniden,
+  Perseiden) sind kurz und grünlich, langsame (Geminiden, Tauriden) länger und gelblich. Unter Darstellung steht, was der Himmel
+  gerade hergibt; abschaltbar, aus bei „Bewegung reduzieren“ und im Stil „Schlicht“.
+- **Direktere Rückmeldung:** Knöpfe, Reiter, Schalter, Navigation und Karten geben beim Drücken leicht nach; Primärknöpfe heben sich beim
+  Überfahren an, Fokus zeigt einen weichen Leuchtrand. Löst ein Knopf eine Aktion beim Server aus, ist er sofort gesperrt und zeigt nach
+  0,15 s einen Kreisel, bis die Antwort da ist – kein doppeltes Klicken mehr, kein Rätseln, ob der Klick angekommen ist.
+
+### Behoben
+- **Doppelter Import-Knopf:** „Bilder“ und „Galerie“ hatten neben „Importieren“ in der Werkzeugleiste einen zweiten Import-Knopf im Seitenkopf.
+  Jetzt gibt es nur noch den oben (in leeren Ansichten bleibt der Hinweis zum Importieren).
 
 ## 0.23.0 – 04.11.2026
 
