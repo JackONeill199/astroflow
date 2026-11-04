@@ -116,7 +116,7 @@ customElements.define('af-tonight-chart', class extends HTMLElement {
     const tip = this.querySelector('.tn-tooltip');
     tip.hidden = false;
     tip.innerHTML = `<b>${hm(d.times[i])}</b>${rows}<span>Mond<b>${Math.round(d.moon.alt[i])}°</b></span>`;
-    tip.style.left = Math.max(4, Math.min(W - Math.min(260, W - 8) - 4, x + 12)) + 'px';
+    tip.style.left = Math.max(4, Math.min(W - Math.min(tip.offsetWidth || 260, W - 8) - 4, x + 12)) + 'px';   // echte Breite (rem skaliert mit)
     const slider = this.querySelector('.tn-time');
     slider.value = i; slider.setAttribute('aria-valuetext', hm(d.times[i]));
     this.querySelector('.tn-clock').textContent = hm(d.times[i]);

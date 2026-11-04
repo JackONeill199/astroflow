@@ -49,6 +49,10 @@ const store = {
   get: (k, d) => { try { return JSON.parse(localStorage.getItem('af.' + k)) ?? d; } catch { return d; } },
   set: (k, v) => { try { localStorage.setItem('af.' + k, JSON.stringify(v)); } catch { /* privat/gesperrt */ } },
 };
+// Oberflächengröße je Browser: 0 = automatisch nach Bildschirmbreite (CSS), sonst Faktor auf 16px
+const UI_SCALES = [[0, 'Automatisch'], [0.9, '90 %'], [1, '100 %'], [1.125, '113 %'], [1.25, '125 %'], [1.4, '140 %']];
+const applyUiScale = (s = store.get('ui.scale', 0)) => { document.documentElement.style.fontSize = s > 0 ? `${16 * s}px` : ''; };
+applyUiScale();
 
 // Hinweis unten rechts; action = { label, href } oder { label, fn } für eine Schaltfläche (z. B. „Ansehen“, „Rückgängig“)
 function toast(msg, kind = '', action = null) {
@@ -551,8 +555,7 @@ async function homeView(el) {
   const h = new Date().getHours();
   const hello = h < 5 || h >= 21 ? 'Gute Nacht' : h < 11 ? 'Guten Morgen' : h < 17 ? 'Willkommen zurück' : 'Guten Abend';
   el.innerHTML = `<div class="pagehead"><div><h1>Übersicht</h1><p class="welcome">${hello} – deine Aufnahmen, Analysen und Entdeckungen.</p></div>
-      <div class="page-actions"><label class="dashboard-mode"><span>Aufteilung</span><select aria-label="Dashboard-Aufteilung"><option value="balanced">Ausgewogen</option><option value="planning">Nachtplanung</option><option value="library">Bilder &amp; Module</option></select></label>
-      ${AF.on('stacking') ? `<a class="btn" href="#/import">${icon('upload')}Dateien importieren</a>` : ''}</div></div>
+      <div class="page-actions"><label class="dashboard-mode"><span>Aufteilung</span><select aria-label="Dashboard-Aufteilung"><option value="balanced">Ausgewogen</option><option value="planning">Nachtplanung</option><option value="library">Bilder &amp; Module</option></select></label></div></div>
     <div class="home-grid" id="homeGrid"><div class="home-main">
       <div class="home-modules"></div>
       <section><h2 class="sect">Aktive Aufträge <a href="#/activity">Alle anzeigen</a></h2><div id="hJobs"></div></section>
@@ -693,7 +696,11 @@ async function settingsView(el, section) {
 }
 async function moduleSettings(el) {
   const info = await api('/app'), st = AF.status || await api('/status');
-  el.innerHTML = `<div class="panel"><h2>Module</h2><p class="mut sm" style="margin:6px 0 16px">AstroFlow besteht aus Modulen. Abgeschaltete Module werden nicht geladen –
+  const scale = store.get('ui.scale', 0);
+  el.innerHTML = `<div class="panel"><h2>Darstellung</h2><p class="mut sm" style="margin:6px 0 12px">Größe von Schrift und Bedienelementen. „Automatisch“ vergrößert
+      auf großen Monitoren (z. B. WQHD, 4K). Gilt nur für diesen Browser.</p>
+    <div class="seg" id="uiScale" aria-label="Oberflächengröße">${UI_SCALES.map(([v, l]) => `<button data-v="${v}" class="${v === scale ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+    <div class="panel"><h2>Module</h2><p class="mut sm" style="margin:6px 0 16px">AstroFlow besteht aus Modulen. Abgeschaltete Module werden nicht geladen –
       Änderungen wirken nach einem Neustart des Servers. „Bilder“ ist das Kernmodul.</p>
     <div class="modlist">${info.modules.map(m => `<label class="modrow">${icon(m.icon)}<div><b>${esc(m.name)}</b>${m.error ? ` <span class="chip bad">Fehler</span>` : ''}
         <div class="mut sm">${esc(m.description)}</div>${m.error ? `<div class="bad sm">${esc(m.error)}</div>` : ''}</div>
@@ -704,6 +711,13 @@ async function moduleSettings(el) {
       <dt>Aktive Module</dt><dd>${info.modules.filter(m => m.available).map(m => esc(m.name)).join(', ')}</dd>
       ${st.modules.stacking?.disk ? `<dt>Speicher frei</dt><dd>${fmb(st.modules.stacking.disk.free)} von ${fmb(st.modules.stacking.disk.total)}</dd>` : ''}
     </dl><p class="mut sm" style="margin:14px 0 0">Tipp: Im Browser-Menü „App installieren“ wählen – AstroFlow läuft dann wie eine eigene App.</p></div>`;
+  $('#uiScale', el).onclick = (e) => {
+    const b = e.target.closest('button[data-v]');
+    if (!b) return;
+    const v = Number(b.dataset.v);
+    store.set('ui.scale', v); applyUiScale(v);
+    $$('#uiScale button', el).forEach(x => x.classList.toggle('on', x === b));
+  };
   el.onchange = async (e) => {
     const c = e.target.closest('[data-mod]');
     if (!c) return;

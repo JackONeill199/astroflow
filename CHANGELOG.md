@@ -29,6 +29,8 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   Helligkeitskurve strecken; bei SkyTrace die Spurensuche mit echtem Fortschritt). Als „Schema“ gekennzeichnet,
   pausierbar, bei „Bewegung reduzieren“ ein Standbild. Echte Zwischenbilder zeigt weiterhin die Live-Vorschau.
 - **SkyTrace:** Analysen als Tabelle oder Karten, sachlicher Seitenkopf.
+- **Oberflächengröße:** Auf großen Monitoren (WQHD, 4K) werden Schrift und Bedienelemente automatisch größer;
+  unter Einstellungen → Module & System → Darstellung fest wählbar (90–140 %, je Browser).
 
 ## 0.20.0 – 04.11.2026
 
