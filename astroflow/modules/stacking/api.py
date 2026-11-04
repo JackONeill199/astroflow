@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from . import calibration, channels, diskspace, gpu, graxpert, objects, platesolve, reviewer, stars, tonight, tutor
+from . import calibration, channels, comet, diskspace, gpu, graxpert, objects, platesolve, reviewer, stars, tonight, tutor
 from .db import DB
 from .pipeline import Pipeline
 
@@ -34,6 +34,7 @@ class Engine:
         self.db = DB(self.s.db_path)
         self.review_cfg = reviewer.ReviewerConfig.from_env()
         self.pl = Pipeline(self.s, self.db, self.review_cfg)
+        self.pl.site_provider = self._site                # Kometenmodus: Parallaxe lokal am Standort rechnen
         from .library import Library
         self.library = Library(self)
         stars.STARNET.tools_dir = self.s.data_dir / "tools" / "starnet"
@@ -152,6 +153,12 @@ class Engine:
         f = diskspace.free(self.s.data_dir) or 0
         self.set_paused(True, f"Datenlaufwerk voll ({diskspace.gb(f)} frei) – Warteschlange angehalten. "
                               "Platz schaffen (Einstellungen → Bilder → Speicherbelegung) und dann fortsetzen.")
+
+    def _site(self):
+        t = tutor.settings(self.ctx.store)
+        if t.get("lat") in (None, "") or t.get("lon") in (None, ""):
+            return None
+        return [float(t["lat"]), float(t["lon"])]
 
     def _prog(self, jid: int):
         checked = [0.0]
@@ -345,6 +352,7 @@ def build_router(eng: Engine) -> APIRouter:
                 "companions": comp.get(pid, 0),
                 "nights": nights.get(pid, []), "n_results": n_results.get(pid, 0), "created": p["created"],
                 "coords": coords, "can_solve": not imported and not p["obj_id"], "imported": imported,
+                "comet": not imported and comet.active(p, json.loads(p["options"] or "{}")),
                 # Einzelbilder nach dem Stacking gelöscht -> kein komplettes Neu-Stacken mehr möglich
                 "deleted": {"frames": d["n"], "bytes": d["b"], "can_restack": not imported and d["s"] == 0},
                 "result": {"id": lr["id"], "created": lr["created"], "n_frames": lr["n_frames"], "exposure": lr["exposure"],
@@ -454,7 +462,8 @@ def build_router(eng: Engine) -> APIRouter:
             v['live'] = {}
         v["results"] = [{"id": x["id"], "created": x["created"], "n_frames": x["n_frames"], "exposure": x["exposure"],
                          "stats": json.loads(x["stats"]), "review": json.loads(x["review"] or "[]"),
-                         "has_before": "before" in json.loads(x["files"] or "{}")}
+                         "has_before": "before" in json.loads(x["files"] or "{}"),
+                         "views": [k for k in ("stars", "comet") if k in json.loads(x["files"] or "{}")]}
                         for x in db.q("SELECT * FROM results WHERE project_id=? ORDER BY COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC,id DESC", (pid,))]
         v["profiles"] = list(objects.PROFILES)
         v["palettes"] = list(channels.PALETTES)

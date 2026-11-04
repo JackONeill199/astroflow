@@ -18,6 +18,7 @@ def main(argv=None):
     dm = sub.add_parser("demo", help="synthetische Demo-Aufnahmen erzeugen")
     dm.add_argument("out", nargs="?", default="./data/input/demo")
     dm.add_argument("--lights", type=int, default=30)
+    dm.add_argument("--comet", action="store_true", help="Kometenserie (Komet vor Sternfeld) statt Galaxie")
     a = ap.parse_args(argv)
 
     if a.cmd == "serve":
@@ -42,8 +43,8 @@ def main(argv=None):
             except Exception as e:
                 print("\n  Fehler:", e)
     elif a.cmd == "demo":
-        from .modules.stacking.demo import generate
-        generate(Path(a.out), n_lights=a.lights)
+        from .modules.stacking.demo import generate, generate_comet
+        (generate_comet if a.comet else generate)(Path(a.out), n_lights=a.lights)
         print("Demo-Daten in", a.out)
 
 
