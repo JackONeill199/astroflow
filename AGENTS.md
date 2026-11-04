@@ -290,7 +290,9 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   weicht eine neue Bahn > 0,7 px ab, Neuaufbau. Infos in `work/p<id>/comet.json` → `results.stats.comet`.
 - **Entwickeln** (`_comet_compose`): Sterne aus dem Sterne-Stack (`stars.separate`, StarNet falls da) + Kometen-Stack ohne
   Sternreste (Kern geschützt), Lücken aus dem sternlosen Sterne-Stack; Abdeckung geometrisch (sonst zu enger Ausschnitt).
-  Profil `comet` (scnr 0, Gradient Grad 2), GraXpert nur Entrauschen. `_save_singles`: `<base>_sterne.jpg`, `_komet.jpg`,
+  Profil `comet` (scnr 0, Gradient Grad 2), GraXpert nur Entrauschen – gemessen an C/2022 E3 (04.11.2026): KI-Hintergrund
+  trägt die äußere Koma ab (Signal 0,050 → 0,027, Koma hart begrenzt, rotbrauner Hof, Score 10 → 7,9); KI-Entrauschen senkt
+  das Farbrauschen 0,0061 → 0,0044 bei gleichem Signal (+20 s). `_save_singles`: `<base>_sterne.jpg`, `_komet.jpg`,
   `_komet_linear.fits` (Dateischlüssel `stars`, `comet`, `comet_fits`; UI-Umschalter aus `results[].views`).
 - Tutor `comet_motion`: Bewegung je Aufnahme > max(1,5 px; 0,6 FWHM). Tests: `test_comet.py` (Demo `demo.generate_comet`,
   Horizons-Attrappe, `ASTROFLOW_HORIZONS=0` in `conftest.py`).
