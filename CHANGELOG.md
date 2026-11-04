@@ -3,6 +3,33 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+
+## 0.25.0 – 05.11.2026
+
+### Neu
+- **„Wie tief schaust du?“** (Objektseite → Bild, Detailspalte): für jedes plate-gesolvte Ergebnis die **Grenzgröße**
+  (5σ-Grenze aus gemessenem Himmelsrauschen, dazu „Hälfte der Gaia-Sterne erfasst bis G …“), erfasste Sterne je
+  Helligkeitsklasse, der schwächste sicher erfasste Stern, **nächster und fernster Stern** mit verlässlicher Gaia-Parallaxe
+  samt Entfernungsverteilung, die Entfernung des Hauptobjekts (aus Sage) und **Galaxien und Quasare mit Rotverschiebung**
+  (SIMBAD), die im Bild wirklich zu sehen sind – mit Lichtlaufzeit und heutiger Entfernung: „das fernste Objekt in deinem Bild“.
+  Regionen im Hauptobjekt selbst (z. B. HII-Gebiete in M101) zählen nicht als Hintergrundgalaxien. Wird nach jeder
+  Entwicklung im Hintergrund gemessen, für ältere Bilder per „Jetzt messen“.
+- **Im Bild markieren:** nächster/fernster/schwächster Stern und die erkannten Galaxien mit Entfernung direkt im Betrachter.
+- **3D-Tunnel:** die Sterne und Galaxien des Bildfelds räumlich nach Entfernung (logarithmisch) – von vorn wie das Foto,
+  schräg oder seitlich als Trichter in die Tiefe; Klick zeigt Name, Entfernung und Lichtlaufzeit.
+- **Veränderungen** (Objektseite → Bild): Vergleich mit einer früheren eigenen Aufnahme desselben Himmelsausschnitts oder
+  – online, abschaltbar – mit der Himmelsdurchmusterung DSS2. Schärfe und Helligkeit werden angeglichen, auffällige Stellen
+  (neu, verschwunden, heller, schwächer) mit Formprüfung gegen Rand, Einzelpixel, Spuren und Reste heller Sterne gefiltert und
+  mit SIMBAD (bekannte Veränderliche) sowie JPL-Kleinkörpern zur Aufnahmezeit abgeglichen. Ausdrücklich als **Hinweis**,
+  nie als Entdeckung. Dazu ein **Blink-Vergleich** (Trennlinie ziehen oder automatisch wechseln) und Ausschnitte
+  Referenz · aktuell · Differenz je Stelle.
+- **Einstellungen → Bilder → „Was dein Bild zeigt“:** automatisch messen, SIMBAD, Durchmusterung und Kleinkörper-Abgleich
+  einzeln abschaltbar. Gesendet werden nur Himmelskoordinaten und Aufnahmezeiten – nie Bilder oder der Standort
+  (Kleinkörper geozentrisch).
+
+### Geändert
+- three.js liegt jetzt in der Shell (`astroflow/static/vendor/`) und wird von SkyTrace-3D und dem Tiefen-Tunnel gemeinsam genutzt.
+
 ## 0.24.1 – 05.11.2026
 
 ### Behoben

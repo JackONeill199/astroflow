@@ -138,7 +138,7 @@ async function depthTunnel(d, r) {
       <button class="btn ghost sm" data-x aria-label="Schließen">${icon('x')}</button></div>
     <div class="tunnel-stage"><div class="tunnel-load"><span class="spinner"></span>3D-Ansicht wird geladen …</div></div>
     <div class="tunnel-info" hidden></div>
-    <div class="tunnel-legend sm"><span><i class="lg star"></i>Stern (Gaia-Parallaxe)</span><span><i class="lg gal"></i>Galaxie (Rotverschiebung, Lichtlaufzeit)</span><span><i class="lg main"></i>Hauptobjekt</span></div>`;
+    <div class="tunnel-legend sm"><span><i class="lg star"></i>Stern (Gaia-Parallaxe)</span><span><i class="lg gal"></i>Galaxie (Rotverschiebung, Lichtlaufzeit)</span>${d.hauptobjekt ? '<span><i class="lg main"></i>Hauptobjekt</span>' : ''}</div>`;
   document.body.append(ov);
   let alive = true, raf = 0;
   const close = () => { alive = false; cancelAnimationFrame(raf); ro?.disconnect(); renderer?.dispose(); document.removeEventListener('keydown', key); ov.remove(); };
@@ -236,7 +236,9 @@ async function depthTunnel(d, r) {
     const b = e.target.closest('[data-v]'); if (!b) return;
     $$('.seg button', ov).forEach(x => x.classList.toggle('on', x === b)); go(b.dataset.v);
   });
-  const size = () => { const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); cam.aspect = w / Math.max(1, h); cam.updateProjectionMatrix(); dirty = true; };
+  // Hochformat (Telefon): größerer Blickwinkel, damit der Trichter nicht seitlich abgeschnitten wird
+  const size = () => { const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); cam.aspect = w / Math.max(1, h);
+    cam.fov = cam.aspect < 1 ? Math.min(85, 50 / Math.max(0.55, cam.aspect)) : 50; cam.updateProjectionMatrix(); dirty = true; };
   ro = new ResizeObserver(size); ro.observe(stage); size();
   // Klick: nächster Punkt in Bildschirmnähe
   const info = $('.tunnel-info', ov), ray = new THREE.Raycaster();

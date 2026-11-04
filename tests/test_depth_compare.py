@@ -180,7 +180,7 @@ def test_compare_catalog_and_small_bodies(setup, monkeypatch):
     cands = [{"ra": 150.0, "dec": 40.0, "art": "neu"}, {"ra": 150.01, "dec": 40.01, "art": "heller"}]
     monkeypatch.setattr(compare, "_simbad_near", lambda ra, dec, r, c: [{"name": "V* XX Test", "otype": "Mi*", "sep": 0.7}] if ra == 150.0 else [])
     seen = []
-    monkeypatch.setattr(compare, "small_bodies", lambda when, *a: seen.append(when) or [{"name": "(4711) Testoid", "ra": 150.01, "dec": 40.0101, "vmag": "15.2"}])
+    monkeypatch.setattr(compare, "small_bodies", lambda when, *a, **k: seen.append(when) or [{"name": "(4711) Testoid", "ra": 150.01, "dec": 40.0101, "vmag": "15.2"}])
     notes = compare._catalog_check(cands, _wcs(), (H, W), ["2026-01-01T22:00:00"], [], s.work_dir)
     assert cands[0]["katalog"]["veraenderlich"] and cands[0]["katalog"]["art"] == "Mira-Veränderlicher"
     assert cands[1]["kleinkoerper"]["name"] == "(4711) Testoid" and seen == ["2026-01-01T22:00:00"]

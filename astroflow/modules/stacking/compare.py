@@ -33,6 +33,7 @@ MIN_CHANGE = 0.3                   # relative Helligkeitsänderung, unter der ei
 DSS_URL = "https://archive.stsci.edu/cgi-bin/dss_search"
 HIPS2FITS = "https://alasky.cds.unistra.fr/hips-image-services/hips2fits"
 JPL_SBIDENT = "https://ssd-api.jpl.nasa.gov/sb_ident.api"
+JPL_BUDGET = 150.0                 # s für alle JPL-Abfragen eines Vergleichs
 SIMBAD_TAP = ("https://simbad.cfa.harvard.edu/simbad/sim-tap/sync", "https://simbad.cds.unistra.fr/simbad/sim-tap/sync")
 VARIABLE = re.compile(r"(V\*|RR\*|Ce\*|cC\*|EB\*|Mi\*|LP\*|Ro\*|SN\*|No\*|CV\*|Ir\*|Er\*|Fl\*|dS\*|gD\*|BY\*|RS\*|WV\*|S\*|sr\*|Pu\*|bC\*|El\*|V\*\?)")
 OTYPE_LABEL = {"SN*": "Supernova", "No*": "Nova", "CV*": "kataklysmischer Veränderlicher", "Mi*": "Mira-Veränderlicher",
@@ -369,7 +370,8 @@ def _candidates(A, B, D, Z, valid, fwhm, expect, min_dmag: float = 0.5, vanish: 
     ys, xs = np.nonzero((np.abs(Z) == mx) & (np.abs(Z) > K_SIGMA))
     order = np.argsort(-np.abs(Z[ys, xs]))[:400]
     edge = ndi.distance_transform_edt(valid)
-    rej = {"rand": 0, "form": 0, "einzelpixel": 0, "heller_stern": 0, "helligkeit": 0, "zu_schwach": 0}
+    rej = {"rand": 0, "rauschen": 0, "form": 0, "einzelpixel": 0, "heller_stern": 0, "helligkeit": 0, "zu_schwach": 0}
+    margin = max(3 * fwhm + 4, 0.02 * min(H, W))       # Abstand zum Rand der gemeinsamen Fläche
     out = []
     r = max(2.0, fwhm)
     sig_ap = None
@@ -377,8 +379,16 @@ def _candidates(A, B, D, Z, valid, fwhm, expect, min_dmag: float = 0.5, vanish: 
     for i in order:
         x0, y0 = int(xs[i]), int(ys[i])
         z = float(Z[y0, x0])
-        if edge[y0, x0] < 3 * fwhm + 4:
+        if edge[y0, x0] < margin:
             rej["rand"] += 1
+            continue
+        # örtliches Rauschen: an Stack-Rändern (weniger Aufnahmen) und in Nebeln streut die Differenz stärker als in der Kachel
+        win = Z[max(0, y0 - 24):y0 + 25, max(0, x0 - 24):x0 + 25].copy()
+        cy, cx = y0 - max(0, y0 - 24), x0 - max(0, x0 - 24)
+        win[max(0, cy - 5):cy + 6, max(0, cx - 5):cx + 6] = np.nan
+        loc = 1.4826 * np.nanmedian(np.abs(win - np.nanmedian(win)))
+        if np.isfinite(loc) and abs(z) / max(loc, 1.0) < K_SIGMA:
+            rej["rauschen"] += 1
             continue
         s = int(math.ceil(2 * fwhm)) + 2
         if y0 < s or x0 < s or y0 >= H - s or x0 >= W - s:
@@ -527,7 +537,7 @@ def _simbad_near(ra: float, dec: float, radius_as: float, cache_dir: Path) -> li
     return out
 
 
-def small_bodies(when: str, ra: float, dec: float, hw_ra: float, hw_dec: float, cache_dir: Path) -> list[dict]:
+def small_bodies(when: str, ra: float, dec: float, hw_ra: float, hw_dec: float, cache_dir: Path, timeout: float = 60) -> list[dict]:
     """Bekannte Kleinplaneten/Kometen im Feld zur Zeit `when` (UTC) – JPL SB-Ident, **geozentrisch** (MPC-Code 500,
     der Standort verlässt den Rechner nie). Positionen sind daher bis ~10″ ungenau (Parallaxe naher Objekte)."""
     import httpx
@@ -541,16 +551,18 @@ def small_bodies(when: str, ra: float, dec: float, hw_ra: float, hw_dec: float, 
     sgn, ad = ("-" if dec < 0 else ""), abs(dec)
     dd, dm = int(ad), (ad - int(ad)) * 60
     ds = f"{sgn}{dd:02d}-{int(dm):02d}-{(dm % 1) * 60:05.2f}"
-    # ein Durchgang, Asteroiden und Kometen zusammen (Positionen auf einige Bogensekunden genau – reicht für 60″)
+    # zweiter Durchgang = genaue Positionen nur der Objekte im Feld; Asteroiden und Kometen getrennt (Kometen sind schnell,
+    # Asteroiden je nach Last des Dienstes 15–120 s)
     params = {"mpc-code": "500", "obs-time": when.replace("T", "_"), "fov-ra-center": rs, "fov-dec-center": ds,
-              "fov-ra-hwidth": f"{min(hw_ra, 10):.3f}", "fov-dec-hwidth": f"{min(hw_dec, 10):.3f}"}
+              "fov-ra-hwidth": f"{min(hw_ra, 10):.3f}", "fov-dec-hwidth": f"{min(hw_dec, 10):.3f}",
+              "two-pass": "true", "suppress-first-pass": "true"}
     out = []
-    for _ in (1,):
-        r = httpx.get(JPL_SBIDENT, params=params, timeout=90)
+    for kind in ("c", "a"):
+        r = httpx.get(JPL_SBIDENT, params={**params, "sb-kind": kind}, timeout=timeout)
         r.raise_for_status()
         j = r.json()
-        fields = j.get("fields_first") or []
-        for row in j.get("data_first_pass") or []:
+        fields = j.get("fields_second") or j.get("fields_first") or []
+        for row in j.get("data_second_pass") or j.get("data_first_pass") or []:
             d = dict(zip(fields, row))
             try:
                 ra_s = d.get("Astrometric RA (hh:mm:ss)") or ""
@@ -585,7 +597,8 @@ def _catalog_check(cands, wcs, shape, t_cur: list, t_ref: list, cache_dir: Path,
     if not small:
         notes.append("Abgleich mit Kleinplaneten ausgeschaltet.")
         return notes
-    for times, kinds in ((t_cur, ("neu", "heller")), (t_ref, ("verschwunden", "schwächer"))):
+    t0 = time.time()
+    for times, kinds in ((t_cur[:2], ("neu", "heller")), (t_ref[:2], ("verschwunden", "schwächer"))):
         sel = [c for c in cands if c["art"] in kinds]
         if not sel:
             continue
@@ -593,10 +606,15 @@ def _catalog_check(cands, wcs, shape, t_cur: list, t_ref: list, cache_dir: Path,
             notes.append("Ohne Aufnahmezeit der Referenz kein Abgleich mit Kleinplaneten für „" + "/".join(kinds) + "“.")
             continue
         for when in times:
+            left = JPL_BUDGET - (time.time() - t0)
+            if left < 15:                                # Gesamtzeit begrenzen: der Dienst ist mal schnell, mal sehr langsam
+                notes.append("Kleinplaneten-Abgleich nach Zeitlimit abgebrochen – nicht alle Nächte geprüft.")
+                break
             try:
-                bodies = small_bodies(when, ra0, dec0, hw_ra, hw_dec, cache_dir)
+                bodies = small_bodies(when, ra0, dec0, hw_ra, hw_dec, cache_dir, timeout=min(60.0, left))
             except Exception as e:
-                notes.append(f"Kleinplaneten-Abgleich (JPL) nicht möglich: {str(e)[:100]}")
+                notes.append("Kleinplaneten-Abgleich (JPL) nicht möglich – Dienst " +
+                             ("antwortet gerade zu langsam" if "timed out" in str(e) else f"nicht erreichbar ({str(e)[:80]})") + ".")
                 break
             for c in sel:
                 best = min(bodies, key=lambda b: _ang(c["ra"], c["dec"], b["ra"], b["dec"]), default=None)

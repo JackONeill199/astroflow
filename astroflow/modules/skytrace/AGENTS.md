@@ -115,8 +115,8 @@ fehlt `sgp4` im Server, läuft `orbit3d.py` als Skript im Engine-Interpreter (JS
   `focus3d`, da der Router keine `?`-Parameter kennt) und in `#/skytrace/3d` (`sky3dView`: Analysenliste `.st3d-runs` oben in der Seitenleiste – nach jedem `mount` wieder eingesetzt –,
   Filter „Mit Kandidaten“ `skytrace.3dhits`, zuletzt gewählter Lauf in `skytrace.3drun`). Liste der Läufe standardmäßig als Karten (`skytrace.view2`).
   Eine gemeinsame Szene über alle Läufe gibt es nicht (jede Beobachtung eigene Zeit/Standort). Taste F = Vollbild. three.js r160 +
-  OrbitControls (Import auf `./three.module.min.js` umgeschrieben) und Erdtextur unter `static/vendor/` (Lizenzen in
-  `vendor/README.md`), erst beim Öffnen per `import()` geladen. Zeichnet nur bei Änderung; Kamerafahrten entfallen bei
+  OrbitControls (Import auf `./three.module.min.js` umgeschrieben) seit 0.25.0 in der Shell (`astroflow/static/vendor/`, auch für den
+  Tiefen-Tunnel in Bilder), Erdtextur unter `static/vendor/` (Lizenzen in den jeweiligen `README.md`), erst beim Öffnen per `import()` geladen. Zeichnet nur bei Änderung; Kamerafahrten entfallen bei
   `prefers-reduced-motion`, kein Auto-Drehen. Kegellänge = 1,35 × Entfernung des Satelliten im Blickfeld (echte Öffnung,
   daher erst in „Blickfeld“ sichtbar). Atmosphärensaum blendet sich nahe der Erde aus. `#st3dHost._st3d.state()` für Tests.
 - **Lauf-Ansicht (0.17.0, Nutzerwunsch: „unabhängig davon, ob ein Objekt erkannt wurde … wohin das Teleskop geschaut hat“):**
