@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from test_ui_layout import browser, server, FIND_OVERFLOW
+from test_ui_layout import FIND_OVERFLOW
 
 
 @pytest.mark.parametrize('width', [375, 1440])

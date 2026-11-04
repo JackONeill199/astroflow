@@ -3,7 +3,7 @@ Sprung zum Kandidaten, Hinweis ohne Standort – Desktop und Handy. Szene aus ru
 Lauf und Endpunkt werden im Browser ersetzt."""
 import pytest
 
-from test_ui_layout import browser, server, FIND_OVERFLOW  # noqa: F401
+from test_ui_layout import FIND_OVERFLOW  # noqa: F401
 from test_skytrace_3d import T0, _run, _site
 
 pytest.importorskip("sgp4")

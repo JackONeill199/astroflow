@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest>=8.0
+pytest-xdist>=3.5        # Tests parallel auf allen Kernen (pytest.ini: -n auto)
+playwright>=1.40         # Oberflächentests (danach einmal: python -m playwright install chromium)
