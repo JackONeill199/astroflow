@@ -1,0 +1,133 @@
+/* AstroFlow – Atmosphäre (seit 0.24.0, Nutzerwunsch „Farbverläufe und bisschen glassy look wie früher“).
+   Struktur, Abstände und Lesbarkeit kommen aus style.css (0.21); hier nur Farbe, Glas und Verläufe.
+   Gewählt per <html data-look="dezent|nebula"> (Einstellungen → Module & System → Darstellung, localStorage af.ui.look);
+   ohne Attribut bzw. „schlicht“ bleibt das neutrale Anthrazit von 0.21.
+   Regeln: Verläufe nur im Seitenhintergrund, auf Primärknöpfen und der aktiven Navigation; Glühen nur dort.
+   backdrop-filter nur auf den drei großen festen Flächen (Werkzeugleiste, Seitenleiste, Kontextpanel).
+   Menüs, Dialoge, Eingaben bleiben deckend (Lesbarkeit). */
+
+:root[data-look] {
+  --bg: #0b0e19; --sidebar: #10131f; --surface: #171b2b; --surface-2: #1f2437; --surface-3: #282e44;
+  --border: #323a55; --border-soft: #232a40;
+  --acc: #6f8cff; --acc-strong: #5a74f2; --acc-soft: #6f8cff24;
+  --data-2: #a99bd8;
+  --grad-acc: linear-gradient(135deg, #8b5cf6 0%, #4f7dff 100%);
+  --grad-acc-hover: linear-gradient(135deg, #9a70ff 0%, #6690ff 100%);
+  --grad-soft: linear-gradient(90deg, #8b5cf647, #4f7dff1f);
+  --glass: #161a2bb8; --glass-bar: #0f1220b3;
+  --glass-border: #ffffff12; --glass-hi: inset 0 1px 0 #ffffff0f;
+  --glass-shadow: 0 0.75rem 2rem -1rem #0009;
+  --glow: 0 0.25rem 1rem -0.25rem #6d5cff80;
+  --blur: blur(16px) saturate(140%);
+  --bg-grad:
+    radial-gradient(ellipse 70% 55% at 88% -8%, #2b2463 0%, transparent 62%),
+    radial-gradient(ellipse 55% 45% at -5% 105%, #10274d 0%, transparent 60%),
+    linear-gradient(180deg, #0d1020 0%, #0a0c16 100%);
+}
+:root[data-look="nebula"] {
+  --bg: #0a0b18; --surface: #181a30; --surface-2: #21233d; --surface-3: #2b2d4b; --border: #383a62; --border-soft: #262846;
+  --acc: #8a8cff; --acc-strong: #6f6cf2; --acc-soft: #8a8cff26;
+  --grad-acc: linear-gradient(135deg, #a855f7 0%, #6366f1 50%, #3b82f6 100%);
+  --grad-acc-hover: linear-gradient(135deg, #b46cff 0%, #7477ff 50%, #5291ff 100%);
+  --grad-soft: linear-gradient(90deg, #a855f759, #3b82f626);
+  --glass: #1a1c3499; --glass-bar: #0e0f2299;
+  --glass-border: #ffffff17; --glass-hi: inset 0 1px 0 #ffffff17;
+  --glow: 0 0.25rem 1.25rem -0.25rem #8b5cf6a6;
+  --bg-grad:
+    radial-gradient(ellipse 70% 60% at 92% -10%, #5b2fa3 0%, transparent 62%),
+    radial-gradient(ellipse 50% 45% at 45% 55%, #2a1f5c80 0%, transparent 70%),
+    radial-gradient(ellipse 60% 55% at -8% 108%, #15457d 0%, transparent 62%),
+    linear-gradient(180deg, #0e0d24 0%, #090a15 100%);
+}
+
+/* Hintergrund: fest, scrollt nicht mit */
+:root[data-look] { background-color: var(--bg); background-image: var(--bg-grad); background-attachment: fixed }
+:root[data-look] body { background: transparent }
+/* Nebula: kaum sichtbares Sternenrauschen (statisch, keine Animation) */
+:root[data-look="nebula"] body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .75;
+  background-image:
+    radial-gradient(1px 1px at 13% 22%, #fff9 50%, transparent 51%), radial-gradient(1px 1px at 67% 14%, #fff7 50%, transparent 51%),
+    radial-gradient(1px 1px at 38% 71%, #fff6 50%, transparent 51%), radial-gradient(1px 1px at 84% 58%, #fff8 50%, transparent 51%),
+    radial-gradient(1px 1px at 22% 89%, #fff5 50%, transparent 51%), radial-gradient(1px 1px at 91% 87%, #fff6 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 56% 41%, #cfd8ff 50%, transparent 51%), radial-gradient(1px 1px at 5% 48%, #fff6 50%, transparent 51%);
+  background-size: 31rem 29rem }
+
+/* Große feste Flächen: Glas mit Unschärfe */
+:root[data-look] .top, :root[data-look] .side, :root[data-look] .ctx {
+  background: var(--glass-bar); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); border-color: var(--glass-border) }
+:root[data-look] .top .brand { border-color: var(--glass-border) }
+:root[data-look] .side-foot { border-color: var(--glass-border) }
+
+/* Flächen: halbtransparent, helle Oberkante, weicher Schatten (ohne Unschärfe – zu teuer bei vielen Karten) */
+/* :where() hält die Spezifität bei einer Klasse – flache Varianten aus style.css (.ctx .panel, .img-side .panel, .panel .panel) gewinnen weiter */
+:where(:root[data-look]) :is(.panel, .modcard, .card) {
+  background: var(--glass); border-color: var(--glass-border); box-shadow: var(--glass-hi), var(--glass-shadow) }
+:where(:root[data-look]) :is(.panel .panel, .ctx .panel, .img-side .panel) { box-shadow: none }
+:root[data-look] :is(.ctx, .img-side) .panel { border-bottom-color: var(--glass-border) }
+:where(:root[data-look]) :is(a.modcard, .card) { transition: border-color var(--t), background var(--t), transform var(--t2) var(--ease), box-shadow var(--t2) var(--ease) }
+:where(:root[data-look]) :is(a.modcard:hover, .card:hover) {
+  background: var(--glass); border-color: color-mix(in srgb, var(--acc) 35%, var(--glass-border)); transform: translateY(-2px);
+  box-shadow: var(--glass-hi), 0 1rem 2rem -1rem #000c, 0 0 0 1px color-mix(in srgb, var(--acc) 12%, transparent) }
+:root[data-look] .itile .ii { box-shadow: 0 0 0 1px var(--glass-border), 0 0.75rem 1.75rem -1.25rem #000c; transition: box-shadow var(--t2) var(--ease), transform var(--t2) var(--ease) }
+:root[data-look] .itile:hover .ii { transform: translateY(-2px); box-shadow: 0 0 0 1px color-mix(in srgb, var(--acc) 40%, transparent), 0 1rem 2rem -1rem #000d }
+
+/* Akzent: Primärknopf mit Verlauf und leichtem Glühen */
+:root[data-look] .btn:not(.ghost):not(.danger) { background: var(--grad-acc); border-color: transparent; box-shadow: var(--glow), inset 0 1px 0 #ffffff26 }
+:root[data-look] .btn:not(.ghost):not(.danger):hover:not(:disabled) { background: var(--grad-acc-hover); border-color: transparent; transform: translateY(-1px);
+  box-shadow: 0 0.375rem 1.375rem -0.25rem color-mix(in srgb, var(--acc) 70%, transparent), inset 0 1px 0 #ffffff33 }
+:root[data-look] .btn:not(.ghost):not(.danger):active:not(:disabled) { transform: translateY(1px) scale(.97); box-shadow: var(--glow), inset 0 1px 0 #ffffff1a }
+:root[data-look] :is(.btn, button, a, summary, input, select, textarea):focus-visible { box-shadow: 0 0 0 0.25rem var(--acc-soft), 0 0 1rem -0.25rem color-mix(in srgb, var(--acc) 60%, transparent) }
+:root[data-look] .seg button:hover:not(.on) { background: #ffffff0a }
+:root[data-look] .chip.acc { box-shadow: 0 0 0.75rem -0.375rem color-mix(in srgb, var(--acc) 70%, transparent) }
+:root[data-look] .btn.ghost { background: color-mix(in srgb, var(--surface-2) 70%, transparent); border-color: var(--glass-border) }
+:root[data-look] .btn.ghost:hover:not(:disabled) { background: var(--surface-3); border-color: var(--border) }
+
+/* Aktive Navigation: weicher Verlauf, Leiste links mit Verlauf */
+:root[data-look] .side nav a:hover { background: #ffffff0a }
+:root[data-look] .side nav a.on { background: var(--grad-soft); box-shadow: inset 0 0 0 1px #ffffff0d }
+:root[data-look] .side nav a.on::before { content: ""; position: absolute; left: 0; top: 0.375rem; bottom: 0.375rem; width: 2px; border-radius: 2px; background: var(--grad-acc) }
+:root[data-look] .side nav a.on > svg, :root[data-look] .side nav a.parent-on > svg { color: #a5b4ff }
+
+/* Reiter, Schalter, Chips: weiches Glas */
+:root[data-look] .tab-ind { background: var(--grad-acc); box-shadow: 0 0 0.5rem #7c6cff99 }
+:root[data-look] .tabs { border-color: var(--glass-border) }
+:root[data-look] .seg { background: #0000002e; border-color: var(--glass-border) }
+:root[data-look] .seg button.on { background: var(--grad-soft), var(--surface-3); box-shadow: inset 0 0 0 1px #ffffff14 }
+:root[data-look] .chip { background: #ffffff0a; border-color: var(--glass-border) }
+:root[data-look] input:not([type=checkbox]):not([type=radio]):not([type=range]), :root[data-look] select, :root[data-look] textarea { background-color: #070912cc }
+:root[data-look] input:checked + .switch { background: var(--grad-acc) }
+:root[data-look] .loadbar::after { background: var(--grad-acc) }
+:root[data-look] .popover, :root[data-look] .toast { box-shadow: var(--glass-hi), var(--shadow) }
+
+/* Schmale Fenster: Leiste unten ebenfalls aus Glas, aktive Navigation ohne Seitenleiste */
+@media (max-width: 860px) {
+  :root[data-look] .side nav a.on::before { left: 30%; right: 30%; top: 0; bottom: auto; width: auto; height: 2px }
+  :root[data-look] .ctx { background: var(--surface) }
+}
+
+/* Barrierefreiheit: weniger Transparenz → deckende Flächen, keine Unschärfe */
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-look] .top, :root[data-look] .side, :root[data-look] .ctx { background: #11142a; -webkit-backdrop-filter: none; backdrop-filter: none }
+  :root[data-look] .panel, :root[data-look] .modcard, :root[data-look] .card { background: var(--surface) }
+  :root[data-look="nebula"] body::before { display: none }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-look] a.modcard:hover, :root[data-look] .card:hover, :root[data-look] .itile:hover .ii { transform: none }
+}
+
+/* Sternschnuppen (seit 0.24.0): static/meteors.js entscheidet nach dem echten Himmel (Meteorströme, Radiant, Dämmerung, Mond), wann eine
+   fliegt, und setzt sie in #meteors; Kopf hell (Farbe --head je Geschwindigkeit), Schweif läuft aus. Nur hinter den Inhalten,
+   nur mit Stil Dezent/Nebula, aus bei reduzierter Bewegung oder per Einstellung. */
+#meteors { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden }
+.meteor { position: absolute; height: 1.5px; width: var(--len); transform-origin: 100% 50%; opacity: 0;
+  background: linear-gradient(90deg, transparent 0%, #9db4ff26 45%, #dfe6ff 92%, #fff 100%); border-radius: 1px;
+  animation: meteor var(--dur) cubic-bezier(.25, .6, .45, 1) forwards }
+.meteor::after { content: ""; position: absolute; right: -1px; top: 50%; width: 3px; height: 3px; margin-top: -1.5px; border-radius: 50%;
+  background: var(--head, #fff); box-shadow: 0 0 6px 2px color-mix(in srgb, var(--head, #fff) 80%, transparent), 0 0 14px 4px var(--halo, #8fa8ff55) }
+@keyframes meteor {
+  0% { opacity: 0; transform: rotate(var(--ang)) translateX(0) scaleX(.3) }
+  12% { opacity: var(--peak) }
+  70% { opacity: var(--peak) }
+  100% { opacity: 0; transform: rotate(var(--ang)) translateX(var(--dist)) scaleX(1) }
+}
+@media (prefers-reduced-motion: reduce) { #meteors { display: none } }

@@ -13,6 +13,17 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md`, Erledigtes im `CHANGELOG.md`.
 | 5 | 04.11.2026 | Kometenmodus | umgesetzt in 0.22.0 |
 | 6 | 04.11.2026 | Planetenmodus (Lucky Imaging) | offen |
 | 7 | 04.11.2026 | Standorte nach Datum | umgesetzt in 0.23.0 (Kür Standort-Rückrechnung: Vorschlag, kein Automatismus) |
+| 8 | 05.11.2026 | Lichtkurven veränderlicher Sterne | offen |
+| 9 | 05.11.2026 | HR-Diagramm von Sternhaufen | offen |
+| 10 | 05.11.2026 | Asteroiden in eigenen Bildern | offen |
+| 11 | 05.11.2026 | Exoplanet-Transits | offen |
+| 12 | 05.11.2026 | „Wie tief schaust du?“ – Gaia-Entfernungen, Grenzgröße, 3D | in Arbeit |
+| 13 | 05.11.2026 | Vergleich mit Referenzbild/früheren Nächten (neue Lichtquellen) | in Arbeit |
+| 14 | 05.11.2026 | Himmelshelligkeit (mag/arcsec²) je Nacht und Standort | in Arbeit |
+| 15 | 05.11.2026 | Richtung der Lichtverschmutzung | in Arbeit |
+| 16 | 05.11.2026 | Seeing in Bogensekunden je Nacht und Standort | in Arbeit |
+| 17 | 05.11.2026 | Gerätediagnose: Nachführung, Fokusdrift, Sensorneigung | offen |
+| 18 | 05.11.2026 | SkyTrace: Satellitenhelligkeit und Satelliten pro Stunde | offen |
 
 ## 1. Bibliothek teilen (nur ansehen) – 03.11.2026
 
@@ -113,3 +124,37 @@ Für Satelliten muss der Ort auf ~200–500 m stimmen (1 km ≈ 7′ quer bei 50
   Uhrversatz einer Nacht aus Satellitenspuren zurückrechnen (nur Vorschlag).
 - Offen: Karte zum Anklicken (bisher Adresssuche, Koordinaten und Link zu OpenStreetMap), Höhe als dritte Unbekannte
   der Rückrechnung, Vorschlag gleich für mehrere Nächte auf einmal übernehmen.
+
+## 8.–18. Was sich aus den Bilddaten noch berechnen lässt – 05.11.2026
+
+Ideensammlung nach der Frage „was können wir mit den Bilddaten noch Interessantes berechnen?“. Grundlage: Plate-Solving (WCS),
+Gaia-Abgleich der Farbkalibrierung, Einzelbild-Zeitreihen über Stunden, SkyTrace, Standorte (0.23.0). Bewertet für Smart-Teleskope
+(Stellina/Vespera: ~80 mm, ~1,2″/px, Farbsensor, 10-s-Belichtungen).
+
+**Wissenschaft mit eigenen Daten**
+- **8 Lichtkurven:** Einzelbilder als Zeitreihe, Differenzphotometrie gegen Gaia-Vergleichssterne, Abgleich mit dem Katalog
+  veränderlicher Sterne (AAVSO VSX). M3 hat > 200 RR-Lyrae-Sterne (Perioden ~0,5 d) – Änderungen in einer Nacht sichtbar;
+  Bedeckungsveränderliche im Feld.
+- **9 HR-Diagramm:** Farbe/Helligkeit jedes Sterns aus dem Stack, an Gaia geeicht → Farben-Helligkeits-Diagramm (M3, M45,
+  h und χ Persei), Abknickpunkt/Alter; Erklärung über Sage.
+- **10 Asteroiden:** langsame Punkte, die über die Einzelbilder wandern, mit JPL SB-Ident abgleichen (SkyTrace hat die Abfrage) –
+  „Du hast 9 Asteroiden fotografiert, der schwächste 16,2 mag“.
+- **11 Exoplanet-Transits:** bei hellen Sternen (z. B. HD 189733, 2,5 % Tiefe) mit 80 mm knapp machbar – ambitioniert.
+
+**Was dein Bild zeigt**
+- **12 „Wie tief schaust du?“:** Grenzgröße (schwächster erfasster Stern), nächster/fernster Stern aus Gaia-Parallaxen, Galaxien im
+  Hintergrund mit Entfernung/Lichtlaufzeit aus Katalogen; Darstellung als Kennzahlen und als 3D-„Tunnel“ im vorhandenen 3D-Viewer.
+- **13 Vergleich:** eigener Stack gegen Referenzbild (Pan-STARRS/DSS) oder eigene frühere Nächte → neue/veränderte Lichtquellen
+  (Supernova, Nova, Veränderliche) als Hinweis, nie als Entdeckung behauptet.
+
+**Himmel und Standort**
+- **14 Himmelshelligkeit:** Hintergrund in mag/arcsec² über die Gaia-Eichung (Sky-Quality-Meter ohne Gerät), Bortle-Schätzung je
+  Nacht und Standort, Verlauf über die Nacht.
+- **15 Lichtverschmutzungs-Richtung:** aus Hintergrundverlauf, Blickrichtung (Az/Alt) und Feldrotation die Himmelsrichtung der Störquelle.
+- **16 Seeing:** FWHM in Bogensekunden über die Nacht und je Standort (Statistik).
+
+**Gerätediagnose**
+- **17:** Nachführfehler, Fokusdrift über Nacht/Temperatur, Sensorneigung (Schärfeverteilung über das Bildfeld) → Tutor-Hinweise.
+
+**SkyTrace**
+- **18:** Helligkeit der Satellitenspuren in mag, Satelliten pro Stunde je Standort und Jahr („wie füllt sich der Himmel“).

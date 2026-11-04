@@ -109,7 +109,7 @@ class Pipeline:
         self._scan_lock = threading.Lock()     # Watcher, API-Scan und Nach-Solving nie gleichzeitig
         self.on_stacked = None                 # fn(project_id, result_id): neue Aufnahmen gestackt, Rohbilder noch vorhanden
         self.live_runs = {}                     # getrennt je Objekt: Stacking und Entwicklung laufen parallel
-        self.site_provider = None               # fn() -> [Breite, Länge] | None (Standort aus den Tutor-Einstellungen)
+        self.site_provider = None               # fn(Nacht) -> [Breite, Länge] | None (Ortsliste bzw. Tutor-Einstellung)
 
     def begin_live(self, pid, job=None):
         run = live.optional(live.LiveRun, self.s.work_dir, pid, job)
@@ -657,8 +657,9 @@ class Pipeline:
         sites = [x for x in sites if len(x) == 2]
         if sites:
             return list(max(set(sites), key=sites.count))
+        nights = [r["night"] for r in rows if r["night"]]
         try:
-            return self.site_provider() if self.site_provider else None
+            return self.site_provider(max(set(nights), key=nights.count) if nights else None) if self.site_provider else None
         except Exception:
             return None
 

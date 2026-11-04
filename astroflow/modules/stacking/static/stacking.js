@@ -178,7 +178,7 @@ async function galleryView(el) {
     <div class="page-actions"><button class="btn ghost" id="gscan" title="Eingangsordner jetzt nach neuen Aufnahmen durchsuchen">${icon('refresh')}Scannen</button>
     <div class="menu"><button class="btn ghost">Mehr${icon('chev')}</button><div class="pop">
       <a href="#" id="gdev">Alle neu entwickeln <small>aus dem Master-Stack</small></a><a href="#/bilder/statistik">Statistik <small>Belichtung, Geräte, Nächte</small></a><a href="#/galerie">Galerie <small>nur fertige Bilder</small></a></div></div>
-    <a class="btn" href="#/import">${icon('upload')}Aufnahmen importieren</a></div></div>
+    </div></div>
     <div class="toolbar"><input type="search" id="gq" placeholder="Objekt suchen …" title="Taste /" value="${esc(q)}"><div class="seg" id="gkind"></div><span class="grow"></span>
       <select id="gsort" aria-label="Sortierung"><option value="recent">Zuletzt bearbeitet</option><option value="name">Name</option><option value="exposure">Belichtungszeit</option><option value="frames">Aufnahmen</option></select>
       <div class="seg" id="gview" aria-label="Ansicht"><button data-v="cards" title="Karten">${icon('grid')}</button><button data-v="table" title="Tabelle">${icon('list')}</button></div></div>
@@ -412,7 +412,7 @@ async function picturesView(el) {
   const ui = store.get('pictures', {});
   let q = ui.q || '', kind = ui.kind || 'all', sort = ui.sort || 'recent', mode = ui.view || 'grid', list = [], sig = '';
   el.innerHTML = `<div class="pagehead"><div><h1>Galerie</h1><p>Fertige Ergebnisse betrachten und zeigen. <span class="dim" id="psum"></span></p></div>
-    <div class="page-actions"><a class="btn" href="#/import">${icon('upload')}Bilder importieren</a></div></div>
+    </div>
     <div class="toolbar"><input type="search" id="pq" placeholder="Bild suchen …" title="Taste /" value="${esc(q)}">
       <select id="pkind" aria-label="Objekttyp"></select><span class="grow"></span>
       <select id="psort" aria-label="Sortierung"><option value="recent">Neueste zuerst</option><option value="name">Name</option><option value="exposure">Belichtungszeit</option></select>
@@ -517,6 +517,8 @@ async function projectView(el, id, tab = 'bild') {
       ${p.can_solve && !p.coords && !busy ? `<div class="notice">${icon('star')}<div><b>Objekt unbekannt</b><div class="mut sm">Die Aufnahmen enthalten weder Objektnamen noch Koordinaten.
         Plate-Solving bestimmt die Himmelsposition aus dem Sternmuster und ordnet sie dem richtigen Objekt zu.</div></div><span class="grow"></span>
         <button class="btn sm" id="solveBtn">Jetzt bestimmen</button></div>` : ''}
+      ${p.comet && /Plate-Solver/.test(r?.stats?.comet?.ephemeris_error || '') && !busy ? `<div class="notice">${icon('star')}<div><b>Kometenbahn aus dem Bild gemessen</b><div class="mut sm">Mit eingerichtetem Plate-Solver (z. B. ASTAP) holt AstroFlow die Bahn von ${esc(r.stats.comet.designation || 'diesem Kometen')} zusätzlich aus der JPL-Ephemeride – genauer bei schwachen oder sehr schnellen Kometen.</div></div><span class="grow"></span>
+        <a class="btn ghost sm" href="#/settings/stacking">Einstellungen</a></div>` : ''}
       ${p.job?.state === 'error' && !busy ? `<div class="notice err">${icon('alert')}<div><b>Letzter Durchlauf fehlgeschlagen</b><div class="mut sm">${esc(p.job.message)}</div></div></div>` : ''}
       <div class="pipe-viz" id="pipeViz" hidden></div>
       <div id="job" style="margin:-4px 0 14px">${jobLine(p.job)}</div>

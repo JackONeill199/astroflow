@@ -9,7 +9,18 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<'
 const icon = (n) => `<svg><use href="#i-${n}"/></svg>`;
 // Kleine Bildfolge: vergleichen → Spur finden → Bahn darüberlegen (symbolisch, kein Fortschrittsmaß).
 const sequenceLoader = () => '<span class="sequence-loader" aria-hidden="true"><em class="seq-back seq-back-two"></em><em class="seq-back seq-back-one"></em><em class="seq-image"><em class="seq-scan"></em><em class="seq-trail"></em><em class="seq-path"></em><em class="seq-object"></em></em></span>';
+// Ladezustand am Knopf: der zuletzt gedrückte Knopf (≤ 0,6 s) bekommt während einer schreibenden Anfrage .pending (style.css)
+let lastPress = { el: null, t: 0 };
+addEventListener('pointerdown', (e) => { const b = e.target.closest?.('button, .btn'); if (b) lastPress = { el: b, t: performance.now() }; }, true);
+addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest?.('button, .btn')) lastPress = { el: e.target.closest('button, .btn'), t: performance.now() }; }, true);
+// Laufende Aktion: erneutes Auslösen sperren – auch per Enter/Leertaste (die lösen ebenfalls click aus; pointer-events wirkt nur für die Maus)
+addEventListener('click', (e) => { if (e.target.closest?.('.pending')) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
 async function api(u, opt = {}) {
+  const b = opt.method && opt.method !== 'GET' && performance.now() - lastPress.t < 600 && lastPress.el?.isConnected ? lastPress.el : null;
+  if (b) { b.classList.add('pending'); b.setAttribute('aria-busy', 'true'); }
+  try { return await apiFetch(u, opt); } finally { if (b) { b.classList.remove('pending'); b.removeAttribute('aria-busy'); } }
+}
+async function apiFetch(u, opt) {
   const r = await fetch('/api' + u, opt);
   if (!r.ok) {
     let msg = r.statusText;
@@ -53,6 +64,12 @@ const store = {
 const UI_SCALES = [[0, 'Automatisch'], [0.9, '90 %'], [1, '100 %'], [1.125, '113 %'], [1.25, '125 %'], [1.4, '140 %']];
 const applyUiScale = (s = store.get('ui.scale', 0)) => { document.documentElement.style.fontSize = s > 0 ? `${16 * s}px` : ''; };
 applyUiScale();
+// Atmosphäre (look.css): 'schlicht' = neutrales Anthrazit von 0.21, 'dezent' (Standard) und 'nebula' mit Verlauf und Glas.
+// index.html setzt das Attribut schon im <head> (kein Aufblitzen), hier nur für den Wechsel in den Einstellungen.
+const UI_LOOKS = [['schlicht', 'Schlicht'], ['dezent', 'Dezent'], ['nebula', 'Nebula']];
+const applyLook = (v = store.get('ui.look', 'dezent')) => { if (v === 'schlicht') delete document.documentElement.dataset.look; else document.documentElement.dataset.look = v; };
+applyLook();
+// Sternschnuppen: static/meteors.js (window.meteors) – Rate nach echtem Himmel
 
 // Hinweis unten rechts; action = { label, href } oder { label, fn } für eine Schaltfläche (z. B. „Ansehen“, „Rückgängig“)
 function toast(msg, kind = '', action = null) {
@@ -780,10 +797,15 @@ async function settingsView(el, section) {
 }
 async function moduleSettings(el) {
   const info = await api('/app'), st = AF.status || await api('/status');
-  const scale = store.get('ui.scale', 0);
+  const scale = store.get('ui.scale', 0), look = store.get('ui.look', 'dezent');
   el.innerHTML = `<div class="panel"><h2>Darstellung</h2><p class="mut sm" style="margin:6px 0 12px">Größe von Schrift und Bedienelementen. „Automatisch“ vergrößert
       auf großen Monitoren (z. B. WQHD, 4K). Gilt nur für diesen Browser.</p>
-    <div class="seg" id="uiScale" aria-label="Oberflächengröße">${UI_SCALES.map(([v, l]) => `<button data-v="${v}" class="${v === scale ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+    <div class="seg" id="uiScale" aria-label="Oberflächengröße">${UI_SCALES.map(([v, l]) => `<button data-v="${v}" class="${v === scale ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <p class="mut sm" style="margin:16px 0 12px">Stil: „Schlicht“ ist neutrales Anthrazit, „Dezent“ und „Nebula“ bringen Farbverlauf und Glasflächen.</p>
+    <div class="seg" id="uiLook" aria-label="Stil">${UI_LOOKS.map(([v, l]) => `<button data-v="${v}" class="${v === look ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <label class="modrow" style="margin-top:14px"><div><b>Sternschnuppen</b><div class="mut sm">Selten eine Sternschnuppe im Hintergrund – so oft, wie es der echte Himmel gerade hergibt (Meteorströme, Uhrzeit, Standort, Mond; tagsüber keine). Nur Dezent/Nebula, aus bei „Bewegung reduzieren“.</div></div>
+      <input type="checkbox" id="uiMeteors" ${store.get('ui.meteors', true) ? 'checked' : ''}><span class="switch"></span></label>
+    <p class="mut sm" id="meteorInfo" style="margin:8px 0 0"></p></div>
     <div class="panel"><h2>Module</h2><p class="mut sm" style="margin:6px 0 16px">AstroFlow besteht aus Modulen. Abgeschaltete Module werden nicht geladen –
       Änderungen wirken nach einem Neustart des Servers. „Bilder“ ist das Kernmodul.</p>
     <div class="modlist">${info.modules.map(m => `<label class="modrow">${icon(m.icon)}<div><b>${esc(m.name)}</b>${m.error ? ` <span class="chip bad">Fehler</span>` : ''}
@@ -802,6 +824,15 @@ async function moduleSettings(el) {
     store.set('ui.scale', v); applyUiScale(v);
     $$('#uiScale button', el).forEach(x => x.classList.toggle('on', x === b));
   };
+  $('#uiLook', el).onclick = (e) => {
+    const b = e.target.closest('button[data-v]');
+    if (!b) return;
+    store.set('ui.look', b.dataset.v); applyLook(b.dataset.v);
+    $$('#uiLook button', el).forEach(x => x.classList.toggle('on', x === b));
+    meteors.start();
+  };
+  window.meteors?.info().then(t => { const i = $('#meteorInfo', el); if (i) i.textContent = t; }).catch(() => {});
+  $('#uiMeteors', el).onchange = (e) => { e.stopPropagation(); store.set('ui.meteors', e.target.checked); if (e.target.checked) meteors.one(); else meteors.stop(); };
   el.onchange = async (e) => {
     const c = e.target.closest('[data-mod]');
     if (!c) return;
