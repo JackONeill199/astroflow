@@ -1,71 +1,98 @@
-/* SkyTrace 3D-Ansicht (skytrace-3d.js): Vollbild-Dialog mit Globus, Zeitregler und Infokarte */
-dialog.st3d { width: min(77.5rem, 96vw); height: min(53.75rem, 94dvh); max-width: none; max-height: none; padding: 0; display: flex; flex-direction: column; overflow: hidden; background: #04060ef2 }
-dialog.st3d:not([open]) { display: none }
-/* Weltraumszene bleibt auch im hellen Farbschema dunkel: Tokens wie im dunklen Thema */
-dialog.st3d { color-scheme: dark; color: #eef1fa; --fg: #eef1fa; --mut: #959dba; --dim: #5d6584; --line: #ffffff10; --line2: #ffffff1f;
-  --panel2: #161c33; --bg2: #0a0e1a; --acc: #7c9cff; --hi: inset 0 1px 0 #ffffff0d; border-color: #ffffff1f }
-.st3d-head { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 0.875rem 0.625rem 1.125rem; border-bottom: 1px solid var(--line) }
-.st3d-head h2 { display: flex; align-items: center; gap: 0.5rem; margin: 0; font-size: 1.0625rem }
-.st3d-head h2 svg { width: 1.125rem; height: 1.125rem; color: var(--acc) }
-.st3d-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
-.st3d-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; touch-action: none; background: radial-gradient(120% 90% at 50% 40%, #0b1226, #02030a) }
+/* SkyTrace 3D-Ansicht (skytrace-3d.js): eigene Ansicht – Reiter „3D“ im Lauf und #/skytrace/3d.
+   Bühne mit Kamera-Wahl und Vollbild, Zeitleiste darunter, Objektliste rechts (Handy: darunter). Nur Design-Tokens. */
+.st3d { --st3d-h: clamp(24rem, calc(100vh - var(--top-h) - 15rem), 64rem); display: grid; grid-template-columns: minmax(0, 1fr) 18.5rem; gap: var(--gap); align-items: start; min-width: 0 }
+.st3d-main { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; background: var(--surface) }
+/* Bühne füllt den sichtbaren Inhaltsbereich (Kopf + Reiter + Zeitleiste abgezogen) */
+.st3d-stage { position: relative; height: var(--st3d-h); overflow: hidden; touch-action: none; background: #03050b }
 .st3d-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; outline: none }
 .st3d-stage canvas:active { cursor: grabbing }
 .st3d-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden }
-.st3d-lbl { position: absolute; left: 0; top: 0; pointer-events: auto; margin: 0; padding: 2px 0.5rem 2px 0.4375rem; border-radius: 6.1875rem; border: 1px solid color-mix(in srgb, var(--c) 55%, transparent);
-  background: #050815c4; color: #eef1fa; font: 600 0.7188rem/1.5 inherit; white-space: nowrap; cursor: pointer; translate: 0.625rem -50%; backdrop-filter: blur(0.375rem) }
+.st3d-lbl { position: absolute; left: 0; top: 0; pointer-events: auto; margin: 0; padding: 2px 0.5rem 2px 0.4375rem; border-radius: 99rem; border: 1px solid color-mix(in srgb, var(--c) 55%, transparent);
+  background: #0b0d10d9; color: var(--fg); font: 600 0.7188rem/1.5 var(--sans); white-space: nowrap; cursor: pointer; translate: 0.625rem -50% }
 .st3d-lbl small { display: block; font-weight: 500; font-size: 0.6562rem; color: var(--mut); margin-left: 0.75rem }
 .st3d-lbl.st3d-lbl-n { padding: 0 0.3125rem; font-size: 0.625rem; translate: -50% -50%; border-color: #f8717188 }
 .st3d-lbl.st3d-lbl-n::before { display: none }
 .st3d-lbl::before { content: ""; display: inline-block; width: 0.375rem; height: 0.375rem; border-radius: 50%; background: var(--c); margin-right: 0.375rem; vertical-align: 1px }
+/* Werkzeuge oben auf der Bühne */
+.st3d-tools { position: absolute; left: 0.75rem; right: 0.75rem; top: 0.75rem; z-index: 2; display: flex; align-items: center; gap: 0.5rem; pointer-events: none }
+.st3d-tools > * { pointer-events: auto }
+.st3d-views { background: #0b0d10d9; border-color: var(--border) }
+.st3d-schema { font-size: 0.6875rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--mut); padding: 0.1875rem 0.5rem; border-radius: 0.25rem;
+  background: #0b0d10d9; border: 1px solid var(--border) }
+.st3d-fs { background: #0b0d10d9; border: 1px solid var(--border) }
 .st3d-msg { position: absolute; left: 50%; top: 50%; translate: -50% -50%; display: flex; align-items: center; gap: 0.625rem; max-width: min(28.75rem, 86%); padding: 0.75rem 1rem;
-  border-radius: 0.875rem; background: #0b0f1ccc; border: 1px solid var(--line2); color: #dfe4f3; font-size: 0.8438rem }
+  border-radius: var(--r-lg); background: var(--surface-2); border: 1px solid var(--border); color: var(--fg); font-size: 0.8438rem }
 .st3d-msg.hint svg { flex: none; width: 1.125rem; height: 1.125rem; color: var(--warn) }
-.st3d-help { position: absolute; left: 0.75rem; bottom: 0.625rem; font-size: 0.7188rem; pointer-events: none; opacity: .8 }
-.st3d-views { position: absolute; right: 0.75rem; top: 0.75rem; z-index: 1 }
-.st3d-head .st3d-views { position: static }
-.st3d-card { position: absolute; right: 0.75rem; bottom: 0.75rem; width: min(21.25rem, calc(100% - 1.5rem)); padding: 0.75rem 0.875rem; border-radius: 0.875rem; background: #080c1ae8;
-  border: 1px solid var(--line2); box-shadow: var(--shadow); backdrop-filter: blur(0.75rem); color: #eef1fa; animation: st3dIn .3s var(--ease) }
+.st3d-help { position: absolute; left: 0.75rem; bottom: 0.625rem; font-size: 0.7188rem; color: var(--mut); pointer-events: none }
+/* Infokarte zum gewählten Objekt */
+.st3d-card { position: absolute; right: 0.75rem; bottom: 0.75rem; width: min(21.25rem, calc(100% - 1.5rem)); max-height: calc(100% - 4.5rem); overflow: auto; padding: 0.75rem 0.875rem;
+  border-radius: var(--r-lg); background: var(--surface-2); border: 1px solid var(--border); box-shadow: var(--shadow); color: var(--fg); animation: st3dIn var(--t2) var(--ease) }
 .st3d-card-h { display: flex; align-items: flex-start; gap: 0.5rem }
 .st3d-card-h > div { flex: 1; min-width: 0 }
 .st3d-card-h b { display: block; font-size: 0.9375rem }
-.st3d-card-h b::before { content: ""; display: inline-block; width: 0.5625rem; height: 0.5625rem; border-radius: 50%; background: var(--c); margin-right: 0.5rem; box-shadow: 0 0 0.625rem var(--c) }
+.st3d-card-h b::before { content: ""; display: inline-block; width: 0.5625rem; height: 0.5625rem; border-radius: 50%; background: var(--c); margin-right: 0.5rem }
 .st3d-card-h small { display: block; color: var(--mut); font-size: 0.75rem; margin-left: 1.0625rem }
 .st3d-card dl { display: grid; grid-template-columns: auto 1fr; gap: 0.1875rem 0.75rem; margin: 0.5rem 0 0; font-size: 0.7812rem }
 .st3d-card dt { color: var(--mut) }
-.st3d-card-a { margin-top: 0.625rem; gap: 0.375rem; flex-wrap: wrap }
 .st3d-card dd { margin: 0; font-variant-numeric: tabular-nums; min-width: 0; overflow-wrap: anywhere }
-.st3d-bar { display: flex; align-items: center; gap: 0.625rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--line) }
+.st3d-card-a { margin-top: 0.625rem; gap: 0.375rem; flex-wrap: wrap }
+/* Zeitleiste */
+.st3d-bar { display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--border-soft) }
 .st3d-range { position: relative; flex: 1; min-width: 5rem; display: flex; align-items: center }
-.st3d-range input { width: 100%; position: relative; z-index: 1; background: transparent }
+.st3d-range input { width: 100%; position: relative; z-index: 1; background: transparent; border: 0; padding: 0; height: 1.5rem }
 .st3d-strip { position: absolute; left: 0; right: 0; top: 50%; width: 100%; height: 1.125rem; translate: 0 -50%; pointer-events: none }
 .st3d-time { font-size: 0.8125rem; white-space: nowrap }
-.st3d-bar select { width: auto; padding: 0.25rem 0.5rem; font-size: 0.8125rem }
-.st3d-foot { display: flex; flex-direction: column; gap: 0.375rem; padding: 0 0.875rem 0.75rem; min-width: 0 }
-.st3d-legend { display: flex; gap: 0.375rem; flex-wrap: wrap; min-width: 0; max-height: 4.125rem; overflow: auto }
-.st3d-chip { display: inline-flex; align-items: center; gap: 0.25rem }
-.st3d-chip input { margin: 0; accent-color: var(--c); width: 0.875rem; height: 0.875rem }
-.st3d-legend small { color: var(--mut); font-size: 0.6875rem; font-variant-numeric: tabular-nums }
-.st3d-legend button { display: inline-flex; align-items: center; gap: 0.375rem; border: 1px solid var(--line2); background: transparent; color: var(--fg); font: inherit; font-size: 0.7812rem;
-  padding: 0.1875rem 0.625rem; border-radius: 6.1875rem; cursor: pointer; white-space: nowrap }
-.st3d-legend button.on { background: color-mix(in srgb, var(--c) 22%, transparent); border-color: var(--c) }
-.st3d-legend i { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--c) }
-.st3d-note { margin: 0; min-width: 0 }
+.st3d-bar select { width: auto; height: 1.875rem; padding: 0 0.5rem; font-size: 0.8125rem }
+/* Objektliste */
+.st3d-side { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; padding: 0.875rem; border: 1px solid var(--border-soft); border-radius: var(--r-lg); background: var(--surface);
+  height: calc(var(--st3d-h) + 3.25rem + 2px); box-sizing: border-box; overflow: auto }
+.st3d-note { margin-top: auto !important }
+.st3d-side.empty { display: none }
+.st3d-sec { margin: 0; font-size: 0.6875rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--dim) }
+.st3d-legend { display: grid; gap: 2px; min-width: 0 }
+.st3d-chip { display: flex; align-items: center; gap: 0.375rem; min-width: 0 }
+.st3d-chip input { margin: 0 0 0 0.375rem; accent-color: var(--c); width: 0.875rem; height: 0.875rem; flex: none }
+.st3d-legend button { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.5rem; border: 0; background: transparent; color: var(--fg); font: inherit; font-size: 0.8125rem;
+  padding: 0.4375rem 0.5rem; border-radius: var(--r-sm); cursor: pointer; text-align: left; transition: background var(--t) }
+.st3d-legend button:hover { background: var(--surface-2) }
+.st3d-legend button.on { background: var(--surface-3) }
+.st3d-legend i { flex: none; width: 0.5625rem; height: 0.5625rem; border-radius: 50%; background: var(--c) }
+.st3d-legend small { margin-left: auto; color: var(--dim); font-size: 0.7188rem; font-variant-numeric: tabular-nums }
+.st3d-chip:not(:has(input)) button { margin-left: 1.25rem }
+.st3d-note { margin: 0; line-height: 1.45; overflow-wrap: anywhere }
+/* Einstieg auf der SkyTrace-Startseite */
+.st3d-entry { display: flex; align-items: center; gap: 0.875rem; margin: 0 0 1.25rem; padding: 0.875rem 1rem; border: 1px solid var(--border-soft); border-radius: var(--r-lg);
+  background: var(--surface); color: var(--fg); transition: border-color var(--t), background var(--t) }
+.st3d-entry:hover { border-color: var(--border); background: var(--surface-2) }
+.st3d-entry > span:nth-child(2) { flex: 1; min-width: 0 }
+.st3d-entry b { display: block; font-size: 0.875rem }
+.st3d-entry small { display: block; color: var(--mut); font-size: 0.8125rem; margin-top: 1px }
+.st3d-entry > svg { color: var(--dim) }
+.st3d-entry-ic { flex: none; width: 2.25rem; height: 2.25rem; display: grid; place-items: center; border-radius: var(--r); background: var(--acc-soft); color: var(--acc) }
+.st3d-pick { min-width: 16rem; max-width: 26rem }
+/* Vollbild: Bühne füllt den Bildschirm, Liste bleibt rechts */
+.st3d:fullscreen { background: var(--bg); padding: 0.75rem; grid-template-rows: minmax(0, 1fr); height: 100vh; box-sizing: border-box }
+.st3d:fullscreen .st3d-main { height: 100% }
+.st3d:fullscreen .st3d-stage { height: auto; flex: 1 }
+.st3d:fullscreen .st3d-side { height: 100% }
 @keyframes st3dIn { from { opacity: 0; transform: translateY(0.5rem) } }
-@media (max-width: 640px) {
-  dialog.st3d { width: 100vw; height: 100dvh; border-radius: 0; border: 0 }
-  .st3d-head { padding: 0.625rem 0.625rem 0.5rem 0.875rem; flex-wrap: wrap; row-gap: 0.5rem }
-  .st3d-head > div:first-child { flex: 1 }
-  .st3d-head .grow { display: none }
-  .st3d-head .st3d-views { order: 3; width: 100% }
-  .st3d-head .st3d-views button { flex: 1 }
+@media (max-width: 1100px) { .st3d { grid-template-columns: minmax(0, 1fr) 15rem } }
+@media (max-width: 860px) {
+  .st3d { grid-template-columns: minmax(0, 1fr) }
+  .st3d-stage { height: clamp(20rem, 62vh, 36rem) }
+  .st3d-side { height: auto }
+  .st3d-legend { grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)) }
+  .st3d-pick { min-width: 0; flex: 1 1 14rem }
+}
+@media (max-width: 560px) {
+  .st3d-tools { flex-wrap: wrap; left: 0.5rem; right: 0.5rem; top: 0.5rem }
+  .st3d-views { order: 3; flex: 1 0 100% }
+  .st3d-views button { flex: 1 }
   .st3d-help { display: none }
-  .st3d-card { left: 0.5rem; right: 0.5rem; bottom: 0.5rem; width: auto; padding: 0.625rem 0.75rem; max-height: 48%; overflow: auto }
+  .st3d-card { left: 0.5rem; right: 0.5rem; bottom: 0.5rem; width: auto; padding: 0.625rem 0.75rem; max-height: 50% }
   .st3d-card dl { font-size: 0.75rem; gap: 2px 0.625rem }
   .st3d-bar { flex-wrap: wrap; padding: 0.5rem 0.625rem; gap: 0.5rem }
   .st3d-range { order: 3; flex-basis: 100% }
   .st3d-time { flex: 1 }
-  .st3d-foot { flex-direction: column; align-items: stretch; gap: 0.375rem; padding: 0 0.625rem 0.625rem }
-  .st3d-note { text-align: left }
 }
 @media (prefers-reduced-motion: reduce) { .st3d-card { animation: none } }

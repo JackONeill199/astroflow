@@ -76,7 +76,7 @@ def _skytrace_run(run):
 
 
 ROUTES = ["#/", "#/nacht", "#/bilder", "#/galerie", "#/p/{pid}/bild", "#/p/{pid}/aufnahmen", "#/p/{pid}/versionen", "#/p/{pid}/optionen",
-          "#/import", "#/activity", "#/skytrace", "#/skytrace/neu", "#/skytrace/statistik", "#/skytrace/erfolge", "#/sage", "#/sage/wiki", "#/sage/entdeckungen", "#/sage/sammlung",
+          "#/import", "#/activity", "#/skytrace", "#/skytrace/neu", "#/skytrace/statistik", "#/skytrace/erfolge", "#/skytrace/3d", "#/sage", "#/sage/wiki", "#/sage/entdeckungen", "#/sage/sammlung",
           "#/settings/stacking", "#/settings/skytrace", "#/settings/sage", "#/settings/module"]
 
 

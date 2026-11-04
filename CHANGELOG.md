@@ -35,6 +35,10 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   Fertig, Alle – Standard „Offen“) mit Anzahl, dazu Menüs „Art“ (Aufnahmen, fertige Bilder, Kalibrierung) und „Format“
   (FITS, JPG, PNG, TIFF …) mit Mehrfachauswahl. „Alle neuen“ und „Importieren“ wirken nur auf die angezeigten Gruppen;
   die Filterwahl bleibt gemerkt.
+- **SkyTrace 3D-Ansicht als eigene Ansicht statt Fenster:** im Lauf als Reiter „3D“ mit großer Bühne, Zeitleiste und Objektliste
+  daneben (Handy: darunter), dazu der Menüpunkt **SkyTrace → 3D-Ansicht** mit Auswahl der Analyse und ein Einstieg auf der
+  SkyTrace-Startseite. Kamera (Erde, Teleskop, Durchgang, Folgen), Vollbild (Taste F), im neuen Design. „3D-Ansicht“ beim
+  Kandidaten öffnet den Reiter mit diesem Objekt im Fokus. Läufe ohne Treffer zeigen weiter Teleskopweg und Blickfeld.
 
 ## 0.20.1 – 04.11.2026
 

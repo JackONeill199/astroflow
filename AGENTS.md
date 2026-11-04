@@ -346,7 +346,7 @@ Kern: `/api/app` (Module, Build), `/api/folders?path=` (Ordnerdialog), `/api/sta
 
 ## Web-UI (`astroflow/static/` + `modules/*/static/`)
 Hash-Routing: `#/` Übersicht, `#/nacht`, `#/bilder` (Sessions), `#/galerie` (fertige Bilder), `#/p/<id>/<bild|aufnahmen|versionen|optionen>`, `#/import`,
-`#/skytrace[/neu|/<lauf>/<vorschau|kandidaten|beobachtungen|protokoll>]`, `#/sage[/wiki|/entdeckungen|/sammlung|/<eintrag>]`, `#/activity` (Aufträge), `#/settings/<modul|module>`.
+`#/skytrace[/neu|/3d|/statistik|/<lauf>/<vorschau|kandidaten|beobachtungen|protokoll|3d>]`, `#/sage[/wiki|/entdeckungen|/sammlung|/<eintrag>]`, `#/activity` (Aufträge), `#/settings/<modul|module>`.
 **Designsystem (seit 0.21.0, Nutzerauftrag „professionelles, konsistentes Designsystem wie eine native Desktop-App“):** Tokens in `:root` von `style.css`
 (`--bg/--sidebar/--surface/--surface-2/--border/--fg/--mut/--dim/--acc/--ok/--warn/--bad`, Maße, `--t` 160 ms); alte Namen (`--panel`, `--grad`, `--acc2/3` …)
 sind Aliase. **Alle Maße in `rem`** (1rem = 16px; nur 1–2px-Rahmen und Media-Queries in px) – `html` wird ab 1800/2300/3200 px Breite größer

@@ -1,5 +1,5 @@
 'use strict';
-/* SkyTrace 3D-Ansicht eines Laufs: Erde zur Aufnahmezeit, Teleskopweg über die Nacht (Himmelskuppel über dem Standort),
+/* SkyTrace 3D-Ansicht eines Laufs (eigene Ansicht: Reiter „3D“ im Lauf und #/skytrace/3d, kein Dialog mehr): Erde zur Aufnahmezeit, Teleskopweg über die Nacht (Himmelskuppel über dem Standort),
    Blickfeld mit Strahl zum Zielobjekt und alle zugeordneten Treffer (Satelliten, Meteore, Flugzeuge).
    Gerechnet wird im Server (`/api/skytrace/run3d`, run3d.py/orbit3d.py); hier wird nur gezeichnet. three.js liegt unter
    vendor/ und wird erst beim Öffnen geladen. Szene in Erdradien; Server-System D (km) → three: (x, z, −y), Nordpol = +y.
@@ -26,47 +26,54 @@ async function load() {
 
 function available(c) { return !!c?.view3d; }
 
-// Kandidaten-Knopf: Lauf-Ansicht mit diesem Objekt im Fokus
-function open(runId, c, opts = {}) { return openRun(runId, { ...opts, focus: c.key }); }
+// Adresse der 3D-Ansicht eines Laufs (Reiter im Lauf); den Fokus-Kandidaten übergibt skytrace.js selbst
+const href = (runId) => `#/skytrace/${encodeURIComponent(runId)}/3d`;
 
-async function openRun(runId, { focus = null, session = null, onCandidate = null } = {}) {
-  const d = document.createElement('dialog');
-  d.className = 'st3d';
-  d.innerHTML = `<header class="st3d-head"><div style="min-width:0"><h2>${icon('globe')}<span>3D-Ansicht</span></h2>
-      <div class="mut sm st3d-sub">Teleskop, Blickfeld und Bahnen zur Aufnahmezeit</div></div><span class="grow"></span>
-      <div class="seg st3d-views" hidden><button data-v="earth" class="on">Erde</button><button data-v="scope">Teleskop</button><button data-v="pass">Durchgang</button><button data-v="sat">Folgen</button></div>
-      <button class="btn ghost icon" data-x title="Schließen (Esc)" aria-label="Schließen">${icon('x')}</button></header>
+const MARKUP = `<div class="st3d-main">
     <div class="st3d-stage"><canvas aria-label="Drehbare 3D-Erde mit Teleskopweg, Blickfeld und Bahnen"></canvas><div class="st3d-labels"></div>
+      <div class="st3d-tools"><div class="seg st3d-views" hidden aria-label="Kamera"><button data-v="earth" class="on">Erde</button><button data-v="scope">Teleskop</button><button data-v="pass">Durchgang</button><button data-v="sat">Folgen</button></div>
+        <span class="grow"></span><span class="st3d-schema" title="Kuppel, Himmel und Ziel sind nicht maßstäblich">Schema</span>
+        <button class="btn ghost icon sm st3d-fs" title="Vollbild (F)" aria-label="Vollbild">${icon('expand')}</button></div>
       <div class="st3d-msg"><span class="spinner"></span>Teleskopweg und Bahnen werden berechnet …</div><div class="st3d-card" hidden></div>
-      <div class="st3d-help mut">Ziehen dreht · Mausrad/zwei Finger zoomen · Antippen zeigt Details · Kuppel und Himmel nicht maßstäblich</div></div>
+      <div class="st3d-help">Ziehen dreht · Mausrad/zwei Finger zoomen · Antippen zeigt Details</div></div>
     <div class="st3d-bar" hidden><button class="btn icon ghost sm" data-play title="Abspielen" aria-label="Abspielen">${icon('play')}</button>
       <div class="st3d-range"><canvas class="st3d-strip" aria-hidden="true"></canvas><input type="range" aria-label="Zeit der Beobachtung"></div>
       <span class="st3d-time tnum"></span><select aria-label="Abspielgeschwindigkeit"><option value="1">1×</option><option value="10">10×</option>
-        <option value="60">60×</option><option value="300" selected>300×</option><option value="1200">1200×</option></select></div>
-    <div class="st3d-foot"><div class="st3d-legend"></div><p class="st3d-note mut sm"></p></div>`;
-  document.body.append(d);
-  const $d = (s) => d.querySelector(s);
-  let view = null;
-  const close = () => { view?.dispose(); d.close(); d.remove(); };
-  $d('[data-x]').onclick = close;
-  d.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
-  d.showModal();
+        <option value="60">60×</option><option value="300" selected>300×</option><option value="1200">1200×</option></select></div></div>
+  <aside class="st3d-side"><h3 class="st3d-sec">Objekte</h3><div class="st3d-legend"><p class="mut sm">Wird geladen …</p></div><p class="st3d-note mut sm"></p></aside>`;
+
+// Zeichnet die 3D-Ansicht eines Laufs in host (Bühne, Zeitleiste, Objektliste). Gibt { dispose, fullscreen } zurück;
+// host._st3d = Szene (state() für Tests) sobald gezeichnet.
+function mount(host, runId, { focus = null, session = null, onCandidate = null } = {}) {
+  host.classList.add('st3d');
+  host.innerHTML = MARKUP;
+  const $d = (s) => host.querySelector(s);
+  let view = null, dead = false;
+  const fullscreen = () => { if (document.fullscreenElement) document.exitFullscreen(); else host.requestFullscreen?.().catch(() => {}); };
+  $d('.st3d-fs').onclick = fullscreen;
   const fail = (text, link) => {
     $d('.st3d-msg').innerHTML = `${icon('alert')}<span>${esc(text)}${link ? ` <a href="${link[1]}">${esc(link[0])}</a>` : ''}</span>`;
-    $d('.st3d-msg').classList.add('hint'); $d('.st3d-msg a')?.addEventListener('click', close);
+    $d('.st3d-msg').classList.add('hint'); $d('.st3d-legend').innerHTML = ''; $d('.st3d-side').classList.add('empty');
   };
-  let data;
-  const q = `run=${encodeURIComponent(runId)}` + (focus ? `&focus=${encodeURIComponent(focus)}` : '') + (session ? `&session=${encodeURIComponent(session)}` : '');
-  try { data = await api('/skytrace/run3d?' + q); }
-  catch (e) { fail(e.message); return; }
-  if (!d.isConnected) return;
-  if (!data.ok) { fail(data.reason, data.need_site ? ['Standort eintragen →', '#/settings/skytrace'] : null); return; }
-  let mods;
-  try { mods = await load(); } catch (e) { fail('3D-Bibliothek konnte nicht geladen werden: ' + e.message); return; }
-  if (!d.isConnected) return;
-  try { view = scene(d, data, mods, { focus, onCandidate: onCandidate && ((key) => { close(); onCandidate(key); }) }); d._st3d = view; }
-  catch (e) { fail('3D-Darstellung nicht möglich (WebGL nicht verfügbar?): ' + e.message); return; }
-  $d('.st3d-msg').hidden = true;
+  const gone = () => dead || !host.isConnected;
+  (async () => {
+    let data;
+    const q = `run=${encodeURIComponent(runId)}` + (focus ? `&focus=${encodeURIComponent(focus)}` : '') + (session ? `&session=${encodeURIComponent(session)}` : '');
+    try { data = await api('/skytrace/run3d?' + q); }
+    catch (e) { if (!gone()) fail(e.message); return; }
+    if (gone()) return;
+    if (!data.ok) { fail(data.reason, data.need_site ? ['Standort eintragen →', '#/settings/skytrace'] : null); return; }
+    let mods;
+    try { mods = await load(); } catch (e) { if (!gone()) fail('3D-Bibliothek konnte nicht geladen werden: ' + e.message); return; }
+    if (gone()) return;
+    try { view = scene(host, data, mods, { focus, onCandidate }); host._st3d = view; }
+    catch (e) { fail('3D-Darstellung nicht möglich (WebGL nicht verfügbar?): ' + e.message); return; }
+    $d('.st3d-msg').hidden = true;
+  })();
+  return {
+    fullscreen,
+    dispose() { dead = true; view?.dispose(); host._st3d = null; if (document.fullscreenElement === host) document.exitFullscreen(); },
+  };
 }
 
 function glowTexture(THREE) {
@@ -404,5 +411,5 @@ function scene(d, data, { THREE, OrbitControls }, { focus, onCandidate }) {
   };
 }
 
-window.SkyTrace3D = { available, open, openRun };
+window.SkyTrace3D = { available, mount, href };
 })();
