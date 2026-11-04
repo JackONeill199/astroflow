@@ -49,6 +49,10 @@ const store = {
   get: (k, d) => { try { return JSON.parse(localStorage.getItem('af.' + k)) ?? d; } catch { return d; } },
   set: (k, v) => { try { localStorage.setItem('af.' + k, JSON.stringify(v)); } catch { /* privat/gesperrt */ } },
 };
+// Oberflächengröße je Browser: 0 = automatisch nach Bildschirmbreite (CSS), sonst Faktor auf 16px
+const UI_SCALES = [[0, 'Automatisch'], [0.9, '90 %'], [1, '100 %'], [1.125, '113 %'], [1.25, '125 %'], [1.4, '140 %']];
+const applyUiScale = (s = store.get('ui.scale', 0)) => { document.documentElement.style.fontSize = s > 0 ? `${16 * s}px` : ''; };
+applyUiScale();
 
 // Hinweis unten rechts; action = { label, href } oder { label, fn } für eine Schaltfläche (z. B. „Ansehen“, „Rückgängig“)
 function toast(msg, kind = '', action = null) {
@@ -93,7 +97,7 @@ function setJobLine(host, j) {
 function confirmDlg(title, text, ok = 'OK', danger = false) {
   return new Promise(res => {
     const d = $('#dlg');
-    d.innerHTML = `<h2 style="font-size:18px;margin-bottom:8px">${esc(title)}</h2><p class="mut">${text}</p>
+    d.innerHTML = `<h2 style="font-size:16px;margin-bottom:8px">${esc(title)}</h2><p class="mut">${text}</p>
       <div class="row" style="justify-content:flex-end;margin-top:18px"><button class="btn ghost" value="0">Abbrechen</button><button class="btn${danger ? ' danger' : ''}" value="1">${esc(ok)}</button></div>`;
     d.onclick = (e) => { const v = e.target.closest('button')?.value; if (v) { d.close(); res(v === '1'); } };
     d.onclose = () => res(false);
@@ -104,7 +108,7 @@ function confirmDlg(title, text, ok = 'OK', danger = false) {
 // opts: title, ok (Beschriftung), hint (Satz unten links).
 function folderDialog(start, pick, { title = 'Ordner wählen', ok = 'Diesen Ordner verwenden', hint = 'Dateien werden nur gelesen.' } = {}) {
   const d = $('#dlg');
-  d.innerHTML = `<h2 style="font-size:18px;margin-bottom:12px">${esc(title)}</h2>
+  d.innerHTML = `<h2 style="font-size:16px;margin-bottom:12px">${esc(title)}</h2>
     <div class="fdrives" id="fdr"></div>
     <div class="fnav"><button class="btn ghost sm" id="fup" title="Übergeordneter Ordner">↑</button><div class="fpath" id="fcr"></div></div>
     <div class="folders" id="fl"></div><div class="fcount mut sm" id="fct"></div>
@@ -317,20 +321,56 @@ function createViewer(host, src, cmpSrc, labels = ['älter', 'neuer'], ph = null
 
 // ----------------------------------------------------------- Modul-Vertrag --- //
 /* AF.register(id, {
-     nav: [{ href, label, icon, key }],          Einträge in der Seitenleiste (Gruppe = Modulname)
+     nav: [{ href, label, icon, key, area?, parent? }],  Sidebar: area 'work' = Arbeitsbereich (Hauptpunkt des Moduls),
+                                                 'library' = Bibliothek; ohne area = Unterpunkt unter dem Hauptpunkt des Moduls
+                                                 (bzw. unter parent = Schlüssel eines anderen Eintrags, 'home' = Übersicht)
      routes: [[regex, navKey, async (el, ...m) => view]],   view = { update?(st), navigate?(path), actions?(), destroy?() }
-     home: async (st) => html | '' ,             Karte auf der Übersicht
-     homeFeatured: async (st) => html | '',      Breite Karte vor den Modulkarten (optional)
+     summary: async (st) => { title, sub, icon, href, stats: [[wert, label]], live?: html },   Modulkarte der Übersicht
+     recent: async (st) => [{ img, title, sub, href }],     „Zuletzt bearbeitet“ (fertige Bilder)
+     discoveries: async (st) => [{ img?, icon?, kicker, title, sub, href, t }],   „Neueste Entdeckungen“ (t = Unix-Zeit)
+     homeFeatured: async (st) => html | '',      breite Karte neben der Übersicht (Heute Nacht)
      settings: async (el) => void,               Abschnitt in den Einstellungen
      palette: async () => [[icon, label, sub, fn|href, img?]],  Einträge der Befehlspalette (z. B. Objekte)
      status: (st, nav) => void,                  Polling-Hook (Zähler in der Navigation)
      drop: (files) => bool                       global abgelegte Dateien übernehmen
-   }) */
+   })
+   Kontextpanel rechts: AF.ctx.open(el, { title, html | render(body) }) – el = Behälter der Ansicht (verworfene Ansichten
+   schreiben so nicht ins Panel); wird beim Ansichtswechsel automatisch geleert. AF.ctx.show() öffnet es (Drawer auf schmalen Fenstern). */
 const AF = { app: null, modules: {}, order: [], status: null,
   register(id, def) { this.modules[id] = { id, ...def }; },
   on(id) { return !!this.modules[id]; },
   info(id) { return this.app?.modules.find(m => m.id === id); },
 };
+
+// ------------------------------------------------------------- Kontextpanel --- //
+const wideCtx = () => matchMedia('(min-width: 1280px)').matches;
+AF.ctx = {
+  has: false,
+  open(owner, { title = 'Details', html = '', render = null } = {}) {
+    if (owner && !owner.isConnected) return null;
+    const body = $('#ctxBody');
+    $('#ctxTitle').textContent = title;
+    if (render) { body.replaceChildren(); render(body); } else body.innerHTML = html;
+    this.has = true; ctxSync();
+    return body;
+  },
+  body() { return $('#ctxBody'); },
+  shown: false,                                   // Details sind standardmäßig eingeklappt – je Ansicht neu, nicht gespeichert
+  show() { this.shown = true; if (!wideCtx()) $('#shell').classList.add('ctx-shown'); ctxSync(); },
+  hide() { this.shown = false; $('#shell').classList.remove('ctx-shown'); ctxSync(); },
+  toggle() { (wideCtx() ? $('#ctx').hidden : !$('#shell').classList.contains('ctx-shown')) ? this.show() : this.hide(); },
+  clear() { this.has = false; this.shown = false; $('#ctxBody').replaceChildren(); $('#shell').classList.remove('ctx-shown'); ctxSync(); },
+};
+function ctxSync() {
+  const has = AF.ctx.has, wide = wideCtx(), shell = $('#shell');
+  $('#ctxBtn').hidden = !has;
+  $('#ctx').hidden = !has || (wide && !AF.ctx.shown);
+  if (wide) shell.classList.remove('ctx-shown');
+  const shown = has && (wide ? !$('#ctx').hidden : shell.classList.contains('ctx-shown'));
+  $('#ctxBtn').classList.toggle('on', shown);
+  $('#ctxBtn').setAttribute('aria-expanded', shown);
+  $$('[data-ctx-toggle]:not([data-side])').forEach(b => { b.classList.toggle('on', shown); b.setAttribute('aria-pressed', shown); });
+}
 
 async function loadModules() {
   AF.app = await api('/app');
@@ -344,17 +384,37 @@ async function loadModules() {
   }
 }
 
+// Sidebar: Arbeitsbereiche (je Modul ein Hauptpunkt, Unterpunkte klappen beim aktiven Bereich auf), Bibliothek, System.
+// Wird einmal gebaut; Routenwechsel setzen nur Klassen (navState).
+const NAV = { items: [], parent: {} };
 function buildNav() {
-  const nav = $('#nav');
-  let h = `<span class="nav-ind" id="navind"></span><a href="#/" data-r="home">${icon('home')}<span>Übersicht</span></a>`;
+  const all = [{ href: '#/', label: 'Übersicht', icon: 'home', key: 'home', area: 'work' }];
   for (const id of AF.order) {
-    const m = AF.modules[id], info = AF.info(id);
-    if (!m.nav?.length) continue;
-    h += `<div class="nav-group">${esc(info.name)}</div>` + m.nav.map(n => `<a href="${n.href}" data-r="${n.key}"${n.sec ? ' class="sec"' : ''}>${icon(n.icon)}<span>${esc(n.label)}</span><b class="nb" data-nb="${n.key}" hidden></b></a>`).join('');
+    const nav = AF.modules[id].nav || [], main = nav.find(n => n.area === 'work') || nav[0];
+    for (const n of nav) all.push({ ...n, module: id, area: n === main ? 'work' : n.area, parent: n.area === 'library' || n === main ? null : n.parent || main?.key });
   }
-  h += `<div class="nav-group">System</div><a href="#/activity" data-r="activity">${icon('pulse')}<span>Aktivität</span><b id="busy" hidden></b></a>
-    <a href="#/settings" data-r="settings">${icon('gear')}<span>Einstellungen</span></a>`;
-  nav.innerHTML = h;
+  all.push({ href: '#/activity', label: 'Aufträge', icon: 'pulse', key: 'activity', area: 'system' },
+    { href: '#/settings', label: 'Einstellungen', icon: 'gear', key: 'settings', area: 'system', cls: 'lib-only' });
+  NAV.items = all;
+  NAV.parent = Object.fromEntries(all.filter(n => n.parent).map(n => [n.key, n.parent]));
+  const link = (n, sub = false) => `<a href="${n.href}" data-r="${n.key}" class="${sub ? 'sub' : ''} ${n.cls || ''}" title="${esc(n.label)}">${sub ? '' : icon(n.icon)}<span>${esc(n.label)}</span>${n.key === 'activity' ? '<b id="busy" hidden></b>' : `<b class="nb" data-nb="${n.key}" hidden></b>`}</a>`;
+  const withSubs = (n) => {
+    const subs = all.filter(s => s.parent === n.key);
+    return link(n) + (subs.length ? `<div class="subs" data-for="${n.key}"><div>${subs.map(s => link(s, true)).join('')}</div></div>` : '');
+  };
+  const lib = all.filter(n => n.area === 'library');
+  $('#nav').innerHTML = `<div class="nav-group">Arbeitsbereiche</div>${all.filter(n => n.area === 'work').map(withSubs).join('')}
+    ${lib.length ? `<div class="nav-group">Bibliothek</div>${lib.map(withSubs).join('')}` : ''}
+    <div class="nav-group">System</div>${all.filter(n => n.area === 'system').map(withSubs).join('')}`;
+}
+function navState(key) {
+  const top = NAV.parent[key] || key;
+  $$('#nav a').forEach(a => { a.classList.toggle('on', a.dataset.r === key); a.classList.toggle('parent-on', a.dataset.r === top && top !== key); });
+  $$('#nav .subs').forEach(s => s.classList.toggle('open', s.dataset.for === top));
+  $('#nav a.on, #nav a.parent-on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  // schmale Fenster: Unterpunkte des aktiven Bereichs als Leiste über der Ansicht
+  const fam = NAV.items.filter(n => n.key === top || n.parent === top);
+  $('#subnav').innerHTML = fam.length > 1 ? fam.map(n => `<a href="${n.href}" class="${n.key === key ? 'on' : ''}">${esc(n.label)}</a>`).join('') : '';
 }
 const navBadge = (key, n, live = false) => {
   const b = $(`[data-nb="${key}"]`); if (!b) return;
@@ -378,6 +438,37 @@ const coreRoutes = [
   [/^\/settings(?:\/(\w+))?$/, 'settings', settingsView],
 ];
 const allRoutes = () => [...coreRoutes, ...AF.order.flatMap(id => AF.modules[id].routes || [])];
+// Inhaltsbreite je Ansicht: Arbeitsflächen (Bild bearbeiten, Spuren prüfen, 3D) nutzen die Breite, Formulare/Import bleiben schmal,
+// alles andere ist zentriert auf --page-max begrenzt (style.css → .page)
+const PAGE_WIDE = [/^\/galerie\/\d+$/, /^\/skytrace\/(?!neu$|statistik$|erfolge$)[^/]+/];
+const PAGE_NARROW = [/^\/settings/];
+// Weicher Seitenwechsel: Die bisherige Ansicht bleibt als stilles Abbild („Geist“, ohne IDs, nicht klickbar) stehen, bis die neue
+// fertig ist; dann blenden beide kurz ineinander über. Dauert das Laden länger als SKEL_AFTER, erscheint das Skelett.
+// So gibt es kein falsches Zwischen-Skelett und keinen leeren Moment. Bei „Bewegung reduzieren“ ohne Überblendung.
+const SKEL_AFTER = 350;
+let ghostEl = null;
+const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+function makeGhost(prev) {
+  const r = prev.getBoundingClientRect();
+  if (!r.width || reducedMotion()) return null;
+  const g = document.createElement('div');
+  g.className = 'page-ghost';
+  g.setAttribute('aria-hidden', 'true');
+  Object.assign(g.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: Math.max(0, innerHeight - r.top) + 'px' });
+  g.append(...prev.childNodes);
+  g.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));       // globale $('#…') treffen nur die neue Ansicht
+  // Zeichenflächen der beendeten Ansicht (WebGL der 3D-Szene, Diagramme) sind schon freigegeben und würden weiß aufblitzen
+  g.querySelectorAll('canvas, video').forEach(n => { n.style.visibility = 'hidden'; });
+  document.body.append(g);
+  return g;
+}
+function dropGhost(fade = false) {          // fertige Ansicht: sofort weg (keine Doppelbelichtung von Text); nur vor dem Skelett ausblenden
+  const g = ghostEl; ghostEl = null;
+  if (!g) return;
+  if (!fade) return g.remove();
+  g.classList.add('out');
+  setTimeout(() => g.remove(), 140);
+}
 async function route() {
   const path = location.hash.replace(/^#/, '') || '/';
   $('#pal').open && $('#pal').close();
@@ -389,26 +480,32 @@ async function route() {
   for (const [re, nav, fn] of allRoutes()) {
     const m = path.match(re);
     if (!m) continue;
-    $$('#nav a').forEach(a => a.classList.toggle('on', a.dataset.r === nav));
-    slideInd($('#navind'), $('#nav a.on'));
-    $('#nav a.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });   // Handy: aktiven Eintrag in der Leiste zeigen
-    main.classList.remove('enter');
+    AF.ctx.clear();
+    navState(nav);
+    $$('.popover.open').forEach(p => p.classList.remove('open'));
     // eigener Behälter je Aufruf: eine verworfene, noch ladende Ansicht schreibt danach nur in ihren abgehängten Behälter,
     // nicht über die aktuelle (Layout-Test fand das beim schnellen Wechseln)
     const host = document.createElement('div');
-    host.innerHTML = '<div class="skel" style="height:64px;max-width:420px;margin-bottom:26px"></div><div class="skel-grid">' + '<div class="skel"></div>'.repeat(3) + '</div>';
-    main.replaceChildren(host);
+    host.className = 'page pending' + (PAGE_WIDE.some(r => r.test(path)) ? ' wide' : PAGE_NARROW.some(r => r.test(path)) ? ' narrow' : '');
+    host.innerHTML = '<div class="skel" style="height:40px;max-width:360px;margin-bottom:20px"></div><div class="skel-grid">' + '<div class="skel"></div>'.repeat(3) + '</div>';
+    const prev = [...main.children].find(c => c.classList.contains('page'));
+    if (prev && !ghostEl && !prev.classList.contains('pending')) ghostEl = makeGhost(prev);   // noch ladende Vorgängerin: alten Geist behalten
+    main.replaceChildren($('#subnav'), host);
+    window.scrollTo({ top: 0 });
     const ticket = ++routeTicket;
+    const skel = setTimeout(() => { if (ticket === routeTicket) { dropGhost(true); host.classList.remove('pending'); } }, ghostEl ? SKEL_AFTER : 0);
     let v = null;
     try { v = await fn(host, ...m.slice(1)); } catch (e) {
       if (ticket === routeTicket) { console.error(e); host.innerHTML = `<div class="empty">${icon('alert')}<h2>Fehler</h2>${esc(e.message)}</div>`; }
     }
+    clearTimeout(skel);
     if (ticket !== routeTicket) { v?.destroy?.(); return; }      // inzwischen weiternavigiert – diese Ansicht verwerfen
     view = v;
-    void main.offsetWidth;  // Animation neu starten
-    main.classList.add('enter');
+    const wasPending = host.classList.contains('pending');
+    host.classList.remove('pending');
+    host.classList.add(wasPending ? 'swap' : 'enter');           // direkt vom Geist zur fertigen Seite: nur ein Hauch Einblendung
+    dropGhost();
     main.focus({ preventScroll: true });
-    window.scrollTo({ top: 0 });
     return;
   }
   location.hash = '#/';
@@ -424,18 +521,24 @@ async function poll() {
     if (b) { b.hidden = !st.busy; b.textContent = st.busy; }
     for (const id of AF.order) AF.modules[id].status?.(st, navBadge);
     sideFoot(st);
-    if (st.busy || lastActive?.size) await pollActivity(); else { lastActive = new Map(); showJobPill(null); }
+    if (st.busy || lastActive?.size || $('#jobpop').classList.contains('open')) await pollActivity(); else { lastActive = new Map(); showJobPill(null); }
     await view?.update?.(st);
   } catch { /* Server kurz weg – nächster Versuch */ }
 }
+// Systemstatus: Fuß der Sidebar + Punkt in der Toolbar (grün = Automatik an, gelb = Aufträge warten, grau = Automatik aus)
 function sideFoot(st) {
-  const s = st.modules.stacking || {}, d = s.disk;
+  const s = st.modules.stacking || {}, d = s.disk, used = d?.total ? 1 - d.free / d.total : null;
   $('#sidefoot').innerHTML = `<div><span class="dot${s.auto ? '' : ' off'}"></span>${s.auto ? 'Automatik aktiv' : 'Automatik aus'}</div>
-    <div>Letzter Scan: ${ago(s.last_scan)}</div>${d ? `<div class="${s.hold && /frei/.test(s.hold) ? 'bad' : ''}">${fmb(d.free)} frei</div>` : ''}
-    ${s.hold ? `<a class="warn" href="#/activity">${s.paused ? 'Aufträge angehalten' : 'Aufträge warten (Speicher)'}</a>` : ''}<div>AstroFlow ${esc(st.version)} · ${AF.order.length} Module</div>`;
+    <div>Letzter Scan: ${ago(s.last_scan)}</div>
+    ${d ? `<div class="mini-bar${used > .9 ? ' warn' : ''}" title="${Math.round(used * 100)} % belegt"><i style="width:${Math.round(used * 100)}%"></i></div><div class="${s.hold && /frei/.test(s.hold) ? 'bad' : ''}">${fmb(d.free)} frei</div>` : ''}
+    ${s.hold ? `<a class="warn" href="#/activity">${s.paused ? 'Aufträge angehalten' : 'Aufträge warten (Speicher)'}</a>` : ''}<div>AstroFlow ${esc(st.version)}</div>`;
+  const dot = $('#sysdot');
+  dot.className = 'sysdot' + (s.hold ? ' warn' : s.auto ? '' : ' off');
+  $('#sysBtn').title = `System: ${s.auto ? 'Automatik aktiv' : 'Automatik aus'}${d ? ` · ${fmb(d.free)} frei` : ''}${s.hold ? ' · ' + s.hold : ''} · AstroFlow ${st.version}`;
 }
+let lastItems = [];
 async function pollActivity() {
-  const items = await api('/activity?limit=25'), act = items.filter(running), now = new Map(act.map(a => [a.key, a]));
+  const items = lastItems = await api('/activity?limit=25'), act = items.filter(running), now = new Map(act.map(a => [a.key, a]));
   if (lastActive) {
     for (const [key, old] of lastActive) {
       if (now.has(key)) continue;
@@ -447,81 +550,113 @@ async function pollActivity() {
   }
   lastActive = now;
   showJobPill(act.find(a => a.state === 'running') || act[0], act.length);
+  drawJobPop(items);
 }
+// Auftragsanzeige in der Toolbar: Zähler + aktueller Auftrag; Klick öffnet die Liste (Popover)
 function showJobPill(a, n = 0) {
   const pill = $('#jobpill');
   const pc = a?.progress != null ? Math.round(a.progress * 100) : null;
   document.title = a?.state === 'running' ? `${pc != null ? pc + ' % · ' : ''}${a.title} – AstroFlow` : 'AstroFlow';
-  if (!a) { pill.hidden = true; return; }
-  const q = a.state === 'queued';
-  pill.href = a.href || '#/activity';
-  pill.title = 'Zum laufenden Auftrag';
-  if (!$('.t', pill)) pill.innerHTML = '<span class="job-symbol"></span><span class="t"></span><i></i>';
-  pill.hidden = false;
-  const symbol = $('.job-symbol', pill), loader = !q && a.key?.startsWith('skytrace:') ? 'sequence' : 'spinner';
-  if (symbol.dataset.loader !== loader) { symbol.innerHTML = loader === 'sequence' ? sequenceLoader() : '<span class="spinner" aria-hidden="true"></span>'; symbol.dataset.loader = loader; }
-  $('.t', pill).innerHTML = `<b>${esc(a.title)}</b> · ${q ? 'wartet' : esc(a.stage || a.kind || 'läuft')}${!q && pc != null ? ` <span class="tnum">${pc} %</span>` : ''}${n > 1 ? ` <span class="mut">+${n - 1}</span>` : ''}`;
-  requestAnimationFrame(() => { $('i', pill).style.width = (q || pc == null ? 0 : pc) + '%'; });
+  pill.classList.toggle('idle', !a);
+  $('.count', pill).textContent = n || 0;
+  $('.count', pill).hidden = !n;
+  pill.title = a ? `${n} laufende${n === 1 ? 'r' : ''} Auftr${n === 1 ? 'ag' : 'äge'}` : 'Keine laufenden Aufträge';
+  const symbol = $('.job-symbol', pill), q = a?.state === 'queued';
+  const loader = !a ? 'idle' : !q && a.key?.startsWith('skytrace:') ? 'sequence' : 'spinner';
+  if (symbol.dataset.loader !== loader) {
+    symbol.innerHTML = loader === 'sequence' ? sequenceLoader() : loader === 'spinner' ? '<span class="spinner" aria-hidden="true"></span>' : icon('pulse');
+    symbol.dataset.loader = loader;
+  }
+  $('.t', pill).innerHTML = a ? `<b>${esc(a.title)}</b> <span class="mut">${q ? 'wartet' : pc != null ? pc + ' %' : esc(a.stage || 'läuft')}</span>` : '';
+  requestAnimationFrame(() => { $('i', pill).style.width = (!a || q || pc == null ? 0 : pc) + '%'; });
+}
+function drawJobPop(items = lastItems) {
+  const pop = $('#jobpop');
+  if (!pop.classList.contains('open')) return;
+  const act = items.filter(running), past = items.filter(j => !running(j)).slice(0, 3);
+  const row = (j) => `<a class="pj" href="${j.href || '#/activity'}"><b>${esc(j.title)}</b><span class="mut sm tnum">${j.state === 'queued' ? 'wartet' : j.state === 'running' ? (j.progress != null ? Math.round(j.progress * 100) + ' %' : 'läuft') : j.state === 'error' ? '<span class="bad">Fehler</span>' : ago(j.finished || j.started)}</span>
+    <small>${esc(AF.info(j.module)?.name || j.module)} · ${esc(j.detail || j.kind || '')}</small>${running(j) ? `<div class="progress ${j.state === 'queued' || j.progress == null ? 'indet' : ''}"><i style="width:${(j.progress || 0) * 100}%"></i></div>` : ''}</a>`;
+  pop.innerHTML = `<div class="ph">${act.length ? `${act.length} laufend` : 'Keine laufenden Aufträge'}</div>${act.map(row).join('')}
+    ${past.length ? `<div class="ph">Zuletzt</div>${past.map(row).join('')}` : act.length ? '' : '<div class="pnone">Verarbeitung, Spurenanalysen und Recherchen erscheinen hier.</div>'}
+    <div class="pfoot"><a class="linkbtn" href="#/activity">Alle Aufträge ${icon('arrow')}</a></div>`;
+}
+async function toggleJobPop(e) {
+  e.stopPropagation();
+  const pop = $('#jobpop'), open = !pop.classList.contains('open');
+  pop.classList.toggle('open', open);
+  $('#jobpill').setAttribute('aria-expanded', open);
+  if (open) { drawJobPop(); try { await pollActivity(); } catch { /* egal */ } }
 }
 
 // --------------------------------------------------------------- Übersicht --- //
+// Dashboard (zentriert, eine klare Reihenfolge): laufende Aufträge (leer = eine Zeile), zuletzt bearbeitete Bilder (recent),
+// Entdeckungen (discoveries), kompakte Modulzeile (summary); daneben „Heute Nacht“ (homeFeatured, kompakt; volle Grafik in der
+// Aufteilung „Nachtplanung“). Jeder Abschnitt wird nur bei geänderter Ausgabe neu geschrieben.
 async function homeView(el) {
   crumbs([['Übersicht']]);
   const h = new Date().getHours();
-  const hello = h < 5 || h >= 21 ? 'Klarer Himmel heute Nacht?' : h < 11 ? 'Guten Morgen' : h < 17 ? 'Hallo' : 'Guten Abend';
-  el.innerHTML = `<section class="hero dashboard-hero"><div><div class="eyebrow"><span></span>DEIN OBSERVATORIUM · ${new Date().toLocaleDateString('de-DE', {weekday: 'long', day: 'numeric', month: 'long'})}</div>
-      <h1>${hello}${h < 5 || h >= 21 ? '' : '.'}</h1>
-      </div>
-      <div class="hero-act" id="heroAct"></div></section>
-    <div class="home-grid" id="homeGrid"><div class="home-featured"></div><div class="home-modules stagger"></div></div>`;
-  const acts = [];
-  if (AF.on('stacking')) acts.push(`<a class="btn" href="#/import">${icon('upload')}Aufnahmen importieren</a>`);
-  acts.push(`<label class="dashboard-mode"><span>Ansicht</span><select aria-label="Dashboard-Aufteilung"><option value="balanced">Ausgewogen</option><option value="planning">Nachtplanung</option><option value="library">Bilder &amp; Module</option></select></label>`);
-  $('#heroAct').innerHTML = acts.join('');
+  const hello = h < 5 || h >= 21 ? 'Gute Nacht' : h < 11 ? 'Guten Morgen' : h < 17 ? 'Willkommen zurück' : 'Guten Abend';
+  el.innerHTML = `<div class="pagehead"><div><h1>Übersicht</h1><p class="welcome">${hello} – deine Aufnahmen, Analysen und Entdeckungen.</p></div>
+      <div class="page-actions"><label class="dashboard-mode"><span>Aufteilung</span><select aria-label="Dashboard-Aufteilung"><option value="balanced">Ausgewogen</option><option value="planning">Nachtplanung</option><option value="library">Bilder &amp; Module</option></select></label></div></div>
+    <div id="hJobs"></div>
+    <div class="home-grid" id="homeGrid"><div class="home-main">
+      <section id="hRecentS"><h2 class="sect">Zuletzt bearbeitet <a href="${AF.on('stacking') ? '#/galerie' : '#/'}">Galerie öffnen</a></h2><div id="hRecent"></div></section>
+      <section id="hDiscS"><h2 class="sect">Neueste Entdeckungen</h2><div id="hDisc"></div></section>
+      <section><h2 class="sect">Module</h2><div class="home-modules"></div></section>
+    </div><div class="home-featured"></div></div>`;
   const layout = $('.dashboard-mode select', el), grid = $('.home-grid', el);
   const saved = store.get('dashboard.layout', 'balanced');
   layout.value = ['balanced', 'planning', 'library'].includes(saved) ? saved : 'balanced';
   grid.dataset.layout = layout.value;
-  layout.onchange = () => { grid.dataset.layout = layout.value; store.set('dashboard.layout', layout.value); };
+  layout.onchange = () => { grid.dataset.layout = layout.value; store.set('dashboard.layout', layout.value); load(); };
+  const put = (node, html) => { if (node && node.homeHTML !== html) { node.homeHTML = html; node.innerHTML = html; } };
+  const safe = async (fn, d) => { try { return (await fn()) ?? d; } catch { return d; } };
   async function load(st) {
     st = st || AF.status || await api('/status');
-    const cards = await Promise.all(AF.order.map(async (id) => {
-      try {
-        const [body, featured] = await Promise.all([AF.modules[id].home?.(st), AF.modules[id].homeFeatured?.(st)]);
-        return {id, body, featured};
-      } catch (e) { return {id, body: `<div class="mut">${esc(AF.info(id).name)}: ${esc(e.message)}</div>`}; }
-    }));
+    const [cards, recent, disc, feats, acts] = await Promise.all([
+      Promise.all(AF.order.map(async id => [id, await safe(() => AF.modules[id].summary?.(st), null)])),
+      Promise.all(AF.order.map(id => safe(() => AF.modules[id].recent?.(st), []))),
+      Promise.all(AF.order.map(id => safe(() => AF.modules[id].discoveries?.(st), []))),
+      Promise.all(AF.order.map(async id => [id, await safe(() => AF.modules[id].homeFeatured?.(st), '')])),
+      safe(() => api('/activity?limit=12'), [])]);
     if (!el.isConnected) return;
-    const grid = $('.home-grid', el);
-    // Jede Karte einzeln aktualisieren: laufende Module setzen die interaktive Nachtgrafik nicht zurück.
-    for (const [i, c] of cards.entries()) {
-      for (const [key, parent, featured] of [['featured', '.home-featured', true], ['body', '.home-modules', false]]) {
-        const group = $(parent, el);
-        let node = group.querySelector(`[data-m="${c.id}"]`);
-        if (!c[key]) { node?.remove(); continue; }
-        if (!node) {
-          node = document.createElement('section');
-          node.className = 'hcard' + (featured ? ' featured' : '');
-          node.dataset.m = c.id;
-          node.style.setProperty('--i', i);
-          group.append(node);
-        }
-        if (node.homeHTML !== c[key]) { node.homeHTML = c[key]; node.innerHTML = c[key]; }
-      }
+    put($('.home-modules', el), cards.filter(([, c]) => c).map(([id, c]) => `<a class="modcard" data-m="${id}" href="${c.href}">
+      <div class="mh">${icon(c.icon || AF.info(id)?.icon || 'grid')}<b>${esc(c.title || AF.info(id)?.name)}</b><span>Öffnen ${icon('arrow')}</span></div>
+      <div class="ms">${(c.stats || []).map(([v, l]) => `<div><b class="tnum">${esc(v)}</b><small>${esc(l)}</small></div>`).join('')}</div>
+      <div class="ml">${c.live || esc(c.sub || '')}</div></a>`).join(''));
+    const act = acts.filter(running);
+    put($('#hJobs', el), act.length ? `<section class="home-jobs"><h2 class="sect">Laufende Aufträge <a href="#/activity">Alle anzeigen</a></h2><div class="hjobs">${act.slice(0, 5).map(j => `<a class="hjob" href="${j.href || '#/activity'}"><b>${esc(j.title)}</b>
+        <span class="mut">${esc(AF.info(j.module)?.name || j.module)} · ${esc(j.state === 'queued' ? 'wartet' : j.stage || j.detail || 'läuft')}</span>
+        <div class="progress ${j.state === 'queued' || j.progress == null ? 'indet' : ''}"><i style="width:${(j.progress || 0) * 100}%"></i></div>
+        <span class="pc">${j.state === 'running' && j.progress != null ? Math.round(j.progress * 100) + ' %' : ''}</span></a>`).join('')}</div></section>`
+      : `<p class="hnone">${icon('check')}Keine laufenden Aufträge${acts[0] ? ` · zuletzt <a href="${acts[0].href || '#/activity'}">${esc(acts[0].title)}</a>, ${ago(acts[0].finished || acts[0].started)}` : ''} · <a href="#/activity">Aufträge</a></p>`);
+    const rec = recent.flat().slice(0, 8);
+    $('#hRecentS', el).hidden = !rec.length;
+    put($('#hRecent', el), `<div class="hthumbs">${rec.map(r => `<a href="${r.href}" title="${esc(r.title)}"><span class="ii"><img src="${r.img}" alt="" loading="lazy"></span><span>${esc(r.title)}</span><small>${esc(r.sub || '')}</small></a>`).join('')}</div>`);
+    const ds = disc.flat().sort((a, b) => (b.t || 0) - (a.t || 0)).slice(0, 6);
+    $('#hDiscS', el).hidden = !ds.length;
+    put($('#hDisc', el), `<div class="hdisc">${ds.map(d => `<a class="hd" href="${d.href}">${d.img ? `<img src="${d.img}" alt="" loading="lazy">` : `<span class="hdi">${icon(d.icon || 'sparkle')}</span>`}
+      <div><small>${esc(d.kicker || '')}</small><b>${esc(d.title)}</b><span>${esc(d.sub || '')}</span></div></a>`).join('')}</div>`);
+    const fgroup = $('.home-featured', el);
+    for (const [id, html] of feats) {
+      let node = fgroup.querySelector(`[data-m="${id}"]`);
+      if (!html) { node?.remove(); continue; }
+      if (!node) { node = document.createElement('section'); node.className = 'hcard featured'; node.dataset.m = id; fgroup.append(node); }
+      put(node, html);
     }
-    grid.classList.toggle('has-featured', !!$('.home-featured', el).children.length);
+    grid.classList.toggle('has-featured', !!fgroup.children.length);
   }
   await load();
   return { update: load };
 }
 
-// --------------------------------------------------------------- Aktivität --- //
+// --------------------------------------------------------------- Aufträge --- //
 async function activityView(el) {
-  crumbs([['Aktivität']]);
-  const mods = AF.order.filter(id => id !== 'x');
+  crumbs([['Aufträge']]);
+  const mods = AF.order;
   let filter = 'all', sig = '';
-  el.innerHTML = `<div class="pagehead"><div><h1>Aktivität</h1><p class="mut">Alle Aufträge aus allen Modulen – Verarbeitung, Spurenanalysen, Geschichten.</p></div>
-      <div id="qctl"></div></div>
+  el.innerHTML = `<div class="pagehead"><div><h1>Aufträge</h1><p class="mut">Alle Hintergrundprozesse aus allen Modulen – Verarbeitung, Spurenanalysen, Recherchen und Geschichten.</p></div>
+      <div class="page-actions" id="qctl"></div></div>
     <div id="qhold"></div>
     <div class="toolbar"><div class="seg" id="af">${[['all', 'Alle'], ...mods.map(id => [id, AF.info(id).name])].map(([k, l]) => `<button data-v="${k}" class="${k === filter ? 'on' : ''}">${esc(l)}</button>`).join('')}</div></div>
     <div id="jobs"></div>`;
@@ -530,13 +665,15 @@ async function activityView(el) {
   const ji = (j) => j.state === 'done' ? `<span class="ji ok">${icon('check')}</span>` : j.state === 'error' ? `<span class="ji bad">${icon('alert')}</span>`
     : j.state === 'running' ? '<span class="ji run"><span class="spinner"></span></span>' : `<span class="ji">${icon('pulse')}</span>`;
   const msg = (j) => j.state === 'error' ? `<span class="bad">${esc(j.detail)}</span>` : running(j) ? esc(j.detail || (j.state === 'queued' ? 'wartet' : 'läuft'))
-    : `${esc(j.kind || '')}${j.detail ? ' · ' + esc(j.detail) : ''} · ${ago(j.finished || j.started)}${j.finished && j.started && j.finished - j.started > 1 ? ` · Dauer ${dur(j.finished - j.started)}` : ''}`;
+    : `${esc(j.kind || '')}${j.detail ? ' · ' + esc(j.detail) : ''}`;
+  const side = (j) => `${j.started ? `<span title="Start">${fdate(j.started)}</span>` : ''}${j.finished && j.started && j.finished - j.started > 1 ? `<span title="Dauer">${dur(j.finished - j.started)}</span>`
+    : j.state === 'running' && j.started ? `<span title="Läuft seit">seit ${dur(Date.now() / 1000 - j.started)}</span>` : ''}`;
   const row = (j, i) => `<a class="job ${running(j) ? 'running' : ''}" href="${j.href || '#/activity'}" data-j="${esc(j.key)}" style="--i:${i}">${ji(j)}
-      <div style="min-width:0"><b style="color:var(--fg)">${esc(j.title)}</b> <span class="modtag">${esc(AF.info(j.module)?.name || j.module)}</span>
+      <div style="min-width:0"><b style="color:var(--fg);font-weight:550">${esc(j.title)}</b> <span class="modtag">${esc(AF.info(j.module)?.name || j.module)}${j.stage && running(j) ? ' · ' + esc(j.stage) : ''}</span>
         <div class="mut sm jmsg">${msg(j)}</div></div>
-      <span class="chip ${label[j.state]?.[0] || ''}">${j.state === 'running' && j.progress != null ? `${Math.round(j.progress * 100)} %` : label[j.state]?.[1] || esc(j.state)}</span>
+      <div class="jside"><span class="jtime">${side(j)}</span><span class="chip ${label[j.state]?.[0] || ''}">${j.state === 'running' && j.progress != null ? `${Math.round(j.progress * 100)} %` : label[j.state]?.[1] || esc(j.state)}</span></div>
       ${running(j) ? `<div class="progress ${j.state === 'queued' || j.progress == null ? 'indet' : ''}"><i style="width:${(j.progress || 0) * 100}%"></i></div>` : ''}</a>`;
-  // Bilder-Warteschlange anhalten/fortsetzen (laufender Auftrag setzt später am Checkpoint fort)
+  // Bilder-Warteschlange anhalten/fortsetzen (laufender Auftrag setzt später am Checkpoint fort) – die einzige echte Steuerung
   let qsig = null;
   const queueCtl = () => {
     const s = AF.status?.modules?.stacking;
@@ -545,7 +682,7 @@ async function activityView(el) {
     if (k === qsig) return;
     qsig = k;
     $('#qctl').innerHTML = s.paused ? `<button class="btn" id="qbtn">${icon('play')}Aufträge fortsetzen</button>`
-      : `<button class="btn ghost" id="qbtn" title="Laufende Bildverarbeitung abbrechen und Warteschlange anhalten">${icon('pause')}Aufträge anhalten</button>`;
+      : `<button class="btn ghost" id="qbtn" title="Laufende Bildverarbeitung abbrechen und Warteschlange anhalten">${icon('pause')}Bilder-Aufträge anhalten</button>`;
     $('#qhold').innerHTML = s.hold ? `<div class="notice ${s.paused && !/voll/.test(s.hold) ? '' : 'err'}">${icon('alert')}<div>${esc(s.hold)}</div></div>` : '';
     $('#qbtn').onclick = async () => {
       const r = await send('/stacking/queue', { paused: !s.paused });
@@ -556,6 +693,7 @@ async function activityView(el) {
   async function load() {
     queueCtl();
     const items = (await api('/activity?limit=60')).filter(j => filter === 'all' || j.module === filter);
+    if (!el.isConnected) return;
     const s = JSON.stringify(items.map(j => [j.key, j.state]));
     const act = items.filter(running), past = items.filter(j => !running(j));
     if (s === sig) {
@@ -563,13 +701,14 @@ async function activityView(el) {
         const r = $(`[data-j="${CSS.escape(j.key)}"]`);
         if (!r) return;
         $('.jmsg', r).innerHTML = msg(j);
+        $('.jtime', r).innerHTML = side(j);
         if (j.state === 'running' && j.progress != null) { $('.chip', r).textContent = Math.round(j.progress * 100) + ' %'; $('.progress i', r).style.width = j.progress * 100 + '%'; }
       });
       return;
     }
     sig = s;
-    $('#jobs').innerHTML = items.length ? `${act.length ? `<h2 class="sect">Läuft</h2><div class="jobs stagger">${act.map(row).join('')}</div>` : ''}
-      ${past.length ? `<h2 class="sect" ${act.length ? 'style="margin-top:28px"' : ''}>Verlauf</h2><div class="jobs stagger">${past.map(row).join('')}</div>` : ''}`
+    $('#jobs').innerHTML = items.length ? `${act.length ? `<h2 class="sect">Läuft · ${act.length}</h2><div class="jobs stagger">${act.map(row).join('')}</div>` : ''}
+      ${past.length ? `<h2 class="sect" ${act.length ? 'style="margin-top:24px"' : ''}>Verlauf</h2><div class="jobs stagger">${past.map(row).join('')}</div>` : ''}`
       : `<div class="empty">${icon('pulse')}<h2>Noch nichts passiert</h2>Sobald Aufnahmen verarbeitet, Bildfolgen analysiert oder Geschichten erzählt werden, erscheinen die Aufträge hier.</div>`;
   }
   await load();
@@ -599,7 +738,11 @@ async function settingsView(el, section) {
 }
 async function moduleSettings(el) {
   const info = await api('/app'), st = AF.status || await api('/status');
-  el.innerHTML = `<div class="panel"><h2>Module</h2><p class="mut sm" style="margin:6px 0 16px">AstroFlow besteht aus Modulen. Abgeschaltete Module werden nicht geladen –
+  const scale = store.get('ui.scale', 0);
+  el.innerHTML = `<div class="panel"><h2>Darstellung</h2><p class="mut sm" style="margin:6px 0 12px">Größe von Schrift und Bedienelementen. „Automatisch“ vergrößert
+      auf großen Monitoren (z. B. WQHD, 4K). Gilt nur für diesen Browser.</p>
+    <div class="seg" id="uiScale" aria-label="Oberflächengröße">${UI_SCALES.map(([v, l]) => `<button data-v="${v}" class="${v === scale ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+    <div class="panel"><h2>Module</h2><p class="mut sm" style="margin:6px 0 16px">AstroFlow besteht aus Modulen. Abgeschaltete Module werden nicht geladen –
       Änderungen wirken nach einem Neustart des Servers. „Bilder“ ist das Kernmodul.</p>
     <div class="modlist">${info.modules.map(m => `<label class="modrow">${icon(m.icon)}<div><b>${esc(m.name)}</b>${m.error ? ` <span class="chip bad">Fehler</span>` : ''}
         <div class="mut sm">${esc(m.description)}</div>${m.error ? `<div class="bad sm">${esc(m.error)}</div>` : ''}</div>
@@ -610,6 +753,13 @@ async function moduleSettings(el) {
       <dt>Aktive Module</dt><dd>${info.modules.filter(m => m.available).map(m => esc(m.name)).join(', ')}</dd>
       ${st.modules.stacking?.disk ? `<dt>Speicher frei</dt><dd>${fmb(st.modules.stacking.disk.free)} von ${fmb(st.modules.stacking.disk.total)}</dd>` : ''}
     </dl><p class="mut sm" style="margin:14px 0 0">Tipp: Im Browser-Menü „App installieren“ wählen – AstroFlow läuft dann wie eine eigene App.</p></div>`;
+  $('#uiScale', el).onclick = (e) => {
+    const b = e.target.closest('button[data-v]');
+    if (!b) return;
+    const v = Number(b.dataset.v);
+    store.set('ui.scale', v); applyUiScale(v);
+    $$('#uiScale button', el).forEach(x => x.classList.toggle('on', x === b));
+  };
   el.onchange = async (e) => {
     const c = e.target.closest('[data-mod]');
     if (!c) return;
@@ -628,9 +778,9 @@ async function openPalette() {
   d.showModal();
   const inp = $('input', d), ul = $('ul', d);
   const go = (h) => () => { location.hash = h; };
-  const base = [['home', 'Übersicht', 'Start', go('#/')],
-    ...AF.order.flatMap(id => (AF.modules[id].nav || []).map(n => [n.icon, n.label, AF.info(id).name, go(n.href)])),
-    ['pulse', 'Aktivität', 'alle Aufträge', go('#/activity')], ['gear', 'Einstellungen', 'Module, Solver, KI, Standort', go('#/settings')]];
+  const base = [...NAV.items.map(n => [n.icon || 'arrow', n.label, n.module ? AF.info(n.module).name : n.key === 'home' ? 'Start' : 'System', go(n.href)]),
+    ...(AF.on('stacking') ? [['upload', 'Dateien importieren', 'FITS, JPG, PNG, TIFF', go('#/import')]] : []),
+    ['pulse', 'Aufträge anzeigen', 'alle laufenden und fertigen Aufträge', go('#/activity')], ['gear', 'Einstellungen', 'Module, Solver, KI, Standort', go('#/settings')]];
   let extra = [], sel = 0, items = [];
   const draw = () => {
     const words = inp.value.toLowerCase().split(/\s+/).filter(Boolean);
@@ -658,7 +808,8 @@ async function openPalette() {
   inp.focus();
   // Module liefern ihre Einträge (Objekte, Läufe, Geschichten) nach
   const lists = await Promise.all(AF.order.map(async id => { try { return [AF.info(id).name, await AF.modules[id].palette?.() || []]; } catch { return [id, []]; } }));
-  extra = lists.filter(([, l]) => l.length);
+  const jobs = (await api('/activity?limit=25').catch(() => [])).filter(running).map(j => ['pulse', j.title, `${AF.info(j.module)?.name || j.module} · ${j.state === 'queued' ? 'wartet' : j.stage || 'läuft'}`, j.href || '#/activity']);
+  extra = [['Laufende Aufträge', jobs], ...lists].filter(([, l]) => l.length);
   if (d.open) draw();
 }
 
@@ -668,11 +819,26 @@ async function boot() {
   catch (e) { $('#view').innerHTML = `<div class="empty">${icon('alert')}<h2>Server nicht erreichbar</h2>${esc(e.message)}</div>`; return; }
   buildNav();
   $('#palBtn').onclick = openPalette;
+  // Sidebar ein-/ausklappen (gemerkt je Browser); Kontextpanel; Auftrags-Popover
+  const shell = $('#shell');
+  shell.classList.toggle('mini', store.get('side.mini', false));
+  $('#sideToggle').onclick = () => {
+    const narrow = matchMedia('(max-width: 1100px)').matches;
+    if (narrow) shell.classList.toggle('wide'); else { shell.classList.toggle('mini'); store.set('side.mini', shell.classList.contains('mini')); }
+  };
+  $('#ctxBtn').onclick = () => AF.ctx.toggle();
+  $('#ctxClose').onclick = () => AF.ctx.hide();
+  $('#ctxScrim').onclick = () => AF.ctx.hide();
+  matchMedia('(min-width: 1280px)').addEventListener('change', ctxSync);
+  $('#jobpill').onclick = toggleJobPop;
+  document.addEventListener('click', (e) => { if (e.target.closest('[data-ctx-open]')) AF.ctx.show(); else if (e.target.closest('[data-ctx-toggle]')) AF.ctx.toggle(); });
+  document.addEventListener('click', (e) => { if (!e.target.closest('.jobs-ind')) { $('#jobpop').classList.remove('open'); $('#jobpill').setAttribute('aria-expanded', false); } });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('#jobpop').classList.remove('open'); if ($('#shell').classList.contains('ctx-shown')) AF.ctx.hide(); } });
   addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); }
   });
-  addEventListener('resize', () => { slideInd($('#navind'), $('#nav a.on')); slideInd($('#tabind'), $('#tabs a.on'), true); });
-  // Dateien überall auf die Seite ziehen: das erste Modul, das sie annimmt, bekommt sie (FITS → Bilder, Fotos → Sage)
+  addEventListener('resize', () => slideInd($('#tabind'), $('#tabs a.on'), true));
+  // Dateien überall auf die Seite ziehen: das erste Modul, das sie annimmt, bekommt sie (FITS → Bilder-Pipeline, JPG/PNG/TIFF → Galerie)
   let dragDepth = 0;
   const own = (e) => e.target.closest?.('.dropzone');
   addEventListener('dragenter', (e) => { if (e.dataTransfer?.types.includes('Files') && !own(e)) { dragDepth++; $('#drop').hidden = false; } });

@@ -1,27 +1,32 @@
 /* Bild-Tutor (Befunde, Aufnahmenacht, KI-Einschätzung) */
-.tutor-intro { margin: 0 0 12px }
-.tfinds { display: grid; gap: 8px; margin-bottom: 14px }
-.tfind { --c: var(--mut); border: 1px solid var(--line); border-left: 3px solid var(--c); border-radius: var(--r-sm); padding: 9px 12px;
+.tutor-intro { margin: 0 0 0.75rem }
+.tfinds { display: grid; gap: 0.5rem; margin-bottom: 0.875rem }
+.tfind { --c: var(--mut); border: 1px solid var(--line); border-left: 0.1875rem solid var(--c); border-radius: var(--r-sm); padding: 0.5625rem 0.75rem;
   background: color-mix(in srgb, var(--bg2) 60%, transparent) }
 .tfind.lvl-bad { --c: var(--bad) } .tfind.lvl-warn { --c: var(--warn) } .tfind.lvl-info { --c: var(--acc) } .tfind.lvl-ok { --c: var(--ok) }
-.tfind summary { cursor: pointer; display: flex; align-items: baseline; gap: 8px; list-style: none; font-size: 14px }
+.tfind summary { cursor: pointer; display: flex; align-items: baseline; gap: 0.5rem; list-style: none; font-size: 0.875rem }
 .tfind summary::-webkit-details-marker { display: none }
-.tfind summary::before { content: ""; flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--c); transform: translateY(-1px) }
+.tfind summary::before { content: ""; flex-shrink: 0; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--c); transform: translateY(-1px) }
 .tfind summary b { font-weight: 600; min-width: 0 }
-.tfind p { margin: 8px 0 0; font-size: 13px; line-height: 1.5 }
-.tfind ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; display: grid; gap: 4px }
-.tfind .tips-h { display: block; margin-top: 8px }
-.tnights { display: grid; gap: 10px; margin-bottom: 14px }
-.tnight { font-size: 13px }
-.tnight-h { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap }
-.tchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px }
-.tchips span { padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line2); font-size: 12px; white-space: normal }
+.tfind p { margin: 0.5rem 0 0; font-size: 0.8125rem; line-height: 1.5 }
+.tfind ul { margin: 0.375rem 0 0; padding-left: 1.125rem; font-size: 0.8125rem; display: grid; gap: 0.25rem }
+.tfind .tips-h { display: block; margin-top: 0.5rem }
+.tnights { display: grid; gap: 0.625rem; margin-bottom: 0.875rem }
+.tnight { font-size: 0.8125rem }
+.tnight-h { display: flex; gap: 0.5rem; align-items: baseline; flex-wrap: wrap }
+.tchips { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 0.375rem }
+.tchips span { padding: 0.1875rem 0.5rem; border-radius: 62.4375rem; border: 1px solid var(--line2); font-size: 0.75rem; white-space: normal }
 .tchips .lvl-ok { border-color: color-mix(in srgb, var(--ok) 40%, transparent) }
 .tchips .lvl-warn { border-color: color-mix(in srgb, var(--warn) 50%, transparent) }
 .tchips .lvl-bad { border-color: color-mix(in srgb, var(--bad) 50%, transparent) }
-.tki { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 12px; margin-bottom: 12px;
+.tki { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 0.625rem 0.75rem; margin-bottom: 0.75rem;
   background: color-mix(in srgb, var(--acc) 6%, transparent) }
-.tki ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; display: grid; gap: 4px }
+.tki ul { margin: 0.375rem 0 0; padding-left: 1.125rem; font-size: 0.8125rem; display: grid; gap: 0.25rem }
 .tki summary { cursor: pointer }
-.tki .tips-h { display: block; margin-top: 8px }
-.tsec { display: block; margin: 0 0 6px }
+.tki .tips-h { display: block; margin-top: 0.5rem }
+.tsec { display: block; margin: 0 0 0.375rem }
+.tsec-h { margin: 1.125rem 0 0.5rem; padding-top: 0.875rem; border-top: 1px solid var(--border-soft); font-size: 0.875rem; font-weight: 600 }
+.tnights-d { margin-top: 0.625rem }
+.tnights-d > summary { cursor: pointer; color: var(--mut) }
+.tnights-d > summary:hover { color: var(--fg) }
+.tnights-d .tnights { margin-top: 0.5rem }

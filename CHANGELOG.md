@@ -3,6 +3,74 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.21.0 – 04.11.2026
+
+### Neu
+- **Neue Oberfläche:** einheitliches, ruhiges Designsystem (neutrales Anthrazit, ein blauer Akzent, keine Verläufe,
+  kein Sternenhintergrund) – die Astrofotos stehen im Vordergrund. Alle Farben, Abstände und Schriftgrößen kommen aus
+  zentralen Tokens in `style.css`; die Module übernehmen sie automatisch.
+- **Neuer Rahmen:** Werkzeugleiste oben (Suche/Befehle mit Strg+K, Importieren, Auftragsanzeige, Systemstatus),
+  einklappbare Seitenleiste mit **Arbeitsbereichen** (Übersicht, Bilder, SkyTrace, Sage), **Bibliothek** (Galerie,
+  Sammlung) und **System** (Aufträge, Einstellungen). Unterseiten eines Bereichs klappen unter ihm auf; auf dem Handy
+  stehen sie als Leiste über der Ansicht, die Hauptbereiche unten.
+- **Kontextpanel rechts:** Details und Aktionen zur aktuellen Auswahl (z. B. Bild-Details mit Bild-Tutor, Kanälen,
+  Himmelsposition und „Geschichte erzählen“). Ein- und ausklappbar; auf kleineren Fenstern und dem Handy als Schublade.
+- **Übersicht neu:** Modulkarten mit Live-Zahlen, aktive Aufträge, zuletzt bearbeitete Bilder, neueste Entdeckungen
+  (SkyTrace-Kandidaten, Sage-Geschichten und -Entdeckungen) und daneben „Heute Nacht“. Die Aufteilung bleibt wählbar.
+- **Auftragsanzeige** in der Werkzeugleiste: Zahl laufender Aufträge, Klick öffnet die Liste mit Fortschritt.
+  Die Seite **Aufträge** (vorher „Aktivität“) zeigt zusätzlich Start und Dauer.
+- **Bilder als Werkbank:** alle Sessions als Karten oder kompakte Tabelle mit Status. Die Objektseite zeigt die
+  **Verarbeitungs-Pipeline** (Import → Analyse → Auswahl → Stacking → Entwicklung → Ausgabe) mit echtem Status je Schritt,
+  einen großen Bildbetrachter und die Details im Kontextpanel. „Aktualisieren“ heißt jetzt **Nachstacken**.
+- **Galerie** (neu, unter Bibliothek): nur fertige Bilder, rahmenlos im großen oder kleinen Raster oder als Liste,
+  mit Suche, Filter nach Objekttyp und Sortierung.
+- **Prozessvisualisierung:** Während ein Auftrag läuft, zeigt eine kleine schematische Animation, was gerade passiert
+  (Aufnahmen vermessen, aussortieren, an Sternen ausrichten und mitteln – mit echter Aufnahmezahl und Rauschen ≈ 1/√N –,
+  Helligkeitskurve strecken; bei SkyTrace die Spurensuche mit echtem Fortschritt). Als „Schema“ gekennzeichnet,
+  pausierbar, bei „Bewegung reduzieren“ ein Standbild. Echte Zwischenbilder zeigt weiterhin die Live-Vorschau.
+- **SkyTrace:** Analysen als Tabelle oder Karten, sachlicher Seitenkopf.
+- **Oberflächengröße:** Auf großen Monitoren (WQHD, 4K) werden Schrift und Bedienelemente automatisch größer;
+  unter Einstellungen → Module & System → Darstellung fest wählbar (90–140 %, je Browser).
+- **Hauptordner durchsuchen – Filter:** eine Werkzeugleiste direkt über der Liste. Reiter nach Zustand (Offen, Neu, Teilweise,
+  Fertig, Alle – Standard „Offen“) mit Anzahl, dazu Menüs „Art“ (Aufnahmen, fertige Bilder, Kalibrierung) und „Format“
+  (FITS, JPG, PNG, TIFF …) mit Mehrfachauswahl. „Alle neuen“ und „Importieren“ wirken nur auf die angezeigten Gruppen;
+  die Filterwahl bleibt gemerkt.
+- **Ruhigeres, offeneres Layout:** Übersichten, Listen, Wissensseiten und Import stehen zentriert mit begrenzter Breite;
+  auf großen Monitoren wachsen nur die Außenränder. Lesetexte haben eine angenehme Zeilenlänge, Arbeitsflächen (Bild bearbeiten,
+  SkyTrace-Lauf, 3D) nutzen weiter die volle Breite. Größere Schrift, deutlichere Überschriften, weniger Rahmen und keine Karten in Karten.
+- **Übersicht:** zuletzt bearbeitete Bilder und Entdeckungen zuerst, Module kompakt darunter; ohne laufende Aufträge nur eine Zeile.
+  „Heute Nacht“ zeigt kompakt Dunkelheit, Mond, Wetter und bis zu drei Ziele – die volle Grafik gibt es in der Aufteilung „Nachtplanung“.
+- **Bilddetails:** Der Tutor trennt **Bildqualität**
+  (Bewertung der Messwerte am fertigen Bild) und **Aufnahmebedingungen** (Hinweise zur Nacht, senken die Bewertung nicht); die
+  Aufnahmenächte sind aufklappbar.
+- **Import:** zwei Einstiege mit kurzer Erklärung – „Dateien nach AstroFlow kopieren“ oder „Vorhandenen Ordner einbinden“;
+  technische Erläuterungen aufklappbar.
+- **Objektnamen im Bild:** Fährt man mit der Maus über ein Bild (Bilder und Galerie-Betrachter), erscheinen Kreise und Namen
+  der Katalogobjekte dort, wo das Plate-Solving sie gefunden hat; sie wandern mit Zoom und Verschieben (auf Touch-Geräten immer sichtbar).
+- **Ruhigere Seitenwechsel:** Die bisherige Seite bleibt stehen, bis die neue fertig ist – kein kurz aufblitzendes Standard-Skelett
+  und kein leerer Moment mehr; ein Platzhalter erscheint nur, wenn das Laden länger dauert. Im Betrachter werden Nachbarbilder und
+  ihr Objektwissen vorab geladen, sodass ← → ohne Wartezeit und ohne springende Spalte wechseln. Die Werkzeugleiste oben verschiebt
+  sich nicht mehr, je nachdem ob eine Seite ein Panel hat. Beim Verlassen der 3D-Ansicht blitzt die Bühne nicht mehr weiß auf.
+- **Galerie mit eigenem Betrachter:** Ein Klick auf ein Bild öffnet es groß (nicht mehr die Bearbeitungsseite). Daneben steht
+  **„Über das Objekt“** aus Sage – Kurztext, Kernwerte, deine bisherigen Aufnahmen und der Link zum Artikel – sowie die Daten deiner
+  Aufnahme. ← → blättert durch die Galerie, F für Vollbild, „Bearbeiten“ führt zur Verarbeitung unter „Bilder“.
+- **Bilder** dient der Verarbeitung: Die Objektseite steht wie die Übersicht zentriert, die Bild-Details (Kennzahlen,
+  Bildqualität, Kanäle, Details, danach „Über das Objekt“ und Himmelsposition) stehen als Spalte neben dem Bild – „Details“
+  blendet sie aus und ein. Keine eigene Schrittleiste mehr: Läuft eine Verarbeitung, zeigt die Bildfläche selbst die
+  Live-Vorschau mit Fortschritt und Schritten.
+- **SkyTrace:** Analysen standardmäßig als große Bildkarten (wie unter „Bilder“), Tabelle weiter umschaltbar.
+  In der **3D-Ansicht** stehen alle Analysen rechts in einer Liste (Suche, Filter „Mit Kandidaten“) – ein Klick lädt Teleskopweg
+  und Bahnen direkt, ohne die Seite zu verlassen.
+- **SkyTrace:** gleichnamige Analysen heißen in der Liste „Variante n von m“ (die neueste „aktuell“); die Vorschau ist nie höher als
+  das Fenster, Wiedergabe und Kandidatenwahl bleiben darunter sichtbar.
+- **Sage:** kompakter Objektkopf (Foto, Kurztext, Kernwerte), darunter eine Hauptspalte (Beschreibung, Schnellfakten, Forschung) und
+  rechts Himmelsposition, eigene Aufnahmen, Verwandtes und Notizen – ohne doppeltes Bild, doppelte Beschreibung oder doppelte Fakten.
+  Das Foto mit Objektmarken steht unter „Bilder & Aufnahmen“. Die Himmelskarte beschriftet nicht mehr überlappend.
+- **SkyTrace 3D-Ansicht als eigene Ansicht statt Fenster:** im Lauf als Reiter „3D“ mit großer Bühne, Zeitleiste und Objektliste
+  daneben (Handy: darunter), dazu der Menüpunkt **SkyTrace → 3D-Ansicht** mit Auswahl der Analyse und ein Einstieg auf der
+  SkyTrace-Startseite. Kamera (Erde, Teleskop, Durchgang, Folgen), Vollbild (Taste F), im neuen Design. „3D-Ansicht“ beim
+  Kandidaten öffnet den Reiter mit diesem Objekt im Fokus. Läufe ohne Treffer zeigen weiter Teleskopweg und Blickfeld.
+
 ## 0.20.1 – 04.11.2026
 
 ### Behoben

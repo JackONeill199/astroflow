@@ -12,7 +12,7 @@ const keep = () => { try { localStorage.setItem('stx-ach-toasted', JSON.stringif
 async function achView(el) {
   crumbs([['SkyTrace', '#/skytrace'], ['Erfolge']]);
   let d = null, filter = 'all', sig = '', wasRunning = false, timer = 0;
-  el.innerHTML = `<div class="pagehead"><div><h1>Erfolge <em class="grad">am Himmel</em></h1>
+  el.innerHTML = `<div class="pagehead"><div><h1>SkyTrace-Erfolge</h1>
       <p class="mut">Aus deinen Analysen freigeschaltet – von der ersten Satellitenspur bis zum kosmischen Verkehrsstau.</p></div><span class="grow"></span><div class="seg" id="stx-f"></div></div>
     <div id="stx-body"></div>`;
   const body = $('#stx-body', el), seg = $('#stx-f', el);
@@ -68,7 +68,7 @@ async function achView(el) {
   };
 }
 
-mod.nav.push({ href: '#/skytrace/erfolge', label: 'Erfolge', icon: 'medal', key: 'skytrace-ach', sec: true });
+mod.nav.push({ href: '#/skytrace/erfolge', label: 'Erfolge', icon: 'medal', key: 'skytrace-ach' });
 mod.routes.unshift([/^\/skytrace\/erfolge$/, 'skytrace-ach', achView]);
 const palette = mod.palette;
 mod.palette = async () => [...(palette ? await palette() : []), ['medal', 'SkyTrace-Erfolge', 'Meilensteine und Kurioses aus deinen Analysen', '#/skytrace/erfolge']];

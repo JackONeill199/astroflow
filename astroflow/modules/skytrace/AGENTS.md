@@ -109,11 +109,16 @@ fehlt `sgp4` im Server, läuft `orbit3d.py` als Skript im Engine-Interpreter (JS
   (GMN Anfang/Ende + Zeit), Flugzeuge `track` ([t, lat, lon, Höhe m]). Ältere Läufe: `archive_satrec` sucht ohne Netz in
   `catalog_cache/archives/orbits-<Datum>.json` (wie `satellite_archive.model_from_record`) und `eth-<hash>.json`
   (Schlüssel wie `eth_tles`); sonst `missing[].reason` → Hinweis in der Ansicht.
-- Frontend: eigener `<dialog class="st3d">` (keine Route, damit wenig Konflikte mit dem UI-Umbau), three.js r160 +
+- Frontend (seit 0.21.0 kein Dialog mehr, Nutzerwunsch „zentrales Feature statt Popup“): `SkyTrace3D.mount(host, run, {focus, session, onCandidate})`
+  zeichnet Bühne (Kamera-Wahl, „Schema“, Vollbild), Zeitleiste und Objektliste in einen Behälter (`host._st3d` = Szene, `state()` für Tests) und
+  gibt `{dispose, fullscreen}` zurück. Genutzt im Lauf-Reiter `3d` (`tab3d`, nur mit Bildfolge und nicht während einer Analyse; Fokus-Kandidat über
+  `focus3d`, da der Router keine `?`-Parameter kennt) und in `#/skytrace/3d` (`sky3dView`: Analysenliste `.st3d-runs` oben in der Seitenleiste – nach jedem `mount` wieder eingesetzt –,
+  Filter „Mit Kandidaten“ `skytrace.3dhits`, zuletzt gewählter Lauf in `skytrace.3drun`). Liste der Läufe standardmäßig als Karten (`skytrace.view2`).
+  Eine gemeinsame Szene über alle Läufe gibt es nicht (jede Beobachtung eigene Zeit/Standort). Taste F = Vollbild. three.js r160 +
   OrbitControls (Import auf `./three.module.min.js` umgeschrieben) und Erdtextur unter `static/vendor/` (Lizenzen in
   `vendor/README.md`), erst beim Öffnen per `import()` geladen. Zeichnet nur bei Änderung; Kamerafahrten entfallen bei
   `prefers-reduced-motion`, kein Auto-Drehen. Kegellänge = 1,35 × Entfernung des Satelliten im Blickfeld (echte Öffnung,
-  daher erst in „Blickfeld“ sichtbar). Atmosphärensaum blendet sich nahe der Erde aus. `dialog._st3d.state()` für Tests.
+  daher erst in „Blickfeld“ sichtbar). Atmosphärensaum blendet sich nahe der Erde aus. `#st3dHost._st3d.state()` für Tests.
 - **Lauf-Ansicht (0.17.0, Nutzerwunsch: „unabhängig davon, ob ein Objekt erkannt wurde … wohin das Teleskop geschaut hat“):**
   `GET /api/skytrace/run3d?run=&session=&focus=` → `run3d.build_run`. Je Beobachtung: Blickrichtung je Aufnahme aus
   Referenz-WCS + `frames.jsonl.reference_to_current` (≤ `MAX_SAMPLES` 360 Stichproben, Ecken → Bildlage/Positionswinkel),
@@ -124,7 +129,7 @@ fehlt `sgp4` im Server, läuft `orbit3d.py` als Skript im Engine-Interpreter (JS
   (FITS, sonst Einstellungen); fehlt er → `{ok:false, need_site}`. Treffer: `orbit3d.build` je Kandidat im gemeinsamen
   System (`anchor` = erste Aufnahme), ±5 min, Umlauf 180 Punkte, bester Satellit je Kandidat (Fokus-Kandidat alle).
   Ergebnis per `lru_cache` nach Dateizeiten (echter Lauf mit 8 Treffern: 0,3 s, dann 2 ms; 240 KB).
-- Frontend `SkyTrace3D.openRun(run, {focus, session, onCandidate})`; `open(run, c)` = Fokus auf den Kandidaten.
+- Frontend `SkyTrace3D.mount(host, run, {focus, session, onCandidate})`; Kandidaten-Knopf setzt `focus3d` und wechselt zum Reiter „3D“.
   Kuppel (`DOME` 0,045 R) und Sternkugel (`SKY` 60 R) sind erdfest bzw. raumfest und nicht maßstäblich. Ansichten Erde/Teleskop/
   Durchgang/Folgen, „Ziel“ beim Antippen des Ziels; Teleskop und Ziel mit lokaler Senkrechten als „oben“ (OrbitControls
   liest `camera.up` nur beim Anlegen → `makeControls` legt sie neu an) und folgen dem Standort, wenn sich die Erde dreht.

@@ -71,6 +71,20 @@ def name_key(path: str | Path) -> str | None:
     return None
 
 
+# Dateiformat für den Filter der Import-Ansicht (Endungen zusammengefasst)
+_FORMATS = {".fit": "fits", ".fits": "fits", ".fts": "fits", ".jpg": "jpg", ".jpeg": "jpg", ".tif": "tiff", ".tiff": "tiff"}
+
+
+def file_formats(files) -> dict[str, int]:
+    """Anzahl Dateien je Format, z. B. {"fits": 141, "jpg": 2}."""
+    out: dict[str, int] = {}
+    for f in files:
+        k = Path(f).suffix.lower()
+        k = _FORMATS.get(k, k.lstrip(".") or "?")
+        out[k] = out.get(k, 0) + 1
+    return out
+
+
 def _group_dir(d: Path, root: Path) -> Path:
     """Stellina & Co.: alle Unterordner einer „…_observation_X“ gehören zu einer Gruppe."""
     for parent in [d, *d.parents]:
@@ -288,7 +302,7 @@ class Library:
         if g["kind"] == "lights" and not obj and m:
             label = m.group(1).replace("_", " ")
         return {"id": f"g{n}", "kind": g["kind"], "name": label, "rel": rel, "dir": d, "files": files,
-                "n_files": total, "n_known": known, "n_done": stacked, "n_new": len(todo), "bytes": size,
+                "n_files": total, "exts": file_formats(files), "n_known": known, "n_done": stacked, "n_new": len(todo), "bytes": size,
                 "camera": camera, "night": night, "state": state,
                 "project": {"id": project, "name": names.get(project)} if project else None,
                 "to_import": todo, "import_bytes": sum(g["stat"][f][0] for f in todo)}

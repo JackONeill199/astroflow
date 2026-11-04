@@ -29,7 +29,9 @@ astroflow/static/          Shell: index.html, app.js (Router, Navigation, Übers
   Nutzerwunsch „gestackte Aufnahmen automatisch durch SkyTrace und in die Entdeckungen, mit animierten Erfolgen“):
   SkyTrace `auto.AutoAnalysis` (Hardlinks je Nacht → Warteschlange, Einstellung `skytrace.auto`) und Sage `Module._stacked`
   (Bild bestimmen → Entdeckungen, Einstellungen `sage.auto_discover`/`auto_story`). Empfänger kehren sofort zurück (eigene Threads).
-- **Modul-Vertrag Frontend** (`AF.register(id, {nav, routes, home, settings, palette, status, drop})`, Kommentar in `app.js`): Helfer (`api`, `send`, `toast`,
+- **Modul-Vertrag Frontend** (`AF.register(id, {nav, routes, summary, recent, discoveries, homeFeatured, settings, palette, status, drop})`, Kommentar in `app.js`;
+  `nav[].area` 'work' = Arbeitsbereich, 'library' = Bibliothek, sonst Unterpunkt (optional `parent`, 'home' = unter der Übersicht);
+  Kontextpanel rechts per `AF.ctx.open(el, {title, html|render})`, wird beim Ansichtswechsel geleert; Prozessanimationen `vizProcess(host, {kind, …})` aus `static/viz.js`): Helfer (`api`, `send`, `toast`,
   `createViewer`, `folderDialog(start, pick, {title, ok, hint})` (Ordner auf dem Server-Rechner wählen, über `/api/folders` → `core/folders.py`: Laufwerke, Unterordner, FITS-/Bildzählung; genutzt von Hauptordner und SkyTrace), `picker` (Dropdown mit Suche für Modelle/Stimmen, Listen aus `core/models.list_models`), `jobLine`, `confirmDlg`, `crumbs`, `store` …) sind global. Modul-Skripte lädt die Shell aus `/api/app` mit `?v=<build>`
   (Build-Kennung aus Dateizeiten) – nur `index.html` braucht weiter das manuelle `?v=`.
 - Module ein/aus: Einstellungen → Module & System bzw. `ASTROFLOW_MODULES=stacking,skytrace`; ein defektes Modul erscheint mit Fehler, die App läuft weiter.
@@ -302,6 +304,9 @@ oder als verschwunden behandelt. Gelöscht werden sie nie (`_is_upload`). Wieder
 Master-Kalibrierung: `CalibrationLibrary._cached` merkt je Pfadliste den zuletzt gebauten Master (`<tag>_<hash>.ref`) – ohne erreichbare
 Quelle (keine Änderungszeit für den Schlüssel) wird er weiter genutzt; Bauen/Lesen unter `lock` (parallele Analyse-Threads).
 Test: `tests/test_import_in_place.py`.
+UI-Filter (seit 0.21.0, eine Leiste über der Liste): Zustand als Reiter (`LIB_TABS`, Standard „Offen“ = `n_new > 0`), Art/Format als `.menu`-Mehrfachauswahl,
+localStorage `af.library.filter` (`{tab, kind, ext}`); Formate je Gruppe aus `library.file_formats` → `groups[].exts` (`{"fits": 141}`);
+„Alle neuen“ (Dreifach-Kästchen) und Import wirken nur auf sichtbare Gruppen. Beim ersten Laden sind Gruppen mit Neuem vorgewählt (wie vor 0.21.0).
 Bilder gehen über `import_picture` (Kopie in die Ausgabe). Quelldateien bleiben unberührt. API: `GET /library`, `POST /library/scan {root}`, `POST /library/import {ids}` (Ids stammen
 aus dem letzten Suchlauf im Speicher). Zuletzt genutzter Pfad: `data/settings.json` → `library.root`. Test: `tests/test_library.py`.
 
@@ -334,15 +339,34 @@ der Watcher berücksichtigt auch bereits gescannte, noch neue Frames. Letzte Feh
 `Engine._queue_lock` verhindert doppelte Aufträge durch gleichzeitig arbeitende Worker/Watcher.
 Objekt löschen (`DELETE /api/stacking/projects/{id}` → `Pipeline.delete_project`, 409 während eines Jobs): Ergebnisse, Stack, Jobs, hochgeladene
 Rohbilder weg; Frames aus eingebundenen Ordnern bleiben als `kind='ignored'` in der DB, `_fingerprints` überspringt sie.
+`results/{id}/objects` (seit 0.21.0): Katalogobjekte in JPG-Pixeln aus `work/p<id>/wcs.json` über `services.project_solution`, Cache
+`work/p<id>/objekte_r<rid>.json` (neu, wenn wcs.json jünger) – Frontend `plateLabels(rid)` als `createViewer`-Overlay, Klasse `.hover-labels`
+(nur beim Überfahren sichtbar). Seitenwechsel-Geist blendet `canvas`/`video` aus (freigegebenes WebGL wäre weiß). Test: `test_result_objects.py`.
 REST unter `/api/stacking`: `status`, `scan`, `projects[/{id}]` (GET/PATCH/DELETE), `projects/{id}/process|solve|frames`, `frames/{id}` (PATCH manual),
 `jobs`, `develop-all` (alle Objekte mit Master-Stack neu entwickeln, Galerie-Knopf), `tutor`, `results/{id}/tutor[/ki]`, `upload` (behält bis zu 4 Ordnerebenen, blockt `..`), `results/{id}/{tif|png|jpg|thumb|fits|before}`, `reviewer`, `solver`, `storage`, `starnet`.
 Kern: `/api/app` (Module, Build), `/api/folders?path=` (Ordnerdialog), `/api/status` (`{version, busy, modules:{id: status}}`), `/api/activity` (alle Module), `/api/modules` (ein/aus).
 **Achtung:** Zwei Server auf demselben Datenordner = zwei Worker (beim Start werden „running“-Jobs des anderen neu eingereiht) – Tests/Vorschauen mit eigenem Datenordner.
 
 ## Web-UI (`astroflow/static/` + `modules/*/static/`)
-Hash-Routing: `#/` Übersicht (Karten aller Module), `#/bilder`, `#/p/<id>/<bild|aufnahmen|versionen|optionen>`, `#/import`,
-`#/skytrace[/neu|/<lauf>/<vorschau|kandidaten|beobachtungen|protokoll>]`, `#/sage[/entdeckungen|/<eintrag>]`, `#/activity`, `#/settings/<modul|module>`.
-Navigation wird aus den Modulen gebaut (Gruppe je Modul; `sec`-Einträge sind auf dem Handy ausgeblendet).
+Hash-Routing: `#/` Übersicht, `#/nacht`, `#/bilder` (Sessions), `#/galerie` (fertige Bilder), `#/p/<id>/<bild|aufnahmen|versionen|optionen>`, `#/import`,
+`#/skytrace[/neu|/3d|/statistik|/<lauf>/<vorschau|kandidaten|beobachtungen|protokoll|3d>]`, `#/sage[/wiki|/entdeckungen|/sammlung|/<eintrag>]`, `#/activity` (Aufträge), `#/settings/<modul|module>`.
+**Designsystem (seit 0.21.0, Nutzerauftrag „professionelles, konsistentes Designsystem wie eine native Desktop-App“):** Tokens in `:root` von `style.css`
+(`--bg/--sidebar/--surface/--surface-2/--border/--fg/--mut/--dim/--acc/--ok/--warn/--bad`, Maße, `--t` 160 ms); alte Namen (`--panel`, `--grad`, `--acc2/3` …)
+sind Aliase. **Inhaltsbreiten:** der Router gibt jedem Ansichtsbehälter die Klasse `page` (zentriert, `--page-max` 80rem), `page wide`
+(Arbeitsflächen: `PAGE_WIDE` in `app.js` – Galerie-Betrachter, SkyTrace-Lauf und 3D; die Objektseite `#/p/…` ist eine normale Seite) bzw. `page narrow` (`--page-narrow` 60rem, Einstellungen);
+Lesetext mit `.readable` / `--read` 42rem. Keine Karte in der Karte (`.panel .panel` ohne Fläche). Kontextpanel startet geschlossen
+(`AF.ctx.shown`, je Ansicht neu, nicht gespeichert), Knöpfe mit `data-ctx-toggle` öffnen es. Objektseite, Reiter Bild: Details als
+Spalte `.imgwrap > #imgSide` neben dem Bild (Standard sichtbar, `bild.details`); der „Details“-Knopf schaltet dort die Spalte (`data-side`). Galerie = Betrachter `#/galerie/<id>`
+(`pictureView`, Vor/Zurück aus `galleryOrder`), Bilder = Verarbeitung `#/p/<id>`; `objectKnowledge(host, name)` holt Sages Wissenskarte
+(`/api/sage/kb/card`, legt bei Bedarf einen Grundeintrag an) für Betrachter und Details-Panel. **Alle Maße in `rem`** (1rem = 16px; nur 1–2px-Rahmen und Media-Queries in px) – `html` wird ab 1800/2300/3200 px Breite größer
+(17,5/19,5/23 px) bzw. per Einstellung „Darstellung“ (`localStorage af.ui.scale`, `applyUiScale`); neue Stile daher in `rem` schreiben. Nur dunkel. Keine Verläufe, Glühen, Sternenhintergründe, Marketing-Überschriften. Aufwendige Animationen nur für echte Prozesse (`viz.js`, als „Schema“
+gekennzeichnet, mit echten Zahlen aus Job/Engine), sonst 150–250 ms. AppShell: Grid `top / side main ctx`; Seite scrollt als Ganzes (Layout-Test braucht das),
+Sidebar/Panel `sticky`. Breiten: ≥ 1280 Panel im Raster, darunter Schublade (`.shell.ctx-shown`); 861–1100 Sidebar nur Symbole; ≤ 860 Leiste unten + `#subnav`.
+Navigation wird einmal gebaut (`buildNav`), `navState` setzt nur Klassen. Bilder-Objektseite: keine Schrittleiste im Kopf (Nutzerwunsch) – der Fortschritt steht in der Bildfläche (`live.js`); `pipeStep` bildet `jobs.stage` auf Schritte ab (für die Schema-Animation in den übrigen Reitern) (Kalibrierung und
+Registrierung laufen innerhalb „Stacking“ und werden nicht getrennt gemeldet).
+**Seitenwechsel** (`route`): neue Ansicht als `.page.pending` (unsichtbar) aufbauen, die alte bleibt als `.page-ghost` (fest positioniert,
+IDs entfernt, nicht klickbar) stehen; fertig → Geist sofort weg + `.swap` (kurze Einblendung von 70 %); dauert es > `SKEL_AFTER` 350 ms,
+Geist ausblenden und Skelett zeigen. Keine Kreuzblende (Text lag doppelt übereinander). Messen: Layout-Shift-Observer + Zwischenbilder.
 Polling alle 2,5 s (`/api/status`), Ansichten zeichnen nur bei geänderter Signatur neu (Formulare/Zoom bleiben erhalten). `route()` verwirft Ansichten, die erst
 nach einem weiteren Klick fertig werden (`routeTicket`), und gibt jeder Ansicht einen eigenen Behälter in `#view` (sonst schrieb eine
 verworfene, noch ladende Ansicht über die aktuelle). Ansichten, die nach `await` global per `$('#…')` suchen, vorher `el.isConnected` prüfen. Bildbetrachter `createViewer(host, src, cmpSrc, labels, ph, {overlay})` mit Zoom/Pan/Pinch, Vergleich

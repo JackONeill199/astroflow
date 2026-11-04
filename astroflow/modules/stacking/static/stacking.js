@@ -84,18 +84,24 @@ function nightChips(n, dev = {}) {
 function tutorHtml(t, s) {
   const q = t.quality, beginner = t.mode === 'einsteiger', snr = q.measure?.snr;
   const dev = t.device || {};
-  const finds = t.findings.map(f => `<details class="tfind lvl-${f.level}" ${beginner && (f.level === 'bad' || f.level === 'warn') ? 'open' : ''}>
+  const find = f => `<details class="tfind lvl-${f.level}" ${beginner && (f.level === 'bad' || f.level === 'warn') ? 'open' : ''}>
       <summary><b>${esc(f.title)}</b></summary><p>${esc(f.text)}</p>
-      ${f.tips.length ? `${beginner ? '<small class="mut tips-h">So geht es beim nächsten Mal besser</small>' : ''}<ul>${f.tips.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</details>`).join('');
+      ${f.tips.length ? `${beginner ? '<small class="mut tips-h">So geht es beim nächsten Mal besser</small>' : ''}<ul>${f.tips.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</details>`;
+  // Zwei getrennte Aussagen: Bildqualität (Messwerte am fertigen Bild → Bewertung) und Aufnahmebedingungen (Nacht, Gerät → Tipps)
+  const imgCodes = new Set([...(q.issues || []).map(i => i.code), 'good']);
+  const imgF = t.findings.filter(f => imgCodes.has(f.code)), condF = t.findings.filter(f => !imgCodes.has(f.code));
   const nights = t.nights.slice(-4).map(n => `<div class="tnight"><div class="tnight-h"><b>${fnight(n.night)}</b>
       <span class="mut sm">${utcTime(n.start)}–${utcTime(n.end)} UTC · ${n.frames} Aufnahmen${n.rejected ? `, ${n.rejected} aussortiert` : ''}</span></div>
       <div class="tchips">${nightChips(n, dev)}</div></div>`).join('');
   const ki = t.ki;
-  return `<div class="panel">${qscoreHead(q, beginner ? 'Bild-Tutor' : 'Technische Bildprüfung',
-      `${qlabel(q)}${snr != null ? ` · Objekt-SNR ${Math.round(snr)}` : ''}${dev.name ? ` · ${esc(dev.name)}${dev.guessed ? ' (am Bildformat erkannt)' : ''}` : ''}`)}
-    ${beginner ? `<p class="mut sm tutor-intro">Ich habe dein Bild und die Aufnahme${t.nights.length > 1 ? 'nächte' : 'nacht'} geprüft – das ist mir aufgefallen. Klick auf einen Punkt für Erklärung und Tipps.</p>` : ''}
-    <div class="tfinds">${finds}</div>
-    ${t.nights.length ? `<small class="mut tsec">${t.nights.length > 1 ? 'Aufnahmenächte' : 'Aufnahmenacht'}</small><div class="tnights">${nights}</div>` : ''}
+  const good = q.score >= 8.5, warnImg = imgF.some(f => f.level === 'warn' || f.level === 'bad');
+  return `<div class="panel">${qscoreHead(q, 'Bildqualität', `${qlabel(q)}${snr != null ? ` · Objekt-SNR ${Math.round(snr)}` : ''}`)}
+    <p class="mut sm tutor-intro">Die Zahl bewertet nur Messwerte am fertigen Bild (Himmel, Farbe, Rauschen, Verläufe, Clipping).${good && warnImg ? ' Sie ist gut – die Punkte darunter lassen sich trotzdem verbessern.' : ''}${condF.length ? ' Hinweise zur Aufnahmenacht stehen getrennt darunter und senken die Zahl nicht.' : ''}</p>
+    ${imgF.length ? `<div class="tfinds">${imgF.map(find).join('')}</div>` : '<p class="ok sm">Keine messbaren Probleme am Bild.</p>'}
+    ${condF.length || t.nights.length ? `<h3 class="tsec-h">Aufnahmebedingungen${dev.name ? ` <span class="mut sm">· ${esc(dev.name)}${dev.guessed ? ' (am Bildformat erkannt)' : ''}</span>` : ''}</h3>
+      ${beginner && condF.length ? `<p class="mut sm tutor-intro">Was in der Aufnahme${t.nights.length > 1 ? 'nächten' : 'nacht'} auffiel – mit Tipps für das nächste Mal.</p>` : ''}
+      ${condF.length ? `<div class="tfinds">${condF.map(find).join('')}</div>` : ''}
+      ${t.nights.length ? `<details class="tnights-d"><summary class="sm">${t.nights.length > 1 ? `${t.nights.length} Aufnahmenächte` : 'Aufnahmenacht'} · Dämmerung, Mond, Höhe${t.weather ? ', Wetter' : ''}</summary><div class="tnights">${nights}</div></details>` : ''}` : ''}
     ${!t.site ? `<p class="mut sm">Für Dämmerung, Mondhöhe und Wetter fehlt dein Standort – <a href="#/settings/stacking">in den Einstellungen eintragen</a>.</p>`
       : !t.weather ? `<p class="mut sm">Wetterdaten (Wolken, Tau, Wind, Frost) lassen sich <a href="#/settings/stacking">in den Einstellungen</a> einschalten.</p>` : ''}
     ${t.weather_error ? `<p class="warn sm">${esc(t.weather_error)}</p>` : ''}
@@ -160,45 +166,45 @@ async function scan(b) {
   } catch (e) { toast('Scan fehlgeschlagen: ' + e.message, 'err'); }
   if (b) { b.disabled = false; b.classList.remove('busy'); }
 }
+// Arbeitsbereich „Bilder“: alle Sessions (Objekte) mit Status – als Karten oder kompakte Tabelle
 async function galleryView(el) {
-  crumbs([['Bilder'], ['Galerie']]);
+  crumbs([['Bilder']]);
   const ui = JSON.parse(localStorage.getItem('af.gallery') || '{}');
-  let q = ui.q || '', kind = ui.kind || 'all', sort = ui.sort || 'recent', projects = [], st = sst(), sig = '', order = '';
-  el.innerHTML = `<div class="pagehead"><div><h1>Deine Objekte</h1><p class="mut" id="gsum"></p></div><span class="grow"></span>
-    <a class="btn ghost" href="#/bilder/statistik">${icon('pulse')}Statistik</a>
-    <button class="btn ghost" id="gscan" title="Eingangsordner jetzt nach neuen Aufnahmen durchsuchen">${icon('refresh')}Scannen</button>
-    <button class="btn ghost" id="gdev" title="Alle Objekte aus ihrem Master-Stack neu entwickeln – ohne Stacking, z. B. nach neuen Bearbeitungsfunktionen">${icon('play')}Alle neu entwickeln</button>
-    <a class="btn" href="#/import">${icon('upload')}Aufnahmen hinzufügen</a></div>
+  let q = ui.q || '', kind = ui.kind || 'all', sort = ui.sort || 'recent', mode = ui.view || 'cards', projects = [], st = sst(), sig = '', order = '';
+  el.innerHTML = `<div class="pagehead"><div><h1>Bilder</h1><p>Aufnahmen verarbeiten und verwalten: Stacking, Entwicklung, Versionen. <span class="dim" id="gsum"></span></p></div>
+    <div class="page-actions"><button class="btn ghost" id="gscan" title="Eingangsordner jetzt nach neuen Aufnahmen durchsuchen">${icon('refresh')}Scannen</button>
+    <div class="menu"><button class="btn ghost">Mehr${icon('chev')}</button><div class="pop">
+      <a href="#" id="gdev">Alle neu entwickeln <small>aus dem Master-Stack</small></a><a href="#/bilder/statistik">Statistik <small>Belichtung, Geräte, Nächte</small></a><a href="#/galerie">Galerie <small>nur fertige Bilder</small></a></div></div>
+    <a class="btn" href="#/import">${icon('upload')}Aufnahmen importieren</a></div></div>
     <div class="toolbar"><input type="search" id="gq" placeholder="Objekt suchen …" title="Taste /" value="${esc(q)}"><div class="seg" id="gkind"></div><span class="grow"></span>
-      <select id="gsort"><option value="recent">Zuletzt bearbeitet</option><option value="name">Name</option><option value="exposure">Belichtungszeit</option><option value="frames">Aufnahmen</option></select></div>
+      <select id="gsort" aria-label="Sortierung"><option value="recent">Zuletzt bearbeitet</option><option value="name">Name</option><option value="exposure">Belichtungszeit</option><option value="frames">Aufnahmen</option></select>
+      <div class="seg" id="gview" aria-label="Ansicht"><button data-v="cards" title="Karten">${icon('grid')}</button><button data-v="table" title="Tabelle">${icon('list')}</button></div></div>
     <div id="gallery"></div>`;
   $('#gsort').value = sort;
+  const setView = () => $$('#gview button').forEach(b => b.classList.toggle('on', b.dataset.v === mode));
+  setView();
+  $('#gview').onclick = (e) => { const b = e.target.closest('button'); if (b) { mode = b.dataset.v; setView(); save(); order = ''; draw(); } };
   $('#gscan').onclick = async (e) => { await scan(e.currentTarget); await load(); };
-  $('#gdev').onclick = async () => {
+  $('#gdev').onclick = async (e) => {
+    e.preventDefault();
+    $$('.menu.open').forEach(m => m.classList.remove('open'));
     if (!await confirmDlg('Alle Objekte neu entwickeln?', 'Jedes Objekt wird aus seinem gespeicherten Master-Stack neu bearbeitet (ohne Stacking). Die bisherigen Bilder bleiben als ältere Versionen erhalten. Das kann je nach Anzahl eine Weile dauern.', 'Neu entwickeln')) return;
     try { const r = await send('/stacking/develop-all', {}); toast(`${r.queued} Objekte werden neu entwickelt.`, 'ok'); } catch (err) { toast(err.message, 'err'); }
     await load();
     poll();
   };
-  const save = () => { try { localStorage.setItem('af.gallery', JSON.stringify({ q, kind, sort })); } catch { /* egal */ } };
+  const save = () => { try { localStorage.setItem('af.gallery', JSON.stringify({ q, kind, sort, view: mode })); } catch { /* egal */ } };
   $('#gq').oninput = (e) => { q = e.target.value; save(); draw(); };
   $('#gq').onkeydown = (e) => {
-    if (e.key === 'Enter') $('#gallery .card')?.click();
+    if (e.key === 'Enter') $('#gallery .card, #gallery td.name a')?.click();
     if (e.key === 'Escape') { e.target.value = q = ''; save(); draw(); e.target.blur(); }
   };
   $('#gsort').onchange = (e) => { sort = e.target.value; save(); draw(); };
   $('#gkind').onclick = (e) => { const b = e.target.closest('button'); if (b) { kind = b.dataset.k; save(); draw(); } };
   const g = $('#gallery');
-  // Lichtkegel folgt der Maus auf den Karten
-  g.onpointermove = (e) => {
-    const c = e.target.closest('.card');
-    if (!c) return;
-    const r = c.getBoundingClientRect();
-    c.style.setProperty('--mx', e.clientX - r.left + 'px');
-    c.style.setProperty('--my', e.clientY - r.top + 'px');
-  };
   g.onclick = async (e) => {
-    const run = e.target.closest('[data-run]'), b = e.target.closest('[data-del]');
+    const run = e.target.closest('[data-run]'), b = e.target.closest('[data-del]'), tr = e.target.closest('tr[data-href]');
+    if (tr && !run && !b && !e.target.closest('a')) { location.hash = tr.dataset.href; return; }
     if (!run && !b) return;
     e.preventDefault();
     e.stopPropagation();
@@ -230,6 +236,7 @@ async function galleryView(el) {
       return;
     }
     if (!list.length) { order = ''; g.innerHTML = `<div class="empty">${icon('search')}<h2>Keine Treffer</h2>Kein Objekt passt zu deiner Suche.</div>`; return; }
+    if (mode === 'table') { order = ''; g.innerHTML = tableHtml(list); return; }
     // Gleiche Reihenfolge: nur geänderte Karten austauschen (keine Einblend-Animation, Bilder bleiben stehen)
     const o = list.map(p => p.id).join();
     if (o === order) {
@@ -246,6 +253,16 @@ async function galleryView(el) {
     }
     order = o;
     g.innerHTML = `<div class="gallery stagger">${list.map((p, i) => { const h = cardInner(p); return `<a class="card" href="#/p/${p.id}" data-id="${p.id}" data-h="${hash(h)}" style="--i:${i}">${h}</a>`; }).join('')}</div>`;
+  }
+  // Kompakte Tabelle: eine Zeile je Session mit Status der Verarbeitung
+  function tableHtml(list) {
+    const status = (p) => running(p.job) ? `<span class="badge-dot run">${p.job.state === 'queued' ? 'wartet' : `${esc(p.job.stage || 'läuft')} ${p.job.progress != null ? Math.round(p.job.progress * 100) + ' %' : ''}`}</span>`
+      : p.job?.state === 'error' ? '<span class="badge-dot bad">Fehler</span>' : p.result ? '<span class="badge-dot ok">Fertig</span>' : '<span class="badge-dot">Unverarbeitet</span>';
+    return `<div class="tablewrap free"><table><thead><tr><th class="nosort">Objekt</th><th class="nosort">Typ</th><th class="nosort num">Nächte</th><th class="nosort num">Aufnahmen</th><th class="nosort num">Belichtung</th><th class="nosort">Status</th><th class="nosort">Zuletzt</th><th class="nosort"></th></tr></thead><tbody>
+      ${list.map(p => `<tr class="link" data-href="#/p/${p.id}"><td class="name">${p.result ? `<img class="tthumb" src="/api/stacking/results/${p.result.id}/thumb" alt="" loading="lazy">` : '<span class="tthumb" style="display:inline-block"></span>'}<a href="#/p/${p.id}">${esc(p.name)}</a></td>
+        <td>${esc(p.kind_label || 'Allgemein')}</td><td class="num">${p.imported ? '–' : p.nights.length}</td><td class="num">${p.imported ? '–' : `${p.result ? p.result.n_frames + ' / ' : ''}${p.total}`}</td>
+        <td class="num">${p.result && !p.imported ? dur(p.result.exposure) : '–'}</td><td>${status(p)}</td><td class="mut">${ago(p.result?.created || p.created)}</td>
+        <td>${!p.result && !running(p.job) && !p.imported ? `<button class="linkbtn" data-run="${p.id}">${icon('play')}Verarbeiten</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
   }
   function cardInner(p) {
     const r = p.result, pal = r?.stats?.palette, busy = running(p.job);
@@ -271,36 +288,219 @@ async function galleryView(el) {
   return { update: load, destroy: () => document.removeEventListener('keydown', onKey) };
 }
 
+// ------------------------------------------------------- Verarbeitungs-Pipeline --- //
+// Schrittfolge aus den echten Job-Stufen (pipeline.py meldet Analyse, Auswahl, Stacking, Bearbeitung …).
+// Kalibrierung und Registrierung laufen innerhalb von „Stacking“ je Stapel und werden nicht getrennt gemeldet.
+const PIPE = [['scan', 'Import', 'Aufnahmen erkannt'], ['analyse', 'Analyse', 'Sterne, Schärfe, Hintergrund'], ['auswahl', 'Auswahl', 'Ausreißer verwerfen'],
+  ['stack', 'Stacking', 'Kalibrieren · Ausrichten · Mitteln'], ['develop', 'Entwicklung', 'Hintergrund, Farbe, Kurve'], ['save', 'Ausgabe', 'Dateien und Versionen']];
+const STAGE_STEP = { Analyse: 1, Auswahl: 2, Stacking: 3, Bearbeitung: 4, Farbkalibrierung: 4, 'KI-Prüfung': 4, Speichern: 5, 'Stacking-Stufen': 5, 'Plate-Solving': 0 };
+const STEP_VIZ = ['solve', 'analyse', 'auswahl', 'stack', 'develop', 'save'];
+function pipeStep(p) {
+  const j = p.job;
+  return running(j) && j.state === 'running' ? STAGE_STEP[j.stage] ?? 1 : -1;
+}
+const showPipe = (p) => running(p.job) || p.job?.state === 'error' || !p.result;
+function pipeHtml(p) {
+  const j = p.job, busy = running(j), cur = pipeStep(p), r = p.result, fr = p.frames || {};
+  const sel = (fr.selected || 0) + (fr.stacked || 0);
+  const done = [`${p.total} Aufnahmen · ${p.nights.length} ${p.nights.length === 1 ? 'Nacht' : 'Nächte'}`, `${p.total - (fr.new || 0)} analysiert`,
+    `${fr.rejected || 0} verworfen`, r ? `${r.n_frames} gestackt · ${dur(r.exposure)}` : '', r ? (PROFILE_LABEL[r.stats?.profile] || 'entwickelt') : '', r ? `${p.results.length} Version${p.results.length === 1 ? '' : 'en'}` : ''];
+  return `<div class="pipe" id="pipe" aria-label="Verarbeitungsschritte">${PIPE.map(([k, l, d], i) => {
+    const st = busy ? (cur < 0 ? (i === 0 ? 'done' : '') : i < cur ? 'done' : i === cur ? 'active' : '') : j?.state === 'error' && !r && i === 1 ? 'error' : r || (i === 0 && p.total) ? 'done' : sel && i <= 2 ? 'done' : '';
+    const sub = st === 'active' ? esc(j.message || d) : st === 'done' ? esc(done[i] || d) : st === 'error' ? 'fehlgeschlagen' : busy && cur < 0 && i === 1 ? 'wartet' : esc(d);
+    return `<div class="pstep ${st}" data-step="${k}"><b>${l}</b><small title="${sub}">${sub}</small>${st === 'active' && j.progress != null ? `<div class="progress"><i style="width:${(j.progress || 0) * 100}%"></i></div>` : ''}</div>`;
+  }).join('')}</div>`;
+}
+// „Stacking: 37/120 Aufnahmen“ → echte Zahlen für die Visualisierung
+const stackCount = (j) => { const m = /(\d+)\s*\/\s*(\d+)\s*Aufnahmen/.exec(j?.message || ''); return m ? { n: +m[1], total: +m[2] } : {}; };
+
+// Objektnamen im Bild beim Überfahren (Plate-Solving): liefert die overlay-Funktion für createViewer. Die Positionen kommen
+// aus /results/<id>/objects (JPG-Pixel); andere Bildgrößen (Stacking-Stufen) werden mit w / width skaliert.
+function plateLabels(rid) {
+  let d = null, svg = null, w = 0;
+  const draw = (s, width) => {
+    svg = s; w = width;
+    if (!d?.objects?.length) { s.innerHTML = ''; return; }
+    const sc = w / (d.width || w), fs = Math.max(12, w / 48);
+    s.innerHTML = d.objects.map(o => { const x = o.x * sc, y = o.y * sc, r = Math.max(fs * .6, (o.radius || 8) * sc);
+      return `<g><circle cx="${x}" cy="${y}" r="${r}"/><text x="${x + r * .75 + fs * .3}" y="${y - r * .75}" font-size="${fs}">${esc(o.name)}</text><title>${esc(o.name)}${o.kind_label ? ' · ' + esc(o.kind_label) : ''}</title></g>`; }).join('');
+  };
+  api(`/stacking/results/${rid}/objects`).then(x => { d = x; if (svg) draw(svg, w); }).catch(() => {});
+  return draw;
+}
+
+// ---------------------------------------------------------------- Galerie --- //
+// „Über das Objekt“: Wissenskarte aus Sage (Kurztext, Kernwerte, eigene Beobachtungen, Link zum Artikel) – ohne Umweg über Sage.
+// Legt in Sage bei Bedarf einen Grundeintrag an (wie ein Klick ins Bild); ohne Sage-Modul bleibt der Behälter leer.
+// Wissenskarten im Speicher (Blättern im Betrachter ohne Nachladen und ohne springende Spalte); Vorabruf für Nachbarbilder
+const knowCache = new Map();
+const knowledgeCard = (name) => {
+  if (!knowCache.has(name)) knowCache.set(name, api('/sage/kb/card?name=' + encodeURIComponent(name)).catch(() => { knowCache.delete(name); return null; }));
+  return knowCache.get(name);
+};
+async function objectKnowledge(host, name, { heading = true } = {}) {
+  if (!host || !AF.on('sage') || !name) { if (host) host.hidden = true; return; }
+  if (!knowCache.has(name) || !knowCache.get(name).done)          // Platzhalter etwa so hoch wie eine typische Karte
+    host.innerHTML = `${heading ? '<h2>Über das Objekt</h2>' : ''}<div class="skel" style="height:15rem"></div>`;
+  const pending = knowledgeCard(name);
+  const c = await pending;
+  pending.done = true;
+  if (!host.isConnected) return;
+  if (!c?.found) { host.innerHTML = `${heading ? '<h2>Über das Objekt</h2>' : ''}<p class="mut sm">Sage kennt dieses Objekt noch nicht.</p>`; return; }
+  const text = String(c.summary || '').replace(/\s*\[S\d+\]/g, '').trim();
+  const facts = (c.facts || []).filter(f => f.value);
+  host.innerHTML = `${heading ? `<h2>Über ${esc(c.name)}</h2>` : ''}
+    ${c.otype_label ? `<small class="mut">${esc(c.otype_label)}${c.constellation ? ' · Sternbild ' + esc(c.constellation) : ''}</small>` : ''}
+    <p class="ok-text">${esc(text || 'Sage hat noch keine Beschreibung – im Artikel lässt sie sich recherchieren.')}</p>
+    ${facts.length ? `<dl class="kv">${facts.map(f => `<dt>${esc(f.label)}</dt><dd>${esc(f.value)}${f.status === 'conflict' ? ' <span class="warn" title="Quellen widersprechen sich">!</span>' : ''}</dd>`).join('')}</dl>` : ''}
+    ${c.mine?.length ? `<ul class="ok-mine">${c.mine.map(m => `<li>${esc(m.text || '')}</li>`).join('')}</ul>` : ''}
+    <a class="linkbtn" href="#/sage/o/${encodeURIComponent(c.id)}">${icon('book')}Ganzen Artikel in Sage lesen</a>`;
+}
+
+let galleryOrder = null;                                       // zuletzt angezeigte Reihenfolge der Galerie
+let pvList = null, pvAt = 0;                                   // Projektliste für den Betrachter (Blättern ohne erneutes Laden)
+// Betrachter: Bild groß, daneben Wissen über das Objekt und die eigene Aufnahme; ←/→ blättern, F Vollbild, Esc zurück
+async function pictureView(el, pid) {
+  pid = +pid;
+  if (!pvList || Date.now() - pvAt > 30000 || !pvList.some(x => x.id === pid)) { pvList = (await api('/stacking/projects')).filter(p => p.result && !p.options?.gallery_parent); pvAt = Date.now(); }
+  const list = pvList;
+  const p = list.find(x => x.id === pid);
+  if (!p) { location.hash = '#/galerie'; return; }
+  const ids = (galleryOrder || []).filter(id => list.some(x => x.id === id));
+  const order = ids.includes(pid) ? ids : list.sort((a, b) => (b.result.created || 0) - (a.result.created || 0)).map(x => x.id);
+  const i = order.indexOf(pid), prev = order[(i - 1 + order.length) % order.length], next = order[(i + 1) % order.length];
+  crumbs([['Galerie', '#/galerie'], [p.name]]);
+  const r = p.result, s = r.stats || {}, imp = s.imported || {};
+  const rows = p.imported
+    ? [['Art', 'Fertiges Bild · importiert'], ['Aufgenommen', imp.date_obs ? String(imp.date_obs).slice(0, 10) : null], ['Gerät', imp.camera || imp.instrument], ['Format', imp.format]]
+    : [['Belichtung', dur(r.exposure)], ['Aufnahmen', `${r.n_frames} gestackt`], ['Nächte', p.nights.map(fnight).join(', ')], ['Gerät', s.device || s.instrument],
+       ['Sternschärfe', s.fwhm_px ? `${s.fwhm_px} px (FWHM)` : null], ['Version', `${(p.n_results || 1) > 1 ? `neueste von ${p.n_results}` : 'einzige'} · ${fdate(r.created)}`]];
+  el.innerHTML = `<div class="pv">
+    <div class="pv-stage"><div id="pvView"></div>
+      ${order.length > 1 ? `<a class="pv-nav prev" href="#/galerie/${prev}" title="Vorheriges Bild (←)" aria-label="Vorheriges Bild">${icon('chev')}</a>
+        <a class="pv-nav next" href="#/galerie/${next}" title="Nächstes Bild (→)" aria-label="Nächstes Bild">${icon('chev')}</a>` : ''}</div>
+    <aside class="pv-side">
+      <div class="pv-head"><a class="linkbtn pv-back" href="#/galerie">${icon('back')}Galerie${order.length > 1 ? ` · ${i + 1} von ${order.length}` : ''}</a>
+        <h1>${esc(p.name)}</h1>${p.kind_label ? `<small class="mut">${esc(p.kind_label)}</small>` : ''}
+        <div class="row pv-acts"><a class="btn sm" href="#/p/${p.id}/bild">${icon('edit')}Bearbeiten</a><a class="btn ghost sm" href="/api/stacking/results/${r.id}/jpg" download>${icon('down')}JPEG</a></div></div>
+      <section class="pv-sec" id="pvKnow"></section>
+      <section class="pv-sec"><h2>Deine Aufnahme</h2><dl class="kv">${rows.filter(([, v]) => v).map(([l, v]) => `<dt>${l}</dt><dd>${esc(v)}</dd>`).join('')}</dl></section>
+      <p class="dim sm pv-keys">← → blättern · F Vollbild · Esc zurück</p>
+    </aside></div>`;
+  const v = createViewer($('#pvView', el), `/api/stacking/results/${r.id}/jpg`, null, undefined, `/api/stacking/results/${r.id}/thumb`, p.imported ? {} : { overlay: plateLabels(r.id) });
+  v.el.classList.add('hover-labels');
+  objectKnowledge($('#pvKnow', el), p.name);
+  // Nachbarbilder vorladen, damit ← → ohne Wartezeit wechseln
+  for (const nid of new Set([prev, next])) { const q = list.find(x => x.id === nid); if (q && nid !== pid) { new Image().src = `/api/stacking/results/${q.result.id}/jpg`; if (AF.on('sage')) knowledgeCard(q.name); } }
+  const onKey = (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input,select,textarea') || $('dialog[open]')) return;
+    if (e.key === 'ArrowLeft' && order.length > 1) { location.hash = `#/galerie/${prev}`; e.preventDefault(); }
+    else if (e.key === 'ArrowRight' && order.length > 1) { location.hash = `#/galerie/${next}`; e.preventDefault(); }
+    else if ((e.key === 'f' || e.key === 'F')) { $('#pvView [data-a=full]', el)?.click(); e.preventDefault(); }
+    else if (e.key === 'Escape' && !$('#pvView .viewer.full', el)) location.hash = '#/galerie';
+  };
+  document.addEventListener('keydown', onKey);
+  return { destroy: () => { v.destroy(); document.removeEventListener('keydown', onKey); } };
+}
+
+// Bibliothek aller fertigen Astrofotos: rahmenloses Bildraster (zwei Größen) oder Liste; Klick öffnet den Betrachter.
+async function picturesView(el) {
+  crumbs([['Galerie']]);
+  const ui = store.get('pictures', {});
+  let q = ui.q || '', kind = ui.kind || 'all', sort = ui.sort || 'recent', mode = ui.view || 'grid', list = [], sig = '';
+  el.innerHTML = `<div class="pagehead"><div><h1>Galerie</h1><p>Fertige Ergebnisse betrachten und zeigen. <span class="dim" id="psum"></span></p></div>
+    <div class="page-actions"><a class="btn" href="#/import">${icon('upload')}Bilder importieren</a></div></div>
+    <div class="toolbar"><input type="search" id="pq" placeholder="Bild suchen …" title="Taste /" value="${esc(q)}">
+      <select id="pkind" aria-label="Objekttyp"></select><span class="grow"></span>
+      <select id="psort" aria-label="Sortierung"><option value="recent">Neueste zuerst</option><option value="name">Name</option><option value="exposure">Belichtungszeit</option></select>
+      <div class="seg" id="pview" aria-label="Ansicht"><button data-v="grid" title="Großes Raster">${icon('grid')}</button><button data-v="small" title="Kleines Raster">${icon('image')}</button><button data-v="list" title="Liste">${icon('list')}</button></div></div>
+    <div id="pics"></div>`;
+  const save = () => store.set('pictures', { q, kind, sort, view: mode });
+  $('#psort').value = sort;
+  const setView = () => $$('#pview button').forEach(b => b.classList.toggle('on', b.dataset.v === mode));
+  setView();
+  $('#pview').onclick = (e) => { const b = e.target.closest('button'); if (b) { mode = b.dataset.v; setView(); save(); draw(true); } };
+  $('#pq').oninput = (e) => { q = e.target.value; save(); draw(true); };
+  $('#pq').onkeydown = (e) => { if (e.key === 'Enter') $('#pics a')?.click(); if (e.key === 'Escape') { e.target.value = q = ''; save(); draw(true); } };
+  $('#psort').onchange = (e) => { sort = e.target.value; save(); draw(true); };
+  $('#pkind').onchange = (e) => { kind = e.target.value; save(); draw(true); };
+  const when = (p) => p.imported ? (p.result.stats?.imported?.date_obs ? String(p.result.stats.imported.date_obs).slice(0, 10) : fdate(p.result.created).slice(0, 8)) : fnight(p.nights[p.nights.length - 1]);
+  function draw(force) {
+    const kinds = [...new Set(list.map(p => p.kind || 'generic'))];
+    $('#pkind').innerHTML = `<option value="all">Alle Typen</option>${kinds.map(k => `<option value="${esc(k)}">${esc(list.find(p => (p.kind || 'generic') === k).kind_label || 'Allgemein')}</option>`).join('')}`;
+    $('#pkind').value = kinds.includes(kind) ? kind : 'all';
+    $('#pkind').hidden = kinds.length < 2;
+    const tot = list.reduce((a, p) => a + (p.imported ? 0 : p.result.exposure || 0), 0);
+    $('#psum').textContent = list.length ? `${list.length} Bild${list.length === 1 ? '' : 'er'}${tot ? ` · ${dur(tot)} Gesamtbelichtung` : ''}` : '';
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const shown = list.filter(p => (kind === 'all' || (p.kind || 'generic') === kind) && words.every(w => (p.name + ' ' + (p.kind_label || '')).toLowerCase().includes(w)));
+    const key = { recent: p => -(p.result.created || 0), name: p => p.name.toLowerCase(), exposure: p => -(p.result.exposure || 0) }[sort];
+    shown.sort((a, b) => key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0);
+    galleryOrder = shown.map(p => p.id);                       // Reihenfolge für Vor/Zurück im Betrachter
+    const s = JSON.stringify([mode, shown.map(p => [p.id, p.result.id, p.name])]);
+    if (!force && s === sig) return;
+    sig = s;
+    const host = $('#pics');
+    if (!list.length) { host.innerHTML = `<div class="empty">${icon('image')}<h2>Noch keine fertigen Bilder</h2>Sobald Aufnahmen gestackt und entwickelt sind oder du fertige Bilder importierst, erscheinen sie hier.<div style="margin-top:14px"><a class="btn" href="#/import">${icon('upload')}Importieren</a></div></div>`; return; }
+    if (!shown.length) { host.innerHTML = `<div class="empty">${icon('search')}<h2>Keine Treffer</h2>Kein Bild passt zu deiner Suche.</div>`; return; }
+    const meta = (p) => p.imported ? 'Fertiges Bild' : `${dur(p.result.exposure)} · ${p.result.n_frames} Aufnahmen${p.result.stats?.palette && p.result.stats.palette !== 'OSC' ? ' · ' + (PALETTE_LABEL[p.result.stats.palette] || p.result.stats.palette) : ''}`;
+    host.innerHTML = mode === 'list' ? `<div class="tablewrap free"><table><thead><tr><th class="nosort">Bild</th><th class="nosort">Typ</th><th class="nosort">Datum</th><th class="nosort num">Belichtung</th><th class="nosort num">Aufnahmen</th><th class="nosort">Bearbeitung</th></tr></thead><tbody>
+        ${shown.map(p => `<tr class="link" data-href="#/galerie/${p.id}"><td class="name"><img class="tthumb" src="/api/stacking/results/${p.result.id}/thumb" alt="" loading="lazy"><a href="#/galerie/${p.id}">${esc(p.name)}</a></td>
+          <td>${esc(p.kind_label || 'Allgemein')}</td><td>${esc(when(p))}</td><td class="num">${p.imported ? '–' : dur(p.result.exposure)}</td><td class="num">${p.imported ? '–' : p.result.n_frames}</td>
+          <td class="mut">${p.imported ? 'importiert' : esc(PROFILE_LABEL[p.result.stats?.profile] || '')}</td></tr>`).join('')}</tbody></table></div>`
+      : `<div class="igrid stagger" style="--tile:${mode === 'small' ? '170px' : '260px'}">${shown.map((p, i) => `<a class="itile" href="#/galerie/${p.id}" style="--i:${i}" title="${esc(p.name)}">
+          <span class="ii"><img src="/api/stacking/results/${p.result.id}/thumb" alt="" loading="lazy" decoding="async" onload="this.classList.add('ld')">${running(p.job) ? `<span class="chip acc ist"><span class="spinner" style="width:10px;height:10px"></span>wird aktualisiert</span>` : ''}</span>
+          <span class="ic"><b>${esc(p.name)}</b><small>${esc(when(p))}</small></span>${mode === 'small' ? '' : `<span class="im">${esc(meta(p))}</span>`}</a>`).join('')}</div>`;
+    host.onclick = (e) => { const tr = e.target.closest('tr[data-href]'); if (tr && !e.target.closest('a')) location.hash = tr.dataset.href; };
+  }
+  async function load() {
+    list = (await api('/stacking/projects')).filter(p => p.result && !p.options?.gallery_parent);
+    if (el.isConnected) draw();
+  }
+  await load();
+  const onKey = (e) => { if (e.key === '/' && !e.target.closest('input,select,textarea')) { e.preventDefault(); $('#pq').focus(); } };
+  document.addEventListener('keydown', onKey);
+  return { update: load, destroy: () => document.removeEventListener('keydown', onKey) };
+}
+
 // ---------------------------------------------------------------- Objekt --- //
 async function projectView(el, id, tab = 'bild') {
   id = +id;
   let p = await api('/stacking/projects/' + id), frames = null, sel = null, cmp = null, viewer = null, sig = '', before = false, stage = null;
   let fFilter = 'all', fBand = 'all', fSort = ['date', 1];
-  let liveView = null, livePoster = null;
+  let liveView = null, livePoster = null, viz = null, vizKind = '';
   function updateJob() {
     const jobHost = $('#job', el);
     if (jobHost) { setJobLine(jobHost, p.job); jobHost.hidden = tab === 'bild' && !!liveView; }
     liveView?.update(p);
     if (p.live?.preview) livePoster = `/api/stacking/projects/${id}/live/${encodeURIComponent(p.live.preview)}`;
+    if ($('#ctxTitle')?.textContent === 'Session' && el.isConnected) sessionCtx();
+    const pipe = $('#pipe', el);
+    if (pipe) { const tmp = document.createElement('div'); tmp.innerHTML = pipeHtml(p); if (pipe.innerHTML !== tmp.firstChild.innerHTML) pipe.innerHTML = tmp.firstChild.innerHTML; pipe.hidden = !showPipe(p); }
+    // schematische Darstellung des aktiven Schritts (nur während ein Auftrag wirklich läuft)
+    const host = $('#pipeViz', el), step = pipeStep(p), kind = step >= 0 && tab !== 'bild' && typeof vizProcess === 'function' ? STEP_VIZ[step] : '';
+    if (!host) return;
+    if (kind !== vizKind) { viz?.destroy(); viz = null; vizKind = kind; host.hidden = !kind; if (kind) viz = vizProcess(host, { kind }); }
+    viz?.update({ kind, progress: p.job?.progress, label: p.job?.message || undefined, ...(kind === 'stack' ? stackCount(p.job) : {}) });
   }
   const tabs = () => [...TABS.filter(([k]) => !p.imported || k === 'bild' || (k === 'versionen' && p.results.length > 1)),
     ...((p.companions ?? p.options?.companion_ids?.length ?? 0) ? [['teleskopbilder', 'Teleskopbilder']] : [])];
-  crumbs([['Galerie', '#/bilder'], [p.name]]);
+  crumbs([['Bilder', '#/bilder'], [p.name]]);
 
   function head() {
     const r = p.result, busy = running(p.job);
     return `<div class="pagehead"><div style="min-width:0">
         <button class="namebtn" id="rename" title="Umbenennen"><h1 style="display:inline">${esc(p.name)}</h1>${icon('edit')}</button>
-        <div class="row" style="margin-top:8px"><span class="chip">${esc(p.kind_label || 'Allgemein')}</span>
+        <div class="row" style="margin-top:6px"><span class="chip">${esc(p.kind_label || 'Allgemein')}</span>
           ${r?.stats?.palette ? `<span class="chip acc">${esc(PALETTE_LABEL[r.stats.palette] || r.stats.palette)}</span>` : ''}
           ${p.imported ? '<span class="chip acc">Fertiges Bild · importiert</span>' : `<span class="chip">${p.total} Aufnahmen</span><span class="chip">${p.nights.length} ${p.nights.length === 1 ? 'Nacht' : 'Nächte'}</span>`}
           ${r && !p.imported ? `<span class="chip">${dur(r.exposure)} integriert</span>` : ''}
           ${p.coords?.source === 'solve' ? `<span class="chip acc" title="Koordinaten per Plate-Solving bestimmt">${icon('star')}Plate-Solved</span>` : ''}</div></div>
-      <span class="grow"></span>
-      <div class="row">${p.imported ? '' : `<button class="btn ${busy ? 'busy' : ''}" id="run" ${busy ? 'disabled' : ''}>${icon(busy ? 'refresh' : 'play')}${busy ? 'Läuft …' : r ? 'Aktualisieren' : 'Verarbeiten'}</button>`}
+      <div class="page-actions">${p.imported ? '' : `<button class="btn ${busy ? 'busy' : ''}" id="run" ${busy ? 'disabled' : ''} title="${r ? 'Neue Aufnahmen und Nächte nachstacken – der bisherige Stack bleibt erhalten' : ''}">${icon(busy ? 'refresh' : 'play')}${busy ? 'Läuft …' : r ? 'Nachstacken' : 'Verarbeiten'}</button>`}
         ${r ? `<div class="menu" id="dl"><button class="btn ghost">${icon('down')}Export${icon('chev')}</button><div class="pop">
           ${p.imported ? `<a href="/api/stacking/results/${r.id}/original">Originaldatei <small>unverändert · ${esc(r.stats.imported.format)}</small></a>` : `<a href="/api/stacking/results/${r.id}/tif">TIFF 16-bit <small>Druck/Bearbeitung</small></a>`}<a href="/api/stacking/results/${r.id}/png">PNG <small>${p.imported ? 'Anzeigeversion' : 'verlustfrei'}</small></a>
           <a href="/api/stacking/results/${r.id}/jpg" download>JPEG <small>zum Teilen</small></a>${p.imported ? '' : `<a href="/api/stacking/results/${r.id}/fits">FITS linear <small>für PixInsight & Co.</small></a>`}</div></div>` : ''}
+        ${r ? `<button class="btn ghost" data-ctx-toggle title="Bild-Details, Bild-Tutor und Himmelsposition ein-/ausblenden">${icon('panel')}Details</button>` : ''}
         <div class="menu" id="more"><button class="btn ghost">Mehr${icon('chev')}</button><div class="pop">
           ${r && !p.imported ? `<a href="#" data-act="develop">Neu entwickeln <small>ohne Stacking</small></a>` : ''}
           ${p.imported ? '<span class="pop-note">Fertig importiert · keine Rohaufnahmen vorhanden</span>' : p.deleted?.can_restack === false ? `<span class="pop-note">Komplett neu stacken nicht möglich – Einzelbilder nach dem Stacking gelöscht</span>`
@@ -313,14 +513,16 @@ async function projectView(el, id, tab = 'bild') {
       ${p.can_solve && !p.coords && !busy ? `<div class="notice">${icon('star')}<div><b>Objekt unbekannt</b><div class="mut sm">Die Aufnahmen enthalten weder Objektnamen noch Koordinaten.
         Plate-Solving bestimmt die Himmelsposition aus dem Sternmuster und ordnet sie dem richtigen Objekt zu.</div></div><span class="grow"></span>
         <button class="btn sm" id="solveBtn">Jetzt bestimmen</button></div>` : ''}
-      ${p.job?.state === 'error' && !busy ? `<div class="notice err"><div><b>Letzter Durchlauf fehlgeschlagen</b><div class="mut sm">${esc(p.job.message)}</div></div></div>` : ''}
-      <div id="job" style="margin:-8px 0 18px">${jobLine(p.job)}</div>
+      ${p.job?.state === 'error' && !busy ? `<div class="notice err">${icon('alert')}<div><b>Letzter Durchlauf fehlgeschlagen</b><div class="mut sm">${esc(p.job.message)}</div></div></div>` : ''}
+      <div class="pipe-viz" id="pipeViz" hidden></div>
+      <div id="job" style="margin:-4px 0 14px">${jobLine(p.job)}</div>
       <nav class="tabs" id="tabs">${tabs().map(([k, l], i) => { const n = { aufnahmen: p.total, versionen: p.results.length, teleskopbilder: p.companions ?? p.options?.companion_ids?.length }[k];
         return `<a href="#/p/${id}/${k}" data-t="${k}" class="${tab === k ? 'on' : ''}" title="Taste ${i + 1}">${l}${n != null ? `<span>${n}</span>` : ''}</a>`; }).join('')}<i class="tab-ind" id="tabind"></i></nav>
       <div id="tab"></div>`;
   }
 
   function draw() {
+    viz?.destroy(); viz = null; vizKind = '';
     el.innerHTML = head();
     $('#rename').onclick = rename;
     $('#run')?.addEventListener('click', () => run(false));
@@ -335,6 +537,38 @@ async function projectView(el, id, tab = 'bild') {
     $('#solveBtn')?.addEventListener('click', solve);
     drawTab(false);
   }
+  // Kontextpanel „Session“: Aufnahmen, Belichtung, Nächte, Status, Himmelsposition (aktualisiert sich mit dem Auftrag)
+  let sessionHtml = '', sideOn = store.get('bild.details', true);
+  function sessionCtx() {
+    const r = p.result, fr = p.frames || {}, j = p.job;
+    const status = running(j) ? `<span class="badge-dot run">${j.state === 'queued' ? 'wartet' : esc(j.stage || 'läuft')}</span>` : j?.state === 'error' ? '<span class="badge-dot bad">Fehler</span>'
+      : r ? '<span class="badge-dot ok">Fertig</span>' : '<span class="badge-dot">Noch nicht verarbeitet</span>';
+    const html = `<div class="panel"><dl class="kv">
+        <dt>Status</dt><dd>${status}</dd>
+        ${p.imported ? '' : `<dt>Aufnahmen</dt><dd class="tnum">${p.total}</dd><dt>Gestackt</dt><dd class="tnum">${r ? r.n_frames : 0}</dd><dt>Verworfen</dt><dd class="tnum">${fr.rejected || 0}</dd>
+        <dt>Belichtung</dt><dd>${r ? dur(r.exposure) : '–'}</dd>`}
+        <dt>Objekttyp</dt><dd>${esc(p.kind_label || 'Allgemein')}</dd>
+        <dt>Versionen</dt><dd class="tnum">${p.results.length}</dd>
+      </dl></div>
+      ${p.nights.length ? `<div class="panel"><h2 class="ctx-sec">Nächte</h2><ul class="qlist mut">${p.nights.map(n => `<li>${fnight(n)}</li>`).join('')}</ul>
+        <p class="mut sm" style="margin:0">Neue Nächte desselben Objekts werden automatisch nachgestackt – der bisherige Stack bleibt erhalten.</p></div>` : ''}
+      ${coordsPanel(p.coords)}`;
+    if (html !== sessionHtml || $('#ctxTitle')?.textContent !== 'Session') { sessionHtml = html; AF.ctx.open(el, { title: 'Session', html }); }
+  }
+  // „Details“-Knopf im Kopf: im Reiter Bild die Spalte neben dem Bild, in den anderen Reitern das Kontextpanel (Session)
+  function syncSideBtn() {
+    const b = $('[data-ctx-toggle]', el);
+    if (!b) return;
+    b.toggleAttribute('data-side', tab === 'bild');
+    if (tab === 'bild') { b.classList.toggle('on', sideOn); b.setAttribute('aria-pressed', sideOn); }
+  }
+  el.addEventListener('click', (e) => {
+    if (tab !== 'bild' || !e.target.closest('[data-ctx-toggle]')) return;
+    e.stopPropagation();
+    sideOn = !sideOn; store.set('bild.details', sideOn);
+    $('.imgwrap', el)?.classList.toggle('no-side', !sideOn);
+    syncSideBtn();
+  });
   // Nur den Tab-Inhalt neu zeichnen – Kopf, Jobzeile und Marker bleiben stehen
   function drawTab(animate = true) {
     if (p.imported && !['bild', 'versionen'].includes(tab)) tab = 'bild';
@@ -347,7 +581,9 @@ async function projectView(el, id, tab = 'bild') {
     const t = $('#tab');
     if (!t) return;
     t.classList.remove('enter');
+    sessionCtx();
     ({ bild: tabImage, aufnahmen: tabFrames, versionen: tabVersions, optionen: tabOptions, teleskopbilder: tabCompanions }[tab] || tabImage)(t);
+    syncSideBtn();
     updateJob();
     if (animate) { void t.offsetWidth; t.classList.add('enter'); }
   }
@@ -374,7 +610,7 @@ async function projectView(el, id, tab = 'bild') {
     if (stage?.rid !== r.id || !(stage.i >= 0 && stage.i < stages.length)) stage = { rid: r.id, i: stages.length - 1 };
     const stageLabel = (x) => x.final ? `Alle ${x.n} Aufnahmen · ${dur(x.exposure)} – fertiges Bild` : `${x.n} ${x.n === 1 ? 'Aufnahme' : 'Aufnahmen'} · ${dur(x.exposure)}`;
     const stageSrc = (x) => x.final ? `/api/stacking/results/${r.id}/jpg` : `/api/stacking/results/${r.id}/s${x.n}`;
-    t.innerHTML = `<div class="split"><div>
+    t.innerHTML = `<div class="imgwrap${sideOn ? '' : ' no-side'}"><div class="imgwork">
         <div id="viewer"></div>
         ${stages.length > 1 ? `<div class="stages"><div class="stages-h"><b>Stacking-Verlauf</b><span class="grow"></span><span class="sm tnum" id="stlbl">${stageLabel(stages[stage.i])}</span></div>
           <input type="range" id="strange" min="0" max="${stages.length - 1}" step="1" value="${stage.i}" aria-label="Stacking-Stufe" style="--fill:${stage.i / (stages.length - 1) * 100}%">
@@ -386,13 +622,18 @@ async function projectView(el, id, tab = 'bild') {
         ${r.id !== p.results[0].id || c ? `<div class="row sm mut" style="margin-top:8px">${c ? `Vergleich: links Version vom ${fdate(c.created)}, rechts ${fdate(r.created)}` : `Ältere Version vom ${fdate(r.created)}`}
           <span class="grow"></span><button class="linkbtn" id="latest">Neueste Version zeigen</button></div>` : ''}
         ${p.imported ? `<div class="notice" style="margin-top:14px"><div><b>Fertig importiertes Bild</b><div class="mut sm">Das Original bleibt unverändert. AstroFlow führt kein erneutes Stacking und keine automatische Entwicklung durch.</div>
-          ${AF.on('sage') ? '<button class="btn ghost sm" id="importedSage" style="margin-top:8px">Mit Sage bestimmen und erzählen</button>' : ''}</div></div>` : `<div class="stats">
+          ${AF.on('sage') ? '<button class="btn ghost sm" id="importedSage" style="margin-top:8px">Mit Sage bestimmen und erzählen</button>' : ''}</div></div>` : ''}
+</div><aside class="img-side" id="imgSide" aria-label="Bild-Details"></aside></div>`;
+    // Bild-Details neben dem Bild: Kennzahlen, Objektwissen, Kanäle, Bild-Tutor, Details, Himmelsposition, KI-Prüfung
+    $('#imgSide', t).innerHTML = `<div class="row ctx-acts"><a class="btn ghost sm" href="/api/stacking/results/${r.id}/jpg" download>${icon('down')}JPEG</a>
+        ${AF.on('sage') ? `<button class="btn ghost sm" id="ctxStory" title="Sage nutzt die vorhandene Plate-Solving-Lösung und die erkannten Objekte">${icon('book')}Geschichte erzählen</button>` : ''}
+        ${!p.imported && !running(p.job) ? `<button class="btn ghost sm" id="ctxDev">${icon('refresh')}Neu entwickeln</button>` : ''}</div>
+      ${p.imported ? '' : `<div class="stats">
           <div class="stat"><small>Integration</small><b>${dur(r.exposure)}</b></div>
           <div class="stat"><small>Gestackt</small><b class="tnum">${r.n_frames}</b></div>
           <div class="stat"><small>Sternschärfe (FWHM)</small><b class="tnum">${s.fwhm_px ?? '–'} px</b></div>
           <div class="stat"><small>Auflösung</small><b class="tnum">${s.shape ? s.shape[1] + '×' + s.shape[0] : '–'}</b></div>
-        </div>`}</div>
-      <div>
+        </div>`}
         ${Object.keys(bands).length > 1 || (Object.keys(bands).length === 1 && !bands.RGB) ? `<div class="panel"><div class="panel-h"><h2>Kanäle</h2><span class="grow"></span><span class="chip acc">${esc(PALETTE_LABEL[s.palette] || s.palette || '')}</span></div>
           <div class="bands">${Object.entries(bands).map(([b, v]) => `<div class="band"><span><span class="chip"><i style="background:${BAND_COLOR[b] || '#999'}"></i>${esc(b)}</span></span>
             <div class="progress"><i style="width:${v.exposure / bmax * 100}%;background:${BAND_COLOR[b] || 'var(--acc)'}"></i></div><span class="mut sm tnum">${v.frames} · ${dur(v.exposure)}</span></div>`).join('')}</div></div>` : ''}
@@ -411,19 +652,24 @@ async function projectView(el, id, tab = 'bild') {
           <dt>Nächte</dt><dd>${p.nights.map(fnight).join(', ') || '–'}</dd>`}
           ${p.deleted?.frames ? `<dt>Einzelbilder</dt><dd>${p.deleted.frames} gelöscht · ${fmb(p.deleted.bytes)} frei</dd>` : ''}
         </dl></div>
+        ${AF.on('sage') ? '<section class="panel ctx-know" id="ctxKnow"></section>' : ''}
         ${coordsPanel(p.coords)}
         ${rev.length ? `<div class="panel"><h2 style="margin-bottom:12px">KI-Bildprüfung</h2><div class="review">${rev.map(x => x.error
           ? `<div><b>Runde ${x.round}</b> <span class="warn">${esc(x.error)}</span></div>`
           : `<div><b>Runde ${x.round}</b> · <span class="${x.ok ? 'ok' : 'warn'}">${x.ok ? 'in Ordnung' : 'nachgebessert'}</span> <span class="mut">(${esc(x.score)}/10)</span>
             ${x.issues?.length ? `<ul>${x.issues.map(i => `<li>${esc(i)}</li>`).join('')}</ul>` : ''}
             ${Object.keys(x.adjust || {}).length ? `<div class="mut sm">${Object.entries(x.adjust).map(([k, v]) => `${esc(k)} → ${esc(v)}`).join(' · ')}</div>` : ''}</div>`).join('')}</div></div>` : ''}
-      </div></div>`;
+`;
+    $('#ctxStory')?.addEventListener('click', story);
+    objectKnowledge($('#ctxKnow'), p.name);
+    $('#ctxDev')?.addEventListener('click', develop);
     if (s.quality) tutorPanel($('#tutorBox'), r);
     const ph = !c && !before && livePoster ? livePoster : `/api/stacking/results/${r.id}/thumb`;
     livePoster = null;
     viewer = c ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${c.id}/jpg`, undefined, ph)
       : before && r.has_before ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${r.id}/before`, ['vorher', 'nachher'], ph)
-      : createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, null, undefined, ph);
+      : createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, null, undefined, ph, p.imported ? {} : { overlay: plateLabels(r.id) });
+    viewer.el.classList.add('tall', 'hover-labels');
     $('#ba')?.addEventListener('click', (e) => { const b = e.target.closest('[data-b]'); if (b) { before = b.dataset.b === '1'; drawTab(false); } });
     if (stages.length > 1) {
       let pre = null;                                    // alle Stufen vorladen, sobald der Regler benutzt wird
@@ -657,7 +903,7 @@ async function projectView(el, id, tab = 'bild') {
   async function story() {
     try {
       await send(`/sage/analyze/project/${id}`);
-      toast('Sage bestimmt die Objekte im Bild und schreibt die Geschichte …', '', { label: 'Zu Sage', href: '#/sage' });
+      toast('Sage bestimmt die Objekte im Bild (aus der vorhandenen Plate-Solving-Lösung) und schreibt die Geschichte …', '', { label: 'Zu Sage', href: '#/sage' });
       poll();
     } catch (e) { toast(e.message, 'err'); }
   }
@@ -669,7 +915,7 @@ async function projectView(el, id, tab = 'bild') {
     d.showModal();
     d.onclose = async () => {
       const v = $('input', d)?.value.trim();
-      if (d.returnValue === 'ok' && v && v !== p.name) { await send('/stacking/projects/' + id, { name: v }, 'PATCH'); toast('Umbenannt.', 'ok'); await refresh(true); crumbs([['Galerie', '#/bilder'], [p.name]]); }
+      if (d.returnValue === 'ok' && v && v !== p.name) { await send('/stacking/projects/' + id, { name: v }, 'PATCH'); toast('Umbenannt.', 'ok'); await refresh(true); crumbs([['Bilder', '#/bilder'], [p.name]]); }
     };
   }
   async function refresh(force) {
@@ -745,7 +991,7 @@ async function projectView(el, id, tab = 'bild') {
       ...(p.result && AF.on('sage') ? [['book', 'Geschichte erzählen', 'Sage', story]] : []),
       ['edit', 'Umbenennen', p.name, rename],
     ],
-    destroy: () => { window.__afSel = { id, sel, cmp }; viewer?.destroy(); liveView?.destroy(); document.removeEventListener('click', closeMenu); document.removeEventListener('keydown', onKey); },
+    destroy: () => { window.__afSel = { id, sel, cmp }; viewer?.destroy(); liveView?.destroy(); viz?.destroy(); document.removeEventListener('click', closeMenu); document.removeEventListener('keydown', onKey); },
   };
 }
 
@@ -753,45 +999,81 @@ async function projectView(el, id, tab = 'bild') {
 async function importView(el) {
   crumbs([['Bilder', '#/bilder'], ['Import']]);
   const st = await api('/stacking/status');
-  el.innerHTML = `<div class="pagehead"><div><h1>Bilder und Aufnahmen importieren</h1><p class="mut">Ein Eingang für Rohaufnahmen und fertige Astrofotos – AstroFlow ordnet sie automatisch zu.</p></div></div>
-    <label class="dropzone" id="dz">${icon('upload')}<h2>Bilder oder ganze Ordner hierher ziehen</h2>
-      <div class="mut">oder klicken · FITS, JPG, PNG und TIFF dürfen gemischt sein</div>
-      <input type="file" id="fi" multiple accept=".fit,.fits,.fts,.jpg,.jpeg,.png,.tif,.tiff" hidden></label>
-    <div class="row" style="justify-content:center;margin-top:12px"><label class="btn ghost sm">Ordner auswählen…<input type="file" id="fd" webkitdirectory multiple hidden></label>
-      <span class="mut sm">Ordnernamen bleiben erhalten – z. B. verrät „…_observation_M57“ bei Stellina das Objekt.</span></div>
-    <p class="mut sm imp-hint">Hochladen legt eine Kopie in AstroFlow an. Liegen viele Rohdaten schon auf diesem PC (auch auf einer anderen Platte),
-      besser <button class="linkbtn" id="toLib">Hauptordner durchsuchen</button> – dort bleiben die Dateien am Ort und es wird nichts kopiert.</p>
-    <div class="uploads" id="ups"></div>
-    <section class="panel" id="lib" style="margin-top:20px"><div class="panel-h"><h2 style="margin:0">Hauptordner durchsuchen</h2></div>
-      <p class="mut sm" style="margin-top:0">Ordner mit allen Beobachtungen wählen (z. B. die Stellina-Platte). AstroFlow findet die Objekte darin und zeigt, was noch nicht oder nicht fertig gestackt in AstroFlow ist.
-        <b>Beim Import wird nichts kopiert:</b> die Dateien bleiben unverändert am Ort und werden von dort gelesen – auch von einer anderen Platte. Diese muss nur zum Stacken neuer Aufnahmen angeschlossen sein; fertige Stacks lassen sich ohne sie bearbeiten.</p>
+  // Zwei Einstiege: kopieren (Hochladen) oder vorhandenen Ordner einbinden (Hauptordner durchsuchen, nichts wird kopiert)
+  let mode = store.get('import.mode', 'copy') === 'link' ? 'link' : 'copy';
+  el.innerHTML = `<div class="pagehead"><div><h1>Importieren</h1><p>Rohaufnahmen (FITS) und fertige Astrofotos (JPG, PNG, TIFF). Objekt, Kamera und Nacht erkennt AstroFlow selbst.</p></div></div>
+    <div class="imp-choice" role="tablist" aria-label="Art des Imports">
+      <button class="imp-opt" role="tab" data-m="copy"><span class="imp-ic">${icon('upload')}</span><span><b>Dateien nach AstroFlow kopieren</b>
+        <small>Hochladen legt eine Kopie im Datenordner an – gut für einzelne Nächte und fertige Bilder.</small></span></button>
+      <button class="imp-opt" role="tab" data-m="link"><span class="imp-ic">${icon('folder')}</span><span><b>Vorhandenen Ordner einbinden</b>
+        <small>Die Dateien bleiben am Ort, nichts wird kopiert – gut für die ganze Teleskop-Platte oder eine externe Festplatte.</small></span></button>
+    </div>
+    <section id="impCopy" class="imp-sec">
+      <label class="dropzone" id="dz">${icon('upload')}<h2>Bilder oder ganze Ordner hierher ziehen</h2>
+        <div class="mut">oder klicken · FITS, JPG, PNG und TIFF dürfen gemischt sein</div>
+        <input type="file" id="fi" multiple accept=".fit,.fits,.fts,.jpg,.jpeg,.png,.tif,.tiff" hidden></label>
+      <div class="imp-row"><label class="btn ghost sm">${icon('folder')}Ordner auswählen …<input type="file" id="fd" webkitdirectory multiple hidden></label>
+        <span class="mut sm">Ordnernamen bleiben erhalten – z. B. verrät „…_observation_M57“ bei Stellina das Objekt.</span></div>
+      <div class="uploads" id="ups"></div>
+      <details class="imp-more"><summary>Wie AstroFlow die Dateien einordnet</summary><div class="readable">
+        <p><b>FITS → Rohaufnahmen.</b> Objekt, Kamera und Nacht kommen aus den Headern. Lights, Darks, Flats und Bias dürfen gemischt sein; neue Nächte werden nachgestackt.</p>
+        <p><b>JPG, PNG, TIFF → fertige Bilder.</b> Direkt in die Galerie, ohne erneutes Stacking oder Stretch. Das Original bleibt erhalten; Sage bestimmt die Bilder, wenn „Automatisch entdecken“ aktiv ist.</p>
+        <p><b>Ohne Hochladen:</b> FITS-Dateien direkt in <code>${esc(st.input_dir)}</code> legen – AstroFlow schaut alle ${st.scan_interval} s nach.</p></div></details>
+    </section>
+    <section id="lib" class="imp-sec">
       <div class="lib-form"><button class="btn" id="libPick">${icon('folder')}Ordner wählen …</button><span class="lib-root" id="libRoot"></span><button class="btn ghost" id="libGo" hidden>${icon('refresh')}Erneut durchsuchen</button></div>
-      <div id="libBody"></div></section>
-    <div class="infogrid">
-      <div><b>Oder: Rohdaten-Ordner einbinden</b>Lege FITS-Dateien direkt in <code>${esc(st.input_dir)}</code> – AstroFlow schaut alle ${st.scan_interval} s nach.</div>
-      <div><b>FITS → Rohaufnahmen</b>Objekt, Kamera und Nacht werden aus den Headern erkannt. Lights, Darks, Flats und Bias sind gemischt möglich; neue Nächte werden nachgestackt.</div>
-      <div><b>JPG, PNG, TIFF → fertige Bilder</b>Direkt in die Galerie, ohne erneutes Stacking oder Stretch. Das Original bleibt erhalten. Sage bestimmt die Bilder automatisch, wenn „Automatisch entdecken“ aktiv ist.</div>
-    </div>`;
+      <details class="imp-more"><summary>Was beim Einbinden passiert</summary><div class="readable">
+        <p>AstroFlow durchsucht den Ordner samt Unterordnern (z. B. die Stellina-Platte), findet die Objekte darin und zeigt, was noch nicht oder nicht fertig gestackt ist.</p>
+        <p><b>Es wird nichts kopiert:</b> Die Dateien bleiben unverändert am Ort und werden von dort gelesen – auch von einer anderen Platte. Diese muss nur zum Stacken neuer Aufnahmen angeschlossen sein; fertige Stacks lassen sich ohne sie bearbeiten.</p></div></details>
+      <div id="libBody"></div></section>`;
+  const setMode = (m) => {
+    mode = m; store.set('import.mode', m);
+    $$('.imp-opt', el).forEach(b => { b.classList.toggle('on', b.dataset.m === m); b.setAttribute('aria-selected', b.dataset.m === m); });
+    $('#impCopy', el).hidden = m !== 'copy'; $('#lib', el).hidden = m !== 'link';
+  };
+  $$('.imp-opt', el).forEach(b => b.onclick = () => setMode(b.dataset.m));
+  setMode(mode);
   const dz = $('#dz');
   $('#fi').onchange = (e) => { upload([...e.target.files]); e.target.value = ''; };
   $('#fd').onchange = (e) => { upload([...e.target.files]); e.target.value = ''; };
   dz.ondragover = (e) => { e.preventDefault(); dz.classList.add('over'); };
   dz.ondragleave = () => dz.classList.remove('over');
   dz.ondrop = async (e) => { e.preventDefault(); e.stopPropagation(); dz.classList.remove('over'); upload(await droppedFiles(e.dataTransfer)); };
-  $('#toLib').onclick = () => $('#lib').scrollIntoView({ behavior: 'smooth', block: 'start' });
   libraryPanel(el);
 }
 
 // Hauptordner durchsuchen: Gruppen (Objekte) finden, Stand in AstroFlow anzeigen, Auswahl importieren
 const LIB_STATE = { new: ['neu', 'acc'], partial: ['teilweise vorhanden', 'warn'], unstacked: ['nicht gestackt', 'warn'], done: ['fertig', 'ok'] };
 const LIB_KIND = { lights: 'Aufnahmen', calibration: 'Kalibrierung', pictures: 'Fertige Bilder' };
+// Zustand als Reiter (eine Wahl; „Offen“ = es gibt etwas zu importieren), Art/Format als Mehrfachauswahl im Menü
+const LIB_TABS = [['open', 'Offen', g => g.n_new > 0], ['new', 'Neu', g => g.state === 'new'], ['partial', 'Teilweise', g => g.state === 'partial'],
+  ['unstacked', 'Nicht gestackt', g => g.state === 'unstacked'], ['done', 'Fertig', g => g.state === 'done'], ['all', 'Alle', () => true]];
+const LIB_FMT = (k) => ({ fits: 'FITS', jpg: 'JPG', png: 'PNG', tiff: 'TIFF' })[k] || k.toUpperCase();
 async function libraryPanel(view) {
   const body = $('#libBody', view), shown = $('#libRoot', view), go = $('#libGo', view);
   let root = '';
   const setRoot = (r) => { root = r || ''; shown.textContent = root; shown.title = root; go.hidden = !root; };
   const picked = new Set();
-  let timer = null, seen = false, showKnown = false;
+  let timer = null, seen = false, openMenu = null;
   const done = (g) => g.state === 'done';
+  // Filter je Browser gemerkt: tab = Zustand, kind/ext = Mehrfachauswahl (leer = alle)
+  const saved = store.get('library.filter', {});
+  let tab = LIB_TABS.some(t => t[0] === saved.tab) ? saved.tab : 'open';
+  const flt = Object.fromEntries(['kind', 'ext'].map(k => [k, new Set(Array.isArray(saved[k]) ? saved[k] : [])]));
+  const saveFlt = () => store.set('library.filter', { tab, kind: [...flt.kind], ext: [...flt.ext] });
+  const has = (g, key, v) => key === 'ext' ? v in (g.exts || {}) : g[key] === v;
+  const fits = (g, skip) => ['kind', 'ext'].every(k => k === skip || !flt[k].size || [...flt[k]].some(v => has(g, k, v)));
+  const inTab = (g, t = tab) => LIB_TABS.find(x => x[0] === t)[2](g);
+  const dropdown = (key, label, options, groups) => {
+    // Zahl je Option = Gruppen im aktuellen Reiter, die zu den übrigen Filtern passen; nur Optionen aus dem Suchlauf
+    const opts = options.filter(([v]) => groups.some(g => has(g, key, v)) || flt[key].has(v));
+    if (opts.length < 2 && !flt[key].size) return '';
+    const on = opts.filter(([v]) => flt[key].has(v)).map(([, l]) => l);
+    const base = groups.filter(g => inTab(g) && fits(g, key));
+    return `<div class="menu lib-dd" data-f="${key}"><button class="btn ghost sm ${on.length ? 'on' : ''}" aria-haspopup="true">${label}: <b>${on.length ? esc(on[0]) + (on.length > 1 ? ` +${on.length - 1}` : '') : 'alle'}</b>${icon('chev')}</button>
+      <div class="pop">${opts.map(([v, l]) => `<label class="lib-opt"><input type="checkbox" data-f="${key}" data-v="${esc(v)}" ${flt[key].has(v) ? 'checked' : ''}><span>${esc(l)}</span><small>${base.filter(g => has(g, key, v)).length}</small></label>`).join('')}
+      ${on.length ? `<hr><button class="linkbtn lib-ddclear" data-f="${key}">Auswahl aufheben</button>` : ''}</div></div>`;
+  };
   const draw = (st) => {
     if (!body.isConnected) return clearTimeout(timer);
     const busy = st.state === 'scanning' || st.state === 'importing';
@@ -806,30 +1088,43 @@ async function libraryPanel(view) {
     if (!seen) { seen = true; groups.forEach(g => { if (!done(g) && g.n_new) picked.add(g.id); }); }
     [...picked].forEach(id => { const g = groups.find(x => x.id === id); if (!g || !g.n_new) picked.delete(id); });
     if (!groups.length) { body.innerHTML = st.message ? `<p class="mut sm">${esc(st.message)}</p>` : ''; return; }
-    const sel = groups.filter(g => picked.has(g.id));
     const imp = st.imported;
-    // Bereits vollständig in AstroFlow vorhandene Gruppen gibt es nicht zu importieren -> ausgeblendet
-    const known = groups.filter(g => !g.n_new), list = showKnown ? groups : groups.filter(g => g.n_new);
+    const pool = groups.filter(g => fits(g)), list = pool.filter(g => inTab(g)), anyFlt = flt.kind.size || flt.ext.size;
+    const sel = list.filter(g => picked.has(g.id) && g.n_new);       // Import wirkt nur auf sichtbare Gruppen
+    const selectable = list.filter(g => g.n_new && !done(g));
+    const tabs = LIB_TABS.filter(([k, , f]) => k !== 'unstacked' || groups.some(f));
     body.innerHTML = `${imp ? `<div class="notice lib-done"><div><b>${icon('check')} Import abgeschlossen</b><div class="mut sm">${esc(st.message)}${imp.errors?.length ? `<br><span class="bad">${imp.errors.map(esc).join('<br>')}</span>` : ''}</div>
         ${Object.keys(imp.projects || {}).length ? '<div style="margin-top:8px"><a class="btn ghost sm" href="#/bilder">Zur Galerie</a></div>' : ''}</div></div>` : ''}
-      <div class="lib-bar"><span class="mut sm">${imp ? '' : esc(st.message)}</span><span class="grow"></span>
-        <button class="btn ghost sm" id="libNew">Nur Neues wählen</button><button class="btn ghost sm" id="libNone">Keine</button>
-        <button class="btn" id="libImp" ${sel.length ? '' : 'disabled'}>${icon('upload')}${sel.length ? `${sel.length} ${sel.length === 1 ? 'Gruppe' : 'Gruppen'} importieren` : 'Importieren'}</button></div>
-      ${list.length ? '' : '<p class="mut sm">Alles bereits in AstroFlow – nichts Neues zu importieren.</p>'}
+      <div class="lib-tools">
+        <div class="lib-filt"><div class="seg" id="libTabs" aria-label="Zustand">${tabs.map(([k, l, f]) =>
+          `<button data-v="${k}" class="${k === tab ? 'on' : ''}" aria-pressed="${k === tab}"><span>${l}</span> <span class="dim">${pool.filter(f).length}</span></button>`).join('')}</div>
+          ${dropdown('kind', 'Art', Object.entries(LIB_KIND), groups)}${dropdown('ext', 'Format', [...new Set(groups.flatMap(g => Object.keys(g.exts || {})))].sort().map(e => [e, LIB_FMT(e)]), groups)}</div>
+        <div class="lib-acts"><span class="dim sm" id="libCount">${list.length} von ${groups.length} angezeigt</span>
+          <label class="btn ghost sm lib-all" title="Alle angezeigten Gruppen mit neuen Dateien wählen bzw. abwählen"><input type="checkbox" id="libAll" ${selectable.length ? '' : 'disabled'}>Alle neuen</label>
+          <button class="btn sm" id="libImp" ${sel.length ? '' : 'disabled'}>${icon('upload')}${sel.length ? `${sel.length} ${sel.length === 1 ? 'Gruppe' : 'Gruppen'} importieren` : 'Importieren'}</button></div></div>
+      ${list.length ? '' : `<p class="mut sm lib-empty">${anyFlt || tab !== 'open' ? 'Keine Gruppe in dieser Auswahl.' : 'Alles bereits in AstroFlow – nichts Neues zu importieren.'}</p>`}
       <div class="lib-list">${list.map(g => {
         const [lab, cls] = LIB_STATE[g.state] || [g.state, ''], off = !g.n_new;
         return `<label class="lib-row ${off ? 'off' : ''}"><input type="checkbox" data-id="${g.id}" ${picked.has(g.id) ? 'checked' : ''} ${off ? 'disabled' : ''}>
           <div class="lib-main"><div class="lib-title"><b>${esc(g.name)}</b><span class="chip ${cls}">${lab}</span><span class="chip">${LIB_KIND[g.kind] || g.kind}</span>${g.project?.name ? `<a class="chip acc" href="#/p/${g.project.id}">in AstroFlow: ${esc(g.project.name)}</a>` : ''}</div>
             <div class="lib-meta"><span class="chip">${g.n_files} Dateien · ${fmb(g.bytes)}</span>${g.n_known && g.n_new ? `<span class="chip">${g.n_new} davon neu</span>` : ''}${g.night ? `<span class="chip">${esc(g.night)}</span>` : ''}${g.camera ? `<span class="chip">${esc(g.camera)}</span>` : ''}</div>
             <div class="lib-path">${esc(g.rel)}</div></div></label>`;
-      }).join('')}</div>
-      ${known.length ? `<button class="linkbtn lib-hidden" id="libKnown">${showKnown ? 'Bereits vorhandene ausblenden' : `${known.length} bereits vorhandene ${known.length === 1 ? 'Gruppe' : 'Gruppen'} anzeigen`}</button>` : ''}`;
-    $('#libKnown', body)?.addEventListener('click', () => { showKnown = !showKnown; draw(st); });
-    body.onchange = (e) => { const id = e.target.dataset?.id; if (!id) return; e.target.checked ? picked.add(id) : picked.delete(id); draw(st); };
-    $('#libNew', body).onclick = () => { picked.clear(); groups.forEach(g => { if (g.n_new && !done(g)) picked.add(g.id); }); draw(st); };
-    $('#libNone', body).onclick = () => { picked.clear(); draw(st); };
+      }).join('')}</div>`;
+    if (openMenu) { $(`.lib-dd[data-f="${openMenu}"]`, body)?.classList.add('open'); openMenu = null; }
+    body.onchange = (e) => {
+      const t = e.target;
+      if (t.dataset?.f) { const set = flt[t.dataset.f]; t.checked ? set.add(t.dataset.v) : set.delete(t.dataset.v); saveFlt(); openMenu = t.dataset.f; return draw(st); }
+      const id = t.dataset?.id; if (!id) return; t.checked ? picked.add(id) : picked.delete(id); draw(st);
+    };
+    $('#libTabs', body).onclick = (e) => { const b = e.target.closest('button[data-v]'); if (!b) return; tab = b.dataset.v; saveFlt(); draw(st); };
+    $$('.lib-ddclear', body).forEach(b => b.onclick = () => { flt[b.dataset.f].clear(); saveFlt(); draw(st); });
+    // „Alle neuen“ wirkt nur auf die angezeigten Gruppen; die Auswahl ausgeblendeter bleibt
+    const all = $('#libAll', body), nSel = selectable.filter(g => picked.has(g.id)).length;
+    all.checked = !!selectable.length && nSel === selectable.length;
+    all.indeterminate = nSel > 0 && nSel < selectable.length;
+    all.onchange = () => { const on = all.checked; selectable.forEach(g => on ? picked.add(g.id) : picked.delete(g.id)); draw(st); };
     $('#libImp', body).onclick = async () => {
-      try { draw(await send('/stacking/library/import', { ids: [...picked] })); follow(); }
+      try { draw(await send('/stacking/library/import', { ids: sel.map(g => g.id) })); follow(); }
       catch (e) { toast(e.message, 'err'); }
     };
   };
@@ -1224,26 +1519,37 @@ async function statisticsView(el) {
 }
 
 // ---------------------------------------------------------- Registrierung --- //
+// Projektliste kurz zwischenspeichern: Übersicht fragt summary und recent gleichzeitig ab
+let projCache = null, projAt = 0;
+async function projectsCached() {
+  if (!projCache || Date.now() - projAt > 1500) { projCache = api('/stacking/projects'); projAt = Date.now(); }
+  try { return (await projCache).filter(p => !p.options?.gallery_parent); } catch (e) { projCache = null; throw e; }
+}
+
 AF.register('stacking', {
-  nav: [{ href: '#/bilder', label: 'Galerie', icon: 'grid', key: 'gallery' }, { href: '#/import', label: 'Import', icon: 'upload', key: 'import', sec: true },
-    { href: '#/bilder/statistik', label: 'Statistik', icon: 'pulse', key: 'statistics', sec: true }],
+  nav: [{ href: '#/bilder', label: 'Bilder', icon: 'layers', key: 'gallery', area: 'work' }, { href: '#/import', label: 'Import', icon: 'upload', key: 'import' },
+    { href: '#/bilder/statistik', label: 'Statistik', icon: 'pulse', key: 'statistics' },
+    { href: '#/galerie', label: 'Galerie', icon: 'image', key: 'pictures', area: 'library' }],
   routes: [
     [/^\/bilder$/, 'gallery', galleryView],
     [/^\/bilder\/statistik$/, 'statistics', statisticsView],
+    [/^\/galerie$/, 'pictures', picturesView],
+    [/^\/galerie\/(\d+)$/, 'pictures', pictureView],
     [/^\/p\/(\d+)(?:\/(\w+))?$/, 'gallery', projectView],
     [/^\/import$/, 'import', importView],
   ],
   settings: stackingSettings,
   status: (st, badge) => badge('gallery', st.modules.stacking?.busy_jobs, true),
-  async home(st) {
-    const s = st.modules.stacking || {}, projects = (await api('/stacking/projects')).filter(p => !p.options?.gallery_parent);
-    const done = projects.filter(p => p.result).sort((a, b) => b.result.created - a.result.created);
-    const tot = projects.reduce((a, p) => a + (p.result?.exposure || 0), 0), busy = projects.filter(p => running(p.job));
-    return `<div class="hhead">${icon('grid')}<div><h2>Bilder</h2><div class="mut sm">Rohbilder → fertiges Astrofoto</div></div><span class="grow"></span><a class="linkbtn" href="#/bilder">Galerie ${icon('arrow')}</a></div>
-      <div class="hstats"><div><b class="tnum">${projects.length}</b><small>Objekte</small></div><div><b class="tnum">${dur(tot)}</b><small>Belichtung</small></div><div><b class="tnum">${nf.format(s.frames?.light || 0)}</b><small>Aufnahmen</small></div></div>
-      ${busy.length ? `<div class="hlist">${busy.slice(0, 2).map(p => `<a href="#/p/${p.id}"><span class="spinner"></span><b>${esc(p.name)}</b><span class="mut sm">${esc(p.job.stage || 'wartet')} ${p.job.progress ? Math.round(p.job.progress * 100) + ' %' : ''}</span></a>`).join('')}</div>` : ''}
-      ${done.length ? `<div class="hthumbs">${done.slice(0, 6).map(p => `<a href="#/p/${p.id}" title="${esc(p.name)}"><img src="/api/stacking/results/${p.result.id}/thumb" alt="" loading="lazy"><span>${esc(p.name)}</span></a>`).join('')}</div>`
-        : `<p class="mut sm">Noch keine fertigen Bilder. Lege FITS-Dateien in den Eingangsordner oder <a href="#/import">importiere sie</a>.</p>`}`;
+  async summary(st) {
+    const s = st.modules.stacking || {}, projects = await projectsCached();
+    const tot = projects.reduce((a, p) => a + (p.result?.exposure || 0), 0), busy = projects.find(p => running(p.job));
+    return { title: 'Bilder', icon: 'layers', href: '#/bilder', sub: projects.length ? `${projects.filter(p => p.result).length} fertige Bilder` : 'Noch keine Aufnahmen – Dateien importieren',
+      stats: [[nf.format(projects.length), 'Objekte'], [dur(tot), 'Belichtung'], [nf.format(s.frames?.light || 0), 'Aufnahmen']],
+      live: busy ? `<span class="spinner"></span>${esc(busy.name)} · ${busy.job.state === 'queued' ? 'wartet' : esc(busy.job.stage || 'läuft')}${busy.job.progress ? ' ' + Math.round(busy.job.progress * 100) + ' %' : ''}` : '' };
+  },
+  async recent() {
+    return (await projectsCached()).filter(p => p.result).sort((a, b) => b.result.created - a.result.created).slice(0, 8)
+      .map(p => ({ img: `/api/stacking/results/${p.result.id}/thumb`, title: p.name, sub: p.imported ? 'Fertiges Bild' : `${dur(p.result.exposure)} · ${ago(p.result.created)}`, href: `#/p/${p.id}/bild` }));
   },
   async palette() {
     const projects = (await api('/stacking/projects')).filter(p => !p.options?.gallery_parent);

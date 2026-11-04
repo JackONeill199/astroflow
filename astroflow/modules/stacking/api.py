@@ -716,6 +716,36 @@ def build_router(eng: Engine) -> APIRouter:
         except ValueError as e:
             raise HTTPException(409, str(e))
 
+    @r.get("/results/{rid}/objects")
+    def result_objects(rid: int):
+        """Katalogobjekte im fertigen Bild (Pixel des JPGs) aus der Plate-Solving-Lösung des Master-Stacks – für die
+        Objektnamen beim Überfahren des Bildes. Ohne Lösung leer. Je Version zwischengespeichert (neu, wenn wcs.json jünger ist)."""
+        x = db.one("SELECT project_id, files FROM results WHERE id=?", (rid,))
+        if not x:
+            raise HTTPException(404)
+        pid, files = x["project_id"], json.loads(x["files"] or "{}")
+        wcs = eng.s.work_dir / f"p{pid}" / "wcs.json"
+        if not wcs.exists():
+            return {"objects": [], "reason": "nicht per Plate-Solving gelöst"}
+        cache = eng.s.work_dir / f"p{pid}" / f"objekte_r{rid}.json"
+        if cache.exists() and cache.stat().st_mtime >= wcs.stat().st_mtime:
+            try:
+                return json.loads(cache.read_text(encoding="utf-8"))
+            except ValueError:
+                pass
+        from .services import project_solution
+        try:
+            sol = project_solution(eng.s.work_dir, pid, files)
+        except Exception as e:                           # beschädigte Lösung/Datei: einfach ohne Namen
+            return {"objects": [], "reason": f"Lösung nicht lesbar: {e}"}
+        out = ({"width": sol["width"], "height": sol["height"], "objects": [o for o in sol["objects"] if o.get("x") is not None]}
+               if sol else {"objects": [], "reason": "kein Master-Stack"})
+        try:
+            cache.write_text(json.dumps(out), encoding="utf-8")
+        except OSError:
+            pass
+        return out
+
     @r.get("/results/{rid}/{kind}")
     def result_file(rid: int, kind: str):
         x = db.one("SELECT files FROM results WHERE id=?", (rid,))

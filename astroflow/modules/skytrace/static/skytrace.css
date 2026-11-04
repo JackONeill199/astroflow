@@ -1,146 +1,148 @@
 /* SkyTrace im AstroFlow-Design. evidence.css (gemeinsam mit dem eigenständigen Bericht) bleibt unverändert und wird hier nur angepasst. */
-.stlive { display: block; color: var(--fg); margin-bottom: 20px; border-color: color-mix(in srgb, var(--acc3) 40%, transparent) }
+.stlive { display: block; color: var(--fg); margin-bottom: 1.25rem; border-color: color-mix(in srgb, var(--acc3) 40%, transparent) }
 .stlive .live { background: var(--acc3); color: var(--acc3) }
-.stlive .progress i { background: linear-gradient(90deg, var(--acc3), var(--acc)) }
+.stlive .progress i { background: var(--acc) }
 
 /* Himmelsansicht mit Bild/Video und Overlay */
-.sky { position: relative; aspect-ratio: 3/2; border-radius: var(--r); overflow: hidden; background: radial-gradient(circle at 50% 45%, #121a32, #02040a); border: 1px solid var(--line);
+.sky { position: relative; aspect-ratio: 3/2; border-radius: var(--r); overflow: hidden; background: #050607; border: 1px solid var(--line);
   box-shadow: var(--shadow) }
 .sky img, .sky video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; animation: fadeIn .4s var(--ease) }
 .sky .motion-video-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none }
 /* Nur beschriftete Objekte fangen Ereignisse ab; die freie SVG-Fläche lässt Video-Bedienelemente durch. */
 .sky .motion-video-overlay:not([hidden]) { pointer-events: none }
-.sky-empty { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 6px; text-align: center; color: var(--mut) }
-.sky-empty svg { width: 42px; height: 42px; color: var(--acc3); opacity: .7 }
-.sky-info { position: absolute; left: 14px; right: 60px; top: 12px; display: flex; gap: 12px; justify-content: space-between; font: 600 11px/1.4 ui-monospace, monospace;
-  letter-spacing: .06em; color: #cfe3eecc; text-shadow: 0 1px 3px #000; pointer-events: none }
-.sky-full { position: absolute; right: 10px; bottom: 10px; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; border: 1px solid #ffffff22;
-  background: #0b1020b3; color: #e8ebf5; cursor: pointer; backdrop-filter: blur(8px); transition: opacity .2s }
+.sky-empty { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 0.375rem; text-align: center; color: var(--mut) }
+.sky-empty svg { width: 2.625rem; height: 2.625rem; color: var(--acc3); opacity: .7 }
+.sky-info { position: absolute; left: 0.875rem; right: 3.75rem; top: 0.75rem; display: flex; gap: 0.75rem; justify-content: space-between; font: 600 0.6875rem/1.4 ui-monospace, monospace;
+  letter-spacing: .06em; color: #cfe3eecc; text-shadow: 0 1px 0.1875rem #000; pointer-events: none }
+.sky-full { position: absolute; right: 0.625rem; bottom: 0.625rem; width: 2.125rem; height: 2.125rem; display: grid; place-items: center; border-radius: 0.5625rem; border: 1px solid #ffffff22;
+  background: #0b1020b3; color: #e8ebf5; cursor: pointer; backdrop-filter: blur(0.5rem); transition: opacity .2s }
 .sky:not(:hover) .sky-full { opacity: .55 }
 .sky:fullscreen { border-radius: 0; aspect-ratio: auto }
-.sky::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 80px #000a; border-radius: inherit }
+/* Vorschau nie höher als das Fenster: Wiedergabe, Ebenen und Kandidatenwahl bleiben darunter sichtbar */
+.sky:not(:fullscreen) { width: min(100%, calc((100vh - var(--top-h) - 17rem) * 1.5)); margin-inline: auto }
+.sky::after { content: none }
 .st-stats { margin-top: 0; grid-template-columns: repeat(2, 1fr) }
 
 /* Protokoll */
-.loglist { max-height: 520px; overflow: auto; font: 12px/1.6 ui-monospace, "Cascadia Mono", monospace; display: grid; gap: 1px }
-.loglist.mini { max-height: 220px }
-.logrow { display: grid; grid-template-columns: 70px 62px 1fr; gap: 8px; padding: 3px 6px; border-radius: 6px; animation: fadeIn .3s }
+.loglist { max-height: 32.5rem; overflow: auto; font: 0.75rem/1.6 ui-monospace, "Cascadia Mono", monospace; display: grid; gap: 1px }
+.loglist.mini { max-height: 13.75rem }
+.logrow { display: grid; grid-template-columns: 4.375rem 3.875rem 1fr; gap: 0.5rem; padding: 0.1875rem 0.375rem; border-radius: 0.375rem; animation: fadeIn .3s }
 .logrow:hover { background: color-mix(in srgb, var(--panel2) 60%, transparent) }
 .logrow time { color: var(--dim) }
-.ltag { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: var(--acc3) }
+.ltag { font-size: 0.625rem; font-weight: 700; letter-spacing: .06em; color: var(--acc3) }
 .logrow.rejected .ltag, .logrow.error .ltag { color: var(--warn) }
 .logrow.fatal .ltag { color: var(--bad) }
 .logrow.done .ltag { color: var(--ok) }
-.loglist.mini .logrow { grid-template-columns: 62px 1fr }
+.loglist.mini .logrow { grid-template-columns: 3.875rem 1fr }
 .loglist.mini .ltag { display: none }
 
 /* Kandidaten: Liste + Detail */
-.st-cands { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 18px; align-items: start }
-@media (max-width: 1000px) { .st-cands { grid-template-columns: 1fr } .st-clist { position: static; max-height: 260px } }
-.st-clist { display: grid; gap: 6px; position: sticky; top: 84px; max-height: calc(100vh - 110px); overflow: auto; padding-right: 4px }
-.ccard { display: flex; gap: 10px; align-items: center; text-align: left; padding: 8px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--fg);
+.st-cands { display: grid; grid-template-columns: 18.75rem minmax(0, 1fr); gap: 1.125rem; align-items: start }
+@media (max-width: 1000px) { .st-cands { grid-template-columns: 1fr } .st-clist { position: static; max-height: 16.25rem } }
+.st-clist { display: grid; gap: 0.375rem; position: sticky; top: 5.25rem; max-height: calc(100vh - 6.875rem); overflow: auto; padding-right: 0.25rem }
+.ccard { display: flex; gap: 0.625rem; align-items: center; text-align: left; padding: 0.5rem; border-radius: 0.75rem; border: 1px solid var(--line); background: var(--panel); color: var(--fg);
   cursor: pointer; font: inherit; transition: border-color .2s, background .2s, transform .3s var(--ease); animation: fadeUp .4s var(--ease) both; animation-delay: calc(min(var(--i, 0), 14) * 30ms) }
 .ccard:hover { border-color: var(--line2); transform: translateX(2px) }
 .ccard.on { border-color: color-mix(in srgb, var(--acc3) 60%, transparent); background: color-mix(in srgb, var(--acc3) 8%, var(--panel)) }
-.ccard img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; background: #000; flex: none }
+.ccard img { width: 4rem; height: 4rem; object-fit: cover; border-radius: 0.5rem; background: #000; flex: none }
 .ccard div { display: grid; gap: 1px; min-width: 0 }
-.ccard b { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
-.ccard span { font-size: 12.5px; color: var(--acc3) }
+.ccard b { font-size: 0.8125rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.ccard span { font-size: 0.7812rem; color: var(--acc3) }
 .st-cdetail { min-width: 0 }
-.cstage { position: relative; border-radius: 12px; overflow: hidden; background: #000; cursor: zoom-in; margin: 4px 0 10px }
-.cstage img { display: block; width: 100%; max-height: 520px; object-fit: contain; image-rendering: auto }
+.cstage { position: relative; border-radius: 0.75rem; overflow: hidden; background: #000; cursor: zoom-in; margin: 0.25rem 0 0.625rem }
+.cstage img { display: block; width: 100%; max-height: min(32.5rem, calc(100vh - var(--top-h) - 18rem)); object-fit: contain; image-rendering: auto }
 .cstage svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none }
-.cstage-zoom { position: absolute; right: 10px; bottom: 10px; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; border: 1px solid #ffffff22; background: #0b1020b3; color: #fff }
-.tl-ctrl { display: flex; align-items: center; gap: 6px; margin: 10px 0 }
+.cstage-zoom { position: absolute; right: 0.625rem; bottom: 0.625rem; width: 2.125rem; height: 2.125rem; display: grid; place-items: center; border-radius: 0.5625rem; border: 1px solid #ffffff22; background: #0b1020b3; color: #fff }
+.tl-ctrl { display: flex; align-items: center; gap: 0.375rem; margin: 0.625rem 0 }
 .tl-ctrl input[type=range] { flex: 1; accent-color: var(--acc3); height: auto; padding: 0; border: 0; background: none }
-.tl-thumbs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px }
-.tl-th { flex: none; width: 74px; border: 2px solid transparent; border-radius: 9px; padding: 0; background: #000; overflow: hidden; cursor: pointer; position: relative; color: #fff }
+.tl-thumbs { display: flex; gap: 0.375rem; overflow-x: auto; padding-bottom: 0.375rem; margin-bottom: 0.5rem }
+.tl-th { flex: none; width: 4.625rem; border: 2px solid transparent; border-radius: 0.5625rem; padding: 0; background: #000; overflow: hidden; cursor: pointer; position: relative; color: #fff }
 .tl-th img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; opacity: .75; transition: opacity .2s }
-.tl-th span { position: absolute; inset: auto 0 0 0; font-size: 10px; background: #000a; padding: 1px 3px }
+.tl-th span { position: absolute; inset: auto 0 0 0; font-size: 0.625rem; background: #000a; padding: 1px 0.1875rem }
 .tl-th.hit { border-color: color-mix(in srgb, #f2d385 60%, transparent) }
 .tl-th.rej img { filter: grayscale(1) blur(1px) }
 .tl-th.on { border-color: var(--acc3) } .tl-th.on img, .tl-th:hover img { opacity: 1 }
-.frame-options { margin: 8px 0 12px; flex-wrap: wrap }
+.frame-options { margin: 0.5rem 0 0.75rem; flex-wrap: wrap }
 .frame-options .linkbtn:disabled { opacity: .4; cursor: default }
-.cstage video { display: block; width: 100%; max-height: 520px; object-fit: contain; background: #000 }
+.cstage video { display: block; width: 100%; max-height: min(32.5rem, calc(100vh - var(--top-h) - 18rem)); object-fit: contain; background: #000 }
 .cstage:fullscreen { width: 100%; height: 100%; display: grid; place-items: center; margin: 0; border-radius: 0 }
 .cstage:fullscreen img, .cstage:fullscreen video { max-height: 100vh; width: 100%; height: 100%; object-fit: contain }
-.frame-missing { min-height: 180px; display: grid; place-items: center; padding: 24px; text-align: center; cursor: default }
-.tl-th { width: 96px }
+.frame-missing { min-height: 11.25rem; display: grid; place-items: center; padding: 1.5rem; text-align: center; cursor: default }
+.tl-th { width: 6rem }
 .tl-th img { aspect-ratio: 4/3 }
-.tl-th span { inset: auto 0 19px; font-size: 11px }
-.tl-th small { display: block; padding: 3px; font-size: 11px; background: var(--bg2); color: var(--mut); font-variant-numeric: tabular-nums }
-.sky-events { display: flex; gap: 7px; overflow-x: auto; padding: 10px 0 3px }
-.sky-event { border: 1px solid var(--line); border-radius: 20px; padding: 5px 11px; background: var(--panel); color: var(--mut); font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer }
+.tl-th span { inset: auto 0 1.1875rem; font-size: 0.6875rem }
+.tl-th small { display: block; padding: 0.1875rem; font-size: 0.6875rem; background: var(--bg2); color: var(--mut); font-variant-numeric: tabular-nums }
+.sky-events { display: flex; gap: 0.4375rem; overflow-x: auto; padding: 0.625rem 0 0.1875rem }
+.sky-event { border: 1px solid var(--line); border-radius: 1.25rem; padding: 0.3125rem 0.6875rem; background: var(--panel); color: var(--mut); font: inherit; font-size: 0.75rem; white-space: nowrap; cursor: pointer }
 .sky-event.on { color: var(--fg); border-color: var(--acc3) }
-@media (max-width: 480px) { .frame-options { gap: 8px } .tl-th { width: 84px } }
+@media (max-width: 480px) { .frame-options { gap: 0.5rem } .tl-th { width: 5.25rem } }
 .acc { color: var(--acc3) }
-.st-catalogs { margin-top: 18px; display: grid; gap: 10px }
-.st-catalogs h3 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--mut) }
-.st-cat { padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: color-mix(in srgb, var(--panel2) 40%, transparent) }
-.st-cat p { margin: 6px 0 0 }
-.srcs { display: grid; gap: 6px; margin: 6px 0 12px; font-size: 12.5px; color: var(--mut) }
-.srcs b { color: var(--fg); display: inline-block; min-width: 54px }
-.addr { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 }
+.st-catalogs { margin-top: 1.125rem; display: grid; gap: 0.625rem }
+.st-catalogs h3 { font-size: 0.75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--mut) }
+.st-cat { padding: 0.75rem 0.875rem; border-radius: 0.75rem; border: 1px solid var(--line); background: color-mix(in srgb, var(--panel2) 40%, transparent) }
+.st-cat p { margin: 0.375rem 0 0 }
+.srcs { display: grid; gap: 0.375rem; margin: 0.375rem 0 0.75rem; font-size: 0.7812rem; color: var(--mut) }
+.srcs b { color: var(--fg); display: inline-block; min-width: 3.375rem }
+.addr { display: flex; flex-wrap: wrap; gap: 0.375rem; margin: 0.5rem 0 }
 .addr .chip { cursor: pointer }
 .addr .chip:hover { border-color: var(--acc) }
 
 /* Messdetails (evidence.js) an die App angleichen */
-.st-cdetail .analysis-details { margin: 0 -20px; }
-.st-cdetail .evidence-panel { border-top-color: var(--line); color: var(--mut); padding: 20px }
-.st-cdetail .evidence-panel h3 { color: var(--fg); font-size: 15px }
-.st-cdetail .evidence-metrics > div, .st-cdetail .evidence-chart { background: color-mix(in srgb, var(--panel2) 45%, transparent); border-color: var(--line); border-radius: 12px }
+.st-cdetail .analysis-details { margin: 0 -1.25rem; }
+.st-cdetail .evidence-panel { border-top-color: var(--line); color: var(--mut); padding: 1.25rem }
+.st-cdetail .evidence-panel h3 { color: var(--fg); font-size: 0.9375rem }
+.st-cdetail .evidence-metrics > div, .st-cdetail .evidence-chart { background: color-mix(in srgb, var(--panel2) 45%, transparent); border-color: var(--line); border-radius: 0.75rem }
 @media (max-width: 760px) { .st-cdetail .evidence-metrics, .st-cdetail .evidence-graphs { grid-template-columns: 1fr 1fr } }
 @media (prefers-color-scheme: light) {
-  .st-cdetail .evidence-panel { background: #0b1220; border-radius: 12px; margin: 0 20px }
+  .st-cdetail .evidence-panel { background: #0b1220; border-radius: 0.75rem; margin: 0 1.25rem }
 }
 
 /* Analyse löschen (Karte in der Übersicht) */
 .card { position: relative }
-.card-del { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--line2); display: grid; place-items: center;
-  background: color-mix(in srgb, var(--panel2) 88%, transparent); backdrop-filter: blur(8px); color: var(--mut); cursor: pointer; opacity: 0; transition: opacity .15s, color .15s, background .15s }
-.card-del svg { width: 15px; height: 15px }
+.card-del { position: absolute; top: 0.5rem; right: 0.5rem; width: 2rem; height: 2rem; border-radius: 0.5625rem; border: 1px solid var(--line2); display: grid; place-items: center;
+  background: color-mix(in srgb, var(--panel2) 88%, transparent); backdrop-filter: blur(0.5rem); color: var(--mut); cursor: pointer; opacity: 0; transition: opacity .15s, color .15s, background .15s }
+.card-del svg { width: 0.9375rem; height: 0.9375rem }
 .card:hover .card-del, .card:focus-within .card-del { opacity: 1 }
 .card-del:hover { color: #fff; background: var(--bad); border-color: var(--bad) }
 @media (hover: none) { .card-del { opacity: 1 } }
 
 /* Statistik */
 .sts-summary { grid-template-columns: repeat(4, minmax(0, 1fr)) }
-.sts-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px }
+.sts-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem }
 .sts-grid .panel { margin: 0; min-width: 0 }
 .sts-grid .sts-wide { grid-column: 1/-1 }
-.sts-bars { display: grid; grid-template-columns: auto minmax(40px, 1fr) auto; gap: 8px 12px; margin-top: 18px }
-.sts-bar { display: grid; grid-column: 1/-1; grid-template-columns: subgrid; align-items: center; font-size: 13px }
+.sts-bars { display: grid; grid-template-columns: auto minmax(2.5rem, 1fr) auto; gap: 0.5rem 0.75rem; margin-top: 1.125rem }
+.sts-bar { display: grid; grid-column: 1/-1; grid-template-columns: subgrid; align-items: center; font-size: 0.8125rem }
 .sts-bar .tnum { text-align: right }
 .sts-cat > span:first-child { min-width: 0; overflow-wrap: anywhere }
-.sts-track { height: 12px; background: var(--bg); border-radius: 6px; overflow: hidden }
-.sts-fill { height: 100%; background: var(--grad); border-radius: 6px; min-width: 2px }
-.sts-types { gap: 6px; margin: 12px 0 6px }
-.sts-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; min-width: 0 }
+.sts-track { height: 0.75rem; background: var(--bg); border-radius: 0.375rem; overflow: hidden }
+.sts-fill { height: 100%; background: var(--grad); border-radius: 0.375rem; min-width: 2px }
+.sts-types { gap: 0.375rem; margin: 0.75rem 0 0.375rem }
+.sts-row { display: flex; align-items: center; gap: 0.625rem; padding: 0.5625rem 0; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; min-width: 0 }
 .sts-row:last-child { border-bottom: 0 }
 .sts-row b { overflow-wrap: anywhere }
-.sts-row svg { width: 14px; height: 14px; color: var(--mut); flex: none }
+.sts-row svg { width: 0.875rem; height: 0.875rem; color: var(--mut); flex: none }
 a.sts-row:hover b { color: var(--acc) }
 .sts-name { display: flex; flex-direction: column; min-width: 0 }
-.sts-legend { gap: 6px 16px; margin: 12px 0 14px; font-size: 12px; color: var(--mut) }
-.sts-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px }
-.sts-cat { display: grid; grid-template-columns: 220px minmax(0, 1fr) 80px; align-items: center; gap: 12px; font-size: 13px; padding: 5px 0 }
+.sts-legend { gap: 0.375rem 1rem; margin: 0.75rem 0 0.875rem; font-size: 0.75rem; color: var(--mut) }
+.sts-legend i { display: inline-block; width: 0.625rem; height: 0.625rem; border-radius: 0.1875rem; margin-right: 0.375rem; vertical-align: -1px }
+.sts-cat { display: grid; grid-template-columns: 13.75rem minmax(0, 1fr) 5rem; align-items: center; gap: 0.75rem; font-size: 0.8125rem; padding: 0.3125rem 0 }
 .sts-cat .tnum { text-align: right }
-.sts-stack { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--bg); gap: 2px }
-.sts-stack i { min-width: 3px }
+.sts-stack { display: flex; height: 0.75rem; border-radius: 0.375rem; overflow: hidden; background: var(--bg); gap: 2px }
+.sts-stack i { min-width: 0.1875rem }
 .sts-hit { background: var(--ok) } .sts-hint { background: var(--acc3) } .sts-none { background: var(--acc) } .sts-open { background: var(--line2) }
-.sts-hours { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); align-items: end; height: 150px; gap: 5px; margin: 22px 0 30px }
+.sts-hours { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); align-items: end; height: 9.375rem; gap: 0.3125rem; margin: 1.375rem 0 1.875rem }
 .sts-hour { height: 100%; display: flex; flex-direction: column; justify-content: flex-end; position: relative }
-.sts-hour i { display: block; background: var(--grad); border-radius: 4px 4px 0 0; min-height: 2px }
-.sts-hour small { position: absolute; top: calc(100% + 8px); font-size: 10px; width: 100%; text-align: center; color: var(--mut) }
+.sts-hour i { display: block; background: var(--grad); border-radius: 0.25rem 0.25rem 0 0; min-height: 2px }
+.sts-hour small { position: absolute; top: calc(100% + 0.5rem); font-size: 0.625rem; width: 100%; text-align: center; color: var(--mut) }
 @media (max-width: 700px) {
   .sts-summary { grid-template-columns: repeat(2, minmax(0, 1fr)) }
   .sts-grid { grid-template-columns: 1fr }
-  .sts-bars { column-gap: 8px }
-  .sts-cat { grid-template-columns: minmax(0, 1fr) 64px; gap: 4px 8px } .sts-cat .sts-stack { grid-column: 1/-1; grid-row: 2 }
-  .sts-hours { gap: 2px } .sts-hour small { font-size: 9px } .sts-hour:nth-child(odd) small { visibility: hidden }
+  .sts-bars { column-gap: 0.5rem }
+  .sts-cat { grid-template-columns: minmax(0, 1fr) 4rem; gap: 0.25rem 0.5rem } .sts-cat .sts-stack { grid-column: 1/-1; grid-row: 2 }
+  .sts-hours { gap: 2px } .sts-hour small { font-size: 0.5625rem } .sts-hour:nth-child(odd) small { visibility: hidden }
 }
-#analysisMenu .pop { min-width: 280px }
+#analysisMenu .pop { min-width: 17.5rem }
 #analysisMenu .pop a { align-items: center }
-#analysisMenu .pop a small { display: block; font-size: 12px; margin-top: 3px; color: var(--mut) }
-#analysisMenu .pop a > svg { width: 16px; height: 16px; flex-shrink: 0 }
+#analysisMenu .pop a small { display: block; font-size: 0.75rem; margin-top: 0.1875rem; color: var(--mut) }
+#analysisMenu .pop a > svg { width: 1rem; height: 1rem; flex-shrink: 0 }

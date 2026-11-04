@@ -335,11 +335,16 @@ async function skyMap(host, id, big = false) {
     const k = H / (2 * R), cosd = Math.cos(cdec * Math.PI / 180);
     const pos = (ra, dec) => { const dra = ((ra - cra + 540) % 360) - 180; return [W / 2 - dra * Math.cos(dec * Math.PI / 180) * k, H / 2 - (dec - cdec) * k]; };
     const step = R > 25 ? 15 : R > 8 ? 5 : 1, grid = [];
+    let lastY = -1e9, lastX = -1e9;
     for (let dec = Math.ceil((cdec - R) / step) * step; dec <= Math.min(90, cdec + R); dec += step) {
-      const y = H / 2 - (dec - cdec) * k; grid.push(`<line x1="0" x2="${W}" y1="${y}" y2="${y}"/><text x="3" y="${y - 2}">${dec}°</text>`); }
+      const y = H / 2 - (dec - cdec) * k, lbl = Math.abs(y - lastY) > 16 && y < H - 16 && y > 12;
+      if (lbl) lastY = y;
+      grid.push(`<line x1="0" x2="${W}" y1="${y}" y2="${y}"/>${lbl ? `<text x="3" y="${y - 2}">${dec}°</text>` : ''}`); }
     const rs = R > 25 ? 30 : R > 8 ? 15 : 3, span = W / (2 * k * Math.max(cosd, 0.2));
     for (let ra = Math.ceil((cra - span) / rs) * rs; ra <= cra + span; ra += rs) {
-      const [x] = pos(ra, cdec); if (x > 0 && x < W) grid.push(`<line y1="0" y2="${H}" x1="${x}" x2="${x}"/><text x="${x + 2}" y="${H - 3}">${(((ra % 360) + 360) % 360 / 15).toFixed(rs < 15 ? 1 : 0).replace('.', ',')}h</text>`); }
+      const [x] = pos(ra, cdec); if (!(x > 0 && x < W)) continue;
+      const lbl = Math.abs(x - lastX) > 40 && x > 34 && x < W - 26; if (lbl) lastX = x;
+      grid.push(`<line y1="0" y2="${H}" x1="${x}" x2="${x}"/>${lbl ? `<text x="${x + 2}" y="${H - 3}">${(((ra % 360) + 360) % 360 / 15).toFixed(rs < 15 ? 1 : 0).replace('.', ',')}h</text>` : ''}`); }
     const named = R < (big ? 40 : 10);
     const pts = m.objects.map(o => { const [x, y] = pos(o.ra, o.dec), me = o.id === m.center.id;
       if (x < -5 || x > W + 5 || y < -5 || y > H + 5) return '';
@@ -451,16 +456,13 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
     const rows = [['orbit', 'Entfernung', fact('distance_ly')], ['target', 'Durchmesser', fact('diameter')], ['star', 'Helligkeit', mag],
       ['globe', 'Sternbild', con], ['sparkle', 'Spektraltyp', fact('sp_type')], ['book', 'Objekttyp', fact('otype') && { value: e.otype_label }]].filter(r => r[2]).slice(0, 6);
     return `<div class="sw-dhead">
-      <div class="sw-dh-img">${img ? `<img src="${img}" alt="" onload="this.classList.add('ld')">` : `<div class="sw-noimg big">${icon('camera')}<span>Keine Bilddaten</span><small>noch keine eigene Aufnahme</small></div>`}
+      <div class="sw-dh-img">${img ? `<a href="#/sage/o/${id}/bilder" title="Alle Bilder"><img src="${img}" alt="" onload="this.classList.add('ld')"></a>` : `<div class="sw-noimg big">${icon('camera')}<span>Keine Bilddaten</span><small>noch keine eigene Aufnahme</small></div>`}
         ${d.gallery.length > 1 ? `<button class="sw-dh-chg" id="swHero">${icon('edit')}Bild ändern</button>` : ''}</div>
       <div class="sw-dh-main"><div class="row" style="gap:6px">${e.kind === 'concept' ? '<span class="chip">Grundbegriff</span>' : statusChip(e.status)}${e.stale ? '<span class="chip warn">veraltet</span>' : ''}</div>
         <h1>${esc(title)}</h1>${des.length ? `<div class="sw-des">${des.map(esc).join('<i>·</i>')}</div>` : ''}
         <p class="sw-dh-sum" id="swSum">${esc(noCite(e.summary) || 'Noch keine Beschreibung.')}</p>
+        ${rows.length ? `<dl class="sw-kv">${rows.slice(0, 4).map(([, l, f]) => `<div><dt>${l}</dt><dd>${esc(fv(f))}${f.status === 'conflict' ? ` <span class="warn" title="${esc(f.note)}">${icon('alert')}</span>` : ''}</dd></div>`).join('')}</dl>` : ''}
         <div class="sw-tags">${tags.map((t, i) => `<span class="chip ${i ? '' : 'acc'}">${esc(t)}</span>`).join('')}${e.observed ? `<span class="chip ok">${icon('camera')}von dir fotografiert</span>` : ''}</div></div>
-      ${rows.length ? `<div class="panel sw-dh-facts">${rows.map(([ic, l, f]) => `<div>${icon(ic)}<span><small>${l}</small><b>${esc(fv(f))}${f.status === 'conflict' ? ` <span class="warn" title="${esc(f.note)}">${icon('alert')}</span>` : ''}</b></span></div>`).join('')}</div>` : ''}
-      ${e.ra != null ? `<div class="panel sw-dh-sky"><small class="mut">Position am Himmel</small><div id="swMap"></div>
-        <dl><dt>Rektaszension</dt><dd>${sexa(e.ra, true).replace(/\.\d+s$/, 's')}</dd><dt>Deklination</dt><dd>${sexa(e.dec, false)}</dd></dl>
-        <button class="btn sm ghost" id="swSkyBtn">${icon('globe')}Himmelsansicht</button></div>` : ''}
     </div>`;
   };
   const page = () => `<div class="sw-dtop"><span class="grow"></span>
@@ -494,8 +496,6 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
       const fc = floatCard(`<b>Titelbild wählen</b><div class="sw-imgs" style="margin-top:10px">${d.gallery.map(g => `<a href="#" data-k="${g.key}"><img src="${g.thumb}" alt=""><span>${shotDate(g)}</span></a>`).join('')}</div>`, ev);
       fc.onclick = async (x) => { const a = x.target.closest('[data-k]'); if (!a) return; x.preventDefault(); closeFloat(); await send(`${K}/entities/${id}`, { hero: a.dataset.k }, 'PATCH'); await reload(); full(); };
     });
-    if ($('#swMap')) skyMap($('#swMap'), id);
-    $('#swSkyBtn')?.addEventListener('click', () => skyDialog(id, shortName(e.name), e.size));
   };
   async function research(deep) {
     const t = await send(K + '/research', { name: id, deep }).catch(err => { toast(err.message, 'err'); });
@@ -519,6 +519,7 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
   }
 
   // ---- Übersicht: Bild mit Galerie · Beschreibung + Schnellfakten · Verwandtes, Notizen, Aufnahmen
+  const ORIGIN_LABEL = { catalog: 'aus Katalogwerten', curated: 'Grundwissen', user: 'von dir', ai: 'KI-Entwurf · ungeprüft' };
   function tabOverview(host) {
     const overview = d.sections.find(s => s.key === 'overview'), orig = e.data.summary_origin;
     const ss = season(e.ra), size = fact('size'), plans = d.mine.notes.filter(n => n.kind === 'plan');
@@ -532,33 +533,32 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
     const relList = [...related, ...members].slice(0, 4);
     const fresh = d.preprints.slice(0, 3), isNew = (p) => p.retrieved && Date.now() / 1000 - p.retrieved < 30 * 86400 && p.year >= new Date().getFullYear() - 1;
     const last = d.gallery[0];
+    // Werte, die schon im Kopf stehen (Kernwerte), hier nicht wiederholen; der Kurztext steht ebenfalls schon oben
+    const inHead = new Set(['Entfernung', 'Durchmesser', 'Helligkeit', 'Sternbild', 'Spektraltyp', 'Objekttyp']);
+    const facts = quick.filter(([l]) => !inHead.has(l));
+    const longText = overview ? md(overview.body, C, d.sources) : null;
     host.innerHTML = `<div class="sw-dash">
       <div class="sw-d-main">
-        <div class="panel sw-d-view"><div id="swImg"></div><div class="sw-cap2" id="swCap"></div>
-          ${d.gallery.length > 1 ? `<div class="sw-strip">${d.gallery.slice(0, 6).map((g, i) => `<button data-g="${i}" class="${i ? '' : 'on'}"><img src="${g.thumb}" alt="" loading="lazy"></button>`).join('')}
-            ${d.gallery.length > 6 ? `<a href="#/sage/o/${id}/bilder"><b>+${d.gallery.length - 6}</b><small>weitere</small></a>` : ''}</div>` : ''}</div>
-        <div class="sw-d-row">
-          <div class="panel sw-d-card"><h3>${icon('sparkle')}KI-Zusammenfassung</h3>
-            ${orig === 'ai' ? `<p class="sm">${esc(noCite(e.summary))}</p><span class="chip warn">KI-Entwurf · ungeprüft</span>` : `<p class="sm mut">Noch keine KI-Zusammenfassung. Der Recherche-Agent liest die Fachliteratur und belegt jede Aussage.</p>`}
-            <button class="btn sm ghost" data-go="deep" ${d.llm ? '' : 'disabled title="KI einrichten"'}>${icon('search')}Tiefer analysieren</button></div>
-          <div class="panel sw-d-card"><h3>${icon('book')}Aktuelle Forschung${fresh.some(isNew) ? ' <span class="chip acc">Neu</span>' : ''}</h3>
-            ${fresh.length ? `<ul class="sw-d-list">${fresh.map(p => `<li><a href="${esc(p.url || '#')}" target="_blank" rel="noopener">${esc(p.title)}</a><small class="dim">${p.year || ''}${p.kind === 'preprint' ? ' · arXiv' : ''}</small></li>`).join('')}</ul>`
-              : '<p class="sm mut">Noch keine Preprints gesammelt.</p>'}
-            <button class="btn sm ghost" data-go="papers">${icon('refresh')}Neue Arbeiten suchen</button></div>
-          <div class="panel sw-d-card"><h3>${icon('camera')}Persönlicher Kontext</h3>
-            <ul class="sw-ctx">
-              <li>${icon('camera')}<span><b>Eigene Aufnahmen (${d.gallery.length})</b><small>${last ? 'Letzte: ' + shotDate(last) : 'noch keine'}</small></span></li>
-              <li>${icon('target')}<span><b>Beobachtungen (${d.notes_n.observation})</b><small>${d.notes_n.note} Notiz${d.notes_n.note === 1 ? '' : 'en'}</small></span></li>
-              <li>${icon('pin')}<span><b>Geplante Beobachtungen (${plans.length})</b><small>${plans[0]?.date ? 'Nächste: ' + fnight(plans[0].date) : ss ? 'Nächste Saison: ' + ss.from + ' – ' + ss.to : '–'}</small></span></li>
-            </ul></div>
-        </div></div>
-      <div class="sw-d-mid">
-        <div class="panel"><div class="panel-h"><h2>Beschreibung</h2><span class="grow"></span>${overview ? `<span class="chip ${overview.status === 'draft' ? 'warn' : 'ok'}">${overview.status === 'draft' ? 'KI-Entwurf' : 'geprüft'}</span>` : `<span class="chip">${{ catalog: 'aus Katalogwerten', curated: 'Grundwissen', user: 'von dir' }[orig] || ''}</span>`}</div>
-          <div class="sw-body sm">${overview ? md(overview.body, C, d.sources) : md(e.summary || 'Noch keine Beschreibung.', C, d.sources)}</div>
-          ${e.kind !== 'concept' ? `<button class="btn sm ghost" data-go="deep" style="margin-top:12px" ${d.llm ? '' : 'disabled title="KI einrichten"'}>${icon('sparkle')}Mit KI vertiefen</button>` : ''}</div>
-        <div class="panel"><h2 style="margin-bottom:10px">Schnellfakten</h2><dl class="sw-quick">${quick.map(([l, v]) => `<dt>${l}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
-          <a class="linkbtn" href="#/sage/o/${id}/wissen" style="margin-top:8px;display:inline-flex">Alle Messwerte mit Quellen ${icon('arrow')}</a></div></div>
+        <section class="sw-sec"><div class="panel-h"><h2>Beschreibung</h2><span class="grow"></span>${overview ? `<span class="chip ${overview.status === 'draft' ? 'warn' : 'ok'}">${overview.status === 'draft' ? 'KI-Entwurf' : 'geprüft'}</span>` : ORIGIN_LABEL[orig] ? `<span class="chip">${ORIGIN_LABEL[orig]}</span>` : ''}</div>
+          ${longText ? `<div class="sw-body readable">${longText}</div>` : `<p class="mut readable">${e.summary ? 'Bisher gibt es nur den Kurztext oben.' : 'Noch keine Beschreibung.'} Der Recherche-Agent liest die Fachliteratur und belegt jede Aussage.</p>`}
+          ${e.kind !== 'concept' ? `<button class="btn sm ghost" data-go="deep" style="margin-top:12px" ${d.llm ? '' : 'disabled title="KI einrichten"'}>${icon('sparkle')}${longText ? 'Mit KI vertiefen' : 'Mit KI recherchieren'}</button>` : ''}</section>
+        ${facts.length ? `<section class="sw-sec"><h2>Schnellfakten</h2><dl class="sw-quick">${facts.map(([l, v]) => `<dt>${l}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
+          <a class="linkbtn" href="#/sage/o/${id}/wissen" style="margin-top:8px;display:inline-flex">Alle Messwerte mit Quellen ${icon('arrow')}</a></section>` : ''}
+        <section class="sw-sec"><div class="panel-h"><h2>Aktuelle Forschung${fresh.some(isNew) ? ' <span class="chip acc">Neu</span>' : ''}</h2><span class="grow"></span><button class="btn sm ghost" data-go="papers">${icon('refresh')}Neue Arbeiten suchen</button></div>
+          ${fresh.length ? `<ul class="sw-d-list readable">${fresh.map(p => `<li><a href="${esc(p.url || '#')}" target="_blank" rel="noopener">${esc(p.title)}</a><small class="dim">${p.year || ''}${p.kind === 'preprint' ? ' · arXiv' : ''}</small></li>`).join('')}</ul>`
+            : '<p class="mut sm">Noch keine Preprints gesammelt.</p>'}</section>
+      </div>
       <div class="sw-d-side">
+        ${e.ra != null ? `<div class="panel sw-dh-sky"><h2>Position am Himmel</h2><div id="swMap"></div>
+          <dl><dt>Rektaszension</dt><dd>${sexa(e.ra, true).replace(/\.\d+s$/, 's')}</dd><dt>Deklination</dt><dd>${sexa(e.dec, false)}</dd></dl>
+          <button class="btn sm ghost" id="swSkyBtn">${icon('globe')}Himmelsansicht</button></div>` : ''}
+        <div class="panel"><div class="panel-h"><h2>${icon('camera')}Meine Aufnahmen</h2><span class="grow"></span>${d.gallery.length ? `<a class="linkbtn" href="#/sage/o/${id}/bilder">Alle ${d.gallery.length}</a>` : ''}</div>
+          ${d.gallery.length ? `<div class="sw-shots">${d.gallery.slice(0, 3).map(g => `<a href="${g.href}"><img src="${g.thumb}" alt="" loading="lazy"><small>${shotDate(g)}</small>${g.minutes ? `<small class="dim">${g.minutes} min</small>` : ''}</a>`).join('')}</div>`
+            : `<p class="mut sm" style="margin:0">Noch nicht fotografiert${ss ? ` – gute Zeit: ${ss.from} bis ${ss.to}` : ''}.</p>`}
+          <ul class="sw-ctx">
+            <li>${icon('target')}<span><b>Beobachtungen (${d.notes_n.observation})</b><small>${d.notes_n.note} Notiz${d.notes_n.note === 1 ? '' : 'en'}</small></span></li>
+            <li>${icon('pin')}<span><b>Geplant (${plans.length})</b><small>${plans[0]?.date ? 'Nächste: ' + fnight(plans[0].date) : ss ? 'Saison: ' + ss.from + ' – ' + ss.to : '–'}</small></span></li>
+          </ul></div>
         <div class="panel"><div class="panel-h"><h2>${icon('orbit')}Verwandte Objekte</h2><span class="grow"></span><a class="linkbtn" href="#/sage/o/${id}/netz">Alle anzeigen</a></div>
           ${relList.length ? relList.map(x => `<a class="sw-relrow" href="#/sage/o/${x.other.id}"><span class="sw-rr-img">${x.other.image ? `<img src="${x.other.image}" alt="" loading="lazy">` : '<i class="sw-noimg">keine Bilddaten</i>'}</span>
             <span><b>${esc(x.other.name)}</b><small>${esc(x.other.otype_label || '')}${x.other.distance ? ' · ' + esc(x.other.distance) : ''}</small><small class="dim">${esc(x.dir === 'out' ? x.rel : '← ' + x.rel)}${x.status === 'suggested' ? ' · KI-Vorschlag' : ''}</small></span></a>`).join('')
@@ -568,15 +568,9 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
           ${d.mine.notes.length ? `<ul class="sw-nlist">${d.mine.notes.slice(0, 4).map(n => `<li class="k-${n.kind}"><i></i><div><small class="dim">${n.date ? fnight(n.date) : ago(n.created)} · ${NOTE_KIND[n.kind]}</small><b>${esc(n.title)}</b>${n.body ? `<span class="sm mut">${esc(n.body.slice(0, 120))}</span>` : ''}</div></li>`).join('')}</ul>`
             : '<p class="mut sm" style="margin:0">Bedingungen, Ideen, Ziele – alles bleibt lokal.</p>'}
           ${d.mine.notes.length > 4 ? `<a class="linkbtn" href="#/sage/o/${id}/beobachtungen">Alle ${d.mine.notes.length} Notizen</a>` : ''}</div>
-        <div class="panel"><div class="panel-h"><h2>${icon('camera')}Meine Aufnahmen</h2><span class="grow"></span><a class="linkbtn" href="#/sage/o/${id}/bilder">Alle anzeigen</a></div>
-          ${d.gallery.length ? `<div class="sw-shots">${d.gallery.slice(0, 3).map(g => `<a href="${g.href}"><img src="${g.thumb}" alt="" loading="lazy"><small>${shotDate(g)}</small>${g.minutes ? `<small class="dim">${g.minutes} min</small>` : ''}</a>`).join('')}
-            ${d.gallery.length > 3 ? `<a href="#/sage/o/${id}/bilder" class="more"><b>+${d.gallery.length - 3}</b><small>weitere</small></a>` : ''}</div>`
-            : `<p class="mut sm" style="margin:0">Noch nicht fotografiert${ss ? ` – gute Zeit: ${ss.from} bis ${ss.to}` : ''}.</p>`}</div>
       </div></div>`;
-    let cur = 0;
-    const view = (i) => { cur = i; cleanup.forEach(f => f()); cleanup = []; heroViewer($('#swImg'), $('#swCap'), d.gallery[i]);
-      $$('.sw-strip button', host).forEach(b => b.classList.toggle('on', +b.dataset.g === i)); };
-    $('.sw-strip', host)?.addEventListener('click', (ev) => { const b = ev.target.closest('[data-g]'); if (b) view(+b.dataset.g); });
+    if ($('#swMap', host)) skyMap($('#swMap', host), id);
+    $('#swSkyBtn', host)?.addEventListener('click', () => skyDialog(id, shortName(e.name), e.size));
     host.querySelectorAll('[data-go=deep]').forEach(b => { b.onclick = () => research(true); });
     host.querySelector('[data-go=papers]').onclick = async (ev) => {
       const b = ev.currentTarget; b.disabled = true; b.innerHTML = '<span class="spinner"></span>Sucht …';
@@ -592,7 +586,6 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
       $('[data-c]', f).onclick = () => { $('#swNForm').innerHTML = ''; };
       f.onsubmit = async (ev) => { ev.preventDefault(); await send(`${K}/notes`, { entity_id: id, kind: f.kind.value, title: f.title.value, body: f.body.value, date: f.date.value }); await reload(); show('uebersicht'); };
     };
-    view(cur);
   }
   // Bild: Galerie-Eintrag (bestimmtes Bild mit Marken bzw. entwickeltes Ergebnis) oder DSS2-Himmelsbild
   async function heroViewer(host, cap, g) {
@@ -730,13 +723,20 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
   // ---- Bilder & Vergleiche
   function tabImages(host) {
     const m = d.mine, proj = m.projects.find(p => p.results.length >= 2);
-    host.innerHTML = `${proj ? `<div class="panel"><div class="panel-h"><h2>Erste gegen neueste Version</h2><span class="grow"></span><span class="mut sm">Regler ziehen · ${esc(proj.name)}</span></div><div id="swCmp"></div>
+    host.innerHTML = `${d.gallery.length ? `<div class="panel sw-d-view"><div id="swImg"></div><div class="sw-cap2" id="swCap"></div>
+        ${d.gallery.length > 1 ? `<div class="sw-strip">${d.gallery.slice(0, 8).map((g, i) => `<button data-g="${i}" class="${i ? '' : 'on'}"><img src="${g.thumb}" alt="" loading="lazy"></button>`).join('')}</div>` : ''}</div>` : ''}
+      ${proj ? `<div class="panel"><div class="panel-h"><h2>Erste gegen neueste Version</h2><span class="grow"></span><span class="mut sm">Regler ziehen · ${esc(proj.name)}</span></div><div id="swCmp"></div>
         <div class="row sm mut" style="margin-top:8px">${(() => { const a = proj.results[0], b = proj.results[proj.results.length - 1]; return `<span>${fdate(a.created)} · ${dur(a.exposure_s)}${a.snr ? ' · SNR ' + a.snr.toFixed(0) : ''}</span><span class="grow"></span><span>${fdate(b.created)} · ${dur(b.exposure_s)}${b.snr ? ' · SNR ' + b.snr.toFixed(0) : ''}</span>`; })()}</div></div>` : ''}
       <div class="split" style="margin-top:${proj ? 16 : 0}px"><div><div class="panel"><h2 style="margin-bottom:10px">Deine Bilder</h2><div class="sw-imgs" id="swOwn">
         ${m.projects.flatMap(p => p.results.map(r => `<a href="#/p/${p.id}/bild" data-v="/api/stacking/results/${r.id}/jpg"><img src="/api/stacking/results/${r.id}/thumb" alt="" loading="lazy"><span>${fdate(r.created)}</span></a>`)).join('')}
         ${m.images.filter(i => i.image).map(i => `<a href="#/sage/${i.id}"><img src="${i.image}" alt="" loading="lazy"><span>${esc(i.title || '')}</span></a>`).join('')}</div>
         ${!m.projects.length && !m.images.length ? '<p class="mut sm" style="margin:0">Noch keine eigenen Bilder dieses Objekts.</p>' : ''}</div></div>
       <div>${e.ra != null ? `<div class="panel"><h2 style="margin-bottom:10px">Himmelsdurchmusterung</h2><div id="swSky"></div><p class="dim sm" style="margin:8px 0 0">DSS2 (Palomar/UK-Schmidt, digitalisiert) über NASA SkyView – zum Vergleich mit deiner Aufnahme. Feld ${((e.size || 20) * 1.8 / 60).toFixed(1).replace('.', ',')}°.</p></div>` : ''}</div></div>`;
+    if (d.gallery.length) {
+      const view = (i) => { heroViewer($('#swImg'), $('#swCap'), d.gallery[i]); $$('.sw-strip button', host).forEach(b => b.classList.toggle('on', +b.dataset.g === i)); };
+      $('.sw-strip', host)?.addEventListener('click', (ev) => { const b = ev.target.closest('[data-g]'); if (b) view(+b.dataset.g); });
+      view(0);
+    }
     if (proj) { const a = proj.results[0], b = proj.results[proj.results.length - 1]; const v = createViewer($('#swCmp'), `/api/stacking/results/${b.id}/jpg`, `/api/stacking/results/${a.id}/jpg`, ['erste Version', 'neueste']); cleanup.push(() => v.destroy()); }
     if ($('#swSky')) { const v = createViewer($('#swSky'), `/api${K}/sky/${id}.jpg?v=2`); cleanup.push(() => v.destroy());
       v.el.querySelector('img.b')?.addEventListener('error', () => { $('#swSky').innerHTML = '<div class="sw-noimg view"><b>Keine Bilddaten</b><span class="mut sm">Die Himmelsdurchmusterung ist gerade nicht erreichbar.</span></div>'; }); }
