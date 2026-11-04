@@ -72,6 +72,20 @@ kbd { font-size: 0.6875rem; font-weight: 500; line-height: 1; padding: 0.1875rem
 .enter { animation: fadeIn var(--t) var(--ease) both }
 /* Seitenwechsel (app.js route): neue Ansicht unsichtbar, bis sie fertig ist; die alte bleibt kurz als „Geist“ stehen */
 .page.pending { opacity: 0; pointer-events: none }
+/* Ladebalken unter der Werkzeugleiste (app.js loadbar): erst nach 150 ms sichtbar, wandert ruhig von links nach rechts */
+.loadbar { position: fixed; left: 0; right: 0; top: var(--top-h); z-index: 45; height: 2px; overflow: hidden; pointer-events: none; opacity: 0; transition: opacity 160ms var(--ease) }
+.loadbar.on { opacity: 1 }
+.loadbar::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 35%; background: var(--acc); animation: loadbar 1.1s var(--ease) infinite }
+@keyframes loadbar { from { transform: translateX(-100%) } to { transform: translateX(300%) } }
+/* Übersicht: Platzhalter in fester Höhe je Abschnitt, Inhalt blendet beim ersten Füllen ein */
+.fill { animation: fadeIn var(--t2) var(--ease) both }
+.skel-thumb { display: block; aspect-ratio: 3/2; border-radius: var(--r) }
+.skel-row { display: block; height: 4.25rem }
+.skel-card { display: block; height: 8.25rem }
+.skel-tile { display: block; aspect-ratio: 3/3.1; border-radius: var(--r-lg) }
+.skel-feat { height: 15rem }
+.skel-line { display: inline-block; width: 18rem; max-width: 100%; height: 0.875rem; border-radius: 0.25rem; background: var(--surface); vertical-align: middle }
+.home-err { display: flex; align-items: center; gap: 0.5rem; margin: 0 } .home-err svg { color: var(--warn); width: 1rem; height: 1rem }
 /* Panel-Knopf oben behält seinen Platz (sonst rücken Suche und Import seitlich, je nachdem ob die Seite ein Panel hat) */
 .top #ctxBtn[hidden] { display: inline-flex !important; visibility: hidden }
 .page-ghost { position: fixed; z-index: 5; overflow: hidden; pointer-events: none; transition: opacity 120ms var(--ease) }
