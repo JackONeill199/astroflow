@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from .core.config import Settings, load_settings
 from .core.folders import list_folders
 from .core.modules import AVAILABLE, Context, load_modules
+from .core import sites as sites_mod
 from . import __version__ as VERSION
 from .core.store import SettingsStore
 
@@ -24,6 +25,16 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
     """`only` beschränkt die geladenen Module (Tests); sonst gelten Einstellungen bzw. `ASTROFLOW_MODULES`."""
     settings = settings or load_settings()
     ctx = Context(settings, SettingsStore(settings.data_dir / "settings.json"))
+    # Gemeinsame Ortsliste (core/sites.py): vor den Modulen, damit sie den Dienst schon beim Anlegen finden
+    book = sites_mod.SiteBook(ctx.store)
+    try:
+        sites_mod.migrate_tutor(book, ctx.store)
+    except Exception:
+        import traceback
+        traceback.print_exc()
+    ctx.services["sites"] = book
+    ctx.services["site_for"] = book.site_for
+    ctx.services["night_sources"] = []          # Module hängen hier Funktionen an: () → [{night, label, module}]
     loaded = load_modules(ctx)
     if only is not None:
         loaded = [m for m in loaded if m.id in only]
@@ -93,6 +104,91 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
             return list_folders(path)
         except ValueError as e:
             raise HTTPException(400, str(e))
+
+    # ---- Standorte (gemeinsam für alle Module) --------------------------------
+    def _nights() -> list[dict]:
+        out: dict[str, dict] = {}
+        for fn in ctx.services.get("night_sources") or []:
+            try:
+                for n in fn() or []:
+                    if n.get("night"):
+                        e = out.setdefault(n["night"], {"night": n["night"], "labels": [], "modules": []})
+                        if n.get("label") and n["label"] not in e["labels"]:
+                            e["labels"].append(n["label"])
+                        if n.get("module") and n["module"] not in e["modules"]:
+                            e["modules"].append(n["module"])
+            except Exception:
+                import traceback
+                traceback.print_exc()
+        return sorted(out.values(), key=lambda n: n["night"], reverse=True)
+
+    def _sites_view(nights: bool = True) -> dict:
+        d = book.data()
+        default = book.site_for(night="1900-01-01") or {}
+        today = sites_mod.planning_night(time.time(), default.get("lon") or 0)   # dieselbe Nacht wie „Heute Nacht“
+        view = {**d, "today": today, "today_site": book.site_for(night=today)}
+        if nights:
+            single = {p["from"]: p["site_id"] for p in d["periods"] if p.get("from") == p.get("to")}
+            view["nights"] = [{**n, "site": book.site_for(night=n["night"]), "fixed": single.get(n["night"])} for n in _nights()[:400]]
+        return view
+
+    @app.get("/api/sites")
+    def get_sites(nights: bool = True):
+        return _sites_view(nights)
+
+    @app.post("/api/sites")
+    def set_sites(body: dict = Body(...)):
+        try:
+            book.save({**book.data(), **{k: body[k] for k in ("list", "default", "periods") if k in body}})
+        except (ValueError, TypeError, KeyError) as e:
+            raise HTTPException(400, str(e)[:250])
+        return _sites_view()
+
+    @app.post("/api/sites/night")
+    def set_site_night(body: dict = Body(...)):
+        """Eine Nacht einem Ort zuordnen („heute bin ich in …“, Nachtliste); site_id null = Zuordnung entfernen."""
+        try:
+            book.set_night(str(body.get("night") or ""), body.get("site_id") or None)
+        except (ValueError, TypeError) as e:
+            raise HTTPException(400, str(e)[:250])
+        return _sites_view(bool(body.get("nights", True)))
+
+    @app.get("/api/sites/resolve")
+    def resolve_site(night: str = "", when: float | None = None):
+        return {"site": book.site_for(when=when, night=night or None)}
+
+    @app.get("/api/sites/geocode")
+    def geocode(q: str = ""):
+        """Adresssuche über Photon/OpenStreetMap (nur auf Knopfdruck; geht als Suchtext an komoot.io)."""
+        import httpx
+        q = q.strip()
+        if len(q) < 2 or len(q) > 250:
+            raise HTTPException(400, "Bitte einen Ort oder eine Adresse eingeben.")
+        try:
+            data = httpx.get("https://photon.komoot.io/api/", params={"q": q, "limit": 6, "lang": "de"}, timeout=15,
+                             headers={"User-Agent": "AstroFlow"}).json()
+        except Exception as e:
+            raise HTTPException(502, f"Adresssuche nicht erreichbar: {e}")
+        rows = []
+        for f in data.get("features", []):
+            p = f.get("properties") or {}
+            lon, lat = f["geometry"]["coordinates"][:2]
+            label = ", ".join(str(p[k]) for k in ("name", "street", "housenumber", "postcode", "city", "country") if p.get(k))
+            # Hausnummer ≈ 30 m, Straße ≈ 150 m, Ort/Gemeinde ≈ 2 km (grob, nur Vorschlag für die Genauigkeit)
+            acc = 30 if p.get("housenumber") else 150 if p.get("street") else 2000 if p.get("type") in ("city", "district", "county") else 500
+            rows.append(dict(name=label, lat=lat, lon=lon, accuracy_m=acc))
+        return rows
+
+    @app.get("/api/sites/elevation")
+    def elevation(lat: float, lon: float):
+        """Geländehöhe (Open-Meteo, Copernicus-DEM 90 m) – nur auf Knopfdruck."""
+        import httpx
+        try:
+            v = httpx.get("https://api.open-meteo.com/v1/elevation", params={"latitude": round(lat, 5), "longitude": round(lon, 5)},
+                          timeout=15).json()["elevation"][0]
+        except Exception as e:
+            raise HTTPException(502, f"Höhenabfrage nicht erreichbar: {e}")
+        return {"alt_m": float(v)}
 
     for m in active:
         r = m.module.router()

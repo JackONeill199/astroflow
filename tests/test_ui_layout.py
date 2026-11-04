@@ -77,7 +77,7 @@ def _skytrace_run(run):
 
 ROUTES = ["#/", "#/nacht", "#/bilder", "#/galerie", "#/galerie/{pid}", "#/p/{pid}/bild", "#/p/{pid}/aufnahmen", "#/p/{pid}/versionen", "#/p/{pid}/optionen",
           "#/import", "#/activity", "#/skytrace", "#/skytrace/neu", "#/skytrace/statistik", "#/skytrace/erfolge", "#/skytrace/3d", "#/sage", "#/sage/wiki", "#/sage/entdeckungen", "#/sage/sammlung",
-          "#/settings/stacking", "#/settings/skytrace", "#/settings/sage", "#/settings/module"]
+          "#/settings/stacking", "#/settings/skytrace", "#/settings/sage", "#/settings/standorte", "#/settings/module"]
 
 
 @pytest.mark.parametrize("size", list(SIZES))

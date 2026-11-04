@@ -47,6 +47,37 @@ class Module(BaseModule):
         self._was_running = False
         self._stop = threading.Event()
         ctx.services["skytrace_achievements"] = self.ach.overview      # optional: andere Module dürfen die Erfolge anzeigen
+        self._sites_setup()
+
+    def _sites_setup(self):
+        """Gemeinsame Ortsliste: Engine-Auflösung im Server auf data/settings.json zeigen, alte SkyTrace-Standorte einmalig
+        übernehmen (bleiben in catalog_settings.json erhalten) und die Nächte der Läufe für die Nachtliste melden."""
+        import observation_settings
+        observation_settings.SITES_FILE = str(self.ctx.store.path)
+        book = self.ctx.services.get("sites")
+        if book is None:
+            return
+        try:
+            from ...core.sites import migrate_skytrace
+            migrate_skytrace(book, observation_settings.load_settings(), key=f"skytrace:{self.home}")
+        except Exception:
+            import traceback
+            traceback.print_exc()
+        if isinstance(self.ctx.services.get("night_sources"), list):
+            self.ctx.services["night_sources"].append(self.nights)
+
+    def nights(self) -> list[dict]:
+        """Nächte der SkyTrace-Läufe aus dem Beobachtungsnamen (Stellina: „JJJJ-MM-TT_observation_…“)."""
+        from ...core.sites import night_from_name
+        from .api import _read_json
+        out, root = [], self.ctl.results
+        for path in (root.iterdir() if root.exists() else []):
+            if path.is_dir() and (path / "videos.json").is_file():
+                for s in _read_json(path / "videos.json", []) or []:
+                    n = night_from_name(str(s.get("session") or ""))
+                    if n:
+                        out.append({"night": n, "label": f"SkyTrace: {s['session'].split('_observation_')[-1]}", "module": "SkyTrace"})
+        return out
 
     def _stats(self) -> dict:
         from .stats import collect
@@ -87,7 +118,8 @@ class Module(BaseModule):
         return sys.executable
 
     def engine_env(self) -> dict:
-        return {**os.environ, "SKYTRACE_HOME": str(self.home), "PYTHONIOENCODING": "utf-8"}
+        # ASTROFLOW_SITES: gemeinsame Ortsliste (data/settings.json) – die Engine lädt core/sites.py über den Pfad
+        return {**os.environ, "SKYTRACE_HOME": str(self.home), "PYTHONIOENCODING": "utf-8", "ASTROFLOW_SITES": str(self.ctx.store.path)}
 
     def check_engine(self):
         """Prüft im Hintergrund, ob der Engine-Interpreter alle Analysepakete hat."""

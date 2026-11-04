@@ -46,7 +46,7 @@ neben der größeren Grafik. Unter **Ansicht** wählst du „Ausgewogen“, „N
 AstroFlow merkt sich die Aufteilung auf diesem Gerät. Auf großen Bildschirmen stehen SkyTrace und Sage nebeneinander
 unter den Bildvorschauen. Bildfeld und technische Angaben findest du unter „Berechnung & Bildfeld“.
 
-Zuerst unter **Einstellungen → Bilder → Bild-Tutor** den Beobachtungsort eintragen. AstroFlow nutzt das zuletzt
+Zuerst unter **Einstellungen → Standorte** den Beobachtungsort eintragen; „Heute bin ich in …“ oben in der Ansicht wechselt den Ort für diese Nacht. AstroFlow nutzt das zuletzt
 verwendete Gerät: bekanntes Bildfeld aus Plate-Solving, bei Stellina ersatzweise einen Näherungswert. Bei unbekanntem
 Bildfeld wird die Objektgröße nicht gefiltert. „Heute Nacht“ öffnet Details und, bei aktivierter Wetterfreigabe im
 Bild-Tutor, eine Open-Meteo-Vorhersage mit auf 0,1° gerundetem Standort. Die Himmelsberechnung läuft offline.
@@ -116,7 +116,7 @@ Teleskop-Festplatte, was noch nicht (fertig) gestackt ist – die Quelldateien b
 | KI-Hintergrund & -Entrauschen | Mit [GraXpert](https://github.com/Steffenhir/GraXpert/releases/latest) (optional, kostenlos): Lichtverschmutzungsverläufe werden per KI entfernt, ohne Nebel abzutragen, und der lineare Stack wird entrauscht. Einstellungen → Bilder → „GraXpert (KI)“; ohne GraXpert Polynom + Wavelets |
 | Sterne | Bei Nebeln mit StarNet2 (optional, Einstellungen → Bilder): Sterne werden vom Nebel getrennt, der Nebel ohne Sterne gestreckt, die Sterne kommen kleiner zurück. Ohne StarNet und bei Galaxien/Haufen ohne Trennung; je Objekt unter Optionen änderbar |
 | Bildbearbeitung | Gradientenentfernung, Farbkalibrierung über Sternfarben, Entfaltung, farberhaltender asinh/MTF-Stretch, Wavelet-Entrauschen, Sternreduktion, lokaler Kontrast, Sättigung, bei Nebeln Endbearbeitung (Strukturen anheben, Vibrance) – **profilabhängig** (Galaxie, Emissions-/Reflexionsnebel, Planetarischer Nebel, Haufen, …) |
-| Bild-Tutor | Erklärt Auffälligkeiten (auch Farbverläufe im Himmel) mit Tipps passend zum Gerät (Stellina, Vespera, Seestar …) und bewertet die Aufnahmenacht: Dämmerung, Mond, Objekthöhe, Wolken, Tau, Wind, Frost (Wetter optional über Open-Meteo). Auf Knopfdruck ergänzt ein Vision-LLM, was es im Bild sieht. Einstellungen → Bilder → „Bild-Tutor“ (Einsteiger/Erfahren, Standort) |
+| Bild-Tutor | Erklärt Auffälligkeiten (auch Farbverläufe im Himmel) mit Tipps passend zum Gerät (Stellina, Vespera, Seestar …) und bewertet die Aufnahmenacht: Dämmerung, Mond, Objekthöhe, Wolken, Tau, Wind, Frost (Wetter optional über Open-Meteo). Auf Knopfdruck ergänzt ein Vision-LLM, was es im Bild sieht. Einstellungen → Bilder → „Bild-Tutor“ (Einsteiger/Erfahren), Ort: Einstellungen → Standorte |
 | Kometenmodus | Kometen (Name wie `C/2022 E3`, `12P`, Ordner `…_observation_C_2022_E3`, „Komet“) bekommen zwei Stacks: auf die Sterne und auf den Kometenkern. Das Ergebnis setzt scharfe Sterne und scharfen Kometen zusammen, beide Einzelstacks bleiben ansehbar. Die Bahn kommt aus der JPL-Horizons-Ephemeride (mit Plate-Solving; nur die Bezeichnung und der Zeitraum gehen an JPL, `ASTROFLOW_HORIZONS=0` schaltet ab) oder wird im Bild gemessen |
 | KI-Bildprüfung (optional) | Vision-LLM prüft das Ergebnis und korrigiert Parameter, bis es passt |
 | Ausgabe | TIFF 16-bit, PNG, JPEG, linearer FITS-Stack; Verlauf aller Versionen |
@@ -228,7 +228,9 @@ Bildfolgen (z. B. ein Stellina-Beobachtungsordner) werden chronologisch zu einem
 kompensiert, unscharfe Aufnahmen fallen heraus. Auch schwache lange Schweife werden über das gemeinsame Profil vieler
 Sterne auf Verwacklung geprüft. Erkannte Spuren erscheinen als **Kandidaten** mit Vorher-/Nachher-Ausschnitten, Messdetails
 („Warum wurde diese Spur erkannt?“) und Katalogabgleich. Ein Kandidat ist kein bestätigtes Objekt, ein Katalogtreffer bleibt ein Hinweis.
-Originale werden nur gelesen. Standort und Kataloge: Einstellungen → SkyTrace.
+Originale werden nur gelesen. Kataloge: Einstellungen → SkyTrace, Orte: Einstellungen → Standorte.
+Unter **Beobachtungen → Standort der Nacht prüfen** rechnet SkyTrace aus mehreren zugeordneten Satellitenspuren zurück, ob die
+Nacht besser zu einem anderen Ort passt (und wie weit die Kamerauhr danebenlag) – übernommen wird nur auf Knopfdruck.
 Im Dropdown **Analyse → Erneut analysieren** startet die vollständige Erkennung mit aktuellem Code als neuer Lauf
 aus den bisherigen Aufnahmen. Fehlen Originaldateien, kann ihr Ordner ausgewählt werden. Bei Ersatz-FITS muss auch das
 Aufnahmedatum übereinstimmen: gleiche Dateinamen aus einer anderen Nacht werden nicht zugeordnet. Der alte Lauf bleibt erhalten.

@@ -104,9 +104,10 @@ function tutorHtml(t, s) {
       ${beginner && condF.length ? `<p class="mut sm tutor-intro">Was in der Aufnahme${t.nights.length > 1 ? 'nächten' : 'nacht'} auffiel – mit Tipps für das nächste Mal.</p>` : ''}
       ${condF.length ? `<div class="tfinds">${condF.map(find).join('')}</div>` : ''}
       ${t.nights.length ? `<details class="tnights-d"><summary class="sm">${t.nights.length > 1 ? `${t.nights.length} Aufnahmenächte` : 'Aufnahmenacht'} · Dämmerung, Mond, Höhe${t.weather ? ', Wetter' : ''}</summary><div class="tnights">${nights}</div></details>` : ''}` : ''}
-    ${!t.site ? `<p class="mut sm">Für Dämmerung, Mondhöhe und Wetter fehlt dein Standort – <a href="#/settings/stacking">in den Einstellungen eintragen</a>.</p>`
+    ${!t.site ? `<p class="mut sm">Für Dämmerung, Mondhöhe und Wetter fehlt dein Standort – <a href="#/settings/standorte">unter Standorte eintragen</a>.</p>`
       : !t.weather ? `<p class="mut sm">Wetterdaten (Wolken, Tau, Wind, Frost) lassen sich <a href="#/settings/stacking">in den Einstellungen</a> einschalten.</p>` : ''}
     ${t.weather_error ? `<p class="warn sm">${esc(t.weather_error)}</p>` : ''}
+    ${t.site_name ? `<p class="dim sm">Ort der Aufnahmenacht: ${esc(t.site_name)}</p>` : ''}
     ${ki ? `<details class="tki"><summary><b class="sm">KI-Einschätzung</b>${ki.summary ? `<span class="sm"> · ${esc(ki.summary)}</span>` : ''}</summary>
         ${ki.seen?.length ? `<small class="mut tips-h">Gesehen</small><ul>${ki.seen.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
         ${ki.tips?.length ? `<small class="mut tips-h">Tipps</small><ul>${ki.tips.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
@@ -1292,9 +1293,8 @@ async function stackingSettings(el) {
         mit Tipps passend zu deinem Gerät (Stellina, Vespera, Seestar … werden automatisch erkannt).</p>
       <label class="field"><span>Darstellung</span><select name="mode"><option value="einsteiger">Einsteiger – mit Erklärungen und Tipps</option>
         <option value="experte">Erfahren – kompakt, Details auf Klick</option></select></label>
-      <div class="field"><span>Beobachtungsort (Breite, Länge in Grad)</span><div class="row" style="flex-wrap:nowrap">
-        <input name="lat" inputmode="decimal" value="${tu.lat ?? ''}" placeholder="z. B. 49,1" style="width:120px"><input name="lon" inputmode="decimal" value="${tu.lon ?? ''}" placeholder="z. B. 8,5" style="width:120px"></div>
-        <small>Für Dämmerung, Mondhöhe und Objekthöhe. Seestar &amp; Co. schreiben den Ort in die Aufnahmen, Stellina nicht. Eine Stelle hinter dem Komma reicht.</small></div>
+      <div class="field"><span>Beobachtungsort</span><p class="sm" style="margin:2px 0 0">Orte und Zeiträume pflegst du gemeinsam für alle Module unter
+        <a href="#/settings/standorte">Einstellungen → Standorte</a>. Der Tutor nimmt den Ort der jeweiligen Aufnahmenacht.</p></div>
       <label class="row" style="align-items:flex-start;gap:10px;cursor:pointer;flex-wrap:nowrap;margin-bottom:14px"><input type="checkbox" name="weather" ${tu.weather ? 'checked' : ''} style="height:auto;margin-top:4px">
         <span><b>Wetter für Aufnahmen und Nachtplanung abrufen</b><br><span class="mut sm">Aufnahmewetter aus dem Open-Meteo-Archiv und Vorhersage für „Heute Nacht“ (kostenlos, ohne Konto).
         Dazu werden nur der auf ~10 km gerundete Ort und das Datum gesendet; Ergebnisse werden lokal gespeichert.</span></span></label>

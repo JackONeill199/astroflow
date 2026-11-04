@@ -756,7 +756,7 @@ async function activityView(el) {
 // ------------------------------------------------------------ Einstellungen --- //
 async function settingsView(el, section) {
   crumbs([['Einstellungen']]);
-  const secs = [...AF.order.filter(id => AF.modules[id].settings).map(id => [id, AF.info(id).name, AF.info(id).icon]), ['module', 'Module & System', 'gear']];
+  const secs = [...AF.order.filter(id => AF.modules[id].settings).map(id => [id, AF.info(id).name, AF.info(id).icon]), ['standorte', 'Standorte', 'pin'], ['module', 'Module & System', 'gear']];
   section = secs.some(s => s[0] === section) ? section : secs[0][0];
   el.innerHTML = `<div class="pagehead"><div><h1>Einstellungen</h1><p class="mut">Alles wird im Datenordner gespeichert und gilt auch nach einem Neustart.</p></div></div>
     <div class="settings"><nav class="snav" id="snav">${secs.map(([k, l, ic]) => `<a href="#/settings/${k}" data-s="${k}" class="${k === section ? 'on' : ''}">${icon(ic)}${esc(l)}</a>`).join('')}</nav>
@@ -767,7 +767,7 @@ async function settingsView(el, section) {
     $$('#snav a').forEach(a => a.classList.toggle('on', a.dataset.s === k));
     body.classList.remove('enter');
     body.innerHTML = '<div class="skel" style="height:300px"></div>';
-    try { await (k === 'module' ? moduleSettings(body) : AF.modules[k].settings(body)); }
+    try { await (k === 'module' ? moduleSettings(body) : k === 'standorte' ? window.sitesSettings(body) : AF.modules[k].settings(body)); }
     catch (e) { body.innerHTML = `<div class="notice err"><div><b>Fehler</b><div class="mut sm">${esc(e.message)}</div></div></div>`; }
     void body.offsetWidth; body.classList.add('enter');
   };
@@ -818,7 +818,7 @@ async function openPalette() {
   const go = (h) => () => { location.hash = h; };
   const base = [...NAV.items.map(n => [n.icon || 'arrow', n.label, n.module ? AF.info(n.module).name : n.key === 'home' ? 'Start' : 'System', go(n.href)]),
     ...(AF.on('stacking') ? [['upload', 'Dateien importieren', 'FITS, JPG, PNG, TIFF', go('#/import')]] : []),
-    ['pulse', 'Aufträge anzeigen', 'alle laufenden und fertigen Aufträge', go('#/activity')], ['gear', 'Einstellungen', 'Module, Solver, KI, Standort', go('#/settings')]];
+    ['pulse', 'Aufträge anzeigen', 'alle laufenden und fertigen Aufträge', go('#/activity')], ['gear', 'Einstellungen', 'Module, Solver, KI', go('#/settings')], ['pin', 'Standorte', 'Beobachtungsorte und Zeiträume', go('#/settings/standorte')]];
   let extra = [], sel = 0, items = [];
   const draw = () => {
     const words = inp.value.toLowerCase().split(/\s+/).filter(Boolean);

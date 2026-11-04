@@ -12,7 +12,7 @@ const kindNames = { trail: 'Einzelbild-Spur', meteor: 'Meteorkandidat', plane: '
 const candidateName = (c) => EV() ? EV().candidateName(c) : kindNames[c.kind] || c.label;
 const observedDate = (c) => c.timestamp ? new Date(c.timestamp * 1000).toLocaleString('de-DE', { timeZone: 'UTC', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' UTC' : c.timestamp_text || 'Zeit unbekannt';
 const providerNames = { meteors: 'Meteorflugbahnen · GMN', asteroids: 'Bekannte Asteroiden · JPL', satellites: 'Satelliten · historische Bahnen', aircraft: 'Flugzeuge · historische ADS-B-Daten', fireballs: 'Feuerkugeln · CNEOS' };
-const statusNames = { service_unavailable: 'Dienst vorübergehend nicht erreichbar', needs_login: 'Anmeldung erforderlich', needs_access: 'Archivzugang freischalten', compatible: 'Geometrischer Hinweis', checked_no_match: 'Kein passender Eintrag', not_checkable: 'Nicht prüfbar', needs_archive: 'Archivdaten fehlen', temporal_hint: 'Zeitlicher Hinweis', error: 'Abfrage fehlgeschlagen', disabled: 'Ausgeschaltet', cancelled: 'Angehalten' };
+const statusNames = { service_unavailable: 'Dienst vorübergehend nicht erreichbar', needs_login: 'Anmeldung erforderlich', needs_access: 'Archivzugang freischalten', compatible: 'Geometrischer Hinweis', checked_no_match: 'Kein passender Eintrag', site_uncertain: 'Standort ungenau – Zuordnung unsicher', not_checkable: 'Nicht prüfbar', needs_archive: 'Archivdaten fehlen', temporal_hint: 'Zeitlicher Hinweis', error: 'Abfrage fehlgeschlagen', disabled: 'Ausgeschaltet', cancelled: 'Angehalten' };
 const LOGTAG = { sequence: 'FRAME', rejected: 'FILTER', status: 'ENGINE', done: 'FERTIG', error: 'HINWEIS', fatal: 'FEHLER', artifact: 'EXPORT' };
 const TABS = [['vorschau', 'Vorschau'], ['kandidaten', 'Kandidaten'], ['beobachtungen', 'Beobachtungen'], ['protokoll', 'Protokoll'], ['3d', '3D']];
 const el = (tag, text, cls) => { const n = document.createElement(tag); if (text !== undefined) n.textContent = text; if (cls) n.className = cls; return n; };
@@ -513,7 +513,9 @@ async function runView(root, runId, tab = 'vorschau') {
       cat.append(item);
     }
     const site = el('p', undefined, 'mut sm');
-    if (c.site) site.textContent = 'Aufnahmestandort: ' + (c.site.name || 'Gespeicherte Position') + ' · ' + c.site.lat + '°, ' + c.site.lon + '°';
+    if (c.site) site.textContent = 'Aufnahmestandort: ' + (c.site.name || 'Gespeicherte Position') + ' · ' + c.site.lat + '°, ' + c.site.lon + '°'
+    + (c.site.accuracy_m ? ' · ± ' + (c.site.accuracy_m >= 1000 ? (c.site.accuracy_m / 1000).toFixed(1).replace('.', ',') + ' km' : Math.round(c.site.accuracy_m) + ' m') : '')
+    + (c.site.source ? ' · ' + c.site.source : '');
     else { site.append('Für den räumlichen Abgleich fehlt der Aufnahmestandort. '); const a = el('a', 'Standort hinterlegen →'); a.href = '#/settings/skytrace'; site.append(a); }
     cat.append(site); details.append(cat);
   }
@@ -527,7 +529,58 @@ async function runView(root, runId, tab = 'vorschau') {
           <div class="foot"><span>${nf.format(s.frames || 0)} Aufnahmen · ${s.excluded || 0} unscharf · ${s.hits || 0} Treffer</span>
           <button class="btn sm ghost" data-s="${i}">${icon('play')}Ansehen</button></div></div></div>`).join('')}</div>`
       : '<div class="empty">Für diesen Lauf sind noch keine Bildfolgen gespeichert.</div>';
-    t.onclick = (e) => { const b = e.target.closest('[data-s]'); if (b) { S.session = +b.dataset.s; S.mode = 'video'; location.hash = `#/skytrace/${encodeURIComponent(runId)}/vorschau`; } };
+    const fits = S.run.sessions.filter(s => s.folder && (s.sat_matches || 0) >= 3);
+    if (fits.length) t.insertAdjacentHTML('beforeend', `<div class="panel st-sitefit"><div class="panel-h"><h2>${icon('pin')}Standort der Nacht prüfen</h2></div>
+      <p class="mut sm" style="margin:-4px 0 10px">Aus mehreren zugeordneten Satellitenspuren lassen sich Standort und Uhrversatz der Kamera zurückrechnen
+        (1 km Standortfehler ≈ 7′ quer bei 500 km). Nur ein Vorschlag – übernommen wird erst auf Knopfdruck.</p>
+      ${fits.map(s => `<div class="st-fit" data-fit="${esc(s.folder)}" data-session="${esc(s.session)}"><div class="row"><b>${esc(shortName(s.session))}</b><span class="mut sm">${s.sat_matches} Satellitentreffer</span><span class="grow"></span>
+        <button class="btn sm ghost" data-fitgo>Prüfen</button></div><div class="st-fit-res sm"></div></div>`).join('')}</div>`);
+    t.onclick = async (e) => {
+      const b = e.target.closest('[data-s]'); if (b) { S.session = +b.dataset.s; S.mode = 'video'; location.hash = `#/skytrace/${encodeURIComponent(runId)}/vorschau`; return; }
+      const box = e.target.closest('[data-fit]'); if (!box) return;
+      if (e.target.closest('[data-fitgo]')) {
+        const go = e.target.closest('[data-fitgo]'), out = $('.st-fit-res', box);
+        go.disabled = true; go.classList.add('busy'); out.innerHTML = '<span class="mut">Rechne …</span>';
+        try { box._fit = await api(`${T}/sitefit?run=${encodeURIComponent(runId)}&folder=${encodeURIComponent(box.dataset.fit)}`); out.innerHTML = fitHtml(box._fit); }
+        catch (err) { out.innerHTML = `<span class="bad">${esc(err.message)}</span>`; }
+        go.disabled = false; go.classList.remove('busy');
+      }
+      if (e.target.closest('[data-fitapply]')) applyFit(box);
+    };
+  }
+  const DIRS = ['Norden', 'Nordosten', 'Osten', 'Südosten', 'Süden', 'Südwesten', 'Westen', 'Nordwesten'];
+  const km = (v) => (Math.round(v * 100) / 100).toLocaleString('de-DE');
+  function fitHtml(r) {
+    if (!r.ok) return `<p class="mut">${esc(r.reason)}</p>`;
+    const dir = DIRS[Math.round(r.bearing_deg / 45) % 8];
+    const facts = `${r.trails} Spuren (${r.timed} mit Zeitbezug${r.dropped.length ? `, ${r.dropped.length} als Ausreißer verworfen` : ''}) · Abweichung quer ${Math.round(r.rms_before_arcsec)}″ → ${Math.round(r.rms_after_arcsec)}″ · Uhr der Kamera ${r.clock_s > 0 ? 'geht ' + String(r.clock_s).replace('.', ',') + ' s nach' : r.clock_s < 0 ? 'geht ' + String(-r.clock_s).replace('.', ',') + ' s vor' : 'stimmt'} (± ${String(r.clock_sigma_s).replace('.', ',')} s)`;
+    if (!r.worth) return `<p><span class="ok">Kein deutlich besserer Ort</span> <span class="mut">– Verschiebung ${km(r.shift_km)} km ± ${km(r.shift_sigma_km)} km liegt im Rahmen.</span></p><p class="dim">${facts}</p>`;
+    return `<p>Diese Nacht passt besser zu einem Ort <b>${km(r.shift_km)} km weiter im ${dir}</b> (± ${km(r.ellipse_km.major)} km) als „${esc(r.site?.name || 'eingestellter Ort')}“.</p>
+      <p class="dim">${facts}</p>
+      <div class="row"><button class="btn sm" data-fitapply>Für diese Nacht übernehmen …</button>
+        <a class="sm" href="https://www.openstreetmap.org/?mlat=${r.lat}&mlon=${r.lon}#map=15/${r.lat}/${r.lon}" target="_blank" rel="noreferrer">Auf der Karte ansehen ↗</a></div>`;
+  }
+  async function applyFit(box) {
+    const r = box._fit;
+    const night = r.night || (box.dataset.session.match(/(\d{4})-?(\d{2})-?(\d{2})/) || []).slice(1).join('-');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(night)) { toast('Nacht-Datum unbekannt – bitte unter Einstellungen → Standorte zuordnen.', 'err'); return; }
+    // Eine SkyTrace-Ausnahme für genau diese Beobachtung hätte Vorrang vor der Ortsliste – dann mit entfernen
+    const session = box.dataset.session;
+    let override = false;
+    try { override = !!(await api(T + '/settings')).sites?.[session]; } catch { /* ohne Einstellungen: keine Ausnahme bekannt */ }
+    if (!await confirmDlg('Standort übernehmen?', `Ein neuer Ort „${esc((r.site?.name || 'Standort') + ' (Satelliten ' + night + ')')}“ (± ${km(r.accuracy_m / 1000)} km) wird angelegt und der Nacht ${esc(night)} zugeordnet. Der bisherige Ort bleibt erhalten.`
+      + (override ? ' <b>Für diese Beobachtung ist in SkyTrace ein eigener Standort hinterlegt, der sonst Vorrang hätte – diese Ausnahme wird dabei entfernt.</b>' : '')
+      + ' Danach „Zeitreihen aktualisieren“, um neu abzugleichen.', 'Übernehmen')) return;
+    try {
+      if (override) await send(T + '/settings', { session, site: null });
+      const d = await api('/sites?nights=false');
+      const id = 's' + Math.random().toString(16).slice(2, 10);
+      await send('/sites', { ...d, list: [...d.list, { id, name: `${r.site?.name || 'Standort'} (Satelliten ${night})`, lat: r.lat, lon: r.lon, alt_m: r.alt_m, accuracy_m: r.accuracy_m,
+        note: `aus ${r.trails} Satellitenspuren zurückgerechnet, Uhr ${r.clock_s} s` }] });
+      await send('/sites/night', { night, site_id: id, nights: false });
+      toast('Ort übernommen – Zeitreihen aktualisieren, um neu abzugleichen.', 'ok');
+      $('.st-fit-res', box).insertAdjacentHTML('beforeend', '<p class="ok">Übernommen. <a href="#/settings/standorte">Standorte ansehen</a></p>');
+    } catch (err) { toast(err.message, 'err'); }
   }
 
   // ---- Protokoll ----
@@ -616,10 +669,10 @@ async function settings(el) {
   const scopes = new Set([...Object.keys(cfg.sites || {}), ...runs.map(r => r.title).filter(t => t.includes('_observation_'))]);
   const ov = EV()?.displaySettings() || { unit: 'arcsec' };
   el.innerHTML = `<div class="split"><div>
-    <form class="panel" id="sitef"><div class="panel-h"><h2>${icon('pin')}Beobachtungsstandort</h2></div>
-      <p class="mut sm" style="margin:-4px 0 14px">Für alte Aufnahmen zählt der <b>damalige</b> Teleskopstandort. Plate Solving bestimmt die Himmelsrichtung, nicht die Erdposition.
-        Standortdaten aus FITS werden automatisch berücksichtigt.</p>
-      <label class="field"><span>Geltungsbereich</span><select name="scope"><option value="">Standard für alle Beobachtungen</option>
+    <form class="panel" id="sitef"><div class="panel-h"><h2>${icon('pin')}Standort einer Beobachtung</h2></div>
+      <p class="mut sm" style="margin:-4px 0 14px">Orte, Standard-Ort und Zeiträume gelten für ganz AstroFlow: <a href="#/settings/standorte">Einstellungen → Standorte</a>.
+        Hier nur Ausnahmen für einzelne Beobachtungen. Für alte Aufnahmen zählt der <b>damalige</b> Teleskopstandort; Standortdaten aus FITS werden automatisch berücksichtigt.</p>
+      <label class="field"><span>Beobachtung</span><select name="scope"><option value="">Beobachtung wählen …</option>
         ${[...scopes].map(n => `<option value="${esc(n)}">${esc(shortName(n) + ' · ' + n.split('_observation_')[0])}</option>`).join('')}</select></label>
       <label class="field"><span>Adresse oder Ort</span><div class="row" style="flex-wrap:nowrap"><input id="addr" placeholder="Ort oder Adresse eingeben" style="flex:1"><button type="button" class="btn ghost" id="addrGo">Suchen</button></div>
         <div class="addr" id="addrRes"></div><small>Adresssuche: Photon/komoot · © OpenStreetMap. <button type="button" class="linkbtn" id="locate">Aktuellen Gerätestandort abfragen</button></small></label>
@@ -667,10 +720,11 @@ async function settings(el) {
         <small>Die Entfernung ist ungemessen – das Overlay zeigt eine Mindest-Schätzung für deine Annahme. Gilt nur in diesem Browser.</small></label>
       <button class="btn ghost" type="submit">Übernehmen</button></form></div></div>`;
   const sf = $('#sitef'), E = sf.elements;
-  const scopeSite = () => (E.scope.value ? cfg.sites?.[E.scope.value] : cfg.site) || {};
+  const scopeSite = () => (E.scope.value ? cfg.sites?.[E.scope.value] : null) || {};
   const fill = (s) => { E.name.value = s.name || ''; E.lat.value = s.lat ?? ''; E.lon.value = s.lon ?? ''; E.alt.value = s.alt_m ?? 0; };
-  fill(scopeSite());
-  E.scope.onchange = () => fill(scopeSite());
+  const lock = () => { for (const n of ['name', 'lat', 'lon', 'alt']) E[n].disabled = !E.scope.value; };
+  fill(scopeSite()); lock();
+  E.scope.onchange = () => { fill(scopeSite()); lock(); };
   const search = async () => {
     try {
       const rows = await api(T + '/geocode?q=' + encodeURIComponent($('#addr').value));
@@ -688,10 +742,11 @@ async function settings(el) {
   };
   sf.onsubmit = async (e) => {
     e.preventDefault();
+    if (!E.scope.value) { toast('Erst eine Beobachtung wählen – allgemeine Orte unter Einstellungen → Standorte.', 'err'); return; }
     if ((E.lat.value === '') !== (E.lon.value === '')) { toast('Bitte Breiten- und Längengrad zusammen eingeben.', 'err'); return; }
     try {
       Object.assign(cfg, await send(T + '/settings', { session: E.scope.value || null, site: E.lat.value !== '' ? { name: E.name.value, lat: +E.lat.value, lon: +E.lon.value, alt_m: +(E.alt.value || 0), source: 'Web-Einstellung' } : null }));
-      toast('Standort gespeichert.', 'ok');
+      toast(E.lat.value !== '' ? 'Standort für diese Beobachtung gespeichert.' : 'Ausnahme entfernt – es gilt die Ortsliste.', 'ok');
     } catch (err) { toast(err.message, 'err'); }
   };
   $('#catf').onsubmit = async (e) => {
