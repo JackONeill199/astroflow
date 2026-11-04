@@ -146,3 +146,9 @@ a.sts-row:hover b { color: var(--acc) }
 #analysisMenu .pop a { align-items: center }
 #analysisMenu .pop a small { display: block; font-size: 0.75rem; margin-top: 0.1875rem; color: var(--mut) }
 #analysisMenu .pop a > svg { width: 1rem; height: 1rem; flex-shrink: 0 }
+/* Standort der Nacht aus Satellitenspuren (sitefit.py) */
+.st-sitefit { margin-top: 1rem }
+.st-fit { padding: 0.625rem 0; border-top: 1px solid var(--border-soft) }
+.st-fit:first-of-type { border-top: 0 }
+.st-fit-res p { margin: 0.375rem 0 0; max-width: var(--read) }
+.st-fit-res:empty { display: none }

@@ -646,8 +646,18 @@ def build_router(eng: Engine) -> APIRouter:
                 except Exception:
                     _coll_cache.update(t=now, v=None)
             coll = _coll_cache.get("v")
-        return tonight.plan(projects, tutor.settings(eng.ctx.store), eng.s.work_dir / "tutor", device=device,
-                            hidden=hidden, collection=coll)
+        cfg, here = tutor.settings(eng.ctx.store), None
+        site_for = eng.ctx.services.get("site_for")                  # gemeinsame Ortsliste: Ort für die heutige Nacht
+        if site_for:
+            try:
+                here = site_for(when=time.time())
+            except Exception:
+                here = None
+            if here:
+                cfg = {**cfg, "lat": here["lat"], "lon": here["lon"]}
+        out = tonight.plan(projects, cfg, eng.s.work_dir / "tutor", device=device, hidden=hidden, collection=coll)
+        return {**out, "site_info": {k: here.get(k) for k in ("id", "name", "source", "detail")} if here else None,
+                "sites_on": bool(site_for)}
 
     # ---- Bild-Tutor (vor /results/{rid}/{kind}, sonst fängt die Datei-Route „tutor“ ab) --------
     @r.get("/tutor")
@@ -686,14 +696,16 @@ def build_router(eng: Engine) -> APIRouter:
     @r.get("/results/{rid}/tutor")
     def result_tutor(rid: int, refresh: bool = False):
         try:
-            return tutor.build_report(db, rid, tutor.settings(eng.ctx.store), eng.s.work_dir, refresh)
+            return tutor.build_report(db, rid, tutor.settings(eng.ctx.store), eng.s.work_dir, refresh,
+                                      site_for=eng.ctx.services.get("site_for"))
         except KeyError:
             raise HTTPException(404)
 
     @r.post("/results/{rid}/tutor/ki")
     def result_tutor_ki(rid: int):
         try:
-            return tutor.ask_report(db, rid, tutor.settings(eng.ctx.store), eng.review_cfg, eng.s.work_dir)
+            return tutor.ask_report(db, rid, tutor.settings(eng.ctx.store), eng.review_cfg, eng.s.work_dir,
+                                    site_for=eng.ctx.services.get("site_for"))
         except KeyError:
             raise HTTPException(404)
         except ValueError as e:

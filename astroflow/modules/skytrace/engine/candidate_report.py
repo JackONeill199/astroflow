@@ -158,8 +158,9 @@ def extract_candidates(out,summary,settings=None,make_clean=True):
             if not row.get('_excluded') and isinstance(row.get('video_seconds'),(int,float)):
                 item['frames'][-1]['video_seconds']=row['video_seconds']
         item['initial_frame']=next((i for i,f in enumerate(item['frames']) if f['hit']),0)
-        site=resolve_site(anchor['file'],summary['session'],settings)
-        item['site']=site
+        site=resolve_site(anchor['file'],summary['session'],settings,when=anchor.get('timestamp') if isinstance(anchor.get('timestamp'),(int,float)) else None)
+        item['site']=site                                  # welcher Ort mit welcher Genauigkeit genutzt wurde (Laufbericht)
+        if site: summary['site']={k:site.get(k) for k in ('name','site_id','source','origin','accuracy_m')}
         from candidate_evidence import enrich
         enrich(item,anchor,detection,all_rows,_image,width,height)
         settings['_catalog_position']=f'Kandidat {index}/{len(groups)} ({cid})'

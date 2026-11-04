@@ -126,7 +126,7 @@ fehlt `sgp4` im Server, läuft `orbit3d.py` als Skript im Engine-Interpreter (JS
   Lücken (> max(120 s, 5 × Median, 3 × Belichtung)), ausgelassene Aufnahmen aus `ausgeschlossen.jsonl`. Ohne WCS:
   Zielkoordinate über `catalog_resolve` (Namensteile von lang nach kurz) und Bildfeld aus FOCAL/PIXSZ/NAXIS, `source='katalog'`.
   Ziel: `catalog_resolve` (Typ) + Sage-Dienst `object_facts` (Entfernung, nur Gespeichertes). Standort: Kandidat → `resolve_site`
-  (FITS, sonst Einstellungen); fehlt er → `{ok:false, need_site}`. Treffer: `orbit3d.build` je Kandidat im gemeinsamen
+  (Ausnahme, FITS, Ortsliste der Nacht, sonst Einstellungen); fehlt er → `{ok:false, need_site}`. Treffer: `orbit3d.build` je Kandidat im gemeinsamen
   System (`anchor` = erste Aufnahme), ±5 min, Umlauf 180 Punkte, bester Satellit je Kandidat (Fokus-Kandidat alle).
   Ergebnis per `lru_cache` nach Dateizeiten (echter Lauf mit 8 Treffern: 0,3 s, dann 2 ms; 240 KB).
 - Frontend `SkyTrace3D.mount(host, run, {focus, session, onCandidate})`; Kandidaten-Knopf setzt `focus3d` und wechselt zum Reiter „3D“.
@@ -190,9 +190,35 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
 - Nachrechnen: `engine/refresh_satellites.py <Lauf> …` (nur Kandidaten-JSON + lokale Archive, schreibt Kandidaten, Projektion, Bericht).
   Ergebnis M31 2022-06-11 (`2026-11-01_12-19-46-886388`): 12 von 13 Spuren zugeordnet (Starlink-Züge, Iridium 914, SL-3/SL-16 R/B), vorher 0.
   M103 K0001/K0002 (unten als „84′/28′ entfernt“ beschrieben) = STARLINK-1484/-1062.
-- Offen: Uhrversatz je Nacht aus mehreren sicheren Treffern schätzen (dann engere Toleranz); bei einigen Nächten konstant 10–18′ quer
-  daneben (Standort der Nacht falsch? 1 km Standortfehler ≈ 7′ bei 500 km) – nicht untersucht. Test: `tests/test_skytrace.py`
+- Uhrversatz und Standort je Nacht: siehe „Standorte, Genauigkeit und Rückrechnung“ (0.23.0). Die konstant 10–18′ quer daneben
+  liegenden Nächte passen zu einem um ~1–6 km falschen Standort. Test: `tests/test_skytrace.py`
   (läuft nur mit skyfield/sgp4, also im Engine-Interpreter).
+
+## Standorte, Genauigkeit und Rückrechnung (0.23.0, 04.11.2026, Nutzerwunsch „Standorte nach Datum“)
+- **Auflösung** `observation_settings.resolve_site(path, session, settings, when=None)`: `sites[Beobachtung]` (Ausnahme, bleibt hier) → FITS-Kopf →
+  gemeinsame Ortsliste von AstroFlow (`astroflow/core/sites.py`, Zeitraum der Nacht aus `when` bzw. DATE-OBS, sonst Standard-Ort) → alter
+  SkyTrace-Standard `site`. Ergebnis immer mit `accuracy_m`, `origin` (override|fits|period|default|skytrace), `site_id`, `source` (Text).
+  Rohbild weg → Ortsliste (früher OSError). Kandidaten speichern den Ort (`site`), der Laufbericht `videos.json` → `site`.
+  Einstellungen → SkyTrace zeigt nur noch Ausnahmen je Beobachtung; Orte, Zeiträume, Standard: Einstellungen → Standorte.
+- **Toleranz** (`catalog_matching.site_tolerance`): quer `max(360″, min(1800″, 2 · accuracy_m / Entfernung))` je Bahn (Median-Entfernung im
+  Zeitfenster) – bei genauem Ort (≤ ~400 m für LEO) unverändert. Treffer nur wegen der Ausweitung: `site_widened`, Hinweis in `evidence`.
+  Ohne Treffer und `site_uncertain` (Ausweitung schon bei 1000 km nötig, ≈ ab 900 m) → Status **`site_uncertain`** „Standort ungenau – Zuordnung
+  unsicher“ statt `checked_no_match`; dazu `site_note`, `site_accuracy_m`; `tolerance_arcsec` je Bahn in `diagnostics`/`matches`.
+- **Rückrechnung** (`sitefit.py`, `GET /api/skytrace/sitefit?run=&folder=`, UI Lauf → Beobachtungen → „Standort der Nacht prüfen“ ab 3 Treffern):
+  Unbekannte Nord/Ost (km) + Uhrversatz (s, wahr = Kamera + dt); Residuen quer (5 Punkte je Spur, σ 30″) und – nur bei Spuren ganz im Bild
+  (Pixelpfad bzw. Bildecken, 3-%-Rand) – längs über die Durchgangszeiten an Anfang/Ende gegen die Belichtung (σ 1 s); schwache Vorinformation
+  ±50 km/±30 s, Gauß-Newton mit numerischer Jacobi-Matrix, Ausreißer > 4σ einmal entfernt, Kovarianz × reduziertes χ². Nur eindeutige Treffer
+  (Zweitbester nicht fast gleich gut, sonst Starlink-Zug mehrdeutig); Bahn aus `matches[].tle` oder den lokalen Archiven (`orbit3d.archive_satrec`).
+  `worth` = Verschiebung > 0,3 km, > 3σ und quer-RMS < 70 %. „Übernehmen“ legt einen neuen Ort an (Genauigkeit = große Halbachse, ≥ 50 m) und
+  ordnet ihm die Nacht zu – nie automatisch. Höhe ist keine Unbekannte (Höhe des Orts prüfen: 0 statt ~400 m verschiebt das Ergebnis um ~0,3 km).
+- **Befund an den echten Läufen** (04.11.2026, nur gelesen, ohne Koordinaten): 20 Nächte mit ≥ 3 sicheren Spuren, alle mit einer Verschiebung
+  von 0,6–1,7 km (± 0,04–0,4 km) in dieselbe Richtung, quer-RMS 100–320″ → 1–50″; mit Höhe 300–600 m statt 0 m im Mittel 0,7–0,9 km →
+  der hinterlegte Standort liegt etwa 1 km neben dem Aufstellort. Uhrversatz −13…+4 s (± 1 s), passend zum Befund oben.
+  Eine Nacht (2022-05-09, IC 1396): bei 100 m Genauigkeit 0 von 5 Spuren zugeordnet, mit ± 2 km 5 von 5 (598–1000″ quer); Rückrechnung
+  ≈ 6 km Verschiebung, quer-RMS 867″ → 16″ – das Teleskop stand in dieser Nacht woanders.
+  NGC 6781 2022-06-17 mit dem Vorschlag neu abgeglichen: Abstände quer im Mittel 97″ → 22″ (10/10 Treffer wie vorher).
+- Tests: `tests/test_sites.py` (Auflösung, Engine-Laden ohne Paket, Toleranz – nur mit skyfield –, Rückrechnung an synthetischen LEO-Bahnen:
+  Ort auf < 50 m, Uhr auf < 0,1 s).
 
 ## Erkennung im Teleskop-Bildfeld (28.10.2026, Nutzerbefund M74 2022-08-07)
 Anlass: Ein schwacher Meteor (img-0041, ~120 px, ~1,5σ/px) wurde übersehen, ein langsames Objekt in sechs Aufnahmen (img-0177…0182)
