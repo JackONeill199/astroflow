@@ -72,50 +72,7 @@ def _skytrace_run(run):
                                                   "state": "Fertig", "candidates_file": "obs/kandidaten.json"}]), encoding="utf-8")
 
 
-@pytest.fixture(scope="module")
-def server(tmp_path_factory):
-    root = tmp_path_factory.mktemp("ui")
-    with pytest.MonkeyPatch.context() as mp:
-        for k, v in {"ASTROFLOW_MODULES": ",".join(AVAILABLE), "ASTROFLOW_AUTO": "0", "ASTROFLOW_GAIA": "0", "ASTROFLOW_SAGE_OFFLINE": "1"}.items():
-            mp.setenv(k, v)
-        mp.delenv("SKYTRACE_HOME", raising=False)          # SkyTrace setzt sie beim Laden prozessweit – danach wieder entfernen
-        s = load_settings(root / "data")
-        SettingsStore(s.data_dir / "settings.json").update("skytrace", {"home": str(root / "skytrace")})
-        _skytrace_run(root / "skytrace" / "Ergebnisse" / "2026-10-28_10-00-00-000001")
-        demo.generate(s.input_dir / "night", n_lights=16, n_darks=0, n_flats=0)
-        db = DB(s.db_path)
-        pl = Pipeline(s, db, ReviewerConfig())
-        pl.scan()
-        pid = db.q("SELECT id FROM projects")[0]["id"]
-        pl.process(pid)
-        for _ in range(2):                                   # 3 Versionen -> Speicherbelegung bietet „Ältere Versionen“ an
-            pl.process(pid, {"mode": "develop"})
-        db.x("UPDATE projects SET name=? WHERE id=?", (LONG, pid))
-        port = _free_port()
-        srv = uvicorn.Server(uvicorn.Config(create_app(s), host="127.0.0.1", port=port, log_level="warning"))
-        th = threading.Thread(target=srv.run, daemon=True)
-        th.start()
-        for _ in range(200):
-            if srv.started:
-                break
-            time.sleep(0.05)
-        yield f"http://127.0.0.1:{port}", pid
-        srv.should_exit = True
-        th.join(10)
-
-
-@pytest.fixture(scope="module")
-def browser():
-    with sync_api.sync_playwright() as p:
-        try:
-            b = p.chromium.launch()
-        except Exception as e:                               # Paket da, Browser nicht installiert
-            try:
-                b = p.chromium.launch(channel='msedge')      # vorhandenes Windows-Edge geht ebenfalls
-            except Exception:
-                pytest.skip(f"Chromium/Edge fehlt: {e}")
-        yield b
-        b.close()
+# Fixtures `server` und `browser` (je Worker einmal) stehen in conftest.py
 
 
 ROUTES = ["#/", "#/nacht", "#/bilder", "#/p/{pid}/bild", "#/p/{pid}/aufnahmen", "#/p/{pid}/versionen", "#/p/{pid}/optionen",
