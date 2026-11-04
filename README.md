@@ -117,6 +117,7 @@ Teleskop-Festplatte, was noch nicht (fertig) gestackt ist – die Quelldateien b
 | Sterne | Bei Nebeln mit StarNet2 (optional, Einstellungen → Bilder): Sterne werden vom Nebel getrennt, der Nebel ohne Sterne gestreckt, die Sterne kommen kleiner zurück. Ohne StarNet und bei Galaxien/Haufen ohne Trennung; je Objekt unter Optionen änderbar |
 | Bildbearbeitung | Gradientenentfernung, Farbkalibrierung über Sternfarben, Entfaltung, farberhaltender asinh/MTF-Stretch, Wavelet-Entrauschen, Sternreduktion, lokaler Kontrast, Sättigung, bei Nebeln Endbearbeitung (Strukturen anheben, Vibrance) – **profilabhängig** (Galaxie, Emissions-/Reflexionsnebel, Planetarischer Nebel, Haufen, …) |
 | Bild-Tutor | Erklärt Auffälligkeiten (auch Farbverläufe im Himmel) mit Tipps passend zum Gerät (Stellina, Vespera, Seestar …) und bewertet die Aufnahmenacht: Dämmerung, Mond, Objekthöhe, Wolken, Tau, Wind, Frost (Wetter optional über Open-Meteo). Auf Knopfdruck ergänzt ein Vision-LLM, was es im Bild sieht. Einstellungen → Bilder → „Bild-Tutor“ (Einsteiger/Erfahren, Standort) |
+| Kometenmodus | Kometen (Name wie `C/2022 E3`, `12P`, Ordner `…_observation_C_2022_E3`, „Komet“) bekommen zwei Stacks: auf die Sterne und auf den Kometenkern. Das Ergebnis setzt scharfe Sterne und scharfen Kometen zusammen, beide Einzelstacks bleiben ansehbar. Die Bahn kommt aus der JPL-Horizons-Ephemeride (mit Plate-Solving; nur die Bezeichnung und der Zeitraum gehen an JPL, `ASTROFLOW_HORIZONS=0` schaltet ab) oder wird im Bild gemessen |
 | KI-Bildprüfung (optional) | Vision-LLM prüft das Ergebnis und korrigiert Parameter, bis es passt |
 | Ausgabe | TIFF 16-bit, PNG, JPEG, linearer FITS-Stack; Verlauf aller Versionen |
 
@@ -300,7 +301,7 @@ Die Tests erzeugen synthetische Aufnahmen (Galaxie, Bayer-Sensor, Mono-Kamera mi
 
 - Objektkatalog ist klein (erweiterbar in `objects.py`); gelöste Felder ohne Katalogobjekt heißen „Feld RA … Dec …“.
 - Die Stack-Fläche entspricht dem Referenzbild; Mosaike und stark versetzte Sessions werden nicht erweitert.
-- Kein echtes Drizzle (2×-Option interpoliert); keine Komet-/Planeten-/Mond-Modi.
+- Kein echtes Drizzle (2×-Option interpoliert); keine Planeten-/Mond-Modi. Kometenmodus nur für Farbkameras bzw. einen Filter.
 - Ohne Flats bleibt multiplikative Vignettierung teilweise sichtbar (additive Gradienten werden entfernt).
 
 Lizenz: MIT. three.js (`astroflow/modules/skytrace/static/vendor/`) steht unter MIT, die Erdtextur ist NASA Blue Marble

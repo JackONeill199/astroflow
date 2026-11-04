@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import objects
+from . import comet, objects
 from .fits_io import FITS_EXT, FrameInfo, parse_date, read_info
 
 
@@ -121,6 +121,9 @@ def scan_dir(root: Path, known_ids: set[str], threads: int = 8,
     return frames, errors
 
 
+COMET_KEY = "KOMET:"          # Projektschlüssel von Kometen (bewegen sich – nie über Koordinaten zuordnen)
+
+
 @dataclass
 class Assignment:
     key: str
@@ -131,9 +134,14 @@ class Assignment:
     dec: float | None
 
 
-def assign_project(info: FrameInfo, centers: dict[str, tuple[float, float, float]]) -> Assignment:
-    """Ordnet einen Light-Frame einem Projekt zu. centers: key -> (ra, dec, radius_deg)."""
+def assign_project(info: FrameInfo, centers: dict[str, tuple[float, float, float]], night: str | None = None) -> Assignment:
+    """Ordnet einen Light-Frame einem Projekt zu. centers: key -> (ra, dec, radius_deg).
+    Kometen (Name/Bezeichnung wie „C 2022 E3“, „12P“, „Komet“): ein Objekt je Komet und Nacht – in der nächsten Nacht
+    steht er vor ganz anderen Sternen, ein gemeinsamer Stack ist nicht möglich."""
     cam = f"{info.camera}|{info.hw[1]}x{info.hw[0]}"
+    if info.object and comet.is_comet(info.object):
+        nm = comet.display_name(info.object)
+        return Assignment(f"{COMET_KEY}{objects.normalize_name(nm)}|{night or ''}|{cam}", nm, None, "comet", info.ra, info.dec)
     entry = objects.resolve_name(info.object)
     if entry:
         return Assignment(f"{entry.id}|{cam}", entry.display, entry.id, entry.kind, entry.ra, entry.dec)
@@ -143,7 +151,7 @@ def assign_project(info: FrameInfo, centers: dict[str, tuple[float, float, float
         return Assignment(f"{objects.normalize_name(nm)}|{cam}", nm, None, ext.kind if ext else None, info.ra, info.dec)
     if info.ra is not None and info.dec is not None:
         for key, (ra, dec, rad) in centers.items():
-            if key.endswith("|" + cam) and objects.ang_sep(info.ra, info.dec, ra, dec) < rad:
+            if key.endswith("|" + cam) and not key.startswith(COMET_KEY) and objects.ang_sep(info.ra, info.dec, ra, dec) < rad:
                 return Assignment(key, "", None, None, ra, dec)
         near = objects.nearest(info.ra, info.dec)
         if near is None and info.solve:                        # gelöstes Feld: großen Katalog (ASTAP) befragen

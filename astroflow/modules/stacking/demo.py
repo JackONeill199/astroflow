@@ -1,4 +1,4 @@
-"""Synthetische Demo-Aufnahmen (Galaxie + Sternfeld, Bayer-Sensor, Rotation, defekte Frames)."""
+"""Synthetische Demo-Aufnahmen (Galaxie + Sternfeld, Bayer-Sensor, Rotation, defekte Frames; Komet vor Sternfeld)."""
 from __future__ import annotations
 
 import datetime as dt
@@ -149,4 +149,40 @@ def generate_mono(out: Path, bands=("L", "R", "G", "B"), per_band=6, seed=2, obj
                        dict(INSTRUME="MonoCam", OBJECT=obj, FILTER=b, EXPTIME=60.0, GAIN=100.0,
                             IMAGETYP="Light", **{"DATE-OBS": d.isoformat()}))
             n += 1
+    return out
+
+
+def comet_light(shape, x, y, amp=260.0, coma=7.0, tail_deg=200.0, tail_len=70.0):
+    """Diffuser Komet im Himmelsraster: Kern + Koma (grünlich, C2) + schwacher Schweif. Gibt (3,H,W)."""
+    sh, sw = shape
+    yy, xx = np.mgrid[0:sh, 0:sw].astype(np.float32)
+    r2 = (xx - x) ** 2 + (yy - y) ** 2
+    th = np.deg2rad(tail_deg)
+    u = (xx - x) * np.cos(th) + (yy - y) * np.sin(th)
+    v = -(xx - x) * np.sin(th) + (yy - y) * np.cos(th)
+    tail = np.where(u > 0, np.exp(-u / tail_len) * np.exp(-v ** 2 / (2 * (4 + 0.12 * np.maximum(u, 0)) ** 2)), 0)
+    body = amp * np.exp(-r2 / (2 * coma ** 2)) + 3 * amp * np.exp(-r2 / (2 * 1.4 ** 2)) + 0.35 * amp * tail
+    return np.stack([0.65 * body, 1.25 * body, 0.95 * body]).astype(np.float32)
+
+
+def generate_comet(out: Path, n_lights=30, seed=3, name="C_2026_A1", rate=(1.1, 0.45), exptime=10.0) -> Path:
+    """Stellina-artige Kometenserie: Ordner „…_observation_<name>“ ohne OBJECT/RA/DEC, Bayer, leichte Drift/Feldrotation;
+    der Komet wandert mit `rate` (Himmelspixel je Aufnahme) linear vor den Sternen."""
+    rng = np.random.default_rng(seed)
+    out = Path(out)
+    d = out / f"2026-08-14_22-00-00_observation_{name}" / "01-images-initial"
+    d.mkdir(parents=True, exist_ok=True)
+    stars, ext = _sky(rng)
+    ext = ext * 0.0                                            # nur Sterne, keine Galaxie
+    sh, sw = ext.shape[1:]
+    t0 = dt.datetime(2026, 8, 14, 22, 0, 0)
+    c0 = np.array([sw / 2 - 0.5 * rate[0] * n_lights, sh / 2 - 0.5 * rate[1] * n_lights])
+    for i in range(n_lights):
+        cx, cy = c0 + np.array(rate) * i
+        sky_ext = comet_light((sh, sw), cx, cy)
+        img = _frame(rng, stars, sky_ext, i * 0.25, rng.normal(0, 3, 2), rng.normal(3.6, 0.15))
+        raw = _mosaic(img) + 300 + rng.normal(0, 12, (H, W))
+        t = t0 + dt.timedelta(seconds=i * (exptime + 5))
+        write_fits(d / f"img-{i + 1:04d}r.fits", np.clip(raw, 0, 65535).astype(np.uint16),
+                   dict(INSTRUME="DemoScope", BAYERPAT="RGGB", EXPTIME=exptime, GAIN=100.0, **{"DATE-OBS": t.isoformat()}))
     return out

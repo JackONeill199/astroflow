@@ -5,7 +5,9 @@ const BAND_COLOR = { L: '#d6dbe8', R: '#f87171', G: '#4ade80', B: '#60a5fa', Ha:
 const PALETTE_LABEL = { auto: 'Automatisch', RGB: 'RGB', LRGB: 'LRGB', SHO: 'SHO (Hubble)', HOO: 'HOO (Bicolor)', mono: 'Mono', OSC: 'Farbkamera' };
 const TABS = [['bild', 'Bild'], ['aufnahmen', 'Aufnahmen'], ['versionen', 'Versionen'], ['optionen', 'Optionen']];
 const GX_LABEL = { default: 'Wie in den Einstellungen', all: 'Hintergrund + Entrauschen', bge: 'Nur Hintergrund', denoise: 'Nur Entrauschen', off: 'Aus (eigene Verfahren)' };
-const PROFILE_LABEL = { auto: 'Automatisch (nach Objekttyp)', generic: 'Allgemein', galaxy: 'Galaxie', emission: 'Emissionsnebel', reflection: 'Reflexionsnebel', planetary: 'Planetarischer Nebel', snr: 'Supernova-Überrest', globular: 'Kugelsternhaufen', open_cluster: 'Offener Sternhaufen' };
+const PROFILE_LABEL = { auto: 'Automatisch (nach Objekttyp)', generic: 'Allgemein', galaxy: 'Galaxie', emission: 'Emissionsnebel', reflection: 'Reflexionsnebel', planetary: 'Planetarischer Nebel', snr: 'Supernova-Überrest', globular: 'Kugelsternhaufen', open_cluster: 'Offener Sternhaufen', comet: 'Komet' };
+const COMET_VIEWS = [['jpg', 'Ergebnis'], ['stars', 'Sterne-Stack'], ['comet', 'Kometen-Stack']];
+const COMET_SOURCE = { horizons: 'JPL-Ephemeride', 'horizons+bild': 'JPL-Ephemeride, im Bild nachgemessen', bild: 'im Bild gemessen' };
 const sst = () => AF.status?.modules?.stacking || {};
 const SOURCE_LABEL = { solve: 'Plate-Solving', catalog: 'Katalog (Objektname)', header: 'FITS-Header' };
 const IMPORT_FILE = /\.(fits?|fts|jpe?g|png|tiff?)$/i;
@@ -466,7 +468,7 @@ async function picturesView(el) {
 // ---------------------------------------------------------------- Objekt --- //
 async function projectView(el, id, tab = 'bild') {
   id = +id;
-  let p = await api('/stacking/projects/' + id), frames = null, sel = null, cmp = null, viewer = null, sig = '', before = false, stage = null;
+  let p = await api('/stacking/projects/' + id), frames = null, sel = null, cmp = null, viewer = null, sig = '', before = false, stage = null, cview = 'jpg';
   let fFilter = 'all', fBand = 'all', fSort = ['date', 1];
   let liveView = null, livePoster = null, viz = null, vizKind = '';
   function updateJob() {
@@ -495,7 +497,8 @@ async function projectView(el, id, tab = 'bild') {
           ${r?.stats?.palette ? `<span class="chip acc">${esc(PALETTE_LABEL[r.stats.palette] || r.stats.palette)}</span>` : ''}
           ${p.imported ? '<span class="chip acc">Fertiges Bild · importiert</span>' : `<span class="chip">${p.total} Aufnahmen</span><span class="chip">${p.nights.length} ${p.nights.length === 1 ? 'Nacht' : 'Nächte'}</span>`}
           ${r && !p.imported ? `<span class="chip">${dur(r.exposure)} integriert</span>` : ''}
-          ${p.coords?.source === 'solve' ? `<span class="chip acc" title="Koordinaten per Plate-Solving bestimmt">${icon('star')}Plate-Solved</span>` : ''}</div></div>
+          ${p.coords?.source === 'solve' ? `<span class="chip acc" title="Koordinaten per Plate-Solving bestimmt">${icon('star')}Plate-Solved</span>` : ''}
+          ${p.comet ? '<span class="chip acc" title="Zwei Stacks: auf die Sterne und auf den Kometenkern">Kometenmodus</span>' : ''}</div></div>
       <div class="page-actions">${p.imported ? '' : `<button class="btn ${busy ? 'busy' : ''}" id="run" ${busy ? 'disabled' : ''} title="${r ? 'Neue Aufnahmen und Nächte nachstacken – der bisherige Stack bleibt erhalten' : ''}">${icon(busy ? 'refresh' : 'play')}${busy ? 'Läuft …' : r ? 'Nachstacken' : 'Verarbeiten'}</button>`}
         ${r ? `<div class="menu" id="dl"><button class="btn ghost">${icon('down')}Export${icon('chev')}</button><div class="pop">
           ${p.imported ? `<a href="/api/stacking/results/${r.id}/original">Originaldatei <small>unverändert · ${esc(r.stats.imported.format)}</small></a>` : `<a href="/api/stacking/results/${r.id}/tif">TIFF 16-bit <small>Druck/Bearbeitung</small></a>`}<a href="/api/stacking/results/${r.id}/png">PNG <small>${p.imported ? 'Anzeigeversion' : 'verlustfrei'}</small></a>
@@ -606,7 +609,9 @@ async function projectView(el, id, tab = 'bild') {
     const s = r.stats || {}, bands = s.bands || {}, bmax = Math.max(1, ...Object.values(bands).map(b => b.exposure));
     const rev = r.review || [];
     // Stacking-Verlauf: Stufen mit weniger Aufnahmen, letzte Position = fertiges Bild (Standard)
-    const stages = !c && !before ? [...(s.stages || []), { n: r.n_frames, exposure: r.exposure, final: true }] : [];
+    const views = !c && !before && r.views?.length ? COMET_VIEWS.filter(([k]) => k === 'jpg' || r.views.includes(k)) : [];
+    if (!views.some(([k]) => k === cview)) cview = 'jpg';
+    const stages = !c && !before && cview === 'jpg' ? [...(s.stages || []), { n: r.n_frames, exposure: r.exposure, final: true }] : [];
     if (stage?.rid !== r.id || !(stage.i >= 0 && stage.i < stages.length)) stage = { rid: r.id, i: stages.length - 1 };
     const stageLabel = (x) => x.final ? `Alle ${x.n} Aufnahmen · ${dur(x.exposure)} – fertiges Bild` : `${x.n} ${x.n === 1 ? 'Aufnahme' : 'Aufnahmen'} · ${dur(x.exposure)}`;
     const stageSrc = (x) => x.final ? `/api/stacking/results/${r.id}/jpg` : `/api/stacking/results/${r.id}/s${x.n}`;
@@ -616,7 +621,10 @@ async function projectView(el, id, tab = 'bild') {
           <input type="range" id="strange" min="0" max="${stages.length - 1}" step="1" value="${stage.i}" aria-label="Stacking-Stufe" style="--fill:${stage.i / (stages.length - 1) * 100}%">
           <div class="stages-ticks">${stages.map((x, i) => `<span data-i="${i}" class="tnum${i === stage.i ? ' on' : ''}">${x.final ? 'Alle' : x.n}</span>`).join('')}</div>
           <p class="mut sm">${s.stages_live ? 'Gespeicherte Live-Vorschauen zeigen den Bildaufbau. Das fertige Bild ist vollständig entwickelt; Helligkeit, Farben und Ausschnitt können abweichen.' : `Dasselbe Objekt mit weniger Aufnahmen, gleich entwickelt – so sieht man, was mehr Belichtungszeit bringt.${s.stages_simplified ? ` Zwischenstufen ohne ${s.stages_simplified.join('/')} entwickelt.` : ''}`}</p></div>` : ''}
-        ${r.has_before && !c ? `<div class="row" style="margin-top:10px"><div class="seg" id="ba"><button data-b="0" class="${before ? '' : 'on'}">Ergebnis</button>
+        ${views.length ? `<div class="row comet-views" style="margin-top:10px"><div class="seg" id="cview">${views.map(([k, l]) => `<button data-v="${k}" class="${cview === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+          <span class="mut sm">${{ jpg: 'Kometenmodus: Sterne aus dem Sterne-Stack, Komet und Himmel aus dem Kometen-Stack', stars: 'Auf die Sterne ausgerichtet – der Komet ist verschmiert', comet: 'Auf den Kometenkern ausgerichtet – Sterne ausgeblendet bzw. zu Strichen verzogen' }[cview]}</span></div>` : ''}
+        ${s.comet?.active && !views.length && !c ? `<div class="notice" style="margin-top:12px"><div><b>Kometenmodus</b><div class="mut sm">${esc(s.comet.error || s.comet.note || 'Kometen-Stack noch nicht vorhanden – „Nachstacken“ baut ihn auf.')}</div></div></div>` : ''}
+        ${r.has_before && !c && cview === 'jpg' ? `<div class="row" style="margin-top:10px"><div class="seg" id="ba"><button data-b="0" class="${before ? '' : 'on'}">Ergebnis</button>
           <button data-b="1" class="${before ? 'on' : ''}">Vorher / Nachher</button></div>
           ${before ? '<span class="mut sm">Links der unbearbeitete Master-Stack, rechts das entwickelte Bild – Trennlinie ziehen</span>' : ''}</div>` : ''}
         ${r.id !== p.results[0].id || c ? `<div class="row sm mut" style="margin-top:8px">${c ? `Vergleich: links Version vom ${fdate(c.created)}, rechts ${fdate(r.created)}` : `Ältere Version vom ${fdate(r.created)}`}
@@ -649,6 +657,7 @@ async function projectView(el, id, tab = 'bild') {
           ${s.wb_gains ? `<dt>Weißabgleich (R/G/B)</dt><dd class="tnum">${s.wb_gains.join(' / ')}</dd>` : ''}
           ${s.color_cal ? `<dt>Farbkalibrierung</dt><dd>${s.color_cal.verfahren === 'gaia' ? `fotometrisch (Gaia, ${s.color_cal.sterne} Sterne)`
             : s.color_cal.verfahren === 'manuell' ? 'manuell' : `Sternfarben-Mittel${s.color_cal.grund ? `<div class="dim sm">${esc(s.color_cal.grund)}</div>` : ''}`}</dd>` : ''}
+          ${s.comet?.active ? `<dt>Kometenmodus</dt><dd>${s.comet.composite ? `zwei Stacks zusammengesetzt (${s.comet.frames_comet} Aufnahmen auf den Kern)` : 'nur Sterne-Stack'}${s.comet.source ? `<div class="dim sm">Bahn: ${esc(COMET_SOURCE[s.comet.source] || s.comet.source)}${s.comet.designation ? ` · ${esc(s.comet.designation)}` : ''}${s.comet.motion_px ? ` · ${String(s.comet.motion_px).replace('.', ',')} px Bewegung` : ''}</div>` : ''}${s.comet.ephemeris_error && s.comet.source === 'bild' && s.comet.designation ? `<div class="dim sm">Ephemeride: ${esc(s.comet.ephemeris_error)}</div>` : ''}</dd>` : ''}
           <dt>Nächte</dt><dd>${p.nights.map(fnight).join(', ') || '–'}</dd>`}
           ${p.deleted?.frames ? `<dt>Einzelbilder</dt><dd>${p.deleted.frames} gelöscht · ${fmb(p.deleted.bytes)} frei</dd>` : ''}
         </dl></div>
@@ -667,10 +676,12 @@ async function projectView(el, id, tab = 'bild') {
     const ph = !c && !before && livePoster ? livePoster : `/api/stacking/results/${r.id}/thumb`;
     livePoster = null;
     viewer = c ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${c.id}/jpg`, undefined, ph)
+      : cview !== 'jpg' ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/${cview}`, null, undefined, ph)
       : before && r.has_before ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${r.id}/before`, ['vorher', 'nachher'], ph)
       : createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, null, undefined, ph, p.imported ? {} : { overlay: plateLabels(r.id) });
     viewer.el.classList.add('tall', 'hover-labels');
     $('#ba')?.addEventListener('click', (e) => { const b = e.target.closest('[data-b]'); if (b) { before = b.dataset.b === '1'; drawTab(false); } });
+    $('#cview')?.addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); if (b && b.dataset.v !== cview) { cview = b.dataset.v; drawTab(false); } });
     if (stages.length > 1) {
       let pre = null;                                    // alle Stufen vorladen, sobald der Regler benutzt wird
       const show = (i) => {
@@ -821,6 +832,10 @@ async function projectView(el, id, tab = 'bild') {
           <small>Nebel wird ohne Sterne gestreckt (mehr Nebel, Sterne kleiner). Bei Sternhaufen besser aus (Kern brennt aus).</small></label>
         <label class="field"><span>GraXpert (KI-Hintergrund und -Entrauschen)</span><select name="graxpert">${opt(['', 'all', 'bge', 'denoise', 'off'], o.graxpert || '', v => GX_LABEL[v || 'default'])}</select>
           <small>Nur wirksam, wenn GraXpert installiert ist (Einstellungen → Bilder).</small></label>
+        <label class="field"><span>Kometenmodus</span><select name="comet_mode">${opt(['auto', 'on', 'off'], o.comet_mode || 'auto', v => ({ auto: `Automatisch (nach Name${p.comet ? ' – erkannt' : ''})`, on: 'Ein – zusätzlich auf den Kometenkern stacken', off: 'Aus – nur auf die Sterne stacken' }[v]))}</select>
+          <small>Zwei Stacks: einer auf die Sterne, einer auf den Kometenkern; das Ergebnis setzt Sterne und Komet scharf zusammen. Braucht die Einzelbilder.</small></label>
+        <label class="field" ${p.comet || o.comet_mode === 'on' ? '' : 'hidden'}><span>Kometen-Bezeichnung (für die Bahn)</span><input name="comet_name" value="${esc(o.comet_name || '')}" placeholder="z. B. C/2022 E3 oder 12P" autocomplete="off">
+          <small>Nur nötig, wenn der Name keine Bezeichnung enthält. Mit Plate-Solving holt AstroFlow die Bahn von JPL Horizons, sonst wird der Kern im Bild gesucht.</small></label>
         <label class="field"><span>KI-Bildprüfung</span><select name="review">${opt(['true', 'false'], String(o.review ?? true), v => v === 'true' ? 'Verwenden, falls eingerichtet' : 'Für dieses Objekt aus')}</select></label>
         <div class="row" style="margin-top:6px"><button class="btn" type="submit" name="go" value="1" id="ogo"></button><button class="btn ghost" type="submit" id="osave">Nur speichern</button>
           <span class="grow"></span><span id="odirty"></span></div>
@@ -832,18 +847,21 @@ async function projectView(el, id, tab = 'bild') {
     // direkt aus den Elementen lesen – gesperrte Felder fehlen sonst in FormData
     const v = (k) => form.elements[k].value;
     const read = () => ({ profile: v('profile'), palette: v('palette'), keep_percent: v('keep_percent') ? +v('keep_percent') : null,
-      resolution_scale: +v('resolution_scale'), narrowband: v('narrowband') === '' ? null : v('narrowband') === 'true', review: v('review') === 'true', star_separation: v('star_separation') || null, graxpert: v('graxpert') || null });
+      resolution_scale: +v('resolution_scale'), narrowband: v('narrowband') === '' ? null : v('narrowband') === 'true', review: v('review') === 'true', star_separation: v('star_separation') || null, graxpert: v('graxpert') || null,
+      comet_mode: v('comet_mode'), comet_name: v('comet_name').trim() || null });
     const init = Object.fromEntries($$('select,input', form).filter(x => x.name).map(x => [x.name, x.value]));
-    let o2, needRestack, dirty;
+    let o2, needRestack, needStack, dirty;
     // Erkennt Änderungen und beschriftet die Hauptaktion passend: neu entwickeln (schnell) oder neu stacken
     const check = () => {
       o2 = read();
       needRestack = (o2.keep_percent ?? null) !== (o.keep_percent ?? null) || o2.resolution_scale !== (o.resolution_scale || 1);
+      // Kometenmodus/-Bezeichnung: Kometen-Stack (nach)bauen – ein normaler Lauf, kein komplettes Neu-Stacken
+      needStack = o2.comet_mode !== (o.comet_mode || 'auto') || (o2.comet_name || null) !== (o.comet_name || null);
       const changed = $$('select,input', form).filter(x => x.name && String(init[x.name] ?? '') !== x.value);
       dirty = changed.length > 0;
       $$('.field', form).forEach(fl => fl.classList.toggle('changed', changed.some(x => fl.contains(x))));
       const busy = running(p.job), hasStack = !!p.result;
-      $('#ogo').innerHTML = icon('play') + (!hasStack ? 'Speichern & verarbeiten' : needRestack ? 'Speichern & neu stacken' : dirty ? 'Speichern & neu entwickeln' : 'Neu entwickeln');
+      $('#ogo').innerHTML = icon('play') + (!hasStack ? 'Speichern & verarbeiten' : needRestack ? 'Speichern & neu stacken' : needStack ? 'Speichern & verarbeiten' : dirty ? 'Speichern & neu entwickeln' : 'Neu entwickeln');
       $('#ogo').disabled = busy;
       $('#osave').disabled = !dirty;
       $('#odirty').innerHTML = dirty ? `<span class="dirty">${changed.length} Änderung${changed.length > 1 ? 'en' : ''}${needRestack ? ' · braucht Neu-Stacken' : ''}</span>` : '';
@@ -856,7 +874,7 @@ async function projectView(el, id, tab = 'bild') {
       check();
       try {
         if (dirty) await send('/stacking/projects/' + id, { options: o2 }, 'PATCH');
-        if (go) await (needRestack ? run(true, true) : p.result ? develop() : run(false));
+        if (go) await (needRestack ? run(true, true) : needStack || !p.result ? run(false) : develop());
         else toast('Optionen gespeichert.', 'ok');
       } catch (err) { toast(err.message, 'err'); return; }
       p = await api('/stacking/projects/' + id);
