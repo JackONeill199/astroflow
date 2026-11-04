@@ -48,18 +48,23 @@ async function deleteRun(id, title) {
 }
 
 async function runsView(el) {
-  crumbs([['SkyTrace'], ['Analysen']]);
-  let boot = await api(T + '/bootstrap'), sig = '', liveSig = '';
-  el.innerHTML = `<div class="pagehead"><div><h1>Dem Unsichtbaren <em class="grad">auf der Spur</em></h1>
-      <p class="mut">Bildfolgen werden sternregistriert, auf Lichtspuren untersucht und mit Meteor-, Satelliten-, Asteroiden- und Flugkatalogen verglichen.</p></div>
-      <span class="grow"></span><a class="btn ghost" href="#/skytrace/statistik">${icon('pulse')}Statistik</a><a class="btn ghost" href="#/settings/skytrace">${icon('pin')}Standort &amp; Kataloge</a><a class="btn" href="#/skytrace/neu">${icon('play')}Neue Analyse</a></div>
+  crumbs([['SkyTrace']]);
+  let boot = await api(T + '/bootstrap'), sig = '', liveSig = '', mode = store.get('skytrace.view', 'table'), viz = null;
+  el.innerHTML = `<div class="pagehead"><div><h1>SkyTrace</h1>
+      <p class="mut">Bildfolgen sternregistrieren, Lichtspuren erkennen und mit Meteor-, Satelliten-, Asteroiden- und Flugkatalogen abgleichen.</p></div>
+      <div class="page-actions"><a class="btn ghost" href="#/settings/skytrace">${icon('pin')}Standort &amp; Kataloge</a><a class="btn" href="#/skytrace/neu">${icon('play')}Neue Analyse</a></div></div>
     <div id="stEngine">${engineNotice(boot.engine)}</div><div id="stLive"></div>
-    <div class="toolbar"><input type="search" id="stq" placeholder="Analyse suchen …" title="Taste /"><span class="grow"></span><span class="mut sm" id="stsum"></span></div>
+    <div class="toolbar"><input type="search" id="stq" placeholder="Analyse suchen …" title="Taste /"><span class="mut sm" id="stsum"></span><span class="grow"></span>
+      <div class="seg" id="stview" aria-label="Ansicht"><button data-v="table" title="Tabelle">${icon('list')}</button><button data-v="cards" title="Karten">${icon('grid')}</button></div></div>
     <div id="stRuns"></div>`;
   let q = '';
   $('#stq').oninput = (e) => { q = e.target.value.toLowerCase(); sig = ''; draw(); };
+  const setView = () => $$('#stview button').forEach(b => b.classList.toggle('on', b.dataset.v === mode));
+  setView();
+  $('#stview').onclick = (e) => { const b = e.target.closest('button'); if (b) { mode = b.dataset.v; store.set('skytrace.view', mode); setView(); sig = ''; draw(); } };
   $('#stRuns').addEventListener('click', async (e) => {
-    const b = e.target.closest('[data-del]');
+    const b = e.target.closest('[data-del]'), tr = e.target.closest('tr[data-href]');
+    if (!b && tr && !e.target.closest('a')) { location.hash = tr.dataset.href; return; }
     if (!b) return;
     e.preventDefault(); e.stopPropagation();
     const r = boot.runs.find(x => x.id === b.dataset.del);
@@ -67,10 +72,19 @@ async function runsView(el) {
   });
   function draw() {
     const runs = boot.runs.filter(r => (shortName(r.title) + ' ' + r.id).toLowerCase().includes(q));
-    const s = JSON.stringify(runs.map(r => [r.id, r.frames, r.candidates, r.preview]));
+    const s = JSON.stringify([mode, runs.map(r => [r.id, r.frames, r.candidates, r.preview])]);
     $('#stsum').textContent = boot.runs.length ? `${boot.runs.length} Analyse${boot.runs.length === 1 ? '' : 'n'} · ${nf.format(boot.runs.reduce((a, r) => a + r.candidates, 0))} Kandidaten` : '';
     if (s === sig) return;
     sig = s;
+    const live = (r) => boot.state.running && boot.state.run === r.id;
+    if (runs.length && mode === 'table') {
+      $('#stRuns').innerHTML = `<div class="tablewrap free"><table><thead><tr><th class="nosort">Analyse</th><th class="nosort">Datum</th><th class="nosort num">Beobachtungen</th><th class="nosort num">Aufnahmen</th><th class="nosort num">Unscharf</th><th class="nosort num">Kandidaten</th><th class="nosort"></th></tr></thead><tbody>
+        ${runs.map(r => `<tr class="link" data-href="#/skytrace/${encodeURIComponent(r.id)}"><td class="name">${r.preview ? `<img class="tthumb" src="${media(r.preview)}" alt="" loading="lazy">` : '<span class="tthumb" style="display:inline-block"></span>'}<a href="#/skytrace/${encodeURIComponent(r.id)}">${esc(shortName(r.title))}</a>${live(r) ? ' <span class="badge-dot run">läuft</span>' : ''}</td>
+          <td>${esc(runDate(r.id) || ago(r.modified))}</td><td class="num">${r.sessions}</td><td class="num">${nf.format(r.frames)}</td><td class="num">${r.excluded ? nf.format(r.excluded) : '–'}</td>
+          <td class="num">${r.candidates ? `<b class="acc">${r.candidates}</b>` : '0'}</td>
+          <td>${live(r) ? '' : `<button type="button" class="linkbtn" data-del="${esc(r.id)}" title="Analyse löschen" aria-label="Analyse löschen">${icon('trash')}</button>`}</td></tr>`).join('')}</tbody></table></div>`;
+      return;
+    }
     $('#stRuns').innerHTML = runs.length ? `<div class="gallery stagger">${runs.map((r, i) => `<a class="card" href="#/skytrace/${encodeURIComponent(r.id)}" style="--i:${i}">
         <div class="thumb">${r.preview ? `<img src="${media(r.preview)}" alt="" loading="lazy" decoding="async" onload="this.classList.add('ld')">` : `<div class="ph">${icon('orbit')}Foto-/Videoanalyse</div>`}
           ${r.candidates ? `<span class="chip acc badge">${r.candidates} Kandidat${r.candidates === 1 ? '' : 'en'}</span>` : ''}</div>
@@ -85,8 +99,9 @@ async function runsView(el) {
     const html = s.running ? `<a class="panel stlive" href="#/skytrace/${encodeURIComponent(s.run)}"><div class="panel-h"><span class="live"></span><h2>${s.operation === 'refresh' ? 'Kandidatenbericht wird aktualisiert' : 'Analyse läuft'}</h2>
         <span class="grow"></span><span class="mut sm tnum">${s.stats.current || 0} / ${s.stats.total || '—'} Aufnahmen · ${s.stats.candidates} Erkennungen</span>${icon('arrow')}</div>
         <div class="progress ${s.stats.total ? '' : 'indet'}"><i style="width:${s.stats.total ? 100 * (s.stats.current || 0) / s.stats.total : 0}%"></i></div>
-        <div class="mut sm" style="margin-top:8px">${esc(engineStatus(s))}</div></a>` : '';
-    if (html !== liveSig) { liveSig = html; $('#stLive').innerHTML = html; }
+        <div class="mut sm" style="margin-top:8px">${esc(engineStatus(s))}</div></a><div id="stViz" style="margin:-8px 0 20px"></div>` : '';
+    if (html !== liveSig) { liveSig = html; viz?.destroy(); viz = null; $('#stLive').innerHTML = html; if (s.running && s.operation !== 'refresh' && typeof vizProcess === 'function') viz = vizProcess($('#stViz'), { kind: 'trace' }); }
+    viz?.update({ n: s.stats?.current || 0, total: s.stats?.total || 0, found: s.stats?.candidates });
   }
   draw();
   live(boot.state);
@@ -104,7 +119,7 @@ async function runsView(el) {
     },
     actions: () => [['play', 'Neue Analyse', 'Bildfolge untersuchen', () => { location.hash = '#/skytrace/neu'; }],
       ['pin', 'Standort & Kataloge', 'Einstellungen', () => { location.hash = '#/settings/skytrace'; }]],
-    destroy: () => document.removeEventListener('keydown', onKey),
+    destroy: () => { viz?.destroy(); document.removeEventListener('keydown', onKey); },
   };
 }
 
@@ -719,7 +734,7 @@ async function statsView(el) {
   const month = s => new Date(s + '-01T12:00:00Z').toLocaleDateString('de-DE', { month: 'short', year: 'numeric', timeZone: 'UTC' });
   const date = s => s ? new Date(s + 'T12:00:00Z').toLocaleDateString('de-DE', { timeZone: 'UTC' }) : 'Nacht unbekannt';
   const pct = (a, b) => b ? (100 * a / b).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' %' : '—';
-  el.innerHTML = `<div class="pagehead"><div><h1>Was sich <em class="grad">bewegt hat</em></h1><p class="mut">Erkannte Spuren, Satellitenzuordnungen und Katalogabgleiche über alle Analysen.</p></div>
+  el.innerHTML = `<div class="pagehead"><div><h1>SkyTrace-Statistik</h1><p class="mut">Erkannte Spuren, Satellitenzuordnungen und Katalogabgleiche über alle Analysen.</p></div>
     <span class="grow"></span><select id="sts-year" aria-label="Beobachtungsjahr"><option value="">Alle Jahre</option></select></div><div id="sts-body"></div>`;
   const body = $('#sts-body', el), select = $('#sts-year', el);
   select.onchange = () => { year = select.value; draw(); };

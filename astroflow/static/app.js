@@ -775,6 +775,7 @@ async function boot() {
   $('#ctxScrim').onclick = () => AF.ctx.hide();
   matchMedia('(min-width: 1280px)').addEventListener('change', ctxSync);
   $('#jobpill').onclick = toggleJobPop;
+  document.addEventListener('click', (e) => { if (e.target.closest('[data-ctx-open]')) AF.ctx.show(); });
   document.addEventListener('click', (e) => { if (!e.target.closest('.jobs-ind')) { $('#jobpop').classList.remove('open'); $('#jobpill').setAttribute('aria-expanded', false); } });
   addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('#jobpop').classList.remove('open'); if ($('#shell').classList.contains('ctx-shown')) AF.ctx.hide(); } });
   addEventListener('keydown', (e) => {

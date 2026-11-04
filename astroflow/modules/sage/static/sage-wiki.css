@@ -1,12 +1,11 @@
 /* Sage 2.0 – Enzyklopädie, Objektseiten, Wissenskarte, Wissensnetz, Entdeckungen, Chat (Tokens aus style.css) */
 .sw-grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent }
-.eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; letter-spacing: .14em; color: var(--acc2) }
-.eyebrow span { width: 18px; height: 2px; border-radius: 2px; background: var(--grad) }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--dim) }
+.eyebrow span { display: none }
 
 /* Startseite der Enzyklopädie */
 .sw-hero { position: relative; padding: 34px 34px 26px; border-radius: 24px; border: 1px solid var(--line); margin-bottom: 22px; overflow: hidden;
-  background: radial-gradient(600px 260px at 12% 0%, color-mix(in srgb, var(--acc) 18%, transparent), transparent 70%),
-    radial-gradient(500px 260px at 100% 100%, color-mix(in srgb, var(--acc2) 16%, transparent), transparent 70%), var(--panel); box-shadow: var(--hi) }
+  background: var(--surface) }
 .sw-hero h1 { font-size: 32px; margin: 10px 0 8px; max-width: 760px }
 .sw-hero > p { max-width: 680px; margin: 0 0 18px }
 .sw-search { display: flex; gap: 10px; max-width: 760px }
@@ -21,8 +20,8 @@
 .sw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px }
 .sw-card { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--panel); color: var(--fg);
   box-shadow: var(--hi); transition: transform .35s var(--spring), border-color .25s, box-shadow .3s }
-.sw-card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--acc2) 45%, transparent); box-shadow: var(--shadow) }
-.sw-thumb { position: relative; aspect-ratio: 16/10; background: #04060c; overflow: hidden }
+.sw-card:hover { border-color: var(--border) }
+.sw-thumb { position: relative; aspect-ratio: 16/10; background: #0b0d10; overflow: hidden }
 .sw-thumb img { width: 100%; height: 100%; object-fit: cover; opacity: 0; transform: scale(1.3); transition: opacity .6s, transform .8s var(--ease) }   /* Objekt sitzt klein in der Feldmitte */
 .sw-thumb img.ld { opacity: 1 }
 .sw-card:hover .sw-thumb img { transform: scale(1.4) }
@@ -38,9 +37,8 @@
 .sw-card .foot svg { width: 13px; height: 13px }
 /* Platzhalter je Objektart: sanfter Nebel in der Typfarbe */
 .sw-ph { width: 100%; height: 100%; display: grid; place-items: center; color: #fff9; --c: var(--acc);
-  background: radial-gradient(circle at 40% 45%, color-mix(in srgb, var(--c) 55%, transparent), transparent 55%),
-    radial-gradient(circle at 70% 70%, color-mix(in srgb, var(--acc2) 35%, transparent), transparent 50%), #05070e }
-.sw-ph svg { width: 34px; height: 34px; filter: drop-shadow(0 0 12px var(--c)) }
+  background: #0b0d10 }
+.sw-ph svg { width: 28px; height: 28px; color: var(--dim) }
 .k-emission, .k-snr { --c: #f472b6 } .k-reflection { --c: #60a5fa } .k-galaxy { --c: #c4b5fd } .k-planetary { --c: #5eead4 }
 .k-globular, .k-open_cluster, .k-star { --c: #fcd34d } .k-dark { --c: #94a3b8 } .k-concept { --c: var(--acc2) }
 
@@ -107,7 +105,7 @@ sup .cite { vertical-align: baseline }
 .sw-bar { height: 5px; border-radius: 3px; background: var(--line); margin-top: 6px; overflow: hidden }
 .sw-bar i { display: block; height: 100%; background: var(--grad); animation: grow .9s var(--ease) both; transform-origin: left }
 .sw-imgs { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px }
-.sw-imgs a { position: relative; aspect-ratio: 4/3; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: #04060c; color: #fff; transition: transform .3s var(--spring) }
+.sw-imgs a { position: relative; aspect-ratio: 4/3; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: #0b0d10; color: #fff; transition: transform .3s var(--spring) }
 .sw-imgs a:hover { transform: translateY(-2px) }
 .sw-imgs img { width: 100%; height: 100%; object-fit: cover }
 .sw-imgs span { position: absolute; inset: auto 0 0; font-size: 11px; padding: 14px 7px 5px; background: linear-gradient(transparent, #000c); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
@@ -168,7 +166,7 @@ sup .cite { vertical-align: baseline }
 
 /* Wissensnetz */
 .sw-gpanel { padding: 14px }
-.sw-graph { height: 460px; border-radius: 12px; background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--acc) 7%, transparent), transparent 70%), var(--bg2); overflow: hidden }
+.sw-graph { height: 460px; border-radius: 12px; background: var(--bg); overflow: hidden }
 .sw-gpanel.big .sw-graph { height: min(72vh, 760px) }
 .sw-gsvg { width: 100%; height: 100%; cursor: grab; touch-action: none; user-select: none }
 .sw-gsvg line { stroke: var(--line2); stroke-width: 1.4 }
@@ -182,7 +180,7 @@ sup .cite { vertical-align: baseline }
 .gn.concept circle { stroke: var(--acc3); fill: color-mix(in srgb, var(--acc3) 22%, var(--panel2)) }
 .gn.observation circle, .gn.session circle, .gn.equipment circle, .gn.processing circle { stroke: var(--acc2); fill: color-mix(in srgb, var(--acc2) 25%, var(--panel2)) }
 .gn.obs circle { fill: color-mix(in srgb, var(--acc) 40%, var(--panel2)) }
-.gn.ctr circle { stroke-width: 4; filter: drop-shadow(0 0 10px var(--acc)) }
+.gn.ctr circle { stroke-width: 3 }
 .gn.ctr text { font-weight: 700; font-size: 12.5px }
 .gn:hover circle, .gn.hi circle { stroke-width: 4 }
 .sw-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: var(--mut) }
@@ -262,7 +260,7 @@ sup .cite { vertical-align: baseline }
 .sw-encl { margin-top: 30px }
 .sw-dtop { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px }
 .sw-dhead { display: grid; grid-template-columns: 300px minmax(0, 1fr) 240px 270px; gap: 18px; align-items: stretch; margin-bottom: 20px }
-.sw-dh-img { position: relative; border-radius: var(--r); overflow: hidden; border: 1px solid var(--line); background: #04060c; min-height: 210px; box-shadow: var(--shadow) }
+.sw-dh-img { position: relative; border-radius: var(--r); overflow: hidden; border: 1px solid var(--line); background: #0b0d10; min-height: 210px; box-shadow: var(--shadow) }
 .sw-dh-img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .6s, transform 6s var(--ease) }
 .sw-dh-img img.ld { opacity: 1 } .sw-dh-img:hover img { transform: scale(1.06) }
 .sw-dh-img .sw-ph { position: absolute; inset: 0 }
@@ -284,10 +282,9 @@ sup .cite { vertical-align: baseline }
 .sw-dh-sky { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px }
 .sw-dh-sky dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; font-size: 12.5px }
 .sw-dh-sky dt { color: var(--mut) } .sw-dh-sky dd { margin: 0; font-variant-numeric: tabular-nums }
-.sw-map { width: 100%; height: auto; display: block; border-radius: 10px; background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--acc) 10%, transparent), transparent 70%), #04060cd0 }
-.sw-map .grid line { stroke: #ffffff12 } .sw-map .grid text { fill: var(--dim); font-size: 7px }
+.sw-map { width: 100%; height: auto; display: block; border-radius: 10px; background: var(--bg); font-size: 7px }
 .sw-map circle { fill: #c7d2fe99 } .sw-map g[data-id] { cursor: pointer }
-.sw-map .mine circle { fill: var(--acc2) } .sw-map .me circle { fill: #fff; filter: drop-shadow(0 0 5px var(--acc)) }
+.sw-map .mine circle { fill: var(--acc2) } .sw-map .me circle { fill: #fff }
 .sw-map g text { fill: var(--fg); font-size: 9px; font-weight: 600 } .sw-map .mine text { fill: var(--mut); font-weight: 500 }
 .sw-map .con { fill: var(--acc); font-size: 10px; font-weight: 600; letter-spacing: .04em }
 .sw-dtabs a svg { width: 15px; height: 15px }
@@ -299,7 +296,7 @@ sup .cite { vertical-align: baseline }
 .sw-cap2 { margin: 10px 4px 0; font-size: 13px; color: var(--mut) } .sw-cap2 b { color: var(--fg); font-weight: 600 }
 .sw-cap2 svg { width: 14px; height: 14px; vertical-align: -3px }
 .sw-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-top: 10px }
-.sw-strip button, .sw-strip a { aspect-ratio: 4/3; padding: 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #04060c; cursor: pointer;
+.sw-strip button, .sw-strip a { aspect-ratio: 4/3; padding: 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #0b0d10; cursor: pointer;
   transition: border-color .2s, transform .3s var(--spring) }
 .sw-strip button:hover { transform: translateY(-2px) }
 .sw-strip button.on { border-color: var(--acc); box-shadow: 0 0 0 2px color-mix(in srgb, var(--acc) 35%, transparent) }
@@ -328,7 +325,7 @@ sup .cite { vertical-align: baseline }
 .sw-d-side h2 > svg { color: var(--acc2); width: 17px; height: 17px }
 .sw-relrow { display: flex; gap: 12px; align-items: center; padding: 8px; margin: 0 -8px; border-radius: 12px; color: var(--fg); transition: background .2s }
 .sw-relrow:hover { background: var(--panel2) }
-.sw-rr-img { width: 54px; height: 54px; flex: none; border-radius: 12px; overflow: hidden; background: #04060c; border: 1px solid var(--line); display: grid }
+.sw-rr-img { width: 54px; height: 54px; flex: none; border-radius: 12px; overflow: hidden; background: #0b0d10; border: 1px solid var(--line); display: grid }
 .sw-rr-img img { width: 100%; height: 100%; object-fit: cover }
 .sw-rr-ph { display: block; background: radial-gradient(circle, color-mix(in srgb, var(--acc2) 45%, transparent), transparent 70%) }
 .sw-relrow > span:last-child { display: flex; flex-direction: column; min-width: 0; font-size: 13px }
@@ -366,7 +363,7 @@ sup .cite { vertical-align: baseline }
 .sw-task .progress i { transition: width .6s var(--ease) }
 /* Keine Bilddaten */
 .sw-noimg { display: grid; place-items: center; align-content: center; gap: 2px; width: 100%; height: 100%; text-align: center; font-style: normal;
-  font-size: 10px; line-height: 1.2; color: var(--dim); background: repeating-linear-gradient(135deg, #ffffff05 0 6px, transparent 6px 12px), #04060c; padding: 4px }
+  font-size: 10px; line-height: 1.2; color: var(--dim); background: repeating-linear-gradient(135deg, #ffffff05 0 6px, transparent 6px 12px), #0b0d10; padding: 4px }
 .sw-noimg.big { position: absolute; inset: 0; font-size: 13px; gap: 4px } .sw-noimg.big svg { width: 26px; height: 26px; opacity: .6 }
 .sw-noimg.big small { color: var(--dim); font-size: 11.5px } .sw-noimg.big span { color: var(--mut); font-weight: 600 }
 .sw-noimg.view { aspect-ratio: 16/9.5; border-radius: var(--r); gap: 8px; font-size: 14px; border: 1px dashed var(--line2) }
@@ -409,7 +406,7 @@ main:has(.sw-dhead), main:has(.sw-wtop), main:has(.sw-graph) { max-width: 2400px
 .sw-fbg { position: absolute; inset: -40px; background: center / cover no-repeat; filter: blur(40px) saturate(1.6); opacity: .35; pointer-events: none }
 .sw-fbg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent 30%, var(--panel-s) 95%) }
 /* Foto ganz zeigen (Seitenverhältnis bleibt, kein Zuschnitt) – der Banner richtet sich nach dem Bild */
-.sw-fimg { position: relative; display: flex; align-items: center; justify-content: center; background: #04060c; overflow: hidden; min-height: 260px }
+.sw-fimg { position: relative; display: flex; align-items: center; justify-content: center; background: #0b0d10; overflow: hidden; min-height: 260px }
 .sw-fimg img { display: block; width: 100%; height: auto; max-height: 72vh; object-fit: contain; opacity: 0; transition: opacity .7s }
 .sw-fimg img.ld { opacity: 1 }
 .sw-fimg .sw-ph { position: absolute; inset: 0 }
@@ -442,13 +439,13 @@ main:has(.sw-dhead), main:has(.sw-wtop), main:has(.sw-graph) { max-width: 2400px
 .sw-tnr { display: grid; grid-template-columns: 44px minmax(0, 1fr) 110px 46px; gap: 12px; align-items: center; padding: 7px 8px; margin: 0 -8px; border: 0; border-radius: 10px;
   background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer; transition: background .15s }
 .sw-tnr:hover { background: var(--panel2) }
-.sw-tni { width: 44px; height: 44px; border-radius: 9px; overflow: hidden; background: #04060c }
+.sw-tni { width: 44px; height: 44px; border-radius: 9px; overflow: hidden; background: #0b0d10 }
 .sw-tni img { width: 100%; height: 100%; object-fit: cover; transform: scale(1.4) } .sw-tni .sw-ph svg { width: 18px; height: 18px }
 .sw-tnn { display: flex; flex-direction: column; min-width: 0 } .sw-tnn > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .sw-tnm { color: var(--acc3) } .sw-tnm svg { width: 11px; height: 11px; vertical-align: -1px; margin-right: 3px }
 .sw-tna { display: flex; align-items: center; gap: 8px }
 .sw-alt { flex: 1; height: 6px; border-radius: 9px; background: var(--line2); overflow: hidden }
-.sw-alt i { display: block; height: 100%; border-radius: 9px; background: linear-gradient(90deg, var(--acc3), var(--acc)) }
+.sw-alt i { display: block; height: 100%; border-radius: 9px; background: var(--acc) }
 .sw-tnt { text-align: right; font-variant-numeric: tabular-nums }
 .sw-pfoot { margin: 10px 0 0 }
 .sw-nw { display: flex; gap: 12px; padding: 10px 8px; margin: 0 -8px; border-radius: 10px; color: var(--fg); text-decoration: none; transition: background .15s }
@@ -459,7 +456,7 @@ main:has(.sw-dhead), main:has(.sw-wtop), main:has(.sw-graph) { max-width: 2400px
 .sw-nwi svg { width: 15px; height: 15px }
 .sw-hsect { margin: 26px 0 12px }
 .sw-kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px }
-.sw-kind { position: relative; height: 96px; padding: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #04060c; cursor: pointer;
+.sw-kind { position: relative; height: 96px; padding: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #0b0d10; cursor: pointer;
   color: #fff; font: inherit; text-align: left; transition: transform .25s var(--ease), border-color .2s }
 .sw-kind:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--c, var(--acc)) 60%, transparent) }
 .sw-kind img, .sw-kind .sw-ph { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.5); transition: transform .8s var(--ease) }

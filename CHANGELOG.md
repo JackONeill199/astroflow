@@ -3,6 +3,33 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.21.0 – 04.11.2026
+
+### Neu
+- **Neue Oberfläche:** einheitliches, ruhiges Designsystem (neutrales Anthrazit, ein blauer Akzent, keine Verläufe,
+  kein Sternenhintergrund) – die Astrofotos stehen im Vordergrund. Alle Farben, Abstände und Schriftgrößen kommen aus
+  zentralen Tokens in `style.css`; die Module übernehmen sie automatisch.
+- **Neuer Rahmen:** Werkzeugleiste oben (Suche/Befehle mit Strg+K, Importieren, Auftragsanzeige, Systemstatus),
+  einklappbare Seitenleiste mit **Arbeitsbereichen** (Übersicht, Bilder, SkyTrace, Sage), **Bibliothek** (Galerie,
+  Sammlung) und **System** (Aufträge, Einstellungen). Unterseiten eines Bereichs klappen unter ihm auf; auf dem Handy
+  stehen sie als Leiste über der Ansicht, die Hauptbereiche unten.
+- **Kontextpanel rechts:** Details und Aktionen zur aktuellen Auswahl (z. B. Bild-Details mit Bild-Tutor, Kanälen,
+  Himmelsposition und „Geschichte erzählen“). Ein- und ausklappbar; auf kleineren Fenstern und dem Handy als Schublade.
+- **Übersicht neu:** Modulkarten mit Live-Zahlen, aktive Aufträge, zuletzt bearbeitete Bilder, neueste Entdeckungen
+  (SkyTrace-Kandidaten, Sage-Geschichten und -Entdeckungen) und daneben „Heute Nacht“. Die Aufteilung bleibt wählbar.
+- **Auftragsanzeige** in der Werkzeugleiste: Zahl laufender Aufträge, Klick öffnet die Liste mit Fortschritt.
+  Die Seite **Aufträge** (vorher „Aktivität“) zeigt zusätzlich Start und Dauer.
+- **Bilder als Werkbank:** alle Sessions als Karten oder kompakte Tabelle mit Status. Die Objektseite zeigt die
+  **Verarbeitungs-Pipeline** (Import → Analyse → Auswahl → Stacking → Entwicklung → Ausgabe) mit echtem Status je Schritt,
+  einen großen Bildbetrachter und die Details im Kontextpanel. „Aktualisieren“ heißt jetzt **Nachstacken**.
+- **Galerie** (neu, unter Bibliothek): nur fertige Bilder, rahmenlos im großen oder kleinen Raster oder als Liste,
+  mit Suche, Filter nach Objekttyp und Sortierung.
+- **Prozessvisualisierung:** Während ein Auftrag läuft, zeigt eine kleine schematische Animation, was gerade passiert
+  (Aufnahmen vermessen, aussortieren, an Sternen ausrichten und mitteln – mit echter Aufnahmezahl und Rauschen ≈ 1/√N –,
+  Helligkeitskurve strecken; bei SkyTrace die Spurensuche mit echtem Fortschritt). Als „Schema“ gekennzeichnet,
+  pausierbar, bei „Bewegung reduzieren“ ein Standbild. Echte Zwischenbilder zeigt weiterhin die Live-Vorschau.
+- **SkyTrace:** Analysen als Tabelle oder Karten, sachlicher Seitenkopf.
+
 ## 0.20.0 – 04.11.2026
 
 ### Neu

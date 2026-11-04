@@ -1,10 +1,10 @@
 /* SkyTrace im AstroFlow-Design. evidence.css (gemeinsam mit dem eigenständigen Bericht) bleibt unverändert und wird hier nur angepasst. */
 .stlive { display: block; color: var(--fg); margin-bottom: 20px; border-color: color-mix(in srgb, var(--acc3) 40%, transparent) }
 .stlive .live { background: var(--acc3); color: var(--acc3) }
-.stlive .progress i { background: linear-gradient(90deg, var(--acc3), var(--acc)) }
+.stlive .progress i { background: var(--acc) }
 
 /* Himmelsansicht mit Bild/Video und Overlay */
-.sky { position: relative; aspect-ratio: 3/2; border-radius: var(--r); overflow: hidden; background: radial-gradient(circle at 50% 45%, #121a32, #02040a); border: 1px solid var(--line);
+.sky { position: relative; aspect-ratio: 3/2; border-radius: var(--r); overflow: hidden; background: #050607; border: 1px solid var(--line);
   box-shadow: var(--shadow) }
 .sky img, .sky video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; animation: fadeIn .4s var(--ease) }
 .sky .motion-video-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none }
@@ -18,7 +18,7 @@
   background: #0b1020b3; color: #e8ebf5; cursor: pointer; backdrop-filter: blur(8px); transition: opacity .2s }
 .sky:not(:hover) .sky-full { opacity: .55 }
 .sky:fullscreen { border-radius: 0; aspect-ratio: auto }
-.sky::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 80px #000a; border-radius: inherit }
+.sky::after { content: none }
 .st-stats { margin-top: 0; grid-template-columns: repeat(2, 1fr) }
 
 /* Protokoll */

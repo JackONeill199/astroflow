@@ -378,6 +378,7 @@ async function projectView(el, id, tab = 'bild') {
     if (jobHost) { setJobLine(jobHost, p.job); jobHost.hidden = tab === 'bild' && !!liveView; }
     liveView?.update(p);
     if (p.live?.preview) livePoster = `/api/stacking/projects/${id}/live/${encodeURIComponent(p.live.preview)}`;
+    if ($('#ctxTitle')?.textContent === 'Session' && el.isConnected) sessionCtx();
     const pipe = $('#pipe', el);
     if (pipe) { const tmp = document.createElement('div'); tmp.innerHTML = pipeHtml(p); if (pipe.innerHTML !== tmp.firstChild.innerHTML) pipe.innerHTML = tmp.firstChild.innerHTML; }
     // schematische Darstellung des aktiven Schritts (nur während ein Auftrag wirklich läuft)
@@ -439,12 +440,13 @@ async function projectView(el, id, tab = 'bild') {
     $('#solveBtn')?.addEventListener('click', solve);
     drawTab(false);
   }
-  // Kontextpanel „Session“: Aufnahmen, Belichtung, Nächte, Status, Himmelsposition
+  // Kontextpanel „Session“: Aufnahmen, Belichtung, Nächte, Status, Himmelsposition (aktualisiert sich mit dem Auftrag)
+  let sessionHtml = '';
   function sessionCtx() {
     const r = p.result, fr = p.frames || {}, j = p.job;
     const status = running(j) ? `<span class="badge-dot run">${j.state === 'queued' ? 'wartet' : esc(j.stage || 'läuft')}</span>` : j?.state === 'error' ? '<span class="badge-dot bad">Fehler</span>'
       : r ? '<span class="badge-dot ok">Fertig</span>' : '<span class="badge-dot">Noch nicht verarbeitet</span>';
-    AF.ctx.open(el, { title: 'Session', html: `<div class="panel"><dl class="kv">
+    const html = `<div class="panel"><dl class="kv">
         <dt>Status</dt><dd>${status}</dd>
         ${p.imported ? '' : `<dt>Aufnahmen</dt><dd class="tnum">${p.total}</dd><dt>Gestackt</dt><dd class="tnum">${r ? r.n_frames : 0}</dd><dt>Verworfen</dt><dd class="tnum">${fr.rejected || 0}</dd>
         <dt>Belichtung</dt><dd>${r ? dur(r.exposure) : '–'}</dd>`}
@@ -453,7 +455,8 @@ async function projectView(el, id, tab = 'bild') {
       </dl></div>
       ${p.nights.length ? `<div class="panel"><h2 class="ctx-sec">Nächte</h2><ul class="qlist mut">${p.nights.map(n => `<li>${fnight(n)}</li>`).join('')}</ul>
         <p class="mut sm" style="margin:0">Neue Nächte desselben Objekts werden automatisch nachgestackt – der bisherige Stack bleibt erhalten.</p></div>` : ''}
-      ${coordsPanel(p.coords)}` });
+      ${coordsPanel(p.coords)}`;
+    if (html !== sessionHtml || $('#ctxTitle')?.textContent !== 'Session') { sessionHtml = html; AF.ctx.open(el, { title: 'Session', html }); }
   }
   // Nur den Tab-Inhalt neu zeichnen – Kopf, Jobzeile und Marker bleiben stehen
   function drawTab(animate = true) {
@@ -507,7 +510,8 @@ async function projectView(el, id, tab = 'bild') {
         ${r.id !== p.results[0].id || c ? `<div class="row sm mut" style="margin-top:8px">${c ? `Vergleich: links Version vom ${fdate(c.created)}, rechts ${fdate(r.created)}` : `Ältere Version vom ${fdate(r.created)}`}
           <span class="grow"></span><button class="linkbtn" id="latest">Neueste Version zeigen</button></div>` : ''}
         ${p.imported ? `<div class="notice" style="margin-top:14px"><div><b>Fertig importiertes Bild</b><div class="mut sm">Das Original bleibt unverändert. AstroFlow führt kein erneutes Stacking und keine automatische Entwicklung durch.</div>
-          ${AF.on('sage') ? '<button class="btn ghost sm" id="importedSage" style="margin-top:8px">Mit Sage bestimmen und erzählen</button>' : ''}</div></div>` : ''}</div>`;
+          ${AF.on('sage') ? '<button class="btn ghost sm" id="importedSage" style="margin-top:8px">Mit Sage bestimmen und erzählen</button>' : ''}</div></div>` : ''}
+        <button class="btn ghost sm ctx-inline" data-ctx-open>${icon('panel')}Bild-Details und Bild-Tutor</button></div>`;
     // Kontextpanel: Kennzahlen, Kanäle, Bild-Tutor, Details, Himmelsposition, KI-Prüfung
     AF.ctx.open(el, { title: 'Bild-Details', html: `<div class="row ctx-acts"><a class="btn ghost sm" href="/api/stacking/results/${r.id}/jpg" download>${icon('down')}JPEG</a>
         ${AF.on('sage') ? `<button class="btn ghost sm" id="ctxStory" title="Sage nutzt die vorhandene Plate-Solving-Lösung und die erkannten Objekte">${icon('book')}Geschichte erzählen</button>` : ''}

@@ -247,9 +247,12 @@ input[type=range] { accent-color: var(--acc); padding: 0; height: 20px; backgrou
 .panel { background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--r-lg); padding: 16px }
 .panel + .panel { margin-top: 12px }
 .panel-h { display: flex; align-items: center; gap: 8px 10px; margin-bottom: 12px; flex-wrap: wrap }
+.panel-h > div:not(.row) { min-width: 0; flex: 1 1 160px }
+.ctx-inline { display: none }
 /* PageHeader */
 .pagehead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; min-height: 36px }
-.pagehead > div:first-child { min-width: 0 }
+.pagehead > div:first-child { min-width: 0; flex: 1 1 320px }
+.pagehead > div:first-child p { max-width: 760px }
 .pagehead p { margin: 3px 0 0; font-size: 13px }
 .pagehead .row { gap: 8px }
 .page-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto }
@@ -520,7 +523,7 @@ details[open] > summary ~ * { animation: fadeIn var(--t2) var(--ease) }
 #pal li.h { padding: 8px 10px 3px; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--dim) }
 #pal li.it { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: var(--r-sm); cursor: pointer; color: var(--mut) }
 #pal li.it img { width: 28px; height: 28px; border-radius: 4px; object-fit: cover; background: #08090b }
-#pal li.it .ic { width: 28px; height: 28px; border-radius: 4px; display: grid; place-items: center; background: var(--surface-3); color: var(--mut) }
+#pal li.it .ic { flex: none; width: 28px; height: 28px; border-radius: 4px; display: grid; place-items: center; background: var(--surface-3); color: var(--mut) }
 #pal li.it .ic svg { width: 15px; height: 15px }
 #pal li.it span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg) }
 #pal li.it small { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45% }
@@ -678,6 +681,7 @@ input:focus-visible + .switch { outline: 2px solid var(--acc); outline-offset: 2
 
 /* ---- Breiten: Laptop, Tablet, Handy ------------------------------------------- */
 @media (max-width: 1279px) {
+  .ctx-inline { display: inline-flex; margin-top: 10px }
   /* Kontextpanel als Drawer über dem Inhalt */
   .ctx { position: fixed; z-index: 70; right: 0; top: var(--top-h); bottom: 0; height: auto; width: min(var(--ctx-w), 92vw); box-shadow: var(--shadow); transform: translateX(105%); visibility: hidden;
     transition: transform var(--t2) var(--ease), visibility 0s var(--t2); animation: none }
@@ -732,6 +736,8 @@ input:focus-visible + .switch { outline: 2px solid var(--acc); outline-offset: 2
   .popover { position: fixed; left: 8px; right: 8px; top: calc(var(--top-h) + 4px); width: auto }
   .viewer.tall { height: auto; aspect-ratio: 3/2 }
   .pstep { min-width: 104px }
+  .job { grid-template-columns: auto minmax(0, 1fr) }
+  .job .jside { grid-column: 2; justify-content: space-between }
 }
 
 @media (prefers-reduced-motion: reduce) {

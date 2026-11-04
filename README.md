@@ -16,7 +16,8 @@ Himmelsobjekte zu Geschichten – im Browser, auf deinem Rechner oder NAS, ohne 
 | **SkyTrace** | Bildfolgen sternregistriert auf Lichtspuren und bewegte Objekte untersuchen; Kandidaten mit Zeitreihen, Messdetails und Abgleich gegen Satelliten-, Meteor-, Asteroiden- und Flugkataloge zur echten Aufnahmezeit |
 | **Sage** | Lebende Astronomie-Enzyklopädie: Objekte im Bild bestimmen, aus Fachkatalogen recherchieren (mit Quellen), Zusammenhänge zwischen deinen Aufnahmen entdecken, Geschichten erzählen und vorlesen lassen; Sammlung mit Erfolgen |
 
-Alle Module teilen sich eine Oberfläche: Übersicht, gemeinsame Aktivität aller Aufträge, eine Einstellungsseite, Befehlspalette (Strg+K)
+Alle Module teilen sich eine Oberfläche im Stil einer Desktop-Anwendung: Werkzeugleiste mit Suche, Import und laufenden Aufträgen, Seitenleiste mit
+Arbeitsbereichen (Übersicht, Bilder, SkyTrace, Sage) und Bibliothek (Galerie, Sammlung), ein Kontextpanel mit Details zur Auswahl, gemeinsame Aufträge aller Module, eine Einstellungsseite, Befehlspalette (Strg+K)
 und Drag & Drop überall (FITS → Rohdaten-Pipeline, JPG/PNG/TIFF → fertige Bilder in der Galerie). Aus einem fertigen Bild der Galerie erzählt Sage mit einem Klick die Geschichte
 („Mehr → Geschichte erzählen“) – die Objekte kommen dabei aus der Plate-Solving-Lösung des Stacks.
 
@@ -199,8 +200,9 @@ dabei wird ein verkleinertes Graustufenbild (nicht öffentlich markiert) hochgel
 
 Die Oberfläche (<http://localhost:8080>) ist eine installierbare Web-App (PWA) für Desktop und Smartphone:
 
-- **Übersicht** mit dem Stand aller Module, **Aktivität** mit allen Aufträgen (Verarbeitung, Spurenanalysen, Geschichten), **Einstellungen** je Modul
-- **Galerie** aller Objekte mit Suche, Filter nach Objekttyp und Sortierung; Live-Fortschritt laufender Verarbeitungen
+- **Übersicht** mit Modulkarten, aktiven Aufträgen, zuletzt bearbeiteten Bildern, neuesten Entdeckungen und „Heute Nacht“; **Aufträge** mit allen Hintergrundprozessen (Verarbeitung, Spurenanalysen, Geschichten); **Einstellungen** je Modul
+- **Bilder** als Werkbank: alle Sessions als Karten oder Tabelle mit Status; je Objekt die Verarbeitungs-Pipeline mit echtem Status je Schritt und – während ein Auftrag läuft – einer schematischen Darstellung des aktuellen Schritts
+- **Galerie** aller fertigen Bilder (Raster groß/klein oder Liste) mit Suche, Filter nach Objekttyp und Sortierung
 - **Objektseite** mit Zoom-/Pan-Betrachter (Mausrad, Ziehen, Pinch, Doppelklick = 100 %, Vollbild), Kanalübersicht (Belichtung je Filter), Details und KI-Prüfprotokoll
 - **Aufnahmen**: Qualitätsdiagramm über alle Nächte, filter- und sortierbare Tabelle, Einzelbilder ein-/ausschließen
 - **Versionen**: jede Verarbeitung bleibt erhalten; zwei Versionen per Schieberegler vergleichen
