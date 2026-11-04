@@ -917,30 +917,34 @@ async function importView(el) {
 // Hauptordner durchsuchen: Gruppen (Objekte) finden, Stand in AstroFlow anzeigen, Auswahl importieren
 const LIB_STATE = { new: ['neu', 'acc'], partial: ['teilweise vorhanden', 'warn'], unstacked: ['nicht gestackt', 'warn'], done: ['fertig', 'ok'] };
 const LIB_KIND = { lights: 'Aufnahmen', calibration: 'Kalibrierung', pictures: 'Fertige Bilder' };
-const LIB_FILTER_STATE = { new: 'Neu', partial: 'Teilweise vorhanden', unstacked: 'Nicht gestackt', done: 'Fertig' };
+// Zustand als Reiter (eine Wahl; „Offen“ = es gibt etwas zu importieren), Art/Format als Mehrfachauswahl im Menü
+const LIB_TABS = [['open', 'Offen', g => g.n_new > 0], ['new', 'Neu', g => g.state === 'new'], ['partial', 'Teilweise', g => g.state === 'partial'],
+  ['unstacked', 'Nicht gestackt', g => g.state === 'unstacked'], ['done', 'Fertig', g => g.state === 'done'], ['all', 'Alle', () => true]];
 const LIB_FMT = (k) => ({ fits: 'FITS', jpg: 'JPG', png: 'PNG', tiff: 'TIFF' })[k] || k.toUpperCase();
 async function libraryPanel(view) {
   const body = $('#libBody', view), shown = $('#libRoot', view), go = $('#libGo', view);
   let root = '';
   const setRoot = (r) => { root = r || ''; shown.textContent = root; shown.title = root; go.hidden = !root; };
   const picked = new Set();
-  let timer = null, seen = false, showKnown = false;
+  let timer = null, seen = false, openMenu = null;
   const done = (g) => g.state === 'done';
-  // Filter (Mehrfachauswahl, leer = alle) – je Browser gemerkt
+  // Filter je Browser gemerkt: tab = Zustand, kind/ext = Mehrfachauswahl (leer = alle)
   const saved = store.get('library.filter', {});
-  const flt = Object.fromEntries(['kind', 'ext', 'state'].map(k => [k, new Set(Array.isArray(saved[k]) ? saved[k] : [])]));
-  const saveFlt = () => store.set('library.filter', Object.fromEntries(Object.entries(flt).map(([k, v]) => [k, [...v]])));
-  const fits = (g, skip) => (skip === 'kind' || !flt.kind.size || flt.kind.has(g.kind))
-    && (skip === 'ext' || !flt.ext.size || Object.keys(g.exts || {}).some(e => flt.ext.has(e)))
-    && (skip === 'state' || !flt.state.size || flt.state.has(g.state));
-  const filterRow = (key, label, options, groups) => {
-    // Zahl je Option = Gruppen, die unter den übrigen Filtern dazu passen; nur Optionen, die im Suchlauf vorkommen
-    const base = groups.filter(g => fits(g, key));
-    const has = (g, v) => key === 'ext' ? v in (g.exts || {}) : g[key] === v;
-    const opts = options.filter(([v]) => groups.some(g => has(g, v)) || flt[key].has(v));
+  let tab = LIB_TABS.some(t => t[0] === saved.tab) ? saved.tab : 'open';
+  const flt = Object.fromEntries(['kind', 'ext'].map(k => [k, new Set(Array.isArray(saved[k]) ? saved[k] : [])]));
+  const saveFlt = () => store.set('library.filter', { tab, kind: [...flt.kind], ext: [...flt.ext] });
+  const has = (g, key, v) => key === 'ext' ? v in (g.exts || {}) : g[key] === v;
+  const fits = (g, skip) => ['kind', 'ext'].every(k => k === skip || !flt[k].size || [...flt[k]].some(v => has(g, k, v)));
+  const inTab = (g, t = tab) => LIB_TABS.find(x => x[0] === t)[2](g);
+  const dropdown = (key, label, options, groups) => {
+    // Zahl je Option = Gruppen im aktuellen Reiter, die zu den übrigen Filtern passen; nur Optionen aus dem Suchlauf
+    const opts = options.filter(([v]) => groups.some(g => has(g, key, v)) || flt[key].has(v));
     if (opts.length < 2 && !flt[key].size) return '';
-    return `<div class="lib-frow"><span class="mut sm">${label}</span><div class="seg" data-f="${key}" aria-label="${label}">${opts.map(([v, l]) =>
-      `<button data-v="${esc(v)}" class="${flt[key].has(v) ? 'on' : ''}" aria-pressed="${flt[key].has(v)}">${esc(l)} <span class="dim">${base.filter(g => has(g, v)).length}</span></button>`).join('')}</div></div>`;
+    const on = opts.filter(([v]) => flt[key].has(v)).map(([, l]) => l);
+    const base = groups.filter(g => inTab(g) && fits(g, key));
+    return `<div class="menu lib-dd" data-f="${key}"><button class="btn ghost sm ${on.length ? 'on' : ''}" aria-haspopup="true">${label}: <b>${on.length ? esc(on[0]) + (on.length > 1 ? ` +${on.length - 1}` : '') : 'alle'}</b>${icon('chev')}</button>
+      <div class="pop">${opts.map(([v, l]) => `<label class="lib-opt"><input type="checkbox" data-f="${key}" data-v="${esc(v)}" ${flt[key].has(v) ? 'checked' : ''}><span>${esc(l)}</span><small>${base.filter(g => has(g, key, v)).length}</small></label>`).join('')}
+      ${on.length ? `<hr><button class="linkbtn lib-ddclear" data-f="${key}">Auswahl aufheben</button>` : ''}</div></div>`;
   };
   const draw = (st) => {
     if (!body.isConnected) return clearTimeout(timer);
@@ -957,42 +961,40 @@ async function libraryPanel(view) {
     [...picked].forEach(id => { const g = groups.find(x => x.id === id); if (!g || !g.n_new) picked.delete(id); });
     if (!groups.length) { body.innerHTML = st.message ? `<p class="mut sm">${esc(st.message)}</p>` : ''; return; }
     const imp = st.imported;
-    // Filter; ohne Zustandsfilter sind bereits vollständig vorhandene Gruppen (nichts zu importieren) ausgeblendet
-    const matching = groups.filter(g => fits(g)), anyFlt = Object.values(flt).some(v => v.size);
-    const known = flt.state.size ? [] : matching.filter(g => !g.n_new);
-    const list = flt.state.size || showKnown ? matching : matching.filter(g => g.n_new);
+    const pool = groups.filter(g => fits(g)), list = pool.filter(g => inTab(g)), anyFlt = flt.kind.size || flt.ext.size;
     const sel = list.filter(g => picked.has(g.id) && g.n_new);       // Import wirkt nur auf sichtbare Gruppen
-    const filters = filterRow('kind', 'Art', Object.entries(LIB_KIND), groups)
-      + filterRow('ext', 'Format', [...new Set(groups.flatMap(g => Object.keys(g.exts || {})))].sort().map(e => [e, LIB_FMT(e)]), groups)
-      + filterRow('state', 'Zustand', Object.entries(LIB_FILTER_STATE), groups);
+    const selectable = list.filter(g => g.n_new && !done(g));
+    const tabs = LIB_TABS.filter(([k, , f]) => k !== 'unstacked' || groups.some(f));
     body.innerHTML = `${imp ? `<div class="notice lib-done"><div><b>${icon('check')} Import abgeschlossen</b><div class="mut sm">${esc(st.message)}${imp.errors?.length ? `<br><span class="bad">${imp.errors.map(esc).join('<br>')}</span>` : ''}</div>
         ${Object.keys(imp.projects || {}).length ? '<div style="margin-top:8px"><a class="btn ghost sm" href="#/bilder">Zur Galerie</a></div>' : ''}</div></div>` : ''}
-      ${filters ? `<div class="lib-filters">${filters}</div>` : ''}
-      <div class="lib-bar"><span class="mut sm" id="libCount">${groups.length} ${groups.length === 1 ? 'Gruppe' : 'Gruppen'} gefunden, ${list.length} angezeigt</span>
-        ${anyFlt ? '<button class="linkbtn" id="libReset">Filter zurücksetzen</button>' : ''}<span class="grow"></span>
-        <button class="btn ghost sm" id="libNew">Nur Neues wählen</button><button class="btn ghost sm" id="libNone">Keine</button>
-        <button class="btn" id="libImp" ${sel.length ? '' : 'disabled'}>${icon('upload')}${sel.length ? `${sel.length} ${sel.length === 1 ? 'Gruppe' : 'Gruppen'} importieren` : 'Importieren'}</button></div>
-      ${list.length ? '' : anyFlt ? '<p class="mut sm">Keine Gruppe passt zu den Filtern.</p>' : '<p class="mut sm">Alles bereits in AstroFlow – nichts Neues zu importieren.</p>'}
+      <div class="lib-tools">
+        <div class="lib-filt"><div class="seg" id="libTabs" aria-label="Zustand">${tabs.map(([k, l, f]) =>
+          `<button data-v="${k}" class="${k === tab ? 'on' : ''}" aria-pressed="${k === tab}"><span>${l}</span> <span class="dim">${pool.filter(f).length}</span></button>`).join('')}</div>
+          ${dropdown('kind', 'Art', Object.entries(LIB_KIND), groups)}${dropdown('ext', 'Format', [...new Set(groups.flatMap(g => Object.keys(g.exts || {})))].sort().map(e => [e, LIB_FMT(e)]), groups)}</div>
+        <div class="lib-acts"><span class="dim sm" id="libCount">${list.length} von ${groups.length} angezeigt</span>
+          <label class="btn ghost sm lib-all" title="Alle angezeigten Gruppen mit neuen Dateien wählen bzw. abwählen"><input type="checkbox" id="libAll" ${selectable.length ? '' : 'disabled'}>Alle neuen</label>
+          <button class="btn sm" id="libImp" ${sel.length ? '' : 'disabled'}>${icon('upload')}${sel.length ? `${sel.length} ${sel.length === 1 ? 'Gruppe' : 'Gruppen'} importieren` : 'Importieren'}</button></div></div>
+      ${list.length ? '' : `<p class="mut sm lib-empty">${anyFlt || tab !== 'open' ? 'Keine Gruppe in dieser Auswahl.' : 'Alles bereits in AstroFlow – nichts Neues zu importieren.'}</p>`}
       <div class="lib-list">${list.map(g => {
         const [lab, cls] = LIB_STATE[g.state] || [g.state, ''], off = !g.n_new;
         return `<label class="lib-row ${off ? 'off' : ''}"><input type="checkbox" data-id="${g.id}" ${picked.has(g.id) ? 'checked' : ''} ${off ? 'disabled' : ''}>
           <div class="lib-main"><div class="lib-title"><b>${esc(g.name)}</b><span class="chip ${cls}">${lab}</span><span class="chip">${LIB_KIND[g.kind] || g.kind}</span>${g.project?.name ? `<a class="chip acc" href="#/p/${g.project.id}">in AstroFlow: ${esc(g.project.name)}</a>` : ''}</div>
             <div class="lib-meta"><span class="chip">${g.n_files} Dateien · ${fmb(g.bytes)}</span>${g.n_known && g.n_new ? `<span class="chip">${g.n_new} davon neu</span>` : ''}${g.night ? `<span class="chip">${esc(g.night)}</span>` : ''}${g.camera ? `<span class="chip">${esc(g.camera)}</span>` : ''}</div>
             <div class="lib-path">${esc(g.rel)}</div></div></label>`;
-      }).join('')}</div>
-      ${known.length ? `<button class="linkbtn lib-hidden" id="libKnown">${showKnown ? 'Bereits vorhandene ausblenden' : `${known.length} bereits vorhandene ${known.length === 1 ? 'Gruppe' : 'Gruppen'} anzeigen`}</button>` : ''}`;
-    $('#libKnown', body)?.addEventListener('click', () => { showKnown = !showKnown; draw(st); });
-    body.onchange = (e) => { const id = e.target.dataset?.id; if (!id) return; e.target.checked ? picked.add(id) : picked.delete(id); draw(st); };
-    $$('.lib-filters .seg', body).forEach(seg => seg.onclick = (e) => {
-      const b = e.target.closest('button[data-v]'), set = flt[seg.dataset.f];
-      if (!b) return;
-      set.has(b.dataset.v) ? set.delete(b.dataset.v) : set.add(b.dataset.v);
-      saveFlt(); draw(st);
-    });
-    $('#libReset', body)?.addEventListener('click', () => { Object.values(flt).forEach(v => v.clear()); saveFlt(); draw(st); });
-    // „Nur Neues wählen“ und „Keine“ wirken nur auf die sichtbaren Gruppen, die Auswahl ausgeblendeter bleibt
-    $('#libNew', body).onclick = () => { list.forEach(g => picked.delete(g.id)); list.forEach(g => { if (g.n_new && !done(g)) picked.add(g.id); }); draw(st); };
-    $('#libNone', body).onclick = () => { list.forEach(g => picked.delete(g.id)); draw(st); };
+      }).join('')}</div>`;
+    if (openMenu) { $(`.lib-dd[data-f="${openMenu}"]`, body)?.classList.add('open'); openMenu = null; }
+    body.onchange = (e) => {
+      const t = e.target;
+      if (t.dataset?.f) { const set = flt[t.dataset.f]; t.checked ? set.add(t.dataset.v) : set.delete(t.dataset.v); saveFlt(); openMenu = t.dataset.f; return draw(st); }
+      const id = t.dataset?.id; if (!id) return; t.checked ? picked.add(id) : picked.delete(id); draw(st);
+    };
+    $('#libTabs', body).onclick = (e) => { const b = e.target.closest('button[data-v]'); if (!b) return; tab = b.dataset.v; saveFlt(); draw(st); };
+    $$('.lib-ddclear', body).forEach(b => b.onclick = () => { flt[b.dataset.f].clear(); saveFlt(); draw(st); });
+    // „Alle neuen“ wirkt nur auf die angezeigten Gruppen; die Auswahl ausgeblendeter bleibt
+    const all = $('#libAll', body), nSel = selectable.filter(g => picked.has(g.id)).length;
+    all.checked = !!selectable.length && nSel === selectable.length;
+    all.indeterminate = nSel > 0 && nSel < selectable.length;
+    all.onchange = () => { const on = all.checked; selectable.forEach(g => on ? picked.add(g.id) : picked.delete(g.id)); draw(st); };
     $('#libImp', body).onclick = async () => {
       try { draw(await send('/stacking/library/import', { ids: sel.map(g => g.id) })); follow(); }
       catch (e) { toast(e.message, 'err'); }
