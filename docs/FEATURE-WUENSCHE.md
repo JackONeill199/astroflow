@@ -10,6 +10,8 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md`, Erledigtes im `CHANGELOG.md`.
 | 2 | 03.11.2026 | Doppelte UI-Elemente vereinheitlichen | offen |
 | 3 | 03.11.2026 | Sage-Inhalte direkt in Bilder | offen |
 | 4 | 03.11.2026 | Übersicht: empfohlene Ziele für heute Nacht | Grundversion in 0.19.0 |
+| 5 | 04.11.2026 | Kometenmodus | in Arbeit |
+| 6 | 04.11.2026 | Planetenmodus (Lucky Imaging) | offen |
 
 ## 1. Bibliothek teilen (nur ansehen) – 03.11.2026
 
@@ -77,3 +79,25 @@ Gerät/Bildfeld aus `tutor.detect_device`.
 
 Abhängigkeit: Der UI-Umbau (PR #18, pausiert) bringt bereits eine Seite „Heute Nacht“ (`stacking/tonight.py`, `#/nacht`)
 mit Höhenverlauf und einfachen Vorschlägen. Darauf aufbauen statt neu bauen. Die Empfehlungslogik (Bibliothek + Gerät) kommt dazu.
+
+## 5. Kometenmodus – 04.11.2026
+
+Kometen bewegen sich gegenüber den Sternen. Bisher richtet die Pipeline nur auf Sterne aus, der Komet verwischt.
+Anlass: Eine Suche über alle Laufwerke ergab, dass nur noch Kometenaufnahmen (C/2022 E3 ZTF, ein „Komet“-Ordner) fehlen.
+
+- Komet automatisch erkennen (OBJECT-Header, Ordnername wie `…_observation_C_2022_E3`), per Projektoption erzwingbar.
+- Kometenposition je Aufnahme: Ephemeride (JPL Horizons) über Aufnahmezeit + Plate-Solving, ohne Netz Kern im Bild verfolgen.
+- Zwei Stacks: auf die Sterne und auf den Kometenkern ausgerichtet; zusammengesetzt aus scharfen Sternen und scharfem Kometen.
+- Eigenes Entwicklungsprofil (Koma und Schweif schonend strecken, Grünton erhalten), alle drei Ergebnisse ansehbar.
+
+## 6. Planetenmodus (Lucky Imaging) – 04.11.2026
+
+Planeten, Mond und Sonne brauchen ein anderes Verfahren als Deep-Sky: viele sehr kurze Aufnahmen bzw. Videos
+(SER/AVI), nur die schärfsten 5–20 % behalten, Ausrichtung an der Planetenscheibe und an Oberflächendetails
+(mehrere Ausrichtungspunkte), danach kräftiges Schärfen (Wavelets) – wie AutoStakkert!/RegiStax.
+
+Zu klären:
+- Eingang: Videos (SER/AVI/MP4) und Bildserien, Erkennung über Objekt/Ordnername oder Bildinhalt (Scheibe ohne Sterne).
+- Sinnvoll erst mit längerer Brennweite (Seestar-Planetenmodus, klassische Teleskope); bei Stellina/Vespera ist Jupiter nur
+  wenige Dutzend Pixel groß – Hinweis statt enttäuschendem Ergebnis.
+- Ausgabe: Stack + geschärftes Bild, optional Derotation (Jupiter) als späterer Schritt.
