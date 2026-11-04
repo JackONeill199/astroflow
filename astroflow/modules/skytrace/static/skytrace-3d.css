@@ -96,3 +96,18 @@
   .st3d-time { flex: 1 }
 }
 @media (prefers-reduced-motion: reduce) { .st3d-card { animation: none } }
+/* Analysenliste in der 3D-Seitenleiste (#/skytrace/3d): wählen und laden ohne Seitenwechsel */
+.st3d-runs { display: grid; gap: 0.5rem; padding-bottom: 0.875rem; border-bottom: 1px solid var(--border-soft) }
+.st3d-rq { width: 100%; height: 2rem }
+.st3d-rf { justify-self: start }
+.st3d-rl { display: grid; gap: 2px; max-height: 18rem; overflow: auto; margin-right: -0.375rem; padding-right: 0.375rem; scrollbar-width: thin }
+.st3d-rl button { display: flex; align-items: center; gap: 0.625rem; width: 100%; padding: 0.375rem 0.5rem; border: 0; border-radius: var(--r-sm); background: transparent;
+  color: var(--fg); font: inherit; text-align: left; cursor: pointer; transition: background var(--t) }
+.st3d-rl button:hover { background: var(--surface-2) }
+.st3d-rl button.on { background: var(--surface-3) }
+.st3d-rt { flex: none; width: 2.75rem; height: 2rem; border-radius: 0.25rem; overflow: hidden; background: #050607; display: grid; place-items: center; color: var(--dim) }
+.st3d-rt img { width: 100%; height: 100%; object-fit: cover }
+.st3d-rn { flex: 1; min-width: 0; display: grid }
+.st3d-rn b { font-size: 0.8125rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.st3d-rn small { color: var(--mut); font-size: 0.7188rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+@media (max-width: 860px) { .st3d-rl { max-height: 14rem } }

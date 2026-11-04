@@ -53,7 +53,8 @@ function mount(host, runId, { focus = null, session = null, onCandidate = null }
   $d('.st3d-fs').onclick = fullscreen;
   const fail = (text, link) => {
     $d('.st3d-msg').innerHTML = `${icon('alert')}<span>${esc(text)}${link ? ` <a href="${link[1]}">${esc(link[0])}</a>` : ''}</span>`;
-    $d('.st3d-msg').classList.add('hint'); $d('.st3d-legend').innerHTML = ''; $d('.st3d-side').classList.add('empty');
+    $d('.st3d-msg').classList.add('hint'); $d('.st3d-legend').innerHTML = '<p class="mut sm">Keine Objekte zu zeigen.</p>';
+    if (!$d('.st3d-runs')) $d('.st3d-side').classList.add('empty');
   };
   const gone = () => dead || !host.isConnected;
   (async () => {

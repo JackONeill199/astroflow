@@ -57,7 +57,7 @@ function runVariants(all) {
 }
 async function runsView(el) {
   crumbs([['SkyTrace']]);
-  let boot = await api(T + '/bootstrap'), sig = '', liveSig = '', mode = store.get('skytrace.view', 'table'), viz = null;
+  let boot = await api(T + '/bootstrap'), sig = '', liveSig = '', mode = store.get('skytrace.view2', 'cards'), viz = null;
   el.innerHTML = `<div class="pagehead"><div><h1>SkyTrace</h1>
       <p class="mut">Bildfolgen sternregistrieren, Lichtspuren erkennen und mit Meteor-, Satelliten-, Asteroiden- und Flugkatalogen abgleichen.</p></div>
       <div class="page-actions"><a class="btn ghost" href="#/settings/skytrace">${icon('pin')}Standort &amp; Kataloge</a><a class="btn" href="#/skytrace/neu">${icon('play')}Neue Analyse</a></div></div>
@@ -71,7 +71,7 @@ async function runsView(el) {
   $('#stq').oninput = (e) => { q = e.target.value.toLowerCase(); sig = ''; draw(); };
   const setView = () => $$('#stview button').forEach(b => b.classList.toggle('on', b.dataset.v === mode));
   setView();
-  $('#stview').onclick = (e) => { const b = e.target.closest('button'); if (b) { mode = b.dataset.v; store.set('skytrace.view', mode); setView(); sig = ''; draw(); } };
+  $('#stview').onclick = (e) => { const b = e.target.closest('button'); if (b) { mode = b.dataset.v; store.set('skytrace.view2', mode); setView(); sig = ''; draw(); } };
   $('#stRuns').addEventListener('click', async (e) => {
     const b = e.target.closest('[data-del]'), tr = e.target.closest('tr[data-href]');
     if (!b && tr && !e.target.closest('a')) { location.hash = tr.dataset.href; return; }
@@ -863,17 +863,41 @@ async function sky3dView(el) {
   const label = (r) => ({ id: r.id, name: shortName(r.title), info: `${runDate(r.id) || ago(r.modified)} · ${nf.format(r.frames)} Aufnahmen · ${r.candidates} Kandidat${r.candidates === 1 ? '' : 'en'}` });
   el.innerHTML = `<div class="pagehead"><div style="min-width:0"><h1>3D-Ansicht</h1>
       <p class="mut">Erde zur Aufnahmezeit, Weg und Blickfeld des Teleskops über die Nacht und alle zugeordneten Bahnen einer Beobachtung.</p></div>
-      ${runs.length ? '<div class="page-actions"><div id="st3dRun" class="st3d-pick"></div><a class="btn ghost" id="st3dOpen" href="#">Zur Analyse</a></div>' : ''}</div>
+      ${runs.length ? '<div class="page-actions"><a class="btn ghost" id="st3dOpen" href="#">Zur Analyse</a></div>' : ''}</div>
     ${runs.length ? '<div id="st3dHost"></div>' : `<div class="empty"><h2>Noch keine Analysen</h2><p class="mut">Die 3D-Ansicht zeigt fertige SkyTrace-Läufe.</p><a class="btn" href="#/skytrace/neu">${icon('play')}Neue Analyse</a></div>`}`;
   if (!runs.length) return;
-  const pick = picker($('#st3dRun', el), { name: 'run', value: runId, custom: false, placeholder: 'Analyse wählen …', load: async () => runs.map(label) });
-  pick.preload();
+  // Analysenliste: bleibt beim Wechsel erhalten (wird nach jedem mount wieder oben in die Seitenleiste gesetzt)
+  const variant = runVariants(runs);
+  let onlyHits = store.get('skytrace.3dhits', runs.some(r => r.candidates)), q = '';
+  const box = document.createElement('section');
+  box.className = 'st3d-runs';
+  box.innerHTML = `<h3 class="st3d-sec">Analysen</h3>
+    <input type="search" class="st3d-rq" placeholder="Analyse suchen …" aria-label="Analyse suchen">
+    <div class="seg st3d-rf" aria-label="Filter"><button data-v="hits">Mit Kandidaten</button><button data-v="all">Alle</button></div>
+    <div class="st3d-rl" role="listbox" aria-label="Analysen"></div>`;
+  const drawRuns = () => {
+    $$('.st3d-rf button', box).forEach(b => b.classList.toggle('on', (b.dataset.v === 'hits') === onlyHits));
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const shown = runs.filter(r => (!onlyHits || r.candidates || r.id === runId) && words.every(w => (shortName(r.title) + ' ' + (runDate(r.id) || '')).toLowerCase().includes(w)));
+    $('.st3d-rl', box).innerHTML = shown.map(r => `<button role="option" data-run="${esc(r.id)}" class="${r.id === runId ? 'on' : ''}" aria-selected="${r.id === runId}">
+        <span class="st3d-rt">${r.preview ? `<img src="${media(r.preview)}" alt="" loading="lazy">` : icon('orbit')}</span>
+        <span class="st3d-rn"><b>${esc(shortName(r.title))}</b><small>${esc(runDate(r.id) || ago(r.modified))}${variant(r).replace(/<[^>]+>/g, '').replace(/^ /, ' · ')}</small></span>
+        ${r.candidates ? `<span class="chip acc">${r.candidates}</span>` : ''}</button>`).join('') || '<p class="mut sm">Keine Analyse passt.</p>';
+  };
+  $('.st3d-rq', box).oninput = (e) => { q = e.target.value; drawRuns(); };
+  $('.st3d-rf', box).onclick = (e) => { const b = e.target.closest('button[data-v]'); if (!b) return; onlyHits = b.dataset.v === 'hits'; store.set('skytrace.3dhits', onlyHits); drawRuns(); };
+  $('.st3d-rl', box).onclick = (e) => { const b = e.target.closest('[data-run]'); if (!b || b.dataset.run === runId) return; runId = b.dataset.run; store.set('skytrace.3drun', runId); show(); };
   const show = () => {
     view?.dispose();
+    const r = runs.find(x => x.id === runId);
+    crumbs([['SkyTrace', '#/skytrace'], ['3D-Ansicht', '#/skytrace/3d'], [shortName(r?.title || runId)]]);
     $('#st3dOpen', el).href = `#/skytrace/${encodeURIComponent(runId)}/kandidaten`;
     view = SkyTrace3D.mount($('#st3dHost', el), runId, { onCandidate: (key) => { focusNext = key; location.hash = `#/skytrace/${encodeURIComponent(runId)}/kandidaten`; } });
+    $('#st3dHost .st3d-side', el).prepend(box);
+    $('#st3dHost .st3d-side', el).classList.remove('empty');
+    drawRuns();
+    box.querySelector('.st3d-rl .on')?.scrollIntoView({ block: 'nearest' });
   };
-  $('#st3dRun', el).addEventListener('change', (e) => { if (!e.target.value || e.target.value === runId) return; runId = e.target.value; store.set('skytrace.3drun', runId); show(); });
   show();
   const onKey = (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input,select,textarea')) return;

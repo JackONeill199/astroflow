@@ -299,6 +299,7 @@ function pipeStep(p) {
   const j = p.job;
   return running(j) && j.state === 'running' ? STAGE_STEP[j.stage] ?? 1 : -1;
 }
+const showPipe = (p) => running(p.job) || p.job?.state === 'error' || !p.result;
 function pipeHtml(p) {
   const j = p.job, busy = running(j), cur = pipeStep(p), r = p.result, fr = p.frames || {};
   const sel = (fr.selected || 0) + (fr.stacked || 0);
@@ -447,9 +448,9 @@ async function projectView(el, id, tab = 'bild') {
     if (p.live?.preview) livePoster = `/api/stacking/projects/${id}/live/${encodeURIComponent(p.live.preview)}`;
     if ($('#ctxTitle')?.textContent === 'Session' && el.isConnected) sessionCtx();
     const pipe = $('#pipe', el);
-    if (pipe) { const tmp = document.createElement('div'); tmp.innerHTML = pipeHtml(p); if (pipe.innerHTML !== tmp.firstChild.innerHTML) pipe.innerHTML = tmp.firstChild.innerHTML; }
+    if (pipe) { const tmp = document.createElement('div'); tmp.innerHTML = pipeHtml(p); if (pipe.innerHTML !== tmp.firstChild.innerHTML) pipe.innerHTML = tmp.firstChild.innerHTML; pipe.hidden = !showPipe(p); }
     // schematische Darstellung des aktiven Schritts (nur während ein Auftrag wirklich läuft)
-    const host = $('#pipeViz', el), step = pipeStep(p), kind = step >= 0 && typeof vizProcess === 'function' ? STEP_VIZ[step] : '';
+    const host = $('#pipeViz', el), step = pipeStep(p), kind = step >= 0 && tab !== 'bild' && typeof vizProcess === 'function' ? STEP_VIZ[step] : '';
     if (!host) return;
     if (kind !== vizKind) { viz?.destroy(); viz = null; vizKind = kind; host.hidden = !kind; if (kind) viz = vizProcess(host, { kind }); }
     viz?.update({ kind, progress: p.job?.progress, label: p.job?.message || undefined, ...(kind === 'stack' ? stackCount(p.job) : {}) });
@@ -485,7 +486,7 @@ async function projectView(el, id, tab = 'bild') {
         Plate-Solving bestimmt die Himmelsposition aus dem Sternmuster und ordnet sie dem richtigen Objekt zu.</div></div><span class="grow"></span>
         <button class="btn sm" id="solveBtn">Jetzt bestimmen</button></div>` : ''}
       ${p.job?.state === 'error' && !busy ? `<div class="notice err">${icon('alert')}<div><b>Letzter Durchlauf fehlgeschlagen</b><div class="mut sm">${esc(p.job.message)}</div></div></div>` : ''}
-      ${p.imported ? '' : pipeHtml(p)}<div class="pipe-viz" id="pipeViz" hidden></div>
+      <div class="pipe-viz" id="pipeViz" hidden></div>
       <div id="job" style="margin:-4px 0 14px">${jobLine(p.job)}</div>
       <nav class="tabs" id="tabs">${tabs().map(([k, l], i) => { const n = { aufnahmen: p.total, versionen: p.results.length, teleskopbilder: p.companions ?? p.options?.companion_ids?.length }[k];
         return `<a href="#/p/${id}/${k}" data-t="${k}" class="${tab === k ? 'on' : ''}" title="Taste ${i + 1}">${l}${n != null ? `<span>${n}</span>` : ''}</a>`; }).join('')}<i class="tab-ind" id="tabind"></i></nav>
@@ -599,7 +600,6 @@ async function projectView(el, id, tab = 'bild') {
     $('#imgSide', t).innerHTML = `<div class="row ctx-acts"><a class="btn ghost sm" href="/api/stacking/results/${r.id}/jpg" download>${icon('down')}JPEG</a>
         ${AF.on('sage') ? `<button class="btn ghost sm" id="ctxStory" title="Sage nutzt die vorhandene Plate-Solving-Lösung und die erkannten Objekte">${icon('book')}Geschichte erzählen</button>` : ''}
         ${!p.imported && !running(p.job) ? `<button class="btn ghost sm" id="ctxDev">${icon('refresh')}Neu entwickeln</button>` : ''}</div>
-      ${AF.on('sage') ? '<section class="panel ctx-know" id="ctxKnow"></section>' : ''}
       ${p.imported ? '' : `<div class="stats">
           <div class="stat"><small>Integration</small><b>${dur(r.exposure)}</b></div>
           <div class="stat"><small>Gestackt</small><b class="tnum">${r.n_frames}</b></div>
@@ -624,6 +624,7 @@ async function projectView(el, id, tab = 'bild') {
           <dt>Nächte</dt><dd>${p.nights.map(fnight).join(', ') || '–'}</dd>`}
           ${p.deleted?.frames ? `<dt>Einzelbilder</dt><dd>${p.deleted.frames} gelöscht · ${fmb(p.deleted.bytes)} frei</dd>` : ''}
         </dl></div>
+        ${AF.on('sage') ? '<section class="panel ctx-know" id="ctxKnow"></section>' : ''}
         ${coordsPanel(p.coords)}
         ${rev.length ? `<div class="panel"><h2 style="margin-bottom:12px">KI-Bildprüfung</h2><div class="review">${rev.map(x => x.error
           ? `<div><b>Runde ${x.round}</b> <span class="warn">${esc(x.error)}</span></div>`

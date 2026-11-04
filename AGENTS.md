@@ -359,7 +359,7 @@ Spalte `.imgwrap > #imgSide` neben dem Bild (Standard sichtbar, `bild.details`);
 (17,5/19,5/23 px) bzw. per Einstellung „Darstellung“ (`localStorage af.ui.scale`, `applyUiScale`); neue Stile daher in `rem` schreiben. Nur dunkel. Keine Verläufe, Glühen, Sternenhintergründe, Marketing-Überschriften. Aufwendige Animationen nur für echte Prozesse (`viz.js`, als „Schema“
 gekennzeichnet, mit echten Zahlen aus Job/Engine), sonst 150–250 ms. AppShell: Grid `top / side main ctx`; Seite scrollt als Ganzes (Layout-Test braucht das),
 Sidebar/Panel `sticky`. Breiten: ≥ 1280 Panel im Raster, darunter Schublade (`.shell.ctx-shown`); 861–1100 Sidebar nur Symbole; ≤ 860 Leiste unten + `#subnav`.
-Navigation wird einmal gebaut (`buildNav`), `navState` setzt nur Klassen. Bilder-Objektseite: `pipeHtml` bildet `jobs.stage` auf Schritte ab (Kalibrierung und
+Navigation wird einmal gebaut (`buildNav`), `navState` setzt nur Klassen. Bilder-Objektseite: keine Schrittleiste im Kopf (Nutzerwunsch) – der Fortschritt steht in der Bildfläche (`live.js`); `pipeStep` bildet `jobs.stage` auf Schritte ab (für die Schema-Animation in den übrigen Reitern) (Kalibrierung und
 Registrierung laufen innerhalb „Stacking“ und werden nicht getrennt gemeldet).
 Polling alle 2,5 s (`/api/status`), Ansichten zeichnen nur bei geänderter Signatur neu (Formulare/Zoom bleiben erhalten). `route()` verwirft Ansichten, die erst
 nach einem weiteren Klick fertig werden (`routeTicket`), und gibt jeder Ansicht einen eigenen Behälter in `#view` (sonst schrieb eine

@@ -49,7 +49,12 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   **„Über das Objekt“** aus Sage – Kurztext, Kernwerte, deine bisherigen Aufnahmen und der Link zum Artikel – sowie die Daten deiner
   Aufnahme. ← → blättert durch die Galerie, F für Vollbild, „Bearbeiten“ führt zur Verarbeitung unter „Bilder“.
 - **Bilder** dient der Verarbeitung: Die Objektseite steht wie die Übersicht zentriert, die Bild-Details (Kennzahlen,
-  „Über das Objekt“, Bild-Tutor, Himmelsposition) stehen als Spalte neben dem Bild – „Details“ blendet sie aus und ein.
+  Bildqualität, Kanäle, Details, danach „Über das Objekt“ und Himmelsposition) stehen als Spalte neben dem Bild – „Details“
+  blendet sie aus und ein. Keine eigene Schrittleiste mehr: Läuft eine Verarbeitung, zeigt die Bildfläche selbst die
+  Live-Vorschau mit Fortschritt und Schritten.
+- **SkyTrace:** Analysen standardmäßig als große Bildkarten (wie unter „Bilder“), Tabelle weiter umschaltbar.
+  In der **3D-Ansicht** stehen alle Analysen rechts in einer Liste (Suche, Filter „Mit Kandidaten“) – ein Klick lädt Teleskopweg
+  und Bahnen direkt, ohne die Seite zu verlassen.
 - **SkyTrace:** gleichnamige Analysen heißen in der Liste „Variante n von m“ (die neueste „aktuell“); die Vorschau ist nie höher als
   das Fenster, Wiedergabe und Kandidatenwahl bleiben darunter sichtbar.
 - **Sage:** kompakter Objektkopf (Foto, Kurztext, Kernwerte), darunter eine Hauptspalte (Beschreibung, Schnellfakten, Forschung) und

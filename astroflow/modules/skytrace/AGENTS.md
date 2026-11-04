@@ -112,7 +112,8 @@ fehlt `sgp4` im Server, läuft `orbit3d.py` als Skript im Engine-Interpreter (JS
 - Frontend (seit 0.21.0 kein Dialog mehr, Nutzerwunsch „zentrales Feature statt Popup“): `SkyTrace3D.mount(host, run, {focus, session, onCandidate})`
   zeichnet Bühne (Kamera-Wahl, „Schema“, Vollbild), Zeitleiste und Objektliste in einen Behälter (`host._st3d` = Szene, `state()` für Tests) und
   gibt `{dispose, fullscreen}` zurück. Genutzt im Lauf-Reiter `3d` (`tab3d`, nur mit Bildfolge und nicht während einer Analyse; Fokus-Kandidat über
-  `focus3d`, da der Router keine `?`-Parameter kennt) und in `#/skytrace/3d` (`sky3dView`: Lauf per `picker`, zuletzt gewählter in `skytrace.3drun`).
+  `focus3d`, da der Router keine `?`-Parameter kennt) und in `#/skytrace/3d` (`sky3dView`: Analysenliste `.st3d-runs` oben in der Seitenleiste – nach jedem `mount` wieder eingesetzt –,
+  Filter „Mit Kandidaten“ `skytrace.3dhits`, zuletzt gewählter Lauf in `skytrace.3drun`). Liste der Läufe standardmäßig als Karten (`skytrace.view2`).
   Eine gemeinsame Szene über alle Läufe gibt es nicht (jede Beobachtung eigene Zeit/Standort). Taste F = Vollbild. three.js r160 +
   OrbitControls (Import auf `./three.module.min.js` umgeschrieben) und Erdtextur unter `static/vendor/` (Lizenzen in
   `vendor/README.md`), erst beim Öffnen per `import()` geladen. Zeichnet nur bei Änderung; Kamerafahrten entfallen bei

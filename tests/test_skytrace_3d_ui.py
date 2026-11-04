@@ -82,6 +82,6 @@ def test_3d_lauf_ansicht(server, browser, width, tmp_path):
     page.goto(base + "/#/skytrace/3d")
     page.wait_for_selector(".st3d-msg.hint")
     assert page.locator(".st3d-msg a").get_attribute("href") == "#/settings/skytrace"
-    assert page.locator("#st3dRun .pick-btn").is_visible()
+    assert page.locator(".st3d-runs [data-run=synthetic]").is_visible()       # Analysen rechts wählbar
     assert not page.evaluate(FIND_OVERFLOW)
     assert not errors, errors
