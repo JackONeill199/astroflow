@@ -179,7 +179,7 @@ async function galleryView(el) {
     <div class="toolbar"><input type="search" id="gq" placeholder="Objekt suchen …" title="Taste /" value="${esc(q)}"><div class="seg" id="gkind"></div><span class="grow"></span>
       <select id="gsort" aria-label="Sortierung"><option value="recent">Zuletzt bearbeitet</option><option value="name">Name</option><option value="exposure">Belichtungszeit</option><option value="frames">Aufnahmen</option></select>
       <div class="seg" id="gview" aria-label="Ansicht"><button data-v="cards" title="Karten">${icon('grid')}</button><button data-v="table" title="Tabelle">${icon('list')}</button></div></div>
-    <div id="gallery"></div>`;
+    <div id="gallery"><div class="gallery">${'<span class="skel skel-tile"></span>'.repeat(8)}</div></div>`;
   $('#gsort').value = sort;
   const setView = () => $$('#gview button').forEach(b => b.classList.toggle('on', b.dataset.v === mode));
   setView();
@@ -414,7 +414,7 @@ async function picturesView(el) {
       <select id="pkind" aria-label="Objekttyp"></select><span class="grow"></span>
       <select id="psort" aria-label="Sortierung"><option value="recent">Neueste zuerst</option><option value="name">Name</option><option value="exposure">Belichtungszeit</option></select>
       <div class="seg" id="pview" aria-label="Ansicht"><button data-v="grid" title="Großes Raster">${icon('grid')}</button><button data-v="small" title="Kleines Raster">${icon('image')}</button><button data-v="list" title="Liste">${icon('list')}</button></div></div>
-    <div id="pics"></div>`;
+    <div id="pics"><div class="igrid" style="--tile:260px">${'<span class="skel skel-thumb"></span>'.repeat(10)}</div></div>`;
   const save = () => store.set('pictures', { q, kind, sort, view: mode });
   $('#psort').value = sort;
   const setView = () => $$('#pview button').forEach(b => b.classList.toggle('on', b.dataset.v === mode));

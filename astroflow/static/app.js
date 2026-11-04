@@ -445,7 +445,16 @@ const PAGE_NARROW = [/^\/settings/];
 // Weicher Seitenwechsel: Die bisherige Ansicht bleibt als stilles Abbild („Geist“, ohne IDs, nicht klickbar) stehen, bis die neue
 // fertig ist; dann blenden beide kurz ineinander über. Dauert das Laden länger als SKEL_AFTER, erscheint das Skelett.
 // So gibt es kein falsches Zwischen-Skelett und keinen leeren Moment. Bei „Bewegung reduzieren“ ohne Überblendung.
-const SKEL_AFTER = 350;
+const SKEL_AFTER = 350, LOADBAR_AFTER = 150;
+// Schmaler Ladebalken unter der Werkzeugleiste – sofortige Rückmeldung, solange eine Ansicht lädt (Zähler für Überlappungen)
+const loadbar = (() => {
+  let n = 0, timer = null;
+  const bar = () => $('#loadbar') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'loadbar', className: 'loadbar', role: 'progressbar', ariaLabel: 'Lädt' }));
+  return {
+    start() { n++; if (n === 1) { clearTimeout(timer); timer = setTimeout(() => bar().classList.add('on'), LOADBAR_AFTER); } },
+    stop() { n = Math.max(0, n - 1); if (!n) { clearTimeout(timer); $('#loadbar')?.classList.remove('on'); } },
+  };
+})();
 let ghostEl = null;
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 function makeGhost(prev) {
@@ -493,12 +502,14 @@ async function route() {
     main.replaceChildren($('#subnav'), host);
     window.scrollTo({ top: 0 });
     const ticket = ++routeTicket;
+    loadbar.start();
     const skel = setTimeout(() => { if (ticket === routeTicket) { dropGhost(true); host.classList.remove('pending'); } }, ghostEl ? SKEL_AFTER : 0);
     let v = null;
     try { v = await fn(host, ...m.slice(1)); } catch (e) {
       if (ticket === routeTicket) { console.error(e); host.innerHTML = `<div class="empty">${icon('alert')}<h2>Fehler</h2>${esc(e.message)}</div>`; }
     }
     clearTimeout(skel);
+    loadbar.stop();
     if (ticket !== routeTicket) { v?.destroy?.(); return; }      // inzwischen weiternavigiert – diese Ansicht verwerfen
     view = v;
     const wasPending = host.classList.contains('pending');
@@ -598,55 +609,80 @@ async function homeView(el) {
   const hello = h < 5 || h >= 21 ? 'Gute Nacht' : h < 11 ? 'Guten Morgen' : h < 17 ? 'Willkommen zurück' : 'Guten Abend';
   el.innerHTML = `<div class="pagehead"><div><h1>Übersicht</h1><p class="welcome">${hello} – deine Aufnahmen, Analysen und Entdeckungen.</p></div>
       <div class="page-actions"><label class="dashboard-mode"><span>Aufteilung</span><select aria-label="Dashboard-Aufteilung"><option value="balanced">Ausgewogen</option><option value="planning">Nachtplanung</option><option value="library">Bilder &amp; Module</option></select></label></div></div>
-    <div id="hJobs"></div>
+    <div id="hJobs"><p class="hnone hph"><span class="skel-line"></span></p></div>
     <div class="home-grid" id="homeGrid"><div class="home-main">
-      <section id="hRecentS"><h2 class="sect">Zuletzt bearbeitet <a href="${AF.on('stacking') ? '#/galerie' : '#/'}">Galerie öffnen</a></h2><div id="hRecent"></div></section>
-      <section id="hDiscS"><h2 class="sect">Neueste Entdeckungen</h2><div id="hDisc"></div></section>
-      <section><h2 class="sect">Module</h2><div class="home-modules"></div></section>
-    </div><div class="home-featured"></div></div>`;
+      <section id="hRecentS"><h2 class="sect">Zuletzt bearbeitet <a href="${AF.on('stacking') ? '#/galerie' : '#/'}">Galerie öffnen</a></h2><div id="hRecent">
+        <div class="hthumbs hph">${'<span class="skel skel-thumb"></span>'.repeat(4)}</div></div></section>
+      <section id="hDiscS"><h2 class="sect">Neueste Entdeckungen</h2><div id="hDisc"><div class="hdisc hph">${'<span class="skel skel-row"></span>'.repeat(3)}</div></div></section>
+      <section><h2 class="sect">Module</h2><div class="home-modules">${AF.order.filter(id => AF.modules[id].summary).map(id => `<span class="skel skel-card" data-m="${id}"></span>`).join('')}</div></section>
+    </div><div class="home-featured">${AF.order.filter(id => AF.modules[id].homeFeatured).map(id => `<section class="hcard featured" data-m="${id}"><div class="skel skel-feat"></div></section>`).join('')}</div></div>`;
   const layout = $('.dashboard-mode select', el), grid = $('.home-grid', el);
   const saved = store.get('dashboard.layout', 'balanced');
   layout.value = ['balanced', 'planning', 'library'].includes(saved) ? saved : 'balanced';
   grid.dataset.layout = layout.value;
   layout.onchange = () => { grid.dataset.layout = layout.value; store.set('dashboard.layout', layout.value); load(); };
-  const put = (node, html) => { if (node && node.homeHTML !== html) { node.homeHTML = html; node.innerHTML = html; } };
+  // put: nur bei geänderter Ausgabe schreiben; der erste Inhalt eines Abschnitts blendet sanft ein (ersetzt den Platzhalter)
+  const put = (node, html) => { if (node && node.homeHTML !== html) { const first = node.homeHTML === undefined; node.homeHTML = html; node.innerHTML = html;
+    if (first) { node.classList.remove('fill'); void node.offsetWidth; node.classList.add('fill'); } } };
   const safe = async (fn, d) => { try { return (await fn()) ?? d; } catch { return d; } };
-  async function load(st) {
-    st = st || AF.status || await api('/status');
-    const [cards, recent, disc, feats, acts] = await Promise.all([
-      Promise.all(AF.order.map(async id => [id, await safe(() => AF.modules[id].summary?.(st), null)])),
-      Promise.all(AF.order.map(id => safe(() => AF.modules[id].recent?.(st), []))),
-      Promise.all(AF.order.map(id => safe(() => AF.modules[id].discoveries?.(st), []))),
-      Promise.all(AF.order.map(async id => [id, await safe(() => AF.modules[id].homeFeatured?.(st), '')])),
-      safe(() => api('/activity?limit=12'), [])]);
-    if (!el.isConnected) return;
-    put($('.home-modules', el), cards.filter(([, c]) => c).map(([id, c]) => `<a class="modcard" data-m="${id}" href="${c.href}">
+  const failed = (what) => `<p class="mut sm home-err">${icon('alert')}${what} konnte gerade nicht geladen werden.</p>`;
+  // Jeder Abschnitt lädt für sich: schnelle Kacheln stehen sofort, langsame (Heute Nacht, Sage, SkyTrace) folgen ohne die anderen aufzuhalten
+  function load(st) {
+    const statusP = st ? Promise.resolve(st) : AF.status ? Promise.resolve(AF.status) : api('/status');
+    const part = (fn) => statusP.then(fn).catch(() => {});
+    for (const id of AF.order.filter(i => AF.modules[i].summary)) part(async (s) => paintCard(id, await safe(() => AF.modules[id].summary(s), null)));
+    part(async () => paintJobs(await safe(() => api('/activity?limit=12'), [])));
+    part(async (s) => paintRecent(await Promise.all(AF.order.map(id => safe(() => AF.modules[id].recent?.(s), [])))));
+    part(async (s) => paintDisc(await Promise.all(AF.order.map(id => safe(() => AF.modules[id].discoveries?.(s), [])))));
+    for (const id of AF.order.filter(i => AF.modules[i].homeFeatured))
+      part(async (s) => { let html; try { html = await AF.modules[id].homeFeatured(s); } catch { html = failed(AF.info(id)?.name || 'Dieser Bereich'); } paintFeatured(id, html); });
+  }
+  function paintCard(id, c) {
+    const slot = el.isConnected && $(`.home-modules [data-m="${id}"]`, el);
+    if (!slot) return;
+    if (!c) { slot.remove(); return; }
+    const html = `<a class="modcard" data-m="${id}" href="${c.href}">
       <div class="mh">${icon(c.icon || AF.info(id)?.icon || 'grid')}<b>${esc(c.title || AF.info(id)?.name)}</b><span>Öffnen ${icon('arrow')}</span></div>
       <div class="ms">${(c.stats || []).map(([v, l]) => `<div><b class="tnum">${esc(v)}</b><small>${esc(l)}</small></div>`).join('')}</div>
-      <div class="ml">${c.live || esc(c.sub || '')}</div></a>`).join(''));
+      <div class="ml">${c.live || esc(c.sub || '')}</div></a>`;
+    if (slot.homeHTML === html) return;
+    const tmp = document.createElement('div'); tmp.innerHTML = html;
+    const card = tmp.firstElementChild; card.homeHTML = html;
+    if (slot.classList.contains('skel')) card.classList.add('fill');
+    slot.replaceWith(card);
+  }
+  function paintJobs(acts) {
+    if (!el.isConnected) return;
     const act = acts.filter(running);
     put($('#hJobs', el), act.length ? `<section class="home-jobs"><h2 class="sect">Laufende Aufträge <a href="#/activity">Alle anzeigen</a></h2><div class="hjobs">${act.slice(0, 5).map(j => `<a class="hjob" href="${j.href || '#/activity'}"><b>${esc(j.title)}</b>
         <span class="mut">${esc(AF.info(j.module)?.name || j.module)} · ${esc(j.state === 'queued' ? 'wartet' : j.stage || j.detail || 'läuft')}</span>
         <div class="progress ${j.state === 'queued' || j.progress == null ? 'indet' : ''}"><i style="width:${(j.progress || 0) * 100}%"></i></div>
         <span class="pc">${j.state === 'running' && j.progress != null ? Math.round(j.progress * 100) + ' %' : ''}</span></a>`).join('')}</div></section>`
       : `<p class="hnone">${icon('check')}Keine laufenden Aufträge${acts[0] ? ` · zuletzt <a href="${acts[0].href || '#/activity'}">${esc(acts[0].title)}</a>, ${ago(acts[0].finished || acts[0].started)}` : ''} · <a href="#/activity">Aufträge</a></p>`);
+  }
+  function paintRecent(recent) {
+    if (!el.isConnected) return;
     const rec = recent.flat().slice(0, 8);
     $('#hRecentS', el).hidden = !rec.length;
     put($('#hRecent', el), `<div class="hthumbs">${rec.map(r => `<a href="${r.href}" title="${esc(r.title)}"><span class="ii"><img src="${r.img}" alt="" loading="lazy"></span><span>${esc(r.title)}</span><small>${esc(r.sub || '')}</small></a>`).join('')}</div>`);
+  }
+  function paintDisc(disc) {
+    if (!el.isConnected) return;
     const ds = disc.flat().sort((a, b) => (b.t || 0) - (a.t || 0)).slice(0, 6);
     $('#hDiscS', el).hidden = !ds.length;
     put($('#hDisc', el), `<div class="hdisc">${ds.map(d => `<a class="hd" href="${d.href}">${d.img ? `<img src="${d.img}" alt="" loading="lazy">` : `<span class="hdi">${icon(d.icon || 'sparkle')}</span>`}
       <div><small>${esc(d.kicker || '')}</small><b>${esc(d.title)}</b><span>${esc(d.sub || '')}</span></div></a>`).join('')}</div>`);
+  }
+  function paintFeatured(id, html) {
+    if (!el.isConnected) return;
     const fgroup = $('.home-featured', el);
-    for (const [id, html] of feats) {
-      let node = fgroup.querySelector(`[data-m="${id}"]`);
-      if (!html) { node?.remove(); continue; }
-      if (!node) { node = document.createElement('section'); node.className = 'hcard featured'; node.dataset.m = id; fgroup.append(node); }
-      put(node, html);
-    }
+    let node = fgroup.querySelector(`[data-m="${id}"]`);
+    if (!html) node?.remove();
+    else { if (!node) { node = document.createElement('section'); node.className = 'hcard featured'; node.dataset.m = id; fgroup.append(node); } put(node, html); }
     grid.classList.toggle('has-featured', !!fgroup.children.length);
   }
-  await load();
+  grid.classList.toggle('has-featured', !!$('.home-featured', el).children.length);
+  load();                                     // nicht abwarten: das Gerüst steht sofort, die Abschnitte füllen sich einzeln
   return { update: load };
 }
 
