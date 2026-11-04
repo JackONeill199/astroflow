@@ -287,3 +287,20 @@ def test_mono_single_filter_composite_is_normalized(comet_env, tmp_path):
         assert max(ref.values()) < 5 and out.max() < 50                                     # nicht mehr in ADU
     finally:
         shutil.rmtree(s.work_dir / f"p{pid}", ignore_errors=True)
+
+
+def test_comet_project_needs_no_object_determination(tmp_path, monkeypatch):
+    """Am Namen erkannter Komet: kein „Objekt unbekannt / Jetzt bestimmen“ (can_solve), auch ohne Koordinaten."""
+    monkeypatch.setenv("ASTROFLOW_SOLVER", "off")              # kein echtes ASTAP beim Scan
+    from fastapi.testclient import TestClient
+    from astroflow.server import create_app
+    s = load_settings(tmp_path / "d")
+    s.auto = False
+    demo.generate_comet(s.input_dir / "k", n_lights=4)
+    with TestClient(create_app(s)) as c:
+        c.post("/api/stacking/scan")
+        p = c.get("/api/stacking/projects").json()[0]
+        assert p["name"] == "C/2026 A1" and p["comet"] and p["coords"] is None and not p["can_solve"]
+        c.patch(f"/api/stacking/projects/{p['id']}", json={"options": {"comet_mode": "off"}})
+        p = c.get(f"/api/stacking/projects/{p['id']}").json()
+        assert not p["comet"] and p["can_solve"]                  # Kometenmodus aus: wie jedes unbekannte Objekt

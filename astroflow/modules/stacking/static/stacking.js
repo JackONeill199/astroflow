@@ -516,6 +516,8 @@ async function projectView(el, id, tab = 'bild') {
       ${p.can_solve && !p.coords && !busy ? `<div class="notice">${icon('star')}<div><b>Objekt unbekannt</b><div class="mut sm">Die Aufnahmen enthalten weder Objektnamen noch Koordinaten.
         Plate-Solving bestimmt die Himmelsposition aus dem Sternmuster und ordnet sie dem richtigen Objekt zu.</div></div><span class="grow"></span>
         <button class="btn sm" id="solveBtn">Jetzt bestimmen</button></div>` : ''}
+      ${p.comet && /Plate-Solver/.test(r?.stats?.comet?.ephemeris_error || '') && !busy ? `<div class="notice">${icon('star')}<div><b>Kometenbahn aus dem Bild gemessen</b><div class="mut sm">Mit eingerichtetem Plate-Solver (z. B. ASTAP) holt AstroFlow die Bahn von ${esc(r.stats.comet.designation || 'diesem Kometen')} zusätzlich aus der JPL-Ephemeride – genauer bei schwachen oder sehr schnellen Kometen.</div></div><span class="grow"></span>
+        <a class="btn ghost sm" href="#/settings/stacking">Einstellungen</a></div>` : ''}
       ${p.job?.state === 'error' && !busy ? `<div class="notice err">${icon('alert')}<div><b>Letzter Durchlauf fehlgeschlagen</b><div class="mut sm">${esc(p.job.message)}</div></div></div>` : ''}
       <div class="pipe-viz" id="pipeViz" hidden></div>
       <div id="job" style="margin:-4px 0 14px">${jobLine(p.job)}</div>

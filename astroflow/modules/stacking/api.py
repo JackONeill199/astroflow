@@ -337,6 +337,7 @@ def build_router(eng: Engine) -> APIRouter:
         for p in rows:
             pid = p["id"]
             imported = json.loads(p["options"] or "{}").get("input_type") == "picture"
+            is_comet = not imported and comet.active(p, json.loads(p["options"] or "{}"))
             fr = counts.get(pid, {})
             sv = solve.get(pid)
             d = dl.get(pid, {"n": 0, "b": 0, "s": 0})
@@ -351,8 +352,9 @@ def build_router(eng: Engine) -> APIRouter:
                 "options": json.loads(p["options"] or "{}"), "frames": fr, "total": sum(fr.values()),
                 "companions": comp.get(pid, 0),
                 "nights": nights.get(pid, []), "n_results": n_results.get(pid, 0), "created": p["created"],
-                "coords": coords, "can_solve": not imported and not p["obj_id"], "imported": imported,
-                "comet": not imported and comet.active(p, json.loads(p["options"] or "{}")),
+                # Kometen sind am Namen erkannt: „Objekt bestimmen“ würde nichts zuordnen (der Stack wird für die Bahn ohnehin gelöst)
+                "coords": coords, "can_solve": not imported and not p["obj_id"] and not is_comet, "imported": imported,
+                "comet": is_comet,
                 # Einzelbilder nach dem Stacking gelöscht -> kein komplettes Neu-Stacken mehr möglich
                 "deleted": {"frames": d["n"], "bytes": d["b"], "can_restack": not imported and d["s"] == 0},
                 "result": {"id": lr["id"], "created": lr["created"], "n_frames": lr["n_frames"], "exposure": lr["exposure"],
