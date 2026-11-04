@@ -339,6 +339,9 @@ der Watcher berücksichtigt auch bereits gescannte, noch neue Frames. Letzte Feh
 `Engine._queue_lock` verhindert doppelte Aufträge durch gleichzeitig arbeitende Worker/Watcher.
 Objekt löschen (`DELETE /api/stacking/projects/{id}` → `Pipeline.delete_project`, 409 während eines Jobs): Ergebnisse, Stack, Jobs, hochgeladene
 Rohbilder weg; Frames aus eingebundenen Ordnern bleiben als `kind='ignored'` in der DB, `_fingerprints` überspringt sie.
+`results/{id}/objects` (seit 0.21.0): Katalogobjekte in JPG-Pixeln aus `work/p<id>/wcs.json` über `services.project_solution`, Cache
+`work/p<id>/objekte_r<rid>.json` (neu, wenn wcs.json jünger) – Frontend `plateLabels(rid)` als `createViewer`-Overlay, Klasse `.hover-labels`
+(nur beim Überfahren sichtbar). Seitenwechsel-Geist blendet `canvas`/`video` aus (freigegebenes WebGL wäre weiß). Test: `test_result_objects.py`.
 REST unter `/api/stacking`: `status`, `scan`, `projects[/{id}]` (GET/PATCH/DELETE), `projects/{id}/process|solve|frames`, `frames/{id}` (PATCH manual),
 `jobs`, `develop-all` (alle Objekte mit Master-Stack neu entwickeln, Galerie-Knopf), `tutor`, `results/{id}/tutor[/ki]`, `upload` (behält bis zu 4 Ordnerebenen, blockt `..`), `results/{id}/{tif|png|jpg|thumb|fits|before}`, `reviewer`, `solver`, `storage`, `starnet`.
 Kern: `/api/app` (Module, Build), `/api/folders?path=` (Ordnerdialog), `/api/status` (`{version, busy, modules:{id: status}}`), `/api/activity` (alle Module), `/api/modules` (ein/aus).

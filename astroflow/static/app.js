@@ -457,6 +457,8 @@ function makeGhost(prev) {
   Object.assign(g.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: Math.max(0, innerHeight - r.top) + 'px' });
   g.append(...prev.childNodes);
   g.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));       // globale $('#…') treffen nur die neue Ansicht
+  // Zeichenflächen der beendeten Ansicht (WebGL der 3D-Szene, Diagramme) sind schon freigegeben und würden weiß aufblitzen
+  g.querySelectorAll('canvas, video').forEach(n => { n.style.visibility = 'hidden'; });
   document.body.append(g);
   return g;
 }

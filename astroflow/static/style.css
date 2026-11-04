@@ -404,6 +404,14 @@ td .why { color: var(--mut); white-space: normal; font-size: 0.75rem }
 .viewer img.b, .viewer img.a { opacity: 0; transition: opacity .4s var(--ease) }
 .viewer.anim img.b, .viewer.anim img.a { transition: transform .3s var(--ease), opacity .4s var(--ease) }
 .viewer.ready img.b, .viewer.ready img.a { opacity: 1 }
+/* Markierungen in Bildpixeln (createViewer opts.overlay) – Objektnamen aus dem Plate-Solving; mit .hover-labels nur beim Überfahren */
+.viewer .vov { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; overflow: visible; will-change: transform; opacity: 0; transition: opacity .25s var(--ease) }
+.viewer.ready .vov { opacity: 1 }
+.vov circle { fill: none; stroke: #9fd4ff; stroke-width: 0.1562rem; vector-effect: non-scaling-stroke; opacity: .85 }
+.vov text { fill: #fff; font-family: var(--sans); font-weight: 600; paint-order: stroke; stroke: #000c; stroke-width: 0.1875rem; stroke-linejoin: round }
+.viewer.hover-labels.ready .vov { opacity: 0 }
+.viewer.hover-labels.ready:hover .vov, .viewer.hover-labels.ready:focus-within .vov { opacity: 1 }
+@media (hover: none) { .viewer.hover-labels.ready .vov { opacity: 1 } }
 .viewer .phimg { position: absolute; inset: -1.25rem; width: calc(100% + 2.5rem); height: calc(100% + 2.5rem); object-fit: contain; filter: blur(0.75rem); opacity: .7; transform: none; transition: opacity .6s var(--ease) }
 .viewer.ready .phimg { opacity: 0 }
 .viewer .vload { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 0.625rem; color: #d7dbe2; font-size: 0.7812rem; padding: 0.375rem 0.75rem; border-radius: var(--r-sm); background: #0b0d10d9; transition: opacity .3s }

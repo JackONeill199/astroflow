@@ -314,6 +314,21 @@ function pipeHtml(p) {
 // „Stacking: 37/120 Aufnahmen“ → echte Zahlen für die Visualisierung
 const stackCount = (j) => { const m = /(\d+)\s*\/\s*(\d+)\s*Aufnahmen/.exec(j?.message || ''); return m ? { n: +m[1], total: +m[2] } : {}; };
 
+// Objektnamen im Bild beim Überfahren (Plate-Solving): liefert die overlay-Funktion für createViewer. Die Positionen kommen
+// aus /results/<id>/objects (JPG-Pixel); andere Bildgrößen (Stacking-Stufen) werden mit w / width skaliert.
+function plateLabels(rid) {
+  let d = null, svg = null, w = 0;
+  const draw = (s, width) => {
+    svg = s; w = width;
+    if (!d?.objects?.length) { s.innerHTML = ''; return; }
+    const sc = w / (d.width || w), fs = Math.max(12, w / 48);
+    s.innerHTML = d.objects.map(o => { const x = o.x * sc, y = o.y * sc, r = Math.max(fs * .6, (o.radius || 8) * sc);
+      return `<g><circle cx="${x}" cy="${y}" r="${r}"/><text x="${x + r * .75 + fs * .3}" y="${y - r * .75}" font-size="${fs}">${esc(o.name)}</text><title>${esc(o.name)}${o.kind_label ? ' · ' + esc(o.kind_label) : ''}</title></g>`; }).join('');
+  };
+  api(`/stacking/results/${rid}/objects`).then(x => { d = x; if (svg) draw(svg, w); }).catch(() => {});
+  return draw;
+}
+
 // ---------------------------------------------------------------- Galerie --- //
 // „Über das Objekt“: Wissenskarte aus Sage (Kurztext, Kernwerte, eigene Beobachtungen, Link zum Artikel) – ohne Umweg über Sage.
 // Legt in Sage bei Bedarf einen Grundeintrag an (wie ein Klick ins Bild); ohne Sage-Modul bleibt der Behälter leer.
@@ -372,7 +387,8 @@ async function pictureView(el, pid) {
       <section class="pv-sec"><h2>Deine Aufnahme</h2><dl class="kv">${rows.filter(([, v]) => v).map(([l, v]) => `<dt>${l}</dt><dd>${esc(v)}</dd>`).join('')}</dl></section>
       <p class="dim sm pv-keys">← → blättern · F Vollbild · Esc zurück</p>
     </aside></div>`;
-  const v = createViewer($('#pvView', el), `/api/stacking/results/${r.id}/jpg`, null, undefined, `/api/stacking/results/${r.id}/thumb`);
+  const v = createViewer($('#pvView', el), `/api/stacking/results/${r.id}/jpg`, null, undefined, `/api/stacking/results/${r.id}/thumb`, p.imported ? {} : { overlay: plateLabels(r.id) });
+  v.el.classList.add('hover-labels');
   objectKnowledge($('#pvKnow', el), p.name);
   // Nachbarbilder vorladen, damit ← → ohne Wartezeit wechseln
   for (const nid of new Set([prev, next])) { const q = list.find(x => x.id === nid); if (q && nid !== pid) { new Image().src = `/api/stacking/results/${q.result.id}/jpg`; if (AF.on('sage')) knowledgeCard(q.name); } }
@@ -652,8 +668,8 @@ async function projectView(el, id, tab = 'bild') {
     livePoster = null;
     viewer = c ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${c.id}/jpg`, undefined, ph)
       : before && r.has_before ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${r.id}/before`, ['vorher', 'nachher'], ph)
-      : createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, null, undefined, ph);
-    viewer.el.classList.add('tall');
+      : createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, null, undefined, ph, p.imported ? {} : { overlay: plateLabels(r.id) });
+    viewer.el.classList.add('tall', 'hover-labels');
     $('#ba')?.addEventListener('click', (e) => { const b = e.target.closest('[data-b]'); if (b) { before = b.dataset.b === '1'; drawTab(false); } });
     if (stages.length > 1) {
       let pre = null;                                    // alle Stufen vorladen, sobald der Regler benutzt wird

@@ -45,10 +45,12 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   Aufnahmenächte sind aufklappbar.
 - **Import:** zwei Einstiege mit kurzer Erklärung – „Dateien nach AstroFlow kopieren“ oder „Vorhandenen Ordner einbinden“;
   technische Erläuterungen aufklappbar.
+- **Objektnamen im Bild:** Fährt man mit der Maus über ein Bild (Bilder und Galerie-Betrachter), erscheinen Kreise und Namen
+  der Katalogobjekte dort, wo das Plate-Solving sie gefunden hat; sie wandern mit Zoom und Verschieben (auf Touch-Geräten immer sichtbar).
 - **Ruhigere Seitenwechsel:** Die bisherige Seite bleibt stehen, bis die neue fertig ist – kein kurz aufblitzendes Standard-Skelett
   und kein leerer Moment mehr; ein Platzhalter erscheint nur, wenn das Laden länger dauert. Im Betrachter werden Nachbarbilder und
   ihr Objektwissen vorab geladen, sodass ← → ohne Wartezeit und ohne springende Spalte wechseln. Die Werkzeugleiste oben verschiebt
-  sich nicht mehr, je nachdem ob eine Seite ein Panel hat.
+  sich nicht mehr, je nachdem ob eine Seite ein Panel hat. Beim Verlassen der 3D-Ansicht blitzt die Bühne nicht mehr weiß auf.
 - **Galerie mit eigenem Betrachter:** Ein Klick auf ein Bild öffnet es groß (nicht mehr die Bearbeitungsseite). Daneben steht
   **„Über das Objekt“** aus Sage – Kurztext, Kernwerte, deine bisherigen Aufnahmen und der Link zum Artikel – sowie die Daten deiner
   Aufnahme. ← → blättert durch die Galerie, F für Vollbild, „Bearbeiten“ führt zur Verarbeitung unter „Bilder“.
