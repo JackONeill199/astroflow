@@ -414,7 +414,7 @@ async function picturesView(el) {
       <select id="pkind" aria-label="Objekttyp"></select><span class="grow"></span>
       <select id="psort" aria-label="Sortierung"><option value="recent">Neueste zuerst</option><option value="name">Name</option><option value="exposure">Belichtungszeit</option></select>
       <div class="seg" id="pview" aria-label="Ansicht"><button data-v="grid" title="Großes Raster">${icon('grid')}</button><button data-v="small" title="Kleines Raster">${icon('image')}</button><button data-v="list" title="Liste">${icon('list')}</button></div></div>
-    <div id="pics"><div class="igrid" style="--tile:260px">${'<span class="skel skel-thumb"></span>'.repeat(10)}</div></div>`;
+    <div id="pics"><div class="igrid" style="--tile:16.25rem">${'<span class="skel skel-thumb"></span>'.repeat(10)}</div></div>`;
   const save = () => store.set('pictures', { q, kind, sort, view: mode });
   $('#psort').value = sort;
   const setView = () => $$('#pview button').forEach(b => b.classList.toggle('on', b.dataset.v === mode));
@@ -448,7 +448,7 @@ async function picturesView(el) {
         ${shown.map(p => `<tr class="link" data-href="#/galerie/${p.id}"><td class="name"><img class="tthumb" src="/api/stacking/results/${p.result.id}/thumb" alt="" loading="lazy"><a href="#/galerie/${p.id}">${esc(p.name)}</a></td>
           <td>${esc(p.kind_label || 'Allgemein')}</td><td>${esc(when(p))}</td><td class="num">${p.imported ? '–' : dur(p.result.exposure)}</td><td class="num">${p.imported ? '–' : p.result.n_frames}</td>
           <td class="mut">${p.imported ? 'importiert' : esc(PROFILE_LABEL[p.result.stats?.profile] || '')}</td></tr>`).join('')}</tbody></table></div>`
-      : `<div class="igrid stagger" style="--tile:${mode === 'small' ? '170px' : '260px'}">${shown.map((p, i) => `<a class="itile" href="#/galerie/${p.id}" style="--i:${i}" title="${esc(p.name)}">
+      : `<div class="igrid stagger" style="--tile:${mode === 'small' ? '10.625rem' : '16.25rem'}">${shown.map((p, i) => `<a class="itile" href="#/galerie/${p.id}" style="--i:${i}" title="${esc(p.name)}">
           <span class="ii"><img src="/api/stacking/results/${p.result.id}/thumb" alt="" loading="lazy" decoding="async" onload="this.classList.add('ld')">${running(p.job) ? `<span class="chip acc ist"><span class="spinner" style="width:10px;height:10px"></span>wird aktualisiert</span>` : ''}</span>
           <span class="ic"><b>${esc(p.name)}</b><small>${esc(when(p))}</small></span>${mode === 'small' ? '' : `<span class="im">${esc(meta(p))}</span>`}</a>`).join('')}</div>`;
     host.onclick = (e) => { const tr = e.target.closest('tr[data-href]'); if (tr && !e.target.closest('a')) location.hash = tr.dataset.href; };

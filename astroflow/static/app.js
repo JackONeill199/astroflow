@@ -640,7 +640,9 @@ async function homeView(el) {
   function paintCard(id, c) {
     const slot = el.isConnected && $(`.home-modules [data-m="${id}"]`, el);
     if (!slot) return;
-    if (!c) { slot.remove(); return; }
+    // Fehlschlag: Platz behalten (Hinweis statt Platzhalter), damit die nächste erfolgreiche Aktualisierung die Karte wieder einsetzt
+    if (!c) { if (slot.classList.contains('skel')) { const e = document.createElement('div'); e.className = 'modcard modcard-err fill'; e.dataset.m = id;
+      e.innerHTML = failed(AF.info(id)?.name || 'Dieses Modul'); slot.replaceWith(e); } return; }
     const html = `<a class="modcard" data-m="${id}" href="${c.href}">
       <div class="mh">${icon(c.icon || AF.info(id)?.icon || 'grid')}<b>${esc(c.title || AF.info(id)?.name)}</b><span>Öffnen ${icon('arrow')}</span></div>
       <div class="ms">${(c.stats || []).map(([v, l]) => `<div><b class="tnum">${esc(v)}</b><small>${esc(l)}</small></div>`).join('')}</div>
