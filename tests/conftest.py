@@ -8,10 +8,38 @@ if os.environ.get("PYTEST_XDIST_WORKER"):
         os.environ.setdefault(_k, "2")
     os.environ.setdefault("ASTROFLOW_THREADS", "2")
 
+import subprocess
+import tempfile
 import threading
 import time
+from pathlib import Path
 
 import pytest
+
+# Nie ein echtes GraXpert/StarNet/GPU/Netz in Tests: schon beim Import setzen (vor allen Modul-/Sitzungs-Fixtures,
+# in jedem xdist-Worker, und von Unterprozessen geerbt). Einzelne Tests überschreiben per monkeypatch.
+os.environ.update({"ASTROFLOW_GAIA": "0", "ASTROFLOW_GRAXPERT": "0", "ASTROFLOW_GPU": "0", "ASTROFLOW_SAGE_OFFLINE": "1"})
+
+
+def pytest_configure(config):
+    """Schutz: Programme namens graxpert*/starnet* dürfen nur aus dem Temp-Ordner (Attrappen der Tests) gestartet werden.
+    Ein echtes GraXpert (GB an RAM je Prozess) hat am 04.11.2026 bei paralleler Ausführung den Rechner lahmgelegt."""
+    real_init = subprocess.Popen.__init__
+    tmp = Path(tempfile.gettempdir()).resolve()
+
+    def guarded(self, args, *a, **kw):
+        first = args if isinstance(args, (str, bytes, os.PathLike)) else (args[0] if args else "")
+        exe = Path(os.fsdecode(first))
+        if any(w in exe.name.lower() for w in ("graxpert", "starnet")):
+            try:
+                inside = tmp in exe.resolve().parents
+            except OSError:
+                inside = False
+            if not inside:
+                raise RuntimeError(f"Test startet ein echtes Programm: {exe} (Attrappe im tmp_path verwenden)")
+        real_init(self, args, *a, **kw)
+
+    subprocess.Popen.__init__ = guarded
 
 UI_FILES = ("test_ui_layout.py", "test_skytrace_3d_ui.py", "test_skytrace_video_ui.py")
 
