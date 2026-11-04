@@ -292,3 +292,58 @@ def test_plan_blocks_never_span_cloudy_gaps(tmp_path, monkeypatch):
     for b in d["plan"]:
         inside = [c for t, c in zip(times, cloud) if b["start"] <= t < b["end"] and c is not None]
         assert inside and max(inside) < 80
+
+
+# ---------------------------------------------------------------- Bewölkung: Meldungen und Ziele „bei klarem Himmel“ #
+def _weather(monkeypatch, cloud_of, later_clear=True):
+    """Vorhersage mit Bewölkung je Stunde ab Fensterbeginn; spätere Stunden (nächste Nacht) wahlweise klar."""
+    t0 = tonight._window(EVENING, SITE["lon"])[0]
+    hours = [{"t": t0 + 3600 * i, "cloud": cloud_of(i), "humidity": 50, "dew_spread": 5} for i in range(25)]
+    later = [{"t": t0 + 3600 * i, "cloud": 0 if later_clear else 100} for i in range(26, 48)]
+    monkeypatch.setattr(tonight, "_forecast", lambda *a, **k: {"hours": hours, "later": later, "source": "Test"})
+    tonight._cache.clear()
+
+
+def test_overcast_night_still_shows_targets_marked_for_clear_sky(tmp_path, monkeypatch):
+    _weather(monkeypatch, lambda i: 100)
+    d = tonight.plan([{**M31, "exposure": 1800}], {**SITE, "weather": True}, tmp_path, EVENING, STELLINA)
+    assert d["sky"]["state"] == "overcast" and d["sky"]["mean"] == 100 and d["status"]["code"] == "overcast"
+    assert d["recommendations"] and all(r["weather_blocked"] for r in d["recommendations"])
+    assert all(any("klarem Himmel" in x for x in r["reasons"]) for r in d["recommendations"])
+    assert {r["category"] for r in d["recommendations"]} == {"more", "new"}
+    assert d["plan"] == []                                              # nichts einplanen, was nicht aufgenommen werden kann
+    nc = d["sky"]["next_clear"]
+    assert nc and not nc["tonight"] and nc["end"] - nc["start"] >= 7200      # nächste Nacht klar
+
+
+def test_overcast_without_any_clear_window_says_so(tmp_path, monkeypatch):
+    _weather(monkeypatch, lambda i: 100, later_clear=False)
+    d = tonight.plan([], {**SITE, "weather": True}, tmp_path, EVENING, STELLINA)
+    assert d["status"]["code"] == "overcast" and d["sky"]["next_clear"] is None
+
+
+def test_partly_cloudy_prefers_clear_hours_and_flags_the_rest(tmp_path, monkeypatch):
+    t0 = tonight._window(EVENING, SITE["lon"])[0]
+    _weather(monkeypatch, lambda i: 100 if i < 14 else 0)                  # Abend und halbe Nacht bedeckt, gegen Morgen klar
+    d = tonight.plan([], {**SITE, "weather": True}, tmp_path, EVENING, STELLINA)
+    assert d["sky"]["state"] == "partly" and d["status"]["code"] == "partly"
+    recs = d["recommendations"]
+    assert recs and any(not r["weather_blocked"] for r in recs)
+    assert all(b["start"] >= t0 + 13 * 3600 for b in d["plan"])
+    assert all(r["rank"] < min(x["rank"] for x in recs if not x["weather_blocked"]) + 1.5 for r in recs if r["weather_blocked"])
+
+
+def test_without_weather_there_is_no_sky_or_blocking(tmp_path):
+    d = tonight.plan([], SITE, tmp_path, EVENING, STELLINA)
+    assert d["sky"] is None and d["status"]["code"] == "ok"
+    assert not any(r["weather_blocked"] for r in d["recommendations"] + d["suggestions"])
+
+
+def test_status_separates_height_from_night_over(tmp_path, monkeypatch):
+    monkeypatch.setattr(deepsky, "catalog", lambda: [])
+    assert tonight.plan([], SITE, tmp_path, EVENING, STELLINA)["status"]["code"] == "low_alt"
+    dawn = dt.datetime(2026, 11, 3, 4, 50, tzinfo=dt.timezone.utc).timestamp()             # nach Ende der Dunkelheit, noch laufende Nacht
+    d = tonight.plan([], SITE, tmp_path, dawn, STELLINA)
+    assert d["twilight"]["dark_end"] < dawn and d["status"]["code"] == "over"
+    summer = dt.datetime(2026, 6, 21, 19, tzinfo=dt.timezone.utc).timestamp()
+    assert tonight.plan([], {**SITE, "lat": 80}, tmp_path, summer, STELLINA)["status"]["code"] == "no_dark"
