@@ -314,7 +314,67 @@ function pipeHtml(p) {
 const stackCount = (j) => { const m = /(\d+)\s*\/\s*(\d+)\s*Aufnahmen/.exec(j?.message || ''); return m ? { n: +m[1], total: +m[2] } : {}; };
 
 // ---------------------------------------------------------------- Galerie --- //
-// Bibliothek aller fertigen Astrofotos: rahmenloses Bildraster (zwei Größen) oder Liste; Klick öffnet das Bild.
+// „Über das Objekt“: Wissenskarte aus Sage (Kurztext, Kernwerte, eigene Beobachtungen, Link zum Artikel) – ohne Umweg über Sage.
+// Legt in Sage bei Bedarf einen Grundeintrag an (wie ein Klick ins Bild); ohne Sage-Modul bleibt der Behälter leer.
+async function objectKnowledge(host, name, { heading = true } = {}) {
+  if (!host || !AF.on('sage') || !name) { if (host) host.hidden = true; return; }
+  host.innerHTML = `${heading ? '<h2>Über das Objekt</h2>' : ''}<div class="skel" style="height:5.5rem"></div>`;
+  let c;
+  try { c = await api('/sage/kb/card?name=' + encodeURIComponent(name)); } catch { c = null; }
+  if (!host.isConnected) return;
+  if (!c?.found) { host.innerHTML = `${heading ? '<h2>Über das Objekt</h2>' : ''}<p class="mut sm">Sage kennt dieses Objekt noch nicht.</p>`; return; }
+  const text = String(c.summary || '').replace(/\s*\[S\d+\]/g, '').trim();
+  const facts = (c.facts || []).filter(f => f.value);
+  host.innerHTML = `${heading ? `<h2>Über ${esc(c.name)}</h2>` : ''}
+    ${c.otype_label ? `<small class="mut">${esc(c.otype_label)}${c.constellation ? ' · Sternbild ' + esc(c.constellation) : ''}</small>` : ''}
+    <p class="ok-text">${esc(text || 'Sage hat noch keine Beschreibung – im Artikel lässt sie sich recherchieren.')}</p>
+    ${facts.length ? `<dl class="kv">${facts.map(f => `<dt>${esc(f.label)}</dt><dd>${esc(f.value)}${f.status === 'conflict' ? ' <span class="warn" title="Quellen widersprechen sich">!</span>' : ''}</dd>`).join('')}</dl>` : ''}
+    ${c.mine?.length ? `<ul class="ok-mine">${c.mine.map(m => `<li>${esc(m.text || '')}</li>`).join('')}</ul>` : ''}
+    <a class="linkbtn" href="#/sage/o/${encodeURIComponent(c.id)}">${icon('book')}Ganzen Artikel in Sage lesen</a>`;
+}
+
+let galleryOrder = null;                                       // zuletzt angezeigte Reihenfolge der Galerie
+// Betrachter: Bild groß, daneben Wissen über das Objekt und die eigene Aufnahme; ←/→ blättern, F Vollbild, Esc zurück
+async function pictureView(el, pid) {
+  pid = +pid;
+  const list = (await api('/stacking/projects')).filter(p => p.result && !p.options?.gallery_parent);
+  const p = list.find(x => x.id === pid);
+  if (!p) { location.hash = '#/galerie'; return; }
+  const ids = (galleryOrder || []).filter(id => list.some(x => x.id === id));
+  const order = ids.includes(pid) ? ids : list.sort((a, b) => (b.result.created || 0) - (a.result.created || 0)).map(x => x.id);
+  const i = order.indexOf(pid), prev = order[(i - 1 + order.length) % order.length], next = order[(i + 1) % order.length];
+  crumbs([['Galerie', '#/galerie'], [p.name]]);
+  const r = p.result, s = r.stats || {}, imp = s.imported || {};
+  const rows = p.imported
+    ? [['Art', 'Fertiges Bild · importiert'], ['Aufgenommen', imp.date_obs ? String(imp.date_obs).slice(0, 10) : null], ['Gerät', imp.camera || imp.instrument], ['Format', imp.format]]
+    : [['Belichtung', dur(r.exposure)], ['Aufnahmen', `${r.n_frames} gestackt`], ['Nächte', p.nights.map(fnight).join(', ')], ['Gerät', s.device || s.instrument],
+       ['Sternschärfe', s.fwhm_px ? `${s.fwhm_px} px (FWHM)` : null], ['Version', `${(p.n_results || 1) > 1 ? `neueste von ${p.n_results}` : 'einzige'} · ${fdate(r.created)}`]];
+  el.innerHTML = `<div class="pv">
+    <div class="pv-stage"><div id="pvView"></div>
+      ${order.length > 1 ? `<a class="pv-nav prev" href="#/galerie/${prev}" title="Vorheriges Bild (←)" aria-label="Vorheriges Bild">${icon('chev')}</a>
+        <a class="pv-nav next" href="#/galerie/${next}" title="Nächstes Bild (→)" aria-label="Nächstes Bild">${icon('chev')}</a>` : ''}</div>
+    <aside class="pv-side">
+      <div class="pv-head"><a class="linkbtn pv-back" href="#/galerie">${icon('back')}Galerie${order.length > 1 ? ` · ${i + 1} von ${order.length}` : ''}</a>
+        <h1>${esc(p.name)}</h1>${p.kind_label ? `<small class="mut">${esc(p.kind_label)}</small>` : ''}
+        <div class="row pv-acts"><a class="btn sm" href="#/p/${p.id}/bild">${icon('edit')}Bearbeiten</a><a class="btn ghost sm" href="/api/stacking/results/${r.id}/jpg" download>${icon('down')}JPEG</a></div></div>
+      <section class="pv-sec" id="pvKnow"></section>
+      <section class="pv-sec"><h2>Deine Aufnahme</h2><dl class="kv">${rows.filter(([, v]) => v).map(([l, v]) => `<dt>${l}</dt><dd>${esc(v)}</dd>`).join('')}</dl></section>
+      <p class="dim sm pv-keys">← → blättern · F Vollbild · Esc zurück</p>
+    </aside></div>`;
+  const v = createViewer($('#pvView', el), `/api/stacking/results/${r.id}/jpg`, null, undefined, `/api/stacking/results/${r.id}/thumb`);
+  objectKnowledge($('#pvKnow', el), p.name);
+  const onKey = (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input,select,textarea') || $('dialog[open]')) return;
+    if (e.key === 'ArrowLeft' && order.length > 1) { location.hash = `#/galerie/${prev}`; e.preventDefault(); }
+    else if (e.key === 'ArrowRight' && order.length > 1) { location.hash = `#/galerie/${next}`; e.preventDefault(); }
+    else if ((e.key === 'f' || e.key === 'F')) { $('#pvView [data-a=full]', el)?.click(); e.preventDefault(); }
+    else if (e.key === 'Escape' && !$('#pvView .viewer.full', el)) location.hash = '#/galerie';
+  };
+  document.addEventListener('keydown', onKey);
+  return { destroy: () => { v.destroy(); document.removeEventListener('keydown', onKey); } };
+}
+
+// Bibliothek aller fertigen Astrofotos: rahmenloses Bildraster (zwei Größen) oder Liste; Klick öffnet den Betrachter.
 async function picturesView(el) {
   crumbs([['Galerie']]);
   const ui = store.get('pictures', {});
@@ -347,6 +407,7 @@ async function picturesView(el) {
     const shown = list.filter(p => (kind === 'all' || (p.kind || 'generic') === kind) && words.every(w => (p.name + ' ' + (p.kind_label || '')).toLowerCase().includes(w)));
     const key = { recent: p => -(p.result.created || 0), name: p => p.name.toLowerCase(), exposure: p => -(p.result.exposure || 0) }[sort];
     shown.sort((a, b) => key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0);
+    galleryOrder = shown.map(p => p.id);                       // Reihenfolge für Vor/Zurück im Betrachter
     const s = JSON.stringify([mode, shown.map(p => [p.id, p.result.id, p.name])]);
     if (!force && s === sig) return;
     sig = s;
@@ -355,10 +416,10 @@ async function picturesView(el) {
     if (!shown.length) { host.innerHTML = `<div class="empty">${icon('search')}<h2>Keine Treffer</h2>Kein Bild passt zu deiner Suche.</div>`; return; }
     const meta = (p) => p.imported ? 'Fertiges Bild' : `${dur(p.result.exposure)} · ${p.result.n_frames} Aufnahmen${p.result.stats?.palette && p.result.stats.palette !== 'OSC' ? ' · ' + (PALETTE_LABEL[p.result.stats.palette] || p.result.stats.palette) : ''}`;
     host.innerHTML = mode === 'list' ? `<div class="tablewrap free"><table><thead><tr><th class="nosort">Bild</th><th class="nosort">Typ</th><th class="nosort">Datum</th><th class="nosort num">Belichtung</th><th class="nosort num">Aufnahmen</th><th class="nosort">Bearbeitung</th></tr></thead><tbody>
-        ${shown.map(p => `<tr class="link" data-href="#/p/${p.id}/bild"><td class="name"><img class="tthumb" src="/api/stacking/results/${p.result.id}/thumb" alt="" loading="lazy"><a href="#/p/${p.id}/bild">${esc(p.name)}</a></td>
+        ${shown.map(p => `<tr class="link" data-href="#/galerie/${p.id}"><td class="name"><img class="tthumb" src="/api/stacking/results/${p.result.id}/thumb" alt="" loading="lazy"><a href="#/galerie/${p.id}">${esc(p.name)}</a></td>
           <td>${esc(p.kind_label || 'Allgemein')}</td><td>${esc(when(p))}</td><td class="num">${p.imported ? '–' : dur(p.result.exposure)}</td><td class="num">${p.imported ? '–' : p.result.n_frames}</td>
           <td class="mut">${p.imported ? 'importiert' : esc(PROFILE_LABEL[p.result.stats?.profile] || '')}</td></tr>`).join('')}</tbody></table></div>`
-      : `<div class="igrid stagger" style="--tile:${mode === 'small' ? '170px' : '260px'}">${shown.map((p, i) => `<a class="itile" href="#/p/${p.id}/bild" style="--i:${i}" title="${esc(p.name)}">
+      : `<div class="igrid stagger" style="--tile:${mode === 'small' ? '170px' : '260px'}">${shown.map((p, i) => `<a class="itile" href="#/galerie/${p.id}" style="--i:${i}" title="${esc(p.name)}">
           <span class="ii"><img src="/api/stacking/results/${p.result.id}/thumb" alt="" loading="lazy" decoding="async" onload="this.classList.add('ld')">${running(p.job) ? `<span class="chip acc ist"><span class="spinner" style="width:10px;height:10px"></span>wird aktualisiert</span>` : ''}</span>
           <span class="ic"><b>${esc(p.name)}</b><small>${esc(when(p))}</small></span>${mode === 'small' ? '' : `<span class="im">${esc(meta(p))}</span>`}</a>`).join('')}</div>`;
     host.onclick = (e) => { const tr = e.target.closest('tr[data-href]'); if (tr && !e.target.closest('a')) location.hash = tr.dataset.href; };
@@ -523,6 +584,7 @@ async function projectView(el, id, tab = 'bild') {
     AF.ctx.open(el, { title: 'Bild-Details', html: `<div class="row ctx-acts"><a class="btn ghost sm" href="/api/stacking/results/${r.id}/jpg" download>${icon('down')}JPEG</a>
         ${AF.on('sage') ? `<button class="btn ghost sm" id="ctxStory" title="Sage nutzt die vorhandene Plate-Solving-Lösung und die erkannten Objekte">${icon('book')}Geschichte erzählen</button>` : ''}
         ${!p.imported && !running(p.job) ? `<button class="btn ghost sm" id="ctxDev">${icon('refresh')}Neu entwickeln</button>` : ''}</div>
+      ${AF.on('sage') ? '<section class="panel ctx-know" id="ctxKnow"></section>' : ''}
       ${p.imported ? '' : `<div class="stats">
           <div class="stat"><small>Integration</small><b>${dur(r.exposure)}</b></div>
           <div class="stat"><small>Gestackt</small><b class="tnum">${r.n_frames}</b></div>
@@ -555,6 +617,7 @@ async function projectView(el, id, tab = 'bild') {
             ${Object.keys(x.adjust || {}).length ? `<div class="mut sm">${Object.entries(x.adjust).map(([k, v]) => `${esc(k)} → ${esc(v)}`).join(' · ')}</div>` : ''}</div>`).join('')}</div></div>` : ''}
 ` });
     $('#ctxStory')?.addEventListener('click', story);
+    objectKnowledge($('#ctxKnow'), p.name);
     $('#ctxDev')?.addEventListener('click', develop);
     if (s.quality) tutorPanel($('#tutorBox'), r);
     const ph = !c && !before && livePoster ? livePoster : `/api/stacking/results/${r.id}/thumb`;
@@ -1427,6 +1490,7 @@ AF.register('stacking', {
     [/^\/bilder$/, 'gallery', galleryView],
     [/^\/bilder\/statistik$/, 'statistics', statisticsView],
     [/^\/galerie$/, 'pictures', picturesView],
+    [/^\/galerie\/(\d+)$/, 'pictures', pictureView],
     [/^\/p\/(\d+)(?:\/(\w+))?$/, 'gallery', projectView],
     [/^\/import$/, 'import', importView],
   ],

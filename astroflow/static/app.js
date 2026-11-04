@@ -355,15 +355,16 @@ AF.ctx = {
     return body;
   },
   body() { return $('#ctxBody'); },
-  show() { if (wideCtx()) store.set('ctx.hidden', false); else $('#shell').classList.add('ctx-shown'); ctxSync(); },
-  hide() { if (wideCtx()) store.set('ctx.hidden', true); $('#shell').classList.remove('ctx-shown'); ctxSync(); },
+  shown: false,                                   // Details sind standardmäßig eingeklappt – je Ansicht neu, nicht gespeichert
+  show() { this.shown = true; if (!wideCtx()) $('#shell').classList.add('ctx-shown'); ctxSync(); },
+  hide() { this.shown = false; $('#shell').classList.remove('ctx-shown'); ctxSync(); },
   toggle() { (wideCtx() ? $('#ctx').hidden : !$('#shell').classList.contains('ctx-shown')) ? this.show() : this.hide(); },
-  clear() { this.has = false; $('#ctxBody').replaceChildren(); $('#shell').classList.remove('ctx-shown'); ctxSync(); },
+  clear() { this.has = false; this.shown = false; $('#ctxBody').replaceChildren(); $('#shell').classList.remove('ctx-shown'); ctxSync(); },
 };
 function ctxSync() {
   const has = AF.ctx.has, wide = wideCtx(), shell = $('#shell');
   $('#ctxBtn').hidden = !has;
-  $('#ctx').hidden = !has || (wide && store.get('ctx.hidden', true));
+  $('#ctx').hidden = !has || (wide && !AF.ctx.shown);
   if (wide) shell.classList.remove('ctx-shown');
   const shown = has && (wide ? !$('#ctx').hidden : shell.classList.contains('ctx-shown'));
   $('#ctxBtn').classList.toggle('on', shown);
@@ -439,7 +440,7 @@ const coreRoutes = [
 const allRoutes = () => [...coreRoutes, ...AF.order.flatMap(id => AF.modules[id].routes || [])];
 // Inhaltsbreite je Ansicht: Arbeitsflächen (Bild bearbeiten, Spuren prüfen, 3D) nutzen die Breite, Formulare/Import bleiben schmal,
 // alles andere ist zentriert auf --page-max begrenzt (style.css → .page)
-const PAGE_WIDE = [/^\/p\//, /^\/skytrace\/(?!neu$|statistik$|erfolge$)[^/]+/];
+const PAGE_WIDE = [/^\/p\//, /^\/galerie\/\d+$/, /^\/skytrace\/(?!neu$|statistik$|erfolge$)[^/]+/];
 const PAGE_NARROW = [/^\/settings/];
 async function route() {
   const path = location.hash.replace(/^#/, '') || '/';
