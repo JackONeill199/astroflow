@@ -69,7 +69,16 @@ kbd { font-size: 0.6875rem; font-weight: 500; line-height: 1; padding: 0.1875rem
 @keyframes spin { to { transform: rotate(360deg) } }
 @keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
 @keyframes sheen { from { transform: translateX(-100%) } to { transform: translateX(250%) } }
-.enter { animation: fadeIn var(--t2) var(--ease) both }
+.enter { animation: fadeIn var(--t) var(--ease) both }
+/* Seitenwechsel (app.js route): neue Ansicht unsichtbar, bis sie fertig ist; die alte bleibt kurz als „Geist“ stehen */
+.page.pending { opacity: 0; pointer-events: none }
+/* Panel-Knopf oben behält seinen Platz (sonst rücken Suche und Import seitlich, je nachdem ob die Seite ein Panel hat) */
+.top #ctxBtn[hidden] { display: inline-flex !important; visibility: hidden }
+.page-ghost { position: fixed; z-index: 5; overflow: hidden; pointer-events: none; transition: opacity 120ms var(--ease) }
+.swap { animation: swapIn 140ms var(--ease) both }
+@keyframes swapIn { from { opacity: .7 } }
+.page-ghost.out { opacity: 0 }
+@media (prefers-reduced-motion: reduce) { .page-ghost { display: none } }
 .stagger > * { animation: fadeUp var(--t2) var(--ease) both; animation-delay: calc(min(var(--i, 0), 10) * 18ms) }
 .spinner { width: 0.875rem; height: 0.875rem; border-radius: 50%; border: 2px solid color-mix(in srgb, currentColor 22%, transparent); border-top-color: currentColor; animation: spin .8s linear infinite; flex: none }
 .live { display: inline-block; width: 0.4375rem; height: 0.4375rem; border-radius: 50%; background: var(--acc); animation: pulse 1.6s ease-in-out infinite; flex: none }

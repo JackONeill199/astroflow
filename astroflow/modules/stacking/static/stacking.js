@@ -317,11 +317,19 @@ const stackCount = (j) => { const m = /(\d+)\s*\/\s*(\d+)\s*Aufnahmen/.exec(j?.m
 // ---------------------------------------------------------------- Galerie --- //
 // „Über das Objekt“: Wissenskarte aus Sage (Kurztext, Kernwerte, eigene Beobachtungen, Link zum Artikel) – ohne Umweg über Sage.
 // Legt in Sage bei Bedarf einen Grundeintrag an (wie ein Klick ins Bild); ohne Sage-Modul bleibt der Behälter leer.
+// Wissenskarten im Speicher (Blättern im Betrachter ohne Nachladen und ohne springende Spalte); Vorabruf für Nachbarbilder
+const knowCache = new Map();
+const knowledgeCard = (name) => {
+  if (!knowCache.has(name)) knowCache.set(name, api('/sage/kb/card?name=' + encodeURIComponent(name)).catch(() => { knowCache.delete(name); return null; }));
+  return knowCache.get(name);
+};
 async function objectKnowledge(host, name, { heading = true } = {}) {
   if (!host || !AF.on('sage') || !name) { if (host) host.hidden = true; return; }
-  host.innerHTML = `${heading ? '<h2>Über das Objekt</h2>' : ''}<div class="skel" style="height:5.5rem"></div>`;
-  let c;
-  try { c = await api('/sage/kb/card?name=' + encodeURIComponent(name)); } catch { c = null; }
+  if (!knowCache.has(name) || !knowCache.get(name).done)          // Platzhalter etwa so hoch wie eine typische Karte
+    host.innerHTML = `${heading ? '<h2>Über das Objekt</h2>' : ''}<div class="skel" style="height:15rem"></div>`;
+  const pending = knowledgeCard(name);
+  const c = await pending;
+  pending.done = true;
   if (!host.isConnected) return;
   if (!c?.found) { host.innerHTML = `${heading ? '<h2>Über das Objekt</h2>' : ''}<p class="mut sm">Sage kennt dieses Objekt noch nicht.</p>`; return; }
   const text = String(c.summary || '').replace(/\s*\[S\d+\]/g, '').trim();
@@ -335,10 +343,12 @@ async function objectKnowledge(host, name, { heading = true } = {}) {
 }
 
 let galleryOrder = null;                                       // zuletzt angezeigte Reihenfolge der Galerie
+let pvList = null, pvAt = 0;                                   // Projektliste für den Betrachter (Blättern ohne erneutes Laden)
 // Betrachter: Bild groß, daneben Wissen über das Objekt und die eigene Aufnahme; ←/→ blättern, F Vollbild, Esc zurück
 async function pictureView(el, pid) {
   pid = +pid;
-  const list = (await api('/stacking/projects')).filter(p => p.result && !p.options?.gallery_parent);
+  if (!pvList || Date.now() - pvAt > 30000 || !pvList.some(x => x.id === pid)) { pvList = (await api('/stacking/projects')).filter(p => p.result && !p.options?.gallery_parent); pvAt = Date.now(); }
+  const list = pvList;
   const p = list.find(x => x.id === pid);
   if (!p) { location.hash = '#/galerie'; return; }
   const ids = (galleryOrder || []).filter(id => list.some(x => x.id === id));
@@ -364,6 +374,8 @@ async function pictureView(el, pid) {
     </aside></div>`;
   const v = createViewer($('#pvView', el), `/api/stacking/results/${r.id}/jpg`, null, undefined, `/api/stacking/results/${r.id}/thumb`);
   objectKnowledge($('#pvKnow', el), p.name);
+  // Nachbarbilder vorladen, damit ← → ohne Wartezeit wechseln
+  for (const nid of new Set([prev, next])) { const q = list.find(x => x.id === nid); if (q && nid !== pid) { new Image().src = `/api/stacking/results/${q.result.id}/jpg`; if (AF.on('sage')) knowledgeCard(q.name); } }
   const onKey = (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input,select,textarea') || $('dialog[open]')) return;
     if (e.key === 'ArrowLeft' && order.length > 1) { location.hash = `#/galerie/${prev}`; e.preventDefault(); }

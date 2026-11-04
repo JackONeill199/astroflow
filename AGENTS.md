@@ -361,6 +361,9 @@ gekennzeichnet, mit echten Zahlen aus Job/Engine), sonst 150–250 ms. AppShell:
 Sidebar/Panel `sticky`. Breiten: ≥ 1280 Panel im Raster, darunter Schublade (`.shell.ctx-shown`); 861–1100 Sidebar nur Symbole; ≤ 860 Leiste unten + `#subnav`.
 Navigation wird einmal gebaut (`buildNav`), `navState` setzt nur Klassen. Bilder-Objektseite: keine Schrittleiste im Kopf (Nutzerwunsch) – der Fortschritt steht in der Bildfläche (`live.js`); `pipeStep` bildet `jobs.stage` auf Schritte ab (für die Schema-Animation in den übrigen Reitern) (Kalibrierung und
 Registrierung laufen innerhalb „Stacking“ und werden nicht getrennt gemeldet).
+**Seitenwechsel** (`route`): neue Ansicht als `.page.pending` (unsichtbar) aufbauen, die alte bleibt als `.page-ghost` (fest positioniert,
+IDs entfernt, nicht klickbar) stehen; fertig → Geist sofort weg + `.swap` (kurze Einblendung von 70 %); dauert es > `SKEL_AFTER` 350 ms,
+Geist ausblenden und Skelett zeigen. Keine Kreuzblende (Text lag doppelt übereinander). Messen: Layout-Shift-Observer + Zwischenbilder.
 Polling alle 2,5 s (`/api/status`), Ansichten zeichnen nur bei geänderter Signatur neu (Formulare/Zoom bleiben erhalten). `route()` verwirft Ansichten, die erst
 nach einem weiteren Klick fertig werden (`routeTicket`), und gibt jeder Ansicht einen eigenen Behälter in `#view` (sonst schrieb eine
 verworfene, noch ladende Ansicht über die aktuelle). Ansichten, die nach `await` global per `$('#…')` suchen, vorher `el.isConnected` prüfen. Bildbetrachter `createViewer(host, src, cmpSrc, labels, ph, {overlay})` mit Zoom/Pan/Pinch, Vergleich

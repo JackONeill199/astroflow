@@ -442,6 +442,31 @@ const allRoutes = () => [...coreRoutes, ...AF.order.flatMap(id => AF.modules[id]
 // alles andere ist zentriert auf --page-max begrenzt (style.css → .page)
 const PAGE_WIDE = [/^\/galerie\/\d+$/, /^\/skytrace\/(?!neu$|statistik$|erfolge$)[^/]+/];
 const PAGE_NARROW = [/^\/settings/];
+// Weicher Seitenwechsel: Die bisherige Ansicht bleibt als stilles Abbild („Geist“, ohne IDs, nicht klickbar) stehen, bis die neue
+// fertig ist; dann blenden beide kurz ineinander über. Dauert das Laden länger als SKEL_AFTER, erscheint das Skelett.
+// So gibt es kein falsches Zwischen-Skelett und keinen leeren Moment. Bei „Bewegung reduzieren“ ohne Überblendung.
+const SKEL_AFTER = 350;
+let ghostEl = null;
+const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+function makeGhost(prev) {
+  const r = prev.getBoundingClientRect();
+  if (!r.width || reducedMotion()) return null;
+  const g = document.createElement('div');
+  g.className = 'page-ghost';
+  g.setAttribute('aria-hidden', 'true');
+  Object.assign(g.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: Math.max(0, innerHeight - r.top) + 'px' });
+  g.append(...prev.childNodes);
+  g.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));       // globale $('#…') treffen nur die neue Ansicht
+  document.body.append(g);
+  return g;
+}
+function dropGhost(fade = false) {          // fertige Ansicht: sofort weg (keine Doppelbelichtung von Text); nur vor dem Skelett ausblenden
+  const g = ghostEl; ghostEl = null;
+  if (!g) return;
+  if (!fade) return g.remove();
+  g.classList.add('out');
+  setTimeout(() => g.remove(), 140);
+}
 async function route() {
   const path = location.hash.replace(/^#/, '') || '/';
   $('#pal').open && $('#pal').close();
@@ -459,19 +484,26 @@ async function route() {
     // eigener Behälter je Aufruf: eine verworfene, noch ladende Ansicht schreibt danach nur in ihren abgehängten Behälter,
     // nicht über die aktuelle (Layout-Test fand das beim schnellen Wechseln)
     const host = document.createElement('div');
-    host.className = 'page' + (PAGE_WIDE.some(r => r.test(path)) ? ' wide' : PAGE_NARROW.some(r => r.test(path)) ? ' narrow' : '');
+    host.className = 'page pending' + (PAGE_WIDE.some(r => r.test(path)) ? ' wide' : PAGE_NARROW.some(r => r.test(path)) ? ' narrow' : '');
     host.innerHTML = '<div class="skel" style="height:40px;max-width:360px;margin-bottom:20px"></div><div class="skel-grid">' + '<div class="skel"></div>'.repeat(3) + '</div>';
+    const prev = [...main.children].find(c => c.classList.contains('page'));
+    if (prev && !ghostEl && !prev.classList.contains('pending')) ghostEl = makeGhost(prev);   // noch ladende Vorgängerin: alten Geist behalten
     main.replaceChildren($('#subnav'), host);
+    window.scrollTo({ top: 0 });
     const ticket = ++routeTicket;
+    const skel = setTimeout(() => { if (ticket === routeTicket) { dropGhost(true); host.classList.remove('pending'); } }, ghostEl ? SKEL_AFTER : 0);
     let v = null;
     try { v = await fn(host, ...m.slice(1)); } catch (e) {
       if (ticket === routeTicket) { console.error(e); host.innerHTML = `<div class="empty">${icon('alert')}<h2>Fehler</h2>${esc(e.message)}</div>`; }
     }
+    clearTimeout(skel);
     if (ticket !== routeTicket) { v?.destroy?.(); return; }      // inzwischen weiternavigiert – diese Ansicht verwerfen
     view = v;
-    host.classList.add('enter');
+    const wasPending = host.classList.contains('pending');
+    host.classList.remove('pending');
+    host.classList.add(wasPending ? 'swap' : 'enter');           // direkt vom Geist zur fertigen Seite: nur ein Hauch Einblendung
+    dropGhost();
     main.focus({ preventScroll: true });
-    window.scrollTo({ top: 0 });
     return;
   }
   location.hash = '#/';
