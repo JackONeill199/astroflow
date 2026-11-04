@@ -13,6 +13,8 @@ const sequenceLoader = () => '<span class="sequence-loader" aria-hidden="true"><
 let lastPress = { el: null, t: 0 };
 addEventListener('pointerdown', (e) => { const b = e.target.closest?.('button, .btn'); if (b) lastPress = { el: b, t: performance.now() }; }, true);
 addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest?.('button, .btn')) lastPress = { el: e.target.closest('button, .btn'), t: performance.now() }; }, true);
+// Laufende Aktion: erneutes Auslösen sperren – auch per Enter/Leertaste (die lösen ebenfalls click aus; pointer-events wirkt nur für die Maus)
+addEventListener('click', (e) => { if (e.target.closest?.('.pending')) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
 async function api(u, opt = {}) {
   const b = opt.method && opt.method !== 'GET' && performance.now() - lastPress.t < 600 && lastPress.el?.isConnected ? lastPress.el : null;
   if (b) { b.classList.add('pending'); b.setAttribute('aria-busy', 'true'); }

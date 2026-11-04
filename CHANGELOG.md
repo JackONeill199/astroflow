@@ -16,6 +16,10 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   Überfahren an, Fokus zeigt einen weichen Leuchtrand. Löst ein Knopf eine Aktion beim Server aus, ist er sofort gesperrt und zeigt nach
   0,15 s einen Kreisel, bis die Antwort da ist – kein doppeltes Klicken mehr, kein Rätseln, ob der Klick angekommen ist.
 
+### Behoben
+- **Doppelter Import-Knopf:** „Bilder“ und „Galerie“ hatten neben „Importieren“ in der Werkzeugleiste einen zweiten Import-Knopf im Seitenkopf.
+  Jetzt gibt es nur noch den oben (in leeren Ansichten bleibt der Hinweis zum Importieren).
+
 ## 0.23.0 – 04.11.2026
 
 ### Neu
