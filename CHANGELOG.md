@@ -3,6 +3,15 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.24.1 – 05.11.2026
+
+### Behoben
+- **Kometen ohne „Objekt unbekannt“:** Am Namen erkannte Kometen (z. B. „C/2022 E3“ aus dem Stellina-Ordner) zeigten oben den
+  Hinweis „Objekt unbekannt“ mit „Jetzt bestimmen“, weil die Aufnahmen keine Koordinaten haben. Der Hinweis und der Menüpunkt
+  „Objekt per Plate-Solving bestimmen“ entfallen bei Kometen. Stattdessen erscheint nur dann ein kurzer Hinweis, wenn die Bahn mangels
+  Plate-Solver allein aus dem Bild gemessen wurde – mit eingerichtetem Solver kommt sie zusätzlich aus der JPL-Ephemeride.
+- Kometenmodus nutzt für die Parallaxe jetzt den Ort der Nacht aus der gemeinsamen Ortsliste (vorher nur die alte Tutor-Einstellung).
+
 ## 0.24.0 – 05.11.2026
 
 ### Neu

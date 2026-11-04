@@ -293,7 +293,7 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   Projektoption `comet_mode` auto|on|off (**nicht** `mode` – das ist bei Aufträgen „develop“), `comet_name` (Bezeichnung für Horizons).
 - **Ablauf** (`Pipeline._comet` am Ende von `stack()`, nur ein Band): Sterne-Stack wie immer (Fortschritt 36–60 %), dann
   `_comet_track`: Horizons (`comet.horizons`, Cache `work/komet/`, geozentrisch abgefragt, Parallaxe lokal per astropy
-  aus Standort `FrameInfo.site` bzw. Tutor-Einstellung – Standort verlässt den Rechner nie; WCS des Sterne-Stacks über
+  aus Standort `FrameInfo.site`, sonst Ort der Nacht aus der gemeinsamen Ortsliste (`services["sites"]`), sonst Tutor-Einstellung – Standort verlässt den Rechner nie; WCS des Sterne-Stacks über
   `_stack_wcs`, gleicher Cache `wcs.json` wie die Farbkalibrierung) und/oder Bildsuche: ≤ 36 Stichproben, Luminanz gebinnt
   auf ≤ 800 px, auf den Sterne-Stack registriert. Grob: Einzelbild − Sterne-Stack → Spitzen → RANSAC-Gerade. Fein (`locate`):
   Bahn so optimieren, dass der Kern im Mittel der entlang der Bahn ausgeschnittenen Differenzbilder (Referenz = Median der
