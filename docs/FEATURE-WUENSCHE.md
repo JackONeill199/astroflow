@@ -10,7 +10,7 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md`, Erledigtes im `CHANGELOG.md`.
 | 2 | 03.11.2026 | Doppelte UI-Elemente vereinheitlichen | offen |
 | 3 | 03.11.2026 | Sage-Inhalte direkt in Bilder | offen |
 | 4 | 03.11.2026 | Übersicht: empfohlene Ziele für heute Nacht | Grundversion in 0.19.0 |
-| 5 | 04.11.2026 | Kometenmodus | in Arbeit |
+| 5 | 04.11.2026 | Kometenmodus | umgesetzt in 0.22.0 |
 | 6 | 04.11.2026 | Planetenmodus (Lucky Imaging) | offen |
 
 ## 1. Bibliothek teilen (nur ansehen) – 03.11.2026

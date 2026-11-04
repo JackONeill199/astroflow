@@ -480,16 +480,23 @@ def star_mask_for(L: np.ndarray, fwhm: float, protect: np.ndarray | None, lane: 
             hit = np.unique(lab[protect & m])
             m = m & ~np.isin(lab, hit[hit > 0])
         if n and lane is not None:
+            objs = ndi.find_objects(lab)
+            level = float(np.median(L[lane])) - bg               # Helligkeit der Kometenspur im Sterne-Stack
+            drop = []
             for l in np.unique(lab[lane & m]):
                 if l == 0:
                     continue
-                sl = ndi.find_objects((lab == l).astype(np.int8))[0]
+                sl = objs[l - 1]
                 v = np.where(lab[sl] == l, L[sl] - bg, 0)
                 py, px = np.unravel_index(int(np.argmax(v)), v.shape)
                 yy, xx = np.mgrid[0:v.shape[0], 0:v.shape[1]]
                 core = float(v[(xx - px) ** 2 + (yy - py) ** 2 <= r * r].sum())
-                if core < 0.35 * max(float(v.sum()), 1e-9):       # Licht verteilt -> keine Sternscheibe
-                    m = m & (lab != l)
+                # Licht verteilt (verschmierte Koma) oder kaum heller als die Spur (Stück der Kernspur eines
+                # schnellen Kometen) -> kein Stern
+                if core < 0.35 * max(float(v.sum()), 1e-9) or float(v[py, px]) < 2.5 * max(level, 0.0):
+                    drop.append(l)
+            if drop:
+                m = m & ~np.isin(lab, drop)
         parts.append(m)
     m = parts[0] | parts[1]
     g = max(1, int(round(fwhm)))
@@ -509,6 +516,42 @@ def shift_mask(m: np.ndarray, dx: float, dy: float) -> np.ndarray:
 
 
 # ------------------------------------------------------------------ Zusammensetzen #
+def drop_ghosts(stars: np.ndarray, lane: np.ndarray, fwhm: float) -> tuple[np.ndarray, int]:
+    """Längliche „Sterne“ auf der Kometenbahn aus dem Sternbild entfernen: Stellen, an denen der Komet im Sterne-Stack
+    länger verweilte (z. B. erste kurze Serie vor einer Pause), sind kompakt genug für die Sterntrennung, aber in
+    Bewegungsrichtung verschmiert – im Ergebnis stünde sonst ein zweiter, verwaschener Kometenkopf."""
+    Ls = stars.mean(0)
+    thr = 3 * _noise(Ls)
+    lab, n = ndi.label(ndi.gaussian_filter(Ls, 0.5 * fwhm) > thr)
+    if not n:
+        return stars, 0
+    objs = ndi.find_objects(lab)
+    kill = np.zeros(Ls.shape, bool)
+    count = 0
+    for l in np.unique(lab[lane]):
+        if l == 0:
+            continue
+        sl = objs[l - 1]
+        comp = lab[sl] == l
+        if comp.sum() < np.pi * fwhm ** 2:
+            continue
+        w = np.where(comp, np.maximum(Ls[sl], 0), 0)
+        yy, xx = np.mgrid[0:w.shape[0], 0:w.shape[1]]
+        tot = float(w.sum()) or 1.0
+        my, mx = (w * yy).sum() / tot, (w * xx).sum() / tot
+        cyy, cxx = (w * (yy - my) ** 2).sum() / tot, (w * (xx - mx) ** 2).sum() / tot
+        cxy = (w * (yy - my) * (xx - mx)).sum() / tot
+        ev = np.linalg.eigvalsh(np.array([[cyy, cxy], [cxy, cxx]]))
+        if ev[0] > 0 and math.sqrt(ev[1] / ev[0]) > 1.8:
+            kill[sl] |= comp
+            count += 1
+    if count:
+        soft = np.clip(ndi.gaussian_filter(ndi.binary_dilation(kill, iterations=max(1, int(fwhm))).astype(np.float32), 0.5 * fwhm) * 1.5, 0, 1)
+        stars = stars * (1 - soft)[None]
+    return stars, count
+
+
+
 def compose(A: np.ndarray, covA: np.ndarray, B: np.ndarray, covB: np.ndarray, fwhm: float, nucleus: tuple[float, float],
             track_pts: np.ndarray, lane_px: float, core_px: float, method: str = "auto",
             log=lambda m: None) -> tuple[np.ndarray, np.ndarray, dict]:
@@ -520,10 +563,13 @@ def compose(A: np.ndarray, covA: np.ndarray, B: np.ndarray, covB: np.ndarray, fw
 
     H, W = A.shape[1:]
     sA, stars_A, how = separate(A, fwhm, method, log)
+    ghosts = 0
     if lane_px > 0:
         lane = corridor((H, W), track_pts, lane_px)
         soft = ndi.gaussian_filter(lane.astype(np.float32), max(1.0, fwhm))
         stars_A = stars_A * (1 - np.clip(soft * 1.5, 0, 1))[None]
+    else:
+        stars_A, ghosts = drop_ghosts(stars_A, corridor((H, W), track_pts, 3 * fwhm), fwhm)
     # Kometen-Stack: verbliebene Sternreste entfernen, Kern und innere Koma schützen
     sB, stars_B, _ = separate(B, fwhm, method, log)
     yy, xx = np.mgrid[0:H, 0:W]
@@ -539,4 +585,4 @@ def compose(A: np.ndarray, covA: np.ndarray, B: np.ndarray, covB: np.ndarray, fw
     shifts = np.asarray(nucleus, float)[None] - np.asarray(track_pts, float)
     geo = np.mean([ndi.shift(covA, (dy, dx), order=0, cval=0.0) for dx, dy in shifts], 0)
     cov = np.minimum(covA, geo).astype(np.float32)
-    return out, cov, {"stars": how, "holes": round(float((hole & (geo > 0.5)).mean()), 4)}
+    return out, cov, {"stars": how, "holes": round(float((hole & (geo > 0.5)).mean()), 4), "ghosts": ghosts}

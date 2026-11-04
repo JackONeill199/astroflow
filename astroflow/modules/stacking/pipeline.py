@@ -716,13 +716,18 @@ class Pipeline:
         lane = comet.corridor(meanA.shape[1:], (pos + 0.5) * scale - 0.5, 1.5 * fwhm * scale)
         mask = comet.star_mask_for(meanA.mean(0), fwhm * scale, prot, lane)
         info["masked_pct"] = round(100 * float(mask.mean()), 2)
+        # Kern im Kometen-Stack nie ausblenden (Absicherung, falls doch ein Teil der Kometenspur als Stern galt)
+        nuc = (c0 + 0.5) * scale - 0.5
+        yy, xx = np.ogrid[: mask.shape[0], : mask.shape[1]]
+        head = (xx - nuc[0]) ** 2 + (yy - nuc[1]) ** 2 <= (3 * fwhm * scale) ** 2
         if todo:
             progress(0.15, "Kometen-Stack", f"{len(todo)} Aufnahmen auf den Kometenkern ausrichten")
             sub = lambda f, stage, msg="": progress(0.15 + 0.85 * min(1.0, max(0.0, (f - 0.36) / 0.48)), "Kometen-Stack", msg)
             state = self._stack(proj["id"], todo, state, lib, cache, scale, sub, save_dir=cdir, stages=None,
-                                shifts=shifts, mask=mask, mark=False)
+                                shifts=shifts, mask=mask, mark=False, unmasked=head)
         info.update(frames=len(state.meta["frames"]), t0=track.t0, nucleus=[float(v) for v in (c0 + 0.5) * scale - 0.5],
-                    track=[[float(x), float(y)] for x, y in ((pos[[0, len(pos) // 2, -1]] + 0.5) * scale - 0.5)])
+                    track=[[round(float(x), 2), round(float(y), 2)] for x, y in
+                           ((pos[np.unique(np.linspace(0, len(pos) - 1, 9).round().astype(int))] + 0.5) * scale - 0.5)])
         return info
 
     def _comet_track(self, proj, opt, A, rows, times, lib, cache, scale, offline, progress):
@@ -1049,7 +1054,7 @@ class Pipeline:
     # -------------------------------------------------------------- stacking #
     def _stack(self, pid, todo, state, lib, cache, scale, progress, ref_meta: dict | None = None,
                save_dir: Path | None = None, stages: Path | None = None, shifts: dict | None = None,
-               mask: np.ndarray | None = None, mark: bool = True) -> StackState:
+               mask: np.ndarray | None = None, mark: bool = True, unmasked: np.ndarray | None = None) -> StackState:
         """shifts: je Frame zusätzliche Verschiebung (Referenzpixel) nach der Sternregistrierung – Kometen-Stack;
         mask: Pixel im Sterne-Raster, die nicht eingehen (Sterne), wird mitverschoben; mark=False: frames.stacked nicht setzen
         (der Kometen-Stack führt seine Aufnahmen nur in state.json)."""
@@ -1111,7 +1116,8 @@ class Pipeline:
                 img = to_channels(raw, info["bayerpat"])
                 warped, valid = registration.warp(img, M, (H * scale, W * scale), scale, gpu=g)
                 if mask is not None and d is not None:
-                    valid &= ~comet.shift_mask(mask, d[0] * scale, d[1] * scale)
+                    sm = comet.shift_mask(mask, d[0] * scale, d[1] * scale)
+                    valid &= ~(sm & ~unmasked) if unmasked is not None else ~sm
                 sub = valid.ravel()[::7]
                 bg = np.array([np.median(warped[c].ravel()[::7][sub]) for c in range(C)])
                 ratio = ref_flux[pairs[:, 1]] / np.maximum(tf[pairs[:, 0]], 1e-6)
@@ -1134,7 +1140,7 @@ class Pipeline:
             pending = [ex.submit(work, r) for r in chunks[ci + 1]] if ci + 1 < len(chunks) else []
             good = [(fid, d) for fid, d, e in results if d is not None]
             for fid, d, e in results:
-                if d is None:
+                if d is None and mark:                   # Kometen-Stack: Auswahl der Aufnahmen nicht verändern
                     self.db.set_frame(fid, status="rejected", reason=e)
             if good:
                 X = np.stack([d[0] for _, d in good])

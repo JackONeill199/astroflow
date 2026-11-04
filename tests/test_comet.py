@@ -91,7 +91,7 @@ def test_horizons_parse_cache_and_parallax(tmp_path, monkeypatch):
     assert "DES=C/2022 E3" in calls[0]["COMMAND"] and "SITE_COORD" not in calls[0]   # Standort verlässt den Rechner nie
     t = np.linspace(t0 + 600, t0 + 3000, 5)
     ra_g, dec_g, topo_g = comet.topocentric(rows, t, None)
-    ra_t, dec_t, topo_t = comet.topocentric(rows, t, [48.0, 9.0])
+    ra_t, dec_t, topo_t = comet.topocentric(rows, t, [40.0, -3.0])
     assert not topo_g and topo_t
     sep = np.hypot((ra_t - ra_g) * np.cos(np.radians(dec_g)), dec_t - dec_g) * 3600
     assert 5 < sep.min() and sep.max() < 60                     # Parallaxe bei 0,3 AU: einige 10″

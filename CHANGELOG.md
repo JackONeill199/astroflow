@@ -3,6 +3,23 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.22.0 – 04.11.2026
+
+### Neu
+- **Kometenmodus:** Kometen werden am Namen erkannt (OBJECT-Header oder Ordner wie `…_observation_C_2022_E3`,
+  `12P`, „Komet“) und je Nacht als eigenes Objekt geführt. Neben dem gewohnten Stack auf die Sterne entsteht ein
+  zweiter, auf den Kometenkern ausgerichteter Stack (Sterne werden dort ausgeblendet). Das Ergebnis setzt scharfe
+  Sterne und einen scharfen Kometen zusammen; auf der Objektseite lässt sich zwischen **Ergebnis**, **Sterne-Stack**
+  und **Kometen-Stack** umschalten (beide Einzelstacks auch als Datei).
+- **Kometenbahn:** mit auflösbarer Bezeichnung und Plate-Solving aus der JPL-Horizons-Ephemeride (Parallaxe lokal am
+  Standort gerechnet – der Standort wird nicht übertragen), im Bild nachgemessen; ohne Netz wird der Kern in den
+  Einzelbildern gesucht und seine Bewegung gefittet.
+- Eigenes Entwicklungsprofil **Komet**: Koma und Schweif sanft gestreckt, Grünton der Koma bleibt (kein SCNR),
+  GraXpert nur zum Entrauschen (die KI-Hintergrundentfernung könnte den Schweif abtragen).
+- Objekt → Optionen: Kometenmodus automatisch/ein/aus und Kometen-Bezeichnung für die Bahn.
+- Bild-Tutor: Hinweis, wenn der Komet schon während einer Einzelaufnahme merklich wandert, mit passender Belichtungszeit.
+- `python -m astroflow demo --comet` erzeugt eine synthetische Kometenserie.
+
 ## 0.21.0 – 04.11.2026
 
 ### Neu
