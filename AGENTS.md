@@ -413,8 +413,12 @@ Spalte `.imgwrap > #imgSide` neben dem Bild (Standard sichtbar, `bild.details`);
 Glühen nur auf Primärknöpfen. `backdrop-filter` nur auf Werkzeugleiste, Seitenleiste, Kontextpanel; Karten/Panels nur halbtransparent (Glasregeln per
 `:where(:root[data-look])` mit niedriger Spezifität, damit flache Varianten wie `.img-side .panel` gewinnen). Menüs, Dialoge, Eingaben deckend.
 Eingaben nur `background-color` setzen (Suchfeld trägt sein Symbol als `background-image`). `prefers-reduced-transparency` → deckend ohne Unschärfe.
-Sternschnuppen: `meteors` in `app.js` (Ebene `#meteors`, `z-index: -1` hinter allem, alle 5–14 s eine, 0,45–0,9 s Flug, pausiert bei verdecktem Tab),
-`localStorage af.ui.meteors`, aus bei reduzierter Bewegung und ohne Stil.
+Sternschnuppen: `static/meteors.js` (`window.meteors`, Ebene `#meteors`, `z-index: -1` hinter allem; Nutzerwunsch „selten, Algorithmus nach
+echten Daten“): `sky(date, lat, lon)` rechnet die sichtbare Rate – `SHOWERS` (IAU-MDC: λ☉max, ZHR, Jenniskens-Profil 10^(−B·Δλ), Radiant, v, r),
+HR = ZHR · sin(Radiantenhöhe) · r^(Grenzgröße − 6,5), sporadisch 2 + 10·sin(Apexhöhe), Sonne über −6° → 0, Mondphase senkt die Grenzgröße.
+Ort aus `/api/sites/resolve` (sonst 50° N, Länge aus der Zeitzone). Alle 15 s Poisson-Ziehung mit Rate HR/5; Strom-Meteore fliegen vom Radianten weg
+(Blick Süd), Tempo/Länge/Farbe aus v. `info()` liefert den Text unter Darstellung. `localStorage af.ui.meteors`, aus bei reduzierter Bewegung und
+ohne Stil. Test: `test_meteors.py` (Geminiden-/Perseidenmaximum, Tag, Apex morgens > abends, Radiant unter dem Horizont).
 **Rückmeldung** (seit 0.24.0, Nutzerwunsch „responsiver“, Ende von `style.css`, gilt für alle Stile): Drücken = `scale(.94–.985)` in 120 ms, nur
 transform/opacity/Farben. `api()` merkt den zuletzt gedrückten Knopf (`lastPress`, ≤ 0,6 s) und setzt bei schreibenden Anfragen `.pending`
 (gesperrt, Kreisel nach 150 ms über `::before/::after`) – `.btn` darf daher keine eigenen `::before/::after` bekommen. Aufwendige Animationen nur für echte Prozesse (`viz.js`, als „Schema“

@@ -69,35 +69,7 @@ applyUiScale();
 const UI_LOOKS = [['schlicht', 'Schlicht'], ['dezent', 'Dezent'], ['nebula', 'Nebula']];
 const applyLook = (v = store.get('ui.look', 'dezent')) => { if (v === 'schlicht') delete document.documentElement.dataset.look; else document.documentElement.dataset.look = v; };
 applyLook();
-// Sternschnuppen im Hintergrund (look.css #meteors): selten, schnell, nur mit Stil und ohne reduzierte Bewegung, pausiert im Hintergrund-Tab
-const meteors = (() => {
-  let layer = null, timer = 0;
-  const allowed = () => document.documentElement.dataset.look && store.get('ui.meteors', true) && !matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const one = () => {
-    const w = innerWidth, h = innerHeight, m = document.createElement('i');
-    const ang = 18 + Math.random() * 34, len = 90 + Math.random() * 160, dist = 220 + Math.random() * 380;
-    m.className = 'meteor';
-    // Element zeigt mit dem Kopf nach rechts; Drehung um ~180° lässt die meisten nach links unten fallen
-    m.style.cssText = `left:${w * (0.15 + Math.random() * 0.8)}px;top:${h * Math.random() * 0.55}px;--ang:${Math.random() < 0.75 ? 180 - ang : ang}deg;`
-      + `--len:${len}px;--dist:${dist}px;--dur:${450 + Math.random() * 450}ms;--peak:${0.55 + Math.random() * 0.45}`;
-    m.addEventListener('animationend', () => m.remove());
-    layer.append(m);
-  };
-  const next = () => { clearTimeout(timer); timer = setTimeout(tick, 5000 + Math.random() * 9000); };
-  const tick = () => {
-    if (!allowed()) return stop();
-    if (!document.hidden) { one(); if (Math.random() < 0.12) setTimeout(() => layer && one(), 250 + Math.random() * 600); }
-    next();
-  };
-  const stop = () => { clearTimeout(timer); timer = 0; layer?.remove(); layer = null; };
-  const start = () => {
-    if (!allowed()) return stop();
-    if (!layer) { layer = document.createElement('div'); layer.id = 'meteors'; layer.setAttribute('aria-hidden', 'true'); document.body.prepend(layer); }
-    if (!timer) timer = setTimeout(tick, 1500 + Math.random() * 3000);
-  };
-  return { start, stop, one: () => { start(); if (layer) one(); } };
-})();
-if (document.body) meteors.start(); else addEventListener('DOMContentLoaded', () => meteors.start());
+// Sternschnuppen: static/meteors.js (window.meteors) – Rate nach echtem Himmel
 
 // Hinweis unten rechts; action = { label, href } oder { label, fn } für eine Schaltfläche (z. B. „Ansehen“, „Rückgängig“)
 function toast(msg, kind = '', action = null) {
@@ -827,8 +799,9 @@ async function moduleSettings(el) {
     <div class="seg" id="uiScale" aria-label="Oberflächengröße">${UI_SCALES.map(([v, l]) => `<button data-v="${v}" class="${v === scale ? 'on' : ''}">${l}</button>`).join('')}</div>
     <p class="mut sm" style="margin:16px 0 12px">Stil: „Schlicht“ ist neutrales Anthrazit, „Dezent“ und „Nebula“ bringen Farbverlauf und Glasflächen.</p>
     <div class="seg" id="uiLook" aria-label="Stil">${UI_LOOKS.map(([v, l]) => `<button data-v="${v}" class="${v === look ? 'on' : ''}">${l}</button>`).join('')}</div>
-    <label class="modrow" style="margin-top:14px"><div><b>Sternschnuppen</b><div class="mut sm">Ab und zu eine Sternschnuppe im Hintergrund (nur Dezent/Nebula, aus bei „Bewegung reduzieren“).</div></div>
-      <input type="checkbox" id="uiMeteors" ${store.get('ui.meteors', true) ? 'checked' : ''}><span class="switch"></span></label></div>
+    <label class="modrow" style="margin-top:14px"><div><b>Sternschnuppen</b><div class="mut sm">Selten eine Sternschnuppe im Hintergrund – so oft, wie es der echte Himmel gerade hergibt (Meteorströme, Uhrzeit, Standort, Mond; tagsüber keine). Nur Dezent/Nebula, aus bei „Bewegung reduzieren“.</div></div>
+      <input type="checkbox" id="uiMeteors" ${store.get('ui.meteors', true) ? 'checked' : ''}><span class="switch"></span></label>
+    <p class="mut sm" id="meteorInfo" style="margin:8px 0 0"></p></div>
     <div class="panel"><h2>Module</h2><p class="mut sm" style="margin:6px 0 16px">AstroFlow besteht aus Modulen. Abgeschaltete Module werden nicht geladen –
       Änderungen wirken nach einem Neustart des Servers. „Bilder“ ist das Kernmodul.</p>
     <div class="modlist">${info.modules.map(m => `<label class="modrow">${icon(m.icon)}<div><b>${esc(m.name)}</b>${m.error ? ` <span class="chip bad">Fehler</span>` : ''}
@@ -854,6 +827,7 @@ async function moduleSettings(el) {
     $$('#uiLook button', el).forEach(x => x.classList.toggle('on', x === b));
     meteors.start();
   };
+  window.meteors?.info().then(t => { const i = $('#meteorInfo', el); if (i) i.textContent = t; }).catch(() => {});
   $('#uiMeteors', el).onchange = (e) => { e.stopPropagation(); store.set('ui.meteors', e.target.checked); if (e.target.checked) meteors.one(); else meteors.stop(); };
   el.onchange = async (e) => {
     const c = e.target.closest('[data-mod]');

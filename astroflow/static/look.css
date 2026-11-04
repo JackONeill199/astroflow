@@ -115,15 +115,15 @@
   :root[data-look] a.modcard:hover, :root[data-look] .card:hover, :root[data-look] .itile:hover .ii { transform: none }
 }
 
-/* Sternschnuppen (seit 0.24.0, Nutzerwunsch „schnell und realistisch durchfliegen“): app.js `meteors` setzt selten (alle 5–14 s)
-   einzelne Elemente in #meteors; Kopf hell, Schweif läuft aus, Flug 0,45–0,9 s mit leichtem Abbremsen. Nur hinter den Inhalten,
+/* Sternschnuppen (seit 0.24.0): static/meteors.js entscheidet nach dem echten Himmel (Meteorströme, Radiant, Dämmerung, Mond), wann eine
+   fliegt, und setzt sie in #meteors; Kopf hell (Farbe --head je Geschwindigkeit), Schweif läuft aus. Nur hinter den Inhalten,
    nur mit Stil Dezent/Nebula, aus bei reduzierter Bewegung oder per Einstellung. */
 #meteors { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden }
 .meteor { position: absolute; height: 1.5px; width: var(--len); transform-origin: 100% 50%; opacity: 0;
   background: linear-gradient(90deg, transparent 0%, #9db4ff26 45%, #dfe6ff 92%, #fff 100%); border-radius: 1px;
   animation: meteor var(--dur) cubic-bezier(.25, .6, .45, 1) forwards }
 .meteor::after { content: ""; position: absolute; right: -1px; top: 50%; width: 3px; height: 3px; margin-top: -1.5px; border-radius: 50%;
-  background: #fff; box-shadow: 0 0 6px 2px #c7d4ffcc, 0 0 14px 4px #8fa8ff55 }
+  background: var(--head, #fff); box-shadow: 0 0 6px 2px color-mix(in srgb, var(--head, #fff) 80%, transparent), 0 0 14px 4px var(--halo, #8fa8ff55) }
 @keyframes meteor {
   0% { opacity: 0; transform: rotate(var(--ang)) translateX(0) scaleX(.3) }
   12% { opacity: var(--peak) }

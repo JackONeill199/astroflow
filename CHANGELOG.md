@@ -10,8 +10,12 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   „Nebula“ bringen einen ruhigen Navy-Violett-Verlauf im Hintergrund, halbtransparente Glasflächen mit feinem hellem Rand,
   Primärknöpfe und aktive Navigation mit Violett-Blau-Verlauf. „Nebula“ ist kräftiger und hat ein kaum sichtbares Sternenfeld.
   „Schlicht“ ist das neutrale Anthrazit von 0.21. Aufbau, Abstände und Lesbarkeit bleiben gleich.
-- **Sternschnuppen:** Ab und zu fliegt hinter den Inhalten eine Sternschnuppe durch das Bild (schnell, mit auslaufendem Schweif).
-  Abschaltbar unter Darstellung; aus bei „Bewegung reduzieren“ und im Stil „Schlicht“.
+- **Sternschnuppen nach dem echten Himmel:** Selten fliegt hinter den Inhalten eine Sternschnuppe durch – so oft, wie es draußen gerade
+  passt: Die 13 großen Meteorströme (Aktivität nach Sonnenlänge, Höhe des Radianten über deinem Standort), sporadische Meteore (morgens
+  mehr als abends), Dämmerung und Mondlicht; tagsüber keine. Angezeigt wird etwa jede fünfte – in einer normalen Nacht ein, zwei pro
+  Stunde, im Maximum der Geminiden oder Perseiden alle paar Minuten. Strom-Meteore fliegen vom Radianten weg, schnelle (Leoniden,
+  Perseiden) sind kurz und grünlich, langsame (Geminiden, Tauriden) länger und gelblich. Unter Darstellung steht, was der Himmel
+  gerade hergibt; abschaltbar, aus bei „Bewegung reduzieren“ und im Stil „Schlicht“.
 - **Direktere Rückmeldung:** Knöpfe, Reiter, Schalter, Navigation und Karten geben beim Drücken leicht nach; Primärknöpfe heben sich beim
   Überfahren an, Fokus zeigt einen weichen Leuchtrand. Löst ein Knopf eine Aktion beim Server aus, ist er sofort gesperrt und zeigt nach
   0,15 s einen Kreisel, bis die Antwort da ist – kein doppeltes Klicken mehr, kein Rätseln, ob der Klick angekommen ist.
