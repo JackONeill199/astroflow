@@ -304,6 +304,8 @@ oder als verschwunden behandelt. Gelöscht werden sie nie (`_is_upload`). Wieder
 Master-Kalibrierung: `CalibrationLibrary._cached` merkt je Pfadliste den zuletzt gebauten Master (`<tag>_<hash>.ref`) – ohne erreichbare
 Quelle (keine Änderungszeit für den Schlüssel) wird er weiter genutzt; Bauen/Lesen unter `lock` (parallele Analyse-Threads).
 Test: `tests/test_import_in_place.py`.
+UI-Filter (seit 0.21.0): Art/Format/Zustand, Mehrfachauswahl, localStorage `af.library.filter`; Formate je Gruppe aus `library.file_formats` → `groups[].exts`
+(`{"fits": 141}`); ohne Zustandsfilter bleiben vollständig vorhandene Gruppen wie bisher ausgeblendet; Auswahl/Import wirken nur auf sichtbare Gruppen.
 Bilder gehen über `import_picture` (Kopie in die Ausgabe). Quelldateien bleiben unberührt. API: `GET /library`, `POST /library/scan {root}`, `POST /library/import {ids}` (Ids stammen
 aus dem letzten Suchlauf im Speicher). Zuletzt genutzter Pfad: `data/settings.json` → `library.root`. Test: `tests/test_library.py`.
 

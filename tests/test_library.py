@@ -35,6 +35,8 @@ def test_library_scan_and_import(tmp_path):
         assert all(g["state"] == "new" for g in groups.values())
         obs = groups["M31"] if "M31" in groups else next(g for g in groups.values() if g["rel"].endswith("M31"))
         assert obs["kind"] == "lights" and obs["n_files"] == 6 + 2 + 2
+        assert obs["exts"] == {"fits": 10}                            # Dateiformate je Gruppe (Filter der Import-Ansicht)
+        assert next(g for g in groups.values() if g["kind"] == "pictures")["exts"] == {"png": 1}
         assert c.get("/api/stacking/projects").json() == []           # Suchen legt nichts an
 
         mono = next(g for g in st["groups"] if g["kind"] == "lights" and g is not obs and g["n_files"] == 3)

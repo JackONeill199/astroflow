@@ -917,6 +917,8 @@ async function importView(el) {
 // Hauptordner durchsuchen: Gruppen (Objekte) finden, Stand in AstroFlow anzeigen, Auswahl importieren
 const LIB_STATE = { new: ['neu', 'acc'], partial: ['teilweise vorhanden', 'warn'], unstacked: ['nicht gestackt', 'warn'], done: ['fertig', 'ok'] };
 const LIB_KIND = { lights: 'Aufnahmen', calibration: 'Kalibrierung', pictures: 'Fertige Bilder' };
+const LIB_FILTER_STATE = { new: 'Neu', partial: 'Teilweise vorhanden', unstacked: 'Nicht gestackt', done: 'Fertig' };
+const LIB_FMT = (k) => ({ fits: 'FITS', jpg: 'JPG', png: 'PNG', tiff: 'TIFF' })[k] || k.toUpperCase();
 async function libraryPanel(view) {
   const body = $('#libBody', view), shown = $('#libRoot', view), go = $('#libGo', view);
   let root = '';
@@ -924,6 +926,22 @@ async function libraryPanel(view) {
   const picked = new Set();
   let timer = null, seen = false, showKnown = false;
   const done = (g) => g.state === 'done';
+  // Filter (Mehrfachauswahl, leer = alle) – je Browser gemerkt
+  const saved = store.get('library.filter', {});
+  const flt = Object.fromEntries(['kind', 'ext', 'state'].map(k => [k, new Set(Array.isArray(saved[k]) ? saved[k] : [])]));
+  const saveFlt = () => store.set('library.filter', Object.fromEntries(Object.entries(flt).map(([k, v]) => [k, [...v]])));
+  const fits = (g, skip) => (skip === 'kind' || !flt.kind.size || flt.kind.has(g.kind))
+    && (skip === 'ext' || !flt.ext.size || Object.keys(g.exts || {}).some(e => flt.ext.has(e)))
+    && (skip === 'state' || !flt.state.size || flt.state.has(g.state));
+  const filterRow = (key, label, options, groups) => {
+    // Zahl je Option = Gruppen, die unter den übrigen Filtern dazu passen; nur Optionen, die im Suchlauf vorkommen
+    const base = groups.filter(g => fits(g, key));
+    const has = (g, v) => key === 'ext' ? v in (g.exts || {}) : g[key] === v;
+    const opts = options.filter(([v]) => groups.some(g => has(g, v)) || flt[key].has(v));
+    if (opts.length < 2 && !flt[key].size) return '';
+    return `<div class="lib-frow"><span class="mut sm">${label}</span><div class="seg" data-f="${key}" aria-label="${label}">${opts.map(([v, l]) =>
+      `<button data-v="${esc(v)}" class="${flt[key].has(v) ? 'on' : ''}" aria-pressed="${flt[key].has(v)}">${esc(l)} <span class="dim">${base.filter(g => has(g, v)).length}</span></button>`).join('')}</div></div>`;
+  };
   const draw = (st) => {
     if (!body.isConnected) return clearTimeout(timer);
     const busy = st.state === 'scanning' || st.state === 'importing';
@@ -938,16 +956,23 @@ async function libraryPanel(view) {
     if (!seen) { seen = true; groups.forEach(g => { if (!done(g) && g.n_new) picked.add(g.id); }); }
     [...picked].forEach(id => { const g = groups.find(x => x.id === id); if (!g || !g.n_new) picked.delete(id); });
     if (!groups.length) { body.innerHTML = st.message ? `<p class="mut sm">${esc(st.message)}</p>` : ''; return; }
-    const sel = groups.filter(g => picked.has(g.id));
     const imp = st.imported;
-    // Bereits vollständig in AstroFlow vorhandene Gruppen gibt es nicht zu importieren -> ausgeblendet
-    const known = groups.filter(g => !g.n_new), list = showKnown ? groups : groups.filter(g => g.n_new);
+    // Filter; ohne Zustandsfilter sind bereits vollständig vorhandene Gruppen (nichts zu importieren) ausgeblendet
+    const matching = groups.filter(g => fits(g)), anyFlt = Object.values(flt).some(v => v.size);
+    const known = flt.state.size ? [] : matching.filter(g => !g.n_new);
+    const list = flt.state.size || showKnown ? matching : matching.filter(g => g.n_new);
+    const sel = list.filter(g => picked.has(g.id) && g.n_new);       // Import wirkt nur auf sichtbare Gruppen
+    const filters = filterRow('kind', 'Art', Object.entries(LIB_KIND), groups)
+      + filterRow('ext', 'Format', [...new Set(groups.flatMap(g => Object.keys(g.exts || {})))].sort().map(e => [e, LIB_FMT(e)]), groups)
+      + filterRow('state', 'Zustand', Object.entries(LIB_FILTER_STATE), groups);
     body.innerHTML = `${imp ? `<div class="notice lib-done"><div><b>${icon('check')} Import abgeschlossen</b><div class="mut sm">${esc(st.message)}${imp.errors?.length ? `<br><span class="bad">${imp.errors.map(esc).join('<br>')}</span>` : ''}</div>
         ${Object.keys(imp.projects || {}).length ? '<div style="margin-top:8px"><a class="btn ghost sm" href="#/bilder">Zur Galerie</a></div>' : ''}</div></div>` : ''}
-      <div class="lib-bar"><span class="mut sm">${imp ? '' : esc(st.message)}</span><span class="grow"></span>
+      ${filters ? `<div class="lib-filters">${filters}</div>` : ''}
+      <div class="lib-bar"><span class="mut sm" id="libCount">${groups.length} ${groups.length === 1 ? 'Gruppe' : 'Gruppen'} gefunden, ${list.length} angezeigt</span>
+        ${anyFlt ? '<button class="linkbtn" id="libReset">Filter zurücksetzen</button>' : ''}<span class="grow"></span>
         <button class="btn ghost sm" id="libNew">Nur Neues wählen</button><button class="btn ghost sm" id="libNone">Keine</button>
         <button class="btn" id="libImp" ${sel.length ? '' : 'disabled'}>${icon('upload')}${sel.length ? `${sel.length} ${sel.length === 1 ? 'Gruppe' : 'Gruppen'} importieren` : 'Importieren'}</button></div>
-      ${list.length ? '' : '<p class="mut sm">Alles bereits in AstroFlow – nichts Neues zu importieren.</p>'}
+      ${list.length ? '' : anyFlt ? '<p class="mut sm">Keine Gruppe passt zu den Filtern.</p>' : '<p class="mut sm">Alles bereits in AstroFlow – nichts Neues zu importieren.</p>'}
       <div class="lib-list">${list.map(g => {
         const [lab, cls] = LIB_STATE[g.state] || [g.state, ''], off = !g.n_new;
         return `<label class="lib-row ${off ? 'off' : ''}"><input type="checkbox" data-id="${g.id}" ${picked.has(g.id) ? 'checked' : ''} ${off ? 'disabled' : ''}>
@@ -958,10 +983,18 @@ async function libraryPanel(view) {
       ${known.length ? `<button class="linkbtn lib-hidden" id="libKnown">${showKnown ? 'Bereits vorhandene ausblenden' : `${known.length} bereits vorhandene ${known.length === 1 ? 'Gruppe' : 'Gruppen'} anzeigen`}</button>` : ''}`;
     $('#libKnown', body)?.addEventListener('click', () => { showKnown = !showKnown; draw(st); });
     body.onchange = (e) => { const id = e.target.dataset?.id; if (!id) return; e.target.checked ? picked.add(id) : picked.delete(id); draw(st); };
-    $('#libNew', body).onclick = () => { picked.clear(); groups.forEach(g => { if (g.n_new && !done(g)) picked.add(g.id); }); draw(st); };
-    $('#libNone', body).onclick = () => { picked.clear(); draw(st); };
+    $$('.lib-filters .seg', body).forEach(seg => seg.onclick = (e) => {
+      const b = e.target.closest('button[data-v]'), set = flt[seg.dataset.f];
+      if (!b) return;
+      set.has(b.dataset.v) ? set.delete(b.dataset.v) : set.add(b.dataset.v);
+      saveFlt(); draw(st);
+    });
+    $('#libReset', body)?.addEventListener('click', () => { Object.values(flt).forEach(v => v.clear()); saveFlt(); draw(st); });
+    // „Nur Neues wählen“ und „Keine“ wirken nur auf die sichtbaren Gruppen, die Auswahl ausgeblendeter bleibt
+    $('#libNew', body).onclick = () => { list.forEach(g => picked.delete(g.id)); list.forEach(g => { if (g.n_new && !done(g)) picked.add(g.id); }); draw(st); };
+    $('#libNone', body).onclick = () => { list.forEach(g => picked.delete(g.id)); draw(st); };
     $('#libImp', body).onclick = async () => {
-      try { draw(await send('/stacking/library/import', { ids: [...picked] })); follow(); }
+      try { draw(await send('/stacking/library/import', { ids: sel.map(g => g.id) })); follow(); }
       catch (e) { toast(e.message, 'err'); }
     };
   };

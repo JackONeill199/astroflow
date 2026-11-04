@@ -31,6 +31,9 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 - **SkyTrace:** Analysen als Tabelle oder Karten, sachlicher Seitenkopf.
 - **Oberflächengröße:** Auf großen Monitoren (WQHD, 4K) werden Schrift und Bedienelemente automatisch größer;
   unter Einstellungen → Module & System → Darstellung fest wählbar (90–140 %, je Browser).
+- **Hauptordner durchsuchen – Filter:** gefundene Gruppen nach Art (Aufnahmen, fertige Bilder, Kalibrierung), Dateiformat
+  (FITS, JPG, PNG, TIFF …) und Zustand (neu, teilweise vorhanden, nicht gestackt, fertig) filtern, mit Anzahl je Filter.
+  „Nur Neues wählen“, „Keine“ und „Importieren“ wirken nur auf die angezeigten Gruppen; die Filterwahl bleibt gemerkt.
 
 ## 0.20.1 – 04.11.2026
 
