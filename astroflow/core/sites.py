@@ -59,6 +59,27 @@ def night_of(when) -> str | None:
     return None
 
 
+def is_date(s) -> bool:
+    """JJJJ-MM-TT und ein echtes Kalenderdatum (kein 30. Februar)."""
+    if not isinstance(s, str) or not _DATE.match(s):
+        return False
+    try:
+        dt.date.fromisoformat(s)
+        return True
+    except ValueError:
+        return False
+
+
+def planning_night(now: float, lon: float = 0.0) -> str:
+    """Nacht, die „Heute Nacht“ gerade plant (wie tonight._window): Datum nach mittlerer Ortszeit, zwischen Mitternacht
+    und 6 Uhr gilt noch die laufende Nacht. Vormittags ist das schon die kommende Nacht – anders als night_of()."""
+    local = float(now) + float(lon or 0) / 15 * 3600
+    day = int(local // 86400) * 86400
+    if local - day < 6 * 3600:
+        day -= 86400
+    return dt.datetime.fromtimestamp(day, dt.timezone.utc).strftime("%Y-%m-%d")
+
+
 def _angle(v) -> float | None:
     """Grad aus Zahl oder Sexagesimaltext („49 12 30“, „+49:12:30“, „8d30m“)."""
     if v is None or v == "":
@@ -147,8 +168,8 @@ def _clean_period(p: dict, ids: set) -> dict:
     if sid not in ids:
         raise ValueError("Zeitraum verweist auf einen unbekannten Standort.")
     a, b = str(p.get("from") or "").strip(), str(p.get("to") or "").strip()
-    if not _DATE.match(a) or (b and not _DATE.match(b)):
-        raise ValueError("Zeitraum als Datum JJJJ-MM-TT angeben (bis darf leer sein = offen).")
+    if not is_date(a) or (b and not is_date(b)):
+        raise ValueError("Zeitraum als gültiges Datum JJJJ-MM-TT angeben (bis darf leer sein = offen).")
     if b and b < a:
         raise ValueError("Das Ende des Zeitraums liegt vor dem Anfang.")
     return {"id": str(p.get("id") or _new_id()), "site_id": sid, "from": a, "to": b}
@@ -180,6 +201,8 @@ def period_for(data: dict, night: str | None) -> dict | None:
     best, span = None, None
     for i, p in enumerate(data.get("periods") or []):
         a, b = p.get("from") or "", p.get("to") or ""
+        if not is_date(a) or (b and not is_date(b)):              # von Hand verdorbene Datei: Eintrag überspringen
+            continue
         if a <= night and (not b or night <= b):
             length = (dt.date.fromisoformat(b) - dt.date.fromisoformat(a)).days if b else 10 ** 6
             if span is None or (length, -i) < span:
@@ -248,8 +271,8 @@ class SiteBook:
 
     def set_night(self, night: str, site_id: str | None) -> dict:
         """Eine Nacht einem Ort zuordnen (None = Einzelnacht-Zuordnung entfernen, dann gelten Zeiträume/Standard)."""
-        if not _DATE.match(night or ""):
-            raise ValueError("Nacht als Datum JJJJ-MM-TT angeben.")
+        if not is_date(night):
+            raise ValueError("Nacht als gültiges Datum JJJJ-MM-TT angeben.")
         d = self.data()
         d["periods"] = [p for p in d["periods"] if not (p.get("from") == night and p.get("to") == night)]
         if site_id:
@@ -279,7 +302,7 @@ class SiteBook:
                 added += 1
             elif not same.get("alt_m") and s.get("alt_m"):
                 same["alt_m"] = round(float(s["alt_m"]), 1)
-            if e.get("night") and _DATE.match(e["night"]) and not any(p.get("from") == p.get("to") == e["night"] for p in d["periods"]):
+            if e.get("night") and is_date(e["night"]) and not any(p.get("from") == p.get("to") == e["night"] for p in d["periods"]):
                 d["periods"].append({"site_id": same["id"], "from": e["night"], "to": e["night"]})
             elif default_first and not d.get("default"):
                 d["default"] = same["id"]

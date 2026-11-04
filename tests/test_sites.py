@@ -258,3 +258,28 @@ def test_sitefit_recovers_site_and_clock():
     same = sitefit.fit([{**o, "start": o["start"]} for o in obs], true)
     assert same["shift_km"] < 0.05 and not same["worth"]
     assert sitefit.fit(obs[:2], wrong)["ok"] is False
+
+
+def test_impossible_dates_rejected(tmp_path):
+    b = book(tmp_path)
+    with pytest.raises(ValueError):
+        b.save({"list": [HOME], "periods": [{"site_id": "home", "from": "2026-02-30", "to": "2026-03-05"}]})
+    with pytest.raises(ValueError):
+        b.set_night("2026-02-30", "home")
+    # von Hand verdorbene Datei: Auflösung läuft trotzdem
+    b.store.update("sites", {"periods": [{"id": "x", "site_id": "trip", "from": "2026-02-30", "to": ""}]})
+    assert b.site_for(night="2026-06-01")["id"] == "home"
+
+
+def test_planning_night_matches_tonight_window():
+    import datetime as dt
+    from astroflow.modules.stacking import tonight
+    for hour in (2, 5, 7, 9, 13, 20, 23):
+        now = dt.datetime(2026, 11, 4, hour, tzinfo=dt.timezone.utc).timestamp()
+        for lon in (10.25, -70.0, 150.0):
+            start, _ = tonight._window(now, lon)
+            local_noon = dt.datetime.fromtimestamp(start + lon / 15 * 3600, dt.timezone.utc)
+            assert sites.planning_night(now, lon) == local_noon.strftime("%Y-%m-%d")
+    # Vormittag in Mitteleuropa: schon die kommende Nacht (night_of läge noch beim Vortag)
+    now = dt.datetime(2026, 11, 4, 9, tzinfo=dt.timezone.utc).timestamp()
+    assert sites.planning_night(now, 10.25) == "2026-11-04" and sites.night_of(now) == "2026-11-03"

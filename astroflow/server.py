@@ -124,7 +124,8 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
 
     def _sites_view(nights: bool = True) -> dict:
         d = book.data()
-        today = sites_mod.night_of(time.time())
+        default = book.site_for(night="1900-01-01") or {}
+        today = sites_mod.planning_night(time.time(), default.get("lon") or 0)   # dieselbe Nacht wie „Heute Nacht“
         view = {**d, "today": today, "today_site": book.site_for(night=today)}
         if nights:
             single = {p["from"]: p["site_id"] for p in d["periods"] if p.get("from") == p.get("to")}

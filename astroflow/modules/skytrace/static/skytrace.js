@@ -564,8 +564,15 @@ async function runView(root, runId, tab = 'vorschau') {
     const r = box._fit;
     const night = r.night || (box.dataset.session.match(/(\d{4})-?(\d{2})-?(\d{2})/) || []).slice(1).join('-');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(night)) { toast('Nacht-Datum unbekannt – bitte unter Einstellungen → Standorte zuordnen.', 'err'); return; }
-    if (!await confirmDlg('Standort übernehmen?', `Ein neuer Ort „${esc((r.site?.name || 'Standort') + ' (Satelliten ' + night + ')')}“ (± ${km(r.accuracy_m / 1000)} km) wird angelegt und der Nacht ${esc(night)} zugeordnet. Der bisherige Ort bleibt erhalten. Danach „Zeitreihen aktualisieren“, um neu abzugleichen.`, 'Übernehmen')) return;
+    // Eine SkyTrace-Ausnahme für genau diese Beobachtung hätte Vorrang vor der Ortsliste – dann mit entfernen
+    const session = box.dataset.session;
+    let override = false;
+    try { override = !!(await api(T + '/settings')).sites?.[session]; } catch { /* ohne Einstellungen: keine Ausnahme bekannt */ }
+    if (!await confirmDlg('Standort übernehmen?', `Ein neuer Ort „${esc((r.site?.name || 'Standort') + ' (Satelliten ' + night + ')')}“ (± ${km(r.accuracy_m / 1000)} km) wird angelegt und der Nacht ${esc(night)} zugeordnet. Der bisherige Ort bleibt erhalten.`
+      + (override ? ' <b>Für diese Beobachtung ist in SkyTrace ein eigener Standort hinterlegt, der sonst Vorrang hätte – diese Ausnahme wird dabei entfernt.</b>' : '')
+      + ' Danach „Zeitreihen aktualisieren“, um neu abzugleichen.', 'Übernehmen')) return;
     try {
+      if (override) await send(T + '/settings', { session, site: null });
       const d = await api('/sites?nights=false');
       const id = 's' + Math.random().toString(16).slice(2, 10);
       await send('/sites', { ...d, list: [...d.list, { id, name: `${r.site?.name || 'Standort'} (Satelliten ${night})`, lat: r.lat, lon: r.lon, alt_m: r.alt_m, accuracy_m: r.accuracy_m,

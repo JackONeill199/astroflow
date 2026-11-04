@@ -14,9 +14,10 @@ const noSite = () => `<p>Für die Nachtplanung fehlt dein Beobachtungsort.</p><a
 // „Heute bin ich in …“: Ort für die heutige Nacht wählen (gemeinsame Ortsliste, /api/sites/night)
 function sitePicker(sites, d) {
   if (!sites?.list?.length) return '';
-  const fixed = sites.periods.find(p => p.from === sites.today && p.to === sites.today);
+  const night = d.night || sites.today;
+  const fixed = sites.periods.find(p => p.from === night && p.to === night);
   const cur = d.site_info?.id;
-  return `<label class="tn-site"><span class="mut sm">Heute bin ich in</span><select id="tnSite" aria-label="Standort für heute Nacht">
+  return `<label class="tn-site"><span class="mut sm">Heute bin ich in</span><select id="tnSite" data-night="${esc(night)}" aria-label="Standort für heute Nacht">
     ${fixed ? '' : `<option value="">${esc((sites.list.find(s => s.id === cur)?.name || 'Standard-Ort'))} (${esc(d.site_info?.detail || 'automatisch')})</option>`}
     ${sites.list.map(s => `<option value="${esc(s.id)}" ${fixed && fixed.site_id === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}
     ${fixed ? '<option value="">Automatisch (Zeitraum bzw. Standard-Ort)</option>' : ''}</select></label>`;
@@ -200,9 +201,9 @@ async function nightView(el, catalogId) {
 }
 document.addEventListener('change', async e => {
   if (e.target.id !== 'tnSite') return;
-  const sel = e.target, sites = await api('/sites?nights=false');
+  const sel = e.target;
   try {
-    await send('/sites/night', { night: sites.today, site_id: sel.value || null, nights: false });
+    await send('/sites/night', { night: sel.dataset.night, site_id: sel.value || null, nights: false });
     toast(sel.value ? `Heute Nacht: ${sel.selectedOptions[0].textContent}` : 'Ort für heute wieder automatisch.', 'ok');
     if (typeof route === 'function') route(); else dispatchEvent(new HashChangeEvent('hashchange'));
   } catch (err) { toast(err.message, 'err'); }

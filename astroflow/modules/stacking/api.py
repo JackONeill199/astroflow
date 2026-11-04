@@ -646,18 +646,25 @@ def build_router(eng: Engine) -> APIRouter:
                 except Exception:
                     _coll_cache.update(t=now, v=None)
             coll = _coll_cache.get("v")
-        cfg, here = tutor.settings(eng.ctx.store), None
-        site_for = eng.ctx.services.get("site_for")                  # gemeinsame Ortsliste: Ort für die heutige Nacht
+        cfg, here, night = tutor.settings(eng.ctx.store), None, None
+        site_for = eng.ctx.services.get("site_for")                  # gemeinsame Ortsliste: Ort der geplanten Nacht
         if site_for:
+            from ...core.sites import planning_night
+            now = time.time()
             try:
-                here = site_for(when=time.time())
+                # Nacht wie tonight._window (vormittags schon die kommende); Länge erst vom Standard-, dann vom Nachtort
+                night = planning_night(now, (site_for(night="1900-01-01") or {}).get("lon") or 0)
+                here = site_for(night=night)
+                if here and planning_night(now, here["lon"]) != night:
+                    night = planning_night(now, here["lon"])
+                    here = site_for(night=night)
             except Exception:
                 here = None
             if here:
                 cfg = {**cfg, "lat": here["lat"], "lon": here["lon"]}
         out = tonight.plan(projects, cfg, eng.s.work_dir / "tutor", device=device, hidden=hidden, collection=coll)
         return {**out, "site_info": {k: here.get(k) for k in ("id", "name", "source", "detail")} if here else None,
-                "sites_on": bool(site_for)}
+                "sites_on": bool(site_for), "night": night}
 
     # ---- Bild-Tutor (vor /results/{rid}/{kind}, sonst fängt die Datei-Route „tutor“ ab) --------
     @r.get("/tutor")
