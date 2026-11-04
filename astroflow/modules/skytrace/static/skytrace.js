@@ -814,8 +814,8 @@ async function statsView(el) {
 
 // ---------------------------------------------------------- Registrierung --- //
 AF.register('skytrace', {
-  nav: [{ href: '#/skytrace', label: 'Analysen', icon: 'orbit', key: 'skytrace' }, { href: '#/skytrace/neu', label: 'Neue Analyse', icon: 'play', key: 'skytrace-new', sec: true },
-    { href: '#/skytrace/statistik', label: 'Statistik', icon: 'pulse', key: 'skytrace-stats', sec: true }],
+  nav: [{ href: '#/skytrace', label: 'SkyTrace', icon: 'orbit', key: 'skytrace', area: 'work' }, { href: '#/skytrace/neu', label: 'Neue Analyse', icon: 'play', key: 'skytrace-new' },
+    { href: '#/skytrace/statistik', label: 'Statistik', icon: 'pulse', key: 'skytrace-stats' }],
   routes: [
     [/^\/skytrace$/, 'skytrace', runsView],
     [/^\/skytrace\/neu$/, 'skytrace-new', newView],
@@ -824,17 +824,15 @@ AF.register('skytrace', {
   ],
   settings,
   status: (st, badge) => badge('skytrace', st.modules.skytrace?.running ? '●' : 0, true),
-  async home(st) {
+  async summary(st) {
     const s = st.modules.skytrace || {}, runs = await api(T + '/runs');
-    const cands = runs.reduce((a, r) => a + r.candidates, 0), last = runs[0];
-    return `<div class="hhead">${icon('orbit')}<div><h2>SkyTrace</h2><div class="mut sm">Was sich zwischen den Sternen bewegt</div></div><span class="grow"></span><a class="linkbtn" href="#/skytrace">Analysen ${icon('arrow')}</a></div>
-      <div class="hstats"><div><b class="tnum">${runs.length}</b><small>Analysen</small></div><div><b class="tnum">${nf.format(cands)}</b><small>Kandidaten</small></div>
-        <div><b class="tnum">${nf.format(runs.reduce((a, r) => a + r.frames, 0))}</b><small>Aufnahmen</small></div></div>
-      ${s.running ? `<div class="hlist"><a href="#/skytrace/${encodeURIComponent(s.run)}"><span class="spinner"></span><b>Analyse läuft</b><span class="mut sm">${esc(s.text || '')}</span></a></div>` : ''}
-      ${!s.engine?.ok && s.engine?.checked ? `<p class="warn sm">Analyse-Engine unvollständig – <a href="#/settings/skytrace">einrichten</a>.</p>` : ''}
-      ${last ? `<a class="hfeature" href="#/skytrace/${encodeURIComponent(last.id)}">${last.preview ? `<img src="${media(last.preview)}" alt="" loading="lazy">` : ''}
-        <div><small class="mut">Zuletzt</small><b>${esc(shortName(last.title))}</b><span class="mut sm">${last.candidates} Kandidaten · ${nf.format(last.frames)} Aufnahmen</span></div></a>`
-        : `<p class="mut sm">Noch keine Analysen. <a href="#/skytrace/neu">Erste Bildfolge untersuchen</a>.</p>`}`;
+    return { title: 'SkyTrace', icon: 'orbit', href: '#/skytrace', sub: runs[0] ? `Zuletzt: ${shortName(runs[0].title)} · ${runDate(runs[0].id) || ago(runs[0].modified)}` : 'Noch keine Analysen',
+      stats: [[nf.format(runs.length), 'Analysen'], [nf.format(runs.reduce((a, r) => a + r.candidates, 0)), 'Kandidaten'], [nf.format(runs.reduce((a, r) => a + r.frames, 0)), 'Aufnahmen']],
+      live: s.running ? `<span class="spinner"></span>Analyse läuft · ${esc(s.text || '')}` : !s.engine?.ok && s.engine?.checked ? '<span class="warn">Analyse-Engine unvollständig</span>' : '' };
+  },
+  async discoveries() {
+    return (await api(T + '/runs')).filter(r => r.candidates).slice(0, 4).map(r => ({ img: r.preview ? media(r.preview) : null, icon: 'orbit', kicker: 'SkyTrace · Kandidaten',
+      title: shortName(r.title), sub: `${r.candidates} Kandidat${r.candidates === 1 ? '' : 'en'} · ${runDate(r.id) || ago(r.modified)}`, href: `#/skytrace/${encodeURIComponent(r.id)}/kandidaten`, t: r.modified }));
   },
   async palette() {
     const runs = await api(T + '/runs');

@@ -407,10 +407,9 @@ function celebrate(list) {
 
 // ---------------------------------------------------------- Registrierung --- //
 AF.register('sage', {
-  nav: [{ href: '#/sage/wiki', label: 'Enzyklopädie', icon: 'book', key: 'sage-wiki' }, { href: '#/sage', label: 'Bild bestimmen', icon: 'target', key: 'sage' },
-    { href: '#/sage/entdeckungen', label: 'Meine Entdeckungen', icon: 'sparkle', key: 'sage-ins' },
-    { href: '#/sage/netz', label: 'Wissensnetz', icon: 'orbit', key: 'sage-net', sec: true },
-    { href: '#/sage/sammlung', label: 'Sammlung & Erfolge', icon: 'medal', key: 'sage-disc', sec: true }],
+  nav: [{ href: '#/sage/wiki', label: 'Sage', icon: 'book', key: 'sage-wiki', area: 'work' }, { href: '#/sage/entdeckungen', label: 'Entdeckungen', icon: 'sparkle', key: 'sage-ins' },
+    { href: '#/sage/netz', label: 'Wissensnetz', icon: 'orbit', key: 'sage-net' }, { href: '#/sage', label: 'Bild bestimmen', icon: 'target', key: 'sage' },
+    { href: '#/sage/sammlung', label: 'Sammlung', icon: 'medal', key: 'sage-disc', area: 'library' }],
   routes: [
     [/^\/sage$/, 'sage', mainView],
     [/^\/sage\/sammlung$/, 'sage-disc', discView],
@@ -418,18 +417,17 @@ AF.register('sage', {
   ],
   settings,
   status: (st, badge) => { badge('sage', st.modules.sage?.busy_jobs, true); badge('sage-ins', st.modules.sage?.insights); celebrate(st.modules.sage?.celebrate); },
-  async home(st) {
+  async summary(st) {
     const s = st.modules.sage || {}, [hist, d] = await Promise.all([api(G + '/history'), api(G + '/discoveries')]);
-    const last = hist[0], next = d.achievements.find(a => !a.unlocked);
-    return `<div class="hhead">${icon('book')}<div><h2>Sage</h2><div class="mut sm">Enzyklopädie · Bilder bestimmen · Geschichten</div></div><span class="grow"></span><a class="linkbtn" href="#/sage/wiki">Enzyklopädie ${icon('arrow')}</a></div>
-      <div class="hstats"><div><b class="tnum">${d.stats.total_objects}</b><small>Objekte entdeckt</small></div><div><b class="tnum">${hist.length}</b><small>Geschichten</small></div>
-        <div><b class="tnum">${d.achievements.filter(a => a.unlocked).length}/${d.achievements.length}</b><small>Erfolge</small></div></div>
-      ${s.busy_jobs ? `<div class="hlist"><a href="#/sage"><span class="spinner"></span><b>Sage arbeitet</b><span class="mut sm">${s.busy_jobs} Auftrag${s.busy_jobs > 1 ? 'e' : ''}</span></a></div>` : ''}
-      ${last ? `<a class="hfeature" href="#/sage/${last.id}">${last.image ? `<img src="${last.image}" alt="" loading="lazy">` : ''}<div><small class="mut">Zuletzt erzählt</small><b>${esc(last.title)}</b>
-          <span class="mut sm">${esc(last.preview.slice(0, 90))}${last.preview.length > 90 ? '…' : ''}</span></div></a>`
-        : `<p class="mut sm">Lade ein Astrofoto hoch – Sage erzählt dir, was darauf zu sehen ist.</p>`}
-      ${s.insights ? `<a class="hnext" href="#/sage/entdeckungen">${icon('sparkle')}<span><b>${s.insights} neue Entdeckung${s.insights > 1 ? 'en' : ''}</b> <span class="mut">– Sage hat für dich recherchiert</span></span></a>` : ''}
-      ${next ? `<div class="hnext">${icon(next.icon)}<span><b>Nächster Erfolg:</b> ${esc(next.title)} <span class="mut">– ${esc(next.description)}</span></span></div>` : ''}`;
+    const next = d.achievements.find(a => !a.unlocked);
+    return { title: 'Sage', icon: 'book', href: '#/sage/wiki', sub: next ? `Nächster Erfolg: ${next.title}` : 'Enzyklopädie · Bilder bestimmen · Geschichten',
+      stats: [[nf.format(d.stats.total_objects), 'Objekte'], [nf.format(hist.length), 'Geschichten'], [`${d.achievements.filter(a => a.unlocked).length}/${d.achievements.length}`, 'Erfolge']],
+      live: s.busy_jobs ? `<span class="spinner"></span>Sage arbeitet · ${s.busy_jobs} Auftrag${s.busy_jobs > 1 ? 'e' : ''}` : s.insights ? `<span class="acc">${s.insights} neue Entdeckung${s.insights > 1 ? 'en' : ''}</span>` : '' };
+  },
+  async discoveries() {
+    const [hist, ins] = await Promise.all([api(G + '/history'), api('/sage/kb/insights').catch(() => ({ items: [] }))]);
+    return [...hist.slice(0, 3).map(h => ({ img: h.image, icon: 'book', kicker: 'Sage · Geschichte', title: h.title, sub: `${h.objects} Objekte · Geschichte lesen`, href: `#/sage/${h.id}`, t: Date.parse(h.created) / 1000 })),
+      ...(ins.items || []).slice(0, 3).map(x => ({ icon: 'sparkle', kicker: x.seen ? 'Sage · Entdeckung' : 'Sage · neue Entdeckung', title: x.title, sub: Object.values(x.entity_names || {}).slice(0, 3).join(', ') || 'Details ansehen', href: '#/sage/entdeckungen', t: x.created }))];
   },
   async palette() {
     const hist = await api(G + '/history');

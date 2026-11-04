@@ -68,7 +68,7 @@ async function achView(el) {
   };
 }
 
-mod.nav.push({ href: '#/skytrace/erfolge', label: 'Erfolge', icon: 'medal', key: 'skytrace-ach', sec: true });
+mod.nav.push({ href: '#/skytrace/erfolge', label: 'Erfolge', icon: 'medal', key: 'skytrace-ach' });
 mod.routes.unshift([/^\/skytrace\/erfolge$/, 'skytrace-ach', achView]);
 const palette = mod.palette;
 mod.palette = async () => [...(palette ? await palette() : []), ['medal', 'SkyTrace-Erfolge', 'Meilensteine und Kurioses aus deinen Analysen', '#/skytrace/erfolge']];

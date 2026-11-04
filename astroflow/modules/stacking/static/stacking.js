@@ -160,45 +160,45 @@ async function scan(b) {
   } catch (e) { toast('Scan fehlgeschlagen: ' + e.message, 'err'); }
   if (b) { b.disabled = false; b.classList.remove('busy'); }
 }
+// Arbeitsbereich „Bilder“: alle Sessions (Objekte) mit Status – als Karten oder kompakte Tabelle
 async function galleryView(el) {
-  crumbs([['Bilder'], ['Galerie']]);
+  crumbs([['Bilder']]);
   const ui = JSON.parse(localStorage.getItem('af.gallery') || '{}');
-  let q = ui.q || '', kind = ui.kind || 'all', sort = ui.sort || 'recent', projects = [], st = sst(), sig = '', order = '';
-  el.innerHTML = `<div class="pagehead"><div><h1>Deine Objekte</h1><p class="mut" id="gsum"></p></div><span class="grow"></span>
-    <a class="btn ghost" href="#/bilder/statistik">${icon('pulse')}Statistik</a>
-    <button class="btn ghost" id="gscan" title="Eingangsordner jetzt nach neuen Aufnahmen durchsuchen">${icon('refresh')}Scannen</button>
-    <button class="btn ghost" id="gdev" title="Alle Objekte aus ihrem Master-Stack neu entwickeln – ohne Stacking, z. B. nach neuen Bearbeitungsfunktionen">${icon('play')}Alle neu entwickeln</button>
-    <a class="btn" href="#/import">${icon('upload')}Aufnahmen hinzufügen</a></div>
+  let q = ui.q || '', kind = ui.kind || 'all', sort = ui.sort || 'recent', mode = ui.view || 'cards', projects = [], st = sst(), sig = '', order = '';
+  el.innerHTML = `<div class="pagehead"><div><h1>Bilder</h1><p class="mut" id="gsum"></p></div>
+    <div class="page-actions"><button class="btn ghost" id="gscan" title="Eingangsordner jetzt nach neuen Aufnahmen durchsuchen">${icon('refresh')}Scannen</button>
+    <div class="menu"><button class="btn ghost">Mehr${icon('chev')}</button><div class="pop">
+      <a href="#" id="gdev">Alle neu entwickeln <small>aus dem Master-Stack</small></a><a href="#/bilder/statistik">Statistik <small>Belichtung, Geräte, Nächte</small></a><a href="#/galerie">Galerie <small>nur fertige Bilder</small></a></div></div>
+    <a class="btn" href="#/import">${icon('upload')}Aufnahmen importieren</a></div></div>
     <div class="toolbar"><input type="search" id="gq" placeholder="Objekt suchen …" title="Taste /" value="${esc(q)}"><div class="seg" id="gkind"></div><span class="grow"></span>
-      <select id="gsort"><option value="recent">Zuletzt bearbeitet</option><option value="name">Name</option><option value="exposure">Belichtungszeit</option><option value="frames">Aufnahmen</option></select></div>
+      <select id="gsort" aria-label="Sortierung"><option value="recent">Zuletzt bearbeitet</option><option value="name">Name</option><option value="exposure">Belichtungszeit</option><option value="frames">Aufnahmen</option></select>
+      <div class="seg" id="gview" aria-label="Ansicht"><button data-v="cards" title="Karten">${icon('grid')}</button><button data-v="table" title="Tabelle">${icon('list')}</button></div></div>
     <div id="gallery"></div>`;
   $('#gsort').value = sort;
+  const setView = () => $$('#gview button').forEach(b => b.classList.toggle('on', b.dataset.v === mode));
+  setView();
+  $('#gview').onclick = (e) => { const b = e.target.closest('button'); if (b) { mode = b.dataset.v; setView(); save(); order = ''; draw(); } };
   $('#gscan').onclick = async (e) => { await scan(e.currentTarget); await load(); };
-  $('#gdev').onclick = async () => {
+  $('#gdev').onclick = async (e) => {
+    e.preventDefault();
+    $$('.menu.open').forEach(m => m.classList.remove('open'));
     if (!await confirmDlg('Alle Objekte neu entwickeln?', 'Jedes Objekt wird aus seinem gespeicherten Master-Stack neu bearbeitet (ohne Stacking). Die bisherigen Bilder bleiben als ältere Versionen erhalten. Das kann je nach Anzahl eine Weile dauern.', 'Neu entwickeln')) return;
     try { const r = await send('/stacking/develop-all', {}); toast(`${r.queued} Objekte werden neu entwickelt.`, 'ok'); } catch (err) { toast(err.message, 'err'); }
     await load();
     poll();
   };
-  const save = () => { try { localStorage.setItem('af.gallery', JSON.stringify({ q, kind, sort })); } catch { /* egal */ } };
+  const save = () => { try { localStorage.setItem('af.gallery', JSON.stringify({ q, kind, sort, view: mode })); } catch { /* egal */ } };
   $('#gq').oninput = (e) => { q = e.target.value; save(); draw(); };
   $('#gq').onkeydown = (e) => {
-    if (e.key === 'Enter') $('#gallery .card')?.click();
+    if (e.key === 'Enter') $('#gallery .card, #gallery td.name a')?.click();
     if (e.key === 'Escape') { e.target.value = q = ''; save(); draw(); e.target.blur(); }
   };
   $('#gsort').onchange = (e) => { sort = e.target.value; save(); draw(); };
   $('#gkind').onclick = (e) => { const b = e.target.closest('button'); if (b) { kind = b.dataset.k; save(); draw(); } };
   const g = $('#gallery');
-  // Lichtkegel folgt der Maus auf den Karten
-  g.onpointermove = (e) => {
-    const c = e.target.closest('.card');
-    if (!c) return;
-    const r = c.getBoundingClientRect();
-    c.style.setProperty('--mx', e.clientX - r.left + 'px');
-    c.style.setProperty('--my', e.clientY - r.top + 'px');
-  };
   g.onclick = async (e) => {
-    const run = e.target.closest('[data-run]'), b = e.target.closest('[data-del]');
+    const run = e.target.closest('[data-run]'), b = e.target.closest('[data-del]'), tr = e.target.closest('tr[data-href]');
+    if (tr && !run && !b && !e.target.closest('a')) { location.hash = tr.dataset.href; return; }
     if (!run && !b) return;
     e.preventDefault();
     e.stopPropagation();
@@ -230,6 +230,7 @@ async function galleryView(el) {
       return;
     }
     if (!list.length) { order = ''; g.innerHTML = `<div class="empty">${icon('search')}<h2>Keine Treffer</h2>Kein Objekt passt zu deiner Suche.</div>`; return; }
+    if (mode === 'table') { order = ''; g.innerHTML = tableHtml(list); return; }
     // Gleiche Reihenfolge: nur geänderte Karten austauschen (keine Einblend-Animation, Bilder bleiben stehen)
     const o = list.map(p => p.id).join();
     if (o === order) {
@@ -246,6 +247,16 @@ async function galleryView(el) {
     }
     order = o;
     g.innerHTML = `<div class="gallery stagger">${list.map((p, i) => { const h = cardInner(p); return `<a class="card" href="#/p/${p.id}" data-id="${p.id}" data-h="${hash(h)}" style="--i:${i}">${h}</a>`; }).join('')}</div>`;
+  }
+  // Kompakte Tabelle: eine Zeile je Session mit Status der Verarbeitung
+  function tableHtml(list) {
+    const status = (p) => running(p.job) ? `<span class="badge-dot run">${p.job.state === 'queued' ? 'wartet' : `${esc(p.job.stage || 'läuft')} ${p.job.progress != null ? Math.round(p.job.progress * 100) + ' %' : ''}`}</span>`
+      : p.job?.state === 'error' ? '<span class="badge-dot bad">Fehler</span>' : p.result ? '<span class="badge-dot ok">Fertig</span>' : '<span class="badge-dot">Unverarbeitet</span>';
+    return `<div class="tablewrap free"><table><thead><tr><th class="nosort">Objekt</th><th class="nosort">Typ</th><th class="nosort num">Nächte</th><th class="nosort num">Aufnahmen</th><th class="nosort num">Belichtung</th><th class="nosort">Status</th><th class="nosort">Zuletzt</th><th class="nosort"></th></tr></thead><tbody>
+      ${list.map(p => `<tr class="link" data-href="#/p/${p.id}"><td class="name">${p.result ? `<img class="tthumb" src="/api/stacking/results/${p.result.id}/thumb" alt="" loading="lazy">` : '<span class="tthumb" style="display:inline-block"></span>'}<a href="#/p/${p.id}">${esc(p.name)}</a></td>
+        <td>${esc(p.kind_label || 'Allgemein')}</td><td class="num">${p.imported ? '–' : p.nights.length}</td><td class="num">${p.imported ? '–' : `${p.result ? p.result.n_frames + ' / ' : ''}${p.total}`}</td>
+        <td class="num">${p.result && !p.imported ? dur(p.result.exposure) : '–'}</td><td>${status(p)}</td><td class="mut">${ago(p.result?.created || p.created)}</td>
+        <td>${!p.result && !running(p.job) && !p.imported ? `<button class="linkbtn" data-run="${p.id}">${icon('play')}Verarbeiten</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
   }
   function cardInner(p) {
     const r = p.result, pal = r?.stats?.palette, busy = running(p.job);
@@ -271,33 +282,124 @@ async function galleryView(el) {
   return { update: load, destroy: () => document.removeEventListener('keydown', onKey) };
 }
 
+// ------------------------------------------------------- Verarbeitungs-Pipeline --- //
+// Schrittfolge aus den echten Job-Stufen (pipeline.py meldet Analyse, Auswahl, Stacking, Bearbeitung …).
+// Kalibrierung und Registrierung laufen innerhalb von „Stacking“ je Stapel und werden nicht getrennt gemeldet.
+const PIPE = [['scan', 'Import', 'Aufnahmen erkannt'], ['analyse', 'Analyse', 'Sterne, Schärfe, Hintergrund'], ['auswahl', 'Auswahl', 'Ausreißer verwerfen'],
+  ['stack', 'Stacking', 'Kalibrieren · Ausrichten · Mitteln'], ['develop', 'Entwicklung', 'Hintergrund, Farbe, Kurve'], ['save', 'Ausgabe', 'Dateien und Versionen']];
+const STAGE_STEP = { Analyse: 1, Auswahl: 2, Stacking: 3, Bearbeitung: 4, Farbkalibrierung: 4, 'KI-Prüfung': 4, Speichern: 5, 'Stacking-Stufen': 5, 'Plate-Solving': 0 };
+const STEP_VIZ = ['solve', 'analyse', 'auswahl', 'stack', 'develop', 'save'];
+function pipeStep(p) {
+  const j = p.job;
+  return running(j) && j.state === 'running' ? STAGE_STEP[j.stage] ?? 1 : -1;
+}
+function pipeHtml(p) {
+  const j = p.job, busy = running(j), cur = pipeStep(p), r = p.result, fr = p.frames || {};
+  const sel = (fr.selected || 0) + (fr.stacked || 0);
+  const done = [`${p.total} Aufnahmen · ${p.nights.length} ${p.nights.length === 1 ? 'Nacht' : 'Nächte'}`, `${p.total - (fr.new || 0)} analysiert`,
+    `${fr.rejected || 0} verworfen`, r ? `${r.n_frames} gestackt · ${dur(r.exposure)}` : '', r ? (PROFILE_LABEL[r.stats?.profile] || 'entwickelt') : '', r ? `${p.results.length} Version${p.results.length === 1 ? '' : 'en'}` : ''];
+  return `<div class="pipe" id="pipe" aria-label="Verarbeitungsschritte">${PIPE.map(([k, l, d], i) => {
+    const st = busy ? (cur < 0 ? (i === 0 ? 'done' : '') : i < cur ? 'done' : i === cur ? 'active' : '') : j?.state === 'error' && !r && i === 1 ? 'error' : r || (i === 0 && p.total) ? 'done' : sel && i <= 2 ? 'done' : '';
+    const sub = st === 'active' ? esc(j.message || d) : st === 'done' ? esc(done[i] || d) : st === 'error' ? 'fehlgeschlagen' : busy && cur < 0 && i === 1 ? 'wartet' : esc(d);
+    return `<div class="pstep ${st}" data-step="${k}"><b>${l}</b><small title="${sub}">${sub}</small>${st === 'active' && j.progress != null ? `<div class="progress"><i style="width:${(j.progress || 0) * 100}%"></i></div>` : ''}</div>`;
+  }).join('')}</div>`;
+}
+// „Stacking: 37/120 Aufnahmen“ → echte Zahlen für die Visualisierung
+const stackCount = (j) => { const m = /(\d+)\s*\/\s*(\d+)\s*Aufnahmen/.exec(j?.message || ''); return m ? { n: +m[1], total: +m[2] } : {}; };
+
+// ---------------------------------------------------------------- Galerie --- //
+// Bibliothek aller fertigen Astrofotos: rahmenloses Bildraster (zwei Größen) oder Liste; Klick öffnet das Bild.
+async function picturesView(el) {
+  crumbs([['Galerie']]);
+  const ui = store.get('pictures', {});
+  let q = ui.q || '', kind = ui.kind || 'all', sort = ui.sort || 'recent', mode = ui.view || 'grid', list = [], sig = '';
+  el.innerHTML = `<div class="pagehead"><div><h1>Galerie</h1><p class="mut" id="psum"></p></div>
+    <div class="page-actions"><a class="btn" href="#/import">${icon('upload')}Bilder importieren</a></div></div>
+    <div class="toolbar"><input type="search" id="pq" placeholder="Bild suchen …" title="Taste /" value="${esc(q)}">
+      <select id="pkind" aria-label="Objekttyp"></select><span class="grow"></span>
+      <select id="psort" aria-label="Sortierung"><option value="recent">Neueste zuerst</option><option value="name">Name</option><option value="exposure">Belichtungszeit</option></select>
+      <div class="seg" id="pview" aria-label="Ansicht"><button data-v="grid" title="Großes Raster">${icon('grid')}</button><button data-v="small" title="Kleines Raster">${icon('image')}</button><button data-v="list" title="Liste">${icon('list')}</button></div></div>
+    <div id="pics"></div>`;
+  const save = () => store.set('pictures', { q, kind, sort, view: mode });
+  $('#psort').value = sort;
+  const setView = () => $$('#pview button').forEach(b => b.classList.toggle('on', b.dataset.v === mode));
+  setView();
+  $('#pview').onclick = (e) => { const b = e.target.closest('button'); if (b) { mode = b.dataset.v; setView(); save(); draw(true); } };
+  $('#pq').oninput = (e) => { q = e.target.value; save(); draw(true); };
+  $('#pq').onkeydown = (e) => { if (e.key === 'Enter') $('#pics a')?.click(); if (e.key === 'Escape') { e.target.value = q = ''; save(); draw(true); } };
+  $('#psort').onchange = (e) => { sort = e.target.value; save(); draw(true); };
+  $('#pkind').onchange = (e) => { kind = e.target.value; save(); draw(true); };
+  const when = (p) => p.imported ? (p.result.stats?.imported?.date_obs ? String(p.result.stats.imported.date_obs).slice(0, 10) : fdate(p.result.created).slice(0, 8)) : fnight(p.nights[p.nights.length - 1]);
+  function draw(force) {
+    const kinds = [...new Set(list.map(p => p.kind || 'generic'))];
+    $('#pkind').innerHTML = `<option value="all">Alle Typen</option>${kinds.map(k => `<option value="${esc(k)}">${esc(list.find(p => (p.kind || 'generic') === k).kind_label || 'Allgemein')}</option>`).join('')}`;
+    $('#pkind').value = kinds.includes(kind) ? kind : 'all';
+    $('#pkind').hidden = kinds.length < 2;
+    const tot = list.reduce((a, p) => a + (p.imported ? 0 : p.result.exposure || 0), 0);
+    $('#psum').textContent = list.length ? `${list.length} Bild${list.length === 1 ? '' : 'er'}${tot ? ` · ${dur(tot)} Gesamtbelichtung` : ''}` : '';
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const shown = list.filter(p => (kind === 'all' || (p.kind || 'generic') === kind) && words.every(w => (p.name + ' ' + (p.kind_label || '')).toLowerCase().includes(w)));
+    const key = { recent: p => -(p.result.created || 0), name: p => p.name.toLowerCase(), exposure: p => -(p.result.exposure || 0) }[sort];
+    shown.sort((a, b) => key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0);
+    const s = JSON.stringify([mode, shown.map(p => [p.id, p.result.id, p.name])]);
+    if (!force && s === sig) return;
+    sig = s;
+    const host = $('#pics');
+    if (!list.length) { host.innerHTML = `<div class="empty">${icon('image')}<h2>Noch keine fertigen Bilder</h2>Sobald Aufnahmen gestackt und entwickelt sind oder du fertige Bilder importierst, erscheinen sie hier.<div style="margin-top:14px"><a class="btn" href="#/import">${icon('upload')}Importieren</a></div></div>`; return; }
+    if (!shown.length) { host.innerHTML = `<div class="empty">${icon('search')}<h2>Keine Treffer</h2>Kein Bild passt zu deiner Suche.</div>`; return; }
+    const meta = (p) => p.imported ? 'Fertiges Bild' : `${dur(p.result.exposure)} · ${p.result.n_frames} Aufnahmen${p.result.stats?.palette && p.result.stats.palette !== 'OSC' ? ' · ' + (PALETTE_LABEL[p.result.stats.palette] || p.result.stats.palette) : ''}`;
+    host.innerHTML = mode === 'list' ? `<div class="tablewrap free"><table><thead><tr><th class="nosort">Bild</th><th class="nosort">Typ</th><th class="nosort">Datum</th><th class="nosort num">Belichtung</th><th class="nosort num">Aufnahmen</th><th class="nosort">Bearbeitung</th></tr></thead><tbody>
+        ${shown.map(p => `<tr class="link" data-href="#/p/${p.id}/bild"><td class="name"><img class="tthumb" src="/api/stacking/results/${p.result.id}/thumb" alt="" loading="lazy"><a href="#/p/${p.id}/bild">${esc(p.name)}</a></td>
+          <td>${esc(p.kind_label || 'Allgemein')}</td><td>${esc(when(p))}</td><td class="num">${p.imported ? '–' : dur(p.result.exposure)}</td><td class="num">${p.imported ? '–' : p.result.n_frames}</td>
+          <td class="mut">${p.imported ? 'importiert' : esc(PROFILE_LABEL[p.result.stats?.profile] || '')}</td></tr>`).join('')}</tbody></table></div>`
+      : `<div class="igrid stagger" style="--tile:${mode === 'small' ? '170px' : '260px'}">${shown.map((p, i) => `<a class="itile" href="#/p/${p.id}/bild" style="--i:${i}" title="${esc(p.name)}">
+          <span class="ii"><img src="/api/stacking/results/${p.result.id}/thumb" alt="" loading="lazy" decoding="async" onload="this.classList.add('ld')">${running(p.job) ? `<span class="chip acc ist"><span class="spinner" style="width:10px;height:10px"></span>wird aktualisiert</span>` : ''}</span>
+          <span class="ic"><b>${esc(p.name)}</b><small>${esc(when(p))}</small></span>${mode === 'small' ? '' : `<span class="im">${esc(meta(p))}</span>`}</a>`).join('')}</div>`;
+    host.onclick = (e) => { const tr = e.target.closest('tr[data-href]'); if (tr && !e.target.closest('a')) location.hash = tr.dataset.href; };
+  }
+  async function load() {
+    list = (await api('/stacking/projects')).filter(p => p.result && !p.options?.gallery_parent);
+    if (el.isConnected) draw();
+  }
+  await load();
+  const onKey = (e) => { if (e.key === '/' && !e.target.closest('input,select,textarea')) { e.preventDefault(); $('#pq').focus(); } };
+  document.addEventListener('keydown', onKey);
+  return { update: load, destroy: () => document.removeEventListener('keydown', onKey) };
+}
+
 // ---------------------------------------------------------------- Objekt --- //
 async function projectView(el, id, tab = 'bild') {
   id = +id;
   let p = await api('/stacking/projects/' + id), frames = null, sel = null, cmp = null, viewer = null, sig = '', before = false, stage = null;
   let fFilter = 'all', fBand = 'all', fSort = ['date', 1];
-  let liveView = null, livePoster = null;
+  let liveView = null, livePoster = null, viz = null, vizKind = '';
   function updateJob() {
     const jobHost = $('#job', el);
     if (jobHost) { setJobLine(jobHost, p.job); jobHost.hidden = tab === 'bild' && !!liveView; }
     liveView?.update(p);
     if (p.live?.preview) livePoster = `/api/stacking/projects/${id}/live/${encodeURIComponent(p.live.preview)}`;
+    const pipe = $('#pipe', el);
+    if (pipe) { const tmp = document.createElement('div'); tmp.innerHTML = pipeHtml(p); if (pipe.innerHTML !== tmp.firstChild.innerHTML) pipe.innerHTML = tmp.firstChild.innerHTML; }
+    // schematische Darstellung des aktiven Schritts (nur während ein Auftrag wirklich läuft)
+    const host = $('#pipeViz', el), step = pipeStep(p), kind = step >= 0 && typeof vizProcess === 'function' ? STEP_VIZ[step] : '';
+    if (!host) return;
+    if (kind !== vizKind) { viz?.destroy(); viz = null; vizKind = kind; host.hidden = !kind; if (kind) viz = vizProcess(host, { kind }); }
+    viz?.update({ kind, progress: p.job?.progress, label: p.job?.message || undefined, ...(kind === 'stack' ? stackCount(p.job) : {}) });
   }
   const tabs = () => [...TABS.filter(([k]) => !p.imported || k === 'bild' || (k === 'versionen' && p.results.length > 1)),
     ...((p.companions ?? p.options?.companion_ids?.length ?? 0) ? [['teleskopbilder', 'Teleskopbilder']] : [])];
-  crumbs([['Galerie', '#/bilder'], [p.name]]);
+  crumbs([['Bilder', '#/bilder'], [p.name]]);
 
   function head() {
     const r = p.result, busy = running(p.job);
     return `<div class="pagehead"><div style="min-width:0">
         <button class="namebtn" id="rename" title="Umbenennen"><h1 style="display:inline">${esc(p.name)}</h1>${icon('edit')}</button>
-        <div class="row" style="margin-top:8px"><span class="chip">${esc(p.kind_label || 'Allgemein')}</span>
+        <div class="row" style="margin-top:6px"><span class="chip">${esc(p.kind_label || 'Allgemein')}</span>
           ${r?.stats?.palette ? `<span class="chip acc">${esc(PALETTE_LABEL[r.stats.palette] || r.stats.palette)}</span>` : ''}
           ${p.imported ? '<span class="chip acc">Fertiges Bild · importiert</span>' : `<span class="chip">${p.total} Aufnahmen</span><span class="chip">${p.nights.length} ${p.nights.length === 1 ? 'Nacht' : 'Nächte'}</span>`}
           ${r && !p.imported ? `<span class="chip">${dur(r.exposure)} integriert</span>` : ''}
           ${p.coords?.source === 'solve' ? `<span class="chip acc" title="Koordinaten per Plate-Solving bestimmt">${icon('star')}Plate-Solved</span>` : ''}</div></div>
-      <span class="grow"></span>
-      <div class="row">${p.imported ? '' : `<button class="btn ${busy ? 'busy' : ''}" id="run" ${busy ? 'disabled' : ''}>${icon(busy ? 'refresh' : 'play')}${busy ? 'Läuft …' : r ? 'Aktualisieren' : 'Verarbeiten'}</button>`}
+      <div class="page-actions">${p.imported ? '' : `<button class="btn ${busy ? 'busy' : ''}" id="run" ${busy ? 'disabled' : ''} title="${r ? 'Neue Aufnahmen und Nächte nachstacken – der bisherige Stack bleibt erhalten' : ''}">${icon(busy ? 'refresh' : 'play')}${busy ? 'Läuft …' : r ? 'Nachstacken' : 'Verarbeiten'}</button>`}
         ${r ? `<div class="menu" id="dl"><button class="btn ghost">${icon('down')}Export${icon('chev')}</button><div class="pop">
           ${p.imported ? `<a href="/api/stacking/results/${r.id}/original">Originaldatei <small>unverändert · ${esc(r.stats.imported.format)}</small></a>` : `<a href="/api/stacking/results/${r.id}/tif">TIFF 16-bit <small>Druck/Bearbeitung</small></a>`}<a href="/api/stacking/results/${r.id}/png">PNG <small>${p.imported ? 'Anzeigeversion' : 'verlustfrei'}</small></a>
           <a href="/api/stacking/results/${r.id}/jpg" download>JPEG <small>zum Teilen</small></a>${p.imported ? '' : `<a href="/api/stacking/results/${r.id}/fits">FITS linear <small>für PixInsight & Co.</small></a>`}</div></div>` : ''}
@@ -313,14 +415,16 @@ async function projectView(el, id, tab = 'bild') {
       ${p.can_solve && !p.coords && !busy ? `<div class="notice">${icon('star')}<div><b>Objekt unbekannt</b><div class="mut sm">Die Aufnahmen enthalten weder Objektnamen noch Koordinaten.
         Plate-Solving bestimmt die Himmelsposition aus dem Sternmuster und ordnet sie dem richtigen Objekt zu.</div></div><span class="grow"></span>
         <button class="btn sm" id="solveBtn">Jetzt bestimmen</button></div>` : ''}
-      ${p.job?.state === 'error' && !busy ? `<div class="notice err"><div><b>Letzter Durchlauf fehlgeschlagen</b><div class="mut sm">${esc(p.job.message)}</div></div></div>` : ''}
-      <div id="job" style="margin:-8px 0 18px">${jobLine(p.job)}</div>
+      ${p.job?.state === 'error' && !busy ? `<div class="notice err">${icon('alert')}<div><b>Letzter Durchlauf fehlgeschlagen</b><div class="mut sm">${esc(p.job.message)}</div></div></div>` : ''}
+      ${p.imported ? '' : pipeHtml(p)}<div class="pipe-viz" id="pipeViz" hidden></div>
+      <div id="job" style="margin:-4px 0 14px">${jobLine(p.job)}</div>
       <nav class="tabs" id="tabs">${tabs().map(([k, l], i) => { const n = { aufnahmen: p.total, versionen: p.results.length, teleskopbilder: p.companions ?? p.options?.companion_ids?.length }[k];
         return `<a href="#/p/${id}/${k}" data-t="${k}" class="${tab === k ? 'on' : ''}" title="Taste ${i + 1}">${l}${n != null ? `<span>${n}</span>` : ''}</a>`; }).join('')}<i class="tab-ind" id="tabind"></i></nav>
       <div id="tab"></div>`;
   }
 
   function draw() {
+    viz?.destroy(); viz = null; vizKind = '';
     el.innerHTML = head();
     $('#rename').onclick = rename;
     $('#run')?.addEventListener('click', () => run(false));
@@ -335,6 +439,22 @@ async function projectView(el, id, tab = 'bild') {
     $('#solveBtn')?.addEventListener('click', solve);
     drawTab(false);
   }
+  // Kontextpanel „Session“: Aufnahmen, Belichtung, Nächte, Status, Himmelsposition
+  function sessionCtx() {
+    const r = p.result, fr = p.frames || {}, j = p.job;
+    const status = running(j) ? `<span class="badge-dot run">${j.state === 'queued' ? 'wartet' : esc(j.stage || 'läuft')}</span>` : j?.state === 'error' ? '<span class="badge-dot bad">Fehler</span>'
+      : r ? '<span class="badge-dot ok">Fertig</span>' : '<span class="badge-dot">Noch nicht verarbeitet</span>';
+    AF.ctx.open(el, { title: 'Session', html: `<div class="panel"><dl class="kv">
+        <dt>Status</dt><dd>${status}</dd>
+        ${p.imported ? '' : `<dt>Aufnahmen</dt><dd class="tnum">${p.total}</dd><dt>Gestackt</dt><dd class="tnum">${r ? r.n_frames : 0}</dd><dt>Verworfen</dt><dd class="tnum">${fr.rejected || 0}</dd>
+        <dt>Belichtung</dt><dd>${r ? dur(r.exposure) : '–'}</dd>`}
+        <dt>Objekttyp</dt><dd>${esc(p.kind_label || 'Allgemein')}</dd>
+        <dt>Versionen</dt><dd class="tnum">${p.results.length}</dd>
+      </dl></div>
+      ${p.nights.length ? `<div class="panel"><h2 class="ctx-sec">Nächte</h2><ul class="qlist mut">${p.nights.map(n => `<li>${fnight(n)}</li>`).join('')}</ul>
+        <p class="mut sm" style="margin:0">Neue Nächte desselben Objekts werden automatisch nachgestackt – der bisherige Stack bleibt erhalten.</p></div>` : ''}
+      ${coordsPanel(p.coords)}` });
+  }
   // Nur den Tab-Inhalt neu zeichnen – Kopf, Jobzeile und Marker bleiben stehen
   function drawTab(animate = true) {
     if (p.imported && !['bild', 'versionen'].includes(tab)) tab = 'bild';
@@ -347,6 +467,7 @@ async function projectView(el, id, tab = 'bild') {
     const t = $('#tab');
     if (!t) return;
     t.classList.remove('enter');
+    sessionCtx();
     ({ bild: tabImage, aufnahmen: tabFrames, versionen: tabVersions, optionen: tabOptions, teleskopbilder: tabCompanions }[tab] || tabImage)(t);
     updateJob();
     if (animate) { void t.offsetWidth; t.classList.add('enter'); }
@@ -374,7 +495,7 @@ async function projectView(el, id, tab = 'bild') {
     if (stage?.rid !== r.id || !(stage.i >= 0 && stage.i < stages.length)) stage = { rid: r.id, i: stages.length - 1 };
     const stageLabel = (x) => x.final ? `Alle ${x.n} Aufnahmen · ${dur(x.exposure)} – fertiges Bild` : `${x.n} ${x.n === 1 ? 'Aufnahme' : 'Aufnahmen'} · ${dur(x.exposure)}`;
     const stageSrc = (x) => x.final ? `/api/stacking/results/${r.id}/jpg` : `/api/stacking/results/${r.id}/s${x.n}`;
-    t.innerHTML = `<div class="split"><div>
+    t.innerHTML = `<div class="imgwork">
         <div id="viewer"></div>
         ${stages.length > 1 ? `<div class="stages"><div class="stages-h"><b>Stacking-Verlauf</b><span class="grow"></span><span class="sm tnum" id="stlbl">${stageLabel(stages[stage.i])}</span></div>
           <input type="range" id="strange" min="0" max="${stages.length - 1}" step="1" value="${stage.i}" aria-label="Stacking-Stufe" style="--fill:${stage.i / (stages.length - 1) * 100}%">
@@ -386,13 +507,17 @@ async function projectView(el, id, tab = 'bild') {
         ${r.id !== p.results[0].id || c ? `<div class="row sm mut" style="margin-top:8px">${c ? `Vergleich: links Version vom ${fdate(c.created)}, rechts ${fdate(r.created)}` : `Ältere Version vom ${fdate(r.created)}`}
           <span class="grow"></span><button class="linkbtn" id="latest">Neueste Version zeigen</button></div>` : ''}
         ${p.imported ? `<div class="notice" style="margin-top:14px"><div><b>Fertig importiertes Bild</b><div class="mut sm">Das Original bleibt unverändert. AstroFlow führt kein erneutes Stacking und keine automatische Entwicklung durch.</div>
-          ${AF.on('sage') ? '<button class="btn ghost sm" id="importedSage" style="margin-top:8px">Mit Sage bestimmen und erzählen</button>' : ''}</div></div>` : `<div class="stats">
+          ${AF.on('sage') ? '<button class="btn ghost sm" id="importedSage" style="margin-top:8px">Mit Sage bestimmen und erzählen</button>' : ''}</div></div>` : ''}</div>`;
+    // Kontextpanel: Kennzahlen, Kanäle, Bild-Tutor, Details, Himmelsposition, KI-Prüfung
+    AF.ctx.open(el, { title: 'Bild-Details', html: `<div class="row ctx-acts"><a class="btn ghost sm" href="/api/stacking/results/${r.id}/jpg" download>${icon('down')}JPEG</a>
+        ${AF.on('sage') ? `<button class="btn ghost sm" id="ctxStory" title="Sage nutzt die vorhandene Plate-Solving-Lösung und die erkannten Objekte">${icon('book')}Geschichte erzählen</button>` : ''}
+        ${!p.imported && !running(p.job) ? `<button class="btn ghost sm" id="ctxDev">${icon('refresh')}Neu entwickeln</button>` : ''}</div>
+      ${p.imported ? '' : `<div class="stats">
           <div class="stat"><small>Integration</small><b>${dur(r.exposure)}</b></div>
           <div class="stat"><small>Gestackt</small><b class="tnum">${r.n_frames}</b></div>
           <div class="stat"><small>Sternschärfe (FWHM)</small><b class="tnum">${s.fwhm_px ?? '–'} px</b></div>
           <div class="stat"><small>Auflösung</small><b class="tnum">${s.shape ? s.shape[1] + '×' + s.shape[0] : '–'}</b></div>
-        </div>`}</div>
-      <div>
+        </div>`}
         ${Object.keys(bands).length > 1 || (Object.keys(bands).length === 1 && !bands.RGB) ? `<div class="panel"><div class="panel-h"><h2>Kanäle</h2><span class="grow"></span><span class="chip acc">${esc(PALETTE_LABEL[s.palette] || s.palette || '')}</span></div>
           <div class="bands">${Object.entries(bands).map(([b, v]) => `<div class="band"><span><span class="chip"><i style="background:${BAND_COLOR[b] || '#999'}"></i>${esc(b)}</span></span>
             <div class="progress"><i style="width:${v.exposure / bmax * 100}%;background:${BAND_COLOR[b] || 'var(--acc)'}"></i></div><span class="mut sm tnum">${v.frames} · ${dur(v.exposure)}</span></div>`).join('')}</div></div>` : ''}
@@ -417,13 +542,16 @@ async function projectView(el, id, tab = 'bild') {
           : `<div><b>Runde ${x.round}</b> · <span class="${x.ok ? 'ok' : 'warn'}">${x.ok ? 'in Ordnung' : 'nachgebessert'}</span> <span class="mut">(${esc(x.score)}/10)</span>
             ${x.issues?.length ? `<ul>${x.issues.map(i => `<li>${esc(i)}</li>`).join('')}</ul>` : ''}
             ${Object.keys(x.adjust || {}).length ? `<div class="mut sm">${Object.entries(x.adjust).map(([k, v]) => `${esc(k)} → ${esc(v)}`).join(' · ')}</div>` : ''}</div>`).join('')}</div></div>` : ''}
-      </div></div>`;
+` });
+    $('#ctxStory')?.addEventListener('click', story);
+    $('#ctxDev')?.addEventListener('click', develop);
     if (s.quality) tutorPanel($('#tutorBox'), r);
     const ph = !c && !before && livePoster ? livePoster : `/api/stacking/results/${r.id}/thumb`;
     livePoster = null;
     viewer = c ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${c.id}/jpg`, undefined, ph)
       : before && r.has_before ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${r.id}/before`, ['vorher', 'nachher'], ph)
       : createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, null, undefined, ph);
+    viewer.el.classList.add('tall');
     $('#ba')?.addEventListener('click', (e) => { const b = e.target.closest('[data-b]'); if (b) { before = b.dataset.b === '1'; drawTab(false); } });
     if (stages.length > 1) {
       let pre = null;                                    // alle Stufen vorladen, sobald der Regler benutzt wird
@@ -657,7 +785,7 @@ async function projectView(el, id, tab = 'bild') {
   async function story() {
     try {
       await send(`/sage/analyze/project/${id}`);
-      toast('Sage bestimmt die Objekte im Bild und schreibt die Geschichte …', '', { label: 'Zu Sage', href: '#/sage' });
+      toast('Sage bestimmt die Objekte im Bild (aus der vorhandenen Plate-Solving-Lösung) und schreibt die Geschichte …', '', { label: 'Zu Sage', href: '#/sage' });
       poll();
     } catch (e) { toast(e.message, 'err'); }
   }
@@ -669,7 +797,7 @@ async function projectView(el, id, tab = 'bild') {
     d.showModal();
     d.onclose = async () => {
       const v = $('input', d)?.value.trim();
-      if (d.returnValue === 'ok' && v && v !== p.name) { await send('/stacking/projects/' + id, { name: v }, 'PATCH'); toast('Umbenannt.', 'ok'); await refresh(true); crumbs([['Galerie', '#/bilder'], [p.name]]); }
+      if (d.returnValue === 'ok' && v && v !== p.name) { await send('/stacking/projects/' + id, { name: v }, 'PATCH'); toast('Umbenannt.', 'ok'); await refresh(true); crumbs([['Bilder', '#/bilder'], [p.name]]); }
     };
   }
   async function refresh(force) {
@@ -1224,26 +1352,36 @@ async function statisticsView(el) {
 }
 
 // ---------------------------------------------------------- Registrierung --- //
+// Projektliste kurz zwischenspeichern: Übersicht fragt summary und recent gleichzeitig ab
+let projCache = null, projAt = 0;
+async function projectsCached() {
+  if (!projCache || Date.now() - projAt > 1500) { projCache = api('/stacking/projects'); projAt = Date.now(); }
+  try { return (await projCache).filter(p => !p.options?.gallery_parent); } catch (e) { projCache = null; throw e; }
+}
+
 AF.register('stacking', {
-  nav: [{ href: '#/bilder', label: 'Galerie', icon: 'grid', key: 'gallery' }, { href: '#/import', label: 'Import', icon: 'upload', key: 'import', sec: true },
-    { href: '#/bilder/statistik', label: 'Statistik', icon: 'pulse', key: 'statistics', sec: true }],
+  nav: [{ href: '#/bilder', label: 'Bilder', icon: 'layers', key: 'gallery', area: 'work' }, { href: '#/import', label: 'Import', icon: 'upload', key: 'import' },
+    { href: '#/bilder/statistik', label: 'Statistik', icon: 'pulse', key: 'statistics' },
+    { href: '#/galerie', label: 'Galerie', icon: 'image', key: 'pictures', area: 'library' }],
   routes: [
     [/^\/bilder$/, 'gallery', galleryView],
     [/^\/bilder\/statistik$/, 'statistics', statisticsView],
+    [/^\/galerie$/, 'pictures', picturesView],
     [/^\/p\/(\d+)(?:\/(\w+))?$/, 'gallery', projectView],
     [/^\/import$/, 'import', importView],
   ],
   settings: stackingSettings,
   status: (st, badge) => badge('gallery', st.modules.stacking?.busy_jobs, true),
-  async home(st) {
-    const s = st.modules.stacking || {}, projects = (await api('/stacking/projects')).filter(p => !p.options?.gallery_parent);
-    const done = projects.filter(p => p.result).sort((a, b) => b.result.created - a.result.created);
-    const tot = projects.reduce((a, p) => a + (p.result?.exposure || 0), 0), busy = projects.filter(p => running(p.job));
-    return `<div class="hhead">${icon('grid')}<div><h2>Bilder</h2><div class="mut sm">Rohbilder → fertiges Astrofoto</div></div><span class="grow"></span><a class="linkbtn" href="#/bilder">Galerie ${icon('arrow')}</a></div>
-      <div class="hstats"><div><b class="tnum">${projects.length}</b><small>Objekte</small></div><div><b class="tnum">${dur(tot)}</b><small>Belichtung</small></div><div><b class="tnum">${nf.format(s.frames?.light || 0)}</b><small>Aufnahmen</small></div></div>
-      ${busy.length ? `<div class="hlist">${busy.slice(0, 2).map(p => `<a href="#/p/${p.id}"><span class="spinner"></span><b>${esc(p.name)}</b><span class="mut sm">${esc(p.job.stage || 'wartet')} ${p.job.progress ? Math.round(p.job.progress * 100) + ' %' : ''}</span></a>`).join('')}</div>` : ''}
-      ${done.length ? `<div class="hthumbs">${done.slice(0, 6).map(p => `<a href="#/p/${p.id}" title="${esc(p.name)}"><img src="/api/stacking/results/${p.result.id}/thumb" alt="" loading="lazy"><span>${esc(p.name)}</span></a>`).join('')}</div>`
-        : `<p class="mut sm">Noch keine fertigen Bilder. Lege FITS-Dateien in den Eingangsordner oder <a href="#/import">importiere sie</a>.</p>`}`;
+  async summary(st) {
+    const s = st.modules.stacking || {}, projects = await projectsCached();
+    const tot = projects.reduce((a, p) => a + (p.result?.exposure || 0), 0), busy = projects.find(p => running(p.job));
+    return { title: 'Bilder', icon: 'layers', href: '#/bilder', sub: projects.length ? `${projects.filter(p => p.result).length} fertige Bilder` : 'Noch keine Aufnahmen – Dateien importieren',
+      stats: [[nf.format(projects.length), 'Objekte'], [dur(tot), 'Belichtung'], [nf.format(s.frames?.light || 0), 'Aufnahmen']],
+      live: busy ? `<span class="spinner"></span>${esc(busy.name)} · ${busy.job.state === 'queued' ? 'wartet' : esc(busy.job.stage || 'läuft')}${busy.job.progress ? ' ' + Math.round(busy.job.progress * 100) + ' %' : ''}` : '' };
+  },
+  async recent() {
+    return (await projectsCached()).filter(p => p.result).sort((a, b) => b.result.created - a.result.created).slice(0, 8)
+      .map(p => ({ img: `/api/stacking/results/${p.result.id}/thumb`, title: p.name, sub: p.imported ? 'Fertiges Bild' : `${dur(p.result.exposure)} · ${ago(p.result.created)}`, href: `#/p/${p.id}/bild` }));
   },
   async palette() {
     const projects = (await api('/stacking/projects')).filter(p => !p.options?.gallery_parent);

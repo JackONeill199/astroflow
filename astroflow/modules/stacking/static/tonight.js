@@ -174,6 +174,6 @@ document.addEventListener('click', async e => {
 });
 const m = AF.modules.stacking;
 m.homeFeatured = featured;
-m.nav.push({href: '#/nacht', label: 'Heute Nacht', icon: 'star', key: 'tonight', sec: true});
+m.nav.push({href: '#/nacht', label: 'Heute Nacht', icon: 'star', key: 'tonight', parent: 'home'});
 m.routes.push([/^\/nacht(?:\/([A-Za-z0-9]+))?$/, 'tonight', nightView]);
 })();

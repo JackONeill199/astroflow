@@ -32,7 +32,7 @@ FIND_OVERFLOW = """() => {
   const boxy = (s) => parseFloat(s.borderRightWidth) > 0 || !/rgba\\(0, 0, 0, 0\\)|transparent/.test(s.backgroundColor);
   const name = (e) => e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + (typeof e.className === 'string' && e.className ? '.' + e.className.trim().split(/\\s+/).join('.') : '');
   if (document.documentElement.scrollWidth > vw + 1) out.push(`Seite ${document.documentElement.scrollWidth} px breit statt ${vw}`);
-  for (const e of document.querySelectorAll('#view *, .side *, .top *')) {
+  for (const e of document.querySelectorAll('#view *, .side *, .top *, #ctx *')) {
     const r = e.getBoundingClientRect();
     if (!r.width || !r.height || e.closest('svg') && e.tagName !== 'svg') continue;
     const s = getComputedStyle(e);
@@ -118,8 +118,8 @@ def browser():
         b.close()
 
 
-ROUTES = ["#/", "#/nacht", "#/bilder", "#/p/{pid}/bild", "#/p/{pid}/aufnahmen", "#/p/{pid}/versionen", "#/p/{pid}/optionen",
-          "#/import", "#/activity", "#/skytrace", "#/skytrace/neu", "#/skytrace/statistik", "#/skytrace/erfolge", "#/sage", "#/sage/wiki", "#/sage/entdeckungen",
+ROUTES = ["#/", "#/nacht", "#/bilder", "#/galerie", "#/p/{pid}/bild", "#/p/{pid}/aufnahmen", "#/p/{pid}/versionen", "#/p/{pid}/optionen",
+          "#/import", "#/activity", "#/skytrace", "#/skytrace/neu", "#/skytrace/statistik", "#/skytrace/erfolge", "#/sage", "#/sage/wiki", "#/sage/entdeckungen", "#/sage/sammlung",
           "#/settings/stacking", "#/settings/skytrace", "#/settings/sage", "#/settings/module"]
 
 
@@ -354,11 +354,11 @@ def test_tonight_recommendations_chart_and_links(server, browser, size, tmp_path
         assert page.locator('.tn-tooltip').is_visible()
     slider.focus()
     slider.press('End')
-    # Alle Module stehen auf Desktopbreite neben der größeren Grafik über dem unteren Fensterrand.
+    # Modulkarten stehen auf Desktopbreite links neben „Heute Nacht“ über dem unteren Fensterrand.
     if size != 'handy':
         modules = page.locator('.home-modules').bounding_box()
         diagram = page.locator('.home-featured').bounding_box()
-        assert modules['x'] > diagram['x'] + diagram['width']
+        assert diagram['x'] > modules['x'] + modules['width']
         assert modules['y'] + modules['height'] <= h
         assert page.locator('.hthumbs a').first.bounding_box()['width'] >= (140 if size == 'gross' else 85)
         assert page.locator('.hthumbs span').first.is_visible()

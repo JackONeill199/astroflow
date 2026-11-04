@@ -3,31 +3,38 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0a0d16">
+<meta name="theme-color" content="#14171c">
 <meta name="description" content="AstroFlow – Astrofotografie, Spurenanalyse und Himmelsgeschichten in einer lokalen App">
 <title>AstroFlow</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="style.css?v=1.6.14">
+<link rel="stylesheet" href="style.css?v=2.0.0">
 </head>
 <body>
-<div class="shell">
-  <aside class="side">
+<div class="shell" id="shell">
+  <header class="top">
     <a class="brand" href="#/"><img src="icon.svg" alt=""><span>AstroFlow</span></a>
-    <nav id="nav"></nav>
+    <button class="tbtn" id="sideToggle" title="Seitenleiste ein-/ausklappen" aria-label="Seitenleiste ein-/ausklappen"><svg><use href="#i-sidebar"/></svg></button>
+    <div id="crumbs" class="crumbs"></div>
+    <span class="grow"></span>
+    <button class="search-btn" id="palBtn" title="Objekte und Befehle suchen (Strg+K)"><svg><use href="#i-search"/></svg><span>Suchen &amp; Befehle</span><kbd>Strg K</kbd></button>
+    <a class="tbtn" id="importBtn" href="#/import" title="Dateien importieren"><svg><use href="#i-upload"/></svg><span>Importieren</span></a>
+    <span class="top-sep"></span>
+    <div class="jobs-ind"><button class="tbtn jobpill idle" id="jobpill" title="Laufende Aufträge" aria-haspopup="true" aria-expanded="false"><span class="job-symbol"><svg><use href="#i-pulse"/></svg></span><span class="t"></span><span class="count">0</span><i></i></button>
+      <div class="popover" id="jobpop" role="dialog" aria-label="Laufende Aufträge"></div></div>
+    <a class="tbtn" id="sysBtn" href="#/settings/module" title="System"><span class="sysdot" id="sysdot"></span></a>
+    <button class="tbtn ctx-open-btn" id="ctxBtn" title="Details ein-/ausblenden" aria-label="Details ein-/ausblenden" hidden><svg><use href="#i-panel"/></svg></button>
+  </header>
+  <aside class="side">
+    <nav id="nav" aria-label="Hauptnavigation"></nav>
     <div class="side-foot" id="sidefoot"></div>
   </aside>
-  <div class="main">
-    <header class="top">
-      <div id="crumbs" class="crumbs"></div>
-      <span class="grow"></span>
-      <a class="jobpill" id="jobpill" hidden></a>
-      <button class="search-btn" id="palBtn" title="Objekte und Befehle suchen"><svg><use href="#i-search"/></svg><span>Suchen &amp; Befehle</span><kbd>Strg K</kbd></button>
-    </header>
-    <main id="view" tabindex="-1"></main>
-  </div>
+  <main id="view" tabindex="-1"><nav class="subnav" id="subnav" aria-label="Bereich"></nav></main>
+  <aside class="ctx" id="ctx" aria-label="Details" hidden><div class="ctx-h"><b id="ctxTitle"></b><button class="tbtn" id="ctxClose" title="Details schließen" aria-label="Details schließen"><svg><use href="#i-x"/></svg></button></div><div class="ctx-b" id="ctxBody"></div></aside>
+  <div class="ctx-scrim" id="ctxScrim"></div>
 </div>
-<div id="drop" class="drop-overlay" hidden><div><svg><use href="#i-upload"/></svg><p>Dateien hier ablegen</p><small>FITS → Bilder · Fotos (JPG/PNG/TIFF) → Sage</small></div></div>
+<div id="drop" class="drop-overlay" hidden><div><svg><use href="#i-upload"/></svg><p>Dateien hier ablegen</p>
+  <div class="dkinds"><div><b>FITS-Rohdaten</b>gehen in die Bilder-Pipeline</div><div><b>JPG · PNG · TIFF</b>kommen als fertige Bilder in die Galerie</div></div></div></div>
 <div id="toasts" class="toasts" aria-live="polite"></div>
 <dialog id="dlg"></dialog>
 <dialog id="pal" aria-label="Befehlspalette"></dialog>
@@ -69,8 +76,14 @@
     <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></symbol>
     <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.5 12h17M12 3.5c2.6 2.4 3.8 5.2 3.8 8.5s-1.2 6.1-3.8 8.5c-2.6-2.4-3.8-5.2-3.8-8.5S9.4 5.9 12 3.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8.5a1.5 1.5 0 0 1 1.5-1.5H8l1.5-2.5h5L16 7h2.5A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-sidebar" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9 4.5v15" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M15 4.5v15" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m4 17 5-5 4 4 2.5-2.5L20 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="16" cy="9" r="1.4" fill="currentColor"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 4 3 8.5l9 4.5 9-4.5zM3 12.5l9 4.5 9-4.5M3 16.5l9 4.5 9-4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
   </defs>
 </svg>
-<script src="app.js?v=1.6.14"></script>
+<script src="viz.js?v=2.0.0"></script>
+<script src="app.js?v=2.0.0"></script>
 </body>
 </html>
