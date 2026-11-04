@@ -19,7 +19,7 @@ import pytest
 # Nie ein echtes GraXpert/StarNet/GPU/Netz in Tests: schon beim Import setzen (vor allen Modul-/Sitzungs-Fixtures,
 # in jedem xdist-Worker, und von Unterprozessen geerbt). Einzelne Tests überschreiben per monkeypatch.
 os.environ.update({"ASTROFLOW_GAIA": "0", "ASTROFLOW_GRAXPERT": "0", "ASTROFLOW_GPU": "0", "ASTROFLOW_SAGE_OFFLINE": "1",
-                   "ASTROFLOW_HORIZONS": "0"})
+                   "ASTROFLOW_HORIZONS": "0", "ASTROFLOW_SKY": "0"})
 
 
 def pytest_configure(config):
@@ -76,7 +76,7 @@ def server(tmp_path_factory):
     from astroflow.modules.stacking.pipeline import Pipeline
     from astroflow.modules.stacking.reviewer import ReviewerConfig
     from astroflow.server import create_app
-    from test_ui_layout import LONG, _free_port, _skytrace_run
+    from test_ui_layout import LONG, _free_port, _sky_seed, _skytrace_run
 
     root = tmp_path_factory.mktemp("ui")
     mp = pytest.MonkeyPatch()
@@ -102,6 +102,7 @@ def server(tmp_path_factory):
         for _ in range(2):                                   # 3 Versionen -> Speicherbelegung bietet „Ältere Versionen“ an
             pl.process(pid, {"mode": "develop"})
         db.x("UPDATE projects SET name=? WHERE id=?", (LONG, pid))
+        _sky_seed(db, pid)
         port = _free_port()
         srv = uvicorn.Server(uvicorn.Config(create_app(s), host="127.0.0.1", port=port, log_level="warning"))
         th = threading.Thread(target=srv.run, daemon=True)

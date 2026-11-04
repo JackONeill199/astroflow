@@ -151,6 +151,10 @@ def analyze_frame(raw: np.ndarray, bayer: bool) -> dict:
         "stars": [[round(float((x + 0.5) * s - 0.5), 2), round(float((y + 0.5) * s - 0.5), 2), round(float(f), 1)]
                   for x, y, f in zip(stars.x[:100], stars.y[:100], stars.flux[:100])],
     }
+    # Himmel ohne Objekt + Hintergrundebene (Himmelshelligkeit, Richtung der Lichtverschmutzung – skyquality.py).
+    # Zusätzliche Felder ohne Erhöhung von METRICS_VERSION: ältere Frames bekommen sie im Himmelsqualitäts-Auftrag nach.
+    from .skyquality import bg_plane
+    m.update(bg_plane(luma, s))
     return m
 
 

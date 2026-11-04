@@ -3,6 +3,26 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.26.0 – 05.11.2026
+
+### Neu
+- **Himmelsqualität** (Übersicht → Himmelsqualität, `#/himmel`): AstroFlow misst aus deinen eigenen Aufnahmen, wie dunkel der
+  Himmel war – ein „Sky Quality Meter ohne Gerät“. Die Hintergrundhelligkeit jeder Einzelaufnahme wird an Sternen mit bekannter
+  Helligkeit (Gaia-Katalog) geeicht und in **mag/″²** (auf den Zenit umgerechnet) angegeben, dazu eine **Bortle-Schätzung** mit
+  Spanne statt Scheingenauigkeit. Als Wert des Ortes zählen nur dunkle, mondlose, dunstfreie Aufnahmen über 30° Höhe;
+  andere Nächte zeigen ihren Verlauf mit Kennzeichnung (Mond, Dämmerung, Dunst, tiefes Objekt).
+- **Je Standort** (aus der Ortsliste, automatisch je Nacht): Mittelwert, dunkelste Nacht, Verlauf über die Nächte,
+  Bildschärfe – „Garten 19,6 · Ferienhaus 21,1“. Die Werte stehen auch in Einstellungen → Standorte und in „Heute Nacht“
+  („Himmel hier“).
+- **Richtung der Lichtverschmutzung:** aus dem Helligkeitsgefälle vieler Bilder, Blickrichtung und Feldrotation – als Windrose
+  mit Unsicherheit; erst mit Zielen in verschiedenen Himmelsrichtungen und mehreren Nächten belastbar.
+- **Seeing in Bogensekunden:** Sternschärfe (FWHM) jeder Aufnahme × Bildmaßstab, als „effektive Bildschärfe“ gekennzeichnet –
+  bei Smart-Teleskopen stecken Optik, Fokus und Nachführung mit drin.
+- **Objektseite:** Kasten „Himmel in der Aufnahmenacht“ mit Himmelshelligkeit, Bortle, Bildschärfe, Durchsicht, Verlauf über die
+  Nacht und einer kurzen Erklärung für Einsteiger.
+- **Für alle Nächte berechnen:** wertet auch ältere Objekte aus – ohne Rohbilder, aus den gespeicherten Messwerten, dem Stack und
+  seiner Plate-Solving-Lösung; Fortschritt unter Aktivität. Neue Objekte werden nach dem Entwickeln automatisch ausgewertet.
+
 ## 0.23.0 – 04.11.2026
 
 ### Neu

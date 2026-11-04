@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from . import calibration, channels, comet, diskspace, gpu, graxpert, objects, platesolve, reviewer, stars, tonight, tutor
+from . import calibration, channels, comet, diskspace, gpu, graxpert, objects, platesolve, reviewer, skyquality, stars, tonight, tutor
 from .db import DB
 from .pipeline import Pipeline
 
@@ -37,6 +37,8 @@ class Engine:
         self.pl.site_provider = self._site                # Kometenmodus: Parallaxe lokal am Standort rechnen
         from .library import Library
         self.library = Library(self)
+        skyquality.ensure_table(self.db)
+        self.sky = skyquality.SkyRunner(self.pl, ctx.services.get("site_for"))
         stars.STARNET.tools_dir = self.s.data_dir / "tools" / "starnet"
         self._apply_saved()
         self.q: queue.Queue[int] = queue.Queue()
@@ -211,6 +213,8 @@ class Engine:
             else:
                 self.pl.finish(job["project_id"], opts, prog)
             self.db.x("UPDATE jobs SET state='done', progress=1, finished=? WHERE id=?", (time.time(), jid))
+            if skyquality.auto_enabled():                 # Himmelsqualität der Nächte im Hintergrund nachrechnen
+                self.sky.queue(job["project_id"])
             if self.s.auto and job["project_id"] in self.pending_projects():
                 self.enqueue(job["project_id"])
         except Exception as e:
@@ -268,7 +272,7 @@ class Engine:
             disk = None
         return {"input_dir": str(self.s.input_dir), "output_dir": str(self.s.output_dir),
                 "auto": self.s.auto, "scan_interval": self.s.scan_interval, "threads": self.s.threads,
-                "last_scan": self.last_scan, "frames": frames, "busy_jobs": busy, "disk": disk,
+                "last_scan": self.last_scan, "frames": frames, "busy_jobs": busy + (self.sky.state.get("state") == "running"), "disk": disk,
                 "hold": self.hold(), "paused": bool(self.paused),
                 "projects": n_proj, "finished": n_res,
                 "delete_uploads": self.s.delete_uploads, "gaia": self.s.gaia,
@@ -285,7 +289,7 @@ class Engine:
                         "detail": j["message"] or j["stage"] or "", "stage": j["stage"], "state": j["state"],
                         "progress": j["progress"], "started": j["started"] or j["created"], "finished": j["finished"],
                         "href": f"#/p/{j['project_id']}"})
-        return out
+        return self.sky.activity() + out
 
 
 _coll_cache: dict = {}          # Dienst collection_progress (Sage), 2 min zwischengespeichert
@@ -672,8 +676,42 @@ def build_router(eng: Engine) -> APIRouter:
             if here:
                 cfg = {**cfg, "lat": here["lat"], "lon": here["lon"]}
         out = tonight.plan(projects, cfg, eng.s.work_dir / "tutor", device=device, hidden=hidden, collection=coll)
+        sky = None
+        if here:
+            try:
+                sky = skyquality.for_site(db, here.get("id"))
+            except Exception:
+                sky = None
         return {**out, "site_info": {k: here.get(k) for k in ("id", "name", "source", "detail")} if here else None,
-                "sites_on": bool(site_for), "night": night}
+                "sites_on": bool(site_for), "night": night, "sky": sky}
+
+    # ---- Himmelsqualität (Himmelshelligkeit, Bortle, Lichtrichtung, Seeing) ------------------------
+    @r.get("/sky")
+    def get_sky():
+        out = skyquality.summary(db)
+        have = {x["project_id"] for x in db.q("SELECT DISTINCT project_id FROM sky_nights")}
+        todo = db.one("SELECT COUNT(DISTINCT f.project_id) n FROM frames f JOIN projects p ON p.id=f.project_id WHERE f.kind='light' "
+                      "AND f.metrics IS NOT NULL AND COALESCE(json_extract(p.options,'$.input_type'),'')!='picture'")["n"]
+        st = eng.sky.state
+        return {**out, "computed": len(have), "projects": todo, "gaia": eng.s.gaia, "solver": eng.pl.solver_cfg.enabled,
+                "job": {k: st.get(k) for k in ("state", "total", "done", "current", "detail", "nights", "errors", "finished")}}
+
+    @r.get("/projects/{pid}/sky")
+    def get_project_sky(pid: int):
+        nights = skyquality.nights_of(db, pid)
+        for n in nights:
+            n.pop("dirs", None)
+        return {"nights": nights, "busy": eng.sky.busy()}
+
+    @r.post("/sky/compute")
+    def compute_sky(body: dict = Body(default={})):
+        if eng.sky.busy():
+            raise HTTPException(409, "Die Himmelsqualität wird gerade berechnet – bitte kurz warten.")
+        pid = body.get("project_id")
+        if pid is not None and not db.one("SELECT id FROM projects WHERE id=?", (int(pid),)):
+            raise HTTPException(404, "Objekt nicht gefunden")
+        st = eng.sky.start([int(pid)] if pid is not None else None, only_missing=bool(body.get("missing")))
+        return {k: st.get(k) for k in ("state", "total", "done")}
 
     # ---- Bild-Tutor (vor /results/{rid}/{kind}, sonst fängt die Datei-Route „tutor“ ab) --------
     @r.get("/tutor")

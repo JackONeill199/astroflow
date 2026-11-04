@@ -647,6 +647,7 @@ async function projectView(el, id, tab = 'bild') {
           <div class="bands">${Object.entries(bands).map(([b, v]) => `<div class="band"><span><span class="chip"><i style="background:${BAND_COLOR[b] || '#999'}"></i>${esc(b)}</span></span>
             <div class="progress"><i style="width:${v.exposure / bmax * 100}%;background:${BAND_COLOR[b] || 'var(--acc)'}"></i></div><span class="mut sm tnum">${v.frames} · ${dur(v.exposure)}</span></div>`).join('')}</div></div>` : ''}
         <div id="tutorBox">${qualityPanel(s)}</div>
+        ${p.imported ? '' : '<section class="panel" id="skyBox"></section>'}
         <div class="panel"><h2 style="margin-bottom:12px">Details</h2><dl class="kv">
           <dt>Erstellt</dt><dd>${fdate(r.created)}</dd>
           ${p.imported ? `<dt>Dateiname</dt><dd>${esc(s.imported.filename)}</dd><dt>Format</dt><dd>${esc(s.imported.format)} · ${s.imported.bit_depth} Bit</dd>
@@ -674,6 +675,7 @@ async function projectView(el, id, tab = 'bild') {
     objectKnowledge($('#ctxKnow'), p.name);
     $('#ctxDev')?.addEventListener('click', develop);
     if (s.quality) tutorPanel($('#tutorBox'), r);
+    window.AFsky?.panel($('#skyBox'), p.id);              // Himmelshelligkeit, Bortle, Seeing der Aufnahmenächte (skyquality.js)
     const ph = !c && !before && livePoster ? livePoster : `/api/stacking/results/${r.id}/thumb`;
     livePoster = null;
     viewer = c ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${c.id}/jpg`, undefined, ph)

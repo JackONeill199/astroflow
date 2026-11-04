@@ -151,7 +151,7 @@ function statusNote(d) {
 function content(d, initial_target, full) {
   if (!d.site) return `<div class="tn-empty">${noSite()}</div>`;
   const dev = d.device;
-  return `<div class="tn-overview"><div><small>Dunkle Zeit</small><b>${dur(d.dark_hours * 3600)}</b></div><div><small>Mond beleuchtet</small><b>${d.moon.illum} %</b></div><div><small>Dein Gerät</small><b>${esc(dev.name)}</b></div></div>
+  return `<div class="tn-overview"><div><small>Dunkle Zeit</small><b>${dur(d.dark_hours * 3600)}</b></div><div><small>Mond beleuchtet</small><b>${d.moon.illum} %</b></div><div><small>Dein Gerät</small><b>${esc(dev.name)}</b></div>${window.AFsky?.tonightTile(d) || ''}</div>
     ${statusNote(d)}
     ${graph(d, initial_target)}<p class="mut sm tn-legend">Dunkel: Sonne unter −18° · Mindesthöhe ${d.min_alt}° · gepunktet: Mond${d.cloud ? ' · blauer Streifen unten: Bewölkung' : ''} · Zeiten in deiner Ortszeit</p>
     ${planList(d, full)}
@@ -173,7 +173,7 @@ function compact(d) {
   if (!d.site) return `<div class="tn-empty">${noSite()}</div>`;
   const sky = d.status?.code === 'overcast' ? `bedeckt (${d.sky.mean} %)` : d.sky?.state === 'partly' ? `teils bewölkt (${d.sky.mean} %)` : d.sky?.state ? 'klar' : null;
   const recs = (d.recommendations || []).slice(0, 3);
-  return `<div class="tn-overview"><div><small>Dunkle Zeit</small><b>${dur(d.dark_hours * 3600)}</b></div><div><small>Mond</small><b>${d.moon.illum} %</b></div>${sky ? `<div><small>Wetter</small><b>${esc(sky)}</b></div>` : ''}</div>
+  return `<div class="tn-overview"><div><small>Dunkle Zeit</small><b>${dur(d.dark_hours * 3600)}</b></div><div><small>Mond</small><b>${d.moon.illum} %</b></div>${sky ? `<div><small>Wetter</small><b>${esc(sky)}</b></div>` : ''}${window.AFsky?.tonightTile(d) || ''}</div>
     ${statusNote(d)}
     ${recs.length ? `<ol class="tn-top">${recs.map(x => `<li><a ${targetLink(x)}>${esc(x.name)}</a><small>${esc(x.kind_label || '')}${x.good?.length ? ' · ' + period(x.good[0]) : ''}${x.category === 'more' ? ' · mehr Zeit' : ''}${x.weather_blocked ? ' · bei klarem Himmel' : ''}</small></li>`).join('')}</ol>` : '<p class="mut sm">Heute keine passenden Ziele.</p>'}`;
 }

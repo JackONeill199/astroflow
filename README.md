@@ -53,6 +53,17 @@ Bild-Tutor, eine Open-Meteo-Vorhersage mit auf 0,1° gerundetem Standort. Die Hi
 
 Alle Bilder stammen aus einer echten Instanz: rund 22 000 Stellina-Aufnahmen aus 31 Nächten, 63 Objekte – ohne Nachbearbeitung in anderer Software.
 
+### Himmelsqualität – wie dunkel ist dein Himmel?
+
+Unter **Übersicht → Himmelsqualität** misst AstroFlow aus deinen eigenen Aufnahmen, wie hell der Nachthimmel an deinen
+Standorten ist – ein „Sky Quality Meter ohne Gerät“: Der Hintergrund jeder Einzelaufnahme wird an Sternen mit bekannter
+Helligkeit (Gaia) geeicht und in **mag/″²** angegeben (größer = dunkler; Stadt ≈ 18, Vorort 19–20, Land ≈ 21), dazu eine
+**Bortle-Schätzung** mit Spanne, die **Bildschärfe** (Sternscheibchen in Bogensekunden – bei Smart-Teleskopen Luftunruhe,
+Optik, Fokus und Nachführung zusammen) und die **Richtung der Lichtverschmutzung** als Windrose. Als Wert des Ortes zählen nur
+dunkle, mondlose, dunstfreie Aufnahmen über 30° Höhe; die Objektseite zeigt den Verlauf jeder Aufnahmenacht.
+„Für alle Nächte berechnen“ wertet ältere Objekte ohne Rohbilder aus. Ohne Dark-Frames bestimmt AstroFlow den Himmel aus dem
+Photonenrauschen (bisher für Stellina vermessen); die Genauigkeit liegt bei etwa ±0,2–0,4 mag.
+
 ### Bilder – vom Rohbild zum fertigen Foto
 
 ![Galerie aller Objekte](docs/screenshots/galerie.jpg)

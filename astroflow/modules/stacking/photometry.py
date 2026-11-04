@@ -24,10 +24,11 @@ GAVO_TAP = "https://dc.zah.uni-heidelberg.de/tap/sync"
 ARI_TAP = "https://gaia.ari.uni-heidelberg.de/tap/sync"
 
 
-def _tap(url, table, color, ra, dec, radius, gmag_max, timeout, need="bp_rp IS NOT NULL") -> list:
+def _tap(url, table, color, ra, dec, radius, gmag_max, timeout, need="bp_rp IS NOT NULL", with_g=False) -> list:
     import httpx
 
-    q = (f"SELECT TOP 6000 ra, dec, {color} FROM {table} WHERE 1=CONTAINS(POINT('ICRS', ra, dec), "
+    extra = ", phot_g_mean_mag" if with_g else ""
+    q = (f"SELECT TOP 6000 ra, dec, {color}{extra} FROM {table} WHERE 1=CONTAINS(POINT('ICRS', ra, dec), "
          f"CIRCLE('ICRS', {ra:.5f}, {dec:.5f}, {radius:.4f})) AND phot_g_mean_mag < {gmag_max} AND {need} "
          f"ORDER BY phot_g_mean_mag")
     r = httpx.post(url, data={"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "csv", "QUERY": q}, timeout=timeout)
@@ -35,31 +36,31 @@ def _tap(url, table, color, ra, dec, radius, gmag_max, timeout, need="bp_rp IS N
     rows = []
     for line in r.text.splitlines()[1:]:
         try:
-            rows.append([float(v) for v in line.split(",")[:3]])
+            rows.append([float(v) for v in line.split(",")[:4 if with_g else 3]])
         except ValueError:
             continue
     return rows
 
 
-def _gavo(ra, dec, radius, gmag_max, timeout) -> list:
+def _gavo(ra, dec, radius, gmag_max, timeout, with_g=False) -> list:
     # GAVO-Spiegel (Heidelberg), Auszug gaia.dr3lite ohne Spalte bp_rp – gleiche Definition aus den Mittelwerten
     return _tap(GAVO_TAP, "gaia.dr3lite", "phot_bp_mean_mag - phot_rp_mean_mag", ra, dec, radius, gmag_max, min(timeout, 20),
-                need="phot_bp_mean_mag IS NOT NULL AND phot_rp_mean_mag IS NOT NULL")
+                need="phot_bp_mean_mag IS NOT NULL AND phot_rp_mean_mag IS NOT NULL", with_g=with_g)
 
 
-def _ari(ra, dec, radius, gmag_max, timeout) -> list:
-    return _tap(ARI_TAP, "gaiadr3.gaia_source", "bp_rp", ra, dec, radius, gmag_max, min(timeout, 30))
+def _ari(ra, dec, radius, gmag_max, timeout, with_g=False) -> list:
+    return _tap(ARI_TAP, "gaiadr3.gaia_source", "bp_rp", ra, dec, radius, gmag_max, min(timeout, 30), with_g=with_g)
 
 
-def _esa(ra, dec, radius, gmag_max, timeout) -> list:
-    return _tap(ESA_TAP, "gaiadr3.gaia_source", "bp_rp", ra, dec, radius, gmag_max, timeout)
+def _esa(ra, dec, radius, gmag_max, timeout, with_g=False) -> list:
+    return _tap(ESA_TAP, "gaiadr3.gaia_source", "bp_rp", ra, dec, radius, gmag_max, timeout, with_g=with_g)
 
 
-def _vizier(ra, dec, radius, gmag_max, timeout) -> list:
+def _vizier(ra, dec, radius, gmag_max, timeout, with_g=False) -> list:
     import httpx
 
     params = {"-source": "I/355/gaiadr3", "-c": f"{ra:.5f} {dec:+.5f}", "-c.rd": f"{radius:.4f}",
-              "-out": "RA_ICRS,DE_ICRS,BP-RP", "-out.max": "6000", "Gmag": f"<{gmag_max}", "-sort": "Gmag"}
+              "-out": "RA_ICRS,DE_ICRS,BP-RP" + (",Gmag" if with_g else ""), "-out.max": "6000", "Gmag": f"<{gmag_max}", "-sort": "Gmag"}
     r = httpx.get(VIZIER, params=params, timeout=timeout)
     r.raise_for_status()
     rows = []
@@ -68,23 +69,25 @@ def _vizier(ra, dec, radius, gmag_max, timeout) -> list:
             continue
         p = line.split("	")
         try:
-            rows.append([float(p[0]), float(p[1]), float(p[2])])
+            rows.append([float(v) for v in p[:4 if with_g else 3]])
         except (ValueError, IndexError):
             continue                                       # Kopfzeilen, Sterne ohne Farbindex
     return rows
 
 
 def gaia_stars(ra: float, dec: float, radius_deg: float, cache_dir: Path, gmag_max: float = 14.5,
-               timeout: float = 120.0) -> np.ndarray:   # gemessen 01.11.2026: GAVO 1,3 s, ARI ~9 s, ESA 131 s
-    """(N,3) Array RA, Dec, BP−RP der Gaia-DR3-Sterne im Feld (heller als gmag_max). Mit lokalem Zwischenspeicher."""
-    key = hashlib.sha1(f"{ra:.3f}|{dec:.3f}|{radius_deg:.3f}|{gmag_max}".encode()).hexdigest()[:16]
+               timeout: float = 120.0, with_g: bool = False) -> np.ndarray:   # gemessen 01.11.2026: GAVO 1,3 s, ARI ~9 s, ESA 131 s
+    """(N,3) Array RA, Dec, BP−RP der Gaia-DR3-Sterne im Feld (heller als gmag_max); with_g: (N,4) zusätzlich G-Helligkeit
+    (Nullpunkt der Himmelshelligkeit, skyquality.py). Mit lokalem Zwischenspeicher."""
+    ncol = 4 if with_g else 3
+    key = hashlib.sha1(f"{ra:.3f}|{dec:.3f}|{radius_deg:.3f}|{gmag_max}{'|g' if with_g else ''}".encode()).hexdigest()[:16]
     f = Path(cache_dir) / f"gaia_{key}.json"
     if f.exists():
-        return np.array(json.loads(f.read_text()), dtype=np.float64).reshape(-1, 3)
+        return np.array(json.loads(f.read_text()), dtype=np.float64).reshape(-1, ncol)
     rows, errors = None, []
     for fetch in (_gavo, _ari, _esa, _vizier):             # schnelle Spiegel zuerst, ESA/VizieR als Ausweich
         try:
-            rows = fetch(ra, dec, radius_deg, gmag_max, timeout)
+            rows = fetch(ra, dec, radius_deg, gmag_max, timeout, **({"with_g": True} if with_g else {}))
             break
         except Exception as e:
             errors.append(f"{fetch.__name__[1:]}: {e}")
@@ -92,7 +95,7 @@ def gaia_stars(ra: float, dec: float, radius_deg: float, cache_dir: Path, gmag_m
         raise RuntimeError("Gaia-Katalog nicht erreichbar (" + "; ".join(errors)[:160] + ")")
     f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text(json.dumps(rows))
-    return np.array(rows, dtype=np.float64).reshape(-1, 3)
+    return np.array(rows, dtype=np.float64).reshape(-1, ncol)
 
 
 def wcs_from(header: dict):

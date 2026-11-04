@@ -12,6 +12,8 @@ const srcText = { override: 'Ausnahme', fits: 'aus FITS', period: 'Zeitraum', de
 // Genauigkeit für SkyTrace einordnen: Satelliten brauchen ~200–500 m, Nachtplanung/Wetter nicht
 const accHint = (m) => m <= 300 ? ['ok', 'genau genug für Satelliten'] : m <= 1000 ? ['warn', 'Satelliten: Toleranz wird erweitert'] : ['bad', 'zu ungenau für sichere Satelliten-Zuordnung'];
 
+// Himmelsqualität des Ortes (Dienst site_sky des Bilder-Moduls; fehlt das Modul, bleibt die Zeile leer)
+const skyLine = (q) => q && q.sqm != null ? `<div class="sm site-sky">Himmel <b>${String(q.sqm.toFixed(2)).replace('.', ',')} mag/″²</b>${q.bortle ? ` · ${esc(q.bortle.text)}` : ''}${q.seeing != null ? ` · Schärfe ${String(q.seeing.toFixed(1)).replace('.', ',')}″` : ''} <span class="dim">(${q.n_site_nights} ${q.n_site_nights === 1 ? 'Nacht' : 'Nächte'})</span> · <a href="#/himmel">Himmelsqualität</a></div>` : '';
 async function sitesSettings(el) {
   let d = await api('/sites');
   let edit = null;                         // Ort in Bearbeitung (Kopie) oder null
@@ -28,7 +30,7 @@ async function sitesSettings(el) {
       return `<li class="site-row" data-id="${esc(s.id)}"><span class="site-dot ${color(s.id)}" aria-hidden="true"></span>
         <div class="site-main"><b>${esc(s.name)}</b>${s.id === d.default ? ' <span class="chip acc">Standard</span>' : ''}
           <div class="mut sm site-coords">${coords(s)}</div>
-          <div class="sm"><span class="${lvl}">${fmtAcc(s.accuracy_m)}</span> <span class="dim">· ${txt}</span>${s.note ? ` <span class="dim">· ${esc(s.note)}</span>` : ''}</div></div>
+          <div class="sm"><span class="${lvl}">${fmtAcc(s.accuracy_m)}</span> <span class="dim">· ${txt}</span>${s.note ? ` <span class="dim">· ${esc(s.note)}</span>` : ''}</div>${skyLine(d.sky?.[s.id])}</div>
         <div class="site-acts">${s.id !== d.default ? `<button class="btn ghost sm" data-act="default">Als Standard</button>` : ''}
           <button class="btn ghost sm icon" data-act="edit" title="Bearbeiten" aria-label="${esc(s.name)} bearbeiten">${icon('edit')}</button>
           <button class="btn ghost sm icon" data-act="del" title="Löschen" aria-label="${esc(s.name)} löschen">${icon('trash')}</button></div></li>`;
