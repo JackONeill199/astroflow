@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import os
 import threading
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -207,6 +208,172 @@ def cosmetic(raw: np.ndarray, bayer: bool, k: float = 8.0) -> np.ndarray:
     else:
         _fix_plane(out, k)
     return out
+
+
+# ----------------------------------------------------- ortsfeste Sensorfehler #
+# cosmetic() schützt alles mit hellem Nachbarn als „Stern“ – auch Hotpixel-Paare und -Grüppchen. Beleg NGC 7293 (Stellina,
+# 293 Frames): zwei übereinanderliegende R-Pixel mit je ~42 000 ADU blieben stehen. Die Stellina verharrt zwischen ihren
+# Versätzen einige Aufnahmen auf derselben Stelle; so landete das Paar 2–6-mal auf derselben Himmelsstelle, das Clipping im
+# Stapel verwarf es dort nicht → Gruppe aus ~12 roten Punkten (je Zeigegruppe einer). Hier: Fehlerkarte je Kamera und Nacht
+# aus einer Stichprobe von Lights. Kandidat je Aufnahme = deutlich über/unter dem Nachbar-Median der Farbebene mit höchstens
+# zwei hellen Nachbarn (Paar/Dreier); Sterne haben mehr helle Nachbarn und bei CFA auch helle Pixel der anderen Farben.
+# Ortsfest = in mindestens DEFECT_FRAC der Stichprobe Kandidat (Sterne wandern zwischen den Aufnahmen weiter).
+DEFECT_K = 5.0
+DEFECT_FRAC = 0.5
+DEFECT_MIN_FRAMES = 12
+DEFECT_MAX_SHARE = 0.01   # mehr als 1 % der Pixel „ortsfest“: Messung unplausibel (z. B. Feld steht still) → keine Karte
+
+
+def _neighbours(p: np.ndarray) -> np.ndarray:
+    pp = np.pad(p, 1, mode="reflect")
+    H, W = p.shape
+    return np.stack([pp[1 + dy : 1 + dy + H, 1 + dx : 1 + dx + W] for dy in (-1, 0, 1) for dx in (-1, 0, 1) if dy or dx])
+
+
+def defect_candidates(raw: np.ndarray, bayer: bool, k: float = DEFECT_K, fixed: np.ndarray | None = None) -> np.ndarray:
+    """Flache Indizes (in raw) der Pixel, die in dieser Aufnahme wie ein Hot-/Coldpixel bzw. Teil eines kleinen
+    Fehlergrüppchens aussehen. Großzügig (5σ) – erst die Häufigkeit über viele Aufnahmen entscheidet.
+    fixed: von cosmetic() in dieser Aufnahme schon ersetzte Pixel – zählen mit (warme Pixel um die Kosmetik-Schwelle
+    werden sonst mal dort, mal hier erfasst und erreichen in keiner der beiden Listen die nötige Häufigkeit)."""
+    raw = np.asarray(raw, np.float32)
+    cfa = bayer and raw.ndim == 2
+    H, W = raw.shape[-2:]
+    fx = np.zeros(raw.shape, bool)
+    if fixed is not None and len(fixed):
+        fx.flat[np.asarray(fixed, np.int64)] = True
+    exc = np.zeros(raw.shape, np.float32) if cfa else None
+    found = []
+    for idx in _planes(raw, cfa):
+        p = _plane(raw, idx)
+        part = np.partition(_neighbours(p), (2, 4, 5), axis=0)
+        med = part[4]                                   # oberer Median der 8 Nachbarn (wie _fix_plane)
+        d = p - med
+        s = d[::3, ::3]
+        sig = float(1.4826 * np.median(np.abs(s - np.median(s)))) + 1e-6
+        # höchstens zwei helle (bzw. dunkle) Nachbarn: Index 5 = drittgrößter, 2 = drittkleinster
+        hot = (d > k * sig) & (part[5] - med < 0.3 * d)
+        cold = (d < -k * sig) & (med - part[2] < -0.3 * d)
+        # von cosmetic() ersetzt (Wert schon geglättet): nur ohne drei helle Nachbarn – sonst war es eine Sternspitze
+        f = _plane(fx, idx) & ~hot & ~cold & (part[5] - med < 3 * sig)
+        # Knapp abgetastete Sterne (auch Mono, Feld steht still): neben der Spitze ist oft nur ein Nachbar ähnlich hell, der
+        # Nachbar-Median liegt aber schon im Sternprofil. Daher zusätzlich gegen den Hintergrund im Ring bei Abstand 2 prüfen:
+        # Hat der Pixel drei Nachbarn deutlich darüber, ist es ein Stern (ein Hotpixel-Paar hat höchstens einen).
+        cy, cx = np.nonzero(hot | f)
+        if len(cy):
+            Hp, Wp = p.shape
+            ring = np.stack([p[np.clip(cy + dy, 0, Hp - 1), np.clip(cx + dx, 0, Wp - 1)]
+                             for dy in range(-2, 3) for dx in range(-2, 3) if max(abs(dy), abs(dx)) == 2])
+            bg = np.median(ring, axis=0)
+            third = part[5][cy, cx] - bg
+            star = third > np.where(hot[cy, cx], np.maximum(0.3 * (p[cy, cx] - bg), 3 * sig), 3 * sig)
+            hot[cy[star], cx[star]] = False
+            f[cy[star], cx[star]] = False
+        if cfa:
+            exc[idx[1], idx[2]] = d
+        found.append((idx, hot, cold, f, sig))
+    out = []
+    for (c, ys, xs), hot, cold, f, sig in found:
+        cy, cx = np.nonzero(hot | cold | f)
+        if len(cy) == 0:
+            continue
+        y = cy * (ys.step or 1) + (ys.start or 0)
+        x = cx * (xs.step or 1) + (xs.start or 0)
+        if cfa:
+            # Stern: auch die direkten Nachbarn anderer Farbe liegen über ihrer Umgebung; ein Hotpixel sitzt nur in einer Farbe
+            n4 = np.mean([exc[np.clip(y + dy, 0, H - 1), np.clip(x + dx, 0, W - 1)]
+                          for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1))], axis=0)   # Mittel aus 4: Rauschen ≈ σ/2
+            star = (hot[cy, cx] & (n4 > np.maximum(0.15 * exc[y, x], sig))) | (f[cy, cx] & (n4 > 2 * sig))
+            y, x = y[~star], x[~star]
+        flat = np.ravel_multi_index((y, x), (H, W))
+        if c is not None:
+            flat = flat + c * H * W
+        out.append(flat)
+    return np.concatenate(out).astype(np.int64) if out else np.zeros(0, np.int64)
+
+
+def defect_map(cands: list[np.ndarray], size: int) -> np.ndarray | None:
+    """Ortsfeste Fehler aus den Kandidaten vieler Aufnahmen (≥ DEFECT_FRAC). None = unplausibel viele."""
+    if len(cands) < DEFECT_MIN_FRAMES:
+        return None
+    u, n = np.unique(np.concatenate(cands) if cands else np.zeros(0, np.int64), return_counts=True)
+    bad = u[n >= int(np.ceil(DEFECT_FRAC * len(cands)))]
+    if bad.size > DEFECT_MAX_SHARE * size:
+        return None
+    return bad.astype(np.int64)
+
+
+def fix_defects(raw: np.ndarray, bayer: bool, idx: np.ndarray) -> np.ndarray:
+    """Ersetzt die Pixel `idx` (flach) durch den Median ihrer 8 Nachbarn derselben Farbebene, ohne andere Fehlerpixel."""
+    if idx is None or len(idx) == 0:
+        return raw
+    out = np.array(raw, np.float32, copy=True)
+    idx = idx[idx < out.size]
+    H, W = out.shape[-2:]
+    step = 2 if bayer and out.ndim == 2 else 1
+    c, rest = np.divmod(idx, H * W)
+    y, x = np.divmod(rest, W)
+    bad = np.zeros(out.size, bool)
+    bad[idx] = True
+    flat = out.reshape(-1)
+    vals = []
+    for dy in (-step, 0, step):
+        for dx in (-step, 0, step):
+            if not (dy or dx):
+                continue
+            yy, xx = y + dy, x + dx
+            ok = (yy >= 0) & (yy < H) & (xx >= 0) & (xx < W)
+            j = c * H * W + np.clip(yy, 0, H - 1) * W + np.clip(xx, 0, W - 1)
+            v = flat[j].copy()
+            v[~ok | bad[j]] = np.nan
+            vals.append(v)
+    with warnings.catch_warnings():                  # alle Nachbarn ebenfalls Fehler: Pixel bleibt
+        warnings.simplefilter("ignore", RuntimeWarning)
+        med = np.nanmedian(np.stack(vals), axis=0)
+    keep = np.isfinite(med)
+    flat[idx[keep]] = med[keep]
+    return out
+
+
+class DefectLibrary:
+    """Ortsfeste Sensorfehler je Kamera (Schlüssel wie GlowLibrary) und Nacht, als flache Pixelindizes (wenige KB).
+    Bleibt nach dem Löschen der Rohbilder; Nächte ohne eigene Messung nutzen die Pixel, die in mindestens der Hälfte
+    der gemessenen Nächte der Kamera auftreten."""
+
+    def __init__(self, root: Path):
+        self.root = Path(root)
+
+    def _file(self, key: str) -> Path:
+        return self.root / f"{key}.npz"
+
+    def _read(self, key: str) -> dict[str, np.ndarray]:
+        f = self._file(key)
+        if not f.exists():
+            return {}
+        try:
+            with np.load(f, allow_pickle=False) as z:
+                return {name[1:]: z[name] for name in z.files}
+        except (OSError, ValueError):
+            return {}
+
+    def nights(self, key: str) -> list[str]:
+        return sorted(self._read(key))
+
+    def add(self, key: str, night: str, idx: np.ndarray) -> None:
+        data = self._read(key)
+        data[night] = np.asarray(idx, np.int64)
+        self.root.mkdir(parents=True, exist_ok=True)
+        tmp = self._file(key).with_suffix(".tmp.npz")
+        np.savez_compressed(tmp, **{f"n{n}": a for n, a in data.items()})
+        os.replace(tmp, self._file(key))
+
+    def get(self, key: str, night: str) -> tuple[np.ndarray | None, str]:
+        data = self._read(key)
+        if night in data:
+            return data[night], "nacht"
+        if not data:
+            return None, ""
+        u, n = np.unique(np.concatenate(list(data.values())), return_counts=True)
+        return u[n >= max(1, int(np.ceil(len(data) / 2)))], f"bibliothek ({len(data)} Nächte)"
 
 
 def apply(raw: np.ndarray, m: Masters) -> np.ndarray:

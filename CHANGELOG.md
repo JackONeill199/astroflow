@@ -3,6 +3,18 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.31.2 – 05.11.2026
+
+### Behoben
+- **Bilder: Gruppen roter Einzelpixel im fertigen Bild** (z. B. NGC 7293, ~12 scharfe rote Punkte auf ~50 px): Ursache war ein
+  Paar übereinanderliegender heißer Sensorpixel, das die Hotpixel-Korrektur für einen Stern hielt. Weil die Stellina zwischen ihren
+  Versätzen einige Aufnahmen auf derselben Stelle bleibt, traf das Paar mehrmals dieselbe Himmelsstelle und blieb im Stack stehen.
+  AstroFlow misst jetzt je Kamera und Nacht eine Karte ortsfester Sensorfehler aus den eigenen Aufnahmen (Paare, kleine Grüppchen,
+  warme Pixel knapp unter der bisherigen Schwelle) und ersetzt sie vor dem Stacken; Sterne bleiben unberührt.
+- Bestehende Bilder: Die roten Punkte verschwinden nach „Mehr → Komplett neu stacken“ (nur mit erreichbaren Rohbildern).
+  Nichts wird automatisch neu gestackt; neue Aufnahmen werden wie gewohnt mit Fehlerkarte nachgestackt. Bei betroffenen
+  Stellina-Objekten steht im Menü „Mehr“ unter „Komplett neu stacken“ der Hinweis „entfernt Hotpixel-Punkte“.
+
 ## 0.31.1 – 05.11.2026
 
 ### Behoben

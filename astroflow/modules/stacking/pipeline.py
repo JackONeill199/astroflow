@@ -423,42 +423,89 @@ class Pipeline:
             idx = np.flatnonzero(raw != cal)
             if idx.size < raw.size // 100:
                 cache[("cosmetic", path)] = (cal.shape, idx, raw.flat[idx])
+        # ortsfeste Sensorfehler der Nacht (Hotpixel-Paare/-Grüppchen, die cosmetic() als Stern schützt)
+        bad = cache.get(("defects", calibration.GlowLibrary.key(info), night))
+        if bad is not None and len(bad):
+            raw = calibration.fix_defects(raw, bool(info["bayerpat"]) and raw.ndim == 2, bad)
         glow = cache.get(("glow", calibration.GlowLibrary.key(info), night))
         if glow and m.dark is None:                    # echte Darks enthalten das Glühen bereits
             raw = calibration.remove_glow(raw, bool(info["bayerpat"]) and raw.ndim == 2, glow)
         return raw, m
 
-    def _glow(self, rows: list[dict], lib, cache: dict, progress) -> dict:
-        """Glühmodelle je Kamera und Nacht in den Cache legen. Nächte mit genug vorhandenen Rohbildern werden gemessen und
-        in die Glüh-Bibliothek der Kamera aufgenommen; sonst gilt der Mittelwert der bisher gemessenen Nächte."""
+    def _sensor_maps(self, rows: list[dict], lib, cache: dict, progress, glow: bool = True) -> tuple[dict, dict]:
+        """Glühmodelle und Karten ortsfester Sensorfehler je Kamera und Nacht in den Cache legen. Nächte mit genug
+        vorhandenen Rohbildern werden an einer gemeinsamen Stichprobe gemessen (jede Datei nur einmal gelesen) und in
+        die Bibliotheken der Kamera aufgenommen; sonst gelten die bisher gemessenen Nächte."""
         glib = calibration.GlowLibrary(self.s.work_dir / "glow")
+        dlib = calibration.DefectLibrary(self.s.work_dir / "defects")
         groups: dict = {}
         for r in rows:
             info = json.loads(r["info"])
             groups.setdefault((glib.key(info), r["night"]), []).append((r, info))
-        used = {}
+        used, bad_used = {}, {}
         for (key, night), items in groups.items():
             have = [(r, i) for r, i in items if not r["deleted"] and Path(r["path"]).exists()]
-            if night not in glib.nights(key, with_map=True) and len(have) >= calibration.GLOW_MIN_FRAMES:
+            need_glow = glow and night not in glib.nights(key, with_map=True) and len(have) >= calibration.GLOW_MIN_FRAMES
+            need_bad = night not in dlib.nights(key) and len(have) >= calibration.DEFECT_MIN_FRAMES
+            if need_glow or need_bad:
                 sample = have[:: max(1, len(have) // GLOW_SAMPLE)][:GLOW_SAMPLE]
-                progress(0.02, "Analyse", f"Sensorglühen messen ({night}, {len(sample)} Aufnahmen)")
+                what = " und ".join(t for t, n in (("Sensorglühen", need_glow), ("Hotpixel", need_bad)) if n)
+                progress(0.02, "Analyse", f"{what} messen ({night}, {len(sample)} Aufnahmen)")
 
                 def prof(ri):
                     r, i = ri
                     raw, m = self._load(r["path"], i, lib, night, cache)
-                    return None if m.dark is not None else calibration.glow_profiles(raw, bool(i["bayerpat"]) and raw.ndim == 2)
+                    cfa = bool(i["bayerpat"]) and raw.ndim == 2
+                    g = calibration.glow_profiles(raw, cfa) if need_glow and m.dark is None else None
+                    fix = cache.get(("cosmetic", r["path"]))
+                    c = calibration.defect_candidates(raw, cfa, fixed=fix[1] if fix else None) if need_bad else None
+                    return g, c, raw.size
 
                 with ThreadPoolExecutor(self.s.threads) as ex:
-                    profs = [p for p in ex.map(prof, sample) if p is not None]
-                med = calibration.median_profiles(profs)
-                if med:
-                    glib.add(key, night, med)
-            med, src = glib.medians(key, night)
-            model = calibration.model_from(med)
-            if model:
-                cache[("glow", key, night)] = model
-                used[night] = {"quelle": src, "adu": round(calibration.glow_amplitude(model), 1)}
-        return used
+                    res = list(ex.map(prof, sample))
+                if need_glow:
+                    med = calibration.median_profiles([g for g, _, _ in res if g is not None])
+                    if med:
+                        glib.add(key, night, med)
+                if need_bad:
+                    bad = calibration.defect_map([c for _, c, _ in res], res[0][2])
+                    dlib.add(key, night, bad if bad is not None else np.zeros(0, np.int64))
+            if glow:
+                med, src = glib.medians(key, night)
+                model = calibration.model_from(med)
+                if model:
+                    cache[("glow", key, night)] = model
+                    used[night] = {"quelle": src, "adu": round(calibration.glow_amplitude(model), 1)}
+            bad, src = dlib.get(key, night)
+            if bad is not None and len(bad):
+                cache[("defects", key, night)] = bad
+                bad_used[night] = {"quelle": src, "pixel": int(len(bad))}
+        return used, bad_used
+
+    _hint_cache: dict = {}
+
+    def hotpixel_hint(self, pid: int) -> bool:
+        """Stellina-Stack von vor der Fehlerkarte (0.31.2), Rohbilder erreichbar → „Komplett neu stacken“ entfernt die
+        Hotpixel-Punkte. Gecacht je Stand von state.json (die Objektansicht fragt alle 2,5 s; Pfade können auf
+        Netzlaufwerken liegen)."""
+        f = self.s.work_dir / f"p{pid}" / "stack" / "state.json"
+        try:
+            mt = f.stat().st_mtime
+        except OSError:
+            return False
+        hit = self._hint_cache.get(str(f))
+        if hit and hit[0] == mt and time.time() - hit[1] < 300:
+            return hit[2]
+        out = False
+        try:
+            if "defects" not in json.loads(f.read_text(encoding="utf-8")):
+                rows = self.db.q("SELECT path, deleted, info FROM frames WHERE project_id=? AND kind='light' AND stacked=1", (pid,))
+                if rows and not any(r["deleted"] for r in rows) and                         "stellina" in (json.loads(rows[0]["info"]).get("instrument") or "").lower():
+                    out = all(Path(r["path"]).exists() for r in rows[:: max(1, len(rows) // 3)][:3])
+        except (OSError, ValueError):
+            out = False
+        self._hint_cache[str(f)] = (mt, time.time(), out)
+        return out
 
     # --------------------------------------------------------------- process #
     def process(self, project_id: int, extra: dict | None = None, progress=lambda p, stage, msg="": None) -> int:
@@ -506,11 +553,12 @@ class Pipeline:
             raise ValueError("keine Light-Frames")
 
         # --- 0. Sensorglühen (vor Analyse und Registrierung, in Sensorkoordinaten) --
-        if opt.get("sensor_glow", True):
-            glow = self._glow(rows, lib, cache, progress)
-            if glow:
-                self.db.x("UPDATE projects SET options=json_set(COALESCE(options,'{}'),'$.glow_info',json(?)) WHERE id=?",
-                          (json.dumps(glow), project_id))
+        # (dazu ortsfeste Sensorfehler: Hotpixel-Paare/-Grüppchen, die die Einzelbild-Kosmetik als Stern schützt)
+        glow, bad = self._sensor_maps(rows, lib, cache, progress, glow=opt.get("sensor_glow", True))
+        for k, v in (("glow_info", glow), ("defect_info", bad)):
+            if v:
+                self.db.x(f"UPDATE projects SET options=json_set(COALESCE(options,'{{}}'),'$.{k}',json(?)) WHERE id=?",
+                          (json.dumps(v), project_id))
 
         # --- 1. Analyse (nur neue Frames) ------------------------------------
         # neu analysieren: neue Frames und solche mit veralteter Analyse (z. B. vor der Hotpixel-Korrektur)
@@ -1114,6 +1162,9 @@ class Pipeline:
                               ref_bg=[float(np.median(rgb0[c])) for c in range(C)], ref_noise=rm["noise"],
                               ref_fwhm=rm["fwhm"])
         meta = state.meta
+        if not meta.get("frames") and "defects" not in meta:
+            # neu aufgebauter Stack: mit Fehlerkarte gerechnet? (ältere Stacks haben die Marke nicht → Hinweis „Neu stacken“)
+            meta["defects"] = any(isinstance(k, tuple) and k[0] == "defects" for k in cache)
         if "exposure" not in meta:                      # ältere Zustände: Belichtung der schon gestackten Frames nachtragen
             ids = list(meta["frames"])
             meta["exposure"] = sum((json.loads(r["info"]).get("exptime") or 0) for i in range(0, len(ids), 500)
