@@ -68,7 +68,78 @@ def test_replacement_folder_requires_all_and_unambiguous_names(tmp_path):
     plan=prepare(run,original)
     assert plan['missing']==0 and len(plan['groups'][0]['files'])==3  # Präfix entfernt, ausgeschlossene Originaldatei übernommen
     duplicate=original/'unterordner';duplicate.mkdir();(duplicate/'eins.fits').write_bytes(b'anderes original')
-    with pytest.raises(ValueError,match='nicht eindeutig'):prepare(run,original)
+    assert prepare(run,original)['groups'][0]['files'][0]==str((original/'eins.fits').resolve())  # unlesbares Gleichnamiges stört nicht
+    fits.setval(original/'eins.fits','DATE-OBS',value='2022-11-24T18:20:00')
+    with pytest.raises(ValueError,match='gleichnamigen'):prepare(run,original)
+
+
+def stellina_night(base,folder,stamp0,count=4):
+    """Stellina-Beobachtung: 01-images-initial und 02-images-adjust-focus nummerieren beide ab img-0001r.fits."""
+    out={}
+    for sub,offset in (('01-images-initial',0),('02-images-adjust-focus',count*10)):
+        (base/folder/sub).mkdir(parents=True)
+        for i in range(count):
+            header=fits.Header();header['DATE-OBS']=dt.datetime.fromtimestamp(stamp0+offset+i*10,dt.timezone.utc).isoformat()
+            fits.PrimaryHDU(header=header).writeto(base/folder/sub/f'img-{i+1:04d}r.fits')
+            out[stamp0+offset+i*10]=base/folder/sub/f'img-{i+1:04d}r.fits'
+    return out
+
+
+def prefixed_run(tmp_path,stamps):
+    """Lauf aus einer automatischen Übergabe: Dateien mit Präfix in einem inzwischen gelöschten Ordner."""
+    home=tmp_path/'skytrace';run=home/'Ergebnisse'/'auto-lauf';obs=run/'obs';obs.mkdir(parents=True)
+    rows=[dict(index=i,file=str(tmp_path/'auto'/'2022-08-06_observation_X'/f'{i:05d}_img-{(i%4)+1:04d}r.fits'),timestamp=t) for i,t in enumerate(sorted(stamps))]
+    (obs/'frames.jsonl').write_text('\n'.join(json.dumps(r) for r in rows[1:]),encoding='utf-8')
+    (obs/'ausgeschlossen.jsonl').write_text(json.dumps(rows[0]),encoding='utf-8')
+    (run/'videos.json').write_text(json.dumps([dict(session='2022-08-06_observation_X',video='obs/ereignisse.mp4',frames=len(rows)-1,excluded=1,fps=8)]),encoding='utf-8')
+    return home,run
+
+
+def test_stellina_subfolders_with_same_names_are_matched_by_date_obs(tmp_path,monkeypatch):
+    monkeypatch.setenv('ASTROFLOW_MODULES','stacking,skytrace')
+    stamps=stellina_night(tmp_path/'platte','2022-08-06_22-17-52_observation_X',1659824000)
+    home,run=prefixed_run(tmp_path,stamps)
+    night=tmp_path/'platte'/'2022-08-06_22-17-52_observation_X'
+    plan=prepare(run,night)                                        # ganzer Beobachtungsordner
+    assert plan['missing']==0 and plan['total']==8
+    assert plan['groups'][0]['files']==[str(stamps[t].resolve()) for t in sorted(stamps)]
+    with pytest.raises(ValueError,match='passenden Nacht'):prepare(run,night/'01-images-initial')   # Unterordner allein: img-0001r aus 02 wird nicht untergeschoben
+    # Start nutzt dieselbe Zuordnung und dieselben Pfade im Manifest
+    settings=load_settings(tmp_path/'data');SettingsStore(settings.data_dir/'settings.json').update('skytrace',{'home':str(home)})
+    client=TestClient(create_app(settings));launches=[]
+    monkeypatch.setattr(Controller,'launch',lambda self,options,refresh=False,replay=None:launches.append((options,replay)) or dict(run='neu',running=True))
+    check=client.post('/api/skytrace/reanalyse',json=dict(run=run.name,source=str(night),check=True))
+    assert check.status_code==200 and check.json()==dict(missing=0,total=8,observations=1)
+    assert client.post('/api/skytrace/reanalyse',json=dict(run=run.name,source=str(night))).status_code==200
+    assert launches[0][1]['groups'][0]['files']==plan['groups'][0]['files']
+    client.close()
+
+
+def test_whole_disk_with_several_nights_picks_by_time_and_reads_few_headers(tmp_path,monkeypatch):
+    import astroflow.modules.skytrace.reanalysis as re_
+    disk=tmp_path/'platte'
+    other=stellina_night(disk,'2022-07-01_21-00-00_observation_X',1656700000)    # andere Nacht, gleiche Namen
+    stamps=stellina_night(disk,'2022-08-06_22-17-52_observation_X',1659824000)
+    stellina_night(disk,'2022-09-01_21-00-00_observation_Y',1662000000)
+    _,run=prefixed_run(tmp_path,stamps)
+    reads=[];real=re_.date_obs
+    monkeypatch.setattr(re_,'date_obs',lambda p:reads.append(p) or real(p))
+    plan=prepare(run,disk)
+    assert plan['missing']==0 and plan['groups'][0]['files']==[str(stamps[t].resolve()) for t in sorted(stamps)]
+    assert len(reads)<=len(stamps)+4                                # Datum im Ordnernamen + Ordner früherer Treffer: kaum Fehlgriffe
+    assert not set(map(str,other.values()))&set(plan['groups'][0]['files'])
+    # Nacht nicht vorhanden: klare Meldung statt Namenszuordnung
+    import shutil;shutil.rmtree(disk/'2022-08-06_22-17-52_observation_X')
+    with pytest.raises(ValueError,match='gleichnamigen.*gehört keine'):prepare(run,disk)
+
+
+def test_header_reader_is_fast_and_robust(tmp_path):
+    from astroflow.modules.skytrace.reanalysis import date_obs
+    f=tmp_path/'a.fits';header=fits.Header();header['DATE-OBS']='2022-08-06T22:26:25.5Z'
+    fits.PrimaryHDU(header=header).writeto(f)
+    assert date_obs(f)==dt.datetime(2022,8,6,22,26,25,500000,dt.timezone.utc).timestamp()
+    (tmp_path/'b.fits').write_bytes(b'kein fits');assert date_obs(tmp_path/'b.fits') is None
+    assert date_obs(tmp_path/'fehlt.fits') is None
 
 
 def test_launch_passes_manifest_without_copying_originals(tmp_path,monkeypatch):

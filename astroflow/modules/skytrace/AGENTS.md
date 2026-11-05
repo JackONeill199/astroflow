@@ -99,6 +99,16 @@ Test: `test_skytrace_field_motion.py`; scharfe Felder, mehrere echte Linien, sym
 Schweife bleiben erhalten. Originalbefund: drei Fehlkandidaten in einem verwackelten NGC-1499-Bild.
 Ersatzdateien bei `/reanalyse` müssen anhand FITS-DATE-OBS zur gespeicherten UTC passen: gleiche Dateinamen werden
 in unterschiedlichen Nächten wiederverwendet. Ohne prüfbare Identität keine Zuordnung allein nach Namen.
+**Mehrere gleichnamige Kandidaten (0.31.3, 05.11.2026):** Stellina-Unterordner `01-images-initial`, `02-images-adjust-focus` …
+beginnen alle wieder bei `img-0001r.fits`, automatische Läufe tragen zusätzlich ein Präfix `00164_`. `reanalysis.prepare` indexiert den
+Ersatzordner rekursiv (`os.walk`, nur gesuchte Namen, Obergrenze `MAX_ENTRIES` 500 000 → Meldung „engeren Ordner wählen“) und wählt
+über `pick` unter gleichnamigen Dateien die mit passender `DATE-OBS` (±1 ms). `date_obs` liest nur die ersten Header-Blöcke (≤ 12 × 2880 Byte,
+ohne astropy), Ergebnis je Pfad gemerkt. Die Prüfreihenfolge dient nur der Leistung: Ordner früherer Treffer, dann Pfade mit dem Nachtdatum
+(Zeit −36…+12 h), dann der Rest – so reicht auch bei der ganzen Platte meist ein Header je Aufnahme. Genau ein Kandidat wird wie bisher streng geprüft
+(Abweichung = Fehler „gehört nicht zur ursprünglichen Aufnahme“). Bei mehreren ohne Treffer: „Unter n gleichnamigen Dateien … gehört keine …“.
+Der Start nutzt dieselbe `prepare`-Ausgabe; `eingang.json` enthält die aufgelösten Originalpfade (nicht die Kopien). Gemessen an
+IC59 2022-08-06 (549 Aufnahmen, Lauf mit Präfix-Namen, Platte E:): Beobachtungsordner 7 s, ganze Stellina-Platte 14 s, 0 fehlend.
+Identische Kopien derselben Aufnahme (gleiche Zeit) gelten als gleichwertig, die erste gewinnt. Tests: `test_skytrace_reanalysis.py`.
 Für den Differenzvergleich hat die direkt gemessene Registrierung zum Nachbarbild Vorrang vor der Differenz zweier
 globaler Referenzlösungen. Letztere können gegeneinander springen (bestätigt: lange blasse NGC-1499-Spur unten links,
 Videobild 57). Globale Astrometrie für bewegte Punkte bleibt getrennt. Regression mit künstlich springenden Referenzfits.
