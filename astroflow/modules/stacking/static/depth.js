@@ -19,7 +19,8 @@ async function insightLoad(kind, rid, force = false) {
 }
 
 // Abschnitt „Tiefe“. viewer: createViewer-Objekt (Markierungen ein/aus über viewer.redraw()).
-// opts.wide (Reiter Analyse): breites Raster, 3D-Tunnel eingebettet mit Kameraflug, Fakten anklickbar (opts.onFocus(x, y, w) zoomt im Bild).
+// opts.wide (Reiter Analyse): breites Raster, Fakten anklickbar (opts.onFocus(x, y, w) zoomt im Bild); opts.on3d(true) schaltet den
+// Betrachter oben in die 3D-Ansicht, opts.onData(d) meldet die fertige Messung (für den 3D-Knopf in der Werkzeugleiste).
 function depthPanel(host, r, viewer, opts = {}) {
   if (!host) return;
   let timer = 0;
@@ -47,9 +48,9 @@ function depthPanel(host, r, viewer, opts = {}) {
         : d.state === 'error' ? esc(d.message || 'Messung fehlgeschlagen')
         : d.state === 'old' ? 'Die gespeicherte Messung stammt von einer älteren Version der Auswertung.'
         : 'Grenzgröße, Entfernungen der Sterne und die fernsten Galaxien in deinem Bild – aus Gaia und SIMBAD (es werden nur Himmelskoordinaten gesendet).';
-      host.innerHTML = head() + `<p class="mut sm">${why}</p>${d.solved ? `<button class="btn ${opts.wide ? '' : 'ghost '}sm" data-depth-run>${icon('target')}${d.state === 'none' ? 'Jetzt messen' : 'Neu messen'}</button>`
+      host.innerHTML = head() + `<p class="mut sm">${why}</p><div class="row depth-empty-acts">${d.solved ? `<button class="btn ${opts.wide ? '' : 'ghost '}sm" data-depth-run>${icon('target')}${d.state === 'none' ? 'Jetzt messen' : 'Neu messen'}</button>`
         : opts.onSolve ? `<button class="btn sm" data-depth-solve>${icon('star')}Per Plate-Solving lösen</button>`
-        : opts.wide ? `<p class="dim sm">Die Lösung entsteht beim Entwickeln, wenn ein Plate-Solver (z. B. ASTAP) eingerichtet und die fotometrische Farbkalibrierung eingeschaltet ist – danach „Neu entwickeln“.</p><a class="btn ghost sm" href="#/settings/stacking">${icon('star')}Plate-Solver einrichten</a>` : ''}`;
+        : opts.wide ? `<p class="dim sm">Die Lösung entsteht beim Entwickeln, wenn ein Plate-Solver (z. B. ASTAP) eingerichtet und die fotometrische Farbkalibrierung eingeschaltet ist – danach „Neu entwickeln“.</p><a class="btn ghost sm" href="#/settings/stacking">${icon('star')}Plate-Solver einrichten</a>` : ''}</div>`;
       $('[data-depth-run]', host)?.addEventListener('click', run);
       $('[data-depth-solve]', host)?.addEventListener('click', opts.onSolve);
       return;
@@ -68,7 +69,6 @@ function depthPanel(host, r, viewer, opts = {}) {
         <div><small>Fernster Stern</small><b class="tnum" data-count>${lyText(e.fernster?.ly)}</b><span>${e.fernster ? `G ${de1(e.fernster.g)} · mit Parallaxe` : 'keine sichere Parallaxe'}</span></div>
         <div><small>Fernstes Objekt</small><b class="tnum" data-count>${far ? lyText(far.ly) : main ? lyText(main.ly) : '–'}</b><span>${far ? `Licht unterwegs · z ${de1(far.z, 3)}` : main ? esc(main.name) : 'keine Galaxie erkannt'}</span></div>
       </div>
-      ${opts.wide && d.punkte?.length ? '<div class="an-tunnel" id="anTunnel"></div>' : ''}
       ${bins.length ? `<div class="depth-chart" aria-label="Erfasste Sterne je Helligkeit"><div class="depth-chart-h"><span class="sm">Erfasst je Helligkeitsklasse</span><span class="grow"></span><span class="dim sm"><i class="lg cat"></i>Katalog <i class="lg det"></i>im Bild</span></div>
         <div class="depth-bars">${bins.map(b => `<div class="db" title="G ${b.mag}–${b.mag + 1}: ${b.erfasst} von ${b.katalog} erfasst"><i class="cat" style="height:${b.katalog / bmax * 100}%"></i><i class="det" style="height:${b.erfasst / bmax * 100}%"></i></div>`).join('')}</div>
         <div class="depth-axis tnum">${bins.map(b => `<span>${b.mag % 2 ? '' : b.mag}</span>`).join('')}</div></div>` : ''}
@@ -84,12 +84,12 @@ function depthPanel(host, r, viewer, opts = {}) {
       </ul>
       <div class="row depth-acts">
         ${d.bild ? `<button class="btn ghost sm${DEPTH_MARKS.on ? ' on' : ''}" data-depth-marks aria-pressed="${DEPTH_MARKS.on}">${icon('target')}Im Bild markieren</button>` : ''}
-        ${d.punkte?.length ? `<button class="btn ghost sm" data-depth-3d>${icon('orbit')}${opts.wide ? '3D im Vollbild' : '3D-Tunnel'}</button>` : ''}
+        ${d.punkte?.length ? `<button class="btn ghost sm" data-depth-3d>${icon('orbit')}${opts.on3d ? 'Im Bild in 3D zeigen' : '3D-Tunnel'}</button>` : ''}
         <span class="grow"></span><button class="linkbtn sm" data-depth-run>Neu messen</button></div>
       ${(d.hinweise || []).map(h => `<p class="dim sm depth-note">${esc(h)}</p>`).join('')}`;
     $('[data-depth-run]', host)?.addEventListener('click', run);
-    $('[data-depth-3d]', host)?.addEventListener('click', () => depthTunnel(d, r));
-    if ($('#anTunnel', host)) depthTunnel(d, r, $('#anTunnel', host));
+    $('[data-depth-3d]', host)?.addEventListener('click', () => opts.on3d ? opts.on3d(true) : depthTunnel(d, r));
+    opts.onData?.(d);
     $('.depth-facts', host)?.addEventListener('click', (ev) => { const li = ev.target.closest('[data-x]'); if (li) opts.onFocus(+li.dataset.x, +li.dataset.y, d.bild.w); });
     $('.depth-facts', host)?.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') ev.target.closest('[data-x]')?.click(); });
     $('[data-depth-marks]', host)?.addEventListener('click', (ev) => {
@@ -137,26 +137,43 @@ function starColor(bprp) {                       // BP−RP → Farbe (blau → 
   return a[i].map((v, j) => v + (a[i + 1][j] - v) * k);
 }
 
-// inline: Behälter im Reiter Analyse – dann ohne Schließen/Escape, mit Kameraflug „von uns bis zur fernsten Galaxie“ beim ersten Sichtbarwerden
-async function depthTunnel(d, r, inline = null) {
+// vw: Bildbetrachter (createViewer) im Reiter Analyse – dann entsteht die 3D-Ansicht *im* Betrachter: Startbild = das Foto, exakt
+// wie im flachen Betrachter (eingepasst, volle Auflösung, volle Helligkeit). Erst beim Drehen/Fahren lösen sich die Sterne nach ihrer
+// Entfernung in die Tiefe (sie liegen auf den Sichtstrahlen ihrer Bildposition, von vorn decken sie sich also mit dem Foto).
+// Rückgabe dort: { close(animiert) }. Ohne vw: Vollbild-Dialog wie bisher.
+function depthTunnel(d, r, vw = null) {
   const ov = document.createElement('div');
-  ov.className = inline ? 'tunnel inline' : 'tunnel';
-  if (!inline) { ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', '3D-Tunnel nach Entfernung'); }
-  ov.innerHTML = `<div class="tunnel-bar"><b>${inline ? 'Von uns bis in die Tiefe' : 'Tiefe des Bildfelds'}</b><span class="mut sm tunnel-sub">Abstand logarithmisch · ziehen dreht, Mausrad zoomt, Klick zeigt Namen</span><span class="grow"></span>
-      ${inline ? `<button class="btn ghost sm" data-skip hidden>Überspringen</button><button class="btn ghost sm" data-replay hidden>${icon('play')}Flug</button>` : ''}
-      <div class="seg"><button data-v="front">Von vorn</button><button data-v="oblique" class="on">Schräg</button><button data-v="side">Seitlich</button></div>
-      ${inline ? '' : `<button class="btn ghost sm" data-x aria-label="Schließen">${icon('x')}</button>`}</div>
+  ov.className = vw ? 'tunnel in-viewer' : 'tunnel';
+  if (!vw) { ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', '3D-Tunnel nach Entfernung'); }
+  const seg = `<div class="seg"><button data-v="front"${vw ? ' class="on"' : ''}>Von vorn</button><button data-v="oblique"${vw ? '' : ' class="on"'}>Schräg</button><button data-v="side">Seitlich</button></div>`;
+  ov.innerHTML = vw ? `<div class="tunnel-stage"></div>
+    <div class="t3-bar">${seg}<button class="btn ghost sm" data-replay title="Kameraflug wiederholen">${icon('play')}Flug</button></div>
+    <div class="tunnel-info" hidden></div>
+    <div class="t3-legend sm"><span><i class="lg star"></i>Stern</span><span><i class="lg gal"></i>Galaxie</span>${d.hauptobjekt ? '<span><i class="lg main"></i>Hauptobjekt</span>' : ''}<span class="t3-hint">ziehen dreht · Mausrad fährt · Abstand logarithmisch</span></div>`
+    : `<div class="tunnel-bar"><b>Tiefe des Bildfelds</b><span class="mut sm tunnel-sub">Abstand logarithmisch · ziehen dreht, Mausrad zoomt, Klick zeigt Namen</span><span class="grow"></span>
+      ${seg}<button class="btn ghost sm" data-x aria-label="Schließen">${icon('x')}</button></div>
     <div class="tunnel-stage"><div class="tunnel-load"><span class="spinner"></span>3D-Ansicht wird geladen …</div></div>
     <div class="tunnel-info" hidden></div>
     <div class="tunnel-legend sm"><span><i class="lg star"></i>Stern (Gaia-Parallaxe)</span><span><i class="lg gal"></i>Galaxie (Rotverschiebung, Lichtlaufzeit)</span>${d.hauptobjekt ? '<span><i class="lg main"></i>Hauptobjekt</span>' : ''}</div>`;
-  if (inline) inline.replaceChildren(ov); else document.body.append(ov);
-  let alive = true, raf = 0, io = null;
-  const close = () => { alive = false; cancelAnimationFrame(raf); ro?.disconnect(); io?.disconnect(); renderer?.dispose(); document.removeEventListener('keydown', key); ov.remove(); };
+  if (vw) {
+    vw.el.insertBefore(ov, $('.vbar', vw.el));                     // Werkzeugleiste bleibt darüber
+    // Ziehen/Mausrad gehören der 3D-Ansicht, nicht dem flachen Betrachter darunter
+    for (const t of ['pointerdown', 'wheel', 'dblclick']) ov.addEventListener(t, (e) => e.stopPropagation());
+  } else document.body.append(ov);
+  let alive = true, raf = 0;
+  const api3 = { close: () => {} };
+  const close = () => { alive = false; cancelAnimationFrame(raf); ro?.disconnect(); renderer?.dispose(); document.removeEventListener('keydown', key); ov.remove(); vw?.el.classList.remove('v3d-on'); };
+  api3.close = close;
   const key = (e) => { if (e.key === 'Escape') close(); };
-  if (!inline) document.addEventListener('keydown', key);
+  if (!vw) document.addEventListener('keydown', key);
   $('[data-x]', ov)?.addEventListener('click', close);
   let THREE, OrbitControls, renderer, ro;
-  try { ({ THREE, OrbitControls } = await loadThree()); } catch (e) { $('.tunnel-load', ov).textContent = '3D-Bibliothek konnte nicht geladen werden.'; return; }
+  const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const run = (async () => {
+  try { ({ THREE, OrbitControls } = await loadThree()); } catch (e) {
+    if (vw) { close(); toast('3D-Bibliothek konnte nicht geladen werden.', 'bad'); } else $('.tunnel-load', ov).textContent = '3D-Bibliothek konnte nicht geladen werden.';
+    return;
+  }
   if (!alive || !ov.isConnected) return;
   const stage = $('.tunnel-stage', ov);
   stage.innerHTML = '';
@@ -164,32 +181,42 @@ async function depthTunnel(d, r, inline = null) {
   renderer.setPixelRatio(Math.min(2, devicePixelRatio));
   stage.append(renderer.domElement);
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x07080b);
+  scene.background = new THREE.Color(vw ? 0x050607 : 0x07080b);   // im Betrachter: dessen Hintergrund
   const cam = new THREE.PerspectiveCamera(50, 1, 0.01, 500);
-  const asp = (d.bild?.w || 3) / (d.bild?.h || 2);
+  const img = vw ? $('img.b', vw.el) : null;
+  const asp = img?.naturalWidth ? img.naturalWidth / img.naturalHeight : (d.bild?.w || 3) / (d.bild?.h || 2);
   const S = 0.28;                                  // Aufweitung: halbe Bildhöhe = 0,28 je Einheit Abstand (≈ 31° Öffnung)
   const R0 = 0.5;                                  // log10(Lj) des Beobachter-Nullpunkts (~3 Lj)
-  const place = (x, y, ly) => {
-    const t = Math.max(0.05, Math.log10(Math.max(1, ly)) - R0);
-    return [(x / d.bild.w - 0.5) * asp * 2 * S * t, (0.5 - y / d.bild.h) * 2 * S * t, -t];
-  };
+  const dirOf = (x, y) => [(x / d.bild.w - 0.5) * asp * 2 * S, (0.5 - y / d.bild.h) * 2 * S, -1];
+  const tOf = (ly) => Math.max(0.05, Math.log10(Math.max(1, ly)) - R0);
+  const place = (x, y, ly) => dirOf(x, y).map(v => v * tOf(ly));
   const pts = (d.punkte || []).filter(p => p.x != null && p.ly > 0);
   const maxT = Math.max(3, ...pts.map(p => Math.log10(p.ly) - R0), d.hauptobjekt ? Math.log10(d.hauptobjekt.ly) - R0 : 0);
-  // Foto als Fenster ganz vorn (halbtransparent) – von vorn deckt sich das Feld mit dem Bild
-  const tFront = 0.6;
-  new THREE.TextureLoader().load(`/api/stacking/results/${r.id}/thumb`, (tex) => {
+  // Abstand der Bildebene. Im Betrachter mitten im Trichter: von vorn füllt sie das Bild (der Blickwinkel hängt nicht davon ab),
+  // schräg bleibt das Foto groß sichtbar – nahe Sterne treten davor heraus, ferne ziehen dahinter in die Tiefe
+  const tF = vw ? Math.min(4, Math.max(1, maxT * 0.3)) : 0.6;
+  // Tiefe k: 0 = alle Punkte in der Bildebene (auf ihrem Bildpixel), 1 = in ihrer Entfernung; fade: 0 = von vorn (nur Foto), 1 = Tiefe sichtbar
+  let k = vw ? 0 : 1, fade = vw ? 0 : 1, dirty = true;
+  const fading = [];                               // Materialien, die mit der Tiefe einblenden: [Material, volle Deckkraft]
+  const fadeMat = (m, o) => { m.transparent = true; fading.push([m, o]); return m; };
+  // Foto: im Betrachter deckend und in voller Auflösung (gleiche Datei wie oben), sonst halbtransparentes Fenster
+  let plane = null;
+  new THREE.TextureLoader().load(img?.currentSrc || img?.src || `/api/stacking/results/${r.id}/thumb`, (tex) => {
     if (!alive) return;
-    const pl = new THREE.Mesh(new THREE.PlaneGeometry(asp * 2 * S * tFront, 2 * S * tFront),
-      new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide }));
-    pl.position.z = -tFront; scene.add(pl); dirty = true;
-  });
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    plane = new THREE.Mesh(new THREE.PlaneGeometry(asp * 2 * S * tF, 2 * S * tF),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: vw ? 1 : 0.32, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
+    plane.position.z = -tF; plane.renderOrder = -1; scene.add(plane); dirty = true;
+    if (vw) requestAnimationFrame(() => { ov.classList.add('ready'); start(); });
+  }, undefined, () => { if (vw) { close(); toast('Bild für die 3D-Ansicht konnte nicht geladen werden.', 'bad'); } });
   // Rahmen je Zehnerpotenz mit Beschriftung
   const label = (text, pos, color = '#9aa3b2', size = 0.16) => {
     const c = document.createElement('canvas'), g = c.getContext('2d'), font = '500 44px system-ui, sans-serif';
     g.font = font;
     c.width = Math.ceil(g.measureText(text).width + 16); c.height = 96;
     g.font = font; g.fillStyle = color; g.textBaseline = 'middle'; g.fillText(text, 8, 48);
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false }));
+    const sp = new THREE.Sprite(fadeMat(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthWrite: false }), 1));
     sp.scale.set(size * c.width / 96, size, 1); sp.center.set(0, 0.5); sp.position.set(...pos); scene.add(sp); return sp;
   };
   for (let e = 1; e <= 10.5; e++) {
@@ -197,25 +224,39 @@ async function depthTunnel(d, r, inline = null) {
     if (t > maxT + 0.6) break;
     const w = asp * S * t, h = S * t;
     const geo = new THREE.BufferGeometry().setFromPoints([[-w, -h], [w, -h], [w, h], [-w, h], [-w, -h]].map(([x, y]) => new THREE.Vector3(x, y, -t)));
-    scene.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x2a3140, transparent: true, opacity: 0.8 })));
+    scene.add(new THREE.Line(geo, fadeMat(new THREE.LineBasicMaterial({ color: 0x2a3140 }), 0.8)));
     label(lyText(10 ** e), [w + 0.05, h, -t], '#7d8696', 0.1 + 0.05 * t);
   }
   // Kanten des Trichters
   const ex = asp * S * (maxT + 0.6), ey = S * (maxT + 0.6), ez = -(maxT + 0.6);
   for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
     const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(sx * ex, sy * ey, ez)]);
-    scene.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x1c212b })));
+    scene.add(new THREE.Line(geo, fadeMat(new THREE.LineBasicMaterial({ color: 0x1c212b }), 1)));
   }
-  // Punkte: drei Größen nach Helligkeit, Galaxien eigene Wolke
+  // Punkte: drei Größen nach Helligkeit, Galaxien eigene Wolke; Lage = Richtung (Bildposition) × Abstand
   const groups = [];
+  const dot = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+    const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, '#fff'); gr.addColorStop(0.45, '#fffffff0'); gr.addColorStop(1, '#fff0');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
   const cloud = (list, size, colorOf) => {
     if (!list.length) return;
     const pos = new Float32Array(list.length * 3), col = new Float32Array(list.length * 3);
-    list.forEach((p, i) => { pos.set(place(p.x, p.y, p.ly), i * 3); col.set(colorOf(p), i * 3); });
+    const dir = new Float32Array(list.length * 3), dist = new Float32Array(list.length);
+    list.forEach((p, i) => { dir.set(dirOf(p.x, p.y), i * 3); dist[i] = tOf(p.ly); col.set(colorOf(p), i * 3); });
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    const pts3 = new THREE.Points(geo, new THREE.PointsMaterial({ size, vertexColors: true, sizeAttenuation: false, transparent: true, opacity: 0.95 }));
-    pts3.userData.list = list; scene.add(pts3); groups.push(pts3);
+    const pts3 = new THREE.Points(geo, fadeMat(new THREE.PointsMaterial({ size: size * 1.35, map: dot, vertexColors: true, sizeAttenuation: false, depthWrite: false }), 0.95));
+    pts3.userData = { list, dir, dist }; scene.add(pts3); groups.push(pts3);
+  };
+  const setDepth = () => {                         // Punkte entlang ihrer Sichtstrahlen von der Bildebene in die Tiefe schieben
+    for (const g of groups) {
+      const { dir, dist } = g.userData, pos = g.geometry.attributes.position;
+      for (let i = 0; i < dist.length; i++) {
+        const t = tF + (dist[i] - tF) * k;
+        pos.array[i * 3] = dir[i * 3] * t; pos.array[i * 3 + 1] = dir[i * 3 + 1] * t; pos.array[i * 3 + 2] = -t;
+      }
+      pos.needsUpdate = true; g.geometry.computeBoundingSphere();
+    }
   };
   const stars = pts.filter(p => p.t === 's');
   cloud(stars.filter(p => p.g < 12), 7, p => starColor(p.bp_rp));
@@ -229,49 +270,65 @@ async function depthTunnel(d, r, inline = null) {
   }
   if (d.fernstes?.x != null) label(d.fernstes.name, place(d.fernstes.x, d.fernstes.y, d.fernstes.ly).map((v, i) => i === 0 ? v + 0.1 : v), '#c8a6ff', 0.12 + 0.07 * (Math.log10(d.fernstes.ly) - R0));
   label('Du', [0.05, 0.05, 0], '#e8ebf5', 0.16);
+  setDepth();
 
   const ctl = new OrbitControls(cam, renderer.domElement);
   ctl.enableDamping = true; ctl.dampingFactor = 0.12;
   const mid = -maxT / 2;
-  const views = { front: [[0, 0, 0.8], [0, 0, -3]], oblique: [[-maxT * 0.95, maxT * 0.45, maxT * 0.15], [0, 0, mid]], side: [[-maxT * 1.25, 0.15, mid], [0, 0, mid]] };
-  let fly = null, dirty = true;
-  const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const go = (v, instant = false) => {
-    const [p, t] = views[v];
-    if (instant || reduced()) { fly = null; cam.position.set(...p); ctl.target.set(...t); ctl.update(); dirty = true; return; }
-    fly = { t0: performance.now(), dur: 700, p0: cam.position.clone(), q0: ctl.target.clone(), p1: new THREE.Vector3(...p), q1: new THREE.Vector3(...t) };
-  };
-  // Kameraflug: vom Beobachter durch den Trichter bis kurz vor das fernste Objekt, dann schräg von außen (≤ 3 s, überspringbar)
-  const skipB = $('[data-skip]', ov), replayB = $('[data-replay]', ov);
-  const intro = () => {
-    if (reduced()) { go('oblique', true); return; }
-    const far = new THREE.Vector3(0.12 * maxT, 0.06 * maxT, -(maxT - 0.4));
-    cam.position.set(0, 0, 0.35); ctl.target.set(0, 0, -2); ctl.update();
-    fly = { t0: performance.now(), dur: 1900, p0: cam.position.clone(), q0: ctl.target.clone(), p1: far, q1: new THREE.Vector3(0, 0, -(maxT + 2)),
-      then: () => { const [p, t] = views.oblique; fly = { t0: performance.now(), dur: 900, p0: cam.position.clone(), q0: ctl.target.clone(), p1: new THREE.Vector3(...p), q1: new THREE.Vector3(...t) }; } };
-    if (skipB) { skipB.hidden = false; replayB.hidden = true; }
-  };
-  const skip = () => { if (!fly) return; go('oblique', true); if (skipB) { skipB.hidden = true; replayB.hidden = false; } };
-  skipB?.addEventListener('click', skip);
-  replayB?.addEventListener('click', intro);
-  renderer.domElement.addEventListener('pointerdown', skip);
-  go('oblique', true);
-  if (inline) {
-    io = new IntersectionObserver((es) => { if (es.some(e => e.isIntersecting)) { io.disconnect(); io = null; intro(); } }, { threshold: 0.45 });
-    io.observe(ov);
+  // Blickwinkel von vorn: Bildebene genau so groß wie das eingepasste Foto im Betrachter (contain)
+  let fitFov = 50;
+  const views = { front: [[0, 0, 0], [0, 0, -tF]], oblique: [[-maxT * 0.95, maxT * 0.45, maxT * 0.15], [0, 0, mid]], side: [[-maxT * 1.25, 0.15, mid], [0, 0, mid]] };
+  if (!vw) views.front = [[0, 0, 0.8], [0, 0, -3]];
+  else {
+    // im Betrachter: Dreiviertelansicht auf das Foto (≈ 38° bzw. 68° seitlich), damit Foto und Tiefe zugleich gut zu sehen sind
+    const tz = -(tF + (maxT - tF) * 0.12), R = tF * 1.8 + 1.5;
+    const from = (a, e) => { a *= Math.PI / 180; e *= Math.PI / 180; return [[-R * Math.sin(a) * Math.cos(e), R * Math.sin(e), tz + R * Math.cos(a) * Math.cos(e)], [0, 0, tz]]; };
+    views.oblique = from(34, 12); views.side = from(72, 6);
   }
+  const fovFor = (v) => vw ? (v === 'front' ? fitFov : 34) : 50;
+  let fly = null;
+  const go = (v, instant = false, dur = 700) => {
+    const [p, t] = views[v];
+    if (instant || reduced()) { fly = null; cam.position.set(...p); ctl.target.set(...t); cam.fov = fovFor(v); cam.updateProjectionMatrix(); ctl.update(); dirty = true; return; }
+    fly = { t0: performance.now(), dur, p0: cam.position.clone(), q0: ctl.target.clone(), p1: new THREE.Vector3(...p), q1: new THREE.Vector3(...t), f0: cam.fov, f1: fovFor(v) };
+  };
+  // Übergang aus dem flachen Bild: Kamera fährt vom Foto schräg hinaus, die Sterne ziehen dabei in ihre Entfernung (≈ 2,4 s)
+  const replayB = $('[data-replay]', ov);
+  const mark = (v) => $$('.seg button', ov).forEach(x => x.classList.toggle('on', x.dataset.v === v));
+  const start = () => {
+    go('front', true);
+    if (reduced()) { k = 1; setDepth(); dirty = true; return; }  // reduziert: Foto bleibt stehen, Tiefe durch eigenes Drehen
+    k = 0; setDepth();
+    const k0 = performance.now() + 250;
+    fly = { t0: k0, dur: 2400, p0: cam.position.clone(), q0: ctl.target.clone(), p1: new THREE.Vector3(...views.oblique[0]), q1: new THREE.Vector3(...views.oblique[1]),
+      f0: cam.fov, f1: fovFor('oblique'), depth: true };
+    mark('oblique');
+  };
+  const intro = () => { if (vw) { go('front', true); k = 0; start(); return; } };
+  replayB?.addEventListener('click', intro);
+  const skip = () => { if (!fly) return; const dep = fly.depth; fly = null; if (dep) { k = 1; setDepth(); } dirty = true; };
+  renderer.domElement.addEventListener('pointerdown', skip);
   ctl.addEventListener('change', () => { dirty = true; });
   $('.seg', ov).addEventListener('click', (e) => {
     const b = e.target.closest('[data-v]'); if (!b) return;
-    $$('.seg button', ov).forEach(x => x.classList.toggle('on', x === b)); go(b.dataset.v);
+    mark(b.dataset.v); if (k < 1) { k = 1; setDepth(); } go(b.dataset.v);
   });
   // Hochformat (Telefon): größerer Blickwinkel, damit der Trichter nicht seitlich abgeschnitten wird
-  const size = () => { const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); cam.aspect = w / Math.max(1, h);
-    cam.fov = cam.aspect < 1 ? Math.min(85, 50 / Math.max(0.55, cam.aspect)) : 50; cam.updateProjectionMatrix(); dirty = true; };
+  const size = () => {
+    const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); cam.aspect = w / Math.max(1, h);
+    const a = cam.aspect;
+    fitFov = 2 * Math.atan(S / Math.min(1, a / asp)) * 180 / Math.PI;   // halbe Bildhöhe S·tF bei Abstand tF füllt die Höhe bzw. Breite
+    const atFront = vw && !fly && cam.position.lengthSq() < 1e-6;
+    if (atFront) cam.fov = fitFov;
+    else if (!vw) cam.fov = a < 1 ? Math.min(85, 50 / Math.max(0.55, a)) : 50;
+    cam.updateProjectionMatrix(); dirty = true;
+  };
   ro = new ResizeObserver(size); ro.observe(stage); size();
-  // Klick: nächster Punkt in Bildschirmnähe
+  go(vw ? 'front' : 'oblique', true);
+  // Klick: nächster Punkt in Bildschirmnähe (erst wenn die Tiefe sichtbar ist)
   const info = $('.tunnel-info', ov), ray = new THREE.Raycaster();
   renderer.domElement.addEventListener('click', (e) => {
+    if (fade < 0.3) { info.hidden = true; return; }
     const b = renderer.domElement.getBoundingClientRect();
     const m = new THREE.Vector2(((e.clientX - b.left) / b.width) * 2 - 1, -((e.clientY - b.top) / b.height) * 2 + 1);
     ray.setFromCamera(m, cam);
@@ -284,19 +341,44 @@ async function depthTunnel(d, r, inline = null) {
       : p.t === 'm' ? `<b>${esc(p.n)}</b><div class="sm">${lyText(p.ly)} entfernt</div>`
       : `<b>${esc(p.n)}</b><div class="sm">${lyText(p.ly)} entfernt · G ${de1(p.g)}</div><div class="dim sm">Licht ${yrText(p.ly)} unterwegs</div>`;
   });
+  // Von vorn (Kamera auf der Achse vor dem Foto) nur das Foto; mit dem Blickwinkel blendet die Tiefe ein, das Foto wird zum Fenster
+  const pc = new THREE.Vector3(0, 0, -tF), dv = new THREE.Vector3();
+  const updFade = () => {
+    if (!vw) return;
+    dv.subVectors(cam.position, pc);
+    const ang = dv.z > 0 ? Math.atan2(Math.hypot(dv.x, dv.y), dv.z) * 180 / Math.PI : 180;
+    const f = Math.min(1, Math.max(0, (ang - 3) / 22)) * Math.min(1, k * 1.5);
+    fade = f;
+    for (const [m, o] of fading) m.opacity = o * f;
+    if (plane) plane.material.opacity = 1 - 0.25 * f;                // schräg bleibt das Foto gut sichtbar
+    ov.classList.toggle('deep', f > 0.3);
+  };
   const loop = (now) => {
     if (!alive) return;
     if (!ov.isConnected) { close(); return; }            // eingebettet: Reiter gewechselt
-    if (fly) {
-      const k = Math.min(1, (now - fly.t0) / fly.dur), e = k < .5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2;
-      cam.position.lerpVectors(fly.p0, fly.p1, e); ctl.target.lerpVectors(fly.q0, fly.q1, e); dirty = true;
-      if (k >= 1) { const then = fly.then; fly = null; if (then) then(); else if (skipB) { skipB.hidden = true; replayB.hidden = false; } }
+    if (fly && now >= fly.t0) {
+      const q = Math.min(1, (now - fly.t0) / fly.dur), e = q < .5 ? 2 * q * q : 1 - (-2 * q + 2) ** 2 / 2;
+      cam.position.lerpVectors(fly.p0, fly.p1, e); ctl.target.lerpVectors(fly.q0, fly.q1, e);
+      cam.fov = fly.f0 + (fly.f1 - fly.f0) * e; cam.updateProjectionMatrix();
+      if (fly.depth) { k = Math.min(1, q * 1.15); setDepth(); }
+      dirty = true;
+      if (q >= 1) { const then = fly.then; fly = null; then?.(); }
     }
     if (ctl.update()) dirty = true;
-    if (dirty) { renderer.render(scene, cam); dirty = false; }
+    if (dirty) { updFade(); renderer.render(scene, cam); dirty = false; }
     raf = requestAnimationFrame(loop);
   };
   raf = requestAnimationFrame(loop);
+  // Zurück zum flachen Bild: erst nach vorn fahren und die Tiefe einziehen, dann ausblenden
+  api3.close = (animated = true) => {
+    if (!alive) return;
+    if (!animated || reduced() || !plane) { close(); return; }
+    fly = { t0: performance.now(), dur: 650, p0: cam.position.clone(), q0: ctl.target.clone(), p1: new THREE.Vector3(...views.front[0]), q1: new THREE.Vector3(...views.front[1]),
+      f0: cam.fov, f1: fitFov, then: close };
+  };
+  })();
+  if (vw) { vw.el.classList.add('v3d-on'); return api3; }
+  return run;
 }
 
 // ---------------------------------------------------------- Veränderungen --- //
