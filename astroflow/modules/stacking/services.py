@@ -145,10 +145,10 @@ def locate(small: np.ndarray, big: np.ndarray) -> tuple[int, int, float]:
     return int(dy), int(dx), float(r.max() / (r.std() + 1e-12))
 
 
-def project_solution(work_dir: Path, pid: int, files: dict) -> dict | None:
-    """Objekte im fertigen Bild eines Objekts – aus der gespeicherten Plate-Solving-Lösung des Master-Stacks
-    (`work/p<id>/wcs.json`, entsteht bei der Gaia-Farbkalibrierung), ohne neu zu lösen. Der Bildausschnitt
-    des JPGs wird per Korrelation im Stack gefunden."""
+def view_geometry(work_dir: Path, pid: int, files: dict, need_stack: bool = False) -> dict | None:
+    """Plate-Solving-Lösung des Master-Stacks und Lage des angezeigten JPGs darin. None = keine Lösung/kein Stack.
+    Rückgabe: `wcs` (FITS-Pixel des linearen Stacks), `W`/`H`, `offset` (x0, y0) und `view` (B, H) des JPG-Ausschnitts
+    bzw. `offset` None, wenn der Maßstab abweicht; mit `need_stack` zusätzlich `data` (linearer Stack, C×H×W)."""
     from astropy.wcs import WCS
     from PIL import Image
     try:
@@ -157,20 +157,52 @@ def project_solution(work_dir: Path, pid: int, files: dict) -> dict | None:
         return None
     if not files.get("fits") or not Path(files["fits"]).exists():
         return None
-    stack = read_data(files["fits"])
-    stack = stack.mean(0) if stack.ndim == 3 else stack
+    data = read_data(files["fits"])
+    data = data[None] if data.ndim == 2 else data
+    stack = data.mean(0)
     H, W = stack.shape
     wcs = WCS({**saved["wcs"], "NAXIS": 2, "NAXIS1": W, "NAXIS2": H}, naxis=2)
+    out = {"wcs": wcs, "W": W, "H": H, "offset": None, "view": (W, H), "key": saved.get("key", "")}
+    if need_stack:
+        out["data"] = data
     with Image.open(files.get("before") or files["jpg"]) as im:
         pic = np.flipud(np.asarray(im.convert("L"), dtype=np.float32))
     vh, vw = pic.shape
     if not (0.75 * W <= vw <= W and 0.75 * H <= vh <= H):     # anderer Maßstab (z. B. 2×-Auflösung): ohne Bildpositionen
-        sol = describe(wcs, W, H, "stack")
-        for o in sol["objects"]:
-            o["x"] = o["y"] = None
-        return sol
+        return out
     f = 4
     dy, dx, q = locate(_stretch(pic, f), _stretch(stack, f))
     if q < 8:                                                  # keine eindeutige Lage gefunden: Mitte annehmen
         dy, dx = (H - vh) // (2 * f), (W - vw) // (2 * f)
-    return describe(wcs, W, H, "stack", offset=(dx * f, dy * f), view=(vw, vh))
+    out.update(offset=(dx * f, dy * f), view=(vw, vh))
+    return out
+
+
+def geometry_matches(geo: dict) -> bool:
+    """Gehört die gespeicherte Lösung (`wcs.json`, je Objekt nur die neueste) zu diesem Stack? Der Schlüssel endet auf
+    „HxW“ des gelösten Stacks; eine ältere Version mit anderer Auflösung hätte sonst falsche Himmelskoordinaten."""
+    key = geo.get("key", "")
+    return "|" not in key or key.split("|")[-1] == f"{geo['H']}x{geo['W']}"
+
+
+def to_view(geo: dict, x, y):
+    """FITS-Pixel des Stacks → Pixel des angezeigten JPGs (Zeile 0 = oben); None ohne Bildlage."""
+    if geo.get("offset") is None:
+        return None
+    (x0, y0), (vw, vh) = geo["offset"], geo["view"]
+    return np.asarray(x) - x0, vh - 1 - (np.asarray(y) - y0)
+
+
+def project_solution(work_dir: Path, pid: int, files: dict) -> dict | None:
+    """Objekte im fertigen Bild eines Objekts – aus der gespeicherten Plate-Solving-Lösung des Master-Stacks
+    (`work/p<id>/wcs.json`, entsteht bei der Gaia-Farbkalibrierung), ohne neu zu lösen. Der Bildausschnitt
+    des JPGs wird per Korrelation im Stack gefunden."""
+    geo = view_geometry(work_dir, pid, files)
+    if geo is None:
+        return None
+    if geo["offset"] is None:
+        sol = describe(geo["wcs"], geo["W"], geo["H"], "stack")
+        for o in sol["objects"]:
+            o["x"] = o["y"] = None
+        return sol
+    return describe(geo["wcs"], geo["W"], geo["H"], "stack", offset=geo["offset"], view=geo["view"])
