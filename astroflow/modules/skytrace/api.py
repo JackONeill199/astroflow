@@ -189,6 +189,8 @@ class Controller:
             py, code = self.mod.python, Path(__file__).parent / "engine"
             if refresh:
                 out = self.run_path(options.get("run") or self.current)
+                if self.mod.sitejobs.busy_with(out.name):
+                    raise ValueError("Dieser Lauf wird gerade neu abgeglichen – bitte warten.")
                 if not (out / "videos.json").exists():
                     raise ValueError("Dieser Lauf hat keine Bildfolgen.")
                 cancel = out / ("STOP-update-" + str(time.time_ns()))
@@ -283,6 +285,8 @@ class Controller:
         with self.lock:
             if self.process is not None and self.current == name:
                 raise ValueError("Diese Analyse läuft gerade – erst anhalten.")
+            if self.mod.sitejobs.busy_with(name):
+                raise ValueError("Dieser Lauf wird gerade neu abgeglichen – bitte warten.")
             size = sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
             def retry(func, p, _exc):                    # Windows: Videos können kurz von einer Wiedergabe gesperrt sein
                 time.sleep(0.3)
@@ -339,6 +343,10 @@ class Controller:
             item["folder"] = folder.name
             item["sat_matches"] = sum(1 for c in items or [] if any(r.get("provider") == "satellites" and r.get("status") == "compatible"
                                                                       for r in c.get("catalogs") or []))
+            item["trails"] = sum(1 for c in items or [] if c.get("world_path"))
+            found = _read_json(folder / "standortsuche.json", None)
+            if isinstance(found, dict):        # letzte Standortsuche (rematch_sites.py search) – kurz für die Liste
+                item["site_search"] = {k: found.get(k) for k in ("ok", "worth", "before", "after", "tracks", "created", "shift_km")}
             try:
                 frame_path = folder / 'frames.jsonl'
                 stat = frame_path.stat()
@@ -533,6 +541,43 @@ def build_router(mod) -> APIRouter:
         try:
             return ctl.sitefit(run, folder)
         except (OSError, ValueError, KeyError, TypeError, ArithmeticError) as e:
+            bad(e)
+
+    # ---- Neu abgleichen nach Standortänderung / Standortsuche (rematch.py) ----
+    @r.get("/rematch")
+    def rematch_state():
+        return {"job": mod.sitejobs.snapshot(), "sites_changed": mod.sitejobs.sites_changed(), "signature": mod.sitejobs.signature()}
+
+    @r.post("/rematch")
+    def rematch(body: dict = Body(...)):
+        """{run} = ein Lauf (alle Spuren), {all: true} = alle Läufe (nur Spuren mit geändertem Ort; `force` = alle)."""
+        try:
+            if body.get("all"):
+                return mod.sitejobs.start_rematch(None, body.get("force"))
+            if not isinstance(body.get("run"), str):
+                raise ValueError("Lauf fehlt")
+            return mod.sitejobs.start_rematch([body["run"]], body.get("force"))
+        except (OSError, ValueError) as e:
+            bad(e)
+
+    @r.post("/rematch/stop")
+    def rematch_stop():
+        return {"job": mod.sitejobs.stop()}
+
+    @r.post("/sitesearch")
+    def sitesearch_start(body: dict = Body(...)):
+        try:
+            return mod.sitejobs.start_search(str(body.get("run") or ""), str(body.get("folder") or ""))
+        except (OSError, ValueError) as e:
+            bad(e)
+
+    @r.get("/sitesearch")
+    def sitesearch(run: str, folder: str):
+        try:
+            job = mod.sitejobs.snapshot()
+            mine = job if job and job.get("kind") == "search" and job["runs"] == [run] and job.get("folder") == folder else None
+            return {"job": mine, "result": mod.sitejobs.search_result(run, folder)}
+        except (OSError, ValueError) as e:
             bad(e)
 
     @r.delete("/run")

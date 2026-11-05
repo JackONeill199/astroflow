@@ -196,6 +196,8 @@ def eth_tles(stamp,settings):
     try:
         saved=read_json(target,None)
         if saved is not None:return saved
+        # Neu abgleichen (rematch_sites.py): nur, was der ursprüngliche Lauf schon abgerufen hat.
+        if settings.get('orbits_cache_only'):raise ArchiveAccessError('needs_archive',f'Bahndaten für {when:%Y-%m-%d %H:%M} UTC liegen nicht im lokalen Cache; beim Neuabgleich werden keine Archive abgefragt.')
         url=ETH;query=params;seen=set();rows=[]
         for page in range(120):
             check_stop(settings)

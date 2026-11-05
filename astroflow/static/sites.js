@@ -106,8 +106,11 @@ async function sitesSettings(el) {
       ${today ? `<p class="sm site-today">Heute Nacht: <b>${esc(today.name)}</b> <span class="dim">(${esc(today.detail)})</span></p>` : ''}
       ${edit ? editForm() : siteRows()}</div>
       <div class="panel"><h2>Zeiträume</h2><p class="mut sm" style="margin:4px 0 12px">„Von–bis war das Teleskop hier“, z. B. Urlaub oder Umzug. Überlappen sich Zeiträume, gilt der kürzere.</p>${timeline()}</div>
-      <div class="panel"><h2>Aufnahmenächte</h2><p class="mut sm" style="margin:4px 0 12px">Ort je Nacht prüfen und bei Bedarf umstellen. Nach einer Änderung SkyTrace-Läufe über „Zeitreihen aktualisieren“ neu abgleichen und im Bild-Tutor „Neu prüfen“ wählen.</p>${nightRows()}</div>`;
+      <div class="panel"><h2>Aufnahmenächte</h2><p class="mut sm" style="margin:4px 0 12px">Ort je Nacht prüfen und bei Bedarf umstellen. Nach einer Änderung SkyTrace-Analysen unten neu abgleichen und im Bild-Tutor „Neu prüfen“ wählen.</p>${nightRows()}</div>
+      <div id="siteModules"></div>`;
     bind();
+    // Abschnitte der Module (AF.register(id, { sitesPanel(host) }), z. B. SkyTrace „neu abgleichen“)
+    for (const id of AF.order) { const f = AF.modules[id].sitesPanel; if (f) { const host = document.createElement('div'); $('#siteModules', el).append(host); f(host); } }
   }
 
   function bind() {

@@ -353,6 +353,7 @@ function createViewer(host, src, cmpSrc, labels = ['älter', 'neuer'], ph = null
      settings: async (el) => void,               Abschnitt in den Einstellungen
      palette: async () => [[icon, label, sub, fn|href, img?]],  Einträge der Befehlspalette (z. B. Objekte)
      status: (st, nav) => void,                  Polling-Hook (Zähler in der Navigation)
+     sitesPanel: (host) => void,                 eigener Abschnitt unter Einstellungen → Standorte (z. B. SkyTrace neu abgleichen)
      drop: (files) => bool                       global abgelegte Dateien übernehmen
    })
    Kontextpanel rechts: AF.ctx.open(el, { title, html | render(body) }) – el = Behälter der Ansicht (verworfene Ansichten
