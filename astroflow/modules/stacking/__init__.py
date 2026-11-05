@@ -13,8 +13,8 @@ class Module(BaseModule):
     name = "Bilder"
     description = "Rohbilder automatisch kalibrieren, stacken und zum fertigen Astrofoto entwickeln."
     icon = "grid"
-    scripts = ("live.js", "stacking.js", "tonight.js", "depth.js")
-    styles = ("depth.css", "statistics.css", "housekeeping.css", "library.css", "stages.css", "tutor.css", "versions.css", "live.css", "tonight.css")
+    scripts = ("live.js", "stacking.js", "tonight.js", "depth.js", "skyquality.js")
+    styles = ("depth.css", "statistics.css", "housekeeping.css", "library.css", "stages.css", "tutor.css", "versions.css", "live.css", "tonight.css", "skyquality.css")
 
     def __init__(self, ctx):
         super().__init__(ctx)
@@ -29,6 +29,7 @@ class Module(BaseModule):
         ctx.services["catalog_resolve"] = catalog_resolve
         ctx.services["catalog_objects"] = catalog_objects
         self.eng.pl.on_stacked = self._stacked
+        ctx.services["site_sky"] = self.site_sky                  # Ortsliste: Himmelsqualität je Standort
         if isinstance(ctx.services.get("night_sources"), list):   # Einstellungen → Standorte: Nachtliste
             ctx.services["night_sources"].append(self.nights)
 
@@ -70,6 +71,12 @@ class Module(BaseModule):
                 "image": img, "result_id": r["id"], "exposure": r["exposure"], "n_frames": r["n_frames"],
                 "imported": json.loads(p["options"] or "{}").get("input_type") == "picture",
                 "ra": p["ra"], "dec": p["dec"], "files": files}
+
+    def site_sky(self) -> dict:
+        """Himmelsqualität je Standort-ID (Mittel über die Nächte) für die Ortsliste – ohne Lichtrichtung (schnell)."""
+        from .skyquality import summary
+        return {s["id"]: {k: s[k] for k in ("sqm", "bortle", "seeing", "n_nights", "n_site_nights")}
+                for s in summary(self.eng.db, with_dirs=False)["sites"] if s["id"]}
 
     def nights(self) -> list[dict]:
         """Aufnahmenächte mit Objektnamen (für die Nachtliste unter Einstellungen → Standorte)."""

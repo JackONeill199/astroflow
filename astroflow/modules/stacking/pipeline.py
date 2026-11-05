@@ -266,6 +266,10 @@ class Pipeline:
             shutil.rmtree(wd, ignore_errors=True)
         self.db.x("DELETE FROM results WHERE project_id=?", (project_id,))
         self.db.x("DELETE FROM jobs WHERE project_id=?", (project_id,))
+        try:                                                 # Himmelsqualität (Tabelle entsteht erst mit skyquality)
+            self.db.x("DELETE FROM sky_nights WHERE project_id=?", (project_id,))
+        except Exception:
+            pass
         self.db.x("UPDATE projects SET options=json_remove(options,'$.gallery_parent') WHERE json_extract(options,'$.gallery_parent')=?", (project_id,))
         self.db.x("DELETE FROM projects WHERE id=?", (project_id,))
         return {"name": proj["name"], "files": files, "ignored": ignored, "bytes": freed}

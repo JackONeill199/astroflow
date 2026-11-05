@@ -23,7 +23,7 @@ astroflow/static/          Shell: index.html, app.js (Router, Navigation, Übers
 - **Modul-Vertrag Backend** (`core/modules.py`): `router()`, `start()/stop()`, `status()` (klein, wird alle 2,5 s gepollt; `busy_jobs` zählt für die Anzeige),
   `activity()` (gemeinsames Format `{key,title,kind,detail,state,progress,started,finished,href}`), `scripts/styles`. Reihenfolge/Liste: `AVAILABLE`.
 - **Module reden nicht per Import miteinander**, sondern über Dienste in `ctx.services`: Stacking stellt `plate_solver` (`PictureSolver`),
-  `project_picture`, `project_solution`, `project_frames`, `observation_log`, `catalog_resolve` und `catalog_objects` bereit, Sage `object_facts` (Typ/Entfernung aus der Wissensbasis) und `collection_progress` (entdeckte Messier-Nummern, für „Heute Nacht“); Sage und SkyTrace nutzen sie. Der Kern selbst stellt `sites` (`SiteBook`), `site_for` und die Liste `night_sources` bereit (s. „Standorte“). Fehlt ein Dienst, muss das Modul trotzdem laufen.
+  `project_picture`, `project_solution`, `project_frames`, `observation_log`, `catalog_resolve`, `catalog_objects` und `site_sky` (Himmelsqualität je Ort) bereit, Sage `object_facts` (Typ/Entfernung aus der Wissensbasis) und `collection_progress` (entdeckte Messier-Nummern, für „Heute Nacht“); Sage und SkyTrace nutzen sie. Der Kern selbst stellt `sites` (`SiteBook`), `site_for` und die Liste `night_sources` bereit (s. „Standorte“). Fehlt ein Dienst, muss das Modul trotzdem laufen.
 - **Ereignisse** (`ctx.on` / `ctx.emit`, Liste in `core/modules.py`): `stacking.stacked(project_id, result_id, name)` kommt aus
   `Pipeline.process` nach dem Entwickeln und **vor** dem Löschen hochgeladener Rohbilder (`Pipeline.on_stacked`). Empfänger (seit 28.10.2026,
   Nutzerwunsch „gestackte Aufnahmen automatisch durch SkyTrace und in die Entdeckungen, mit animierten Erfolgen“):
@@ -286,6 +286,40 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   in `settingsView`), `tonight.js` „Heute bin ich in …“, die Tutor-Einstellung verweist nur noch auf die Liste.
 - **Datenschutz:** Orte sind privat – Tests nur mit erfundenen Orten (`tests/test_sites.py`, UI-Fixture in `conftest.py`), Screenshots maskiert.
 
+## Himmelsqualität (`modules/stacking/skyquality.py`, seit 0.26.0 – Wünsche 14–16 „Himmel und Standort“)
+- **Messung ohne Rohbilder** aus gespeicherten Daten: Master-Stack + `wcs.json` (bzw. `Pipeline._stack_wcs`) + Gaia mit G
+  (`photometry.gaia_stars(with_g=True)` → (N,4), eigener Cache-Schlüssel – gemeinsame Gaia-Schicht, keine zweite Abfrage bauen).
+  `zero_point`: Apertur 2·FWHM auf der Luminanz (R+2G+B)/4 (= Gewichtung von `quality.analysis_image`), isolierte Sterne,
+  Gaia G → V (Riello 2021), Farbterm frei, Wert bei BP−RP 0,82 → ≈ SQM/V-Band. Nullpunkt je Aufnahme über `frame_links`
+  (dieselbe Dreieckszuordnung wie `_stack`, kr = Sternfluss Referenz/Frame, `flux_k0`): ZP_f = ZP_Stack + 2,5·log(flux_k0/kr).
+  Gerätenullpunkt der Nacht = 85-%-Perzentil von ZP_f + `K_EXT`·Luftmasse (0,20 mag); Abstand darunter = Dunst (`CLOUD_LOSS` 0,35).
+- **Himmel je Aufnahme – zwei Wege:** (a) mit Darks/Bias kalibriert (`calibrated(metrics.calib)`): Pegel = Himmel, also `metrics.sky`
+  (Ebene in der Bildmitte ohne Objekt; neu in `analyze_frame` über `bg_plane`, **ohne** `METRICS_VERSION`-Erhöhung – sonst würde alles neu
+  analysiert/gestackt) bzw. älter `metrics.bg` − Objektanteil (`stack_excess`). (b) **ohne Darks aus dem Photonenrauschen**:
+  Himmel = (`metrics.noise`² − Ausleserauschen²)/k (`NOISE_MODEL`). **Befund 05.11.2026:** Die Stellina verschiebt ihren Schwarzpunkt
+  zwischen Aufnahmen (NGC 1579, gleiche Nacht, gleiches Rauschen 50: Pegel 680 ↔ 866; Darks bei 29 °C 772) – ein fester Bias-Abzug ergab
+  Unsinn (Werte bis 22,3 bzw. negativer Himmel). Rauschen² über Pegel ist dagegen je Nacht eine Gerade mit Steigung k = 12,9 (30 Nächte,
+  r ≈ 0,99) → 0,019 e⁻/ADU; `fit_gain` misst k je Objekt nach (±30 % um den Gerätewert). Ausleserauschen 42 ± 3 (Luminanz-ADU; ≈ 1,6 e⁻;
+  Grenzen: Darks 49,3 inkl. Dunkelstrom, dunkelste Aufnahme 47,1) – dominiert die Unsicherheit bei dunklem Himmel (`err` je Nacht).
+  Unbekanntes Gerät ohne Darks → kein Wert. mag/″² = ZP − 2,5·log(Himmel/t/Pixelfläche), Zenitwert per `zenith_offset` (∝ Luftmasse, gedämpft).
+  Ortswert einer Nacht (`site_value`) nur aus ≥ `MIN_GOOD` Aufnahmen ohne Flags (Sonne < −18°, Mond unter Horizont, ≥ 30°, kein Dunst);
+  sonst Verlauf + `sqm_all` in Klammern. Bortle mit Spanne aus `err` = `SYS_ERR` 0,2 ⊕ Rausch-Unsicherheit (Gerätenullpunkt aus anderen Nächten: +0,1).
+- **Lichtrichtung:** `metrics.bgplane` (ADU/px) → `orientation` (WCS ∘ Registrierungsmatrix → „oben“/„rechts“ in Frame-Pixeln je Grad,
+  Feldrotation automatisch) → relatives Gefälle je Grad. `light_direction` passt über alle Aufnahmen eines Standorts Sockel (Restglühen,
+  sensorfest bei Alt-Az) + natürlichen Anstieg (`_nat_slope`) + b·Richtung zum Horizontpunkt φ an; Unsicherheit per Bootstrap über
+  Nächte/Objekte, `reliable` erst ab 3 Gruppen, 60° Azimutabdeckung, ±45°. Nur `tutor.neutral_sky`-Objekte, ohne Mond/Dämmerung.
+  Ältere Frames ohne Ebene: `_backfill` misst ≤ 40 je Nacht nach, wenn das Rohbild noch erreichbar ist (gleiches `_load`, Glühmodell aus der Bibliothek).
+- **Seeing** = `metrics.fwhm` (Vollauflösungs-Pixel, aus 2×2-Bild ×2, +1 px Messsockel) × nativer Maßstab (WCS-Maßstab × `resolution_scale`; Nullpunkt −5·log sc) → „effektive Bildschärfe“. Ohne Standort kein Ortswert (Flag `nosite`); gelöschte Objekte entfernen ihre `sky_nights`.
+- **Ablage:** Tabelle `sky_nights(project_id, night, site_id, site_name, device, updated, version, data)` (`ensure_table`, nicht in `db.SCHEMA`);
+  Ort je Nacht über Dienst `site_for` (FITS-Ort → `fits:<lat,lon>`), gespeichert nur ID/Name. `summary` mittelt je Ort (Nacht = Median ihrer Objekte).
+- **Ablauf:** nach jeder Endbearbeitung `SkyRunner.queue` (eigener Thread, ohne Nachmessen; `ASTROFLOW_SKY=0` aus, setzt `conftest.py`),
+  „Für alle Nächte berechnen“ = `POST /api/stacking/sky/compute {project_id?|missing?}` (Objekte mit `wcs.json` zuerst – ihre Nullpunkte
+  ergeben den Gerätenullpunkt `device_zp` für die übrigen), Fortschritt in `activity()`. API `GET /sky` (je Ort, mit Lichtrichtung),
+  `GET /projects/{pid}/sky` (Nächte mit Verlauf); `tonight` liefert `sky_quality` des gewählten Orts (`sky` ist dort die Wettervorhersage); Dienst `site_sky` → `/api/sites` → `sky` je Ort.
+- **UI:** `static/skyquality.js|css` (Präfix `sq-`): Ansicht `#/himmel` (unter Übersicht), Kasten „Himmel in der Aufnahmenacht“ auf der Objektseite
+  (`AFsky.panel`), Kachel in Heute Nacht (`AFsky.tonightTile`), Zeile je Ort in Einstellungen → Standorte (`sites.js` → `skyLine`).
+- Tests: `test_skyquality.py` (synthetisch, erfundener Ort), UI-Fixture `_sky_seed`.
+
 ## Kometenmodus (`modules/stacking/comet.py`, seit 0.22.0 – Nutzerwunsch, nur noch Kometenaufnahmen fehlten)
 - **Erkennung:** `comet.designation/is_comet` (C/P/D/X/A/I + Jahr + Halbmonat, `12P`, Wörter Komet/Comet; `IC 1396`,
   `NGC 2024` nicht). `scanner.assign_project(info, centers, night)`: Kometen → Schlüssel `KOMET:<Name>|<Nacht>|<Kamera>`
@@ -429,7 +463,7 @@ Kern: `/api/app` (Module, Build), `/api/folders?path=` (Ordnerdialog), `/api/sit
 **Achtung:** Zwei Server auf demselben Datenordner = zwei Worker (beim Start werden „running“-Jobs des anderen neu eingereiht) – Tests/Vorschauen mit eigenem Datenordner.
 
 ## Web-UI (`astroflow/static/` + `modules/*/static/`)
-Hash-Routing: `#/` Übersicht, `#/nacht`, `#/bilder` (Sessions), `#/galerie` (fertige Bilder), `#/p/<id>/<bild|aufnahmen|versionen|optionen>`, `#/import`,
+Hash-Routing: `#/` Übersicht, `#/nacht`, `#/himmel` (Himmelsqualität), `#/bilder` (Sessions), `#/galerie` (fertige Bilder), `#/p/<id>/<bild|aufnahmen|versionen|optionen>`, `#/import`,
 `#/skytrace[/neu|/3d|/statistik|/<lauf>/<vorschau|kandidaten|beobachtungen|protokoll|3d>]`, `#/sage[/wiki|/entdeckungen|/sammlung|/<eintrag>]`, `#/activity` (Aufträge), `#/settings/<modul|standorte|module>`.
 **Designsystem (seit 0.21.0, Nutzerauftrag „professionelles, konsistentes Designsystem wie eine native Desktop-App“):** Tokens in `:root` von `style.css`
 (`--bg/--sidebar/--surface/--surface-2/--border/--fg/--mut/--dim/--acc/--ok/--warn/--bad`, Maße, `--t` 160 ms); alte Namen (`--panel`, `--grad`, `--acc2/3` …)

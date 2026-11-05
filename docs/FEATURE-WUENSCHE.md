@@ -177,3 +177,14 @@ Sage liefert belegtes Wissen je Objekt – verlässlich, nichts erfunden.
 - Strukturen ohne Katalogeintrag (Staubbänder, Nebelfilamente, Sternfarben) per Vision-LLM am Bildausschnitt, als
   „KI-Einschätzung“ deutlich getrennt vom belegten Wissen (Belegpflicht von Sage); Umrisse im Bild.
 - Risiko: lokale Vision-Modelle sind bei Astrofotos unzuverlässig und erfinden – nur mit Kennzeichnung und Rückfall auf Stufe 1.
+## 14.–16. Himmel und Standort – Stand 05.11.2026
+
+(Ideen 14 Himmelshelligkeit, 15 Lichtverschmutzungs-Richtung, 16 Seeing aus der Liste „Was sich aus den Bilddaten noch berechnen lässt“.)
+
+- **Umgesetzt (0.26.0):** Himmelshelligkeit in mag/″² je Aufnahme, Nacht und Standort (Gaia-geeicht, Zenit, Kennzeichnung von
+  Mond/Dämmerung/Dunst/tiefem Objekt), Bortle mit Spanne, Seeing als effektive Bildschärfe, Lichtrichtung als Windrose mit
+  Unsicherheit; Ansicht „Himmelsqualität“, Objektseite, Heute Nacht, Ortsliste; „Für alle Nächte berechnen“ ohne Rohbilder.
+- Offen: Rauschmodell (Ausleserauschen, Photonen-Transfer) für Vespera/Seestar/Dwarf vermessen – bisher nur Stellina; ohne Darks
+  liefern andere Geräte keinen Wert. Ausleserauschen der Stellina mit Bias-Aufnahmen genauer bestimmen (größte Unsicherheit
+  bei dunklem Himmel). Lichtrichtung braucht die neue Hintergrundebene je Aufnahme – ältere Nächte nur, wenn Rohbilder noch da sind.
+

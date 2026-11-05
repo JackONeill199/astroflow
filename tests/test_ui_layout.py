@@ -59,6 +59,26 @@ def _free_port():
         return so.getsockname()[1]
 
 
+def _sky_seed(db, pid):
+    """Himmelsqualität für die Oberflächentests: zwei Nächte am erfundenen Ort „a“, eine davon mit Mond."""
+    import datetime as dt
+    import json as _json
+    import numpy as np
+    from astroflow.modules.stacking import skyquality as sq
+    site = {"id": "a", "name": LONG, "lat": 47.5, "lon": 10.25, "alt_m": 400}
+    sq.ensure_table(db)
+    for night, t0 in (("2026-01-20", dt.datetime(2026, 1, 20, 21, 0, tzinfo=dt.timezone.utc)),
+                      ("2026-01-03", dt.datetime(2026, 1, 3, 21, 0, tzinfo=dt.timezone.utc))):
+        fr = [{"id": f"{night}{i}", "night": night, "date": (t0 + dt.timedelta(minutes=4 * i)).isoformat(), "exptime": 10.0,
+               "gain": 200.0, "metrics": {"bg": 960 + i, "sky": 921 + i * 0.5, "noise": 58 + (i % 7) * 0.4, "fwhm": 6 + (i % 5) * 0.3, "n_stars": 100,
+                                          "calib": "keine Kalibrierung", "bgplane": [0.0, 0.0]}} for i in range(60)]
+        links = {f["id"]: (1.0, np.eye(3)) for f in fr}
+        n = sq.evaluate(fr, zp_stack=21.7, zp_device=None, flux_k0=1.0, links=links, excess=0.0, scale=1.24, site=site,
+                        ra=100.0, dec=40.0, device_id="stellina")[night]
+        n["dirs"] = [[az, 50.0, 0.001 * np.cos(np.radians(az - 120)), 0.001 * np.sin(np.radians(az - 120)) * 0.5] for az in range(0, 360, 8)]
+        db.x("INSERT OR REPLACE INTO sky_nights VALUES(?,?,?,?,?,?,?,?)", (pid, night, "a", LONG, "stellina|200.0", 1.0, sq.SKY_VERSION, _json.dumps(n)))
+
+
 def _skytrace_run(run):
     """Ein SkyTrace-Lauf mit langen Namen und Katalogergebnissen (für Statistik und Laufliste)."""
     import json
@@ -76,7 +96,7 @@ def _skytrace_run(run):
 
 
 ROUTES = ["#/", "#/nacht", "#/bilder", "#/galerie", "#/galerie/{pid}", "#/p/{pid}/bild", "#/p/{pid}/aufnahmen", "#/p/{pid}/versionen", "#/p/{pid}/optionen",
-          "#/import", "#/activity", "#/skytrace", "#/skytrace/neu", "#/skytrace/statistik", "#/skytrace/erfolge", "#/skytrace/3d", "#/sage", "#/sage/wiki", "#/sage/entdeckungen", "#/sage/sammlung",
+          "#/import", "#/activity", "#/himmel", "#/skytrace", "#/skytrace/neu", "#/skytrace/statistik", "#/skytrace/erfolge", "#/skytrace/3d", "#/sage", "#/sage/wiki", "#/sage/entdeckungen", "#/sage/sammlung",
           "#/settings/stacking", "#/settings/skytrace", "#/settings/sage", "#/settings/standorte", "#/settings/module"]
 
 
