@@ -365,6 +365,39 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
 - **API** `GET /api/stacking/tonight?hide=M35,12`: ausgeblendete Kennungen (localStorage `af.tonight.hidden`). Optionaler Dienst `collection_progress` (Sage →
   `{"messier": [Nummern]}`, 2 min gecacht): „Wäre dein n. Messier-Objekt“, bereits entdeckte Messier-Nummern entfallen. Tests: `tests/test_tonight.py`.
 
+## Was dein Bild zeigt – Tiefe und Vergleich (`depth.py`, `compare.py`, `insights.py`; seit 0.25.0, Wünsche 12/13)
+- **Ablauf:** `insights.Insights` = eigener Thread mit Warteschlange (`Module.start`), Zustand im Speicher, Ergebnis in
+  `results.stats.depth` bzw. `.compare` (je mit `v` = `DEPTH_VERSION`/`COMPARE_VERSION`; Fehler als `{v:0, ok:false, error}`).
+  `Engine._develop_job` ruft nach jeder Entwicklung `after_develop(rid)` (nur mit `wcs.json`, Gaia an, Einstellung `auto_depth`).
+  Die Projektansicht (`_slim`) liefert beide **nicht** mit (wird alle 2,5 s gepollt; Tiefe hat bis 1 500 Punkte) – eigene Endpunkte
+  `GET|POST /results/{id}/depth|compare`, Dateien `/results/{id}/compare/(aktuell|referenz).jpg|k<n>.png` (streng geprüft),
+  Einstellungen `GET|POST /insights` (`data/settings.json` → `insights`: `auto_depth`, `simbad`, `survey`, `small_bodies`; Gaia = `storage.gaia`).
+- **Geometrie:** `services.view_geometry` (aus `project_solution` herausgelöst) = WCS des linearen Stacks der Version + Lage des
+  JPG-Ausschnitts (Korrelation), `to_view` rechnet FITS-Pixel → JPG-Pixel (Zeile 0 oben). Schlüssel in `wcs.json` muss zur Stackgröße passen.
+- **Tiefe:** `photometry.gaia_field` (GAVO `gaia.dr3lite` → ARI → ESA, bis G 20,7, TOP 40 000, Cache `work/gaia/gaia_feld_*`) →
+  erzwungene Aperturfotometrie an allen Katalogpositionen (Apertur 0,8 FWHM, Ring-Median). **Rauschen an leeren Himmelsstellen
+  messen**: Stack-Pixel sind korreliert, Pixel-σ×√N war bei M101 2,9× zu klein. Erfasst = SNR ≥ 5, Schwerpunkt ≤ 0,6 FWHM,
+  kein hellerer Nachbar und gemessene Helligkeit ±0,75 mag zur Katalog-G (sonst zählten HII-Knoten in M101 als G-20-Sterne).
+  m5 = Nullpunkt − 2,5 log(5 σ_Apertur). Parallaxe mit Nullpunkt −0,017 mas, Parallaxe/Fehler ≥ 5. Galaxien: SIMBAD-TAP (Harvard-Spiegel,
+  CDS ist aus manchen Netzen nicht erreichbar) mit Rotverschiebung und G/R/V-Helligkeit, nur Galaxientypen (keine Haufen/Gruppen),
+  sichtbar = SNR ≥ 5 + Schwerpunkt + kein Vordergrundstern + Katalog-Helligkeit ≤ m5+1; `_mark_members` nimmt Einträge im
+  Hauptobjekt (gleiche z, innerhalb der Katalogausdehnung) heraus. Lichtlaufzeit/mitbewegte Entfernung: astropy `Planck18`.
+  Gemessen (Stellina): M101 692 Frames m5 17,7, fernstes z 0,54 (5,5 Mrd. Jahre); M81 m5 17,4, Quasar z 5,8 im Feld, aber zu schwach.
+- **Vergleich:** Referenz = eigenes Ergebnis desselben Felds (`references`, ≤ 0,4°, gelöst; `pick_reference` bevorzugt anderes
+  Objekt/Gerät, dann andere Nächte, dann deutlich weniger Aufnahmen) oder DSS2 rot (STScI `dss_search`, ≤ 60′, sonst CDS hips2fits;
+  astropy liest die DSS-Plattenlösung). `reproject` über grobes Koordinatengitter + `map_coordinates`. Hintergrund ab, schärferes Bild
+  falten, `_flux_relation` (eigen: Faktor; DSS: Parabel in log-log, **Fotoplatte ist nicht linear**), Differenz glätten, Kachel-MAD → K = 6σ.
+  `_candidates` verwirft Rand, Einzelpixel, Form (Achsen > 3:1, Größe außerhalb 0,5–2,5 FWHM), gesättigte/helle Reste, Helligkeits-
+  abweichung < 0,5 mag, und „neu/verschwunden“ nur, wenn das andere Bild die Quelle sicher zeigen müsste (DSS: 30σ erwartet –
+  Galaxien und rote Riesen sind im Rotfilter heller, M3 gab sonst 25 Fehlalarme). Gegen DSS keine Helligkeitsänderungen.
+  Katalog: SIMBAD-Kegel 8″ je Stelle (Veränderlichen-Typen), JPL SB-Ident **geozentrisch** (`mpc-code=500`) je Nacht (≤ 2), zwei
+  Durchgänge, Kometen und Asteroiden getrennt – Asteroiden brauchen je nach Last 15–120 s (Zeitlimit 60 s → Hinweis).
+  Ausgabe: `work/p<id>/vergleich/r<rid>/` Blinkbilder (gleiche Streckung, Raster des Stacks) + Ausschnitte; Caches `work/vergleich/`.
+- **UI** (`static/depth.js|css`, globale Funktionen, `stacking.js` prüft `typeof depthPanel`): `depthPanel`, `depthOverlay`
+  (umhüllt `plateLabels`, Klasse `marks-on`), `depthTunnel` (three.js aus `/vendor/`, Richtung = Bildposition aufgeweitet, Abstand
+  log10(Lj)), `comparePanel` + `compareViewer` (Blinken über `createViewer().setSplit`, Stelle anfahren mit `zoomTo`).
+- Tests: `tests/test_depth_compare.py` (synthetisches Feld, Attrappen für Gaia/SIMBAD/DSS/JPL).
+
 ## Hauptordner durchsuchen (`modules/stacking/library.py`, seit 31.10.2026)
 Import-Ansicht → „Hauptordner durchsuchen“ → „Ordner wählen …“ (`folderDialog`, kein Pfad eintippen; Wahl startet die Suche): Ordner auf dem Server-Rechner (z. B. ganze Stellina-Platte). Hintergrund-Thread findet Gruppen
 (`find_groups`: „…_observation_X“ = eine Gruppe samt Unterordnern, sonst je Ordner mit FITS; Ordnernamen dark/flat/bias → Kalibrierung; Ordner nur mit
@@ -425,6 +458,7 @@ Rohbilder weg; Frames aus eingebundenen Ordnern bleiben als `kind='ignored'` in 
 (nur beim Überfahren sichtbar). Seitenwechsel-Geist blendet `canvas`/`video` aus (freigegebenes WebGL wäre weiß). Test: `test_result_objects.py`.
 REST unter `/api/stacking`: `status`, `scan`, `projects[/{id}]` (GET/PATCH/DELETE), `projects/{id}/process|solve|frames`, `frames/{id}` (PATCH manual),
 `jobs`, `develop-all` (alle Objekte mit Master-Stack neu entwickeln, Galerie-Knopf), `tutor`, `results/{id}/tutor[/ki]`, `upload` (behält bis zu 4 Ordnerebenen, blockt `..`), `results/{id}/{tif|png|jpg|thumb|fits|before}`, `reviewer`, `solver`, `storage`, `starnet`.
+Tiefe/Vergleich: `results/{id}/depth|compare[/<datei>]`, `insights` (s. „Was dein Bild zeigt“).
 Kern: `/api/app` (Module, Build), `/api/folders?path=` (Ordnerdialog), `/api/sites…` (Ortsliste), `/api/status` (`{version, busy, modules:{id: status}}`), `/api/activity` (alle Module), `/api/modules` (ein/aus).
 **Achtung:** Zwei Server auf demselben Datenordner = zwei Worker (beim Start werden „running“-Jobs des anderen neu eingereiht) – Tests/Vorschauen mit eigenem Datenordner.
 

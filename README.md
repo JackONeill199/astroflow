@@ -128,6 +128,7 @@ Teleskop-Festplatte, was noch nicht (fertig) gestackt ist – die Quelldateien b
 | Sterne | Bei Nebeln mit StarNet2 (optional, Einstellungen → Bilder): Sterne werden vom Nebel getrennt, der Nebel ohne Sterne gestreckt, die Sterne kommen kleiner zurück. Ohne StarNet und bei Galaxien/Haufen ohne Trennung; je Objekt unter Optionen änderbar |
 | Bildbearbeitung | Gradientenentfernung, Farbkalibrierung über Sternfarben, Entfaltung, farberhaltender asinh/MTF-Stretch, Wavelet-Entrauschen, Sternreduktion, lokaler Kontrast, Sättigung, bei Nebeln Endbearbeitung (Strukturen anheben, Vibrance) – **profilabhängig** (Galaxie, Emissions-/Reflexionsnebel, Planetarischer Nebel, Haufen, …) |
 | Bild-Tutor | Erklärt Auffälligkeiten (auch Farbverläufe im Himmel) mit Tipps passend zum Gerät (Stellina, Vespera, Seestar …) und bewertet die Aufnahmenacht: Dämmerung, Mond, Objekthöhe, Wolken, Tau, Wind, Frost (Wetter optional über Open-Meteo). Auf Knopfdruck ergänzt ein Vision-LLM, was es im Bild sieht. Einstellungen → Bilder → „Bild-Tutor“ (Einsteiger/Erfahren), Ort: Einstellungen → Standorte |
+| Was dein Bild zeigt | **„Wie tief schaust du?“:** Grenzgröße, erfasste Sterne je Helligkeit, nächster/fernster Stern (Gaia-Parallaxen), Entfernung des Hauptobjekts und die fernsten sichtbaren Galaxien und Quasare (SIMBAD-Rotverschiebung, Lichtlaufzeit) – als Kennzahlen, Markierungen im Bild und 3D-Tunnel. **Veränderungen:** Vergleich mit einer früheren eigenen Aufnahme oder der Durchmusterung DSS2 mit Blink-Ansicht; auffällige Stellen werden mit SIMBAD und JPL-Kleinkörpern abgeglichen – als Hinweis, nicht als Entdeckung. Einstellungen → Bilder → „Was dein Bild zeigt“ |
 | Kometenmodus | Kometen (Name wie `C/2022 E3`, `12P`, Ordner `…_observation_C_2022_E3`, „Komet“) bekommen zwei Stacks: auf die Sterne und auf den Kometenkern. Das Ergebnis setzt scharfe Sterne und scharfen Kometen zusammen, beide Einzelstacks bleiben ansehbar. Die Bahn kommt aus der JPL-Horizons-Ephemeride (mit Plate-Solving; nur die Bezeichnung und der Zeitraum gehen an JPL, `ASTROFLOW_HORIZONS=0` schaltet ab) oder wird im Bild gemessen |
 | KI-Bildprüfung (optional) | Vision-LLM prüft das Ergebnis und korrigiert Parameter, bis es passt |
 | Ausgabe | TIFF 16-bit, PNG, JPEG, linearer FITS-Stack; Verlauf aller Versionen |
@@ -233,6 +234,16 @@ Die Oberfläche (<http://localhost:8080>) ist eine installierbare Web-App (PWA) 
 `ASTROFLOW_AUTO=0` (nicht automatisch verarbeiten), `ASTROFLOW_SCAN_INTERVAL`, `ASTROFLOW_THREADS` (Standard: Kerne − 1, max. 12), `ASTROFLOW_BATCH_MB` (RAM pro Stacking-Stapel, Standard 1/8 des Arbeitsspeichers bzw. des Docker-Limits, 700–4000 MB – auf kleinen NAS ggf. senken).
 Pro Objekt in der UI: Profil, Farbpalette (`auto | RGB | LRGB | SHO | HOO | mono`), „beste X %“, 2×-Auflösung; einzelne Aufnahmen lassen sich ein-/ausschließen.
 
+**Online-Abfragen für „Was dein Bild zeigt“** (Einstellungen → Bilder, jede einzeln abschaltbar; gesendet werden nur
+Himmelskoordinaten, Feldgröße und Aufnahmezeit – nie Bilder oder der Standort; Ergebnisse werden lokal unter `work/` gespeichert):
+
+| Dienst | Wofür | Schalter |
+|---|---|---|
+| Gaia DR3 (GAVO bzw. ARI Heidelberg, sonst ESA) | Sterne, Helligkeiten, Parallaxen | „Farbkalibrierung über Gaia-Sternfarben“, `ASTROFLOW_GAIA=0` |
+| SIMBAD (Spiegel Harvard, sonst CDS Straßburg) | Rotverschiebungen von Galaxien/Quasaren, bekannte Veränderliche | „Rotverschiebungen und Veränderliche aus SIMBAD“ |
+| DSS2 rot (STScI, sonst CDS hips2fits) | Vergleichsbild, wenn keine eigene frühere Aufnahme da ist | „Himmelsdurchmusterung als Vergleichsbild“ |
+| JPL SB-Ident (NASA) | bekannte Kleinplaneten/Kometen zur Aufnahmezeit, geozentrisch | „Kleinplaneten und Kometen prüfen“ |
+
 ## SkyTrace
 
 Bildfolgen (z. B. ein Stellina-Beobachtungsordner) werden chronologisch zu einem Ereignisvideo; Teleskopbewegung wird über das Sternfeld
@@ -317,5 +328,5 @@ Die Tests erzeugen synthetische Aufnahmen (Galaxie, Bayer-Sensor, Mono-Kamera mi
 - Kein echtes Drizzle (2×-Option interpoliert); keine Planeten-/Mond-Modi. Kometenmodus nur für Farbkameras bzw. einen Filter.
 - Ohne Flats bleibt multiplikative Vignettierung teilweise sichtbar (additive Gradienten werden entfernt).
 
-Lizenz: MIT. three.js (`astroflow/modules/skytrace/static/vendor/`) steht unter MIT, die Erdtextur ist NASA Blue Marble
-(gemeinfrei), siehe `vendor/README.md`. Das SkyTrace-Erkennungsmodell (`astroflow/modules/skytrace/models/night-detector`) stammt aus OpenSkyCam und steht unter AGPL-3.0.
+Lizenz: MIT. three.js (`astroflow/static/vendor/`) steht unter MIT, die Erdtextur (`astroflow/modules/skytrace/static/vendor/`) ist NASA Blue Marble
+(gemeinfrei), siehe die `README.md` in beiden Ordnern. Das SkyTrace-Erkennungsmodell (`astroflow/modules/skytrace/models/night-detector`) stammt aus OpenSkyCam und steht unter AGPL-3.0.

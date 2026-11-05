@@ -17,8 +17,8 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md`, Erledigtes im `CHANGELOG.md`.
 | 9 | 05.11.2026 | HR-Diagramm von Sternhaufen | offen |
 | 10 | 05.11.2026 | Asteroiden in eigenen Bildern | offen |
 | 11 | 05.11.2026 | Exoplanet-Transits | offen |
-| 12 | 05.11.2026 | „Wie tief schaust du?“ – Gaia-Entfernungen, Grenzgröße, 3D | in Arbeit |
-| 13 | 05.11.2026 | Vergleich mit Referenzbild/früheren Nächten (neue Lichtquellen) | in Arbeit |
+| 12 | 05.11.2026 | „Wie tief schaust du?“ – Gaia-Entfernungen, Grenzgröße, 3D | umgesetzt in 0.25.0 |
+| 13 | 05.11.2026 | Vergleich mit Referenzbild/früheren Nächten (neue Lichtquellen) | umgesetzt in 0.25.0 (Durchmusterung: nur neu/fehlend) |
 | 14 | 05.11.2026 | Himmelshelligkeit (mag/arcsec²) je Nacht und Standort | in Arbeit |
 | 15 | 05.11.2026 | Richtung der Lichtverschmutzung | in Arbeit |
 | 16 | 05.11.2026 | Seeing in Bogensekunden je Nacht und Standort | in Arbeit |

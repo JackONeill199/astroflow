@@ -323,9 +323,12 @@ function plateLabels(rid) {
   let d = null, svg = null, w = 0;
   const draw = (s, width) => {
     svg = s; w = width;
-    if (!d?.objects?.length) { s.innerHTML = ''; return; }
+    // eigene Gruppe: andere Ebenen im selben SVG (z. B. Tiefenmarken) bleiben beim späten Nachladen erhalten
+    let g = s.querySelector(':scope > g.plate-labels');
+    if (!g) { g = document.createElementNS('http://www.w3.org/2000/svg', 'g'); g.setAttribute('class', 'plate-labels'); s.prepend(g); }
+    if (!d?.objects?.length) { g.innerHTML = ''; return; }
     const sc = w / (d.width || w), fs = Math.max(12, w / 48);
-    s.innerHTML = d.objects.map(o => { const x = o.x * sc, y = o.y * sc, r = Math.max(fs * .6, (o.radius || 8) * sc);
+    g.innerHTML = d.objects.map(o => { const x = o.x * sc, y = o.y * sc, r = Math.max(fs * .6, (o.radius || 8) * sc);
       return `<g><circle cx="${x}" cy="${y}" r="${r}"/><text x="${x + r * .75 + fs * .3}" y="${y - r * .75}" font-size="${fs}">${esc(o.name)}</text><title>${esc(o.name)}${o.kind_label ? ' · ' + esc(o.kind_label) : ''}</title></g>`; }).join('');
   };
   api(`/stacking/results/${rid}/objects`).then(x => { d = x; if (svg) draw(svg, w); }).catch(() => {});
@@ -469,7 +472,7 @@ async function picturesView(el) {
 // ---------------------------------------------------------------- Objekt --- //
 async function projectView(el, id, tab = 'bild') {
   id = +id;
-  let p = await api('/stacking/projects/' + id), frames = null, sel = null, cmp = null, viewer = null, sig = '', before = false, stage = null, cview = 'jpg';
+  let p = await api('/stacking/projects/' + id), frames = null, sel = null, cmp = null, viewer = null, sig = '', before = false, stage = null, cview = 'jpg', blink = null;
   let fFilter = 'all', fBand = 'all', fSort = ['date', 1];
   let liveView = null, livePoster = null, viz = null, vizKind = '';
   function updateJob() {
@@ -614,7 +617,7 @@ async function projectView(el, id, tab = 'bild') {
     // Stacking-Verlauf: Stufen mit weniger Aufnahmen, letzte Position = fertiges Bild (Standard)
     const views = !c && !before && r.views?.length ? COMET_VIEWS.filter(([k]) => k === 'jpg' || r.views.includes(k)) : [];
     if (!views.some(([k]) => k === cview)) cview = 'jpg';
-    const stages = !c && !before && cview === 'jpg' ? [...(s.stages || []), { n: r.n_frames, exposure: r.exposure, final: true }] : [];
+    const stages = !c && !before && cview === 'jpg' && blink?.rid !== r.id ? [...(s.stages || []), { n: r.n_frames, exposure: r.exposure, final: true }] : [];
     if (stage?.rid !== r.id || !(stage.i >= 0 && stage.i < stages.length)) stage = { rid: r.id, i: stages.length - 1 };
     const stageLabel = (x) => x.final ? `Alle ${x.n} Aufnahmen · ${dur(x.exposure)} – fertiges Bild` : `${x.n} ${x.n === 1 ? 'Aufnahme' : 'Aufnahmen'} · ${dur(x.exposure)}`;
     const stageSrc = (x) => x.final ? `/api/stacking/results/${r.id}/jpg` : `/api/stacking/results/${r.id}/s${x.n}`;
@@ -649,6 +652,7 @@ async function projectView(el, id, tab = 'bild') {
           <div class="bands">${Object.entries(bands).map(([b, v]) => `<div class="band"><span><span class="chip"><i style="background:${BAND_COLOR[b] || '#999'}"></i>${esc(b)}</span></span>
             <div class="progress"><i style="width:${v.exposure / bmax * 100}%;background:${BAND_COLOR[b] || 'var(--acc)'}"></i></div><span class="mut sm tnum">${v.frames} · ${dur(v.exposure)}</span></div>`).join('')}</div></div>` : ''}
         <div id="tutorBox">${qualityPanel(s)}</div>
+        ${p.imported || typeof depthPanel !== 'function' ? '' : '<section class="panel depth-panel" id="depthBox"></section><section class="panel depth-panel" id="cmpBox"></section>'}
         ${p.imported ? '' : '<section class="panel" id="skyBox"></section>'}
         <div class="panel"><h2 style="margin-bottom:12px">Details</h2><dl class="kv">
           <dt>Erstellt</dt><dd>${fdate(r.created)}</dd>
@@ -680,11 +684,19 @@ async function projectView(el, id, tab = 'bild') {
     window.AFsky?.panel($('#skyBox'), p.id);              // Himmelshelligkeit, Bortle, Seeing der Aufnahmenächte (skyquality.js)
     const ph = !c && !before && livePoster ? livePoster : `/api/stacking/results/${r.id}/thumb`;
     livePoster = null;
-    viewer = c ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${c.id}/jpg`, undefined, ph)
+    if (blink?.rid !== r.id || c || before) blink = null;
+    // Blink-Vergleich (Abschnitt „Veränderungen“): Referenz und aktuelles Bild auf dem Raster des Stacks
+    viewer = blink ? compareViewer($('#viewer'), r, blink.focus) : null;
+    if (!viewer) blink = null;
+    viewer = viewer || (c ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${c.id}/jpg`, undefined, ph)
       : cview !== 'jpg' ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/${cview}`, null, undefined, ph)
       : before && r.has_before ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${r.id}/before`, ['vorher', 'nachher'], ph)
-      : createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, null, undefined, ph, p.imported ? {} : { overlay: plateLabels(r.id) });
+      : createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, null, undefined, ph, p.imported ? {} : { overlay: typeof depthOverlay === 'function' ? depthOverlay(r.id, plateLabels(r.id)) : plateLabels(r.id) }));
     viewer.el.classList.add('tall', 'hover-labels');
+    if (!p.imported && typeof depthPanel === 'function') {
+      depthPanel($('#depthBox'), r, blink || c || before || cview !== 'jpg' ? null : viewer);
+      comparePanel($('#cmpBox'), r, (on, focus) => { blink = on ? { rid: r.id, focus } : null; drawTab(false); }, !!blink);
+    }
     $('#ba')?.addEventListener('click', (e) => { const b = e.target.closest('[data-b]'); if (b) { before = b.dataset.b === '1'; drawTab(false); } });
     $('#cview')?.addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); if (b && b.dataset.v !== cview) { cview = b.dataset.v; drawTab(false); } });
     if (stages.length > 1) {
@@ -1286,8 +1298,10 @@ async function housekeeping(panel) {
 
 // ------------------------------------------------------------ Einstellungen --- //
 async function stackingSettings(el) {
-  const [c, st, sv, sn, gx, gp, tu] = await Promise.all([api('/stacking/reviewer'), api('/stacking/status'), api('/stacking/solver'), api('/stacking/starnet'),
-    api('/stacking/graxpert'), api('/stacking/gpu'), api('/stacking/tutor')]);
+  const [c, st, sv, sn, gx, gp, tu, ins] = await Promise.all([api('/stacking/reviewer'), api('/stacking/status'), api('/stacking/solver'), api('/stacking/starnet'),
+    api('/stacking/graxpert'), api('/stacking/gpu'), api('/stacking/tutor'), api('/stacking/insights')]);
+  const insBox = (k, title, text) => `<label class="row" style="align-items:flex-start;gap:10px;cursor:pointer;flex-wrap:nowrap;margin-top:14px"><input type="checkbox" name="${k}" ${ins[k] ? 'checked' : ''} style="height:auto;margin-top:4px">
+        <span><b>${title}</b><br><span class="mut sm">${text}</span></span></label>`;
   const astapOk = sv.astap && sv.astap_databases.length;
   el.innerHTML = `<div class="split"><div><form class="panel" id="tf">
       <div class="panel-h"><h2>Bild-Tutor</h2><span class="grow"></span><span class="chip ${tu.mode === 'einsteiger' ? 'acc' : ''}">${tu.mode === 'einsteiger' ? 'Einsteiger' : 'Erfahren'}</span></div>
@@ -1385,6 +1399,14 @@ async function stackingSettings(el) {
         Katalogfarben der Sterne ausgerichtet. Dazu werden nur die Feldkoordinaten an das ESA-Gaia-Archiv geschickt; das Ergebnis wird lokal gespeichert.
         Aus: Weißabgleich über das Mittel der Sternfarben.</span></span></label>
     </form>
+    <form class="panel" id="insf"><h2 style="margin-bottom:4px">Was dein Bild zeigt</h2>
+      <p class="mut sm" style="margin:0">„Wie tief schaust du?“ und „Veränderungen“ auf der Objektseite. Gesendet werden nur Himmelskoordinaten und Aufnahmezeiten – nie Bilder oder dein Standort.
+        Sterne und Parallaxen kommen aus Gaia (Schalter oben).</p>
+      ${insBox('auto_depth', 'Nach jeder Entwicklung automatisch messen', 'Grenzgröße, Entfernungen und Galaxien im Feld für jedes plate-gesolvte Ergebnis (etwa 5–30 s im Hintergrund).')}
+      ${insBox('simbad', 'Rotverschiebungen und Veränderliche aus SIMBAD', 'Galaxien und Quasare mit Entfernung sowie bekannte veränderliche Sterne (Spiegel Harvard, sonst CDS Straßburg).')}
+      ${insBox('survey', 'Himmelsdurchmusterung als Vergleichsbild', 'DSS2 rot vom STScI (sonst CDS hips2fits), wenn keine eigene frühere Aufnahme vorhanden ist.')}
+      ${insBox('small_bodies', 'Kleinplaneten und Kometen prüfen (JPL)', 'Auffällige Stellen werden mit bekannten Kleinkörpern zur Aufnahmezeit abgeglichen – geozentrisch, ohne Standort.')}
+    </form>
     <div class="panel"><h2 style="margin-bottom:12px">System</h2><dl class="kv">
             <dt>Eingangsordner</dt><dd style="word-break:break-all">${esc(st.input_dir)}</dd>
       <dt>Ausgabeordner</dt><dd style="word-break:break-all">${esc(st.output_dir)}</dd>
@@ -1406,6 +1428,10 @@ async function stackingSettings(el) {
       const r = await send('/stacking/storage', { gaia: e.target.checked });
       toast(r.gaia ? 'Farbkalibrierung über Gaia an.' : 'Farbkalibrierung über Sternfarben-Mittel.', 'ok');
     } catch (err) { toast('Fehler: ' + err.message, 'err'); }
+  };
+  $('#insf').onchange = async (e) => {
+    try { await send('/stacking/insights', { [e.target.name]: e.target.checked }); toast('Gespeichert.', 'ok'); }
+    catch (err) { toast('Fehler: ' + err.message, 'err'); }
   };
   $('#gpuOn').onchange = async (e) => {
     try {

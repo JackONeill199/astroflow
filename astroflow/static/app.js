@@ -333,7 +333,11 @@ function createViewer(host, src, cmpSrc, labels = ['älter', 'neuer'], ph = null
     else if (a === 'full') { v.classList.toggle('full'); requestAnimationFrame(fit); }
   });
   // setSrc: Bild wechseln; auch bei anderer Pixelgröße bleiben relativer Zoom und Ausschnitt erhalten.
-  return { el: v, overlay: ov, setSrc: (u) => { if (main.getAttribute('src') !== u) main.src = u; }, destroy:() => { ro.disconnect(); main.removeEventListener('load', onload); document.removeEventListener('keydown', onKey); } };
+  // setSplit: Vergleichslinie setzen (0 = nur „neu“, 1 = nur „alt“; Blinken); zoomTo: auf Bildpixel (px, py) zoomen; redraw: Overlay neu zeichnen
+  return { el: v, overlay: ov, setSrc: (u) => { if (main.getAttribute('src') !== u) main.src = u; },
+    setSplit: (f) => { split = Math.min(1, Math.max(0, f)); apply(); },
+    zoomTo: (px, py, f = 4) => { if (!iw) return; smooth(() => { s = Math.min(8, fitS * f); x = v.clientWidth / 2 - px * s; y = v.clientHeight / 2 - py * s; clamp(); apply(); }); },
+    redraw: () => { if (ov && iw) opts.overlay(ov, iw, ih); }, destroy:() => { ro.disconnect(); main.removeEventListener('load', onload); document.removeEventListener('keydown', onKey); } };
 }
 
 // ----------------------------------------------------------- Modul-Vertrag --- //

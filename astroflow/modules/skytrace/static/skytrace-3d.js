@@ -5,7 +5,7 @@
    vendor/ und wird erst beim Öffnen geladen. Szene in Erdradien; Server-System D (km) → three: (x, z, −y), Nordpol = +y.
    Die Erde dreht sich mit `earth_rate`·(t − anchor), das nachgeführte Blickfeld bleibt raumfest, sein Ursprung wandert mit. */
 (() => {
-const R = 6378.137, BASE = '/m/skytrace/vendor/';
+const R = 6378.137, BASE = '/m/skytrace/vendor/', LIB = '/vendor/';   // three.js liegt in der Shell (gemeinsam mit „Bilder → Tiefe“)
 const DOME = .045, SKY = 60;                    // Himmelskuppel und Sternkugel – beide nicht maßstäblich
 const PALETTE = ['#7c9cff', '#5eead4', '#f2a6ff', '#b18cff', '#fbbf24', '#f87171', '#4ade80', '#60a5fa', '#fb923c', '#e879f9', '#a3e635', '#38bdf8'];
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -19,7 +19,7 @@ const angleDiff = (a, b) => ((b - a + 540) % 360) - 180;
 let lib = null;
 
 async function load() {
-  if (!lib) lib = Promise.all([import(BASE + 'three.module.min.js'), import(BASE + 'OrbitControls.js')])
+  if (!lib) lib = Promise.all([import(LIB + 'three.module.min.js'), import(LIB + 'OrbitControls.js')])
     .then(([THREE, c]) => ({ THREE, OrbitControls: c.OrbitControls })).catch(e => { lib = null; throw e; });
   return lib;
 }
