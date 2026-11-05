@@ -80,7 +80,8 @@ Photonenrauschen (bisher für Stellina vermessen); die Genauigkeit liegt bei etw
 ![Import](docs/screenshots/import.jpg)
 **Import:** Dateien oder ganze Ordner per Drag & Drop, FITS und fertige JPG/PNG/TIFF gemischt. „Hauptordner durchsuchen“ findet auf einer ganzen
 Teleskop-Festplatte, was noch nicht (fertig) gestackt ist – die Quelldateien bleiben unverändert am Ort und werden nicht kopiert
-(auch nicht von einer anderen Platte; zum Stacken neuer Aufnahmen muss sie angeschlossen sein).
+(auch nicht von einer anderen Platte; zum Stacken neuer Aufnahmen muss sie angeschlossen sein). Im Ordnerdialog findet das Suchfeld
+Ordner nach Objektnamen, auch in Unterordnern („NGC 4395“ = „ngc4395“ = „NGC_4395“).
 
 ### SkyTrace – was sich zwischen den Sternen bewegt
 
