@@ -127,6 +127,34 @@ def test_nights_proposes_clock_and_rematch_applies(engine, tmp_path, monkeypatch
     assert NIGHT not in observation_settings.load_settings()["clock_offsets"]
 
 
+def test_evaluate_around_applied_correction():
+    """Schon übernommene Korrektur −1100 s: die Suche sucht um sie herum, −1300 s liegt im Fenster (Review PR #48)."""
+    pytest.importorskip("skyfield")
+    from test_skytrace_rematch import ENGINE
+    sys.path.insert(0, str(ENGINE))
+    import clock_scan
+    trails = [dict(id=f"K{i}", hits=[dict(norad=10 + i, name="SAT", offset=-1300 + i, half=2, cross=40)]) for i in range(3)]
+    ev = clock_scan.evaluate(trails, center=-1100.0)
+    assert ev["support"] == 3 and ev["offset_s"] == pytest.approx(-1299, abs=3) and clock_scan.proposal_ok(ev)[0], ev
+    same = [dict(id=f"K{i}", hits=[dict(norad=10 + i, name="SAT", offset=-1102 + i, half=2, cross=40)]) for i in range(3)]
+    ok, why = clock_scan.proposal_ok(clock_scan.evaluate(same, center=-1100.0))
+    assert not ok and "übernommene Uhrkorrektur passt" in why
+
+
+def test_nights_fits_site_still_gets_clock(engine, tmp_path, monkeypatch):
+    """Ort aus FITS: keine Ortsänderung, aber der Uhrversatz wird trotzdem gesucht (Review PR #48)."""
+    _sites(tmp_path / "settings.json", [{**HOME, **TRUE}], "home")
+    sats = _satellites(4)
+    _patch(monkeypatch, sats)
+    a = _observation(tmp_path, "2026-11-05_10-00-00-000001", f"{NIGHT}_observation_Feld_A", sats, [0, 1, 2, 3], TRUE)
+    _shift_clock(tmp_path, a, CLOCK)
+    monkeypatch.setattr(engine, "site_for", lambda item, summary, settings: dict(TRUE, origin="fits", accuracy_m=30, name="FITS"))
+    with contextlib.redirect_stdout(io.StringIO()):
+        n = _search(engine, tmp_path, [a])
+    assert n["status"] == "better" and n["proposal"] is None and "FITS" in n["note"], n
+    assert n["clock"]["proposal"]["offset_s"] == pytest.approx(CLOCK + 2, abs=5)
+
+
 from test_skytrace_rematch import T0  # noqa: E402
 T0_CAMERA = T0 - CLOCK
 
@@ -157,8 +185,9 @@ if __name__ == "__main__":
         def syspath_prepend(self, p): sys.path.insert(0, p)
         def close(self): [setattr(o, n, v) for o, n, v in reversed(self.undo)]; _unload()
     test_evaluate_needs_cluster_above_chance(); print("OK test_evaluate_needs_cluster_above_chance")
+    test_evaluate_around_applied_correction(); print("OK test_evaluate_around_applied_correction")
     for test in (test_scan_finds_ten_minute_offset, test_scan_random_trails_no_proposal, test_nights_proposes_clock_and_rematch_applies,
-                 test_correct_clock_not_proposed):
+                 test_correct_clock_not_proposed, test_nights_fits_site_still_gets_clock):
         mp = MP()
         with tempfile.TemporaryDirectory() as d:
             try:

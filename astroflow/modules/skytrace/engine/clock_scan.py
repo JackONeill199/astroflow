@@ -87,16 +87,17 @@ def _poisson_tail(k, lam):
     return max(0.0, 1.0 - cdf)
 
 
-def evaluate(trails, range_s=SCAN_RANGE_S, step_s=2.0, tol=MATCH_TOL_S):
+def evaluate(trails, range_s=SCAN_RANGE_S, step_s=2.0, tol=MATCH_TOL_S, center=0.0):
     """trails: [{id, folder, hits}] → bester Versatz mit Zufallsniveau (ohne Vorschlagsentscheidung)."""
     usable = [t for t in trails if t.get('hits') is not None]
     if not usable:
         return dict(ok=False, reason='Keine prüfbare Spur.')
-    best, best_t = [], 0.0
-    t = -range_s
-    while t <= range_s:
+    # Suchmitte = schon übernommener Versatz (trail_hits sucht um ihn herum, liefert aber absolute Versätze)
+    best, best_t = [], center
+    t = center - range_s
+    while t <= center + range_s:
         sup = _support(usable, t, tol)
-        if len(sup) > len(best) or (len(sup) == len(best) and sup and abs(t) < abs(best_t)):
+        if len(sup) > len(best) or (len(sup) == len(best) and sup and abs(t - center) < abs(best_t - center)):
             best, best_t = sup, t
         t += step_s
     if not best:
@@ -118,13 +119,13 @@ def evaluate(trails, range_s=SCAN_RANGE_S, step_s=2.0, tol=MATCH_TOL_S):
     width = max(1.0, 2 * range_s - 2 * PEAK_GUARD_S)
     lam = 0.0
     for tr in usable:
-        far = [h for h in tr['hits'] if abs(h['offset'] - offset) > PEAK_GUARD_S]
+        far = [h for h in tr['hits'] if abs(h['offset'] - offset) > PEAK_GUARD_S and abs(h['offset'] - center) <= range_s]
         cover = sum(2 * (h['half'] + tol) for h in far)
         lam += 1 - math.exp(-cover / width)
     k = len(best)
     cells = max(1.0, 2 * range_s / (2 * tol + 10))              # unabhängige Versatzschritte (Spielraum ~5 s je Spur)
     false = min(1.0, cells * _poisson_tail(k, lam))
-    return dict(ok=True, offset_s=round(offset, 1), spread_s=round(spread, 1), support=k, trails=len(usable),
+    return dict(ok=True, center_s=round(center, 1), offset_s=round(offset, 1), spread_s=round(spread, 1), support=k, trails=len(usable),
                 chance=round(lam, 2), false_alarm=round(false, 6), confidence=round(1 - false, 4),
                 hits=[dict(id=h['id'], folder=h.get('folder'), norad=h['norad'], name=h['name'], offset_s=h['offset'],
                            half_s=h['half'], cross_arcsec=h['cross']) for h in best])
@@ -138,8 +139,9 @@ def proposal_ok(ev, before_sure=0):
     if ev['false_alarm'] > MAX_FALSE:
         return False, (f'{ev["support"]} Spuren bei {ev["offset_s"]:+.0f} s, aber zufällig wären etwa {ev["chance"]:.1f} zu erwarten '
                        f'(Fehlalarm-Wahrscheinlichkeit {100 * ev["false_alarm"]:.0f} %).')
-    if abs(ev['offset_s']) < MIN_SHIFT_S:
-        return False, 'Die Uhr geht richtig (Versatz innerhalb der normalen Uhrtoleranz).'
+    if abs(ev['offset_s'] - ev.get('center_s', 0.0)) < MIN_SHIFT_S:
+        return False, ('Die Uhr geht richtig (Versatz innerhalb der normalen Uhrtoleranz).' if not ev.get('center_s')
+                       else 'Die übernommene Uhrkorrektur passt (Abweichung innerhalb der normalen Uhrtoleranz).')
     if ev['support'] <= before_sure:
         return False, 'Mit dem Versatz passen nicht mehr Spuren als bisher.'
     return True, None
@@ -155,10 +157,10 @@ def scan_night(sitefit, entries, site, settings, range_s=SCAN_RANGE_S, tick=None
         if state != 'ok':
             unchecked += 1; continue
         trails.append(dict(id=item.get('id'), folder=getattr(f, 'name', None), hits=hits, item=item, path=f))
-    ev = evaluate(trails, range_s)
+    base = clock_offset(entries[0][1], settings) if entries else 0.0
+    ev = evaluate(trails, range_s, center=base)
     out = dict(range_s=range_s, tracks=len(entries), unchecked=unchecked, **{k: v for k, v in ev.items() if k != 'reason'})
     ok, reason = proposal_ok(ev, before_sure)
-    base = clock_offset(entries[0][1], settings) if entries else 0.0
     if ok:
         # Fein: strenger Abgleich mit dem gefundenen Versatz (normale Uhrtoleranz), Rückrechnung für die letzten Sekunden
         nights = sorted({night_key(i['timestamp']) for _, i in entries if isinstance(i.get('timestamp'), (int, float))})

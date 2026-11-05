@@ -298,7 +298,8 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
   3. `proposal_ok`: ≥ `MIN_TRAILS` 3, Fehlalarm ≤ `MAX_FALSE` 1 %, |Versatz| ≥ `MIN_SHIFT_S` 20 s (sonst reicht die normale Uhrtoleranz), mehr Spuren als bisher.
      Danach strenger Abgleich mit dem Versatz (normale ± 20 s) → `after_sure`; mit ≥ 3 eindeutigen und Spuren ganz im Bild `_night_fit` für die letzten Sekunden.
      Ergebnis `night.clock` (`proposal {offset_s, sigma_s, support, sure, before, confidence, chance, nights}` bzw. `reason`). Mit Vorschlag prüft `night()`
-     die Orte danach mit korrigierter Uhr (nur im Auftrag), Status `better`.
+     die Orte danach mit korrigierter Uhr (nur im Auftrag), Status `better`. Ort aus FITS: Uhrsuche läuft trotzdem, nur keine Ortsänderung.
+     Ist schon eine Korrektur übernommen, suchen `trail_hits` und `evaluate(center=…)` um sie herum; „passt“ heißt dann Abweichung < 20 s von ihr.
 - **Ablage** (Entscheidung): SkyTrace-Einstellung `catalog_settings.json` → `clock_offsets {Nacht: {offset_s, sigma_s, support, confidence, applied}}`,
   Nacht = `catalog_matching.night_key` (UTC − 12 h, wie `core/sites.night_of`). Nicht in der Ortsliste: die Uhr gehört zur Kamera, nicht zum Ort;
   die Ortsliste (`core/sites.py`) prüft ihr Schema und wird auch vom Bilder-Modul gelesen. `update_settings` prüft Nacht (JJJJ-MM-TT) und |Versatz| ≤ 3600 s,

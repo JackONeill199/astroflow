@@ -276,8 +276,7 @@ def night(sitefit, group, entries, settings, radius_km, tick, clock=True):
     folder0, item0 = entries[0]
     current = site_for(item0, {'session': item0.get('session')}, settings)
     out['current'] = _brief(current)
-    if current and current.get('origin') == 'fits':
-        return dict(out, status='fits', note='Der Ort steht in den FITS-Daten und hat Vorrang vor der Ortsliste – nichts zu ändern.')
+    fits_site = bool(current and current.get('origin') == 'fits')
     # Gespeicherte Abgleiche gelten nur, wenn sie am jetzt aufgelösten Ort gerechnet wurden (Ortsliste kann sich geändert haben)
     stored_triples = [(f, i, sat_of(i) if site_key(i.get('site')) == site_key(current) else None) for f, i in entries]
     stored = _score(sitefit, stored_triples)
@@ -293,6 +292,11 @@ def night(sitefit, group, entries, settings, radius_km, tick, clock=True):
                                                          **{n: res['proposal']['offset_s'] for n in res['proposal']['nights']}))
             stored_triples = strict_c
             stored = _score(sitefit, stored_triples)
+    if fits_site:
+        # FITS-Ort hat Vorrang vor der Ortsliste (keine Ortsänderung) – eine falsche Kamera-Uhr lässt sich trotzdem korrigieren
+        if (out.get('clock') or {}).get('proposal'):
+            return dict(out, status='better', note='Ort aus den FITS-Daten (bleibt); nur die Uhr ist falsch gestellt.')
+        return dict(out, status='fits', note='Der Ort steht in den FITS-Daten und hat Vorrang vor der Ortsliste – nichts zu ändern.')
 
     def strict(site):
         res = []
