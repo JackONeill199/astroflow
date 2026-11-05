@@ -83,7 +83,7 @@ class SiteJobs:
         return self._launch(dict(kind="rematch", all=runs is None, runs=[p.name for p in paths], force=force, title=title,
                                  signature=self.signature() if runs is None else None), args)
 
-    def start_nights(self, radius_km: float = 10.0) -> dict:
+    def start_nights(self, radius_km: float = 10.0, clock: bool = True) -> dict:
         """Standorte aller Nächte: Gruppen je Nacht aus der Statistik (neueste vollständige Analyse je Beobachtung)."""
         from .stats import collect
         if not 1 <= float(radius_km) <= 50:
@@ -100,8 +100,8 @@ class SiteJobs:
         path = self.mod.home / "standortsuche-gruppen.json"
         write_json(path, [{"night": n, "observations": o} for n, o in sorted(groups.items(), reverse=True)])
         runs = sorted({o["run"] for obs in groups.values() for o in obs})
-        return self._launch(dict(kind="nights", all=False, runs=runs, title="Standorte für alle Nächte suchen", radius_km=float(radius_km)),
-                            ["nights", str(path), str(self.nights_file), "--radius-km", str(float(radius_km))])
+        return self._launch(dict(kind="nights", all=False, runs=runs, title="Standorte für alle Nächte suchen", radius_km=float(radius_km), clock=bool(clock)),
+                            ["nights", str(path), str(self.nights_file), "--radius-km", str(float(radius_km))] + ([] if clock else ["--no-clock"]))
 
     @property
     def nights_file(self) -> Path:

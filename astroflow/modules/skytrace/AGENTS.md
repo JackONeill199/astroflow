@@ -285,6 +285,42 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
   keine passende Spur → kein Vorschlag, Starlink-Zwilling nicht genutzt, Anhalten; Server: Gruppen, Ergebnis, „übernommen“). UI: `#/skytrace/standorte`
   in `test_ui_layout.py` (Fixture `standortsuche-naechte.json`).
 
+## Uhrversatz je Nacht (0.30.0, 05.11.2026, Befund „Augustwoche 2022: Kamera-Uhr ~10 min falsch, ~50 Spuren, 1 Treffer“)
+- **Engine** `engine/clock_scan.py` (aufgerufen aus `rematch_sites.night()`, Schalter `--no-clock`, UI-Häkchen „Uhrversatz suchen“, Server
+  `start_nights(clock=…)` / `POST /sitesearch/nights {clock}`): nur Nächte mit ≥ 3 Spuren und < 50 % eindeutig zugeordnet (`needs_clock`).
+  1. `trail_hits`: je Spur `satellite_check` blockweise über ± `SCAN_RANGE_S` 1200 s (Blöcke Belichtung ± `BLOCK_SLACK_S` 60 s, 20 Abgleiche je Spur,
+     5 Bahnpunkte/s – mit 2/s gingen kurze Spuren verloren; `satellite_max_matches` 1000, `_archive_time` = Kamerazeit, damit der ETH-Minuten-Cache passt).
+     Jede passende Bahn → Versatz = Blockverschiebung + Mitte der Durchgangszeiten − Belichtung/2, Spielraum `half` = (Belichtung − Durchgangsdauer)/2
+     (Spur ganz im Bild → ≈ 0).
+  2. `evaluate`: Gitter 2 s; Stütze = verschiedene Spuren mit **verschiedenen NORAD-Nummern** (derselbe Starlink auf zwei Spuren zählt einmal), Treffer
+     gilt bei |Versatz − t| ≤ half + `MATCH_TOL_S` 30 s. Feinwert: Schnitt der Spielräume, sonst Median (± Streuung/√n). Zufallsniveau λ = Σ je Spur
+     1 − exp(−Abdeckung der Treffer fern vom Maximum (> 60 s) / Fensterbreite); Fehlalarm = Poisson(≥ k | λ) × Zahl unabhängiger Versatzschritte (2·1200/(2·30+10)).
+  3. `proposal_ok`: ≥ `MIN_TRAILS` 3, Fehlalarm ≤ `MAX_FALSE` 1 %, |Versatz| ≥ `MIN_SHIFT_S` 20 s (sonst reicht die normale Uhrtoleranz), mehr Spuren als bisher.
+     Danach strenger Abgleich mit dem Versatz (normale ± 20 s) → `after_sure`; mit ≥ 3 eindeutigen und Spuren ganz im Bild `_night_fit` für die letzten Sekunden.
+     Ergebnis `night.clock` (`proposal {offset_s, sigma_s, support, sure, before, confidence, chance, nights}` bzw. `reason`). Mit Vorschlag prüft `night()`
+     die Orte danach mit korrigierter Uhr (nur im Auftrag), Status `better`.
+- **Ablage** (Entscheidung): SkyTrace-Einstellung `catalog_settings.json` → `clock_offsets {Nacht: {offset_s, sigma_s, support, confidence, applied}}`,
+  Nacht = `catalog_matching.night_key` (UTC − 12 h, wie `core/sites.night_of`). Nicht in der Ortsliste: die Uhr gehört zur Kamera, nicht zum Ort;
+  die Ortsliste (`core/sites.py`) prüft ihr Schema und wird auch vom Bilder-Modul gelesen. `update_settings` prüft Nacht (JJJJ-MM-TT) und |Versatz| ≤ 3600 s,
+  `null` entfernt. Wahre UTC = Kamerazeit + `offset_s` (negativ = Kamera-Uhr ging vor).
+- **Wirkung:** `catalog_matching._times(candidate, settings)` addiert `clock_offset` – für alle Kataloge (Satelliten, Asteroiden, Flugzeuge, Meteore);
+  `timestamp`/`timestamp_text` und Rohbilder bleiben Kamerazeit. Das Satellitenergebnis trägt `clock_offset_s` und `exposure_start` (korrigiert →
+  `sitefit`/`orbit3d` rechnen damit weiter); Bahndaten werden zur Kamerazeit geladen. `rematch` (ohne `--force`) gleicht Kandidaten neu ab, deren
+  gespeichertes `clock_offset_s` vom eingestellten abweicht. UI: Kandidatendetail „(Kamerazeit; Uhr korrigiert um …)“; `nightsView` Spalte
+  „Uhrversatz“ (`clockScanHtml`, Chip „Uhr falsch gestellt“), übernommene Korrektur aus `GET /settings` → `clock_offsets`; `applyNights` schreibt
+  `POST /settings {clock_offsets}` und startet den Neuabgleich wie bei Orten. Nie automatisch. Offen: 3D-Lauf-Ansicht (`run3d`) nutzt weiter die Kamerazeit.
+- **Befund** (05.11.2026, Kopie der Kandidaten-JSONs aller Läufe 12.07.–07.08.2022, nur gelesen): Einzeltreffer streuen längs um ± 25 s (alte Trümmer-TLEs),
+  daher `MATCH_TOL_S` 30 statt 8 s (mit 8 s: 01.08. nur 3 Spuren, Fehlalarm 5 %). Ergebnis je Nacht (Spuren / bisher eindeutig → Ergebnis):
+  12.07. 2/1 → zu wenig; 15.07. 9/9 → Uhr richtig (−7 s, 9 Spuren, zufällig 0,5); 18.07. 9/7 → richtig (−2 s, 6 Spuren);
+  **01.08. 12/0 → Vorschlag −639 ± 3 s (Grobwert −646 s aus 5 verschiedenen Spuren in NGC 6823, M15, Helix; zufällig 0,4; Fehlalarm 0,2 %;
+  Feinwert aus `_night_fit` mit 4 Spuren ganz im Bild), streng mit Korrektur 5 von 12 eindeutig (vorher 0), quer-RMS 158″ (Ort wohl ~1 km daneben)** – Starlink-2253 traf zwei Helix-Spuren
+  bei −624 s und zählt einmal; 03.08. 4/0 → nur 2 Spuren (NGC 246 −661/−686 s); 06.08. 32/1 → keine Häufung (bester 4 Spuren bei −809 s, zufällig 0,8,
+  Fehlalarm 37 %); 07.08. 5/0 → keine Häufung. M15 K0001/K0003 bei −433/−460 s gehören nicht zur Häufung. Laufzeit ~10 s je Spur (06.08.: 324 s).
+  Nicht umgesetzt: gemeinsame Suche über benachbarte Nächte mit linearer Uhrdrift (würde 03.08. mit 2 Spuren stützen).
+- Tests: `tests/test_skytrace_clock.py` (Engine nur mit skyfield, direkt im Engine-Interpreter ausführbar: −600 s → Vorschlag ± 5 s, 4/4 Spuren, danach
+  normaler Abgleich mit Korrektur; zufällige Spuren → kein Vorschlag; richtige Uhr → „geht richtig“; Statistik mit Rauschen/Häufung/gleichem Satelliten;
+  Nachtsuche + `update_settings` + `rematch` erkennt geänderte Uhr). UI: `#/skytrace/standorte` in `test_ui_layout.py` (Nacht mit Uhrvorschlag, übernommene Korrektur).
+
 ## Erkennung im Teleskop-Bildfeld (28.10.2026, Nutzerbefund M74 2022-08-07)
 Anlass: Ein schwacher Meteor (img-0041, ~120 px, ~1,5σ/px) wurde übersehen, ein langsames Objekt in sechs Aufnahmen (img-0177…0182)
 als „Meteor“ gemeldet. Vergleichslauf: `Ergebnisse/2026-10-28_18-47-38-352557` (alt) gegen `2026-10-28_19-47-22-527055` (neu).

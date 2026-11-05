@@ -40,7 +40,7 @@ def _book(path: Path, site: dict, accuracy=100):
 
 # ---------------------------------------------------------------- Engine (skyfield) ---
 ENGINE_MODULES = {"project_paths", "observation_settings", "catalog_matching", "archive_sources", "satellite_archive", "rematch_sites",
-                  "json_store", "analyse", "opensky_archive", "sequence", "satellite_overlay", "motion_plausibility"}
+                  "json_store", "analyse", "opensky_archive", "sequence", "satellite_overlay", "motion_plausibility", "clock_scan"}
 
 
 @pytest.fixture

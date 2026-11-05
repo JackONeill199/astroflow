@@ -1,7 +1,9 @@
 """Local observer configuration; never infer Earth location from a solved star field."""
 import json
 import copy
+import re
 import threading
+import time
 from pathlib import Path
 from astropy.io import fits
 
@@ -47,6 +49,22 @@ def update_settings(data):
                 settings[key]=data[key].strip()
         for key in ('tle_url','flight_url'):
             if settings.get(key) and not settings[key].startswith('https://'): raise ValueError('Download-URLs müssen HTTPS verwenden.')
+        if 'clock_offsets' in data:
+            # Uhrversatz je Nacht (wahre UTC = Kamerazeit + offset_s), nur auf Knopfdruck aus der Uhrversatz-Suche; null = entfernen
+            changes=data['clock_offsets']
+            if not isinstance(changes,dict): raise ValueError('clock_offsets muss ein Objekt {Nacht: Versatz} sein.')
+            offsets=dict(settings.get('clock_offsets') or {})
+            for night,entry in changes.items():
+                if not isinstance(night,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}',night): raise ValueError('Ungültige Nacht: '+str(night)[:20])
+                if entry is None: offsets.pop(night,None); continue
+                value=entry.get('offset_s') if isinstance(entry,dict) else entry
+                if isinstance(value,bool) or not isinstance(value,(int,float)) or not abs(value)<=3600: raise ValueError('Uhrversatz muss zwischen −3600 und 3600 s liegen.')
+                clean=dict(offset_s=round(float(value),1),applied=time.time())
+                if isinstance(entry,dict):
+                    for key in ('sigma_s','support','confidence'):
+                        if isinstance(entry.get(key),(int,float)) and not isinstance(entry.get(key),bool): clean[key]=entry[key]
+                offsets[night]=clean
+            settings['clock_offsets']=offsets
         save_settings(settings)
         return settings
 
