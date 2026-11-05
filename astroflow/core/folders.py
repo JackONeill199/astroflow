@@ -59,3 +59,68 @@ def list_folders(path: str | None) -> dict:
     parent = None if p.parent == p else str(p.parent)
     return {"path": str(p), "parent": parent, "folders": [{"name": n, "path": str(p / n)} for n in dirs[:MAX_DIRS]],
             "more": max(0, len(dirs) - MAX_DIRS), "drives": roots, "fits": fits, "pictures": pics}
+
+
+# ---- Suche in Unterordnern ------------------------------------------------------------------------------------
+SEARCH_DEPTH = 4                 # Ebenen unter dem Startordner
+SEARCH_LIMIT = 200               # Treffer höchstens
+SEARCH_VISIT = 50000             # Ordner, die höchstens angesehen werden
+SEARCH_SECONDS = 5.0             # Zeitgrenze (langsame Netz-/USB-Laufwerke)
+
+
+def norm(text: str) -> str:
+    """Suchschlüssel: Groß-/Kleinschreibung, Leerzeichen, „_“ und „-“ egal („NGC 4395“ = „ngc_4395“ = „ngc4395“)."""
+    return "".join(c for c in text.casefold() if not c.isspace() and c not in "_-")
+
+
+def search_folders(path: str, q: str, depth: int = SEARCH_DEPTH, limit: int = SEARCH_LIMIT) -> dict:
+    """Ordner unter path (Breitensuche, höchstens depth Ebenen), deren Name q enthält. Treffer mit relativem Pfad;
+    `truncated` = Grenze (Treffer, Ordnerzahl oder Zeit) erreicht, es kann weitere geben."""
+    import time
+    key = norm(q or "")
+    if not path or not path.strip():
+        raise ValueError("Suche braucht einen Startordner.")
+    p = Path(path.strip().strip('"')).expanduser()
+    if not p.is_dir():
+        raise ValueError(f"Ordner nicht gefunden: {path}")
+    p = p.resolve()
+    depth = max(1, min(int(depth), 8))
+    limit = max(1, min(int(limit), 1000))
+    out = {"path": str(p), "q": q, "depth": depth, "hits": [], "truncated": False, "visited": 0}
+    if not key:
+        return out
+    end = time.monotonic() + SEARCH_SECONDS
+    level, hits, visited = [(p, "")], out["hits"], 0
+    for d in range(1, depth + 1):
+        nxt = []
+        for folder, rel in level:
+            if visited >= SEARCH_VISIT or time.monotonic() > end:
+                out["truncated"] = True
+                break
+            try:
+                with os.scandir(folder) as it:
+                    names = []
+                    for e in it:
+                        try:
+                            if e.is_dir(follow_symlinks=False) and not e.name.startswith((".", "$")) and e.name not in HIDDEN:
+                                names.append(e.name)
+                        except OSError:
+                            pass
+            except OSError:
+                continue
+            visited += 1
+            for name in sorted(names, key=str.lower):
+                r = f"{rel}{os.sep}{name}" if rel else name
+                if key in norm(name):
+                    if len(hits) >= limit:
+                        out["truncated"] = True
+                        break
+                    hits.append({"name": name, "path": str(folder / name), "rel": r, "depth": d})
+                nxt.append((folder / name, r))
+            if len(hits) >= limit and out["truncated"]:
+                break
+        if out["truncated"]:
+            break
+        level = nxt
+    out["visited"] = visited
+    return out

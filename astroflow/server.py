@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .core.config import Settings, load_settings
-from .core.folders import list_folders
+from .core.folders import list_folders, search_folders
 from .core.modules import AVAILABLE, Context, load_modules
 from .core import sites as sites_mod
 from . import __version__ as VERSION
@@ -102,6 +102,14 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
         """Ordnerdialog: Unterordner auf dem Server-Rechner (leer = Laufwerke)."""
         try:
             return list_folders(path)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    @app.get("/api/folders/search")
+    def folders_search(path: str = "", q: str = "", depth: int = 4, limit: int = 200):
+        """Ordnerdialog: Unterordner (bis depth Ebenen) suchen, deren Name q enthält – ohne Leerzeichen/„_“/„-“."""
+        try:
+            return search_folders(path, q, depth, limit)
         except ValueError as e:
             raise HTTPException(400, str(e))
 
