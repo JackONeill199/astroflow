@@ -490,6 +490,7 @@ def build_router(eng: Engine) -> APIRouter:
                          "has_before": "before" in json.loads(x["files"] or "{}"),
                          "views": [k for k in ("stars", "comet") if k in json.loads(x["files"] or "{}")]}
                         for x in db.q("SELECT * FROM results WHERE project_id=? ORDER BY COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC,id DESC", (pid,))]
+        v["hotpixel_hint"] = eng.pl.hotpixel_hint(pid) if v.get("deleted", {}).get("can_restack") else False
         v["profiles"] = list(objects.PROFILES)
         v["palettes"] = list(channels.PALETTES)
         v["kind_labels"] = objects.KIND_LABEL

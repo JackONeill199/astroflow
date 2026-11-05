@@ -129,3 +129,50 @@ def test_static_mono_undersampled_stars_not_in_defect_map():
     near = [(x, y) for x, y in stars if np.hypot(bx - x, by - y).min() <= 2 and
             np.hypot(px - x, py - y).min() > 4]
     assert not near, near
+
+
+def test_incremental_onto_old_stack_without_map(tmp_path, monkeypatch):
+    """Alter Stack ohne Fehlerkarte + neue Aufnahmen mit Karte: nachstacken, nicht neu aufbauen; nichts geht kaputt,
+    die alten Punkte dürfen bleiben (verschwinden erst mit „Neu stacken“)."""
+    import shutil
+    src = demo.generate_hotpixel_pairs(tmp_path / "quelle") / "lights"
+    files = sorted(src.glob("*.fit"))
+    s = load_settings(tmp_path / "data")
+    s.delete_uploads = False
+    db = DB(s.db_path)
+    pl = Pipeline(s, db, ReviewerConfig())
+    dst = s.input_dir / "n"
+    dst.mkdir(parents=True)
+    for f in files[:12]:
+        shutil.copy(f, dst / f.name)
+    monkeypatch.setattr(calibration, "DEFECT_MIN_FRAMES", 10 ** 6)     # Stand vor der Fehlerkarte
+    pl.scan()
+    pid = db.one("SELECT id FROM projects")["id"]
+    pl.stack(pid)
+    wd = stack_dir(s.work_dir / f"p{pid}", None)
+    old = StackState.load(wd)
+    old_img, old_cov = old.result()
+    monkeypatch.undo()
+    for f in files[12:]:
+        shutil.copy(f, dst / f.name)
+    pl.scan()
+    pl.stack(pid)
+    new = StackState.load(wd)
+    img, cov = new.result()
+    assert db.one("SELECT restack FROM projects WHERE id=?", (pid,))["restack"] == 0
+    assert new.meta["ref_fid"] == old.meta["ref_fid"] and len(new.meta["frames"]) == 24     # nachgestackt, nicht neu
+    assert np.isfinite(img).all()
+    assert json.loads(db.one("SELECT options FROM projects WHERE id=?", (pid,))["options"])["defect_info"]
+    assert _red_dots(img, cov) <= _red_dots(old_img, old_cov)
+    # Hinweis „Neu stacken entfernt die Punkte“: nur Stellina, nur Stacks ohne Marke (von vor der Fehlerkarte), Rohbilder da
+    assert "defects" in old.meta and not pl.hotpixel_hint(pid)                        # neuer Code setzt die Marke
+    db.x("UPDATE frames SET info=json_set(info,'$.instrument','stellina-test')")
+    st = json.loads((wd / "state.json").read_text(encoding="utf-8"))
+    st.pop("defects")
+    (wd / "state.json").write_text(json.dumps(st), encoding="utf-8")
+    import os, time
+    os.utime(wd / "state.json", (time.time() + 5, time.time() + 5))
+    assert pl.hotpixel_hint(pid)
+    db.x("UPDATE frames SET deleted=1 WHERE id=(SELECT id FROM frames WHERE stacked=1 LIMIT 1)")
+    os.utime(wd / "state.json", (time.time() + 10, time.time() + 10))
+    assert not pl.hotpixel_hint(pid)                                                   # Neu stacken nicht möglich

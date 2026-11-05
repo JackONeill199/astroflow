@@ -482,6 +482,31 @@ class Pipeline:
                 bad_used[night] = {"quelle": src, "pixel": int(len(bad))}
         return used, bad_used
 
+    _hint_cache: dict = {}
+
+    def hotpixel_hint(self, pid: int) -> bool:
+        """Stellina-Stack von vor der Fehlerkarte (0.31.2), Rohbilder erreichbar → „Komplett neu stacken“ entfernt die
+        Hotpixel-Punkte. Gecacht je Stand von state.json (die Objektansicht fragt alle 2,5 s; Pfade können auf
+        Netzlaufwerken liegen)."""
+        f = self.s.work_dir / f"p{pid}" / "stack" / "state.json"
+        try:
+            mt = f.stat().st_mtime
+        except OSError:
+            return False
+        hit = self._hint_cache.get(str(f))
+        if hit and hit[0] == mt and time.time() - hit[1] < 300:
+            return hit[2]
+        out = False
+        try:
+            if "defects" not in json.loads(f.read_text(encoding="utf-8")):
+                rows = self.db.q("SELECT path, deleted, info FROM frames WHERE project_id=? AND kind='light' AND stacked=1", (pid,))
+                if rows and not any(r["deleted"] for r in rows) and                         "stellina" in (json.loads(rows[0]["info"]).get("instrument") or "").lower():
+                    out = all(Path(r["path"]).exists() for r in rows[:: max(1, len(rows) // 3)][:3])
+        except (OSError, ValueError):
+            out = False
+        self._hint_cache[str(f)] = (mt, time.time(), out)
+        return out
+
     # --------------------------------------------------------------- process #
     def process(self, project_id: int, extra: dict | None = None, progress=lambda p, stage, msg="": None) -> int:
         """Stack Engine + Develop Engine. extra["mode"] == "develop": nur neu entwickeln (kein Stacking)."""
@@ -1137,6 +1162,9 @@ class Pipeline:
                               ref_bg=[float(np.median(rgb0[c])) for c in range(C)], ref_noise=rm["noise"],
                               ref_fwhm=rm["fwhm"])
         meta = state.meta
+        if not meta.get("frames") and "defects" not in meta:
+            # neu aufgebauter Stack: mit Fehlerkarte gerechnet? (ältere Stacks haben die Marke nicht → Hinweis „Neu stacken“)
+            meta["defects"] = any(isinstance(k, tuple) and k[0] == "defects" for k in cache)
         if "exposure" not in meta:                      # ältere Zustände: Belichtung der schon gestackten Frames nachtragen
             ids = list(meta["frames"])
             meta["exposure"] = sum((json.loads(r["info"]).get("exptime") or 0) for i in range(0, len(ids), 500)

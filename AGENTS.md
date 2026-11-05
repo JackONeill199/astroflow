@@ -109,7 +109,13 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    die 4 direkten Nachbarn anderer Farbe erhöht. Fehler = Kandidat in ≥ 50 %
    der Stichprobe (Sterne wandern), > 1 % der Pixel → keine Karte. `_load` ersetzt die Pixel nach `cosmetic` durch den Median der Nachbarn
    derselben Farbe (ohne andere Fehler). Nacht ohne eigene Messung (< 12 Rohbilder): Pixel aus ≥ der Hälfte der Nächte der Kamera.
-   Info je Nacht in `projects.options.defect_info`. Gemessen NGC 7293: 953 Pixel (0,015 %). Test `test_hotpixel_paare.py`
+   Info je Nacht in `projects.options.defect_info`. Gemessen NGC 7293: ~860–950 Pixel (0,015 %; mit den `cosmetic`-Ersetzungen 6 047).
+   **Kein automatisches Neu-Stacken** (Nutzerwunsch, `METRICS_VERSION` bleibt 2): bestehende Bilder verlieren die Punkte erst mit
+   „Komplett neu stacken“ (nur mit erreichbaren Rohbildern); Nachstacken auf einen alten Stack ist sicher (Test), alte Punkte bleiben
+   bis dahin. Ohne Karte analysierte Frames zählen Hotpixel-Grüppchen als Sterne (Helix: 5–12 von 150, SNR ~12 % zu hoch) – SNR geht
+   nur mit Exponent 0,3 in den Score, Verwerfen/Gewichte nicht → gemischte Analysen hinnehmbar. Neue Stacks tragen `defects` in
+   `state.json`; `Pipeline.hotpixel_hint` (Stellina, Stack ohne Marke, keine gestackten Rohbilder gelöscht, Stichprobe der Pfade
+   erreichbar, gecacht je state.json-Stand) → `/projects/{id}` `hotpixel_hint` → Menü „Mehr“: „Komplett neu stacken – entfernt Hotpixel-Punkte“. Test `test_hotpixel_paare.py`
    (`demo.generate_hotpixel_pairs`, auch stillstehendes Feld; Mono-Stillstand mit σ = 1-px-Sternen). Nebenbefund: `cosmetic` kappt die Spitze heller, scharfer Sterne, deren Kern in der
    R/B-Ebene liegt (Demo: 5458 → 3240 ADU, ~2 % Fluss) – unverändert, nur nicht in die Karte übernommen.
 5. **Stacking** (`registration.py` Dreiecks-Matching + `stacking.py` gewichtetes Sigma-Clipping): **inkrementell** – Zustand

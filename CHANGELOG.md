@@ -11,8 +11,9 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   Versätzen einige Aufnahmen auf derselben Stelle bleibt, traf das Paar mehrmals dieselbe Himmelsstelle und blieb im Stack stehen.
   AstroFlow misst jetzt je Kamera und Nacht eine Karte ortsfester Sensorfehler aus den eigenen Aufnahmen (Paare, kleine Grüppchen,
   warme Pixel knapp unter der bisherigen Schwelle) und ersetzt sie vor dem Stacken; Sterne bleiben unberührt.
-- Die Analyse-Version steigt dadurch: Objekte, deren Rohbilder noch erreichbar sind, werden beim nächsten Verarbeiten neu
-  analysiert und komplett neu gestackt. Objekte mit gelöschten Rohbildern behalten ihren Stack.
+- Bestehende Bilder: Die roten Punkte verschwinden nach „Mehr → Komplett neu stacken“ (nur mit erreichbaren Rohbildern).
+  Nichts wird automatisch neu gestackt; neue Aufnahmen werden wie gewohnt mit Fehlerkarte nachgestackt. Bei betroffenen
+  Stellina-Objekten steht im Menü „Mehr“ unter „Komplett neu stacken“ der Hinweis „entfernt Hotpixel-Punkte“.
 
 ## 0.31.1 – 05.11.2026
 

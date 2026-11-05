@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import ndimage as ndi
 
-METRICS_VERSION = 3      # erhöhen, wenn sich die Analyse ändert -> bestehende Frames werden neu analysiert
+METRICS_VERSION = 2      # erhöhen, wenn sich die Analyse ändert -> bestehende Frames werden neu analysiert
 # Feste Grenze für verzogene Sterne: ecc 0,8 ≈ Achsverhältnis 1,7:1 (an M57 gemessen: 1,5:1 ≈ 0,71, 2:1 ≈ 0,85).
 # Höchstens dieser Anteil der Frames fällt deswegen heraus – sonst verlöre z. B. NGC 7000 zwei Drittel seiner Daten
 ECC_MAX = 0.8
