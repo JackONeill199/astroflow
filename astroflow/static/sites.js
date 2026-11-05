@@ -20,8 +20,8 @@ async function sitesSettings(el) {
   let assign = null;                       // Zeitraum für einen Ort anlegen: {id, from, to} oder null
   const color = (id) => `site-c${Math.max(0, d.list.findIndex(s => s.id === id)) % COLORS}`;
   const save = async (next, msg) => {
-    try { d = await send('/sites', next); if (msg) toast(msg, 'ok'); draw(); }
-    catch (e) { toast(e.message, 'err'); }
+    try { d = await send('/sites', next); if (msg) toast(msg, 'ok'); draw(); return true; }
+    catch (e) { toast(e.message, 'err'); return false; }
   };
 
   // Ort ohne Zeitraum, Einzelnacht und Standard-Rolle: gilt nirgends – Hinweis mit Zuweisung (Formular oder Knopf)
@@ -150,8 +150,8 @@ async function sitesSettings(el) {
         const from = fa.elements.from.value, to = fa.elements.to.value;
         if (!from) { toast('Bitte einen Anfang angeben.', 'err'); return; }
         if (to && to < from) { toast('Das Ende liegt vor dem Anfang.', 'err'); return; }
-        const id = assign.id; assign = null;
-        await save({ ...d, periods: [...d.periods, { site_id: id, from, to }] }, 'Zeitraum gespeichert.');
+        const id = assign.id;
+        if (await save({ ...d, periods: [...d.periods, { site_id: id, from, to }] }, 'Zeitraum gespeichert.')) { assign = null; draw(); }
       };
     }
     const f = $('#siteEdit', el);

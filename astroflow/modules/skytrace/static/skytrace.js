@@ -330,7 +330,9 @@ async function runView(root, runId, tab = 'vorschau') {
   // Welcher Ort laut Ortsliste für die Nacht(e) dieses Laufs gilt (Ausnahmen einzelner Beobachtungen nicht berücksichtigt)
   async function runSiteNote() {
     const box = $('#runSite'); if (!box) return;
-    const nights = [...new Set(S.run.sessions.map(x => x.night).filter(Boolean))].slice(0, 3);
+    // Die Läufe liefern kein `night`: Datum aus dem Beobachtungsnamen (wie beim Übernehmen eines Orts weiter unten)
+    const nightOf = (x) => x.night || (String(x.session || '').match(/(\d{4})-?(\d{2})-?(\d{2})/) || []).slice(1).join('-');
+    const nights = [...new Set(S.run.sessions.map(nightOf).filter(n => /^\d{4}-\d{2}-\d{2}$/.test(n)))].slice(0, 3);
     if (!nights.length) return;
     try {
       const rows = await Promise.all(nights.map(async n => [n, (await api('/sites/resolve?night=' + encodeURIComponent(n))).site]));
