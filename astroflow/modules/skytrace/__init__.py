@@ -40,6 +40,8 @@ class Module(BaseModule):
         from .api import Controller
         from .auto import AutoAnalysis
         self.ctl = Controller(self)
+        from .rematch import SiteJobs
+        self.sitejobs = SiteJobs(self)                                  # Neu abgleichen / Standortsuche
         self.auto = AutoAnalysis(self)
         ctx.on("stacking.stacked", self.auto.stacked)
         from .achievements import Achievements
@@ -152,14 +154,24 @@ class Module(BaseModule):
     def status(self) -> dict:
         s = self.ctl.snapshot(logs=False)
         return {"running": s["running"], "stopping": s["stopping"], "run": s["run"], "text": s["status"],
-                "stats": s["stats"], "operation": s["operation"], "busy_jobs": int(s["running"]),
+                "stats": s["stats"], "operation": s["operation"], "busy_jobs": int(s["running"]) + int(self.sitejobs.busy_with(None)),
                 "engine": self.health, "home": str(self.home), "auto_waiting": self.auto.waiting(),
-                "achievements_new": self.ach.new()}
+                "achievements_new": self.ach.new(), "rematch": self._rematch_status()}
+
+    def _rematch_status(self) -> dict:
+        j = self.sitejobs.snapshot() or {}
+        try:
+            changed = self.sitejobs.sites_changed()
+        except Exception:
+            changed = False
+        return {"sites_changed": changed, "signature": self.sitejobs.signature(), "state": j.get("state"), "kind": j.get("kind"),
+                "runs": j.get("runs") if not j.get("all") else None, "all": j.get("all"), "folder": j.get("folder"),
+                "key": j.get("key"), "text": j.get("text"), "current": j.get("current"), "total": j.get("total")}
 
     def activity(self, limit: int = 30) -> list[dict]:
         from .api import list_runs, short_name
         s = self.ctl.snapshot(logs=False)
-        out = self.auto.activity()
+        out = self.auto.activity() + self.sitejobs.activity()
         current = bool(s["running"] or (s["finished"] and s["run"]))
         if current:
             st = s["stats"]

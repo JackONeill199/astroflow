@@ -253,6 +253,12 @@ Sterne auf Verwacklung geprüft. Erkannte Spuren erscheinen als **Kandidaten** m
 Originale werden nur gelesen. Kataloge: Einstellungen → SkyTrace, Orte: Einstellungen → Standorte.
 Unter **Beobachtungen → Standort der Nacht prüfen** rechnet SkyTrace aus mehreren zugeordneten Satellitenspuren zurück, ob die
 Nacht besser zu einem anderen Ort passt (und wie weit die Kamerauhr danebenlag) – übernommen wird nur auf Knopfdruck.
+Passt in einer Nacht kaum eine Spur (der Ort lag daneben), sucht **Standort suchen** mit ± 10 km Spielraum nach eindeutigen Bahnen,
+rechnet daraus zurück und gleicht am Vorschlag noch einmal streng ab („5 statt 0 Treffer“).
+**Analyse → Satelliten neu abgleichen** bestimmt den Ort jeder Spur neu (Ausnahme → FITS → Ortsliste der Nacht → Standard) und
+gleicht die Satelliten mit den gespeicherten Bahndaten neu ab – ohne Rohbilder und ohne neue Archivabfragen. Nach Änderungen an
+Orten oder Zeiträumen bietet AstroFlow an, **alle SkyTrace-Analysen neu abzugleichen** (Hinweis, SkyTrace-Statistik oder
+Einstellungen → Standorte); dabei werden nur Spuren geprüft, deren Ort sich geändert hat. Orte werden nie automatisch übernommen.
 Im Dropdown **Analyse → Erneut analysieren** startet die vollständige Erkennung mit aktuellem Code als neuer Lauf
 aus den bisherigen Aufnahmen. Fehlen Originaldateien, kann ihr Ordner ausgewählt werden. Bei Ersatz-FITS muss auch das
 Aufnahmedatum übereinstimmen: gleiche Dateinamen aus einer anderen Nacht werden nicht zugeordnet. Der alte Lauf bleibt erhalten.

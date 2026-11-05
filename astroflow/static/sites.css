@@ -60,3 +60,6 @@
   .site-periods, .site-periods tbody { display: block; width: 100% }
   .site-periods select, .site-periods input { box-sizing: border-box }
 }
+
+/* Abschnitte der Module unter den Standorten (sitesPanel, z. B. SkyTrace neu abgleichen) */
+#siteModules > div:not(:empty) { margin-top: 1rem }

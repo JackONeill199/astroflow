@@ -242,12 +242,12 @@ def _file_or_url(settings,prefix):
         return retrieve(url,text=True),url.split('?')[0]
     return None,None
 
-def site_tolerance(accuracy_m,distance_km):
+def site_tolerance(accuracy_m,distance_km,cap=None):
     """Quer-Toleranz in Bogensekunden für eine Bahn in `distance_km` bei Standortfehler `accuracy_m` (Radius, ~1σ).
-    Bei genauem Standort (2 × Fehlerwinkel ≤ 360″) bleibt es bei der festen Toleranz."""
+    Bei genauem Standort (2 × Fehlerwinkel ≤ 360″) bleibt es bei der festen Toleranz. `cap` nur für die Standortsuche."""
     if not accuracy_m or not distance_km or distance_km<=0: return float(SATELLITE_TOLERANCE_ARCSEC)
     shift=2*float(accuracy_m)/(float(distance_km)*1000)*206264.806
-    return float(min(SATELLITE_SITE_TOLERANCE_CAP_ARCSEC,max(SATELLITE_TOLERANCE_ARCSEC,shift)))
+    return float(min(cap or SATELLITE_SITE_TOLERANCE_CAP_ARCSEC,max(SATELLITE_TOLERANCE_ARCSEC,shift)))
 
 def site_uncertain(accuracy_m):
     """Ist der Standort so ungenau, dass selbst eine Bahn in 1000 km die feste Toleranz sprengt?"""
@@ -282,6 +282,7 @@ def satellite_check(candidate,site,settings):
     times=TS.from_datetimes([dt.datetime.fromtimestamp(float(s),dt.timezone.utc) for s in stamps])
     observer=_observer(site); matches=[];diagnostics=[]
     accuracy=float(site.get('accuracy_m') or 0)
+    cap=settings.get('site_tolerance_cap_arcsec')          # Standortsuche (rematch_sites.py): weiter als im normalen Abgleich
     from satellite_archive import sky_prefilter
     possible=sky_prefilter(list(satellites.values()),first,last-first,site,candidate)
     for sat,age in possible:
@@ -293,7 +294,7 @@ def satellite_check(candidate,site,settings):
         valid=np.isfinite(ra.hours)&np.isfinite(dec.degrees)&(altitude.degrees>0)
         if not valid.any(): continue
         distance_km=float(np.median(vector.distance().km[valid]))
-        tolerance=site_tolerance(accuracy,distance_km)
+        tolerance=site_tolerance(accuracy,distance_km,cap)
         geometry=angular_match(candidate,ra.hours[valid]*15,dec.degrees[valid],tolerance,max_angle=SATELLITE_MAX_ANGLE,times=stamps[valid])
         geometry['distance_km']=round(distance_km,1)
         if geometry['compatible'] and (geometry.get('separation_arcsec') or 0)>SATELLITE_TOLERANCE_ARCSEC:

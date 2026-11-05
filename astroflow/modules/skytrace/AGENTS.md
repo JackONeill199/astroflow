@@ -187,7 +187,8 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
   → `until` +15 min. `jsonDir.php` (Dateiliste mit Datum) wird nicht genutzt – Format ungeprüft, 24-h-Regel reicht.
 - UI: `evidence.js classification` nennt bei passender Bahn „Satellit <Name>“ bzw. Objektart, Klasse `satellite` (Filter „Satelliten“);
   Kandidatenliste/Detail zeigen den Namen als Titel, K-Nummer klein. Bahntabelle mit Spalte „Durchgang“.
-- Nachrechnen: `engine/refresh_satellites.py <Lauf> …` (nur Kandidaten-JSON + lokale Archive, schreibt Kandidaten, Projektion, Bericht).
+- Nachrechnen: `engine/refresh_satellites.py <Lauf> …` (nur Kandidaten-JSON + lokale Archive, schreibt Kandidaten, Projektion, Bericht; nimmt den
+  gespeicherten Ort – mit neu aufgelöstem Ort und aus der Oberfläche: `rematch_sites.py`, s. „Neu abgleichen und Standortsuche“).
   Ergebnis M31 2022-06-11 (`2026-11-01_12-19-46-886388`): 12 von 13 Spuren zugeordnet (Starlink-Züge, Iridium 914, SL-3/SL-16 R/B), vorher 0.
   M103 K0001/K0002 (unten als „84′/28′ entfernt“ beschrieben) = STARLINK-1484/-1062.
 - Uhrversatz und Standort je Nacht: siehe „Standorte, Genauigkeit und Rückrechnung“ (0.23.0). Die konstant 10–18′ quer daneben
@@ -204,7 +205,7 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
   Zeitfenster) – bei genauem Ort (≤ ~400 m für LEO) unverändert. Treffer nur wegen der Ausweitung: `site_widened`, Hinweis in `evidence`.
   Ohne Treffer und `site_uncertain` (Ausweitung schon bei 1000 km nötig, ≈ ab 900 m) → Status **`site_uncertain`** „Standort ungenau – Zuordnung
   unsicher“ statt `checked_no_match`; dazu `site_note`, `site_accuracy_m`; `tolerance_arcsec` je Bahn in `diagnostics`/`matches`.
-- **Rückrechnung** (`sitefit.py`, `GET /api/skytrace/sitefit?run=&folder=`, UI Lauf → Beobachtungen → „Standort der Nacht prüfen“ ab 3 Treffern):
+- **Rückrechnung** (`sitefit.py`, `GET /api/skytrace/sitefit?run=&folder=`, UI Lauf → Beobachtungen → „Standort der Nacht prüfen“ ab 3 Treffern; darunter Standortsuche, s. „Neu abgleichen und Standortsuche“):
   Unbekannte Nord/Ost (km) + Uhrversatz (s, wahr = Kamera + dt); Residuen quer (5 Punkte je Spur, σ 30″) und – nur bei Spuren ganz im Bild
   (Pixelpfad bzw. Bildecken, 3-%-Rand) – längs über die Durchgangszeiten an Anfang/Ende gegen die Belichtung (σ 1 s); schwache Vorinformation
   ±50 km/±30 s, Gauß-Newton mit numerischer Jacobi-Matrix, Ausreißer > 4σ einmal entfernt, Kovarianz × reduziertes χ². Nur eindeutige Treffer
@@ -219,6 +220,44 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
   NGC 6781 2022-06-17 mit dem Vorschlag neu abgeglichen: Abstände quer im Mittel 97″ → 22″ (10/10 Treffer wie vorher).
 - Tests: `tests/test_sites.py` (Auflösung, Engine-Laden ohne Paket, Toleranz – nur mit skyfield –, Rückrechnung an synthetischen LEO-Bahnen:
   Ort auf < 50 m, Uhr auf < 0,1 s).
+
+## Neu abgleichen und Standortsuche (0.28.0, 05.11.2026, Nutzerbefund „Analysen nach Standortänderung nicht erneut prüfbar“)
+- **Engine** `engine/rematch_sites.py` (JSON-Zeilen `progress`/`status`/`result`, Stopp-Datei):
+  `rematch <Lauf>… [--force]` löst den Ort je Kandidat neu auf (`resolve_site(source_file, session, when=timestamp)`, Rohbild weg →
+  Ortsliste) und rechnet nur `satellite_check` neu – Flugzeuge/Meteore/Asteroiden bleiben (dafür „Zeitreihen aktualisieren“).
+  Ohne `--force` nur Kandidaten mit geändertem Ort (`site_key`: lat/lon 6 Stellen, Höhe, Genauigkeit). Schreibt `kandidaten.json`,
+  `kandidaten/<K>/kandidat.json` (inkl. `site`, `satellite_overlay`), `videos.json` → `site`, danach Bericht (Fehler dort → nur Hinweis).
+  Fehlen Bahndaten lokal (`needs_archive` …), bleibt der alte Abgleich samt altem Ort stehen (`missing_orbits`) – sonst ginge er verloren.
+  `search <Lauf> <Ordner>`: Abgleich mit `accuracy_m = SEARCH_RADIUS_KM/2` (2σ-Toleranz = 10 km) und Obergrenze
+  `site_tolerance_cap_arcsec` = `SEARCH_CAP_ARCSEC` 7200″ (neuer optionaler Parameter von `catalog_matching.site_tolerance`, nur über
+  diese Einstellung) → `sitefit.observations` (nur `_sure`-Treffer, also ohne Starlink-Mehrdeutigkeit) → `sitefit.fit` → strenger Abgleich
+  am Vorschlag → zweite Rückrechnung aus den strengen Treffern (`stage` strict, sonst search). `worth` zusätzlich nur, wenn der strenge
+  Abgleich mehr Treffer bringt als bisher. Ergebnis nur in `<Beobachtung>/standortsuche.json` (`tracks`, `before`, `wide`, `after`, Fit-Felder,
+  `night`, `site`), Kandidaten bleiben unverändert. `sitefit.py` wird ohne AstroFlow-Paket über ein Ersatzpaket `skytrace_server` geladen.
+- **Netz:** `orbits_cache_only` → `archive_sources.eth_tles` liefert nur den Minuten-Cache des ursprünglichen Laufs (sonst `needs_archive`);
+  Space-Track-Spiegel ohnehin nur lokal. SATCAT: `check` setzt nach dem ersten Abgleich `satcat_offline` – höchstens ein Aufruf mit Netz je
+  Auftrag (Sperre vom 01.11.2026), die Suche ganz ohne.
+- **Server** `rematch.py` (`SiteJobs`, `mod.sitejobs`): ein Auftrag zur Zeit, eigener Prozess neben dem `Controller`; der laufende Analyse-/
+  Aktualisierungslauf wird übersprungen bzw. abgelehnt, `/refresh` und Löschen lehnen Läufe im Neuabgleich ab. `activity()` (Schlüssel
+  `skytrace:abgleich:<ns>`), `status.rematch` (`sites_changed`, `signature`, Zustand, Fortschritt), `busy_jobs` zählt mit.
+  `sites_signature` = Hash aus IDs/Koordinaten/Genauigkeit der Orte, Zeiträumen und Standard (Namen egal); `skytrace.rematched_sites` merkt den
+  Stand beim Start des letzten erfolgreichen „alle Läufe“-Auftrags (erster Blick setzt ihn ohne Hinweis).
+  API: `GET|POST /rematch` (`{run}` = alle Spuren eines Laufs, `{all:true}` = nur geänderte Orte, `force`), `POST /rematch/stop`,
+  `POST /sitesearch {run, folder}`, `GET /sitesearch?run=&folder=` (`job` nur für diese Beobachtung, `result` = Datei). `run_data` liefert je
+  Beobachtung `trails` (Spuren mit Himmelskoordinaten) und `site_search` (Kurzfassung).
+- **UI** (`skytrace.js`): Analyse-Menü „Satelliten neu abgleichen“; Beobachtungen → „Standort der Nacht prüfen“ ab 3 Treffern „Prüfen“ (wie bisher),
+  sonst „Standort suchen“ (`watchSearch` pollt, `searchHtml` + `fitHtml`, Übernehmen über `applyFit`, danach Knopf „Jetzt … neu abgleichen“).
+  `rematchPanel` in der Statistik und über den neuen Frontend-Hook `sitesPanel` unter Einstellungen → Standorte; `rematchStatus` meldet das Ende
+  eigener Aufträge (auch wenn sie zwischen zwei Abfragen fertig wurden) und bietet bei geänderter Ortsliste einmal je `signature`
+  (localStorage `af.skytrace.rematchAsked`) per Toast den Abgleich an – nie automatisch.
+- **Befund** (05.11.2026, Kopie der vier Läufe vom 2022-05-09, nur gelesen): IC 1396 strenger Abgleich 0 von 5, Suche 5 von 5 → Verschiebung
+  4,7 ± 0,1 km, quer-RMS 704″ → 16″, am Vorschlag streng 5 von 5. Keine Spur ganz im Bild → Uhrversatz unbestimmt (± 30 s = Vorinformation).
+  M101 und NGC 4565 derselben Nacht haben je nur eine Spur (keine eigene Rückrechnung möglich); übernimmt man den IC-1396-Ort für die Nacht,
+  gleicht „alle neu abgleichen“ sie mit ab. Offen: Suche über alle Beobachtungen einer Nacht gemeinsam.
+- Tests: `tests/test_skytrace_rematch.py` (Engine-Teil nur mit skyfield – direkt im Engine-Interpreter ausführbar: 5 km falscher Ort →
+  Suche < 200 m und Uhr ± 0,3 s, strenger Abgleich danach mit Treffern; Starlink-Zwilling wird nicht genutzt; geänderte Ortsliste wirkt;
+  fehlende Bahndaten behalten den alten Abgleich; Server: Signatur, Hinweis, Auftrag mit Engine-Attrappe, Aktivität). UI: Beobachtungen-Ansicht in
+  `test_ui_layout.py` (`ROUTES`, Fixture mit `standortsuche.json`).
 
 ## Erkennung im Teleskop-Bildfeld (28.10.2026, Nutzerbefund M74 2022-08-07)
 Anlass: Ein schwacher Meteor (img-0041, ~120 px, ~1,5σ/px) wurde übersehen, ein langsames Objekt in sechs Aufnahmen (img-0177…0182)

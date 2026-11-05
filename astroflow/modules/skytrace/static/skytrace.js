@@ -35,6 +35,53 @@ function engineNotice(eng) {
     <span class="grow"></span><a class="btn sm ghost" href="#/settings/skytrace">Einrichten</a></div>`;
 }
 
+// ------------------------------------------- Neu abgleichen nach Standortänderungen --- //
+// Engine engine/rematch_sites.py über rematch.py: Ort je Spur neu auflösen, Satelliten mit lokalen Bahndaten neu abgleichen.
+const rematchState = () => AF.status?.modules?.skytrace?.rematch || {};
+const rmStarted = new Set();                  // hier gestartete Aufträge: Ende auch melden, wenn er zwischen zwei Abfragen fertig wurde
+async function startRematch(body, label, path = '/rematch') {
+  try { const j = await send(T + path, body); rmStarted.add(j.key); if (label) toast(label, 'ok'); return j; }
+  catch (e) { toast(e.message, 'err'); return null; }
+}
+const rematchAll = () => startRematch({ all: true }, 'Alle SkyTrace-Analysen werden mit der aktuellen Ortsliste neu abgeglichen.');
+// Abschnitt für Statistik und Einstellungen → Standorte; zeichnet sich bei geändertem Zustand neu, endet mit dem Behälter
+function rematchPanel(host) {
+  let sig = '';
+  const draw = () => {
+    if (!host.isConnected) { clearInterval(timer); return; }
+    const r = rematchState(), busy = r.state === 'running';
+    const s = JSON.stringify([r.sites_changed, r.state, r.current, r.total, r.text]);
+    if (s === sig) return;
+    sig = s;
+    host.innerHTML = `<div class="panel st-rematch"><div class="panel-h"><h2>${icon('pin')}SkyTrace nach Standortänderungen</h2><span class="grow"></span>
+        <button class="btn sm${r.sites_changed ? '' : ' ghost'}" data-rematch-all ${busy ? 'disabled' : ''}>${icon('refresh')}Alle SkyTrace-Analysen neu abgleichen</button></div>
+      <p class="mut sm">${r.sites_changed ? '<b class="warn">Orte oder Zeiträume haben sich seit dem letzten Abgleich geändert.</b> ' : ''}Der Ort jeder Spur wird neu bestimmt
+        (Ausnahme → FITS → Ortsliste der Nacht → Standard), danach werden die Satelliten mit den gespeicherten Bahndaten neu abgeglichen – ohne Rohbilder und
+        ohne neue Archivabfragen. Geprüft werden nur Spuren, deren Ort sich geändert hat. Orte werden dabei nie übernommen.</p>
+      <div class="st-rematch-job"></div></div>`;
+    const job = $('.st-rematch-job', host);
+    if (busy) setJobLine(job, { state: 'running', stage: r.kind === 'search' ? 'Standortsuche' : 'Neu abgleichen', message: r.text, progress: r.total ? r.current / r.total : null });
+    else if (r.state && r.text) job.innerHTML = `<p class="sm ${r.state === 'error' ? 'bad' : 'dim'}">Letzter Auftrag: ${esc(r.text)}</p>`;
+    $('[data-rematch-all]', host).onclick = rematchAll;
+  };
+  const timer = setInterval(draw, 1500);
+  draw();
+}
+// Polling-Hook: Ende eines Auftrags melden; geänderte Ortsliste einmal je Stand anbieten (nie automatisch abgleichen)
+let rmSeen = null;
+function rematchStatus(st) {
+  const r = st.modules.skytrace?.rematch;
+  if (!r) return;
+  if (r.key && r.state !== 'running' && (rmStarted.delete(r.key) || (rmSeen && rmSeen.key === r.key && rmSeen.state === 'running')))
+    toast(r.text || 'Neuabgleich beendet.', r.state === 'error' ? 'err' : 'ok',
+      r.all ? { label: 'Statistik', href: '#/skytrace/statistik' } : r.runs?.length ? { label: 'Ansehen', href: `#/skytrace/${encodeURIComponent(r.runs[0])}/${r.kind === 'search' ? 'beobachtungen' : 'kandidaten'}` } : null);
+  rmSeen = { key: r.key, state: r.state };
+  if (r.sites_changed && r.state !== 'running' && store.get('skytrace.rematchAsked', '') !== r.signature) {
+    store.set('skytrace.rematchAsked', r.signature);
+    toast('Standorte geändert – SkyTrace-Analysen mit der neuen Ortsliste neu abgleichen?', '', { label: 'Neu abgleichen', fn: rematchAll });
+  }
+}
+
 // ---------------------------------------------------------------- Übersicht --- //
 // Analyse löschen: Ergebnisordner mit Videos, Ausschnitten und Bericht – die Originalaufnahmen bleiben unberührt.
 async function deleteRun(id, title) {
@@ -203,6 +250,7 @@ async function runView(root, runId, tab = 'vorschau') {
   const S = { run: null, engine: await api(T + '/state'), session: 0, key: null, frame: null, overlay: store.get('skytrace.overlay', true),
     mode: 'image', timer: null, logId: 0, filter: 'all', ticket: 0, runStamp: 0, full: true, seek: null, detailCleanup: null };
   const isLive = () => S.engine.running && S.engine.run === runId;
+  S.rmDone = rematchState().state === 'running' ? null : rematchState().key;     // schon fertige Aufträge lösen kein Neuladen aus
   try { S.run = await api(T + '/run?id=' + encodeURIComponent(runId)); }
   catch (e) { if (!isLive()) throw e; S.run = { id: runId, sessions: [], candidates: [], report_url: null }; }
   crumbs([['SkyTrace', '#/skytrace'], [shortName(S.run.sessions.length === 1 ? S.run.sessions[0].session : runId)]]);
@@ -228,6 +276,7 @@ async function runView(root, runId, tab = 'vorschau') {
         : `<div class="menu" id="analysisMenu"><button class="btn ghost" aria-haspopup="true" ${S.engine.running || !ss.some(s => s.video_url) ? 'disabled' : ''}>${icon('refresh')}Analyse${icon('chev')}</button><div class="pop">
             <a href="#" id="reanalyse"><span>Erneut analysieren<small>Erkennung mit aktuellem Code</small></span>${icon('play')}</a>
             <a href="#" id="refresh"><span>Zeitreihen aktualisieren<small>Berichte und Katalogabgleich</small></span>${icon('refresh')}</a>
+            <a href="#" id="rematch"><span>Satelliten neu abgleichen<small>Ort aus der Ortsliste, ohne Rohbilder</small></span>${icon('pin')}</a>
             <div class="pop-note">Erneute Analyse erstellt einen neuen Lauf. Der bisherige bleibt erhalten.</div></div></div>`}
         ${S.run.report_url ? `<a class="btn ghost" href="${S.run.report_url}" target="_blank" rel="noopener">Bericht öffnen${icon('arrow')}</a>` : ''}
         ${live ? '' : `<button class="btn ghost icon" id="delRun" title="Analyse löschen" aria-label="Analyse löschen">${icon('trash')}</button>`}</div></div>
@@ -236,8 +285,10 @@ async function runView(root, runId, tab = 'vorschau') {
         return `<a href="#/skytrace/${encodeURIComponent(runId)}/${k}" data-t="${k}" class="${tab === k ? 'on' : ''}" title="Taste ${i + 1}">${k === '3d' ? icon('globe') : ''}${l}${n != null ? `<span>${n}</span>` : ''}</a>`; }).join('')}<i class="tab-ind" id="tabind"></i></nav>
       <div id="tab"></div>`;
   }
+  const rmMine = (r = rematchState()) => r.state === 'running' && (r.all || (r.runs || []).includes(runId));
   function jobState() {
-    const e = S.engine, st = e.stats || {};
+    const e = S.engine, st = e.stats || {}, r = rematchState();
+    if (!isLive() && rmMine(r)) { setJobLine($('#stjob'), { state: 'running', stage: r.kind === 'search' ? 'Standortsuche' : 'Neu abgleichen', message: r.text, progress: r.total ? r.current / r.total : null }); return; }
     setJobLine($('#stjob'), isLive() ? { state: 'running', stage: e.operation === 'refresh' ? 'Bericht' : `${st.current || 0} / ${st.total || '—'} Aufnahmen`,
       message: engineStatus(e), progress: st.total ? (st.current || 0) / st.total : null } : null);
   }
@@ -263,6 +314,7 @@ async function runView(root, runId, tab = 'vorschau') {
       try { S.engine = await send(T + '/refresh', { run: runId }); S.logId = 0; toast('Zeitreihen und Katalogabgleich werden aktualisiert.'); poll(); draw(); }
       catch (e) { toast(e.message, 'err'); }
     });
+    $('#rematch')?.addEventListener('click', (e) => { e.preventDefault(); startRematch({ run: runId }, 'Satelliten werden mit dem aktuellen Ort neu abgeglichen.'); });
     jobState();
     drawTab(false);
   }
@@ -529,12 +581,20 @@ async function runView(root, runId, tab = 'vorschau') {
           <div class="foot"><span>${nf.format(s.frames || 0)} Aufnahmen · ${s.excluded || 0} unscharf · ${s.hits || 0} Treffer</span>
           <button class="btn sm ghost" data-s="${i}">${icon('play')}Ansehen</button></div></div></div>`).join('')}</div>`
       : '<div class="empty">Für diesen Lauf sind noch keine Bildfolgen gespeichert.</div>';
-    const fits = S.run.sessions.filter(s => s.folder && (s.sat_matches || 0) >= 3);
+    // Ab 3 sicheren Treffern direkt zurückrechnen, sonst Standortsuche mit erweiterter Toleranz (rematch_sites.py search)
+    const fits = S.run.sessions.filter(s => s.folder && ((s.sat_matches || 0) >= 3 || (s.trails || 0) > 0));
     if (fits.length) t.insertAdjacentHTML('beforeend', `<div class="panel st-sitefit"><div class="panel-h"><h2>${icon('pin')}Standort der Nacht prüfen</h2></div>
       <p class="mut sm" style="margin:-4px 0 10px">Aus mehreren zugeordneten Satellitenspuren lassen sich Standort und Uhrversatz der Kamera zurückrechnen
-        (1 km Standortfehler ≈ 7′ quer bei 500 km). Nur ein Vorschlag – übernommen wird erst auf Knopfdruck.</p>
-      ${fits.map(s => `<div class="st-fit" data-fit="${esc(s.folder)}" data-session="${esc(s.session)}"><div class="row"><b>${esc(shortName(s.session))}</b><span class="mut sm">${s.sat_matches} Satellitentreffer</span><span class="grow"></span>
-        <button class="btn sm ghost" data-fitgo>Prüfen</button></div><div class="st-fit-res sm"></div></div>`).join('')}</div>`);
+        (1 km Standortfehler ≈ 7′ quer bei 500 km). Passen in einer Nacht kaum Spuren, sucht SkyTrace mit ± 10 km Spielraum nach eindeutigen Bahnen,
+        rechnet daraus zurück und gleicht am Vorschlag noch einmal streng ab. Nur ein Vorschlag – übernommen wird erst auf Knopfdruck.</p>
+      ${fits.map(s => { const direct = (s.sat_matches || 0) >= 3;
+        return `<div class="st-fit" data-fit="${esc(s.folder)}" data-session="${esc(s.session)}"${direct ? '' : ' data-searchable'}><div class="row"><b>${esc(shortName(s.session))}</b>
+          <span class="mut sm">${direct ? `${s.sat_matches} Satellitentreffer` : `${s.sat_matches || 0} von ${s.trails} Spuren zugeordnet`}</span><span class="grow"></span>
+          ${direct ? '<button class="btn sm ghost" data-fitgo>Prüfen</button>' : `<button class="btn sm ghost" data-search>${s.site_search ? 'Erneut suchen' : 'Standort suchen'}</button>`}</div>
+          <div class="st-fit-res sm"></div></div>`; }).join('')}</div>`);
+    // Frühere bzw. laufende Suche dieser Beobachtung anzeigen
+    $$('.st-fit[data-searchable]', t).forEach(box => { const s = S.run.sessions.find(x => x.folder === box.dataset.fit), r = rematchState();
+      if (s?.site_search || (r.kind === 'search' && r.state === 'running' && r.folder === box.dataset.fit)) watchSearch(box); });
     t.onclick = async (e) => {
       const b = e.target.closest('[data-s]'); if (b) { S.session = +b.dataset.s; S.mode = 'video'; location.hash = `#/skytrace/${encodeURIComponent(runId)}/vorschau`; return; }
       const box = e.target.closest('[data-fit]'); if (!box) return;
@@ -545,15 +605,45 @@ async function runView(root, runId, tab = 'vorschau') {
         catch (err) { out.innerHTML = `<span class="bad">${esc(err.message)}</span>`; }
         go.disabled = false; go.classList.remove('busy');
       }
+      if (e.target.closest('[data-search]') && await startRematch({ run: runId, folder: box.dataset.fit }, null, '/sitesearch')) watchSearch(box);
       if (e.target.closest('[data-fitapply]')) applyFit(box);
+      if (e.target.closest('[data-rematchrun]')) startRematch({ run: runId }, 'Satelliten werden mit dem neuen Ort neu abgeglichen.');
     };
+  }
+  // Standortsuche verfolgen: Fortschritt aus dem Auftrag, danach Ergebnis (standortsuche.json) mit „Übernehmen“
+  async function watchSearch(box) {
+    if (box._watching) return;
+    box._watching = true;
+    const out = $('.st-fit-res', box), btn = $('[data-search]', box);
+    try {
+      for (;;) {
+        if (!box.isConnected) return;
+        const d = await api(`${T}/sitesearch?run=${encodeURIComponent(runId)}&folder=${encodeURIComponent(box.dataset.fit)}`);
+        const busy = d.job?.state === 'running';
+        if (btn) btn.disabled = busy;
+        if (!busy) {
+          if (d.job?.state === 'error') out.innerHTML = `<p class="bad">${esc(d.job.error || 'Suche fehlgeschlagen.')}</p>`;
+          else if (d.result) { box._fit = d.result; out.innerHTML = searchHtml(d.result); if (btn) btn.textContent = 'Erneut suchen'; }
+          return;
+        }
+        out.innerHTML = `<p class="mut"><span class="spinner"></span> ${esc(d.job.text || 'Suche läuft …')}${d.job.total ? ` · ${Math.round(100 * d.job.current / d.job.total)} %` : ''}</p>`;
+        await new Promise(res => setTimeout(res, 1500));
+      }
+    } catch (err) { out.innerHTML = `<span class="bad">${esc(err.message)}</span>`; }
+    finally { box._watching = false; }
+  }
+  function searchHtml(r) {
+    const when = r.created ? new Date(r.created * 1000).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '';
+    const head = `<p class="dim">Suche vom ${esc(when)} mit ± ${String(r.radius_km).replace('.', ',')} km: ${r.wide ?? 0} von ${r.tracks} Spuren passen zu einer Bahn`
+      + (r.ok ? ` · am Vorschlag streng geprüft <b>${r.after} statt ${r.before}</b> Treffer` : '') + (r.unchecked ? ` · ${r.unchecked} ohne lokale Bahndaten` : '') + '</p>';
+    return head + fitHtml(r);
   }
   const DIRS = ['Norden', 'Nordosten', 'Osten', 'Südosten', 'Süden', 'Südwesten', 'Westen', 'Nordwesten'];
   const km = (v) => (Math.round(v * 100) / 100).toLocaleString('de-DE');
   function fitHtml(r) {
     if (!r.ok) return `<p class="mut">${esc(r.reason)}</p>`;
     const dir = DIRS[Math.round(r.bearing_deg / 45) % 8];
-    const facts = `${r.trails} Spuren (${r.timed} mit Zeitbezug${r.dropped.length ? `, ${r.dropped.length} als Ausreißer verworfen` : ''}) · Abweichung quer ${Math.round(r.rms_before_arcsec)}″ → ${Math.round(r.rms_after_arcsec)}″ · Uhr der Kamera ${r.clock_s > 0 ? 'geht ' + String(r.clock_s).replace('.', ',') + ' s nach' : r.clock_s < 0 ? 'geht ' + String(-r.clock_s).replace('.', ',') + ' s vor' : 'stimmt'} (± ${String(r.clock_sigma_s).replace('.', ',')} s)`;
+    const facts = `${r.trails} Spuren (${r.timed} mit Zeitbezug${r.dropped.length ? `, ${r.dropped.length} als Ausreißer verworfen` : ''}) · Abweichung quer ${Math.round(r.rms_before_arcsec)}″ → ${Math.round(r.rms_after_arcsec)}″ · ${!r.timed ? 'Uhrversatz nicht bestimmbar (keine Spur ganz im Bild)' : `Uhr der Kamera ${r.clock_s > 0 ? 'geht ' + String(r.clock_s).replace('.', ',') + ' s nach' : r.clock_s < 0 ? 'geht ' + String(-r.clock_s).replace('.', ',') + ' s vor' : 'stimmt'} (± ${String(r.clock_sigma_s).replace('.', ',')} s)`}`;
     if (!r.worth) return `<p><span class="ok">Kein deutlich besserer Ort</span> <span class="mut">– Verschiebung ${km(r.shift_km)} km ± ${km(r.shift_sigma_km)} km liegt im Rahmen.</span></p><p class="dim">${facts}</p>`;
     return `<p>Diese Nacht passt besser zu einem Ort <b>${km(r.shift_km)} km weiter im ${dir}</b> (± ${km(r.ellipse_km.major)} km) als „${esc(r.site?.name || 'eingestellter Ort')}“.</p>
       <p class="dim">${facts}</p>
@@ -570,16 +660,17 @@ async function runView(root, runId, tab = 'vorschau') {
     try { override = !!(await api(T + '/settings')).sites?.[session]; } catch { /* ohne Einstellungen: keine Ausnahme bekannt */ }
     if (!await confirmDlg('Standort übernehmen?', `Ein neuer Ort „${esc((r.site?.name || 'Standort') + ' (Satelliten ' + night + ')')}“ (± ${km(r.accuracy_m / 1000)} km) wird angelegt und der Nacht ${esc(night)} zugeordnet. Der bisherige Ort bleibt erhalten.`
       + (override ? ' <b>Für diese Beobachtung ist in SkyTrace ein eigener Standort hinterlegt, der sonst Vorrang hätte – diese Ausnahme wird dabei entfernt.</b>' : '')
-      + ' Danach „Zeitreihen aktualisieren“, um neu abzugleichen.', 'Übernehmen')) return;
+      + ' Danach kannst du die Analyse mit dem neuen Ort neu abgleichen.', 'Übernehmen')) return;
     try {
       if (override) await send(T + '/settings', { session, site: null });
       const d = await api('/sites?nights=false');
       const id = 's' + Math.random().toString(16).slice(2, 10);
       await send('/sites', { ...d, list: [...d.list, { id, name: `${r.site?.name || 'Standort'} (Satelliten ${night})`, lat: r.lat, lon: r.lon, alt_m: r.alt_m, accuracy_m: r.accuracy_m,
-        note: `aus ${r.trails} Satellitenspuren zurückgerechnet, Uhr ${r.clock_s} s` }] });
+        note: `aus ${r.trails} Satellitenspuren zurückgerechnet${r.timed ? `, Uhr ${r.clock_s} s` : ""}` }] });
       await send('/sites/night', { night, site_id: id, nights: false });
-      toast('Ort übernommen – Zeitreihen aktualisieren, um neu abzugleichen.', 'ok');
-      $('.st-fit-res', box).insertAdjacentHTML('beforeend', '<p class="ok">Übernommen. <a href="#/settings/standorte">Standorte ansehen</a></p>');
+      toast('Ort übernommen.', 'ok');
+      $('.st-fit-res', box).insertAdjacentHTML('beforeend', `<p class="ok">Übernommen. <a href="#/settings/standorte">Standorte ansehen</a></p>
+        <div class="row"><button class="btn sm" data-rematchrun>${icon('refresh')}Jetzt mit dem neuen Ort neu abgleichen</button></div>`);
     } catch (err) { toast(err.message, 'err'); }
   }
 
@@ -632,6 +723,11 @@ async function runView(root, runId, tab = 'vorschau') {
     async update(st) {
       const s = st.modules.skytrace;
       if (!s) return;
+      const rm = s.rematch || {};
+      if (rmMine(rm)) jobState();
+      else if (rm.key && rm.key !== S.rmDone && rm.state && rm.kind === 'rematch' && (rm.all || (rm.runs || []).includes(runId))) {
+        S.rmDone = rm.key; await refreshRun(); draw(); return;      // Neuabgleich dieses Laufs fertig → neu laden
+      }
       const wasLive = isLive(), mine = s.run === runId;
       if (!s.running && !wasLive && !mine) return;
       const prevRev = S.engine.revision, prevStop = S.engine.stopping;
@@ -816,8 +912,9 @@ async function statsView(el) {
   const date = s => s ? new Date(s + 'T12:00:00Z').toLocaleDateString('de-DE', { timeZone: 'UTC' }) : 'Nacht unbekannt';
   const pct = (a, b) => b ? (100 * a / b).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' %' : '—';
   el.innerHTML = `<div class="pagehead"><div><h1>SkyTrace-Statistik</h1><p class="mut">Erkannte Spuren, Satellitenzuordnungen und Katalogabgleiche über alle Analysen.</p></div>
-    <span class="grow"></span><select id="sts-year" aria-label="Beobachtungsjahr"><option value="">Alle Jahre</option></select></div><div id="sts-body"></div>`;
+    <span class="grow"></span><select id="sts-year" aria-label="Beobachtungsjahr"><option value="">Alle Jahre</option></select></div><div id="sts-body"></div><div id="sts-rematch"></div>`;
   const body = $('#sts-body', el), select = $('#sts-year', el);
+  rematchPanel($('#sts-rematch', el));
   select.onchange = () => { year = select.value; draw(); };
   function bars(rows) {
     const max = Math.max(1, ...rows.map(r => r.n));
@@ -974,7 +1071,8 @@ AF.register('skytrace', {
     [/^\/skytrace\/([^/]+)(?:\/(\w+))?$/, 'skytrace', runView],
   ],
   settings,
-  status: (st, badge) => badge('skytrace', st.modules.skytrace?.running ? '●' : 0, true),
+  status: (st, badge) => { badge('skytrace', st.modules.skytrace?.running || st.modules.skytrace?.rematch?.state === 'running' ? '●' : 0, true); rematchStatus(st); },
+  sitesPanel: rematchPanel,                    // Abschnitt unter Einstellungen → Standorte (sites.js)
   async summary(st) {
     const s = st.modules.skytrace || {}, runs = await api(T + '/runs');
     return { title: 'SkyTrace', icon: 'orbit', href: '#/skytrace', sub: runs[0] ? `Zuletzt: ${shortName(runs[0].title)} · ${runDate(runs[0].id) || ago(runs[0].modified)}` : 'Noch keine Analysen',

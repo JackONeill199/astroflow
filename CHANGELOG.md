@@ -3,6 +3,21 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.28.0 – 05.11.2026
+
+### Neu
+- **SkyTrace: Analysen nach Standortänderungen neu prüfen.** „Analyse → Satelliten neu abgleichen“ bestimmt für jede Spur den Ort
+  neu aus der Ortsliste (Ausnahme der Beobachtung → FITS → Nacht/Zeitraum → Standard-Ort, auch wenn die Rohbilder schon gelöscht sind)
+  und gleicht die Satelliten mit den lokal gespeicherten Bahndaten neu ab. Kandidaten, Bahn-Einblendungen und Bericht werden
+  aktualisiert. Läuft im Hintergrund mit Fortschritt unter Aktivität, ohne neue Archiv- oder Namensabfragen.
+- **Alle SkyTrace-Analysen neu abgleichen** (SkyTrace-Statistik und Einstellungen → Standorte): prüft nur Spuren, deren Ort sich
+  geändert hat. Ändern sich Orte oder Zeiträume, fragt ein Hinweis einmal nach, ob neu abgeglichen werden soll – Orte werden nie
+  automatisch übernommen.
+- **Standortsuche für Nächte ohne Treffer:** Unter Beobachtungen → „Standort der Nacht prüfen“ gibt es jetzt auch für Nächte mit
+  weniger als drei zugeordneten Spuren „Standort suchen“: Abgleich mit ± 10 km Spielraum, Rückrechnung aus den eindeutigen
+  Zuordnungen (Starlink-Züge und Ausreißer bleiben außen vor), danach strenger Abgleich am Vorschlag. Übernommen wird erst nach
+  Bestätigung, danach lässt sich die Analyse direkt mit dem neuen Ort neu abgleichen.
+
 ## 0.27.1 – 05.11.2026
 
 ### Behoben

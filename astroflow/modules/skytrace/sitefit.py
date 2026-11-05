@@ -207,17 +207,16 @@ def _sure(sat: dict) -> dict | None:
     return ms[0]
 
 
-def collect(folder: Path, cache: Path | None) -> tuple[list[dict], dict | None, list[str]]:
-    """Beobachtungen einer Session (Ordner mit kandidaten.json) → Eingaben für `fit`, Standort des Laufs, Hinweise."""
-    try:
-        cands = json.loads((folder / "kandidaten.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return [], None, ["Keine Kandidaten in diesem Lauf."]
-    out, site, notes = [], None, []
-    for c in cands:
-        site = site or (c.get("site") if (c.get("site") or {}).get("lat") is not None else None)
-        sat = {r.get("provider"): r for r in c.get("catalogs") or []}.get("satellites") or {}
-        m = _sure(sat)
+def satellites_of(c: dict) -> dict:
+    return {r.get("provider"): r for r in c.get("catalogs") or []}.get("satellites") or {}
+
+
+def observations(folder: Path | None, pairs, cache: Path | None) -> tuple[list[dict], list[str]]:
+    """(Kandidat, Satellitenergebnis)-Paare → Eingaben für `fit` (nur eindeutige Treffer mit Bahnelementen) und Hinweise.
+    Das Ergebnis kann aus `kandidaten.json` stammen oder frisch gerechnet sein (Standortsuche, rematch_sites.py)."""
+    out, notes = [], []
+    for c, sat in pairs:
+        m = _sure(sat or {})
         if not m or not c.get("world_path") or c.get("timestamp") is None or c.get("exposure_seconds") is None:
             continue
         start, dur = _exposure_start(c, sat), float(c["exposure_seconds"])
@@ -233,7 +232,18 @@ def collect(folder: Path, cache: Path | None) -> tuple[list[dict], dict | None, 
             notes.append(f"{c.get('id')}: Bahnelemente für NORAD {m['norad_id']} nicht mehr vorhanden")
             continue
         out.append({"sat": rec, "trail": c["world_path"], "start": start, "duration": dur, "inside": _inside(folder, c),
-                    "label": f"{c.get('id')} {m.get('name') or 'NORAD ' + str(m['norad_id'])}"})
+                    "label": f"{c.get('id')} {m.get('name') or 'NORAD ' + str(m['norad_id'])}", "id": c.get("id")})
+    return out, notes
+
+
+def collect(folder: Path, cache: Path | None) -> tuple[list[dict], dict | None, list[str]]:
+    """Beobachtungen einer Session (Ordner mit kandidaten.json) → Eingaben für `fit`, Standort des Laufs, Hinweise."""
+    try:
+        cands = json.loads((folder / "kandidaten.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return [], None, ["Keine Kandidaten in diesem Lauf."]
+    site = next((c["site"] for c in cands if (c.get("site") or {}).get("lat") is not None), None)
+    out, notes = observations(folder, [(c, satellites_of(c)) for c in cands], cache)
     return out, site, notes
 
 
