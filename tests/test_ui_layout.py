@@ -479,3 +479,30 @@ def test_tonight_recommendations_chart_and_links(server, browser, size, tmp_path
     assert page.get_by_label('Dashboard-Aufteilung').input_value() == 'library'
     page.close()
     assert not errors, errors
+
+
+@pytest.mark.parametrize("size", ["handy", "desktop"])
+def test_unused_site_hint_and_assign(server, browser, size):
+    """Ein Ort ohne Zeitraum zeigt „Wird noch nicht verwendet“; „Zeitraum zuweisen“ legt einen Zeitraum an, danach verschwindet der Hinweis."""
+    base, _ = server
+    page = browser.new_page(viewport={"width": SIZES[size][0], "height": SIZES[size][1]})
+    page.goto(f"{base}/#/settings/standorte")
+    row = page.locator('.site-row[data-id="c"]')
+    row.wait_for()
+    assert "Wird noch nicht verwendet" in row.locator(".site-unused").inner_text()
+    assert page.locator('.site-row[data-id="a"] .site-unused, .site-row[data-id="b"] .site-unused').count() == 0
+    try:
+        row.locator('[data-act="assign"]').click()
+        form = row.locator("#siteAssign")
+        form.wait_for()
+        form.locator("[name=from]").fill("2030-02-01")
+        form.locator("[name=to]").fill("2030-02-05")
+        form.locator("button[type=submit]").click()
+        page.wait_for_selector('.site-row[data-id="c"]:not(:has(.site-unused)):not(:has(#siteAssign))')
+        assert "2030-02-01" in page.eval_on_selector_all(".site-periods input[data-f=from]", "els => els.map(e => e.value)")
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+    finally:                                                 # gemeinsame Fixture wiederherstellen
+        d = page.evaluate("fetch('/api/sites?nights=false').then(r => r.json())")
+        page.evaluate("(d) => fetch('/api/sites', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(d)})",
+                      {**d, "periods": [p for p in d["periods"] if p["from"] != "2030-02-01"]})
+    page.close()

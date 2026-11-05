@@ -20,6 +20,15 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   8–26 Spuren je Nacht eindeutig zugeordnet (vorher 0–1); in Kontrollnächten zu Hause kein Vorschlag, die Suche läuft dort gar nicht; die Kamera-Uhr ging dort richtig (−8…+1 s) – der früher vorgeschlagene Versatz von −639 s
   für den 01.08.2022 kam vom falschen Ort.
 
+## 0.31.4 – 05.11.2026
+
+### Behoben
+- **Standorte: Orte ohne Zeitraum fallen auf.** Ein Ort, der weder Standard ist noch einen Zeitraum oder eine Einzelnacht hat, wurde nie verwendet –
+  ohne dass man es sah (Folge: eine erneute SkyTrace-Analyse nutzte weiter den alten Ort). Solche Orte zeigen jetzt „Wird noch nicht
+  verwendet – Zeitraum oder Nacht zuweisen“ mit Knopf „Zeitraum zuweisen“; nach dem Anlegen eines neuen Orts fragt die Seite gleich
+  nach von/bis. Zeiträume, die ein kürzerer ganz überdeckt, tragen den Hinweis „Gilt in keiner Nacht“.
+- **SkyTrace: Ort der Nacht im Analyse-Menü.** Unter „Erneut analysieren“ / „Satelliten neu abgleichen“ steht, welcher Ort laut Ortsliste für die Nacht des Laufs gilt.
+
 ## 0.31.3 – 05.11.2026
 
 ### Behoben

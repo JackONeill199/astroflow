@@ -135,7 +135,8 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
         d = book.data()
         default = book.site_for(night="1900-01-01") or {}
         today = sites_mod.planning_night(time.time(), default.get("lon") or 0)   # dieselbe Nacht wie „Heute Nacht“
-        view = {**d, "today": today, "today_site": book.site_for(night=today)}
+        view = {**d, "today": today, "today_site": book.site_for(night=today),
+                "unused": sites_mod.unused_sites(d), "shadowed": sites_mod.shadowed_periods(d)}
         if ctx.services.get("site_sky"):                  # Bilder-Modul: Himmelsqualität je Ort (optional)
             try:
                 view["sky"] = ctx.services["site_sky"]()
