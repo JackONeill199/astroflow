@@ -76,3 +76,17 @@ def test_folders_search_endpoint(tmp_path):
         assert [h["name"] for h in r["hits"]] == ["2022-05-06_22-12-15_observation_M3"]
         assert r["hits"][0]["path"] == str(base.resolve() / "2022" / "2022-05-06_22-12-15_observation_M3")
         assert c.get("/api/folders/search", params={"path": str(tmp_path / "nein"), "q": "x"}).status_code == 400
+
+
+def test_search_budget_inside_large_folder(tmp_path, monkeypatch):
+    """Budget greift auch mitten in einem großen Ordner (je Eintrag, Dateien zählen mit) – Ergebnis als begrenzt markiert."""
+    from astroflow.core import folders
+    for i in range(300):
+        (tmp_path / f"obs_{i:03d}").mkdir()
+    monkeypatch.setattr(folders, "SEARCH_VISIT", 128)
+    r = folders.search_folders(str(tmp_path), "obs", depth=1)
+    assert r["truncated"] and 0 < len(r["hits"]) < 300 and r["visited"] <= 129
+    monkeypatch.setattr(folders, "SEARCH_VISIT", 10 ** 6)
+    monkeypatch.setattr(folders, "SEARCH_SECONDS", -1.0)                       # Zeit sofort abgelaufen
+    r = folders.search_folders(str(tmp_path), "obs", depth=1)
+    assert r["truncated"] and r["hits"] == []
