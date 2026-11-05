@@ -15,8 +15,8 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   zurückgerechnet“ mit gerundeten Koordinaten, Unsicherheit, Zahl der Spuren und kleiner Karte (ohne Kartendienst); nur deutlich über
   dem Zufall. Liegt der Ort ≤ 2 km neben einem Listenort, wird dieser vorgeschlagen. „Übernehmen“ legt Ort und Zuordnung der Nacht an
   und gleicht neu ab – nie automatisch. Ergibt der neue Ort, dass die Uhr richtig ging, entfällt ein am falschen Ort gefundener Uhrversatz.
-- Geprüft an einer echten Urlaubswoche (Ort rund 250 km neben jedem Listenort): Ort auf 0,1–0,7 km gefunden, 8–26 Spuren je Nacht
-  eindeutig zugeordnet (vorher 0–1); die Kamera-Uhr ging dort richtig (−8…+1 s) – der früher vorgeschlagene Versatz von −639 s
+- Geprüft an einer echten Urlaubswoche (Ort rund 250 km neben jedem Listenort): Ort in 3 von 4 Nächten auf 0,1–0,7 km gefunden,
+  8–26 Spuren je Nacht eindeutig zugeordnet (vorher 0–1); in Kontrollnächten zu Hause kein Vorschlag, die Suche läuft dort gar nicht; die Kamera-Uhr ging dort richtig (−8…+1 s) – der früher vorgeschlagene Versatz von −639 s
   für den 01.08.2022 kam vom falschen Ort.
 
 ## 0.31.3 – 05.11.2026

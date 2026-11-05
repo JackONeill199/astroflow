@@ -10,15 +10,14 @@ Die bisherige Suche (`rematch_sites.night`, `sitefit`) sucht nur ≤ 20 km um Li
      wenn der Satellit dort ≥ `MIN_ALT_DEG` hoch steht, im Sonnenlicht ist, sich am Himmel in Spurrichtung bewegt
      (≤ `ANGLE_DEG`) und die Spur innerhalb der Belichtung schaffen kann (Spur ganz im Bild: Dauer ≈ Belichtung).
      Vorauswahl auf einem 15-s-Raster für alle Bahnen (SGP4 vektorisiert), dann 1-s-Schritte nur für die übrigen Paare.
-  2. Abstimmen: Bodenpunkte in Zellen (`CELL_KM`) × Uhrversatz-Klassen (`CLOCK_BIN_S`); ein Punkt zur Zeit t stimmt für
-     alle Versätze, bei denen der Durchgang in die Belichtung fällt. Gezählt werden verschiedene Spuren (je Spur einmal) in
-     überlappenden 2×2×2-Blöcken; der Ort einer Häufung braucht Stimmen verschiedener Spuren mit **verschiedenen NORAD-Nummern**.
+  2. Abstimmen: grob in Zellen (`CELL_KM`) × Uhrversatz-Klassen (`CLOCK_BIN_S`), dann fein (`FINE_KM` × 1 s) um die besten
+     Blöcke; ein Punkt zur Zeit t stimmt für alle Versätze, bei denen der Durchgang in die Belichtung fällt. Eine Häufung braucht
+     Stimmen verschiedener Spuren mit **verschiedenen NORAD-Nummern**.
      Uhrversatz als zweite Unbekannte: erst ± 60 s (normale Uhr), ohne Ergebnis ± 20 min. Ein Uhrfehler verschiebt die
      Bodenpunkte entlang der jeweiligen Bahn – Spuren mit verschiedenen Richtungen treffen sich dann nicht mehr.
-  3. Zufallsniveau: Die Zeiten der Spuren werden gegeneinander zufällig verschoben (zyklisch im Versatzfenster) und neu
-     gezählt (`NULL_RUNS`). Das zerstört echte Häufungen, erhält aber Dichte und Form der Stimmen je Spur. Erwartete Zahl
-     zufälliger Häufungen mit ≥ k Spuren = Mittel über die Läufe (oberhalb des Gesehenen geometrisch fortgesetzt).
-     Vorschlag nur ab `MIN_TRAILS` verschiedenen Spuren und Fehlalarm ≤ `MAX_FALSE`.
+  3. Zufallsniveau: λ = Summe je Spur der Wahrscheinlichkeit, eine zufällige Stelle (Ort, Versatz) abzudecken – aus der Dichte
+     ihrer Stimmen im Umkreis `LOCAL_KM`; Fehlalarm = Poisson(≥ k | λ) × Zahl unabhängiger Prüfstellen im Suchraum.
+     Vorschlag nur ab `MIN_TRAILS` verschiedenen Spuren und Fehlalarm ≤ `MAX_FALSE` (0,1 %).
   4. Verfeinern: `sitefit.fit` aus den beteiligten Bahnen (Ort + Uhr), dann strenger Abgleich aller Spuren der Nacht am
      Ergebnis (`rematch_sites.check`, normale Toleranzen) und zweite Rückrechnung aus dessen eindeutigen Treffern.
 
@@ -53,7 +52,7 @@ TOL_KM = 2.5                    # Spielraum quer am Boden (echte Treffer IC59: B
 ANG_TOL_ARCSEC = 300.0          # ferne Bahnen: Spielraum = Entfernung × diesem Winkel (strenge Toleranz 360″)
 LOCAL_KM = 300.0                # Umkreis für die Dichte zufälliger Stimmen
 MIN_TRAILS = 3
-MAX_FALSE = 0.01
+MAX_FALSE = 0.001               # 10× strenger als nominal: echte Zufallsläufe (verschobene Spurzeiten) erreichten einmal 0,9 %
 MAX_CLUSTERS = 4                # so viele Häufungen höchstens streng nachprüfen
 NEAR_LIST_KM = 2.0              # so nah an einem Listenort → diesen vorschlagen
 MAX_PAIRS = 60000               # Notbremse gegen Speicher/Laufzeit

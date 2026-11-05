@@ -371,7 +371,10 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
      NORAD-Nummern** (Spuren mit wenigen Möglichkeiten zuerst). Echte Bodenpunkte lagen 0,6–3,3 km am wahren Ort (1-s-Schritte, Bahnfehler).
   3. **Zufallsniveau:** λ = Σ je Spur 1 − exp(−abgedeckte Fläche × Versatzbreite / Volumen) im Umkreis 300 km aus allen Stimmen; Fehlalarm =
      Poisson(≥ k | λ) × Zahl unabhängiger Prüfstellen (Fläche/(5 km)² × Versatzbereich/8 s). Uhr erst ± 60 s, ohne Ergebnis ± 20 min (mit „Uhrversatz
-     suchen“). EICHUNG_PLATZHALTER
+     suchen“). **Eichung an echten Spuren** (Kopien 01./06.08.2022, Zeit je Spur zufällig um ± 3–15 min verschoben → kein gemeinsamer Ort,
+     14 Läufe): kleinste Schätzung meist 13–100 %, einmal 0,9 % (7 von 32 Spuren, streng danach 5 eindeutig – der Ausgleich erzwingt mit 3 freien
+     Größen immer einige Treffer). Die Poisson-Schätzung ist also rund 10× zu optimistisch (Starlink-Züge, korrelierte Stimmen) →
+     `MAX_FALSE` 0,1 %; echte Funde lagen bei ≤ 1e-5. Mit 0,1 % in allen 14 Läufen kein Vorschlag.
   4. **Verfeinern** (`refine`, ≤ 4 Häufungen): `sitefit.fit` aus den beteiligten Bahnen (Ort + Uhr, Höhe 0 m), strenger Abgleich aller Spuren der Nacht
      am Ergebnis mit dem Versatz (`check`, normale Toleranzen) und zweite Rückrechnung aus dessen eindeutigen Treffern. Vorschlag nur bei ≥ 3 eindeutigen
      und mehr als bisher.
@@ -383,7 +386,19 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
   (Satelliten <Nacht>)“ an, Hinweis auf Höhe/Namen. Nie automatisch.
 - **Leistung:** IC59 allein 19 s (Stufe ± 60 s: 1 137 Paare, 4 s Rückprojektion), ganze Nacht 06.08. (32 Spuren) 39 s; ± 20 min ~36 s mehr. `MAX_PAIRS` 60 000
   als Notbremse. Bahnen nur lokal (`orbits_cache_only`), keine SATCAT-Abfragen (`satcat_offline`), Anhalten über die Stopp-Datei (`check_stop`).
-- **Befund** (Kopien, Urlaubsort aus der Ortsliste ausgeblendet; Abstand zum später angelegten Ort): BEFUND_PLATZHALTER
+- **Befund** (06.11.2026, Kopien der Kandidaten-JSONs, `nights … --global-km 1500`, Urlaubsort aus der Ortsliste ausgeblendet; Abstand zum
+  später angelegten Ort, nächster Listenort ~244 km entfernt):
+
+  | Nacht | Spuren | bisher eindeutig | Ergebnis | Abstand | Uhr | Dauer global |
+  |---|---|---|---|---|---|---|
+  | 01.08. | 12 | 0 (mit −639 s: 5) | `global` 12/12, quer 80″ | 0,68 km | +0,7 ± 0,7 s → −639 s verworfen | 9 s |
+  | 03.08. | 4 | 0 | kein Vorschlag (keine Häufung über dem Zufall) | – | – | 6 s |
+  | 06.08. | 32 | 1 | `global` 26/32, quer 29″ (IC59 allein 12/16, 25″) | 0,13 km | −4,1 ± 0,5 s | 55 s |
+  | 07.08. | 8 | 1 | `global` 8/8, quer 55″ | 0,67 km | −7,6 ± 0,9 s | 5 s |
+  | 15.07., 18.07., 17.06. (Kontrolle, zu Hause) | 9 / 9 / 16 | – | Listenort passt (9, 7, 15 eindeutig), Suche läuft nicht | – | – | – |
+
+  Ohne Listenprüfung direkt gesucht fanden auch die Kontrollnächte ihren Heimatbereich (7–15 Spuren). 03.08. (NGC 246/NGC 7023) bleibt offen –
+  dort passt vermutlich derselbe Urlaubsort; übernimmt man ihn für die Woche, gleicht „neu abgleichen“ die Nacht mit ab.
 - Tests: `tests/test_skytrace_global.py` (Engine im Engine-Interpreter direkt ausführbar: Ort 300 km neben dem Listenort, Uhr −300 s, 40 Störbahnen →
   < 5 km, ± 5 s, alle Spuren eindeutig, erst in der ± 20-min-Stufe; verdrehte Spuren → kein Vorschlag; Nachtsuche mit/ohne `global_km`; guter Listenort →
   Suche läuft nicht; Geometrie der Rückprojektion; Server reicht `--global-km` durch). UI: `#/skytrace/standorte` in `test_ui_layout.py` (Nacht mit `global`).
