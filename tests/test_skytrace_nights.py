@@ -112,6 +112,21 @@ def test_ambiguous_train_not_used(engine, tmp_path, monkeypatch):
     assert _offset_km(p, TRUE) < 0.2
 
 
+def test_stored_matches_of_other_site_not_reused(engine, tmp_path, monkeypatch):
+    """Gespeicherte Treffer stammen vom alten (richtigen) Ort, die Nacht ist inzwischen einem falschen zugeordnet → neu prüfen."""
+    _sites(tmp_path / "settings.json", [{**HOME, **TRUE}], "home")
+    sats = _satellites(4)
+    _patch(monkeypatch, sats)
+    a = _observation(tmp_path, "2026-11-05_10-00-00-000001", f"{NIGHT}_observation_Feld_A", sats, [0, 1, 2, 3], TRUE)
+    import contextlib, io
+    with contextlib.redirect_stdout(io.StringIO()):
+        engine.rematch([tmp_path / "st" / "Ergebnisse" / a["run"]], force=True)     # Treffer am richtigen Ort speichern
+    _sites(tmp_path / "settings.json", [{**HOME, **WRONG}], "home")
+    n = _search(engine, tmp_path, [a])
+    assert n["current"]["sure"] == 0 and n["tested"], n               # nicht die alten Treffer übernommen
+    assert n["proposal"]["kind"] == "fit" and _offset_km(n["proposal"], TRUE) < 0.2
+
+
 def test_stop_keeps_finished_nights(engine, tmp_path, monkeypatch):
     _sites(tmp_path / "settings.json", [{**HOME, **TRUE}], "home")
     sats = _satellites(2)
@@ -194,7 +209,7 @@ if __name__ == "__main__":
         def syspath_prepend(self, p): sys.path.insert(0, p)
         def close(self): [setattr(o, n, v) for o, n, v in reversed(self.undo)]; _unload()
     for test in (test_two_observations_fitted_together, test_right_list_site_replaces_wrong, test_no_matching_trail_no_proposal,
-                 test_ambiguous_train_not_used, test_stop_keeps_finished_nights):
+                 test_ambiguous_train_not_used, test_stored_matches_of_other_site_not_reused, test_stop_keeps_finished_nights):
         mp = MP()
         with tempfile.TemporaryDirectory() as d:
             try:

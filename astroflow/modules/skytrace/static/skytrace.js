@@ -1079,7 +1079,7 @@ function clockText(p) {
   const v = String(Math.abs(p.clock_s)).replace('.', ',');
   return `Uhr ${p.clock_s > 0 ? 'geht ' + v + ' s nach' : p.clock_s < 0 ? 'geht ' + v + ' s vor' : 'stimmt'} (± ${String(p.clock_sigma_s).replace('.', ',')} s)`;
 }
-function nightRow(n) {
+function nightRow(n, busy = false) {
   const [label, cls] = NIGHT_STATUS[n.status] || [n.status || '–', ''], p = n.proposal, c = n.current || {};
   const date = new Date(n.night + 'T12:00:00Z').toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
   const obs = (n.observations || []).map(o => shortName(o.session)).join(' · ');
@@ -1094,11 +1094,14 @@ function nightRow(n) {
     <div class="stn-grid"><div><small class="dim">Bisher</small><b>${esc(c.name || 'kein Ort')}</b><span class="mut sm">${now}</span></div>
       ${p ? `<div><small class="dim">Vorschlag</small>${prop}</div>` : ''}</div>
     ${n.note || n.fit_reason ? `<p class="dim sm">${esc([n.note, n.status !== 'better' && n.fit_reason ? 'Rückrechnung: ' + n.fit_reason : ''].filter(Boolean).join(' '))}</p>` : ''}
-    ${p && !n.applied ? `<div class="row"><button class="btn sm" data-apply="${esc(n.night)}">Für diese Nacht übernehmen …</button></div>` : ''}</div>`;
+    ${p && !n.applied ? `<div class="row"><button class="btn sm" data-apply="${esc(n.night)}"${busy ? ' disabled title="Erst nach dem Ende der Suche"' : ''}>Für diese Nacht übernehmen …</button></div>` : ''}</div>`;
 }
 // Übernehmen: bestehender Ort → Zuordnung der Nacht, neuer Ort → neuer Eintrag (wie applyFit); SkyTrace-Ausnahmen der Beobachtungen entfernen
 async function applyNights(rows) {
   if (!rows.length) return false;
+  // Während die Suche läuft, schreibt sie die Liste noch – vor jeder Änderung an Orten prüfen
+  try { if ((await api(T + '/sitesearch/nights')).job?.state === 'running') { toast('Die Suche läuft noch – bitte warten oder anhalten.', 'err'); return false; } }
+  catch (e) { toast(e.message, 'err'); return false; }
   let ex = {};
   try { ex = (await api(T + '/settings')).sites || {}; } catch { /* ohne Einstellungen: keine Ausnahme bekannt */ }
   const sessions = [...new Set(rows.flatMap(n => (n.observations || []).map(o => o.session)))].filter(s => ex[s]);
@@ -1126,8 +1129,9 @@ async function applyNights(rows) {
     for (const n of rows) for (const night of (n.assign?.length ? n.assign : [n.night])) await send('/sites/night', { night, site_id: target[n.night], nights: false });
     await send(T + '/sitesearch/nights/applied', { nights: rows.map(n => n.night) });
     await ackSites();
-    await startRematch({ runs: [...new Set(rows.flatMap(n => (n.observations || []).map(o => o.run)))], force: false },
+    const started = await startRematch({ runs: [...new Set(rows.flatMap(n => (n.observations || []).map(o => o.run)))], force: false },
       rows.length === 1 ? 'Ort übernommen – die Analysen der Nacht werden neu abgeglichen.' : `${rows.length} Orte übernommen – die betroffenen Analysen werden neu abgeglichen.`);
+    if (!started) toast('Orte sind übernommen, der Neuabgleich startete nicht – später „Alle SkyTrace-Analysen neu abgleichen“ wählen.', 'err');
     return true;
   } catch (e) { toast(e.message, 'err'); return true; }
 }
@@ -1161,8 +1165,8 @@ async function nightsView(el) {
     body.innerHTML = `<div class="row stn-head"><div class="seg" role="tablist"><button data-show="better" class="${show === 'better' ? 'on' : ''}">Mit Vorschlag (${nights.filter(n => n.proposal || n.applied).length})</button>
         <button data-show="all" class="${show === 'all' ? 'on' : ''}">Alle Nächte (${nights.length})</button></div>
         <span class="mut sm">${count('ok')} passen · ${count('none')} ohne passenden Ort · Suche vom ${new Date(data.created * 1000).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}, ± ${data.radius_km} km${data.state === 'stopped' ? ' · angehalten' : ''}</span>
-        <span class="grow"></span>${open.length > 1 ? `<button class="btn sm" data-apply-all>Alle übernehmen (${open.length}) …</button>` : ''}</div>
-      ${list.length ? list.map(nightRow).join('') : `<div class="empty">${show === 'better' ? 'Keine Nacht mit besserem Ort gefunden.' : 'Keine Nächte mit Spuren.'}</div>`}
+        <span class="grow"></span>${open.length > 1 ? `<button class="btn sm" data-apply-all${running ? ' disabled' : ''}>Alle übernehmen (${open.length}) …</button>` : ''}</div>
+      ${list.length ? list.map(n => nightRow(n, running)).join('') : `<div class="empty">${show === 'better' ? 'Keine Nacht mit besserem Ort gefunden.' : 'Keine Nächte mit Spuren.'}</div>`}
       <p class="dim sm">Eindeutig = einer Satellitenbahn zugeordnet, ohne fast gleich gute zweite Bahn (Starlink-Züge zählen nicht). Zurückgerechnet wird erst ab 3 eindeutigen Spuren einer Nacht.
         „Kein Ort passt“ heißt: keine Spur ließ sich zuordnen – nicht, dass der Ort falsch ist.</p>`;
   }

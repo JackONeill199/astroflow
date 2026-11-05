@@ -270,7 +270,9 @@ def night(sitefit, group, entries, settings, radius_km, tick):
     out['current'] = _brief(current)
     if current and current.get('origin') == 'fits':
         return dict(out, status='fits', note='Der Ort steht in den FITS-Daten und hat Vorrang vor der Ortsliste – nichts zu ändern.')
-    stored = _score(sitefit, [(f, i, sat_of(i)) for f, i in entries])
+    # Gespeicherte Abgleiche gelten nur, wenn sie am jetzt aufgelösten Ort gerechnet wurden (Ortsliste kann sich geändert haben)
+    stored_triples = [(f, i, sat_of(i) if site_key(i.get('site')) == site_key(current) else None) for f, i in entries]
+    stored = _score(sitefit, stored_triples)
     out['current'].update(sure=stored['sure'], rms=stored['rms']) if out['current'] else None
 
     def strict(site):
@@ -285,7 +287,7 @@ def night(sitefit, group, entries, settings, radius_km, tick):
     if stored['sure'] >= sitefit.MIN_TRAILS:
         # Genug eindeutige Treffer am bisherigen Ort: nur verfeinern (wie „Standort der Nacht prüfen“)
         base = dict(current, **stored) if current else None
-        candidates = [(base, [(f, i, sat_of(i)) for f, i in entries])] if base else []
+        candidates = [(base, stored_triples)] if base else []
     else:
         candidates = []
         for s in sites:
