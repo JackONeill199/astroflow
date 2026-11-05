@@ -126,6 +126,46 @@ def generate(out: Path, n_lights=30, n_darks=8, n_flats=8, seed=1, anonymous=Fal
     return out
 
 
+def hot_pairs(rng, n_pairs=12, n_warm=40):
+    """Ortsfeste Sensorfehler wie bei der Stellina: R-Pixel-Paare (übereinander in der R-Ebene, ~10 000–20 000 ADU)
+    und warme Einzelpixel knapp unter der Kosmetik-Schwelle (≈ 7σ bei Rauschen 14). Rückgabe (Bild, Paar-Indizes)."""
+    hot = np.zeros((H, W), np.float32)
+    ys = 2 * rng.integers(10, H // 2 - 10, n_pairs)            # RGGB: R in geraden Zeilen/Spalten
+    xs = 2 * rng.integers(10, W // 2 - 10, n_pairs)
+    v = rng.uniform(10000, 20000, n_pairs)
+    hot[ys, xs] += v
+    hot[ys + 2, xs] += v * rng.uniform(0.8, 1.0, n_pairs)
+    wy, wx = 2 * rng.integers(5, H // 2 - 5, n_warm), 2 * rng.integers(5, W // 2 - 5, n_warm)
+    hot[wy, wx] += 110
+    return hot, np.concatenate([ys * W + xs, (ys + 2) * W + xs])
+
+
+def generate_hotpixel_pairs(out: Path, n_groups=6, per_group=4, seed=5, static=False) -> Path:
+    """Stellina-artige Serie ohne Darks: Das Gerät verharrt je `per_group` Aufnahmen auf derselben Stelle und springt
+    dann (Versatz + leichte Feldrotation) – so treffen ortsfeste Hotpixel-Paare mehrmals dieselbe Himmelsstelle.
+    static=True: Feld steht still (Sterne bleiben am selben Sensorpixel – sie dürfen nicht als Fehler gelten)."""
+    rng = np.random.default_rng(seed)
+    out = Path(out)
+    (out / "lights").mkdir(parents=True, exist_ok=True)
+    stars, ext = _sky(rng)
+    hot, pairs = hot_pairs(rng)
+    hdr = dict(INSTRUME="DemoScope", BAYERPAT="RGGB", EXPTIME=10.0, GAIN=80.0, OBJECT="M 31", RA=10.684, DEC=41.269)
+    t0 = dt.datetime(2026, 8, 12, 22, 0, 0)
+    i = 0
+    for g in range(n_groups):
+        shift = np.zeros(2) if static else rng.uniform(-25, 25, 2)
+        ang = 0.0 if static else g * 0.6
+        sky = _frame(rng, stars, ext * 0.3, ang, shift, 3.6)
+        for _ in range(per_group):
+            raw = _mosaic(sky) + 300 + hot + rng.normal(0, 14, (H, W))
+            d = t0 + dt.timedelta(minutes=i * 2)
+            write_fits(out / "lights" / f"Light_M31_{i:03d}.fit", np.clip(raw, 0, 65535).astype(np.uint16),
+                       dict(hdr, **{"DATE-OBS": d.isoformat()}, IMAGETYP="Light"))
+            i += 1
+    np.save(out / "paare.npy", pairs)
+    return out
+
+
 # Mono-Kamera mit Filterrad: Kanalgewichte (R,G,B des Himmelsmodells) je Filter
 BAND_WEIGHTS = {"L": (0.34, 0.33, 0.33), "R": (1, 0, 0), "G": (0, 1, 0), "B": (0, 0, 1),
                 "Ha": (0.35, 0, 0), "OIII": (0, 0.12, 0.2), "SII": (0.15, 0, 0)}
