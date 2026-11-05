@@ -305,12 +305,15 @@ function depthTunnel(d, r, vw = null) {
     mark('oblique');
   };
   const intro = () => { if (vw) { go('front', true); k = 0; start(); return; } };
-  replayB?.addEventListener('click', intro);
-  const skip = () => { if (!fly) return; const dep = fly.depth; fly = null; if (dep) { k = 1; setDepth(); } dirty = true; };
+  let closing = false;                             // Rückflug zum flachen Bild läuft: nicht mehr unterbrechbar umzulenken
+  replayB?.addEventListener('click', () => { if (!closing) intro(); });
+  // Abbrechen eines Flugs springt ans Ziel – auch beim Rückflug, dessen Abschluss (then: close) dann sofort ausgeführt wird
+  const skip = () => { if (!fly) return; const { depth: dep, then } = fly; fly = null; if (dep) { k = 1; setDepth(); } dirty = true; then?.(); };
   renderer.domElement.addEventListener('pointerdown', skip);
   ctl.addEventListener('change', () => { dirty = true; });
   $('.seg', ov).addEventListener('click', (e) => {
     const b = e.target.closest('[data-v]'); if (!b) return;
+    if (closing) return;
     mark(b.dataset.v); if (k < 1) { k = 1; setDepth(); } go(b.dataset.v);
   });
   // Hochformat (Telefon): größerer Blickwinkel, damit der Trichter nicht seitlich abgeschnitten wird
@@ -372,6 +375,7 @@ function depthTunnel(d, r, vw = null) {
   // Zurück zum flachen Bild: erst nach vorn fahren und die Tiefe einziehen, dann ausblenden
   api3.close = (animated = true) => {
     if (!alive) return;
+    closing = true;
     if (!animated || reduced() || !plane) { close(); return; }
     fly = { t0: performance.now(), dur: 650, p0: cam.position.clone(), q0: ctl.target.clone(), p1: new THREE.Vector3(...views.front[0]), q1: new THREE.Vector3(...views.front[1]),
       f0: cam.fov, f1: fitFov, then: close };
