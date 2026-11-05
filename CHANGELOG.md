@@ -3,6 +3,16 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.31.3 – 05.11.2026
+
+### Behoben
+- **SkyTrace: „Erneut analysieren“ mit dem Stellina-Originalordner.** Die Unterordner `01-images-initial`, `02-images-adjust-focus` …
+  nummerieren beide ab `img-0001r.fits`; bei automatisch nach dem Stacken angelegten Läufen scheiterte die Zuordnung deshalb
+  („Dateiname nicht eindeutig“ bzw. „gehört nicht zur ursprünglichen Aufnahme“). Bei gleichnamigen Dateien wählt SkyTrace jetzt
+  die mit passender Aufnahmezeit (`DATE-OBS`) – auch wenn du den ganzen Beobachtungsordner oder die ganze Stellina-Platte wählst
+  (rund 7 s für 549 Aufnahmen, ganze Platte ~14 s). Passt keine, nennt die Meldung, wie viele gleichnamige Dateien es gab und
+  welche Aufnahmezeit gesucht wurde. Zugeordnet wird weiterhin nie allein nach dem Namen.
+
 ## 0.31.2 – 05.11.2026
 
 ### Behoben
