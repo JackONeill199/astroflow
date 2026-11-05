@@ -136,7 +136,7 @@ fehlt `sgp4` im Server, läuft `orbit3d.py` als Skript im Engine-Interpreter (JS
   „Kandidat öffnen“ setzt `focusNext` in `skytrace.js` und wechselt zum Reiter Kandidaten.
 - Tests: `test_skytrace_3d.py` (gegen astropy, alte Läufe, Hinweise), `test_skytrace_3d_run.py` (Teleskopweg gegen astropy,
   Lücke, Bildlage, ohne Treffer/Standort/Plate-Solving), `test_skytrace_3d_ui.py` (Playwright, 375/1440 px).
-  Offen: Flugzeug- und Meteordarstellung nur mit synthetischen Daten geprüft; kein Uhrversatz-Ausgleich in der Ansicht.
+  Offen: Flugzeug- und Meteordarstellung nur mit synthetischen Daten geprüft. Uhrversatz der Nacht: s. „Uhrversatz je Nacht“.
 
 ## Automatisch nach dem Stacken (`auto.py`, 28.10.2026)
 - Ereignis `stacking.stacked` → `AutoAnalysis.stacked`: noch nicht übergebene Light-Aufnahmen (Dienst `project_frames`, Merkliste
@@ -309,7 +309,12 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
   `sitefit`/`orbit3d` rechnen damit weiter); Bahndaten werden zur Kamerazeit geladen. `rematch` (ohne `--force`) gleicht Kandidaten neu ab, deren
   gespeichertes `clock_offset_s` vom eingestellten abweicht. UI: Kandidatendetail „(Kamerazeit; Uhr korrigiert um …)“; `nightsView` Spalte
   „Uhrversatz“ (`clockScanHtml`, Chip „Uhr falsch gestellt“), übernommene Korrektur aus `GET /settings` → `clock_offsets`; `applyNights` schreibt
-  `POST /settings {clock_offsets}` und startet den Neuabgleich wie bei Orten. Nie automatisch. Offen: 3D-Lauf-Ansicht (`run3d`) nutzt weiter die Kamerazeit.
+  `POST /settings {clock_offsets}` und startet den Neuabgleich wie bei Orten. Nie automatisch.
+- **3D-Ansicht:** `observation_settings.clock_offset_at` (leichte Schicht, auch `catalog_matching` nutzt sie) → `orbit3d.clock_offset`. `run3d` rechnet alle
+  Aufnahmezeiten (Teleskopweg, Az/Alt, parallaktischer Winkel, Zeitleiste, `excluded_times`, Lücken) in wahrer UTC (Zeitstempel − Belichtung bei Stellina + Versatz);
+  Versatz zusätzlich im `lru_cache`-Schlüssel. `orbit3d.payload_for`: t0 aus `sat.exposure_start` (beim Abgleich korrigiert, passt zu den Durchgangszeiten),
+  Rückfall `_exposure_start` = Kamerazeit + Versatz. Stammt der Abgleich von einer anderen Korrektur (`sat.clock_offset_s` ≠ eingestellt), `clock_pending` →
+  Hinweis „Satelliten neu abgleichen“. Antwort `clock_offset_s` → Hinweis „Uhr korrigiert um …“ (`skytrace-3d.js`). Test: `test_skytrace_3d_run.py`.
 - **Befund** (05.11.2026, Kopie der Kandidaten-JSONs aller Läufe 12.07.–07.08.2022, nur gelesen): Einzeltreffer streuen längs um ± 25 s (alte Trümmer-TLEs),
   daher `MATCH_TOL_S` 30 statt 8 s (mit 8 s: 01.08. nur 3 Spuren, Fehlalarm 5 %). Ergebnis je Nacht (Spuren / bisher eindeutig → Ergebnis):
   12.07. 2/1 → zu wenig; 15.07. 9/9 → Uhr richtig (−7 s, 9 Spuren, zufällig 0,5); 18.07. 9/7 → richtig (−2 s, 6 Spuren);

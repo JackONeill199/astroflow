@@ -17,6 +17,20 @@ def load_settings():
     saved=read_json(CONFIG,{})
     return dict(copy.deepcopy(DEFAULTS),**saved) if isinstance(saved,dict) else copy.deepcopy(DEFAULTS)
 
+def night_key(stamp):
+    """Nacht einer Aufnahme wie in AstroFlow (UTC-Datum von Zeit − 12 h)."""
+    import datetime as dt
+    return dt.datetime.fromtimestamp(float(stamp)-43200,dt.timezone.utc).date().isoformat()
+
+def clock_offset_at(stamp,settings=None):
+    """Übernommener Uhrversatz der Nacht (s, wahre UTC = Kamerazeit + Versatz; `clock_offsets`), sonst 0.
+    Leichte Schicht: auch der Server (3D-Ansicht) liest ihn hierüber, ohne skyfield/OpenCV."""
+    if not isinstance(stamp,(int,float)) or isinstance(stamp,bool): return 0.
+    offsets=((settings if settings is not None else load_settings()) or {}).get('clock_offsets') or {}
+    entry=offsets.get(night_key(stamp)) if offsets else None
+    value=entry.get('offset_s') if isinstance(entry,dict) else entry
+    return float(value) if isinstance(value,(int,float)) and not isinstance(value,bool) else 0.
+
 def save_settings(settings):
     from json_store import write_json
     clean={k:v for k,v in settings.items() if 'password' not in k.lower() and 'secret' not in k.lower()}

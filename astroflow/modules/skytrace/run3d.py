@@ -39,6 +39,21 @@ def _rows(path: Path, keys=("index", "timestamp", "reference_to_current", "meta"
     return out
 
 
+def _first_time(path: Path):
+    """Zeitstempel der ersten Aufnahme (nur bis zur ersten gültigen Zeile lesen)."""
+    if not path.is_file():
+        return None
+    with path.open(encoding="utf-8") as f:
+        for line in f:
+            try:
+                t = json.loads(line).get("timestamp")
+            except (ValueError, AttributeError):
+                continue
+            if isinstance(t, (int, float)):
+                return t
+    return None
+
+
 def _wcs(folder: Path):
     info_path, wcs_path = folder / "platesolve" / "ergebnis.json", folder / "platesolve" / "loesung.wcs"
     if not (info_path.is_file() and wcs_path.is_file()):
@@ -216,7 +231,9 @@ def build_run(run_path: Path, session: str | None, focus: str | None, home: Path
     stamp = tuple((p.stat().st_mtime_ns if p.is_file() else 0) for p in
                   (folder / "frames.jsonl", folder / "ausgeschlossen.jsonl", folder / "kandidaten.json", folder / "platesolve" / "loesung.wcs",
                    _settings_file(home)))                           # Standort aus den Einstellungen geändert → neu rechnen
-    return _cached(str(run_path), str(folder), summary["session"], focus or "", str(home), stamp, tuple(names),
+    first = _first_time(folder / "frames.jsonl")
+    offset = o.clock_offset(first) if first is not None else 0.        # übernommener Uhrversatz der Nacht (Teil des Cache-Schlüssels)
+    return _cached(str(run_path), str(folder), summary["session"], focus or "", str(home), stamp + (offset,), tuple(names),
                    _Services(dict(services, _scene=scene or o.build)))
 
 
@@ -249,7 +266,9 @@ def _build(run_path, folder, session, focus, home, names, services):
     if not pointing or not pointing["samples"]:
         return dict(base, ok=False, reason="Die Blickrichtung ist unbekannt: kein Plate-Solving und kein Zielobjekt im Katalog.")
     exposure, ref = _exposure(accepted[0].get("meta"))
-    shift = exposure if ref == "end" else 0.                     # Zeitstempel → Belichtungsbeginn
+    # Zeitstempel (Kamerazeit) → Belichtungsbeginn in wahrer UTC: Stellina-Zeit = Ende, dazu der übernommene Uhrversatz der Nacht
+    offset = o.clock_offset(accepted[0]["timestamp"])
+    shift = (exposure if ref == "end" else 0.) - offset
     times = sorted([r["timestamp"] - shift for r in accepted] + [r["timestamp"] - shift for r in excluded])
     anchor = times[0]
     samples = pointing["samples"]
@@ -264,7 +283,7 @@ def _build(run_path, folder, session, focus, home, names, services):
     parallactic = np.degrees(np.arctan2((np.cross(pp, zp) * center).sum(-1), (pp * zp).sum(-1)))
     pa = _position_angle(np.array([s["center"] for s in samples], float), np.array([s["top"] for s in samples], float))
     observer = o.geodetic_to_ecef(site["lat"], site["lon"], site.get("alt_m", 0) or 0)
-    out = dict(base, ok=True, anchor=anchor, earth_rate=o.EARTH_RATE, sun=o._r(o.sun_d(anchor), 5), observer=o._r(observer, 3), enu=enu,
+    out = dict(base, ok=True, clock_offset_s=offset or None, clock_pending=False, anchor=anchor, earth_rate=o.EARTH_RATE, sun=o._r(o.sun_d(anchor), 5), observer=o._r(observer, 3), enu=enu,
                window=[times[0] - 60, times[-1] + exposure + 60], exposure=exposure, target=target,
                frames=dict(accepted=len(accepted), excluded=len(excluded),
                            excluded_times=[round(r["timestamp"] - shift, 1) for r in excluded][:1000]),
@@ -286,6 +305,7 @@ def _build(run_path, folder, session, focus, home, names, services):
         mine = c.get("id") == focus_id
         if not mine:
             payload["satellites"] = payload["satellites"][:1]
+        out["clock_pending"] = out["clock_pending"] or bool(payload.get("clock_pending"))
         payload.update(anchor=anchor, window_s=HIT_WINDOW_S, ring_points=HIT_RING)
         scene = services["_scene"](payload)
         if not scene.get("ok", True):                          # z. B. sgp4 fehlt auch im Engine-Interpreter

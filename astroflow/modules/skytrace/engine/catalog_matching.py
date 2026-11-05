@@ -121,19 +121,12 @@ def status(provider,state,detail,matches=None,**extra):
     result.update(extra)
     return result
 
-def night_key(stamp):
-    """Nacht einer Aufnahme wie in AstroFlow (UTC-Datum von Zeit − 12 h)."""
-    return dt.datetime.fromtimestamp(float(stamp)-43200,dt.timezone.utc).date().isoformat()
+from observation_settings import night_key,clock_offset_at
 
 def clock_offset(candidate,settings=None):
     """Vom Nutzer übernommener Uhrversatz der Nacht (s, wahre UTC = Kamerazeit + Versatz; Einstellung `clock_offsets`).
     Rohbilder und gespeicherte Zeitstempel bleiben unverändert – der Versatz wirkt nur beim Abgleich."""
-    offsets=(settings or {}).get('clock_offsets') or {}
-    stamp=candidate.get('timestamp')
-    if not offsets or not isinstance(stamp,(int,float)): return 0.
-    entry=offsets.get(night_key(stamp))
-    value=entry.get('offset_s') if isinstance(entry,dict) else entry
-    return float(value) if isinstance(value,(int,float)) else 0.
+    return clock_offset_at(candidate.get('timestamp'),settings or {})
 
 def _times(candidate,settings=None):
     stamp=candidate.get('timestamp')

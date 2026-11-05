@@ -290,12 +290,24 @@ def build(payload: dict) -> dict:
 
 
 # ---------------------------------------------------------------- Laufdaten ---
-def _exposure_start(c: dict, sat: dict | None) -> float:
+def clock_offset(stamp) -> float:
+    """Übernommener Uhrversatz der Nacht (`clock_offsets` in den SkyTrace-Einstellungen, leichte Engine-Schicht); ohne Engine 0."""
+    try:
+        from observation_settings import clock_offset_at
+        return clock_offset_at(stamp)
+    except Exception:
+        return 0.
+
+
+def _exposure_start(c: dict, sat: dict | None, offset: float | None = None) -> float:
+    """Belichtungsbeginn in wahrer UTC. Mit Satellitenergebnis dessen `exposure_start` (beim Abgleich schon um den Uhrversatz
+    korrigiert – passend zu den gespeicherten Durchgangszeiten), sonst Kamerazeit + übernommener Uhrversatz."""
     if sat and isinstance(sat.get("exposure_start"), (int, float)):
         return float(sat["exposure_start"])
     # wie engine/motion_plausibility.exposure_start (Stellina: Zeitstempel = Belichtungsende)
     ref = c.get("time_reference") or ("end" if (c.get("plausibility") or {}).get("exposure_source") == "Stellina EXPOSURE [ms]" else "start")
-    return float(c["timestamp"]) - (float(c["exposure_seconds"]) if ref == "end" else 0.)
+    shift = clock_offset(c.get("timestamp")) if offset is None else offset
+    return float(c["timestamp"]) - (float(c["exposure_seconds"]) if ref == "end" else 0.) + shift
 
 
 def _fov(folder: Path, c: dict):
@@ -346,14 +358,18 @@ def payload_for(folder: Path, c: dict, cache: Path | None) -> dict:
     fov = _fov(folder, c)
     if not fov:
         return dict(reason="Ohne Plate-Solving ist die Blickrichtung des Teleskops unbekannt.")
-    start, seconds = _exposure_start(c, sat), float(c["exposure_seconds"])
+    offset = clock_offset(c.get("timestamp"))
+    start, seconds = _exposure_start(c, sat, offset), float(c["exposure_seconds"])
+    # Abgleich mit anderer Uhrkorrektur als jetzt eingestellt (übernommen, aber noch nicht neu abgeglichen)?
+    used = float(sat.get("clock_offset_s") or 0) if isinstance(sat.get("exposure_start"), (int, float)) else offset
+    pending = abs(used - offset) > 0.05
     passage = (sats[0].get("passage_seconds") if sats else None) or [seconds / 2]
     t0 = start + float(np.mean(passage))
     if not sats and meteors:
         t0 = float(meteors[0]["trajectory"]["start"])
     keys = ("name", "norad_id", "object_type", "tle_age_days", "tle", "separation_arcsec", "time_offset_s")
     return dict(site={k: site.get(k) for k in ("lat", "lon", "alt_m")}, t0=t0, exposure=dict(start=start, seconds=seconds), fov=fov,
-                archive_time=start + seconds / 2, trail=c.get("world_path"), satellites=[{k: m.get(k) for k in keys} for m in sats],
+                archive_time=start + seconds / 2, clock_offset_s=offset or None, clock_pending=pending, trail=c.get("world_path"), satellites=[{k: m.get(k) for k in keys} for m in sats],
                 meteors=[{k: m.get(k) for k in ("name", "shower", "trajectory")} for m in meteors],
                 aircraft=[{k: m.get(k) for k in ("name", "icao24", "track")} for m in aircraft],
                 cache=str(cache) if cache else None)

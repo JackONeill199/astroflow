@@ -14,6 +14,8 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 - Übernehmen nur auf Knopfdruck (einzeln oder mit „Alle übernehmen“), danach werden die Analysen der Nacht neu abgeglichen. Der Versatz
   wirkt nur beim Abgleich – Rohbilder und gespeicherte Aufnahmezeiten bleiben unverändert, Kandidaten zeigen die Kamerazeit mit dem
   Hinweis „Uhr korrigiert um …“. Ist ein Versatz vorgeschlagen, wird auch der Ort der Nacht gleich mit korrigierter Uhr geprüft.
+- Die 3D-Ansicht nutzt den übernommenen Uhrversatz: Teleskopweg, Zeitleiste und Treffer liegen in wahrer UTC, ein Hinweis nennt die
+  Korrektur. Stammen die Treffer noch aus einem Abgleich mit anderer Uhr, empfiehlt sie „Satelliten neu abgleichen“.
 
 ## 0.29.0 – 05.11.2026
 
