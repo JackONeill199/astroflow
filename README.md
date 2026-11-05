@@ -9,7 +9,7 @@ fotografierte Himmelsobjekte bekommen einen Enzyklopädie-Eintrag. Läuft auf de
 
 ![AstroFlow – Übersicht](docs/screenshots/uebersicht.webp)
 
-*Alle Bilder in dieser README stammen aus einer Demo-Instanz mit synthetischen Daten (`python -m astroflow demo`, Test-Fixtures); Orte und Namen sind erfunden.*
+*Die Astrofotos und die meisten Oberflächen-Screenshots stammen aus einer echten Instanz (Smart-Teleskop, 80 mm Öffnung) und sind ohne Orts- und Gerätekennung veröffentlicht. Nur „Heute Nacht“, „Himmelsqualität“ und die SkyTrace-Bilder zeigen eine Demo-Instanz mit synthetischen Daten (`python -m astroflow demo`, Test-Fixtures), weil sie Standortangaben enthalten.*
 
 ## Was ist AstroFlow?
 
@@ -26,6 +26,17 @@ Die Module sind unter Einstellungen → Module & System einzeln abschaltbar. All
 
 ## Highlights
 
+### Ergebnisse
+
+Fertige Bilder aus AstroFlow, vollautomatisch aus Rohaufnahmen eines Smart-Teleskops entwickelt (verkleinert):
+
+| | | |
+|---|---|---|
+| ![NGC 7000](docs/screenshots/ergebnis-ngc7000.webp) | ![NGC 6888](docs/screenshots/ergebnis-ngc6888.webp) | ![Plejaden](docs/screenshots/ergebnis-m45.webp) |
+| NGC 7000, 58 min | NGC 6888, 45 min | M45 Plejaden, 91 min |
+| ![M101](docs/screenshots/ergebnis-m101.webp) | ![NGC 7023](docs/screenshots/ergebnis-ngc7023.webp) | ![IC 1396](docs/screenshots/ergebnis-ic1396.webp) |
+| M101, 115 min | NGC 7023, 3 h 58 min | IC 1396, 60 min |
+
 ### Vom Rohbild zum fertigen Foto
 
 ![Galerie](docs/screenshots/galerie.webp)
@@ -36,7 +47,7 @@ Header, Ordnername oder Plate-Solving. Neue Nächte werden nachgestackt, jede Ve
 | | |
 |---|---|
 | ![Objektseite](docs/screenshots/objekt.webp) | ![Vorher/Nachher](docs/screenshots/vorher-nachher.webp) |
-| **Objektseite:** Zoom-Betrachter, Kennzahlen, Details. Beim Stacken und Entwickeln zeigt die **Live-Ansicht** echte Zwischenvorschauen mit dem aktiven Schritt; der **Stacking-Verlauf** zeigt, was 1, 3, 10, 30, 100 … Aufnahmen ausmachen. | **Vorher/Nachher:** links der unbearbeitete lineare Master-Stack, rechts das entwickelte Bild (Gradienten, Farbkalibrierung, optional GraXpert und StarNet). |
+| **Objektseite (M31, 4 h 17 min):** Zoom-Betrachter, Kennzahlen, Details. Beim Stacken und Entwickeln zeigt die **Live-Ansicht** echte Zwischenvorschauen mit dem aktiven Schritt; der **Stacking-Verlauf** unter dem Bild zeigt, was 1, 3, 10, 30, 100 … Aufnahmen ausmachen. | **Vorher/Nachher:** links der unbearbeitete lineare Master-Stack, rechts das entwickelte Bild (Gradienten, Farbkalibrierung, optional GraXpert und StarNet). |
 
 ### Was dein Bild zeigt
 
@@ -47,9 +58,20 @@ Der Reiter **Analyse** misst aus dem plate-gelösten Bild die Grenzgröße, die 
 Bild und als **3D-Ansicht** direkt im Betrachter. Der **Vergleich** blinkt das Bild gegen eine frühere eigene Aufnahme oder die
 DSS2-Durchmusterung; auffällige Stellen werden mit SIMBAD und JPL-Kleinkörpern abgeglichen – als Hinweis, nicht als Entdeckung.
 Dazu kommen die **Himmelsqualität der Aufnahmenacht** und der **Bild-Tutor** (Befunde mit Tipps passend zum Gerät, Bedingungen der Nacht).
-(Das Bild oben zeigt ein synthetisches Sternfeld mit Gaia-/SIMBAD-Attrappen.)
+
+![3D-Ansicht der Entfernungen](docs/screenshots/analyse-3d.webp)
+
+Die 3D-Ansicht (Knopf „3D“ im Betrachter) legt die Sterne und Galaxien des Bildes nach ihrer Entfernung in einen Tunnel – hier M31 mit Sternen aus Gaia.
+
+### Kometenmodus
+
+![Komet C/2022 E3](docs/screenshots/komet.webp)
+
+Kometen bekommen zwei Stacks – auf die Sterne und auf den Kometenkern – und werden zu einem Bild zusammengesetzt (hier C/2022 E3, 47 min, Bahn aus der JPL-Ephemeride, im Bild nachgemessen).
 
 ### Heute Nacht und Himmelsqualität
+
+*(Demo-Daten mit erfundenem Ort.)*
 
 | | |
 |---|---|
@@ -63,6 +85,8 @@ Standard-Ort). Der Ort einer Aufnahme ergibt sich aus FITS-Kopf → Zeitraum →
 Er fließt in Tutor, Heute Nacht, Himmelsqualität und SkyTrace ein.
 
 ### SkyTrace – was sich zwischen den Sternen bewegt
+
+*(Demo-Daten mit erfundenem Ort und erfundener Bahn.)*
 
 ![SkyTrace 3D](docs/screenshots/skytrace-3d.webp)
 
