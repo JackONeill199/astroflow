@@ -3,6 +3,17 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.31.1 – 05.11.2026
+
+### Behoben
+- SkyTrace auf dem Handy: Aufnahmen, Kandidaten und Videos eines Laufs luden im Heimnetz endlos. Die Laufdaten enthielten
+  die Satellitenprognosen für jedes Videobild einzeln (bei einem Lauf 25 MB). Jetzt kommt jede Bahn nur einmal, und der
+  Browser rechnet sie selbst je Bild um (1,4 MB). Der eigenständige Bericht wird dadurch ebenfalls kleiner.
+- Größere Antworten der Oberfläche (JSON, Text) werden komprimiert übertragen. Bilder, Videos, FITS/TIFF und Teilantworten
+  für das Spulen in Videos bleiben unverändert.
+- Bildbetrachter: Lädt ein Bild länger als 20 s oder schlägt es fehl, steht dort jetzt „Lädt noch … (langsames Netz?)“
+  bzw. „Bild konnte nicht geladen werden.“ mit „Erneut versuchen“, statt endlos den Kreisel zu zeigen.
+
 ## 0.31.0 – 05.11.2026
 
 ### Neu

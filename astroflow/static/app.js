@@ -359,15 +359,27 @@ function createViewer(host, src, cmpSrc, labels = ['älter', 'neuer'], ph = null
     x = v.clientWidth / 2 - cx * iw * s; y = v.clientHeight / 2 - cy * ih * s;
     clamp(); apply(); requestAnimationFrame(() => v.classList.add('ready'));
   };
+  // Dauert es lange (Handy im Heimnetz, Werbeblocker) oder schlägt es fehl: sagen und „Erneut versuchen“ anbieten
+  const vload = $('.vload', v), slowAfter = opts.slowAfter ?? 20000;
+  let slowT = 0;
+  const hint = (msg) => { vload.innerHTML = `<span>${msg}</span><button class="btn sm ghost" data-retry>Erneut versuchen</button>`; };
+  const watch = () => { clearTimeout(slowT); slowT = setTimeout(() => { if (!v.classList.contains('ready')) hint('Lädt noch … (langsames Netz?)'); }, slowAfter); };
+  main.addEventListener('load', () => clearTimeout(slowT));
   main.addEventListener('load', onload);
-  if (main.complete && main.naturalWidth) onload();
-  main.addEventListener('error', () => { $('.vload', v).innerHTML = 'Bild konnte nicht geladen werden.'; });
+  if (main.complete && main.naturalWidth) onload(); else watch();
+  main.addEventListener('error', () => { clearTimeout(slowT); hint('Bild konnte nicht geladen werden.'); });
+  vload.addEventListener('click', (e) => {
+    if (!e.target.closest('[data-retry]')) return;
+    vload.innerHTML = '<span class="spinner"></span>Lädt Bild in voller Auflösung …';
+    const u = new URL(main.getAttribute('src'), location.href); u.searchParams.set('neu', Date.now());
+    main.src = u.pathname + u.search; watch();
+  });
   const ro = new ResizeObserver(() => { const atFit = Math.abs(s - fitS) < 1e-3; if (atFit) fit(); else { clamp(); apply(); } });
   ro.observe(v);
   v.addEventListener('wheel', (e) => { e.preventDefault(); const r = v.getBoundingClientRect(); zoomAt(Math.exp(-e.deltaY * 0.0018), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
   v.addEventListener('dblclick', (e) => { const r = v.getBoundingClientRect(); smooth(() => { if (s > fitS * 1.05) fit(); else zoomAt(1 / s, e.clientX - r.left, e.clientY - r.top); }); });
   v.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('.vbar')) return;
+    if (e.target.closest('.vbar, [data-retry]')) return;
     if (e.target === line) { const mv = (ev) => { const r = v.getBoundingClientRect(); split = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)); apply(); };
       const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); }; addEventListener('pointermove', mv); addEventListener('pointerup', up); return; }
     tap = ptrs.size ? null : { t: e.target, x: e.clientX, y: e.clientY };
@@ -401,7 +413,7 @@ function createViewer(host, src, cmpSrc, labels = ['älter', 'neuer'], ph = null
   return { el: v, overlay: ov, setSrc: (u) => { if (main.getAttribute('src') !== u) main.src = u; },
     setSplit: (f) => { split = Math.min(1, Math.max(0, f)); apply(); },
     zoomTo: (px, py, f = 4) => { if (!iw) return; smooth(() => { s = Math.min(8, fitS * f); x = v.clientWidth / 2 - px * s; y = v.clientHeight / 2 - py * s; clamp(); apply(); }); },
-    redraw: () => { if (ov && iw) opts.overlay(ov, iw, ih); }, destroy:() => { ro.disconnect(); main.removeEventListener('load', onload); document.removeEventListener('keydown', onKey); } };
+    redraw: () => { if (ov && iw) opts.overlay(ov, iw, ih); }, destroy:() => { clearTimeout(slowT); ro.disconnect(); main.removeEventListener('load', onload); document.removeEventListener('keydown', onKey); } };
 }
 
 // ----------------------------------------------------------- Modul-Vertrag --- //

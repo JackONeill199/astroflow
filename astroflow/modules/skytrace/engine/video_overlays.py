@@ -63,15 +63,25 @@ def timeline(folder,candidates):
                         px=reference[0][0]*x+reference[0][1]*y+reference[0][2]
                         py=reference[1][0]*x+reference[1][1]*y+reference[1][2]
                         if 0<=px<size[0] and 0<=py<size[1]:visible.append(dict(obj,x=px,y=py))
-                satellites=[]
-                if reference is not None:
-                    from satellite_overlay import transform_segments,intersects
-                    for c in candidates:
-                        if not c.get('hit_indices') or row['index']<min(c['hit_indices']):continue
-                        for projected in c.get('satellite_overlay',{}).get('paths',[]):
-                            segments=transform_segments(projected['reference_segments'],reference)
-                            satellites.append(dict(name=projected['name'],candidate_id=c['id'],frame=min(c['hit_indices'])+1,
-                                segments=segments,in_frame=intersects(segments,*size)))
-                frames.append(dict(seconds=row.get('video_seconds',0),objects=visible,satellites=satellites,trails=[dict(id=r['id'],points=[p[:] for p in r['points']]) for r in active.values()]))
+                # Satellitenprognosen nur einmal je Bahn ausliefern (satellite_paths) und je Bild nur die
+                # Registrierungsmatrix: vorher je Videobild alle Bahnen umgerechnet → 25 MB JSON, Handy lud endlos.
+                frames.append(dict(seconds=row.get('video_seconds',0),index=row.get('index'),
+                                   reference=[[round(float(v),7) for v in r] for r in reference] if reference is not None else None,
+                                   objects=visible,trails=[dict(id=r['id'],points=[p[:] for p in r['points']]) for r in active.values()]))
     except OSError:return None
-    return dict(width=size[0],height=size[1],frames=frames)
+    paths=[dict(name=projected['name'],candidate_id=c['id'],start=min(c['hit_indices']),frame=min(c['hit_indices'])+1,
+                reference_segments=projected['reference_segments'])
+           for c in candidates if c.get('hit_indices') for projected in c.get('satellite_overlay',{}).get('paths',[])]
+    return dict(width=size[0],height=size[1],frames=frames,satellite_paths=paths)
+
+
+def satellites_at(data,frame):
+    """Satellitenprognosen eines Zeitleistenbilds (gleiche Rechnung wie im Browser, evidence.js)."""
+    from satellite_overlay import transform_segments,intersects
+    if frame.get('reference') is None:return []
+    out=[]
+    for path in data.get('satellite_paths',[]):
+        if frame.get('index') is None or frame['index']<path['start']:continue
+        segments=transform_segments(path['reference_segments'],frame['reference'])
+        out.append(dict(name=path['name'],candidate_id=path['candidate_id'],frame=path['frame'],segments=segments,in_frame=intersects(segments,data['width'],data['height'])))
+    return out
