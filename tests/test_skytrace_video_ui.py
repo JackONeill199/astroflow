@@ -23,7 +23,10 @@ def test_playback_overlay_and_full_frame_timeline(server, browser, width, tmp_pa
     frames[0]['video_seconds']=0;frames[2]['video_seconds']=.5
     cand=dict(id='K0001',key='obs/K0001',session='Test',kind='trail',timestamp=1600000030,exposure_seconds=10,
               frames=frames,initial_frame=2,hit_indices=[2],crop=[30,40,70,70],catalogs=[],plausibility={})
-    timeline=dict(width=160,height=120,frames=[dict(seconds=0,trails=[]),dict(seconds=.5,trails=[dict(id='K0001',points=[[32,43],[50,58]])])])
+    # kompaktes Format (seit 0.31.1): Satellitenbahnen einmal, je Bild nur Index + Registrierungsmatrix
+    timeline=dict(width=160,height=120,frames=[dict(seconds=0,index=1,reference=[[1,0,0],[0,1,0]],trails=[]),
+                                             dict(seconds=.5,index=3,reference=[[1,0,5],[0,1,-2]],trails=[dict(id='K0001',points=[[32,43],[50,58]])])],
+                  satellite_paths=[dict(name='SAT TEST',candidate_id='K0001',start=3,frame=3,reference_segments=[[[10,20],[40,50]]])])
     session=dict(session='Test',frames=3,excluded=1,hits=1,fps=8,video_url='/synthetic/video.mp4',clean_url='/synthetic/video.mp4',
                  preview_url='/synthetic/full.png',clean_preview_url='/synthetic/full.png',overlay_timeline=timeline)
     run=dict(id='synthetic',sessions=[session],candidates=[cand],report_url=None,modified=1)
@@ -56,6 +59,9 @@ def test_playback_overlay_and_full_frame_timeline(server, browser, width, tmp_pa
         page.wait_for_function("Math.abs(document.querySelector('#skyVideo').currentTime-.5)<.05 && document.querySelector('#skyVideo').paused",timeout=5000)
     except Exception:
         raise AssertionError((errors,page.locator('#skyVideo').evaluate('v=>({time:v.currentTime,duration:v.duration,paused:v.paused,ready:v.readyState,error:v.error?.message,source:v.currentSrc})')))
+    # Satellitenprognose erst ab ihrem Trefferbild, mit der Matrix des Bilds verschoben
+    page.wait_for_selector('#skyOv .satellite-overlay polyline',state='attached')
+    assert page.locator('#skyOv .satellite-overlay polyline').first.get_attribute('points')=='15,18 45,48'
     page.goto(base+'/#/skytrace/synthetic/kandidaten')
     page.wait_for_selector('.cstage video:not([hidden])')   # altes Nachbarbild: ganzes Bild aus dem gespeicherten Video
     page.wait_for_function("Math.abs(document.querySelector('.cstage video').currentTime-.5)<.05")

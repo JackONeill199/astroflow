@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddleware
 
 from .core.config import Settings, load_settings
 from .core.folders import list_folders
@@ -212,6 +213,11 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
         if request.url.path in ("/", "/index.html"):
             r.headers["Cache-Control"] = "no-cache"
         return r
+
+    # JSON/Text komprimieren: übers Heimnetz (Handy) dauerten große Antworten (SkyTrace-Lauf, Objektliste) sonst ewig.
+    # Bilder, Videos, FITS/TIFF und Teilantworten (206, Range) bleiben unberührt.
+    app.add_middleware(GZipMiddleware, minimum_size=2048, compresslevel=5,
+                       exclude_content_types=DEFAULT_EXCLUDED_CONTENT_TYPES + ("image/*", "model/*", "application/octet-stream", "application/fits", "application/wasm"))
 
     for m in active:
         if m.module.static_dir:
