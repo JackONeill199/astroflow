@@ -263,10 +263,60 @@ def needs_clock(sitefit, entries):
     return len(entries) >= sitefit.MIN_TRAILS and sure < 0.5 * len(entries)
 
 
-def night(sitefit, group, entries, settings, radius_km, tick, clock=True):
-    """Eine Nacht: Vorschlag (bestehender Ort `list`, zurückgerechneter Ort `fit`) oder ehrlicher Grund, warum keiner.
-    Mit `clock` zuerst – bei wenigen Treffern – der Uhrversatz (`clock_scan`); ein gefundener Versatz gilt für die Ortsprüfung danach."""
+def needs_global(tracks, top):
+    """Ortssuche ohne Vorwissen nur, wenn kein Ort (Liste, Rückrechnung) mindestens 3 und die Hälfte der Spuren eindeutig zuordnet –
+    am richtigen Ort passt die Mehrheit, normale Nächte werden so nicht langsamer."""
+    import global_site
+    return tracks >= global_site.MIN_TRAILS and top < max(global_site.MIN_TRAILS, 0.5 * tracks)
+
+
+def _global(sitefit, out, entries, settings, sites, current, global_km, clock, tick, top):
+    """Ort ohne Vorwissen (`global_site`) → Vorschlag `global` (bzw. `list`, wenn ein Listenort ≤ 2 km daneben liegt); ersetzt einen
+    schwächeren Vorschlag und – falls der neue Ort eine andere Uhr ergibt – auch den Uhrversatz vom bisherigen Ort."""
+    import global_site, clock_scan
+    from catalog_matching import night_key
+    centers = [dict(lat=float(s['lat']), lon=float(s['lon'])) for s in sites]
+    if current and current.get('lat') is not None and not any(_km(current, c) < 1 for c in centers):
+        centers.append(dict(lat=float(current['lat']), lon=float(current['lon'])))
+    res = global_site.search_night(sitefit, entries, settings, centers, region_km=global_km, clock=clock, tick=tick, before_sure=top)
+    res.pop('_triples', None); res.pop('_clusters', None)
+    out['global'] = res
+    p = res.get('proposal')
+    if not p:
+        return False
+    base = clock_offset(entries[0][1], settings)
+    near = min(sites, key=lambda s: _km(s, p), default=None)
+    near_km = _km(near, p) if near else None
+    out['global'].update(nearest_name=near.get('name') if near else None, nearest_km=round(near_km, 1) if near else None)
+    if near and near_km <= max(global_site.NEAR_LIST_KM, 2 * p['accuracy_m'] / 1000):
+        out['proposal'] = dict(kind='list', id=near.get('id'), name=near.get('name'), sure=p['sure'], rms=p['rms'], source='global',
+                               **{k: p.get(k) for k in ('clock_s', 'clock_sigma_s', 'timed', 'trails')})
+    else:
+        out['proposal'] = dict(kind='global', lat=round(p['lat'], 6), lon=round(p['lon'], 6), alt_m=0, accuracy_m=round(p['accuracy_m']),
+                               sure=p['sure'], rms=p['rms'], trails=p.get('trails'), timed=p.get('timed'), clock_s=round(p['clock_s'], 1),
+                               clock_sigma_s=p.get('clock_sigma_s'), ellipse_km=p.get('ellipse_km'), support=p['support'],
+                               confidence=res.get('confidence'), region_km=global_km, from_name='Unbekannter Ort',
+                               nearest_name=out['global']['nearest_name'], nearest_km=out['global']['nearest_km'],
+                               shift_from_current_km=round(_km(p, current), 1) if current else None)
+    nights = sorted({night_key(i['timestamp']) for _, i in entries if isinstance(i.get('timestamp'), (int, float))})
+    old = (out.get('clock') or {}).get('proposal')
+    if abs(p['clock_s']) >= clock_scan.MIN_SHIFT_S:
+        out['clock'] = dict(source='global', proposal=dict(offset_s=round(base + p['clock_s'], 1), sigma_s=max(1.0, float(p.get('clock_sigma_s') or 1)),
+                                                           support=p['support'], sure=p['sure'], before=top, confidence=res.get('confidence'),
+                                                           chance=(res['stages'][-1]['top'] or [{}])[0].get('chance'), nights=nights, base_s=round(base, 1)))
+    elif old:
+        out['clock'] = dict(source='global', proposal=None, dropped=old,
+                            reason=f'Am zurückgerechneten Ort geht die Uhr richtig ({p["clock_s"]:+.0f} s) – der am bisherigen Ort gefundene '
+                                   f'Versatz {old["offset_s"]:+.0f} s war eine Folge des falschen Orts.')
+    return True
+
+
+def night(sitefit, group, entries, settings, radius_km, tick, clock=True, global_km=0.0):
+    """Eine Nacht: Vorschlag (bestehender Ort `list`, zurückgerechneter Ort `fit`, Ort ohne Vorwissen `global`) oder ehrlicher Grund.
+    Mit `clock` zuerst – bei wenigen Treffern – der Uhrversatz (`clock_scan`); ein gefundener Versatz gilt für die Ortsprüfung danach.
+    Mit `global_km` > 0 und ohne gut passenden Ort zuletzt die Suche ohne Vorwissen im Umkreis `global_km` um die Listenorte."""
     from observation_settings import sites_module
+    plain = settings                                            # ohne Uhrkorrektur vom bisherigen Ort (die globale Suche hat ihre eigene)
     out = dict(night=group['night'], observations=group['observations'], tracks=len(entries), created=time.time(),
                before=sum(matched(i) for _, i in entries), proposal=None)
     mod = sites_module()
@@ -380,6 +430,8 @@ def night(sitefit, group, entries, settings, radius_km, tick, clock=True):
         out['proposal'] = dict(kind='list', id=best.get('site_id'), name=best.get('name'), sure=best['sure'], rms=best['rms'])
     if out['proposal'] and out['proposal']['kind'] == 'list' and out['proposal']['id'] == (current or {}).get('site_id'):
         out['proposal'] = None                                   # bisheriger Ort ist schon der beste
+    top = max(best['sure'], (fit or {}).get('after_sure') or 0, (out['proposal'] or {}).get('sure') or 0)
+    found = bool(global_km) and needs_global(len(entries), top) and _global(sitefit, out, entries, plain, sites, current, global_km, clock, tick, top)
     if (out.get('clock') or {}).get('proposal'):
         out['status'] = 'better'
         out['note'] = ('Der bisherige Ort passt – mit korrigierter Uhr.' if out['proposal'] is None
@@ -397,6 +449,12 @@ def night(sitefit, group, entries, settings, radius_km, tick, clock=True):
         out['note'] = 'Der bisherige Ort passt am besten.' + (
             f' Für eine Rückrechnung sind {best["sure"]} eindeutige Spur(en) zu wenig.' if best['sure'] < sitefit.MIN_TRAILS and not good else '')
     if fit and not fit.get('ok') and not out.get('fit_reason'): out['fit_reason'] = fit.get('reason')
+    if found:
+        p = out['proposal']
+        out['status'] = 'better'
+        out['note'] = (f'Kein Listenort passte – der Ort wurde ohne Vorwissen aus {p["sure"]} Spuren zurückgerechnet'
+                       + (f', {p["nearest_km"]:.0f} km vom nächsten Listenort.' if p.get('kind') == 'global' and p.get('nearest_km') is not None
+                          else f' und liegt bei „{p.get("name")}“.' if p.get('kind') == 'list' else '.'))
     return out
 
 
@@ -404,7 +462,7 @@ def seen_any(out):
     return out.get('search_center') is not None
 
 
-def nights(groups_file, out_file, radius_km=SEARCH_RADIUS_KM, stop_file=None, clock=True):
+def nights(groups_file, out_file, radius_km=SEARCH_RADIUS_KM, stop_file=None, clock=True, global_km=0.0):
     """Standorte aller Nächte (Gruppen vom Server: [{night, observations: [{run, folder, session}]}]). Schreibt nach jeder Nacht."""
     sitefit = sitefit_module()
     groups = read_json(groups_file, []) or []
@@ -422,9 +480,11 @@ def nights(groups_file, out_file, radius_km=SEARCH_RADIUS_KM, stop_file=None, cl
     n_sites = max(1, len(site_list(settings)))
     import clock_scan
     blocks = 2 * math.ceil(clock_scan.SCAN_RANGE_S / clock_scan.BLOCK_SLACK_S / 2) + 1
-    total = sum(len(e) * (n_sites + 3 + (blocks if clock and needs_clock(sitefit, e) else 0)) for _, e in plan) or 1
+    # Ortssuche ohne Vorwissen: Schritte grob geschätzt (Rückprojektion, feine Prüfung, strenger Abgleich)
+    total = sum(len(e) * (n_sites + 3 + (blocks if clock and needs_clock(sitefit, e) else 0) + (3 if global_km else 0)) + (60 if global_km and len(e) >= 3 else 0)
+                for _, e in plan) or 1
     state = dict(done=0)
-    report = dict(created=time.time(), radius_km=radius_km, state='running', nights=[])
+    report = dict(created=time.time(), radius_km=radius_km, global_km=global_km, state='running', nights=[])
 
     def tick(text):
         state['done'] = min(total - 1, state['done'] + 1)
@@ -433,7 +493,7 @@ def nights(groups_file, out_file, radius_km=SEARCH_RADIUS_KM, stop_file=None, cl
     stopped = False
     for g, entries in plan:
         if stop_file and Path(stop_file).exists(): stopped = True; break
-        try: report['nights'].append(night(sitefit, g, entries, settings, radius_km, tick, clock))
+        try: report['nights'].append(night(sitefit, g, entries, settings, radius_km, tick, clock, global_km))
         except InterruptedError: stopped = True; break
         except (OSError, ValueError) as error:
             report['nights'].append(dict(night=g['night'], observations=g['observations'], status='error', note=str(error), proposal=None))
@@ -442,9 +502,10 @@ def nights(groups_file, out_file, radius_km=SEARCH_RADIUS_KM, stop_file=None, cl
     write_json(out_file, report)
     better = sum(1 for r in report['nights'] if r.get('status') == 'better')
     clocks = sum(1 for r in report['nights'] if (r.get('clock') or {}).get('proposal'))
-    emit('result', stopped=stopped, nights=len(report['nights']), better=better, clocks=clocks,
+    unknown = sum(1 for r in report['nights'] if (r.get('proposal') or {}).get('kind') == 'global')
+    emit('result', stopped=stopped, nights=len(report['nights']), better=better, clocks=clocks, unknown=unknown,
          text=('Angehalten. ' if stopped else '') + f'{len(report["nights"])} Nächte geprüft, {better} mit Vorschlag'
-              + (f' ({clocks} mit Uhrversatz).' if clocks else '.'))
+              + ''.join(f' · {t}' for t in ([f'{unknown} unbekannte Orte zurückgerechnet'] if unknown else []) + ([f'{clocks} mit Uhrversatz'] if clocks else [])) + '.')
 
 
 def sitefit_night(summary):
@@ -460,10 +521,11 @@ if __name__ == '__main__':
     b = sub.add_parser('search'); b.add_argument('root', type=Path); b.add_argument('folder'); b.add_argument('--radius-km', type=float, default=SEARCH_RADIUS_KM); b.add_argument('--stop-file', type=Path)
     c = sub.add_parser('nights'); c.add_argument('groups', type=Path); c.add_argument('out', type=Path); c.add_argument('--radius-km', type=float, default=SEARCH_RADIUS_KM); c.add_argument('--stop-file', type=Path)
     c.add_argument('--no-clock', dest='clock', action='store_false')
+    c.add_argument('--global-km', type=float, default=0.0)          # Ortssuche ohne Vorwissen (0 = aus)
     args = parser.parse_args()
     try:
         if args.cmd == 'rematch': rematch(args.roots, args.force, args.stop_file)
-        elif args.cmd == 'nights': nights(args.groups, args.out, args.radius_km, args.stop_file, args.clock)
+        elif args.cmd == 'nights': nights(args.groups, args.out, args.radius_km, args.stop_file, args.clock, args.global_km)
         else: search(args.root, args.folder, args.radius_km, args.stop_file)
     except InterruptedError:
         emit('result', stopped=True, text='Angehalten.')

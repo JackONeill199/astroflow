@@ -114,7 +114,14 @@ def _skytrace_run(run):
                          "proposal": {"offset_s": -642.5, "sigma_s": 1.5, "support": 7, "sure": 8, "before": 1, "confidence": 0.9999, "chance": 0.4,
                                       "nights": ["2022-08-03"], "base_s": 0}}},
               {"night": "2022-08-02", "observations": obs[:1], "tracks": 4, "before": 0, "status": "none", "current": cur, "proposal": None,
-               "note": "Kein Ort passt.", "clock": {"support": 1, "reason": "Höchstens 1 Spur(en) bei demselben Versatz – zu wenig (nötig 3)."}}]
+               "note": "Kein Ort passt.", "clock": {"support": 1, "reason": "Höchstens 1 Spur(en) bei demselben Versatz – zu wenig (nötig 3)."}},
+              # Ort ohne Vorwissen (global_site): weit weg von jedem Listenort (erfundene Koordinaten), Uhrversatz vom falschen Ort verworfen
+              {"night": "2022-08-01", "observations": obs, "tracks": 16, "before": 0, "status": "better", "current": cur,
+               "proposal": {"kind": "global", "lat": 46.234567, "lon": 13.912345, "alt_m": 0, "accuracy_m": 105, "sure": 12, "rms": 24.9, "trails": 12,
+                            "timed": 2, "clock_s": -3.8, "clock_sigma_s": 0.7, "support": 12, "confidence": 1.0, "region_km": 1500,
+                            "from_name": "Unbekannter Ort", "nearest_name": LONG, "nearest_km": 301.6, "shift_from_current_km": 301.6},
+               "note": "Kein Listenort passte – der Ort wurde ohne Vorwissen aus 12 Spuren zurückgerechnet, 302 km vom nächsten Listenort.",
+               "clock": {"source": "global", "proposal": None, "reason": "Am zurückgerechneten Ort geht die Uhr richtig (-4 s) – der am bisherigen Ort gefundene Versatz -639 s war eine Folge des falschen Orts."}}]
     cfg = run.parent.parent / "catalog_settings.json"                  # übernommene Uhrkorrektur einer Nacht
     data = json.loads(cfg.read_text(encoding="utf-8")) if cfg.is_file() else {}
     cfg.write_text(json.dumps(dict(data, clock_offsets={"2022-08-30": {"offset_s": -615.0, "sigma_s": 2.0}})), encoding="utf-8")

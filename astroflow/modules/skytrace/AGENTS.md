@@ -348,6 +348,63 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
 - Tests: `tests/test_skytrace_clock.py` (Engine nur mit skyfield, direkt im Engine-Interpreter ausführbar: −600 s → Vorschlag ± 5 s, 4/4 Spuren, danach
   normaler Abgleich mit Korrektur; zufällige Spuren → kein Vorschlag; richtige Uhr → „geht richtig“; Statistik mit Rauschen/Häufung/gleichem Satelliten;
   Nachtsuche + `update_settings` + `rematch` erkennt geänderte Uhr). UI: `#/skytrace/standorte` in `test_ui_layout.py` (Nacht mit Uhrvorschlag, übernommene Korrektur).
+- **Nachtrag 0.32.0:** Der Vorschlag −639 s für den 01.08.2022 war falsch – das Teleskop stand ~250 km entfernt (Urlaub). Am wahren Ort (Suche ohne
+  Vorwissen, unten) passen 12 von 12 Spuren mit normaler Uhr (+0,7 ± 0,7 s). Ein Uhrversatz vom falschen Ort ist also kein Beleg für eine falsche Uhr.
+
+## Standort ohne Vorwissen (0.32.0, 06.11.2026, Befund „Augustwoche 2022 im Urlaub, ~250 km von jedem Listenort“)
+- **Anlass:** IC59 2022-08-06 (16 Spuren): am Listenort 0 Treffer, auch mit Uhr ± 60 min; die Suche mit Spielraum reicht nur ≤ 20 km um Listenorte.
+  Am wahren Ort (vom Nutzer nachträglich angelegt, beim Test ausgeblendet) 12/16 mit normaler Uhr, quer 7–67″.
+- **Engine** `engine/global_site.py`, aufgerufen aus `rematch_sites.night(…, global_km)` als letzter Schritt, nur wenn kein Ort (Liste, Rückrechnung)
+  mindestens max(3, Hälfte der Spuren) eindeutig zuordnet (`needs_global`) – normale Nächte bleiben gleich schnell. CLI `nights … --global-km <km>`
+  (0 = aus), Server `start_nights(global_km)` (100–3000 km), `POST /sitesearch/nights {global_km}` (fehlt → 1500), UI-Auswahl „Ohne Vorwissen“.
+  1. **Rückprojektion:** Spurmitte d (ICRS → TEME) und Satellit S → Beobachter liegt auf S − ρ·d; erster Schnitt mit dem WGS84-Ellipsoid (in TEME,
+     Ellipsoid ist um z symmetrisch) = einziger passender Bodenpunkt. Prüfungen dort: Höhe ≥ 10°, Satellit im Sonnenlicht (Zylinderschatten,
+     60 km Rand), scheinbare Bewegung (inkl. Erddrehung des Beobachters) ≤ 6° zur Spurrichtung, Durchgang ≤ 1,2 × Belichtung + 1 s.
+     **Spuren „ganz im Bild“ nicht auf Durchgang = Belichtung festlegen** – IC59 K0004/K0012 sind kurze Aufblitzer (0,2–0,9 s), mit dieser Bedingung fehlten sie.
+     Vorauswahl für alle Bahnen des Archivs (`historical_models` zur Kamerazeit, wie der normale Abgleich) auf einem 15-s-Raster (`SatrecArray`),
+     dann 1-s-Schritte nur für Paare mit Bodenpunkt im Suchgebiet (Umkreis `global_km` um Listenorte + bisherigen Ort).
+  2. **Abstimmen in zwei Stufen:** Ein Paar ist eine Fläche im Raum (Ort, Uhrversatz) – für Spuren über den Bildrand ist der Durchgangszeitpunkt in der
+     Belichtung frei, die Stimme gilt für ein Versatzintervall. Grob: Zellen 20 km × 4 s in überlappenden 2×2×2-Blöcken, Zahl verschiedener Spuren
+     → die 40 besten Blöcke. **Grob allein reicht nicht:** im 40-km-Block erreichten zufällige Häufungen so viele Spuren wie der wahre Ort (IC59: je 10;
+     der wahre Block lag auf Rang 2). Fein (`local`): Raster 1 km × 1 s (± 30 km, ± 12 s), Bahnpunkte alle 0,25 s, Spur deckt einen Rasterpunkt ab, wenn
+     ihre Bodenspur ≤ max(2,5 km, Entfernung × 300″) + 0,9 km vorbeiläuft und der Versatz passt. Stütze = verschiedene Spuren mit **verschiedenen
+     NORAD-Nummern** (Spuren mit wenigen Möglichkeiten zuerst). Echte Bodenpunkte lagen 0,6–3,3 km am wahren Ort (1-s-Schritte, Bahnfehler).
+  3. **Zufallsniveau:** λ = Σ je Spur 1 − exp(−abgedeckte Fläche × Versatzbreite / Volumen) im Umkreis 300 km aus allen Stimmen; Fehlalarm =
+     Poisson(≥ k | λ) × Zahl unabhängiger Prüfstellen (Fläche/(5 km)² × Versatzbereich/8 s). Uhr erst ± 60 s, ohne Ergebnis ± 20 min (mit „Uhrversatz
+     suchen“). **Eichung an echten Spuren** (Kopien 01./06.08.2022, Zeit je Spur zufällig um ± 3–15 min verschoben → kein gemeinsamer Ort,
+     14 Läufe): kleinste Schätzung meist 13–100 %, einmal 0,9 % (7 von 32 Spuren, streng danach 5 eindeutig – der Ausgleich erzwingt mit 3 freien
+     Größen immer einige Treffer). Die Poisson-Schätzung ist also rund 10× zu optimistisch (Starlink-Züge, korrelierte Stimmen) →
+     `MAX_FALSE` 0,1 %; echte Funde lagen bei ≤ 1e-5. Mit 0,1 % in allen 14 Läufen kein Vorschlag.
+  4. **Verfeinern** (`refine`, ≤ 4 Häufungen): `sitefit.fit` aus den beteiligten Bahnen (Ort + Uhr, Höhe 0 m), strenger Abgleich aller Spuren der Nacht
+     am Ergebnis mit dem Versatz (`check`, normale Toleranzen) und zweite Rückrechnung aus dessen eindeutigen Treffern. Vorschlag nur bei ≥ 3 eindeutigen
+     und mehr als bisher.
+- **Ergebnis** `night.global` (Stufen mit Paaren/Stimmen/Häufungen, Grund) und `proposal.kind='global'` (`lat/lon` 6 Stellen fürs Übernehmen, `alt_m` 0,
+  `accuracy_m`, `sure`, `rms`, `support`, `confidence`, `clock_s`, `nearest_name/km`); liegt er ≤ max(2 km, 2 × Genauigkeit) an einem Listenort →
+  `kind='list'` mit `source='global'`. Uhr: |Versatz| ≥ 20 s → `night.clock.proposal` (`source='global'`), sonst wird ein Uhrvorschlag vom bisherigen Ort
+  verworfen (`dropped`, Grund „Folge des falschen Orts“). UI `globalHtml`: Koordinaten auf 0,01°, Unsicherheit, Spuren, Sicherheit, Uhr, „Höhe unbekannt“,
+  SVG-Karte `globalMap` relativ zu den Listenorten; Land/Grenzen aus `/vendor/umrisse-welt.json` (Natural Earth 1:10 Mio., ~1 km, einmal geladen,
+  `outlines`/`hydrateMaps`, nur Ringe im Ausschnitt) – ohne Netz. **„Karte laden“** (`onlineMap`, Wunsch des Nutzers 06.11.2026): Leaflet aus `/vendor/`,
+  Kacheln OpenStreetMap bzw. OpenTopoMap („Gelände“) erst auf Knopfdruck – der Kartendienst sieht den Ausschnitt; „immer laden“ =
+  localStorage `af.skytrace.mapsOnline`. Leaflet-Ebenen haben z-index ≥ 400 → `.stn-leaflet` mit eigenem Stapelkontext (`isolation`). `applyNights` legt „Unbekannter Ort
+  (Satelliten <Nacht>)“ an, Hinweis auf Höhe/Namen. Nie automatisch.
+- **Leistung:** IC59 allein 19 s (Stufe ± 60 s: 1 137 Paare, 4 s Rückprojektion), ganze Nacht 06.08. (32 Spuren) 39 s; ± 20 min ~36 s mehr. `MAX_PAIRS` 60 000
+  als Notbremse. Bahnen nur lokal (`orbits_cache_only`), keine SATCAT-Abfragen (`satcat_offline`), Anhalten über die Stopp-Datei (`check_stop`).
+- **Befund** (06.11.2026, Kopien der Kandidaten-JSONs, `nights … --global-km 1500`, Urlaubsort aus der Ortsliste ausgeblendet; Abstand zum
+  später angelegten Ort, nächster Listenort ~244 km entfernt):
+
+  | Nacht | Spuren | bisher eindeutig | Ergebnis | Abstand | Uhr | Dauer global |
+  |---|---|---|---|---|---|---|
+  | 01.08. | 12 | 0 (mit −639 s: 5) | `global` 12/12, quer 80″ | 0,68 km | +0,7 ± 0,7 s → −639 s verworfen | 9 s |
+  | 03.08. | 4 | 0 | kein Vorschlag (keine Häufung über dem Zufall) | – | – | 6 s |
+  | 06.08. | 32 | 1 | `global` 26/32, quer 29″ (IC59 allein 12/16, 25″) | 0,13 km | −4,1 ± 0,5 s | 55 s |
+  | 07.08. | 8 | 1 | `global` 8/8, quer 55″ | 0,67 km | −7,6 ± 0,9 s | 5 s |
+  | 15.07., 18.07., 17.06. (Kontrolle, zu Hause) | 9 / 9 / 16 | – | Listenort passt (9, 7, 15 eindeutig), Suche läuft nicht | – | – | – |
+
+  Ohne Listenprüfung direkt gesucht fanden auch die Kontrollnächte ihren Heimatbereich (7–15 Spuren). 03.08. (NGC 246/NGC 7023) bleibt offen –
+  dort passt vermutlich derselbe Urlaubsort; übernimmt man ihn für die Woche, gleicht „neu abgleichen“ die Nacht mit ab.
+- Tests: `tests/test_skytrace_global.py` (Engine im Engine-Interpreter direkt ausführbar: Ort 300 km neben dem Listenort, Uhr −300 s, 40 Störbahnen →
+  < 5 km, ± 5 s, alle Spuren eindeutig, erst in der ± 20-min-Stufe; verdrehte Spuren → kein Vorschlag; Nachtsuche mit/ohne `global_km`; guter Listenort →
+  Suche läuft nicht; Geometrie der Rückprojektion; Server reicht `--global-km` durch). UI: `#/skytrace/standorte` in `test_ui_layout.py` (Nacht mit `global`).
 
 ## Erkennung im Teleskop-Bildfeld (28.10.2026, Nutzerbefund M74 2022-08-07)
 Anlass: Ein schwacher Meteor (img-0041, ~120 px, ~1,5σ/px) wurde übersehen, ein langsames Objekt in sechs Aufnahmen (img-0177…0182)
