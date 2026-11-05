@@ -570,7 +570,9 @@ def build_router(mod) -> APIRouter:
     def nights_start(body: dict = Body(default={})):
         """Standorte für alle Nächte suchen (Hintergrundauftrag; Ergebnis bleibt in standortsuche-naechte.json)."""
         try:
-            return mod.sitejobs.start_nights(float(body.get("radius_km") or 10), body.get("clock") is not False)
+            g = body.get("global_km")
+            return mod.sitejobs.start_nights(float(body.get("radius_km") or 10), body.get("clock") is not False,
+                                             float(1500 if g is None else g or 0))
         except (OSError, ValueError, TypeError) as e:
             bad(e)
 

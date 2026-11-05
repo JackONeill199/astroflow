@@ -3,6 +3,22 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.32.0 – 06.11.2026
+
+### Neu
+- **SkyTrace: Standort ohne Vorwissen zurückrechnen.** Stand das Teleskop in einer Nacht weit weg von jedem Ort der Ortsliste (etwa im
+  Urlaub), fand der Satellitenabgleich bisher nichts – auch die Suche mit Spielraum reichte nur ≤ 20 km um die bekannten Orte.
+  Unter SkyTrace → **Standorte aller Nächte** gibt es jetzt die Auswahl **Ohne Vorwissen** (aus / ± 500 / ± 1500 / ± 3000 km um die
+  Listenorte, Standard ± 1500 km). Passt kein Listenort, rechnet SkyTrace aus jeder Spur und jeder Satellitenbahn des lokalen Archivs
+  zurück, von welchen Bodenpunkten aus der Satellit genau dort am Himmel stand, sucht den Ort, an dem sich Spuren verschiedener
+  Satelliten treffen (Uhrversatz bis ± 20 min gleich mit), und prüft ihn danach streng nach. Vorschlag „Unbekannter Ort
+  zurückgerechnet“ mit gerundeten Koordinaten, Unsicherheit, Zahl der Spuren und kleiner Karte (ohne Kartendienst); nur deutlich über
+  dem Zufall. Liegt der Ort ≤ 2 km neben einem Listenort, wird dieser vorgeschlagen. „Übernehmen“ legt Ort und Zuordnung der Nacht an
+  und gleicht neu ab – nie automatisch. Ergibt der neue Ort, dass die Uhr richtig ging, entfällt ein am falschen Ort gefundener Uhrversatz.
+- Geprüft an einer echten Urlaubswoche (Ort rund 250 km neben jedem Listenort): Ort auf 0,1–0,7 km gefunden, 8–26 Spuren je Nacht
+  eindeutig zugeordnet (vorher 0–1); die Kamera-Uhr ging dort richtig (−8…+1 s) – der früher vorgeschlagene Versatz von −639 s
+  für den 01.08.2022 kam vom falschen Ort.
+
 ## 0.31.3 – 05.11.2026
 
 ### Behoben

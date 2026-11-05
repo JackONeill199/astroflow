@@ -1093,16 +1093,39 @@ function clockScanHtml(k, applied) {
   return `<div class="stn-clock"><small class="dim">Uhrversatz</small><b>Kamera-Uhr ging ${offsetText(q.offset_s).slice(1)} ${q.offset_s < 0 ? 'vor' : 'nach'}</b>
     <span class="mut sm">± ${num(q.sigma_s)} s · ${q.support} Spuren treffen bei demselben Versatz (zufällig ≈ ${num(q.chance)}) · Sicherheit ${q.confidence >= 0.999 ? '> 99,9' : num(Math.round(q.confidence * 1000) / 10)} % · danach ${q.sure} statt ${q.before} eindeutig</span></div>`;
 }
-function nightRow(n, busy = false, clocks = {}) {
+// Ort ohne Vorwissen (engine/global_site.py): Koordinaten nur auf 0,01° (≈ 1 km) zeigen, Karte ohne Kacheln (kein Ort verlässt den Rechner)
+const degText = (v, pos, neg) => `${Math.abs(v).toFixed(2).replace('.', ',')}° ${v >= 0 ? pos : neg}`;
+function globalMap(p, sites = []) {
+  const pts = sites.filter(s => s.lat != null && s.lon != null).map(s => ({ lat: s.lat, lon: s.lon, name: s.name }));
+  const all = [...pts, p], lat0 = all.reduce((a, s) => a + s.lat, 0) / all.length, lon0 = all.reduce((a, s) => a + s.lon, 0) / all.length;
+  const xy = (s) => [(s.lon - lon0) * 111.2 * Math.cos(lat0 * Math.PI / 180), (s.lat - lat0) * 111.2];
+  const span = Math.max(50, ...all.map(s => Math.max(...xy(s).map(Math.abs)))) * 1.25;
+  const W = 220, H = 140, k = Math.min(W, H) / 2 / span, X = (s) => W / 2 + xy(s)[0] * k, Y = (s) => H / 2 - xy(s)[1] * k;
+  const bar = [10, 20, 50, 100, 200, 500, 1000].find(v => v * k >= 30) || 1000;
+  return `<svg class="stn-map" viewBox="0 0 ${W} ${H}" role="img" aria-label="Lage des zurückgerechneten Orts zu den Orten der Liste">
+    ${pts.map(s => `<circle cx="${X(s).toFixed(1)}" cy="${Y(s).toFixed(1)}" r="3" class="site"><title>${esc(s.name || 'Ort')}</title></circle>`).join('')}
+    <circle cx="${X(p).toFixed(1)}" cy="${Y(p).toFixed(1)}" r="5" class="found"><title>zurückgerechneter Ort</title></circle>
+    <line x1="8" y1="${H - 8}" x2="${(8 + bar * k).toFixed(1)}" y2="${H - 8}" class="bar"/><text x="8" y="${H - 12}" font-size="9">${bar} km</text></svg>`;
+}
+function globalHtml(p, n, sites) {
+  const conf = p.confidence == null ? '' : ` · Sicherheit ${p.confidence >= 0.999 ? '> 99,9' : String(Math.round(p.confidence * 1000) / 10).replace('.', ',')} %`;
+  return `<b>Unbekannter Ort zurückgerechnet</b>
+    <span class="mut sm">≈ ${degText(p.lat, 'N', 'S')} · ${degText(p.lon, 'O', 'W')} (± ${kmText(p.accuracy_m / 1000)})${p.nearest_km != null ? ` · ${kmText(p.nearest_km)} von „${esc(p.nearest_name || 'Ort')}“` : ''}</span>
+    <span class="mut sm">ohne Vorwissen aus ${p.support} Spuren · danach ${p.sure} von ${n.tracks} eindeutig · quer ${arcText(p.rms)}${conf}${clockText(p) ? ' · ' + clockText(p) : ''} · Höhe unbekannt (0 m)</span>
+    ${globalMap(p, sites)}`;
+}
+function nightRow(n, busy = false, clocks = {}, sites = []) {
   let [label, cls] = NIGHT_STATUS[n.status] || [n.status || '–', ''];
   const p = n.proposal, c = n.current || {};
   const k = n.clock, applied = clocks[n.night], q = k?.proposal;
   if (q && !p) [label, cls] = ['Uhr falsch gestellt', 'acc'];
+  if (p?.kind === 'global') [label, cls] = ['Unbekannter Ort', 'acc'];
   const date = new Date(n.night + 'T12:00:00Z').toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
   const obs = (n.observations || []).map(o => shortName(o.session)).join(' · ');
   const now = `${c.sure ?? n.before ?? 0} von ${n.tracks} Spuren eindeutig · quer ${arcText(c.rms)}`;
   const prop = !p ? '' : p.kind === 'list'
-    ? `<b>${esc(p.name || 'Ort der Liste')}</b><span class="mut sm">bestehender Ort · ${p.sure} von ${n.tracks} Spuren · quer ${arcText(p.rms)}${clockText(p) ? ' · ' + clockText(p) : ''}</span>`
+    ? `<b>${esc(p.name || 'Ort der Liste')}</b><span class="mut sm">bestehender Ort${p.source === 'global' ? ' (ohne Vorwissen gefunden)' : ''} · ${p.sure} von ${n.tracks} Spuren · quer ${arcText(p.rms)}${clockText(p) ? ' · ' + clockText(p) : ''}</span>`
+    : p.kind === 'global' ? globalHtml(p, n, sites)
     : `<b>Neuer Ort ${p.shift_from_current_km != null ? kmText(p.shift_from_current_km) + ' neben „' + esc(c.name || 'bisher') + '“' : ''}</b>
        <span class="mut sm">zurückgerechnet aus ${p.trails} Spuren · ± ${kmText(p.accuracy_m / 1000)} · ${p.sure} von ${n.tracks} Spuren · quer ${arcText(p.rms_before_arcsec)} → ${arcText(p.rms)} · ${clockText(p)}</span>
        <a class="sm" href="https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#map=14/${p.lat}/${p.lon}" target="_blank" rel="noreferrer">Karte ↗</a>`;
@@ -1122,10 +1145,11 @@ async function applyNights(rows) {
   let ex = {};
   try { ex = (await api(T + '/settings')).sites || {}; } catch { /* ohne Einstellungen: keine Ausnahme bekannt */ }
   const sessions = [...new Set(rows.flatMap(n => (n.observations || []).map(o => o.session)))].filter(s => ex[s]);
-  const fits = rows.filter(n => n.proposal?.kind === 'fit').length, placed = rows.filter(n => n.proposal), timed = rows.filter(n => n.clock?.proposal);
+  const fits = rows.filter(n => ['fit', 'global'].includes(n.proposal?.kind)).length, placed = rows.filter(n => n.proposal), timed = rows.filter(n => n.clock?.proposal);
   const one = rows.length === 1 ? rows[0] : null;
   const text = (one
-    ? (!one.proposal ? '' : one.proposal.kind === 'fit' ? `Ein neuer Ort (± ${kmText(one.proposal.accuracy_m / 1000)}) wird angelegt und der Nacht ${esc(one.night)} zugeordnet.`
+    ? (!one.proposal ? '' : one.proposal.kind === 'global' ? `Ein neuer Ort „Unbekannter Ort (Satelliten ${esc(one.night)})“ (± ${kmText(one.proposal.accuracy_m / 1000)}) wird angelegt und der Nacht ${esc(one.night)} zugeordnet. Die Höhe ist unbekannt (0 m) – bitte unter Einstellungen → Standorte prüfen und den Namen anpassen.`
+      : one.proposal.kind === 'fit' ? `Ein neuer Ort (± ${kmText(one.proposal.accuracy_m / 1000)}) wird angelegt und der Nacht ${esc(one.night)} zugeordnet.`
       : `Der Nacht ${esc(one.night)} wird „${esc(one.proposal.name || 'Ort')}“ zugeordnet.`)
     : placed.length ? `${placed.length} Nächte bekommen ihren vorgeschlagenen Ort${fits ? ` (${fits} neue Orte werden angelegt)` : ''}.` : '')
     + (timed.length ? (one ? ` Für die Nacht ${esc(one.night)} gilt beim Abgleich die Uhrkorrektur ${offsetText(one.clock.proposal.offset_s)}.` : ` ${timed.length} Nächte bekommen eine Uhrkorrektur.`)
@@ -1147,7 +1171,7 @@ async function applyNights(rows) {
       if (p.kind === 'list') { target[n.night] = p.id; continue; }
       const id = 's' + Math.random().toString(16).slice(2, 10);
       list.push({ id, name: `${p.from_name || n.current?.name || 'Standort'} (Satelliten ${n.night})`, lat: p.lat, lon: p.lon, alt_m: p.alt_m || 0, accuracy_m: p.accuracy_m,
-        note: `aus ${p.trails} Satellitenspuren der Nacht zurückgerechnet${p.timed ? `, Uhr ${p.clock_s} s` : ''}` });
+        note: `${p.kind === 'global' ? 'ohne Vorwissen ' : ''}aus ${p.trails} Satellitenspuren der Nacht zurückgerechnet${p.timed ? `, Uhr ${p.clock_s} s` : ''}${p.kind === 'global' ? ', Höhe unbekannt' : ''}` });
       target[n.night] = id;
     }
     if (list.length !== d.list.length) await send('/sites', { ...d, list });
@@ -1162,20 +1186,22 @@ async function applyNights(rows) {
 }
 async function nightsView(el) {
   crumbs([['SkyTrace', '#/skytrace'], ['Standorte aller Nächte']]);
-  let data = null, job = null, sig = '', show = store.get('skytrace.nightsShow', 'better'), clocks = {};
+  let data = null, job = null, sig = '', show = store.get('skytrace.nightsShow', 'better'), clocks = {}, sites = [];
   const has = (n) => n.proposal || n.clock?.proposal;
   el.innerHTML = `<div class="pagehead"><div><h1>Standorte aller Nächte</h1><p class="mut readable">Je Aufnahmenacht prüft SkyTrace die Satellitenspuren aller Beobachtungen dieser Nacht
       gegen jeden Ort der Ortsliste. Passt keiner gut, sucht es mit Spielraum um den besten und rechnet den wahrscheinlichsten Ort zurück. Nur ein Vorschlag –
       übernommen wird erst nach Bestätigung.</p></div><span class="grow"></span>
       <div class="row"><label class="sm mut" for="stn-radius">Spielraum</label><select id="stn-radius">${[5, 10, 20].map(r => `<option value="${r}"${r === store.get('skytrace.nightsRadius', 10) ? ' selected' : ''}>± ${r} km</option>`).join('')}</select>
       <label class="sm mut" title="Bei Nächten mit wenigen Treffern ± 20 min nach einer falsch gestellten Kamera-Uhr suchen (dauert länger)"><input type="checkbox" id="stn-clock"${store.get('skytrace.nightsClock', true) ? ' checked' : ''}> Uhrversatz suchen</label>
+      <label class="sm mut" for="stn-global" title="Passt kein Ort der Liste, den Aufstellort allein aus den Spuren zurückrechnen – auch Hunderte Kilometer von jedem bekannten Ort (z. B. Urlaub)">Ohne Vorwissen</label><select id="stn-global">${[[0, 'aus'], [500, '± 500 km'], [1500, '± 1500 km'], [3000, '± 3000 km']].map(([v, t]) => `<option value="${v}"${v === store.get('skytrace.nightsGlobal', 1500) ? ' selected' : ''}>${t}</option>`).join('')}</select>
       <button class="btn" id="stn-go">${icon('play')}Suche starten</button></div></div><div id="stn-job"></div><div id="stn-body"></div>`;
   const body = $('#stn-body', el);
   $('#stn-radius', el).onchange = (e) => store.set('skytrace.nightsRadius', +e.target.value);
   $('#stn-clock', el).onchange = (e) => store.set('skytrace.nightsClock', e.target.checked);
+  $('#stn-global', el).onchange = (e) => store.set('skytrace.nightsGlobal', +e.target.value);
   $('#stn-go', el).onclick = async () => {
     if (job?.state === 'running') { try { await send(T + '/rematch/stop'); } catch (e) { toast(e.message, 'err'); } return; }
-    if (await startRematch({ radius_km: +$('#stn-radius', el).value, clock: $('#stn-clock', el).checked }, 'Standortsuche für alle Nächte gestartet.', '/sitesearch/nights')) load();
+    if (await startRematch({ radius_km: +$('#stn-radius', el).value, clock: $('#stn-clock', el).checked, global_km: +$('#stn-global', el).value }, 'Standortsuche für alle Nächte gestartet.', '/sitesearch/nights')) load();
   };
   function draw() {
     const nights = data?.nights || [], open = nights.filter(n => has(n) && !n.applied);
@@ -1185,20 +1211,23 @@ async function nightsView(el) {
     go.className = 'btn' + (running ? ' danger' : '');
     setJobLine($('#stn-job', el), running ? { state: 'running', stage: 'Standorte aller Nächte', message: job.text, progress: job.total ? job.current / job.total : null } : null);
     const list = show === 'better' ? nights.filter(n => has(n) || n.applied) : nights;
-    const s = JSON.stringify([show, running, nights.map(n => [n.night, n.status, !!n.applied]), clocks]);
+    const s = JSON.stringify([show, running, nights.map(n => [n.night, n.status, !!n.applied]), clocks, sites.length]);
     if (s === sig) return;
     sig = s;
     if (!data) { body.innerHTML = `<div class="empty">${icon('pin')}<h2>Noch keine Suche</h2>Starte die Suche – sie läuft im Hintergrund und darf jederzeit angehalten werden; fertige Nächte bleiben erhalten.</div>`; return; }
     const count = (k) => nights.filter(n => n.status === k).length;
     body.innerHTML = `<div class="row stn-head"><div class="seg" role="tablist"><button data-show="better" class="${show === 'better' ? 'on' : ''}">Mit Vorschlag (${nights.filter(n => has(n) || n.applied).length})</button>
         <button data-show="all" class="${show === 'all' ? 'on' : ''}">Alle Nächte (${nights.length})</button></div>
-        <span class="mut sm">${count('ok')} passen · ${count('none')} ohne passenden Ort · Suche vom ${new Date(data.created * 1000).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}, ± ${data.radius_km} km${data.state === 'stopped' ? ' · angehalten' : ''}</span>
+        <span class="mut sm">${count('ok')} passen · ${count('none')} ohne passenden Ort · Suche vom ${new Date(data.created * 1000).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}, ± ${data.radius_km} km${data.global_km ? ` · ohne Vorwissen ± ${data.global_km} km` : ''}${data.state === 'stopped' ? ' · angehalten' : ''}</span>
         <span class="grow"></span>${open.length > 1 ? `<button class="btn sm" data-apply-all${running ? ' disabled' : ''}>Alle übernehmen (${open.length}) …</button>` : ''}</div>
-      ${list.length ? list.map(n => nightRow(n, running, clocks)).join('') : `<div class="empty">${show === 'better' ? 'Keine Nacht mit besserem Ort gefunden.' : 'Keine Nächte mit Spuren.'}</div>`}
+      ${list.length ? list.map(n => nightRow(n, running, clocks, sites)).join('') : `<div class="empty">${show === 'better' ? 'Keine Nacht mit besserem Ort gefunden.' : 'Keine Nächte mit Spuren.'}</div>`}
       <p class="dim sm">Eindeutig = einer Satellitenbahn zugeordnet, ohne fast gleich gute zweite Bahn (Starlink-Züge zählen nicht). Zurückgerechnet wird erst ab 3 eindeutigen Spuren einer Nacht.
         „Kein Ort passt“ heißt: keine Spur ließ sich zuordnen – nicht, dass der Ort falsch ist.
         Uhrversatz: Bei Nächten mit wenigen Treffern wird der Abgleich ± 20 min verschoben; vorgeschlagen wird nur, wenn mindestens 3 verschiedene Spuren
-        bei demselben Versatz treffen und das deutlich über dem Zufall liegt.</p>`;
+        bei demselben Versatz treffen und das deutlich über dem Zufall liegt.
+        Ohne Vorwissen: Passt kein Ort der Liste, rechnet SkyTrace aus jeder Spur und jeder Satellitenbahn die Bodenpunkte zurück, von denen aus der Satellit
+        dort zu sehen war, und sucht den Ort, an dem sich Spuren verschiedener Satelliten treffen (Uhr ± 20 min) – vorgeschlagen nur deutlich über dem Zufall.
+        Koordinaten erscheinen gerundet (0,01°); die Karte wird ohne Kartendienst gezeichnet.</p>`;
   }
   body.onclick = async (e) => {
     const sh = e.target.closest('[data-show]');
@@ -1208,7 +1237,10 @@ async function nightsView(el) {
     if (rows && await applyNights(rows)) load();
   };
   async function load() {
-    try { const d = await api(T + '/sitesearch/nights'); data = d.result; job = d.job; clocks = (await api(T + '/settings').catch(() => ({}))).clock_offsets || {}; }
+    try {
+      const d = await api(T + '/sitesearch/nights'); data = d.result; job = d.job; clocks = (await api(T + '/settings').catch(() => ({}))).clock_offsets || {};
+      if ((data?.nights || []).some(n => n.proposal?.kind === 'global')) sites = (await api('/sites?nights=false').catch(() => ({}))).list || [];
+    }
     catch (e) { if (el.isConnected) body.innerHTML = `<div class="panel bad">${esc(e.message)}</div>`; return; }
     if (el.isConnected) draw();
   }

@@ -269,6 +269,13 @@ Ging die Kamera-Uhr in einer Nacht falsch (bei der Stellina kommt die Uhr vom Ha
 über dem Zufall liegt (Anzeige: Spuren, zufällig erwartete Treffer, Sicherheit). Übernommen wird er erst auf Knopfdruck; er gilt dann
 beim Abgleich dieser Nacht, Rohbilder und gespeicherte Aufnahmezeiten bleiben unverändert (Kandidaten zeigen weiter die Kamerazeit
 mit dem Hinweis „Uhr korrigiert um …“).
+Stand das Teleskop ganz woanders (z. B. im Urlaub, Hunderte Kilometer von jedem Ort der Liste), hilft **Ohne Vorwissen** (Auswahl
+neben „Suche starten“, Standard ± 1500 km um die Orte der Liste): Passt kein Listenort, rechnet SkyTrace aus jeder Spur und jeder
+Satellitenbahn die Bodenpunkte zurück, von denen aus der Satellit genau dort am Himmel stand, und sucht den Ort, an dem sich Spuren
+verschiedener Satelliten treffen – samt Uhrversatz. Vorgeschlagen wird „Unbekannter Ort zurückgerechnet“ (Koordinaten auf 0,01°,
+Unsicherheit, kleine Karte ohne Kartendienst) nur deutlich über dem Zufall; liegt er höchstens 2 km neben einem Listenort, wird dieser
+vorgeschlagen. „Übernehmen“ legt einen neuen Ort für die Nacht an (Höhe danach unter Einstellungen → Standorte eintragen) und gleicht
+neu ab. Rechnet nur lokal, typisch 10–60 s je Nacht.
 Im Dropdown **Analyse → Erneut analysieren** startet die vollständige Erkennung mit aktuellem Code als neuer Lauf
 aus den bisherigen Aufnahmen. Fehlen Originaldateien, kann ihr Ordner ausgewählt werden. Bei Ersatz-FITS muss auch das
 Aufnahmedatum übereinstimmen: gleiche Dateinamen aus einer anderen Nacht werden nicht zugeordnet. Der alte Lauf bleibt erhalten.

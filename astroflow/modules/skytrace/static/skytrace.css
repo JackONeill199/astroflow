@@ -165,3 +165,8 @@ a.sts-row:hover b { color: var(--acc) }
 .stn-grid > div { display: flex; flex-direction: column; gap: 0.125rem; min-width: 0 }
 .stn-grid b { overflow-wrap: anywhere }
 .stn-clock b { color: var(--acc) }
+.stn-map { width: 100%; max-width: 15rem; height: auto; margin-top: 0.375rem; border: 1px solid var(--border); border-radius: var(--radius, 0.5rem); background: var(--surface-2) }
+.stn-map .site { fill: var(--mut) }
+.stn-map .found { fill: var(--acc); stroke: var(--bg); stroke-width: 1.5 }
+.stn-map .bar { stroke: var(--mut); stroke-width: 1.5 }
+.stn-map text { fill: var(--mut) }

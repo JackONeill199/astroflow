@@ -83,11 +83,14 @@ class SiteJobs:
         return self._launch(dict(kind="rematch", all=runs is None, runs=[p.name for p in paths], force=force, title=title,
                                  signature=self.signature() if runs is None else None), args)
 
-    def start_nights(self, radius_km: float = 10.0, clock: bool = True) -> dict:
-        """Standorte aller Nächte: Gruppen je Nacht aus der Statistik (neueste vollständige Analyse je Beobachtung)."""
+    def start_nights(self, radius_km: float = 10.0, clock: bool = True, global_km: float = 0.0) -> dict:
+        """Standorte aller Nächte: Gruppen je Nacht aus der Statistik (neueste vollständige Analyse je Beobachtung).
+        `global_km` > 0: ohne passenden Listenort den Ort ohne Vorwissen in diesem Umkreis um die Listenorte suchen (`global_site`)."""
         from .stats import collect
         if not 1 <= float(radius_km) <= 50:
             raise ValueError("Suchradius 1–50 km.")
+        if global_km and not 100 <= float(global_km) <= 3000:
+            raise ValueError("Suchgebiet ohne Vorwissen 100–3000 km (0 = aus).")
         busy = self.mod.ctl.snapshot(logs=False)
         data = collect(self.mod.ctl.results, skip=busy["run"] if busy["running"] else None)
         groups: dict[str, list] = {}
@@ -100,8 +103,10 @@ class SiteJobs:
         path = self.mod.home / "standortsuche-gruppen.json"
         write_json(path, [{"night": n, "observations": o} for n, o in sorted(groups.items(), reverse=True)])
         runs = sorted({o["run"] for obs in groups.values() for o in obs})
-        return self._launch(dict(kind="nights", all=False, runs=runs, title="Standorte für alle Nächte suchen", radius_km=float(radius_km), clock=bool(clock)),
-                            ["nights", str(path), str(self.nights_file), "--radius-km", str(float(radius_km))] + ([] if clock else ["--no-clock"]))
+        return self._launch(dict(kind="nights", all=False, runs=runs, title="Standorte für alle Nächte suchen", radius_km=float(radius_km), clock=bool(clock),
+                                 global_km=float(global_km or 0)),
+                            ["nights", str(path), str(self.nights_file), "--radius-km", str(float(radius_km)), "--global-km", str(float(global_km or 0))]
+                            + ([] if clock else ["--no-clock"]))
 
     @property
     def nights_file(self) -> Path:
