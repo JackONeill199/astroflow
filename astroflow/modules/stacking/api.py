@@ -693,7 +693,7 @@ def build_router(eng: Engine) -> APIRouter:
             except Exception:
                 sky = None
         return {**out, "site_info": {k: here.get(k) for k in ("id", "name", "source", "detail")} if here else None,
-                "sites_on": bool(site_for), "night": night, "sky": sky}
+                "sites_on": bool(site_for), "night": night, "sky_quality": sky}
 
     # ---- Himmelsqualität (Himmelshelligkeit, Bortle, Lichtrichtung, Seeing) ------------------------
     @r.get("/sky")

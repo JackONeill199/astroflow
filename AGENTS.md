@@ -309,13 +309,13 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   sensorfest bei Alt-Az) + natürlichen Anstieg (`_nat_slope`) + b·Richtung zum Horizontpunkt φ an; Unsicherheit per Bootstrap über
   Nächte/Objekte, `reliable` erst ab 3 Gruppen, 60° Azimutabdeckung, ±45°. Nur `tutor.neutral_sky`-Objekte, ohne Mond/Dämmerung.
   Ältere Frames ohne Ebene: `_backfill` misst ≤ 40 je Nacht nach, wenn das Rohbild noch erreichbar ist (gleiches `_load`, Glühmodell aus der Bibliothek).
-- **Seeing** = `metrics.fwhm` (Vollauflösungs-Pixel, aus 2×2-Bild ×2, +1 px Messsockel) × Maßstab → „effektive Bildschärfe“.
+- **Seeing** = `metrics.fwhm` (Vollauflösungs-Pixel, aus 2×2-Bild ×2, +1 px Messsockel) × nativer Maßstab (WCS-Maßstab × `resolution_scale`; Nullpunkt −5·log sc) → „effektive Bildschärfe“. Ohne Standort kein Ortswert (Flag `nosite`); gelöschte Objekte entfernen ihre `sky_nights`.
 - **Ablage:** Tabelle `sky_nights(project_id, night, site_id, site_name, device, updated, version, data)` (`ensure_table`, nicht in `db.SCHEMA`);
   Ort je Nacht über Dienst `site_for` (FITS-Ort → `fits:<lat,lon>`), gespeichert nur ID/Name. `summary` mittelt je Ort (Nacht = Median ihrer Objekte).
 - **Ablauf:** nach jeder Endbearbeitung `SkyRunner.queue` (eigener Thread, ohne Nachmessen; `ASTROFLOW_SKY=0` aus, setzt `conftest.py`),
   „Für alle Nächte berechnen“ = `POST /api/stacking/sky/compute {project_id?|missing?}` (Objekte mit `wcs.json` zuerst – ihre Nullpunkte
   ergeben den Gerätenullpunkt `device_zp` für die übrigen), Fortschritt in `activity()`. API `GET /sky` (je Ort, mit Lichtrichtung),
-  `GET /projects/{pid}/sky` (Nächte mit Verlauf); `tonight` liefert `sky` des gewählten Orts; Dienst `site_sky` → `/api/sites` → `sky` je Ort.
+  `GET /projects/{pid}/sky` (Nächte mit Verlauf); `tonight` liefert `sky_quality` des gewählten Orts (`sky` ist dort die Wettervorhersage); Dienst `site_sky` → `/api/sites` → `sky` je Ort.
 - **UI:** `static/skyquality.js|css` (Präfix `sq-`): Ansicht `#/himmel` (unter Übersicht), Kasten „Himmel in der Aufnahmenacht“ auf der Objektseite
   (`AFsky.panel`), Kachel in Heute Nacht (`AFsky.tonightTile`), Zeile je Ort in Einstellungen → Standorte (`sites.js` → `skyLine`).
 - Tests: `test_skyquality.py` (synthetisch, erfundener Ort), UI-Fixture `_sky_seed`.

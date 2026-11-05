@@ -52,7 +52,7 @@ BORTLE = ((21.7, 1), (21.5, 2), (21.3, 3), (20.4, 4), (19.1, 5), (18.5, 6), (18.
 BORTLE_LABEL = {1: "exzellent dunkel", 2: "typisch dunkel", 3: "ländlich", 4: "Übergang ländlich/Vorort", 5: "Vorort",
                 6: "heller Vorort", 7: "Übergang Vorort/Stadt", 8: "Stadt", 9: "Innenstadt"}
 FLAG_TEXT = {"twilight": "Dämmerung", "moon": "Mond über dem Horizont", "low": "Objekt tiefer als 30°",
-             "cloud": "Dunst/Wolken", "nosky": "Hintergrund nicht messbar"}
+             "cloud": "Dunst/Wolken", "nosky": "Hintergrund nicht messbar", "nosite": "Standort unbekannt"}
 
 
 # --------------------------------------------------------------- Grundlagen ---
@@ -278,7 +278,7 @@ def ephemeris(times: list[dt.datetime], ra: float, dec: float, site: dict) -> di
                 "moon_illum": (1 - np.cos(sun.separation(moon).rad)) / 2, "alt": aa.alt.deg, "az": aa.az.deg}
 
 
-def orientation(w, links: list, shape: tuple, times: list, site: dict, d: float = 0.2):
+def orientation(w, links: list, shape: tuple, times: list, site: dict, d: float = 0.2, sc: float = 1.0):
     """Richtung „nach oben“ (zum Zenit) und „nach rechts“ (wachsendes Azimut) je Aufnahme in Frame-Pixeln je Grad,
     dazu Az/Alt der Bildmitte. links: Matrizen Frame→Referenz (Feldrotation), w: WCS des Stacks (Referenzraster)."""
     from astropy import units as u
@@ -288,7 +288,8 @@ def orientation(w, links: list, shape: tuple, times: list, site: dict, d: float 
     c = np.array([(W - 1) / 2, (H - 1) / 2, 1.0])
     Ms = np.array(links)
     cref = Ms @ c
-    ra0, dec0 = w.pixel_to_world_values(cref[:, 0], cref[:, 1])
+    to_stack = lambda v: (v + 0.5) * sc - 0.5               # Referenzraster (nativ) -> Stack-Raster (resolution_scale)
+    ra0, dec0 = w.pixel_to_world_values(to_stack(cref[:, 0]), to_stack(cref[:, 1]))
     a, b = _iers()
     with warnings.catch_warnings(), a, b:
         warnings.simplefilter("ignore")
@@ -301,8 +302,9 @@ def orientation(w, links: list, shape: tuple, times: list, site: dict, d: float 
         rt = SkyCoord(az=(az + d / cosa) * u.deg, alt=alt * u.deg, frame=frame).icrs
     inv = np.linalg.inv(Ms)
 
-    def to_frame(sc):
-        x, y = w.world_to_pixel_values(sc.ra.deg, sc.dec.deg)
+    def to_frame(sky):
+        x, y = w.world_to_pixel_values(sky.ra.deg, sky.dec.deg)
+        x, y = (x + 0.5) / sc - 0.5, (y + 0.5) / sc - 0.5
         p = np.einsum("nij,nj->ni", inv, np.c_[x, y, np.ones(len(x))])
         return (p[:, :2] - c[:2]) / d
     return to_frame(up), to_frame(rt), alt, az
@@ -422,7 +424,7 @@ def _parse(t) -> dt.datetime | None:
 
 def evaluate(frames: list[dict], *, zp_stack: float | None, zp_device: float | None, flux_k0: float, links: dict,
              excess: float, scale: float, site: dict | None, ra: float, dec: float, wcs=None, shape=None,
-             neutral: bool = True, device_id: str | None = None, gain_k: float | None = None) -> dict:
+             neutral: bool = True, device_id: str | None = None, gain_k: float | None = None, stack_scale: float = 1.0) -> dict:
     """Kennzahlen je Nacht aus den Einzelbildern eines Objekts. frames: {id, night, date, exptime, gain, metrics, status}.
     zp_stack: Nullpunkt des Stacks (1 ADU/s), sonst zp_device (Gerätenullpunkt aus anderen Nächten); gain_k: gemessener
     Photonen-Transfer (fit_gain), sonst Gerätewert."""
@@ -446,7 +448,8 @@ def evaluate(frames: list[dict], *, zp_stack: float | None, zp_device: float | N
     ori = {}
     if eph is not None and wcs is not None and shape and dir_idx:
         try:
-            up, rt, a2, z2 = orientation(wcs, [links[rows[i]["id"]][1] for i in dir_idx], shape, [times[i] for i in dir_idx], site)
+            up, rt, a2, z2 = orientation(wcs, [links[rows[i]["id"]][1] for i in dir_idx], shape, [times[i] for i in dir_idx], site,
+                                         sc=stack_scale)
             ori = {i: (up[k], rt[k], a2[k], z2[k]) for k, i in enumerate(dir_idx)}
         except Exception:
             ori = {}
@@ -484,7 +487,7 @@ def evaluate(frames: list[dict], *, zp_stack: float | None, zp_device: float | N
                 sky = (float(m["noise"]) ** 2 - nm["read"] ** 2) / k
                 s_err = 2 * nm["read"] * nm["read_err"] / k
                 methods.add("noise")
-            flags = []
+            flags = [] if eph is not None else ["nosite"]   # ohne Ort keine Dämmerungs-/Mond-/Höhenprüfung
             if eph is not None:
                 if eph["sun_alt"][i] > -18:
                     flags.append("twilight")
@@ -591,7 +594,7 @@ def device_key(instrument, gain) -> str:
 def device_zp(db) -> dict:
     """Gerätenullpunkte (Median über Nächte mit eigenem Gaia-Nullpunkt) – Rückfall für Nächte ohne Plate-Solving."""
     vals: dict[str, list] = {}
-    for r in db.q("SELECT device, data FROM sky_nights"):
+    for r in db.q("SELECT s.device, s.data FROM sky_nights s JOIN projects p ON p.id=s.project_id"):
         d = json.loads(r["data"] or "{}")
         if d.get("zp_source") == "stack" and d.get("zp") is not None:
             vals.setdefault(r["device"], []).append(d["zp"])
@@ -629,9 +632,11 @@ def compute_project(pl, pid: int, site_for=None, log=lambda m: None, backfill: b
     zp_stack, wcs, hdr, excess, scale, shape = None, None, None, 0.0, None, None
     flux_k0 = 1.0
     links: dict = {}
+    sc = 1.0                                            # resolution_scale: Stack-Pixel = native Pixel / sc
     if st is not None:
         mean, cov = st.result()
         flux_k0 = float(st.meta.get("flux_k0") or 1.0)
+        sc = float(st.meta.get("scale") or 1)
         shape = tuple(st.meta["shape"][1:])
         excess = stack_excess(luma(mean), cov)
         try:
@@ -640,7 +645,7 @@ def compute_project(pl, pid: int, site_for=None, log=lambda m: None, backfill: b
             cached = json.loads(f.read_text()) if f.exists() else {}
             hdr = cached["wcs"] if cached.get("key") == key else pl._stack_wcs(proj, st, mean, log)
             wcs = photometry.wcs_from(hdr)
-            scale = float(np.sqrt(abs(np.linalg.det(wcs.pixel_scale_matrix)))) * 3600
+            scale = float(np.sqrt(abs(np.linalg.det(wcs.pixel_scale_matrix)))) * 3600 * sc   # ″ je nativem Pixel (FWHM, Fläche)
         except Exception as e:
             info["wcs_error"] = str(e)[:160]
         if wcs is not None and pl.s.gaia:
@@ -648,11 +653,12 @@ def compute_project(pl, pid: int, site_for=None, log=lambda m: None, backfill: b
                 H, W = mean.shape[1:]
                 ra, dec = (float(v) for v in wcs.pixel_to_world_values((W - 1) / 2, (H - 1) / 2))
                 log("Gaia-Helligkeiten abfragen")
-                cat = photometry.gaia_stars(ra, dec, 0.5 * scale / 3600 * math.hypot(W, H), pl.s.work_dir / "gaia",
+                cat = photometry.gaia_stars(ra, dec, 0.5 * scale / sc / 3600 * math.hypot(W, H), pl.s.work_dir / "gaia",
                                             gmag_max=GMAG_MAX, with_g=True)
                 exps = [float(r["exptime"]) for r in rows if r.get("exptime")]
                 zp = zero_point(mean, cov, hdr, cat, float(np.median(exps)) if exps else 1.0)
-                zp_stack = zp["zp"]
+                # hochgerechneter Stack: Sternfluss verteilt sich auf sc² Pixel gleicher Höhe -> Fluss ×sc²
+                zp_stack = zp["zp"] - 5 * math.log10(sc)
                 info["zp_fit"] = zp
             except Exception as e:
                 info["zp_error"] = str(e)[:160]
@@ -669,7 +675,7 @@ def compute_project(pl, pid: int, site_for=None, log=lambda m: None, backfill: b
         _backfill(pl, rows, log)
     dzp = device_zp(db).get(device_key(rows[0]["instrument"], rows[0]["gain"]))
     neutral = tutor.neutral_sky(proj["ra"], proj["dec"], proj["kind"])
-    ra, dec = (float(v) for v in wcs.pixel_to_world_values((shape[1] - 1) / 2, (shape[0] - 1) / 2)) if wcs is not None and shape \
+    ra, dec = (float(v) for v in wcs.pixel_to_world_values((shape[1] * sc - 1) / 2, (shape[0] * sc - 1) / 2)) if wcs is not None and shape \
         else (proj["ra"], proj["dec"])
     if ra is None or dec is None:
         return {"project": pid, "nights": 0, "reason": "Himmelsposition unbekannt"}
@@ -685,7 +691,7 @@ def compute_project(pl, pid: int, site_for=None, log=lambda m: None, backfill: b
         site = _site_of(rows, night, site_for)
         res = evaluate(fr, zp_stack=zp_stack, zp_device=dzp, flux_k0=flux_k0, links=links, excess=excess, scale=scale,
                        site=site, ra=ra, dec=dec, wcs=wcs, shape=shape, neutral=neutral, device_id=device["id"],
-                       gain_k=gain_k)
+                       gain_k=gain_k, stack_scale=sc)
         for nk, n in res.items():
             n.update(scale=round(scale, 3), neutral=neutral, device=device["name"], object=proj["name"],
                      zp_fit=info.get("zp_fit"), zp_error=info.get("zp_error"), wcs_error=info.get("wcs_error"),
@@ -752,7 +758,7 @@ def _backfill(pl, rows: list[dict], log, per_night: int = 40) -> int:
 # ------------------------------------------------------------- Zusammenfassung ---
 def nights_of(db, pid: int | None = None) -> list[dict]:
     ensure_table(db)
-    sql = "SELECT s.*, p.name FROM sky_nights s LEFT JOIN projects p ON p.id=s.project_id"
+    sql = "SELECT s.*, p.name FROM sky_nights s JOIN projects p ON p.id=s.project_id"
     rows = db.q(sql + (" WHERE s.project_id=?" if pid is not None else "") + " ORDER BY s.night", (pid,) if pid is not None else ())
     out = []
     for r in rows:

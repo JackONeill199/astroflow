@@ -218,3 +218,28 @@ def test_hazy_night_has_no_site_value():
     n = sq.evaluate(frames, zp_stack=20.8, zp_device=21.6 + 0.2, flux_k0=1.0, links=links, excess=0.0, scale=SCALE,
                     site=SITE, ra=100.0, dec=40.0, device_id="stellina")["2026-01-20"]
     assert n["hazy"] and n["sqm"] is None and n["transparency"] > 0.5 and n["reasons"]["cloud"] == 40
+
+
+def test_without_site_no_site_value():
+    """Ohne Standort keine Dämmerungs-/Mond-/Höhenprüfung -> Messwerte ja, Ortswert/Bortle nein."""
+    frames = _night_frames()
+    n = sq.evaluate(frames, zp_stack=21.6, zp_device=None, flux_k0=1.0, links={f["id"]: (1.0, np.eye(3)) for f in frames},
+                    excess=0.0, scale=SCALE, site=None, ra=100.0, dec=40.0, device_id="stellina")["2026-01-20"]
+    assert n["sqm"] is None and n["bortle"] is None and n["sqm_all"] is not None and n["reasons"]["nosite"] == 40
+
+
+def test_deleted_project_leaves_no_measurements(tmp_path, monkeypatch):
+    monkeypatch.setenv("ASTROFLOW_GAIA", "0")
+    from astroflow.modules.stacking.db import DB
+    from astroflow.modules.stacking.pipeline import Pipeline
+    from astroflow.modules.stacking.reviewer import ReviewerConfig
+    s = load_settings(tmp_path / "data")
+    db = DB(s.db_path)
+    pl = Pipeline(s, db, ReviewerConfig())
+    sq.ensure_table(db)
+    pid = db.x("INSERT INTO projects(key, name, created) VALUES('k', 'Weg', 0)")
+    db.x("INSERT INTO sky_nights VALUES(?,?,?,?,?,?,?,?)", (pid, "2026-01-20", "x", "Testwiese", "d", 1.0, 1, json.dumps({"sqm": 20.0, "zp": 21.9, "zp_source": "stack"})))
+    db.x("INSERT INTO sky_nights VALUES(?,?,?,?,?,?,?,?)", (999, "2026-01-21", "x", "Testwiese", "d", 1.0, 1, json.dumps({"sqm": 18.0})))
+    assert len(sq.nights_of(db)) == 1                       # verwaiste Zeile (Objekt 999 gibt es nicht) zählt nicht
+    pl.delete_project(pid)
+    assert sq.nights_of(db) == [] and db.q("SELECT * FROM sky_nights WHERE project_id=?", (pid,)) == []

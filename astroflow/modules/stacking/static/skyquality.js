@@ -173,7 +173,7 @@ const CLOUD = 0.35;
 
 // „Heute Nacht“: Kurzwert für den gewählten Ort
 function tonightTile(d) {
-  const s = d?.sky;
+  const s = d?.sky_quality;                           // d.sky ist die Wettervorhersage (tonight.plan)
   if (!s?.sqm) return '';
   return `<div title="Gemessen an deinen Aufnahmen an diesem Ort (${s.n_site_nights} Nächte)"><small>Himmel hier</small><b>${de(s.sqm, 1)} mag/″²${s.bortle ? ' · ' + esc(s.bortle.text) : ''}</b></div>`;
 }
