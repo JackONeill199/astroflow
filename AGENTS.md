@@ -463,7 +463,7 @@ Kern: `/api/app` (Module, Build), `/api/folders?path=` (Ordnerdialog), `/api/sit
 **Achtung:** Zwei Server auf demselben Datenordner = zwei Worker (beim Start werden „running“-Jobs des anderen neu eingereiht) – Tests/Vorschauen mit eigenem Datenordner.
 
 ## Web-UI (`astroflow/static/` + `modules/*/static/`)
-Hash-Routing: `#/` Übersicht, `#/nacht`, `#/himmel` (Himmelsqualität), `#/bilder` (Sessions), `#/galerie` (fertige Bilder), `#/p/<id>/<bild|aufnahmen|versionen|optionen>`, `#/import`,
+Hash-Routing: `#/` Übersicht, `#/nacht`, `#/himmel` (Himmelsqualität), `#/bilder` (Sessions), `#/galerie` (fertige Bilder), `#/p/<id>/<bild|analyse|aufnahmen|versionen|optionen>`, `#/import`,
 `#/skytrace[/neu|/3d|/statistik|/<lauf>/<vorschau|kandidaten|beobachtungen|protokoll|3d>]`, `#/sage[/wiki|/entdeckungen|/sammlung|/<eintrag>]`, `#/activity` (Aufträge), `#/settings/<modul|standorte|module>`.
 **Designsystem (seit 0.21.0, Nutzerauftrag „professionelles, konsistentes Designsystem wie eine native Desktop-App“):** Tokens in `:root` von `style.css`
 (`--bg/--sidebar/--surface/--surface-2/--border/--fg/--mut/--dim/--acc/--ok/--warn/--bad`, Maße, `--t` 160 ms); alte Namen (`--panel`, `--grad`, `--acc2/3` …)
@@ -471,7 +471,14 @@ sind Aliase. **Inhaltsbreiten:** der Router gibt jedem Ansichtsbehälter die Kla
 (Arbeitsflächen: `PAGE_WIDE` in `app.js` – Galerie-Betrachter, SkyTrace-Lauf und 3D; die Objektseite `#/p/…` ist eine normale Seite) bzw. `page narrow` (`--page-narrow` 60rem, Einstellungen);
 Lesetext mit `.readable` / `--read` 42rem. Keine Karte in der Karte (`.panel .panel` ohne Fläche). Kontextpanel startet geschlossen
 (`AF.ctx.shown`, je Ansicht neu, nicht gespeichert), Knöpfe mit `data-ctx-toggle` öffnen es. Objektseite, Reiter Bild: Details als
-Spalte `.imgwrap > #imgSide` neben dem Bild (Standard sichtbar, `bild.details`); der „Details“-Knopf schaltet dort die Spalte (`data-side`). Galerie = Betrachter `#/galerie/<id>`
+Spalte `.imgwrap > #imgSide` neben dem Bild (Standard sichtbar, `bild.details`); der „Details“-Knopf schaltet dort die Spalte (`data-side`).
+Die Spalte zeigt nur noch Kernzahlen (`analysisSummary`: Bildqualität, Grenzgröße, Bortle, Seeing → Link in die Analyse); importierte Bilder behalten die Bildprüfung.
+**Reiter Analyse** (seit 0.27.0, `static/analysis.js|css`, Nutzerwunsch „zu gequetscht in der Detailspalte“): `analysisTab(t, {p, r, solve, viewerFor})` = kompakter
+Betrachter (gleiche Overlays) + Abschnittsliste, darunter breite `.an-sec`: `depthPanel(host, r, viewer, {wide, onFocus, onSolve})` (Kennzahlen `data-count`,
+`depthTunnel(d, r, inline)` eingebettet mit Kameraflug beim ersten Sichtbarwerden, Fakten mit `data-x/y` → `viewer.zoomTo`), `comparePanel` mit
+`compareViewer` links (`.an-cmp.has-blink`), `AFsky.analysis(host, pid)` (Bortle-Skala `bortleScale`, Kurven `sqm`/`seeing`, Windrose aus `/stacking/sky`),
+`tutorPanel`. `anReveal` blendet Abschnitte per IntersectionObserver ein (`.in`), `anCountUp` zählt die erste Zahl eines Texts hoch (deutsches Format);
+CSS-Animationen hängen an `.an-sec.in` und entfallen bei `prefers-reduced-motion`. Eingebetteter Tunnel räumt sich ab, sobald er nicht mehr im Dokument ist. Galerie = Betrachter `#/galerie/<id>`
 (`pictureView`, Vor/Zurück aus `galleryOrder`), Bilder = Verarbeitung `#/p/<id>`; `objectKnowledge(host, name)` holt Sages Wissenskarte
 (`/api/sage/kb/card`, legt bei Bedarf einen Grundeintrag an) für Betrachter und Details-Panel. **Alle Maße in `rem`** (1rem = 16px; nur 1–2px-Rahmen und Media-Queries in px) – `html` wird ab 1800/2300/3200 px Breite größer
 (17,5/19,5/23 px) bzw. per Einstellung „Darstellung“ (`localStorage af.ui.scale`, `applyUiScale`); neue Stile daher in `rem` schreiben. Nur dunkel. Keine Marketing-Überschriften. **Atmosphäre (seit 0.24.0, Nutzerwunsch „Farbverläufe und bisschen glassy look wie früher“):**

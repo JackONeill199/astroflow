@@ -35,7 +35,7 @@ function curveSvg(pts, key = 'sqm', label = 'Himmelshelligkeit') {
   const step = Math.max(1, Math.round((t1 - t0) / 3600 / 5));
   for (let t = Math.ceil(t0 / 3600) * 3600; t <= t1; t += 3600 * step)
     g += `<text x="${X(t)}" y="${H - 6}" text-anchor="middle">${new Date(t * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}</text>`;
-  g += `<path class="sq-line" d="${P.map((p, i) => `${i ? 'L' : 'M'}${X(p.ts).toFixed(1)} ${Y(p[key]).toFixed(1)}`).join('')}"/>`;
+  g += `<path class="sq-line" pathLength="1" d="${P.map((p, i) => `${i ? 'L' : 'M'}${X(p.ts).toFixed(1)} ${Y(p[key]).toFixed(1)}`).join('')}"/>`;
   g += P.map(p => `<circle cx="${X(p.ts).toFixed(1)}" cy="${Y(p[key]).toFixed(1)}" r="2.2" class="${p.flags.length ? 'sq-pt off' : 'sq-pt'}"><title>${p.t} UTC · ${de(p[key], 2)}${p.flags.length ? ' · ' + p.flags.map(f => FLAG[f] || f).join(', ') : ''}</title></circle>`).join('');
   return `<svg class="sq-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)} im Verlauf der Nacht">${g}</svg>`;
 }
@@ -171,6 +171,58 @@ async function panel(host, pid) {
 }
 const CLOUD = 0.35;
 
+// ---- Reiter Analyse: „Der Himmel in dieser Nacht“ (breit) ---------------------------------------------------
+// Bortle-Skala 1–9 mit Zeiger (fährt beim Einblenden an seinen Platz, Spanne = Messunsicherheit), Himmelshelligkeit und Seeing als
+// Verlauf über die Nacht (Linien zeichnen sich), Windrose der Lichtrichtung des Ortes (aus /stacking/sky, falls genug Daten).
+const BORTLE_COL = ['#0b1030', '#16204e', '#1f3570', '#2f5a7c', '#4f7d62', '#8a8a45', '#b07a35', '#c25a2e', '#d23b2b'];
+function bortleScale(b) {
+  if (!b) return '';
+  const pos = (c) => ((c - 0.5) / 9 * 100).toFixed(1);
+  const [lo, hi] = b.range || [b.class, b.class];
+  return `<div class="sq-bortle" style="--pos:${pos(b.class)}%;--lo:${((lo - 1) / 9 * 100).toFixed(1)}%;--hi:${(hi / 9 * 100).toFixed(1)}%" role="img" aria-label="${esc(b.text)}: ${esc(b.label)}">
+    <div class="sq-bortle-bar">${BORTLE_COL.map((c, i) => `<span style="background:${c}">${i + 1}</span>`).join('')}<i class="sq-bortle-span"></i></div>
+    <i class="sq-bortle-ptr"><b>${esc(b.text.replace('Bortle ', ''))}</b></i>
+    <div class="sq-bortle-ends dim sm"><span>dunkel</span><span>Innenstadt</span></div></div>`;
+}
+async function analysis(host, pid) {
+  if (!host) return;
+  host.innerHTML = '<div class="panel-h"><h2>Der Himmel in dieser Nacht</h2></div><div class="skel-line"></div>';
+  let d, all = null;
+  try { [d, all] = await Promise.all([api(`/stacking/projects/${pid}/sky`), api('/stacking/sky').catch(() => null)]); }
+  catch (e) { host.innerHTML = `<div class="panel-h"><h2>Der Himmel in dieser Nacht</h2></div><p class="mut sm">${esc(e.message)}</p>`; return; }
+  if (!host.isConnected) return;
+  const head = `<div class="panel-h"><h2>Der Himmel in ${d.nights.length > 1 ? 'diesen Nächten' : 'dieser Nacht'}</h2><span class="grow"></span><a class="linkbtn sm" href="#/himmel">Alle Standorte</a></div>`;
+  const ns = d.nights.slice().reverse();
+  if (!ns.length) {
+    host.innerHTML = `${head}<div class="an-empty">${icon('globe')}<div><b>Noch nicht berechnet</b><p class="mut sm">Wie dunkel der Himmel war (Bortle-Klasse, mag/″²), wie ruhig die Luft (Seeing)
+      und aus welcher Richtung Stadtlicht kommt – gemessen an deinen Einzelbildern, auch ohne Rohbilder.</p>
+      <button class="btn sm" id="sqProj" ${d.busy ? 'disabled' : ''}>${icon('refresh')}Jetzt berechnen</button></div></div>`;
+    $('#sqProj', host)?.addEventListener('click', async (e) => {
+      e.currentTarget.disabled = true;
+      try { await send('/stacking/sky/compute', { project_id: pid }); toast('Wird berechnet …', 'ok'); setTimeout(() => analysis(host, pid), 4000); }
+      catch (err) { toast(err.message, 'err'); e.currentTarget.disabled = false; }
+    });
+    return;
+  }
+  const siteOf = (n) => all?.sites?.find(s => n.site_id ? s.id === n.site_id : s.name === n.site_name);
+  host.innerHTML = head + ns.map((n, i) => {
+    const site = siteOf(n), light = site?.light;
+    return `<div class="sq-anight">${ns.length > 1 || n.site_name ? `<h3>${fday(n.night)}${n.site_name ? ` · ${esc(n.site_name)}` : ''}</h3>` : ''}
+      <div class="sq-agrid">
+        <div class="sq-amain">
+          <div class="stats sq-kpis"><div class="stat"><small>Himmelshelligkeit</small><b class="tnum" data-count>${n.sqm != null ? de(n.sqm, 2) : n.sqm_all != null ? `(${de(n.sqm_all, 2)})` : '–'}</b><small class="dim">mag/″² · Zenit${n.sqm != null && n.err ? ' · ±' + de(n.err, 1) : ''}</small></div>
+            <div class="stat"><small>Bildschärfe</small><b class="tnum" data-count>${n.seeing != null ? de(n.seeing, 1) + '″' : '–'}</b><small class="dim">${n.seeing_best != null ? 'beste ' + de(n.seeing_best, 1) + '″' : 'FWHM'}</small></div>
+            <div class="stat"><small>Durchsicht</small><b class="tnum">${n.transparency != null ? (n.transparency <= 0.1 ? 'klar' : n.transparency <= CLOUD ? 'leicht dunstig' : 'dunstig') : '–'}</b><small class="dim">${n.transparency != null ? '−' + de(Math.max(0, n.transparency), 2) + ' mag Sternlicht' : ''}</small></div>
+            <div class="stat"><small>Aufnahmen</small><b class="tnum" data-count>${n.good ?? 0} / ${n.frames ?? 0}</b><small class="dim">ungestört / gesamt</small></div></div>
+          ${n.bortle ? bortleScale(n.bortle) + `<p class="mut sm">${esc(n.bortle.label)}</p>` : `<p class="mut sm">Keine Bortle-Klasse: ${esc(n.note || 'keine ungestörte Aufnahme (dunkel, ohne Mond, über 30°)')}.</p>`}
+          ${i < 3 ? `<div class="sq-curves">${curveSvg(n.curve) ? `<div><small class="mut">Himmelshelligkeit (oben = dunkler)</small>${curveSvg(n.curve)}</div>` : ''}
+            ${curveSvg(n.curve, 'seeing', 'Bildschärfe') ? `<div><small class="mut">Bildschärfe in ″ (oben = schärfer)</small>${curveSvg(n.curve, 'seeing', 'Bildschärfe')}</div>` : ''}</div>` : ''}
+        </div>
+        <div class="sq-alight"><h3>Lichtrichtung${site ? ` · ${esc(site.name)}` : ''}</h3>${light ? roseSvg(light) : ''}${lightText(light)}</div>
+      </div></div>`;
+  }).join('') + EXPLAIN;
+}
+
 // „Heute Nacht“: Kurzwert für den gewählten Ort
 function tonightTile(d) {
   const s = d?.sky_quality;                           // d.sky ist die Wettervorhersage (tonight.plan)
@@ -178,7 +230,7 @@ function tonightTile(d) {
   return `<div title="Gemessen an deinen Aufnahmen an diesem Ort (${s.n_site_nights} Nächte)"><small>Himmel hier</small><b>${de(s.sqm, 1)} mag/″²${s.bortle ? ' · ' + esc(s.bortle.text) : ''}</b></div>`;
 }
 
-window.AFsky = { panel, tonightTile };
+window.AFsky = { panel, analysis, tonightTile };
 const m = AF.modules.stacking;
 m.nav.push({ href: '#/himmel', label: 'Himmelsqualität', icon: 'globe', key: 'sky', parent: 'home' });
 m.routes.push([/^\/himmel$/, 'sky', skyView]);

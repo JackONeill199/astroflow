@@ -19,7 +19,8 @@ async function insightLoad(kind, rid, force = false) {
 }
 
 // Abschnitt „Tiefe“. viewer: createViewer-Objekt (Markierungen ein/aus über viewer.redraw()).
-function depthPanel(host, r, viewer) {
+// opts.wide (Reiter Analyse): breites Raster, 3D-Tunnel eingebettet mit Kameraflug, Fakten anklickbar (opts.onFocus(x, y, w) zoomt im Bild).
+function depthPanel(host, r, viewer, opts = {}) {
   if (!host) return;
   let timer = 0;
   const poll = async (force) => {
@@ -46,8 +47,11 @@ function depthPanel(host, r, viewer) {
         : d.state === 'error' ? esc(d.message || 'Messung fehlgeschlagen')
         : d.state === 'old' ? 'Die gespeicherte Messung stammt von einer älteren Version der Auswertung.'
         : 'Grenzgröße, Entfernungen der Sterne und die fernsten Galaxien in deinem Bild – aus Gaia und SIMBAD (es werden nur Himmelskoordinaten gesendet).';
-      host.innerHTML = head() + `<p class="mut sm">${why}</p>${d.solved ? `<button class="btn ghost sm" data-depth-run>${icon('target')}${d.state === 'none' ? 'Jetzt messen' : 'Neu messen'}</button>` : ''}`;
+      host.innerHTML = head() + `<p class="mut sm">${why}</p>${d.solved ? `<button class="btn ${opts.wide ? '' : 'ghost '}sm" data-depth-run>${icon('target')}${d.state === 'none' ? 'Jetzt messen' : 'Neu messen'}</button>`
+        : opts.onSolve ? `<button class="btn sm" data-depth-solve>${icon('star')}Per Plate-Solving lösen</button>`
+        : opts.wide ? `<p class="dim sm">Die Lösung entsteht beim Entwickeln, wenn ein Plate-Solver (z. B. ASTAP) eingerichtet und die fotometrische Farbkalibrierung eingeschaltet ist – danach „Neu entwickeln“.</p><a class="btn ghost sm" href="#/settings/stacking">${icon('star')}Plate-Solver einrichten</a>` : ''}`;
       $('[data-depth-run]', host)?.addEventListener('click', run);
+      $('[data-depth-solve]', host)?.addEventListener('click', opts.onSolve);
       return;
     }
     const g = d.grenze || {}, e = d.entfernung || {}, far = d.fernstes, main = d.hauptobjekt;
@@ -56,33 +60,38 @@ function depthPanel(host, r, viewer) {
     const dist = (e.verteilung || []).filter(b => b.n);
     const dmax = Math.max(1, ...dist.map(b => b.n));
     const fieldFar = (d.galaxien || []).filter(o => !o.sichtbar).sort((a, b) => b.z - a.z)[0];
+    const at = (o) => opts.onFocus && o?.x != null && d.bild ? ` class="focusable" tabindex="0" data-x="${o.x}" data-y="${o.y}" title="Im Bild zeigen"` : '';
     host.innerHTML = head('<span class="chip">Gaia DR3 · SIMBAD</span>') + `
       <div class="depth-kpis">
-        <div><small>Grenzgröße</small><b class="tnum">${g.m5 != null ? de1(g.m5) + ' mag' : '–'}</b><span>${g.lim50 ? `Hälfte der Sterne bis G ${g.lim50}` : '5σ-Grenze'}</span></div>
-        <div><small>Sterne erfasst</small><b class="tnum">${nf.format(g.erfasst || 0)}</b><span>von ${nf.format(g.katalog || 0)} Gaia-Sternen</span></div>
-        <div><small>Fernster Stern</small><b class="tnum">${lyText(e.fernster?.ly)}</b><span>${e.fernster ? `G ${de1(e.fernster.g)} · mit Parallaxe` : 'keine sichere Parallaxe'}</span></div>
-        <div><small>Fernstes Objekt</small><b class="tnum">${far ? lyText(far.ly) : main ? lyText(main.ly) : '–'}</b><span>${far ? `Licht unterwegs · z ${de1(far.z, 3)}` : main ? esc(main.name) : 'keine Galaxie erkannt'}</span></div>
+        <div><small>Grenzgröße</small><b class="tnum" data-count>${g.m5 != null ? de1(g.m5) + ' mag' : '–'}</b><span>${g.lim50 ? `Hälfte der Sterne bis G ${g.lim50}` : '5σ-Grenze'}</span></div>
+        <div><small>Sterne erfasst</small><b class="tnum" data-count>${nf.format(g.erfasst || 0)}</b><span>von ${nf.format(g.katalog || 0)} Gaia-Sternen</span></div>
+        <div><small>Fernster Stern</small><b class="tnum" data-count>${lyText(e.fernster?.ly)}</b><span>${e.fernster ? `G ${de1(e.fernster.g)} · mit Parallaxe` : 'keine sichere Parallaxe'}</span></div>
+        <div><small>Fernstes Objekt</small><b class="tnum" data-count>${far ? lyText(far.ly) : main ? lyText(main.ly) : '–'}</b><span>${far ? `Licht unterwegs · z ${de1(far.z, 3)}` : main ? esc(main.name) : 'keine Galaxie erkannt'}</span></div>
       </div>
+      ${opts.wide && d.punkte?.length ? '<div class="an-tunnel" id="anTunnel"></div>' : ''}
       ${bins.length ? `<div class="depth-chart" aria-label="Erfasste Sterne je Helligkeit"><div class="depth-chart-h"><span class="sm">Erfasst je Helligkeitsklasse</span><span class="grow"></span><span class="dim sm"><i class="lg cat"></i>Katalog <i class="lg det"></i>im Bild</span></div>
         <div class="depth-bars">${bins.map(b => `<div class="db" title="G ${b.mag}–${b.mag + 1}: ${b.erfasst} von ${b.katalog} erfasst"><i class="cat" style="height:${b.katalog / bmax * 100}%"></i><i class="det" style="height:${b.erfasst / bmax * 100}%"></i></div>`).join('')}</div>
         <div class="depth-axis tnum">${bins.map(b => `<span>${b.mag % 2 ? '' : b.mag}</span>`).join('')}</div></div>` : ''}
       ${dist.length ? `<div class="depth-chart"><div class="depth-chart-h"><span class="sm">Entfernungen der Sterne</span><span class="grow"></span><span class="dim sm">${nf.format(e.mit_parallaxe)} mit Parallaxe</span></div>
         <div class="depth-hist">${dist.map(b => `<div class="dh"><span class="dim sm tnum">bis ${lyText(b.bis)}</span><div class="progress"><i style="width:${b.n / dmax * 100}%"></i></div><span class="sm tnum">${b.n}</span></div>`).join('')}</div></div>` : ''}
       <ul class="depth-facts">
-        ${e.naechster ? `<li><span class="dot near"></span><div>Nächster Stern <b>${lyText(e.naechster.ly)}</b><div class="dim sm">${esc(e.naechster.id)} · G ${de1(e.naechster.g)}</div></div></li>` : ''}
-        ${g.schwaechster ? `<li><span class="dot faint"></span><div>Schwächster sicher erfasster Stern <b>G ${de1(g.schwaechster.g)}</b><div class="dim sm">${esc(g.schwaechster.id)} · SNR ${de1(g.schwaechster.snr)}</div></div></li>` : ''}
+        ${e.naechster ? `<li${at(e.naechster)}><span class="dot near"></span><div>Nächster Stern <b>${lyText(e.naechster.ly)}</b><div class="dim sm">${esc(e.naechster.id)} · G ${de1(e.naechster.g)}</div></div></li>` : ''}
+        ${g.schwaechster ? `<li${at(g.schwaechster)}><span class="dot faint"></span><div>Schwächster sicher erfasster Stern <b>G ${de1(g.schwaechster.g)}</b><div class="dim sm">${esc(g.schwaechster.id)} · SNR ${de1(g.schwaechster.snr)}</div></div></li>` : ''}
         ${main ? `<li><span class="dot main"></span><div>${esc(main.name)} <b>${lyText(main.ly)}</b><div class="dim sm">${esc(main.quelle)}</div></div></li>` : ''}
-        ${far ? `<li><span class="dot gal"></span><div>Fernstes Objekt in deinem Bild: ${esc(far.name)} (${esc(far.art)})<div class="dim sm">Licht ${yrText(far.ly)} unterwegs · heute ${lyText(far.heute_ly)} entfernt</div></div></li>` : ''}
+        ${far ? `<li${at(far)}><span class="dot gal"></span><div>Fernstes Objekt in deinem Bild: ${esc(far.name)} (${esc(far.art)})<div class="dim sm">Licht ${yrText(far.ly)} unterwegs · heute ${lyText(far.heute_ly)} entfernt</div></div></li>` : ''}
         <li><span class="dot gal"></span><div>${d.galaxien_sichtbar ? `${d.galaxien_sichtbar} ${d.galaxien_sichtbar === 1 ? 'Galaxie' : 'Galaxien'} mit gemessener Rotverschiebung sichtbar` : 'Keine Hintergrundgalaxie mit Rotverschiebung sicher erkennbar'}${d.teile ? `<div class="dim sm">dazu ${d.teile} Regionen im Hauptobjekt selbst (HII-Gebiete, Sternhaufen)</div>` : ''}
           ${d.galaxien_fehler ? `<div class="dim sm">${esc(d.galaxien_fehler)}</div>` : fieldFar ? `<div class="dim sm">Im Feld, aber zu schwach: ${esc(fieldFar.name)} (${esc(fieldFar.art)}, z ${de1(fieldFar.z, 2)}, ${yrText(fieldFar.ly)})</div>` : ''}</div></li>
       </ul>
       <div class="row depth-acts">
         ${d.bild ? `<button class="btn ghost sm${DEPTH_MARKS.on ? ' on' : ''}" data-depth-marks aria-pressed="${DEPTH_MARKS.on}">${icon('target')}Im Bild markieren</button>` : ''}
-        ${d.punkte?.length ? `<button class="btn ghost sm" data-depth-3d>${icon('orbit')}3D-Tunnel</button>` : ''}
+        ${d.punkte?.length ? `<button class="btn ghost sm" data-depth-3d>${icon('orbit')}${opts.wide ? '3D im Vollbild' : '3D-Tunnel'}</button>` : ''}
         <span class="grow"></span><button class="linkbtn sm" data-depth-run>Neu messen</button></div>
       ${(d.hinweise || []).map(h => `<p class="dim sm depth-note">${esc(h)}</p>`).join('')}`;
     $('[data-depth-run]', host)?.addEventListener('click', run);
     $('[data-depth-3d]', host)?.addEventListener('click', () => depthTunnel(d, r));
+    if ($('#anTunnel', host)) depthTunnel(d, r, $('#anTunnel', host));
+    $('.depth-facts', host)?.addEventListener('click', (ev) => { const li = ev.target.closest('[data-x]'); if (li) opts.onFocus(+li.dataset.x, +li.dataset.y, d.bild.w); });
+    $('.depth-facts', host)?.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') ev.target.closest('[data-x]')?.click(); });
     $('[data-depth-marks]', host)?.addEventListener('click', (ev) => {
       DEPTH_MARKS.on = !DEPTH_MARKS.on; store.set('bild.tiefe.marken', DEPTH_MARKS.on);
       ev.currentTarget.classList.toggle('on', DEPTH_MARKS.on); ev.currentTarget.setAttribute('aria-pressed', DEPTH_MARKS.on);
@@ -128,26 +137,27 @@ function starColor(bprp) {                       // BP−RP → Farbe (blau → 
   return a[i].map((v, j) => v + (a[i + 1][j] - v) * k);
 }
 
-async function depthTunnel(d, r) {
+// inline: Behälter im Reiter Analyse – dann ohne Schließen/Escape, mit Kameraflug „von uns bis zur fernsten Galaxie“ beim ersten Sichtbarwerden
+async function depthTunnel(d, r, inline = null) {
   const ov = document.createElement('div');
-  ov.className = 'tunnel';
-  ov.setAttribute('role', 'dialog');
-  ov.setAttribute('aria-label', '3D-Tunnel nach Entfernung');
-  ov.innerHTML = `<div class="tunnel-bar"><b>Tiefe des Bildfelds</b><span class="mut sm tunnel-sub">Abstand logarithmisch · ziehen dreht, Mausrad zoomt, Klick zeigt Namen</span><span class="grow"></span>
+  ov.className = inline ? 'tunnel inline' : 'tunnel';
+  if (!inline) { ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', '3D-Tunnel nach Entfernung'); }
+  ov.innerHTML = `<div class="tunnel-bar"><b>${inline ? 'Von uns bis in die Tiefe' : 'Tiefe des Bildfelds'}</b><span class="mut sm tunnel-sub">Abstand logarithmisch · ziehen dreht, Mausrad zoomt, Klick zeigt Namen</span><span class="grow"></span>
+      ${inline ? `<button class="btn ghost sm" data-skip hidden>Überspringen</button><button class="btn ghost sm" data-replay hidden>${icon('play')}Flug</button>` : ''}
       <div class="seg"><button data-v="front">Von vorn</button><button data-v="oblique" class="on">Schräg</button><button data-v="side">Seitlich</button></div>
-      <button class="btn ghost sm" data-x aria-label="Schließen">${icon('x')}</button></div>
+      ${inline ? '' : `<button class="btn ghost sm" data-x aria-label="Schließen">${icon('x')}</button>`}</div>
     <div class="tunnel-stage"><div class="tunnel-load"><span class="spinner"></span>3D-Ansicht wird geladen …</div></div>
     <div class="tunnel-info" hidden></div>
     <div class="tunnel-legend sm"><span><i class="lg star"></i>Stern (Gaia-Parallaxe)</span><span><i class="lg gal"></i>Galaxie (Rotverschiebung, Lichtlaufzeit)</span>${d.hauptobjekt ? '<span><i class="lg main"></i>Hauptobjekt</span>' : ''}</div>`;
-  document.body.append(ov);
-  let alive = true, raf = 0;
-  const close = () => { alive = false; cancelAnimationFrame(raf); ro?.disconnect(); renderer?.dispose(); document.removeEventListener('keydown', key); ov.remove(); };
+  if (inline) inline.replaceChildren(ov); else document.body.append(ov);
+  let alive = true, raf = 0, io = null;
+  const close = () => { alive = false; cancelAnimationFrame(raf); ro?.disconnect(); io?.disconnect(); renderer?.dispose(); document.removeEventListener('keydown', key); ov.remove(); };
   const key = (e) => { if (e.key === 'Escape') close(); };
-  document.addEventListener('keydown', key);
-  $('[data-x]', ov).addEventListener('click', close);
+  if (!inline) document.addEventListener('keydown', key);
+  $('[data-x]', ov)?.addEventListener('click', close);
   let THREE, OrbitControls, renderer, ro;
   try { ({ THREE, OrbitControls } = await loadThree()); } catch (e) { $('.tunnel-load', ov).textContent = '3D-Bibliothek konnte nicht geladen werden.'; return; }
-  if (!alive) return;
+  if (!alive || !ov.isConnected) return;
   const stage = $('.tunnel-stage', ov);
   stage.innerHTML = '';
   renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -225,12 +235,31 @@ async function depthTunnel(d, r) {
   const mid = -maxT / 2;
   const views = { front: [[0, 0, 0.8], [0, 0, -3]], oblique: [[-maxT * 0.95, maxT * 0.45, maxT * 0.15], [0, 0, mid]], side: [[-maxT * 1.25, 0.15, mid], [0, 0, mid]] };
   let fly = null, dirty = true;
+  const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
   const go = (v, instant = false) => {
     const [p, t] = views[v];
-    if (instant || matchMedia('(prefers-reduced-motion: reduce)').matches) { cam.position.set(...p); ctl.target.set(...t); ctl.update(); dirty = true; return; }
-    fly = { t0: performance.now(), p0: cam.position.clone(), q0: ctl.target.clone(), p1: new THREE.Vector3(...p), q1: new THREE.Vector3(...t) };
+    if (instant || reduced()) { fly = null; cam.position.set(...p); ctl.target.set(...t); ctl.update(); dirty = true; return; }
+    fly = { t0: performance.now(), dur: 700, p0: cam.position.clone(), q0: ctl.target.clone(), p1: new THREE.Vector3(...p), q1: new THREE.Vector3(...t) };
   };
+  // Kameraflug: vom Beobachter durch den Trichter bis kurz vor das fernste Objekt, dann schräg von außen (≤ 3 s, überspringbar)
+  const skipB = $('[data-skip]', ov), replayB = $('[data-replay]', ov);
+  const intro = () => {
+    if (reduced()) { go('oblique', true); return; }
+    const far = new THREE.Vector3(0.12 * maxT, 0.06 * maxT, -(maxT - 0.4));
+    cam.position.set(0, 0, 0.35); ctl.target.set(0, 0, -2); ctl.update();
+    fly = { t0: performance.now(), dur: 1900, p0: cam.position.clone(), q0: ctl.target.clone(), p1: far, q1: new THREE.Vector3(0, 0, -(maxT + 2)),
+      then: () => { const [p, t] = views.oblique; fly = { t0: performance.now(), dur: 900, p0: cam.position.clone(), q0: ctl.target.clone(), p1: new THREE.Vector3(...p), q1: new THREE.Vector3(...t) }; } };
+    if (skipB) { skipB.hidden = false; replayB.hidden = true; }
+  };
+  const skip = () => { if (!fly) return; go('oblique', true); if (skipB) { skipB.hidden = true; replayB.hidden = false; } };
+  skipB?.addEventListener('click', skip);
+  replayB?.addEventListener('click', intro);
+  renderer.domElement.addEventListener('pointerdown', skip);
   go('oblique', true);
+  if (inline) {
+    io = new IntersectionObserver((es) => { if (es.some(e => e.isIntersecting)) { io.disconnect(); io = null; intro(); } }, { threshold: 0.45 });
+    io.observe(ov);
+  }
   ctl.addEventListener('change', () => { dirty = true; });
   $('.seg', ov).addEventListener('click', (e) => {
     const b = e.target.closest('[data-v]'); if (!b) return;
@@ -257,10 +286,11 @@ async function depthTunnel(d, r) {
   });
   const loop = (now) => {
     if (!alive) return;
+    if (!ov.isConnected) { close(); return; }            // eingebettet: Reiter gewechselt
     if (fly) {
-      const k = Math.min(1, (now - fly.t0) / 700), e = k < .5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2;
+      const k = Math.min(1, (now - fly.t0) / fly.dur), e = k < .5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2;
       cam.position.lerpVectors(fly.p0, fly.p1, e); ctl.target.lerpVectors(fly.q0, fly.q1, e); dirty = true;
-      if (k >= 1) fly = null;
+      if (k >= 1) { const then = fly.then; fly = null; if (then) then(); else if (skipB) { skipB.hidden = true; replayB.hidden = false; } }
     }
     if (ctl.update()) dirty = true;
     if (dirty) { renderer.render(scene, cam); dirty = false; }
