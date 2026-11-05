@@ -74,6 +74,15 @@ window.AstroEvidence=(()=>{
   const outside=tracks.filter(t=>!t.in_frame).length,note=shape('text',{x:12*unit,y:52*unit,class:'satellite-name'});
   note.textContent='Satellitenprognose'+(tracks[0].frame?' · Bild '+tracks[0].frame:'')+(outside?' · '+outside+' Bahn'+(outside===1?'':'en')+' außerhalb des Bildfelds':'');note.style.fontSize=12*unit+'px';note.style.strokeWidth=3*unit+'px';group.append(note);svg.append(group);
  }
+ // Satellitenprognosen eines Zeitleistenbilds: Bahnen kommen einmal (satellite_paths), je Bild nur die Matrix – wie video_overlays.satellites_at
+ function intersects(segments,width,height){for(const pts of segments)for(let i=1;i<pts.length;i++){const a=pts[i-1],b=pts[i],dx=b[0]-a[0],dy=b[1]-a[1];let lo=0,hi=1,ok=true;
+  for(const [p,q] of [[-dx,a[0]],[dx,width-a[0]],[-dy,a[1]],[dy,height-a[1]]]){if(p===0){if(q<0){ok=false;break;}}else if(p<0)lo=Math.max(lo,q/p);else hi=Math.min(hi,q/p);if(lo>hi){ok=false;break;}}if(ok)return true;}return false;}
+ function satellitesAt(data,frame){
+  if(frame.satellites)return frame.satellites;                     // ältere Antwort mit fertig umgerechneten Bahnen
+  const m=frame.reference;if(!m||!Number.isFinite(frame.index))return [];
+  return (data.satellite_paths||[]).filter(p=>frame.index>=p.start).map(p=>{const segments=p.reference_segments.map(pts=>pts.map(([x,y])=>[m[0][0]*x+m[0][1]*y+m[0][2],m[1][0]*x+m[1][1]*y+m[1][2]]));
+   return {name:p.name,candidate_id:p.candidate_id,frame:p.frame,segments,in_frame:intersects(segments,data.width,data.height)};});
+ }
  function analysisDetails(c,host){const body=node('div',undefined,'analysis-details');host.append(body);render(c,body);return body;}
  function videoOverlay(video,svg,data,candidates,at=()=>video.currentTime,selected=()=>null){
   const draw=()=>{svg.replaceChildren();if(svg.hidden||!data?.frames?.length)return;svg.setAttribute('viewBox',`0 0 ${data.width} ${data.height}`);
@@ -89,7 +98,7 @@ window.AstroEvidence=(()=>{
     const text=shape('text',{x:Math.max(4,Math.min(object.x+17*unit,data.width-Math.min(data.width-8,object.name.length*7*unit))),y:Math.max(18*unit,object.y-8*unit),class:'plate-object-name'});text.textContent=object.name;text.style.fontSize=14*unit+'px';text.style.strokeWidth=3*unit+'px';g.append(text);svg.append(g);
    }
    const selectedId=selected()||candidates[0]?.id;
-   drawSatellites(svg,(frame.satellites||[]).filter(s=>s.candidate_id===selectedId),data.width,data.height);
+   drawSatellites(svg,satellitesAt(data,frame).filter(s=>s.candidate_id===selectedId),data.width,data.height);
    for(const trail of frame.trails){const c=candidates.find(c=>c.id===trail.id);if(!c)continue;svg.append(shape('polyline',{points:trail.points.map(p=>p.join(',')).join(' '),fill:'none',stroke:gold,'stroke-width':2,'vector-effect':'non-scaling-stroke'}));motionLabel(svg,c,trail.points,data.width,data.height);}
   };
   if(video._motionCleanup)video._motionCleanup();
@@ -229,5 +238,5 @@ window.AstroEvidence=(()=>{
   }
   const data=node('details'),summary=node('summary','Alle gespeicherten Messdaten und Grenzen');data.append(summary,node('pre',JSON.stringify({method:c.method,evidence:e,world_path:c.world_path,catalogs:c.catalogs},null,2)));section.append(data);host.append(section);
  }
- return {render,openImage,frameImage,skyPoint,motionLabel,analysisDetails,hoverDetails:analysisDetails,videoOverlay,speed,setOverlayVisible,classification,candidateName:c=>classification(c).name,displaySettings,setDisplaySettings,speedText,drawSatellites};
+ return {render,openImage,frameImage,satellitesAt,skyPoint,motionLabel,analysisDetails,hoverDetails:analysisDetails,videoOverlay,speed,setOverlayVisible,classification,candidateName:c=>classification(c).name,displaySettings,setDisplaySettings,speedText,drawSatellites};
 })();

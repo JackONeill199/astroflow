@@ -3,7 +3,7 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
-## 0.31.1 – 05.11.2026
+## 0.31.2 – 05.11.2026
 
 ### Behoben
 - **Bilder: Gruppen roter Einzelpixel im fertigen Bild** (z. B. NGC 7293, ~12 scharfe rote Punkte auf ~50 px): Ursache war ein
@@ -13,6 +13,26 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   warme Pixel knapp unter der bisherigen Schwelle) und ersetzt sie vor dem Stacken; Sterne bleiben unberührt.
 - Die Analyse-Version steigt dadurch: Objekte, deren Rohbilder noch erreichbar sind, werden beim nächsten Verarbeiten neu
   analysiert und komplett neu gestackt. Objekte mit gelöschten Rohbildern behalten ihren Stack.
+
+## 0.31.1 – 05.11.2026
+
+### Behoben
+- SkyTrace auf dem Handy: Aufnahmen, Kandidaten und Videos eines Laufs luden im Heimnetz endlos. Die Laufdaten enthielten
+  die Satellitenprognosen für jedes Videobild einzeln (bei einem Lauf 25 MB). Jetzt kommt jede Bahn nur einmal, und der
+  Browser rechnet sie selbst je Bild um (1,4 MB). Der eigenständige Bericht wird dadurch ebenfalls kleiner.
+- Größere Antworten der Oberfläche (JSON, Text) werden komprimiert übertragen. Bilder, Videos, FITS/TIFF und Teilantworten
+  für das Spulen in Videos bleiben unverändert.
+- Bildbetrachter: Lädt ein Bild länger als 20 s oder schlägt es fehl, steht dort jetzt „Lädt noch … (langsames Netz?)“
+  bzw. „Bild konnte nicht geladen werden.“ mit „Erneut versuchen“, statt endlos den Kreisel zu zeigen.
+
+## 0.31.0 – 05.11.2026
+
+### Neu
+- **Ordner suchen im Ordnerdialog** („Hauptordner wählen“, SkyTrace „Ordner wählen“): Das Suchfeld filtert sofort die Unterordner des
+  aktuellen Ordners und sucht zusätzlich bis zu 4 Ebenen tief (höchstens 200 Treffer). Groß-/Kleinschreibung, Leerzeichen, „_“ und „-“
+  spielen keine Rolle – „NGC 4395“ findet also auch `…_observation_NGC4395` und `NGC_4395`. Tiefere Treffer stehen mit ihrem Pfad
+  unter „In Unterordnern“; ein Klick öffnet den Ordner, gewählt wird wie bisher der aktuelle Ordner. Esc leert die Suche, Enter öffnet
+  den ersten Treffer, die Pfeiltasten führen durch die Liste.
 
 ## 0.30.0 – 05.11.2026
 

@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 from unittest.mock import patch
-from video_overlays import timeline
+from video_overlays import timeline,satellites_at
 
 with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as temp:
     folder=Path(temp)
@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as temp:
         assert calibrated['frames'][2]['objects'][0]['x']==59
         assert calibrated['frames'][2]['objects'][0]['y']==56
         assert objects[0]['x']==50,'Catalogue reference positions must remain unchanged'
-        assert calibrated['frames'][0]['satellites']==[],'Do not show a future exposure as a current prediction'
-        assert calibrated['frames'][2]['satellites'][0]['segments']==[[[19,16],[49,46]]]
+        assert satellites_at(calibrated,calibrated['frames'][0])==[],'Do not show a future exposure as a current prediction'
+        assert satellites_at(calibrated,calibrated['frames'][2])[0]['segments']==[[[19,16],[49,46]]]
         assert timeline(folder,[])['frames'][0]['objects'][0]['name'].startswith('NGC884'),'Plate-solving labels must work without event candidates'
 print('OK: timed overlays appear at detection, persist with star transforms, respect excluded frames and leave saved data untouched')

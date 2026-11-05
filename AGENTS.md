@@ -32,10 +32,10 @@ astroflow/static/          Shell: index.html, app.js (Router, Navigation, Übers
 - **Modul-Vertrag Frontend** (`AF.register(id, {nav, routes, summary, recent, discoveries, homeFeatured, settings, palette, status, drop, sitesPanel})`, Kommentar in `app.js`; `sitesPanel(host)` = eigener Abschnitt unter Einstellungen → Standorte;
   `nav[].area` 'work' = Arbeitsbereich, 'library' = Bibliothek, sonst Unterpunkt (optional `parent`, 'home' = unter der Übersicht);
   Kontextpanel rechts per `AF.ctx.open(el, {title, html|render})`, wird beim Ansichtswechsel geleert; Prozessanimationen `vizProcess(host, {kind, …})` aus `static/viz.js`): Helfer (`api`, `send`, `toast`,
-  `createViewer`, `folderDialog(start, pick, {title, ok, hint})` (Ordner auf dem Server-Rechner wählen, über `/api/folders` → `core/folders.py`: Laufwerke, Unterordner, FITS-/Bildzählung; genutzt von Hauptordner und SkyTrace), `picker` (Dropdown mit Suche für Modelle/Stimmen, Listen aus `core/models.list_models`), `jobLine`, `confirmDlg`, `crumbs`, `store` …) sind global. Modul-Skripte lädt die Shell aus `/api/app` mit `?v=<build>`
+  `createViewer`, `folderDialog(start, pick, {title, ok, hint})` (Ordner auf dem Server-Rechner wählen, über `/api/folders` → `core/folders.py`: Laufwerke, Unterordner, FITS-/Bildzählung; genutzt von Hauptordner und SkyTrace; Suchfeld seit 0.31.0: sofort im aktuellen Ordner, entprellt 300 ms + abbrechbar `/api/folders/search?path=&q=` = Breitensuche Tiefe ≤ 4, ≤ 200 Treffer, ≤ 300 000 Einträge/5 s – je Eintrag geprüft, auch mitten in großen Ordnern, Schlüssel `folders.norm`/`folderKey` ohne Leerzeichen/„_“/„-“; bewusst keine Mehrfachauswahl, beide Aufrufer nehmen genau einen Ordner), `picker` (Dropdown mit Suche für Modelle/Stimmen, Listen aus `core/models.list_models`), `jobLine`, `confirmDlg`, `crumbs`, `store` …) sind global. Modul-Skripte lädt die Shell aus `/api/app` mit `?v=<build>`
   (Build-Kennung aus Dateizeiten) – nur `index.html` braucht weiter das manuelle `?v=`.
 - Module ein/aus: Einstellungen → Module & System bzw. `ASTROFLOW_MODULES=stacking,skytrace`; ein defektes Modul erscheint mit Fehler, die App läuft weiter.
-- Sicherheit: schreibende Anfragen mit fremdem `Origin` → 403 (Middleware `guard`). Schlüssel stehen im Klartext in `data/settings.json`.
+- Sicherheit: schreibende Anfragen mit fremdem `Origin` → 403 (Middleware `guard`). Antworten ab 2 KB werden per `core/gzip.py` komprimiert (seit 0.31.1, Handy im Heimnetz; eigene Middleware statt Starlettes `GZipMiddleware`, deren Ausschlussliste ältere erlaubte Versionen nicht kennen). Nur Text/JSON/JS/SVG mit Status 200, nie Downloads, Medien oder 206. Große JSON-Antworten trotzdem klein halten, siehe SkyTrace „Laufdaten fürs Handy“. Schlüssel stehen im Klartext in `data/settings.json`.
 - **Neues Modul:** Unterpaket mit `Module(BaseModule)` anlegen, in `AVAILABLE` eintragen, `static/<id>.js` mit `AF.register`, Tests in `tests/`.
 
 ## Versionierung (verbindlich, seit 01.11.2026 – Nutzerwunsch)
@@ -97,7 +97,7 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    Danach immer `cosmetic()`: Hot-/Cold-Pixel je CFA-Farbebene durch Nachbar-Median ersetzen (Sterne geschützt: hellster Nachbar muss dunkel sein).
    Grund: Ohne Darks richtete die Registrierung Stellina-Aufnahmen an den ortsfesten Hotpixeln aus → Sterne mehrfach im Stack (behoben, Test `test_hotpixels.py`).
    `cosmetic` rechnet den Nachbar-Median nur an Kandidaten (exakter Vorfilter, „oberer Median“ wie ndimage) – bitgleich zur alten Version, 5× schneller.
-   **Ortsfeste Sensorfehler** (seit 0.31.1, `calibration.defect_candidates/defect_map/fix_defects`, `DefectLibrary` → `work/defects/<key>.npz`,
+   **Ortsfeste Sensorfehler** (seit 0.31.2, `calibration.defect_candidates/defect_map/fix_defects`, `DefectLibrary` → `work/defects/<key>.npz`,
    Schlüssel wie `GlowLibrary`): `cosmetic` schützt alles mit hellem Nachbarn als Stern – auch Hotpixel-**Paare**. Beleg NGC 7293 (Stellina, 293 Frames):
    zwei übereinanderliegende R-Pixel (~42 000 ADU) blieben stehen; die Stellina verharrt zwischen ihren Versätzen 2–6 Aufnahmen auf derselben
    Stelle, so traf das Paar mehrmals dieselbe Himmelsstelle und überstand das Clipping (≤ 9 Frames je Stapel, s. Nebenbefund) → Gruppe aus ~12
@@ -530,7 +530,7 @@ Prüfen mit künstlich verzögerter API (Playwright async `page.route` + `asynci
 Polling alle 2,5 s (`/api/status`), Ansichten zeichnen nur bei geänderter Signatur neu (Formulare/Zoom bleiben erhalten). `route()` verwirft Ansichten, die erst
 nach einem weiteren Klick fertig werden (`routeTicket`), und gibt jeder Ansicht einen eigenen Behälter in `#view` (sonst schrieb eine
 verworfene, noch ladende Ansicht über die aktuelle). Ansichten, die nach `await` global per `$('#…')` suchen, vorher `el.isConnected` prüfen. Bildbetrachter `createViewer(host, src, cmpSrc, labels, ph, {overlay})` mit Zoom/Pan/Pinch, Vergleich
-und optionalem SVG-Overlay in Bildpixeln (Sage-Objektmarken). Achtung: in `createViewer` keine lokale Variable `esc` (TDZ-Fehler).
+und optionalem SVG-Overlay in Bildpixeln (Sage-Objektmarken). Achtung: in `createViewer` keine lokale Variable `esc` (TDZ-Fehler). Nach `opts.slowAfter` (Standard 20 s) ohne `load` bzw. bei `error` zeigt `.vload` einen Hinweis mit „Erneut versuchen“ (lädt mit `?neu=` neu; Test `test_viewer_slow.py`).
 Globale Auftragsanzeige oben (`showJobPill` aus `/api/activity`, alle Module) + Toast beim Fertigwerden. Dateien überall ablegen: zentraler Bilder-Import für FITS und JPG/PNG/TIFF.
 Fertige Bilder: `modules/stacking/picture_import.py`, Projektoption `input_type='picture'`, Original + Vorschauen als Ergebnis ohne Rohframes/Stack;
 SHA256 gegen doppelte Uploads, eigenes Ereignis `stacking.imported` → Sage (kein SkyTrace). Keine erfundenen Belichtungs-/Frame- oder Qualitätswerte.

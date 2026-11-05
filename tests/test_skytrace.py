@@ -288,3 +288,41 @@ def test_satcat_freigeben(tmp_path, monkeypatch):
         # abgelaufene kurze Pause zählt nicht
         (cache / "satcat-pause.json").write_text(json.dumps({"until": 1, "reason": "alt"}), encoding="utf-8")
         assert c.get("/api/skytrace/catalog/status").json()["satcat"] == {}
+
+
+def test_lauf_kompakt_und_medien_uebers_heimnetz(tmp_path, monkeypatch):
+    """Handy im Heimnetz: Laufdaten klein + komprimiert, Medien unkomprimiert mit Range (05.11.2026: 25 MB JSON, lud endlos)."""
+    monkeypatch.setenv("ASTROFLOW_MODULES", "stacking,skytrace")
+    home = tmp_path / "skytrace"
+    rid = _lauf(home)
+    obs = home / "Ergebnisse" / rid / "M103"
+    paths = [{"name": f"SAT {n}", "reference_segments": [[[x * 10.0 + n, x * 5.0] for x in range(20)] for _ in range(6)]} for n in range(30)]
+    cands = [{"id": "K0001", "session": "2026_observation_M103", "kind": "trail", "initial_frame": 0, "hit_indices": [1],
+              "evidence": {"segment": [[10, 10], [30, 30]]}, "plausibility": {"analysis_size": [320, 240]},
+              "satellite_overlay": {"paths": paths},
+              "frames": [{"image": "M103/kandidaten/K0001/a.png", "index": 1, "hit": True}]}]
+    (obs / "kandidaten.json").write_text(json.dumps(cands), encoding="utf-8")
+    rows = [{"index": i, "video_seconds": i / 8, "reference_to_current": [[1, 0, i * .1], [0, 1, -i * .05]],
+             "detections": [{"segment": [[10, 10], [30, 30]]}] if i == 1 else []} for i in range(300)]
+    (obs / "frames.jsonl").write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+    s = load_settings(tmp_path / "d")
+    from astroflow.core.store import SettingsStore
+    SettingsStore(s.data_dir / "settings.json").update("skytrace", {"home": str(home)})
+    lan = {"host": "192.0.2.10:8766", "accept-encoding": "gzip"}          # Dokumentationsadresse statt localhost
+    with TestClient(create_app(s), base_url="http://192.0.2.10:8766") as c:
+        r = c.get("/api/skytrace/run", params={"id": rid}, headers=lan)
+        assert r.status_code == 200 and r.headers.get("content-encoding") == "gzip"
+        d = r.json()
+        tl = d["sessions"][0]["overlay_timeline"]
+        assert len(tl["frames"]) == 300 and len(tl["satellite_paths"]) == 30
+        assert "satellites" not in tl["frames"][5]                      # Bahnen nicht je Bild wiederholen
+        assert tl["frames"][5]["reference"] == [[1, 0, .5], [0, 1, -.25]]
+        assert len(r.content) < 200_000, len(r.content)                  # vorher wuchs das mit Bildern × Bahnen (hier ~30 MB)
+        # Medien: nicht komprimiert, Range/206 für Videos (Handy-Browser spulen so)
+        v = c.get(d["sessions"][0]["video_url"], headers={**lan, "range": "bytes=0-1"})
+        assert v.status_code == 206 and v.content == bytes([0, 1]) and "content-encoding" not in v.headers
+        assert v.headers["content-range"] == "bytes 0-1/10240"
+        img = c.get(d["candidates"][0]["frames"][0]["url"], headers=lan)
+        assert img.status_code == 200 and img.content == b"png" and "content-encoding" not in img.headers
+        live = c.get(d["sessions"][0]["preview_url"], headers=lan)
+        assert live.headers["content-type"] == "image/jpeg" and "content-encoding" not in live.headers

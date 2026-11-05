@@ -21,6 +21,18 @@ Messgrafiken/Zoomdialoge (`static/evidence.js/css`) sind unverändert und werden
   und laufen mit gesetztem `SKYTRACE_HOME` (manche brauchen echte Stellina-Daten: Ordner per `SKYTRACE_SAMPLES`).
 - Abhängigkeiten der Engine: `requirements.txt` (Lock aus SkyTrace). Docker: `--build-arg SKYTRACE=1`.
 
+## Laufdaten fürs Handy klein halten (05.11.2026, 0.31.1)
+Befund: Auf dem Handy (Galaxy S24, Brave, Heimnetz) luden Lauf-Ansicht und Medien endlos. Ursache war nicht die Medienauslieferung,
+denn Range/206, H.264 und relative URLs waren in Ordnung. Ursache war `/api/skytrace/run`: `video_overlays.timeline` schrieb in jedes
+Videobild alle Satellitenbahnen fertig umgerechnet (126 Bilder × 32 Bahnen = 25 MB JSON). Jetzt liegen die Bahnen einmal in
+`overlay_timeline.satellite_paths` (`start` = erstes Trefferbild), und jedes Bild hat nur `index` und `reference`
+(Registrierungsmatrix, auf 7 Stellen gerundet). Umrechnung und Bildfeldtest übernimmt `evidence.satellitesAt`
+(Gegenstück in Python: `video_overlays.satellites_at`, für `check_video_overlays.py`). Ältere Antworten mit `frames[].satellites`
+gehen weiter. Dazu komprimiert der Kern JSON/Text per `core/gzip.py` (ab 2 KB, nur Text/JSON; Medien und 206 bleiben unberührt).
+Ergebnis: 25 MB → 1,4 MB (0,6 MB übertragen). Neue Felder je Videobild nur, wenn sie nicht mit Bilder × Kandidaten wachsen.
+Nachstellen: Playwright `Pixel 7` + CDP `Network.emulateNetworkConditions` über die LAN-Adresse. Tests:
+`test_skytrace.py::test_lauf_kompakt_und_medien_uebers_heimnetz`, `test_skytrace_video_ui.py` (Satellitenbahn im Overlay).
+
 ## Analysen löschen (29.10.2026, Nutzerwunsch)
 `DELETE /api/skytrace/run?id=<Lauf>` → `Controller.delete_run`: nur Ordner unter `Ergebnisse/` mit Laufdateien (`videos.json`,
 `bericht.html` oder `messwerte.jsonl`), nicht der gerade laufende; Windows-Sperren (Videowiedergabe) mit einem Wiederholversuch.

@@ -122,21 +122,71 @@ function confirmDlg(title, text, ok = 'OK', danger = false) {
   });
 }
 // Ordner auf dem Server-Rechner wählen (Browser geben keine echten Pfade heraus). pick(path) bekommt den gewählten Ordner.
-// opts: title, ok (Beschriftung), hint (Satz unten links).
+// opts: title, ok (Beschriftung), hint (Satz unten links). Suchfeld: filtert sofort den aktuellen Ordner und sucht entprellt
+// in Unterordnern (/api/folders/search); Klick auf einen Treffer öffnet ihn, gewählt wird weiter nur der aktuelle Ordner.
+// Keine Mehrfachauswahl: Hauptordner-Suche und SkyTrace arbeiten je mit genau einem Ordner.
+const folderKey = (s) => String(s || '').toLowerCase().replace(/[\s_-]+/g, '');
 function folderDialog(start, pick, { title = 'Ordner wählen', ok = 'Diesen Ordner verwenden', hint = 'Dateien werden nur gelesen.' } = {}) {
   const d = $('#dlg');
   d.innerHTML = `<h2 style="font-size:16px;margin-bottom:12px">${esc(title)}</h2>
     <div class="fdrives" id="fdr"></div>
     <div class="fnav"><button class="btn ghost sm" id="fup" title="Übergeordneter Ordner">↑</button><div class="fpath" id="fcr"></div></div>
+    <div class="fsearch">${icon('search')}<input id="fq" type="text" autocomplete="off" spellcheck="false" aria-label="Ordner suchen"><button class="linkbtn sm" id="fqx" hidden title="Suche leeren (Esc)">Leeren</button></div>
     <div class="folders" id="fl"></div><div class="fcount mut sm" id="fct"></div>
     <details class="fmanual"><summary class="mut sm">Pfad eingeben</summary><div class="row" style="flex-wrap:nowrap;margin-top:6px">
       <input id="fp" style="flex:1" spellcheck="false" autocomplete="off"><button class="btn ghost sm" id="fgo">Öffnen</button></div></details>
     <div class="row" style="justify-content:flex-end;margin-top:14px"><span class="mut sm grow">${esc(hint)}</span><button class="btn ghost" id="fx">Abbrechen</button><button class="btn" id="fok" disabled>${esc(ok)}</button></div>`;
-  let cur = '';
+  let cur = '', list = null, deep = null, timer = 0, ctrl = null;
+  const fq = $('#fq', d), fl = $('#fl', d), fct = $('#fct', d);
+  const row = (x, rel) => `<button class="frow" data-p="${esc(x.path)}">${icon('folder')}<span class="fname">${esc(x.name)}${rel ? `<small class="frel">${esc(rel)}</small>` : ''}</span></button>`;
+  const counts = () => list && (list.fits || list.pictures) ? `In diesem Ordner: ${[list.fits && `${list.fits} FITS`, list.pictures && `${list.pictures} Bilder`].filter(Boolean).join(', ')}` : '';
+  // Liste zeichnen: ohne Suche alle Unterordner; mit Suche sofort die passenden hier, darunter Treffer tiefer (relativer Pfad)
+  const draw = () => {
+    if (!list) return;
+    const key = folderKey(fq.value);
+    $('#fqx', d).hidden = !fq.value;
+    if (!key) {
+      fl.innerHTML = list.folders.map(x => row(x)).join('') + (list.more ? `<p class="mut sm">… und ${list.more} weitere</p>` : '')
+        || '<p class="mut sm" style="padding:8px">Keine Unterordner.</p>';
+      fct.textContent = counts();
+      return;
+    }
+    const done = deep?.key === key;
+    const here = list.folders.filter(x => folderKey(x.name).includes(key));
+    const seen = new Set(here.map(x => x.path));
+    const sub = (done ? deep.hits : []).filter(x => !seen.has(x.path));
+    fl.innerHTML = here.map(x => row(x)).join('')
+      + (sub.length ? '<p class="fsec mut sm">In Unterordnern</p>' + sub.map(x => row(x, x.rel)).join('') : '')
+      + (cur && !done ? '<p class="fsec mut sm"><span class="spinner"></span>Suche in Unterordnern …</p>' : '')
+      + (!here.length && !sub.length && (done || !cur) ? '<p class="mut sm" style="padding:8px">Kein Ordner gefunden.</p>' : '');
+    const n = here.length + sub.length;
+    fct.textContent = done ? `${n} Treffer${deep.truncated ? ' – Suche begrenzt, es kann weitere geben' : ''} (bis ${deep.depth} Ebenen tief)`
+      : cur ? `${here.length} Treffer in diesem Ordner` : '';
+  };
+  // Entprellt in Unterordnern suchen; eine ältere, noch laufende Anfrage wird abgebrochen
+  const stop = () => { clearTimeout(timer); ctrl?.abort(); ctrl = null; };
+  const searchDeep = () => {
+    stop();
+    const key = folderKey(fq.value);
+    if (!key || !cur) { deep = null; draw(); return; }
+    timer = setTimeout(async () => {
+      const c = ctrl = new AbortController(), q = fq.value, path = cur;
+      try {
+        const r = await apiFetch(`/folders/search?path=${encodeURIComponent(path)}&q=${encodeURIComponent(q)}`, { signal: c.signal });
+        if (c !== ctrl || path !== cur) return;
+        deep = { key: folderKey(q), hits: r.hits, truncated: r.truncated, depth: r.depth };
+        draw();
+      } catch (e) {
+        if (e.name === 'AbortError' || c !== ctrl) return;
+        deep = { key, hits: [], depth: 0 }; draw(); toast(e.message, 'err');
+      }
+    }, 300);
+  };
   const browse = async (path) => {
     try {
       const r = await api('/folders?path=' + encodeURIComponent(path || ''));
-      cur = r.path;
+      stop();
+      cur = r.path; list = r; deep = null; fq.value = '';
       $('#fp', d).value = r.path;
       $('#fok', d).disabled = !r.path;
       $('#fup', d).disabled = !r.path;
@@ -148,20 +198,34 @@ function folderDialog(start, pick, { title = 'Ordner wählen', ok = 'Diesen Ordn
         const p = (r.path.startsWith(sep) ? sep : '') + parts.slice(0, i + 1).join(sep) + (i === 0 && sep === '\\' ? sep : '');
         return `<button class="linkbtn" data-p="${esc(p)}">${esc(x)}</button>`;
       }).join(`<span class="dim">${esc(sep)}</span>`) || esc(sep) : '<span class="mut">Laufwerke</span>';
-      $('#fl', d).innerHTML = r.folders.map(x => `<button class="frow" data-p="${esc(x.path)}">${icon('folder')}<span>${esc(x.name)}</span></button>`).join('')
-        + (r.more ? `<p class="mut sm">… und ${r.more} weitere</p>` : '') || '<p class="mut sm" style="padding:8px">Keine Unterordner.</p>';
-      $('#fl', d).scrollTop = 0;
-      $('#fct', d).textContent = r.fits || r.pictures ? `In diesem Ordner: ${[r.fits && `${r.fits} FITS`, r.pictures && `${r.pictures} Bilder`].filter(Boolean).join(', ')}` : '';
+      fq.placeholder = r.path ? 'Ordner suchen, auch in Unterordnern – z. B. NGC 4395' : 'Laufwerk suchen …';
+      draw();
+      fl.scrollTop = 0;
     } catch (e) { toast(e.message, 'err'); }
   };
   d.onclick = (e) => { const r = e.target.closest('[data-p]'); if (r && r.id !== 'fup') browse(r.dataset.p); };
   $('#fup', d).onclick = (e) => { e.stopPropagation(); browse(e.currentTarget.dataset.p); };
   $('#fgo', d).onclick = () => browse($('#fp', d).value);
   $('#fp', d).onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); browse($('#fp', d).value); } };
+  fq.oninput = () => { draw(); searchDeep(); };
+  // Esc leert die Suche (erst bei leerem Feld schließt Esc den Dialog), Enter öffnet den ersten Treffer, ↓ springt in die Liste
+  fq.onkeydown = (e) => {
+    if (e.key === 'Escape' && fq.value) { e.preventDefault(); e.stopPropagation(); fq.value = ''; fq.oninput(); }
+    else if (e.key === 'Enter') { e.preventDefault(); const f = $('.frow', fl); if (f && fq.value) browse(f.dataset.p); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); $('.frow', fl)?.focus(); }
+  };
+  fl.onkeydown = (e) => {
+    const rows = $$('.frow', fl), i = rows.indexOf(document.activeElement);
+    if (i < 0) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); rows[Math.min(i + 1, rows.length - 1)].focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); (i ? rows[i - 1] : fq).focus(); }
+  };
+  $('#fqx', d).onclick = (e) => { e.stopPropagation(); fq.value = ''; fq.oninput(); fq.focus(); };
   $('#fx', d).onclick = () => d.close();
   $('#fok', d).onclick = () => { if (cur) { d.close(); pick(cur); } };
-  d.onclose = null;
+  d.onclose = stop;
   d.showModal();
+  fq.focus();
   browse(start || '');
 }
 function crumbs(parts) {
@@ -295,15 +359,27 @@ function createViewer(host, src, cmpSrc, labels = ['älter', 'neuer'], ph = null
     x = v.clientWidth / 2 - cx * iw * s; y = v.clientHeight / 2 - cy * ih * s;
     clamp(); apply(); requestAnimationFrame(() => v.classList.add('ready'));
   };
+  // Dauert es lange (Handy im Heimnetz, Werbeblocker) oder schlägt es fehl: sagen und „Erneut versuchen“ anbieten
+  const vload = $('.vload', v), slowAfter = opts.slowAfter ?? 20000;
+  let slowT = 0;
+  const hint = (msg) => { vload.innerHTML = `<span>${msg}</span><button class="btn sm ghost" data-retry>Erneut versuchen</button>`; };
+  const watch = () => { clearTimeout(slowT); slowT = setTimeout(() => { if (!v.classList.contains('ready')) hint('Lädt noch … (langsames Netz?)'); }, slowAfter); };
+  main.addEventListener('load', () => clearTimeout(slowT));
   main.addEventListener('load', onload);
-  if (main.complete && main.naturalWidth) onload();
-  main.addEventListener('error', () => { $('.vload', v).innerHTML = 'Bild konnte nicht geladen werden.'; });
+  if (main.complete && main.naturalWidth) onload(); else watch();
+  main.addEventListener('error', () => { clearTimeout(slowT); hint('Bild konnte nicht geladen werden.'); });
+  vload.addEventListener('click', (e) => {
+    if (!e.target.closest('[data-retry]')) return;
+    vload.innerHTML = '<span class="spinner"></span>Lädt Bild in voller Auflösung …';
+    const u = new URL(main.getAttribute('src'), location.href); u.searchParams.set('neu', Date.now());
+    main.src = u.pathname + u.search; watch();
+  });
   const ro = new ResizeObserver(() => { const atFit = Math.abs(s - fitS) < 1e-3; if (atFit) fit(); else { clamp(); apply(); } });
   ro.observe(v);
   v.addEventListener('wheel', (e) => { e.preventDefault(); const r = v.getBoundingClientRect(); zoomAt(Math.exp(-e.deltaY * 0.0018), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
   v.addEventListener('dblclick', (e) => { const r = v.getBoundingClientRect(); smooth(() => { if (s > fitS * 1.05) fit(); else zoomAt(1 / s, e.clientX - r.left, e.clientY - r.top); }); });
   v.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('.vbar')) return;
+    if (e.target.closest('.vbar, [data-retry]')) return;
     if (e.target === line) { const mv = (ev) => { const r = v.getBoundingClientRect(); split = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)); apply(); };
       const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); }; addEventListener('pointermove', mv); addEventListener('pointerup', up); return; }
     tap = ptrs.size ? null : { t: e.target, x: e.clientX, y: e.clientY };
@@ -337,7 +413,7 @@ function createViewer(host, src, cmpSrc, labels = ['älter', 'neuer'], ph = null
   return { el: v, overlay: ov, setSrc: (u) => { if (main.getAttribute('src') !== u) main.src = u; },
     setSplit: (f) => { split = Math.min(1, Math.max(0, f)); apply(); },
     zoomTo: (px, py, f = 4) => { if (!iw) return; smooth(() => { s = Math.min(8, fitS * f); x = v.clientWidth / 2 - px * s; y = v.clientHeight / 2 - py * s; clamp(); apply(); }); },
-    redraw: () => { if (ov && iw) opts.overlay(ov, iw, ih); }, destroy:() => { ro.disconnect(); main.removeEventListener('load', onload); document.removeEventListener('keydown', onKey); } };
+    redraw: () => { if (ov && iw) opts.overlay(ov, iw, ih); }, destroy:() => { clearTimeout(slowT); ro.disconnect(); main.removeEventListener('load', onload); document.removeEventListener('keydown', onKey); } };
 }
 
 // ----------------------------------------------------------- Modul-Vertrag --- //
