@@ -253,11 +253,37 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
 - **Befund** (05.11.2026, Kopie der vier Läufe vom 2022-05-09, nur gelesen): IC 1396 strenger Abgleich 0 von 5, Suche 5 von 5 → Verschiebung
   4,7 ± 0,1 km, quer-RMS 704″ → 16″, am Vorschlag streng 5 von 5. Keine Spur ganz im Bild → Uhrversatz unbestimmt (± 30 s = Vorinformation).
   M101 und NGC 4565 derselben Nacht haben je nur eine Spur (keine eigene Rückrechnung möglich); übernimmt man den IC-1396-Ort für die Nacht,
-  gleicht „alle neu abgleichen“ sie mit ab. Offen: Suche über alle Beobachtungen einer Nacht gemeinsam.
+  gleicht „alle neu abgleichen“ sie mit ab. Seit 0.29.0 gemeinsam über „Standorte aller Nächte“ (unten).
 - Tests: `tests/test_skytrace_rematch.py` (Engine-Teil nur mit skyfield – direkt im Engine-Interpreter ausführbar: 5 km falscher Ort →
   Suche < 200 m und Uhr ± 0,3 s, strenger Abgleich danach mit Treffern; Starlink-Zwilling wird nicht genutzt; geänderte Ortsliste wirkt;
   fehlende Bahndaten behalten den alten Abgleich; Server: Signatur, Hinweis, Auftrag mit Engine-Attrappe, Aktivität). UI: Beobachtungen-Ansicht in
   `test_ui_layout.py` (`ROUTES`, Fixture mit `standortsuche.json`).
+
+## Standorte aller Nächte (0.29.0, 05.11.2026, Nutzerwunsch „für Spuren Treffer finden, indem er alle Standorte prüft bzw. zurückrechnet“)
+- **Gruppen** (`SiteJobs.start_nights`, Server): `stats.collect` (je Beobachtung nur die neueste vollständige Analyse, Nacht = Datum im Ordnernamen
+  bzw. früheste Zeit − 12 h; `stats._run` liefert dafür neu `folder`) → `<SKYTRACE_HOME>/standortsuche-gruppen.json` `[{night, observations:[{run, folder, session}]}]`.
+  Auftrag `kind='nights'` (sperrt keine Läufe, `busy_with`), Aktivität → `#/skytrace/standorte`.
+- **Engine** `rematch_sites.py nights <gruppen> <ausgabe> [--radius-km]` → `night()` je Gruppe, Ergebnis nach jeder Nacht in
+  `standortsuche-naechte.json` (`state` running|done|stopped; Anhalten über `InterruptedError`/Stopp-Datei behält fertige Nächte):
+  1. Bisheriger Ort = `resolve_site` des ersten Kandidaten; FITS-Ort → `status='fits'` (Liste hätte keine Wirkung). `stored` = eindeutige Treffer aus
+     `kandidaten.json` (`_score`: `sitefit._sure`, quer-RMS der besten Bahn = `mean_offset_arcsec`).
+  2. Ab `MIN_TRAILS` (3) eindeutigen Treffern nur verfeinern; sonst jeden Listenort (und eine Ausnahme/den alten SkyTrace-Ort) streng prüfen → `tested`.
+     Bester = meiste eindeutige Treffer, dann kleinerer quer-RMS. „Gut“ = ≥ 1 Treffer und RMS ≤ `GOOD_RMS_ARCSEC` 60″ (Orte ~1 km daneben lagen bei 100–320″).
+  3. Nicht gut: Rückrechnung aus den Treffern des besten (ab 3), sonst Suche mit Spielraum (`accuracy = Radius/2`, Obergrenze 2°) um den besten –
+     ohne jeden Treffer um den bisherigen und die nächsten Listenorte (≤ `MAX_CENTERS` 3). `_night_fit` = `sitefit.fit` über alle Beobachtungen der Nacht
+     (gemeinsamer Ort + Uhrversatz; „ganz im Bild“ je Ordner). Danach streng am Vorschlag und zweite Rückrechnung.
+  4. Vorschlag `fit` nur, wenn er mehr eindeutige Treffer bringt oder den RMS um > 30 % senkt; liegt er ≤ max(300 m, 2 × Genauigkeit) an einem Listenort,
+     wird dieser vorgeschlagen (`list`). Sonst `list`, wenn ein anderer Listenort mehr Treffer hat. Unter 3 Spuren Hinweis „nur Auswahl“; ohne Treffer
+     `status='none'` „Kein Ort passt“. `assign` = alle `night_of(timestamp)` der Kandidaten (danach richtet sich `resolve_site`).
+- **UI** `nightsView` (`#/skytrace/standorte`, Knopf im `rematchPanel`): Spielraum 5/10/20 km (`af.skytrace.nightsRadius`), Filter „Mit Vorschlag“/„Alle“,
+  `applyNights` (wie `applyFit`: SkyTrace-Ausnahmen der Beobachtungen entfernen, neue Orte in einem `POST /sites`, je `assign`-Nacht `/sites/night`),
+  dann `POST /sitesearch/nights/applied` und `POST /rematch {runs, force:false}` für die betroffenen Läufe; `ackSites` verhindert danach die Rückfrage
+  „Standorte geändert“. Toasts: die Ansicht am `href` des Auftrags meldet mit Zahlen (`rmHref`), sonst der allgemeine Hinweis der Shell.
+- **Befund** (Kopie der Läufe vom 2022-05-09, nur gelesen): 3 Beobachtungen, 7 Spuren; Listenorte 3/7 (335″), 7/7 (24″), 7/7 (162″) → Vorschlag
+  Listenort mit 7/7, 24″ (bisher 0 Treffer).
+- Tests: `tests/test_skytrace_nights.py` (zwei Beobachtungen einer Nacht gemeinsam zurückgerechnet, falscher Listenort durch richtigen ersetzt,
+  keine passende Spur → kein Vorschlag, Starlink-Zwilling nicht genutzt, Anhalten; Server: Gruppen, Ergebnis, „übernommen“). UI: `#/skytrace/standorte`
+  in `test_ui_layout.py` (Fixture `standortsuche-naechte.json`).
 
 ## Erkennung im Teleskop-Bildfeld (28.10.2026, Nutzerbefund M74 2022-08-07)
 Anlass: Ein schwacher Meteor (img-0041, ~120 px, ~1,5σ/px) wurde übersehen, ein langsames Objekt in sechs Aufnahmen (img-0177…0182)

@@ -36,7 +36,8 @@ class SiteJobs:
     # ---- Zustand ----------------------------------------------------------
     def busy_with(self, run: str | None) -> bool:
         with self.lock:
-            return bool(self.process is not None and self.job and (run is None or self.job.get("all") or run in self.job["runs"]))
+            # Die Nachtsuche liest nur – sie sperrt keine Läufe (zählt aber als laufender Auftrag)
+            return bool(self.process is not None and self.job and (run is None or self.job.get("kind") != "nights" and (self.job.get("all") or run in self.job["runs"])))
 
     def snapshot(self) -> dict | None:
         with self.lock:
@@ -81,6 +82,49 @@ class SiteJobs:
         args = ["rematch", *map(str, paths)] + (["--force"] if force else [])
         return self._launch(dict(kind="rematch", all=runs is None, runs=[p.name for p in paths], force=force, title=title,
                                  signature=self.signature() if runs is None else None), args)
+
+    def start_nights(self, radius_km: float = 10.0) -> dict:
+        """Standorte aller Nächte: Gruppen je Nacht aus der Statistik (neueste vollständige Analyse je Beobachtung)."""
+        from .stats import collect
+        if not 1 <= float(radius_km) <= 50:
+            raise ValueError("Suchradius 1–50 km.")
+        busy = self.mod.ctl.snapshot(logs=False)
+        data = collect(self.mod.ctl.results, skip=busy["run"] if busy["running"] else None)
+        groups: dict[str, list] = {}
+        for s in data["sessions"]:
+            if s.get("night") and s.get("folder") and s.get("candidate_count"):
+                groups.setdefault(s["night"], []).append({"run": s["run"], "folder": s["folder"], "session": s["session"]})
+        if not groups:
+            raise ValueError("Keine SkyTrace-Analysen mit Spuren vorhanden.")
+        from json_store import write_json
+        path = self.mod.home / "standortsuche-gruppen.json"
+        write_json(path, [{"night": n, "observations": o} for n, o in sorted(groups.items(), reverse=True)])
+        runs = sorted({o["run"] for obs in groups.values() for o in obs})
+        return self._launch(dict(kind="nights", all=False, runs=runs, title="Standorte für alle Nächte suchen", radius_km=float(radius_km)),
+                            ["nights", str(path), str(self.nights_file), "--radius-km", str(float(radius_km))])
+
+    @property
+    def nights_file(self) -> Path:
+        return self.mod.home / "standortsuche-naechte.json"
+
+    def nights_result(self) -> dict | None:
+        from .api import _read_json
+        return _read_json(self.nights_file, None)
+
+    def mark_applied(self, nights: list[str]) -> dict | None:
+        """Übernommene Nächte in der gespeicherten Vorschlagsliste kennzeichnen (Liste bleibt nach dem Neuladen richtig)."""
+        from json_store import write_json
+        with self.lock:
+            if self.process is not None and (self.job or {}).get("kind") == "nights":
+                raise ValueError("Die Suche läuft noch – bitte warten oder anhalten.")
+            data = self.nights_result()
+            if not data:
+                return None
+            for n in data.get("nights") or []:
+                if n.get("night") in nights:
+                    n["applied"] = time.time()
+            write_json(self.nights_file, data)
+            return data
 
     def start_search(self, run: str, folder: str) -> dict:
         from .api import within
@@ -156,7 +200,8 @@ class SiteJobs:
         if not j:
             return []
         detail = j.get("error") if j["state"] == "error" else j.get("text")
-        href = "#/skytrace/statistik" if j.get("all") else f"#/skytrace/{j['runs'][0]}/beobachtungen" if j["runs"] else "#/skytrace"
+        # gleiche Regel wie rmHref in skytrace.js (die offene Ansicht meldet das Ende selbst, mit Zahlen)
+        href = "#/skytrace/standorte" if j.get("kind") == "nights" or len(j["runs"]) > 1 and not j.get("all") else "#/skytrace/statistik" if j.get("all") else f"#/skytrace/{j['runs'][0]}/beobachtungen" if j["runs"] else "#/skytrace"
         return [{"key": j["key"], "title": j["title"], "kind": "Spurenanalyse", "detail": detail, "state": j["state"],
                  "progress": (j["current"] / j["total"]) if j["state"] == "running" and j.get("total") else None,
                  "started": j["started"], "finished": j["finished"], "href": href}]

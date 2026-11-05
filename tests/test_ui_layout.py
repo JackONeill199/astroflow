@@ -96,13 +96,25 @@ def _skytrace_run(run):
         "created": 1762300000, "trails": 4, "timed": 2, "dropped": [], "shift_km": 4.8, "shift_sigma_km": 0.05, "bearing_deg": 160, "north_km": -4.5, "east_km": 1.6,
         "ellipse_km": {"major": 0.06, "minor": 0.03, "angle_deg": 20}, "clock_s": 2.1, "clock_sigma_s": 0.2, "rms_before_arcsec": 1400, "rms_after_arcsec": 9,
         "lat": 10.0, "lon": 20.0, "alt_m": 0, "accuracy_m": 60, "site": {"name": LONG}, "night": "2022-09-01"}), encoding="utf-8")
+    # Standorte aller Nächte (#/skytrace/standorte): neuer Ort, Listenort, kein Ort, übernommen
+    obs = [{"run": run.name, "folder": "obs", "session": f"2022-09-01_observation_{LONG}"}] * 3
+    cur = {"id": "home", "name": LONG, "sure": 0, "rms": None}
+    fit = {"kind": "fit", "lat": 10.0, "lon": 20.0, "alt_m": 0, "accuracy_m": 80, "sure": 5, "rms": 14.2, "trails": 5, "timed": 2, "clock_s": -3.1,
+           "clock_sigma_s": 0.4, "rms_before_arcsec": 903, "rms_after_arcsec": 14, "shift_from_current_km": 4.8, "from_name": LONG}
+    nights = [{"night": "2022-09-01", "observations": obs, "tracks": 5, "before": 0, "status": "better", "current": cur, "proposal": fit, "assign": ["2022-09-01"]},
+              {"night": "2022-08-30", "observations": obs[:1], "tracks": 2, "before": 0, "status": "better", "current": cur,
+               "proposal": {"kind": "list", "id": "b", "name": LONG, "sure": 2, "rms": 40}, "note": "Nur 2 eindeutige Spur(en) – zu wenig für eine Rückrechnung, nur Auswahl aus der Ortsliste."},
+              {"night": "2022-08-29", "observations": obs[:1], "tracks": 1, "before": 0, "status": "none", "current": cur, "proposal": None,
+               "note": "Kein Ort passt: keine Spur ließ sich einer Satellitenbahn eindeutig zuordnen (auch nicht mit ± 10 km Spielraum)."},
+              {"night": "2022-08-28", "observations": obs[:1], "tracks": 3, "before": 3, "status": "better", "current": cur, "proposal": fit, "applied": 1762300000}]
+    (run.parent.parent / "standortsuche-naechte.json").write_text(json.dumps({"created": 1762300000, "radius_km": 10, "state": "done", "nights": nights}), encoding="utf-8")
 
 
 # Fixtures `server` und `browser` (je Worker einmal) stehen in conftest.py
 
 
 ROUTES = ["#/", "#/nacht", "#/bilder", "#/galerie", "#/galerie/{pid}", "#/p/{pid}/bild", "#/p/{pid}/analyse", "#/p/{pid}/aufnahmen", "#/p/{pid}/versionen", "#/p/{pid}/optionen",
-          "#/import", "#/activity", "#/himmel", "#/skytrace", "#/skytrace/neu", "#/skytrace/statistik", "#/skytrace/2026-10-28_10-00-00-000001/beobachtungen", "#/skytrace/erfolge", "#/skytrace/3d", "#/sage", "#/sage/wiki", "#/sage/entdeckungen", "#/sage/sammlung",
+          "#/import", "#/activity", "#/himmel", "#/skytrace", "#/skytrace/neu", "#/skytrace/statistik", "#/skytrace/2026-10-28_10-00-00-000001/beobachtungen", "#/skytrace/standorte", "#/skytrace/erfolge", "#/skytrace/3d", "#/sage", "#/sage/wiki", "#/sage/entdeckungen", "#/sage/sammlung",
           "#/settings/stacking", "#/settings/skytrace", "#/settings/sage", "#/settings/standorte", "#/settings/module"]
 
 
