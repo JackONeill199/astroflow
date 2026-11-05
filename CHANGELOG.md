@@ -3,6 +3,22 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.27.0 – 05.11.2026
+
+### Neu
+- **Reiter „Analyse“ auf der Objektseite** (Taste 2): Die Auswertungen stehen nicht mehr gequetscht in der Detailspalte, sondern
+  breit unter dem Bild. Oben das Bild mit denselben Einblendungen, darunter:
+  - **Wie tief schaust du?** – Kennzahlen zählen beim Öffnen hoch, der 3D-Tunnel steht in voller Breite und startet mit einem
+    kurzen Kameraflug vom Beobachter bis in die Tiefe (unter 3 s, „Überspringen“ oder Klick bricht ab, „Flug“ wiederholt).
+    Klick auf nächsten/fernsten/schwächsten Stern oder das fernste Objekt zoomt im Bild darauf.
+  - **Veränderungen** – Blink-Vergleich groß, die auffälligen Stellen daneben.
+  - **Der Himmel in dieser Nacht** – Bortle-Skala 1–9 mit Zeiger (fährt an seinen Platz, die Spanne zeigt die Unsicherheit),
+    Himmelshelligkeit und Bildschärfe als Verlauf über die Nacht, Windrose der Lichtrichtung des Ortes.
+  - **Tutor** – Bildprüfung und Aufnahmebedingungen.
+  Fehlen Daten, steht dort, warum, mit Knopf („Jetzt messen“, „Jetzt berechnen“, „Plate-Solver einrichten“).
+- Die Detailspalte im Reiter Bild ist wieder kurz: Bildqualität, Grenzgröße, Bortle und Seeing – Klick führt in die Analyse.
+- Animationen kurz und funktional (Hochzählen, Zeiger, Einblenden, Kurven zeichnen sich); „Bewegung reduzieren“ schaltet sie ab.
+
 ## 0.26.0 – 05.11.2026
 
 ### Neu

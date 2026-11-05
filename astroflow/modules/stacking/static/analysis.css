@@ -1,0 +1,113 @@
+/* Reiter „Analyse“ (analysis.js) – breite Abschnitte unter dem Bild; Tokens aus style.css/look.css. Bewegung nur transform/opacity,
+   alles aus bei prefers-reduced-motion. */
+.an { display: grid; gap: 1rem; min-width: 0 }
+.an-top { display: grid; grid-template-columns: minmax(0, 1fr) 14rem; gap: 1rem; align-items: start }
+.viewer.an-viewer:not(.full) { height: min(30rem, 58vh); aspect-ratio: auto }
+.an-toc { position: sticky; top: calc(var(--top-h) + 1rem); display: grid; gap: 0.25rem }
+.an-toc a { display: flex; align-items: center; gap: 0.625rem; padding: 0.5rem 0.625rem; border-radius: var(--r-sm); color: var(--mut); font-weight: 500;
+  transition: background var(--t), color var(--t), transform 120ms var(--ease); animation: fadeUp var(--t2) var(--ease) both; animation-delay: calc(var(--i, 0) * 40ms) }
+.an-toc a:hover { background: var(--surface-2); color: var(--fg) }
+.an-toc a:active { transform: scale(.98) }
+.an-toc a svg { color: var(--acc) }
+.an-toc p { margin: 0.5rem 0.625rem 0 }
+
+/* Abschnitte: Einblenden beim Erreichen */
+.an-sec { min-width: 0; scroll-margin-top: calc(var(--top-h) + 1rem) }
+.an-sec:not(.in) { opacity: 0; transform: translateY(0.75rem) }
+.an-sec.in { opacity: 1; transform: none; transition: opacity 320ms var(--ease), transform 320ms var(--ease) }
+.an-sec .panel-h h2 { font-size: 1.0625rem }
+.an-empty { display: flex; gap: 0.875rem; align-items: flex-start; padding: 0.25rem 0 }
+.an-empty > svg { width: 1.75rem; height: 1.75rem; color: var(--acc); flex: none; margin-top: 0.125rem }
+.an-empty p { margin: 0.25rem 0 0.75rem; max-width: var(--read) }
+
+/* Tiefe: Kennzahlen in einer Reihe, Tunnel in voller Breite, Diagramme nebeneinander */
+.an-sec.depth-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 1.5rem; align-content: start }
+.an-sec.depth-panel > * { grid-column: 1 / -1 }
+.an-sec.depth-panel > .depth-chart { grid-column: auto }
+.an-sec .depth-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)) }
+.an-sec .depth-kpis b { font-size: 1.375rem }
+.an-sec .depth-bars { height: 5rem }
+.depth-facts li.focusable { cursor: pointer; border-radius: var(--r-sm); padding: 0.25rem 0.375rem; margin: -0.25rem -0.375rem; transition: background var(--t) }
+.depth-facts li.focusable:hover, .depth-facts li.focusable:focus-visible { background: var(--surface-2); outline: none }
+.an-sec .depth-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 1.5rem }
+.an-sec .depth-facts li:last-child { grid-column: 1 / -1 }
+/* Balken wachsen beim Einblenden von unten */
+.an-sec.in .depth-bars i { transform-origin: bottom; animation: anGrow 700ms var(--ease) both; animation-delay: calc(var(--d, 0) * 1ms + 150ms) }
+.an-sec.in .depth-hist .progress i { transform-origin: left; animation: anGrowX 700ms var(--ease) both; animation-delay: 200ms }
+@keyframes anGrow { from { transform: scaleY(0) } }
+@keyframes anGrowX { from { transform: scaleX(0) } }
+
+/* 3D-Tunnel eingebettet */
+.an-tunnel { margin-top: 0.875rem }
+.tunnel.inline { position: relative; inset: auto; z-index: auto; height: 26rem; border-radius: var(--r-lg); overflow: hidden; border: 1px solid var(--border-soft) }
+.tunnel.inline .tunnel-bar { padding: 0.5rem 0.75rem }
+.tunnel.inline .tunnel-info { top: 3.5rem }
+
+/* Veränderungen: Blink groß links, Kandidaten rechts */
+.an-cmp { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem }
+.an-cmp.has-blink { grid-template-columns: minmax(0, 1.6fr) minmax(16rem, 1fr) }
+.an-blink:empty, .an-cmp:not(.has-blink) .an-blink { display: none }
+.an-blink .viewer:not(.full) { height: min(28rem, 55vh); aspect-ratio: auto }
+.an-cmp .cmp-list { max-height: 26rem; overflow: auto }
+
+/* Himmel: Bortle-Skala mit Zeiger */
+.sq-anight + .sq-anight { margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--border-soft) }
+.sq-anight h3 { margin: 0 0 0.5rem }
+.sq-agrid { display: grid; grid-template-columns: minmax(0, 1fr) 16rem; gap: 1.5rem; align-items: start }
+.sq-amain .sq-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)) }
+.sq-alight h3 { font-size: 0.8125rem; margin: 0 0 0.5rem }
+.sq-curves { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 0.75rem }
+.sq-curves small { display: block; margin-bottom: 0.25rem }
+.sq-bortle { position: relative; margin: 1.25rem 0 0.5rem; padding-top: 1.625rem }
+.sq-bortle-bar { position: relative; display: grid; grid-template-columns: repeat(9, 1fr); height: 1.375rem; border-radius: 0.375rem; overflow: hidden; box-shadow: inset 0 0 0 1px #ffffff14 }
+.sq-bortle-bar span { display: grid; place-items: center; font-size: 0.6875rem; font-weight: 600; color: #ffffffb3 }
+.sq-bortle-span { position: absolute; top: 0; bottom: 0; left: var(--lo); width: calc(var(--hi) - var(--lo)); box-shadow: inset 0 0 0 2px #ffffffd9; border-radius: 0.375rem }
+.sq-bortle-ptr { position: absolute; top: 0; left: var(--pos); transform: translateX(-50%); display: grid; justify-items: center; font-style: normal }
+.sq-bortle-ptr b { display: block; padding: 0.0625rem 0.4375rem; border-radius: 0.3125rem; background: var(--fg); color: var(--bg); font-size: 0.75rem; white-space: nowrap }
+.sq-bortle-ptr::after { content: ""; width: 0; height: 0; border: 0.3125rem solid transparent; border-top-color: var(--fg) }
+.sq-bortle-ends { display: flex; justify-content: space-between; margin-top: 0.25rem }
+/* Zeiger fährt von links an seinen Platz, die Spanne blendet nach */
+.an-sec .sq-bortle-ptr { left: 0; transition: left 900ms var(--spring) }
+.an-sec.in .sq-bortle-ptr { left: var(--pos) }
+.an-sec:not(.in) .sq-bortle-span { opacity: 0 }
+.an-sec.in .sq-bortle-span { transition: opacity 300ms 700ms }
+/* Kurven zeichnen sich */
+.an-sec .sq-line { stroke-dasharray: 1; stroke-dashoffset: 1; opacity: .85 }
+.an-sec.in .sq-line { stroke-dashoffset: 0; transition: stroke-dashoffset 1100ms var(--ease) 200ms }
+.an-sec .sq-pt { opacity: 0 } .an-sec.in .sq-pt { opacity: 1; transition: opacity 300ms 900ms }
+.an-sec .sq-sector, .an-sec .sq-wedge, .an-sec .sq-arrow { transform-origin: 100px 100px; transform: scale(0) }
+.an-sec.in .sq-sector, .an-sec.in .sq-wedge, .an-sec.in .sq-arrow { transform: none; transition: transform 600ms var(--ease) 300ms }
+
+/* Tutor im Reiter: volle Breite, Abschnitt ohne eigene Fläche (das Panel des Tutors trägt sie) */
+.an-tutor > div > .panel { margin: 0 }
+
+/* Detailspalte im Reiter Bild: Kurzübersicht */
+.an-sumbox .an-sum { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+.an-kpi { display: block; color: var(--fg); transition: background var(--t) }
+.an-kpi:hover { background: var(--surface-2) }
+.an-kpi b .dim { font-size: 0.75em; font-weight: 500 }
+.an-more { display: inline-flex; align-items: center; gap: 0.375rem; margin-top: 0.75rem; font-weight: 550; font-size: 0.8125rem }
+.an-more svg { width: 0.875rem; height: 0.875rem; transition: transform var(--t) }
+.an-more:hover svg { transform: translateX(0.1875rem) }
+
+@media (max-width: 1100px) {
+  .an-top { grid-template-columns: minmax(0, 1fr) }
+  .an-toc { position: static; display: flex; flex-wrap: wrap; gap: 0.25rem }
+  .an-toc p { display: none }
+  .an-cmp.has-blink, .sq-agrid { grid-template-columns: minmax(0, 1fr) }
+}
+@media (max-width: 860px) {
+  .an-sec.depth-panel { grid-template-columns: minmax(0, 1fr) }
+  .an-sec .depth-kpis, .sq-amain .sq-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+  .an-sec .depth-facts, .sq-curves { grid-template-columns: minmax(0, 1fr) }
+  .tunnel.inline { height: 23rem }
+  .tunnel.inline .tunnel-legend { gap: 0.125rem 0.75rem; padding: 0.375rem 0.75rem; font-size: 0.6875rem }
+  .viewer.an-viewer:not(.full) { height: auto; aspect-ratio: 3/2 }
+  .an-toc a { padding: 0.375rem 0.5rem; font-size: 0.8125rem }
+}
+@media (prefers-reduced-motion: reduce) {
+  .an-sec:not(.in) { opacity: 1; transform: none }
+  .an-sec .sq-bortle-ptr { left: var(--pos) }
+  .an-sec .sq-line { stroke-dashoffset: 0 } .an-sec .sq-pt, .an-sec:not(.in) .sq-bortle-span { opacity: 1 }
+  .an-sec .sq-sector, .an-sec .sq-wedge, .an-sec .sq-arrow { transform: none }
+}

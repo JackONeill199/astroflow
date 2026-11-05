@@ -3,7 +3,7 @@
 
 const BAND_COLOR = { L: '#d6dbe8', R: '#f87171', G: '#4ade80', B: '#60a5fa', Ha: '#fb7185', OIII: '#22d3ee', SII: '#f59e0b', RGB: '#a78bfa' };
 const PALETTE_LABEL = { auto: 'Automatisch', RGB: 'RGB', LRGB: 'LRGB', SHO: 'SHO (Hubble)', HOO: 'HOO (Bicolor)', mono: 'Mono', OSC: 'Farbkamera' };
-const TABS = [['bild', 'Bild'], ['aufnahmen', 'Aufnahmen'], ['versionen', 'Versionen'], ['optionen', 'Optionen']];
+const TABS = [['bild', 'Bild'], ['analyse', 'Analyse'], ['aufnahmen', 'Aufnahmen'], ['versionen', 'Versionen'], ['optionen', 'Optionen']];
 const GX_LABEL = { default: 'Wie in den Einstellungen', all: 'Hintergrund + Entrauschen', bge: 'Nur Hintergrund', denoise: 'Nur Entrauschen', off: 'Aus (eigene Verfahren)' };
 const PROFILE_LABEL = { auto: 'Automatisch (nach Objekttyp)', generic: 'Allgemein', galaxy: 'Galaxie', emission: 'Emissionsnebel', reflection: 'Reflexionsnebel', planetary: 'Planetarischer Nebel', snr: 'Supernova-Überrest', globular: 'Kugelsternhaufen', open_cluster: 'Offener Sternhaufen', comet: 'Komet' };
 const COMET_VIEWS = [['jpg', 'Ergebnis'], ['stars', 'Sterne-Stack'], ['comet', 'Kometen-Stack']];
@@ -474,7 +474,7 @@ async function projectView(el, id, tab = 'bild') {
   id = +id;
   let p = await api('/stacking/projects/' + id), frames = null, sel = null, cmp = null, viewer = null, sig = '', before = false, stage = null, cview = 'jpg', blink = null;
   let fFilter = 'all', fBand = 'all', fSort = ['date', 1];
-  let liveView = null, livePoster = null, viz = null, vizKind = '';
+  let liveView = null, livePoster = null, viz = null, vizKind = '', anView = null;
   function updateJob() {
     const jobHost = $('#job', el);
     if (jobHost) { setJobLine(jobHost, p.job); jobHost.hidden = tab === 'bild' && !!liveView; }
@@ -583,15 +583,17 @@ async function projectView(el, id, tab = 'bild') {
     if (p.imported && !['bild', 'versionen'].includes(tab)) tab = 'bild';
     viewer?.destroy();
     liveView?.destroy();
+    anView?.destroy();
     liveView = null;
     viewer = null;
+    anView = null;
     $$('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.t === tab));
     requestAnimationFrame(() => slideInd($('#tabind'), $('#tabs a.on'), true));
     const t = $('#tab');
     if (!t) return;
     t.classList.remove('enter');
     sessionCtx();
-    ({ bild: tabImage, aufnahmen: tabFrames, versionen: tabVersions, optionen: tabOptions, teleskopbilder: tabCompanions }[tab] || tabImage)(t);
+    ({ bild: tabImage, analyse: tabAnalysis, aufnahmen: tabFrames, versionen: tabVersions, optionen: tabOptions, teleskopbilder: tabCompanions }[tab] || tabImage)(t);
     syncSideBtn();
     updateJob();
     if (animate) { void t.offsetWidth; t.classList.add('enter'); }
@@ -651,9 +653,7 @@ async function projectView(el, id, tab = 'bild') {
         ${Object.keys(bands).length > 1 || (Object.keys(bands).length === 1 && !bands.RGB) ? `<div class="panel"><div class="panel-h"><h2>Kanäle</h2><span class="grow"></span><span class="chip acc">${esc(PALETTE_LABEL[s.palette] || s.palette || '')}</span></div>
           <div class="bands">${Object.entries(bands).map(([b, v]) => `<div class="band"><span><span class="chip"><i style="background:${BAND_COLOR[b] || '#999'}"></i>${esc(b)}</span></span>
             <div class="progress"><i style="width:${v.exposure / bmax * 100}%;background:${BAND_COLOR[b] || 'var(--acc)'}"></i></div><span class="mut sm tnum">${v.frames} · ${dur(v.exposure)}</span></div>`).join('')}</div></div>` : ''}
-        <div id="tutorBox">${qualityPanel(s)}</div>
-        ${p.imported || typeof depthPanel !== 'function' ? '' : '<section class="panel depth-panel" id="depthBox"></section><section class="panel depth-panel" id="cmpBox"></section>'}
-        ${p.imported ? '' : '<section class="panel" id="skyBox"></section>'}
+        ${p.imported ? `<div id="tutorBox">${qualityPanel(s)}</div>` : '<section class="panel an-sumbox" id="anSum"></section>'}
         <div class="panel"><h2 style="margin-bottom:12px">Details</h2><dl class="kv">
           <dt>Erstellt</dt><dd>${fdate(r.created)}</dd>
           ${p.imported ? `<dt>Dateiname</dt><dd>${esc(s.imported.filename)}</dd><dt>Format</dt><dd>${esc(s.imported.format)} · ${s.imported.bit_depth} Bit</dd>
@@ -680,23 +680,15 @@ async function projectView(el, id, tab = 'bild') {
     $('#ctxStory')?.addEventListener('click', story);
     objectKnowledge($('#ctxKnow'), p.name);
     $('#ctxDev')?.addEventListener('click', develop);
-    if (s.quality) tutorPanel($('#tutorBox'), r);
-    window.AFsky?.panel($('#skyBox'), p.id);              // Himmelshelligkeit, Bortle, Seeing der Aufnahmenächte (skyquality.js)
+    if (s.quality && p.imported) tutorPanel($('#tutorBox'), r);
+    if (!p.imported && typeof analysisSummary === 'function') analysisSummary($('#anSum'), r, p.id);   // Kernzahlen + „Mehr in der Analyse“
     const ph = !c && !before && livePoster ? livePoster : `/api/stacking/results/${r.id}/thumb`;
     livePoster = null;
-    if (blink?.rid !== r.id || c || before) blink = null;
-    // Blink-Vergleich (Abschnitt „Veränderungen“): Referenz und aktuelles Bild auf dem Raster des Stacks
-    viewer = blink ? compareViewer($('#viewer'), r, blink.focus) : null;
-    if (!viewer) blink = null;
-    viewer = viewer || (c ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${c.id}/jpg`, undefined, ph)
+    viewer = (c ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${c.id}/jpg`, undefined, ph)
       : cview !== 'jpg' ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/${cview}`, null, undefined, ph)
       : before && r.has_before ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${r.id}/before`, ['vorher', 'nachher'], ph)
       : createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, null, undefined, ph, p.imported ? {} : { overlay: typeof depthOverlay === 'function' ? depthOverlay(r.id, plateLabels(r.id)) : plateLabels(r.id) }));
     viewer.el.classList.add('tall', 'hover-labels');
-    if (!p.imported && typeof depthPanel === 'function') {
-      depthPanel($('#depthBox'), r, blink || c || before || cview !== 'jpg' ? null : viewer);
-      comparePanel($('#cmpBox'), r, (on, focus) => { blink = on ? { rid: r.id, focus } : null; drawTab(false); }, !!blink);
-    }
     $('#ba')?.addEventListener('click', (e) => { const b = e.target.closest('[data-b]'); if (b) { before = b.dataset.b === '1'; drawTab(false); } });
     $('#cview')?.addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); if (b && b.dataset.v !== cview) { cview = b.dataset.v; drawTab(false); } });
     if (stages.length > 1) {
@@ -715,6 +707,20 @@ async function projectView(el, id, tab = 'bild') {
     }
     $('#latest')?.addEventListener('click', () => { sel = null; cmp = null; drawTab(); });
     $('#importedSage')?.addEventListener('click', story);
+  }
+
+  // ---- Tab: Analyse (analysis.js): Bild oben, darunter Tiefe, Veränderungen, Himmel der Nacht, Tutor ----
+  function tabAnalysis(t) {
+    const r = p.results.find(x => x.id === sel) || p.results[0];
+    if (!r || typeof analysisTab !== 'function') {
+      t.innerHTML = `<div class="viewer"><div class="none"><div>${running(p.job) ? '<div class="spinner"></div>Wird gerade verarbeitet – die Auswertungen erscheinen, sobald das Bild fertig ist.'
+        : `Noch kein Ergebnis – die Analyse braucht ein fertiges Bild.<br><br><button class="btn" id="run2">${icon('play')}Jetzt verarbeiten</button>`}</div></div></div>`;
+      $('#run2')?.addEventListener('click', () => run(false));
+      return;
+    }
+    anView = analysisTab(t, { p, r, solve: p.can_solve === false ? null : solve, viewerFor: (host) => createViewer(host, `/api/stacking/results/${r.id}/jpg`, null, undefined, `/api/stacking/results/${r.id}/thumb`,
+      { overlay: typeof depthOverlay === 'function' ? depthOverlay(r.id, plateLabels(r.id)) : plateLabels(r.id) }) });
+    viewer = anView.viewer;
   }
 
   // ---- Tab: Aufnahmen ----
@@ -995,13 +1001,13 @@ async function projectView(el, id, tab = 'bild') {
   draw();
   const closeMenu = (e) => { if (!e.target.closest('.menu')) $$('.menu.open').forEach(m => m.classList.remove('open')); };
   document.addEventListener('click', closeMenu);
-  // Tastenkürzel: 1–4 Tabs, F Vollbild, B Vorher/Nachher, Esc schließt Menüs
+  // Tastenkürzel: 1–5 Tabs, F Vollbild, B Vorher/Nachher, Esc schließt Menüs
   const onKey = (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input,select,textarea') || $('dialog[open]')) return;
     const k = e.key.toLowerCase();
     if (k === 'escape') $$('.menu.open').forEach(m => m.classList.remove('open'));
     else if (/^[1-9]$/.test(k) && tabs()[+k - 1]) location.hash = `#/p/${id}/${tabs()[+k - 1][0]}`;
-    else if (k === 'f' && tab === 'bild') $('.viewer [data-a=full]')?.click();
+    else if (k === 'f' && (tab === 'bild' || tab === 'analyse')) $('.viewer [data-a=full]')?.click();
     else if (k === 'b' && tab === 'bild' && $('#ba')) { before = !before; drawTab(false); }
     else return;
     e.preventDefault();
@@ -1026,7 +1032,7 @@ async function projectView(el, id, tab = 'bild') {
       ...(p.result && AF.on('sage') ? [['book', 'Geschichte erzählen', 'Sage', story]] : []),
       ['edit', 'Umbenennen', p.name, rename],
     ],
-    destroy: () => { window.__afSel = { id, sel, cmp }; viewer?.destroy(); liveView?.destroy(); viz?.destroy(); document.removeEventListener('click', closeMenu); document.removeEventListener('keydown', onKey); },
+    destroy: () => { window.__afSel = { id, sel, cmp }; viewer?.destroy(); liveView?.destroy(); anView?.destroy(); viz?.destroy(); document.removeEventListener('click', closeMenu); document.removeEventListener('keydown', onKey); },
   };
 }
 
