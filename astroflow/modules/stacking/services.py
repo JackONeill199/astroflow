@@ -178,6 +178,13 @@ def view_geometry(work_dir: Path, pid: int, files: dict, need_stack: bool = Fals
     return out
 
 
+def geometry_matches(geo: dict) -> bool:
+    """Gehört die gespeicherte Lösung (`wcs.json`, je Objekt nur die neueste) zu diesem Stack? Der Schlüssel endet auf
+    „HxW“ des gelösten Stacks; eine ältere Version mit anderer Auflösung hätte sonst falsche Himmelskoordinaten."""
+    key = geo.get("key", "")
+    return "|" not in key or key.split("|")[-1] == f"{geo['H']}x{geo['W']}"
+
+
 def to_view(geo: dict, x, y):
     """FITS-Pixel des Stacks → Pixel des angezeigten JPGs (Zeile 0 = oben); None ohne Bildlage."""
     if geo.get("offset") is None:

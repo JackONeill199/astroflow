@@ -160,8 +160,7 @@ def compute(work_dir: Path, pid: int, files: dict, name: str = "", facts=None, g
         raise DepthError("Dieses Bild ist nicht per Plate-Solving gelöst – ohne Himmelskoordinaten lässt sich die Tiefe nicht messen.")
     if not gaia:
         raise DepthError("Gaia-Abfragen sind ausgeschaltet (Einstellungen → Bilder → Fotometrische Farbkalibrierung).")
-    key = geo.get("key", "")
-    if "|" in key and key.split("|")[1] != f"{geo['H']}x{geo['W']}":
+    if not services.geometry_matches(geo):
         raise DepthError("Die gespeicherte Plate-Solving-Lösung gehört zu einem anderen Stack – bitte neu entwickeln.")
     data, wcs, H, W = geo["data"], geo["wcs"], geo["H"], geo["W"]
     L = data.mean(0).astype(np.float32)

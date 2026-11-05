@@ -323,9 +323,12 @@ function plateLabels(rid) {
   let d = null, svg = null, w = 0;
   const draw = (s, width) => {
     svg = s; w = width;
-    if (!d?.objects?.length) { s.innerHTML = ''; return; }
+    // eigene Gruppe: andere Ebenen im selben SVG (z. B. Tiefenmarken) bleiben beim späten Nachladen erhalten
+    let g = s.querySelector(':scope > g.plate-labels');
+    if (!g) { g = document.createElementNS('http://www.w3.org/2000/svg', 'g'); g.setAttribute('class', 'plate-labels'); s.prepend(g); }
+    if (!d?.objects?.length) { g.innerHTML = ''; return; }
     const sc = w / (d.width || w), fs = Math.max(12, w / 48);
-    s.innerHTML = d.objects.map(o => { const x = o.x * sc, y = o.y * sc, r = Math.max(fs * .6, (o.radius || 8) * sc);
+    g.innerHTML = d.objects.map(o => { const x = o.x * sc, y = o.y * sc, r = Math.max(fs * .6, (o.radius || 8) * sc);
       return `<g><circle cx="${x}" cy="${y}" r="${r}"/><text x="${x + r * .75 + fs * .3}" y="${y - r * .75}" font-size="${fs}">${esc(o.name)}</text><title>${esc(o.name)}${o.kind_label ? ' · ' + esc(o.kind_label) : ''}</title></g>`; }).join('');
   };
   api(`/stacking/results/${rid}/objects`).then(x => { d = x; if (svg) draw(svg, w); }).catch(() => {});

@@ -66,10 +66,26 @@ def references(db, work_dir: Path, rid: int) -> list[dict]:
         files = json.loads(r["files"] or "{}")
         if not files.get("fits") or not Path(files["fits"]).exists() or not (work_dir / f"p{r['project_id']}" / "wcs.json").exists():
             continue
+        try:                                             # Lösung passt nicht zur Stackgröße dieser Version → nicht anbieten
+            key = json.loads((work_dir / f"p{r['project_id']}" / "wcs.json").read_text(encoding="utf-8")).get("key", "")
+        except (OSError, ValueError):
+            continue
+        if "|" in key and not _fits_shape_ok(files["fits"], key):
+            continue
         st = json.loads(r["stats"] or "{}")
         out.append({"id": r["id"], "created": r["created"], "n_frames": r["n_frames"], "exposure": r["exposure"], "name": r["name"],
                     "same": r["project_id"] == cur["project_id"], "nights": st.get("nights")})
     return out
+
+
+def _fits_shape_ok(path: str, key: str) -> bool:
+    """Bildgröße des linearen Stacks (FITS-Kopf, ohne die Daten zu lesen) gegen den Lösungsschlüssel „…|HxW“."""
+    from astropy.io import fits
+    try:
+        h = fits.getheader(path)
+        return key.split("|")[-1] == f"{h.get('NAXIS2')}x{h.get('NAXIS1')}"
+    except Exception:
+        return False
 
 
 def pick_reference(refs: list[dict], cur: dict) -> dict | None:
@@ -217,6 +233,8 @@ def compute(db, work_dir: Path, rid: int, ref: str | int = "auto", survey: bool 
     geo = services.view_geometry(work_dir, cur["project_id"], cur["files"], need_stack=True)
     if geo is None:
         raise CompareError("Dieses Bild ist nicht per Plate-Solving gelöst – ohne Himmelskoordinaten kein Vergleich möglich.")
+    if not services.geometry_matches(geo):
+        raise CompareError("Die gespeicherte Plate-Solving-Lösung gehört zu einem anderen Stack – bitte neu entwickeln.")
     H, W, wcs = geo["H"], geo["W"], geo["wcs"]
     A = geo["data"].mean(0).astype(np.float32)
     validA = np.isfinite(A) & (A != 0)
@@ -243,6 +261,8 @@ def compute(db, work_dir: Path, rid: int, ref: str | int = "auto", survey: bool 
         g2 = services.view_geometry(work_dir, r2["project_id"], json.loads(r2["files"] or "{}"), need_stack=True)
         if g2 is None:
             raise CompareError("Die Referenz ist nicht per Plate-Solving gelöst bzw. ihr linearer Stack fehlt.")
+        if not services.geometry_matches(g2):
+            raise CompareError("Die Plate-Solving-Lösung passt nicht zur Auflösung dieser Referenz-Version – bitte eine andere wählen.")
         log("Referenz auf das Raster bringen")
         B = reproject(g2["data"].mean(0), g2["wcs"], wcs, (H, W))
         st2 = json.loads(r2["stats"] or "{}")

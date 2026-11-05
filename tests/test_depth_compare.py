@@ -226,3 +226,16 @@ def test_api_flow(tmp_path, monkeypatch):
         assert c.get("/api/stacking/insights").json()["survey"] is True
         assert c.post("/api/stacking/insights", json={"survey": False, "bogus": 1}).json()["survey"] is False
         assert "bogus" not in c.get("/api/stacking/insights").json()
+
+
+def test_compare_rejects_mismatched_resolution(setup):
+    """Eine ältere Version mit anderer Stackgröße passt nicht zur (neuesten) wcs.json – nicht als Referenz anbieten."""
+    s, db, pid, cat, x, y, _ = setup
+    small = _render(x, y, cat["g"], seed=5)[:, :300, :400]
+    r_old = _result(s, db, pid, small, "alt", ["2025-12-01"])
+    r_new = _result(s, db, pid, _render(x, y, cat["g"], seed=6), "neu", ["2026-01-01"])
+    assert compare.references(db, s.work_dir, r_new) == []
+    with pytest.raises(compare.CompareError, match="Auflösung"):
+        compare.compute(db, s.work_dir, r_new, r_old, catalogs=False)
+    with pytest.raises(depth.DepthError, match="anderen Stack"):
+        depth.compute(s.work_dir, pid, json.loads(db.one("SELECT files FROM results WHERE id=?", (r_old,))["files"]))
