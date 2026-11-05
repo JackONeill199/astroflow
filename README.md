@@ -82,7 +82,7 @@ Kometen bekommen zwei Stacks – auf die Sterne und auf den Kometenkern – und 
 
 Das Teleskop steht nicht immer am selben Ort: Unter Einstellungen → Standorte legst du Orte mit Zeiträumen an („vom … bis …“, einzelne Nächte,
 Standard-Ort). Der Ort einer Aufnahme ergibt sich aus FITS-Kopf → Zeitraum → Standard; „Heute bin ich in …“ wechselt ihn für die aktuelle Nacht.
-Er fließt in Tutor, Heute Nacht, Himmelsqualität und SkyTrace ein.
+Er fließt in Tutor, Heute Nacht, Himmelsqualität und SkyTrace ein. Ein Ort ohne Zeitraum, der nicht Standard ist, wird nie verwendet – die Liste markiert ihn („Zeitraum zuweisen“), und nach dem Anlegen fragt die Seite gleich nach von/bis. SkyTrace zeigt im Analyse-Menü, welcher Ort für die Nacht des Laufs gilt.
 
 ### SkyTrace – was sich zwischen den Sternen bewegt
 
@@ -270,6 +270,7 @@ unscharfe Aufnahmen fallen heraus. Erkannte Spuren erscheinen als Kandidaten mit
 | JPL SB-Ident / Horizons (NASA) | Kleinplaneten und Kometen zur Aufnahmezeit | „Kleinplaneten und Kometen prüfen“, `ASTROFLOW_HORIZONS=0` |
 | Open-Meteo | Wetter der Aufnahmenacht / Vorhersage (Ort auf 0,1° gerundet) | Bild-Tutor-Einstellung |
 | Photon (komoot) / Open-Meteo-Höhe | Ortssuche und Höhe in der Ortsliste (nur Suchtext bzw. auf Knopfdruck) | auf Knopfdruck |
+| OpenStreetMap / OpenTopoMap (Kartenkacheln) | Straßen-/Geländekarte beim Vorschlag „Ohne Vorwissen“ in SkyTrace; der Kartenausschnitt verrät die Gegend | nur auf Knopfdruck „Karte laden“ (oder „immer laden“) |
 | OpenRouter / OpenAI / ElevenLabs | optionaler KI-Prüfer, Geschichten, Vorlesen | standardmäßig aus; LM Studio bleibt komplett lokal |
 | nova.astrometry.net | Online-Plate-Solving (verkleinertes Graustufenbild) | nur auf ausdrückliche Wahl |
 
