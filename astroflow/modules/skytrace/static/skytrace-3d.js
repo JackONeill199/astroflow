@@ -357,6 +357,11 @@ function scene(d, data, { THREE, OrbitControls }, { focus, onCandidate }) {
   const notes = [];
   if (data.missing.length) notes.push(...data.missing.map(m => `${m.candidate}: ${m.name || 'NORAD ' + m.norad_id} – ${m.reason}`));
   if (P.source !== 'wcs') notes.push('Blickrichtung aus der Katalogkoordinate des Ziels geschätzt (kein Plate-Solving).');
+  if (data.clock_offset_s) {
+    const a = Math.abs(data.clock_offset_s), m = Math.floor(a / 60), r = Math.round(a - 60 * m);
+    notes.push(`Uhr korrigiert um ${data.clock_offset_s < 0 ? '−' : '+'}${m ? m + ' min ' + r + ' s' : r + ' s'} (übernommener Uhrversatz der Nacht; Zeiten in wahrer UTC).`);
+  }
+  if (data.clock_pending) notes.push('Die Satellitentreffer stammen aus einem Abgleich mit anderer Uhrkorrektur – „Satelliten neu abgleichen“, damit sie zur korrigierten Uhr passen.');
   notes.push(hits.length ? `${hits.length} zugeordnete${hits.length === 1 ? 's Objekt' : ' Objekte'}; Bahnen per SGP4, Unsicherheit wenige km.` : 'Keine Katalogtreffer in diesem Lauf – gezeigt wird der Weg des Teleskops.');
   notes.push('Kuppel und Himmel nicht maßstäblich. Erde: NASA Blue Marble.');
   $d('.st3d-note').textContent = notes.join(' ');

@@ -22,7 +22,7 @@ from pathlib import Path
 
 from json_store import read_json, write_json
 from observation_settings import load_settings, resolve_site
-from catalog_matching import satellite_check, status
+from catalog_matching import satellite_check, status, clock_offset
 from opensky_archive import ArchiveAccessError
 from project_paths import BASE, CODE
 
@@ -111,7 +111,8 @@ def rematch(roots, force=False, stop_file=None):
             try: site = site_for(item, summary, settings)
             except (OSError, ValueError) as error:
                 emit('status', text=f'{item.get("id")}: Standort nicht bestimmbar ({error})'); r['after'] += had; continue
-            if not force and site_key(site) == site_key(item.get('site')):
+            clock_changed = abs(clock_offset(item, settings) - float((sat_of(item) or {}).get('clock_offset_s') or 0)) > 0.05
+            if not force and site_key(site) == site_key(item.get('site')) and not clock_changed:
                 r['unchanged'] += 1; r['after'] += had; continue
             try: sat = check(item, site, settings)
             except InterruptedError:
@@ -256,8 +257,15 @@ def _brief(site):
     return dict(id=site.get('site_id') or site.get('id'), name=site.get('name'), origin=site.get('origin'), accuracy_m=site.get('accuracy_m')) if site else None
 
 
-def night(sitefit, group, entries, settings, radius_km, tick):
-    """Eine Nacht: Vorschlag (bestehender Ort `list`, zurückgerechneter Ort `fit`) oder ehrlicher Grund, warum keiner."""
+def needs_clock(sitefit, entries):
+    """Uhrversatz suchen, wenn ab 3 Spuren weniger als die Hälfte eindeutig zugeordnet ist (Suche kostet ~20 Abgleiche je Spur)."""
+    sure = sum(1 for _, i in entries if sitefit._sure(sat_of(i) or {}))
+    return len(entries) >= sitefit.MIN_TRAILS and sure < 0.5 * len(entries)
+
+
+def night(sitefit, group, entries, settings, radius_km, tick, clock=True):
+    """Eine Nacht: Vorschlag (bestehender Ort `list`, zurückgerechneter Ort `fit`) oder ehrlicher Grund, warum keiner.
+    Mit `clock` zuerst – bei wenigen Treffern – der Uhrversatz (`clock_scan`); ein gefundener Versatz gilt für die Ortsprüfung danach."""
     from observation_settings import sites_module
     out = dict(night=group['night'], observations=group['observations'], tracks=len(entries), created=time.time(),
                before=sum(matched(i) for _, i in entries), proposal=None)
@@ -268,12 +276,27 @@ def night(sitefit, group, entries, settings, radius_km, tick):
     folder0, item0 = entries[0]
     current = site_for(item0, {'session': item0.get('session')}, settings)
     out['current'] = _brief(current)
-    if current and current.get('origin') == 'fits':
-        return dict(out, status='fits', note='Der Ort steht in den FITS-Daten und hat Vorrang vor der Ortsliste – nichts zu ändern.')
+    fits_site = bool(current and current.get('origin') == 'fits')
     # Gespeicherte Abgleiche gelten nur, wenn sie am jetzt aufgelösten Ort gerechnet wurden (Ortsliste kann sich geändert haben)
     stored_triples = [(f, i, sat_of(i) if site_key(i.get('site')) == site_key(current) else None) for f, i in entries]
     stored = _score(sitefit, stored_triples)
     out['current'].update(sure=stored['sure'], rms=stored['rms']) if out['current'] else None
+    if clock and current and needs_clock(sitefit, entries):
+        import clock_scan
+        res = clock_scan.scan_night(sitefit, entries, current, settings, tick=tick, before_sure=stored['sure'])
+        strict_c = res.pop('_strict', None)
+        out['clock'] = res
+        if res.get('proposal'):
+            # Ortsprüfung mit korrigierter Uhr (nur in diesem Auftrag; übernommen wird erst auf Knopfdruck)
+            settings = dict(settings, clock_offsets=dict(settings.get('clock_offsets') or {},
+                                                         **{n: res['proposal']['offset_s'] for n in res['proposal']['nights']}))
+            stored_triples = strict_c
+            stored = _score(sitefit, stored_triples)
+    if fits_site:
+        # FITS-Ort hat Vorrang vor der Ortsliste (keine Ortsänderung) – eine falsche Kamera-Uhr lässt sich trotzdem korrigieren
+        if (out.get('clock') or {}).get('proposal'):
+            return dict(out, status='better', note='Ort aus den FITS-Daten (bleibt); nur die Uhr ist falsch gestellt.')
+        return dict(out, status='fits', note='Der Ort steht in den FITS-Daten und hat Vorrang vor der Ortsliste – nichts zu ändern.')
 
     def strict(site):
         res = []
@@ -357,7 +380,11 @@ def night(sitefit, group, entries, settings, radius_km, tick):
         out['proposal'] = dict(kind='list', id=best.get('site_id'), name=best.get('name'), sure=best['sure'], rms=best['rms'])
     if out['proposal'] and out['proposal']['kind'] == 'list' and out['proposal']['id'] == (current or {}).get('site_id'):
         out['proposal'] = None                                   # bisheriger Ort ist schon der beste
-    if out['proposal']:
+    if (out.get('clock') or {}).get('proposal'):
+        out['status'] = 'better'
+        out['note'] = ('Der bisherige Ort passt – mit korrigierter Uhr.' if out['proposal'] is None
+                       else 'Ort mit korrigierter Uhr geprüft; Uhr und Ort zusammen übernehmen.')
+    elif out['proposal']:
         out['status'] = 'better'
         if out['proposal']['kind'] == 'list' and out['proposal']['sure'] < sitefit.MIN_TRAILS:
             out['note'] = f'Nur {out["proposal"]["sure"]} eindeutige Spur(en) – zu wenig für eine Rückrechnung, nur Auswahl aus der Ortsliste.'
@@ -377,7 +404,7 @@ def seen_any(out):
     return out.get('search_center') is not None
 
 
-def nights(groups_file, out_file, radius_km=SEARCH_RADIUS_KM, stop_file=None):
+def nights(groups_file, out_file, radius_km=SEARCH_RADIUS_KM, stop_file=None, clock=True):
     """Standorte aller Nächte (Gruppen vom Server: [{night, observations: [{run, folder, session}]}]). Schreibt nach jeder Nacht."""
     sitefit = sitefit_module()
     groups = read_json(groups_file, []) or []
@@ -393,7 +420,9 @@ def nights(groups_file, out_file, radius_km=SEARCH_RADIUS_KM, stop_file=None):
             entries += [(folder, i) for i in read_json(folder / 'kandidaten.json', []) or [] if i.get('world_path') and i.get('timestamp') is not None]
         plan.append((g, entries))
     n_sites = max(1, len(site_list(settings)))
-    total = sum(len(e) * (n_sites + 3) for _, e in plan) or 1
+    import clock_scan
+    blocks = 2 * math.ceil(clock_scan.SCAN_RANGE_S / clock_scan.BLOCK_SLACK_S / 2) + 1
+    total = sum(len(e) * (n_sites + 3 + (blocks if clock and needs_clock(sitefit, e) else 0)) for _, e in plan) or 1
     state = dict(done=0)
     report = dict(created=time.time(), radius_km=radius_km, state='running', nights=[])
 
@@ -404,7 +433,7 @@ def nights(groups_file, out_file, radius_km=SEARCH_RADIUS_KM, stop_file=None):
     stopped = False
     for g, entries in plan:
         if stop_file and Path(stop_file).exists(): stopped = True; break
-        try: report['nights'].append(night(sitefit, g, entries, settings, radius_km, tick))
+        try: report['nights'].append(night(sitefit, g, entries, settings, radius_km, tick, clock))
         except InterruptedError: stopped = True; break
         except (OSError, ValueError) as error:
             report['nights'].append(dict(night=g['night'], observations=g['observations'], status='error', note=str(error), proposal=None))
@@ -412,8 +441,10 @@ def nights(groups_file, out_file, radius_km=SEARCH_RADIUS_KM, stop_file=None):
     report['state'] = 'stopped' if stopped else 'done'
     write_json(out_file, report)
     better = sum(1 for r in report['nights'] if r.get('status') == 'better')
-    emit('result', stopped=stopped, nights=len(report['nights']), better=better,
-         text=('Angehalten. ' if stopped else '') + f'{len(report["nights"])} Nächte geprüft, {better} mit besserem Ort.')
+    clocks = sum(1 for r in report['nights'] if (r.get('clock') or {}).get('proposal'))
+    emit('result', stopped=stopped, nights=len(report['nights']), better=better, clocks=clocks,
+         text=('Angehalten. ' if stopped else '') + f'{len(report["nights"])} Nächte geprüft, {better} mit Vorschlag'
+              + (f' ({clocks} mit Uhrversatz).' if clocks else '.'))
 
 
 def sitefit_night(summary):
@@ -428,10 +459,11 @@ if __name__ == '__main__':
     a = sub.add_parser('rematch'); a.add_argument('roots', type=Path, nargs='+'); a.add_argument('--force', action='store_true'); a.add_argument('--stop-file', type=Path)
     b = sub.add_parser('search'); b.add_argument('root', type=Path); b.add_argument('folder'); b.add_argument('--radius-km', type=float, default=SEARCH_RADIUS_KM); b.add_argument('--stop-file', type=Path)
     c = sub.add_parser('nights'); c.add_argument('groups', type=Path); c.add_argument('out', type=Path); c.add_argument('--radius-km', type=float, default=SEARCH_RADIUS_KM); c.add_argument('--stop-file', type=Path)
+    c.add_argument('--no-clock', dest='clock', action='store_false')
     args = parser.parse_args()
     try:
         if args.cmd == 'rematch': rematch(args.roots, args.force, args.stop_file)
-        elif args.cmd == 'nights': nights(args.groups, args.out, args.radius_km, args.stop_file)
+        elif args.cmd == 'nights': nights(args.groups, args.out, args.radius_km, args.stop_file, args.clock)
         else: search(args.root, args.folder, args.radius_km, args.stop_file)
     except InterruptedError:
         emit('result', stopped=True, text='Angehalten.')

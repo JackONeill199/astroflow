@@ -106,7 +106,18 @@ def _skytrace_run(run):
                "proposal": {"kind": "list", "id": "b", "name": LONG, "sure": 2, "rms": 40}, "note": "Nur 2 eindeutige Spur(en) – zu wenig für eine Rückrechnung, nur Auswahl aus der Ortsliste."},
               {"night": "2022-08-29", "observations": obs[:1], "tracks": 1, "before": 0, "status": "none", "current": cur, "proposal": None,
                "note": "Kein Ort passt: keine Spur ließ sich einer Satellitenbahn eindeutig zuordnen (auch nicht mit ± 10 km Spielraum)."},
-              {"night": "2022-08-28", "observations": obs[:1], "tracks": 3, "before": 3, "status": "better", "current": cur, "proposal": fit, "applied": 1762300000}]
+              {"night": "2022-08-28", "observations": obs[:1], "tracks": 3, "before": 3, "status": "better", "current": cur, "proposal": fit, "applied": 1762300000},
+              # Uhrversatz (clock_scan): Kamera-Uhr 10 min falsch, Ort passt
+              {"night": "2022-08-03", "observations": obs, "tracks": 12, "before": 1, "status": "better", "current": cur, "proposal": None,
+               "note": "Der bisherige Ort passt – mit korrigierter Uhr.",
+               "clock": {"range_s": 1200, "tracks": 12, "support": 7, "chance": 0.4, "confidence": 0.9999, "offset_s": -642.5,
+                         "proposal": {"offset_s": -642.5, "sigma_s": 1.5, "support": 7, "sure": 8, "before": 1, "confidence": 0.9999, "chance": 0.4,
+                                      "nights": ["2022-08-03"], "base_s": 0}}},
+              {"night": "2022-08-02", "observations": obs[:1], "tracks": 4, "before": 0, "status": "none", "current": cur, "proposal": None,
+               "note": "Kein Ort passt.", "clock": {"support": 1, "reason": "Höchstens 1 Spur(en) bei demselben Versatz – zu wenig (nötig 3)."}}]
+    cfg = run.parent.parent / "catalog_settings.json"                  # übernommene Uhrkorrektur einer Nacht
+    data = json.loads(cfg.read_text(encoding="utf-8")) if cfg.is_file() else {}
+    cfg.write_text(json.dumps(dict(data, clock_offsets={"2022-08-30": {"offset_s": -615.0, "sigma_s": 2.0}})), encoding="utf-8")
     (run.parent.parent / "standortsuche-naechte.json").write_text(json.dumps({"created": 1762300000, "radius_km": 10, "state": "done", "nights": nights}), encoding="utf-8")
 
 

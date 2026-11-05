@@ -262,6 +262,12 @@ Einstellungen → Standorte); dabei werden nur Spuren geprüft, deren Ort sich g
 **Standorte für alle Nächte suchen** (gleiche Stellen) prüft je Nacht die Spuren aller Beobachtungen gemeinsam gegen jeden Ort
 der Ortsliste, rechnet – wenn keiner gut passt – den wahrscheinlichsten Ort zurück und zeigt eine Vorschlagsliste mit Treffern
 vorher/nachher. Übernehmen einzeln oder alle, danach gleichen die betroffenen Analysen automatisch neu ab.
+Ging die Kamera-Uhr in einer Nacht falsch (bei der Stellina kommt die Uhr vom Handy), passt kaum eine Spur zu einer Bahn. Mit
+**Uhrversatz suchen** (Häkchen neben „Suche starten“) verschiebt SkyTrace bei Nächten mit wenigen Treffern den Abgleich um bis zu
+± 20 min und schlägt einen Versatz nur vor, wenn mindestens drei verschiedene Spuren bei demselben Versatz treffen und das deutlich
+über dem Zufall liegt (Anzeige: Spuren, zufällig erwartete Treffer, Sicherheit). Übernommen wird er erst auf Knopfdruck; er gilt dann
+beim Abgleich dieser Nacht, Rohbilder und gespeicherte Aufnahmezeiten bleiben unverändert (Kandidaten zeigen weiter die Kamerazeit
+mit dem Hinweis „Uhr korrigiert um …“).
 Im Dropdown **Analyse → Erneut analysieren** startet die vollständige Erkennung mit aktuellem Code als neuer Lauf
 aus den bisherigen Aufnahmen. Fehlen Originaldateien, kann ihr Ordner ausgewählt werden. Bei Ersatz-FITS muss auch das
 Aufnahmedatum übereinstimmen: gleiche Dateinamen aus einer anderen Nacht werden nicht zugeordnet. Der alte Lauf bleibt erhalten.

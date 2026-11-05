@@ -121,13 +121,20 @@ def status(provider,state,detail,matches=None,**extra):
     result.update(extra)
     return result
 
-def _times(candidate):
+from observation_settings import night_key,clock_offset_at
+
+def clock_offset(candidate,settings=None):
+    """Vom Nutzer übernommener Uhrversatz der Nacht (s, wahre UTC = Kamerazeit + Versatz; Einstellung `clock_offsets`).
+    Rohbilder und gespeicherte Zeitstempel bleiben unverändert – der Versatz wirkt nur beim Abgleich."""
+    return clock_offset_at(candidate.get('timestamp'),settings or {})
+
+def _times(candidate,settings=None):
     stamp=candidate.get('timestamp')
     if stamp is None or 'unbekannt' in candidate.get('timestamp_text',''): raise ValueError('Keine gesicherte UTC-Aufnahmezeit')
     from motion_plausibility import positive,exposure_start
     seconds=positive(candidate.get('exposure_seconds'))
     if seconds is None: raise ValueError('Keine gesicherte Belichtungszeit')
-    return exposure_start(candidate),seconds
+    return exposure_start(candidate)+clock_offset(candidate,settings),seconds
 
 def _world_polyline(candidate):
     return np.asarray(candidate['world_path'],dtype=float)
@@ -182,7 +189,7 @@ def angular_match(candidate,ra,dec,tolerance_arcsec,max_angle=30,times=None):
 def asteroid_check(candidate,site,settings):
     if not site: return status('asteroids','not_checkable','Beobachtungsstandort fehlt; keine topozentrische Ephemeride abgefragt.')
     if not candidate.get('world_path'): return status('asteroids','not_checkable','Keine belastbare WCS-Zuordnung für diesen Treffer.')
-    start,duration=_times(candidate); mid=start+duration/2
+    start,duration=_times(candidate,settings); mid=start+duration/2
     world=np.asarray(candidate['world_path']); center=SkyCoord(world[:,0]*u.deg,world[:,1]*u.deg)
     ra=float(center[0].ra.deg); dec=float(np.mean(world[:,1]))
     ra_width=max(.03,float(np.max(np.abs((world[:,0]-ra+180)%360-180)))+.02)
@@ -208,7 +215,7 @@ def _observer(site): return wgs84.latlon(site['lat'],site['lon'],elevation_m=sit
 
 def fireball_check(candidate,site,settings):
     if not site:return status('fireballs','not_checkable','Standort fehlt; ohne Standort wird kein Feuerkugelarchiv geladen.')
-    start,duration=_times(candidate)
+    start,duration=_times(candidate,settings)
     data=retrieve('https://ssd-api.jpl.nasa.gov/fireball.api',{'date-min':iso(start-60),'date-max':iso(start+duration+60),'req-loc':'true','req-alt':'true'},cached_only=True)
     if data.get('signature',{}).get('version')!='1.2': raise ValueError('Unbekannte CNEOS-Antwortversion')
     matches=[]; hints=[]
@@ -255,12 +262,14 @@ def site_uncertain(accuracy_m):
 
 def satellite_check(candidate,site,settings):
     if not site: return status('satellites','not_checkable','Standort fehlt. Plate Solving allein reicht für erdnahe Satelliten nicht.')
-    start,duration=_times(candidate)
+    start,duration=_times(candidate,settings)
+    offset=clock_offset(candidate,settings)
     text,source=_file_or_url(settings,'tle')
     satellites={};stale=0;archive_total=0
     if not text and settings.get('auto_satellites',False):
         from satellite_archive import historical_models
-        models,source,archive_total=historical_models(start+duration/2,settings)
+        # Bahndaten zur Kamerazeit holen (ETH-Minuten-Cache des ursprünglichen Laufs); TLEs gelten ohnehin Tage.
+        models,source,archive_total=historical_models(settings.get('_archive_time') or start-offset+duration/2,settings)
         satellites={sat.model.satnum:(sat,age) for sat,age in models}
     if not text and not satellites: return status('satellites','needs_archive',f'Keine zeitnahen Bahndaten für {iso(start)} UTC verfügbar. Fehlende Archivabdeckung schließt Satelliten nicht aus.',archive=source,archive_records=archive_total)
     rows=[line.rstrip() for line in (text or '').splitlines() if line.strip()]
@@ -278,7 +287,7 @@ def satellite_check(candidate,site,settings):
     # Vorher wurde nur exakt die Belichtung propagiert, die Bahn lag dann neben der Spur (quer < 6′, längs 1–6°).
     slack=float(settings.get('satellite_clock_slack_s',SATELLITE_CLOCK_SLACK_S))
     first,last=start-slack,start+duration+slack
-    stamps=np.linspace(first,last,max(21,int((last-first)*5)+1))
+    stamps=np.linspace(first,last,max(21,int((last-first)*float(settings.get('satellite_samples_per_s',5)))+1))
     times=TS.from_datetimes([dt.datetime.fromtimestamp(float(s),dt.timezone.utc) for s in stamps])
     observer=_observer(site); matches=[];diagnostics=[]
     accuracy=float(site.get('accuracy_m') or 0)
@@ -326,7 +335,8 @@ def satellite_check(candidate,site,settings):
         detail+=' '+site_note
         if not matches and site_uncertain(accuracy):
             state='site_uncertain'; detail='Standort ungenau – Zuordnung unsicher. '+detail
-    return status('satellites',state,detail,matches[:20],archive=source,source=source or SOURCES['satellites'],stale_records=stale,archive_records=archive_total,checked_trajectories=len(diagnostics),diagnostics=diagnostics[:8],tolerance_arcsec=SATELLITE_TOLERANCE_ARCSEC,clock_slack_s=slack,exposure_start=start,names_note=names_note,site_accuracy_m=accuracy or None,site_note=site_note)
+    if offset: detail+=f' Uhr der Kamera um {offset:+.0f} s korrigiert (übernommener Uhrversatz der Nacht).'
+    return status('satellites',state,detail,matches[:int(settings.get('satellite_max_matches',20))],archive=source,source=source or SOURCES['satellites'],stale_records=stale,archive_records=archive_total,checked_trajectories=len(diagnostics),diagnostics=diagnostics[:8],tolerance_arcsec=SATELLITE_TOLERANCE_ARCSEC,clock_slack_s=slack,exposure_start=start,names_note=names_note,site_accuracy_m=accuracy or None,site_note=site_note,clock_offset_s=offset or None)
 
 
 def _name_satellites(rows,settings):
@@ -352,7 +362,7 @@ def _stamp(value):
 
 def aircraft_check(candidate,site,settings):
     if not site: return status('aircraft','not_checkable','Beobachtungsstandort fehlt.')
-    start,duration=_times(candidate)
+    start,duration=_times(candidate,settings)
     text,source=_file_or_url(settings,'flight')
     if not text and settings.get('auto_aircraft',False):
         from opensky_archive import fetch_flights
@@ -383,7 +393,7 @@ def aircraft_check(candidate,site,settings):
 
 def meteor_check(candidate,site,settings):
     from archive_sources import gmn_events,GMN
-    start,duration=_times(candidate)
+    start,duration=_times(candidate,settings)
     if not site:return status('meteors','not_checkable','Standort fehlt; ohne Standort wird kein Meteorarchiv geladen.')
     records,total=gmn_events(start-2,start+duration+2,settings,site=site)
     matches=[];hints=[]

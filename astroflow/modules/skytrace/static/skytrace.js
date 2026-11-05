@@ -484,7 +484,8 @@ async function runView(root, runId, tab = 'vorschau') {
     if (!c) { host.innerHTML = `<div class="empty" style="border:0">${icon('orbit')}<h2>Jede Spur hat eine Geschichte.</h2>Wähle einen Kandidaten, um seine Zeitreihe und den Katalogabgleich anzusehen.</div>`; return; }
     S.frame = Math.min(c.frames.length - 1, Math.max(0, S.frame ?? c.initial_frame ?? 0));
     const top = el('div', undefined, 'panel-h');
-    const hd = el('div'); hd.append(el('h2', candidateName(c)), el('div', c.id + ' · ' + observedDate(c) + ' · ' + (Number.isFinite(c.exposure_seconds) ? c.exposure_seconds + ' s Belichtung' : 'Belichtungszeit unbekannt'), 'mut sm'));
+    const clk = (c.catalogs || []).find(r => r.provider === 'satellites')?.clock_offset_s;
+    const hd = el('div'); hd.append(el('h2', candidateName(c)), el('div', c.id + ' · ' + observedDate(c) + (clk ? ` (Kamerazeit; Uhr korrigiert um ${offsetText(clk)})` : '') + ' · ' + (Number.isFinite(c.exposure_seconds) ? c.exposure_seconds + ' s Belichtung' : 'Belichtungszeit unbekannt'), 'mut sm'));
     top.append(hd);
     if (window.SkyTrace3D?.available(c)) {                // Bahn + Blickfeld räumlich (skytrace-3d.js)
       const b3 = el('button', undefined, 'btn ghost sm st3d-open'); b3.innerHTML = icon('globe') + '3D-Ansicht'; b3.title = 'Bahn und Teleskop-Blickfeld auf der Erde ansehen';
@@ -1079,8 +1080,24 @@ function clockText(p) {
   const v = String(Math.abs(p.clock_s)).replace('.', ',');
   return `Uhr ${p.clock_s > 0 ? 'geht ' + v + ' s nach' : p.clock_s < 0 ? 'geht ' + v + ' s vor' : 'stimmt'} (± ${String(p.clock_sigma_s).replace('.', ',')} s)`;
 }
-function nightRow(n, busy = false) {
-  const [label, cls] = NIGHT_STATUS[n.status] || [n.status || '–', ''], p = n.proposal, c = n.current || {};
+// Uhrversatz (engine/clock_scan.py): wahre UTC = Kamerazeit + Versatz → negativ = Kamera-Uhr ging vor
+function offsetText(s) {
+  const a = Math.abs(s), m = Math.floor(a / 60), r = Math.round(a - 60 * m);
+  return (s < 0 ? '−' : '+') + (m ? `${m} min ${r} s` : `${r} s`);
+}
+function clockScanHtml(k, applied) {
+  if (applied) return `<div><small class="dim">Uhr</small><b>korrigiert um ${offsetText(applied.offset_s)}</b><span class="mut sm">übernommen – gilt beim Abgleich dieser Nacht</span></div>`;
+  const q = k?.proposal;
+  if (!q) return '';
+  const num = (v) => String(v).replace('.', ',');
+  return `<div class="stn-clock"><small class="dim">Uhrversatz</small><b>Kamera-Uhr ging ${offsetText(q.offset_s).slice(1)} ${q.offset_s < 0 ? 'vor' : 'nach'}</b>
+    <span class="mut sm">± ${num(q.sigma_s)} s · ${q.support} Spuren treffen bei demselben Versatz (zufällig ≈ ${num(q.chance)}) · Sicherheit ${q.confidence >= 0.999 ? '> 99,9' : num(Math.round(q.confidence * 1000) / 10)} % · danach ${q.sure} statt ${q.before} eindeutig</span></div>`;
+}
+function nightRow(n, busy = false, clocks = {}) {
+  let [label, cls] = NIGHT_STATUS[n.status] || [n.status || '–', ''];
+  const p = n.proposal, c = n.current || {};
+  const k = n.clock, applied = clocks[n.night], q = k?.proposal;
+  if (q && !p) [label, cls] = ['Uhr falsch gestellt', 'acc'];
   const date = new Date(n.night + 'T12:00:00Z').toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
   const obs = (n.observations || []).map(o => shortName(o.session)).join(' · ');
   const now = `${c.sure ?? n.before ?? 0} von ${n.tracks} Spuren eindeutig · quer ${arcText(c.rms)}`;
@@ -1092,9 +1109,9 @@ function nightRow(n, busy = false) {
   return `<div class="panel stn-night${n.applied ? ' done' : ''}" data-night="${esc(n.night)}"><div class="row"><b>${esc(date)}</b><span class="mut sm stn-obs">${esc(obs)}</span><span class="grow"></span>
       <span class="chip ${n.applied ? 'ok' : cls}">${n.applied ? 'Übernommen' : esc(label)}</span></div>
     <div class="stn-grid"><div><small class="dim">Bisher</small><b>${esc(c.name || 'kein Ort')}</b><span class="mut sm">${now}</span></div>
-      ${p ? `<div><small class="dim">Vorschlag</small>${prop}</div>` : ''}</div>
-    ${n.note || n.fit_reason ? `<p class="dim sm">${esc([n.note, n.status !== 'better' && n.fit_reason ? 'Rückrechnung: ' + n.fit_reason : ''].filter(Boolean).join(' '))}</p>` : ''}
-    ${p && !n.applied ? `<div class="row"><button class="btn sm" data-apply="${esc(n.night)}"${busy ? ' disabled title="Erst nach dem Ende der Suche"' : ''}>Für diese Nacht übernehmen …</button></div>` : ''}</div>`;
+      ${p ? `<div><small class="dim">Vorschlag</small>${prop}</div>` : ''}${clockScanHtml(n.applied ? null : k, applied)}</div>
+    ${n.note || n.fit_reason || k?.reason ? `<p class="dim sm">${esc([n.note, n.status !== 'better' && n.fit_reason ? 'Rückrechnung: ' + n.fit_reason : '', k?.reason ? 'Uhrversatz: ' + k.reason : ''].filter(Boolean).join(' '))}</p>` : ''}
+    ${(p || q) && !n.applied ? `<div class="row"><button class="btn sm" data-apply="${esc(n.night)}"${busy ? ' disabled title="Erst nach dem Ende der Suche"' : ''}>Für diese Nacht übernehmen …</button></div>` : ''}</div>`;
 }
 // Übernehmen: bestehender Ort → Zuordnung der Nacht, neuer Ort → neuer Eintrag (wie applyFit); SkyTrace-Ausnahmen der Beobachtungen entfernen
 async function applyNights(rows) {
@@ -1105,19 +1122,27 @@ async function applyNights(rows) {
   let ex = {};
   try { ex = (await api(T + '/settings')).sites || {}; } catch { /* ohne Einstellungen: keine Ausnahme bekannt */ }
   const sessions = [...new Set(rows.flatMap(n => (n.observations || []).map(o => o.session)))].filter(s => ex[s]);
-  const fits = rows.filter(n => n.proposal.kind === 'fit').length;
-  const text = (rows.length === 1
-    ? (rows[0].proposal.kind === 'fit' ? `Ein neuer Ort (± ${kmText(rows[0].proposal.accuracy_m / 1000)}) wird angelegt und der Nacht ${esc(rows[0].night)} zugeordnet.`
-      : `Der Nacht ${esc(rows[0].night)} wird „${esc(rows[0].proposal.name || 'Ort')}“ zugeordnet.`)
-    : `${rows.length} Nächte bekommen ihren vorgeschlagenen Ort${fits ? ` (${fits} neue Orte werden angelegt)` : ''}.`)
-    + ' Bisherige Orte bleiben erhalten.'
+  const fits = rows.filter(n => n.proposal?.kind === 'fit').length, placed = rows.filter(n => n.proposal), timed = rows.filter(n => n.clock?.proposal);
+  const one = rows.length === 1 ? rows[0] : null;
+  const text = (one
+    ? (!one.proposal ? '' : one.proposal.kind === 'fit' ? `Ein neuer Ort (± ${kmText(one.proposal.accuracy_m / 1000)}) wird angelegt und der Nacht ${esc(one.night)} zugeordnet.`
+      : `Der Nacht ${esc(one.night)} wird „${esc(one.proposal.name || 'Ort')}“ zugeordnet.`)
+    : placed.length ? `${placed.length} Nächte bekommen ihren vorgeschlagenen Ort${fits ? ` (${fits} neue Orte werden angelegt)` : ''}.` : '')
+    + (timed.length ? (one ? ` Für die Nacht ${esc(one.night)} gilt beim Abgleich die Uhrkorrektur ${offsetText(one.clock.proposal.offset_s)}.` : ` ${timed.length} Nächte bekommen eine Uhrkorrektur.`)
+      + ' Gespeicherte Aufnahmezeiten und Rohbilder bleiben unverändert.' : '')
+    + (placed.length ? ' Bisherige Orte bleiben erhalten.' : '')
     + (sessions.length ? ` <b>${sessions.length} Beobachtung(en) haben in SkyTrace einen eigenen Standort, der sonst Vorrang hätte – diese Ausnahmen werden entfernt.</b>` : '')
     + ' Danach werden die betroffenen Analysen neu abgeglichen.';
-  if (!await confirmDlg(rows.length === 1 ? 'Standort übernehmen?' : 'Alle Vorschläge übernehmen?', text, 'Übernehmen')) return false;
+  if (!await confirmDlg(rows.length > 1 ? 'Alle Vorschläge übernehmen?' : placed.length ? 'Standort übernehmen?' : 'Uhrkorrektur übernehmen?', text, 'Übernehmen')) return false;
   try {
-    for (const s of sessions) await send(T + '/settings', { session: s, site: null });
+    for (const s of placed.length ? sessions : []) await send(T + '/settings', { session: s, site: null });
+    if (timed.length) {
+      const offsets = {};
+      for (const n of timed) { const q = n.clock.proposal; for (const night of q.nights?.length ? q.nights : [n.night]) offsets[night] = { offset_s: q.offset_s, sigma_s: q.sigma_s, support: q.support, confidence: q.confidence }; }
+      await send(T + '/settings', { clock_offsets: offsets });
+    }
     const d = await api('/sites?nights=false'), list = [...d.list], target = {};
-    for (const n of rows) {
+    for (const n of placed) {
       const p = n.proposal;
       if (p.kind === 'list') { target[n.night] = p.id; continue; }
       const id = 's' + Math.random().toString(16).slice(2, 10);
@@ -1126,59 +1151,64 @@ async function applyNights(rows) {
       target[n.night] = id;
     }
     if (list.length !== d.list.length) await send('/sites', { ...d, list });
-    for (const n of rows) for (const night of (n.assign?.length ? n.assign : [n.night])) await send('/sites/night', { night, site_id: target[n.night], nights: false });
+    for (const n of placed) for (const night of (n.assign?.length ? n.assign : [n.night])) await send('/sites/night', { night, site_id: target[n.night], nights: false });
     await send(T + '/sitesearch/nights/applied', { nights: rows.map(n => n.night) });
     await ackSites();
     const started = await startRematch({ runs: [...new Set(rows.flatMap(n => (n.observations || []).map(o => o.run)))], force: false },
-      rows.length === 1 ? 'Ort übernommen – die Analysen der Nacht werden neu abgeglichen.' : `${rows.length} Orte übernommen – die betroffenen Analysen werden neu abgeglichen.`);
+      rows.length === 1 ? (placed.length ? 'Ort' : 'Uhrkorrektur') + ' übernommen – die Analysen der Nacht werden neu abgeglichen.' : `${rows.length} Vorschläge übernommen – die betroffenen Analysen werden neu abgeglichen.`);
     if (!started) toast('Orte sind übernommen, der Neuabgleich startete nicht – später „Alle SkyTrace-Analysen neu abgleichen“ wählen.', 'err');
     return true;
   } catch (e) { toast(e.message, 'err'); return true; }
 }
 async function nightsView(el) {
   crumbs([['SkyTrace', '#/skytrace'], ['Standorte aller Nächte']]);
-  let data = null, job = null, sig = '', show = store.get('skytrace.nightsShow', 'better');
+  let data = null, job = null, sig = '', show = store.get('skytrace.nightsShow', 'better'), clocks = {};
+  const has = (n) => n.proposal || n.clock?.proposal;
   el.innerHTML = `<div class="pagehead"><div><h1>Standorte aller Nächte</h1><p class="mut readable">Je Aufnahmenacht prüft SkyTrace die Satellitenspuren aller Beobachtungen dieser Nacht
       gegen jeden Ort der Ortsliste. Passt keiner gut, sucht es mit Spielraum um den besten und rechnet den wahrscheinlichsten Ort zurück. Nur ein Vorschlag –
       übernommen wird erst nach Bestätigung.</p></div><span class="grow"></span>
       <div class="row"><label class="sm mut" for="stn-radius">Spielraum</label><select id="stn-radius">${[5, 10, 20].map(r => `<option value="${r}"${r === store.get('skytrace.nightsRadius', 10) ? ' selected' : ''}>± ${r} km</option>`).join('')}</select>
+      <label class="sm mut" title="Bei Nächten mit wenigen Treffern ± 20 min nach einer falsch gestellten Kamera-Uhr suchen (dauert länger)"><input type="checkbox" id="stn-clock"${store.get('skytrace.nightsClock', true) ? ' checked' : ''}> Uhrversatz suchen</label>
       <button class="btn" id="stn-go">${icon('play')}Suche starten</button></div></div><div id="stn-job"></div><div id="stn-body"></div>`;
   const body = $('#stn-body', el);
   $('#stn-radius', el).onchange = (e) => store.set('skytrace.nightsRadius', +e.target.value);
+  $('#stn-clock', el).onchange = (e) => store.set('skytrace.nightsClock', e.target.checked);
   $('#stn-go', el).onclick = async () => {
     if (job?.state === 'running') { try { await send(T + '/rematch/stop'); } catch (e) { toast(e.message, 'err'); } return; }
-    if (await startRematch({ radius_km: +$('#stn-radius', el).value }, 'Standortsuche für alle Nächte gestartet.', '/sitesearch/nights')) load();
+    if (await startRematch({ radius_km: +$('#stn-radius', el).value, clock: $('#stn-clock', el).checked }, 'Standortsuche für alle Nächte gestartet.', '/sitesearch/nights')) load();
   };
   function draw() {
-    const nights = data?.nights || [], open = nights.filter(n => n.proposal && !n.applied);
+    const nights = data?.nights || [], open = nights.filter(n => has(n) && !n.applied);
     const running = job?.state === 'running';
     const go = $('#stn-go', el);
     go.innerHTML = running ? `${icon('stop')}Anhalten` : `${icon('play')}${data ? 'Erneut suchen' : 'Suche starten'}`;
     go.className = 'btn' + (running ? ' danger' : '');
     setJobLine($('#stn-job', el), running ? { state: 'running', stage: 'Standorte aller Nächte', message: job.text, progress: job.total ? job.current / job.total : null } : null);
-    const list = show === 'better' ? nights.filter(n => n.proposal || n.applied) : nights;
-    const s = JSON.stringify([show, running, nights.map(n => [n.night, n.status, !!n.applied])]);
+    const list = show === 'better' ? nights.filter(n => has(n) || n.applied) : nights;
+    const s = JSON.stringify([show, running, nights.map(n => [n.night, n.status, !!n.applied]), clocks]);
     if (s === sig) return;
     sig = s;
     if (!data) { body.innerHTML = `<div class="empty">${icon('pin')}<h2>Noch keine Suche</h2>Starte die Suche – sie läuft im Hintergrund und darf jederzeit angehalten werden; fertige Nächte bleiben erhalten.</div>`; return; }
     const count = (k) => nights.filter(n => n.status === k).length;
-    body.innerHTML = `<div class="row stn-head"><div class="seg" role="tablist"><button data-show="better" class="${show === 'better' ? 'on' : ''}">Mit Vorschlag (${nights.filter(n => n.proposal || n.applied).length})</button>
+    body.innerHTML = `<div class="row stn-head"><div class="seg" role="tablist"><button data-show="better" class="${show === 'better' ? 'on' : ''}">Mit Vorschlag (${nights.filter(n => has(n) || n.applied).length})</button>
         <button data-show="all" class="${show === 'all' ? 'on' : ''}">Alle Nächte (${nights.length})</button></div>
         <span class="mut sm">${count('ok')} passen · ${count('none')} ohne passenden Ort · Suche vom ${new Date(data.created * 1000).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}, ± ${data.radius_km} km${data.state === 'stopped' ? ' · angehalten' : ''}</span>
         <span class="grow"></span>${open.length > 1 ? `<button class="btn sm" data-apply-all${running ? ' disabled' : ''}>Alle übernehmen (${open.length}) …</button>` : ''}</div>
-      ${list.length ? list.map(n => nightRow(n, running)).join('') : `<div class="empty">${show === 'better' ? 'Keine Nacht mit besserem Ort gefunden.' : 'Keine Nächte mit Spuren.'}</div>`}
+      ${list.length ? list.map(n => nightRow(n, running, clocks)).join('') : `<div class="empty">${show === 'better' ? 'Keine Nacht mit besserem Ort gefunden.' : 'Keine Nächte mit Spuren.'}</div>`}
       <p class="dim sm">Eindeutig = einer Satellitenbahn zugeordnet, ohne fast gleich gute zweite Bahn (Starlink-Züge zählen nicht). Zurückgerechnet wird erst ab 3 eindeutigen Spuren einer Nacht.
-        „Kein Ort passt“ heißt: keine Spur ließ sich zuordnen – nicht, dass der Ort falsch ist.</p>`;
+        „Kein Ort passt“ heißt: keine Spur ließ sich zuordnen – nicht, dass der Ort falsch ist.
+        Uhrversatz: Bei Nächten mit wenigen Treffern wird der Abgleich ± 20 min verschoben; vorgeschlagen wird nur, wenn mindestens 3 verschiedene Spuren
+        bei demselben Versatz treffen und das deutlich über dem Zufall liegt.</p>`;
   }
   body.onclick = async (e) => {
     const sh = e.target.closest('[data-show]');
     if (sh) { show = sh.dataset.show; store.set('skytrace.nightsShow', show); draw(); return; }
-    const rows = e.target.closest('[data-apply-all]') ? (data.nights || []).filter(n => n.proposal && !n.applied)
+    const rows = e.target.closest('[data-apply-all]') ? (data.nights || []).filter(n => has(n) && !n.applied)
       : e.target.closest('[data-apply]') ? (data.nights || []).filter(n => n.night === e.target.closest('[data-apply]').dataset.apply) : null;
     if (rows && await applyNights(rows)) load();
   };
   async function load() {
-    try { const d = await api(T + '/sitesearch/nights'); data = d.result; job = d.job; }
+    try { const d = await api(T + '/sitesearch/nights'); data = d.result; job = d.job; clocks = (await api(T + '/settings').catch(() => ({}))).clock_offsets || {}; }
     catch (e) { if (el.isConnected) body.innerHTML = `<div class="panel bad">${esc(e.message)}</div>`; return; }
     if (el.isConnected) draw();
   }

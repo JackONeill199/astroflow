@@ -3,6 +3,20 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.30.0 – 05.11.2026
+
+### Neu
+- **SkyTrace: Uhrversatz je Nacht suchen** (Ansicht „Standorte aller Nächte“, Häkchen „Uhrversatz suchen“): Ging die Kamera-Uhr
+  einer Nacht falsch (z. B. rund 10 min in einer Augustwoche 2022), fand der Satellitenabgleich kaum Treffer. Bei Nächten mit weniger als
+  der Hälfte zugeordneter Spuren verschiebt SkyTrace den Abgleich jetzt um bis zu ± 20 min und sucht den Versatz, bei dem die meisten
+  verschiedenen Spuren eine Satellitenbahn treffen. Vorschlag nur ab 3 Spuren bei demselben Versatz und deutlich über dem Zufallsniveau
+  (zufällig erwartete Treffer und Sicherheit werden angezeigt), Feinwert aus den Durchgangszeiten bzw. der Rückrechnung.
+- Übernehmen nur auf Knopfdruck (einzeln oder mit „Alle übernehmen“), danach werden die Analysen der Nacht neu abgeglichen. Der Versatz
+  wirkt nur beim Abgleich – Rohbilder und gespeicherte Aufnahmezeiten bleiben unverändert, Kandidaten zeigen die Kamerazeit mit dem
+  Hinweis „Uhr korrigiert um …“. Ist ein Versatz vorgeschlagen, wird auch der Ort der Nacht gleich mit korrigierter Uhr geprüft.
+- Die 3D-Ansicht nutzt den übernommenen Uhrversatz: Teleskopweg, Zeitleiste und Treffer liegen in wahrer UTC, ein Hinweis nennt die
+  Korrektur. Stammen die Treffer noch aus einem Abgleich mit anderer Uhr, empfiehlt sie „Satelliten neu abgleichen“.
+
 ## 0.29.0 – 05.11.2026
 
 ### Neu
