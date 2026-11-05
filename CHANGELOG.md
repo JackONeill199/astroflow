@@ -3,6 +3,15 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.31.4 – 05.11.2026
+
+### Behoben
+- **Standorte: Orte ohne Zeitraum fallen auf.** Ein Ort, der weder Standard ist noch einen Zeitraum oder eine Einzelnacht hat, wurde nie verwendet –
+  ohne dass man es sah (Folge: eine erneute SkyTrace-Analyse nutzte weiter den alten Ort). Solche Orte zeigen jetzt „Wird noch nicht
+  verwendet – Zeitraum oder Nacht zuweisen“ mit Knopf „Zeitraum zuweisen“; nach dem Anlegen eines neuen Orts fragt die Seite gleich
+  nach von/bis. Zeiträume, die ein kürzerer ganz überdeckt, tragen den Hinweis „Gilt in keiner Nacht“.
+- **SkyTrace: Ort der Nacht im Analyse-Menü.** Unter „Erneut analysieren“ / „Satelliten neu abgleichen“ steht, welcher Ort laut Ortsliste für die Nacht des Laufs gilt.
+
 ## 0.31.3 – 05.11.2026
 
 ### Behoben

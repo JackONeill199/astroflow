@@ -285,7 +285,7 @@ async function runView(root, runId, tab = 'vorschau') {
             <a href="#" id="reanalyse"><span>Erneut analysieren<small>Erkennung mit aktuellem Code</small></span>${icon('play')}</a>
             <a href="#" id="refresh"><span>Zeitreihen aktualisieren<small>Berichte und Katalogabgleich</small></span>${icon('refresh')}</a>
             <a href="#" id="rematch"><span>Satelliten neu abgleichen<small>Ort aus der Ortsliste, ohne Rohbilder</small></span>${icon('pin')}</a>
-            <div class="pop-note">Erneute Analyse erstellt einen neuen Lauf. Der bisherige bleibt erhalten.</div></div></div>`}
+            <div class="pop-note">Erneute Analyse erstellt einen neuen Lauf. Der bisherige bleibt erhalten.</div><div class="pop-note" id="runSite" hidden></div></div></div>`}
         ${S.run.report_url ? `<a class="btn ghost" href="${S.run.report_url}" target="_blank" rel="noopener">Bericht öffnen${icon('arrow')}</a>` : ''}
         ${live ? '' : `<button class="btn ghost icon" id="delRun" title="Analyse löschen" aria-label="Analyse löschen">${icon('trash')}</button>`}</div></div>
       <div id="stjob" style="margin:-8px 0 18px"></div>
@@ -324,7 +324,20 @@ async function runView(root, runId, tab = 'vorschau') {
     });
     $('#rematch')?.addEventListener('click', (e) => { e.preventDefault(); startRematch({ run: runId }, 'Satelliten werden mit dem aktuellen Ort neu abgeglichen.'); });
     jobState();
+    runSiteNote();
     drawTab(false);
+  }
+  // Welcher Ort laut Ortsliste für die Nacht(e) dieses Laufs gilt (Ausnahmen einzelner Beobachtungen nicht berücksichtigt)
+  async function runSiteNote() {
+    const box = $('#runSite'); if (!box) return;
+    const nights = [...new Set(S.run.sessions.map(x => x.night).filter(Boolean))].slice(0, 3);
+    if (!nights.length) return;
+    try {
+      const rows = await Promise.all(nights.map(async n => [n, (await api('/sites/resolve?night=' + encodeURIComponent(n))).site]));
+      if (!box.isConnected) return;
+      box.textContent = 'Ort laut Ortsliste: ' + rows.map(([n, st]) => st ? `${st.name} (${st.detail}${nights.length > 1 ? ', ' + n : ''})` : 'kein Ort').join(' · ') + '.';
+      box.hidden = false;
+    } catch { /* nur ein Hinweis */ }
   }
   async function startAgain(source) {
     try {
