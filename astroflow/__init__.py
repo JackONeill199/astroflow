@@ -1,2 +1,2 @@
 # Einzige Quelle der Versionsnummer (Regeln: AGENTS.md → „Versionierung“)
-__version__ = "0.31.3"
+__version__ = "0.32.0"

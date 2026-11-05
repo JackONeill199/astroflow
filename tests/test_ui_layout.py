@@ -114,7 +114,14 @@ def _skytrace_run(run):
                          "proposal": {"offset_s": -642.5, "sigma_s": 1.5, "support": 7, "sure": 8, "before": 1, "confidence": 0.9999, "chance": 0.4,
                                       "nights": ["2022-08-03"], "base_s": 0}}},
               {"night": "2022-08-02", "observations": obs[:1], "tracks": 4, "before": 0, "status": "none", "current": cur, "proposal": None,
-               "note": "Kein Ort passt.", "clock": {"support": 1, "reason": "Höchstens 1 Spur(en) bei demselben Versatz – zu wenig (nötig 3)."}}]
+               "note": "Kein Ort passt.", "clock": {"support": 1, "reason": "Höchstens 1 Spur(en) bei demselben Versatz – zu wenig (nötig 3)."}},
+              # Ort ohne Vorwissen (global_site): weit weg von jedem Listenort (erfundene Koordinaten), Uhrversatz vom falschen Ort verworfen
+              {"night": "2022-08-01", "observations": obs, "tracks": 16, "before": 0, "status": "better", "current": cur,
+               "proposal": {"kind": "global", "lat": 46.234567, "lon": 13.912345, "alt_m": 0, "accuracy_m": 105, "sure": 12, "rms": 24.9, "trails": 12,
+                            "timed": 2, "clock_s": -3.8, "clock_sigma_s": 0.7, "support": 12, "confidence": 1.0, "region_km": 1500,
+                            "from_name": "Unbekannter Ort", "nearest_name": LONG, "nearest_km": 301.6, "shift_from_current_km": 301.6},
+               "note": "Kein Listenort passte – der Ort wurde ohne Vorwissen aus 12 Spuren zurückgerechnet, 302 km vom nächsten Listenort.",
+               "clock": {"source": "global", "proposal": None, "reason": "Am zurückgerechneten Ort geht die Uhr richtig (-4 s) – der am bisherigen Ort gefundene Versatz -639 s war eine Folge des falschen Orts."}}]
     cfg = run.parent.parent / "catalog_settings.json"                  # übernommene Uhrkorrektur einer Nacht
     data = json.loads(cfg.read_text(encoding="utf-8")) if cfg.is_file() else {}
     cfg.write_text(json.dumps(dict(data, clock_offsets={"2022-08-30": {"offset_s": -615.0, "sigma_s": 2.0}})), encoding="utf-8")
@@ -472,3 +479,30 @@ def test_tonight_recommendations_chart_and_links(server, browser, size, tmp_path
     assert page.get_by_label('Dashboard-Aufteilung').input_value() == 'library'
     page.close()
     assert not errors, errors
+
+
+@pytest.mark.parametrize("size", ["handy", "desktop"])
+def test_unused_site_hint_and_assign(server, browser, size):
+    """Ein Ort ohne Zeitraum zeigt „Wird noch nicht verwendet“; „Zeitraum zuweisen“ legt einen Zeitraum an, danach verschwindet der Hinweis."""
+    base, _ = server
+    page = browser.new_page(viewport={"width": SIZES[size][0], "height": SIZES[size][1]})
+    page.goto(f"{base}/#/settings/standorte")
+    row = page.locator('.site-row[data-id="c"]')
+    row.wait_for()
+    assert "Wird noch nicht verwendet" in row.locator(".site-unused").inner_text()
+    assert page.locator('.site-row[data-id="a"] .site-unused, .site-row[data-id="b"] .site-unused').count() == 0
+    try:
+        row.locator('[data-act="assign"]').click()
+        form = row.locator("#siteAssign")
+        form.wait_for()
+        form.locator("[name=from]").fill("2030-02-01")
+        form.locator("[name=to]").fill("2030-02-05")
+        form.locator("button[type=submit]").click()
+        page.wait_for_selector('.site-row[data-id="c"]:not(:has(.site-unused)):not(:has(#siteAssign))')
+        assert "2030-02-01" in page.eval_on_selector_all(".site-periods input[data-f=from]", "els => els.map(e => e.value)")
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+    finally:                                                 # gemeinsame Fixture wiederherstellen
+        d = page.evaluate("fetch('/api/sites?nights=false').then(r => r.json())")
+        page.evaluate("(d) => fetch('/api/sites', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(d)})",
+                      {**d, "periods": [p for p in d["periods"] if p["from"] != "2030-02-01"]})
+    page.close()

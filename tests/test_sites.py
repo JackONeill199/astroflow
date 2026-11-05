@@ -303,3 +303,34 @@ def test_comet_site_uses_night_from_site_list(tmp_path):
     assert eng._site("2024-07-05") == [1.0, 2.0]                                  # ohne Ortsliste: Tutor-Einstellung
     app.state.ctx.services.pop("sites")
     assert eng._site("2024-07-05") == [1.0, 2.0]                                  # ohne Dienst ebenso
+
+
+def test_unused_and_shadowed(tmp_path):
+    """Ort ohne Zeitraum/Standard = „wird nicht verwendet“; Zeitraum, der nie gewinnt, wird gemeldet."""
+    b = book(tmp_path)
+    assert sites.unused_sites(b.data()) == ["trip", "camp"]               # nur der Standard-Ort gilt
+    b = book(tmp_path, periods=[{"id": "p1", "site_id": "trip", "from": "2022-06-01", "to": "2022-06-20"}])
+    assert sites.unused_sites(b.data()) == ["camp"]
+    b.set_night("2022-06-10", "camp")                                       # Einzelnacht zählt als Nutzung
+    d = b.data()
+    assert sites.unused_sites(d) == [] and sites.shadowed_periods(d) == []   # p1 gilt noch an den anderen Tagen
+    # ein Zeitraum wird nur gemeldet, wenn kürzere ihn ganz überdecken (hier zwei Hälften); ein kürzerer innen drin nicht
+    b = book(tmp_path, periods=[{"id": "gross", "site_id": "trip", "from": "2022-06-01", "to": "2022-06-10"},
+                                {"id": "a", "site_id": "camp", "from": "2022-06-01", "to": "2022-06-05"},
+                                {"id": "b", "site_id": "camp", "from": "2022-06-06", "to": "2022-06-10"},
+                                {"id": "offen", "site_id": "camp", "from": "2022-05-01", "to": ""}])
+    assert sites.shadowed_periods(b.data()) == ["gross"]
+    b = book(tmp_path, periods=[{"id": "gross", "site_id": "trip", "from": "2022-06-01", "to": "2022-06-10"},
+                                {"id": "innen", "site_id": "camp", "from": "2022-06-03", "to": "2022-06-04"}])
+    assert sites.shadowed_periods(b.data()) == []
+    assert sites.shadowed_periods({"list": [], "periods": []}) == []
+    assert sites.unused_sites({"list": [], "periods": []}) == []
+
+
+def test_api_reports_unused(tmp_path, monkeypatch):
+    monkeypatch.setenv("ASTROFLOW_MODULES", "stacking")
+    s = load_settings(tmp_path / "data")
+    SettingsStore(s.data_dir / "settings.json").update("sites", {"list": [HOME, TRIP], "default": "home", "periods": []})
+    with TestClient(create_app(s)) as c:
+        v = c.get("/api/sites?nights=false").json()
+        assert v["unused"] == ["trip"] and v["shadowed"] == []
