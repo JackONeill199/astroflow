@@ -104,11 +104,13 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    roten Punkten (eine je Zeigegruppe), nur im R-Kanal des linearen Stacks. Feldrotation spielt dabei keine Rolle (Stellina hat einen Derotator).
    Jetzt in Schritt 0 von `stack()` (`Pipeline._sensor_maps`, gleiche Stichprobe ≤ 30 Lights wie das Glühen, jede Datei einmal gelesen):
    Kandidat je Aufnahme = ≥ 5σ über/unter dem Nachbar-Median der Farbebene mit höchstens 2 hellen Nachbarn, dazu die von `cosmetic` ersetzten
-   Pixel ohne 3 helle Nachbarn; bei CFA kein Stern, wenn auch die 4 direkten Nachbarn anderer Farbe erhöht sind. Fehler = Kandidat in ≥ 50 %
+   Pixel ohne 3 helle Nachbarn. Stern-Schutz: drei Nachbarn deutlich über dem Hintergrund im Ring bei Abstand 2 (fängt knapp abgetastete
+   Sterne auch bei Mono und stillstehendem Feld – der Nachbar-Median liegt dort schon im Sternprofil; Review PR #51), bei CFA zusätzlich
+   die 4 direkten Nachbarn anderer Farbe erhöht. Fehler = Kandidat in ≥ 50 %
    der Stichprobe (Sterne wandern), > 1 % der Pixel → keine Karte. `_load` ersetzt die Pixel nach `cosmetic` durch den Median der Nachbarn
    derselben Farbe (ohne andere Fehler). Nacht ohne eigene Messung (< 12 Rohbilder): Pixel aus ≥ der Hälfte der Nächte der Kamera.
    Info je Nacht in `projects.options.defect_info`. Gemessen NGC 7293: 953 Pixel (0,015 %). Test `test_hotpixel_paare.py`
-   (`demo.generate_hotpixel_pairs`, auch stillstehendes Feld). Nebenbefund: `cosmetic` kappt die Spitze heller, scharfer Sterne, deren Kern in der
+   (`demo.generate_hotpixel_pairs`, auch stillstehendes Feld; Mono-Stillstand mit σ = 1-px-Sternen). Nebenbefund: `cosmetic` kappt die Spitze heller, scharfer Sterne, deren Kern in der
    R/B-Ebene liegt (Demo: 5458 → 3240 ADU, ~2 % Fluss) – unverändert, nur nicht in die Karte übernommen.
 5. **Stacking** (`registration.py` Dreiecks-Matching + `stacking.py` gewichtetes Sigma-Clipping): **inkrementell** – Zustand
    (`sw/swx/swx2.npy` + `state.json`) in `work/p<id>/stack` (Farbe) bzw. `stack_<Band>` (Mono-Filter). Neue Frames werden nur nachgestackt;

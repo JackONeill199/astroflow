@@ -101,3 +101,31 @@ def test_defect_library_falls_back_to_camera(tmp_path):
     other, src = lib.get("k", "2022-09-01")                       # Pixel aus mindestens der Hälfte der Nächte
     assert src.startswith("bibliothek") and set(other.tolist()) == {5, 7, 9, 11}
     assert lib.get("x", "2022-09-01") == (None, "")
+
+
+def test_static_mono_undersampled_stars_not_in_defect_map():
+    """Mono, nachgeführt ohne Versatz, knapp abgetastete Sterne (σ = 1 px, Mitte zwischen zwei Pixeln): Beide Spitzen haben
+    nur einen ähnlich hellen Nachbarn – sie dürfen trotzdem nicht in die Karte (kein Farbvergleich wie bei CFA möglich)."""
+    rng = np.random.default_rng(11)
+    H, W = 240, 320
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    sky = np.full((H, W), 300, np.float32)
+    stars = [(x + 0.5 * (i % 2), y + 0.5 * (i // 2 % 2)) for i, (x, y) in
+             enumerate(zip(rng.integers(10, W - 10, 60), rng.integers(10, H - 10, 60)))]
+    for x, y in stars:
+        sky += rng.uniform(2000, 20000) * np.exp(-((xx - x) ** 2 + (yy - y) ** 2) / 2)
+    hot = np.zeros((H, W), np.float32)
+    py, px = rng.integers(5, H - 6, 10), rng.integers(5, W - 6, 10)
+    hot[py, px] += 15000
+    hot[py + 1, px] += 13000                                     # Paar direkt übereinander (Mono: Nachbarpixel)
+    frames = [sky + hot + rng.normal(0, 14, (H, W)).astype(np.float32) for _ in range(14)]
+    fixed = [calibration.cosmetic(f, False) for f in frames]
+    cands = [calibration.defect_candidates(c, False, fixed=np.flatnonzero(c != f)) for c, f in zip(fixed, frames)]
+    bad = calibration.defect_map(cands, H * W)
+    pairs = set((py * W + px).tolist()) | set(((py + 1) * W + px).tolist())
+    clean = {i for i in pairs if all(np.hypot(i % W - x, i // W - y) > 4 for x, y in stars)}
+    assert clean and clean <= set(bad.tolist())
+    by, bx = np.divmod(bad, W)
+    near = [(x, y) for x, y in stars if np.hypot(bx - x, by - y).min() <= 2 and
+            np.hypot(px - x, py - y).min() > 4]
+    assert not near, near

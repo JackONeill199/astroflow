@@ -255,6 +255,19 @@ def defect_candidates(raw: np.ndarray, bayer: bool, k: float = DEFECT_K, fixed: 
         cold = (d < -k * sig) & (med - part[2] < -0.3 * d)
         # von cosmetic() ersetzt (Wert schon geglättet): nur ohne drei helle Nachbarn – sonst war es eine Sternspitze
         f = _plane(fx, idx) & ~hot & ~cold & (part[5] - med < 3 * sig)
+        # Knapp abgetastete Sterne (auch Mono, Feld steht still): neben der Spitze ist oft nur ein Nachbar ähnlich hell, der
+        # Nachbar-Median liegt aber schon im Sternprofil. Daher zusätzlich gegen den Hintergrund im Ring bei Abstand 2 prüfen:
+        # Hat der Pixel drei Nachbarn deutlich darüber, ist es ein Stern (ein Hotpixel-Paar hat höchstens einen).
+        cy, cx = np.nonzero(hot | f)
+        if len(cy):
+            Hp, Wp = p.shape
+            ring = np.stack([p[np.clip(cy + dy, 0, Hp - 1), np.clip(cx + dx, 0, Wp - 1)]
+                             for dy in range(-2, 3) for dx in range(-2, 3) if max(abs(dy), abs(dx)) == 2])
+            bg = np.median(ring, axis=0)
+            third = part[5][cy, cx] - bg
+            star = third > np.where(hot[cy, cx], np.maximum(0.3 * (p[cy, cx] - bg), 3 * sig), 3 * sig)
+            hot[cy[star], cx[star]] = False
+            f[cy[star], cx[star]] = False
         if cfa:
             exc[idx[1], idx[2]] = d
         found.append((idx, hot, cold, f, sig))
