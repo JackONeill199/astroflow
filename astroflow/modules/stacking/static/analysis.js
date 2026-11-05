@@ -82,7 +82,7 @@ function analysisTab(t, ctx) {
   viewer.el.classList.add('an-viewer', 'hover-labels');
   // Bildpixel der Auswertung (Raster d.bild) → Betrachter zoomen
   const focus = (x, y, w) => {
-    const img = $('img', viewer.el), sc = img?.naturalWidth && w ? img.naturalWidth / w : 1;
+    const img = $('img.b', viewer.el), sc = img?.naturalWidth && w ? img.naturalWidth / w : 1;
     viewer.zoomTo(x * sc, y * sc, 5);
     $('#anViewer', t).scrollIntoView({ behavior: anReduced() ? 'auto' : 'smooth', block: 'nearest' });
   };

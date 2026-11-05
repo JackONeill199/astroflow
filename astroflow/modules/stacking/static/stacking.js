@@ -1032,7 +1032,7 @@ async function projectView(el, id, tab = 'bild') {
       ...(p.result && AF.on('sage') ? [['book', 'Geschichte erzählen', 'Sage', story]] : []),
       ['edit', 'Umbenennen', p.name, rename],
     ],
-    destroy: () => { window.__afSel = { id, sel, cmp }; viewer?.destroy(); liveView?.destroy(); viz?.destroy(); document.removeEventListener('click', closeMenu); document.removeEventListener('keydown', onKey); },
+    destroy: () => { window.__afSel = { id, sel, cmp }; viewer?.destroy(); liveView?.destroy(); anView?.destroy(); viz?.destroy(); document.removeEventListener('click', closeMenu); document.removeEventListener('keydown', onKey); },
   };
 }
 
