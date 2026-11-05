@@ -1,7 +1,7 @@
 'use strict';
 // Reiter „Analyse“ der Objektseite (seit 0.27.0, Nutzerwunsch: Tiefe, Veränderungen und Himmel nicht mehr gequetscht in der Detailspalte).
-// Oben das Bild (kompakter Betrachter mit denselben Overlays), darunter breite Abschnitte: Wie tief schaust du? (mit 3D-Tunnel und
-// Kameraflug), Veränderungen (Blink groß, Kandidaten daneben), Der Himmel in dieser Nacht (Bortle-Zeiger, Verlauf, Lichtrichtung), Tutor.
+// Oben das Bild (kompakter Betrachter mit denselben Overlays; Knopf „3D“ in dessen Werkzeugleiste lässt die Sterne aus dem Bild heraus
+// nach Entfernung in die Tiefe ziehen – kein zweiter Betrachter, seit 0.27.1), darunter breite Abschnitte: Wie tief schaust du?, Veränderungen (Blink groß, Kandidaten daneben), Der Himmel in dieser Nacht (Bortle-Zeiger, Verlauf, Lichtrichtung), Tutor.
 // Animationen kurz und funktional: Zahlen zählen hoch, Abschnitte blenden beim Erreichen ein, Kurven zeichnen sich – alles aus bei
 // prefers-reduced-motion. Die Abschnitte selbst kommen aus depth.js (depthPanel/comparePanel), skyquality.js (AFsky.analysis) und tutorPanel.
 
@@ -82,6 +82,7 @@ function analysisTab(t, ctx) {
   viewer.el.classList.add('an-viewer', 'hover-labels');
   // Bildpixel der Auswertung (Raster d.bild) → Betrachter zoomen
   const focus = (x, y, w) => {
+    set3d(false, false);
     const img = $('img.b', viewer.el), sc = img?.naturalWidth && w ? img.naturalWidth / w : 1;
     viewer.zoomTo(x * sc, y * sc, 5);
     $('#anViewer', t).scrollIntoView({ behavior: anReduced() ? 'auto' : 'smooth', block: 'nearest' });
@@ -90,7 +91,24 @@ function analysisTab(t, ctx) {
     const a = e.target.closest('[data-sec]'); if (!a) return;
     e.preventDefault(); $('#' + (a.dataset.sec === 'anCmp' ? 'anCmpWrap' : a.dataset.sec), t)?.scrollIntoView({ behavior: anReduced() ? 'auto' : 'smooth', block: 'start' });
   });
-  depthPanel($('#anDepth', t), r, viewer, { wide: true, onFocus: focus, onSolve: ctx.solve });
+  // 3D im Betrachter: Umschalter „3D“ in der Werkzeugleiste, sobald die Tiefenmessung Punkte hat
+  let depth = null, t3 = null;
+  const b3d = document.createElement('button');
+  b3d.className = 'v3d-btn'; b3d.dataset.v3d = ''; b3d.hidden = true; b3d.title = '3D: Sterne nach Entfernung in die Tiefe'; b3d.setAttribute('aria-pressed', 'false');
+  b3d.textContent = '3D';
+  $('.vbar', viewer.el).prepend(b3d);
+  const set3d = (on, animated = true) => {
+    if (!on === !t3 || (on && !depth)) return;
+    b3d.classList.toggle('on', on); b3d.setAttribute('aria-pressed', String(on));
+    if (on) {
+      $('.vbar [data-a="fit"]', viewer.el)?.click();             // gleicher Ausschnitt wie das eingepasste Bild
+      t3 = depthTunnel(depth, r, viewer);
+      $('#anViewer', t).scrollIntoView({ behavior: anReduced() ? 'auto' : 'smooth', block: 'nearest' });
+    } else { t3?.close(animated); t3 = null; }
+  };
+  b3d.addEventListener('click', (e) => { e.stopPropagation(); set3d(!t3); });
+  const onData = (d) => { depth = d; b3d.hidden = !d.punkte?.length || !d.bild; if (b3d.hidden) set3d(false, false); };
+  depthPanel($('#anDepth', t), r, viewer, { wide: true, onFocus: focus, onSolve: ctx.solve, on3d: set3d, onData });
   // Veränderungen: Blink-Betrachter groß links, Kandidaten rechts
   let blink = null;
   const showBlink = (on, f) => {
@@ -107,5 +125,5 @@ function analysisTab(t, ctx) {
   window.AFsky?.analysis?.($('#anSky', t), p.id);
   if (r.stats?.quality) tutorPanel($('#anTutorBox', t), r);
   $$('.an-sec', t).forEach(anReveal);
-  return { viewer, destroy: () => { blink?.destroy(); blink = null; } };
+  return { viewer, destroy: () => { blink?.destroy(); blink = null; set3d(false, false); } };
 }

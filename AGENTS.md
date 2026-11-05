@@ -475,10 +475,16 @@ Spalte `.imgwrap > #imgSide` neben dem Bild (Standard sichtbar, `bild.details`);
 Die Spalte zeigt nur noch Kernzahlen (`analysisSummary`: Bildqualität, Grenzgröße, Bortle, Seeing → Link in die Analyse); importierte Bilder behalten die Bildprüfung.
 **Reiter Analyse** (seit 0.27.0, `static/analysis.js|css`, Nutzerwunsch „zu gequetscht in der Detailspalte“): `analysisTab(t, {p, r, solve, viewerFor})` = kompakter
 Betrachter (gleiche Overlays) + Abschnittsliste, darunter breite `.an-sec`: `depthPanel(host, r, viewer, {wide, onFocus, onSolve})` (Kennzahlen `data-count`,
-`depthTunnel(d, r, inline)` eingebettet mit Kameraflug beim ersten Sichtbarwerden, Fakten mit `data-x/y` → `viewer.zoomTo`), `comparePanel` mit
+Fakten mit `data-x/y` → `viewer.zoomTo`; `opts.on3d`/`onData` für den 3D-Knopf), `comparePanel` mit
 `compareViewer` links (`.an-cmp.has-blink`), `AFsky.analysis(host, pid)` (Bortle-Skala `bortleScale`, Kurven `sqm`/`seeing`, Windrose aus `/stacking/sky`),
 `tutorPanel`. `anReveal` blendet Abschnitte per IntersectionObserver ein (`.in`), `anCountUp` zählt die erste Zahl eines Texts hoch (deutsches Format);
-CSS-Animationen hängen an `.an-sec.in` und entfallen bei `prefers-reduced-motion`. Eingebetteter Tunnel räumt sich ab, sobald er nicht mehr im Dokument ist. Galerie = Betrachter `#/galerie/<id>`
+CSS-Animationen hängen an `.an-sec.in` und entfallen bei `prefers-reduced-motion`.
+**3D im Betrachter** (seit 0.27.1, Nutzerwunsch „kein 2. Betrachterfeld, aus dem Bild oben hervorgehen“): Knopf `[data-v3d]` in der `.vbar` →
+`depthTunnel(d, r, viewer)` legt `.tunnel.in-viewer` über das Foto (vor die `.vbar`, Ziehen/Mausrad gehen nicht an den flachen Betrachter) und gibt
+`{close(animiert)}` zurück. Startbild = Foto als Textur (gleiche Datei, sRGB, deckend), Kamera im Ursprung mit `fitFov` = Einpassen (contain);
+Punkte liegen auf den Sichtstrahlen ihrer Bildposition (`dirOf × Abstand`) – von vorn decken sie sich daher mit dem Foto. Übergang: `k` schiebt sie
+von der Bildebene (`tF` ≈ 30 % des Trichters) in ihre Entfernung, `fade` (Blickwinkel zur Bildebene) blendet Punkte/Rahmen ein und das Foto auf
+75 % ab. Ohne Betrachter bleibt der Vollbild-Dialog. Galerie = Betrachter `#/galerie/<id>`
 (`pictureView`, Vor/Zurück aus `galleryOrder`), Bilder = Verarbeitung `#/p/<id>`; `objectKnowledge(host, name)` holt Sages Wissenskarte
 (`/api/sage/kb/card`, legt bei Bedarf einen Grundeintrag an) für Betrachter und Details-Panel. **Alle Maße in `rem`** (1rem = 16px; nur 1–2px-Rahmen und Media-Queries in px) – `html` wird ab 1800/2300/3200 px Breite größer
 (17,5/19,5/23 px) bzw. per Einstellung „Darstellung“ (`localStorage af.ui.scale`, `applyUiScale`); neue Stile daher in `rem` schreiben. Nur dunkel. Keine Marketing-Überschriften. **Atmosphäre (seit 0.24.0, Nutzerwunsch „Farbverläufe und bisschen glassy look wie früher“):**

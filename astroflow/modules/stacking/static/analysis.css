@@ -37,11 +37,26 @@
 @keyframes anGrow { from { transform: scaleY(0) } }
 @keyframes anGrowX { from { transform: scaleX(0) } }
 
-/* 3D-Tunnel eingebettet */
-.an-tunnel { margin-top: 0.875rem }
-.tunnel.inline { position: relative; inset: auto; z-index: auto; height: 26rem; border-radius: var(--r-lg); overflow: hidden; border: 1px solid var(--border-soft) }
-.tunnel.inline .tunnel-bar { padding: 0.5rem 0.75rem }
-.tunnel.inline .tunnel-info { top: 3.5rem }
+/* leerer Zustand: Knöpfe in ihrer natürlichen Breite (das Raster streckt sonst jedes Kind über beide Spalten) */
+.depth-empty-acts { gap: 0.5rem; flex-wrap: wrap; justify-content: flex-start }
+
+/* 3D im Bildbetrachter (depthTunnel mit Betrachter): liegt über dem Foto, unter der Werkzeugleiste; startet unsichtbar gleich dem Foto */
+.viewer .v3d-btn { width: auto !important; padding: 0 0.5rem; font-weight: 650; font-size: 0.75rem; letter-spacing: .02em }
+.viewer .v3d-btn.on { background: var(--grad-acc, var(--acc)) !important; color: #fff }
+.viewer.v3d-on .vbar [data-a="in"], .viewer.v3d-on .vbar [data-a="out"], .viewer.v3d-on .vbar [data-a="fit"], .viewer.v3d-on .vbar .z { display: none }
+.viewer.v3d-on { cursor: default }
+.tunnel.in-viewer { position: absolute; inset: 0; z-index: auto; display: block; background: transparent; opacity: 0; transition: opacity 160ms var(--ease) }
+.tunnel.in-viewer.ready { opacity: 1 }
+.tunnel.in-viewer .tunnel-stage { position: absolute; inset: 0 }
+.tunnel.in-viewer .t3-bar { position: absolute; left: 0.625rem; top: 0.625rem; display: flex; gap: 0.375rem; align-items: center; flex-wrap: wrap }
+.tunnel.in-viewer .t3-bar .seg { background: #0b0d10e6 }
+.tunnel.in-viewer .t3-bar .btn { background: #0b0d10e6 }
+.tunnel.in-viewer .tunnel-info { top: 3.25rem; left: 0.625rem }
+.tunnel.in-viewer .t3-legend { position: absolute; left: 0.625rem; bottom: 0.625rem; display: flex; gap: 0.25rem 0.75rem; flex-wrap: wrap; max-width: calc(100% - 13rem);
+  padding: 0.25rem 0.5rem; border-radius: var(--r-sm); background: #0b0d10cc; color: var(--mut); font-size: 0.6875rem; opacity: 0; transition: opacity var(--t2, 240ms) }
+.tunnel.in-viewer.deep .t3-legend { opacity: 1 }
+.t3-legend .lg { display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 50%; margin-right: 0.3125rem }
+.t3-legend .lg.star { background: #f3e9d6 } .t3-legend .lg.gal { background: #c19bff } .t3-legend .lg.main { background: #ffc46b }
 
 /* Veränderungen: Blink groß links, Kandidaten rechts */
 .an-cmp { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem }
@@ -100,12 +115,13 @@
   .an-sec.depth-panel { grid-template-columns: minmax(0, 1fr) }
   .an-sec .depth-kpis, .sq-amain .sq-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) }
   .an-sec .depth-facts, .sq-curves { grid-template-columns: minmax(0, 1fr) }
-  .tunnel.inline { height: 23rem }
-  .tunnel.inline .tunnel-legend { gap: 0.125rem 0.75rem; padding: 0.375rem 0.75rem; font-size: 0.6875rem }
+  .tunnel.in-viewer .t3-hint { display: none }
+  .tunnel.in-viewer .t3-legend { max-width: calc(100% - 1.25rem); bottom: 3.25rem }
   .viewer.an-viewer:not(.full) { height: auto; aspect-ratio: 3/2 }
   .an-toc a { padding: 0.375rem 0.5rem; font-size: 0.8125rem }
 }
 @media (prefers-reduced-motion: reduce) {
+  .tunnel.in-viewer { transition: none }
   .an-sec:not(.in) { opacity: 1; transform: none }
   .an-sec .sq-bortle-ptr { left: var(--pos) }
   .an-sec .sq-line { stroke-dashoffset: 0 } .an-sec .sq-pt, .an-sec:not(.in) .sq-bortle-span { opacity: 1 }

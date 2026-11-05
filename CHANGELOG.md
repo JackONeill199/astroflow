@@ -3,6 +3,17 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.27.1 – 05.11.2026
+
+### Behoben
+- **Analyse: 3D-Entfernungsansicht im Bild statt in einem zweiten Betrachter.** Der Knopf „3D“ in der Werkzeugleiste des Bildes
+  (oder „Im Bild in 3D zeigen“ unter „Wie tief schaust du?“) lässt die Sterne direkt aus dem Foto heraus nach ihrer Entfernung in die
+  Tiefe ziehen, während die Kamera schräg hinausfährt. Der erste Moment sieht genau aus wie das Bild oben (gleicher Ausschnitt, volle
+  Auflösung und Helligkeit); auch in der Schrägansicht bleibt das Foto gut sichtbar. „3D“ erneut drücken fährt zurück zum flachen Bild.
+  Mit „Bewegung reduzieren“ bleibt das Bild stehen, die Tiefe zeigt sich beim eigenen Drehen.
+- Analyse: Knöpfe im leeren Zustand („Jetzt messen“, „Plate-Solver einrichten“ …) waren über die ganze Breite gezogen.
+- 3D-Ansicht: Sterne und Galaxien als runde Punkte statt Quadrate.
+
 ## 0.27.0 – 05.11.2026
 
 ### Neu
