@@ -203,6 +203,30 @@ def test_rematch_uses_changed_site_list(engine, tmp_path, monkeypatch, capsys):
     assert json.loads((run / "videos.json").read_text(encoding="utf-8"))[0]["site"]["site_id"] == "home"
 
 
+def test_rematch_stop_keeps_finished_candidates(engine, tmp_path, monkeypatch, capsys):
+    """Anhalten während des zweiten Abgleichs: der erste Kandidat steht auch in kandidaten.json und videos.json am neuen Ort."""
+    rs = engine
+    _book(tmp_path / "settings.json", TRUE)
+    sats = _satellites(3)
+    _patch(monkeypatch, sats)
+    real, calls = rs.satellite_check, []
+
+    def interrupted(item, site, settings):
+        calls.append(item["id"])
+        if len(calls) == 2:
+            raise InterruptedError("Archivabruf angehalten")
+        return real(item, site, settings)
+    monkeypatch.setattr(rs, "satellite_check", interrupted)
+    run, obs = _run(tmp_path, sats, WRONG)
+    rs.rematch([run])
+    res = _rows(capsys)[-1]
+    assert res["stopped"] and res["runs"][0]["checked"] == 1, res
+    cands = json.loads((obs / "kandidaten.json").read_text(encoding="utf-8"))
+    assert cands[0]["site"]["lat"] == pytest.approx(TRUE["lat"]) and cands[1]["site"]["lat"] == pytest.approx(WRONG["lat"])
+    assert json.loads((obs / "kandidaten" / "K0001" / "kandidat.json").read_text(encoding="utf-8"))["site"]["lat"] == pytest.approx(TRUE["lat"])
+    assert json.loads((run / "videos.json").read_text(encoding="utf-8"))[0]["site"]["site_id"] == "home"
+
+
 def test_rematch_keeps_old_result_without_local_orbits(engine, tmp_path, monkeypatch, capsys):
     rs = engine
     _book(tmp_path / "settings.json", TRUE)
@@ -300,7 +324,7 @@ if __name__ == "__main__":                                          # Engine-Int
             out = self.buf.getvalue(); self.buf.seek(0); self.buf.truncate()
             return type("R", (), {"out": out})()
     import contextlib
-    for test in (test_search_finds_site_without_matches, test_search_skips_ambiguous_train, test_rematch_uses_changed_site_list, test_rematch_keeps_old_result_without_local_orbits):
+    for test in (test_search_finds_site_without_matches, test_search_skips_ambiguous_train, test_rematch_uses_changed_site_list, test_rematch_stop_keeps_finished_candidates, test_rematch_keeps_old_result_without_local_orbits):
         mp, cap = MP(), Cap()
         with tempfile.TemporaryDirectory() as d:
             try:

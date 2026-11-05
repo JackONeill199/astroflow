@@ -113,7 +113,10 @@ def rematch(roots, force=False, stop_file=None):
                 emit('status', text=f'{item.get("id")}: Standort nicht bestimmbar ({error})'); r['after'] += had; continue
             if not force and site_key(site) == site_key(item.get('site')):
                 r['unchanged'] += 1; r['after'] += had; continue
-            sat = check(item, site, settings)
+            try: sat = check(item, site, settings)
+            except InterruptedError:
+                # Anhalten mitten im Abgleich: Kandidat bleibt wie er war, bereits fertige werden unten gespeichert
+                r['after'] += had; stopped = True; break
             if sat.get('status') in UNCHECKABLE and sat_of(item):
                 # Bahndaten fehlen lokal: alten Abgleich (und damit den alten Ort) behalten statt ihn zu verlieren
                 r['missing_orbits'] += 1; r['after'] += had; continue
