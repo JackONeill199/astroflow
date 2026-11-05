@@ -168,6 +168,22 @@ def test_ground_points_geometry():
     assert not ok[0]
 
 
+def test_grid_covers_distant_centers():
+    """Weit auseinanderliegende Listenorte: Stimmen am Rand eines Suchgebiets landen in ihrem eigenen Block, nicht an den Gitterrand geschoben."""
+    from test_skytrace_rematch import ENGINE
+    sys.path.insert(0, str(ENGINE))
+    import global_site as gs
+    centers = [dict(lat=0.0, lon=10.0), dict(lat=60.0, lon=10.0)]
+    grid = gs.Grid(centers, 500, 60)
+    pts = {k: np.array([v]) for k, v in dict(lat=0.1, lon=10.2, c_lo=-2.0, c_hi=2.0, tol=2.5, seg=7.0, norad=1, t=0.0, rec=0).items()}
+    keys = grid.keys(pts)
+    assert len(keys)
+    lat, lon, _ = grid.center(int(keys.max()))
+    assert abs(lat - 0.1) < 1 and abs(lon - 10.2) < 1, (lat, lon)
+    far = {k: np.array([v]) for k, v in dict(lat=-30.0, lon=10.0, c_lo=-2.0, c_hi=2.0, tol=2.5, seg=7.0, norad=1, t=0.0, rec=0).items()}
+    assert len(grid.keys(far)) == 0                                       # außerhalb: verworfen statt am Rand gezählt
+
+
 def test_server_passes_global_km(tmp_path, monkeypatch):
     """Server: Suchgebiet wird geprüft und an die Engine durchgereicht (Standard 1500 km, 0 = aus)."""
     from astroflow.modules.skytrace import rematch as rm
@@ -205,6 +221,7 @@ if __name__ == "__main__":
         def syspath_prepend(self, p): sys.path.insert(0, p)
         def close(self): [setattr(o, n, v) for o, n, v in reversed(self.undo)]; _unload()
     test_ground_points_geometry(); print("OK test_ground_points_geometry")
+    test_grid_covers_distant_centers(); print("OK test_grid_covers_distant_centers")
     for test in (test_finds_far_site_and_clock, test_random_trails_no_proposal, test_nights_proposes_unknown_site, test_good_list_site_skips_global):
         mp = MP()
         with tempfile.TemporaryDirectory() as d:

@@ -164,7 +164,8 @@ def load_orbits(trails, settings):
         recs = [m.model for m, _ in models]
         if not recs:
             tr['group'] = None; missing += 1; continue
-        key = (len(recs), recs[0].satnum, recs[-1].satnum, sum(r.satnum for r in recs[::97]))
+        # Gruppe nur bei völlig gleicher Auswahl (Nummern und Epochen) – über UTC-Mitternacht bzw. neuere ETH-TLEs ändern sich die Bahnen
+        key = hash(tuple((r.satnum, r.jdsatepoch, r.jdsatepochF) for r in recs))
         if key not in groups:
             groups[key] = (SatrecArray(recs), recs, np.array([r.satnum for r in recs]))
         tr['group'] = key
@@ -299,7 +300,9 @@ class Grid:
         self.lat0 = float(np.mean([c['lat'] for c in centers])); self.lon0 = float(np.mean([c['lon'] for c in centers]))
         self.clock_s = clock_s
         self.nc = int(math.ceil(2 * clock_s / CLOCK_BIN_S)) + 1
-        self.off = int(math.ceil((region_km + 2 * CELL_KM) / CELL_KM * 1.6)) + 2   # x bis ~1/cos(Breite) breiter
+        # Gitter deckt alle Suchgebiete ab (Mitte = Mittel der Orte; weit auseinanderliegende Orte vergrößern es)
+        reach = max(float(_haversine_km(self.lat0, self.lon0, c['lat'], c['lon'])) for c in centers)
+        self.off = int(math.ceil((region_km + reach + 2 * CELL_KM) / CELL_KM * 1.6)) + 2   # x bis ~1/cos(Breite) breiter
         self.n = 2 * self.off + 1
 
     def xy(self, lat, lon):
@@ -314,8 +317,12 @@ class Grid:
         """Block-Schlüssel (überlappende 2×2×2-Blöcke aus Versatzklasse, x, y) aller Stimmen einer Spur."""
         if not len(pts['lat']): return np.zeros(0, np.int64)
         x, y = self.xy(pts['lat'], pts['lon'])
-        cx = np.clip(np.floor(x / CELL_KM).astype(np.int64) + self.off, 1, self.n - 1)
-        cy = np.clip(np.floor(y / CELL_KM).astype(np.int64) + self.off, 1, self.n - 1)
+        cx = np.floor(x / CELL_KM).astype(np.int64) + self.off
+        cy = np.floor(y / CELL_KM).astype(np.int64) + self.off
+        inside = (cx >= 1) & (cx < self.n) & (cy >= 1) & (cy < self.n)           # nie an den Rand schieben (falsche Häufungen)
+        if not inside.all():
+            pts = {k: v[inside] for k, v in pts.items()}; cx, cy = cx[inside], cy[inside]
+            if not len(cx): return np.zeros(0, np.int64)
         lo = np.clip(np.floor((pts['c_lo'] + self.clock_s) / CLOCK_BIN_S).astype(np.int64), 0, self.nc - 1)
         hi = np.clip(np.floor((pts['c_hi'] + self.clock_s) / CLOCK_BIN_S).astype(np.int64), 0, self.nc - 1)
         reps = hi - lo + 1
