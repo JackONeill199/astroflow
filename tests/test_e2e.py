@@ -70,6 +70,9 @@ def test_full_pipeline(env, monkeypatch):
 
 def test_incremental_restack_adds_frames(env):
     s, db, pl = env
+    if not db.q("SELECT id FROM results"):     # unter xdist kann dieser Test ohne test_full_pipeline auf einem Worker landen
+        pl.scan()
+        pl.process(db.q("SELECT id FROM projects")[0]["id"])
     pid = db.q("SELECT id FROM projects")[0]["id"]
     before = db.one("SELECT n_frames FROM results ORDER BY id DESC LIMIT 1")["n_frames"]
     # ein bisher verworfenes Bild manuell einschließen -> nur dieses wird nachgestackt
