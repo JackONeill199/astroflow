@@ -16,6 +16,7 @@ def _app(tmp_path):
     (tmp_path / "gross.json").write_text('{"a": "' + "b" * 300_000 + '"}', encoding="utf-8")
     app.get("/json")(lambda: JSONResponse(big))
     app.get("/klein")(lambda: JSONResponse({"ok": 1}))
+    app.get("/jpg")(lambda: Response(b"JFIF" + b"0" * 5000, media_type="image/jpeg"))
     app.get("/png")(lambda: Response(b"\x89PNG" + b"0" * 5000, media_type="image/png"))
     app.get("/datei")(lambda: FileResponse(tmp_path / "gross.json"))
     app.get("/video")(lambda: FileResponse(tmp_path / "v.mp4"))
@@ -33,7 +34,7 @@ def test_gzip_nur_fuer_text(tmp_path):
         assert raw.headers["content-encoding"] == "gzip" and raw.json()["a"] == "b" * 300_000
         s = c.get("/strom", headers=h)
         assert s.headers["content-encoding"] == "gzip" and s.text == "".join(("zeile %d\n" % i) * 50 for i in range(400))
-        for path in ("/klein", "/png", "/video", "/download"):
+        for path in ("/klein", "/png", "/jpg", "/video", "/download"):   # Bilder/MP4 auch ohne Range nie gzip
             assert "content-encoding" not in c.get(path, headers=h).headers, path
         part = c.get("/video", headers={**h, "range": "bytes=0-9"})
         assert part.status_code == 206 and part.content == bytes(range(10)) and "content-encoding" not in part.headers
@@ -58,7 +59,8 @@ def test_gzip_bytes_gueltig(tmp_path):
         async def send(m):
             (starts if m["type"] == "http.response.start" else chunks).append(m)
         await app(scope, receive, send)
-    asyncio.run(run("/datei"))
+    import threading                                                    # eigener Thread: Browser-Tests im selben Prozess halten eine Schleife offen
+    t = threading.Thread(target=lambda: asyncio.run(run("/datei"))); t.start(); t.join(30)
     data = gzip.decompress(b"".join(m.get("body", b"") for m in chunks))
     assert data.startswith(b'{"a": "bbb') and len(data) == (tmp_path / "gross.json").stat().st_size
     assert not any(k == b"content-length" for k, _ in starts[0]["headers"])

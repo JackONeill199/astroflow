@@ -11,6 +11,8 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   Browser rechnet sie selbst je Bild um (1,4 MB). Der eigenständige Bericht wird dadurch ebenfalls kleiner.
 - Größere Antworten der Oberfläche (JSON, Text) werden komprimiert übertragen. Bilder, Videos, FITS/TIFF und Teilantworten
   für das Spulen in Videos bleiben unverändert.
+- Bildbetrachter: Lädt ein Bild länger als 20 s oder schlägt es fehl, steht dort jetzt „Lädt noch … (langsames Netz?)“
+  bzw. „Bild konnte nicht geladen werden.“ mit „Erneut versuchen“, statt endlos den Kreisel zu zeigen.
 
 ## 0.30.0 – 05.11.2026
 

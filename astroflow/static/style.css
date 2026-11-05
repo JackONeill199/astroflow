@@ -430,6 +430,8 @@ td .why { color: var(--mut); white-space: normal; font-size: 0.75rem }
 .viewer.ready .phimg { opacity: 0 }
 .viewer .vload { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 0.625rem; color: #d7dbe2; font-size: 0.7812rem; padding: 0.375rem 0.75rem; border-radius: var(--r-sm); background: #0b0d10d9; transition: opacity .3s }
 .viewer.ready .vload { opacity: 0; pointer-events: none }
+.viewer .vload:has([data-retry]) { flex-direction: column; width: max-content; max-width: calc(100% - 2rem); text-align: center }
+.viewer .vload [data-retry] { white-space: nowrap }
 .viewer .cmp { position: absolute; inset: 0; overflow: hidden; pointer-events: none }
 .viewer .cmpline { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; cursor: ew-resize; pointer-events: auto }
 .viewer .cmpline::before { content: ""; position: absolute; inset: 0 -0.875rem }
