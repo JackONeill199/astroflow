@@ -28,7 +28,7 @@ Videobild alle Satellitenbahnen fertig umgerechnet (126 Bilder × 32 Bahnen = 25
 `overlay_timeline.satellite_paths` (`start` = erstes Trefferbild), und jedes Bild hat nur `index` und `reference`
 (Registrierungsmatrix, auf 7 Stellen gerundet). Umrechnung und Bildfeldtest übernimmt `evidence.satellitesAt`
 (Gegenstück in Python: `video_overlays.satellites_at`, für `check_video_overlays.py`). Ältere Antworten mit `frames[].satellites`
-gehen weiter. Dazu komprimiert der Kern JSON/Text per `GZipMiddleware` (ab 2 KB; Medien, `image/*` und 206 bleiben ausgenommen).
+gehen weiter. Dazu komprimiert der Kern JSON/Text per `core/gzip.py` (ab 2 KB, nur Text/JSON; Medien und 206 bleiben unberührt).
 Ergebnis: 25 MB → 1,4 MB (0,6 MB übertragen). Neue Felder je Videobild nur, wenn sie nicht mit Bilder × Kandidaten wachsen.
 Nachstellen: Playwright `Pixel 7` + CDP `Network.emulateNetworkConditions` über die LAN-Adresse. Tests:
 `test_skytrace.py::test_lauf_kompakt_und_medien_uebers_heimnetz`, `test_skytrace_video_ui.py` (Satellitenbahn im Overlay).
