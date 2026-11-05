@@ -43,6 +43,11 @@ async function startRematch(body, label, path = '/rematch') {
   try { const j = await send(T + path, body); rmStarted.add(j.key); if (label) toast(label, 'ok'); return j; }
   catch (e) { toast(e.message, 'err'); return null; }
 }
+// Ziel eines Auftrags wie SiteJobs.activity (href): dort meldet die Ansicht das Ende, sonst der allgemeine Hinweis der Shell
+const rmHref = (r) => r.kind === 'nights' || (!r.all && (r.runs || []).length > 1) ? '#/skytrace/standorte' : r.all ? '#/skytrace/statistik'
+  : `#/skytrace/${encodeURIComponent((r.runs || [])[0] || '')}/beobachtungen`;
+// Nach eigenem Übernehmen nicht noch einmal „Standorte geändert – neu abgleichen?“ fragen (die betroffenen Läufe gleichen schon ab)
+async function ackSites() { try { store.set('skytrace.rematchAsked', (await api(T + '/rematch')).signature); } catch { /* nur Komfort */ } }
 const rematchAll = () => startRematch({ all: true }, 'Alle SkyTrace-Analysen werden mit der aktuellen Ortsliste neu abgeglichen.');
 // Abschnitt für Statistik und Einstellungen → Standorte; zeichnet sich bei geändertem Zustand neu, endet mit dem Behälter
 function rematchPanel(host) {
@@ -54,13 +59,15 @@ function rematchPanel(host) {
     if (s === sig) return;
     sig = s;
     host.innerHTML = `<div class="panel st-rematch"><div class="panel-h"><h2>${icon('pin')}SkyTrace nach Standortänderungen</h2><span class="grow"></span>
-        <button class="btn sm${r.sites_changed ? '' : ' ghost'}" data-rematch-all ${busy ? 'disabled' : ''}>${icon('refresh')}Alle SkyTrace-Analysen neu abgleichen</button></div>
+        <div class="row"><a class="btn sm ghost" href="#/skytrace/standorte">${icon('pin')}Standorte für alle Nächte suchen</a>
+        <button class="btn sm${r.sites_changed ? '' : ' ghost'}" data-rematch-all ${busy ? 'disabled' : ''}>${icon('refresh')}Alle SkyTrace-Analysen neu abgleichen</button></div></div>
       <p class="mut sm">${r.sites_changed ? '<b class="warn">Orte oder Zeiträume haben sich seit dem letzten Abgleich geändert.</b> ' : ''}Der Ort jeder Spur wird neu bestimmt
         (Ausnahme → FITS → Ortsliste der Nacht → Standard), danach werden die Satelliten mit den gespeicherten Bahndaten neu abgeglichen – ohne Rohbilder und
-        ohne neue Archivabfragen. Geprüft werden nur Spuren, deren Ort sich geändert hat. Orte werden dabei nie übernommen.</p>
+        ohne neue Archivabfragen. Geprüft werden nur Spuren, deren Ort sich geändert hat. Orte werden dabei nie übernommen.
+        „Standorte für alle Nächte suchen“ prüft je Nacht jeden Ort der Liste und rechnet bei Bedarf den wahrscheinlichsten Ort zurück.</p>
       <div class="st-rematch-job"></div></div>`;
     const job = $('.st-rematch-job', host);
-    if (busy) setJobLine(job, { state: 'running', stage: r.kind === 'search' ? 'Standortsuche' : 'Neu abgleichen', message: r.text, progress: r.total ? r.current / r.total : null });
+    if (busy) setJobLine(job, { state: 'running', stage: r.kind === 'search' ? 'Standortsuche' : r.kind === 'nights' ? 'Standorte aller Nächte' : 'Neu abgleichen', message: r.text, progress: r.total ? r.current / r.total : null });
     else if (r.state && r.text) job.innerHTML = `<p class="sm ${r.state === 'error' ? 'bad' : 'dim'}">Letzter Auftrag: ${esc(r.text)}</p>`;
     $('[data-rematch-all]', host).onclick = rematchAll;
   };
@@ -72,9 +79,10 @@ let rmSeen = null;
 function rematchStatus(st) {
   const r = st.modules.skytrace?.rematch;
   if (!r) return;
-  if (r.key && r.state !== 'running' && (rmStarted.delete(r.key) || (rmSeen && rmSeen.key === r.key && rmSeen.state === 'running')))
+  if (r.key && r.state !== 'running' && (rmStarted.delete(r.key) || (rmSeen && rmSeen.key === r.key && rmSeen.state === 'running'))
+    && (r.state === 'error' || location.hash.startsWith(rmHref(r).split('/beobachtungen')[0])))
     toast(r.text || 'Neuabgleich beendet.', r.state === 'error' ? 'err' : 'ok',
-      r.all ? { label: 'Statistik', href: '#/skytrace/statistik' } : r.runs?.length ? { label: 'Ansehen', href: `#/skytrace/${encodeURIComponent(r.runs[0])}/${r.kind === 'search' ? 'beobachtungen' : 'kandidaten'}` } : null);
+      r.kind === 'nights' ? { label: 'Vorschläge', href: '#/skytrace/standorte' } : r.all ? { label: 'Statistik', href: '#/skytrace/statistik' } : r.runs?.length ? { label: 'Ansehen', href: `#/skytrace/${encodeURIComponent(r.runs[0])}/${r.kind === 'search' ? 'beobachtungen' : 'kandidaten'}` } : null);
   rmSeen = { key: r.key, state: r.state };
   if (r.sites_changed && r.state !== 'running' && store.get('skytrace.rematchAsked', '') !== r.signature) {
     store.set('skytrace.rematchAsked', r.signature);
@@ -285,10 +293,10 @@ async function runView(root, runId, tab = 'vorschau') {
         return `<a href="#/skytrace/${encodeURIComponent(runId)}/${k}" data-t="${k}" class="${tab === k ? 'on' : ''}" title="Taste ${i + 1}">${k === '3d' ? icon('globe') : ''}${l}${n != null ? `<span>${n}</span>` : ''}</a>`; }).join('')}<i class="tab-ind" id="tabind"></i></nav>
       <div id="tab"></div>`;
   }
-  const rmMine = (r = rematchState()) => r.state === 'running' && (r.all || (r.runs || []).includes(runId));
+  const rmMine = (r = rematchState()) => r.state === 'running' && r.kind !== 'nights' && (r.all || (r.runs || []).includes(runId));
   function jobState() {
     const e = S.engine, st = e.stats || {}, r = rematchState();
-    if (!isLive() && rmMine(r)) { setJobLine($('#stjob'), { state: 'running', stage: r.kind === 'search' ? 'Standortsuche' : 'Neu abgleichen', message: r.text, progress: r.total ? r.current / r.total : null }); return; }
+    if (!isLive() && rmMine(r)) { setJobLine($('#stjob'), { state: 'running', stage: r.kind === 'search' ? 'Standortsuche' : r.kind === 'nights' ? 'Standorte aller Nächte' : 'Neu abgleichen', message: r.text, progress: r.total ? r.current / r.total : null }); return; }
     setJobLine($('#stjob'), isLive() ? { state: 'running', stage: e.operation === 'refresh' ? 'Bericht' : `${st.current || 0} / ${st.total || '—'} Aufnahmen`,
       message: engineStatus(e), progress: st.total ? (st.current || 0) / st.total : null } : null);
   }
@@ -669,6 +677,7 @@ async function runView(root, runId, tab = 'vorschau') {
         note: `aus ${r.trails} Satellitenspuren zurückgerechnet${r.timed ? `, Uhr ${r.clock_s} s` : ""}` }] });
       await send('/sites/night', { night, site_id: id, nights: false });
       toast('Ort übernommen.', 'ok');
+      await ackSites();
       $('.st-fit-res', box).insertAdjacentHTML('beforeend', `<p class="ok">Übernommen. <a href="#/settings/standorte">Standorte ansehen</a></p>
         <div class="row"><button class="btn sm" data-rematchrun>${icon('refresh')}Jetzt mit dem neuen Ort neu abgleichen</button></div>`);
     } catch (err) { toast(err.message, 'err'); }
@@ -1059,6 +1068,126 @@ async function sky3dView(el) {
   return { destroy: () => { view?.dispose(); document.removeEventListener('keydown', onKey); } };
 }
 
+// ------------------------------------------------ Standorte aller Nächte (Vorschläge) --- //
+// engine/rematch_sites.py nights: je Nacht alle Beobachtungen gemeinsam, jeder Ort der Ortsliste, sonst Rückrechnung.
+const NIGHT_STATUS = { better: ['Besserer Ort', 'acc'], ok: ['Passt', 'ok'], none: ['Kein Ort passt', 'warn'], fits: ['Ort aus FITS', ''], error: ['Fehler', 'bad'] };
+const kmText = (v) => v == null ? '' : v < 1 ? Math.round(v * 1000) + ' m' : (Math.round(v * 100) / 100).toLocaleString('de-DE') + ' km';
+const arcText = (v) => v == null ? '–' : Math.round(v) + '″';
+function clockText(p) {
+  if (!p || p.clock_s == null) return '';
+  if (!p.timed) return 'Uhrversatz nicht bestimmbar';
+  const v = String(Math.abs(p.clock_s)).replace('.', ',');
+  return `Uhr ${p.clock_s > 0 ? 'geht ' + v + ' s nach' : p.clock_s < 0 ? 'geht ' + v + ' s vor' : 'stimmt'} (± ${String(p.clock_sigma_s).replace('.', ',')} s)`;
+}
+function nightRow(n) {
+  const [label, cls] = NIGHT_STATUS[n.status] || [n.status || '–', ''], p = n.proposal, c = n.current || {};
+  const date = new Date(n.night + 'T12:00:00Z').toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
+  const obs = (n.observations || []).map(o => shortName(o.session)).join(' · ');
+  const now = `${c.sure ?? n.before ?? 0} von ${n.tracks} Spuren eindeutig · quer ${arcText(c.rms)}`;
+  const prop = !p ? '' : p.kind === 'list'
+    ? `<b>${esc(p.name || 'Ort der Liste')}</b><span class="mut sm">bestehender Ort · ${p.sure} von ${n.tracks} Spuren · quer ${arcText(p.rms)}${clockText(p) ? ' · ' + clockText(p) : ''}</span>`
+    : `<b>Neuer Ort ${p.shift_from_current_km != null ? kmText(p.shift_from_current_km) + ' neben „' + esc(c.name || 'bisher') + '“' : ''}</b>
+       <span class="mut sm">zurückgerechnet aus ${p.trails} Spuren · ± ${kmText(p.accuracy_m / 1000)} · ${p.sure} von ${n.tracks} Spuren · quer ${arcText(p.rms_before_arcsec)} → ${arcText(p.rms)} · ${clockText(p)}</span>
+       <a class="sm" href="https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#map=14/${p.lat}/${p.lon}" target="_blank" rel="noreferrer">Karte ↗</a>`;
+  return `<div class="panel stn-night${n.applied ? ' done' : ''}" data-night="${esc(n.night)}"><div class="row"><b>${esc(date)}</b><span class="mut sm stn-obs">${esc(obs)}</span><span class="grow"></span>
+      <span class="chip ${n.applied ? 'ok' : cls}">${n.applied ? 'Übernommen' : esc(label)}</span></div>
+    <div class="stn-grid"><div><small class="dim">Bisher</small><b>${esc(c.name || 'kein Ort')}</b><span class="mut sm">${now}</span></div>
+      ${p ? `<div><small class="dim">Vorschlag</small>${prop}</div>` : ''}</div>
+    ${n.note || n.fit_reason ? `<p class="dim sm">${esc([n.note, n.status !== 'better' && n.fit_reason ? 'Rückrechnung: ' + n.fit_reason : ''].filter(Boolean).join(' '))}</p>` : ''}
+    ${p && !n.applied ? `<div class="row"><button class="btn sm" data-apply="${esc(n.night)}">Für diese Nacht übernehmen …</button></div>` : ''}</div>`;
+}
+// Übernehmen: bestehender Ort → Zuordnung der Nacht, neuer Ort → neuer Eintrag (wie applyFit); SkyTrace-Ausnahmen der Beobachtungen entfernen
+async function applyNights(rows) {
+  if (!rows.length) return false;
+  let ex = {};
+  try { ex = (await api(T + '/settings')).sites || {}; } catch { /* ohne Einstellungen: keine Ausnahme bekannt */ }
+  const sessions = [...new Set(rows.flatMap(n => (n.observations || []).map(o => o.session)))].filter(s => ex[s]);
+  const fits = rows.filter(n => n.proposal.kind === 'fit').length;
+  const text = (rows.length === 1
+    ? (rows[0].proposal.kind === 'fit' ? `Ein neuer Ort (± ${kmText(rows[0].proposal.accuracy_m / 1000)}) wird angelegt und der Nacht ${esc(rows[0].night)} zugeordnet.`
+      : `Der Nacht ${esc(rows[0].night)} wird „${esc(rows[0].proposal.name || 'Ort')}“ zugeordnet.`)
+    : `${rows.length} Nächte bekommen ihren vorgeschlagenen Ort${fits ? ` (${fits} neue Orte werden angelegt)` : ''}.`)
+    + ' Bisherige Orte bleiben erhalten.'
+    + (sessions.length ? ` <b>${sessions.length} Beobachtung(en) haben in SkyTrace einen eigenen Standort, der sonst Vorrang hätte – diese Ausnahmen werden entfernt.</b>` : '')
+    + ' Danach werden die betroffenen Analysen neu abgeglichen.';
+  if (!await confirmDlg(rows.length === 1 ? 'Standort übernehmen?' : 'Alle Vorschläge übernehmen?', text, 'Übernehmen')) return false;
+  try {
+    for (const s of sessions) await send(T + '/settings', { session: s, site: null });
+    const d = await api('/sites?nights=false'), list = [...d.list], target = {};
+    for (const n of rows) {
+      const p = n.proposal;
+      if (p.kind === 'list') { target[n.night] = p.id; continue; }
+      const id = 's' + Math.random().toString(16).slice(2, 10);
+      list.push({ id, name: `${p.from_name || n.current?.name || 'Standort'} (Satelliten ${n.night})`, lat: p.lat, lon: p.lon, alt_m: p.alt_m || 0, accuracy_m: p.accuracy_m,
+        note: `aus ${p.trails} Satellitenspuren der Nacht zurückgerechnet${p.timed ? `, Uhr ${p.clock_s} s` : ''}` });
+      target[n.night] = id;
+    }
+    if (list.length !== d.list.length) await send('/sites', { ...d, list });
+    for (const n of rows) for (const night of (n.assign?.length ? n.assign : [n.night])) await send('/sites/night', { night, site_id: target[n.night], nights: false });
+    await send(T + '/sitesearch/nights/applied', { nights: rows.map(n => n.night) });
+    await ackSites();
+    await startRematch({ runs: [...new Set(rows.flatMap(n => (n.observations || []).map(o => o.run)))], force: false },
+      rows.length === 1 ? 'Ort übernommen – die Analysen der Nacht werden neu abgeglichen.' : `${rows.length} Orte übernommen – die betroffenen Analysen werden neu abgeglichen.`);
+    return true;
+  } catch (e) { toast(e.message, 'err'); return true; }
+}
+async function nightsView(el) {
+  crumbs([['SkyTrace', '#/skytrace'], ['Standorte aller Nächte']]);
+  let data = null, job = null, sig = '', show = store.get('skytrace.nightsShow', 'better');
+  el.innerHTML = `<div class="pagehead"><div><h1>Standorte aller Nächte</h1><p class="mut readable">Je Aufnahmenacht prüft SkyTrace die Satellitenspuren aller Beobachtungen dieser Nacht
+      gegen jeden Ort der Ortsliste. Passt keiner gut, sucht es mit Spielraum um den besten und rechnet den wahrscheinlichsten Ort zurück. Nur ein Vorschlag –
+      übernommen wird erst nach Bestätigung.</p></div><span class="grow"></span>
+      <div class="row"><label class="sm mut" for="stn-radius">Spielraum</label><select id="stn-radius">${[5, 10, 20].map(r => `<option value="${r}"${r === store.get('skytrace.nightsRadius', 10) ? ' selected' : ''}>± ${r} km</option>`).join('')}</select>
+      <button class="btn" id="stn-go">${icon('play')}Suche starten</button></div></div><div id="stn-job"></div><div id="stn-body"></div>`;
+  const body = $('#stn-body', el);
+  $('#stn-radius', el).onchange = (e) => store.set('skytrace.nightsRadius', +e.target.value);
+  $('#stn-go', el).onclick = async () => {
+    if (job?.state === 'running') { try { await send(T + '/rematch/stop'); } catch (e) { toast(e.message, 'err'); } return; }
+    if (await startRematch({ radius_km: +$('#stn-radius', el).value }, 'Standortsuche für alle Nächte gestartet.', '/sitesearch/nights')) load();
+  };
+  function draw() {
+    const nights = data?.nights || [], open = nights.filter(n => n.proposal && !n.applied);
+    const running = job?.state === 'running';
+    const go = $('#stn-go', el);
+    go.innerHTML = running ? `${icon('stop')}Anhalten` : `${icon('play')}${data ? 'Erneut suchen' : 'Suche starten'}`;
+    go.className = 'btn' + (running ? ' danger' : '');
+    setJobLine($('#stn-job', el), running ? { state: 'running', stage: 'Standorte aller Nächte', message: job.text, progress: job.total ? job.current / job.total : null } : null);
+    const list = show === 'better' ? nights.filter(n => n.proposal || n.applied) : nights;
+    const s = JSON.stringify([show, running, nights.map(n => [n.night, n.status, !!n.applied])]);
+    if (s === sig) return;
+    sig = s;
+    if (!data) { body.innerHTML = `<div class="empty">${icon('pin')}<h2>Noch keine Suche</h2>Starte die Suche – sie läuft im Hintergrund und darf jederzeit angehalten werden; fertige Nächte bleiben erhalten.</div>`; return; }
+    const count = (k) => nights.filter(n => n.status === k).length;
+    body.innerHTML = `<div class="row stn-head"><div class="seg" role="tablist"><button data-show="better" class="${show === 'better' ? 'on' : ''}">Mit Vorschlag (${nights.filter(n => n.proposal || n.applied).length})</button>
+        <button data-show="all" class="${show === 'all' ? 'on' : ''}">Alle Nächte (${nights.length})</button></div>
+        <span class="mut sm">${count('ok')} passen · ${count('none')} ohne passenden Ort · Suche vom ${new Date(data.created * 1000).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}, ± ${data.radius_km} km${data.state === 'stopped' ? ' · angehalten' : ''}</span>
+        <span class="grow"></span>${open.length > 1 ? `<button class="btn sm" data-apply-all>Alle übernehmen (${open.length}) …</button>` : ''}</div>
+      ${list.length ? list.map(nightRow).join('') : `<div class="empty">${show === 'better' ? 'Keine Nacht mit besserem Ort gefunden.' : 'Keine Nächte mit Spuren.'}</div>`}
+      <p class="dim sm">Eindeutig = einer Satellitenbahn zugeordnet, ohne fast gleich gute zweite Bahn (Starlink-Züge zählen nicht). Zurückgerechnet wird erst ab 3 eindeutigen Spuren einer Nacht.
+        „Kein Ort passt“ heißt: keine Spur ließ sich zuordnen – nicht, dass der Ort falsch ist.</p>`;
+  }
+  body.onclick = async (e) => {
+    const sh = e.target.closest('[data-show]');
+    if (sh) { show = sh.dataset.show; store.set('skytrace.nightsShow', show); draw(); return; }
+    const rows = e.target.closest('[data-apply-all]') ? (data.nights || []).filter(n => n.proposal && !n.applied)
+      : e.target.closest('[data-apply]') ? (data.nights || []).filter(n => n.night === e.target.closest('[data-apply]').dataset.apply) : null;
+    if (rows && await applyNights(rows)) load();
+  };
+  async function load() {
+    try { const d = await api(T + '/sitesearch/nights'); data = d.result; job = d.job; }
+    catch (e) { if (el.isConnected) body.innerHTML = `<div class="panel bad">${esc(e.message)}</div>`; return; }
+    if (el.isConnected) draw();
+  }
+  await load();
+  return {
+    async update(st) {
+      const r = st.modules.skytrace?.rematch || {};
+      if (r.kind === 'nights' && (r.state === 'running' || job?.state === 'running')) await load();
+    },
+    actions: () => [['play', 'Standorte aller Nächte suchen', 'Hintergrundauftrag', () => $('#stn-go', el)?.click()]],
+  };
+}
+
 // ---------------------------------------------------------- Registrierung --- //
 AF.register('skytrace', {
   nav: [{ href: '#/skytrace', label: 'SkyTrace', icon: 'orbit', key: 'skytrace', area: 'work' }, { href: '#/skytrace/neu', label: 'Neue Analyse', icon: 'play', key: 'skytrace-new' },
@@ -1068,6 +1197,7 @@ AF.register('skytrace', {
     [/^\/skytrace\/neu$/, 'skytrace-new', newView],
     [/^\/skytrace\/statistik$/, 'skytrace-stats', statsView],
     [/^\/skytrace\/3d$/, 'skytrace-3d', sky3dView],
+    [/^\/skytrace\/standorte$/, 'skytrace-stats', nightsView],
     [/^\/skytrace\/([^/]+)(?:\/(\w+))?$/, 'skytrace', runView],
   ],
   settings,
@@ -1085,7 +1215,7 @@ AF.register('skytrace', {
   },
   async palette() {
     const runs = await api(T + '/runs');
-    return [['play', 'Neue Spurenanalyse', 'SkyTrace', '#/skytrace/neu'], ['globe', 'SkyTrace 3D-Ansicht', 'Teleskopweg und Satellitenbahnen auf der Erde', '#/skytrace/3d'], ['pulse', 'SkyTrace-Statistik', 'Objektarten, Satelliten, Kataloge', '#/skytrace/statistik'],
+    return [['play', 'Neue Spurenanalyse', 'SkyTrace', '#/skytrace/neu'], ['globe', 'SkyTrace 3D-Ansicht', 'Teleskopweg und Satellitenbahnen auf der Erde', '#/skytrace/3d'], ['pulse', 'SkyTrace-Statistik', 'Objektarten, Satelliten, Kataloge', '#/skytrace/statistik'], ['pin', 'Standorte aller Nächte suchen', 'SkyTrace: Ortsliste an Satellitenspuren prüfen', '#/skytrace/standorte'],
       ...runs.map(r => ['orbit', shortName(r.title), `${r.candidates} Kandidaten · ${runDate(r.id)}`, `#/skytrace/${encodeURIComponent(r.id)}`, r.preview ? media(r.preview) : null])];
   },
 });

@@ -550,10 +550,12 @@ def build_router(mod) -> APIRouter:
 
     @r.post("/rematch")
     def rematch(body: dict = Body(...)):
-        """{run} = ein Lauf (alle Spuren), {all: true} = alle Läufe (nur Spuren mit geändertem Ort; `force` = alle)."""
+        """{run} = ein Lauf (alle Spuren), {runs: [...]} = diese Läufe, {all: true} = alle Läufe (nur Spuren mit geändertem Ort; `force` = alle)."""
         try:
             if body.get("all"):
                 return mod.sitejobs.start_rematch(None, body.get("force"))
+            if isinstance(body.get("runs"), list) and body["runs"] and all(isinstance(x, str) for x in body["runs"]):
+                return mod.sitejobs.start_rematch(list(dict.fromkeys(body["runs"])), body.get("force"))     # z. B. nach „übernehmen“
             if not isinstance(body.get("run"), str):
                 raise ValueError("Lauf fehlt")
             return mod.sitejobs.start_rematch([body["run"]], body.get("force"))
@@ -563,6 +565,29 @@ def build_router(mod) -> APIRouter:
     @r.post("/rematch/stop")
     def rematch_stop():
         return {"job": mod.sitejobs.stop()}
+
+    @r.post("/sitesearch/nights")
+    def nights_start(body: dict = Body(default={})):
+        """Standorte für alle Nächte suchen (Hintergrundauftrag; Ergebnis bleibt in standortsuche-naechte.json)."""
+        try:
+            return mod.sitejobs.start_nights(float(body.get("radius_km") or 10))
+        except (OSError, ValueError, TypeError) as e:
+            bad(e)
+
+    @r.get("/sitesearch/nights")
+    def nights_state():
+        job = mod.sitejobs.snapshot()
+        return {"job": job if job and job.get("kind") == "nights" else None, "result": mod.sitejobs.nights_result()}
+
+    @r.post("/sitesearch/nights/applied")
+    def nights_applied(body: dict = Body(...)):
+        try:
+            nights = body.get("nights")
+            if not isinstance(nights, list) or not all(isinstance(n, str) for n in nights):
+                raise ValueError("Nächte fehlen")
+            return {"result": mod.sitejobs.mark_applied(nights)}
+        except (OSError, ValueError) as e:
+            bad(e)
 
     @r.post("/sitesearch")
     def sitesearch_start(body: dict = Body(...)):

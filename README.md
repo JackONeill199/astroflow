@@ -259,6 +259,9 @@ rechnet daraus zurück und gleicht am Vorschlag noch einmal streng ab („5 stat
 gleicht die Satelliten mit den gespeicherten Bahndaten neu ab – ohne Rohbilder und ohne neue Archivabfragen. Nach Änderungen an
 Orten oder Zeiträumen bietet AstroFlow an, **alle SkyTrace-Analysen neu abzugleichen** (Hinweis, SkyTrace-Statistik oder
 Einstellungen → Standorte); dabei werden nur Spuren geprüft, deren Ort sich geändert hat. Orte werden nie automatisch übernommen.
+**Standorte für alle Nächte suchen** (gleiche Stellen) prüft je Nacht die Spuren aller Beobachtungen gemeinsam gegen jeden Ort
+der Ortsliste, rechnet – wenn keiner gut passt – den wahrscheinlichsten Ort zurück und zeigt eine Vorschlagsliste mit Treffern
+vorher/nachher. Übernehmen einzeln oder alle, danach gleichen die betroffenen Analysen automatisch neu ab.
 Im Dropdown **Analyse → Erneut analysieren** startet die vollständige Erkennung mit aktuellem Code als neuer Lauf
 aus den bisherigen Aufnahmen. Fehlen Originaldateien, kann ihr Ordner ausgewählt werden. Bei Ersatz-FITS muss auch das
 Aufnahmedatum übereinstimmen: gleiche Dateinamen aus einer anderen Nacht werden nicht zugeordnet. Der alte Lauf bleibt erhalten.

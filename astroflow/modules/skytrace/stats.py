@@ -79,7 +79,7 @@ def _run(path: Path) -> dict:
         items = _read(path / s["candidates_file"], []) if s.get("candidates_file") else []
         cands = [_candidate(c, path.name) for c in items or [] if isinstance(c, dict)]
         first = s.get('source_first_file') or (_first_file(path / Path(s["video"]).parent) if s.get("video") else None)
-        sessions.append(dict(session=s["session"], run=path.name, first=first, frames=s.get("frames") or 0, excluded=s.get("excluded") or 0,
+        sessions.append(dict(session=s["session"], run=path.name, folder=Path(s["video"]).parent.name if s.get("video") else None, first=first, frames=s.get("frames") or 0, excluded=s.get("excluded") or 0,
                              hits=s.get("hits") or 0, complete=s.get("state") == "Fertig" and not s.get("limited", False),
                              night=_night(s["session"], [c["timestamp"] for c in cands if isinstance(c["timestamp"], (int, float))]),
                              candidates=cands))

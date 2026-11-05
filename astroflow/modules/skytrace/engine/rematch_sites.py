@@ -212,6 +212,208 @@ def search(root, folder_name, radius_km=SEARCH_RADIUS_KM, stop_file=None):
     emit('result', search=out, text=('Standortsuche: ' + (f'{out["after"]} von {out["tracks"]} Spuren mit dem Vorschlag zugeordnet (vorher {out["before"]}).' if out['ok'] else out.get('reason', ''))))
 
 
+# ------------------------------------------------------------- Standorte aller Nächte ---
+# Je Nacht alle Beobachtungen gemeinsam (ein Ort, ein Uhrversatz): erst jeden Ort der Ortsliste streng prüfen, dann – wenn kein
+# Ort gut passt – mit Spielraum um den besten suchen und aus den eindeutigen Zuordnungen der ganzen Nacht zurückrechnen.
+GOOD_RMS_ARCSEC = 60           # passt ein Ort mit eindeutigen Treffern quer im Mittel besser, ist keine Rückrechnung nötig
+SAME_SITE_M = 300              # Rückrechnung so nah an einem Listenort → diesen Ort vorschlagen statt eines neuen
+MAX_CENTERS = 3                # höchstens so viele Suchmittelpunkte, wenn kein Ort einen Treffer hat
+
+
+def _km(a, b):
+    return math.hypot((a['lat'] - b['lat']) * 111.195, (a['lon'] - b['lon']) * 111.195 * math.cos(math.radians(b['lat'])))
+
+
+def site_list(settings):
+    """Orte der gemeinsamen Ortsliste (data/settings.json → sites.list)."""
+    from observation_settings import shared_sites_file
+    path = shared_sites_file(settings)
+    data = read_json(path, {}) if path else {}
+    return [s for s in ((data or {}).get('sites') or {}).get('list') or [] if s.get('lat') is not None and s.get('lon') is not None]
+
+
+def _score(sitefit, triples):
+    """Eindeutige Treffer (wie sitefit._sure – Starlink-Züge zählen nicht) und quer-RMS ihrer besten Bahnen."""
+    sure = [sitefit._sure(s or {}) for _, _, s in triples]
+    off = [m.get('mean_offset_arcsec') or m.get('separation_arcsec') or 0 for m in sure if m]
+    return dict(sure=len(off), compatible=sum(1 for *_, s in triples if (s or {}).get('status') == 'compatible'),
+                rms=round(math.sqrt(sum(o * o for o in off) / len(off)), 1) if off else None)
+
+
+def _night_fit(sitefit, triples, ref):
+    """Rückrechnung aus allen Beobachtungen der Nacht (Spuren ganz im Bild je Ordner bestimmt)."""
+    cache = BASE / 'catalog_cache' / 'archives'
+    obs, notes = [], []
+    for folder in {id(f): f for f, _, _ in triples}.values():
+        o, n = sitefit.observations(folder, [(i, s) for f, i, s in triples if f is folder], cache)
+        obs += o; notes += n
+    res = sitefit.fit(obs, {'lat': float(ref['lat']), 'lon': float(ref['lon']), 'alt_m': float(ref.get('alt_m') or 0)})
+    res['notes'] = notes
+    return res
+
+
+def _brief(site):
+    return dict(id=site.get('site_id') or site.get('id'), name=site.get('name'), origin=site.get('origin'), accuracy_m=site.get('accuracy_m')) if site else None
+
+
+def night(sitefit, group, entries, settings, radius_km, tick):
+    """Eine Nacht: Vorschlag (bestehender Ort `list`, zurückgerechneter Ort `fit`) oder ehrlicher Grund, warum keiner."""
+    from observation_settings import sites_module
+    out = dict(night=group['night'], observations=group['observations'], tracks=len(entries), created=time.time(),
+               before=sum(matched(i) for _, i in entries), proposal=None)
+    mod = sites_module()
+    out['assign'] = sorted({mod.night_of(i['timestamp']) for _, i in entries if mod and isinstance(i.get('timestamp'), (int, float))} - {None}) or [group['night']]
+    if not entries:
+        return dict(out, status='none', note='Keine Spuren mit Himmelskoordinaten und Zeit in dieser Nacht.')
+    folder0, item0 = entries[0]
+    current = site_for(item0, {'session': item0.get('session')}, settings)
+    out['current'] = _brief(current)
+    if current and current.get('origin') == 'fits':
+        return dict(out, status='fits', note='Der Ort steht in den FITS-Daten und hat Vorrang vor der Ortsliste – nichts zu ändern.')
+    stored = _score(sitefit, [(f, i, sat_of(i)) for f, i in entries])
+    out['current'].update(sure=stored['sure'], rms=stored['rms']) if out['current'] else None
+
+    def strict(site):
+        res = []
+        for f, i in entries:
+            tick(f'{group["night"]}: {i.get("id")} am Ort „{site.get("name") or "Vorschlag"}“ prüfen')
+            res.append((f, i, check(i, site, settings)))
+        return res
+
+    sites = site_list(settings)
+    tested = []
+    if stored['sure'] >= sitefit.MIN_TRAILS:
+        # Genug eindeutige Treffer am bisherigen Ort: nur verfeinern (wie „Standort der Nacht prüfen“)
+        base = dict(current, **stored) if current else None
+        candidates = [(base, [(f, i, sat_of(i)) for f, i in entries])] if base else []
+    else:
+        candidates = []
+        for s in sites:
+            ref = dict(s, accuracy_m=float(s.get('accuracy_m') or 100), site_id=s.get('id'))
+            triples = strict(ref)
+            sc = _score(sitefit, triples)
+            tested.append(dict(id=s.get('id'), name=s.get('name'), **sc))
+            candidates.append((dict(ref, **sc), triples))
+        if current and current.get('site_id') not in {s.get('id') for s in sites}:      # Ausnahme/alter SkyTrace-Ort
+            triples = strict(current); sc = _score(sitefit, triples)
+            tested.append(dict(id=None, name=current.get('name'), **sc)); candidates.append((dict(current, **sc), triples))
+    out['tested'] = tested
+    rank = lambda c: (c[0]['sure'], -(c[0]['rms'] if c[0]['rms'] is not None else 1e9))
+    candidates.sort(key=rank, reverse=True)
+    best, best_triples = candidates[0] if candidates else (None, [])
+    if not best:
+        return dict(out, status='none', note='Für diese Nacht ist kein Standort bekannt – bitte unter Einstellungen → Standorte einen Ort anlegen.')
+    out['best'] = dict(_brief(best), sure=best['sure'], rms=best['rms'])
+    good = best['sure'] >= 1 and best['rms'] is not None and best['rms'] <= GOOD_RMS_ARCSEC
+    fit, fit_triples = None, None
+    if not good:
+        # Mit Spielraum suchen: um den besten Ort, ohne jeden Treffer um den bisherigen und die nächsten Listenorte
+        if best['sure'] >= sitefit.MIN_TRAILS:
+            fit = _night_fit(sitefit, best_triples, best)
+        others = sorted((c for c, _ in candidates if c is not best), key=lambda c: _km(c, current) if current else 0)
+        centers = [best] if best['sure'] else ([dict(current, sure=0, rms=None)] if current else [best]) + others
+        seen = []
+        for center in centers:
+            if fit and fit.get('ok') or len(seen) >= MAX_CENTERS: break
+            if any(_km(center, s) < radius_km / 2 for s in seen): continue
+            seen.append(center)
+            wide = dict(center, accuracy_m=radius_km * 1000 / 2)
+            wsettings = dict(settings, site_tolerance_cap_arcsec=SEARCH_CAP_ARCSEC)
+            wide_triples = []
+            for f, i in entries:
+                tick(f'{group["night"]}: {i.get("id")} mit ± {radius_km:g} km um „{center.get("name") or "Ort"}“ suchen')
+                wide_triples.append((f, i, check(i, wide, wsettings)))
+            out['wide'] = max(out.get('wide', 0), sum(1 for *_, s in wide_triples if s.get('status') == 'compatible'))
+            fit = _night_fit(sitefit, wide_triples, center)
+            out['search_center'] = _brief(center)
+        if fit and fit.get('ok'):
+            prop = dict(lat=fit['lat'], lon=fit['lon'], alt_m=fit.get('alt_m') or 0, accuracy_m=fit['accuracy_m'], name='Vorschlag')
+            fit_triples = strict(prop)
+            final = _night_fit(sitefit, fit_triples, best)
+            if final.get('ok') and final['trails'] >= fit['trails']:
+                fit = final
+                prop.update(lat=fit['lat'], lon=fit['lon'], accuracy_m=fit['accuracy_m'])
+            sc = _score(sitefit, fit_triples)
+            fit = dict(fit, site=prop, **{'after_' + k: v for k, v in sc.items()})
+        elif fit:
+            out['fit_reason'] = fit.get('reason')
+    keys = ('trails', 'timed', 'dropped', 'clock_s', 'clock_sigma_s', 'rms_before_arcsec', 'rms_after_arcsec', 'ellipse_km', 'shift_km')
+    better_fit = fit and fit.get('ok') and fit['after_sure'] >= best['sure'] and (
+        fit['after_sure'] > best['sure'] or (fit['after_rms'] or 1e9) < 0.7 * (best['rms'] or 1e9))
+    if better_fit:
+        near = min(sites, key=lambda s: _km(s, fit['site']), default=None)
+        if near and _km(near, fit['site']) * 1000 <= max(SAME_SITE_M, 2 * fit['site']['accuracy_m']):
+            out['proposal'] = dict(kind='list', id=near.get('id'), name=near.get('name'), sure=fit['after_sure'], rms=fit['after_rms'],
+                                   **{k: fit.get(k) for k in ('clock_s', 'clock_sigma_s', 'timed', 'trails')})
+        else:
+            p = fit['site']
+            out['proposal'] = dict(kind='fit', lat=round(p['lat'], 6), lon=round(p['lon'], 6), alt_m=p['alt_m'], accuracy_m=p['accuracy_m'],
+                                   sure=fit['after_sure'], rms=fit['after_rms'], **{k: fit.get(k) for k in keys},
+                                   from_name=(best.get('name') if best['sure'] else (out.get('search_center') or {}).get('name')),
+                                   shift_from_current_km=round(_km(p, current), 3) if current else None)
+    elif best.get('site_id') != (current or {}).get('site_id') and best['sure'] > (out['current'] or {}).get('sure', 0):
+        out['proposal'] = dict(kind='list', id=best.get('site_id'), name=best.get('name'), sure=best['sure'], rms=best['rms'])
+    if out['proposal'] and out['proposal']['kind'] == 'list' and out['proposal']['id'] == (current or {}).get('site_id'):
+        out['proposal'] = None                                   # bisheriger Ort ist schon der beste
+    if out['proposal']:
+        out['status'] = 'better'
+        if out['proposal']['kind'] == 'list' and out['proposal']['sure'] < sitefit.MIN_TRAILS:
+            out['note'] = f'Nur {out["proposal"]["sure"]} eindeutige Spur(en) – zu wenig für eine Rückrechnung, nur Auswahl aus der Ortsliste.'
+    elif best['sure'] == 0:
+        out['status'] = 'none'
+        out['note'] = ('Kein Ort passt: keine Spur ließ sich einer Satellitenbahn eindeutig zuordnen'
+                       + (f' (auch nicht mit ± {radius_km:g} km Spielraum).' if seen_any(out) else '.'))
+    else:
+        out['status'] = 'ok'
+        out['note'] = 'Der bisherige Ort passt am besten.' + (
+            f' Für eine Rückrechnung sind {best["sure"]} eindeutige Spur(en) zu wenig.' if best['sure'] < sitefit.MIN_TRAILS and not good else '')
+    if fit and not fit.get('ok') and not out.get('fit_reason'): out['fit_reason'] = fit.get('reason')
+    return out
+
+
+def seen_any(out):
+    return out.get('search_center') is not None
+
+
+def nights(groups_file, out_file, radius_km=SEARCH_RADIUS_KM, stop_file=None):
+    """Standorte aller Nächte (Gruppen vom Server: [{night, observations: [{run, folder, session}]}]). Schreibt nach jeder Nacht."""
+    sitefit = sitefit_module()
+    groups = read_json(groups_file, []) or []
+    settings = offline_settings(); settings['satcat_offline'] = True
+    if stop_file: settings['_stop_file'] = str(stop_file)
+    results = BASE / 'Ergebnisse'
+    plan = []
+    for g in groups:
+        entries = []
+        for o in g['observations']:
+            folder = (results / o['run'] / o['folder']).resolve()
+            if folder.parent.parent != results.resolve(): continue
+            entries += [(folder, i) for i in read_json(folder / 'kandidaten.json', []) or [] if i.get('world_path') and i.get('timestamp') is not None]
+        plan.append((g, entries))
+    n_sites = max(1, len(site_list(settings)))
+    total = sum(len(e) * (n_sites + 3) for _, e in plan) or 1
+    state = dict(done=0)
+    report = dict(created=time.time(), radius_km=radius_km, state='running', nights=[])
+
+    def tick(text):
+        state['done'] = min(total - 1, state['done'] + 1)
+        emit('progress', current=state['done'], total=total, text=text)
+
+    stopped = False
+    for g, entries in plan:
+        if stop_file and Path(stop_file).exists(): stopped = True; break
+        try: report['nights'].append(night(sitefit, g, entries, settings, radius_km, tick))
+        except InterruptedError: stopped = True; break
+        except (OSError, ValueError) as error:
+            report['nights'].append(dict(night=g['night'], observations=g['observations'], status='error', note=str(error), proposal=None))
+        write_json(out_file, report)                           # fertige Nächte bleiben beim Anhalten erhalten
+    report['state'] = 'stopped' if stopped else 'done'
+    write_json(out_file, report)
+    better = sum(1 for r in report['nights'] if r.get('status') == 'better')
+    emit('result', stopped=stopped, nights=len(report['nights']), better=better,
+         text=('Angehalten. ' if stopped else '') + f'{len(report["nights"])} Nächte geprüft, {better} mit besserem Ort.')
+
+
 def sitefit_night(summary):
     import re
     m = re.search(r'(\d{4})-?(\d{2})-?(\d{2})', str(summary.get('session') or ''))
@@ -223,9 +425,11 @@ if __name__ == '__main__':
     sub = parser.add_subparsers(dest='cmd', required=True)
     a = sub.add_parser('rematch'); a.add_argument('roots', type=Path, nargs='+'); a.add_argument('--force', action='store_true'); a.add_argument('--stop-file', type=Path)
     b = sub.add_parser('search'); b.add_argument('root', type=Path); b.add_argument('folder'); b.add_argument('--radius-km', type=float, default=SEARCH_RADIUS_KM); b.add_argument('--stop-file', type=Path)
+    c = sub.add_parser('nights'); c.add_argument('groups', type=Path); c.add_argument('out', type=Path); c.add_argument('--radius-km', type=float, default=SEARCH_RADIUS_KM); c.add_argument('--stop-file', type=Path)
     args = parser.parse_args()
     try:
         if args.cmd == 'rematch': rematch(args.roots, args.force, args.stop_file)
+        elif args.cmd == 'nights': nights(args.groups, args.out, args.radius_km, args.stop_file)
         else: search(args.root, args.folder, args.radius_km, args.stop_file)
     except InterruptedError:
         emit('result', stopped=True, text='Angehalten.')

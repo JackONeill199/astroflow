@@ -3,6 +3,19 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.29.0 – 05.11.2026
+
+### Neu
+- **SkyTrace: Standorte für alle Nächte suchen** (SkyTrace-Statistik und Einstellungen → Standorte, Ansicht „Standorte aller Nächte“):
+  Für jede Aufnahmenacht werden die Satellitenspuren aller Beobachtungen dieser Nacht gemeinsam geprüft – gegen jeden Ort der
+  Ortsliste. Der Ort mit den meisten eindeutigen Treffern gewinnt (bei Gleichstand die kleinere Abweichung). Passt keiner gut,
+  sucht SkyTrace mit einstellbarem Spielraum (± 5/10/20 km) um den besten und rechnet den wahrscheinlichsten Ort samt Uhrversatz
+  aus allen Spuren der Nacht zurück. So reichen auch Beobachtungen mit nur einer Spur, wenn die Nacht zusammen genug hat.
+- Vorschlagsliste je Nacht: bisheriger Ort, Vorschlag (bestehender Ort oder neu zurückgerechnet mit Genauigkeit), Treffer vorher und
+  nachher, Abweichung quer, Uhrversatz. Ehrliche Grenzen: unter 3 eindeutigen Spuren nur Auswahl aus der Liste, ohne passende Spur
+  „Kein Ort passt“. Übernehmen einzeln oder alle auf einmal, jeweils nach Bestätigung; danach werden nur die betroffenen
+  Analysen neu abgeglichen. Die Liste bleibt nach dem Neuladen erhalten, die Suche ist abbrechbar (fertige Nächte bleiben).
+
 ## 0.28.0 – 05.11.2026
 
 ### Neu
