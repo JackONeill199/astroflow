@@ -273,7 +273,8 @@ Stand das Teleskop ganz woanders (z. B. im Urlaub, Hunderte Kilometer von jedem 
 neben „Suche starten“, Standard ± 1500 km um die Orte der Liste): Passt kein Listenort, rechnet SkyTrace aus jeder Spur und jeder
 Satellitenbahn die Bodenpunkte zurück, von denen aus der Satellit genau dort am Himmel stand, und sucht den Ort, an dem sich Spuren
 verschiedener Satelliten treffen – samt Uhrversatz. Vorgeschlagen wird „Unbekannter Ort zurückgerechnet“ (Koordinaten auf 0,01°,
-Unsicherheit, kleine Karte ohne Kartendienst) nur deutlich über dem Zufall; liegt er höchstens 2 km neben einem Listenort, wird dieser
+Unsicherheit, Umrisskarte mit Küsten und Ländergrenzen ohne Netz; **Karte laden** holt auf Knopfdruck eine Straßen- bzw. Geländekarte von
+OpenStreetMap/OpenTopoMap, „immer laden“ merkt sich das) nur deutlich über dem Zufall; liegt er höchstens 2 km neben einem Listenort, wird dieser
 vorgeschlagen. „Übernehmen“ legt einen neuen Ort für die Nacht an (Höhe danach unter Einstellungen → Standorte eintragen) und gleicht
 neu ab. Rechnet nur lokal, typisch 10–60 s je Nacht.
 Im Dropdown **Analyse → Erneut analysieren** startet die vollständige Erkennung mit aktuellem Code als neuer Lauf

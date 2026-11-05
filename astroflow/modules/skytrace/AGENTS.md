@@ -382,7 +382,10 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
   `accuracy_m`, `sure`, `rms`, `support`, `confidence`, `clock_s`, `nearest_name/km`); liegt er ≤ max(2 km, 2 × Genauigkeit) an einem Listenort →
   `kind='list'` mit `source='global'`. Uhr: |Versatz| ≥ 20 s → `night.clock.proposal` (`source='global'`), sonst wird ein Uhrvorschlag vom bisherigen Ort
   verworfen (`dropped`, Grund „Folge des falschen Orts“). UI `globalHtml`: Koordinaten auf 0,01°, Unsicherheit, Spuren, Sicherheit, Uhr, „Höhe unbekannt“,
-  SVG-Karte `globalMap` relativ zu den Listenorten (keine Kartenkacheln – der Ort verlässt den Rechner nicht). `applyNights` legt „Unbekannter Ort
+  SVG-Karte `globalMap` relativ zu den Listenorten; Land/Grenzen aus `/vendor/umrisse-welt.json` (Natural Earth 1:10 Mio., ~1 km, einmal geladen,
+  `outlines`/`hydrateMaps`, nur Ringe im Ausschnitt) – ohne Netz. **„Karte laden“** (`onlineMap`, Wunsch des Nutzers 06.11.2026): Leaflet aus `/vendor/`,
+  Kacheln OpenStreetMap bzw. OpenTopoMap („Gelände“) erst auf Knopfdruck – der Kartendienst sieht den Ausschnitt; „immer laden“ =
+  localStorage `af.skytrace.mapsOnline`. Leaflet-Ebenen haben z-index ≥ 400 → `.stn-leaflet` mit eigenem Stapelkontext (`isolation`). `applyNights` legt „Unbekannter Ort
   (Satelliten <Nacht>)“ an, Hinweis auf Höhe/Namen. Nie automatisch.
 - **Leistung:** IC59 allein 19 s (Stufe ± 60 s: 1 137 Paare, 4 s Rückprojektion), ganze Nacht 06.08. (32 Spuren) 39 s; ± 20 min ~36 s mehr. `MAX_PAIRS` 60 000
   als Notbremse. Bahnen nur lokal (`orbits_cache_only`), keine SATCAT-Abfragen (`satcat_offline`), Anhalten über die Stopp-Datei (`check_stop`).

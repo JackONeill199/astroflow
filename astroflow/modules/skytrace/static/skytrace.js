@@ -1095,24 +1095,109 @@ function clockScanHtml(k, applied) {
 }
 // Ort ohne Vorwissen (engine/global_site.py): Koordinaten nur auf 0,01° (≈ 1 km) zeigen, Karte ohne Kacheln (kein Ort verlässt den Rechner)
 const degText = (v, pos, neg) => `${Math.abs(v).toFixed(2).replace('.', ',')}° ${v >= 0 ? pos : neg}`;
-function globalMap(p, sites = []) {
+// Karte zum Vorschlag: offline Umrisse (Natural Earth, /vendor/umrisse-welt.json), auf Knopfdruck Kartenkacheln (Leaflet + OSM/OpenTopoMap)
+let OUTLINES = null;
+function outlines() {
+  // Ringe: [x0, y0, dx, dy, …] in 1/scale Grad → je Ring Längen/Breiten + Umriss-Rechteck zum schnellen Ausblenden
+  return OUTLINES ||= fetch('/vendor/umrisse-welt.json').then(r => r.ok ? r.json() : null).then(d => d && d.rings.map(r => {
+    const n = r.length / 2, lon = new Float32Array(n), lat = new Float32Array(n);
+    let x = 0, y = 0, a = 180, b = -180, c = 90, e = -90;
+    for (let i = 0; i < n; i++) {
+      x += r[2 * i]; y += r[2 * i + 1]; lon[i] = x / d.scale; lat[i] = y / d.scale;
+      a = Math.min(a, lon[i]); b = Math.max(b, lon[i]); c = Math.min(c, lat[i]); e = Math.max(e, lat[i]);
+    }
+    return { lon, lat, box: [a, b, c, e] };
+  })).catch(() => null);
+}
+function mapView(p, sites) {
   const pts = sites.filter(s => s.lat != null && s.lon != null).map(s => ({ lat: s.lat, lon: s.lon, name: s.name }));
   const all = [...pts, p], lat0 = all.reduce((a, s) => a + s.lat, 0) / all.length, lon0 = all.reduce((a, s) => a + s.lon, 0) / all.length;
-  const xy = (s) => [(s.lon - lon0) * 111.2 * Math.cos(lat0 * Math.PI / 180), (s.lat - lat0) * 111.2];
-  const span = Math.max(50, ...all.map(s => Math.max(...xy(s).map(Math.abs)))) * 1.25;
-  const W = 220, H = 140, k = Math.min(W, H) / 2 / span, X = (s) => W / 2 + xy(s)[0] * k, Y = (s) => H / 2 - xy(s)[1] * k;
-  const bar = [10, 20, 50, 100, 200, 500, 1000].find(v => v * k >= 30) || 1000;
-  return `<svg class="stn-map" viewBox="0 0 ${W} ${H}" role="img" aria-label="Lage des zurückgerechneten Orts zu den Orten der Liste">
-    ${pts.map(s => `<circle cx="${X(s).toFixed(1)}" cy="${Y(s).toFixed(1)}" r="3" class="site"><title>${esc(s.name || 'Ort')}</title></circle>`).join('')}
-    <circle cx="${X(p).toFixed(1)}" cy="${Y(p).toFixed(1)}" r="5" class="found"><title>zurückgerechneter Ort</title></circle>
-    <line x1="8" y1="${H - 8}" x2="${(8 + bar * k).toFixed(1)}" y2="${H - 8}" class="bar"/><text x="8" y="${H - 12}" font-size="9">${bar} km</text></svg>`;
+  const kx = 111.2 * Math.cos(lat0 * Math.PI / 180), xy = (lat, lon) => [(lon - lon0) * kx, (lat - lat0) * 111.2];
+  const span = Math.max(50, ...all.map(s => Math.max(...xy(s.lat, s.lon).map(Math.abs)))) * 1.25;
+  const W = 220, H = 140, k = Math.min(W, H) / 2 / span;
+  const X = (lat, lon) => W / 2 + xy(lat, lon)[0] * k, Y = (lat, lon) => H / 2 - xy(lat, lon)[1] * k;
+  const dlat = H / 2 / k / 111.2, dlon = W / 2 / k / kx;
+  return { pts, W, H, k, X, Y, box: [lon0 - dlon, lon0 + dlon, lat0 - dlat, lat0 + dlat] };
+}
+function globalMap(p, sites = [], night = '') {
+  const v = mapView(p, sites), bar = [10, 20, 50, 100, 200, 500, 1000].find(b => b * v.k >= 30) || 1000;
+  return `<div class="stn-mapbox" data-map-night="${esc(night)}">
+    <svg class="stn-map" viewBox="0 0 ${v.W} ${v.H}" role="img" aria-label="Lage des zurückgerechneten Orts zu den Orten der Liste"><g class="land"></g>
+    ${v.pts.map(s => `<circle cx="${v.X(s.lat, s.lon).toFixed(1)}" cy="${v.Y(s.lat, s.lon).toFixed(1)}" r="3" class="site"><title>${esc(s.name || 'Ort')}</title></circle>`).join('')}
+    <circle cx="${v.X(p.lat, p.lon).toFixed(1)}" cy="${v.Y(p.lat, p.lon).toFixed(1)}" r="5" class="found"><title>zurückgerechneter Ort</title></circle>
+    <line x1="8" y1="${v.H - 8}" x2="${(8 + bar * v.k).toFixed(1)}" y2="${v.H - 8}" class="bar"/><text x="8" y="${v.H - 12}" font-size="9">${bar} km</text></svg>
+    <div class="row stn-maprow"><button class="btn sm" data-map-load title="Lädt Kartenkacheln von OpenStreetMap – der Kartendienst sieht dabei den Kartenausschnitt">${icon('globe')}Karte laden</button>
+      <label class="sm mut" title="Kartenkacheln bei jedem Vorschlag sofort laden"><input type="checkbox" data-map-always${store.get('skytrace.mapsOnline', false) ? ' checked' : ''}> immer laden</label></div></div>`;
+}
+// Umrisse nachzeichnen (ohne Netz) und – falls gewünscht – gleich die Online-Karte
+async function hydrateMaps(root, rows, sites, online) {
+  const boxes = [...root.querySelectorAll('.stn-mapbox')];
+  if (!boxes.length) return;
+  for (const box of boxes) {
+    const n = rows.find(r => r.night === box.dataset.mapNight);
+    if (n && (online.has(n.night) || store.get('skytrace.mapsOnline', false))) onlineMap(box, n.proposal, sites, online, n.night);
+  }
+  const rings = await outlines();
+  if (!rings) return;
+  for (const box of boxes) {
+    const n = rows.find(r => r.night === box.dataset.mapNight), g = box.querySelector('.land');
+    if (!n || !g || !box.isConnected) continue;
+    const v = mapView(n.proposal, sites), [a, b, c, e] = v.box;
+    let d = '';
+    for (const r of rings) {
+      if (r.box[1] < a || r.box[0] > b || r.box[3] < c || r.box[2] > e) continue;
+      for (let i = 0; i < r.lon.length; i++) d += (i ? 'L' : 'M') + v.X(r.lat[i], r.lon[i]).toFixed(1) + ' ' + v.Y(r.lat[i], r.lon[i]).toFixed(1);
+      d += 'Z';
+    }
+    g.innerHTML = d ? `<path d="${d}"/>` : '';
+  }
+}
+let LEAFLET = null;
+function leaflet() {
+  if (LEAFLET) return LEAFLET;
+  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = '/vendor/leaflet.css'; document.head.append(css);
+  return LEAFLET = new Promise((ok, fail) => {
+    const s = document.createElement('script'); s.src = '/vendor/leaflet.js';
+    s.onload = () => ok(window.L); s.onerror = () => { LEAFLET = null; fail(new Error('Leaflet nicht geladen')); };
+    document.head.append(s);
+  });
+}
+const TILES = {
+  osm: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png', '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>-Mitwirkende', 19],
+  topo: ['https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', 'Karte © <a href="https://opentopomap.org" target="_blank" rel="noreferrer">OpenTopoMap</a> (CC-BY-SA), Daten © OpenStreetMap-Mitwirkende', 17],
+};
+async function onlineMap(box, p, sites, online, night) {
+  if (box.querySelector('.stn-leaflet')) return;
+  online.add(night);
+  const host = document.createElement('div'); host.className = 'stn-leaflet';
+  const row = box.querySelector('.stn-maprow');
+  row.innerHTML = `<div class="seg"><button data-tiles="osm" class="on">Straßenkarte</button><button data-tiles="topo">Gelände</button></div>
+    <label class="sm mut" title="Kartenkacheln bei jedem Vorschlag sofort laden"><input type="checkbox" data-map-always${store.get('skytrace.mapsOnline', false) ? ' checked' : ''}> immer laden</label>`;
+  box.querySelector('.stn-map').replaceWith(host);
+  let L;
+  try { L = await leaflet(); } catch (e) { host.textContent = e.message; return; }
+  if (!host.isConnected) return;
+  const map = L.map(host, { attributionControl: true, zoomControl: true, scrollWheelZoom: false });
+  let layer = L.tileLayer(TILES.osm[0], { attribution: TILES.osm[1], maxZoom: TILES.osm[2] }).addTo(map);
+  L.circle([p.lat, p.lon], { radius: Math.max(50, p.accuracy_m || 0), color: '#3b5bff', weight: 1.5, fillOpacity: 0.2 }).addTo(map);
+  L.circleMarker([p.lat, p.lon], { radius: 8, color: '#10162e', weight: 3, fillColor: '#4f6bff', fillOpacity: 1 }).bindTooltip('zurückgerechneter Ort', { permanent: true, direction: 'top', offset: [0, -12] }).addTo(map);
+  const pts = sites.filter(s => s.lat != null && s.lon != null);
+  for (const s of pts) L.circleMarker([s.lat, s.lon], { radius: 4, color: '#fff', weight: 1, fillColor: '#8a94a6', fillOpacity: 1 }).bindTooltip(esc(s.name || 'Ort')).addTo(map);
+  map.setView([p.lat, p.lon], 10);
+  row.onclick = (e) => {
+    const b = e.target.closest('[data-tiles]'); if (!b) return;
+    e.stopPropagation();
+    const t = TILES[b.dataset.tiles]; map.removeLayer(layer);
+    layer = L.tileLayer(t[0], { attribution: t[1], maxZoom: t[2] }).addTo(map);
+    row.querySelectorAll('[data-tiles]').forEach(x => x.classList.toggle('on', x === b));
+  };
 }
 function globalHtml(p, n, sites) {
   const conf = p.confidence == null ? '' : ` · Sicherheit ${p.confidence >= 0.999 ? '> 99,9' : String(Math.round(p.confidence * 1000) / 10).replace('.', ',')} %`;
   return `<b>Unbekannter Ort zurückgerechnet</b>
     <span class="mut sm">≈ ${degText(p.lat, 'N', 'S')} · ${degText(p.lon, 'O', 'W')} (± ${kmText(p.accuracy_m / 1000)})${p.nearest_km != null ? ` · ${kmText(p.nearest_km)} von „${esc(p.nearest_name || 'Ort')}“` : ''}</span>
     <span class="mut sm">ohne Vorwissen aus ${p.support} Spuren · danach ${p.sure} von ${n.tracks} eindeutig · quer ${arcText(p.rms)}${conf}${clockText(p) ? ' · ' + clockText(p) : ''} · Höhe unbekannt (0 m)</span>
-    ${globalMap(p, sites)}`;
+    ${globalMap(p, sites, n.night)}`;
 }
 function nightRow(n, busy = false, clocks = {}, sites = []) {
   let [label, cls] = NIGHT_STATUS[n.status] || [n.status || '–', ''];
@@ -1187,6 +1272,7 @@ async function applyNights(rows) {
 async function nightsView(el) {
   crumbs([['SkyTrace', '#/skytrace'], ['Standorte aller Nächte']]);
   let data = null, job = null, sig = '', show = store.get('skytrace.nightsShow', 'better'), clocks = {}, sites = [];
+  const online = new Set();                                       // Nächte, deren Online-Karte schon geladen wurde
   const has = (n) => n.proposal || n.clock?.proposal;
   el.innerHTML = `<div class="pagehead"><div><h1>Standorte aller Nächte</h1><p class="mut readable">Je Aufnahmenacht prüft SkyTrace die Satellitenspuren aller Beobachtungen dieser Nacht
       gegen jeden Ort der Ortsliste. Passt keiner gut, sucht es mit Spielraum um den besten und rechnet den wahrscheinlichsten Ort zurück. Nur ein Vorschlag –
@@ -1227,9 +1313,15 @@ async function nightsView(el) {
         bei demselben Versatz treffen und das deutlich über dem Zufall liegt.
         Ohne Vorwissen: Passt kein Ort der Liste, rechnet SkyTrace aus jeder Spur und jeder Satellitenbahn die Bodenpunkte zurück, von denen aus der Satellit
         dort zu sehen war, und sucht den Ort, an dem sich Spuren verschiedener Satelliten treffen (Uhr ± 20 min) – vorgeschlagen nur deutlich über dem Zufall.
-        Koordinaten erscheinen gerundet (0,01°); die Karte wird ohne Kartendienst gezeichnet.</p>`;
+        Koordinaten erscheinen gerundet (0,01°). Die Umrisskarte (Natural Earth) entsteht ohne Netz; erst „Karte laden“ holt Kartenkacheln von OpenStreetMap
+        bzw. OpenTopoMap – der Kartendienst sieht dabei den Ausschnitt.</p>`;
+    hydrateMaps(body, list, sites, online);
   }
   body.onclick = async (e) => {
+    const ml = e.target.closest('[data-map-load]');
+    if (ml) { const box = ml.closest('.stn-mapbox'), n = (data.nights || []).find(x => x.night === box.dataset.mapNight); if (n) onlineMap(box, n.proposal, sites, online, n.night); return; }
+    const ma = e.target.closest('[data-map-always]');
+    if (ma) { store.set('skytrace.mapsOnline', ma.checked); if (ma.checked) ma.closest('.stn-mapbox').querySelector('[data-map-load]')?.click(); return; }
     const sh = e.target.closest('[data-show]');
     if (sh) { show = sh.dataset.show; store.set('skytrace.nightsShow', show); draw(); return; }
     const rows = e.target.closest('[data-apply-all]') ? (data.nights || []).filter(n => has(n) && !n.applied)

@@ -12,7 +12,8 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   Listenorte, Standard ± 1500 km). Passt kein Listenort, rechnet SkyTrace aus jeder Spur und jeder Satellitenbahn des lokalen Archivs
   zurück, von welchen Bodenpunkten aus der Satellit genau dort am Himmel stand, sucht den Ort, an dem sich Spuren verschiedener
   Satelliten treffen (Uhrversatz bis ± 20 min gleich mit), und prüft ihn danach streng nach. Vorschlag „Unbekannter Ort
-  zurückgerechnet“ mit gerundeten Koordinaten, Unsicherheit, Zahl der Spuren und kleiner Karte (ohne Kartendienst); nur deutlich über
+  zurückgerechnet“ mit gerundeten Koordinaten, Unsicherheit, Zahl der Spuren und Umrisskarte (Küsten, Ländergrenzen – ohne Netz);
+  **Karte laden** zeigt auf Knopfdruck eine genaue Straßen- oder Geländekarte (OpenStreetMap/OpenTopoMap); nur deutlich über
   dem Zufall. Liegt der Ort ≤ 2 km neben einem Listenort, wird dieser vorgeschlagen. „Übernehmen“ legt Ort und Zuordnung der Nacht an
   und gleicht neu ab – nie automatisch. Ergibt der neue Ort, dass die Uhr richtig ging, entfällt ein am falschen Ort gefundener Uhrversatz.
 - Geprüft an einer echten Urlaubswoche (Ort rund 250 km neben jedem Listenort): Ort in 3 von 4 Nächten auf 0,1–0,7 km gefunden,
