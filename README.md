@@ -1,155 +1,102 @@
 # AstroFlow
 
-**Deine Astrofotografie, lokal und an einem Ort.** Rohbilder werden zu fertigen Astrofotos, Bildfolgen zu Entdeckungen,
-Himmelsobjekte zu Geschichten – im Browser, auf deinem Rechner oder NAS, ohne Konto und ohne Cloud-Zwang.
+**Lokale Astro-Plattform im Browser:** Rohbilder werden zu fertigen Astrofotos, Bildfolgen werden auf bewegte Objekte untersucht,
+fotografierte Himmelsobjekte bekommen einen Enzyklopädie-Eintrag. Läuft auf deinem Rechner oder NAS, ohne Konto.
 
 ![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Web--UI-009688?logo=fastapi&logoColor=white)
 ![Lizenz MIT](https://img.shields.io/badge/Lizenz-MIT-green)
-![Lokal](https://img.shields.io/badge/Daten-bleiben%20lokal-6f42c1)
 
-![AstroFlow – Übersicht mit allen Modulen](docs/screenshots/uebersicht.jpg)
+![AstroFlow – Übersicht](docs/screenshots/uebersicht.webp)
+
+*Alle Bilder in dieser README stammen aus einer Demo-Instanz mit synthetischen Daten (`python -m astroflow demo`, Test-Fixtures); Orte und Namen sind erfunden.*
+
+## Was ist AstroFlow?
+
+Eine lokale Anwendung (Python/FastAPI, Oberfläche als Web-App ohne Build-Schritt) für Smart-Teleskope (Seestar, Vespera, Stellina) und
+klassische Astrokameras. Sie besteht aus drei Modulen mit gemeinsamer Oberfläche:
 
 | Modul | Was es tut |
 |---|---|
-| **Bilder** | FITS-Aufnahmen (Seestar, Stellina, Vespera, Astrokameras) automatisch sortieren, kalibrieren, stacken und entwickeln – inklusive Nachstacken neuer Nächte |
-| **SkyTrace** | Bildfolgen sternregistriert auf Lichtspuren und bewegte Objekte untersuchen; Kandidaten mit Zeitreihen, Messdetails und Abgleich gegen Satelliten-, Meteor-, Asteroiden- und Flugkataloge zur echten Aufnahmezeit |
-| **Sage** | Lebende Astronomie-Enzyklopädie: Objekte im Bild bestimmen, aus Fachkatalogen recherchieren (mit Quellen), Zusammenhänge zwischen deinen Aufnahmen entdecken, Geschichten erzählen und vorlesen lassen; Sammlung mit Erfolgen |
+| **Bilder** | FITS-Aufnahmen automatisch sortieren, kalibrieren, stacken und entwickeln; neue Nächte werden nachgestackt. Dazu Bild-Tutor, Tiefe und Vergleich, Himmelsqualität, „Heute Nacht“-Empfehlungen, Kometenmodus |
+| **SkyTrace** | Bildfolgen sternregistriert auf Lichtspuren und bewegte Objekte untersuchen; Abgleich mit Satelliten-, Meteor-, Asteroiden- und Flugkatalogen zur Aufnahmezeit, 3D-Ansicht, Erfolge |
+| **Sage** | Lebende Astronomie-Enzyklopädie: Objekte im Bild bestimmen, aus Fachkatalogen recherchieren (mit Quellen), Zusammenhänge zwischen deinen Aufnahmen finden, Geschichten erzählen und vorlesen lassen, Sammlung mit Erfolgen |
 
-Alle Module teilen sich eine Oberfläche im Stil einer Desktop-Anwendung: Werkzeugleiste mit Suche, Import und laufenden Aufträgen, Seitenleiste mit
-Arbeitsbereichen (Übersicht, Bilder, SkyTrace, Sage) und Bibliothek (Galerie, Sammlung), ein Kontextpanel mit Details zur Auswahl, gemeinsame Aufträge aller Module, eine Einstellungsseite, Befehlspalette (Strg+K)
-und Drag & Drop überall (FITS → Rohdaten-Pipeline, JPG/PNG/TIFF → fertige Bilder in der Galerie). Aus einem fertigen Bild der Galerie erzählt Sage mit einem Klick die Geschichte
-(„Mehr → Geschichte erzählen“) – die Objekte kommen dabei aus der Plate-Solving-Lösung des Stacks.
+Die Module sind unter Einstellungen → Module & System einzeln abschaltbar. Alles läuft lokal; was optional ins Netz geht, steht unter [Datenschutz](#datenschutz-und-lokaler-betrieb).
 
-**Inhalt:** [Rundgang](#rundgang) · [Was automatisch passiert](#modul-bilder--was-automatisch-passiert) · [Schnellstart](#schnellstart) ·
-[KI-Bildprüfer](#ki-bildprüfer-lm-studio--openrouter) · [Plate-Solving](#plate-solving) · [Web-App](#web-app) · [SkyTrace](#skytrace) · [Sage](#sage) ·
-[Architektur](#architektur) · [Grenzen](#grenzen)
+## Highlights
 
-## Rundgang
+### Vom Rohbild zum fertigen Foto
 
-### Heute Nacht – passende Aufnahmeziele
+![Galerie](docs/screenshots/galerie.webp)
 
-Die Übersicht empfiehlt bis zu sechs heute noch gut sichtbare Ziele: **neue Objekte** aus Messier (110), Caldwell (109)
-und – falls ASTAPs `deep_sky.csv` vorhanden ist – weiteren auffälligen Katalogobjekten (passend zu Helligkeitsgrenze deines
-Geräts und Bildfeld) und **eigene Aufnahmen, denen mehr Belichtungszeit** hilft („bisher 37 min, heute bis zu 5 h → Rauschen
-etwa −67 %“). Die Rangfolge zählt nur dunkle, mondarme (und bei Vorhersage klare) Stunden und wertet Zenitnähe bei Alt-Az-Geräten ab.
-Hinweise „Letzte Gelegenheit bis zum Frühjahr“ und „Bald gut sichtbar“ zeigen die Saison; ein Nachtplan teilt die Nacht
-in Abschnitte, weil ein Smart-Teleskop nur ein Ziel gleichzeitig aufnimmt. „Nicht interessiert“ blendet ein Ziel aus
-(lokal im Browser). Die Grafik zeigt
-Höhenverläufe, Dämmerung, dunkle Zeit, Mond und die Mindesthöhe von 30°. Links führen zum eigenen Bild bzw. zum
-Sage-Eintrag; ohne Sage erscheint eine lokale Katalogkarte.
-
-Mit Maus, Touch oder Zeitregler lassen sich die Höhen zu einer Uhrzeit ablesen. Die Zielnamen wählen eine Kurve aus,
-die Kontrollkästchen blenden einzelne Kurven aus. „Objekt öffnen“ führt zur Aufnahme bzw. zum Sage-Eintrag;
-die Begründung ist beim ausgewählten Ziel aufklappbar. Auf Desktopbreite stehen Bilder, SkyTrace und Sage kompakt
-neben der größeren Grafik. Unter **Ansicht** wählst du „Ausgewogen“, „Nachtplanung“ oder „Bilder & Module“;
-AstroFlow merkt sich die Aufteilung auf diesem Gerät. Auf großen Bildschirmen stehen SkyTrace und Sage nebeneinander
-unter den Bildvorschauen. Bildfeld und technische Angaben findest du unter „Berechnung & Bildfeld“.
-
-Zuerst unter **Einstellungen → Standorte** den Beobachtungsort eintragen; „Heute bin ich in …“ oben in der Ansicht wechselt den Ort für diese Nacht. AstroFlow nutzt das zuletzt
-verwendete Gerät: bekanntes Bildfeld aus Plate-Solving, bei Stellina ersatzweise einen Näherungswert. Bei unbekanntem
-Bildfeld wird die Objektgröße nicht gefiltert. „Heute Nacht“ öffnet Details und, bei aktivierter Wetterfreigabe im
-Bild-Tutor, eine Open-Meteo-Vorhersage mit auf 0,1° gerundetem Standort. Die Himmelsberechnung läuft offline.
-
-Alle Bilder stammen aus einer echten Instanz: rund 22 000 Stellina-Aufnahmen aus 31 Nächten, 63 Objekte – ohne Nachbearbeitung in anderer Software.
-
-### Himmelsqualität – wie dunkel ist dein Himmel?
-
-Unter **Übersicht → Himmelsqualität** misst AstroFlow aus deinen eigenen Aufnahmen, wie hell der Nachthimmel an deinen
-Standorten ist – ein „Sky Quality Meter ohne Gerät“: Der Hintergrund jeder Einzelaufnahme wird an Sternen mit bekannter
-Helligkeit (Gaia) geeicht und in **mag/″²** angegeben (größer = dunkler; Stadt ≈ 18, Vorort 19–20, Land ≈ 21), dazu eine
-**Bortle-Schätzung** mit Spanne, die **Bildschärfe** (Sternscheibchen in Bogensekunden – bei Smart-Teleskopen Luftunruhe,
-Optik, Fokus und Nachführung zusammen) und die **Richtung der Lichtverschmutzung** als Windrose. Als Wert des Ortes zählen nur
-dunkle, mondlose, dunstfreie Aufnahmen über 30° Höhe; die Objektseite zeigt den Verlauf jeder Aufnahmenacht.
-„Für alle Nächte berechnen“ wertet ältere Objekte ohne Rohbilder aus. Ohne Dark-Frames bestimmt AstroFlow den Himmel aus dem
-Photonenrauschen (bisher für Stellina vermessen); die Genauigkeit liegt bei etwa ±0,2–0,4 mag.
-
-### Bilder – vom Rohbild zum fertigen Foto
-
-![Galerie aller Objekte](docs/screenshots/galerie.jpg)
-**Galerie:** Jedes Objekt erscheint automatisch, sobald seine Rohbilder im Eingangsordner liegen – Objekt, Kamera und Nacht erkennt AstroFlow selbst
-(Header, Ordnername oder Plate-Solving). Neue Nächte werden nachgestackt; jede Verarbeitung bleibt als Version erhalten.
+Jedes Objekt erscheint automatisch, sobald seine Rohbilder im Eingangsordner liegen – Objekt, Kamera und Nacht erkennt AstroFlow aus
+Header, Ordnername oder Plate-Solving. Neue Nächte werden nachgestackt, jede Verarbeitung bleibt als Version erhalten.
 
 | | |
 |---|---|
-| ![Objektseite mit Bild-Tutor](docs/screenshots/objekt.jpg) | ![Vorher-Nachher-Vergleich](docs/screenshots/vorher-nachher.jpg) |
-| **Objektseite & Bild-Tutor:** Zoom-Betrachter, technische Bildprüfung mit Punktzahl und verständlichen Befunden – dazu die Bedingungen jeder Aufnahmenacht (Dämmerung, Mond, Objekthöhe, Wolken, Taupunkt, Wind). | **Vorher/Nachher:** links der unbearbeitete lineare Master-Stack, rechts das automatisch entwickelte Bild (Gradienten, Gaia-Farbkalibrierung, optional GraXpert und StarNet). |
-| ![Qualität je Aufnahme](docs/screenshots/aufnahmen.jpg) | ![Beobachtungsstatistik](docs/screenshots/statistik.jpg) |
-| **Aufnahmen:** Sternzahl und Schärfe jeder Einzelaufnahme über alle Nächte; Ausreißer (Wolken, Unschärfe, Nachführfehler) werden verworfen, einzelne Aufnahmen lassen sich ein- und ausschließen. | **Statistik:** wann du den Himmel aufgenommen hast – Monate, Wochentage, Uhrzeiten, Gesamtbelichtung. |
+| ![Objektseite](docs/screenshots/objekt.webp) | ![Vorher/Nachher](docs/screenshots/vorher-nachher.webp) |
+| **Objektseite:** Zoom-Betrachter, Kennzahlen, Details. Beim Stacken und Entwickeln zeigt die **Live-Ansicht** echte Zwischenvorschauen mit dem aktiven Schritt; der **Stacking-Verlauf** zeigt, was 1, 3, 10, 30, 100 … Aufnahmen ausmachen. | **Vorher/Nachher:** links der unbearbeitete lineare Master-Stack, rechts das entwickelte Bild (Gradienten, Farbkalibrierung, optional GraXpert und StarNet). |
 
-![Import](docs/screenshots/import.jpg)
-**Import:** Dateien oder ganze Ordner per Drag & Drop, FITS und fertige JPG/PNG/TIFF gemischt. „Hauptordner durchsuchen“ findet auf einer ganzen
-Teleskop-Festplatte, was noch nicht (fertig) gestackt ist – die Quelldateien bleiben unverändert am Ort und werden nicht kopiert
-(auch nicht von einer anderen Platte; zum Stacken neuer Aufnahmen muss sie angeschlossen sein). Im Ordnerdialog findet das Suchfeld
-Ordner nach Objektnamen, auch in Unterordnern („NGC 4395“ = „ngc4395“ = „NGC_4395“).
+### Was dein Bild zeigt
+
+![Analyse: Wie tief schaust du?](docs/screenshots/analyse-tiefe.webp)
+
+Der Reiter **Analyse** misst aus dem plate-gelösten Bild die Grenzgröße, die erfassten Sterne je Helligkeit, den nächsten und fernsten Stern
+(Gaia-Parallaxen) und die fernsten sichtbaren Galaxien und Quasare (SIMBAD-Rotverschiebung, Lichtlaufzeit) – als Kennzahlen, Markierungen im
+Bild und als **3D-Ansicht** direkt im Betrachter. Der **Vergleich** blinkt das Bild gegen eine frühere eigene Aufnahme oder die
+DSS2-Durchmusterung; auffällige Stellen werden mit SIMBAD und JPL-Kleinkörpern abgeglichen – als Hinweis, nicht als Entdeckung.
+Dazu kommen die **Himmelsqualität der Aufnahmenacht** und der **Bild-Tutor** (Befunde mit Tipps passend zum Gerät, Bedingungen der Nacht).
+(Das Bild oben zeigt ein synthetisches Sternfeld mit Gaia-/SIMBAD-Attrappen.)
+
+### Heute Nacht und Himmelsqualität
+
+| | |
+|---|---|
+| ![Heute Nacht](docs/screenshots/heute-nacht.webp) | ![Himmelsqualität](docs/screenshots/himmel.webp) |
+| **Heute Nacht:** bis zu sechs heute gut sichtbare Ziele – neue Objekte aus Messier und Caldwell (und weiteren Katalogobjekten, wenn ASTAPs `deep_sky.csv` vorhanden ist) sowie eigene Aufnahmen, denen mehr Belichtung nützt. Höhenverläufe, Dämmerung, Mond, Nachtplan, optional Wettervorhersage. | **Himmelsqualität:** aus deinen eigenen Aufnahmen gemessen (an Gaia-Sternen geeicht): mag/″², Bortle-Schätzung mit Spanne, Bildschärfe (Seeing) und die Richtung der Lichtverschmutzung als Windrose, je Standort. |
+
+### Standorte nach Datum
+
+Das Teleskop steht nicht immer am selben Ort: Unter Einstellungen → Standorte legst du Orte mit Zeiträumen an („vom … bis …“, einzelne Nächte,
+Standard-Ort). Der Ort einer Aufnahme ergibt sich aus FITS-Kopf → Zeitraum → Standard; „Heute bin ich in …“ wechselt ihn für die aktuelle Nacht.
+Er fließt in Tutor, Heute Nacht, Himmelsqualität und SkyTrace ein.
 
 ### SkyTrace – was sich zwischen den Sternen bewegt
 
-| | |
-|---|---|
-| ![SkyTrace-Vorschau mit Spuren und Katalogobjekten](docs/screenshots/skytrace-vorschau.jpg) | ![SkyTrace-Kandidaten](docs/screenshots/skytrace-kandidaten.jpg) |
-| **Analyse einer Bildfolge:** Spuren mit gemessener Winkelgeschwindigkeit, Satellitenprognose zur Aufnahmezeit und Galaxien aus dem Katalog als Overlay; dazu ein Ereignisvideo. | **Kandidaten:** jede Spur mit Ausschnitt, Zeitpunkt und Einordnung (Satellit, Meteor, Flugzeug …) – ein Kandidat bleibt ein Hinweis, kein bestätigtes Objekt. |
+![SkyTrace 3D](docs/screenshots/skytrace-3d.webp)
 
-### Sage – die lebende Enzyklopädie deines Himmels
-
-![Sage-Enzyklopädie](docs/screenshots/sage-enzyklopaedie.jpg)
-**Enzyklopädie:** Jedes fotografierte Objekt bekommt einen Eintrag – mit deinem eigenen Bild, Katalogdaten und deinen Beobachtungen.
+Spuren in Bildfolgen werden als **Kandidaten** mit Ausschnitt, Zeitreihe und Messdetails erfasst und mit Satelliten (gespeicherte historische
+Bahndaten), Meteoren und Flugzeugen zur echten Aufnahmezeit abgeglichen. Die **3D-Ansicht** zeigt die Erde zur Aufnahmezeit mit Standort,
+Teleskop-Blickfeld und den zugeordneten Bahnen. Ein Kandidat ist ein Hinweis, kein bestätigtes Objekt.
 
 | | |
 |---|---|
-| ![Objektartikel](docs/screenshots/sage-artikel.jpg) | ![Bild bestimmen und Geschichte](docs/screenshots/sage-geschichte.jpg) |
-| **Artikel:** Entfernung, Größe, Helligkeit, Position am Himmel, Forschung & Quellen, persönliche Daten und Zusammenhänge zu anderen Objekten. | **Bild bestimmen & erzählen:** Sage markiert alle Objekte im Bildfeld und erzählt ihre Geschichte – auf Wunsch vorgelesen, auch komplett lokal. |
-| ![Meine Entdeckungen](docs/screenshots/sage-entdeckungen.jpg) | ![Sammlung und Erfolge](docs/screenshots/sage-sammlung.jpg) |
-| **Entdeckungen:** Sage forscht im Hintergrund weiter – neue Fachartikel zu deinen Objekten, weitere Galaxien in deinen Bildfeldern, räumliche Nachbarn. Jede Aussage mit Begründung. | **Sammlung & Erfolge:** Messier-Fortschritt, Meilensteine und Erfolge für jedes neu bestimmte Objekt. |
+| ![SkyTrace-Erfolge](docs/screenshots/skytrace-erfolge.webp) | Weitere Funktionen: **Standort der Nacht prüfen** / **Standorte für alle Nächte suchen** (Rückrechnung aus Satellitenspuren), **Uhrversatz suchen** (Kamera-Uhr bis ± 20 min), **Satelliten neu abgleichen** nach Orts-Änderungen, **Erneut analysieren** aus den bisherigen Aufnahmen, **Erfolge** mit Meilensteinen, Statistik. Vorgeschlagene Orte und Uhrkorrekturen werden nie automatisch übernommen. |
 
-### Bedienung
+### Sage – die lebende Enzyklopädie
 
 | | |
 |---|---|
-| ![Befehlspalette](docs/screenshots/befehlspalette.jpg) | ![Einstellungen](docs/screenshots/einstellungen.jpg) |
-| **Befehlspalette (Strg+K):** Objekte, Analysen und Aktionen aller Module mit einer Suche. | **Einstellungen:** je Modul an einem Ort – Bild-Tutor, StarNet, GraXpert, Plate-Solving, KI-Anbieter, Speicher, Module ein/aus. |
+| ![Sage-Enzyklopädie](docs/screenshots/sage-enzyklopaedie.webp) | ![Sammlung und Erfolge](docs/screenshots/sage-sammlung.webp) |
+| **Enzyklopädie:** jedes fotografierte Objekt bekommt einen Eintrag mit deinem Bild, Katalogdaten und Beobachtungen. Recherche aus Fachkatalogen (SIMBAD) und arXiv; jede Aussage hat eine Quelle oder ist als KI-Vorschlag gekennzeichnet. | **Sammlung & Erfolge:** Messier-Fortschritt, Meilensteine und animierte Erfolge für jedes neu bestimmte Objekt. |
 
-## Modul Bilder – was automatisch passiert
+Dazu: **Bild bestimmen** (Objekte im Bildfeld markieren), **Geschichte erzählen** und auf Wunsch vorlesen, **Meine Entdeckungen** und **Wissensnetz**.
+Im Hintergrund sucht Sage nach neuen Arbeiten und weiteren Objekten in deinen Bildfeldern. Gestackte Aufnahmen landen auf Wunsch automatisch in
+Sage und SkyTrace.
 
-| Schritt | Umsetzung |
-|---|---|
-| Erkennung & Gruppierung | Objekt aus Header (`OBJECT`, `RA/DEC`) oder Ordnername (Stellina `…_observation_M57`) → eingebauter Katalog (Messier, NGC/IC, …); Gruppierung nach Objekt + Kamera, Sessions nach Nacht; doppelt vorhandene Dateien (z. B. erneut hochgeladen) werden erkannt und nur einmal gestackt |
-| Plate-Solving | Fehlen Objektname und Koordinaten, wird die Himmelsposition aus dem Sternmuster bestimmt (ASTAP, lokales astrometry.net oder optional nova.astrometry.net) – eine Aufnahme je Ordner/Nacht, Ergebnis gecacht |
-| Mehrfilter (Mono-Kamera) | Filter aus `FILTER`-Header (L, R, G, B, Hα, OIII, SII); je Filter eigene Auswahl und eigener Stack auf gemeinsamer Referenz; automatische Kombination zu **RGB, LRGB, RGB+Hα, HOO, SHO** oder Mono |
-| Kalibrierung | Master-Dark/Bias/Flat aus Kalibrierframes (auch Dark-Skalierung), passend nach Größe/Gain/Belichtung/Filter/Nacht; automatische Hotpixel-Korrektur (auch ohne Darks) |
-| Sensorglühen | Ohne Darks misst AstroFlow das ortsfeste Randglühen des Sensors aus den Aufnahmen selbst und zieht es vor dem Ausrichten ab – sonst verschmiert es bei Alt-Az-Geräten (Stellina, Seestar) durch die Feldrotation zu Schlieren. Je Teleskop entsteht ein Glüh-Datensatz, der mit jeder Nacht genauer wird und auch nach dem Löschen der Einzelbilder erhalten bleibt |
-| Qualitätsbewertung | Sternzahl, FWHM, Exzentrizität, Hintergrund → Score; Wolken, Unschärfe, Schlieren werden verworfen |
-| Registrierung | Dreiecks-Matching: Verschiebung, Feldrotation (Alt/Az), Meridian-Flip; über mehrere Nächte |
-| Stacking | Gewichtetes Sigma-Clipping (Satelliten/Flugzeuge/Hot-Pixel fliegen raus), Tausende Frames in RAM-sparenden Batches |
-| Grafikkarte (optional) | Mit `pip install pyopencl` laufen Ausrichten und Sigma-Clipping auf der GPU (OpenCL: AMD, NVIDIA, Intel) – Stacking etwa 3× schneller (219 Stellina-Frames: 67 → 22 s). Einstellungen → Bilder → System; ohne GPU rechnet der Prozessor |
-| Kontinuierliche Verbesserung | Stack-Zustand wird gespeichert; neue Aufnahmen werden **nachgestackt**, ohne alles neu zu rechnen |
-| Speicher | Hochgeladene Einzelbilder werden nach erfolgreichem Stacking gelöscht (abschaltbar, `ASTROFLOW_DELETE_UPLOADS=0`); Nachstacken neuer Nächte geht weiter, nur komplettes Neu-Stacken nicht mehr. Eingebundene Ordner werden nie angetastet |
-| Farbe | Fotometrische Farbkalibrierung wie PCC/SPCC: der Stack wird plate-gesolvt, der Weißabgleich richtet sich nach den Gaia-Farben der Sterne im Feld (sonnenähnliche Sterne = weiß). Nur die Feldkoordinaten gehen an einen Gaia-Server (GAVO/ARI Heidelberg, sonst ESA); abschaltbar (`ASTROFLOW_GAIA=0`) |
-| KI-Hintergrund & -Entrauschen | Mit [GraXpert](https://github.com/Steffenhir/GraXpert/releases/latest) (optional, kostenlos): Lichtverschmutzungsverläufe werden per KI entfernt, ohne Nebel abzutragen, und der lineare Stack wird entrauscht. Einstellungen → Bilder → „GraXpert (KI)“; ohne GraXpert Polynom + Wavelets |
-| Sterne | Bei Nebeln mit StarNet2 (optional, Einstellungen → Bilder): Sterne werden vom Nebel getrennt, der Nebel ohne Sterne gestreckt, die Sterne kommen kleiner zurück. Ohne StarNet und bei Galaxien/Haufen ohne Trennung; je Objekt unter Optionen änderbar |
-| Bildbearbeitung | Gradientenentfernung, Farbkalibrierung über Sternfarben, Entfaltung, farberhaltender asinh/MTF-Stretch, Wavelet-Entrauschen, Sternreduktion, lokaler Kontrast, Sättigung, bei Nebeln Endbearbeitung (Strukturen anheben, Vibrance) – **profilabhängig** (Galaxie, Emissions-/Reflexionsnebel, Planetarischer Nebel, Haufen, …) |
-| Bild-Tutor | Erklärt Auffälligkeiten (auch Farbverläufe im Himmel) mit Tipps passend zum Gerät (Stellina, Vespera, Seestar …) und bewertet die Aufnahmenacht: Dämmerung, Mond, Objekthöhe, Wolken, Tau, Wind, Frost (Wetter optional über Open-Meteo). Auf Knopfdruck ergänzt ein Vision-LLM, was es im Bild sieht. Einstellungen → Bilder → „Bild-Tutor“ (Einsteiger/Erfahren), Ort: Einstellungen → Standorte |
-| Was dein Bild zeigt | **„Wie tief schaust du?“:** Grenzgröße, erfasste Sterne je Helligkeit, nächster/fernster Stern (Gaia-Parallaxen), Entfernung des Hauptobjekts und die fernsten sichtbaren Galaxien und Quasare (SIMBAD-Rotverschiebung, Lichtlaufzeit) – als Kennzahlen, Markierungen im Bild und 3D-Tunnel. **Veränderungen:** Vergleich mit einer früheren eigenen Aufnahme oder der Durchmusterung DSS2 mit Blink-Ansicht; auffällige Stellen werden mit SIMBAD und JPL-Kleinkörpern abgeglichen – als Hinweis, nicht als Entdeckung. Einstellungen → Bilder → „Was dein Bild zeigt“ |
-| Kometenmodus | Kometen (Name wie `C/2022 E3`, `12P`, Ordner `…_observation_C_2022_E3`, „Komet“) bekommen zwei Stacks: auf die Sterne und auf den Kometenkern. Das Ergebnis setzt scharfe Sterne und scharfen Kometen zusammen, beide Einzelstacks bleiben ansehbar. Die Bahn kommt aus der JPL-Horizons-Ephemeride (mit Plate-Solving; nur die Bezeichnung und der Zeitraum gehen an JPL, `ASTROFLOW_HORIZONS=0` schaltet ab) oder wird im Bild gemessen |
-| KI-Bildprüfung (optional) | Vision-LLM prüft das Ergebnis und korrigiert Parameter, bis es passt |
-| Ausgabe | TIFF 16-bit, PNG, JPEG, linearer FITS-Stack; Verlauf aller Versionen |
+### Auch am Handy
 
-## Schnellstart
+<img src="docs/screenshots/handy.webp" alt="AstroFlow am Handy" width="280">
 
-### Docker
+Die Oberfläche ist als Web-App für Desktop und Smartphone gebaut. Im Heimnetz erreichst du sie vom Handy (siehe [Heimnetz](#heimnetz)).
 
-1. In `docker-compose.yml` den Pfad zu deinen FITS-Dateien eintragen.
-2. `docker compose up -d --build`
-3. Browser: <http://localhost:8080>
+## Installation und Start
 
 ### Windows: Doppelklick
 
-`Start.bat` startet AstroFlow im Hintergrund (Port 8766, Daten in `data/`, Protokoll `data/server.log.err`) und öffnet den Browser;
-läuft es schon, wird nur der Browser geöffnet. `Stop.bat` beendet den Server. Anpassbar über `ASTROFLOW_PORT` und `ASTROFLOW_DATA`.
-**Im Heimnetz nutzen:** Der Server lauscht auf allen Netzwerkkarten; `Start.bat` zeigt die Adresse für andere Geräte an (z. B. `http://192.168.…:8766`).
-Einmalig `Netzwerk-freigeben.bat` ausführen (fragt nach Administratorrechten): legt die Firewall-Regel „AstroFlow LAN“ an – nur privates Netzwerkprofil,
-nur Geräte im eigenen Subnetz, keine Freigabe ins Internet. Es gibt kein Passwort; jedes Gerät im Heimnetz kann AstroFlow bedienen.
-Rückgängig: `Netzwerk-freigeben.bat entfernen`.
+`Start.bat` startet AstroFlow im Hintergrund (Port 8766, Daten in `data/`, Protokoll `data/server.log.err`) und öffnet den Browser; läuft es
+schon, wird nur der Browser geöffnet. `Stop.bat` beendet den Server. Anpassbar über `ASTROFLOW_PORT` und `ASTROFLOW_DATA`.
 
 ### Ohne Docker
 
@@ -164,13 +111,76 @@ python -m astroflow process         # oder: alles direkt per CLI verarbeiten
 Ordner: `data/input` (Rohdaten, rekursiv gescannt; `ASTROFLOW_INPUT` ändert das), `data/output` (Ergebnisse), `data/work` (Zwischenstände).
 Dark-/Flat-/Bias-Frames werden am Header (`IMAGETYP`) oder an Ordner-/Dateinamen (`darks/`, `Flat_…`) erkannt.
 
-## KI-Bildprüfer (LM Studio / OpenRouter)
+### Docker
 
-Ein Vision-Modell bekommt eine Vorschau des fertigen Bildes und die aktuellen Parameter und beantwortet:
-*„Sieht das so aus, wie es aussehen sollte?“* (Hintergrund, Farbstich, Sterne, Rauschen/Plastik-Look, Artefakte).
-Bei Beanstandung liefert es konkrete Parameterkorrekturen (z. B. `target_bg`, `denoise`, `saturation`); AstroFlow
-rendert neu und prüft erneut (bis `ASTROFLOW_REVIEW_ROUNDS`, Standard 3). Fällt der Prüfer aus, bleibt das letzte Bild gültig.
-Das Modell darf nur eine feste Liste von Parametern in begrenzten Bereichen ändern – es führt keinen Code aus.
+1. In `docker-compose.yml` den Pfad zu deinen FITS-Dateien eintragen.
+2. `docker compose up -d --build`
+3. Browser: <http://localhost:8080>
+
+Das Image enthält ASTAP mit Sterndatenbank D05 (`--build-arg ASTAP_DB=d50` für kleine Bildfelder < 0,6°) und optional die SkyTrace-Engine
+(`--build-arg SKYTRACE=1`). GraXpert und StarNet sind nicht im Image.
+
+### Heimnetz
+
+Der Server lauscht auf allen Netzwerkkarten; `Start.bat` zeigt die Adresse für andere Geräte an. Einmalig `Netzwerk-freigeben.bat` ausführen
+(fragt nach Administratorrechten): legt die Firewall-Regel „AstroFlow LAN“ an – nur privates Netzwerkprofil, nur Geräte im eigenen Subnetz, keine
+Freigabe ins Internet. **Es gibt kein Passwort; jedes Gerät im Heimnetz kann AstroFlow bedienen.** Rückgängig: `Netzwerk-freigeben.bat entfernen`.
+
+## Optionale Werkzeuge
+
+AstroFlow läuft ohne diese Programme; sie verbessern oder erweitern einzelne Funktionen.
+
+| Werkzeug | Wofür | Einrichtung |
+|---|---|---|
+| [ASTAP](https://www.hnsky.org/astap.htm) (ab 2023) + Sterndatenbank D05/D20/D50 | Plate-Solving ohne Koordinaten im Header, Objektnamen gelöster Felder (`deep_sky.csv`), Gaia-Farbkalibrierung, Tiefenanalyse | Wird im ASTAP-Programmordner bzw. unter Windows in `%LOCALAPPDATA%\astap` automatisch gesucht; sonst Einstellungen → Bilder → Plate-Solving. Alternativen: lokales astrometry.net, nova.astrometry.net (nur auf ausdrückliche Wahl) |
+| [GraXpert](https://github.com/Steffenhir/GraXpert/releases/latest) | KI-Hintergrundextraktion und KI-Entrauschen des linearen Stacks | Installieren; Suche in Programmordnern/PATH, Pfad und Modus unter Einstellungen → Bilder → „GraXpert (KI)“. Ohne GraXpert: Polynom + Wavelets |
+| StarNet2 | Sterntrennung bei Nebeln (Nebel ohne Sterne strecken, Sterne kleiner zurück) | Einstellungen → Bilder → StarNet: ZIP installieren oder Pfad setzen. Ohne StarNet keine Sterntrennung bei Nebeln. (Kein automatischer Download, siehe Lizenz von StarNet) |
+| `pyopencl` (GPU) | Ausrichten und Sigma-Clipping auf der Grafikkarte (OpenCL), Stacking etwa 3× schneller (gemessen: 219 Stellina-Frames 67 → 22 s) | `pip install pyopencl`; Einstellungen → Bilder → System. Ohne GPU rechnet der Prozessor |
+| SkyTrace-Engine (OpenCV, PyTorch/YOLO, PyAV, Skyfield …) | Spurenanalyse in SkyTrace | `pip install -r astroflow/modules/skytrace/requirements.txt` oder unter Einstellungen → SkyTrace den Python-Interpreter einer bestehenden SkyTrace-Installation wählen. Ohne Engine startet AstroFlow trotzdem; vorhandene Ergebnisse bleiben ansehbar |
+| Vision-LLM (LM Studio, OpenRouter) | optionaler KI-Bildprüfer und KI-Ergänzung im Tutor | siehe [KI-Bildprüfer](#ki-bildprüfer-optional) |
+| KI/Sprache für Sage (OpenAI, OpenRouter, LM Studio, Qwen3-TTS, ElevenLabs) | Geschichten schreiben und vorlesen | Einstellungen → Sage |
+
+## Bedienung in Kürze
+
+1. **Importieren:** Dateien oder ganze Ordner irgendwo auf die Seite ziehen (oder „Importieren“). FITS werden als Rohaufnahmen verarbeitet, JPG/PNG/TIFF
+   als fertige Bilder in die Galerie übernommen. Alternativ legst du FITS-Dateien in `data/input`.
+2. **Hauptordner durchsuchen:** Import → „Hauptordner durchsuchen“ → Ordner wählen (Ordnerdialog mit Suche, auch in Unterordnern). AstroFlow findet auf einer
+   ganzen Teleskop-Festplatte, was noch nicht (fertig) gestackt ist. Quelldateien bleiben unverändert am Ort und werden nicht kopiert (zum Stacken neuer
+   Aufnahmen muss die Platte angeschlossen sein).
+3. **Orte eintragen:** Einstellungen → Standorte (für Tutor, Heute Nacht, Himmelsqualität, SkyTrace).
+4. **Warten:** Die Pipeline läuft automatisch; Aufträge aller Module stehen unter „Aufträge“, die Live-Ansicht im Bild-Tab zeigt den Fortschritt.
+5. **Verfeinern:** Pro Objekt unter „Optionen“ Profil, Farbpalette, Bildauswahl, Auflösung, Schmalband, KI-Prüfung; „Mehr → Neu entwickeln“ rechnet nur die
+   Entwicklung neu, einzelne Aufnahmen lassen sich ein-/ausschließen.
+
+Befehlspalette **Strg+K** (Objekte und Aktionen aller Module), Tastenkürzel `/` Suche, `1–4` Reiter, `F` Vollbild, `B` Vorher/Nachher.
+
+## Modul Bilder – was automatisch passiert
+
+<details>
+<summary>Pipeline im Detail (aufklappen)</summary>
+
+| Schritt | Umsetzung |
+|---|---|
+| Erkennung & Gruppierung | Objekt aus Header (`OBJECT`, `RA/DEC`) oder Ordnername (Stellina `…_observation_M57`) → eingebauter Katalog (Messier, NGC/IC, …); Gruppierung nach Objekt + Kamera, Sessions nach Nacht; doppelte Dateien werden erkannt und nur einmal gestackt; fertige Integrationen anderer Software werden nicht erneut gestackt |
+| Plate-Solving | Fehlen Objektname und Koordinaten, wird die Himmelsposition aus dem Sternmuster bestimmt (eine Aufnahme je Ordner/Nacht, Ergebnis gecacht); auf der Objektseite „Jetzt bestimmen“ |
+| Mehrfilter (Mono) | Filter aus `FILTER`-Header (L, R, G, B, Hα, OIII, SII); je Filter eigene Auswahl und eigener Stack auf gemeinsamer Referenz; Kombination zu RGB, LRGB, RGB+Hα, HOO, SHO oder Mono |
+| Kalibrierung | Master-Dark/Bias/Flat passend nach Größe/Gain/Belichtung/Filter/Nacht; automatische Hotpixel-Korrektur (auch ohne Darks) und eine Karte ortsfester Sensorfehler aus den eigenen Aufnahmen |
+| Sensorglühen | Ohne Darks wird ortsfestes Randglühen aus den Aufnahmen gemessen und vor dem Ausrichten abgezogen (sonst Schlieren durch Feldrotation bei Alt-Az-Geräten) |
+| Qualität & Auswahl | Sternzahl, FWHM, Exzentrizität, Hintergrund → Score; Wolken, Unschärfe, Nachführfehler werden verworfen |
+| Registrierung & Stacking | Dreiecks-Matching (Verschiebung, Feldrotation, Meridian-Flip, mehrere Nächte); gewichtetes Sigma-Clipping; inkrementell, Stack-Zustand wird gespeichert, neue Aufnahmen werden nachgestackt |
+| Farbe | Fotometrische Farbkalibrierung über Gaia-Sternfarben (nur Feldkoordinaten gehen an einen Gaia-Server; abschaltbar) |
+| Entwicklung | Gradientenentfernung, Entfaltung, Stretch, Wavelet-Entrauschen, Sternreduktion, Kontrast, Sättigung – profilabhängig (Galaxie, Nebel, Planetarischer Nebel, Haufen …); automatische Qualitätskontrolle mit bis zu 3 Rendering-Runden |
+| Kometenmodus | Kometen (z. B. `C/2022 E3`, `12P`) bekommen zwei Stacks (Sterne und Kometenkern); Bahn aus JPL-Horizons oder aus dem Bild gemessen; beide Einzelstacks bleiben ansehbar |
+| Speicher | Hochgeladene Einzelbilder werden nach erfolgreichem Stacking gelöscht (abschaltbar, `ASTROFLOW_DELETE_UPLOADS=0`); Nachstacken neuer Nächte geht weiter, komplettes Neu-Stacken nicht mehr. Eingebundene Ordner werden nie angetastet |
+| Ausgabe | TIFF 16-bit, PNG, JPEG, linearer FITS-Stack; Verlauf aller Versionen |
+
+</details>
+
+### KI-Bildprüfer (optional)
+
+Ein Vision-Modell (LM Studio lokal oder OpenRouter) bekommt eine Vorschau des fertigen Bildes und die aktuellen Parameter und beurteilt Hintergrund,
+Farbstich, Sterne, Rauschen und Artefakte. Bei Beanstandung schlägt es Parameterkorrekturen aus einer festen Whitelist in begrenzten Bereichen vor; AstroFlow
+rendert neu und prüft erneut (bis `ASTROFLOW_REVIEW_ROUNDS`, Standard 3). Das Modell führt keinen Code aus. Standardmäßig aus.
 
 ```yaml
 ASTROFLOW_REVIEW_PROVIDER: lmstudio            # lmstudio | openrouter | off (Standard)
@@ -179,25 +189,10 @@ ASTROFLOW_REVIEW_URL: http://host.docker.internal:1234/v1   # optional, Standard
 ASTROFLOW_REVIEW_KEY: sk-or-...                # nur OpenRouter
 ```
 
-Oder in der Web-UI unter **Einstellungen → Bilder → KI-Bildprüfer** – dort gesetzte Werte (wie auch Plate-Solving und Speicher) werden in
-`data/settings.json` gespeichert und überleben Neustarts; sie haben Vorrang vor den Umgebungsvariablen.
-Denkmodelle (z. B. Qwen3, Bonsai) überlegen oft 2 000–3 000 Tokens vor der Antwort: Standardlimit daher
-`ASTROFLOW_REVIEW_MAX_TOKENS=8000`, Zeitlimit `ASTROFLOW_REVIEW_TIMEOUT=300` s. **Datenschutz:** LM Studio bleibt komplett lokal. Bei OpenRouter wird die
-verkleinerte Vorschau (max. 1280 px) an einen externen Dienst gesendet – deshalb ist der Prüfer standardmäßig aus.
+Oder unter Einstellungen → Bilder → KI-Bildprüfer (gespeichert in `data/settings.json`, hat Vorrang vor Umgebungsvariablen; Schlüssel stehen dort im Klartext).
+Denkmodelle brauchen mehr Zeit: `ASTROFLOW_REVIEW_MAX_TOKENS=8000`, `ASTROFLOW_REVIEW_TIMEOUT=300`.
 
-## Plate-Solving
-
-Viele Aufnahmen (Stellina, Astrokameras ohne Montierungsanbindung) enthalten weder Objektnamen noch Koordinaten.
-AstroFlow löst dann je Ordner, Kamera und Nacht **eine** Aufnahme und ordnet alle Bilder der Gruppe dem erkannten Objekt zu.
-Bildmaßstab-Hinweise aus dem Header (`FOCALLEN`/`XPIXSZ`, Stellina `FOCAL`/`PIXSZ`) beschleunigen das; ohne Hinweise wird blind gelöst.
-
-- **Docker:** ASTAP + Sterndatenbank D05 sind im Image enthalten (für kleine Bildfelder < 0,6°: `docker compose build --build-arg ASTAP_DB=d50`).
-- **Ohne Docker:** [ASTAP](https://www.hnsky.org/astap.htm) (ab 2023 – ältere Versionen kennen die D-Datenbanken nicht) und eine Sterndatenbank (D05, D20 oder D50) installieren.
-  AstroFlow sucht ASTAP und Datenbank automatisch im ASTAP-Programmordner und – unter Windows ohne Admin-Rechte – in `%LOCALAPPDATA%\astap`
-  (dort einfach `astap_cli.exe` aus dem Kommandozeilen-ZIP und die entpackte Datenbank ablegen).
-- **Objektnamen:** Liegt ASTAPs `deep_sky.csv` (~30 000 Objekte, beim Windows-Installer dabei) vor, bekommen gelöste Felder echte Namen
-  (z. B. „NGC 1579“) statt „Feld RA … Dec …“.
-- Bereits als „Unbekanntes Objekt“ eingeordnete Aufnahmen: auf der Objektseite **„Jetzt bestimmen“** – sie werden danach ins richtige Projekt verschoben und nachgestackt.
+### Plate-Solving konfigurieren
 
 ```yaml
 ASTROFLOW_SOLVER: auto        # auto (lokale Solver) | astap | astrometry | nova | off
@@ -207,115 +202,61 @@ ASTROFLOW_NOVA_KEY: ...                    # nur für nova.astrometry.net
 ASTROFLOW_SOLVE_TIMEOUT: 180
 ```
 
-**Datenschutz:** ASTAP und astrometry.net laufen lokal. nova.astrometry.net wird nur genutzt, wenn er ausdrücklich gewählt ist;
-dabei wird ein verkleinertes Graustufenbild (nicht öffentlich markiert) hochgeladen.
+Bildmaßstab-Hinweise aus dem Header (`FOCALLEN`/`XPIXSZ`, Stellina `FOCAL`/`PIXSZ`) beschleunigen das Lösen; ohne Hinweise wird blind gelöst.
 
-## Web-App
+### Weitere Einstellungen
 
-Die Oberfläche (<http://localhost:8080>) ist eine installierbare Web-App (PWA) für Desktop und Smartphone:
+`ASTROFLOW_AUTO=0` (nicht automatisch verarbeiten), `ASTROFLOW_SCAN_INTERVAL`, `ASTROFLOW_THREADS` (Standard: Kerne − 1, max. 12),
+`ASTROFLOW_BATCH_MB` (RAM pro Stacking-Stapel, Standard 1/8 des Arbeitsspeichers, 700–4000 MB – auf kleinen NAS ggf. senken).
 
-- **Übersicht** mit Modulkarten, aktiven Aufträgen, zuletzt bearbeiteten Bildern, neuesten Entdeckungen und „Heute Nacht“; **Aufträge** mit allen Hintergrundprozessen (Verarbeitung, Spurenanalysen, Geschichten); **Einstellungen** je Modul
-- **Bilder** als Werkbank: alle Sessions als Karten oder Tabelle mit Status; je Objekt die Verarbeitungs-Pipeline mit echtem Status je Schritt und – während ein Auftrag läuft – einer schematischen Darstellung des aktuellen Schritts
-- **Galerie** aller fertigen Bilder (Raster groß/klein oder Liste) mit Suche, Filter nach Objekttyp und Sortierung
-- **Objektseite** mit Zoom-/Pan-Betrachter (Mausrad, Ziehen, Pinch, Doppelklick = 100 %, Vollbild), Kanalübersicht (Belichtung je Filter), Details und KI-Prüfprotokoll
-- **Aufnahmen**: Qualitätsdiagramm über alle Nächte, filter- und sortierbare Tabelle, Einzelbilder ein-/ausschließen
-- **Versionen**: jede Verarbeitung bleibt erhalten; zwei Versionen per Schieberegler vergleichen
-- **Live-Bildaufbau**: Echte Vorschauen erscheinen während des Stackens und Entwickelns im Bild-Tab. Eine kompakte
-  Statuszeile zeigt den aktiven Schritt, etwa GraXpert, Gaia, StarNet oder Stretch; „Details“ öffnet den bisherigen Ablauf.
-- **Stacking-Verlauf**: Der Regler unter dem fertigen Bild nutzt die gespeicherten Live-Vorschauen nach 1, 3, 10, 30, 100 …
-  Aufnahmen. Eine zusätzliche Entwicklung dieser Zwischenstände entfällt. Die Vorschauen können in Farbe, Helligkeit und
-  Ausschnitt vom vollständig entwickelten Endergebnis abweichen (Standard: fertiges Bild; ältere Ergebnisse bleiben erhalten).
-- **Optionen** je Objekt (Profil, Farbpalette, Bildauswahl, Auflösung, Schmalband, KI-Prüfung) mit „Speichern & verarbeiten“
-- **Import** von Dateien oder ganzen Ordnern per Drag & Drop (überall auf der Seite), auch gemischt: FITS werden als Rohaufnahmen verarbeitet, JPG/PNG/TIFF als fertige Bilder direkt in die Galerie übernommen. Originaldateien bleiben unverändert, identische fertige Bilder werden nicht doppelt angelegt. 16-Bit-TIFFs bleiben als Original erhalten; Anzeigevorschauen sind 8 Bit. **Aktivität** (Auftragsliste), **Einstellungen**
-- **Stellina-Verlaufsbilder** (`img-…-output.jpeg`) werden mit eindeutigen Vaonis-/Geräte-/Objekt-/Zeitmetadaten als Versionen einer Aufnahme zusammengefasst. Gibt es passende Rohdaten desselben Geräts, Objekts und derselben Nacht, stehen sie dort unter **Teleskopbilder** statt als separate Galeriekarten. Die Originale bleiben erhalten; der Dateiname allein reicht für eine Zuordnung nicht aus.
-  Beim Hochladen kompletter Beobachtungsordner werden automatisch erzeugte `img-…-output`-Zwischenstände neben FITS bereits vor dem Upload ausgelassen; ohne FITS wird nur der letzte dieser Zwischenstände je Beobachtungsordner übernommen. Die Quelldateien werden dabei nicht verändert.
+## SkyTrace und Sage im Detail
 
-## Weitere Einstellungen
+<details>
+<summary>SkyTrace</summary>
 
-`ASTROFLOW_AUTO=0` (nicht automatisch verarbeiten), `ASTROFLOW_SCAN_INTERVAL`, `ASTROFLOW_THREADS` (Standard: Kerne − 1, max. 12), `ASTROFLOW_BATCH_MB` (RAM pro Stacking-Stapel, Standard 1/8 des Arbeitsspeichers bzw. des Docker-Limits, 700–4000 MB – auf kleinen NAS ggf. senken).
-Pro Objekt in der UI: Profil, Farbpalette (`auto | RGB | LRGB | SHO | HOO | mono`), „beste X %“, 2×-Auflösung; einzelne Aufnahmen lassen sich ein-/ausschließen.
+Bildfolgen (z. B. ein Stellina-Beobachtungsordner) werden chronologisch zu einem Ereignisvideo; die Teleskopbewegung wird über das Sternfeld kompensiert,
+unscharfe Aufnahmen fallen heraus. Erkannte Spuren erscheinen als Kandidaten mit Vorher-/Nachher-Ausschnitten, Messdetails und Katalogabgleich. Originale werden nur gelesen.
 
-**Online-Abfragen für „Was dein Bild zeigt“** (Einstellungen → Bilder, jede einzeln abschaltbar; gesendet werden nur
-Himmelskoordinaten, Feldgröße und Aufnahmezeit – nie Bilder oder der Standort; Ergebnisse werden lokal unter `work/` gespeichert):
+- **Orte und Uhr:** *Standort der Nacht prüfen* rechnet aus mehreren zugeordneten Satellitenspuren zurück, ob die Nacht besser zu einem anderen Ort passt; *Standort suchen* nutzt ± 10 km Spielraum; *Standorte für alle Nächte suchen* prüft je Nacht alle Beobachtungen gegen die Ortsliste. *Uhrversatz suchen* verschiebt den Abgleich um bis zu ± 20 min und schlägt einen Versatz nur vor, wenn mindestens drei verschiedene Spuren bei demselben Versatz treffen und das deutlich über dem Zufall liegt. Übernommen wird nur auf Knopfdruck; Rohbilder und gespeicherte Aufnahmezeiten bleiben unverändert.
+- **Analyse-Menü:** *Satelliten neu abgleichen* (gespeicherte Bahndaten, ohne Rohbilder und neue Archivabfragen), *Erneut analysieren* (vollständige Erkennung als neuer Lauf; fehlen Originale, kann ihr Ordner gewählt werden – bei gleichnamigen Dateien entscheidet die Aufnahmezeit), *Zeitreihen aktualisieren*.
+- **3D-Ansicht:** Erde zur Aufnahmezeit mit Standort und Blickfeld, Zeitregler über die Nacht, Himmelskuppel mit der Teleskop-Nachführung (Höhe, Azimut, Bildlage, Feldrotation, Pausen), Strahl zum Zielobjekt, Bahnen (SGP4) zugeordneter Satelliten, Meteore (GMN) und Flugzeuge (ADS-B).
+- **Statistik und Erfolge:** Objektarten, häufigste Satelliten, Katalogabgleich je Quelle, Uhrzeiten; Erfolge mit Fortschritt gesperrter Meilensteine.
+
+</details>
+
+<details>
+<summary>Sage</summary>
+
+- **Bestimmen:** Galerie-Bilder über die gespeicherte Stack-Lösung; FITS mit WCS direkt; sonst lokal mit ASTAP, wenn der Dateiname das Objekt nennt. Fertig bearbeitete JPGs ohne Hinweis löst zuverlässig nur nova.astrometry.net – dafür „Online-Lösen erlauben“ und Schlüssel eintragen.
+- **Erzählen:** OpenAI, OpenRouter oder lokal mit LM Studio (dann verlässt nichts den Rechner). Es gehen nur Objektnamen und Koordinaten an die KI, nie das Bild.
+- **Vorlesen:** lokal über einen OpenAI-kompatiblen Sprachserver (Qwen3-TTS) oder ElevenLabs; Vertonungen werden gespeichert.
+
+</details>
+
+## Datenschutz und lokaler Betrieb
+
+- Rohdaten, Ergebnisse und Einstellungen liegen im Datenordner (`data/`); es gibt keine Konten und keine Cloud. Orte sind privat und werden nur lokal gespeichert.
+- **Netzabfragen** (jede einzeln abschaltbar; gesendet werden nur Himmelskoordinaten, Feldgröße und Aufnahmezeit – nie Bilder oder dein Standort, ausgenommen die gerundete Wetterabfrage; Ergebnisse werden lokal gespeichert):
 
 | Dienst | Wofür | Schalter |
 |---|---|---|
-| Gaia DR3 (GAVO bzw. ARI Heidelberg, sonst ESA) | Sterne, Helligkeiten, Parallaxen | „Farbkalibrierung über Gaia-Sternfarben“, `ASTROFLOW_GAIA=0` |
-| SIMBAD (Spiegel Harvard, sonst CDS Straßburg) | Rotverschiebungen von Galaxien/Quasaren, bekannte Veränderliche | „Rotverschiebungen und Veränderliche aus SIMBAD“ |
-| DSS2 rot (STScI, sonst CDS hips2fits) | Vergleichsbild, wenn keine eigene frühere Aufnahme da ist | „Himmelsdurchmusterung als Vergleichsbild“ |
-| JPL SB-Ident (NASA) | bekannte Kleinplaneten/Kometen zur Aufnahmezeit, geozentrisch | „Kleinplaneten und Kometen prüfen“ |
+| Gaia DR3 (GAVO bzw. ARI Heidelberg, sonst ESA) | Sternfarben, Helligkeiten, Parallaxen | „Farbkalibrierung über Gaia-Sternfarben“, `ASTROFLOW_GAIA=0` |
+| SIMBAD (Harvard-Spiegel, sonst CDS) | Rotverschiebungen, bekannte Veränderliche | „Rotverschiebungen und Veränderliche aus SIMBAD“ |
+| DSS2 rot (STScI, sonst CDS hips2fits) | Vergleichsbild ohne eigene frühere Aufnahme | „Himmelsdurchmusterung als Vergleichsbild“ |
+| JPL SB-Ident / Horizons (NASA) | Kleinplaneten und Kometen zur Aufnahmezeit | „Kleinplaneten und Kometen prüfen“, `ASTROFLOW_HORIZONS=0` |
+| Open-Meteo | Wetter der Aufnahmenacht / Vorhersage (Ort auf 0,1° gerundet) | Bild-Tutor-Einstellung |
+| Photon (komoot) / Open-Meteo-Höhe | Ortssuche und Höhe in der Ortsliste (nur Suchtext bzw. auf Knopfdruck) | auf Knopfdruck |
+| OpenRouter / OpenAI / ElevenLabs | optionaler KI-Prüfer, Geschichten, Vorlesen | standardmäßig aus; LM Studio bleibt komplett lokal |
+| nova.astrometry.net | Online-Plate-Solving (verkleinertes Graustufenbild) | nur auf ausdrückliche Wahl |
 
-## SkyTrace
-
-Bildfolgen (z. B. ein Stellina-Beobachtungsordner) werden chronologisch zu einem Ereignisvideo; Teleskopbewegung wird über das Sternfeld
-kompensiert, unscharfe Aufnahmen fallen heraus. Auch schwache lange Schweife werden über das gemeinsame Profil vieler
-Sterne auf Verwacklung geprüft. Erkannte Spuren erscheinen als **Kandidaten** mit Vorher-/Nachher-Ausschnitten, Messdetails
-(„Warum wurde diese Spur erkannt?“) und Katalogabgleich. Ein Kandidat ist kein bestätigtes Objekt, ein Katalogtreffer bleibt ein Hinweis.
-Originale werden nur gelesen. Kataloge: Einstellungen → SkyTrace, Orte: Einstellungen → Standorte.
-Unter **Beobachtungen → Standort der Nacht prüfen** rechnet SkyTrace aus mehreren zugeordneten Satellitenspuren zurück, ob die
-Nacht besser zu einem anderen Ort passt (und wie weit die Kamerauhr danebenlag) – übernommen wird nur auf Knopfdruck.
-Passt in einer Nacht kaum eine Spur (der Ort lag daneben), sucht **Standort suchen** mit ± 10 km Spielraum nach eindeutigen Bahnen,
-rechnet daraus zurück und gleicht am Vorschlag noch einmal streng ab („5 statt 0 Treffer“).
-**Analyse → Satelliten neu abgleichen** bestimmt den Ort jeder Spur neu (Ausnahme → FITS → Ortsliste der Nacht → Standard) und
-gleicht die Satelliten mit den gespeicherten Bahndaten neu ab – ohne Rohbilder und ohne neue Archivabfragen. Nach Änderungen an
-Orten oder Zeiträumen bietet AstroFlow an, **alle SkyTrace-Analysen neu abzugleichen** (Hinweis, SkyTrace-Statistik oder
-Einstellungen → Standorte); dabei werden nur Spuren geprüft, deren Ort sich geändert hat. Orte werden nie automatisch übernommen.
-**Standorte für alle Nächte suchen** (gleiche Stellen) prüft je Nacht die Spuren aller Beobachtungen gemeinsam gegen jeden Ort
-der Ortsliste, rechnet – wenn keiner gut passt – den wahrscheinlichsten Ort zurück und zeigt eine Vorschlagsliste mit Treffern
-vorher/nachher. Übernehmen einzeln oder alle, danach gleichen die betroffenen Analysen automatisch neu ab.
-Ging die Kamera-Uhr in einer Nacht falsch (bei der Stellina kommt die Uhr vom Handy), passt kaum eine Spur zu einer Bahn. Mit
-**Uhrversatz suchen** (Häkchen neben „Suche starten“) verschiebt SkyTrace bei Nächten mit wenigen Treffern den Abgleich um bis zu
-± 20 min und schlägt einen Versatz nur vor, wenn mindestens drei verschiedene Spuren bei demselben Versatz treffen und das deutlich
-über dem Zufall liegt (Anzeige: Spuren, zufällig erwartete Treffer, Sicherheit). Übernommen wird er erst auf Knopfdruck; er gilt dann
-beim Abgleich dieser Nacht, Rohbilder und gespeicherte Aufnahmezeiten bleiben unverändert (Kandidaten zeigen weiter die Kamerazeit
-mit dem Hinweis „Uhr korrigiert um …“).
-Im Dropdown **Analyse → Erneut analysieren** startet die vollständige Erkennung mit aktuellem Code als neuer Lauf
-aus den bisherigen Aufnahmen. Fehlen Originaldateien, kann ihr Ordner ausgewählt werden. Bei Ersatz-FITS muss auch das
-Aufnahmedatum übereinstimmen: gleiche Dateinamen aus einer anderen Nacht werden nicht zugeordnet. Der alte Lauf bleibt erhalten.
-**Analyse → Zeitreihen aktualisieren** erneuert nur die Berichte und den Katalogabgleich, ohne neue Objekterkennung.
-Bei Kandidaten lässt sich zwischen **Ganzes Bild** (Analyseauflösung) und **Ausschnitt** umschalten. Die Zeitreihe
-zeigt Treffer und benachbarte Aufnahmen; **Zum Treffer** und **Im Video öffnen** springen direkt zur passenden Stelle.
-Ältere Läufe nutzen vorhandene Vergleichsbilder oder das unbeschriftete Video. „Zeitreihen aktualisieren“ ergänzt
-gespeicherte Vollbilder, sofern die Rohaufnahmen noch erreichbar sind.
-**3D-Ansicht** (Knopf im Lauf) zeigt die Erde zur Aufnahmezeit mit Standort und Teleskop-Blickfeld – auch ohne erkanntes Objekt.
-Der Zeitregler läuft von der ersten bis zur letzten Aufnahme; eine Himmelskuppel über dem Standort zeigt, wie das Teleskop
-über die Nacht nachgeführt hat (Höhe, Azimut, Bildlage, Feldrotation, Pausen). Ein Strahl verlängert das Blickfeld bis zum
-Zielobjekt (Name, Typ, Entfernung – nicht maßstäblich). Sind Satelliten, Meteore (GMN) oder Flugzeuge (ADS-B) zugeordnet,
-erscheinen alle mit ihrer Bahn (SGP4) und dem markierten Durchgang durchs Blickfeld; ein Eintrag der Legende springt zum
-Durchgang oder zum Kandidaten. Der Knopf im Kandidaten öffnet dieselbe Ansicht mit diesem Objekt im Fokus.
-Die **Statistik** (SkyTrace → Statistik) fasst alle Analysen zusammen: Objektarten, häufigste Satelliten, Katalogabgleich je Quelle,
-Uhrzeiten und Monate der Kandidaten sowie die ergiebigsten Beobachtungen.
-
-Die **Erfolge** (SkyTrace → Erfolge) sammeln Meilensteine aus deinen Analysen – ernst (erster Satellit, 100 Zuordnungen, die ISS im Bild)
-und mit einem Augenzwinkern („Die Konstellation grüßt“ bei 100 Starlinks, „Kosmischer Verkehrsstau“, „Saubere Nacht“). Gesperrte Erfolge
-zeigen den Fortschritt; bestehende Analysen werden beim ersten Öffnen rückwirkend datiert, neue Erfolge melden sich nach einer Analyse als Hinweis.
-
-Die Analyse braucht zusätzliche Pakete (OpenCV, PyTorch/YOLO, PyAV, Skyfield …): `pip install -r astroflow/modules/skytrace/requirements.txt`
-oder unter Einstellungen → SkyTrace den Python-Interpreter einer bestehenden SkyTrace-Installation wählen. Docker: `docker compose build --build-arg SKYTRACE=1`.
-Ohne diese Pakete startet AstroFlow trotzdem; vorhandene Ergebnisse lassen sich ansehen. Ein bestehender SkyTrace-Datenordner (mit `Ergebnisse/`)
-kann als Datenordner eingetragen werden.
-
-## Sage
-
-Sage ist eine **lebende Enzyklopädie**: Jedes Objekt, das du fotografierst oder bestimmst, bekommt einen Eintrag mit Katalogdaten,
-deinen Bildern und Beobachtungen. Recherchen stützen sich auf Fachkataloge (z. B. SIMBAD) und arXiv; jede Aussage hat eine Quelle oder ist als
-KI-Vorschlag gekennzeichnet. Im Hintergrund sucht Sage nach neuen Arbeiten, weiteren Objekten in deinen Bildfeldern und Zusammenhängen
-zwischen deinen Aufnahmen (**Meine Entdeckungen**, **Wissensnetz**). Gestackte Aufnahmen aus dem Modul Bilder landen auf Wunsch automatisch in Sage.
-
-Fotos zentral unter **Import** hochladen oder ein Bild aus der Galerie wählen → Sage bestimmt die Objekte, schreibt die Geschichte und liest sie vor.
-Bei fertigen Bildern startet Sage nach dem Import automatisch, sofern „Automatisch entdecken“ aktiv ist. In Sage führt **Zum Import** zum gemeinsamen Eingang;
-nur bei abgeschaltetem Bilder-Modul bleibt dort ein eigener Upload verfügbar. FITS-Master-Stacks werden vom zentralen Import noch nicht als fertige Bilder unterstützt.
-- **Bestimmen:** Galerie-Bilder über die gespeicherte Stack-Lösung; FITS mit WCS direkt; sonst lokal mit ASTAP, wenn der Dateiname das Objekt nennt
-  (z. B. `M42.jpg`). Fertig bearbeitete JPGs ohne Hinweis löst zuverlässig nur nova.astrometry.net – dafür „Online-Lösen erlauben“ und Schlüssel eintragen.
-- **Erzählen:** OpenAI, OpenRouter oder lokal mit LM Studio (dann verlässt nichts den Rechner). Es gehen nur Objektnamen und Koordinaten an die KI, nie das Bild.
-- **Vorlesen:** lokal über einen OpenAI-kompatiblen Sprachserver (Qwen3-TTS) oder ElevenLabs. Vertonungen werden gespeichert.
+- Schreibende Anfragen mit fremdem `Origin` werden abgelehnt. Im Heimnetz gibt es kein Passwort (siehe [Heimnetz](#heimnetz)).
 
 ## Architektur
 
 ```
 astroflow/
   server.py            Kompositionswurzel: Module laden, gemeinsame Endpunkte (/api/app, /api/status, /api/activity), Oberfläche
-  core/                Einstellungen (data/settings.json), Modul-Basisklasse und Registry
+  core/                Einstellungen (data/settings.json), Modul-Basisklasse und Registry, Ortsliste
   modules/
     stacking/          Pipeline (scanner, calibration, registration, stacking, processing, develop, platesolve …), API, Oberfläche
     skytrace/          Engine (aus SkyTrace), API, Oberfläche, Erkennungsmodell
@@ -323,26 +264,31 @@ astroflow/
   static/              Shell: Navigation, Übersicht, Aktivität, Einstellungen, Befehlspalette, Bildbetrachter, Design-System
 ```
 
-Jedes Modul bringt API (`/api/<modul>`), Oberfläche (`/m/<modul>/`), Einstellungen, Status und Aktivitäten selbst mit und registriert sich
-im Frontend mit `AF.register(...)`. Module sprechen über benannte Dienste miteinander (z. B. stellt „Bilder“ den Plate-Solver bereit), nicht per Import.
-Module lassen sich unter Einstellungen → Module & System abschalten. **Neues Modul:** Unterpaket `astroflow/modules/<id>/` mit `class Module(BaseModule)`,
-in `core/modules.AVAILABLE` eintragen, `static/<id>.js` mit `AF.register` – fertig.
+Jedes Modul bringt API (`/api/<modul>`), Oberfläche (`/m/<modul>/`), Einstellungen, Status und Aktivitäten selbst mit und registriert sich im Frontend mit
+`AF.register(...)`. Module sprechen über benannte Dienste miteinander, nicht per Import. **Neues Modul:** Unterpaket `astroflow/modules/<id>/` mit
+`class Module(BaseModule)`, in `core/modules.AVAILABLE` eintragen, `static/<id>.js` mit `AF.register`. Details für Entwickler: `AGENTS.md`; Änderungen: `CHANGELOG.md`.
 
-## Tests
+## Entwicklung und Tests
 
 ```bash
 pip install -r requirements-dev.txt   # pytest, pytest-xdist, Playwright
-python -m pytest                       # läuft automatisch parallel auf allen Kernen (pytest.ini)
+python -m pytest                       # läuft automatisch parallel (pytest.ini, höchstens 8 Worker)
 python -m pytest -m "not ui"            # schneller Teilsatz ohne Browser-Tests
 ```
-Die Tests erzeugen synthetische Aufnahmen (Galaxie, Bayer-Sensor, Mono-Kamera mit LRGB- und SHO-Filtern, Feldrotation über zwei Nächte, Wolken-/Schlieren-/Satellitenframes, Darks/Flats) und prüfen die ganze Kette inkl. inkrementellem Nachstacken.
+
+Die Tests erzeugen synthetische Aufnahmen (Galaxie, Bayer-Sensor, Mono-Kamera mit LRGB-/SHO-Filtern, Feldrotation über zwei Nächte, Wolken-/Schlieren-/Satellitenframes,
+Darks/Flats) und prüfen die ganze Kette inkl. Nachstacken; die Oberflächentests laufen in einem echten Chromium. Die Versionsnummer steht an einer Stelle
+(`astroflow/__init__.py`), Regeln dazu in `AGENTS.md`.
 
 ## Grenzen
 
-- Objektkatalog ist klein (erweiterbar in `objects.py`); gelöste Felder ohne Katalogobjekt heißen „Feld RA … Dec …“.
-- Die Stack-Fläche entspricht dem Referenzbild; Mosaike und stark versetzte Sessions werden nicht erweitert.
-- Kein echtes Drizzle (2×-Option interpoliert); keine Planeten-/Mond-Modi. Kometenmodus nur für Farbkameras bzw. einen Filter.
+- Der eingebaute Objektkatalog ist klein (mit ASTAPs `deep_sky.csv` deutlich größer); gelöste Felder ohne Katalogobjekt heißen „Feld RA … Dec …“.
+- Die Stackfläche entspricht dem Referenzbild; keine Mosaike. Kein echtes Drizzle (2×-Option interpoliert); keine Planeten-/Mond-Modi; Kometenmodus nur für Farbkameras bzw. einen Filter.
 - Ohne Flats bleibt multiplikative Vignettierung teilweise sichtbar (additive Gradienten werden entfernt).
+- Die Erkennung von Satellitenspuren im Modul Bilder ist unzuverlässig (Satelliten fliegen beim Stacking per Clipping heraus; Spuren untersucht SkyTrace).
+- Himmelsqualität ohne Dark-Frames ist nur für bekannte Geräte (bisher Stellina) möglich, die Genauigkeit liegt bei etwa ±0,2–0,4 mag.
 
-Lizenz: MIT. three.js (`astroflow/static/vendor/`) steht unter MIT, die Erdtextur (`astroflow/modules/skytrace/static/vendor/`) ist NASA Blue Marble
+## Lizenz
+
+MIT, siehe `LICENSE`. Drittkomponenten: three.js (`astroflow/static/vendor/`) steht unter MIT, die Erdtextur (`astroflow/modules/skytrace/static/vendor/`) ist NASA Blue Marble
 (gemeinfrei), siehe die `README.md` in beiden Ordnern. Das SkyTrace-Erkennungsmodell (`astroflow/modules/skytrace/models/night-detector`) stammt aus OpenSkyCam und steht unter AGPL-3.0.
