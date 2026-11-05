@@ -89,7 +89,8 @@ def server(tmp_path_factory):
         SettingsStore(s.data_dir / "settings.json").update("skytrace", {"home": str(root / "skytrace")})
         SettingsStore(s.data_dir / "settings.json").update("sites", {       # erfundene Orte, langer Name für die Layoutprüfung
             "list": [{"id": "a", "name": LONG, "lat": 47.5, "lon": 10.25, "alt_m": 400, "accuracy_m": 30, "note": LONG},
-                     {"id": "b", "name": "Beispielberg", "lat": 45.0, "lon": 6.0, "alt_m": 0, "accuracy_m": 2000, "note": ""}],
+                     {"id": "b", "name": "Beispielberg", "lat": 45.0, "lon": 6.0, "alt_m": 0, "accuracy_m": 2000, "note": ""},
+                     {"id": "c", "name": "Zeltwiese", "lat": 46.0, "lon": 7.0, "alt_m": 0, "accuracy_m": 500, "note": ""}],     # c gilt nirgends
             "default": "a", "periods": [{"id": "p1", "site_id": "b", "from": "2022-06-01", "to": "2022-06-20"},
                                         {"id": "p2", "site_id": "b", "from": "2026-01-01", "to": "2026-01-01"}]})
         _skytrace_run(root / "skytrace" / "Ergebnisse" / "2026-10-28_10-00-00-000001")

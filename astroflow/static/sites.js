@@ -17,11 +17,25 @@ const skyLine = (q) => q && q.sqm != null ? `<div class="sm site-sky">Himmel <b>
 async function sitesSettings(el) {
   let d = await api('/sites');
   let edit = null;                         // Ort in Bearbeitung (Kopie) oder null
+  let assign = null;                       // Zeitraum für einen Ort anlegen: {id, from, to} oder null
   const color = (id) => `site-c${Math.max(0, d.list.findIndex(s => s.id === id)) % COLORS}`;
   const save = async (next, msg) => {
-    try { d = await send('/sites', next); if (msg) toast(msg, 'ok'); draw(); }
-    catch (e) { toast(e.message, 'err'); }
+    try { d = await send('/sites', next); if (msg) toast(msg, 'ok'); draw(); return true; }
+    catch (e) { toast(e.message, 'err'); return false; }
   };
+
+  // Ort ohne Zeitraum, Einzelnacht und Standard-Rolle: gilt nirgends – Hinweis mit Zuweisung (Formular oder Knopf)
+  function unusedNote(s) {
+    if (!(d.unused || []).includes(s.id)) return '';
+    if (assign?.id === s.id) return `<form class="site-assign" id="siteAssign" novalidate>
+      <p class="sm">Ab wann gilt <b>${esc(s.name)}</b>? Ohne Zeitraum wird der Ort nicht verwendet.</p>
+      <div class="site-assign-f"><label class="field"><span>von</span><input type="date" name="from" value="${esc(assign.from)}" required></label>
+        <label class="field"><span>bis (leer = offen)</span><input type="date" name="to" value="${esc(assign.to)}"></label></div>
+      <p class="sm dim">Gleiches Datum bei von und bis = nur diese Nacht. Mit Zeitraum gilt der Ort in diesen Nächten statt des Standard-Orts.</p>
+      <div class="row"><button class="btn sm" type="submit">Zeitraum speichern</button><button class="btn ghost sm" type="button" id="assignCancel">Später</button></div></form>`;
+    return `<div class="site-unused sm" role="note"><span>${icon('alert')}Wird noch nicht verwendet – Zeitraum oder Nacht zuweisen.</span>
+      <button class="btn sm" data-act="assign">Zeitraum zuweisen</button></div>`;
+  }
 
   function siteRows() {
     if (!d.list.length) return `<div class="empty sm"><p class="mut">Noch kein Standort. Lege deinen üblichen Beobachtungsort an – Heute Nacht, Bild-Tutor und SkyTrace nutzen ihn gemeinsam.</p></div>`;
@@ -30,7 +44,7 @@ async function sitesSettings(el) {
       return `<li class="site-row" data-id="${esc(s.id)}"><span class="site-dot ${color(s.id)}" aria-hidden="true"></span>
         <div class="site-main"><b>${esc(s.name)}</b>${s.id === d.default ? ' <span class="chip acc">Standard</span>' : ''}
           <div class="mut sm site-coords">${coords(s)}</div>
-          <div class="sm"><span class="${lvl}">${fmtAcc(s.accuracy_m)}</span> <span class="dim">· ${txt}</span>${s.note ? ` <span class="dim">· ${esc(s.note)}</span>` : ''}</div>${skyLine(d.sky?.[s.id])}</div>
+          <div class="sm"><span class="${lvl}">${fmtAcc(s.accuracy_m)}</span> <span class="dim">· ${txt}</span>${s.note ? ` <span class="dim">· ${esc(s.note)}</span>` : ''}</div>${skyLine(d.sky?.[s.id])}${unusedNote(s)}</div>
         <div class="site-acts">${s.id !== d.default ? `<button class="btn ghost sm" data-act="default">Als Standard</button>` : ''}
           <button class="btn ghost sm icon" data-act="edit" title="Bearbeiten" aria-label="${esc(s.name)} bearbeiten">${icon('edit')}</button>
           <button class="btn ghost sm icon" data-act="del" title="Löschen" aria-label="${esc(s.name)} löschen">${icon('trash')}</button></div></li>`;
@@ -78,7 +92,8 @@ async function sitesSettings(el) {
     }
     return `${bar}
       ${ps.length ? `<table class="site-periods"><thead><tr><th>Ort</th><th>von</th><th>bis</th><th></th></tr></thead><tbody>${ps.map(p => `<tr data-pid="${esc(p.id)}">
-        <td><select data-f="site_id" aria-label="Ort">${d.list.map(s => `<option value="${esc(s.id)}" ${s.id === p.site_id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></td>
+        <td><select data-f="site_id" aria-label="Ort">${d.list.map(s => `<option value="${esc(s.id)}" ${s.id === p.site_id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>
+          ${(d.shadowed || []).includes(p.id) ? `<div class="site-unused sm" role="note">${icon('alert')}Gilt in keiner Nacht – kürzere Zeiträume überdecken ihn ganz.</div>` : ''}</td>
         <td><input type="date" data-f="from" value="${esc(p.from)}" aria-label="von"></td><td><input type="date" data-f="to" value="${esc(p.to || '')}" aria-label="bis (leer = offen)"></td>
         <td><button class="btn ghost sm icon" data-act="pdel" title="Zeitraum löschen" aria-label="Zeitraum löschen">${icon('trash')}</button></td></tr>`).join('')}</tbody></table>`
         : `<p class="mut sm">Keine Zeiträume – es gilt überall der Standard-Ort${singles.length ? ' (außer den einzeln zugeordneten Nächten)' : ''}.</p>`}
@@ -118,6 +133,7 @@ async function sitesSettings(el) {
     $$('.site-row', el).forEach(row => row.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-act]'); if (!b) return;
       const s = d.list.find(x => x.id === row.dataset.id);
+      if (b.dataset.act === 'assign') { assign = { id: s.id, from: d.today, to: '' }; draw(); $('#siteAssign [name=from]', el)?.focus(); }
       if (b.dataset.act === 'edit') { edit = { ...s }; draw(); }
       if (b.dataset.act === 'default') save({ ...d, default: s.id }, `${s.name} ist jetzt der Standard-Ort.`);
       if (b.dataset.act === 'del') {
@@ -126,6 +142,18 @@ async function sitesSettings(el) {
         save({ list: d.list.filter(x => x.id !== s.id), default: d.default === s.id ? null : d.default, periods: d.periods.filter(p => p.site_id !== s.id) }, 'Standort gelöscht.');
       }
     }));
+    const fa = $('#siteAssign', el);
+    if (fa) {
+      $('#assignCancel', el).onclick = () => { assign = null; draw(); };
+      fa.onsubmit = async (e) => {
+        e.preventDefault();
+        const from = fa.elements.from.value, to = fa.elements.to.value;
+        if (!from) { toast('Bitte einen Anfang angeben.', 'err'); return; }
+        if (to && to < from) { toast('Das Ende liegt vor dem Anfang.', 'err'); return; }
+        const id = assign.id;
+        if (await save({ ...d, periods: [...d.periods, { site_id: id, from, to }] }, 'Zeitraum gespeichert.')) { assign = null; draw(); }
+      };
+    }
     const f = $('#siteEdit', el);
     if (f) {
       const E = f.elements;
@@ -165,7 +193,11 @@ async function sitesSettings(el) {
         if (![s.lat, s.lon, s.alt_m].every(isFinite)) { toast('Koordinaten als Zahl in Grad angeben, z. B. 49,1234.', 'err'); return; }
         const list = s.id ? d.list.map(x => x.id === s.id ? s : x) : [...d.list, s];
         edit = null;
+        const before = new Set(d.list.map(x => x.id));
         await save({ ...d, list }, 'Standort gespeichert.');
+        // Neuer Ort, der noch nirgends gilt: gleich nach dem Zeitraum fragen
+        const made = d.list.find(x => !before.has(x.id));
+        if (made && (d.unused || []).includes(made.id)) { assign = { id: made.id, from: d.today, to: '' }; draw(); $('#siteAssign [name=from]', el)?.focus(); }
       };
     }
     $('#periodAdd', el)?.addEventListener('click', () => save({ ...d, periods: [...d.periods, { site_id: d.default || d.list[0].id, from: d.today, to: '' }] }));

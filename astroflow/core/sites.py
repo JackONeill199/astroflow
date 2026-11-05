@@ -210,6 +210,28 @@ def period_for(data: dict, night: str | None) -> dict | None:
     return best
 
 
+def shadowed_periods(data: dict) -> list[str]:
+    """IDs von Zeiträumen, die in keiner Nacht gelten, weil ein kürzerer sie vollständig überdeckt.
+    Der Sieger wechselt nur an Anfang/Ende eines Zeitraums – dort (und je einen Tag davor/danach) wird geprüft."""
+    ps = [p for p in data.get("periods") or [] if is_date(p.get("from") or "") and (not p.get("to") or is_date(p["to"]))]
+    probes = set()
+    for p in ps:
+        for key in ("from", "to"):
+            if p.get(key):
+                d = dt.date.fromisoformat(p[key])
+                probes.update((d + dt.timedelta(days=k)).isoformat() for k in (-1, 0, 1))
+    winners = {id(period_for(data, n)) for n in probes}
+    return [p["id"] for p in ps if id(p) not in winners and p.get("id")]
+
+
+def unused_sites(data: dict) -> list[str]:
+    """IDs von Orten, die nirgends gelten: nicht der Standard-Ort und in keinem Zeitraum/keiner Einzelnacht genannt."""
+    by_id = [s.get("id") for s in data.get("list") or []]
+    default = data.get("default") if data.get("default") in by_id else (by_id[0] if by_id else None)
+    used = {p.get("site_id") for p in data.get("periods") or []} | {default}
+    return [i for i in by_id if i not in used]
+
+
 def resolve(data: dict, when=None, night: str | None = None, header=None, override: dict | None = None) -> dict | None:
     """Kern der Auflösung auf einem gelesenen Abschnitt (ohne Dateizugriff, für Tests und die Engine)."""
     if override:
