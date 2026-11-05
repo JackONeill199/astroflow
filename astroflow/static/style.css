@@ -687,6 +687,14 @@ input:focus-visible + .switch { outline: 2px solid var(--acc); outline-offset: 2
 .fpath { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 0.25rem; min-width: 0; overflow-wrap: anywhere; font-size: 0.8125rem }
 .fcount { min-height: 1.125rem; margin-top: 0.375rem }
 .fmanual { margin-top: 0.375rem }
+.fsearch { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; padding: 0 0.625rem; border: 1px solid var(--border); border-radius: var(--r-sm); background-color: var(--bg); transition: border-color var(--t) }
+.fsearch:focus-within { border-color: var(--acc) }
+.fsearch svg { color: var(--mut); flex: none }
+.fsearch input { flex: 1; min-width: 0; border: 0; background: none; height: 2rem; padding: 0; box-shadow: none !important; outline: none }
+.fname { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere }
+.frel { color: var(--dim); font-size: 0.7188rem }
+.fsec { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.625rem 0.25rem; margin: 0 }
+.frow:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px }
 
 /* Auswahlfeld mit Suche (picker) */
 .pick { position: relative; display: block }

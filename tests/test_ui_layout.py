@@ -317,6 +317,50 @@ def test_folder_dialog(server, browser, size):
     page.close()
     assert not errors, errors
 
+
+@pytest.mark.parametrize("size", ["handy", "desktop"])
+def test_folder_dialog_search(server, browser, size, tmp_path):
+    """Ordnersuche: sofort im aktuellen Ordner filtern, Treffer in Unterordnern mit relativem Pfad, Klick öffnet, Esc leert."""
+    from tests.test_folders import _baum
+    base = _baum(tmp_path)
+    (base / "NGC4395_Bearbeitung").mkdir()
+    url, _ = server
+    w, h = SIZES[size]
+    page = browser.new_page(viewport={"width": w, "height": h})
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{url}/#/import")
+    page.click(".imp-opt[data-m=link]")
+    page.click("#libPick")
+    page.wait_for_selector("#dlg[open] .frow")
+    assert page.evaluate("document.activeElement.id") == "fq"             # Fokus im Suchfeld
+    page.click(".fmanual summary")
+    page.fill("#fp", str(base))
+    page.click("#fgo")
+    page.wait_for_function("document.querySelectorAll('#fl .frow').length === 4")   # 2022, 2023, a, NGC4395_Bearbeitung
+    page.fill("#fq", "NGC 4395")
+    # sofort: nur der passende Ordner hier, danach die Treffer tiefer mit relativem Pfad
+    assert page.locator("#fl .frow").count() == 1
+    page.wait_for_selector("#fl .frel")
+    rels = page.locator("#fl .frel").all_inner_texts()
+    assert [r.replace("\\", "/") for r in rels] == ["2022/2022-05-06_21-41-48_observation_NGC4395",
+                                                    "2023/Fruehling/2023-04-01_20-00-00_observation_NGC_4395"]
+    assert "3 Treffer" in page.inner_text("#fct")
+    assert page.evaluate("(() => { const d = document.querySelector('#dlg'); return d.scrollWidth <= d.clientWidth + 1 })()")
+    page.focus("#fq")
+    page.keyboard.press("Escape")                                          # leert nur, Dialog bleibt offen
+    assert page.input_value("#fq") == "" and page.locator("#dlg[open]").count()
+    assert page.locator("#fl .frow").count() == 4
+    page.fill("#fq", "ngc_4395")
+    page.locator("#fl .frow", has=page.locator(".frel")).first.click()     # Treffer öffnen
+    page.wait_for_function("document.querySelector('#fp').value.endsWith('observation_NGC4395')")
+    assert page.input_value("#fq") == ""
+    page.wait_for_selector("#fl .frow")                                    # Unterordner 01-images-initial
+    page.click("#fok")                                                     # wählt den aktuellen Ordner wie bisher
+    assert not page.locator("#dlg[open]").count()
+    page.close()
+    assert not errors, errors
+
 @pytest.mark.parametrize('size', ['handy', 'desktop', 'gross'])
 def test_tonight_recommendations_chart_and_links(server, browser, size, tmp_path):
     """Echte Nachtkurven mit festem Datum: Übersicht, responsive Grafik, lokale Katalogkarte und Sage-Klick."""

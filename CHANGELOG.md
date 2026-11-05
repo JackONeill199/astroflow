@@ -14,6 +14,15 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 - Bildbetrachter: Lädt ein Bild länger als 20 s oder schlägt es fehl, steht dort jetzt „Lädt noch … (langsames Netz?)“
   bzw. „Bild konnte nicht geladen werden.“ mit „Erneut versuchen“, statt endlos den Kreisel zu zeigen.
 
+## 0.31.0 – 05.11.2026
+
+### Neu
+- **Ordner suchen im Ordnerdialog** („Hauptordner wählen“, SkyTrace „Ordner wählen“): Das Suchfeld filtert sofort die Unterordner des
+  aktuellen Ordners und sucht zusätzlich bis zu 4 Ebenen tief (höchstens 200 Treffer). Groß-/Kleinschreibung, Leerzeichen, „_“ und „-“
+  spielen keine Rolle – „NGC 4395“ findet also auch `…_observation_NGC4395` und `NGC_4395`. Tiefere Treffer stehen mit ihrem Pfad
+  unter „In Unterordnern“; ein Klick öffnet den Ordner, gewählt wird wie bisher der aktuelle Ordner. Esc leert die Suche, Enter öffnet
+  den ersten Treffer, die Pfeiltasten führen durch die Liste.
+
 ## 0.30.0 – 05.11.2026
 
 ### Neu
