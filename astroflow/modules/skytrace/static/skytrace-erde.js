@@ -860,7 +860,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
   const localXY = (e) => { const b = canvas.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
   // auf der ganzen Bühne (auch über Schildern), nicht über Karte/Werkzeugen; die flache Karte hat ihren eigenen Zoom
   stage.addEventListener('wheel', (e) => {
-    if (M.zoom !== 'globe' || flat?.active || e.target.closest('.ste-card,.ste-tools,.ste-tiles,.ste-legend') || e.target.classList.contains('ste-flat')) return;
+    if (M.zoom !== 'globe' || flat?.active || e.target.closest('.ste-card,.ste-tools,.ste-tiles,.ste-legend,.ste-side') || e.target.classList.contains('ste-flat')) return;
     e.preventDefault(); zoomBy(Math.exp(clamp(e.deltaY, -300, 300) * .0018), ...localXY(e));
   }, { passive: false });
   const touches = new Map(); let pinch = 0, down = null, grab = null;

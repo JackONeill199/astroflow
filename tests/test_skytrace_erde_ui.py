@@ -333,3 +333,41 @@ def test_kartenkacheln_passend_zur_aufloesung(server, browser, dpr, tmp_path):
     page.screenshot(path=str(tmp_path / f"erde-kacheln-dpr{dpr}.png"))
     assert not errors, errors
     page.close()
+
+
+def test_mausrad_ueber_seitenleiste_scrollt_statt_zu_zoomen(server, browser, tmp_path):
+    """Nutzerbefund 06.11.2026: über dem Glas-Panel (Nachtliste) zoomte das Mausrad die Karte – auf Kugel und flacher Karte."""
+    base, _ = server
+    page = browser.new_page(viewport={"width": 1440, "height": 900})
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.route("**/*tile*.org/**", lambda route: route.fulfill(status=204))
+    page.goto(base + "/#/skytrace/erde/2022-08-01")
+    page.wait_for_function("document.querySelector('#steHost')?._ste && !document.querySelector('#steHost')._ste.state().flying", timeout=15000)
+    page.locator(".ste-stage").scroll_into_view_if_needed()
+    nights = page.locator(".ste-stage > .ste-side .ste-nights")
+    nights.evaluate("el => { el.style.maxHeight = '3rem' }")                # sicher scrollbar, auch mit wenigen Nächten
+    nb = nights.bounding_box()
+    d0 = _state(page)["dist"]
+    page.mouse.move(nb["x"] + nb["width"] / 2, nb["y"] + nb["height"] / 2)
+    for _ in range(4):
+        page.mouse.wheel(0, 120); page.wait_for_timeout(40)
+    assert _state(page)["dist"] == d0
+    assert nights.evaluate("el => el.scrollTop") > 0
+    # flache Karte: ebenso
+    box = page.locator(".ste-stage").bounding_box()
+    page.mouse.move(box["x"] + box["width"] * .35, box["y"] + box["height"] * .55)
+    assert _wheel_until(page, -120, "s.flat.on"), _state(page)
+    page.wait_for_function("document.querySelector('#steHost')._ste.state().flat.fade === 1")
+    z0 = _state(page)["flat"]["pxPerKm"]
+    nights.evaluate("el => { el.scrollTop = 0 }")
+    page.mouse.move(nb["x"] + nb["width"] / 2, nb["y"] + nb["height"] / 2)
+    for _ in range(4):
+        page.mouse.wheel(0, 120); page.wait_for_timeout(40)
+    assert _state(page)["flat"]["pxPerKm"] == z0 and nights.evaluate("el => el.scrollTop") > 0
+    # Kartenknöpfe über der Karte deckend (Glas-Stil machte sie fast durchsichtig)
+    alpha = page.evaluate("getComputedStyle(document.querySelector('.ste-tiles .seg')).backgroundColor")
+    assert alpha.startswith("rgba(11, 13, 16, 0.9"), alpha
+    page.screenshot(path=str(tmp_path / "erde-seitenleiste.png"))
+    assert not errors, errors
+    page.close()
