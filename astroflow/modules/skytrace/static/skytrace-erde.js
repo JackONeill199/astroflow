@@ -41,20 +41,24 @@ function sunLatLon(t) {
 const nightTime = (night, lon = 0) => Date.parse(night + 'T00:00:00Z') / 1000 + (24 - lon / 15) * 3600;
 const nightOfTime = (t) => new Date((t - 43200) * 1000).toISOString().slice(0, 10);          // wie core/sites.night_of: UTC − 12 h
 const fmtNight = (night, long = false) => new Date(night + 'T12:00:00Z').toLocaleDateString('de-DE', long ? { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' } : { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
-const helpers = () => window.SkyTraceHelpers;          // aus skytrace.js (Heatmap-Zellen, Ortsmarken, Übernehmen, Texte, Läufe)
+const helpers = () => window.SkyTraceHelpers;
+const HELP = 'Ziehen dreht · Mausrad/zwei Finger zoomen · nah heran = flache Karte · Antippen zeigt Details';          // aus skytrace.js (Heatmap-Zellen, Ortsmarken, Übernehmen, Texte, Läufe)
 
 const MARKUP = (page) => `<div class="ste-main">
     <div class="ste-stage"><canvas aria-label="Drehbarer Globus mit Standorten, Heatmap der Standortsuche, Teleskopweg und Bahnen"></canvas><div class="ste-labels"></div>
       <div class="ste-tools"><div class="seg st3d-views" hidden aria-label="Kamera"><button data-v="earth" class="on">Erde</button><button data-v="scope">Teleskop</button><button data-v="pass">Durchgang</button><button data-v="sat">Folgen</button></div>
         <span class="ste-pill ste-nvpill" hidden>${icon('target')}Nachtsicht</span><span class="grow"></span>
         <span class="st3d-schema" hidden title="Kuppel, Himmel und Ziel sind nicht maßstäblich">Schema</span>
+        <button class="btn ghost sm ste-mode" title="Zwischen Globus und flacher Karte wechseln (Hineinzoomen wechselt von selbst)">${icon('layers')}<span>Karte</span></button>
         <button class="btn ghost sm ste-home" title="Ganze Region zeigen">${icon('fit')}<span>Übersicht</span></button>
-        <button class="btn ghost icon sm ste-fs" title="Vollbild (F)" aria-label="Vollbild">${icon('expand')}</button></div>
+        <button class="btn ghost icon sm ste-fs" title="Vollbild (F)" aria-label="Vollbild">${icon('expand')}</button>
+        <button class="btn ghost icon sm ste-paneltg" title="Ebenen und Nächte ein-/ausblenden" aria-label="Seitenleiste" aria-expanded="true">${icon('sidebar')}</button></div>
       <div class="ste-msg"><span class="spinner"></span>Globus wird geladen …</div>
       <div class="ste-legend" hidden><span class="ramp"></span><span class="ste-legend-t"></span></div>
-      <div class="ste-tiles" hidden><button class="btn sm ste-tiles-b">${icon('globe')}Karte laden</button><span class="ste-attr sm"></span></div>
+      <div class="ste-tiles" hidden><div class="seg"><button data-tiles="" class="on" title="Erdbild, ohne Netz">Erdbild</button><button data-tiles="osm" title="Kacheln von OpenStreetMap laden – der Kartendienst sieht den Ausschnitt">Straßenkarte</button><button data-tiles="topo" title="Kacheln von OpenTopoMap laden – der Kartendienst sieht den Ausschnitt">Gelände</button></div><span class="ste-attr sm"></span></div>
+      <div class="ste-readout" hidden><span class="ste-scale"><i></i><b></b></span><span class="ste-coord tnum"></span></div>
       <div class="ste-card" hidden></div>
-      <div class="ste-help">Ziehen dreht · Mausrad/zwei Finger zoomen · Antippen zeigt Details</div></div>
+      <div class="ste-help">${HELP}</div></div>
     <div class="st3d-bar" hidden><button class="btn icon ghost sm" data-play title="Abspielen" aria-label="Abspielen">${icon('play')}</button>
       <div class="st3d-range"><canvas class="st3d-strip" aria-hidden="true"></canvas><input type="range" aria-label="Zeit der Beobachtung"></div>
       <span class="st3d-time tnum"></span><select aria-label="Abspielgeschwindigkeit"><option value="1">1×</option><option value="10">10×</option>
@@ -77,13 +81,34 @@ const MARKUP = (page) => `<div class="ste-main">
 async function view(el, route = {}) {
   const H = helpers();
   crumbs([['SkyTrace', '#/skytrace'], ['3D-Erde']]);
-  el.innerHTML = `<div class="pagehead"><div style="min-width:0"><h1>3D-Erde</h1>
-      <p class="mut readable">Standorte, Heatmap der Standortsuche, Teleskopweg und Satellitenbahnen auf einem Globus. Jede Ebene lässt sich einzeln ein- und ausschalten; liegt etwas auf der Nachtseite, hellt die Nachtsicht sie auf.</p></div>
+  // Kopf ohne Erklärtext (Nutzerwunsch: mehr Platz für die Karte) – die Erklärung steht hinter dem Info-Knopf
+  el.innerHTML = `<div class="pagehead ste-head"><div class="ste-title"><h1>3D-Erde</h1>
+        <button class="btn ghost icon sm ste-info" aria-expanded="false" aria-controls="steInfo" title="Was zeigt die 3D-Erde und wie bedient man sie?" aria-label="Hilfe zur 3D-Erde">?</button></div>
       <div class="page-actions"><a class="btn ghost" href="#/skytrace/standorte">${icon('list')}Standorte aller Nächte</a></div></div>
+    <div class="ste-infopop panel" id="steInfo" hidden><button class="btn ghost icon sm ste-info-x" aria-label="Schließen">${icon('x')}</button>
+      <h3>Was die 3D-Erde zeigt</h3>
+      <p class="readable">Standorte, die Heatmap der Standortsuche, Teleskopweg und Satellitenbahnen auf einem Globus. <b>Nächte &amp; Standorte</b> zeigt je Nacht den bisherigen Ort,
+        Vorschläge mit Unsicherheit und die Heatmap der zurückgerechneten Bodenpunkte (hell = viele verschiedene Spuren treffen sich). <b>Analysen</b> zeigt einen Lauf mit
+        Zeitleiste: wohin das Teleskop geschaut hat und welche Satelliten das Bildfeld gekreuzt haben.</p>
+      <h3>Bedienung</h3>
+      <ul class="readable"><li><b>Ziehen</b> dreht den Globus bzw. verschiebt die Karte – der angefasste Punkt bleibt unter dem Zeiger.</li>
+        <li><b>Mausrad / zwei Finger</b> zoomen zum Zeiger. Nah heran wird der Globus zur <b>flachen Karte</b>, weit heraus wieder zur Kugel; „Karte/Globus“ wechselt direkt.</li>
+        <li><b>Antippen</b> eines Orts oder Vorschlags öffnet seine Karte mit „Übernehmen“. ←/→ wechseln die Nacht, F schaltet Vollbild.</li>
+        <li>Rechts lassen sich <b>Ebenen</b> einzeln ein- und ausschalten; der Knopf oben rechts klappt das Panel ein.</li>
+        <li><b>Nachtsicht</b>: liegt die Region auf der Nachtseite, wird sie aufgehellt (Auto/An/Aus).</li>
+        <li><b>Straßenkarte/Gelände</b> laden Kartenkacheln von OpenStreetMap bzw. OpenTopoMap – nur auf Knopfdruck, der Kartendienst sieht dann den Ausschnitt. Sonst bleibt alles auf dem Rechner.</li></ul></div>
     <div class="ste" id="steHost">${MARKUP(true)}</div>`;
+  const infoBtn = $('.ste-info', el), infoPop = $('#steInfo', el);
+  $('.ste-head', el).append(infoPop);                    // als Popover am Kopf: die Karte springt beim Öffnen nicht
+  const outside = (e) => { if (!infoPop.hidden && !e.target.closest('#steInfo,.ste-info')) info(false); };
+  document.addEventListener('pointerdown', outside);
+  const info = (open) => { infoPop.hidden = !open; infoBtn.setAttribute('aria-expanded', String(open)); };
+  infoBtn.onclick = () => info(infoPop.hidden);
+  $('.ste-info-x', el).onclick = () => { info(false); infoBtn.focus(); };
+  infoPop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { info(false); infoBtn.focus(); } });
   const ctx = route.ctx || 'nights';                     // #/skytrace/erde = Nächte & Standorte, #/skytrace/3d = Analysen
   const C = await component($('#steHost', el), el, { page: true, ctx, night: route.night || null, H });
-  if (!C) return;
+  if (!C) { document.removeEventListener('pointerdown', outside); return; }
   const onKey = (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input,select,textarea')) return;
     if (e.key === 'f' || e.key === 'F') { C.fullscreen(); e.preventDefault(); }
@@ -91,7 +116,7 @@ async function view(el, route = {}) {
   };
   document.addEventListener('keydown', onKey);
   return {
-    destroy() { C.dispose(); document.removeEventListener('keydown', onKey); },
+    destroy() { C.dispose(); document.removeEventListener('keydown', onKey); document.removeEventListener('pointerdown', outside); },
     actions: () => [['globe', '3D-Erde: Übersicht', 'Ganze Region zeigen', () => C.home()]],
   };
 }
@@ -233,6 +258,17 @@ async function component(host, el, opts) {
   const fullscreen = () => { if (document.fullscreenElement) document.exitFullscreen(); else host.requestFullscreen?.().catch(() => {}); };
   $d('.ste-fs').onclick = fullscreen;
   $d('.ste-home').onclick = () => scene.home();
+  // Seitenleiste als Panel in der Karte (ab 861 px; Nutzerwunsch „Optionen in die Karte, damit sie mehr Platz nutzt“), einklappbar; auf dem Handy darunter
+  const side = $d('.ste-side'), stageEl = $d('.ste-stage'), wide = matchMedia('(min-width: 861px)'), tg = $d('.ste-paneltg');
+  const place = () => {
+    const over = wide.matches;
+    if (over && side.parentElement !== stageEl) stageEl.append(side); else if (!over && side.parentElement !== host) host.append(side);
+    host.classList.toggle('ste-over', over); tg.hidden = !over;
+    const open = !over || store.get('skytrace.erde.panel', true);
+    stageEl.classList.toggle('panel-open', over && open); side.classList.toggle('closed', over && !open); tg.setAttribute('aria-expanded', String(open));
+  };
+  tg.onclick = () => { store.set('skytrace.erde.panel', !store.get('skytrace.erde.panel', true)); place(); };
+  wide.addEventListener?.('change', place); place();
 
   // Heatmap für eine Nacht berechnen (Hintergrundauftrag wie in „Standorte aller Nächte“), danach neu aufbauen
   async function computeHeat(night, btn) {
@@ -328,7 +364,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
     controls?.dispose(); camera.up.copy(up);
     controls = new OrbitControls(camera, canvas); controls.target.copy(tgt);
     controls.enablePan = false; controls.enableDamping = false; controls.rotateSpeed = .5; controls.zoomSpeed = .9; controls.maxDistance = 90;
-    controls.enableZoom = M.zoom === 'orbit';
+    controls.enableZoom = controls.enableRotate = M.zoom === 'orbit';
     controls.addEventListener('change', () => { M.dirty = true; });
     controls.addEventListener('start', () => { M.fly = null; });
   }
@@ -344,7 +380,9 @@ function globe(host, { THREE, OrbitControls }, ctx) {
     sc.add(new THREE.Points(g, keep(new THREE.PointsMaterial({ color: '#cdd6ff', size: 1.2, sizeAttenuation: false, transparent: true, opacity: .7 })))); }
   const earth = new THREE.Group(); sc.add(earth);          // dreht sich im Analysen-Kontext mit der Zeit; alles Erdfeste hängt daran
   const tex = keep(new THREE.TextureLoader().load(TEX, () => { M.dirty = true; }));
-  tex.anisotropy = 8;
+  const texImg = new Image(); texImg.src = TEX;          // dieselbe Datei für die flache Karte (aus dem Browser-Cache)
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();      // schräg betrachtete Erde scharf (Mipmaps: Standard, trilinear)
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
   const U_E = { map: { value: tex }, sun: { value: new THREE.Vector3(1, 0, 0) }, shade: { value: S.on.terminator ? 1 : 0 }, nv: { value: 0 } };
   earth.add(new THREE.Mesh(keep(toEllipsoid(new THREE.SphereGeometry(1, 128, 96))), keep(new THREE.ShaderMaterial({ uniforms: U_E, vertexShader: EARTH_VS, fragmentShader: EARTH_FS }))));
   const atmo = { value: 1 };
@@ -403,7 +441,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
     for (let i = picks.length - 1; i >= 0; i--) if (picks[i].layer !== 'sites') picks.splice(i, 1);
     const shown = S.night ? [nightOf(S.night)].filter(Boolean) : S.ctx === 'runs' ? [] : nights;
     const curSeen = new Set();
-    M.curPos = null;
+    M.curPos = null; M.flatMarks = { current: [], proposals: [] };
     for (const n of shown) {
       const m = coords(n), sel = n.night === S.night;
       if (m.cur && !curSeen.has(m.cur.name + m.cur.lat)) {
@@ -411,10 +449,13 @@ function globe(host, { THREE, OrbitControls }, ctx) {
         const o = sprite('current', '#f2d385', sel ? .034 : .024, 1, ring); o.position.copy(llv(m.cur.lat, m.cur.lon, .0016)); layer.current.group.add(o);
         picks.push({ obj: o, kind: 'night', night: n.night, layer: 'current' });
         if (sel) { label('bisher: ' + (m.cur.name || 'Ort'), null, '#f2d385', o.position, { layer: 'current', cls: 'cur' }); M.curPos = llv(m.cur.lat, m.cur.lon, .0012); }
+        M.flatMarks.current.push({ lat: m.cur.lat, lon: m.cur.lon, name: m.cur.name, night: n.night, sel });
       }
       if (m.prop && !n.applied) {
         const p = llv(m.prop.lat, m.prop.lon, .002), o = sprite('proposals', '#7f98ff', sel ? .03 : .02, 1); o.position.copy(p); layer.proposals.group.add(o);
         picks.push({ obj: o, kind: 'night', night: n.night, layer: 'proposals' });
+        M.flatMarks.proposals.push({ lat: m.prop.lat, lon: m.prop.lon, night: n.night, sel, mark: m.prop, name: m.prop.kind === 'list' ? m.prop.name : m.prop.kind === 'global' ? 'Unbekannter Ort' : 'Vorschlag',
+          sub: fmtNight(n.night) + ' · ± ' + H.kmText((m.prop.ellipse?.major ?? m.prop.acc / 1000)) });
         layer.proposals.group.add(lineOn('proposals', H.ellipsePts(m.prop, 72).map(([la, lo]) => llv(la, lo, .0018)), '#8ea4ff', sel ? .95 : .6, true));
         if (sel || !S.night) label(m.prop.kind === 'list' ? m.prop.name : m.prop.kind === 'global' ? 'Unbekannter Ort' : 'Vorschlag', sel ? fmtNight(n.night) + ' · ± ' + H.kmText((m.prop.ellipse?.major ?? m.prop.acc / 1000)) : fmtNight(n.night),
           '#7f98ff', p, { layer: 'proposals', onClick: () => onPick(n.night), near: sel ? 99 : 2.6 });
@@ -468,7 +509,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
   const G = {
     THREE, sc, earth, camera, stage, labelsHost, $d, glow, cardEl: $d('.ste-card'),
     controls: () => controls, makeControls, addMat, dropMats,
-    zoomMode(m) { M.zoom = m; controls.enableZoom = m === 'orbit'; },
+    zoomMode(m) { M.zoom = m; controls.enableZoom = controls.enableRotate = m === 'orbit'; if (m === 'orbit' && flat?.active) leaveFlat(null, true); },
     setFly(fn) { M.fly = fn; M.dirty = true; },
     dirty() { M.dirty = true; },
     layerK: (k) => layer[k].k,
@@ -582,6 +623,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
 
   // ---- Kamera: Fahrt (Kugel-Slerp mit Bogen nach außen) zu Richtung und Abstand ----
   function flyTo(dir, dist, ms = 1500) {
+    if (flat?.active) leaveFlat(null, true);
     const from = camera.position.clone(), d0 = from.length(), d1 = clamp(dist, 1.015, 8);
     const a = from.clone().normalize(), b = dir.clone().normalize(), ang = a.angleTo(b);
     const q0 = new THREE.Quaternion(), q1 = new THREE.Quaternion().setFromUnitVectors(a, b);
@@ -627,7 +669,8 @@ function globe(host, { THREE, OrbitControls }, ctx) {
 
   // ---- Auswahl einer Nacht (Kontext „Nächte & Standorte“) ----
   function setNight(night, { card: showCard = false, fly = true, first = false } = {}) {
-    S.night = night;
+    if (flat?.active && night === M.lastNight) { if (showCard && night) card(nightOf(night)); return; }   // in der Karte: dieselbe Nacht nur zeigen, nicht wegfliegen
+    S.night = night; M.lastNight = night;
     // Sonne zur Aufnahmezeit: run3d-Anker, sonst Mitternacht Ortszeit an der Region; ohne Nacht: jetzt
     const r = region(night), [, lon] = vll(r.dir);
     const t = night ? (nightRuns[night]?.time || nightTime(night, lon)) : Date.now() / 1000;
@@ -706,47 +749,135 @@ function globe(host, { THREE, OrbitControls }, ctx) {
     $d('.ste-legend-t').textContent = P ? `verschiedene Spuren: 1 … ${P.coarse?.max ?? P.fine?.max}` : 'verschiedene Spuren (je Nacht relativ)';
   }
 
-  // ---- Kartenkacheln (OSM) nur auf Knopfdruck, erst bei starkem Zoom ----
-  const tilesBox = $d('.ste-tiles'), tilesBtn = $d('.ste-tiles-b');
-  let tilesMesh = null;
-  const clearTiles = () => { if (!tilesMesh) return; earth.remove(tilesMesh); tilesMesh.geometry.dispose(); tilesMesh.material.map?.dispose(); tilesMesh.material.dispose(); tilesMesh = null; $d('.ste-attr').textContent = ''; tilesBtn.innerHTML = `${icon('globe')}Karte laden`; M.dirty = true; };
-  tilesBtn.onclick = async () => {
-    if (tilesMesh) { clearTiles(); return; }
-    const look = earth.worldToLocal(camera.position.clone()), [lat, lon] = vll(look), alt = (camera.position.length() - 1) * R_KM;
-    const z = clamp(Math.round(Math.log2(40000 / Math.max(alt * 1.2, 2))) + 1, 5, 14), n = 2 ** z, N = 4;
-    const tx = Math.floor((lon + 180) / 360 * n), ty = Math.floor((1 - Math.log(Math.tan(lat * D2R) + 1 / Math.cos(lat * D2R)) / Math.PI) / 2 * n);
-    const x0 = tx - N / 2 + 1, y0 = clamp(ty - N / 2 + 1, 0, n - N);
-    const tLat = (y) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) / D2R;
-    const la1 = tLat(y0), la0 = tLat(y0 + N), lo0 = x0 / n * 360 - 180, lo1 = (x0 + N) / n * 360 - 180;
-    const cv = document.createElement('canvas'); cv.width = cv.height = 256 * N; const g = cv.getContext('2d');
-    tilesBtn.disabled = true; tilesBtn.textContent = 'Lädt …';
-    const get = (x, y) => new Promise((ok, fail) => { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => ok(im); im.onerror = () => fail(new Error('Kachel nicht geladen'));
-      im.src = `https://tile.openstreetmap.org/${z}/${((x % n) + n) % n}/${y}.png`; });
-    try {
-      await Promise.all(Array.from({ length: N * N }, (_, i) => { const x = x0 + i % N, y = y0 + Math.floor(i / N);
-        return get(x, y).then(im => { const a = (la1 - tLat(y)) / (la1 - la0) * cv.height, b = (la1 - tLat(y + 1)) / (la1 - la0) * cv.height; g.drawImage(im, (i % N) * 256, a, 256, b - a); }); }));
-      if (M.dead) return;
-      const t = new THREE.CanvasTexture(cv); t.anisotropy = 8;
-      tilesMesh = new THREE.Mesh(toEllipsoid(new THREE.SphereGeometry(1, 64, 64, (lo0 + 180) * D2R, (lo1 - lo0) * D2R, (90 - la1) * D2R, (la1 - la0) * D2R), .0004), new THREE.MeshBasicMaterial({ map: t, transparent: true, opacity: .92, depthWrite: false }));
-      tilesMesh.renderOrder = 1; earth.add(tilesMesh);
-      $d('.ste-attr').innerHTML = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>-Mitwirkende';
-      tilesBtn.innerHTML = `${icon('x')}Karte entfernen`;
-    } catch (e) { toast((e.message || 'Kacheln nicht geladen') + ' – Karte braucht Internet.', 'err'); tilesBtn.innerHTML = `${icon('globe')}Karte laden`; }
-    tilesBtn.disabled = false; M.dirty = true;
+  // ---- Flache Karte (skytrace-karte.js): ab FLAT_IN Erdradien Abstand beim Hineinzoomen, zurück zum Globus unter dem Maßstab von FLAT_OUT ----
+  const FLAT_IN = 1.07, FLAT_OUT = 1.085;
+  const tilesBox = $d('.ste-tiles'), readout = $d('.ste-readout');
+  const ppkAt = (distKm) => (stage.clientHeight / 2) / (Math.tan(camera.fov / 2 * D2R) * Math.max(distKm, .01));      // Pixel je km in Blickrichtung
+  const toLocalDir = (v) => v.clone().applyQuaternion(earth.quaternion.clone().invert());
+  const rayGlobe = (sx, sy) => {                     // Schnitt des Sehstrahls mit der Erde (Kugel, für Bedienung genau genug) → Weltpunkt
+    const b = canvas.getBoundingClientRect(); ndc.set(sx / b.width * 2 - 1, -sy / b.height * 2 + 1); rc.setFromCamera(ndc, camera);
+    const o = rc.ray.origin, d = rc.ray.direction, bb = o.dot(d), c = o.lengthSq() - 1, disc = bb * bb - c;
+    return disc < 0 ? null : o.clone().add(d.clone().multiplyScalar(-bb - Math.sqrt(disc)));
   };
+  const flatAllowed = () => M.zoom === 'globe' && !!window.SkyTraceKarte;
+  const flat = window.SkyTraceKarte ? SkyTraceKarte.FlatMap(stage, {
+    H, sites, texture: texImg,
+    layerK: (k) => ease(layer[k].k), nv: () => U_E.nv.value, shade: () => U_E.shade.value,
+    sunLocal: () => { const v = toLocalDir(sunNow); return [v.x, -v.z, v.y]; },
+    patches: () => Object.values(patches).filter(P => S.night ? P.night === S.night : S.ctx === 'nights'),
+    marks: () => M.flatMarks || { current: [], proposals: [] },
+    observers: () => {                               // Teleskopstandorte der gezeigten Läufe (Bahnen im Raum zeigt die Karte nicht)
+      const out = [], add = (d, name) => { const [la, lo] = vll(new THREE.Vector3(d.observer[0], d.observer[2], -d.observer[1])); out.push({ lat: la, lon: lo, name }); };
+      if (S.ctx === 'runs' && R.run) add(R.run.data, 'Teleskop');
+      else for (const L of nightRuns[S.night]?.layers || []) add(L.data, L.name);
+      return out;
+    },
+    onPick: (t) => { if (t.kind === 'site') siteCard(t.site); else onPick(t.night); },
+    onHover: (la, lo) => showCoord(la, lo),
+    leaveAt: () => ppkAt((FLAT_OUT - 1) * R_KM),
+    onLeave: (clat, clon, ppk, sx, sy, la, lo) => leaveFlat({ clat, clon, ppk, sx, sy, la, lo }),
+  }) : null;
+  function enterFlat(sx, sy, minPpk = 0) {
+    if (!flat || flat.active || !flatAllowed()) return;
+    sx ??= stage.clientWidth / 2; sy ??= stage.clientHeight / 2;
+    const hit = rayGlobe(sx, sy) || rayGlobe(stage.clientWidth / 2, stage.clientHeight / 2); if (!hit) return;
+    const [la, lo] = vll(toLocalDir(hit)), ppk = Math.max(ppkAt(camera.position.distanceTo(hit) * R_KM), minPpk);
+    M.fly = null; flat.enter(la, lo, ppk, sx, sy); cardEl.hidden = cardEl.hidden; labelsHost.hidden = true;
+    tilesBox.hidden = false; $d('.ste-mode span').textContent = 'Globus'; $d('.ste-help').textContent = 'Ziehen verschiebt · Mausrad/zwei Finger zoomen · weit herauszoomen = Globus'; M.dirty = true; M.anim.add('flat');
+  }
+  // zurück auf den Globus: Mitte und Maßstab übernehmen, dann den Punkt unter dem Zeiger nachführen
+  function leaveFlat(o, instant = false) {
+    if (!flat?.active) return;
+    const [clat, clon] = o ? [o.clat, o.clon] : flat.center(), ppk = o ? o.ppk : flat.pxPerKm();
+    const altKm = (stage.clientHeight / 2) / (Math.tan(camera.fov / 2 * D2R) * ppk);
+    earth.updateMatrixWorld(true);
+    const dir = earth.localToWorld(dirLL(clat, clon)).normalize();
+    camera.position.copy(dir.multiplyScalar(Math.max(1 + altKm / R_KM, FLAT_OUT + .002))); controls.update(); camera.updateMatrixWorld();
+    if (o?.la != null) for (let it = 0; it < 2; it++) {
+      const p = rayGlobe(o.sx, o.sy), q = earth.localToWorld(dirLL(o.la, o.lo)).normalize(); if (!p) break;
+      camera.position.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(p.normalize(), q)); controls.update(); camera.updateMatrixWorld();
+    }
+    flat.leave(); if (instant) flat.tick(0, false, true);
+    labelsHost.hidden = false; tilesBox.hidden = true; $d('.ste-mode span').textContent = 'Karte'; $d('.ste-help').textContent = HELP; M.dirty = true; M.anim.add('flat');
+  }
+  $d('.ste-mode').onclick = () => {
+    if (flat?.active) leaveFlat(null);
+    else {
+      if (M.zoom !== 'globe' && R.run) {               // aus Teleskop/Durchgang/Folgen: Erdansicht sofort übernehmen (setView plant sie sonst erst fürs nächste Bild)
+        R.run.setView('earth', false); M.fly?.(performance.now()); M.fly = null; controls.update(); camera.updateMatrixWorld();
+      }
+      enterFlat(null, null, ppkAt((FLAT_IN - 1) * R_KM) * 1.15);
+    }
+  };
+  tilesBox.querySelector('.seg').onclick = (e) => {
+    const b = e.target.closest('[data-tiles]'); if (!b || !flat) return;
+    $$('[data-tiles]', tilesBox).forEach(x => x.classList.toggle('on', x === b));
+    $d('.ste-attr').innerHTML = flat.setTiles(b.dataset.tiles);
+  };
+  // Koordinaten unter dem Zeiger (0,01°) und Maßstabsleiste
+  const NICE = [.1, .2, .5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
+  function showCoord(la, lo) {
+    const ppk = flat?.active ? flat.pxPerKm() : ppkAt((camera.position.length() - 1) * R_KM);
+    const km = NICE.find(k => k * ppk >= 60) || 5000, show = flat?.active || camera.position.length() < 1.6;
+    readout.hidden = !show && la == null;
+    readout.querySelector('.ste-scale').hidden = !show;
+    readout.querySelector('.ste-scale i').style.width = (km * ppk).toFixed(0) + 'px';
+    readout.querySelector('.ste-scale b').textContent = km < 1 ? Math.round(km * 1000) + ' m' : String(km).replace('.', ',') + ' km';
+    readout.querySelector('.ste-coord').textContent = la == null ? '' : `${Math.abs(la).toFixed(2).replace('.', ',')}° ${la >= 0 ? 'N' : 'S'} · ${Math.abs(lo).toFixed(2).replace('.', ',')}° ${lo >= 0 ? 'O' : 'W'}`;
+    M.coord = la == null ? null : [+la.toFixed(2), +lo.toFixed(2)];
+  }
 
   // ---- Zoom: im Globus-Modus eigenes Mausrad/Zwei-Finger-Zoomen nach Höhe über dem Boden (OrbitControls zoomt nur multiplikativ zum Mittelpunkt);
   //      in den Lauf-Ansichten Teleskop/Durchgang/Folgen zoomt OrbitControls zum jeweiligen Blickpunkt ----
-  const zoomBy = (f) => { const d = camera.position.length(), alt = clamp((d - 1) * f, .012, 7); camera.position.multiplyScalar((1 + alt) / d); M.fly = null; controls.update(); M.dirty = true; M.anim.add('layers'); };
-  canvas.addEventListener('wheel', (e) => { if (M.zoom !== 'globe') return; e.preventDefault(); zoomBy(Math.exp(clamp(e.deltaY, -300, 300) * .0018)); }, { passive: false });
-  const touches = new Map(); let pinch = 0, down = null;
-  canvas.addEventListener('pointerdown', (e) => { touches.set(e.pointerId, [e.clientX, e.clientY]); down = [e.clientX, e.clientY]; });
-  canvas.addEventListener('pointermove', (e) => {
-    if (!touches.has(e.pointerId)) return; touches.set(e.pointerId, [e.clientX, e.clientY]);
-    if (touches.size === 2 && M.zoom === 'globe') { const [a, b] = [...touches.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (pinch) zoomBy(pinch / d); pinch = d; }
+  // Zoomen um den Zeiger: Höhe über dem Boden ändern und den Punkt unter dem Zeiger dort halten; unter FLAT_IN wird die Kugel zur Karte
+  const zoomBy = (f, sx, sy) => {
+    const before = sx != null ? rayGlobe(sx, sy) : null;
+    const d = camera.position.length(), alt = clamp((d - 1) * f, .012, 7); camera.position.multiplyScalar((1 + alt) / d); M.fly = null; controls.update(); camera.updateMatrixWorld();
+    const after = before && rayGlobe(sx, sy);
+    if (before && after) { camera.position.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(after.normalize(), before.normalize())); controls.update(); }
+    M.dirty = true; M.anim.add('layers');
+    if (f < 1 && camera.position.length() < FLAT_IN) enterFlat(sx, sy);
+  };
+  const localXY = (e) => { const b = canvas.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
+  // auf der ganzen Bühne (auch über Schildern), nicht über Karte/Werkzeugen; die flache Karte hat ihren eigenen Zoom
+  stage.addEventListener('wheel', (e) => {
+    if (M.zoom !== 'globe' || flat?.active || e.target.closest('.ste-card,.ste-tools,.ste-tiles,.ste-legend') || e.target.classList.contains('ste-flat')) return;
+    e.preventDefault(); zoomBy(Math.exp(clamp(e.deltaY, -300, 300) * .0018), ...localXY(e));
+  }, { passive: false });
+  const touches = new Map(); let pinch = 0, down = null, grab = null;
+  canvas.addEventListener('pointerdown', (e) => {
+    touches.set(e.pointerId, localXY(e)); down = [e.clientX, e.clientY];
+    if (M.zoom !== 'globe') return;
+    canvas.setPointerCapture?.(e.pointerId);
+    const h = touches.size === 1 ? rayGlobe(...localXY(e)) : null;
+    grab = touches.size === 1 ? { p: h?.normalize() || null, last: localXY(e) } : null; M.fly = null;
   });
-  const up = (e) => { touches.delete(e.pointerId); if (touches.size < 2) pinch = 0; };
+  canvas.addEventListener('pointermove', (e) => {
+    const xy = localXY(e);
+    if (!touches.has(e.pointerId)) {                   // nur zeigen: Koordinaten unter dem Zeiger
+      const h = M.zoom === 'globe' ? rayGlobe(...xy) : null;
+      if (h) { const [la, lo] = vll(toLocalDir(h)); showCoord(la, lo); } else showCoord(null);
+      return;
+    }
+    touches.set(e.pointerId, xy);
+    if (M.zoom !== 'globe') return;
+    if (touches.size === 2) { const [a, b] = [...touches.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (pinch) zoomBy(pinch / d, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2); pinch = d; grab = null; return; }
+    if (!grab) return;
+    // Greif-Drehen: der angefasste Punkt bleibt unter dem Zeiger (ohne Nachlauf); daneben (im All) langsam nach Höhe
+    const now = rayGlobe(...xy);
+    if (grab.p && now) camera.position.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(now.normalize(), grab.p));
+    else {
+      const k = clamp((camera.position.length() - 1) * .004, .0004, .006), dx = xy[0] - grab.last[0], dy = xy[1] - grab.last[1];
+      camera.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), -dx * k);
+      camera.position.applyAxisAngle(new THREE.Vector3().crossVectors(camera.up, camera.position).normalize(), -dy * k);
+    }
+    const c = camera.position, lim = .995 * c.length();                 // nicht über die Pole kippen
+    if (Math.abs(c.y) > lim) { const r = Math.hypot(c.x, c.z) || 1e-6, s2 = Math.sqrt(c.lengthSq() - lim * lim) / r; c.set(c.x * s2, Math.sign(c.y) * lim, c.z * s2); }
+    grab.last = xy; controls.update(); M.dirty = true;
+  });
+  const up = (e) => { touches.delete(e.pointerId); if (touches.size < 2) pinch = 0; if (!touches.size) grab = null; };
   canvas.addEventListener('pointercancel', up);
+  canvas.addEventListener('pointerleave', () => { if (!touches.size) showCoord(null); });
   // Antippen: Objekte des Laufs, sonst Ort / Nacht
   const rc = new THREE.Raycaster(), ndc = new THREE.Vector2(), wp = new THREE.Vector3(), camN = new THREE.Vector3();
   canvas.addEventListener('pointerup', (e) => {
@@ -783,8 +914,6 @@ function globe(host, { THREE, OrbitControls }, ctx) {
     for (const f of M.hooks.draw) f(w, h);
     for (const P of Object.values(patches)) setPatchK(P);
     bordersMat.color.set(U_E.nv.value > .5 ? '#9ff3e4' : '#c5d3ef'); bordersMat.userData.base = .38 + .3 * U_E.nv.value; bordersMat.opacity = bordersMat.userData.base * ease(layer.borders.k);
-    tilesBox.hidden = (dist > 1.08 || M.zoom !== 'globe') && !tilesMesh;
-    if (tilesMesh && dist > 1.5) clearTiles();
     $d('.ste-nvpill').hidden = U_E.nv.value < .5;
     const t0 = performance.now(); renderer.render(sc, camera); M.frameMs = performance.now() - t0; M.frames++;
   }
@@ -805,10 +934,12 @@ function globe(host, { THREE, OrbitControls }, ctx) {
         for (const P of Object.values(patches)) if (P.reveal < 1) { P.reveal = reduced() ? 1 : Math.min(1, (now - P.revealStart) / 1400); r = true; }
         if (!r) M.anim.delete('reveal'); busy = true;
       }
-      if (!busy && !M.fly && !M.spin) M.anim.delete('layers');
+      if (!busy && !M.fly && !M.spin && !M.anim.has('flat')) M.anim.delete('layers');
       M.dirty = true;
     }
-    if (M.dirty) { M.dirty = false; draw(); }
+    const flatFull = flat ? flat.tick(dt, M.dirty || M.anim.size > 0, reduced()) : false;
+    if (flat && !flat.fading) M.anim.delete('flat');
+    if (M.dirty) { M.dirty = false; if (!flatFull) draw(); }           // ganz flach: Globus nicht zeichnen
   }
   const resize = () => { const w = stage.clientWidth, h = stage.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); for (const f of M.hooks.resize) f(); M.dirty = true; };
   const ro = new ResizeObserver(resize); ro.observe(stage); resize();
@@ -828,13 +959,15 @@ function globe(host, { THREE, OrbitControls }, ctx) {
         marks: { current: layer.current.group.children.length, proposals: layer.proposals.group.children.length, sites: layer.sites.group.children.length },
         borders: M.borders || 0, runs: Object.fromEntries(Object.entries(nightRuns).map(([k, v]) => [k, { ready: v.ready, hits: v.hits, layers: v.layers.length }])),
         flying: !!M.fly || !!M.spin, animating: M.anim.size > 0, frameMs: +M.frameMs.toFixed(2), flyFrameMs: gaps.length ? +(gaps.reduce((a, b) => a + b, 0) / gaps.length).toFixed(2) : null,
-        flyMaxMs: gaps.length ? +Math.max(...gaps).toFixed(2) : null, sun: vll(sunNow).map(v => +v.toFixed(2)), card: !cardEl.hidden };
+        flyMaxMs: gaps.length ? +Math.max(...gaps).toFixed(2) : null, sun: vll(sunNow).map(v => +v.toFixed(2)), card: !cardEl.hidden,
+        flat: flat?.state() || null, coord: M.coord || null };
     },
     focus: (lat, lon, dist) => flyTo(dirLL(lat, lon), dist, 0),
+    flat: flat && { at: flat.at, screenOf: flat.screenOf, flyTo: flat.flyTo, enter: (sx, sy) => enterFlat(sx, sy, ppkAt((FLAT_IN - 1) * R_KM) * 1.15), leave: () => leaveFlat(null) },
     dispose() {
       M.dead = true; cancelAnimationFrame(M.raf); ro.disconnect(); R.run?.dispose();
       for (const P of Object.values(nightRuns)) P.layers.forEach(l => l.dispose());
-      controls.dispose(); clearTiles(); for (const x of disposables) x.dispose?.(); renderer.dispose(); renderer.forceContextLoss?.();
+      controls.dispose(); flat?.dispose(); for (const x of disposables) x.dispose?.(); renderer.dispose(); renderer.forceContextLoss?.();
     },
   };
 }
