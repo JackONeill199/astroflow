@@ -37,7 +37,7 @@ class SiteJobs:
     def busy_with(self, run: str | None) -> bool:
         with self.lock:
             # Die Nachtsuche liest nur – sie sperrt keine Läufe (zählt aber als laufender Auftrag)
-            return bool(self.process is not None and self.job and (run is None or self.job.get("kind") != "nights" and (self.job.get("all") or run in self.job["runs"])))
+            return bool(self.process is not None and self.job and (run is None or self.job.get("kind") not in ("nights", "heatmap") and (self.job.get("all") or run in self.job["runs"])))
 
     def snapshot(self) -> dict | None:
         with self.lock:
@@ -107,6 +107,35 @@ class SiteJobs:
                                  global_km=float(global_km or 0)),
                             ["nights", str(path), str(self.nights_file), "--radius-km", str(float(radius_km)), "--global-km", str(float(global_km or 0))]
                             + ([] if clock else ["--no-clock"]))
+
+    def start_heatmap(self, night: str, global_km: float = 1500.0, clock: bool = True) -> dict:
+        """Heatmap der Rückprojektion für eine Nacht berechnen (auch wenn ein Listenort passt) – nur für die Karte, ändert keinen Vorschlag."""
+        import re
+        from .api import _read_json
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(night or "")):
+            raise ValueError("Ungültige Nacht.")
+        if not 100 <= float(global_km) <= 3000:
+            raise ValueError("Suchgebiet 100–3000 km.")
+        groups = self.mod.home / "standortsuche-gruppen.json"
+        if not any(g.get("night") == night for g in _read_json(groups, []) or []):
+            raise ValueError("Diese Nacht ist nicht in der letzten Suche – bitte zuerst „Standorte aller Nächte“ suchen.")
+        return self._launch(dict(kind="heatmap", all=False, runs=[], night=night, title=f"Heatmap der Standortsuche ({night})", global_km=float(global_km)),
+                            ["heatmap", str(groups), night, "--global-km", str(float(global_km))] + ([] if clock else ["--no-clock"]))
+
+    def heat(self, night: str) -> dict | None:
+        import re
+        from .api import _read_json
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(night or "")):
+            raise ValueError("Ungültige Nacht.")
+        return _read_json(self.heat_dir / f"{night}.json", None)
+
+    def heat_nights(self) -> list[str]:
+        d = self.heat_dir
+        return sorted(p.stem for p in d.glob("*.json")) if d.is_dir() else []
+
+    @property
+    def heat_dir(self) -> Path:
+        return self.mod.home / "standortsuche-karten"
 
     @property
     def nights_file(self) -> Path:
@@ -206,7 +235,7 @@ class SiteJobs:
             return []
         detail = j.get("error") if j["state"] == "error" else j.get("text")
         # gleiche Regel wie rmHref in skytrace.js (die offene Ansicht meldet das Ende selbst, mit Zahlen)
-        href = "#/skytrace/standorte" if j.get("kind") == "nights" or len(j["runs"]) > 1 and not j.get("all") else "#/skytrace/statistik" if j.get("all") else f"#/skytrace/{j['runs'][0]}/beobachtungen" if j["runs"] else "#/skytrace"
+        href = "#/skytrace/standorte" if j.get("kind") in ("nights", "heatmap") or len(j["runs"]) > 1 and not j.get("all") else "#/skytrace/statistik" if j.get("all") else f"#/skytrace/{j['runs'][0]}/beobachtungen" if j["runs"] else "#/skytrace"
         return [{"key": j["key"], "title": j["title"], "kind": "Spurenanalyse", "detail": detail, "state": j["state"],
                  "progress": (j["current"] / j["total"]) if j["state"] == "running" and j.get("total") else None,
                  "started": j["started"], "finished": j["finished"], "href": href}]
