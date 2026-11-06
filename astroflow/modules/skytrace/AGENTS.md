@@ -425,6 +425,33 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
   „berechnen“ bei passendem Listenort; Server: Prüfungen, Datei, `maps`), `test_ui_layout.py::test_night_map_heatmap` (synthetische Heatmap, Umrisse, Nah,
   Nacht ohne Heatmap mit Knopf, keine Kachelanfragen) und Fixture `_heat_fixture`.
 
+## Erde – zentrale Erd-Ansicht (0.35.0, 06.11.2026, Nutzerwunsch „Karte zu klein, zentrales Feature, mit der 3D-Map kombinieren, Filter, Nachtsicht, animiert“)
+- **Route** `#/skytrace/erde[/<Nacht>]` (Navigation „Erde“, `page wide`, F = Vollbild, ←/→ = Nacht), `earthView` in `skytrace.js` ruft `SkyTraceErde.view(el, night, helpers)`
+  aus `static/skytrace-erde.js|css` (Präfix `ste-`). Die Helfer (`heatCells`, `heatColor`, `nightMarks`, `ellipsePts`, `outlines`, `applyNights`, Texte) teilt sie mit
+  `nightsView` – Datenweg bleibt der aus 0.34.0 (`standortsuche-naechte.json`, `standortsuche-karten/<Nacht>.json`, Ortsliste). Neu nur der Sammel-Endpunkt
+  `GET /sitesearch/nights/heatmaps?nights=a,b` (leer = alle gespeicherten, ≤ 120). `nightsView` hat je Nacht „Auf der Erde zeigen“; die kleine Karte bleibt als Schnellansicht.
+- **Eigener Globus** (nicht `SkyTrace3D.mount`: die Lauf-Szene dreht die Erde in System D über die Nacht, hier ist alles erdfest). Achsen wie dort: ECEF → three (x, z, −y),
+  Kugel statt Ellipsoid (Bodenpunkte ±0,3 % – bei Globus-Zoom unsichtbar). Zeichnet nur bei Änderung bzw. während Animationen (`M.anim`).
+- **Ebenen** (`LAYERS`, localStorage `skytrace.erde.layers`): Orte der Liste, Ort je Nacht (Ring), Heatmap, Vorschläge (Punkt + 1σ-Ellipse; übernommene Nächte ohne),
+  Satellitenbahnen und Teleskop, Grenzen/Küsten (Umrisse als ein `LineSegments`, ~190 000 Punkte), Tag/Nacht-Grenze. Deckkraft `k` je Ebene, 450 ms weich (`applyK`).
+- **Heatmap:** je Nacht eine Kugelkappe über dem belegten Ausschnitt mit Wert-Textur (r = Spuren/Höchstwert, aus den Zellen gerastert, 3 px je Zelle, ≤ 1024²), Farbe per
+  Shader aus derselben Skala wie `heatColor`. Grob (20 km) immer, fein (1 km, ± 30 km) blendet zwischen Abstand 1,55 und 1,2 Erdradien ein (grob dann 45 %). „Aufbau“:
+  `reveal` 0 → 1 in 1,4 s, die hellsten Zellen zuerst. „Alle Nächte“ zeigt alle Heatmaps je Nacht relativ normiert.
+- **Nachtsicht** (`EARTH_FS`, Uniform `nv`, 600 ms): Nachtseite → gedämpftes Blaugrün aus der Helligkeit der Textur, Umrisse hell-türkis; Tagseite leicht entsättigt.
+  Auto (`skytrace.erde.nv`) = an, wenn eine Datenebene an ist und die Region (`M.focus`) auf der Nachtseite liegt (Skalarprodukt mit der Sonne < 0,12); An/Aus übersteuert.
+  Ohne Tag/Nacht-Ebene keine Schattierung. **Sonne:** vereinfachte Formel (`sunLatLon`, ~0,01°) zur Aufnahmezeit = `run3d.anchor`, sonst Mitternacht Ortszeit an der Länge der Region.
+- **Bahnen:** `run3d` je Beobachtung der Nacht (doppelte entfallen, ≤ 6), erst beim Einschalten der Ebene. Umrechnung System D → erdfest: Drehung um −`earth_rate`·(t − anchor)
+  je Punkt (Spur: t = window[0] + 2 s·i, Umlauf zur Durchgangszeit). Teleskop: Fächer aus ≤ 48 Blickrichtungen über die Nacht (~600 km lang), mittlere hervorgehoben.
+- **Kamera:** OrbitControls nur zum Drehen (Drehgeschwindigkeit ∝ Höhe); Zoom (Mausrad, zwei Finger) eigen über die Höhe über dem Boden (OrbitControls zoomt multiplikativ zum
+  Mittelpunkt → nahe am Boden unbrauchbar), 75 km … 7 R. Fahrt = Slerp der Richtung + Abstand mit Bogen nach außen (1,5 s), Ausschnitt aus Heatmap, Vorschlag, bisherigem Ort
+  (und Bahnen), mindestens 1,09 R. `prefers-reduced-motion`: Fahrten, Ebenen und Aufbau sofort.
+- **Kacheln:** „Karte laden“ erst unter Abstand 1,08 R, 4 × 4 OSM-Kacheln um die Blickmitte als Textur (Zeilen je Kachel linear in der Breite), entfernt sich ab 1,5 R. Sonst nie Netz.
+- **Leistung** (gemessen 06.11.2026, 1440 × 900, Playwright-Chromium): Kamerafahrt 16,7 ms je Bild (60 fps, RX 9070 XT/D3D11), ohne GPU (SwiftShader) 30–33 ms;
+  ein Bild zeichnen < 0,2 ms CPU. Umrisse einmal gebaut (~190 000 Segmente).
+- `host._ste.state()` für Tests (Nacht, `nv`, `layers`, `reveal`, `heatVisible`, `runs`, Bildzeiten der letzten Fahrt). Tests: `test_skytrace_erde_ui.py` (375/1440 px,
+  Nachtsicht Auto/Aus, Ebene weich aus/ein, Karte der Nacht, Alle Nächte, Regler, keine Kacheln; Bahnen mit synthetischer run3d-Szene; Sammel-Endpunkt),
+  `test_ui_layout.py` `ROUTES` (`#/skytrace/erde`, `#/skytrace/erde/2022-08-01`).
+
 ## Erkennung im Teleskop-Bildfeld (28.10.2026, Nutzerbefund M74 2022-08-07)
 Anlass: Ein schwacher Meteor (img-0041, ~120 px, ~1,5σ/px) wurde übersehen, ein langsames Objekt in sechs Aufnahmen (img-0177…0182)
 als „Meteor“ gemeldet. Vergleichslauf: `Ergebnisse/2026-10-28_18-47-38-352557` (alt) gegen `2026-10-28_19-47-22-527055` (neu).

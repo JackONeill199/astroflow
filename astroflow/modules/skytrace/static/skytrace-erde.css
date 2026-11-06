@@ -1,0 +1,89 @@
+/* SkyTrace „Erde“ (skytrace-erde.js, #/skytrace/erde): Globus als Bühne, rechts Nächte, Ebenen, Nachtsicht (Handy: darunter). Präfix ste-, nur Design-Tokens. */
+.ste { --ste-h: clamp(26rem, calc(100vh - var(--top-h) - 11rem), 72rem); display: grid; grid-template-columns: minmax(0, 1fr) 19rem; gap: var(--gap); align-items: start; min-width: 0 }
+.ste-main { min-width: 0; border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; background: #03050b }
+.ste-stage { position: relative; height: var(--ste-h); overflow: hidden; touch-action: none; background: #03050b }
+.ste-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; outline: none }
+.ste-stage canvas:active { cursor: grabbing }
+.ste-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden }
+.ste-lbl { position: absolute; left: 0; top: 0; pointer-events: auto; margin: 0; padding: 1px 0.5rem 1px 0.4375rem; border-radius: 99rem; border: 1px solid color-mix(in srgb, var(--c) 55%, transparent);
+  background: #0b0d10d9; color: var(--fg); font: 600 0.6875rem/1.5 var(--sans); white-space: nowrap; cursor: pointer; translate: 0.625rem -50%; max-width: 16rem; overflow: hidden; text-overflow: ellipsis }
+.ste-lbl[tabindex="-1"] { cursor: default }
+.ste-lbl small { display: block; font-weight: 500; font-size: 0.625rem; color: var(--mut); margin-left: 0.75rem }
+.ste-lbl::before { content: ""; display: inline-block; width: 0.375rem; height: 0.375rem; border-radius: 50%; background: var(--c); margin-right: 0.375rem; vertical-align: 1px }
+.ste-lbl.site { font-weight: 500; border-color: #ffffff22; color: var(--mut) }
+.ste-tools { position: absolute; left: 0.75rem; right: 0.75rem; top: 0.75rem; z-index: 2; display: flex; align-items: center; gap: 0.5rem; pointer-events: none }
+.ste-tools > * { pointer-events: auto }
+.ste-tools .btn { background: #0b0d10d9; border: 1px solid var(--border) }
+.ste-pill { display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.1875rem 0.625rem; border-radius: 99rem; font-size: 0.6875rem; font-weight: 600; letter-spacing: .04em;
+  text-transform: uppercase; color: #9ff3e4; background: #0b1a1ad9; border: 1px solid #5eead455; animation: steIn var(--t2) var(--ease) }
+.ste-pill svg { width: 0.875rem; height: 0.875rem }
+.ste-msg { position: absolute; left: 50%; top: 50%; translate: -50% -50%; display: flex; align-items: center; gap: 0.625rem; max-width: min(28.75rem, 86%); padding: 0.75rem 1rem;
+  border-radius: var(--r-lg); background: var(--surface-2); border: 1px solid var(--border); color: var(--fg); font-size: 0.8438rem }
+.ste-msg svg { flex: none; width: 1.125rem; height: 1.125rem; color: var(--warn) }
+.ste-help { position: absolute; right: 0.75rem; bottom: 0.625rem; font-size: 0.7188rem; color: var(--mut); pointer-events: none }
+.ste-legend { position: absolute; left: 0.75rem; bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem; padding: 0.3125rem 0.625rem; border-radius: var(--r);
+  background: #0b0d10d9; border: 1px solid var(--border); font-size: 0.7188rem; color: var(--mut); animation: steIn var(--t2) var(--ease) }
+.ste-legend .ramp { width: 6rem; height: 0.5rem; border-radius: 0.25rem; background: linear-gradient(90deg, rgb(40, 20, 90), rgb(150, 40, 130), rgb(240, 110, 50), rgb(255, 235, 120)) }
+.ste-tiles { position: absolute; left: 0.75rem; top: 3.25rem; display: flex; align-items: center; gap: 0.5rem; animation: steIn var(--t2) var(--ease) }
+.ste-tiles .btn { background: #0b0d10e6; border: 1px solid var(--border) }
+.ste-attr { color: var(--mut); background: #0b0d10d9; padding: 0 0.375rem; border-radius: 0.25rem }
+.ste-attr:empty { display: none }
+.ste-card { position: absolute; right: 0.75rem; top: 3.5rem; width: min(23rem, calc(100% - 1.5rem)); max-height: calc(100% - 5.5rem); overflow: auto; padding: 0.75rem 0.875rem;
+  border-radius: var(--r-lg); background: var(--surface-2); border: 1px solid var(--border); box-shadow: var(--shadow); color: var(--fg); animation: steIn var(--t2) var(--ease) }
+.ste-card-h { display: flex; align-items: flex-start; gap: 0.5rem }
+.ste-card-h > div { flex: 1; min-width: 0 }
+.ste-card-h b { display: block; font-size: 0.9375rem }
+.ste-card-h small { display: block; color: var(--mut); font-size: 0.75rem; overflow-wrap: anywhere }
+.ste-card-g { display: grid; gap: 0.5rem; margin-top: 0.625rem }
+.ste-card-g > div { display: grid; gap: 1px; min-width: 0 }
+.ste-card-g b { font-size: 0.8438rem }
+.ste-card-g span { overflow-wrap: anywhere }
+.ste-card p { margin: 0.5rem 0 0 }
+.ste-card-a { margin-top: 0.75rem; gap: 0.375rem; flex-wrap: wrap }
+/* Seitenleiste */
+.ste-side { display: flex; flex-direction: column; gap: 1rem; min-width: 0; padding: 0.875rem; border: 1px solid var(--border-soft); border-radius: var(--r-lg); background: var(--surface);
+  height: calc(var(--ste-h) + 2px); box-sizing: border-box; overflow: auto }
+.ste-side section { display: grid; gap: 0.5rem; min-width: 0 }
+.ste-sec { margin: 0; font-size: 0.6875rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--dim) }
+.ste-nightbar { display: flex; align-items: center; gap: 0.25rem }
+.ste-nightrange { flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; height: 1.5rem }
+.ste-nights { position: relative; display: grid; gap: 2px; max-height: 15rem; overflow: auto; min-width: 0 }
+.ste-nights button { display: flex; align-items: center; gap: 0.5rem; min-width: 0; border: 0; background: transparent; color: var(--fg); font: inherit; text-align: left; cursor: pointer;
+  padding: 0.375rem 0.5rem; border-radius: var(--r-sm); transition: background var(--t) }
+.ste-nights button:hover { background: var(--surface-2) }
+.ste-nights button.on { background: var(--surface-3); box-shadow: inset 2px 0 0 var(--acc) }
+.ste-nights button > span:first-child { flex: 1; min-width: 0 }
+.ste-nights b { display: block; font-size: 0.8125rem; font-weight: 600 }
+.ste-nights small { display: block; font-size: 0.7188rem; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.ste-nights .chip { flex: none; font-size: 0.6875rem }
+.ste-heaticon { flex: none; width: 0.75rem; height: 0.5rem; border-radius: 0.125rem; background: linear-gradient(90deg, rgb(150, 40, 130), rgb(240, 110, 50), rgb(255, 235, 120)) }
+.ste-layers { display: grid; gap: 2px }
+.ste-layer { display: flex; align-items: center; gap: 0.5rem; padding: 0.3125rem 0.375rem; border-radius: var(--r-sm); font-size: 0.8125rem; cursor: pointer; transition: background var(--t) }
+.ste-layer:hover { background: var(--surface-2) }
+.ste-layer input { margin: 0; accent-color: var(--c); width: 0.875rem; height: 0.875rem; flex: none }
+.ste-layer i { flex: none; width: 0.5625rem; height: 0.5625rem; border-radius: 50%; background: var(--c); transition: opacity var(--t), transform var(--t) }
+.ste-layer:has(input:not(:checked)) i { opacity: .25; transform: scale(.7) }
+.ste-layer:has(input:not(:checked)) span { color: var(--mut) }
+.ste-nv button { flex: 1 }
+.ste-nvnote:empty { display: none }
+.ste-note { margin: auto 0 0; line-height: 1.45; overflow-wrap: anywhere }
+/* Vollbild: Bühne füllt den Bildschirm, Leiste bleibt rechts */
+.ste:fullscreen { background: var(--bg); padding: 0.75rem; height: 100vh; box-sizing: border-box; grid-template-rows: minmax(0, 1fr); align-items: stretch }
+.ste:fullscreen .ste-main, .ste:fullscreen .ste-stage, .ste:fullscreen .ste-side { height: 100% }
+@keyframes steIn { from { opacity: 0; transform: translateY(0.375rem) } }
+@media (max-width: 1100px) { .ste { grid-template-columns: minmax(0, 1fr) 16rem } }
+@media (max-width: 860px) {
+  .ste { grid-template-columns: minmax(0, 1fr) }
+  .ste-stage { height: clamp(22rem, 64vh, 40rem) }
+  .ste-side { height: auto }
+  .ste-layers { grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)) }
+}
+@media (max-width: 560px) {
+  .ste-tools { left: 0.5rem; right: 0.5rem; top: 0.5rem }
+  .ste-home span { display: none }
+  .ste-help { display: none }
+  .ste-card { left: 0.5rem; right: 0.5rem; top: auto; bottom: 0.5rem; width: auto; max-height: 58%; padding: 0.625rem 0.75rem }
+  .ste-legend { left: 0.5rem; bottom: 0.5rem }
+  .ste-tiles { left: 0.5rem; top: 2.875rem }
+}
+@media (prefers-reduced-motion: reduce) { .ste-card, .ste-legend, .ste-pill, .ste-tiles { animation: none } }

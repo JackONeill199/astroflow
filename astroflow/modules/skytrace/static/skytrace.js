@@ -1306,7 +1306,8 @@ function nightRow(n, busy = false, clocks = {}, sites = [], maps = []) {
       ${p ? `<div><small class="dim">Vorschlag</small>${prop}</div>` : ''}${clockScanHtml(n.applied ? null : k, applied)}</div>
     ${n.note || n.fit_reason || k?.reason ? `<p class="dim sm">${esc([n.note, n.status !== 'better' && n.fit_reason ? 'Rückrechnung: ' + n.fit_reason : '', k?.reason ? 'Uhrversatz: ' + k.reason : ''].filter(Boolean).join(' '))}</p>` : ''}
     <div class="row">${(p || q) && !n.applied ? `<button class="btn sm" data-apply="${esc(n.night)}"${busy ? ' disabled title="Erst nach dem Ende der Suche"' : ''}>Für diese Nacht übernehmen …</button>` : ''}
-      <button class="btn sm ghost" data-map-open="${esc(n.night)}" aria-expanded="false">${icon('globe')}Karte${maps.includes(n.night) ? ' mit Heatmap' : ''}</button></div>
+      <button class="btn sm ghost" data-map-open="${esc(n.night)}" aria-expanded="false">${icon('pin')}Karte${maps.includes(n.night) ? ' mit Heatmap' : ''}</button>
+      <a class="btn sm ghost" href="#/skytrace/erde/${esc(n.night)}" title="Große Ansicht auf dem Globus mit Ebenen und Nachtsicht">${icon('globe')}Auf der Erde zeigen</a></div>
     <div class="stn-mapbox" data-map-night="${esc(n.night)}" hidden></div></div>`;
 }
 // Übernehmen: bestehender Ort → Zuordnung der Nacht, neuer Ort → neuer Eintrag (wie applyFit); SkyTrace-Ausnahmen der Beobachtungen entfernen
@@ -1481,16 +1482,22 @@ async function nightsView(el) {
   };
 }
 
+// Erde (0.35.0, skytrace-erde.js): zentrale Erd-Ansicht – teilt Heatmap-/Karten-Helfer und das Übernehmen mit „Standorte aller Nächte“
+function earthView(el, night) {
+  return SkyTraceErde.view(el, night || null, { heatCells, heatColor, nightMarks, ellipsePts, outlines, applyNights, NIGHT_STATUS, globalHtml, kmText, arcText, clockText, shortName });
+}
+
 // ---------------------------------------------------------- Registrierung --- //
 AF.register('skytrace', {
   nav: [{ href: '#/skytrace', label: 'SkyTrace', icon: 'orbit', key: 'skytrace', area: 'work' }, { href: '#/skytrace/neu', label: 'Neue Analyse', icon: 'play', key: 'skytrace-new' },
-    { href: '#/skytrace/3d', label: '3D-Ansicht', icon: 'globe', key: 'skytrace-3d' }, { href: '#/skytrace/statistik', label: 'Statistik', icon: 'pulse', key: 'skytrace-stats' }],
+    { href: '#/skytrace/erde', label: 'Erde', icon: 'globe', key: 'skytrace-erde' }, { href: '#/skytrace/3d', label: '3D-Ansicht', icon: 'target', key: 'skytrace-3d' }, { href: '#/skytrace/statistik', label: 'Statistik', icon: 'pulse', key: 'skytrace-stats' }],
   routes: [
     [/^\/skytrace$/, 'skytrace', runsView],
     [/^\/skytrace\/neu$/, 'skytrace-new', newView],
     [/^\/skytrace\/statistik$/, 'skytrace-stats', statsView],
     [/^\/skytrace\/3d$/, 'skytrace-3d', sky3dView],
     [/^\/skytrace\/standorte$/, 'skytrace-stats', nightsView],
+    [/^\/skytrace\/erde(?:\/(\d{4}-\d{2}-\d{2}))?$/, 'skytrace-erde', earthView],
     [/^\/skytrace\/([^/]+)(?:\/(\w+))?$/, 'skytrace', runView],
   ],
   settings,
@@ -1508,7 +1515,7 @@ AF.register('skytrace', {
   },
   async palette() {
     const runs = await api(T + '/runs');
-    return [['play', 'Neue Spurenanalyse', 'SkyTrace', '#/skytrace/neu'], ['globe', 'SkyTrace 3D-Ansicht', 'Teleskopweg und Satellitenbahnen auf der Erde', '#/skytrace/3d'], ['pulse', 'SkyTrace-Statistik', 'Objektarten, Satelliten, Kataloge', '#/skytrace/statistik'], ['pin', 'Standorte aller Nächte suchen', 'SkyTrace: Ortsliste an Satellitenspuren prüfen', '#/skytrace/standorte'],
+    return [['play', 'Neue Spurenanalyse', 'SkyTrace', '#/skytrace/neu'], ['globe', 'SkyTrace Erde', 'Standorte, Heatmap der Standortsuche und Bahnen auf dem Globus', '#/skytrace/erde'], ['target', 'SkyTrace 3D-Ansicht', 'Teleskopweg und Satellitenbahnen auf der Erde', '#/skytrace/3d'], ['pulse', 'SkyTrace-Statistik', 'Objektarten, Satelliten, Kataloge', '#/skytrace/statistik'], ['pin', 'Standorte aller Nächte suchen', 'SkyTrace: Ortsliste an Satellitenspuren prüfen', '#/skytrace/standorte'],
       ...runs.map(r => ['orbit', shortName(r.title), `${r.candidates} Kandidaten · ${runDate(r.id)}`, `#/skytrace/${encodeURIComponent(r.id)}`, r.preview ? media(r.preview) : null])];
   },
 });

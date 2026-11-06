@@ -3,6 +3,20 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.35.0 – 06.11.2026
+
+### Neu
+- **SkyTrace: Erde** – neue zentrale Ansicht (Navigation „Erde“, `#/skytrace/erde`). Ein großer Globus zeigt Orte der Liste,
+  den Ort je Nacht, die **Heatmap der Standortsuche**, Vorschläge mit Unsicherheitsellipse, Satellitenbahnen und Teleskop-Blickrichtung
+  der Nacht, Grenzen/Küsten und die Tag/Nacht-Grenze zur Aufnahmezeit. Jede Ebene lässt sich einzeln weich ein- und ausblenden.
+- Nächte als Liste und Regler (auch „Alle Nächte“, Pfeiltasten): Der Globus dreht sich zur gewählten Nacht und zoomt auf die Region,
+  die Heatmap baut sich von den hellsten Stellen her auf. Beim Heranzoomen erscheint das feine 1-km-Raster.
+- **Nachtsicht:** Liegt, was gezeigt wird, auf der Nachtseite, hellt sich die Nachtseite in ein gedämpftes Blaugrün mit hellen Umrissen auf
+  (Auto/An/Aus).
+- Antippen einer Nacht oder eines Vorschlags öffnet eine Karte mit **Übernehmen**, „Heatmap berechnen“ und Links zum Lauf und zur 3D-Ansicht.
+  In „Standorte aller Nächte“ führt **Auf der Erde zeigen** je Nacht dorthin.
+- Kartenkacheln (OpenStreetMap) nur auf Knopfdruck und erst bei starkem Zoom („Karte laden“), sonst ohne Netz.
+
 ## 0.34.0 – 06.11.2026
 
 ### Neu
