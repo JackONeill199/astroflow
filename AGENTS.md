@@ -318,10 +318,16 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   Gleichheit; noch nicht auf PyPI). `installer/build_windows.py`: python-build-standalone (fest `PBS_TAG`/`PBS_PY`) + Wheel + pip-Install,
   numpy/scipy-Tests entfernt, Symbol gezeichnet (Pillow), `AstroFlow.cmd`/`AstroFlow beenden.cmd` (portabel), ZIP; mit ISCC Inno-Installer
   (`astroflow.iss`: pro Nutzer, `%LOCALAPPDATA%\Programs\AstroFlow`, Startmenü, optional Desktop/Autostart, stoppt laufenden Server vor Update/
-  Deinstallation, Daten bleiben). Daneben `AstroFlow-Test.wsb` + `pruefe-in-sandbox.cmd` (Windows-Sandbox, absoluter Pfad → nicht im Repo).
+  Deinstallation, Daten bleiben). Daneben `AstroFlow-Test.wsb` + `pruefe-in-sandbox.cmd` (Windows-Sandbox, absoluter Pfad → nicht im Repo;
+  für heruntergeladene Pakete `build_windows.py --sandbox-only --out <Ordner>`): Paketordner schreibgeschützt, daneben `<Ordner>-sandbox-ergebnis`
+  beschreibbar, Netz an, sonst nichts eingebunden; Logonbefehl prüft Installer (`pruefe_paket.py --setup`, nur in Sandbox/VM – installiert ins
+  echte Profil) und ZIP, Protokolle + `fertig.txt` im Ergebnisordner. Start per Doppelklick oder `WindowsSandbox.exe <wsb>` (geht auch aus der Sitzung).
   CI: `.github/workflows/windows-paket.yml` (PR mit Paketänderungen, manuell, Tag `v*` → Release-Entwurf) baut, prüft sauber und installiert still.
 - **Gemessen 06.11.2026** (`installer/pruefe_paket.py`, leeres Profil, PATH ohne Python, 16 Kerne): Paket 150 MB ZIP / 379 MB entpackt;
   entpacken 8 s, erster Start 21 s, ASTAP + D05 12 s (schnelle Leitung), Demo bis Bild 11 s, Beenden 4 s → **0,9 min bis zum ersten Bild**.
+  **Windows-Sandbox** (frisches Windows ohne Python, CI-Pakete): Installer 96 MB – installieren 18 s, Start 9 s, ASTAP + D05 20 s, Demo bis Bild 9 s
+  → **0,93 min**, Beenden 3 s, Deinstallieren 3 s (Daten bleiben); portabel 0,58 min. CI-Runner: Installer 0,84 min, portabel 3,6 min (ASTAP 177 s).
+  `platform.machine()` ist unter Windows ohne `PROCESSOR_ARCHITECTURE` leer → `setup._system()` rät über die Zeigerbreite.
 - Ohne eingerichtete SkyTrace-Engine (kein Interpreter gewählt, keine venv) überspringt `skytrace.auto` still (Zustand `skipped`) statt je Nacht
   „Analyse-Engine unvollständig“ zu melden. Engine per Knopf = Phase 2 (dafür plattformneutrale Anforderungen statt des Windows-Lockfiles).
 

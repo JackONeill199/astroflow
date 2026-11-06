@@ -23,6 +23,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -38,8 +39,11 @@ def call(port: int, path: str, body: dict | None = None, timeout: float = 30):
     req = urllib.request.Request(f"http://127.0.0.1:{port}/api{path}", method="POST" if body is not None else "GET",
                                  data=json.dumps(body).encode() if body is not None else None,
                                  headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:                          # Fehlermeldung des Servers mit ausgeben
+        raise RuntimeError(f"{path}: HTTP {e.code} {e.read().decode('utf-8', 'replace')[:300]}") from None
 
 
 def wait(fn, timeout: float, step: float = 1.0):
@@ -143,7 +147,7 @@ def main():
     port = free_port()
     env = {"SystemRoot": win, "WINDIR": win, "ComSpec": os.path.join(win, "System32", "cmd.exe"),
            "PATH": os.pathsep.join([os.path.join(win, "System32"), win, os.path.join(win, "System32", "WindowsPowerShell", "v1.0")]),
-           "PATHEXT": ".COM;.EXE;.BAT;.CMD", "USERPROFILE": str(home), "HOMEDRIVE": str(home)[:2], "HOMEPATH": str(home)[2:],
+           "PATHEXT": ".COM;.EXE;.BAT;.CMD", "PROCESSOR_ARCHITECTURE": os.environ.get("PROCESSOR_ARCHITECTURE", "AMD64"), "USERPROFILE": str(home), "HOMEDRIVE": str(home)[:2], "HOMEPATH": str(home)[2:],
            "APPDATA": str(home / "AppData" / "Roaming"), "LOCALAPPDATA": str(home / "AppData" / "Local"),
            "TEMP": str(root / "tmp"), "TMP": str(root / "tmp"), "USERNAME": "test", "ASTROFLOW_PORT": str(port), "ASTROFLOW_NO_BROWSER": "1"}
     r = subprocess.run(["where", "python"], env=env, capture_output=True, text=True)

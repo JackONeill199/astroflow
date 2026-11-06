@@ -45,6 +45,15 @@ TELESCOPES = {   # Auswahl im Assistenten → empfohlene Sterndatenbank (Bildfel
 }
 
 
+def _system() -> tuple[str, str]:
+    """(Betriebssystem, Architektur) für die ASTAP-Auswahl. Unter Windows liest platform.machine() PROCESSOR_ARCHITECTURE –
+    fehlt die Variable (gestartet aus stark reduzierter Umgebung), ist das Ergebnis leer; dann über die Zeigerbreite raten."""
+    sysname, mach = platform.system(), platform.machine()
+    if sysname == "Windows" and not mach:
+        mach = "AMD64" if sys.maxsize > 2**32 else "x86"
+    return sysname, mach
+
+
 def astap_dir() -> Path:
     if os.name == "nt" and os.environ.get("LOCALAPPDATA"):
         return Path(os.environ["LOCALAPPDATA"]) / "astap"
@@ -109,7 +118,7 @@ class Setup:
         solver = getattr(getattr(stacking, "eng", None), "pl", None)
         cfg_s = getattr(solver, "solver_cfg", None)
         astap = {"path": cfg_s.astap_path() if cfg_s else None, "databases": cfg_s.astap_databases() if cfg_s else [],
-                 "target": str(astap_dir()), "supported": (platform.system(), platform.machine()) in ASTAP_CLI}
+                 "target": str(astap_dir()), "supported": _system() in ASTAP_CLI}
         demo = st.input_dir / "demo"
         return {
             "pending": bool(self.launched and not sec.get("done")),
@@ -191,7 +200,7 @@ class Setup:
     def install_astap(self, db: str):
         if db not in ASTAP_DBS:
             raise HTTPException(400, "Unbekannte Sterndatenbank.")
-        key = (platform.system(), platform.machine())
+        key = _system()
         if key not in ASTAP_CLI:
             raise HTTPException(400, f"Für {key[0]} {key[1]} gibt es keine ASTAP-Kommandozeile – bitte ASTAP selbst installieren.")
         return self._run("astap", self._astap_job, db)
@@ -204,7 +213,7 @@ class Setup:
         cli = dest / ("astap_cli.exe" if os.name == "nt" else "astap_cli")
         if not cli.exists():
             prog(0.01, "Lade ASTAP-Kommandozeile …")
-            data = _download(SF.format(ASTAP_CLI[(platform.system(), platform.machine())]), lambda f: prog(0.01 + 0.04 * f, "Lade ASTAP-Kommandozeile …"))
+            data = _download(SF.format(ASTAP_CLI[_system()]), lambda f: prog(0.01 + 0.04 * f, "Lade ASTAP-Kommandozeile …"))
             with zipfile.ZipFile(io.BytesIO(data)) as z:
                 name = next((n for n in z.namelist() if Path(n).name.startswith("astap_cli")), None)
                 if not name:
