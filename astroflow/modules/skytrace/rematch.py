@@ -23,6 +23,62 @@ def sites_signature(section: dict | None) -> str:
     return hashlib.sha1(json.dumps(keep, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
+# ---- Alternativen zu einem zurückgerechneten Ort (0.38.0) ------------------------------------------------------------
+GOOD_RMS_ARCSEC = 60          # wie engine/rematch_sites.GOOD_RMS_ARCSEC
+SNAP_FIT_M, SNAP_GLOBAL_M = 300, 2000   # Einrastgrenzen (rematch_sites.SAME_SITE_M, global_site.NEAR_LIST_KM)
+ALT_NEAR_M, ALT_SIGMA = 2000, 5         # „nah“: ≤ 2 km oder ≤ 5σ des Vorschlags
+PARALLAX_ARCSEC_PER_M = 0.3   # erwartete Querablage, wenn der Ort um 1 m daneben liegt (≈ 1/700 km bei erdnahen Satelliten)
+
+
+def _dist_m(a: dict, b: dict) -> float:
+    import math
+    p1, p2 = math.radians(a["lat"]), math.radians(b["lat"])
+    h = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(b["lon"] - a["lon"]) / 2) ** 2
+    return 2 * 6371008.8 * math.asin(math.sqrt(min(1.0, h)))
+
+
+def alternatives(n: dict, sites: list[dict]) -> tuple[list[dict], dict | None]:
+    """Listenorte nahe einem zurückgerechneten Vorschlag (`fit`/`global`), die streng ebenfalls gut passen – aus `tested` der Nacht.
+    Gut = höchstens eine eindeutige Spur weniger und quer-RMS ≤ max(60″, 3 × Vorschlag) + erwartete Ablage durch den Abstand
+    (0,3″ je m: ein 372 m entfernter Ort liegt bei ~700 km Entfernung ~110″ quer daneben – das ist kein schlechter Ort, nur ein verschobener).
+    Dazu `near` = nächster Listenort mit Abstand und Einrastgrenze (für den Begründungstext)."""
+    p = n.get("proposal") or {}
+    if p.get("kind") not in ("fit", "global") or p.get("lat") is None or n.get("applied"):
+        return [], None
+    acc = float(p.get("accuracy_m") or 100)
+    limit = float(p.get("snap_limit_m") or max(SNAP_FIT_M if p["kind"] == "fit" else SNAP_GLOBAL_M, 2 * acc))
+    tested = {t["id"]: t for t in n.get("tested") or [] if t.get("id")}
+    near, out = None, []
+    for s in sites:
+        if s.get("lat") is None or s.get("lon") is None:
+            continue
+        d = _dist_m(s, p)
+        if near is None or d < near["distance_m"]:
+            near = {"id": s.get("id"), "name": s.get("name"), "distance_m": round(d), "limit_m": round(limit)}
+        t = tested.get(s.get("id"))
+        if not t or d > max(ALT_NEAR_M, ALT_SIGMA * acc):
+            continue
+        sure, rms = int(t.get("sure") or 0), t.get("rms")
+        if rms is None or sure < 1 or sure < int(p.get("sure") or 0) - 1:
+            continue
+        if rms > max(GOOD_RMS_ARCSEC, 3 * float(p.get("rms") or 0)) + PARALLAX_ARCSEC_PER_M * d:
+            continue
+        out.append({"id": s.get("id"), "name": s.get("name"), "distance_m": round(d), "sure": sure, "rms": rms, "tracks": n.get("tracks")})
+    out.sort(key=lambda a: (-a["sure"], a["distance_m"]))
+    return out[:3], (near if near and near["distance_m"] <= 10000 else None)
+
+
+def with_alternatives(result: dict | None, sites: list[dict]) -> dict | None:
+    """Ergebnis von „Standorte aller Nächte“ um `alternatives`/`near` ergänzen – nach der aktuellen Ortsliste (auch für ältere Suchen)."""
+    if not result:
+        return result
+    out = dict(result, nights=[])
+    for n in result.get("nights") or []:
+        alts, near = alternatives(n, sites)
+        out["nights"].append(dict(n, alternatives=alts, near=near) if (alts or near) else n)
+    return out
+
+
 class SiteJobs:
     SCRIPT = Path(__file__).parent / "engine" / "rematch_sites.py"
 

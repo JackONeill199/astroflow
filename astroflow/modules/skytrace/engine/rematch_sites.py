@@ -219,6 +219,7 @@ def search(root, folder_name, radius_km=SEARCH_RADIUS_KM, stop_file=None):
 GOOD_RMS_ARCSEC = 60           # passt ein Ort mit eindeutigen Treffern quer im Mittel besser, ist keine Rückrechnung nötig
 SAME_SITE_M = 300              # Rückrechnung so nah an einem Listenort → diesen Ort vorschlagen statt eines neuen
 MAX_CENTERS = 3                # höchstens so viele Suchmittelpunkte, wenn kein Ort einen Treffer hat
+ALT_NEAR_M, ALT_SIGMA = 2000, 5  # Listenorte so nah am Vorschlag (bzw. ≤ 5σ) werden für die Alternative streng nachgeprüft (wie rematch.alternatives)
 
 
 def _km(a, b):
@@ -433,6 +434,18 @@ def night(sitefit, group, entries, settings, radius_km, tick, clock=True, global
         out['proposal'] = None                                   # bisheriger Ort ist schon der beste
     top = max(best['sure'], (fit or {}).get('after_sure') or 0, (out['proposal'] or {}).get('sure') or 0)
     found = bool(global_km) and needs_global(len(entries), top) and _global(sitefit, out, entries, plain, sites, current, global_km, clock, tick, top)
+    prop = out.get('proposal') or {}
+    if prop.get('kind') in ('fit', 'global') and prop.get('lat') is not None:
+        # Alternativen (0.38.0): nahe Listenorte, die noch nicht streng geprüft wurden, nachprüfen – die Oberfläche bietet sie neben dem
+        # zurückgerechneten Punkt an (Auswahl rematch.alternatives); dazu die Einrastgrenze für den Begründungstext
+        import global_site
+        acc = float(prop.get('accuracy_m') or 100)
+        prop['snap_limit_m'] = round(max(SAME_SITE_M if prop['kind'] == 'fit' else 1000 * global_site.NEAR_LIST_KM, 2 * acc))
+        seen = {t.get('id') for t in tested}
+        for s in sites:
+            if s.get('id') in seen or _km(s, prop) * 1000 > max(ALT_NEAR_M, ALT_SIGMA * acc): continue
+            ref = dict(s, accuracy_m=float(s.get('accuracy_m') or 100), site_id=s.get('id'))
+            tested.append(dict(id=s.get('id'), name=s.get('name'), alternative=True, **_score(sitefit, strict(ref))))
     if (out.get('clock') or {}).get('proposal'):
         out['status'] = 'better'
         out['note'] = ('Der bisherige Ort passt – mit korrigierter Uhr.' if out['proposal'] is None

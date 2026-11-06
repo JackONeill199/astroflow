@@ -493,6 +493,32 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
   Maßstab/Koordinaten, Antippen → Karte der Nacht, Kacheln erst nach Klick, zurück zur Kugel), `test_kartenkacheln_passend_zur_aufloesung` (dpr 1/2, Kachel-Attrappe mit z/x/y: Stufe passend,
   ≤ 96 Kacheln, nichts doppelt, Quellenangabe). `host._ste.state().flat`, `_ste.flat.at/screenOf`.
 
+## Alternativen zum zurückgerechneten Ort (0.38.0, 07.11.2026, Nutzerfrage „Wieso wird hier nicht <Listenort> vorgeschlagen?“)
+- **Anlass** (nur gelesen): M108 2022-05-17, 3 Spuren, Vorschlag `fit` ± 115 m, 3/3, quer 6″. Ein Listenort (Genauigkeit 30 m, Koordinaten aus der
+  Adresssuche) lag **372 m** daneben und hatte streng ebenfalls 3/3, quer 113″ – nicht vorgeschlagen, weil die Einrastgrenze max(300 m, 2 × Genauigkeit)
+  300 m ist. Gleiches Muster in fünf weiteren Nächten (386–673 m, gleich viele Spuren) → ein Listenort liegt einige hundert Meter neben dem Aufstellort.
+- **Auswahl** `rematch.alternatives(night, sites)` (Server, reine Funktion; `with_alternatives` ergänzt `GET /sitesearch/nights` → `alternatives`, `near` – nach der
+  **aktuellen** Ortsliste, also auch für ältere Suchen; die Datei bleibt unverändert): nur `fit`/`global`, nicht übernommen; Listenort aus `tested` mit
+  Abstand ≤ max(2 km, 5 × `accuracy_m`), eindeutige Spuren ≥ Vorschlag − 1 (und ≥ 1), quer-RMS ≤ max(60″, 3 × Vorschlag) **+ 0,3″ je m Abstand**.
+  Entscheidung zum Zusatz: Der Auftrag nannte „≤ 60″ oder ≤ 3× Vorschlag“ – damit wäre der Anlassfall (113″ bei 6″) **nicht** erschienen. Ein Ort, der x m
+  neben dem Aufstellort liegt, hat bei erdnahen Satelliten (~700 km) zwangsläufig ~x/700 km quer (372 m ≈ 110″); er ist dann nicht schlechter, nur
+  verschoben – genau der Fall zum „Verschieben“. Höchstens 3, sortiert nach Spuren, dann Abstand. `near` = nächster Listenort mit `distance_m`/`limit_m`
+  (Vorschlag `snap_limit_m`, sonst 300 m bzw. 2 km) für den Begründungstext, nur ≤ 10 km.
+- **Engine** (`rematch_sites.night`): bei `fit`/`global` setzt sie `snap_limit_m` und prüft nahe Listenorte, die noch nicht in `tested` stehen (Weg „genug
+  Treffer → nur verfeinern“), streng nach (`alternative: true`). So erscheint auch der **bisherige Ort** selbst als Alternative, wenn er ein paar hundert Meter
+  daneben liegt – dort zeigt die Oberfläche nur „verschieben“ (Zuordnen wäre ohne Wirkung).
+- **UI** (`altHtml`, `nearText`, `applyAlt`, `moveSite` in `skytrace.js`, über `SkyTraceHelpers` auch in der Detailkarte der 3D-Erde): „<Ort> für diese Nacht
+  übernehmen …“ = `applyNights` mit `kind:'list'`. „<Ort> hierher verschieben …“: Dialog mit Nutzung des Orts (Standard-Ort, Zeiträume außer der Einzelnacht,
+  weitere Nächte dieser Suche mit bisherigem Abgleich) → `POST /sites` (Koordinaten = Vorschlag, Genauigkeit = max(30 m, Vorschlag), Höhe bleibt, Notiz mit
+  Datum und alten Koordinaten – nur lokal), Nacht dem Ort zuordnen (außer er ist schon der bisherige), „übernommen“, `ackSites`, `POST /rematch {all, force:false}`
+  (alle Läufe, nur Spuren mit geändertem Ort). Besser/schlechter je anderer Nacht wird nicht vorab gerechnet (bräuchte je Nacht einen strengen Abgleich);
+  der Dialog zeigt deren bisherigen Abgleich, der Neuabgleich zeigt das Ergebnis.
+- **Karte:** `nightMarks` → `alts` (Koordinaten aus der Ortsliste); Nachtkarte (SVG/Leaflet), Globus (`LineDashedMaterial` + Schild „Alternative: …“) und flache Karte
+  (`marks().alts`, gestrichelt mit Abstand) verbinden Vorschlag und Listenort gelb gestrichelt.
+- Tests: `test_skytrace_alternatives.py` (Auswahl, Grenzen, 5σ, nur fit/global, API ergänzt ohne Datei zu ändern; Engine: bisheriger Ort ~600 m daneben wird
+  nachgeprüft und Alternative), `test_ui_layout.py::test_standort_alternative` (Knöpfe, Grund, Dialog mit „2 Zeiträume“, Karte), `test_skytrace_erde_ui.py::
+  test_alternative_in_der_erde` (Detailkarte, Schild, flache Karte); Fixture-Nacht `2022-05-17` (erfundene Orte).
+
 ## Erkennung im Teleskop-Bildfeld (28.10.2026, Nutzerbefund M74 2022-08-07)
 Anlass: Ein schwacher Meteor (img-0041, ~120 px, ~1,5σ/px) wurde übersehen, ein langsames Objekt in sechs Aufnahmen (img-0177…0182)
 als „Meteor“ gemeldet. Vergleichslauf: `Ergebnisse/2026-10-28_18-47-38-352557` (alt) gegen `2026-10-28_19-47-22-527055` (neu).

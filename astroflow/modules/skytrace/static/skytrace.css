@@ -175,6 +175,14 @@ a.sts-row:hover b { color: var(--acc) }
 .stn-map .heat { image-rendering: auto }
 .stn-map .ell { fill: color-mix(in srgb, var(--acc) 20%, transparent); stroke: var(--acc); stroke-width: 1 }
 .stn-map .cur { fill: none; stroke: var(--fg); stroke-width: 1.5 }
+.stn-map line.alt { stroke: #f2d385; stroke-width: 1.5; stroke-dasharray: 4 3 }
+.stn-map text.alt { fill: #f2d385 }
+.stn-alt { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.25rem 0 0.5rem; padding: 0.5rem 0.75rem; border-left: 2px solid #f2d385; background: color-mix(in srgb, #f2d385 6%, transparent); border-radius: 0 var(--r-sm) var(--r-sm) 0 }
+.stn-alt-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; justify-content: space-between }
+.stn-alt-row > div:first-child { display: flex; flex-direction: column; gap: 0.125rem; min-width: 0 }
+.stn-alt-row b { overflow-wrap: anywhere }
+.stn-alt-row .row { flex-wrap: wrap; gap: 0.375rem }
+.stn-alt-tip { background: #10162e; color: #f2d385; border: 0; box-shadow: none; font-size: 0.6875rem }
 .stn-legend { display: flex; align-items: center; gap: 0.5rem }
 .stn-legend .ramp { width: 6rem; height: 0.5rem; border-radius: 0.25rem; background: linear-gradient(90deg, rgb(40, 20, 90), rgb(150, 40, 130), rgb(240, 110, 50), rgb(255, 235, 120)) }
 .stn-open { flex-wrap: wrap; gap: 0.5rem 1rem; margin: 0 0 1rem; border-color: color-mix(in srgb, var(--acc) 45%, var(--border)) }

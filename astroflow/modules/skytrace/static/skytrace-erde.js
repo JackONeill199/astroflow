@@ -430,8 +430,8 @@ function globe(host, { THREE, OrbitControls }, ctx) {
   const picks = [];                                    // anklickbare Sprites: {obj, kind, night|site}
   for (const s of sites) {
     const p = llv(s.lat, s.lon, .0012), o = sprite('sites', '#dfe6f5', .016, .95); o.position.copy(p); layer.sites.group.add(o);
-    picks.push({ obj: o, kind: 'site', site: s, layer: 'sites' });
-    label(s.name || 'Ort', null, '#c9d2e3', p, { layer: 'sites', near: 1.9, cls: 'site' });
+    const lab = label(s.name || 'Ort', null, '#c9d2e3', p, { layer: 'sites', near: 1.9, cls: 'site' });
+    picks.push({ obj: o, kind: 'site', site: s, layer: 'sites', lab });
   }
   // Ort je Nacht (bisher zugeordnet) und Vorschläge: werden je Auswahl neu gebaut
   const coords = (n) => H.nightMarks(n, sites);
@@ -441,7 +441,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
     for (let i = picks.length - 1; i >= 0; i--) if (picks[i].layer !== 'sites') picks.splice(i, 1);
     const shown = S.night ? [nightOf(S.night)].filter(Boolean) : S.ctx === 'runs' ? [] : nights;
     const curSeen = new Set();
-    M.curPos = null; M.flatMarks = { current: [], proposals: [] };
+    M.curPos = null; M.flatMarks = { current: [], proposals: [], alts: [] };
     for (const n of shown) {
       const m = coords(n), sel = n.night === S.night;
       if (m.cur && !curSeen.has(m.cur.name + m.cur.lat)) {
@@ -459,6 +459,15 @@ function globe(host, { THREE, OrbitControls }, ctx) {
         layer.proposals.group.add(lineOn('proposals', H.ellipsePts(m.prop, 72).map(([la, lo]) => llv(la, lo, .0018)), '#8ea4ff', sel ? .95 : .6, true));
         if (sel || !S.night) label(m.prop.kind === 'list' ? m.prop.name : m.prop.kind === 'global' ? 'Unbekannter Ort' : 'Vorschlag', sel ? fmtNight(n.night) + ' · ± ' + H.kmText((m.prop.ellipse?.major ?? m.prop.acc / 1000)) : fmtNight(n.night),
           '#7f98ff', p, { layer: 'proposals', onClick: () => onPick(n.night), near: sel ? 99 : 2.6 });
+        // Alternative (0.38.0): gestrichelte Verbindung Vorschlag ↔ Listenort mit Abstand
+        for (const a of sel ? m.alts || [] : []) {
+          const pts = Array.from({ length: 17 }, (_, i) => llv(m.prop.lat + (a.lat - m.prop.lat) * i / 16, m.prop.lon + (a.lon - m.prop.lon) * i / 16, .0019));
+          const g = keep(new THREE.BufferGeometry().setFromPoints(pts)), len = pts[0].distanceTo(pts[16]);
+          const ln = new THREE.Line(g, addMat('proposals', new THREE.LineDashedMaterial({ color: '#f2d385', dashSize: len / 9, gapSize: len / 14, depthWrite: false }), 1));
+          ln.computeLineDistances(); layer.proposals.group.add(ln);
+          label('Alternative: ' + (a.name || 'Ort'), H.mText(a.distance_m) + ' entfernt', '#f2d385', pts[8].clone(), { layer: 'proposals', cls: 'alt', near: 1.3 });
+          M.flatMarks.alts.push({ lat1: m.prop.lat, lon1: m.prop.lon, lat2: a.lat, lon2: a.lon, text: H.mText(a.distance_m), name: a.name });
+        }
       }
     }
     for (const k of ['current', 'proposals']) applyK(k);
@@ -697,6 +706,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
     if (!n) { cardEl.hidden = true; return; }
     const p = n.proposal, c = n.current || {}, hh = heats[n.night];
     const [lab, cls] = n.applied ? ['Übernommen', 'ok'] : p?.kind === 'global' ? ['Unbekannter Ort', 'acc'] : (H.NIGHT_STATUS[n.status] || [n.status || '–', '']);
+    const why = H.nearText(n);
     const prop = !p ? '' : p.kind === 'list' ? `<b>${esc(p.name || 'Ort der Liste')}</b><span class="mut sm">bestehender Ort · ${p.sure} von ${n.tracks} Spuren · quer ${H.arcText(p.rms)}</span>`
       : p.kind === 'global' ? H.globalHtml(p, n, sites)
       : `<b>Neuer Ort ${p.shift_from_current_km != null ? H.kmText(p.shift_from_current_km) + ' neben „' + esc(c.name || 'bisher') + '“' : ''}</b><span class="mut sm">± ${H.kmText(p.accuracy_m / 1000)} · ${p.sure} von ${n.tracks} Spuren · quer ${H.arcText(p.rms)}${H.clockText(p) ? ' · ' + H.clockText(p) : ''}</span>`;
@@ -708,7 +718,8 @@ function globe(host, { THREE, OrbitControls }, ctx) {
         ${p ? `<div><small class="dim">Vorschlag</small>${prop}</div>` : ''}
         ${hh ? `<div><small class="dim">Heatmap</small><span class="mut sm">Suchgebiet ± ${hh.region_km} km · Uhr ± ${Math.round(hh.clock_s)} s · bis ${patches[n.night]?.coarse?.max ?? hh.coarse?.max ?? '–'} verschiedene Spuren je ${hh.coarse?.cell_km || 20}-km-Zelle${hh.fine ? ' · fein 1 km beim Heranzoomen' : ''}</span></div>` : ''}
         ${rp?.ready ? `<div><small class="dim">Bahnen</small><span class="mut sm">${rp.hits} zugeordnete Objekte aus ${rp.obs} Beobachtung${rp.obs === 1 ? '' : 'en'}</span></div>` : ''}</div>
-      ${n.note ? `<p class="dim sm">${esc(n.note)}</p>` : ''}
+      ${H.altHtml(n)}
+      ${n.note || why ? `<p class="dim sm">${esc([n.note, why].filter(Boolean).join(' '))}</p>` : ''}
       <div class="row ste-card-a">${p && !n.applied ? '<button class="btn sm" data-a="apply">Für diese Nacht übernehmen …</button>' : ''}
         <button class="btn ghost sm" data-a="heat">${hh ? 'Heatmap neu berechnen' : 'Heatmap berechnen'}</button>
         ${runsOf.slice(0, 3).map(o => `<a class="btn ghost sm" href="#/skytrace/${encodeURIComponent(o.run)}/beobachtungen">${esc(H.shortName(o.session))}</a>`).join('')}
@@ -718,6 +729,14 @@ function globe(host, { THREE, OrbitControls }, ctx) {
       if (a === 'x') cardEl.hidden = true;
       else if (a === 'apply') { if (await H.applyNights([n])) { n.applied = Math.floor(Date.now() / 1000); rebuildMarks(); card(n); } }
       else if (a === 'heat') onCompute(n.night, e.target.closest('button'));
+      const al = e.target.closest('[data-alt-apply],[data-alt-move]');
+      if (al?.dataset.altApply && await H.applyAlt(n, al.dataset.altApply)) { n.applied = Math.floor(Date.now() / 1000); rebuildMarks(); card(n); }
+      else if (al?.dataset.altMove && await H.moveSite(n, al.dataset.altMove, nights)) {
+        // Listenort auf der Erde mitverschieben (die Ortsliste ist schon gespeichert)
+        const pk = picks.find(k => k.kind === 'site' && k.site.id === al.dataset.altMove);
+        if (pk) { pk.site.lat = p.lat; pk.site.lon = p.lon; const v = llv(p.lat, p.lon, .0012); pk.obj.position.copy(v); pk.lab?.pos.copy(v); }
+        n.applied = Math.floor(Date.now() / 1000); rebuildMarks(); card(n);
+      }
       else if (a === 'run') { cardEl.hidden = true; host.querySelector('.ste-ctx [data-ctx=runs]') && (S.runId = runsOf[0].run, store.set('skytrace.3drun', S.runId), host.querySelector('.ste-ctx [data-ctx=runs]').click()); }
     };
     cardEl.hidden = false;
@@ -956,7 +975,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
         earthRot: +earth.rotation.y.toFixed(5),
         layers: Object.fromEntries(LAYERS.map(([k]) => [k, +layer[k].k.toFixed(3)])), on: { ...S.on }, patches: Object.keys(patches).length,
         heatVisible: Object.values(patches).filter(P => P.group.visible).map(P => P.night), reveal: Object.fromEntries(Object.values(patches).map(P => [P.night, +P.reveal.toFixed(3)])),
-        marks: { current: layer.current.group.children.length, proposals: layer.proposals.group.children.length, sites: layer.sites.group.children.length },
+        marks: { current: layer.current.group.children.length, proposals: layer.proposals.group.children.length, sites: layer.sites.group.children.length, alts: (M.flatMarks?.alts || []).length },
         borders: M.borders || 0, runs: Object.fromEntries(Object.entries(nightRuns).map(([k, v]) => [k, { ready: v.ready, hits: v.hits, layers: v.layers.length }])),
         flying: !!M.fly || !!M.spin, animating: M.anim.size > 0, frameMs: +M.frameMs.toFixed(2), flyFrameMs: gaps.length ? +(gaps.reduce((a, b) => a + b, 0) / gaps.length).toFixed(2) : null,
         flyMaxMs: gaps.length ? +Math.max(...gaps).toFixed(2) : null, sun: vll(sunNow).map(v => +v.toFixed(2)), card: !cardEl.hidden,

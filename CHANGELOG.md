@@ -3,6 +3,20 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.38.0 – 07.11.2026
+
+### Neu
+- **SkyTrace: Alternative aus der Ortsliste zum zurückgerechneten Ort.** Liegt ein neu zurückgerechneter Punkt nahe an einem Ort der Liste
+  (bis 2 km bzw. 5-fache Unsicherheit) und passt dieser Ort streng fast genauso gut (gleich viele eindeutige Spuren oder eine weniger, Querablage
+  passend zum Abstand), zeigen „Standorte aller Nächte“ und die Detailkarte der 3D-Erde ihn als **Alternative**, etwa „Alternative: Ferienhaus –
+  372 m entfernt · 3/3 · quer 113″“. Dazu zwei Knöpfe:
+  - **… für diese Nacht übernehmen**: ordnet die Nacht dem bestehenden Ort zu.
+  - **… hierher verschieben**: korrigiert die Koordinaten des Orts auf den zurückgerechneten Punkt. Vorher nennt ein Dialog, wo der Ort sonst gilt
+    (Standard-Ort, Zeiträume, weitere Nächte der Suche). Danach werden alle Analysen mit geändertem Ort neu abgeglichen.
+- Auf den Karten verbindet eine gelbe, gestrichelte Linie Vorschlag und Alternative, mit Abstand beschriftet.
+- Der Grund steht jetzt dabei: „Der zurückgerechnete Punkt liegt 372 m neben „…“ (Grenze für automatische Zuordnung 300 m).“
+- Funktioniert auch für schon vorhandene Suchergebnisse, ohne neue Suche.
+
 ## 0.37.1 – 06.11.2026
 
 ### Behoben

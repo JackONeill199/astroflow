@@ -101,7 +101,14 @@ def _skytrace_run(run):
     cur = {"id": "home", "name": LONG, "sure": 0, "rms": None}
     fit = {"kind": "fit", "lat": 10.0, "lon": 20.0, "alt_m": 0, "accuracy_m": 80, "sure": 5, "rms": 14.2, "trails": 5, "timed": 2, "clock_s": -3.1,
            "clock_sigma_s": 0.4, "rms_before_arcsec": 903, "rms_after_arcsec": 14, "shift_from_current_km": 4.8, "from_name": LONG}
-    nights = [{"night": "2022-09-01", "observations": obs, "tracks": 5, "before": 0, "status": "better", "current": cur, "proposal": fit, "assign": ["2022-09-01"]},
+    # Rückrechnung 372 m neben einem Listenort (über der Einrastgrenze 300 m): Listenort streng ebenfalls gut → Alternative (0.38.0)
+    alt = {"night": "2022-05-17", "observations": obs[:1], "tracks": 3, "before": 0, "status": "better", "current": cur, "assign": ["2022-05-17"],
+           "tested": [{"id": "a", "name": LONG, "sure": 0, "compatible": 0, "rms": None}, {"id": "b", "name": "Beispielberg", "sure": 3, "compatible": 3, "rms": 113.3}],
+           "proposal": {"kind": "fit", "lat": 45.0 + 0.30 / 111.195, "lon": 6.0 + 0.22 / (111.195 * 0.7071), "alt_m": 0, "accuracy_m": 115, "sure": 3, "rms": 6.1,
+                        "trails": 3, "timed": 1, "clock_s": -2.4, "clock_sigma_s": 0.6, "rms_before_arcsec": 900, "snap_limit_m": 300,
+                        "ellipse_km": {"major": 0.115, "minor": 0.04, "angle_deg": 30}, "shift_from_current_km": 380.0, "from_name": "Beispielberg"},
+           "clock": {"proposal": {"offset_s": -42.0, "sigma_s": 1.0, "support": 3, "sure": 3, "before": 0, "confidence": 0.999, "chance": 0.1, "nights": ["2022-05-17"]}}}
+    nights = [alt, {"night": "2022-09-01", "observations": obs, "tracks": 5, "before": 0, "status": "better", "current": cur, "proposal": fit, "assign": ["2022-09-01"]},
               {"night": "2022-08-30", "observations": obs[:1], "tracks": 2, "before": 0, "status": "better", "current": cur,
                "proposal": {"kind": "list", "id": "b", "name": LONG, "sure": 2, "rms": 40}, "note": "Nur 2 eindeutige Spur(en) – zu wenig für eine Rückrechnung, nur Auswahl aus der Ortsliste."},
               {"night": "2022-08-29", "observations": obs[:1], "tracks": 1, "before": 0, "status": "none", "current": cur, "proposal": None,
@@ -194,6 +201,33 @@ def test_fast_navigation(server, browser):
     assert page.locator("#hkForm").count() == 1 and page.locator("#view > div").count() == 1
     page.close()
     assert not errors, "\n".join(sorted(set(errors))[:10])
+
+
+def test_standort_alternative(server, browser):
+    """Zurückgerechneter Punkt 372 m neben einem Listenort (Grenze 300 m): Alternative mit zwei Knöpfen, verständlicher Grund, Karte mit Verbindung;
+    „hierher verschieben“ nennt Zeiträume, in denen der Ort ebenfalls gilt (Abbrechen ändert nichts)."""
+    base, _ = server
+    page = browser.new_page(viewport={"width": 1440, "height": 900})
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{base}/#/skytrace/standorte")
+    row = page.locator('.stn-night[data-night="2022-05-17"]')
+    row.locator(".stn-alt").wait_for()
+    text = row.inner_text()
+    assert "Beispielberg" in text and "372 m entfernt · 3/3 eindeutig · quer 113″" in text
+    assert "liegt 372 m neben „Beispielberg“ (Grenze für automatische Zuordnung 300 m)" in text
+    assert row.locator("[data-alt-apply=b]").inner_text().startswith("Beispielberg für diese Nacht übernehmen")
+    row.locator("[data-alt-move=b]").click()
+    dlg = page.locator("#dlg")
+    dlg.get_by_text("hierher verschieben?").wait_for()
+    assert "2 Zeiträume" in dlg.inner_text() and "wirkt die Verschiebung mit" in dlg.inner_text()
+    assert "Uhrkorrektur −42 s" in dlg.inner_text()                     # Uhr gehört zum zurückgerechneten Ort (Review PR #62)
+    page.keyboard.press("Escape")
+    row.locator('[data-map-open="2022-05-17"]').click()
+    row.locator("svg.stn-map line.alt").wait_for()
+    assert row.locator("svg.stn-map text.alt").text_content() == "372 m"
+    assert not errors, errors
+    page.close()
 
 
 def test_night_map_heatmap(server, browser):

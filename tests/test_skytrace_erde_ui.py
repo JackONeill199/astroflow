@@ -181,6 +181,26 @@ def test_eine_3d_erde_mit_zwei_kontexten(server, browser, width, tmp_path):
     page.close()
 
 
+def test_alternative_in_der_erde(server, browser):
+    """Detailkarte der Nacht mit Alternative (Listenort 372 m neben dem zurückgerechneten Punkt), Marke auf Globus und flacher Karte."""
+    base, _ = server
+    page = browser.new_page(viewport={"width": 1440, "height": 900})
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(base + "/#/skytrace/erde/2022-05-17")
+    page.wait_for_function("(s => s?.night === '2022-05-17' && !s.flying)(document.querySelector('#steHost')?._ste?.state())", timeout=15000)
+    assert _state(page)["marks"]["alts"] == 1 and page.locator(".ste-lbl.alt").count() == 1
+    page.locator('.ste-nights button[data-n="2022-05-17"], button[data-n="2022-05-17"]').first.click()
+    card = page.locator(".ste-card")
+    card.locator(".stn-alt").wait_for()
+    assert "Beispielberg" in card.inner_text() and "Grenze für automatische Zuordnung 300 m" in card.inner_text()
+    assert card.locator("[data-alt-apply=b]").count() == 1 and card.locator("[data-alt-move=b]").count() == 1
+    page.locator(".ste-mode").click()                                       # flache Karte zeichnet die Verbindung mit
+    page.wait_for_function("document.querySelector('#steHost')._ste.state().flat.on")
+    assert not errors, errors
+    page.close()
+
+
 def _wheel_until(page, dy, cond, steps=80):
     for _ in range(steps):
         page.mouse.wheel(0, dy)
