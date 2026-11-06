@@ -141,3 +141,16 @@
 .ste-infopop b { color: var(--fg); font-weight: 600 }
 .ste-info-x { position: absolute; right: 0.5rem; top: 0.5rem }
 @media (prefers-reduced-motion: reduce) { .ste-infopop { animation: none } }
+/* Über der hellen Straßen-/Geländekarte lesbar: Glas-Stil (look.css) machte die Leisten fast durchsichtig */
+:root .ste-tiles .seg, :root[data-look] .ste-tiles .seg { background: #0b0d10eb; border-color: var(--border); box-shadow: var(--shadow) }
+.ste-tiles .seg button:not(.on) { color: #c9ced6 }
+.ste-tools .btn, .ste-paneltg { box-shadow: 0 1px 4px #0006 }
+/* Nachtliste: Scrollleiste sichtbar; die Randblende lässt den Leistenstreifen rechts aus */
+.ste-nights { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--fg) 40%, transparent) transparent }
+.ste-nights::-webkit-scrollbar { width: 0.5rem }
+.ste-nights::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--fg) 40%, transparent); border-radius: 99rem }
+.ste-nights.fade-t, .ste-nights.fade-b, .ste-nights.fade-t.fade-b { -webkit-mask-size: 100% 100%, 0.75rem 100%; mask-size: 100% 100%, 0.75rem 100%;
+  -webkit-mask-position: 0 0, right top; mask-position: 0 0, right top; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat }
+.ste-nights.fade-t { -webkit-mask-image: linear-gradient(#0000, #000 1.75rem), linear-gradient(#000, #000); mask-image: linear-gradient(#0000, #000 1.75rem), linear-gradient(#000, #000) }
+.ste-nights.fade-b { -webkit-mask-image: linear-gradient(#000 calc(100% - 1.75rem), #0000), linear-gradient(#000, #000); mask-image: linear-gradient(#000 calc(100% - 1.75rem), #0000), linear-gradient(#000, #000) }
+.ste-nights.fade-t.fade-b { -webkit-mask-image: linear-gradient(#0000, #000 1.75rem, #000 calc(100% - 1.75rem), #0000), linear-gradient(#000, #000); mask-image: linear-gradient(#0000, #000 1.75rem, #000 calc(100% - 1.75rem), #0000), linear-gradient(#000, #000) }

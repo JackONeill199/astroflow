@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.38.1 – 06.11.2026
+### Behoben
+- 3D-Erde: Das Mausrad scrollt über der Seitenleiste (Nachtliste, Ebenen) wieder die Leiste, statt die Karte zu zoomen.
+- 3D-Erde: Scrollleiste der Nachtliste und die Knöpfe Erdbild/Straßenkarte/Gelände sind über der hellen Karte gut sichtbar.
+
 ## 0.38.0 – 07.11.2026
 
 ### Neu
