@@ -3,6 +3,28 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.33.0 – 06.11.2026
+
+### Neu
+- **Einfache Installation unter Windows.** Ein Installer (`AstroFlow-Setup-<Version>.exe`) und ein portables ZIP bringen ein eigenes
+  Python samt allen Paketen mit – es muss nichts weiter installiert werden, keine Kommandozeile, keine Administratorrechte.
+  Startmenü „AstroFlow“ startet den Server im Hintergrund und öffnet den Browser, „AstroFlow beenden“ hält ihn an; optional
+  Desktop-Verknüpfung und Start beim Anmelden. Deinstallation über Windows → Apps, die Daten bleiben erhalten. Gebaut werden
+  beide Pakete per GitHub Actions bei jedem Versions-Tag (Release-Entwurf), geprüft in sauberer Umgebung ohne Python.
+- **Einrichtungsassistent beim ersten Start** (auch später unter Einstellungen → Module & System): Datenordner (Standard
+  `%USERPROFILE%\AstroFlow` bzw. `~/AstroFlow`, mit freiem Speicher je Laufwerk und Warnung bei OneDrive/Dropbox), Teleskop,
+  Standort, **ASTAP + Sterndatenbank auf Knopfdruck** (D05 für Smart-Teleskope ~100 MB, D50 ~900 MB, direkt von der
+  Originalquelle; vorhandenes ASTAP wird erkannt), **Demo fürs erste Bild** (künstliche Aufnahmeserie, nach rund einer halben
+  Minute fertig), GPU-Beschleunigung per Knopf, Hinweise zu GraXpert und StarNet, Heimnetz-Freigabe.
+- **Hinweis auf neue Versionen:** höchstens einmal am Tag eine anonyme Anfrage an GitHub, abschaltbar; einmaliger Hinweis je Version.
+- Einstellungen → Module & System: **AstroFlow beenden** und (bei Start über den Starter) **Neu starten**.
+- `astroflow` als Befehl: `pip install .` bzw. `uv tool install` aus dem Repo, danach startet `astroflow` den Server und öffnet den
+  Browser, `astroflow stop` beendet ihn. Bisherige Wege (`Start.bat`, `python -m astroflow serve --data …`) bleiben unverändert.
+
+### Behoben
+- Ohne installierte SkyTrace-Analyse-Engine meldete die automatische Spurenanalyse nach jedem Stack je Nacht einen Fehler.
+  Sie überspringt diese Nächte jetzt still.
+
 ## 0.32.0 – 06.11.2026
 
 ### Neu

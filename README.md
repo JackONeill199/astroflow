@@ -117,23 +117,48 @@ Die Oberfläche ist als Web-App für Desktop und Smartphone gebaut. Im Heimnetz 
 
 ## Installation und Start
 
-### Windows: Doppelklick
+### Windows: Installer (empfohlen)
 
-`Start.bat` startet AstroFlow im Hintergrund (Port 8766, Daten in `data/`, Protokoll `data/server.log.err`) und öffnet den Browser; läuft es
-schon, wird nur der Browser geöffnet. `Stop.bat` beendet den Server. Anpassbar über `ASTROFLOW_PORT` und `ASTROFLOW_DATA`.
+1. Unter [Releases](https://github.com/JackONeill199/astroflow/releases) `AstroFlow-Setup-<Version>.exe` herunterladen und starten.
+   Python ist enthalten, Administratorrechte sind nicht nötig. Ohne Codesignatur warnt Windows SmartScreen beim ersten Mal
+   („Weitere Informationen → Trotzdem ausführen“).
+2. Startmenü → **AstroFlow**. Der Server läuft im Hintergrund, der Browser öffnet sich mit dem **Einrichtungsassistenten**:
+   Datenordner (Standard `%USERPROFILE%\AstroFlow` – bewusst nicht unter „Dokumente“, das oft per OneDrive synchronisiert wird),
+   Teleskop, Standort, ASTAP + Sterndatenbank auf Knopfdruck und eine **Demo**, die in rund einer halben Minute ein erstes Bild liefert.
+3. Beenden: Startmenü → **AstroFlow beenden** oder Einstellungen → Module & System. Deinstallieren über Windows → Apps; die Daten bleiben.
 
-### Ohne Docker
+Ohne Installation: das **portable ZIP** (`AstroFlow-<Version>-Windows-portabel.zip`) entpacken und `AstroFlow.cmd` doppelklicken –
+Daten und Einstellungen liegen dann im Unterordner `Daten`.
+
+Neue Versionen meldet AstroFlow selbst (einmal am Tag eine anonyme Anfrage an GitHub, abschaltbar); Update = neuen Installer drüber installieren.
+
+### macOS, Linux und aus dem Quelltext
+
+Mit [uv](https://docs.astral.sh/uv/) (bringt bei Bedarf auch Python 3.12 mit):
+
+```bash
+uv tool install git+https://github.com/JackONeill199/astroflow
+astroflow            # startet im Hintergrund und öffnet den Browser (Port 8766, Daten in ~/AstroFlow)
+astroflow stop
+```
+
+Oder klassisch im Checkout:
 
 ```bash
 python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 python -m astroflow demo            # synthetische Testdaten nach ./data/input/demo
-python -m astroflow serve           # Web-UI auf :8080
+python -m astroflow serve           # Web-UI auf :8080, Daten in ./data
 python -m astroflow process         # oder: alles direkt per CLI verarbeiten
 ```
 
-Ordner: `data/input` (Rohdaten, rekursiv gescannt; `ASTROFLOW_INPUT` ändert das), `data/output` (Ergebnisse), `data/work` (Zwischenstände).
-Dark-/Flat-/Bias-Frames werden am Header (`IMAGETYP`) oder an Ordner-/Dateinamen (`darks/`, `Flat_…`) erkannt.
+Unter Windows startet `Start.bat` einen solchen Checkout im Hintergrund (Port 8766, Daten in `data/`, Protokoll `data/server.log.err`),
+`Stop.bat` beendet ihn. Ordner: `data/input` (Rohdaten, rekursiv gescannt; `ASTROFLOW_INPUT` ändert das), `data/output` (Ergebnisse),
+`data/work` (Zwischenstände). Dark-/Flat-/Bias-Frames werden am Header (`IMAGETYP`) oder an Ordner-/Dateinamen (`darks/`, `Flat_…`) erkannt.
+
+Windows-Paket selbst bauen: `python installer/build_windows.py` (portables ZIP; mit Inno Setup 6 zusätzlich den Installer).
+`installer/pruefe_paket.py` prüft das ZIP in einer sauberen Umgebung und misst die Zeit bis zum ersten Bild; neben den Paketen liegt
+`AstroFlow-Test.wsb` für dieselbe Prüfung in der Windows-Sandbox.
 
 ### Docker
 
@@ -146,7 +171,8 @@ Das Image enthält ASTAP mit Sterndatenbank D05 (`--build-arg ASTAP_DB=d50` für
 
 ### Heimnetz
 
-Der Server lauscht auf allen Netzwerkkarten; `Start.bat` zeigt die Adresse für andere Geräte an. Einmalig `Netzwerk-freigeben.bat` ausführen
+Installierte Version: im Einrichtungsassistenten „Heimnetz“ einschalten (AstroFlow lauscht sonst nur auf diesem PC) und „Windows-Firewall
+freigeben“ wählen. Checkout mit `Start.bat`: Der Server lauscht auf allen Netzwerkkarten; `Start.bat` zeigt die Adresse für andere Geräte an. Einmalig `Netzwerk-freigeben.bat` ausführen
 (fragt nach Administratorrechten): legt die Firewall-Regel „AstroFlow LAN“ an – nur privates Netzwerkprofil, nur Geräte im eigenen Subnetz, keine
 Freigabe ins Internet. **Es gibt kein Passwort; jedes Gerät im Heimnetz kann AstroFlow bedienen.** Rückgängig: `Netzwerk-freigeben.bat entfernen`.
 

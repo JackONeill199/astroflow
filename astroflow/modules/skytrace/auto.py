@@ -12,6 +12,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import threading
 import time
 import traceback
@@ -102,6 +103,10 @@ class AutoAnalysis:
                 self.stopped.wait(10)                # SkyTrace ist belegt (z. B. manuelle Analyse) oder Prüfung läuft
                 continue
             folder = self.dir / item["folder"]
+            if not health.get("ok") and health.get("python") == sys.executable and not self.mod.ctx.store.get("skytrace").get("python"):
+                # Engine gar nicht eingerichtet (Standard bei neuen Installationen): still überspringen statt Fehlermeldung je Nacht
+                self._finish(item, "skipped", "SkyTrace-Analyse-Engine nicht installiert")
+                continue
             if not health.get("ok") or not folder.is_dir():
                 self._finish(item, "error", "Analyse-Engine unvollständig – Einstellungen → SkyTrace" if folder.is_dir()
                              else "Aufnahmen nicht mehr vorhanden")

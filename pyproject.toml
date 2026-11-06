@@ -1,0 +1,56 @@
+# Paketbeschreibung für `pip install .`, `uv tool install …` und den Windows-Installer (installer/build_windows.py).
+# Laufzeitabhängigkeiten wie in requirements.txt (beide Listen gleich halten; tests/test_setup.py prüft das).
+# Noch nicht auf PyPI veröffentlicht.
+[build-system]
+requires = ["setuptools>=77"]          # SPDX-Lizenzangabe (license = "MIT")
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "astroflow"
+dynamic = ["version"]
+description = "Lokale Astro-Plattform: FITS-Rohbilder automatisch zum fertigen Astrofoto, Lichtspuren finden, Objekte erklären"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+authors = [{ name = "AstroFlow" }]
+keywords = ["astronomie", "astrofotografie", "stacking", "fits", "smart-teleskop", "seestar", "vespera", "stellina"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Natural Language :: German",
+]
+dependencies = [
+    "numpy>=2.0",
+    "scipy>=1.13",
+    "astropy>=6.0",
+    "pillow>=10.0",
+    "tifffile>=2024.1",
+    "imagecodecs>=2024.1",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "python-multipart>=0.0.9",
+    "httpx>=0.27",
+    "sgp4>=2.20",
+]
+
+[project.optional-dependencies]
+gpu = ["pyopencl"]
+
+[project.scripts]
+astroflow = "astroflow.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/JackONeill199/astroflow"
+
+[tool.setuptools.dynamic]
+version = { attr = "astroflow.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["astroflow*"]
+exclude = ["*__pycache__*"]
+
+[tool.setuptools.package-data]
+# Oberfläche, Vendor-Dateien, Detektormodell (AGPL-3.0, siehe Ordner models/), Engine-Skripte, Modul-Doku
+"*" = ["*"]

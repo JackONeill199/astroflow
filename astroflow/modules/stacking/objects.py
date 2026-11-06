@@ -141,7 +141,8 @@ def _ext_paths() -> list[str]:
     out = [os.environ.get("ASTROFLOW_DEEPSKY", "")]
     if os.environ.get("LOCALAPPDATA"):
         out.append(os.path.join(os.environ["LOCALAPPDATA"], "astap", "deep_sky.csv"))
-    return out + [r"C:\Program Files\astap\deep_sky.csv", "/opt/astap/deep_sky.csv", "/usr/share/astap/deep_sky.csv"]
+    return out + [r"C:\Program Files\astap\deep_sky.csv", os.path.join(os.path.expanduser("~"), "astap", "deep_sky.csv"),
+                  "/opt/astap/deep_sky.csv", "/usr/share/astap/deep_sky.csv"]
 
 
 def _pretty(name: str) -> str:
