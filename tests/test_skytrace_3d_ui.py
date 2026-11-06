@@ -41,8 +41,8 @@ def test_3d_lauf_ansicht(server, browser, width, tmp_path):
     # Reiter „3D“: Teleskopweg ohne Fokus, Bühne füllt den Inhaltsbereich
     page.locator("#tabs a[data-t='3d']").click()
     page.wait_for_function("document.querySelector('#st3dHost')?._st3d")
-    assert "focus=" not in asked[-1] and page.locator("#st3dHost .st3d-stage canvas").first.is_visible()
-    stage = page.locator(".st3d-stage").bounding_box()
+    assert "focus=" not in asked[-1] and page.locator("#st3dHost .ste-stage canvas").first.is_visible()
+    stage = page.locator(".ste-stage").bounding_box()
     assert stage["height"] >= 300 and stage["width"] >= (300 if width < 500 else 800), stage
     st = page.evaluate("document.querySelector('#st3dHost')._st3d.state()")
     assert st["t"] == pytest.approx(scene["pointing"]["t"][0]) and st["hits"] == 1
@@ -51,7 +51,7 @@ def test_3d_lauf_ansicht(server, browser, width, tmp_path):
     page.locator(".st3d-range input").evaluate(f"r => {{ r.value = {scene['gaps'][0][0] + 300}; r.dispatchEvent(new Event('input')); }}")
     assert "Pause" in page.locator(".st3d-time").inner_text()
     page.locator(".st3d-legend [data-k='0']").click()
-    card = page.locator(".st3d-card")
+    card = page.locator(".ste-card")
     assert "Blickrichtung" in card.inner_text() and "Feldrotation" in card.inner_text() and "1 Pause" in card.inner_text()
     page.locator(".st3d-views [data-v=scope]").click()
     page.wait_for_function("document.querySelector('#st3dHost')._st3d.state().mode === 'scope'")
@@ -68,7 +68,7 @@ def test_3d_lauf_ansicht(server, browser, width, tmp_path):
     page.locator(".st3d-legend input[type=checkbox]").uncheck()
     assert page.evaluate("document.querySelector('#st3dHost')._st3d.state().visible") == 0
     page.locator(".st3d-legend input[type=checkbox]").check()
-    page.locator(".st3d-card [data-a=cand]").click()
+    page.locator(".ste-card [data-a=cand]").click()
     page.wait_for_selector(".ccard.on")
     assert page.locator("#st3dHost").count() == 0 and "K0001" in page.locator(".ccard.on").inner_text()
     # Kandidaten-Knopf: Reiter „3D“ mit Fokus
@@ -80,8 +80,8 @@ def test_3d_lauf_ansicht(server, browser, width, tmp_path):
     page.route("**/api/skytrace/run3d?*", lambda route: route.fulfill(json=dict(ok=False, need_site=True, reason="Der Beobachtungsstandort fehlt.")))
     page.route("**/api/skytrace/runs", lambda route: route.fulfill(json=[dict(id="synthetic", title="Testfeld", modified=1, sessions=1, frames=60, excluded=3, candidates=2, preview=None)]))
     page.goto(base + "/#/skytrace/3d")
-    page.wait_for_selector(".st3d-msg.hint")
-    assert page.locator(".st3d-msg a").get_attribute("href") == "#/settings/skytrace"
+    page.wait_for_selector(".ste-msg.hint")
+    assert page.locator(".ste-msg a").get_attribute("href") == "#/settings/skytrace"
     assert page.locator(".st3d-runs [data-run=synthetic]").is_visible()       # Analysen rechts wählbar
     assert not page.evaluate(FIND_OVERFLOW)
     assert not errors, errors

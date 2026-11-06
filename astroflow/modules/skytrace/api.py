@@ -597,6 +597,17 @@ def build_router(mod) -> APIRouter:
         except ValueError as e:
             bad(e)
 
+    @r.get("/sitesearch/nights/heatmaps")
+    def nights_heatmaps(nights: str = ""):
+        """Mehrere Heatmaps auf einmal (Erd-Ansicht, „Alle Nächte“); leer = alle gespeicherten, höchstens 120."""
+        try:
+            want = [n for n in nights.split(",") if n] or mod.sitejobs.heat_nights()
+            if len(want) > 120:
+                raise ValueError("Höchstens 120 Nächte auf einmal.")
+            return {"heat": {n: mod.sitejobs.heat(n) for n in want}}
+        except ValueError as e:
+            bad(e)
+
     @r.post("/sitesearch/nights/applied")
     def nights_applied(body: dict = Body(...)):
         try:

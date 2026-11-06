@@ -131,6 +131,7 @@ fehlt `sgp4` im Server, läuft `orbit3d.py` als Skript im Engine-Interpreter (JS
   (GMN Anfang/Ende + Zeit), Flugzeuge `track` ([t, lat, lon, Höhe m]). Ältere Läufe: `archive_satrec` sucht ohne Netz in
   `catalog_cache/archives/orbits-<Datum>.json` (wie `satellite_archive.model_from_record`) und `eth-<hash>.json`
   (Schlüssel wie `eth_tles`); sonst `missing[].reason` → Hinweis in der Ansicht.
+- **Seit 0.35.0** zeichnet die Lauf-Ebene auf dem gemeinsamen Globus der 3D-Erde (s. „3D-Erde“ unten); die Punkte zur Darstellung gelten weiter, Einbindung und Seitenleiste dort.
 - Frontend (seit 0.21.0 kein Dialog mehr, Nutzerwunsch „zentrales Feature statt Popup“): `SkyTrace3D.mount(host, run, {focus, session, onCandidate})`
   zeichnet Bühne (Kamera-Wahl, „Schema“, Vollbild), Zeitleiste und Objektliste in einen Behälter (`host._st3d` = Szene, `state()` für Tests) und
   gibt `{dispose, fullscreen}` zurück. Genutzt im Lauf-Reiter `3d` (`tab3d`, nur mit Bildfolge und nicht während einer Analyse; Fokus-Kandidat über
@@ -424,6 +425,42 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
 - Tests: `test_skytrace_global.py` (Heatmap-Datei: hellste grobe Zelle < 40 km, Mitte des feinen Plateaus < 5 km am wahren Ort, nicht in der Ergebnisdatei;
   „berechnen“ bei passendem Listenort; Server: Prüfungen, Datei, `maps`), `test_ui_layout.py::test_night_map_heatmap` (synthetische Heatmap, Umrisse, Nah,
   Nacht ohne Heatmap mit Knopf, keine Kachelanfragen) und Fixture `_heat_fixture`.
+
+## 3D-Erde – eine Ansicht für Nächte, Standorte und Analysen (0.35.0, 06.11.2026, Nutzerwünsche „Karte zu klein, zentrales Feature, mit der 3D-Map kombinieren, Filter, Nachtsicht, animiert“ und „die 3D-Ansicht kombinieren, aktuell gibt es zwei“)
+- **Eine Komponente, ein Globus:** `static/skytrace-erde.js|css` (Präfix `ste-`) = Globus-Engine `globe()` + Seitenleiste; `static/skytrace-3d.js` ist nur noch die
+  **Lauf-Ebene** `SkyTrace3D.runLayer(G, data, {interactive})` auf dieser Szene (kein eigener Renderer). Navigation **„3D-Erde“** (ein Eintrag), Seite
+  `#/skytrace/erde[/<Nacht>]` = Kontext **„Nächte & Standorte“**, `#/skytrace/3d` = Kontext **„Analysen“** (alter Link bleibt gültig; der Umschalter oben in der
+  Seitenleiste ändert die Adresse per `replaceState`). Lauf-Reiter „3D“ (`tab3d`) **bettet dieselbe Komponente ein** (`SkyTraceErde.embed`, Lauf fest, ohne Lauf-/Nachtliste,
+  mit allen Ebenen) – Entscheidung: im Lauf springt man zwischen Kandidaten, Vorschau und 3D; ein Sprung in die zentrale Ansicht würde den Lauf mit seinen Reitern verlassen.
+  Kandidatenknopf „3D-Ansicht“ wechselt wie bisher zum Reiter mit Fokus (`focus3d`). `SkyTrace3D.mount` = Alias auf `embed`.
+- **Helfer** aus `skytrace.js` über `window.SkyTraceHelpers` (Heatmap-Zellen, `nightMarks`, `ellipsePts`, `outlines`, `applyNights`, Texte, `runVariants`, `runDate`, `media`,
+  `openCandidate`). Datenweg wie 0.34.0 (`standortsuche-naechte.json`, `standortsuche-karten/<Nacht>.json`, Ortsliste, `run3d`); neu nur `GET /sitesearch/nights/heatmaps?nights=a,b`
+  (leer = alle, ≤ 120 je Anfrage; das Frontend lädt in Paketen zu 100 und holt eine fehlende Nacht beim Wählen einzeln nach). `nightsView` hat je Nacht „Auf der Erde zeigen“.
+- **Szene:** Erde = Gruppe `earth` (WGS84-Ellipsoid: Kugelgeometrie per `toEllipsoid` umgerechnet, Breite = geodätisch – sonst lagen Listenort und Teleskopstandort bei 47° ~20 km
+  auseinander). Alles Erdfeste (Textur, Grenzen, Heatmap, Orte, Kacheln, Kuppel/Standort des Laufs) hängt daran. **Analysen:** die Zeitleiste dreht `earth` um
+  `earth_rate`·(t − anchor) (System D wie bisher, Raumfestes direkt in der Szene). **Nächte:** Drehung 0 = erdfest; die Ebene „Satellitenbahnen und Teleskop“ zeigt dieselbe
+  Lauf-Ebene **statisch zur Ankerzeit** (bei Drehung 0 ist D = ECEF des Ankers, also ohne Umrechnung und ohne zweite Darstellung): Kuppel, Teleskopweg, Blickfeld der ersten
+  Aufnahme, Satelliten an ihrem Durchgang, ohne Zielstrahl. Kontextwechsel: Lauf entfernen, Erde in 0,9 s zurückdrehen, Kamera fährt zur Nacht; Laufwahl = Kamerafahrt der Lauf-Ebene.
+- **Schnittstelle G** (für `runLayer`): `THREE, sc, earth, camera, controls(), makeControls(up)` (OrbitControls liest `camera.up` nur beim Anlegen), `zoomMode('globe'|'orbit')`
+  (Globus: eigenes Zoomen über die Höhe; Teleskop/Durchgang/Folgen: OrbitControls zum Blickpunkt), `setFly`, `dirty`, `addMat(layer, m, base)`/`dropMats` (Deckkraft der Ebene),
+  `layerK`, `hook('draw'|'frame'|'resize'|'pick', fn)` → Abmelden, `cardEl` (eine Infokarte für Nächte und Lauf-Objekte), `setSun`, `onRunPick`.
+- **Ebenen** (`LAYERS`, localStorage `skytrace.erde.layers`; im Analysen-Kontext ist „Satellitenbahnen“ eingeschaltet): Orte der Liste, Ort je Nacht (Ring), Heatmap, Vorschläge
+  (Punkt + 1σ-Ellipse; übernommene Nächte ohne), Satellitenbahnen und Teleskop, Grenzen/Küsten (ein `LineSegments`, ~190 000 Punkte), Tag/Nacht-Grenze. Deckkraft `k` je Ebene,
+  450 ms weich (`applyK`). Im Analysen-Kontext gelten Ort/Vorschlag/Heatmap der **Nacht des Laufs** (Anker − 12 h).
+- **Heatmap:** je Nacht eine Kappe über dem belegten Ausschnitt mit Wert-Textur (r = Spuren/Höchstwert, 3 px je Zelle, ≤ 1024²), Farbe per Shader aus der Skala von `heatColor`;
+  Zellen mit 1–2 Stimmen fast durchsichtig (Rauschen einzelner Spuren; die Streifen im ersten Screenshot waren Zufallswerte der Test-Fixture). Grob (20 km) immer, fein (1 km, ± 30 km)
+  blendet zwischen 1,55 und 1,2 R ein. „Aufbau“: `reveal` 0 → 1 in 1,4 s, hellste Zellen zuerst. „Alle Nächte“ = alle Heatmaps, je Nacht relativ.
+- **Nachtsicht** (`EARTH_FS`, Uniform `nv`, 600 ms): Nachtseite → gedämpftes Blaugrün, Umrisse hell-türkis; Auto (`skytrace.erde.nv`) = an, wenn eine Datenebene an ist und der
+  Blickpunkt auf der Nachtseite liegt (Skalarprodukt mit der Sonne < 0,12); An/Aus übersteuert. **Sonne:** Analysen = `run3d.sun` (raumfest – die Grenze wandert mit der Zeit);
+  Nächte = vereinfachte Formel (`sunLatLon`, ~0,01°) zur Ankerzeit des ersten Laufs der Nacht, sonst Mitternacht Ortszeit an der Region.
+- **Kamera:** Globus-Fahrt = Slerp + Abstand mit Bogen (1,5 s), Ausschnitt aus Heatmap, Vorschlag, bisherigem Ort und Bahnen, mindestens 1,09 R; Lauf-Ansichten Erde/Teleskop/Durchgang/
+  Folgen/Ziel wie bisher (1,1 s). `prefers-reduced-motion`: alles sofort.
+- **Kacheln:** „Karte laden“ erst unter 1,08 R im Globus-Zoom, 4 × 4 OSM-Kacheln als Textur der Erdgruppe, entfernt sich ab 1,5 R. Sonst nie Netz.
+- **Leistung** (06.11.2026, 1440 × 900, Playwright-Chromium, mittlerer Bildabstand): mit GPU (RX 9070 XT, D3D11) 16,7 ms bei Nachtwechsel, Kontextwechsel, Teleskop-Ansicht
+  und Abspielen (einzelne 50 ms beim Neuaufbau der Marken); ohne GPU (SwiftShader) 20–28 ms. Zeichnen < 0,2 ms CPU.
+- Tests: `host._ste.state()` (Kontext, Nacht, Lauf, `earthRot`, `nv`, `layers`, `reveal`, `runs`, Bildzeiten), `host._st3d.state()` = Lauf (wie bisher). `test_skytrace_erde_ui.py`
+  (Ebenen, Nachtsicht, Karte, Regler, keine Kacheln; Bahnen-Ebene statisch; Kontextwechsel mit Erddrehung und Rückdrehung, alter Link; Sammel-Endpunkt),
+  `test_skytrace_3d_ui.py` (Lauf-Reiter eingebettet, zentrale Ansicht ohne Standort), `test_ui_layout.py` `ROUTES`.
 
 ## Erkennung im Teleskop-Bildfeld (28.10.2026, Nutzerbefund M74 2022-08-07)
 Anlass: Ein schwacher Meteor (img-0041, ~120 px, ~1,5σ/px) wurde übersehen, ein langsames Objekt in sechs Aufnahmen (img-0177…0182)
