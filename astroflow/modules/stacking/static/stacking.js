@@ -509,9 +509,9 @@ async function projectView(el, id, tab = 'bild') {
           <a href="/api/stacking/results/${r.id}/jpg" download>JPEG <small>zum Teilen</small></a>${p.imported ? '' : `<a href="/api/stacking/results/${r.id}/fits">FITS linear <small>für PixInsight & Co.</small></a>`}</div></div>` : ''}
         ${r ? `<button class="btn ghost" data-ctx-toggle title="Bild-Details, Bild-Tutor und Himmelsposition ein-/ausblenden">${icon('panel')}Details</button>` : ''}
         <div class="menu" id="more"><button class="btn ghost">Mehr${icon('chev')}</button><div class="pop">
-          ${r && !p.imported ? `<a href="#" data-act="develop">Neu entwickeln <small>ohne Stacking</small></a>` : ''}
+          ${r && !p.imported ? `<a href="#" data-act="develop">Neu entwickeln <small>${p.hotpixel_hint ? 'entfernt Hotpixel-Punkte' : 'ohne Stacking'}</small></a>` : ''}
           ${p.imported ? '<span class="pop-note">Fertig importiert · keine Rohaufnahmen vorhanden</span>' : p.deleted?.can_restack === false ? `<span class="pop-note">Komplett neu stacken nicht möglich – Einzelbilder nach dem Stacking gelöscht</span>`
-            : `<a href="#" data-act="restack">Komplett neu stacken <small>${p.hotpixel_hint ? 'entfernt Hotpixel-Punkte' : 'alle Aufnahmen'}</small></a>`}
+            : `<a href="#" data-act="restack">Komplett neu stacken <small>alle Aufnahmen</small></a>`}
           ${p.can_solve ? `<a href="#" data-act="solve">Objekt per Plate-Solving bestimmen <small>Sternmuster</small></a>` : ''}
           ${r && AF.on('sage') ? `<a href="#" data-act="story">Geschichte erzählen <small>Sage · Objekte im Bild + KI</small></a>` : ''}
           <a href="#" data-act="rename">Umbenennen</a>

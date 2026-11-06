@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from . import calibration, channels, comet, develop, gpu, graxpert, live, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner, stars, tutor
+from . import calibration, channels, comet, develop, stackfix, gpu, graxpert, live, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner, stars, tutor
 from ...core.config import Settings, free_ram_mb
 from . import diskspace
 from .db import DB
@@ -485,27 +485,30 @@ class Pipeline:
     _hint_cache: dict = {}
 
     def hotpixel_hint(self, pid: int) -> bool:
-        """Stellina-Stack von vor der Fehlerkarte (0.31.2), Rohbilder erreichbar → „Komplett neu stacken“ entfernt die
-        Hotpixel-Punkte. Gecacht je Stand von state.json (die Objektansicht fragt alle 2,5 s; Pfade können auf
-        Netzlaufwerken liegen)."""
+        """Stellina-Stack von vor der Fehlerkarte (0.31.2), neueste Version noch ohne Stack-Bereinigung (`stackfix`, 0.37.1)
+        → „Neu entwickeln“ entfernt die Hotpixel-Punkte (auch ohne Rohbilder). Der Stack-Teil ist je Stand von state.json
+        gecacht (die Objektansicht fragt alle 2,5 s)."""
         f = self.s.work_dir / f"p{pid}" / "stack" / "state.json"
         try:
             mt = f.stat().st_mtime
         except OSError:
             return False
         hit = self._hint_cache.get(str(f))
-        if hit and hit[0] == mt and time.time() - hit[1] < 300:
-            return hit[2]
-        out = False
-        try:
-            if "defects" not in json.loads(f.read_text(encoding="utf-8")):
-                rows = self.db.q("SELECT path, deleted, info FROM frames WHERE project_id=? AND kind='light' AND stacked=1", (pid,))
-                if rows and not any(r["deleted"] for r in rows) and                         "stellina" in (json.loads(rows[0]["info"]).get("instrument") or "").lower():
-                    out = all(Path(r["path"]).exists() for r in rows[:: max(1, len(rows) // 3)][:3])
-        except (OSError, ValueError):
-            out = False
-        self._hint_cache[str(f)] = (mt, time.time(), out)
-        return out
+        if hit and hit[0] == mt:
+            old = hit[1]
+        else:
+            old = False
+            try:
+                if "defects" not in json.loads(f.read_text(encoding="utf-8")):
+                    r = self.db.one("SELECT info FROM frames WHERE project_id=? AND kind='light' AND stacked=1 LIMIT 1", (pid,))
+                    old = bool(r) and "stellina" in (json.loads(r["info"]).get("instrument") or "").lower()
+            except (OSError, ValueError):
+                old = False
+            self._hint_cache[str(f)] = (mt, old)
+        if not old:
+            return False
+        r = self.db.one("SELECT json_extract(stats,'$.hotfix.v') v FROM results WHERE project_id=? ORDER BY id DESC LIMIT 1", (pid,))
+        return bool(r) and (r["v"] or 0) < stackfix.VERSION
 
     # --------------------------------------------------------------- process #
     def process(self, project_id: int, extra: dict | None = None, progress=lambda p, stage, msg="": None) -> int:
@@ -965,6 +968,11 @@ class Pipeline:
             palette = "OSC"
             filt = (json.loads(stacked[0]["info"]).get("filter") or "") if stacked else ""
             narrow = opt["narrowband"] if opt["narrowband"] is not None else bool(re.search(r"ha|oiii|duo|dual|nb|lp|lenhance|l-extreme|uv/ir", filt, re.I))
+        hotfix = None
+        if palette == "OSC" and mean.shape[0] == 3 and None in states and not states[None].meta.get("defects"):
+            # Stack von vor der Fehlerkarte: Hotpixel-Punkte direkt im linearen Stack entfernen (Rohbilder oft gelöscht)
+            prog(0.01, "Bearbeitung", "Hotpixel-Punkte im Stack suchen")
+            mean, hotfix = stackfix.repair(mean, cov)
         kind = proj["kind"]
         if not kind and (ext := objects.resolve_extended(proj["name"])) and ext.kind != "generic":
             kind = ext.kind                                 # ältere Projekte: Typ nachträglich aus dem großen Katalog
@@ -995,7 +1003,8 @@ class Pipeline:
             # Sternfotometrie auf verlaufsfreiem Himmel misst
             mean, gx = graxpert.apply(mean, cov, gmode, float(params.get("ai_denoise", graxpert.DEFAULT_STRENGTH)),
                                       self.s.work_dir / f"p{project_id}" / "graxpert", exe,
-                                      log=lambda m: prog(0.05, "Bearbeitung", m), preview=view)
+                                      log=lambda m: prog(0.05, "Bearbeitung", m), preview=view,
+                                      tag=f"hotfix:{hotfix['key']}" if hotfix and hotfix.get("n") else "")
             params["_ai"] = {k: v for k, v in gx.items() if k in ("bge", "denoise")}
         if mean.shape[0] == 3 and not narrow and params.get("color_calibration", True) and "wb_gains" not in user:
             pcc = self._photometric(proj, states, mean, cov, lambda m: prog(0.1, "Farbkalibrierung", m))
@@ -1026,6 +1035,8 @@ class Pipeline:
                 stats["before"], stats["qc"] = before, qc_hist
         if gx:
             stats["graxpert"] = gx
+        if hotfix is not None:
+            stats["hotfix"] = hotfix
         if cinfo is not None:
             stats["comet"] = cinfo
         stats.update({"profile": pname, "narrowband": narrow, "frames": len(stacked), "exposure_s": exposure,
