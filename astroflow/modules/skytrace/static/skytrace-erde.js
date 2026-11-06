@@ -81,13 +81,34 @@ const MARKUP = (page) => `<div class="ste-main">
 async function view(el, route = {}) {
   const H = helpers();
   crumbs([['SkyTrace', '#/skytrace'], ['3D-Erde']]);
-  el.innerHTML = `<div class="pagehead"><div style="min-width:0"><h1>3D-Erde</h1>
-      <p class="mut readable">Standorte, Heatmap der Standortsuche, Teleskopweg und Satellitenbahnen auf einem Globus. Jede Ebene lässt sich einzeln ein- und ausschalten; liegt etwas auf der Nachtseite, hellt die Nachtsicht sie auf.</p></div>
+  // Kopf ohne Erklärtext (Nutzerwunsch: mehr Platz für die Karte) – die Erklärung steht hinter dem Info-Knopf
+  el.innerHTML = `<div class="pagehead ste-head"><div class="ste-title"><h1>3D-Erde</h1>
+        <button class="btn ghost icon sm ste-info" aria-expanded="false" aria-controls="steInfo" title="Was zeigt die 3D-Erde und wie bedient man sie?" aria-label="Hilfe zur 3D-Erde">?</button></div>
       <div class="page-actions"><a class="btn ghost" href="#/skytrace/standorte">${icon('list')}Standorte aller Nächte</a></div></div>
+    <div class="ste-infopop panel" id="steInfo" hidden><button class="btn ghost icon sm ste-info-x" aria-label="Schließen">${icon('x')}</button>
+      <h3>Was die 3D-Erde zeigt</h3>
+      <p class="readable">Standorte, die Heatmap der Standortsuche, Teleskopweg und Satellitenbahnen auf einem Globus. <b>Nächte &amp; Standorte</b> zeigt je Nacht den bisherigen Ort,
+        Vorschläge mit Unsicherheit und die Heatmap der zurückgerechneten Bodenpunkte (hell = viele verschiedene Spuren treffen sich). <b>Analysen</b> zeigt einen Lauf mit
+        Zeitleiste: wohin das Teleskop geschaut hat und welche Satelliten das Bildfeld gekreuzt haben.</p>
+      <h3>Bedienung</h3>
+      <ul class="readable"><li><b>Ziehen</b> dreht den Globus bzw. verschiebt die Karte – der angefasste Punkt bleibt unter dem Zeiger.</li>
+        <li><b>Mausrad / zwei Finger</b> zoomen zum Zeiger. Nah heran wird der Globus zur <b>flachen Karte</b>, weit heraus wieder zur Kugel; „Karte/Globus“ wechselt direkt.</li>
+        <li><b>Antippen</b> eines Orts oder Vorschlags öffnet seine Karte mit „Übernehmen“. ←/→ wechseln die Nacht, F schaltet Vollbild.</li>
+        <li>Rechts lassen sich <b>Ebenen</b> einzeln ein- und ausschalten; der Knopf oben rechts klappt das Panel ein.</li>
+        <li><b>Nachtsicht</b>: liegt die Region auf der Nachtseite, wird sie aufgehellt (Auto/An/Aus).</li>
+        <li><b>Straßenkarte/Gelände</b> laden Kartenkacheln von OpenStreetMap bzw. OpenTopoMap – nur auf Knopfdruck, der Kartendienst sieht dann den Ausschnitt. Sonst bleibt alles auf dem Rechner.</li></ul></div>
     <div class="ste" id="steHost">${MARKUP(true)}</div>`;
+  const infoBtn = $('.ste-info', el), infoPop = $('#steInfo', el);
+  $('.ste-head', el).append(infoPop);                    // als Popover am Kopf: die Karte springt beim Öffnen nicht
+  const outside = (e) => { if (!infoPop.hidden && !e.target.closest('#steInfo,.ste-info')) info(false); };
+  document.addEventListener('pointerdown', outside);
+  const info = (open) => { infoPop.hidden = !open; infoBtn.setAttribute('aria-expanded', String(open)); };
+  infoBtn.onclick = () => info(infoPop.hidden);
+  $('.ste-info-x', el).onclick = () => { info(false); infoBtn.focus(); };
+  infoPop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { info(false); infoBtn.focus(); } });
   const ctx = route.ctx || 'nights';                     // #/skytrace/erde = Nächte & Standorte, #/skytrace/3d = Analysen
   const C = await component($('#steHost', el), el, { page: true, ctx, night: route.night || null, H });
-  if (!C) return;
+  if (!C) { document.removeEventListener('pointerdown', outside); return; }
   const onKey = (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input,select,textarea')) return;
     if (e.key === 'f' || e.key === 'F') { C.fullscreen(); e.preventDefault(); }
@@ -95,7 +116,7 @@ async function view(el, route = {}) {
   };
   document.addEventListener('keydown', onKey);
   return {
-    destroy() { C.dispose(); document.removeEventListener('keydown', onKey); },
+    destroy() { C.dispose(); document.removeEventListener('keydown', onKey); document.removeEventListener('pointerdown', outside); },
     actions: () => [['globe', '3D-Erde: Übersicht', 'Ganze Region zeigen', () => C.home()]],
   };
 }

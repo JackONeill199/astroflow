@@ -61,6 +61,13 @@ def test_erde_ansicht(server, browser, width, tmp_path):
     assert "verschiedene Spuren: 1 … 14" in page.locator(".ste-legend").inner_text()
     stage = page.locator(".ste-stage").bounding_box()
     assert stage["height"] >= 340 and stage["width"] >= (330 if width < 500 else 1080), stage   # Desktop: Karte über die ganze Breite
+    # Kopf ohne Erklärtext, Erklärung hinter dem Info-Knopf
+    assert page.locator(".ste-title p, .ste-title + p").count() == 0 and page.locator("#steInfo").is_hidden()
+    page.locator(".ste-info").click()
+    assert "Bedienung" in page.locator("#steInfo").inner_text() and page.locator(".ste-info").get_attribute("aria-expanded") == "true"
+    assert not page.evaluate(FIND_OVERFLOW)
+    page.locator(".ste-info-x").click()
+    assert page.locator("#steInfo").is_hidden()
     if width >= 861:                                    # Ebenen/Nächte als einklappbares Panel in der Karte
         side = page.locator(".ste-stage > .ste-side")
         assert side.is_visible()

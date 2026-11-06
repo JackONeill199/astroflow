@@ -15,7 +15,8 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   beim Zoomen und Verschieben nachgeladen; bis die feinen da sind, steht die gröbere Stufe als Platzhalter.
 - Satellitenbahnen zeigt die flache Karte nicht (Bahnen im Raum ergäben dort nur verzerrte Linien), wohl aber, wo das Teleskop stand.
 - Nächte, Analysen, Ebenen und Nachtsicht liegen jetzt als einklappbares Panel in der Karte, die damit die ganze Breite nutzt
-  (auf dem Handy weiter unter der Karte).
+  (auf dem Handy weiter unter der Karte). Der Erklärtext über der Karte ist einem **?**-Knopf neben der Überschrift gewichen, der
+  kurz erklärt, was die 3D-Erde zeigt und wie man sie bedient.
 
 ### Behoben
 - Auf dem Globus dreht Ziehen jetzt genau: der angefasste Punkt bleibt unter dem Zeiger, ohne Nachlauf, und das Mausrad zoomt zum Zeiger hin –
