@@ -125,5 +125,13 @@ function analysisTab(t, ctx) {
   window.AFsky?.analysis?.($('#anSky', t), p.id);
   if (r.stats?.quality) tutorPanel($('#anTutorBox', t), r);
   $$('.an-sec', t).forEach(anReveal);
+  // Sprung aus dem Dashboard (#/analyse): Stelle im Bild anfahren, sobald das Foto geladen ist
+  let pf = null;
+  try { pf = JSON.parse(sessionStorage.getItem('af.an.focus') || 'null'); } catch { pf = null; }
+  if (pf && pf.rid === r.id) {
+    try { sessionStorage.removeItem('af.an.focus'); } catch { /* egal */ }
+    const img = $('img.b', viewer.el), go = () => { if (t.isConnected) focus(pf.x, pf.y, pf.w); };
+    if (img?.complete && img.naturalWidth) setTimeout(go, 250); else img?.addEventListener('load', () => setTimeout(go, 100), { once: true });
+  }
   return { viewer, destroy: () => { blink?.destroy(); blink = null; set3d(false, false); } };
 }

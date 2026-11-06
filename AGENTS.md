@@ -461,6 +461,31 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   log10(Lj)), `comparePanel` + `compareViewer` (Blinken über `createViewer().setSplit`, Stelle anfahren mit `zoomTo`).
 - Tests: `tests/test_depth_compare.py` (synthetisches Feld, Attrappen für Gaia/SIMBAD/DSS/JPL).
 
+## Analyse-Dashboard über alle Objekte (`modules/stacking/dashboard.py`, `static/dashboard.js|css`; seit 0.36.0)
+Nutzerwunsch „eigene Seite, wo man alle gleichzeitig analysieren kann, mit Statistiken und Animationen“. Route `#/analyse` (Unterpunkt von Bilder, `PAGE_WIDE`).
+- **Aggregat:** `collect(eng)` = je Objekt die neueste Version (gleiche Reihenfolge wie `project_views`), Status je Art `depth|compare|sky|tutor`
+  (`done|old|none|error`; Tiefe/Vergleich über `v` = `DEPTH_/COMPARE_VERSION`, Himmel über `sky_nights.version`, Tutor über den Schlüssel
+  in `stats.tutor`) + fehlende Voraussetzung `blocked` (`nosolve` = kein `wcs.json`, `nogaia`, `noframes` = keine Frame-Metriken, `noquality`).
+  Tutor-Befunde ohne Netz aus `stats.tutor` über `tutor.findings` (nur bad/warn). Kataloge über `deepsky.keys_for` gegen `deepsky.fixed()` (auch
+  fertig importierte Bilder). „Universum“-Punkte: je Bild ≤ 60 Sterne + alle sichtbaren Galaxien aus `depth.punkte`, Himmelsrichtung aus
+  `feld` + Bildlage (genähert, Norden oben), gesamt ≤ 4000. `Dashboard.base()` hält das Ergebnis, bis sich `results` (Anzahl/Max-ID/Summe der
+  stats-Längen), `sky_nights`, die `wcs.json`-Menge oder Gaia ändern, spätestens `CACHE_S` 120 s (Solver-Suche kostet ~0,3 s → nicht in der Signatur).
+  `summarize(base, filter)` rechnet Kennzahlen, Rekorde, Verläufe, Rangliste (`m5_1h` = m5 − 1,25·log10 t[h], √t-Gesetz), Befunde, Veränderungen
+  je Anfrage aus dem Zwischenspeicher; `live()` blendet laufende Insights-/Sammelaufträge in die Status ein.
+- **API:** `GET /api/stacking/analysis?device=&year=&night=&q=`, `GET /analysis/universe` (erst auf Knopfdruck „3D-Wolke“), `POST /analysis/plan|run
+  {kinds, scope: missing|errors|all, ids?}`, `POST /analysis/pause {paused}`, `POST /analysis/stop`, `POST /analysis/develop {ids}` (Objekte mit Stack,
+  ohne `wcs.json` → Entwicklungsauftrag; die Lösung entsteht beim Entwickeln, `auto_depth` misst danach). Nicht in `/projects` (wird gepollt).
+- **Sammelauftrag** `Batch` (eigener Thread, Aktivität „Analyse aller Objekte“, zählt in `busy_jobs`): Reihenfolge `KINDS` = Tutor, Himmel (lokal),
+  Tiefe, Vergleich (nutzt den Nullpunkt der Tiefe). Tiefe/Vergleich gehen einzeln durch `insights.submit` und werden abgewartet, danach `GAP_S` 3 s
+  Pause → nie zwei Netzauswertungen gleichzeitig. Himmel = `skyquality.compute_project` (wartet, solange `SkyRunner` rechnet), Tutor = `build_report(refresh=True)`
+  (mit Wetter ebenfalls Pause). Anhalten wirkt nach dem laufenden Schritt; Zustand nur im Speicher.
+- **UI:** Abschnitte zeichnen nur bei geänderten Daten neu (`paint` mit Signatur – sonst liefen Animationen bei jedem Poll erneut); Poll der Shell lädt nur
+  während eines Auftrags laufend, sonst alle 15 s. Diagramme als eigene SVG-Helfer (`scatter`, `ring`), 3D-Wolke mit three.js aus `/vendor/` (`loadThree`).
+  Animationen über `.an-sec.in` (`anReveal`/`anCountUp` aus `analysis.js`), aus bei `prefers-reduced-motion`. Sprung zur Bildstelle: `sessionStorage af.an.focus`
+  `{rid, x, y, w}` → `analysisTab` zoomt nach dem Laden des Fotos. localStorage `af.analysis.filter|kinds|sort`.
+- Tests: `tests/test_analysis_dashboard.py` (synthetische Bibliothek `tests/analysis_seed.py`, Attrappen statt Netz; prüft u. a. höchstens eine
+  Netzauswertung gleichzeitig und Anhalten), Route `#/analyse` in `test_ui_layout.py`.
+
 ## Hauptordner durchsuchen (`modules/stacking/library.py`, seit 31.10.2026)
 Import-Ansicht → „Hauptordner durchsuchen“ → „Ordner wählen …“ (`folderDialog`, kein Pfad eintippen; Wahl startet die Suche): Ordner auf dem Server-Rechner (z. B. ganze Stellina-Platte). Hintergrund-Thread findet Gruppen
 (`find_groups`: „…_observation_X“ = eine Gruppe samt Unterordnern, sonst je Ordner mit FITS; Ordnernamen dark/flat/bias → Kalibrierung; Ordner nur mit
@@ -526,7 +551,7 @@ Kern: `/api/app` (Module, Build), `/api/folders?path=` (Ordnerdialog), `/api/sit
 **Achtung:** Zwei Server auf demselben Datenordner = zwei Worker (beim Start werden „running“-Jobs des anderen neu eingereiht) – Tests/Vorschauen mit eigenem Datenordner.
 
 ## Web-UI (`astroflow/static/` + `modules/*/static/`)
-Hash-Routing: `#/` Übersicht, `#/nacht`, `#/himmel` (Himmelsqualität), `#/bilder` (Sessions), `#/galerie` (fertige Bilder), `#/p/<id>/<bild|analyse|aufnahmen|versionen|optionen>`, `#/import`,
+Hash-Routing: `#/` Übersicht, `#/nacht`, `#/himmel` (Himmelsqualität), `#/analyse` (Analyse-Dashboard), `#/bilder` (Sessions), `#/galerie` (fertige Bilder), `#/p/<id>/<bild|analyse|aufnahmen|versionen|optionen>`, `#/import`,
 `#/skytrace[/neu|/3d|/statistik|/<lauf>/<vorschau|kandidaten|beobachtungen|protokoll|3d>]`, `#/sage[/wiki|/entdeckungen|/sammlung|/<eintrag>]`, `#/activity` (Aufträge), `#/settings/<modul|standorte|module>`.
 **Designsystem (seit 0.21.0, Nutzerauftrag „professionelles, konsistentes Designsystem wie eine native Desktop-App“):** Tokens in `:root` von `style.css`
 (`--bg/--sidebar/--surface/--surface-2/--border/--fg/--mut/--dim/--acc/--ok/--warn/--bad`, Maße, `--t` 160 ms); alte Namen (`--panel`, `--grad`, `--acc2/3` …)

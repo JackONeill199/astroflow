@@ -39,6 +39,8 @@ class Engine:
         self.library = Library(self)
         from .insights import Insights
         self.insights = Insights(self)                    # Tiefe und Vergleich fertiger Bilder (eigener Thread)
+        from .dashboard import Dashboard
+        self.dashboard = Dashboard(self)                  # Analyse-Dashboard über alle Objekte + Sammelauftrag
         skyquality.ensure_table(self.db)
         self.sky = skyquality.SkyRunner(self.pl, ctx.services.get("site_for"))
         stars.STARNET.tools_dir = self.s.data_dir / "tools" / "starnet"
@@ -283,7 +285,8 @@ class Engine:
             disk = None
         return {"input_dir": str(self.s.input_dir), "output_dir": str(self.s.output_dir),
                 "auto": self.s.auto, "scan_interval": self.s.scan_interval, "threads": self.s.threads,
-                "last_scan": self.last_scan, "frames": frames, "busy_jobs": busy + (self.sky.state.get("state") == "running"), "disk": disk,
+                "last_scan": self.last_scan, "frames": frames, "busy_jobs": busy + (self.sky.state.get("state") == "running")
+                + self.dashboard.batch.busy(), "disk": disk,
                 "hold": self.hold(), "paused": bool(self.paused),
                 "projects": n_proj, "finished": n_res,
                 "delete_uploads": self.s.delete_uploads, "gaia": self.s.gaia,
@@ -300,7 +303,7 @@ class Engine:
                         "detail": j["message"] or j["stage"] or "", "stage": j["stage"], "state": j["state"],
                         "progress": j["progress"], "started": j["started"] or j["created"], "finished": j["finished"],
                         "href": f"#/p/{j['project_id']}"})
-        return self.sky.activity() + out
+        return self.dashboard.batch.activity() + self.sky.activity() + out
 
 
 _coll_cache: dict = {}          # Dienst collection_progress (Sage), 2 min zwischengespeichert
@@ -888,6 +891,62 @@ def build_router(eng: Engine) -> APIRouter:
         if not f or not f.exists():
             raise HTTPException(404)
         return FileResponse(f)
+
+    # ---- Analyse-Dashboard über alle Objekte (dashboard.py) ----------------------------------------
+    def _filters(device: str = "", night: str = "", year: str = "", q: str = "") -> dict:
+        return {"device": device, "night": night, "year": year, "q": q}
+
+    @r.get("/analysis")
+    def analysis(device: str = "", night: str = "", year: str = "", q: str = ""):
+        return eng.dashboard.summary(_filters(device, night, year, q))
+
+    @r.get("/analysis/universe")
+    def analysis_universe(device: str = "", night: str = "", year: str = "", q: str = ""):
+        return eng.dashboard.universe(_filters(device, night, year, q))
+
+    @r.post("/analysis/run")
+    def analysis_run(body: dict = Body(default={})):
+        from .dashboard import KINDS
+        kinds = [k for k in body.get("kinds") or KINDS if k in KINDS]
+        scope = body.get("scope", "missing")
+        if not kinds or scope not in ("missing", "errors", "all"):
+            raise HTTPException(400, "Bitte mindestens eine Auswertung wählen.")
+        ids = body.get("ids")
+        try:
+            return eng.dashboard.batch.start(kinds, scope, [int(i) for i in ids] if ids is not None else None)
+        except RuntimeError as e:
+            raise HTTPException(409, str(e))
+
+    @r.post("/analysis/plan")
+    def analysis_plan(body: dict = Body(default={})):
+        from .dashboard import KINDS
+        kinds = [k for k in body.get("kinds") or KINDS if k in KINDS]
+        ids = body.get("ids")
+        items, skipped = eng.dashboard.batch.plan(kinds, body.get("scope", "missing") if body.get("scope") in ("missing", "errors", "all") else "missing",
+                                                  [int(i) for i in ids] if ids is not None else None)
+        return {"total": len(items), "per_kind": {k: sum(1 for i in items if i[0] == k) for k in kinds}, "skipped": skipped}
+
+    @r.post("/analysis/pause")
+    def analysis_pause(body: dict = Body(default={})):
+        return eng.dashboard.batch.pause(bool(body.get("paused", True)))
+
+    @r.post("/analysis/stop")
+    def analysis_stop():
+        return eng.dashboard.batch.stop()
+
+    @r.post("/analysis/develop")
+    def analysis_develop(body: dict = Body(default={})):
+        """Fehlende Plate-Solving-Lösungen nachholen: Objekte mit Master-Stack, aber ohne wcs.json neu entwickeln
+        (die Lösung entsteht beim Entwickeln; danach misst `auto_depth` die Tiefe von selbst)."""
+        if not eng.pl.solver_cfg.enabled:
+            raise HTTPException(400, "Kein Plate-Solver eingerichtet – siehe Einstellungen → Bilder.")
+        ids = {int(i) for i in body.get("ids") or []}
+        jobs = []
+        for row in eng.dashboard.base()["rows"]:
+            if row.get("imported") or row["solved"] or not row["can_develop"] or (ids and row["id"] not in ids):
+                continue
+            jobs.append(eng.enqueue(row["id"], {"mode": "develop"}))
+        return {"queued": len(jobs)}
 
     @r.get("/insights")
     def get_insights():

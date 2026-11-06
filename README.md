@@ -63,6 +63,16 @@ Dazu kommen die **Himmelsqualität der Aufnahmenacht** und der **Bild-Tutor** (B
 
 Die 3D-Ansicht (Knopf „3D“ im Betrachter) legt die Sterne und Galaxien des Bildes nach ihrer Entfernung in einen Tunnel – hier M31 mit Sternen aus Gaia.
 
+![Analyse über alle Objekte](docs/screenshots/analyse-dashboard.webp)
+
+**Bilder → Analyse** (`#/analyse`) zeigt dasselbe über die ganze Bibliothek: Kennzahlen (Nächte, Belichtung, tiefste Grenzgröße, fernstes
+Objekt, dunkelster Himmel), Rekorde, „Dein Universum“ als Entfernungsskala bzw. 3D-Wolke aller gemessenen Sterne und Galaxien, Grenzgröße
+und Himmel über die Zeit, beste Nächte, Bildqualität, häufigste Tutor-Befunde, Veränderungen, Messier-/Caldwell-Fortschritt und eine
+Rangliste „Was am meisten gebracht hat“ (Grenzgröße auf 1 h umgerechnet). Filter nach Objekt, Gerät, Jahr und Nacht. **Alles analysieren**
+rechnet fehlende oder veraltete Auswertungen (Tiefe, Vergleich, Himmel, Tutor) im Hintergrund nach – nacheinander, damit Online-Dienste
+geschont werden; anhalten und abbrechen jederzeit. Fehlende Voraussetzungen (nicht gelöst, Gaia aus) stehen mit Knopf zum Beheben dabei.
+Jede Zahl führt ins Objekt, Rekorde und Veränderungen direkt zur Stelle im Bild. *(Bild: Demo-Instanz mit synthetischen Werten.)*
+
 ### Kometenmodus
 
 ![Komet C/2022 E3](docs/screenshots/komet.webp)
