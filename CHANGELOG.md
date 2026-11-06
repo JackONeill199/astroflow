@@ -14,6 +14,8 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   Kartenkacheln nur auf Knopfdruck – jetzt scharf in der zur Bildschirmauflösung passenden Zoomstufe (auch auf hochauflösenden Displays),
   beim Zoomen und Verschieben nachgeladen; bis die feinen da sind, steht die gröbere Stufe als Platzhalter.
 - Satellitenbahnen zeigt die flache Karte nicht (Bahnen im Raum ergäben dort nur verzerrte Linien), wohl aber, wo das Teleskop stand.
+- Nächte, Analysen, Ebenen und Nachtsicht liegen jetzt als einklappbares Panel in der Karte, die damit die ganze Breite nutzt
+  (auf dem Handy weiter unter der Karte).
 
 ### Behoben
 - Auf dem Globus dreht Ziehen jetzt genau: der angefasste Punkt bleibt unter dem Zeiger, ohne Nachlauf, und das Mausrad zoomt zum Zeiger hin –

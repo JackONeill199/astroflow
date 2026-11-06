@@ -60,7 +60,16 @@ def test_erde_ansicht(server, browser, width, tmp_path):
     assert st["dist"] < 1.6                                                    # auf die Region gezoomt
     assert "verschiedene Spuren: 1 … 14" in page.locator(".ste-legend").inner_text()
     stage = page.locator(".ste-stage").bounding_box()
-    assert stage["height"] >= 340 and stage["width"] >= (330 if width < 500 else 760), stage
+    assert stage["height"] >= 340 and stage["width"] >= (330 if width < 500 else 1080), stage   # Desktop: Karte über die ganze Breite
+    if width >= 861:                                    # Ebenen/Nächte als einklappbares Panel in der Karte
+        side = page.locator(".ste-stage > .ste-side")
+        assert side.is_visible()
+        page.locator(".ste-paneltg").click()
+        page.wait_for_function("getComputedStyle(document.querySelector('.ste-stage > .ste-side')).visibility === 'hidden'")
+        page.locator(".ste-paneltg").click()
+        side.wait_for(state="visible")
+    else:
+        assert page.locator(".ste > .ste-side").is_visible() and page.locator(".ste-paneltg").is_hidden()
     page.screenshot(path=str(tmp_path / f"erde-{width}.png"))
     # Nachtsicht übersteuern: aus → weich auf 0, Auto → wieder an
     page.locator(".ste-nv [data-nv=off]").click()

@@ -484,6 +484,9 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
   im Speicher, Ladevorgänge außer Sicht abgebrochen, keine Vorab-Downloads, Quellenangabe sichtbar (Nutzungsregeln OSM/OpenTopoMap; einen eigenen User-Agent kann der Browser
   nicht setzen). Bis feine Kacheln da sind, steht der nächste geladene Vorfahr (≤ 4 Stufen) als Platzhalter, dann 200 ms Überblendung (`S.again` hält das Zeichnen am Laufen).
   Globus-Textur: Anisotropie = Maximum der Karte, trilineare Mipmaps.
+- **Panel in der Karte** (Nutzerwunsch „Optionen rechts in die Karte integrieren, damit diese mehr Platz nutzt“): ab 861 px hängt `component` die Seitenleiste
+  `.ste-side` in die Bühne (`.ste-over`, Glas, rechts, einklappbar über `.ste-paneltg`, localStorage `skytrace.erde.panel`); Detailkarte und Maßstab weichen nach links aus
+  (`.panel-open`). Darunter (`matchMedia`-Wechsel) zurück unter die Karte.
 - **Anzeige:** `.ste-readout` = Maßstabsleiste (1–2–5-Stufen, 60–150 px) + Koordinaten unter dem Zeiger auf 0,01° (auch auf dem Globus unter 1,6 R).
 - **Leistung** (06.11.2026, 1440 × 900): Karte zeichnen 0,9 ms (GPU) bzw. 5 ms (SwiftShader), Verschieben/Zoomen 60 fps in beiden; Zoom bis zur Karte inkl. Überblendung 17–19 ms je Bild.
 - Tests: `test_skytrace_erde_ui.py::test_kartenmodus_kugel_und_flache_karte` (375 mit reduzierter Bewegung, 1440: Übergang am Zeiger ≤ 0,05°, 1:1-Verschieben exakt, kein Nachlauf,

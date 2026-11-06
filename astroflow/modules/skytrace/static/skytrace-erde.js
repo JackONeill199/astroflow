@@ -51,7 +51,8 @@ const MARKUP = (page) => `<div class="ste-main">
         <span class="st3d-schema" hidden title="Kuppel, Himmel und Ziel sind nicht maßstäblich">Schema</span>
         <button class="btn ghost sm ste-mode" title="Zwischen Globus und flacher Karte wechseln (Hineinzoomen wechselt von selbst)">${icon('layers')}<span>Karte</span></button>
         <button class="btn ghost sm ste-home" title="Ganze Region zeigen">${icon('fit')}<span>Übersicht</span></button>
-        <button class="btn ghost icon sm ste-fs" title="Vollbild (F)" aria-label="Vollbild">${icon('expand')}</button></div>
+        <button class="btn ghost icon sm ste-fs" title="Vollbild (F)" aria-label="Vollbild">${icon('expand')}</button>
+        <button class="btn ghost icon sm ste-paneltg" title="Ebenen und Nächte ein-/ausblenden" aria-label="Seitenleiste" aria-expanded="true">${icon('sidebar')}</button></div>
       <div class="ste-msg"><span class="spinner"></span>Globus wird geladen …</div>
       <div class="ste-legend" hidden><span class="ramp"></span><span class="ste-legend-t"></span></div>
       <div class="ste-tiles" hidden><div class="seg"><button data-tiles="" class="on" title="Erdbild, ohne Netz">Erdbild</button><button data-tiles="osm" title="Kacheln von OpenStreetMap laden – der Kartendienst sieht den Ausschnitt">Straßenkarte</button><button data-tiles="topo" title="Kacheln von OpenTopoMap laden – der Kartendienst sieht den Ausschnitt">Gelände</button></div><span class="ste-attr sm"></span></div>
@@ -236,6 +237,17 @@ async function component(host, el, opts) {
   const fullscreen = () => { if (document.fullscreenElement) document.exitFullscreen(); else host.requestFullscreen?.().catch(() => {}); };
   $d('.ste-fs').onclick = fullscreen;
   $d('.ste-home').onclick = () => scene.home();
+  // Seitenleiste als Panel in der Karte (ab 861 px; Nutzerwunsch „Optionen in die Karte, damit sie mehr Platz nutzt“), einklappbar; auf dem Handy darunter
+  const side = $d('.ste-side'), stageEl = $d('.ste-stage'), wide = matchMedia('(min-width: 861px)'), tg = $d('.ste-paneltg');
+  const place = () => {
+    const over = wide.matches;
+    if (over && side.parentElement !== stageEl) stageEl.append(side); else if (!over && side.parentElement !== host) host.append(side);
+    host.classList.toggle('ste-over', over); tg.hidden = !over;
+    const open = !over || store.get('skytrace.erde.panel', true);
+    stageEl.classList.toggle('panel-open', over && open); side.classList.toggle('closed', over && !open); tg.setAttribute('aria-expanded', String(open));
+  };
+  tg.onclick = () => { store.set('skytrace.erde.panel', !store.get('skytrace.erde.panel', true)); place(); };
+  wide.addEventListener?.('change', place); place();
 
   // Heatmap für eine Nacht berechnen (Hintergrundauftrag wie in „Standorte aller Nächte“), danach neu aufbauen
   async function computeHeat(night, btn) {

@@ -111,3 +111,17 @@
 .ste-coord:empty { display: none }
 .ste-tiles .seg { background: #0b0d10e6 }
 @media (max-width: 560px) { .ste-readout { right: 0.5rem; bottom: 2.75rem } .ste-tiles .seg button { padding-inline: 0.4rem } }
+/* Seitenleiste als Glas-Panel in der Karte (ab 861 px): Karte über die ganze Breite, Panel rechts über der Bühne, einklappbar */
+.ste.ste-over { grid-template-columns: minmax(0, 1fr) }
+.ste-over .ste-stage > .ste-side { position: absolute; z-index: 3; top: 3.5rem; right: 0.75rem; bottom: 0.75rem; width: 18.5rem; height: auto; gap: 0.875rem;
+  padding: 0.75rem; background: color-mix(in srgb, var(--surface) 82%, transparent); backdrop-filter: blur(0.75rem); -webkit-backdrop-filter: blur(0.75rem);
+  border-color: var(--border); box-shadow: var(--shadow); transition: opacity var(--t2) var(--ease), transform var(--t2) var(--ease) }
+.ste-over .ste-stage > .ste-side.closed { opacity: 0; transform: translateX(1rem); pointer-events: none; visibility: hidden }
+.ste-stage.panel-open .ste-card { right: 20rem; max-width: calc(100% - 21.5rem) }
+.ste-stage.panel-open .ste-readout { right: 20rem }
+.ste-stage.panel-open .ste-help { display: none }
+.ste-paneltg { background: #0b0d10d9; border: 1px solid var(--border) }
+.ste-paneltg[aria-expanded="true"] { color: var(--acc) }
+.ste-over .ste-nights { max-height: 13rem }
+@media (prefers-reduced-motion: reduce) { .ste-over .ste-stage > .ste-side { transition: none } }
+@media (prefers-reduced-transparency: reduce) { .ste-over .ste-stage > .ste-side { background: var(--surface); backdrop-filter: none } }
