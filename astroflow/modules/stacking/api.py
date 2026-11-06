@@ -904,10 +904,15 @@ def build_router(eng: Engine) -> APIRouter:
     def analysis_universe(device: str = "", night: str = "", year: str = "", q: str = ""):
         return eng.dashboard.universe(_filters(device, night, year, q))
 
+    def _kinds(body: dict) -> list[str]:
+        """Fehlt das Feld, alle Arten; eine leere Auswahl bleibt leer (sonst startete „nichts gewählt“ alles)."""
+        from .dashboard import KINDS
+        raw = body.get("kinds")
+        return list(KINDS) if raw is None else [k for k in raw if k in KINDS]
+
     @r.post("/analysis/run")
     def analysis_run(body: dict = Body(default={})):
-        from .dashboard import KINDS
-        kinds = [k for k in body.get("kinds") or KINDS if k in KINDS]
+        kinds = _kinds(body)
         scope = body.get("scope", "missing")
         if not kinds or scope not in ("missing", "errors", "all"):
             raise HTTPException(400, "Bitte mindestens eine Auswertung wählen.")
@@ -919,8 +924,7 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.post("/analysis/plan")
     def analysis_plan(body: dict = Body(default={})):
-        from .dashboard import KINDS
-        kinds = [k for k in body.get("kinds") or KINDS if k in KINDS]
+        kinds = _kinds(body)
         ids = body.get("ids")
         items, skipped = eng.dashboard.batch.plan(kinds, body.get("scope", "missing") if body.get("scope") in ("missing", "errors", "all") else "missing",
                                                   [int(i) for i in ids] if ids is not None else None)

@@ -428,7 +428,7 @@ async function analysisView(el) {
 
   function draw(d) {
     drawFilters(d);
-    if (!d.totals.objects && !d.filtered) {
+    if (!d.totals.objects && !d.totals.imported && !d.filtered) {   // nur fertig importierte Bilder: Kataloge bleiben sichtbar
       el.querySelectorAll('.ad-grid2, .an-sec, #adKpis').forEach(x => x.remove());
       if (!q('#adEmpty')) el.insertAdjacentHTML('beforeend', `<div class="empty" id="adEmpty">${icon('target')}<h2>Noch keine fertigen Bilder</h2><p>Sobald Aufnahmen gestackt sind, erscheint hier die Auswertung über alle Objekte.</p><a class="btn sm" href="#/import">${icon('upload')}Aufnahmen importieren</a></div>`);
       q('#adFilters').hidden = true; q('#adGo').disabled = true;

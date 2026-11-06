@@ -149,3 +149,23 @@ def test_develop_needs_solver(app):
     assert res.status_code in (200, 400)
     if res.status_code == 200:                                              # Solver vorhanden: Seed-Objekte haben keinen Stack
         assert res.json()["queued"] == 0
+
+
+def test_empty_selection_runs_nothing(app):
+    c, ids, _ = app
+    assert c.post("/api/stacking/analysis/plan", json={"kinds": []}).json()["total"] == 0
+    assert c.post("/api/stacking/analysis/run", json={"kinds": []}).status_code == 400
+    assert c.get("/api/stacking/analysis").json()["job"]["state"] == "idle"
+
+
+def test_year_filter_applies_to_sky_nights(app):
+    """Objekt mit Himmelsmessungen aus zwei Jahren: der Jahresfilter darf die Nacht des anderen Jahres nicht als Rekord zeigen."""
+    import json
+    c, ids, s = app
+    db = DB(s.db_path)
+    db.x("INSERT INTO sky_nights VALUES(?,?,?,?,?,?,?,?)", (ids[0], "2026-03-01", "a", "Beispielwiese", "stellina|200", time.time(), 1,
+                                                          json.dumps({"night": "2026-03-01", "sqm": 22.4, "seeing": 1.1})))
+    assert c.get("/api/stacking/analysis").json()["records"]["darkest"]["value"] == 22.4
+    d = c.get("/api/stacking/analysis?year=2025").json()
+    assert d["records"]["darkest"]["value"] != 22.4 and d["records"]["seeing"]["value"] != 1.1
+    assert all(n["night"].startswith("2025") for n in d["sky_series"])

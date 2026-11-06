@@ -247,6 +247,8 @@ def summarize(base: dict, f: dict | None = None) -> dict:
     sky_nights = [dict(n, id=r["id"], name=r["name"]) for r in rows if r["sky"] for n in r["sky"]["nights"]]
     if f.get("night"):
         sky_nights = [n for n in sky_nights if n["night"] == f["night"]]
+    if f.get("year"):                                  # Objekte mit mehreren Jahren: nur die Nächte des gewählten Jahres
+        sky_nights = [n for n in sky_nights if n["night"].startswith(str(f["year"]))]
     if x := best(sky_nights, lambda n: n.get("sqm")):
         rec["darkest"] = {"id": x["id"], "name": x["name"], "value": x["sqm"], "night": x["night"]}
     if x := best(sky_nights, lambda n: n.get("seeing"), hi=False):
