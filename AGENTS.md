@@ -469,6 +469,14 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   Katalog: SIMBAD-Kegel 8″ je Stelle (Veränderlichen-Typen), JPL SB-Ident **geozentrisch** (`mpc-code=500`) je Nacht (≤ 2), zwei
   Durchgänge, Kometen und Asteroiden getrennt – Asteroiden brauchen je nach Last 15–120 s (Zeitlimit 60 s → Hinweis).
   Ausgabe: `work/p<id>/vergleich/r<rid>/` Blinkbilder (gleiche Streckung, Raster des Stacks) + Ausschnitte; Caches `work/vergleich/`.
+- **Hotpixel-Reste** (seit 0.38.2, `stackfix.spots`): Ältere Stacks ohne `hotfix` enthalten Hotpixel-Paare (ein Kanal, R/G). Im
+  Kanalmittel und nach dem Falten der schärferen Aufnahme wurden sie sternförmig und passierten Form-/Einzelpixelprüfung (Arbeitsinstanz:
+  3 von 5 Meldungen, Punkte mit 33–52σ im R-Kanal). Vergleich und Tiefe rufen daher vor dem Kanalmittel `stackfix.spots` auf beiden
+  Bildern auf: Gruppen wie beim Entwickeln reparieren (`repair` mit vorhandenem `find`-Ergebnis), dazu alle Einzelpunkte gleicher Art
+  (`find(group=False)`, gleiche Schwelle `K`) als Stellen. Kandidaten ≤ max(3 px, FWHM) an einer Stelle → `verworfen.hotpixel`
+  (Referenzstellen per WCS umgerechnet), Ergebnis `hotpixel {aktuell, referenz}`; Tiefe: Sterne/Galaxien ≤ max(2, 0,8 FWHM) an einer
+  Stelle gelten nicht als erfasst/sichtbar. Schwelle nicht senken: ab 5σ fanden sich 1 400–9 000 Rauschspitzen je Stellina-Stack.
+  `COMPARE_VERSION` 2; `DEPTH_VERSION` bleibt 1 (keine der 18 sichtbaren Galaxien der Arbeitsinstanz lag auf einem Punkt).
 - **UI** (`static/depth.js|css`, globale Funktionen, `stacking.js` prüft `typeof depthPanel`): `depthPanel`, `depthOverlay`
   (umhüllt `plateLabels`, Klasse `marks-on`), `depthTunnel` (three.js aus `/vendor/`, Richtung = Bildposition aufgeweitet, Abstand
   log10(Lj)), `comparePanel` + `compareViewer` (Blinken über `createViewer().setSplit`, Stelle anfahren mit `zoomTo`).

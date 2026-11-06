@@ -239,3 +239,64 @@ def test_compare_rejects_mismatched_resolution(setup):
         compare.compute(db, s.work_dir, r_new, r_old, catalogs=False)
     with pytest.raises(depth.DepthError, match="anderen Stack"):
         depth.compute(s.work_dir, pid, json.loads(db.one("SELECT files FROM results WHERE id=?", (r_old,))["files"]))
+
+
+K3 = np.array([[0.25, 0.5, 0.25], [0.5, 1, 0.5], [0.25, 0.5, 0.25]], np.float32)   # bilineares Debayer eines R-Pixels
+
+
+def _hot_pairs(img, spots, amp, ch=0):
+    """Ortsfeste Hotpixel-Paare (zwei R-Pixel übereinander, debayert) wie in unbereinigten Stellina-Stacks."""
+    out = img.copy()
+    for x, y in spots:
+        for yo in (0, 2):
+            out[ch, y + yo - 1:y + yo + 2, x - 1:x + 2] += amp * K3
+    return out
+
+
+# Punktgruppe (eine je Zeigegruppe) abseits der Katalogsterne, dazu ein einzelner schwächerer Punkt
+HOT_GROUP = [(110, 95), (128, 108), (97, 121), (140, 86), (120, 135)]
+HOT_SINGLE = [(470, 300)]
+
+
+def test_compare_ignores_hotpixel_pairs(setup, monkeypatch):
+    """Vergleich bestehender, unbereinigter Stacks: Hotpixel-Paare (nur ein Kanal, schärfer als ein Stern) sind keine
+    Veränderung – weder als Gruppe (wird wie beim Entwickeln entfernt) noch einzeln; die echte neue Quelle bleibt."""
+    s, db, pid, cat, x, y, _ = setup
+    g = np.array(cat["g"])
+    old = _hot_pairs(_render(x, y, g, seed=5), [(500, 60)], 80)                   # auch die Referenz: sehr deutlicher Punkt
+    new = _render(x, y, g, seed=6, extra=[(77.0, 333.0, 13.5)])
+    new = _hot_pairs(_hot_pairs(new, HOT_GROUP, 40), HOT_SINGLE, 15)
+    r_old = _result(s, db, pid, old, "alt", ["2025-12-01"])
+    r_new = _result(s, db, pid, new, "neu", ["2026-01-01"])
+    hot = HOT_GROUP + HOT_SINGLE + [(500, 60)]
+
+    def near_hot(c):
+        return any(math.hypot(c["x"] - hx, c["y"] - (H - 1 - hy - 1)) < 6 for hx, hy in hot)
+
+    # ohne Bereinigung (Zustand bis 0.38.1): die Punkte erscheinen als „neu“ bzw. „verschwunden“
+    real = compare.stackfix.spots
+    monkeypatch.setattr(compare.stackfix, "spots", lambda d: (d, {"n": 0}, np.zeros((0, 2))))
+    before = compare.compute(db, s.work_dir, r_new, r_old, catalogs=False)
+    assert sum(near_hot(c) for c in before["kandidaten"]) >= 3, before["kandidaten"]
+    monkeypatch.setattr(compare.stackfix, "spots", real)
+
+    out = compare.compute(db, s.work_dir, r_new, r_old, catalogs=False)
+    assert out["v"] == compare.COMPARE_VERSION == 2
+    assert not [c for c in out["kandidaten"] if near_hot(c)], out["kandidaten"]
+    neu = [c for c in out["kandidaten"] if c["art"] == "neu"]
+    assert len(neu) == 1 and neu[0]["x"] == pytest.approx(77, abs=2)
+    assert out["hotpixel"]["aktuell"] >= len(HOT_GROUP) and out["hotpixel"]["referenz"] >= 1
+    assert out["verworfen"]["hotpixel"] >= 1                       # der einzelne Punkt: nicht entfernt, aber verworfen
+    assert any("Hotpixel" in h for h in out["hinweise"])
+
+
+def test_depth_ignores_hotpixel_pair_at_galaxy(setup):
+    """Tiefe: ein Hotpixel-Paar genau an einer Katalog-Galaxie macht sie nicht „sichtbar“ (und nicht zum fernsten Objekt)."""
+    s, db, pid, cat, x, y, gal_xy = setup
+    data = _hot_pairs(_render(x, y, cat["g"]), [(int(gal_xy[0]), int(gal_xy[1]) - 1)], 25)
+    rid = _result(s, db, pid, data, "a", ["2026-01-01"])
+    files = json.loads(db.one("SELECT files FROM results WHERE id=?", (rid,))["files"])
+    out = depth.compute(s.work_dir, pid, files, "Testgalaxie", stats={})
+    names = {o["name"]: o for o in out["galaxien"]}
+    assert not names["Galaxie A"]["sichtbar"] and out["fernstes"] is None
+    assert out["grenze"]["m5"] and abs(out["grenze"]["nullpunkt"] - ZP) < 0.3      # Sterne unverändert gemessen
