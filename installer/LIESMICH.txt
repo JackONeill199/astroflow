@@ -1,0 +1,20 @@
+AstroFlow – lokale Astro-Plattform für Smart-Teleskope und Astrokameras
+=======================================================================
+
+Starten:   Doppelklick auf "AstroFlow.cmd" (portable Version) bzw. Startmenü → AstroFlow.
+           AstroFlow läuft im Hintergrund, der Browser öffnet sich. Beim ersten Start führt
+           ein Einrichtungsassistent durch Datenordner, Teleskop, Standort und Plate-Solving.
+Beenden:   "AstroFlow beenden.cmd", Startmenü → "AstroFlow beenden" oder
+           in AstroFlow unter Einstellungen → Module & System → "AstroFlow beenden".
+
+Daten:     Installierte Version: %USERPROFILE%\AstroFlow (im Assistenten änderbar).
+           Portable Version: Ordner "Daten" neben dieser Datei.
+           Beim Deinstallieren bleiben die Daten erhalten.
+
+Python ist enthalten – es muss nichts weiter installiert werden.
+Optional auf Knopfdruck im Assistenten: ASTAP + Sterndatenbank (von SourceForge),
+GPU-Beschleunigung. GraXpert und StarNet bitte von den Herstellern laden.
+
+Anleitung und Quelltext: https://github.com/JackONeill199/astroflow
+Lizenz: MIT (siehe LICENSE.txt); Detektormodell in SkyTrace: AGPL-3.0;
+Python: PSF-Lizenz; weitere Pakete: jeweils eigene Lizenz in python\Lib\site-packages.

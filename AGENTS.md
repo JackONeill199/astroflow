@@ -62,6 +62,8 @@ Start.bat / Stop.bat                                  # Windows: Server im Hinte
 Netzwerk-freigeben.bat [entfernen]                    # Firewall-Regel „AstroFlow LAN“ (TCP 8766, privat, LocalSubnet; braucht Admin – Nutzer führt aus)
 python -m astroflow demo ./data/input/demo            # synthetische Testdaten (Bayer, 2 Nächte, Darks/Flats)
 docker compose up -d --build                          # Image enthält ASTAP + D05 (ARG ASTAP_DB=d05|d50)
+python installer/build_windows.py                     # Windows: portables ZIP (+ Installer mit Inno Setup) nach dist/, s. „Installation und Einrichtung“
+astroflow                                             # installierte Version: Server im Hintergrund + Browser (Port 8766, ~/AstroFlow); astroflow stop
 ```
 Git-Repo: github.com/JackONeill199/astroflow (Branch main; `data/`, `data_real/`, `.venv`, `AGENTS.local.md` per .gitignore ausgeschlossen).
 Tests laden standardmäßig nur das Stacking-Modul (`tests/conftest.py`); Modultests: `test_modules.py`, `test_sage.py`, `test_skytrace.py`.
@@ -288,6 +290,40 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    Ausgabedateien, Stacks gelöschter Objekte, Temp (> 1 h), leere Ordner (> 1 h), DB verdichten (VACUUM) – vorausgewählt; ältere Versionen
    (neueste `keep` je Objekt bleiben, nicht bei importierten Bildern) und Sicherungen – nur auf Wunsch. Client schickt nur Schlüssel, der Server
    ermittelt die Pfade neu und löscht nur innerhalb des Datenordners; 409 während eines Jobs. Rohdaten und Stacks bestehender Objekte nie.
+
+## Installation und Einrichtung (`core/launcher.py`, `core/setup.py`, `installer/`; seit 0.33.0 – Voraussetzung fürs öffentliche Repo)
+- **Zwei Wege, getrennt:** Bestehende Instanzen (`serve --data`, `ASTROFLOW_DATA`, `Start.bat` mit `./data`, Port 8080/8766) bleiben unverändert.
+  Neu ist der **Starter** `astroflow` / `astroflow start` (Standard ohne Befehl): Port 8766, `127.0.0.1` (Heimnetz erst nach Einschalten im
+  Assistenten → `config.lan`, sonst fragte die Windows-Firewall beim ersten Start), Datenordner `--data` > `ASTROFLOW_DATA` > `config.json` →
+  `data_dir` > `%USERPROFILE%\AstroFlow` bzw. `~/AstroFlow` (**nicht** „Dokumente“ – OneDrive, Entscheidung des Masters 06.11.2026).
+  `config.json` liegt außerhalb des Datenordners (`%APPDATA%\AstroFlow`, `~/.config/astroflow`; portabel `ASTROFLOW_HOME` → `<App>\config.json`,
+  Daten `<App>\Daten`). Läuft schon ein AstroFlow auf dem Port (`/api/status`) → nur Browser; fremdes Programm → Meldung (MessageBox ohne Konsole).
+  Server als losgelöster `pythonw -I -X utf8 -m astroflow serve` mit `ASTROFLOW_LAUNCHER=1` (nur dann ist der Datenordner wählbar und der
+  Assistent erscheint von selbst), Protokoll `server.log[.err]` im Datenordner. `astroflow stop` = `POST /api/system/shutdown` (SIGINT → Module
+  stoppen sauber). Neustart (Datenordner/Heimnetz geändert, `POST /api/system/restart`): neuer Starter mit `--wait-pid`, alter Server beendet sich.
+  `ASTROFLOW_NO_BROWSER=1` unterdrückt den Browser.
+- **Assistent** `#/willkommen` (`static/setup.js|css`, Präfix `su-`): erscheint, wenn `/api/app` → `setup.pending` (Starter + `settings.json` →
+  `setup.done` nicht gesetzt) und die Startseite aufgerufen wird; sonst über Einstellungen → Module & System (`setupSystemPanel`: Updates,
+  Neu starten, Beenden). Schritte: Datenordner (Laufwerke + frei, `launcher.cloud_folder` warnt bei OneDrive/Dropbox/…; Wechsel legt im neuen
+  Ordner `setup` an und startet neu – **alte Daten werden nicht verschoben**, DB-Pfade sind absolut), Teleskop (→ D05 bzw. D50 für „andere“),
+  Standort (Link), ASTAP, Demo, Extras (GPU per pip, GraXpert/StarNet nur Links, Heimnetz + Firewall-Regel wie `Netzwerk-freigeben.bat` per UAC,
+  Update-Prüfung). Hintergrundaufgaben `Setup._run` → `tasks` + Aktivität (`setup:<key>`).
+- **ASTAP auf Knopfdruck:** nur von SourceForge „astap-program“ (CLI je OS, `astapwin32.zip` nur für `deep_sky.csv` – laut Danksagung
+  **nur nicht-kommerziell frei**, Lizenz der Sterndatenbanken nicht eindeutig → nie mitliefern), nach `%LOCALAPPDATA%\astap` bzw. `~/astap`
+  (sucht `platesolve`/`objects` ohnehin dort), vorhandene Dateien bleiben. D05 als ZIP (~102 MB), D50 ~900 MB.
+- **Update-Hinweis:** `Setup.update_loop` (20 s nach Start, dann stündlich prüfen, ob 24 h um) → GitHub `releases/latest`, anonym,
+  `system.update_check` (Standard an), jeder Fehler still (privates Repo = 404). `/api/app.update` nur wenn neuer; Frontend-Toast einmal je Version
+  (`localStorage af.update.seen`). `ASTROFLOW_UPDATE_CHECK=0` setzt `conftest.py`.
+- **Paket:** `pyproject.toml` (setuptools ≥ 77, alle Dateien unter `astroflow/` als Paketdaten, Abhängigkeiten = `requirements.txt`, Test prüft
+  Gleichheit; noch nicht auf PyPI). `installer/build_windows.py`: python-build-standalone (fest `PBS_TAG`/`PBS_PY`) + Wheel + pip-Install,
+  numpy/scipy-Tests entfernt, Symbol gezeichnet (Pillow), `AstroFlow.cmd`/`AstroFlow beenden.cmd` (portabel), ZIP; mit ISCC Inno-Installer
+  (`astroflow.iss`: pro Nutzer, `%LOCALAPPDATA%\Programs\AstroFlow`, Startmenü, optional Desktop/Autostart, stoppt laufenden Server vor Update/
+  Deinstallation, Daten bleiben). Daneben `AstroFlow-Test.wsb` + `pruefe-in-sandbox.cmd` (Windows-Sandbox, absoluter Pfad → nicht im Repo).
+  CI: `.github/workflows/windows-paket.yml` (PR mit Paketänderungen, manuell, Tag `v*` → Release-Entwurf) baut, prüft sauber und installiert still.
+- **Gemessen 06.11.2026** (`installer/pruefe_paket.py`, leeres Profil, PATH ohne Python, 16 Kerne): Paket 150 MB ZIP / 379 MB entpackt;
+  entpacken 8 s, erster Start 21 s, ASTAP + D05 12 s (schnelle Leitung), Demo bis Bild 11 s, Beenden 4 s → **0,9 min bis zum ersten Bild**.
+- Ohne eingerichtete SkyTrace-Engine (kein Interpreter gewählt, keine venv) überspringt `skytrace.auto` still (Zustand `skipped`) statt je Nacht
+  „Analyse-Engine unvollständig“ zu melden. Engine per Knopf = Phase 2 (dafür plattformneutrale Anforderungen statt des Windows-Lockfiles).
 
 ## Standorte (`core/sites.py`, seit 0.23.0, Nutzerwunsch 04.11.2026 „Teleskop oft an verschiedenen Orten, Standorte nach Datum“)
 - **Ablage:** `data/settings.json` → Abschnitt `sites` = `{list: [{id, name, lat, lon, alt_m, accuracy_m, note}], default, periods: [{id, site_id,

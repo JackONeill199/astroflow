@@ -16,6 +16,7 @@ from .core.folders import list_folders, search_folders
 from .core.gzip import GZip
 from .core.modules import AVAILABLE, Context, load_modules
 from .core import sites as sites_mod
+from .core import setup as setup_mod
 from . import __version__ as VERSION
 from .core.store import SettingsStore
 
@@ -45,13 +46,18 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
     async def lifespan(app):
         for m in active:
             m.module.start()
+        import threading
+        threading.Thread(target=setup.update_loop, daemon=True, name="update-check").start()
         yield
+        setup._stop.set()
         for m in active:
             m.module.stop()
 
     app = FastAPI(title="AstroFlow", version=VERSION, lifespan=lifespan)
     app.state.ctx = ctx
     app.state.modules = {m.id: m.module for m in active}
+    setup = setup_mod.Setup(ctx, app.state)           # Einrichtungsassistent, Werkzeuge, Update-Hinweis, Beenden
+    app.state.setup = setup
 
     # Build-Kennung aus den Änderungszeiten aller Oberflächendateien: Modul-Skripte werden mit ?v=<build> geladen,
     # damit der Browser nach einem Update nie alte Dateien aus dem Cache nimmt
@@ -61,7 +67,10 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
 
     @app.get("/api/app")
     def app_info():
-        return {"version": VERSION, "build": build, "modules": [m.info() for m in loaded]}
+        upd = ctx.store.get("system").get("update") or {}
+        return {"version": VERSION, "build": build, "modules": [m.info() for m in loaded],
+                "setup": {"pending": setup.state()["pending"] if setup.launched else False, "launched": setup.launched},
+                "update": upd if upd.get("newer") and ctx.store.get("system").get("update_check", True) else None}
 
     @app.get("/api/status")
     def status():
@@ -85,6 +94,7 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
             except Exception as e:
                 items.append({"key": f"{m.id}:fehler", "module": m.id, "title": m.module.name, "state": "error",
                               "detail": f"Aktivität nicht lesbar: {e}", "started": time.time()})
+        items += setup.activity()
         rank = {"running": 0, "queued": 1}
         items.sort(key=lambda a: (rank.get(a.get("state"), 2), -(a.get("started") or 0)))
         return items[:limit]
@@ -204,6 +214,8 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
         except Exception as e:
             raise HTTPException(502, f"Höhenabfrage nicht erreichbar: {e}")
         return {"alt_m": float(v)}
+
+    app.include_router(setup_mod.build_router(setup), prefix="/api", tags=["setup"])
 
     for m in active:
         r = m.module.router()

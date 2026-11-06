@@ -84,7 +84,8 @@ class SolverConfig:
         if self.cmd_prefix:
             return "astap(test)"
         local = os.path.join(os.environ.get("LOCALAPPDATA", ""), "astap", "astap_cli.exe") if os.environ.get("LOCALAPPDATA") else None
-        for c in (self.astap, shutil.which("astap_cli"), shutil.which("astap"), local, *_ASTAP_CANDIDATES):
+        home = str(Path.home() / "astap" / "astap_cli")            # Einrichtungsassistent unter macOS/Linux
+        for c in (self.astap, shutil.which("astap_cli"), shutil.which("astap"), local, home, *_ASTAP_CANDIDATES):
             if c and Path(c).is_file():
                 return str(c)
         return None

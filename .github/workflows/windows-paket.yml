@@ -1,0 +1,75 @@
+# Windows-Paket (portables ZIP + Installer) bauen und in sauberer Umgebung prüfen.
+# Manuell startbar (Actions → „Windows-Paket“ → Run workflow), in PRs mit Änderungen am Paket; bei einem Versions-Tag v* zusätzlich als Release-Entwurf mit beiden Dateien.
+name: Windows-Paket
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths: ["installer/**", "pyproject.toml", "requirements.txt", "astroflow/core/launcher.py", "astroflow/core/setup.py", ".github/workflows/windows-paket.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build-Werkzeuge
+        run: python -m pip install --upgrade pip setuptools pillow
+
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+
+      - name: Paket bauen
+        run: python installer/build_windows.py --out dist
+
+      - name: Prüfung in sauberer Umgebung (ohne Python im PATH, mit ASTAP-Download)
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem dist\AstroFlow-*-Windows-portabel.zip | Select-Object -First 1
+          Expand-Archive $zip.FullName C:\Paket
+          C:\Paket\AstroFlow\python\python.exe -I installer\pruefe_paket.py $zip.FullName --astap
+
+      - name: Installer still installieren und starten
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist\AstroFlow-Setup-*.exe | Select-Object -First 1
+          Start-Process $exe.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/CURRENTUSER','/NORESTART' -Wait
+          $app = "$env:LOCALAPPDATA\Programs\AstroFlow"
+          if (-not (Test-Path "$app\python\pythonw.exe")) { throw "Installation fehlt in $app" }
+          $env:ASTROFLOW_NO_BROWSER = "1"
+          & "$app\python\python.exe" -I -m astroflow start
+          $s = Invoke-RestMethod http://127.0.0.1:8766/api/setup
+          if (-not $s.pending) { throw "Einrichtungsassistent nicht ausstehend" }
+          if ($s.data.path -ne "$env:USERPROFILE\AstroFlow") { throw "Datenordner: $($s.data.path)" }
+          & "$app\python\python.exe" -I -m astroflow stop
+          Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES' -Wait
+          Start-Sleep 3
+          if (Test-Path "$app\python") { throw "Deinstallation unvollständig" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: astroflow-windows
+          path: |
+            dist/AstroFlow-*.zip
+            dist/AstroFlow-Setup-*.exe
+          retention-days: 14
+
+      - name: Release-Entwurf
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release create $env:GITHUB_REF_NAME --draft --title "AstroFlow $($env:GITHUB_REF_NAME.TrimStart('v'))" --notes "Windows: AstroFlow-Setup-….exe (Installer) oder das portable ZIP. Änderungen: siehe CHANGELOG.md." (Get-ChildItem dist\AstroFlow-*.zip, dist\AstroFlow-Setup-*.exe)

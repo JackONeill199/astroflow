@@ -1,4 +1,4 @@
-"""CLI: python -m astroflow serve | process | demo"""
+"""CLI: astroflow [start] | stop | serve | process | demo"""
 from __future__ import annotations
 
 import argparse
@@ -8,7 +8,14 @@ from pathlib import Path
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="astroflow", description="Vollautomatische Astrofotografie")
-    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub = ap.add_subparsers(dest="cmd")
+    st = sub.add_parser("start", help="Server im Hintergrund starten und Browser öffnen (Standard ohne Befehl)")
+    st.add_argument("--data", default=None)
+    st.add_argument("--port", type=int, default=None)
+    st.add_argument("--no-browser", action="store_true")
+    st.add_argument("--wait-pid", type=int, default=None, help=argparse.SUPPRESS)
+    so = sub.add_parser("stop", help="laufenden Server beenden")
+    so.add_argument("--port", type=int, default=None)
     sv = sub.add_parser("serve", help="Web-Oberfläche starten")
     sv.add_argument("--host", default="0.0.0.0")
     sv.add_argument("--port", type=int, default=8080)
@@ -21,10 +28,19 @@ def main(argv=None):
     dm.add_argument("--comet", action="store_true", help="Kometenserie (Komet vor Sternfeld) statt Galaxie")
     a = ap.parse_args(argv)
 
+    if a.cmd in (None, "start"):
+        from .core import launcher
+        return launcher.start(getattr(a, "data", None), getattr(a, "port", None), not getattr(a, "no_browser", False),
+                              getattr(a, "wait_pid", None))
+    if a.cmd == "stop":
+        from .core import launcher
+        return launcher.stop(a.port)
     if a.cmd == "serve":
         import uvicorn
         from .core.config import load_settings
         from .server import create_app
+        import os
+        os.environ["ASTROFLOW_PORT"] = str(a.port)                    # Einrichtung/Neustart kennen den eigenen Port
         uvicorn.run(create_app(load_settings(a.data)), host=a.host, port=a.port)
     elif a.cmd == "process":
         from .core.config import load_settings

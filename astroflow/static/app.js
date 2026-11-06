@@ -534,12 +534,13 @@ const coreRoutes = [
   [/^\/?$/, 'home', homeView],
   [/^\/activity$/, 'activity', activityView],
   [/^\/settings(?:\/(\w+))?$/, 'settings', settingsView],
+  [/^\/willkommen$/, 'settings', (el) => window.setupView(el)],          // Einrichtung (setup.js)
 ];
 const allRoutes = () => [...coreRoutes, ...AF.order.flatMap(id => AF.modules[id].routes || [])];
 // Inhaltsbreite je Ansicht: Arbeitsflächen (Bild bearbeiten, Spuren prüfen, 3D) nutzen die Breite, Formulare/Import bleiben schmal,
 // alles andere ist zentriert auf --page-max begrenzt (style.css → .page)
 const PAGE_WIDE = [/^\/galerie\/\d+$/, /^\/skytrace\/(?!neu$|statistik$|erfolge$)[^/]+/];
-const PAGE_NARROW = [/^\/settings/];
+const PAGE_NARROW = [/^\/settings/, /^\/willkommen$/];
 // Weicher Seitenwechsel: Die bisherige Ansicht bleibt als stilles Abbild („Geist“, ohne IDs, nicht klickbar) stehen, bis die neue
 // fertig ist; dann blenden beide kurz ineinander über. Dauert das Laden länger als SKEL_AFTER, erscheint das Skelett.
 // So gibt es kein falsches Zwischen-Skelett und keinen leeren Moment. Bei „Bewegung reduzieren“ ohne Überblendung.
@@ -894,6 +895,7 @@ async function moduleSettings(el) {
       <dt>Aktive Module</dt><dd>${info.modules.filter(m => m.available).map(m => esc(m.name)).join(', ')}</dd>
       ${st.modules.stacking?.disk ? `<dt>Speicher frei</dt><dd>${fmb(st.modules.stacking.disk.free)} von ${fmb(st.modules.stacking.disk.total)}</dd>` : ''}
     </dl><p class="mut sm" style="margin:14px 0 0">Tipp: Im Browser-Menü „App installieren“ wählen – AstroFlow läuft dann wie eine eigene App.</p></div>`;
+  window.setupSystemPanel?.(el);
   $('#uiScale', el).onclick = (e) => {
     const b = e.target.closest('button[data-v]');
     if (!b) return;
@@ -1003,6 +1005,13 @@ async function boot() {
     });
   });
   addEventListener('hashchange', route);
+  // Erster Start der installierten Version → Einrichtung; neue Version → einmaliger Hinweis je Version
+  if (AF.app.setup?.pending && /^#?\/?$/.test(location.hash)) location.hash = '#/willkommen';
+  const upd = AF.app.update;
+  if (upd?.latest && store.get('update.seen', '') !== upd.latest) {
+    store.set('update.seen', upd.latest);
+    toast(`AstroFlow ${upd.latest} ist verfügbar.`, 'ok', { label: 'Herunterladen', href: upd.url });
+  }
   await route();
   poll();
   setInterval(() => { if (!document.hidden) poll(); }, 2500);
