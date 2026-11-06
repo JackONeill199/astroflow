@@ -19,6 +19,17 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 - Fehlende Voraussetzungen werden je Objekt genannt und lassen sich beheben: „Neu entwickeln – löst den Stack“ für nicht gelöste Bilder,
   „Gaia-Abgleich einschalten“.
 - Klick auf eine Kennzahl, einen Rekord, einen Punkt oder eine Veränderung öffnet den Reiter Analyse des Objekts und fährt die Stelle im Bild an.
+## 0.34.0 – 06.11.2026
+
+### Neu
+- **SkyTrace: Karte und Heatmap je Nacht** unter „Standorte aller Nächte“. Jede Nacht hat jetzt den Knopf **Karte** – auch bei
+  Vorschlägen aus der Ortsliste, bei Rückrechnungen und bei „Kein Ort passt“. Die Karte zeigt die Orte der Liste, den bisherigen
+  Ort und den Vorschlag mit seiner Unsicherheit. Lief die Suche ohne Vorwissen, kommt eine **Heatmap** dazu: hell sind die Stellen,
+  an denen sich viele verschiedene Satellitenspuren der Nacht treffen. „Übersicht“ zeigt das ganze Suchgebiet (20-km-Zellen),
+  „Nah“ die Umgebung des gefundenen Orts (± 30 km, 1-km-Raster). Passte ein Listenort und die Suche lief deshalb nicht, holt
+  **Heatmap berechnen** sie für diese eine Nacht nach (lokal, etwa 10–60 s, ändert keinen Vorschlag).
+- Die Karte entsteht ohne Netz (Umrisse); „Straßenkarte“ bzw. „Gelände“ lädt auf Knopfdruck Kacheln von OpenStreetMap/OpenTopoMap.
+- Oben in der Ansicht steht jetzt, wie viele Vorschläge noch nicht übernommen sind, mit **Alle übernehmen**.
 
 ## 0.33.0 – 06.11.2026
 

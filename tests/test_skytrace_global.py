@@ -127,6 +127,23 @@ def test_nights_proposes_unknown_site(engine, tmp_path, monkeypatch):
     assert n["clock"]["source"] == "global" and q["offset_s"] == pytest.approx(CLOCK, abs=5) and q["nights"] == [NIGHT]
     assert n["assign"] == [NIGHT] and "ohne Vorwissen" in n["note"]
     assert "unbekannte Orte zurückgerechnet" in log.getvalue()
+    # Heatmap der Rückprojektion je Nacht in eigener Datei: hellste grobe Zelle am wahren Ort, feine Karte um die Häufung
+    import base64
+    heat = json.loads((tmp_path / "st" / "standortsuche-karten" / f"{NIGHT}.json").read_text(encoding="utf-8"))
+    c = heat["coarse"]
+    cells = np.frombuffer(base64.b64decode(c["data"]), np.uint8).reshape(c["h"], c["w"])
+    r, k = np.unravel_index(int(np.argmax(cells)), cells.shape)
+    y, x = (c["y0"] + r - c["off"] + 0.5) * c["cell_km"], (c["x0"] + k - c["off"] + 0.5) * c["cell_km"]
+    lat = c["lat0"] + y / 111.195
+    hot = {"lat": lat, "lon": c["lon0"] + x / (111.195 * math.cos(math.radians(lat)))}
+    assert cells.max() >= 5 and _offset_km(hot, TRUE) < 40, (cells.max(), _offset_km(hot, TRUE))
+    f = heat["fine"]
+    fine = np.frombuffer(base64.b64decode(f["data"]), np.uint8).reshape(f["size"], f["size"])
+    rr, kk = np.nonzero(fine == fine.max())                                  # Plateau: Spuren über den Bildrand lassen längs Spielraum
+    r, k = rr.mean(), kk.mean()
+    spot = {"lat": f["lat"] + (r - 30) / 111.195, "lon": f["lon"] + (k - 30) / (111.195 * math.cos(math.radians(f["lat"])))}
+    assert _offset_km(spot, TRUE) < 5 and heat["result"]["proposal"]["support"] >= 5
+    assert "_heat" not in n["global"] and "coarse" not in json.dumps(data)          # nicht in der gepollten Ergebnisdatei
 
 
 def test_good_list_site_skips_global(engine, tmp_path, monkeypatch):
@@ -147,6 +164,23 @@ def test_good_list_site_skips_global(engine, tmp_path, monkeypatch):
     n = json.loads(out.read_text(encoding="utf-8"))["nights"][0]
     assert not called and n["proposal"]["kind"] == "list" and n["proposal"]["id"] == "urlaub", n
     assert catalog_matching.night_key(T0) == NIGHT
+
+
+def test_heatmap_for_night_with_good_list_site(engine, tmp_path, monkeypatch):
+    """„Heatmap berechnen“: auch wenn ein Listenort passt, nur die Karte – kein Vorschlag wird geändert."""
+    obs, _ = _setup(engine, tmp_path, monkeypatch)
+    groups = tmp_path / "st" / "standortsuche-gruppen.json"
+    groups.write_text(json.dumps([{"night": NIGHT, "observations": [obs]}]), encoding="utf-8")
+    with contextlib.redirect_stdout(io.StringIO()) as log:
+        engine.heatmap(groups, NIGHT, 1500)
+    heat = json.loads((tmp_path / "st" / "standortsuche-karten" / f"{NIGHT}.json").read_text(encoding="utf-8"))
+    assert heat["computed"] and heat["coarse"]["max"] >= 5 and heat["fine"]["size"] == 61
+    assert '"saved": true' in log.getvalue()
+    try:
+        engine.heat_file("../x")
+        raise AssertionError("ungültige Nacht angenommen")
+    except ValueError:
+        pass
 
 
 def test_ground_points_geometry():
@@ -208,6 +242,21 @@ def test_server_passes_global_km(tmp_path, monkeypatch):
     assert seen["args"][seen["args"].index("--global-km") + 1] == "1500.0" and seen["job"]["global_km"] == 1500
     jobs.start_nights(10, False, 0)
     assert seen["args"][seen["args"].index("--global-km") + 1] == "0.0" and "--no-clock" in seen["args"]
+    # Heatmap je Nacht: nur Nächte der letzten Suche, Datei je Nacht, Liste für die Ansicht
+    with pytest.raises(ValueError):
+        jobs.start_heatmap("2022-01-01")                                   # noch keine Gruppen
+    (tmp_path / "standortsuche-gruppen.json").write_text(json.dumps([{"night": NIGHT, "observations": []}]), encoding="utf-8")
+    with pytest.raises(ValueError):
+        jobs.start_heatmap("../../x")
+    jobs.start_heatmap(NIGHT, 500, False)
+    assert seen["job"]["kind"] == "heatmap" and seen["args"][:3][1:] == [str(tmp_path / "standortsuche-gruppen.json"), NIGHT]
+    assert "--no-clock" in seen["args"] and seen["args"][seen["args"].index("--global-km") + 1] == "500.0"
+    assert jobs.heat(NIGHT) is None and jobs.heat_nights() == []
+    (tmp_path / "standortsuche-karten").mkdir()
+    (tmp_path / "standortsuche-karten" / f"{NIGHT}.json").write_text(json.dumps({"night": NIGHT}), encoding="utf-8")
+    assert jobs.heat(NIGHT) == {"night": NIGHT} and jobs.heat_nights() == [NIGHT]
+    with pytest.raises(ValueError):
+        jobs.heat("2022-1-1")
 
 
 if __name__ == "__main__":
@@ -222,7 +271,8 @@ if __name__ == "__main__":
         def close(self): [setattr(o, n, v) for o, n, v in reversed(self.undo)]; _unload()
     test_ground_points_geometry(); print("OK test_ground_points_geometry")
     test_grid_covers_distant_centers(); print("OK test_grid_covers_distant_centers")
-    for test in (test_finds_far_site_and_clock, test_random_trails_no_proposal, test_nights_proposes_unknown_site, test_good_list_site_skips_global):
+    for test in (test_finds_far_site_and_clock, test_random_trails_no_proposal, test_nights_proposes_unknown_site, test_good_list_site_skips_global,
+                 test_heatmap_for_night_with_good_list_site):
         mp = MP()
         with tempfile.TemporaryDirectory() as d:
             try:

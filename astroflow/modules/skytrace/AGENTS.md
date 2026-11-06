@@ -381,12 +381,8 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
 - **Ergebnis** `night.global` (Stufen mit Paaren/Stimmen/Häufungen, Grund) und `proposal.kind='global'` (`lat/lon` 6 Stellen fürs Übernehmen, `alt_m` 0,
   `accuracy_m`, `sure`, `rms`, `support`, `confidence`, `clock_s`, `nearest_name/km`); liegt er ≤ max(2 km, 2 × Genauigkeit) an einem Listenort →
   `kind='list'` mit `source='global'`. Uhr: |Versatz| ≥ 20 s → `night.clock.proposal` (`source='global'`), sonst wird ein Uhrvorschlag vom bisherigen Ort
-  verworfen (`dropped`, Grund „Folge des falschen Orts“). UI `globalHtml`: Koordinaten auf 0,01°, Unsicherheit, Spuren, Sicherheit, Uhr, „Höhe unbekannt“,
-  SVG-Karte `globalMap` relativ zu den Listenorten; Land/Grenzen aus `/vendor/umrisse-welt.json` (Natural Earth 1:10 Mio., ~1 km, einmal geladen,
-  `outlines`/`hydrateMaps`, nur Ringe im Ausschnitt) – ohne Netz. **„Karte laden“** (`onlineMap`, Wunsch des Nutzers 06.11.2026): Leaflet aus `/vendor/`,
-  Kacheln OpenStreetMap bzw. OpenTopoMap („Gelände“) erst auf Knopfdruck – der Kartendienst sieht den Ausschnitt; „immer laden“ =
-  localStorage `af.skytrace.mapsOnline`. Leaflet-Ebenen haben z-index ≥ 400 → `.stn-leaflet` mit eigenem Stapelkontext (`isolation`). `applyNights` legt „Unbekannter Ort
-  (Satelliten <Nacht>)“ an, Hinweis auf Höhe/Namen. Nie automatisch.
+  verworfen (`dropped`, Grund „Folge des falschen Orts“). UI `globalHtml`: Koordinaten auf 0,01°, Unsicherheit, Spuren, Sicherheit, Uhr, „Höhe unbekannt“;
+  Karte seit 0.34.0 je Nacht (unten). `applyNights` legt „Unbekannter Ort (Satelliten <Nacht>)“ an, Hinweis auf Höhe/Namen. Nie automatisch.
 - **Leistung:** IC59 allein 19 s (Stufe ± 60 s: 1 137 Paare, 4 s Rückprojektion), ganze Nacht 06.08. (32 Spuren) 39 s; ± 20 min ~36 s mehr. `MAX_PAIRS` 60 000
   als Notbremse. Bahnen nur lokal (`orbits_cache_only`), keine SATCAT-Abfragen (`satcat_offline`), Anhalten über die Stopp-Datei (`check_stop`).
 - **Befund** (06.11.2026, Kopien der Kandidaten-JSONs, `nights … --global-km 1500`, Urlaubsort aus der Ortsliste ausgeblendet; Abstand zum
@@ -405,6 +401,29 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
 - Tests: `tests/test_skytrace_global.py` (Engine im Engine-Interpreter direkt ausführbar: Ort 300 km neben dem Listenort, Uhr −300 s, 40 Störbahnen →
   < 5 km, ± 5 s, alle Spuren eindeutig, erst in der ± 20-min-Stufe; verdrehte Spuren → kein Vorschlag; Nachtsuche mit/ohne `global_km`; guter Listenort →
   Suche läuft nicht; Geometrie der Rückprojektion; Server reicht `--global-km` durch). UI: `#/skytrace/standorte` in `test_ui_layout.py` (Nacht mit `global`).
+
+## Karte und Heatmap je Nacht (0.34.0, 06.11.2026, Nutzerwunsch „sehe keine Karte“ – sie erschien nur bei `kind='global'` – „eine Art Heatmap“)
+- **Daten** (`global_site.heat_map`): grob je 20-km-Zelle (gleiches Gitter wie die erste Stufe, Sinusprojektion um das Mittel der Orte) die größte Zahl
+  verschiedener Spuren bei einem Versatz – nur der belegte Ausschnitt, uint8 Base64 (Zeilen Süd → Nord); fein aus `local` (1 km, ± 30 km, je Punkt bester
+  Versatz) **um das Endergebnis nach `refine`** neu gerechnet (der grobe Block lag in der Probe 38 km daneben). Am Ergebnis bilden Spuren über den Bildrand
+  ein Plateau längs der Bahn (synthetisch 95 km² gleich hoch) – das ist echte Unbestimmtheit, kein Fehler.
+- **Ablage** `<SKYTRACE_HOME>/standortsuche-karten/<Nacht>.json` (`rematch_sites.save_heat`; `coarse`, `fine`, `clock_s`, `region_km`, `computed`, `result` =
+  Kurzfassung mit Vorschlag/Häufungen). **Nicht** in `standortsuche-naechte.json` (gepollt; `_heat` wird vor dem Speichern entfernt). Echte Nacht: ~40 KB.
+  Koordinaten bleiben lokal (Datenordner), nichts davon ins Repo.
+- **Berechnen** (Entscheidung): Lief die Suche ohne Vorwissen nicht, weil ein Listenort passte, gibt es Knopf **„Heatmap berechnen“** statt sie immer zu rechnen
+  (normale Nächte bleiben schnell) und statt nur einer `sitefit`-Ellipse (die zeigt nichts über andere mögliche Orte). Engine `rematch_sites.py heatmap
+  <gruppen> <Nacht> [--global-km] [--no-clock]` → `global_site.search_night` für diese Nacht, ändert keinen Vorschlag; Server `SiteJobs.start_heatmap`
+  (Auftrag `kind='heatmap'`, sperrt keine Läufe, nur Nächte aus `standortsuche-gruppen.json`), `POST /sitesearch/nights/heatmap {night, global_km, clock}`,
+  `GET /sitesearch/nights/heatmap?night=` (`heat`, `job`), `GET /sitesearch/nights` → `maps` (Nächte mit Datei). Echte Kontrollnacht: 10 s.
+- **UI** (`openNightMap` in `skytrace.js`): Knopf „Karte“ in jeder Nachtzeile (bei `global` gleich offen), Ansicht „Übersicht“ (Orte + heiße Zellen ≥ 60 % des
+  Maximums) / „Nah“, Heatmap als Canvas-Bild im SVG über den Umrissen (Natural Earth, `outlines`), Farbskala dunkel → hell (`heatColor`), Orte grau,
+  bisheriger Ort als Ring, Vorschlag blau mit Ellipse (`ellipse_km` von `sitefit`, 1σ, Winkel von Nord über Ost; sonst Kreis mit `accuracy_m`;
+  bei `list` Koordinaten aus der Ortsliste). „Straßenkarte“/„Gelände“ = Leaflet (`leafletMap`, Zellen als Rechtecke, Canvas-Renderer, ≤ 4 000) – erst auf
+  Knopfdruck; „Karten immer laden“ = `af.skytrace.mapsOnline`. Offene Karten bleiben beim Neuzeichnen offen (`opened`, `mapState`). Kopf: Leiste
+  „n Vorschläge noch nicht übernommen“ mit „Alle übernehmen“ (`.stn-open`).
+- Tests: `test_skytrace_global.py` (Heatmap-Datei: hellste grobe Zelle < 40 km, Mitte des feinen Plateaus < 5 km am wahren Ort, nicht in der Ergebnisdatei;
+  „berechnen“ bei passendem Listenort; Server: Prüfungen, Datei, `maps`), `test_ui_layout.py::test_night_map_heatmap` (synthetische Heatmap, Umrisse, Nah,
+  Nacht ohne Heatmap mit Knopf, keine Kachelanfragen) und Fixture `_heat_fixture`.
 
 ## Erkennung im Teleskop-Bildfeld (28.10.2026, Nutzerbefund M74 2022-08-07)
 Anlass: Ein schwacher Meteor (img-0041, ~120 px, ~1,5σ/px) wurde übersehen, ein langsames Objekt in sechs Aufnahmen (img-0177…0182)
