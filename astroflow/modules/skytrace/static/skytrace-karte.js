@@ -52,7 +52,9 @@ function FlatMap(host, deps) {
 
   const toS = (x, y) => [(x - V.cx) * V.Z + V.W / 2, (y - V.cy) * V.Z + V.H / 2];
   const toW = (sx, sy) => [V.cx + (sx - V.W / 2) / V.Z, V.cy + (sy - V.H / 2) / V.Z];
-  const llS = (lat, lon) => toS(mx(lon), my(lat));
+  // Weltkopie wie das Kartenbild: Länge relativ zur Kartenmitte umbrechen (Datumsgrenze, nach dem Verschieben in eine Nachbarkopie)
+  const wrapX = (x) => x + Math.round(V.cx - x);
+  const llS = (lat, lon) => toS(wrapX(mx(lon)), my(lat));
   const pxPerKm = (lat = latOf(V.cy)) => V.Z / (EQ_KM * Math.cos(lat * D2R));
   function resize() {
     const r = host.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2);
@@ -159,11 +161,13 @@ function FlatMap(host, deps) {
   }
   function drawBorders(k, nv) {
     if (!S.outlines || k <= .01) return;
-    const [x0, y0] = toW(0, 0), [x1, y1] = toW(V.W, V.H), lo0 = lonOf(x0), lo1 = lonOf(x1), la1 = latOf(y0), la0 = latOf(y1);
+    const [x0, y0] = toW(0, 0), [x1, y1] = toW(V.W, V.H), la1 = latOf(y0), la0 = latOf(y1);
     g.beginPath();
     for (const r of S.outlines) {
-      if (r.box[1] < lo0 || r.box[0] > lo1 || r.box[3] < la0 || r.box[2] > la1) continue;
-      for (let i = 0; i < r.lon.length; i++) { const [sx, sy] = llS(r.lat[i], r.lon[i]); if (i) g.lineTo(sx, sy); else g.moveTo(sx, sy); }
+      // Ring als Ganzes in die Weltkopie der Kartenmitte (Natural Earth schneidet Ringe an ±180°, also kein Ring über die Naht)
+      const k = Math.round(V.cx - (mx(r.box[0]) + mx(r.box[1])) / 2), a = mx(r.box[0]) + k, b = mx(r.box[1]) + k;
+      if (b < x0 || a > x1 || r.box[3] < la0 || r.box[2] > la1) continue;
+      for (let i = 0; i < r.lon.length; i++) { const [sx, sy] = toS(mx(r.lon[i]) + k, my(r.lat[i])); if (i) g.lineTo(sx, sy); else g.moveTo(sx, sy); }
       g.closePath();
     }
     g.strokeStyle = nv > .5 ? `rgba(159,243,228,${(.55 * k).toFixed(2)})` : `rgba(210,222,245,${(.5 * k).toFixed(2)})`; g.lineWidth = 1; g.stroke();

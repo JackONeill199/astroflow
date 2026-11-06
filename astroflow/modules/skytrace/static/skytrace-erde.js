@@ -769,7 +769,12 @@ function globe(host, { THREE, OrbitControls }, ctx) {
   }
   $d('.ste-mode').onclick = () => {
     if (flat?.active) leaveFlat(null);
-    else { if (M.zoom !== 'globe' && R.run) R.run.setView('earth', false); enterFlat(null, null, ppkAt((FLAT_IN - 1) * R_KM) * 1.15); }
+    else {
+      if (M.zoom !== 'globe' && R.run) {               // aus Teleskop/Durchgang/Folgen: Erdansicht sofort übernehmen (setView plant sie sonst erst fürs nächste Bild)
+        R.run.setView('earth', false); M.fly?.(performance.now()); M.fly = null; controls.update(); camera.updateMatrixWorld();
+      }
+      enterFlat(null, null, ppkAt((FLAT_IN - 1) * R_KM) * 1.15);
+    }
   };
   tilesBox.querySelector('.seg').onclick = (e) => {
     const b = e.target.closest('[data-tiles]'); if (!b || !flat) return;
@@ -925,7 +930,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
         flat: flat?.state() || null, coord: M.coord || null };
     },
     focus: (lat, lon, dist) => flyTo(dirLL(lat, lon), dist, 0),
-    flat: flat && { at: flat.at, screenOf: flat.screenOf, enter: (sx, sy) => enterFlat(sx, sy, ppkAt((FLAT_IN - 1) * R_KM) * 1.15), leave: () => leaveFlat(null) },
+    flat: flat && { at: flat.at, screenOf: flat.screenOf, flyTo: flat.flyTo, enter: (sx, sy) => enterFlat(sx, sy, ppkAt((FLAT_IN - 1) * R_KM) * 1.15), leave: () => leaveFlat(null) },
     dispose() {
       M.dead = true; cancelAnimationFrame(M.raf); ro.disconnect(); R.run?.dispose();
       for (const P of Object.values(nightRuns)) P.layers.forEach(l => l.dispose());

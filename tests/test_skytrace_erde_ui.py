@@ -149,6 +149,11 @@ def test_eine_3d_erde_mit_zwei_kontexten(server, browser, width, tmp_path):
     page.wait_for_function("document.querySelector('#steHost')._st3d.state().mode === 'scope'")
     assert not page.evaluate(FIND_OVERFLOW)
     page.screenshot(path=str(tmp_path / f"erde-analysen-{width}.png"))
+    # Kartenknopf aus der Teleskop-Ansicht: ein Klick genügt, die Karte öffnet sich über dem Standort des Teleskops
+    page.locator(".ste-mode").click()
+    page.wait_for_function("document.querySelector('#steHost')._ste.state().flat.on")
+    page.locator(".ste-mode").click()
+    page.wait_for_function("!document.querySelector('#steHost')._ste.state().flat.on")
     # zurück: Erde dreht sich in die erdfeste Lage, Lauf-Teile verschwinden
     page.locator(".ste-ctx [data-ctx=nights]").click()
     page.wait_for_function("(s => s.ctx === 'nights' && !s.runReady && Math.abs(s.earthRot) < 1e-6 && !s.flying)(document.querySelector('#steHost')._ste.state())")
@@ -285,6 +290,10 @@ def test_kartenkacheln_passend_zur_aufloesung(server, browser, dpr, tmp_path):
     assert f["tileWant"] <= 96 and max(z for z, _, _ in asked) == f["tileZ"]
     assert len({a for a in asked}) == len(asked)                                       # nichts doppelt geladen (Cache)
     assert "OpenStreetMap" in page.locator(".ste-attr").inner_text()                  # Quellenangabe sichtbar
+    # Datumsgrenze: Mitte bei 179,9° O, ein Ort bei 179,9° W liegt gleich daneben (nicht eine Weltbreite entfernt)
+    page.evaluate("document.querySelector('#steHost')._ste.flat.flyTo(10, 179.9, 2)")
+    sx, _ = page.evaluate("document.querySelector('#steHost')._ste.flat.screenOf(10, -179.9)")
+    assert 30 < sx - box["width"] / 2 < 60, sx                                         # 0,2° bei 10° Breite und 2 px/km ≈ 44 px östlich
     page.screenshot(path=str(tmp_path / f"erde-kacheln-dpr{dpr}.png"))
     assert not errors, errors
     page.close()
