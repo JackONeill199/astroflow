@@ -109,8 +109,10 @@ async function view(el, nightArg, H) {
   async function loadHeats(list) {
     const want = list.filter(n => maps.includes(n) && !(n in heats));
     if (!want.length) return;
-    try { Object.assign(heats, (await api(T + '/sitesearch/nights/heatmaps?nights=' + encodeURIComponent(want.join(',')))).heat || {}); }
-    catch { /* ohne Heatmap */ }
+    for (let i = 0; i < want.length; i += 100) {             // Endpunkt nimmt höchstens 120 Nächte je Anfrage
+      try { Object.assign(heats, (await api(T + '/sitesearch/nights/heatmaps?nights=' + encodeURIComponent(want.slice(i, i + 100).join(',')))).heat || {}); }
+      catch { /* ohne Heatmap – beim Wählen der Nacht erneut versucht */ }
+    }
   }
   await loadHeats(maps);
   if (!el.isConnected) return;
@@ -129,6 +131,10 @@ async function view(el, nightArg, H) {
     if (location.hash !== url) history.replaceState(null, '', url);
     crumbs([['SkyTrace', '#/skytrace'], ['Erde', '#/skytrace/erde'], ...(S.night ? [[fmtNight(S.night)]] : [])]);
     scene.setNight(S.night, { card: !!S.night, fly: true, fromScene });
+    if (S.night && maps.includes(S.night) && !heats[S.night]) {         // fehlte beim Laden (Netz, Fehler): einzeln nachholen
+      const want = S.night; delete heats[want];
+      loadHeats([want]).then(() => { if (heats[want] && scene) scene.heatChanged(want); });
+    }
   }
   listEl.onclick = (e) => { const b = e.target.closest('[data-n]'); if (b) pick(b.dataset.n); };
   range.oninput = () => pick(+range.value ? nights[+range.value - 1].night : null);
@@ -401,7 +407,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
           P.points.push(at.clone());
           const s = sprite('runs', color, .022); s.position.copy(at); P.group.add(s);
           label(h.name || 'Satellit', `${h.candidate || ''} · ${nf1(h.at_t0?.height_km)} km`, color, at, { layer: 'runs', night, near: 3.5 });
-          for (const seg of h.fov_segments || []) { const pts = seg.pos.map((p, i) => toE(p, seg.t[i])); if (pts.length > 1) P.group.add(lineOn('runs', pts, '#ffffff', 1)); }
+          for (const seg of h.fov_segments || []) { const pts = seg.pos.map((p, i) => toE(p, h.t_pass + seg.t[i])); /* seg.t relativ zum Durchgang (orbit3d: fine − t0) */ if (pts.length > 1) P.group.add(lineOn('runs', pts, '#ffffff', 1)); }
         } else if (h.ecef?.length) {
           const pts = h.ecef.map(V); P.group.add(lineOn('runs', pts, color, 1));
           label(h.name || (h.kind === 'meteor' ? 'Meteor' : 'Flugzeug'), h.candidate || '', color, pts.at(-1), { layer: 'runs', night, near: 2.2 });
