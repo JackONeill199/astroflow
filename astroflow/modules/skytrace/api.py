@@ -579,7 +579,23 @@ def build_router(mod) -> APIRouter:
     @r.get("/sitesearch/nights")
     def nights_state():
         job = mod.sitejobs.snapshot()
-        return {"job": job if job and job.get("kind") == "nights" else None, "result": mod.sitejobs.nights_result()}
+        return {"job": job if job and job.get("kind") == "nights" else None, "result": mod.sitejobs.nights_result(), "maps": mod.sitejobs.heat_nights()}
+
+    @r.post("/sitesearch/nights/heatmap")
+    def nights_heatmap_start(body: dict = Body(...)):
+        """Heatmap der Standortsuche für eine Nacht berechnen (Hintergrundauftrag, Ergebnis in standortsuche-karten/<Nacht>.json)."""
+        try:
+            return mod.sitejobs.start_heatmap(str(body.get("night") or ""), float(body.get("global_km") or 1500), body.get("clock") is not False)
+        except (OSError, ValueError, TypeError) as e:
+            bad(e)
+
+    @r.get("/sitesearch/nights/heatmap")
+    def nights_heatmap(night: str):
+        try:
+            job = mod.sitejobs.snapshot()
+            return {"heat": mod.sitejobs.heat(night), "job": job if job and job.get("kind") == "heatmap" and job.get("night") == night else None}
+        except ValueError as e:
+            bad(e)
 
     @r.post("/sitesearch/nights/applied")
     def nights_applied(body: dict = Body(...)):

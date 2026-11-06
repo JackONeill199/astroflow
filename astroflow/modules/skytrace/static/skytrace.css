@@ -168,9 +168,17 @@ a.sts-row:hover b { color: var(--acc) }
 .stn-map { width: 100%; max-width: 24rem; height: auto; margin-top: 0.375rem; border: 1px solid var(--border); border-radius: var(--radius, 0.5rem); background: color-mix(in srgb, var(--acc) 18%, var(--bg)) }
 .stn-map .land path { fill: color-mix(in srgb, var(--fg) 20%, var(--surface)); stroke: var(--dim); stroke-width: 0.5; stroke-linejoin: round }
 .stn-map .site { fill: var(--mut) }
-.stn-mapbox { display: flex; flex-direction: column; gap: 0.375rem; max-width: 24rem }
+.stn-mapbox { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem; max-width: 40rem }
+.stn-mapbox[hidden] { display: none }
 .stn-maprow { flex-wrap: wrap; gap: 0.5rem }
-.stn-leaflet { position: relative; z-index: 0; isolation: isolate; width: 100%; height: 16rem; margin-top: 0.375rem; border: 1px solid var(--border); border-radius: var(--radius, 0.5rem); overflow: hidden; background: var(--surface-2) }
+.stn-mapview .stn-map { max-width: 40rem; margin-top: 0 }
+.stn-map .heat { image-rendering: auto }
+.stn-map .ell { fill: color-mix(in srgb, var(--acc) 20%, transparent); stroke: var(--acc); stroke-width: 1 }
+.stn-map .cur { fill: none; stroke: var(--fg); stroke-width: 1.5 }
+.stn-legend { display: flex; align-items: center; gap: 0.5rem }
+.stn-legend .ramp { width: 6rem; height: 0.5rem; border-radius: 0.25rem; background: linear-gradient(90deg, rgb(40, 20, 90), rgb(150, 40, 130), rgb(240, 110, 50), rgb(255, 235, 120)) }
+.stn-open { flex-wrap: wrap; gap: 0.5rem 1rem; margin: 0 0 1rem; border-color: color-mix(in srgb, var(--acc) 45%, var(--border)) }
+.stn-leaflet { position: relative; z-index: 0; isolation: isolate; width: 100%; height: 20rem; border: 1px solid var(--border); border-radius: var(--radius, 0.5rem); overflow: hidden; background: var(--surface-2) }
 .stn-leaflet .leaflet-control-attribution { font-size: 0.625rem }
 .stn-map .found { fill: var(--acc); stroke: var(--bg); stroke-width: 1.5 }
 .stn-map .bar { stroke: var(--mut); stroke-width: 1.5 }

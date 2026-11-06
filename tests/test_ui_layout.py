@@ -126,6 +126,24 @@ def _skytrace_run(run):
     data = json.loads(cfg.read_text(encoding="utf-8")) if cfg.is_file() else {}
     cfg.write_text(json.dumps(dict(data, clock_offsets={"2022-08-30": {"offset_s": -615.0, "sigma_s": 2.0}})), encoding="utf-8")
     (run.parent.parent / "standortsuche-naechte.json").write_text(json.dumps({"created": 1762300000, "radius_km": 10, "state": "done", "nights": nights}), encoding="utf-8")
+    # Heatmap der Rückprojektion (engine/global_site.heat_map, synthetisch: Häufung am erfundenen Vorschlag) – Karte je Nacht
+    karten = run.parent.parent / "standortsuche-karten"
+    karten.mkdir(exist_ok=True)
+    (karten / "2022-08-01.json").write_text(json.dumps(_heat_fixture(46.234567, 13.912345)), encoding="utf-8")
+
+
+def _heat_fixture(lat, lon):
+    """Synthetische Heatmap im Format von `standortsuche-karten/<Nacht>.json`: grob 40 × 40 Zellen à 20 km, fein 61 × 61 km."""
+    import base64
+    import math
+    coarse = bytes(min(255, round(12 * math.exp(-((c - 20 + .5) ** 2 + (r - 20 + .5) ** 2) * 400 / (2 * 80 ** 2)) + (c * 7 + r * 3) % 3 * (c % 4 == 0)))
+                   for r in range(40) for c in range(40))
+    fine = bytes(min(255, round(12 * math.exp(-((c - 30) ** 2 + (r - 30) ** 2) / (2 * 3 ** 2)))) for r in range(61) for c in range(61))
+    return {"night": "2022-08-01", "created": 1762300000, "computed": False, "clock_s": 60.0, "region_km": 1500,
+            "coarse": {"lat0": lat, "lon0": lon, "cell_km": 20.0, "off": 60, "x0": 40, "y0": 40, "w": 40, "h": 40, "max": 12,
+                       "data": base64.b64encode(coarse).decode()},
+            "fine": {"lat": lat, "lon": lon, "km": 1.0, "half_km": 30.0, "size": 61, "data": base64.b64encode(fine).decode()},
+            "result": {"tracks": 16, "seconds": 18.2, "proposal": {"lat": lat, "lon": lon, "support": 12, "sure": 12}, "clusters": []}}
 
 
 # Fixtures `server` und `browser` (je Worker einmal) stehen in conftest.py
@@ -176,6 +194,31 @@ def test_fast_navigation(server, browser):
     assert page.locator("#hkForm").count() == 1 and page.locator("#view > div").count() == 1
     page.close()
     assert not errors, "\n".join(sorted(set(errors))[:10])
+
+
+def test_night_map_heatmap(server, browser):
+    """Standorte aller Nächte: Karte je Nacht mit Heatmap (synthetisch), Umrissen, Nah-Ansicht; ohne Heatmap Knopf „berechnen“ – ohne Kartendienst."""
+    base, _ = server
+    page = browser.new_page(viewport={"width": 1440, "height": 900})
+    tiles = []
+    page.on("request", lambda r: tiles.append(r.url) if "tile." in r.url else None)
+    page.goto(f"{base}/#/skytrace/standorte")
+    page.wait_for_selector(".stn-open [data-apply-all]")                    # offene Vorschläge im Kopf
+    assert "noch nicht übernommen" in page.inner_text(".stn-open")
+    box = page.locator('.stn-mapbox[data-map-night="2022-08-01"]')         # unbekannter Ort: Karte gleich offen
+    box.locator("svg.stn-map image.heat").wait_for()
+    page.wait_for_function("document.querySelector('.stn-mapbox[data-map-night=\"2022-08-01\"] .land path')")
+    assert "Spuren je 20-km-Zelle" in box.inner_text()
+    box.locator("[data-map-mode=near]").click()
+    box.get_by_text("verschiedene Spuren je km²").wait_for()
+    assert box.locator("svg.stn-map image.heat").count() == 1
+    page.locator("[data-show=all]").click()
+    page.locator('[data-map-open="2022-08-03"]').click()                 # Nacht ohne Heatmap
+    other = page.locator('.stn-mapbox[data-map-night="2022-08-03"]')
+    other.locator("[data-heat]").wait_for()
+    assert "Heatmap berechnen" in other.inner_text() and other.locator("image.heat").count() == 0
+    assert not tiles                                                       # Kacheln nur auf Knopfdruck
+    page.close()
 
 
 @pytest.mark.parametrize('size', ['handy', 'desktop'])

@@ -315,22 +315,28 @@ class Grid:
 
     def keys(self, pts):
         """Block-Schlüssel (überlappende 2×2×2-Blöcke aus Versatzklasse, x, y) aller Stimmen einer Spur."""
-        if not len(pts['lat']): return np.zeros(0, np.int64)
+        ci, cx, cy = self.index(pts)
+        if not len(ci): return np.zeros(0, np.int64)
+        out = [(np.maximum(ci - a, 0) * self.n + (cx - b)) * self.n + (cy - e) for a in (0, 1) for b in (0, 1) for e in (0, 1)]
+        return np.unique(np.concatenate(out))
+
+    def index(self, pts):
+        """(Versatzklasse, x, y) je Stimme und Versatzklasse ihres Intervalls; Stimmen außerhalb des Gitters entfallen."""
+        empty = (np.zeros(0, np.int64),) * 3
+        if not len(pts['lat']): return empty
         x, y = self.xy(pts['lat'], pts['lon'])
         cx = np.floor(x / CELL_KM).astype(np.int64) + self.off
         cy = np.floor(y / CELL_KM).astype(np.int64) + self.off
         inside = (cx >= 1) & (cx < self.n) & (cy >= 1) & (cy < self.n)           # nie an den Rand schieben (falsche Häufungen)
         if not inside.all():
             pts = {k: v[inside] for k, v in pts.items()}; cx, cy = cx[inside], cy[inside]
-            if not len(cx): return np.zeros(0, np.int64)
+            if not len(cx): return empty
         lo = np.clip(np.floor((pts['c_lo'] + self.clock_s) / CLOCK_BIN_S).astype(np.int64), 0, self.nc - 1)
         hi = np.clip(np.floor((pts['c_hi'] + self.clock_s) / CLOCK_BIN_S).astype(np.int64), 0, self.nc - 1)
         reps = hi - lo + 1
         idx = np.repeat(np.arange(len(lo)), reps)
         ci = lo[idx] + (np.arange(reps.sum()) - np.repeat(np.cumsum(reps) - reps, reps))
-        cx, cy = cx[idx], cy[idx]
-        out = [(np.maximum(ci - a, 0) * self.n + (cx - b)) * self.n + (cy - e) for a in (0, 1) for b in (0, 1) for e in (0, 1)]
-        return np.unique(np.concatenate(out))
+        return ci, cx[idx], cy[idx]
 
     def center(self, key):
         cy = key % self.n; rest = key // self.n
@@ -338,6 +344,31 @@ class Grid:
         c = (ci + 1) * CLOCK_BIN_S - self.clock_s                    # Mitte des Blocks (2 Klassen, 2 × 2 Zellen)
         lat, lon = self.latlon((cx - self.off + 1) * CELL_KM, (cy - self.off + 1) * CELL_KM)
         return float(lat), float(lon), float(c)
+
+
+def _b64(a):
+    import base64
+    return base64.b64encode(np.ascontiguousarray(a, dtype=np.uint8).tobytes()).decode('ascii')
+
+
+def heat_map(pts, centers, region_km, clock_s):
+    """Grobe Heatmap für die Karte: je Zelle (`CELL_KM`) die größte Zahl verschiedener Spuren bei einem Versatz. Nur der belegte
+    Ausschnitt, uint8 (Zeilen Süd → Nord) als Base64 – klein genug für eine eigene Datei je Nacht."""
+    grid = Grid(centers, region_km, clock_s)
+    keys = []
+    for p in pts:
+        ci, cx, cy = grid.index(p)
+        if len(ci): keys.append(np.unique((ci * grid.n + cx) * grid.n + cy))
+    if not keys: return None
+    uk, cnt = np.unique(np.concatenate(keys), return_counts=True)
+    heat = np.zeros(grid.n * grid.n, np.int64)
+    np.maximum.at(heat, uk % (grid.n * grid.n), cnt)
+    heat = heat.reshape(grid.n, grid.n)                         # [cx, cy]
+    xs, ys = np.nonzero(heat)
+    x0, x1, y0, y1 = int(xs.min()), int(xs.max()), int(ys.min()), int(ys.max())
+    crop = np.minimum(heat[x0:x1 + 1, y0:y1 + 1], 255).T         # Zeilen = y (Süd → Nord), Spalten = x
+    return dict(lat0=grid.lat0, lon0=grid.lon0, cell_km=CELL_KM, off=grid.off, x0=x0, y0=y0, w=x1 - x0 + 1, h=y1 - y0 + 1,
+                max=int(crop.max()), data=_b64(crop))
 
 
 def coarse_blocks(pts, centers, region_km, clock_s, top=None):
@@ -407,6 +438,9 @@ def local(trails, groups, pts, block, region_km, clock_s):
         if cover_j.any(): covers.append(cover_j)
     if not covers: return None
     count = np.sum(covers, axis=0)
+    # feine Heatmap (Karte „Nah“): verschiedene Spuren je km², bester Versatz je Punkt; Zeilen Süd → Nord, Spalten West → Ost
+    fine = dict(lat=float(lat0), lon=float(lon0), km=FINE_KM, half_km=H, size=len(gx),
+                data=_b64(np.minimum(count.max(axis=1), 255).astype(np.uint8).reshape(len(gx), len(gx))))
     bp, bc = np.unravel_index(int(np.argmax(count)), count.shape)
     run = np.nonzero(count[bp] == count[bp, bc])[0]
     bc = int(run[len(run) // 2])                          # Spuren ohne Zeitinformation: Mitte des passenden Versatzbereichs
@@ -430,7 +464,7 @@ def local(trails, groups, pts, block, region_km, clock_s):
         lam += 1 - math.exp(-cover / vol)
     k = len(members)
     false = min(1.0, trials(region_km, clock_s) * _poisson_tail(k, lam))
-    return dict(lat=float(lat_b), lon=float(lon_b), clock=float(cs[bc]), support=k, trails_here=int(count[bp, bc]),
+    return dict(lat=float(lat_b), lon=float(lon_b), clock=float(cs[bc]), support=k, trails_here=int(count[bp, bc]), fine=fine,
                 chance=round(lam, 3), false_alarm=false, members=members, coarse=block[3])
 
 
@@ -526,6 +560,8 @@ def search_night(sitefit, entries, settings, centers, region_km=REGION_KM, clock
         st = dict(clock_s=clock_s, pairs=n_pairs, votes=int(sum(len(p['lat']) for p in pts)), blocks=len(blocks), clusters=len(clusters),
                   top=[{k: (round(c[k], 6) if isinstance(c[k], float) else c[k]) for k in ('support', 'chance', 'false_alarm', 'clock')} for c in clusters[:5]])
         out['_clusters'] = clusters
+        out['_heat'] = dict(clock_s=clock_s, region_km=region_km, coarse=heat_map(pts, centers, region_km, clock_s),
+                            fine=clusters[0]['fine'] if clusters else None)
         out['stages'].append(st)
         good = [c for c in clusters if c['support'] >= MIN_TRAILS and c['false_alarm'] <= MAX_FALSE][:MAX_CLUSTERS]
         tried = []
@@ -535,6 +571,9 @@ def search_night(sitefit, entries, settings, centers, region_km=REGION_KM, clock
             tried.append(r)
             if best is None or (r['sure'], -(r['rms'] or 1e9)) > (best['sure'], -(best['rms'] or 1e9)):
                 best = r
+                # feine Karte um das Endergebnis (der grobe Block kann bis ~40 km daneben liegen)
+                at = local(usable, groups, pts, (r['lat'], r['lon'], max(-clock_s, min(clock_s, r['clock_s'])), 0), region_km, clock_s)
+                out['_heat']['fine'] = (at or c)['fine']
         st['refined'] = [{k: r[k] for k in ('support', 'false_alarm', 'sure', 'rms')} for r in tried]
         st['seconds'] = round(time.monotonic() - t0, 1)
         if best and best['sure'] >= MIN_TRAILS and best['sure'] > before_sure:

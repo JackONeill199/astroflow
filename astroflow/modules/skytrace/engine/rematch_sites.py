@@ -279,7 +279,8 @@ def _global(sitefit, out, entries, settings, sites, current, global_km, clock, t
     if current and current.get('lat') is not None and not any(_km(current, c) < 1 for c in centers):
         centers.append(dict(lat=float(current['lat']), lon=float(current['lon'])))
     res = global_site.search_night(sitefit, entries, settings, centers, region_km=global_km, clock=clock, tick=tick, before_sure=top)
-    res.pop('_triples', None); res.pop('_clusters', None)
+    save_heat(out['night'], res)
+    res.pop('_triples', None); res.pop('_clusters', None); res.pop('_heat', None)   # Heatmap nur in der eigenen Datei
     out['global'] = res
     p = res.get('proposal')
     if not p:
@@ -462,12 +463,31 @@ def seen_any(out):
     return out.get('search_center') is not None
 
 
-def nights(groups_file, out_file, radius_km=SEARCH_RADIUS_KM, stop_file=None, clock=True, global_km=0.0):
-    """Standorte aller Nächte (Gruppen vom Server: [{night, observations: [{run, folder, session}]}]). Schreibt nach jeder Nacht."""
-    sitefit = sitefit_module()
-    groups = read_json(groups_file, []) or []
-    settings = offline_settings(); settings['satcat_offline'] = True
-    if stop_file: settings['_stop_file'] = str(stop_file)
+HEAT_DIR = 'standortsuche-karten'           # je Nacht eine kleine Datei (nicht in standortsuche-naechte.json, die gepollt wird)
+
+
+def heat_file(night):
+    import re
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', str(night or '')): raise ValueError('Ungültige Nacht')
+    return BASE / HEAT_DIR / f'{night}.json'
+
+
+def save_heat(night, res, computed=False):
+    """Heatmap der Rückprojektion (`global_site.heat_map` + feine Karte der besten Häufung) und Kurzfassung des Ergebnisses speichern."""
+    heat = res.get('_heat')
+    if not heat or not night: return None
+    p = res.get('proposal') or {}
+    data = dict(night=night, created=time.time(), computed=computed, **heat,
+                result=dict(tracks=res.get('tracks'), reason=res.get('reason'), stages=res.get('stages'), seconds=res.get('seconds'),
+                            proposal={k: p.get(k) for k in ('lat', 'lon', 'accuracy_m', 'ellipse_km', 'sure', 'support', 'rms', 'clock_s')} if p else None,
+                            clusters=[{k: c.get(k) for k in ('lat', 'lon', 'support', 'clock', 'false_alarm')} for c in (res.get('_clusters') or [])[:5]]))
+    path = heat_file(night)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_json(path, data)
+    return path
+
+
+def _plan(groups):
     results = BASE / 'Ergebnisse'
     plan = []
     for g in groups:
@@ -477,6 +497,42 @@ def nights(groups_file, out_file, radius_km=SEARCH_RADIUS_KM, stop_file=None, cl
             if folder.parent.parent != results.resolve(): continue
             entries += [(folder, i) for i in read_json(folder / 'kandidaten.json', []) or [] if i.get('world_path') and i.get('timestamp') is not None]
         plan.append((g, entries))
+    return plan
+
+
+def heatmap(groups_file, night_key_, global_km=1500.0, stop_file=None, clock=True):
+    """„Heatmap berechnen“ für eine Nacht: Suche ohne Vorwissen auch dann, wenn ein Listenort passt – nur für die Karte, ändert keinen Vorschlag."""
+    import global_site
+    sitefit = sitefit_module()
+    settings = offline_settings(); settings['satcat_offline'] = True
+    if stop_file: settings['_stop_file'] = str(stop_file)
+    plan = [(g, e) for g, e in _plan(read_json(groups_file, []) or []) if g['night'] == night_key_]
+    if not plan: raise ValueError('Nacht nicht gefunden')
+    g, entries = plan[0]
+    sites = site_list(settings)
+    centers = [dict(lat=float(s['lat']), lon=float(s['lon'])) for s in sites]
+    current = site_for(entries[0][1], {'session': entries[0][1].get('session')}, settings) if entries else None
+    if current and current.get('lat') is not None and not any(_km(current, c) < 1 for c in centers):
+        centers.append(dict(lat=float(current['lat']), lon=float(current['lon'])))
+    state = dict(done=0)
+
+    def tick(text):
+        state['done'] += 1
+        emit('progress', current=min(99, state['done']), total=100, text=f'{night_key_}: {text}')
+    res = global_site.search_night(sitefit, entries, settings, centers, region_km=global_km, clock=clock, tick=tick)
+    path = save_heat(night_key_, res, computed=True)
+    p = res.get('proposal')
+    emit('result', night=night_key_, saved=bool(path), text=(f'Heatmap für {night_key_} berechnet' + (f' – Häufung aus {p["support"]} Spuren.' if p else '.'))
+         if path else f'{night_key_}: keine Heatmap ({res.get("reason") or "keine Stimmen"}).')
+
+
+def nights(groups_file, out_file, radius_km=SEARCH_RADIUS_KM, stop_file=None, clock=True, global_km=0.0):
+    """Standorte aller Nächte (Gruppen vom Server: [{night, observations: [{run, folder, session}]}]). Schreibt nach jeder Nacht."""
+    sitefit = sitefit_module()
+    groups = read_json(groups_file, []) or []
+    settings = offline_settings(); settings['satcat_offline'] = True
+    if stop_file: settings['_stop_file'] = str(stop_file)
+    plan = _plan(groups)
     n_sites = max(1, len(site_list(settings)))
     import clock_scan
     blocks = 2 * math.ceil(clock_scan.SCAN_RANGE_S / clock_scan.BLOCK_SLACK_S / 2) + 1
@@ -522,10 +578,13 @@ if __name__ == '__main__':
     c = sub.add_parser('nights'); c.add_argument('groups', type=Path); c.add_argument('out', type=Path); c.add_argument('--radius-km', type=float, default=SEARCH_RADIUS_KM); c.add_argument('--stop-file', type=Path)
     c.add_argument('--no-clock', dest='clock', action='store_false')
     c.add_argument('--global-km', type=float, default=0.0)          # Ortssuche ohne Vorwissen (0 = aus)
+    h = sub.add_parser('heatmap'); h.add_argument('groups', type=Path); h.add_argument('night'); h.add_argument('--global-km', type=float, default=1500.0)
+    h.add_argument('--stop-file', type=Path); h.add_argument('--no-clock', dest='clock', action='store_false')
     args = parser.parse_args()
     try:
         if args.cmd == 'rematch': rematch(args.roots, args.force, args.stop_file)
         elif args.cmd == 'nights': nights(args.groups, args.out, args.radius_km, args.stop_file, args.clock, args.global_km)
+        elif args.cmd == 'heatmap': heatmap(args.groups, args.night, args.global_km, args.stop_file, args.clock)
         else: search(args.root, args.folder, args.radius_km, args.stop_file)
     except InterruptedError:
         emit('result', stopped=True, text='Angehalten.')

@@ -44,7 +44,7 @@ async function startRematch(body, label, path = '/rematch') {
   catch (e) { toast(e.message, 'err'); return null; }
 }
 // Ziel eines Auftrags wie SiteJobs.activity (href): dort meldet die Ansicht das Ende, sonst der allgemeine Hinweis der Shell
-const rmHref = (r) => r.kind === 'nights' || (!r.all && (r.runs || []).length > 1) ? '#/skytrace/standorte' : r.all ? '#/skytrace/statistik'
+const rmHref = (r) => ['nights', 'heatmap'].includes(r.kind) || (!r.all && (r.runs || []).length > 1) ? '#/skytrace/standorte' : r.all ? '#/skytrace/statistik'
   : `#/skytrace/${encodeURIComponent((r.runs || [])[0] || '')}/beobachtungen`;
 // Nach eigenem Übernehmen nicht noch einmal „Standorte geändert – neu abgleichen?“ fragen (die betroffenen Läufe gleichen schon ab)
 async function ackSites() { try { store.set('skytrace.rematchAsked', (await api(T + '/rematch')).signature); } catch { /* nur Komfort */ } }
@@ -67,7 +67,7 @@ function rematchPanel(host) {
         „Standorte für alle Nächte suchen“ prüft je Nacht jeden Ort der Liste und rechnet bei Bedarf den wahrscheinlichsten Ort zurück.</p>
       <div class="st-rematch-job"></div></div>`;
     const job = $('.st-rematch-job', host);
-    if (busy) setJobLine(job, { state: 'running', stage: r.kind === 'search' ? 'Standortsuche' : r.kind === 'nights' ? 'Standorte aller Nächte' : 'Neu abgleichen', message: r.text, progress: r.total ? r.current / r.total : null });
+    if (busy) setJobLine(job, { state: 'running', stage: r.kind === 'search' ? 'Standortsuche' : r.kind === 'nights' ? 'Standorte aller Nächte' : r.kind === 'heatmap' ? 'Heatmap' : 'Neu abgleichen', message: r.text, progress: r.total ? r.current / r.total : null });
     else if (r.state && r.text) job.innerHTML = `<p class="sm ${r.state === 'error' ? 'bad' : 'dim'}">Letzter Auftrag: ${esc(r.text)}</p>`;
     $('[data-rematch-all]', host).onclick = rematchAll;
   };
@@ -82,7 +82,7 @@ function rematchStatus(st) {
   if (r.key && r.state !== 'running' && (rmStarted.delete(r.key) || (rmSeen && rmSeen.key === r.key && rmSeen.state === 'running'))
     && (r.state === 'error' || location.hash.startsWith(rmHref(r).split('/beobachtungen')[0])))
     toast(r.text || 'Neuabgleich beendet.', r.state === 'error' ? 'err' : 'ok',
-      r.kind === 'nights' ? { label: 'Vorschläge', href: '#/skytrace/standorte' } : r.all ? { label: 'Statistik', href: '#/skytrace/statistik' } : r.runs?.length ? { label: 'Ansehen', href: `#/skytrace/${encodeURIComponent(r.runs[0])}/${r.kind === 'search' ? 'beobachtungen' : 'kandidaten'}` } : null);
+      ['nights', 'heatmap'].includes(r.kind) ? { label: 'Vorschläge', href: '#/skytrace/standorte' } : r.all ? { label: 'Statistik', href: '#/skytrace/statistik' } : r.runs?.length ? { label: 'Ansehen', href: `#/skytrace/${encodeURIComponent(r.runs[0])}/${r.kind === 'search' ? 'beobachtungen' : 'kandidaten'}` } : null);
   rmSeen = { key: r.key, state: r.state };
   if (r.sites_changed && r.state !== 'running' && store.get('skytrace.rematchAsked', '') !== r.signature) {
     store.set('skytrace.rematchAsked', r.signature);
@@ -296,7 +296,7 @@ async function runView(root, runId, tab = 'vorschau') {
   const rmMine = (r = rematchState()) => r.state === 'running' && r.kind !== 'nights' && (r.all || (r.runs || []).includes(runId));
   function jobState() {
     const e = S.engine, st = e.stats || {}, r = rematchState();
-    if (!isLive() && rmMine(r)) { setJobLine($('#stjob'), { state: 'running', stage: r.kind === 'search' ? 'Standortsuche' : r.kind === 'nights' ? 'Standorte aller Nächte' : 'Neu abgleichen', message: r.text, progress: r.total ? r.current / r.total : null }); return; }
+    if (!isLive() && rmMine(r)) { setJobLine($('#stjob'), { state: 'running', stage: r.kind === 'search' ? 'Standortsuche' : r.kind === 'nights' ? 'Standorte aller Nächte' : r.kind === 'heatmap' ? 'Heatmap' : 'Neu abgleichen', message: r.text, progress: r.total ? r.current / r.total : null }); return; }
     setJobLine($('#stjob'), isLive() ? { state: 'running', stage: e.operation === 'refresh' ? 'Bericht' : `${st.current || 0} / ${st.total || '—'} Aufnahmen`,
       message: engineStatus(e), progress: st.total ? (st.current || 0) / st.total : null } : null);
   }
@@ -1110,7 +1110,9 @@ function clockScanHtml(k, applied) {
 }
 // Ort ohne Vorwissen (engine/global_site.py): Koordinaten nur auf 0,01° (≈ 1 km) zeigen, Karte ohne Kacheln (kein Ort verlässt den Rechner)
 const degText = (v, pos, neg) => `${Math.abs(v).toFixed(2).replace('.', ',')}° ${v >= 0 ? pos : neg}`;
-// Karte zum Vorschlag: offline Umrisse (Natural Earth, /vendor/umrisse-welt.json), auf Knopfdruck Kartenkacheln (Leaflet + OSM/OpenTopoMap)
+// Karte je Nacht (0.34.0): offline Umrisse (Natural Earth, /vendor/umrisse-welt.json) + Heatmap der Rückprojektion (engine/global_site.heat_map,
+// Datei standortsuche-karten/<Nacht>.json über GET /sitesearch/nights/heatmap), Orte, bisheriger Ort, Vorschlag mit Unsicherheitsellipse.
+// Kartenkacheln (Leaflet + OSM/OpenTopoMap) nur auf Knopfdruck – erst dann sieht ein Kartendienst den Ausschnitt.
 let OUTLINES = null;
 function outlines() {
   // Ringe: [x0, y0, dx, dy, …] in 1/scale Grad → je Ring Längen/Breiten + Umriss-Rechteck zum schnellen Ausblenden
@@ -1124,48 +1126,97 @@ function outlines() {
     return { lon, lat, box: [a, b, c, e] };
   })).catch(() => null);
 }
-function mapView(p, sites) {
-  const pts = sites.filter(s => s.lat != null && s.lon != null).map(s => ({ lat: s.lat, lon: s.lon, name: s.name }));
-  const all = [...pts, p], lat0 = all.reduce((a, s) => a + s.lat, 0) / all.length, lon0 = all.reduce((a, s) => a + s.lon, 0) / all.length;
-  const kx = 111.2 * Math.cos(lat0 * Math.PI / 180), xy = (lat, lon) => [(lon - lon0) * kx, (lat - lat0) * 111.2];
-  const span = Math.max(50, ...all.map(s => Math.max(...xy(s.lat, s.lon).map(Math.abs)))) * 1.25;
-  const W = 220, H = 140, k = Math.min(W, H) / 2 / span;
-  const X = (lat, lon) => W / 2 + xy(lat, lon)[0] * k, Y = (lat, lon) => H / 2 - xy(lat, lon)[1] * k;
-  const dlat = H / 2 / k / 111.2, dlon = W / 2 / k / kx;
-  return { pts, W, H, k, X, Y, box: [lon0 - dlon, lon0 + dlon, lat0 - dlat, lat0 + dlat] };
-}
-function globalMap(p, sites = [], night = '') {
-  const v = mapView(p, sites), bar = [10, 20, 50, 100, 200, 500, 1000].find(b => b * v.k >= 30) || 1000;
-  return `<div class="stn-mapbox" data-map-night="${esc(night)}">
-    <svg class="stn-map" viewBox="0 0 ${v.W} ${v.H}" role="img" aria-label="Lage des zurückgerechneten Orts zu den Orten der Liste"><g class="land"></g>
-    ${v.pts.map(s => `<circle cx="${v.X(s.lat, s.lon).toFixed(1)}" cy="${v.Y(s.lat, s.lon).toFixed(1)}" r="3" class="site"><title>${esc(s.name || 'Ort')}</title></circle>`).join('')}
-    <circle cx="${v.X(p.lat, p.lon).toFixed(1)}" cy="${v.Y(p.lat, p.lon).toFixed(1)}" r="5" class="found"><title>zurückgerechneter Ort</title></circle>
-    <line x1="8" y1="${v.H - 8}" x2="${(8 + bar * v.k).toFixed(1)}" y2="${v.H - 8}" class="bar"/><text x="8" y="${v.H - 12}" font-size="9">${bar} km</text></svg>
-    <div class="row stn-maprow"><button class="btn sm" data-map-load title="Lädt Kartenkacheln von OpenStreetMap – der Kartendienst sieht dabei den Kartenausschnitt">${icon('globe')}Karte laden</button>
-      <label class="sm mut" title="Kartenkacheln bei jedem Vorschlag sofort laden"><input type="checkbox" data-map-always${store.get('skytrace.mapsOnline', false) ? ' checked' : ''}> immer laden</label></div></div>`;
-}
-// Umrisse nachzeichnen (ohne Netz) und – falls gewünscht – gleich die Online-Karte
-async function hydrateMaps(root, rows, sites, online) {
-  const boxes = [...root.querySelectorAll('.stn-mapbox')];
-  if (!boxes.length) return;
-  for (const box of boxes) {
-    const n = rows.find(r => r.night === box.dataset.mapNight);
-    if (n && (online.has(n.night) || store.get('skytrace.mapsOnline', false))) onlineMap(box, n.proposal, sites, online, n.night);
-  }
-  const rings = await outlines();
-  if (!rings) return;
-  for (const box of boxes) {
-    const n = rows.find(r => r.night === box.dataset.mapNight), g = box.querySelector('.land');
-    if (!n || !g || !box.isConnected) continue;
-    const v = mapView(n.proposal, sites), [a, b, c, e] = v.box;
-    let d = '';
-    for (const r of rings) {
-      if (r.box[1] < a || r.box[0] > b || r.box[3] < c || r.box[2] > e) continue;
-      for (let i = 0; i < r.lon.length; i++) d += (i ? 'L' : 'M') + v.X(r.lat[i], r.lon[i]).toFixed(1) + ' ' + v.Y(r.lat[i], r.lon[i]).toFixed(1);
-      d += 'Z';
+const bytes = (s) => Uint8Array.from(atob(s || ''), ch => ch.charCodeAt(0));
+// Heatmap-Zellen: grob (Sinusprojektion um lat0/lon0, Zellen cell_km) bzw. fein (± half_km um lat/lon, 1 km) → [{lat, lon, v}]
+function heatCells(h) {
+  if (!h) return [];
+  const out = [], d = bytes(h.data);
+  if (h.cell_km) {
+    for (let r = 0; r < h.h; r++) for (let c = 0; c < h.w; c++) {
+      const v = d[r * h.w + c]; if (!v) continue;
+      const x = (h.x0 + c - h.off + 0.5) * h.cell_km, y = (h.y0 + r - h.off + 0.5) * h.cell_km, lat = h.lat0 + y / 111.195;
+      out.push({ lat, lon: h.lon0 + x / (111.195 * Math.cos(lat * Math.PI / 180)), v, km: h.cell_km });
     }
-    g.innerHTML = d ? `<path d="${d}"/>` : '';
+  } else {
+    const kx = 111.195 * Math.cos(h.lat * Math.PI / 180);
+    for (let r = 0; r < h.size; r++) for (let c = 0; c < h.size; c++) {
+      const v = d[r * h.size + c]; if (!v) continue;
+      out.push({ lat: h.lat + (-h.half_km + r * h.km) / 111.195, lon: h.lon + (-h.half_km + c * h.km) / kx, v, km: h.km });
+    }
   }
+  return out;
+}
+// dunkel → hell (Spuren je Ort, relativ zum Höchstwert)
+function heatColor(t) {
+  const stops = [[40, 20, 90], [150, 40, 130], [240, 110, 50], [255, 235, 120]];
+  const x = Math.min(0.999, Math.max(0, t)) * (stops.length - 1), i = Math.floor(x), f = x - i;
+  return stops[i].map((v, k) => Math.round(v + (stops[i + 1][k] - v) * f));
+}
+// Was auf die Karte gehört: Listenorte, bisheriger Ort, Vorschlag (Koordinaten bei „list“ aus der Ortsliste)
+function nightMarks(n, sites) {
+  const byId = (id) => sites.find(s => s.id === id);
+  const p = n.proposal, ps = p?.kind === 'list' ? byId(p.id) : p;
+  const prop = ps && ps.lat != null ? { lat: ps.lat, lon: ps.lon, acc: (p.kind === 'list' ? ps.accuracy_m : p.accuracy_m) || 100, ellipse: p.ellipse_km, kind: p.kind, name: p.kind === 'list' ? ps.name : 'Vorschlag' } : null;
+  const cs = n.current?.id ? byId(n.current.id) : null;
+  return { sites: sites.filter(s => s.lat != null && s.lon != null), prop, cur: cs ? { lat: cs.lat, lon: cs.lon, name: cs.name } : null };
+}
+function ellipsePts(m, steps = 48) {
+  // Unsicherheit (1σ): große/kleine Halbachse in km, Winkel von Nord über Ost; ohne Ellipse Kreis mit der Genauigkeit
+  const e = m.ellipse || { major: m.acc / 1000, minor: m.acc / 1000, angle_deg: 0 }, th = e.angle_deg * Math.PI / 180, kx = 111.195 * Math.cos(m.lat * Math.PI / 180);
+  return Array.from({ length: steps + 1 }, (_, i) => {
+    const t = 2 * Math.PI * i / steps, a = e.major * Math.cos(t), b = e.minor * Math.sin(t);
+    return [m.lat + (a * Math.cos(th) - b * Math.sin(th)) / 111.195, m.lon + (a * Math.sin(th) + b * Math.cos(th)) / kx];
+  });
+}
+function mapFrame(points, W, H, minKm) {
+  const lat0 = points.reduce((a, s) => a + s.lat, 0) / points.length, lon0 = points.reduce((a, s) => a + s.lon, 0) / points.length;
+  const kx = 111.2 * Math.cos(lat0 * Math.PI / 180), xy = (lat, lon) => [(lon - lon0) * kx, (lat - lat0) * 111.2];
+  const span = Math.max(minKm, ...points.map(s => { const [x, y] = xy(s.lat, s.lon); return Math.max(Math.abs(x) * H / W, Math.abs(y)); })) * 1.15;
+  const k = H / 2 / span, X = (lat, lon) => W / 2 + xy(lat, lon)[0] * k, Y = (lat, lon) => H / 2 - xy(lat, lon)[1] * k;
+  const dlat = H / 2 / k / 111.2, dlon = W / 2 / k / kx;
+  return { W, H, k, X, Y, box: [lon0 - dlon, lon0 + dlon, lat0 - dlat, lat0 + dlat] };
+}
+function mapPoints(marks, cells, mode, heat) {
+  if (mode === 'near' && heat?.fine) {
+    const f = heat.fine, kx = 111.195 * Math.cos(f.lat * Math.PI / 180);
+    return [{ lat: f.lat - f.half_km / 111.195, lon: f.lon - f.half_km / kx }, { lat: f.lat + f.half_km / 111.195, lon: f.lon + f.half_km / kx }];
+  }
+  const max = cells.reduce((a, c) => Math.max(a, c.v), 0), hot = cells.filter(c => c.v >= Math.max(2, 0.6 * max));
+  return [...marks.sites, ...(marks.prop ? [marks.prop] : []), ...(marks.cur ? [marks.cur] : []), ...hot];
+}
+async function svgMap(box, n, marks, heat, mode) {
+  const cells = heatCells(mode === 'near' ? heat?.fine : heat?.coarse), max = cells.reduce((a, c) => Math.max(a, c.v), 0);
+  const v = mapFrame(mapPoints(marks, cells, mode, heat), 320, 200, mode === 'near' ? 10 : 40);
+  const bar = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000].find(b => b * v.k >= 40) || 1000;
+  let img = '';
+  if (cells.length) {
+    const cv = document.createElement('canvas'); cv.width = v.W * 2; cv.height = v.H * 2;
+    const g = cv.getContext('2d');
+    for (const c of cells) {
+      const [r, gg, b] = heatColor(c.v / max), s = Math.max(1.5, c.km * v.k * 2), x = v.X(c.lat, c.lon) * 2, y = v.Y(c.lat, c.lon) * 2;
+      g.fillStyle = `rgba(${r},${gg},${b},${(0.35 + 0.6 * c.v / max).toFixed(2)})`; g.fillRect(x - s / 2, y - s / 2, s, s);
+    }
+    img = `<image class="heat" href="${cv.toDataURL()}" x="0" y="0" width="${v.W}" height="${v.H}"/>`;
+  }
+  const P = (m) => `${v.X(m.lat, m.lon).toFixed(1)},${v.Y(m.lat, m.lon).toFixed(1)}`;
+  const ell = marks.prop ? `<polygon class="ell" points="${ellipsePts(marks.prop).map(([la, lo]) => P({ lat: la, lon: lo })).join(' ')}"/>` : '';
+  box.querySelector('.stn-mapview').innerHTML = `<svg class="stn-map" viewBox="0 0 ${v.W} ${v.H}" role="img" aria-label="Karte der Standortsuche dieser Nacht"><g class="land"></g>${img}${ell}
+    ${marks.sites.map(s => `<circle cx="${v.X(s.lat, s.lon).toFixed(1)}" cy="${v.Y(s.lat, s.lon).toFixed(1)}" r="3" class="site"><title>${esc(s.name || 'Ort')}</title></circle>`).join('')}
+    ${marks.cur ? `<circle cx="${v.X(marks.cur.lat, marks.cur.lon).toFixed(1)}" cy="${v.Y(marks.cur.lat, marks.cur.lon).toFixed(1)}" r="6" class="cur"><title>bisher: ${esc(marks.cur.name || 'Ort')}</title></circle>` : ''}
+    ${marks.prop ? `<circle cx="${v.X(marks.prop.lat, marks.prop.lon).toFixed(1)}" cy="${v.Y(marks.prop.lat, marks.prop.lon).toFixed(1)}" r="4.5" class="found"><title>${esc(marks.prop.name)}</title></circle>` : ''}
+    <line x1="8" y1="${v.H - 8}" x2="${(8 + bar * v.k).toFixed(1)}" y2="${v.H - 8}" class="bar"/><text x="8" y="${v.H - 12}" font-size="9">${bar} km</text></svg>
+    ${max ? `<div class="stn-legend sm mut"><span class="ramp"></span>verschiedene Spuren je ${mode === 'near' ? 'km²' : `${heat.coarse.cell_km}-km-Zelle`}: 1 … ${max}</div>` : ''}`;
+  const rings = await outlines();
+  const g = box.querySelector('.land');
+  if (!rings || !g) return;
+  const [a, b, c, e] = v.box;
+  let d = '';
+  for (const r of rings) {
+    if (r.box[1] < a || r.box[0] > b || r.box[3] < c || r.box[2] > e) continue;
+    for (let i = 0; i < r.lon.length; i++) d += (i ? 'L' : 'M') + v.X(r.lat[i], r.lon[i]).toFixed(1) + ' ' + v.Y(r.lat[i], r.lon[i]).toFixed(1);
+    d += 'Z';
+  }
+  g.innerHTML = d ? `<path d="${d}"/>` : '';
 }
 let LEAFLET = null;
 function leaflet() {
@@ -1181,40 +1232,60 @@ const TILES = {
   osm: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png', '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>-Mitwirkende', 19],
   topo: ['https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', 'Karte © <a href="https://opentopomap.org" target="_blank" rel="noreferrer">OpenTopoMap</a> (CC-BY-SA), Daten © OpenStreetMap-Mitwirkende', 17],
 };
-async function onlineMap(box, p, sites, online, night) {
-  if (box.querySelector('.stn-leaflet')) return;
-  online.add(night);
-  const host = document.createElement('div'); host.className = 'stn-leaflet';
-  const row = box.querySelector('.stn-maprow');
-  row.innerHTML = `<div class="seg"><button data-tiles="osm" class="on">Straßenkarte</button><button data-tiles="topo">Gelände</button></div>
-    <label class="sm mut" title="Kartenkacheln bei jedem Vorschlag sofort laden"><input type="checkbox" data-map-always${store.get('skytrace.mapsOnline', false) ? ' checked' : ''}> immer laden</label>`;
-  box.querySelector('.stn-map').replaceWith(host);
+async function leafletMap(box, marks, heat, mode, tiles) {
+  const view = box.querySelector('.stn-mapview');
+  view.innerHTML = '<div class="stn-leaflet"></div>';
+  const host = view.firstChild;
   let L;
   try { L = await leaflet(); } catch (e) { host.textContent = e.message; return; }
   if (!host.isConnected) return;
-  const map = L.map(host, { attributionControl: true, zoomControl: true, scrollWheelZoom: false });
-  let layer = L.tileLayer(TILES.osm[0], { attribution: TILES.osm[1], maxZoom: TILES.osm[2] }).addTo(map);
-  L.circle([p.lat, p.lon], { radius: Math.max(50, p.accuracy_m || 0), color: '#3b5bff', weight: 1.5, fillOpacity: 0.2 }).addTo(map);
-  L.circleMarker([p.lat, p.lon], { radius: 8, color: '#10162e', weight: 3, fillColor: '#4f6bff', fillOpacity: 1 }).bindTooltip('zurückgerechneter Ort', { permanent: true, direction: 'top', offset: [0, -12] }).addTo(map);
-  const pts = sites.filter(s => s.lat != null && s.lon != null);
-  for (const s of pts) L.circleMarker([s.lat, s.lon], { radius: 4, color: '#fff', weight: 1, fillColor: '#8a94a6', fillOpacity: 1 }).bindTooltip(esc(s.name || 'Ort')).addTo(map);
-  map.setView([p.lat, p.lon], 10);
-  row.onclick = (e) => {
-    const b = e.target.closest('[data-tiles]'); if (!b) return;
-    e.stopPropagation();
-    const t = TILES[b.dataset.tiles]; map.removeLayer(layer);
-    layer = L.tileLayer(t[0], { attribution: t[1], maxZoom: t[2] }).addTo(map);
-    row.querySelectorAll('[data-tiles]').forEach(x => x.classList.toggle('on', x === b));
-  };
+  const map = L.map(host, { preferCanvas: true, scrollWheelZoom: false });
+  const t = TILES[tiles] || TILES.osm;
+  L.tileLayer(t[0], { attribution: t[1], maxZoom: t[2] }).addTo(map);
+  const cells = heatCells(mode === 'near' ? heat?.fine : heat?.coarse), max = cells.reduce((a, c) => Math.max(a, c.v), 0);
+  for (const c of cells.sort((a, b) => b.v - a.v).slice(0, 4000)) {
+    const dl = c.km / 2 / 111.195, dn = c.km / 2 / (111.195 * Math.cos(c.lat * Math.PI / 180)), [r, g, b] = heatColor(c.v / max);
+    L.rectangle([[c.lat - dl, c.lon - dn], [c.lat + dl, c.lon + dn]], { stroke: false, fillColor: `rgb(${r},${g},${b})`, fillOpacity: 0.25 + 0.5 * c.v / max, interactive: false }).addTo(map);
+  }
+  for (const s of marks.sites) L.circleMarker([s.lat, s.lon], { radius: 4, color: '#fff', weight: 1, fillColor: '#8a94a6', fillOpacity: 1 }).bindTooltip(esc(s.name || 'Ort')).addTo(map);
+  if (marks.cur) L.circleMarker([marks.cur.lat, marks.cur.lon], { radius: 8, color: '#10162e', weight: 2, fill: false }).bindTooltip('bisher: ' + esc(marks.cur.name || 'Ort')).addTo(map);
+  if (marks.prop) {
+    L.polygon(ellipsePts(marks.prop), { color: '#3b5bff', weight: 1.5, fillOpacity: 0.15 }).addTo(map);
+    L.circleMarker([marks.prop.lat, marks.prop.lon], { radius: 7, color: '#10162e', weight: 3, fillColor: '#4f6bff', fillOpacity: 1 })
+      .bindTooltip(esc(marks.prop.name), { permanent: true, direction: 'top', offset: [0, -10] }).addTo(map);
+  }
+  const pts = mapPoints(marks, cells, mode, heat);
+  if (pts.length > 1) map.fitBounds(pts.map(p => [p.lat, p.lon]), { padding: [16, 16], maxZoom: 12 });
+  else if (pts.length) map.setView([pts[0].lat, pts[0].lon], 10);
+}
+// Karte in der Nachtzeile: Ansicht (Übersicht/Nah), offline bzw. Kacheln, Heatmap berechnen
+async function openNightMap(box, n, sites, state) {
+  const night = n.night, st = state[night] ||= { mode: 'wide', tiles: store.get('skytrace.mapsOnline', false) ? 'osm' : null };
+  let heat = null;
+  try { heat = (await api(T + '/sitesearch/nights/heatmap?night=' + encodeURIComponent(night))).heat; } catch { /* ohne Heatmap */ }
+  if (!box.isConnected) return;
+  const marks = nightMarks(n, sites), res = heat?.result;
+  if (st.mode === 'near' && !heat?.fine) st.mode = 'wide';
+  const seg = (k, items, cur) => `<div class="seg">${items.map(([v, t]) => `<button data-${k}="${v}"${v === cur ? ' class="on"' : ''}>${t}</button>`).join('')}</div>`;
+  box.innerHTML = `<div class="row stn-maprow">${heat?.fine ? seg('map-mode', [['wide', 'Übersicht'], ['near', 'Nah (± 30 km)']], st.mode) : ''}
+      ${seg('map-tiles', [['', 'Umrisse'], ['osm', 'Straßenkarte'], ['topo', 'Gelände']], st.tiles || '')}
+      <label class="sm mut" title="Kartenkacheln immer sofort laden (der Kartendienst sieht den Ausschnitt)"><input type="checkbox" data-map-always${store.get('skytrace.mapsOnline', false) ? ' checked' : ''}> Karten immer laden</label>
+      <span class="grow"></span><button class="btn sm" data-heat="${esc(night)}" title="Suche ohne Vorwissen nur für diese Nacht, lokal, etwa 10–60 s – ändert keinen Vorschlag">${heat ? 'Heatmap neu berechnen' : 'Heatmap berechnen'}</button></div>
+    <div class="stn-mapview"></div>
+    <p class="dim sm">${heat ? `Heatmap: Bodenpunkte, von denen aus Satelliten genau entlang der Spuren dieser Nacht zu sehen waren – hell = viele verschiedene Spuren treffen sich
+      (Suchgebiet ± ${heat.region_km} km, Uhr ± ${Math.round(heat.clock_s)} s${res?.seconds ? `, ${String(res.seconds).replace('.', ',')} s gerechnet` : ''}).
+      ${res?.proposal ? `Beste Häufung: ${res.proposal.support} Spuren, danach ${res.proposal.sure} eindeutig.` : res?.reason ? esc(res.reason) : ''}`
+      : n.global ? 'Für diese Nacht liegt keine Heatmap vor (Suche vor 0.34.0).' : 'Keine Heatmap: Die Suche ohne Vorwissen lief für diese Nacht nicht, weil ein Ort der Liste passte. „Heatmap berechnen“ holt sie nach.'}
+      ${marks.prop ? ' Blau = Vorschlag mit Unsicherheit (1σ),' : ''} Ring = bisheriger Ort, grau = Orte der Liste.</p>`;
+  if (st.tiles) leafletMap(box, marks, heat, st.mode, st.tiles); else svgMap(box, n, marks, heat, st.mode);
 }
 function globalHtml(p, n, sites) {
   const conf = p.confidence == null ? '' : ` · Sicherheit ${p.confidence >= 0.999 ? '> 99,9' : String(Math.round(p.confidence * 1000) / 10).replace('.', ',')} %`;
   return `<b>Unbekannter Ort zurückgerechnet</b>
     <span class="mut sm">≈ ${degText(p.lat, 'N', 'S')} · ${degText(p.lon, 'O', 'W')} (± ${kmText(p.accuracy_m / 1000)})${p.nearest_km != null ? ` · ${kmText(p.nearest_km)} von „${esc(p.nearest_name || 'Ort')}“` : ''}</span>
-    <span class="mut sm">ohne Vorwissen aus ${p.support} Spuren · danach ${p.sure} von ${n.tracks} eindeutig · quer ${arcText(p.rms)}${conf}${clockText(p) ? ' · ' + clockText(p) : ''} · Höhe unbekannt (0 m)</span>
-    ${globalMap(p, sites, n.night)}`;
+    <span class="mut sm">ohne Vorwissen aus ${p.support} Spuren · danach ${p.sure} von ${n.tracks} eindeutig · quer ${arcText(p.rms)}${conf}${clockText(p) ? ' · ' + clockText(p) : ''} · Höhe unbekannt (0 m)</span>`;
 }
-function nightRow(n, busy = false, clocks = {}, sites = []) {
+function nightRow(n, busy = false, clocks = {}, sites = [], maps = []) {
   let [label, cls] = NIGHT_STATUS[n.status] || [n.status || '–', ''];
   const p = n.proposal, c = n.current || {};
   const k = n.clock, applied = clocks[n.night], q = k?.proposal;
@@ -1234,7 +1305,9 @@ function nightRow(n, busy = false, clocks = {}, sites = []) {
     <div class="stn-grid"><div><small class="dim">Bisher</small><b>${esc(c.name || 'kein Ort')}</b><span class="mut sm">${now}</span></div>
       ${p ? `<div><small class="dim">Vorschlag</small>${prop}</div>` : ''}${clockScanHtml(n.applied ? null : k, applied)}</div>
     ${n.note || n.fit_reason || k?.reason ? `<p class="dim sm">${esc([n.note, n.status !== 'better' && n.fit_reason ? 'Rückrechnung: ' + n.fit_reason : '', k?.reason ? 'Uhrversatz: ' + k.reason : ''].filter(Boolean).join(' '))}</p>` : ''}
-    ${(p || q) && !n.applied ? `<div class="row"><button class="btn sm" data-apply="${esc(n.night)}"${busy ? ' disabled title="Erst nach dem Ende der Suche"' : ''}>Für diese Nacht übernehmen …</button></div>` : ''}</div>`;
+    <div class="row">${(p || q) && !n.applied ? `<button class="btn sm" data-apply="${esc(n.night)}"${busy ? ' disabled title="Erst nach dem Ende der Suche"' : ''}>Für diese Nacht übernehmen …</button>` : ''}
+      <button class="btn sm ghost" data-map-open="${esc(n.night)}" aria-expanded="false">${icon('globe')}Karte${maps.includes(n.night) ? ' mit Heatmap' : ''}</button></div>
+    <div class="stn-mapbox" data-map-night="${esc(n.night)}" hidden></div></div>`;
 }
 // Übernehmen: bestehender Ort → Zuordnung der Nacht, neuer Ort → neuer Eintrag (wie applyFit); SkyTrace-Ausnahmen der Beobachtungen entfernen
 async function applyNights(rows) {
@@ -1287,7 +1360,8 @@ async function applyNights(rows) {
 async function nightsView(el) {
   crumbs([['SkyTrace', '#/skytrace'], ['Standorte aller Nächte']]);
   let data = null, job = null, sig = '', show = store.get('skytrace.nightsShow', 'better'), clocks = {}, sites = [];
-  const online = new Set();                                       // Nächte, deren Online-Karte schon geladen wurde
+  let maps = [];                                                  // Nächte mit gespeicherter Heatmap (standortsuche-karten/)
+  const opened = new Set(), mapState = {};                        // offene Karten bleiben beim Neuzeichnen offen
   const has = (n) => n.proposal || n.clock?.proposal;
   el.innerHTML = `<div class="pagehead"><div><h1>Standorte aller Nächte</h1><p class="mut readable">Je Aufnahmenacht prüft SkyTrace die Satellitenspuren aller Beobachtungen dieser Nacht
       gegen jeden Ort der Ortsliste. Passt keiner gut, sucht es mit Spielraum um den besten und rechnet den wahrscheinlichsten Ort zurück. Nur ein Vorschlag –
@@ -1312,7 +1386,7 @@ async function nightsView(el) {
     go.className = 'btn' + (running ? ' danger' : '');
     setJobLine($('#stn-job', el), running ? { state: 'running', stage: 'Standorte aller Nächte', message: job.text, progress: job.total ? job.current / job.total : null } : null);
     const list = show === 'better' ? nights.filter(n => has(n) || n.applied) : nights;
-    const s = JSON.stringify([show, running, nights.map(n => [n.night, n.status, !!n.applied]), clocks, sites.length]);
+    const s = JSON.stringify([show, running, nights.map(n => [n.night, n.status, !!n.applied]), clocks, sites.length, maps]);
     if (s === sig) return;
     sig = s;
     if (!data) { body.innerHTML = `<div class="empty">${icon('pin')}<h2>Noch keine Suche</h2>Starte die Suche – sie läuft im Hintergrund und darf jederzeit angehalten werden; fertige Nächte bleiben erhalten.</div>`; return; }
@@ -1320,23 +1394,69 @@ async function nightsView(el) {
     body.innerHTML = `<div class="row stn-head"><div class="seg" role="tablist"><button data-show="better" class="${show === 'better' ? 'on' : ''}">Mit Vorschlag (${nights.filter(n => has(n) || n.applied).length})</button>
         <button data-show="all" class="${show === 'all' ? 'on' : ''}">Alle Nächte (${nights.length})</button></div>
         <span class="mut sm">${count('ok')} passen · ${count('none')} ohne passenden Ort · Suche vom ${new Date(data.created * 1000).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}, ± ${data.radius_km} km${data.global_km ? ` · ohne Vorwissen ± ${data.global_km} km` : ''}${data.state === 'stopped' ? ' · angehalten' : ''}</span>
-        <span class="grow"></span>${open.length > 1 ? `<button class="btn sm" data-apply-all${running ? ' disabled' : ''}>Alle übernehmen (${open.length}) …</button>` : ''}</div>
-      ${list.length ? list.map(n => nightRow(n, running, clocks, sites)).join('') : `<div class="empty">${show === 'better' ? 'Keine Nacht mit besserem Ort gefunden.' : 'Keine Nächte mit Spuren.'}</div>`}
+        </div>
+      ${open.length ? `<div class="panel stn-open row"><b>${open.length === 1 ? '1 Vorschlag' : `${open.length} Vorschläge`} noch nicht übernommen</b>
+        <span class="mut sm">Orte, Zuordnungen und Uhrkorrekturen gelten erst nach dem Übernehmen.</span><span class="grow"></span>
+        <button class="btn sm" data-apply-all${running ? ' disabled title="Erst nach dem Ende der Suche"' : ''}>${open.length === 1 ? 'Übernehmen …' : `Alle ${open.length} übernehmen …`}</button></div>` : ''}
+      ${list.length ? list.map(n => nightRow(n, running, clocks, sites, maps)).join('') : `<div class="empty">${show === 'better' ? 'Keine Nacht mit besserem Ort gefunden.' : 'Keine Nächte mit Spuren.'}</div>`}
       <p class="dim sm">Eindeutig = einer Satellitenbahn zugeordnet, ohne fast gleich gute zweite Bahn (Starlink-Züge zählen nicht). Zurückgerechnet wird erst ab 3 eindeutigen Spuren einer Nacht.
         „Kein Ort passt“ heißt: keine Spur ließ sich zuordnen – nicht, dass der Ort falsch ist.
         Uhrversatz: Bei Nächten mit wenigen Treffern wird der Abgleich ± 20 min verschoben; vorgeschlagen wird nur, wenn mindestens 3 verschiedene Spuren
         bei demselben Versatz treffen und das deutlich über dem Zufall liegt.
         Ohne Vorwissen: Passt kein Ort der Liste, rechnet SkyTrace aus jeder Spur und jeder Satellitenbahn die Bodenpunkte zurück, von denen aus der Satellit
         dort zu sehen war, und sucht den Ort, an dem sich Spuren verschiedener Satelliten treffen (Uhr ± 20 min) – vorgeschlagen nur deutlich über dem Zufall.
-        Koordinaten erscheinen gerundet (0,01°). Die Umrisskarte (Natural Earth) entsteht ohne Netz; erst „Karte laden“ holt Kartenkacheln von OpenStreetMap
-        bzw. OpenTopoMap – der Kartendienst sieht dabei den Ausschnitt.</p>`;
-    hydrateMaps(body, list, sites, online);
+        Koordinaten erscheinen gerundet (0,01°). „Karte“ zeigt je Nacht Orte, Vorschlag und – nach einer Suche ohne Vorwissen – die Heatmap der zurückgerechneten
+        Bodenpunkte; die Umrisskarte (Natural Earth) entsteht ohne Netz, erst „Straßenkarte“/„Gelände“ holt Kartenkacheln von OpenStreetMap bzw. OpenTopoMap –
+        der Kartendienst sieht dabei den Ausschnitt.</p>`;
+    for (const n of list) if (n.proposal?.kind === 'global' && !(n.night in mapState)) opened.add(n.night);   // unbekannter Ort: Karte gleich offen
+    for (const night of opened) showMap(night);
+  }
+  function showMap(night) {
+    const box = body.querySelector(`.stn-mapbox[data-map-night="${CSS.escape(night)}"]`), n = (data?.nights || []).find(x => x.night === night);
+    if (!box || !n) return;
+    box.hidden = false;
+    body.querySelector(`[data-map-open="${CSS.escape(night)}"]`)?.setAttribute('aria-expanded', 'true');
+    openNightMap(box, n, sites, mapState);
+  }
+  async function computeHeat(btn, night) {
+    btn.disabled = true;
+    try { await send(T + '/sitesearch/nights/heatmap', { night, global_km: store.get('skytrace.nightsGlobal', 1500) || 1500, clock: store.get('skytrace.nightsClock', true) }); }
+    catch (e) { toast(e.message, 'err'); btn.disabled = false; return; }
+    for (;;) {
+      await new Promise(r => setTimeout(r, 1500));
+      if (!el.isConnected) return;
+      let d; try { d = await api(T + '/sitesearch/nights/heatmap?night=' + encodeURIComponent(night)); } catch { continue; }
+      const j = d.job;
+      if (j && j.state === 'running') { btn.textContent = j.text ? j.text.replace(night + ': ', '').slice(0, 60) : 'Rechnet …'; continue; }
+      if (j?.state === 'error') toast(j.error || 'Heatmap fehlgeschlagen', 'err');
+      else toast(d.heat ? `Heatmap für ${night} berechnet.` : (j?.result?.text || 'Keine Heatmap.'));
+      if (d.heat && !maps.includes(night)) maps = [...maps, night];
+      sig = ''; draw(); return;
+    }
   }
   body.onclick = async (e) => {
-    const ml = e.target.closest('[data-map-load]');
-    if (ml) { const box = ml.closest('.stn-mapbox'), n = (data.nights || []).find(x => x.night === box.dataset.mapNight); if (n) onlineMap(box, n.proposal, sites, online, n.night); return; }
+    const mo = e.target.closest('[data-map-open]');
+    if (mo) {
+      const night = mo.dataset.mapOpen, box = mo.closest('.stn-night').querySelector('.stn-mapbox');
+      if (opened.has(night)) { opened.delete(night); mapState[night] ||= {}; box.hidden = true; box.innerHTML = ''; mo.setAttribute('aria-expanded', 'false'); }
+      else { opened.add(night); showMap(night); }
+      return;
+    }
+    const mb = e.target.closest('[data-map-mode],[data-map-tiles]');
+    if (mb) {
+      const night = mb.closest('.stn-mapbox').dataset.mapNight, st = mapState[night] ||= {};
+      if (mb.dataset.mapMode) st.mode = mb.dataset.mapMode; else st.tiles = mb.dataset.mapTiles || null;
+      showMap(night); return;
+    }
     const ma = e.target.closest('[data-map-always]');
-    if (ma) { store.set('skytrace.mapsOnline', ma.checked); if (ma.checked) ma.closest('.stn-mapbox').querySelector('[data-map-load]')?.click(); return; }
+    if (ma) {
+      store.set('skytrace.mapsOnline', ma.checked);
+      const night = ma.closest('.stn-mapbox').dataset.mapNight, st = mapState[night] ||= {};
+      if (ma.checked && !st.tiles) { st.tiles = 'osm'; showMap(night); }
+      return;
+    }
+    const hb = e.target.closest('[data-heat]');
+    if (hb) { computeHeat(hb, hb.dataset.heat); return; }
     const sh = e.target.closest('[data-show]');
     if (sh) { show = sh.dataset.show; store.set('skytrace.nightsShow', show); draw(); return; }
     const rows = e.target.closest('[data-apply-all]') ? (data.nights || []).filter(n => has(n) && !n.applied)
@@ -1345,8 +1465,8 @@ async function nightsView(el) {
   };
   async function load() {
     try {
-      const d = await api(T + '/sitesearch/nights'); data = d.result; job = d.job; clocks = (await api(T + '/settings').catch(() => ({}))).clock_offsets || {};
-      if ((data?.nights || []).some(n => n.proposal?.kind === 'global')) sites = (await api('/sites?nights=false').catch(() => ({}))).list || [];
+      const d = await api(T + '/sitesearch/nights'); data = d.result; job = d.job; maps = d.maps || []; clocks = (await api(T + '/settings').catch(() => ({}))).clock_offsets || {};
+      if (data) sites = (await api('/sites?nights=false').catch(() => ({}))).list || [];
     }
     catch (e) { if (el.isConnected) body.innerHTML = `<div class="panel bad">${esc(e.message)}</div>`; return; }
     if (el.isConnected) draw();
