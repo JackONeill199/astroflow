@@ -3,6 +3,21 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.37.0 – 06.11.2026
+
+### Neu
+- **SkyTrace 3D-Erde: flache Karte beim Hineinzoomen** – wie bei Google Maps wird der Globus nah heran (unter etwa 450 km Höhe) zur ebenen
+  Karte und beim Herauszoomen wieder zur Kugel, ohne Sprung: der Ort unter dem Mauszeiger bleibt stehen. Knopf **Karte/Globus** wechselt auch direkt.
+- In der Karte verschiebt man 1:1 mit Maus oder Finger, Mausrad und zwei Finger zoomen um den Zeiger – ohne Nachlauf. Heatmap (fein im 1-km-Raster,
+  scharf mit Legende), Orte, Ort je Nacht, Vorschläge mit Ellipse, Grenzen und Tag/Nacht samt Nachtsicht sind dort ebenso zu sehen; Antippen
+  öffnet die Karte der Nacht. Unten stehen Maßstab und die Koordinaten unter dem Zeiger (0,01°). **Straßenkarte**/**Gelände** laden
+  Kartenkacheln nur auf Knopfdruck.
+- Satellitenbahnen zeigt die flache Karte nicht (Bahnen im Raum ergäben dort nur verzerrte Linien), wohl aber, wo das Teleskop stand.
+
+### Behoben
+- Auf dem Globus dreht Ziehen jetzt genau: der angefasste Punkt bleibt unter dem Zeiger, ohne Nachlauf, und das Mausrad zoomt zum Zeiger hin –
+  vorher drehte die Erde nah heran zu schnell und ungenau. Mausrad über einem Ortsschild zoomt jetzt ebenfalls.
+
 ## 0.36.0 – 06.11.2026
 
 ### Neu

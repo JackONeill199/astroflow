@@ -158,3 +158,78 @@ def test_eine_3d_erde_mit_zwei_kontexten(server, browser, width, tmp_path):
     page.wait_for_function("(s => s?.ctx === 'runs' && s.runReady)(document.querySelector('#steHost')?._ste?.state())")
     assert not errors, errors
     page.close()
+
+
+def _wheel_until(page, dy, cond, steps=80):
+    for _ in range(steps):
+        page.mouse.wheel(0, dy)
+        page.wait_for_timeout(25)
+        if page.evaluate(f"(s => {cond})(document.querySelector('#steHost')._ste.state())"):
+            return True
+    return False
+
+
+@pytest.mark.parametrize("width", [375, 1440])
+def test_kartenmodus_kugel_und_flache_karte(server, browser, width, tmp_path):
+    """Wie bei Google Maps: nah heran wird der Globus zur flachen Karte (Punkt unter dem Zeiger bleibt), dort 1:1 verschieben ohne Nachlauf,
+    Koordinaten/Maßstab, Antippen eines Vorschlags öffnet die Karte der Nacht, Kacheln nur auf Knopfdruck; herausgezoomt wieder die Kugel."""
+    base, _ = server
+    page = browser.new_page(viewport={"width": width, "height": 900}, reduced_motion="reduce" if width < 500 else "no-preference")
+    errors, tiles = [], []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.on("request", lambda r: tiles.append(r.url) if "tile." in r.url else None)
+    page.route("**/*tile*.org/**", lambda route: route.fulfill(status=204))       # nie ins Netz
+    page.goto(base + "/#/skytrace/erde/2022-08-01")
+    page.wait_for_function("document.querySelector('#steHost')?._ste && !document.querySelector('#steHost')._ste.state().flying", timeout=15000)
+    page.locator(".ste-stage").scroll_into_view_if_needed()
+    box = page.locator(".ste-stage").bounding_box()
+    w, h = box["width"], box["height"]
+    px, py = box["x"] + w * .6, box["y"] + h * .55
+    page.mouse.move(px, py)
+    assert _wheel_until(page, -120, "s.dist < 1.09 || s.flat.on"), _state(page)
+    assert not _state(page)["flat"]["on"]
+    page.mouse.move(px + 1, py); page.mouse.move(px, py)                         # Koordinate unter dem Zeiger auf der Kugel
+    globe_pt = _state(page)["coord"]
+    assert globe_pt
+    assert _wheel_until(page, -120, "s.flat.on"), _state(page)
+    page.wait_for_function("document.querySelector('#steHost')._ste.state().flat.fade === 1")
+    st = _state(page)
+    assert st["dist"] < 1.075 and st["flat"]["pxPerKm"] > 1
+    # Übergang ohne Sprung: der Ort unter dem Zeiger ist auf der Karte derselbe (Zoom um den Zeiger, Kugel ↔ Mercator, ≤ 0,05°)
+    lat, lon = page.evaluate(f"document.querySelector('#steHost')._ste.flat.at({w * .6}, {h * .55})")
+    assert abs(globe_pt[0] - lat) < .05 and abs(globe_pt[1] - lon) < .05, (globe_pt, lat, lon)
+    # 1:1 verschieben: Punkt unter dem Zeiger bleibt, kein Nachlauf
+    a = page.evaluate(f"document.querySelector('#steHost')._ste.flat.at({w * .3}, {h * .4})")
+    page.mouse.move(box["x"] + w * .3, box["y"] + h * .4)
+    page.mouse.down()
+    page.mouse.move(box["x"] + w * .55, box["y"] + h * .6, steps=6)
+    page.mouse.up()
+    b = page.evaluate(f"document.querySelector('#steHost')._ste.flat.at({w * .55}, {h * .6})")
+    assert abs(a[0] - b[0]) < 1e-6 and abs(a[1] - b[1]) < 1e-6, (a, b)
+    c1 = _state(page)["flat"]["center"]
+    page.wait_for_timeout(300)
+    assert _state(page)["flat"]["center"] == c1                                     # kein Nachlauf
+    ro = page.locator(".ste-readout").inner_text()
+    assert "°" in ro and ("km" in ro or " m" in ro)
+    # Vorschlag antippen → Karte der Nacht
+    sx, sy = page.evaluate("document.querySelector('#steHost')._ste.flat.screenOf(46.234567, 13.912345)")
+    if not (10 < sx < w - 10 and 60 < sy < h - 60):
+        page.evaluate("document.querySelector('#steHost')._ste.flat")             # außerhalb: zurück zur Mitte schieben
+        page.mouse.move(box["x"] + w / 2, box["y"] + h / 2); page.mouse.down(); page.mouse.move(box["x"] + w / 2 - (sx - w / 2), box["y"] + h / 2 - (sy - h / 2), steps=4); page.mouse.up()
+        sx, sy = page.evaluate("document.querySelector('#steHost')._ste.flat.screenOf(46.234567, 13.912345)")
+    page.mouse.click(box["x"] + sx, box["y"] + sy)
+    page.locator(".ste-card").get_by_text("übernehmen").wait_for()
+    page.locator(".ste-card [data-a=x]").click()
+    assert not tiles
+    page.screenshot(path=str(tmp_path / f"erde-flach-{width}.png"))
+    page.locator(".ste-tiles [data-tiles=osm]").click()                               # erst jetzt Kartenkacheln
+    page.wait_for_timeout(200)
+    assert tiles and all("openstreetmap" in u for u in tiles)
+    assert not page.evaluate(FIND_OVERFLOW)
+    # herauszoomen → wieder die Kugel
+    page.mouse.move(box["x"] + w / 2, box["y"] + h / 2)
+    assert _wheel_until(page, 250, "!s.flat.on && s.flat.fade === 0"), _state(page)
+    st = _state(page)
+    assert st["dist"] > 1.08 and page.locator(".ste-labels").is_visible()
+    assert not errors, errors
+    page.close()

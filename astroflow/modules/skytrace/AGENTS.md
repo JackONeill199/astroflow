@@ -462,6 +462,28 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
   (Ebenen, Nachtsicht, Karte, Regler, keine Kacheln; Bahnen-Ebene statisch; Kontextwechsel mit Erddrehung und Rückdrehung, alter Link; Sammel-Endpunkt),
   `test_skytrace_3d_ui.py` (Lauf-Reiter eingebettet, zentrale Ansicht ohne Standort), `test_ui_layout.py` `ROUTES`.
 
+### Flache Karte (0.37.0, 06.11.2026, Nutzerbefund „Standorte betrachten geht nicht gut – Erde zu schnell und ungenau; wie Google Maps: reingezoomt normale Karte, rausgezoomt Kugel, mit Heatmap“)
+- **`static/skytrace-karte.js`** (`SkyTraceKarte.FlatMap(stage, deps)`): Canvas 2D in Web-Mercator über der WebGL-Bühne (Klasse `ste-flat`), Weltkoordinaten x, y ∈ [0, 1],
+  Maßstab `Z` px je Welteinheit (px/km = Z / (40 075 · cos φ)). Zeichnet nur bei Änderung; ist sie ganz eingeblendet, zeichnet der Globus nicht (`flat.tick` → `flatFull`).
+  Daten kommen über Getter aus `globe()` (Deckkraft der Ebenen, `nv`, `shade`, Sonne im erdfesten System, sichtbare Heatmaps, `M.flatMarks` aus `rebuildMarks`, Teleskopstandorte).
+- **Übergang:** `zoomBy` (Mausrad/Pinch zum Zeiger, Punkt unter dem Zeiger per Quaternion nachgeführt) ruft unter `FLAT_IN` 1,07 R (≈ 450 km) `enterFlat(sx, sy)`:
+  Sehstrahl → Erdpunkt, Maßstab = Bildschirmhöhe/2 / (tan(fov/2) · Abstand Kamera–Punkt) → `flat.enter(lat, lon, px/km, sx, sy)` → derselbe Ort am selben Pixel, 220 ms
+  Überblendung (reduzierte Bewegung: sofort). Zurück, wenn der Kartenmaßstab unter den von `FLAT_OUT` 1,085 R fällt (Hysterese): `leaveFlat` setzt die Kamera über die Kartenmitte
+  in passender Höhe und dreht zweimal so nach, dass der Ort unter dem Zeiger bleibt. Knopf „Karte/Globus“; Kamerafahrten (`flyTo`, andere Nacht, Übersicht) verlassen die Karte zuerst;
+  Antippen derselben Nacht in der Karte zeigt nur ihre Detailkarte (`M.lastNight`). Lauf-Ansichten Teleskop/Durchgang/Folgen (`zoomMode('orbit')`) verlassen die Karte.
+- **Bedienung:** Karte – Ziehen hält den Weltpunkt unter dem Zeiger fest, Rad/Pinch um den Zeiger, keine Trägheit, Zoom bis ~2,5 m/px. Globus – OrbitControls drehen nur noch in den
+  Lauf-Ansichten; im Globus-Modus **Greif-Drehen** (Sehstrahl-Treffer beim Anfassen bleibt unter dem Zeiger, Quaternion je Bewegung, Pole begrenzt, daneben im All langsam nach Höhe).
+  Mausrad auf der ganzen Bühne (vorher schluckten Schilder es).
+- **Ebenen in der Karte:** Erdbild in drei vorab berechneten Fassungen (Tag, Nacht, Nachtsicht – Formeln wie `EARTH_FS`), in 48 Streifen von der Plattkarte nach Mercator; Nachtmaske
+  72 × 48 aus der Sonnenrichtung (`destination-in`). Grenzen als Pfade (Ringe nach Umriss-Rechteck verworfen), Heatmap als scharfe Zellen (Farbe/Durchsicht wie `HEAT_FS`; fein ab 1,5 px/km
+  eingeblendet, voll ab 6 px/km, grob dann 40 %), Orte, Ort je Nacht (Ring), Vorschläge mit Ellipse, Teleskopstandorte (Quadrat). **Satellitenbahnen nicht** – Bahnen im Raum
+  (Hunderte km hoch, ein Umlauf um die ganze Erde) ergäben auf einer ebenen Karte nur verzerrte Linien ohne Bezug zum Bodenort; gezeigt wird, wo das Teleskop stand.
+  Kacheln (OSM/OpenTopoMap) nur nach Klick auf „Straßenkarte“/„Gelände“ (Bilder ohne Pixelzugriff, Zwischenspeicher ≤ 600); die alte Kugelkappe mit Kacheln entfällt.
+- **Anzeige:** `.ste-readout` = Maßstabsleiste (1–2–5-Stufen, 60–150 px) + Koordinaten unter dem Zeiger auf 0,01° (auch auf dem Globus unter 1,6 R).
+- **Leistung** (06.11.2026, 1440 × 900): Karte zeichnen 0,9 ms (GPU) bzw. 5 ms (SwiftShader), Verschieben/Zoomen 60 fps in beiden; Zoom bis zur Karte inkl. Überblendung 17–19 ms je Bild.
+- Tests: `test_skytrace_erde_ui.py::test_kartenmodus_kugel_und_flache_karte` (375 mit reduzierter Bewegung, 1440: Übergang am Zeiger ≤ 0,05°, 1:1-Verschieben exakt, kein Nachlauf,
+  Maßstab/Koordinaten, Antippen → Karte der Nacht, Kacheln erst nach Klick, zurück zur Kugel). `host._ste.state().flat`, `_ste.flat.at/screenOf`.
+
 ## Erkennung im Teleskop-Bildfeld (28.10.2026, Nutzerbefund M74 2022-08-07)
 Anlass: Ein schwacher Meteor (img-0041, ~120 px, ~1,5σ/px) wurde übersehen, ein langsames Objekt in sechs Aufnahmen (img-0177…0182)
 als „Meteor“ gemeldet. Vergleichslauf: `Ergebnisse/2026-10-28_18-47-38-352557` (alt) gegen `2026-10-28_19-47-22-527055` (neu).
