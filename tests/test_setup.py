@@ -94,11 +94,11 @@ def test_assistent_ablauf(home, tmp_path, monkeypatch):
 def test_datenordner_wechsel_startet_neu(home, tmp_path, monkeypatch):
     c = client(home / "Daten", True, monkeypatch)
     calls = []
-    monkeypatch.setattr(setup_mod.Setup, "restart", lambda self: calls.append(1))
+    monkeypatch.setattr(setup_mod.Setup, "restart", lambda self, data=None: calls.append(data))
     neu = tmp_path / "Neu"
     c.post("/api/setup", json={"telescope": "vespera"})
     r = c.post("/api/setup", json={"data_dir": str(neu)}).json()
-    assert r["restart"] and calls
+    assert r["restart"] and calls == [neu.resolve()]
     assert launcher.read_config()["data_dir"] == str(neu.resolve())
     # Einrichtung läuft im neuen Ordner weiter, Teleskopwahl bleibt
     assert json.loads((neu / "settings.json").read_text(encoding="utf-8"))["setup"] == {"telescope": "vespera", "done": False}
@@ -217,3 +217,24 @@ def test_wheel_enthaelt_oberflaeche(tmp_path):
                  "astroflow/modules/skytrace/models/night-detector/LICENSE", "astroflow/modules/sage/static/sage.js"):
         assert need in names, need
     assert not any("__pycache__" in n for n in names)
+
+
+def test_neustart_behaelt_datenordner(home, tmp_path, monkeypatch):
+    """Gewöhnlicher Neustart (Heimnetz, „Neu starten“) bleibt im laufenden Ordner, auch wenn der per --data/ASTROFLOW_DATA kam."""
+    started = []
+    monkeypatch.setattr(launcher.subprocess, "Popen", lambda args, **kw: started.append(args))
+    monkeypatch.setattr(setup_mod.signal, "raise_signal", lambda sig: None)
+    monkeypatch.setattr(setup_mod.os, "_exit", lambda code: None)
+    monkeypatch.setattr(setup_mod.time, "sleep", lambda s: None)
+    eigen = tmp_path / "eigener-ordner"
+    c = client(eigen, True, monkeypatch)
+    setup = c.app.state.setup
+    seen = []
+    monkeypatch.setattr(setup_mod.threading, "Thread", lambda target, daemon=True, **kw: type("T", (), {"start": lambda self: (target(), seen.append(1))})())
+    setup.restart()
+    args = started[-1]
+    assert args[args.index("--data") + 1] == str(eigen.resolve()) and seen
+    neu = tmp_path / "neu"
+    setup.restart(neu)
+    args = started[-1]
+    assert args[args.index("--data") + 1] == str(neu)

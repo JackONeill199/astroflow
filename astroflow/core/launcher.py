@@ -209,9 +209,12 @@ def _alive(pid: int) -> bool:
         return False
 
 
-def restart_detached(p: int):
-    """Neuen Starter anstoßen, der auf das Ende dieses Prozesses wartet und den Server neu startet (ohne Browser)."""
+def restart_detached(p: int, data: Path):
+    """Neuen Starter anstoßen, der auf das Ende dieses Prozesses wartet und den Server neu startet (ohne Browser).
+    `data` ausdrücklich mitgeben: beim gewöhnlichen Neustart der laufende Datenordner (auch wenn er per --data/ASTROFLOW_DATA
+    kam und nicht in config.json steht), beim Ordnerwechsel der neue."""
     kw = {"creationflags": 0x00000008 | 0x00000200 | 0x08000000} if os.name == "nt" else {"start_new_session": True}
     env = {k: v for k, v in os.environ.items() if k not in ("ASTROFLOW_DATA", "ASTROFLOW_LAUNCHER")}
-    subprocess.Popen([_gui_python(), *(["-I"] if sys.flags.isolated else []), "-m", "astroflow", "start", "--no-browser", "--port", str(p), "--wait-pid", str(os.getpid())],
+    subprocess.Popen([_gui_python(), *(["-I"] if sys.flags.isolated else []), "-m", "astroflow", "start", "--no-browser", "--port", str(p),
+                      "--data", str(data), "--wait-pid", str(os.getpid())],
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env, **kw)

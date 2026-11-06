@@ -149,7 +149,7 @@ class Setup:
             self.ctx.store.update("setup", vals)
         if "update_check" in body:
             self.ctx.store.update("system", {"update_check": bool(body["update_check"])})
-        restart = False
+        restart, target = False, None
         if body.get("data_dir"):
             if not self.launched:
                 raise HTTPException(400, "Der Datenordner ist bei dieser Instanz fest vorgegeben (--data bzw. ASTROFLOW_DATA).")
@@ -166,12 +166,12 @@ class Setup:
                 SettingsStore(new / "settings.json").update("setup", {"telescope": self.ctx.store.get("setup").get("telescope"),
                                                                        "done": False})
                 launcher.write_config({"data_dir": str(new.resolve())})
-                restart = True
+                restart, target = True, new.resolve()
         if "lan" in body and self.launched and bool(body["lan"]) != bool(launcher.read_config().get("lan")):
             launcher.write_config({"lan": bool(body["lan"])})       # Server lauscht danach im Heimnetz bzw. nur lokal
             restart = True
         if restart:
-            self.restart()
+            self.restart(target)
         return {**self.state(), "restart": restart}
 
     # ---- Hintergrundaufgaben -------------------------------------------------
@@ -339,11 +339,11 @@ class Setup:
                 return
 
     # Beenden / Neustart --------------------------------------------------------------
-    def shutdown(self, restart: bool = False):
+    def shutdown(self, restart: bool = False, data: Path | None = None):
         def go():
             time.sleep(0.5)                            # Antwort noch ausliefern
             if restart:
-                launcher.restart_detached(launcher.port())
+                launcher.restart_detached(launcher.port(), data or self.ctx.settings.data_dir)
             try:
                 signal.raise_signal(signal.SIGINT)    # uvicorn fährt sauber herunter (Module stoppen, Checkpoints)
             except Exception:
@@ -352,10 +352,11 @@ class Setup:
             os._exit(0)
         threading.Thread(target=go, daemon=True).start()
 
-    def restart(self):
+    def restart(self, data: Path | None = None):
+        """Neustart über den Starter – im laufenden Datenordner, außer `data` (Ordnerwechsel im Assistenten) gibt einen neuen vor."""
         if not self.launched:
             return
-        self.shutdown(restart=True)
+        self.shutdown(restart=True, data=data)
 
 
 def _download(url: str, prog, to: Path | None = None) -> bytes | None:
