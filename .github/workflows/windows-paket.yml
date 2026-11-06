@@ -41,22 +41,11 @@ jobs:
           Expand-Archive $zip.FullName C:\Paket
           C:\Paket\AstroFlow\python\python.exe -I installer\pruefe_paket.py $zip.FullName --astap
 
-      - name: Installer still installieren und starten
+      - name: Installer prüfen (still installieren, Start wie Startmenü, Demo, Beenden, Deinstallieren)
         shell: pwsh
         run: |
           $exe = Get-ChildItem dist\AstroFlow-Setup-*.exe | Select-Object -First 1
-          Start-Process $exe.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/CURRENTUSER','/NORESTART' -Wait
-          $app = "$env:LOCALAPPDATA\Programs\AstroFlow"
-          if (-not (Test-Path "$app\python\pythonw.exe")) { throw "Installation fehlt in $app" }
-          $env:ASTROFLOW_NO_BROWSER = "1"
-          & "$app\python\python.exe" -I -m astroflow start
-          $s = Invoke-RestMethod http://127.0.0.1:8766/api/setup
-          if (-not $s.pending) { throw "Einrichtungsassistent nicht ausstehend" }
-          if ($s.data.path -ne "$env:USERPROFILE\AstroFlow") { throw "Datenordner: $($s.data.path)" }
-          & "$app\python\python.exe" -I -m astroflow stop
-          Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES' -Wait
-          Start-Sleep 3
-          if (Test-Path "$app\python") { throw "Deinstallation unvollständig" }
+          C:\Paket\AstroFlow\python\python.exe -I installer\pruefe_paket.py --setup $exe.FullName
 
       - uses: actions/upload-artifact@v4
         with:

@@ -75,25 +75,50 @@ def make_icon(path: Path):
     img.save(path, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
 
 
-def write_sandbox(out: Path, zpath: Path):
-    """Windows-Sandbox-Konfiguration neben die Pakete legen: Doppelklick auf `AstroFlow-Test.wsb` startet eine frische Sandbox,
-    die das portable Paket mit installer/pruefe_paket.py prüft (Python aus dem Paket selbst) – Ergebnis in `sandbox-ergebnis.txt`.
-    Der Installer liegt danach zum Ausprobieren auf dem Sandbox-Desktop. Pfad absolut, deshalb nicht im Repo."""
+def write_sandbox(out: Path, results: Path | None = None) -> Path:
+    """Windows-Sandbox-Prüfung vorbereiten: `AstroFlow-Test.wsb` startet eine frische Sandbox (Netz an, für ASTAP), bindet den
+    Paketordner `out` **schreibgeschützt** und einen leeren Ergebnisordner beschreibbar ein – sonst nichts (keine Arbeitsinstanz, keine
+    echten Daten). Der Logonbefehl führt nur `pruefe-in-sandbox.cmd` aus: Werkzeug-Python aus dem ZIP entpacken (nicht gemessen), dann
+    installer/pruefe_paket.py für den Installer (falls vorhanden) und das portable ZIP, Protokolle + `fertig.txt` im Ergebnisordner.
+    Absolute Pfade → nur neben den Paketen, nie im Repo. Start: Doppelklick oder `WindowsSandbox.exe <wsb>`."""
+    out = out.resolve()
+    results = (results or out.parent / (out.name + "-sandbox-ergebnis")).resolve()
+    results.mkdir(parents=True, exist_ok=True)
+    for f in results.glob("*.txt"):
+        f.unlink()
     shutil.copy2(HERE / "pruefe_paket.py", out / "pruefe_paket.py")
-    box = r"C:\Users\WDAGUtilityAccount\Desktop\AstroFlow-Pruefung"
-    (out / "pruefe-in-sandbox.cmd").write_text("\r\n".join([
-        "@echo off", "chcp 65001 >nul", f'cd /d "{box}"',
-        f'powershell -NoProfile -Command "Expand-Archive -Force \'{zpath.name}\' C:\\Entpackt"',
-        f'C:\\Entpackt\\AstroFlow\\python\\python.exe -I pruefe_paket.py "{zpath.name}" --astap --dir C:\\Sauber > sandbox-ergebnis.txt 2>&1',
-        "type sandbox-ergebnis.txt", "pause", ""]), encoding="utf-8")
-    (out / "AstroFlow-Test.wsb").write_text(f"""<Configuration>
-  <MappedFolders>
-    <MappedFolder><HostFolder>{out.resolve()}</HostFolder><SandboxFolder>{box}</SandboxFolder><ReadOnly>false</ReadOnly></MappedFolder>
-  </MappedFolders>
-  <LogonCommand><Command>cmd /c start "" "{box}\\pruefe-in-sandbox.cmd"</Command></LogonCommand>
+    pkg, res = r"C:\Pruefung\Paket", r"C:\Pruefung\Ergebnis"
+    py = r"C:\Werkzeug\AstroFlow\python\python.exe"
+    cmd = r"""@echo off
+chcp 65001 >nul
+cd /d "PKG"
+for %%f in (AstroFlow-*-Windows-portabel.zip) do set ZIP=%%f
+for %%f in (AstroFlow-Setup-*.exe) do set SETUP=%%f
+powershell -NoProfile -Command "Expand-Archive -Force '%ZIP%' C:\Werkzeug" > "RES\werkzeug.txt" 2>&1
+if not defined SETUP goto portabel
+"PY" -I pruefe_paket.py --setup "%SETUP%" --astap > "RES\installer.txt" 2>&1
+echo Exitcode %errorlevel% >> "RES\installer.txt"
+:portabel
+"PY" -I pruefe_paket.py "%ZIP%" --astap --dir C:\Sauber > "RES\portabel.txt" 2>&1
+echo Exitcode %errorlevel% >> "RES\portabel.txt"
+echo fertig > "RES\fertig.txt"
+"""
+    cmd = cmd.replace("PKG", pkg).replace("RES", res).replace("PY", py)
+    (out / "pruefe-in-sandbox.cmd").write_text(cmd.replace("\n", "\r\n"), encoding="utf-8")
+    wsb = out / "AstroFlow-Test.wsb"
+    wsb.write_text(f"""<Configuration>
+  <Networking>Enable</Networking>
   <MemoryInMB>6144</MemoryInMB>
+  <ClipboardRedirection>Disable</ClipboardRedirection>
+  <PrinterRedirection>Disable</PrinterRedirection>
+  <MappedFolders>
+    <MappedFolder><HostFolder>{out}</HostFolder><SandboxFolder>{pkg}</SandboxFolder><ReadOnly>true</ReadOnly></MappedFolder>
+    <MappedFolder><HostFolder>{results}</HostFolder><SandboxFolder>{res}</SandboxFolder><ReadOnly>false</ReadOnly></MappedFolder>
+  </MappedFolders>
+  <LogonCommand><Command>{pkg}\\pruefe-in-sandbox.cmd</Command></LogonCommand>
 </Configuration>
 """, encoding="utf-8")
+    return wsb
 
 
 def build(out: Path, installer: bool = True, cache: Path | None = None) -> dict:
@@ -159,12 +184,12 @@ def build(out: Path, installer: bool = True, cache: Path | None = None) -> dict:
                                                        os.path.expandvars(r"%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe")) if os.path.isfile(p)), None)
     if installer and iscc:
         log("Baue Installer mit", iscc)
-        subprocess.run([iscc, "/Q", f"/DAppVersion={ver}", f"/DSourceDir={stage}", f"/DOutDir={out}", str(HERE / "astroflow.iss")], check=True)
+        subprocess.run([iscc, "/Q", f"/DAppVersion={ver}", f"/DSourceDir={stage}", f"/DOutDir={out.resolve()}", str(HERE / "astroflow.iss")], check=True)
         exe = out / f"AstroFlow-Setup-{ver}.exe"
         res.update(installer=str(exe), installer_mb=round(exe.stat().st_size / 1e6))
     elif installer:
         log("Inno Setup (ISCC.exe) nicht gefunden – nur portables ZIP gebaut.")
-    write_sandbox(out, zpath)
+    write_sandbox(out)
     for k in ("zip", "installer"):
         if k in res:
             res[k + "_sha256"] = hashlib.sha256(Path(res[k]).read_bytes()).hexdigest()
@@ -175,7 +200,10 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", default=str(ROOT / "dist"))
     ap.add_argument("--no-installer", action="store_true")
+    ap.add_argument("--sandbox-only", action="store_true", help="nur AstroFlow-Test.wsb für vorhandene Pakete in --out schreiben")
     a = ap.parse_args()
+    if a.sandbox_only:
+        sys.exit(print(write_sandbox(Path(a.out))))
     if os.name != "nt":
         sys.exit("Nur unter Windows (eingebettetes Windows-Python).")
     import json
