@@ -35,7 +35,7 @@ function earthVariants(img) {
 }
 
 /* host = .ste-stage. deps (Getter, vom Globus): { H, sites, layerK(k), nv(), shade(), sunLocal() → [x,y,z] ECEF-Einheitsvektor,
-   patches() → [{night, coarse, fine, reveal, h}], marks() → {current:[{lat,lon,name,night,sel}], proposals:[{lat,lon,name,night,sel,mark}]},
+   patches() → [{night, coarse, fine, reveal, h}], marks() → {current:[{lat,lon,name,night,sel}], proposals:[{lat,lon,name,night,sel,mark}], alts:[{lat1,lon1,lat2,lon2,text,name}]},
    observers() → [{lat, lon, name}], onPick(p), onLeave(lat, lon, pxPerKm, px, py), texture: Image } */
 function FlatMap(host, deps) {
   const cv = document.createElement('canvas'); cv.className = 'ste-flat'; cv.setAttribute('aria-label', 'Flache Karte: Ziehen verschiebt, Mausrad oder zwei Finger zoomen');
@@ -189,6 +189,12 @@ function FlatMap(host, deps) {
       g.globalAlpha = kP; g.beginPath();
       deps.H.ellipsePts(p.mark, 96).forEach(([la, lo], i) => { const [sx, sy] = llS(la, lo); if (i) g.lineTo(sx, sy); else g.moveTo(sx, sy); });
       g.closePath(); g.fillStyle = 'rgba(107,134,255,.16)'; g.fill(); g.strokeStyle = p.sel ? '#8ea4ff' : '#8ea4ffaa'; g.lineWidth = 1.5; g.stroke(); g.globalAlpha = 1;
+    }
+    if (kP > .01) for (const l of m.alts || []) {              // Alternative: gestrichelte Verbindung Vorschlag ↔ Listenort mit Abstand
+      const [x1, y1] = llS(l.lat1, l.lon1), [x2, y2] = llS(l.lat2, l.lon2);
+      g.globalAlpha = kP; g.setLineDash([6, 5]); g.strokeStyle = '#f2d385'; g.lineWidth = 2; g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); g.setLineDash([]);
+      if (Math.hypot(x2 - x1, y2 - y1) > 24) pill(l.text, (x1 + x2) / 2, (y1 + y2) / 2, '#f2d385', 'Alternative ' + (l.name || ''));
+      g.globalAlpha = 1;
     }
     if (kS > .01) for (const s of deps.sites) {
       const [sx, sy] = llS(s.lat, s.lon); if (sx < -40 || sy < -40 || sx > V.W + 40 || sy > V.H + 40) continue;

@@ -579,7 +579,10 @@ def build_router(mod) -> APIRouter:
     @r.get("/sitesearch/nights")
     def nights_state():
         job = mod.sitejobs.snapshot()
-        return {"job": job if job and job.get("kind") == "nights" else None, "result": mod.sitejobs.nights_result(), "maps": mod.sitejobs.heat_nights()}
+        from .rematch import with_alternatives
+        sites = (mod.ctx.store.get("sites") or {}).get("list") or []
+        return {"job": job if job and job.get("kind") == "nights" else None, "result": with_alternatives(mod.sitejobs.nights_result(), sites),
+                "maps": mod.sitejobs.heat_nights()}
 
     @r.post("/sitesearch/nights/heatmap")
     def nights_heatmap_start(body: dict = Body(...)):

@@ -1107,7 +1107,9 @@ function nightMarks(n, sites) {
   const p = n.proposal, ps = p?.kind === 'list' ? byId(p.id) : p;
   const prop = ps && ps.lat != null ? { lat: ps.lat, lon: ps.lon, acc: (p.kind === 'list' ? ps.accuracy_m : p.accuracy_m) || 100, ellipse: p.ellipse_km, kind: p.kind, name: p.kind === 'list' ? ps.name : 'Vorschlag' } : null;
   const cs = n.current?.id ? byId(n.current.id) : null;
-  return { sites: sites.filter(s => s.lat != null && s.lon != null), prop, cur: cs ? { lat: cs.lat, lon: cs.lon, name: cs.name } : null };
+  const alts = n.applied || !prop ? [] : (n.alternatives || []).map(a => ({ ...a, s: byId(a.id) })).filter(a => a.s?.lat != null)
+    .map(a => ({ lat: a.s.lat, lon: a.s.lon, name: a.name, distance_m: a.distance_m }));
+  return { sites: sites.filter(s => s.lat != null && s.lon != null), prop, cur: cs ? { lat: cs.lat, lon: cs.lon, name: cs.name } : null, alts };
 }
 function ellipsePts(m, steps = 48) {
   // Unsicherheit (1σ): große/kleine Halbachse in km, Winkel von Nord über Ost; ohne Ellipse Kreis mit der Genauigkeit
@@ -1148,7 +1150,9 @@ async function svgMap(box, n, marks, heat, mode) {
     img = `<image class="heat" href="${cv.toDataURL()}" x="0" y="0" width="${v.W}" height="${v.H}"/>`;
   }
   const P = (m) => `${v.X(m.lat, m.lon).toFixed(1)},${v.Y(m.lat, m.lon).toFixed(1)}`;
-  const ell = marks.prop ? `<polygon class="ell" points="${ellipsePts(marks.prop).map(([la, lo]) => P({ lat: la, lon: lo })).join(' ')}"/>` : '';
+  const ell = (marks.prop ? `<polygon class="ell" points="${ellipsePts(marks.prop).map(([la, lo]) => P({ lat: la, lon: lo })).join(' ')}"/>` : '')
+    + (marks.alts || []).map(a => { const [x1, y1] = P(marks.prop).split(',').map(Number), [x2, y2] = P(a).split(',').map(Number);
+      return `<line class="alt" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/><text class="alt" x="${((x1 + x2) / 2 + 4).toFixed(1)}" y="${((y1 + y2) / 2 - 4).toFixed(1)}" font-size="9">${esc(mText(a.distance_m))}</text>`; }).join('');
   box.querySelector('.stn-mapview').innerHTML = `<svg class="stn-map" viewBox="0 0 ${v.W} ${v.H}" role="img" aria-label="Karte der Standortsuche dieser Nacht"><g class="land"></g>${img}${ell}
     ${marks.sites.map(s => `<circle cx="${v.X(s.lat, s.lon).toFixed(1)}" cy="${v.Y(s.lat, s.lon).toFixed(1)}" r="3" class="site"><title>${esc(s.name || 'Ort')}</title></circle>`).join('')}
     ${marks.cur ? `<circle cx="${v.X(marks.cur.lat, marks.cur.lon).toFixed(1)}" cy="${v.Y(marks.cur.lat, marks.cur.lon).toFixed(1)}" r="6" class="cur"><title>bisher: ${esc(marks.cur.name || 'Ort')}</title></circle>` : ''}
@@ -1198,6 +1202,8 @@ async function leafletMap(box, marks, heat, mode, tiles) {
   }
   for (const s of marks.sites) L.circleMarker([s.lat, s.lon], { radius: 4, color: '#fff', weight: 1, fillColor: '#8a94a6', fillOpacity: 1 }).bindTooltip(esc(s.name || 'Ort')).addTo(map);
   if (marks.cur) L.circleMarker([marks.cur.lat, marks.cur.lon], { radius: 8, color: '#10162e', weight: 2, fill: false }).bindTooltip('bisher: ' + esc(marks.cur.name || 'Ort')).addTo(map);
+  for (const a of marks.prop ? marks.alts || [] : [])
+    L.polyline([[marks.prop.lat, marks.prop.lon], [a.lat, a.lon]], { color: '#f2d385', weight: 2, dashArray: '6 5' }).bindTooltip(`Alternative ${esc(a.name || 'Ort')}: ${mText(a.distance_m)}`, { permanent: true, direction: 'center', className: 'stn-alt-tip' }).addTo(map);
   if (marks.prop) {
     L.polygon(ellipsePts(marks.prop), { color: '#3b5bff', weight: 1.5, fillOpacity: 0.15 }).addTo(map);
     L.circleMarker([marks.prop.lat, marks.prop.lon], { radius: 7, color: '#10162e', weight: 3, fillColor: '#4f6bff', fillOpacity: 1 })
@@ -1225,7 +1231,7 @@ async function openNightMap(box, n, sites, state) {
       (Suchgebiet ± ${heat.region_km} km, Uhr ± ${Math.round(heat.clock_s)} s${res?.seconds ? `, ${String(res.seconds).replace('.', ',')} s gerechnet` : ''}).
       ${res?.proposal ? `Beste Häufung: ${res.proposal.support} Spuren, danach ${res.proposal.sure} eindeutig.` : res?.reason ? esc(res.reason) : ''}`
       : n.global ? 'Für diese Nacht liegt keine Heatmap vor (Suche vor 0.34.0).' : 'Keine Heatmap: Die Suche ohne Vorwissen lief für diese Nacht nicht, weil ein Ort der Liste passte. „Heatmap berechnen“ holt sie nach.'}
-      ${marks.prop ? ' Blau = Vorschlag mit Unsicherheit (1σ),' : ''} Ring = bisheriger Ort, grau = Orte der Liste.</p>`;
+      ${marks.prop ? ' Blau = Vorschlag mit Unsicherheit (1σ),' : ''} Ring = bisheriger Ort, grau = Orte der Liste${marks.alts?.length ? ', gelb gestrichelt = Alternative aus der Ortsliste mit Abstand' : ''}.</p>`;
   if (st.tiles) leafletMap(box, marks, heat, st.mode, st.tiles); else svgMap(box, n, marks, heat, st.mode);
 }
 function globalHtml(p, n, sites) {
@@ -1253,11 +1259,68 @@ function nightRow(n, busy = false, clocks = {}, sites = [], maps = []) {
       <span class="chip ${n.applied ? 'ok' : cls}">${n.applied ? 'Übernommen' : esc(label)}</span></div>
     <div class="stn-grid"><div><small class="dim">Bisher</small><b>${esc(c.name || 'kein Ort')}</b><span class="mut sm">${now}</span></div>
       ${p ? `<div><small class="dim">Vorschlag</small>${prop}</div>` : ''}${clockScanHtml(n.applied ? null : k, applied)}</div>
-    ${n.note || n.fit_reason || k?.reason ? `<p class="dim sm">${esc([n.note, n.status !== 'better' && n.fit_reason ? 'Rückrechnung: ' + n.fit_reason : '', k?.reason ? 'Uhrversatz: ' + k.reason : ''].filter(Boolean).join(' '))}</p>` : ''}
+    ${altHtml(n, busy)}
+    ${n.note || n.fit_reason || k?.reason || nearText(n) ? `<p class="dim sm">${esc([n.note, nearText(n), n.status !== 'better' && n.fit_reason ? 'Rückrechnung: ' + n.fit_reason : '', k?.reason ? 'Uhrversatz: ' + k.reason : ''].filter(Boolean).join(' '))}</p>` : ''}
     <div class="row">${(p || q) && !n.applied ? `<button class="btn sm" data-apply="${esc(n.night)}"${busy ? ' disabled title="Erst nach dem Ende der Suche"' : ''}>Für diese Nacht übernehmen …</button>` : ''}
       <button class="btn sm ghost" data-map-open="${esc(n.night)}" aria-expanded="false">${icon('pin')}Karte${maps.includes(n.night) ? ' mit Heatmap' : ''}</button>
       <a class="btn sm ghost" href="#/skytrace/erde/${esc(n.night)}" title="Große Ansicht auf dem Globus mit Ebenen und Nachtsicht">${icon('globe')}Auf der Erde zeigen</a></div>
     <div class="stn-mapbox" data-map-night="${esc(n.night)}" hidden></div></div>`;
+}
+// Alternativen zum zurückgerechneten Ort (0.38.0): nahe Listenorte, die streng ebenfalls gut passen (Auswahl rematch.alternatives auf dem Server)
+const mText = (m) => m == null ? '' : m < 1000 ? Math.round(m) + ' m' : kmText(m / 1000);
+function nearText(n) {
+  // Begründung, warum nicht automatisch eingerastet wurde
+  const z = n.near, p = n.proposal;
+  if (!z || !p || n.applied || !['fit', 'global'].includes(p.kind) || z.distance_m <= z.limit_m) return '';
+  return `Der zurückgerechnete Punkt liegt ${mText(z.distance_m)} neben „${z.name || 'Ort'}“ (Grenze für automatische Zuordnung ${mText(z.limit_m)}).`;
+}
+function altHtml(n, busy = false) {
+  const alts = n.applied ? [] : n.alternatives || [];
+  if (!alts.length) return '';
+  // ist die Alternative der bisherige Ort, gilt er schon für die Nacht – dann nur „verschieben“ (z. B. Adresse ein paar hundert Meter daneben)
+  return `<div class="stn-alt">${alts.map(a => { const same = a.id === n.current?.id; return `<div class="stn-alt-row"><div><small class="dim">Alternative${same ? ' (bisheriger Ort)' : ''}</small><b>${esc(a.name || 'Ort der Liste')}</b>
+      <span class="mut sm">${mText(a.distance_m)} entfernt · ${a.sure}/${n.tracks} eindeutig · quer ${arcText(a.rms)}</span></div>
+      <div class="row">${same ? '' : `<button class="btn ghost sm" data-alt-apply="${esc(a.id)}" data-night="${esc(n.night)}"${busy ? ' disabled' : ''}>${esc(a.name || 'Ort')} für diese Nacht übernehmen …</button>`}
+        <button class="btn ghost sm" data-alt-move="${esc(a.id)}" data-night="${esc(n.night)}"${busy ? ' disabled' : ''} title="Koordinaten des Listenorts auf den zurückgerechneten Punkt korrigieren">${esc(a.name || 'Ort')} hierher verschieben …</button></div></div>`; }).join('')}</div>`;
+}
+// Listenort statt des neuen Punkts: wie „übernehmen“ mit kind 'list' (Uhrvorschlag der Nacht bleibt dabei)
+function applyAlt(n, id) {
+  const a = (n.alternatives || []).find(x => x.id === id);
+  return a ? applyNights([{ ...n, proposal: { kind: 'list', id: a.id, name: a.name, sure: a.sure, rms: a.rms } }]) : false;
+}
+// Listenort auf den zurückgerechneten Punkt verschieben: wirkt in allen Nächten und Zeiträumen des Orts → Hinweis, Bestätigung, Neuabgleich aller Läufe mit geändertem Ort
+async function moveSite(n, id, nights = []) {
+  const p = n.proposal, a = (n.alternatives || []).find(x => x.id === id);
+  if (!p || !a) return false;
+  try { if ((await api(T + '/sitesearch/nights')).job?.state === 'running') { toast('Die Suche läuft noch – bitte warten oder anhalten.', 'err'); return false; } }
+  catch (e) { toast(e.message, 'err'); return false; }
+  let d;
+  try { d = await api('/sites?nights=false'); } catch (e) { toast(e.message, 'err'); return false; }
+  const site = (d.list || []).find(s => s.id === id);
+  if (!site) { toast('Der Ort steht nicht mehr in der Ortsliste.', 'err'); return false; }
+  const periods = (d.periods || []).filter(q => q.site_id === id && !(q.from && q.from === q.to && (n.assign || [n.night]).includes(q.from)));
+  const others = nights.filter(x => x.night !== n.night && x.current?.id === id);
+  const uses = [d.default === id ? 'ist der Standard-Ort (gilt für alle Nächte ohne Zeitraum)' : '',
+    periods.length ? `${periods.length} Zeitr${periods.length === 1 ? 'aum' : 'äume'} (${periods.slice(0, 3).map(q => q.from === q.to ? q.from : `${q.from || '…'} bis ${q.to || 'offen'}`).join(', ')}${periods.length > 3 ? ' …' : ''})` : '',
+    others.length ? `${others.length} weitere Nächte dieser Suche` : ''].filter(Boolean);
+  const acc = Math.max(30, Math.round(p.accuracy_m || 100));
+  const text = `„${esc(site.name || 'Ort')}“ wird um ${mText(a.distance_m)} auf den zurückgerechneten Punkt verschoben (Genauigkeit ± ${mText(acc)}, Höhe bleibt)${n.current?.id === id ? '.' : `
+    und der Nacht ${esc(n.night)} zugeordnet.`}${uses.length ? ` <b>Der Ort gilt auch für: ${esc(uses.join(' · '))} – dort wirkt die Verschiebung mit.</b>` : ' Er wird sonst nirgends verwendet.'}
+    ${others.length ? ` Abgleich der anderen Nächte dort bisher: ${others.slice(0, 4).map(x => `${esc(x.night)} ${x.current?.sure ?? 0}/${x.tracks} (quer ${arcText(x.current?.rms)})`).join(', ')}.` : ''}
+    Danach werden alle Analysen mit geändertem Ort neu abgeglichen.`;
+  if (!await confirmDlg(`„${site.name || 'Ort'}“ hierher verschieben?`, text, 'Verschieben')) return false;
+  try {
+    const stamp = new Date().toLocaleDateString('de-DE');
+    const list = d.list.map(s => s.id !== id ? s : { ...s, lat: p.lat, lon: p.lon, accuracy_m: acc,
+      note: [s.note, `${stamp}: um ${mText(a.distance_m)} auf die Rückrechnung der Nacht ${n.night} verschoben (vorher ${(+s.lat).toFixed(5)}, ${(+s.lon).toFixed(5)})`].filter(Boolean).join(' · ') });
+    await send('/sites', { ...d, list });
+    for (const night of (n.assign?.length ? n.assign : [n.night])) await send('/sites/night', { night, site_id: id, nights: false });
+    await send(T + '/sitesearch/nights/applied', { nights: [n.night] });
+    await ackSites();
+    if (!await startRematch({ all: true, force: false }, `„${site.name || 'Ort'}“ verschoben – alle Analysen mit geändertem Ort werden neu abgeglichen.`))
+      toast('Der Ort ist verschoben, der Neuabgleich startete nicht – später „Alle SkyTrace-Analysen neu abgleichen“ wählen.', 'err');
+    return true;
+  } catch (e) { toast(e.message, 'err'); return true; }
 }
 // Übernehmen: bestehender Ort → Zuordnung der Nacht, neuer Ort → neuer Eintrag (wie applyFit); SkyTrace-Ausnahmen der Beobachtungen entfernen
 async function applyNights(rows) {
@@ -1385,6 +1448,12 @@ async function nightsView(el) {
     }
   }
   body.onclick = async (e) => {
+    const al = e.target.closest('[data-alt-apply],[data-alt-move]');
+    if (al) {
+      const n = (data.nights || []).find(x => x.night === al.dataset.night);
+      if (n && await (al.dataset.altApply ? applyAlt(n, al.dataset.altApply) : moveSite(n, al.dataset.altMove, data.nights || []))) load();
+      return;
+    }
     const mo = e.target.closest('[data-map-open]');
     if (mo) {
       const night = mo.dataset.mapOpen, box = mo.closest('.stn-night').querySelector('.stn-mapbox');
@@ -1434,6 +1503,7 @@ async function nightsView(el) {
 // 3D-Erde (0.35.0, skytrace-erde.js + Lauf-Ebene skytrace-3d.js): eine Ansicht für Nächte/Standorte und Analysen – teilt Heatmap-/Karten-Helfer,
 // das Übernehmen und die Laufliste mit dem Rest von SkyTrace (window.SkyTraceHelpers, auch für den eingebetteten Lauf-Reiter „3D“)
 window.SkyTraceHelpers = { heatCells, heatColor, nightMarks, ellipsePts, outlines, applyNights, NIGHT_STATUS, globalHtml, kmText, arcText, clockText, shortName,
+  altHtml, nearText, applyAlt, moveSite, mText,
   runVariants, runDate, media, openCandidate: (runId, key) => { focusNext = key; location.hash = `#/skytrace/${encodeURIComponent(runId)}/kandidaten`; } };
 const earthView = (ctx) => (el, night) => SkyTraceErde.view(el, { ctx: night ? 'nights' : ctx, night: night || null });
 
