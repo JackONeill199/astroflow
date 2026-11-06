@@ -117,9 +117,22 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    bis dahin. Ohne Karte analysierte Frames zählen Hotpixel-Grüppchen als Sterne (Helix: 5–12 von 150, SNR ~12 % zu hoch) – SNR geht
    nur mit Exponent 0,3 in den Score, Verwerfen/Gewichte nicht → gemischte Analysen hinnehmbar. Neue Stacks tragen `defects` in
    `state.json`; `Pipeline.hotpixel_hint` (Stellina, Stack ohne Marke, keine gestackten Rohbilder gelöscht, Stichprobe der Pfade
-   erreichbar, gecacht je state.json-Stand) → `/projects/{id}` `hotpixel_hint` → Menü „Mehr“: „Komplett neu stacken – entfernt Hotpixel-Punkte“. Test `test_hotpixel_paare.py`
+   erreichbar, gecacht je state.json-Stand) → `/projects/{id}` `hotpixel_hint` (seit 0.37.1 für „Neu entwickeln“, s. u.). Test `test_hotpixel_paare.py`
    (`demo.generate_hotpixel_pairs`, auch stillstehendes Feld; Mono-Stillstand mit σ = 1-px-Sternen). Nebenbefund: `cosmetic` kappt die Spitze heller, scharfer Sterne, deren Kern in der
    R/B-Ebene liegt (Demo: 5458 → 3240 ADU, ~2 % Fluss) – unverändert, nur nicht in die Karte übernommen.
+   **Bestehende Stacks ohne Neu-Stacken** (seit 0.37.1, `stackfix.py`, Nutzerbefund M16: 163 von 451 Rohbildern gelöscht → Neu stacken
+   gesperrt; `work/defects` war in der Arbeitsinstanz noch leer, eine projizierte Fehlerkarte hätte also meist keine Quelle): `Pipeline.develop`
+   ruft bei Farbstacks ohne `defects`-Marke `stackfix.repair(mean, cov)` auf dem linearen Stack auf (vor GraXpert/PCC; Stack selbst bleibt).
+   Fund = Spitze > `K` 10σ über dem 7×7-Median in einem Kanal, Median der 8 Ringpunkte bei 3 px < 15 % der Spitze (ein länglicher Fleck
+   trifft 2–3, ein Stern alle; Mittelwert versagte bei Plateaus), andere Kanäle im 3×3-Kern < max(4σ, 20 % der Spitze) (rote Sterne haben in
+   Grün ≥ ~30 %; Anteil in Bildintensität, nicht in σ je Kanal – Review PR #61; 5×5 traf den Halo von Nachbarsternen), keine helle Umgebung (Median auf ~20 px < 300σ – sonst M45: Halo-Struktur im
+   B-Kanal), Gruppe ≥ 3 in 80 px oder ≥ 40σ. Fleck = Pixel ≤ 3 px (Saum 2 px) um die Spitze über Ring-Hintergrund (6–10 px) bzw. 7×7-Median
+   (je der größere Überschuss), in denen die anderen Kanäle ruhig sind (trennt den Sternhang), ≤ 150 px; Füllung = Ebene aus einem Ring um
+   den Fleck, auf dessen Wertebereich begrenzt (eine quadratische Fläche schoss über und erzeugte neue Punkte). Ergebnis `stats.hotfix`
+   (`v` = `stackfix.VERSION`, `n`, `channels`, `areas`, `key`). `key` geht als `tag` in den GraXpert-Cacheschlüssel ein (der hasht nur jeden
+   7. Pixel und sähe die Reparatur sonst nicht; ohne Reparatur bleibt der alte Schlüssel). Über alle 90 Stacks der Arbeitsinstanz (nur gelesen): 14 ohne Funde (große Nebel),
+   sonst R/G (Paare auf dem Sensor), Blau nur vereinzelt. Hinweis: `hotpixel_hint` = Stellina-Stack ohne Marke und neueste Version ohne
+   `hotfix` → Menü „Mehr“: „Neu entwickeln – entfernt Hotpixel-Punkte“. Kein automatisches Neu-Entwickeln.
 5. **Stacking** (`registration.py` Dreiecks-Matching + `stacking.py` gewichtetes Sigma-Clipping): **inkrementell** – Zustand
    (`sw/swx/swx2.npy` + `state.json`) in `work/p<id>/stack` (Farbe) bzw. `stack_<Band>` (Mono-Filter). Neue Frames werden nur nachgestackt;
    `projects.restack=1` erzwingt Neuaufbau (wird nach dem Zurücksetzen sofort auf 0 gesetzt).

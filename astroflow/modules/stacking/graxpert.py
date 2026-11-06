@@ -102,9 +102,11 @@ def _run(exe: str, img: np.ndarray, cmd: str, args: list[str], timeout: int = TI
     return y
 
 
-def _cache_key(mean: np.ndarray, mode: str, strength: float, gpu: bool) -> str:
+def _cache_key(mean: np.ndarray, mode: str, strength: float, gpu: bool, tag: str = "") -> str:
     h = hashlib.sha1(np.ascontiguousarray(mean[:, ::7, ::7]).tobytes())
     h.update(json.dumps([list(mean.shape), mode, round(strength, 3), gpu, GRAXPERT_VERSION]).encode())
+    if tag:                                          # Vorbearbeitung, die das ausgedünnte Raster verfehlen kann (stackfix)
+        h.update(tag.encode())
     return h.hexdigest()[:16]
 
 
@@ -112,7 +114,7 @@ GRAXPERT_VERSION = 1                 # erhöhen, wenn sich die Vor-/Nachbereitun
 
 
 def apply(mean: np.ndarray, cov: np.ndarray, mode: str, strength: float = 0.5, cache_dir: Path | None = None,
-          exe: str | None = None, log=lambda m: None, preview=None) -> tuple[np.ndarray, dict]:
+          exe: str | None = None, log=lambda m: None, preview=None, tag: str = "") -> tuple[np.ndarray, dict]:
     """Linearen Stack (C,H,W) mit GraXpert bearbeiten. Gibt (Stack, Info). Info leer = nichts gemacht.
     Nicht abgedeckte Ränder (cov ≤ 0,5) werden vorher mit dem Himmelswert gefüllt, damit die KI keine
     harten Kanten als Hintergrund deutet, und nachher wieder eingesetzt."""
@@ -120,7 +122,7 @@ def apply(mean: np.ndarray, cov: np.ndarray, mode: str, strength: float = 0.5, c
     if mode == "off" or not exe:
         return mean, {}
     gpu = bool(GRAXPERT.gpu)
-    key = _cache_key(mean, mode, strength, gpu)
+    key = _cache_key(mean, mode, strength, gpu, tag)
     if cache_dir is not None:
         f = cache_dir / f"{key}.npy"
         meta = cache_dir / f"{key}.json"

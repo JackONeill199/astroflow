@@ -3,6 +3,16 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.37.1 – 06.11.2026
+
+### Behoben
+- **Bilder: rote und grüne Hotpixel-Punkte auch in bestehenden Bildern entfernen – ohne Neu-Stacken.** Bei vielen Objekten
+  (z. B. M16) sind die Rohbilder nach dem Stacken gelöscht, „Komplett neu stacken“ ist dort gesperrt. „Neu entwickeln“ (bzw.
+  Galerie „Alle neu entwickeln“) sucht die Punktgruppen jetzt direkt im gespeicherten Stack und ersetzt sie durch die Umgebung:
+  nur scharfe Punkte in einem einzigen Farbkanal, schärfer als die Sterne, in Gruppen – Sterne, auch rote, Nebel und helle
+  Sternhöfe bleiben unberührt. Der Stack selbst wird nicht verändert. Im Menü „Mehr“ steht bei betroffenen Stellina-Objekten
+  „Neu entwickeln – entfernt Hotpixel-Punkte“. Nichts wird automatisch neu entwickelt.
+
 ## 0.37.0 – 06.11.2026
 
 ### Neu
