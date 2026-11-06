@@ -11,12 +11,14 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 - In der Karte verschiebt man 1:1 mit Maus oder Finger, Mausrad und zwei Finger zoomen um den Zeiger – ohne Nachlauf. Heatmap (fein im 1-km-Raster,
   scharf mit Legende), Orte, Ort je Nacht, Vorschläge mit Ellipse, Grenzen und Tag/Nacht samt Nachtsicht sind dort ebenso zu sehen; Antippen
   öffnet die Karte der Nacht. Unten stehen Maßstab und die Koordinaten unter dem Zeiger (0,01°). **Straßenkarte**/**Gelände** laden
-  Kartenkacheln nur auf Knopfdruck.
+  Kartenkacheln nur auf Knopfdruck – jetzt scharf in der zur Bildschirmauflösung passenden Zoomstufe (auch auf hochauflösenden Displays),
+  beim Zoomen und Verschieben nachgeladen; bis die feinen da sind, steht die gröbere Stufe als Platzhalter.
 - Satellitenbahnen zeigt die flache Karte nicht (Bahnen im Raum ergäben dort nur verzerrte Linien), wohl aber, wo das Teleskop stand.
 
 ### Behoben
 - Auf dem Globus dreht Ziehen jetzt genau: der angefasste Punkt bleibt unter dem Zeiger, ohne Nachlauf, und das Mausrad zoomt zum Zeiger hin –
   vorher drehte die Erde nah heran zu schnell und ungenau. Mausrad über einem Ortsschild zoomt jetzt ebenfalls.
+- Kartenkacheln waren stark vergrößert und verwaschen (eine grobe Zoomstufe wurde über die ganze Fläche gestreckt).
 
 ## 0.36.0 – 06.11.2026
 

@@ -348,7 +348,8 @@ function globe(host, { THREE, OrbitControls }, ctx) {
   const earth = new THREE.Group(); sc.add(earth);          // dreht sich im Analysen-Kontext mit der Zeit; alles Erdfeste hängt daran
   const tex = keep(new THREE.TextureLoader().load(TEX, () => { M.dirty = true; }));
   const texImg = new Image(); texImg.src = TEX;          // dieselbe Datei für die flache Karte (aus dem Browser-Cache)
-  tex.anisotropy = 8;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();      // schräg betrachtete Erde scharf (Mipmaps: Standard, trilinear)
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
   const U_E = { map: { value: tex }, sun: { value: new THREE.Vector3(1, 0, 0) }, shade: { value: S.on.terminator ? 1 : 0 }, nv: { value: 0 } };
   earth.add(new THREE.Mesh(keep(toEllipsoid(new THREE.SphereGeometry(1, 128, 96))), keep(new THREE.ShaderMaterial({ uniforms: U_E, vertexShader: EARTH_VS, fragmentShader: EARTH_FS }))));
   const atmo = { value: 1 };

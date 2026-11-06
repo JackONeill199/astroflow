@@ -44,7 +44,7 @@ function FlatMap(host, deps) {
   const scratch = document.createElement('canvas'), sg = scratch.getContext('2d');
   const mask = document.createElement('canvas'); mask.width = 72; mask.height = 48; const mg = mask.getContext('2d');
   const V = { cx: .5, cy: .5, Z: 4096, W: 1, H: 1, dpr: 1 };
-  const S = { on: false, fade: 0, fadeTo: 0, dirty: true, tiles: null, tileCache: new Map(), earth: null, frameMs: 0, hover: null, outlines: null, cellCache: new WeakMap() };
+  const S = { on: false, fade: 0, fadeTo: 0, dirty: true, tiles: null, tileCache: new Map(), tileReq: 0, tileZ: null, tileWant: 0, earth: null, frameMs: 0, hover: null, outlines: null, cellCache: new WeakMap() };
   deps.H.outlines().then(r => { S.outlines = r; S.dirty = true; });
   const tex = deps.texture;
   const prep = () => { if (!S.earth && tex.complete && tex.naturalWidth) { try { S.earth = earthVariants(tex); } catch { S.earth = null; } S.dirty = true; } };
@@ -89,19 +89,54 @@ function FlatMap(host, deps) {
     }
     mg.putImageData(id, 0, 0);
   }
-  // Kartenkacheln (nur nach Knopfdruck): Bilder ohne Pixelzugriff, daher kein CORS nötig
+  // Kartenkacheln (nur nach Knopfdruck; Bilder ohne Pixelzugriff, daher kein CORS nötig). Nutzungsregeln von OSM/OpenTopoMap: nur sichtbare Kacheln,
+  // keine Vorab-Downloads, höchstens MAX_TILES (96) je Ansicht, Speicher-Cache (LRU) statt erneuter Abrufe, Ladevorgänge außer Sicht abbrechen, Quellenangabe sichtbar.
+  // Zoomstufe so, dass 1 Kachelpixel ≈ 1 Gerätepixel (Z · devicePixelRatio / 256); bis die feinen Kacheln da sind, stehen gröbere Vorfahren als Platzhalter, dann 200 ms Überblendung.
+  const MAX_TILES = 96, CACHE_TILES = 400;                 // 96: große HiDPI-Bühne (dpr 2) braucht ~60 Kacheln je Ansicht
+  function tileImg(kind, z, x, y) {
+    const key = `${kind}/${z}/${x}/${y}`;
+    let im = S.tileCache.get(key);
+    if (im) { S.tileCache.delete(key); S.tileCache.set(key, im); return im; }          // zuletzt genutzt nach hinten
+    im = new Image(); im.decoding = 'async'; im.dataset.key = key;
+    im.onload = () => { im._t = performance.now(); S.dirty = true; };
+    im.onerror = () => { im._bad = true; };
+    im.src = TILES[kind][0].replace('{z}', z).replace('{x}', x).replace('{y}', y); S.tileReq++;
+    S.tileCache.set(key, im);
+    return im;
+  }
+  const cached = (kind, z, x, y) => { const im = S.tileCache.get(`${kind}/${z}/${x}/${y}`); return im?._t ? im : null; };
   function drawTiles() {
     const t = TILES[S.tiles]; if (!t) return;
-    const z = clamp(Math.round(Math.log2(V.Z / 256)), 1, t[2]), n = 2 ** z, size = V.Z / n;
     const [x0, y0] = toW(0, 0), [x1, y1] = toW(V.W, V.H);
+    const span = (z) => { const n = 2 ** z; return (Math.floor(x1 * n) - Math.floor(x0 * n) + 1) * (Math.min(n - 1, Math.floor(y1 * n)) - Math.max(0, Math.floor(y0 * n)) + 1); };
+    let z = clamp(Math.round(Math.log2(V.Z * V.dpr / 256)), 1, t[2]);
+    while (z > 1 && span(z) > MAX_TILES) z--;
+    S.tileZ = z;
+    const n = 2 ** z, d = V.dpr, now = performance.now(), want = new Set();
+    let fading = false;
+    g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
     for (let ty = Math.max(0, Math.floor(y0 * n)); ty <= Math.min(n - 1, Math.floor(y1 * n)); ty++)
       for (let tx = Math.floor(x0 * n); tx <= Math.floor(x1 * n); tx++) {
-        const key = `${S.tiles}/${z}/${((tx % n) + n) % n}/${ty}`;
-        let im = S.tileCache.get(key);
-        if (!im) { im = new Image(); im.onload = () => { S.dirty = true; }; im.src = t[0].replace('{z}', z).replace('{x}', ((tx % n) + n) % n).replace('{y}', ty); S.tileCache.set(key, im); }
-        if (im.complete && im.naturalWidth) { const [sx, sy] = toS(tx / n, ty / n); g.drawImage(im, sx, sy, size + .5, size + .5); }
+        const wx = ((tx % n) + n) % n, im = tileImg(S.tiles, z, wx, ty); want.add(im.dataset.key);
+        // auf ganze Gerätepixel gerundet: keine Fugen, kein zusätzliches Weichzeichnen
+        const [ax, ay] = toS(tx / n, ty / n), [bx, by] = toS((tx + 1) / n, (ty + 1) / n);
+        const X0 = Math.round(ax * d), Y0 = Math.round(ay * d), W = Math.round(bx * d) - X0, Hh = Math.round(by * d) - Y0;
+        const a = im._t ? Math.min(1, (now - im._t) / 200) : 0;
+        if (a < 1) {                                           // Platzhalter: nächster geladener Vorfahr (bis 4 Stufen gröber)
+          for (let k = 1; k <= 4 && z - k >= 0; k++) {
+            const p = cached(S.tiles, z - k, wx >> k, ty >> k); if (!p) continue;
+            const m = 2 ** k, sz = 256 / m;
+            g.globalAlpha = 1; g.drawImage(p, (wx % m) * sz, (ty % m) * sz, sz, sz, X0, Y0, W, Hh); break;
+          }
+          if (im._t) fading = true;
+        }
+        if (a > 0) { g.globalAlpha = a; g.drawImage(im, X0, Y0, W, Hh); }
       }
-    if (S.tileCache.size > 600) S.tileCache.clear();
+    g.restore();
+    for (const [key, im] of S.tileCache) if (!im._t && !im._bad && !want.has(key)) { im.src = ''; S.tileCache.delete(key); }     // außer Sicht: nicht weiterladen
+    while (S.tileCache.size > CACHE_TILES) S.tileCache.delete(S.tileCache.keys().next().value);
+    S.tileWant = want.size;
+    S.again ||= fading;                                     // Überblendung läuft: nächstes Bild wieder zeichnen
   }
   // Heatmap als scharfe Zellen (Farbe und Durchsicht wie im Globus-Shader)
   function cells(h) { let c = S.cellCache.get(h); if (!c) { c = deps.H.heatCells(h); c.max = c.reduce((a, x) => Math.max(a, x.v), 0); S.cellCache.set(h, c); } return c; }
@@ -191,12 +226,12 @@ function FlatMap(host, deps) {
         ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(scratch, 0, 0); ctx.setTransform(V.dpr, 0, 0, V.dpr, 0, 0);
       }
     }
-    if (S.tiles) { ctx.globalAlpha = .92; drawTiles(); ctx.globalAlpha = 1; }
+    if (S.tiles) drawTiles();
     drawBorders(deps.layerK('borders'), nv);
     const kH = deps.layerK('heat'); if (kH > .01) drawHeat(kH);
     drawMarks();
     cv.style.opacity = String(S.fade);
-    S.frameMs = performance.now() - t0; S.dirty = false;
+    S.frameMs = performance.now() - t0; S.dirty = !!S.again; S.again = false;
   }
   // ---- Bedienung: Verschieben 1:1, Zoom um den Zeiger, Pinch – ohne Trägheit ----
   const pts = new Map(); let drag = null, pinch = null, moved = 0;
@@ -272,7 +307,7 @@ function FlatMap(host, deps) {
     // Prüfwerte: Weltpunkt unter einem Bildschirmpunkt (Tests: Punkt unter dem Zeiger bleibt beim Verschieben)
     at: (sx, sy) => { const [x, y] = toW(sx, sy); return [latOf(y), lonOf(x)]; },
     screenOf: (lat, lon) => llS(lat, lon),
-    state: () => ({ on: S.on, fade: +S.fade.toFixed(3), center: [latOf(V.cy), lonOf(V.cx)].map(v => +v.toFixed(5)), pxPerKm: +pxPerKm().toFixed(4), frameMs: +S.frameMs.toFixed(2), tiles: S.tiles, earth: !!S.earth, targets: targets.length }),
+    state: () => ({ on: S.on, fade: +S.fade.toFixed(3), center: [latOf(V.cy), lonOf(V.cx)].map(v => +v.toFixed(5)), pxPerKm: +pxPerKm().toFixed(4), frameMs: +S.frameMs.toFixed(2), tiles: S.tiles, tileZ: S.tileZ, tileWant: S.tileWant, tileReq: S.tileReq, Z: V.Z, dpr: V.dpr, earth: !!S.earth, targets: targets.length }),
     dispose() { cv.remove(); S.tileCache.clear(); },
   };
 }

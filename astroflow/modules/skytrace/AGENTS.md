@@ -478,11 +478,17 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
   72 × 48 aus der Sonnenrichtung (`destination-in`). Grenzen als Pfade (Ringe nach Umriss-Rechteck verworfen), Heatmap als scharfe Zellen (Farbe/Durchsicht wie `HEAT_FS`; fein ab 1,5 px/km
   eingeblendet, voll ab 6 px/km, grob dann 40 %), Orte, Ort je Nacht (Ring), Vorschläge mit Ellipse, Teleskopstandorte (Quadrat). **Satellitenbahnen nicht** – Bahnen im Raum
   (Hunderte km hoch, ein Umlauf um die ganze Erde) ergäben auf einer ebenen Karte nur verzerrte Linien ohne Bezug zum Bodenort; gezeigt wird, wo das Teleskop stand.
-  Kacheln (OSM/OpenTopoMap) nur nach Klick auf „Straßenkarte“/„Gelände“ (Bilder ohne Pixelzugriff, Zwischenspeicher ≤ 600); die alte Kugelkappe mit Kacheln entfällt.
+  Kacheln (OSM/OpenTopoMap) nur nach Klick auf „Straßenkarte“/„Gelände“; die alte Kugelkappe mit Kacheln (0.35, eine grobe Stufe als Textur gestreckt – Nutzerbefund
+  „Auflösung schlecht“) entfällt. **Zoomstufe** z = round(log2(Z · devicePixelRatio / 256)) → 1 Kachelpixel ≈ 1 Gerätepixel (Faktor 0,7–1,4); in Gerätepixeln gezeichnet,
+  auf ganze Pixel gerundet, deckend. Nur sichtbare Kacheln, höchstens `MAX_TILES` 96 je Ansicht (sonst eine Stufe gröber – 48 drückten bei dpr 2 die Stufe), LRU-Cache 400
+  im Speicher, Ladevorgänge außer Sicht abgebrochen, keine Vorab-Downloads, Quellenangabe sichtbar (Nutzungsregeln OSM/OpenTopoMap; einen eigenen User-Agent kann der Browser
+  nicht setzen). Bis feine Kacheln da sind, steht der nächste geladene Vorfahr (≤ 4 Stufen) als Platzhalter, dann 200 ms Überblendung (`S.again` hält das Zeichnen am Laufen).
+  Globus-Textur: Anisotropie = Maximum der Karte, trilineare Mipmaps.
 - **Anzeige:** `.ste-readout` = Maßstabsleiste (1–2–5-Stufen, 60–150 px) + Koordinaten unter dem Zeiger auf 0,01° (auch auf dem Globus unter 1,6 R).
 - **Leistung** (06.11.2026, 1440 × 900): Karte zeichnen 0,9 ms (GPU) bzw. 5 ms (SwiftShader), Verschieben/Zoomen 60 fps in beiden; Zoom bis zur Karte inkl. Überblendung 17–19 ms je Bild.
 - Tests: `test_skytrace_erde_ui.py::test_kartenmodus_kugel_und_flache_karte` (375 mit reduzierter Bewegung, 1440: Übergang am Zeiger ≤ 0,05°, 1:1-Verschieben exakt, kein Nachlauf,
-  Maßstab/Koordinaten, Antippen → Karte der Nacht, Kacheln erst nach Klick, zurück zur Kugel). `host._ste.state().flat`, `_ste.flat.at/screenOf`.
+  Maßstab/Koordinaten, Antippen → Karte der Nacht, Kacheln erst nach Klick, zurück zur Kugel), `test_kartenkacheln_passend_zur_aufloesung` (dpr 1/2, Kachel-Attrappe mit z/x/y: Stufe passend,
+  ≤ 96 Kacheln, nichts doppelt, Quellenangabe). `host._ste.state().flat`, `_ste.flat.at/screenOf`.
 
 ## Erkennung im Teleskop-Bildfeld (28.10.2026, Nutzerbefund M74 2022-08-07)
 Anlass: Ein schwacher Meteor (img-0041, ~120 px, ~1,5σ/px) wurde übersehen, ein langsames Objekt in sechs Aufnahmen (img-0177…0182)

@@ -233,3 +233,58 @@ def test_kartenmodus_kugel_und_flache_karte(server, browser, width, tmp_path):
     assert st["dist"] > 1.08 and page.locator(".ste-labels").is_visible()
     assert not errors, errors
     page.close()
+
+
+def _tile_png(z, x, y):
+    """Kachel-Attrappe (kein echter Kartendienst): scharfe 1-px-Linien und Text mit z/x/y und einem erfundenen Ortsnamen."""
+    import io
+    from PIL import Image, ImageDraw
+    im = Image.new("RGB", (256, 256), (232, 228, 218))
+    d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 255, 255], outline=(150, 150, 150))
+    for i in range(0, 256, 16):
+        d.line([(i, 0), (i, 255)], fill=(210, 205, 195))
+    d.text((12, 12), f"{z}/{x}/{y}", fill=(20, 20, 20))
+    d.text((60, 120), "Beispieldorf", fill=(30, 30, 30))
+    b = io.BytesIO(); im.save(b, "PNG"); return b.getvalue()
+
+
+@pytest.mark.parametrize("dpr", [1, 2])
+def test_kartenkacheln_passend_zur_aufloesung(server, browser, dpr, tmp_path):
+    """Kacheln in der flachen Karte: Zoomstufe so, dass 1 Kachelpixel ≈ 1 Gerätepixel, höchstens 96 je Ansicht, Nachladen beim Zoomen,
+    nur auf Knopfdruck und nur als Attrappe (kein OSM-Zugriff)."""
+    import math
+    import re
+    base, _ = server
+    page = browser.new_page(viewport={"width": 1440, "height": 900}, device_scale_factor=dpr, reduced_motion="reduce")
+    errors, asked = [], []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+
+    def tile(route):
+        z, x, y = map(int, re.search(r"/(\d+)/(\d+)/(\d+)\.png", route.request.url).groups())
+        asked.append((z, x, y))
+        route.fulfill(status=200, content_type="image/png", body=_tile_png(z, x, y))
+    page.route("**/*tile*.org/**", tile)
+    page.goto(base + "/#/skytrace/erde/2022-08-01")
+    page.wait_for_function("document.querySelector('#steHost')?._ste && !document.querySelector('#steHost')._ste.state().flying", timeout=15000)
+    page.evaluate("document.querySelector('#steHost')._ste.flat.enter()")
+    page.wait_for_function("document.querySelector('#steHost')._ste.state().flat.fade === 1")
+    assert not asked                                                                  # ohne Knopfdruck keine Kacheln
+    page.locator(".ste-tiles [data-tiles=osm]").click()
+    page.wait_for_function("(f => f.tileZ && f.tileWant > 0)(document.querySelector('#steHost')._ste.state().flat)")
+    box = page.locator(".ste-stage").bounding_box()
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    for _ in range(14):                                                               # stark hineinzoomen: feinere Kacheln werden nachgeladen
+        page.mouse.wheel(0, -160); page.wait_for_timeout(40)
+    page.wait_for_timeout(600)
+    f = _state(page)["flat"]
+    # nach der Überblendung keine groben Platzhalter mehr: Mittelpixel der Ansicht stammt aus einer Kachel der Zielstufe
+    page.wait_for_function("document.querySelector('#steHost')._ste.state().flat.tileZ !== null")
+    want = round(math.log2(f["Z"] * f["dpr"] / 256))
+    assert f["dpr"] == dpr and f["tileZ"] == min(want, 19), f                         # 1 Kachelpixel ≈ 1 Gerätepixel
+    assert f["tileWant"] <= 96 and max(z for z, _, _ in asked) == f["tileZ"]
+    assert len({a for a in asked}) == len(asked)                                       # nichts doppelt geladen (Cache)
+    assert "OpenStreetMap" in page.locator(".ste-attr").inner_text()                  # Quellenangabe sichtbar
+    page.screenshot(path=str(tmp_path / f"erde-kacheln-dpr{dpr}.png"))
+    assert not errors, errors
+    page.close()
