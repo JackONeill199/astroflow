@@ -164,15 +164,87 @@ def test_incremental_onto_old_stack_without_map(tmp_path, monkeypatch):
     assert np.isfinite(img).all()
     assert json.loads(db.one("SELECT options FROM projects WHERE id=?", (pid,))["options"])["defect_info"]
     assert _red_dots(img, cov) <= _red_dots(old_img, old_cov)
-    # Hinweis „Neu stacken entfernt die Punkte“: nur Stellina, nur Stacks ohne Marke (von vor der Fehlerkarte), Rohbilder da
-    assert "defects" in old.meta and not pl.hotpixel_hint(pid)                        # neuer Code setzt die Marke
-    db.x("UPDATE frames SET info=json_set(info,'$.instrument','stellina-test')")
+
+
+def test_stackfix_removes_dots_keeps_stars_and_nebula():
+    """Stack-Bereinigung beim Entwickeln: scharfe Punkte in nur einem Kanal (debayerte Hotpixel-Paare, in Gruppen) weg;
+    Sterne jeder Farbe, rote Sterne, kompakte Hα-Knoten (nur R, aber PSF-breit) und Nebel bleiben unverändert."""
+    from astroflow.modules.stacking import stackfix
+    rng = np.random.default_rng(4)
+    H, W = 400, 500
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    img = np.stack([np.full((H, W), v, np.float32) for v in (20, 25, 18)])
+    img[0] += 60 * np.exp(-((xx - 300) ** 2 + (yy - 120) ** 2) / (2 * 60 ** 2))            # Hα-Nebel (nur R)
+    sig = 5.5 / 2.355
+    stars = []
+    while len(stars) < 120:
+        x, y = rng.uniform(10, W - 10), rng.uniform(10, H - 10)
+        if x > 380 and y < 120:                                                        # Fläche der Punktgruppe frei halten
+            continue
+        f, col = rng.uniform(300, 30000), rng.uniform(0, 1)
+        g = f * np.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * sig ** 2)) / (2 * np.pi * sig ** 2)
+        for c, w in enumerate((0.5 + col, 1.0, 1.5 - col)):
+            img[c] += w * g
+        stars.append((x, y))
+    knots = [(80, 300), (130, 340), (60, 330)]                                       # kompakte Hα-Knoten in einer Gruppe
+    for x, y in knots:
+        img[0] += 400 * np.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * sig ** 2))
+    spots = np.zeros((H, W), np.float32)
+    k3 = np.array([[0.25, 0.5, 0.25], [0.5, 1, 0.5], [0.25, 0.5, 0.25]], np.float32)   # bilineares Debayer eines R-Pixels
+    dots = [(420 + dx, 60 + dy) for dx, dy in ((0, 0), (15, 9), (-12, 20), (30, -8), (8, 33), (-20, -14))]
+    for x, y in dots:
+        for yo in (0, 2):                                                              # Paar übereinander
+            spots[y + yo - 1 : y + yo + 2, x - 1 : x + 2] += 300 * k3
+    nx, ny = 455, 80                                                                   # heller Stern 8 px neben einem Punkt
+    g = 40000 * np.exp(-((xx - nx) ** 2 + (yy - ny) ** 2) / (2 * sig ** 2)) / (2 * np.pi * sig ** 2)
+    for c, w in enumerate((1.4, 1.0, 0.6)):
+        img[c] += w * g
+    stars.append((nx, ny))
+    dots.append((nx - 8, ny))
+    for yo in (0, 2):
+        spots[ny + yo - 1 : ny + yo + 2, nx - 9 : nx - 6] += 300 * k3
+    truth = img + rng.normal(0, 3, img.shape).astype(np.float32)
+    img = truth.copy()
+    img[0] += spots
+    out, info = stackfix.repair(img, np.ones((H, W), np.float32))
+    assert info["n"] >= len(dots) and info["channels"][1] == 0 and info["channels"][2] == 0
+    for x, y in dots:
+        tol = 60 if (x, y) == (nx - 8, ny) else 40                                    # im gekrümmten Sternhang folgt
+        assert np.abs(out[0] - truth[0])[y - 2 : y + 5, x - 2 : x + 3].max() < tol, (x, y)   # die Füllebene nur grob
+    changed = np.argwhere(np.abs(out - img).max(0) > 0)
+    for x, y in stars + knots:                                                         # Sterne/Knoten unberührt
+        assert not len(changed) or np.hypot(changed[:, 1] - x, changed[:, 0] - y).min() > 4, (x, y)
+    assert np.array_equal(out[1:], img[1:])
+
+
+def test_develop_repairs_old_stack_and_hint(tmp_path, monkeypatch):
+    """Alter Stack (ohne Fehlerkarte, Rohbilder dürfen fehlen): „Neu entwickeln“ entfernt die Punkte im Ergebnis,
+    der Stack selbst bleibt; Hinweis nur für Stellina-Stacks ohne Marke, solange die neueste Version unbereinigt ist."""
+    from astroflow.modules.stacking import stackfix
+    s = load_settings(tmp_path / "data")
+    s.delete_uploads = True                                                            # Rohbilder werden gelöscht
+    db = DB(s.db_path)
+    pl = Pipeline(s, db, ReviewerConfig())
+    demo.generate_hotpixel_pairs(s.uploads_dir / "n")
+    monkeypatch.setattr(calibration, "DEFECT_MIN_FRAMES", 10 ** 6)                 # Stand vor der Fehlerkarte
+    pl.scan()
+    pid = db.one("SELECT id FROM projects")["id"]
+    pl.process(pid)
+    monkeypatch.undo()
+    wd = stack_dir(s.work_dir / f"p{pid}", None)
     st = json.loads((wd / "state.json").read_text(encoding="utf-8"))
-    st.pop("defects")
+    st.pop("defects", None)                                                            # wie ein Stack von vor 0.31.2
     (wd / "state.json").write_text(json.dumps(st), encoding="utf-8")
-    import os, time
-    os.utime(wd / "state.json", (time.time() + 5, time.time() + 5))
+    db.x("UPDATE frames SET info=json_set(info,'$.instrument','stellina-test')")
+    db.x("UPDATE results SET stats=json_remove(stats,'$.hotfix')")
+    assert db.one("SELECT COUNT(*) n FROM frames WHERE deleted=1")["n"] > 0
     assert pl.hotpixel_hint(pid)
-    db.x("UPDATE frames SET deleted=1 WHERE id=(SELECT id FROM frames WHERE stacked=1 LIMIT 1)")
-    os.utime(wd / "state.json", (time.time() + 10, time.time() + 10))
-    assert not pl.hotpixel_hint(pid)                                                   # Neu stacken nicht möglich
+    img, cov = StackState.load(wd).result()
+    assert _red_dots(img, cov) >= 5
+    rid = pl.process(pid, {"mode": "develop"})
+    r = db.one("SELECT stats FROM results WHERE id=?", (rid,))
+    assert json.loads(r["stats"])["hotfix"]["n"] >= 5
+    assert _red_dots(stackfix.repair(img, cov)[0], cov) == 0                           # das entwickelte Bild geht davon aus
+    assert not pl.hotpixel_hint(pid)                                                    # neueste Version ist bereinigt
+    img2, _ = StackState.load(wd).result()
+    assert np.array_equal(img, img2)                                                   # Stack unverändert
