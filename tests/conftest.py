@@ -43,7 +43,7 @@ def pytest_configure(config):
 
     subprocess.Popen.__init__ = guarded
 
-UI_FILES = ("test_ui_layout.py", "test_skytrace_3d_ui.py", "test_skytrace_video_ui.py")
+UI_FILES = ("test_ui_layout.py", "test_skytrace_3d_ui.py", "test_skytrace_video_ui.py", "test_skytrace_erde_ui.py")
 
 
 def pytest_collection_modifyitems(items):
