@@ -129,8 +129,8 @@
 .ste-head { align-items: center }
 .ste-title { display: flex; align-items: center; gap: 0.5rem; min-width: 0 }
 .ste-title h1 { margin: 0 }
-.ste-info { font-weight: 700; width: 1.75rem; height: 1.75rem; border-radius: 50%; border: 1px solid var(--border) }
-.ste-info[aria-expanded="true"] { color: var(--acc); border-color: var(--acc) }
+.ste-title .btn.ste-info { font-weight: 600; font-size: 0.6875rem; line-height: 1; width: 1.125rem; height: 1.125rem; min-width: 0; min-height: 0; padding: 0; border-radius: 50%; border: 1px solid var(--border); color: var(--mut); align-self: center }
+.ste-title .btn.ste-info[aria-expanded="true"] { color: var(--acc); border-color: var(--acc) }
 .ste-head { position: relative }
 .ste-infopop { position: absolute; z-index: 6; left: 0; top: calc(100% + 0.25rem); width: min(40rem, 100%); margin: 0; padding: 0.875rem 2.75rem 0.875rem 1rem;
   background: var(--surface-2); border: 1px solid var(--border); box-shadow: var(--shadow); animation: steIn var(--t2) var(--ease) }
