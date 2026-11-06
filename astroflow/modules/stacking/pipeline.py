@@ -485,7 +485,7 @@ class Pipeline:
     _hint_cache: dict = {}
 
     def hotpixel_hint(self, pid: int) -> bool:
-        """Stellina-Stack von vor der Fehlerkarte (0.31.2), neueste Version noch ohne Stack-Bereinigung (`stackfix`, 0.36.1)
+        """Stellina-Stack von vor der Fehlerkarte (0.31.2), neueste Version noch ohne Stack-Bereinigung (`stackfix`, 0.37.1)
         → „Neu entwickeln“ entfernt die Hotpixel-Punkte (auch ohne Rohbilder). Der Stack-Teil ist je Stand von state.json
         gecacht (die Objektansicht fragt alle 2,5 s)."""
         f = self.s.work_dir / f"p{pid}" / "stack" / "state.json"

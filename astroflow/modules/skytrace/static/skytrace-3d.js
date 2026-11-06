@@ -318,7 +318,7 @@ function runLayer(G, data, { interactive = false, focus = null, onCandidate = nu
   // Stützpunkte für den Bildausschnitt (statisch: Standort und Satelliten beim Durchgang, Szenenkoordinaten)
   const points = [obsLocal.clone(), ...hits.filter(h => h.obj).map(h => h.obj.position.clone())];
   return {
-    data, items, hits: hits.length, notes, time: anchor, points, world, fixed,
+    data, items, hits: hits.length, notes, time: anchor, points, world, fixed, name: runLabel,
     begin(animate = true) { if (!interactive) return; if (start) { select(start); setView('pass', animate); } else setView('earth', animate); },
     setView, setVisible(on) { world.visible = fixed.visible = on; for (const Lb of labels) Lb.el.hidden = true; G.dirty(); },
     state: () => ({ t: S.t, mode: S.mode, hits: hits.length, sample: S.k, visible: hits.filter(h => h.obj.visible).length,

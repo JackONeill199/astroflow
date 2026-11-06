@@ -3,7 +3,7 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
-## 0.36.1 – 06.11.2026
+## 0.37.1 – 06.11.2026
 
 ### Behoben
 - **Bilder: rote und grüne Hotpixel-Punkte auch in bestehenden Bildern entfernen – ohne Neu-Stacken.** Bei vielen Objekten
@@ -12,6 +12,26 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   nur scharfe Punkte in einem einzigen Farbkanal, schärfer als die Sterne, in Gruppen – Sterne, auch rote, Nebel und helle
   Sternhöfe bleiben unberührt. Der Stack selbst wird nicht verändert. Im Menü „Mehr“ steht bei betroffenen Stellina-Objekten
   „Neu entwickeln – entfernt Hotpixel-Punkte“. Nichts wird automatisch neu entwickelt.
+
+## 0.37.0 – 06.11.2026
+
+### Neu
+- **SkyTrace 3D-Erde: flache Karte beim Hineinzoomen** – wie bei Google Maps wird der Globus nah heran (unter etwa 450 km Höhe) zur ebenen
+  Karte und beim Herauszoomen wieder zur Kugel, ohne Sprung: der Ort unter dem Mauszeiger bleibt stehen. Knopf **Karte/Globus** wechselt auch direkt.
+- In der Karte verschiebt man 1:1 mit Maus oder Finger, Mausrad und zwei Finger zoomen um den Zeiger – ohne Nachlauf. Heatmap (fein im 1-km-Raster,
+  scharf mit Legende), Orte, Ort je Nacht, Vorschläge mit Ellipse, Grenzen und Tag/Nacht samt Nachtsicht sind dort ebenso zu sehen; Antippen
+  öffnet die Karte der Nacht. Unten stehen Maßstab und die Koordinaten unter dem Zeiger (0,01°). **Straßenkarte**/**Gelände** laden
+  Kartenkacheln nur auf Knopfdruck – jetzt scharf in der zur Bildschirmauflösung passenden Zoomstufe (auch auf hochauflösenden Displays),
+  beim Zoomen und Verschieben nachgeladen; bis die feinen da sind, steht die gröbere Stufe als Platzhalter.
+- Satellitenbahnen zeigt die flache Karte nicht (Bahnen im Raum ergäben dort nur verzerrte Linien), wohl aber, wo das Teleskop stand.
+- Nächte, Analysen, Ebenen und Nachtsicht liegen jetzt als einklappbares Panel in der Karte, die damit die ganze Breite nutzt
+  (auf dem Handy weiter unter der Karte). Der Erklärtext über der Karte ist einem **?**-Knopf neben der Überschrift gewichen, der
+  kurz erklärt, was die 3D-Erde zeigt und wie man sie bedient.
+
+### Behoben
+- Auf dem Globus dreht Ziehen jetzt genau: der angefasste Punkt bleibt unter dem Zeiger, ohne Nachlauf, und das Mausrad zoomt zum Zeiger hin –
+  vorher drehte die Erde nah heran zu schnell und ungenau. Mausrad über einem Ortsschild zoomt jetzt ebenfalls.
+- Kartenkacheln waren stark vergrößert und verwaschen (eine grobe Zoomstufe wurde über die ganze Fläche gestreckt).
 
 ## 0.36.0 – 06.11.2026
 

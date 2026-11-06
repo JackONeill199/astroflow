@@ -1,5 +1,5 @@
 /* SkyTrace „Erde“ (skytrace-erde.js, #/skytrace/erde): Globus als Bühne, rechts Nächte, Ebenen, Nachtsicht (Handy: darunter). Präfix ste-, nur Design-Tokens. */
-.ste { --ste-h: clamp(26rem, calc(100vh - var(--top-h) - 11rem), 72rem); display: grid; grid-template-columns: minmax(0, 1fr) 19rem; gap: var(--gap); align-items: start; min-width: 0 }
+.ste { --ste-h: clamp(26rem, calc(100vh - var(--top-h) - 8.5rem), 72rem); display: grid; grid-template-columns: minmax(0, 1fr) 19rem; gap: var(--gap); align-items: start; min-width: 0 }
 .ste-main { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; background: var(--surface) }
 .ste-stage { position: relative; height: var(--ste-h); overflow: hidden; touch-action: none; background: #03050b }
 .ste-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; outline: none }
@@ -47,7 +47,7 @@
 .ste-side section[hidden] { display: none }
 .ste-ctx button { flex: 1; white-space: nowrap; font-size: 0.7812rem; padding-inline: 0.375rem }
 /* mit Zeitleiste (Analysen) bzw. im Lauf-Reiter unter Kopf und Reitern: Bühne etwas kleiner, damit alles in den Bildschirm passt */
-.ste:has(.st3d-bar:not([hidden])) { --ste-h: clamp(24rem, calc(100vh - var(--top-h) - 14.5rem), 72rem) }
+.ste:has(.st3d-bar:not([hidden])) { --ste-h: clamp(24rem, calc(100vh - var(--top-h) - 12rem), 72rem) }
 .ste-embed:has(.st3d-bar:not([hidden])) { --ste-h: clamp(24rem, calc(100vh - var(--top-h) - 17rem), 72rem) }
 .ste-tools { flex-wrap: wrap }
 .ste-side section { display: grid; gap: 0.5rem; min-width: 0 }
@@ -99,3 +99,45 @@
   .ste-tiles { left: 0.5rem; top: 2.875rem }
 }
 @media (prefers-reduced-motion: reduce) { .ste-card, .ste-legend, .ste-pill, .ste-tiles { animation: none } }
+/* Flache Karte (skytrace-karte.js): liegt über dem Globus, Überblendung per opacity aus dem Skript */
+.ste-flat { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; outline: none }
+.ste-flat:active { cursor: grabbing }
+.ste-readout { position: absolute; right: 0.75rem; bottom: 0.625rem; z-index: 2; display: flex; align-items: center; gap: 0.75rem; padding: 0.25rem 0.625rem; border-radius: var(--r);
+  background: #0b0d10d9; border: 1px solid var(--border); font-size: 0.7188rem; color: var(--fg); pointer-events: none }
+.ste-stage:has(.ste-readout:not([hidden])) .ste-help { display: none }
+.ste-scale { display: inline-flex; align-items: center; gap: 0.375rem }
+.ste-scale i { display: inline-block; height: 0.375rem; border: 1.5px solid currentColor; border-top: 0; box-sizing: border-box }
+.ste-scale b { font-weight: 600 }
+.ste-coord:empty { display: none }
+.ste-tiles .seg { background: #0b0d10e6 }
+@media (max-width: 560px) { .ste-readout { right: 0.5rem; bottom: 2.75rem } .ste-tiles .seg button { padding-inline: 0.4rem } }
+/* Seitenleiste als Glas-Panel in der Karte (ab 861 px): Karte über die ganze Breite, Panel rechts über der Bühne, einklappbar */
+.ste.ste-over { grid-template-columns: minmax(0, 1fr) }
+.ste-over .ste-stage > .ste-side { position: absolute; z-index: 3; top: 3.5rem; right: 0.75rem; bottom: 0.75rem; width: 18.5rem; height: auto; gap: 0.875rem;
+  padding: 0.75rem; background: color-mix(in srgb, var(--surface) 82%, transparent); backdrop-filter: blur(0.75rem); -webkit-backdrop-filter: blur(0.75rem);
+  border-color: var(--border); box-shadow: var(--shadow); transition: opacity var(--t2) var(--ease), transform var(--t2) var(--ease) }
+.ste-over .ste-stage > .ste-side.closed { opacity: 0; transform: translateX(1rem); pointer-events: none; visibility: hidden }
+.ste-stage.panel-open .ste-card { right: 20rem; max-width: calc(100% - 21.5rem) }
+.ste-stage.panel-open .ste-readout { right: 20rem }
+.ste-stage.panel-open .ste-help { display: none }
+.ste-paneltg { background: #0b0d10d9; border: 1px solid var(--border) }
+.ste-paneltg[aria-expanded="true"] { color: var(--acc) }
+.ste-over .ste-nights { max-height: 13rem }
+@media (prefers-reduced-motion: reduce) { .ste-over .ste-stage > .ste-side { transition: none } }
+@media (prefers-reduced-transparency: reduce) { .ste-over .ste-stage > .ste-side { background: var(--surface); backdrop-filter: none } }
+/* Kopf ohne Erklärtext, Info-Knopf mit Erklärung (aufklappbar über der Karte) */
+.ste-head { align-items: center }
+.ste-title { display: flex; align-items: center; gap: 0.5rem; min-width: 0 }
+.ste-title h1 { margin: 0 }
+.ste-title .btn.ste-info { font-weight: 600; font-size: 0.6875rem; line-height: 1; width: 1.125rem; height: 1.125rem; min-width: 0; min-height: 0; padding: 0; border-radius: 50%; border: 1px solid var(--border); color: var(--mut); align-self: center }
+.ste-title .btn.ste-info[aria-expanded="true"] { color: var(--acc); border-color: var(--acc) }
+.ste-head { position: relative }
+.ste-infopop { position: absolute; z-index: 6; left: 0; top: calc(100% + 0.25rem); width: min(40rem, 100%); margin: 0; padding: 0.875rem 2.75rem 0.875rem 1rem;
+  background: var(--surface-2); border: 1px solid var(--border); box-shadow: var(--shadow); animation: steIn var(--t2) var(--ease) }
+.ste-infopop h3 { margin: 0 0 0.375rem; font-size: 0.875rem }
+.ste-infopop h3 + p, .ste-infopop ul { margin: 0 0 0.75rem; font-size: 0.8438rem; color: var(--mut) }
+.ste-infopop ul { padding-left: 1.125rem; display: grid; gap: 0.25rem }
+.ste-infopop ul:last-child { margin-bottom: 0 }
+.ste-infopop b { color: var(--fg); font-weight: 600 }
+.ste-info-x { position: absolute; right: 0.5rem; top: 0.5rem }
+@media (prefers-reduced-motion: reduce) { .ste-infopop { animation: none } }

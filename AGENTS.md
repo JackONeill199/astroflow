@@ -117,10 +117,10 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    bis dahin. Ohne Karte analysierte Frames zählen Hotpixel-Grüppchen als Sterne (Helix: 5–12 von 150, SNR ~12 % zu hoch) – SNR geht
    nur mit Exponent 0,3 in den Score, Verwerfen/Gewichte nicht → gemischte Analysen hinnehmbar. Neue Stacks tragen `defects` in
    `state.json`; `Pipeline.hotpixel_hint` (Stellina, Stack ohne Marke, keine gestackten Rohbilder gelöscht, Stichprobe der Pfade
-   erreichbar, gecacht je state.json-Stand) → `/projects/{id}` `hotpixel_hint` (seit 0.36.1 für „Neu entwickeln“, s. u.). Test `test_hotpixel_paare.py`
+   erreichbar, gecacht je state.json-Stand) → `/projects/{id}` `hotpixel_hint` (seit 0.37.1 für „Neu entwickeln“, s. u.). Test `test_hotpixel_paare.py`
    (`demo.generate_hotpixel_pairs`, auch stillstehendes Feld; Mono-Stillstand mit σ = 1-px-Sternen). Nebenbefund: `cosmetic` kappt die Spitze heller, scharfer Sterne, deren Kern in der
    R/B-Ebene liegt (Demo: 5458 → 3240 ADU, ~2 % Fluss) – unverändert, nur nicht in die Karte übernommen.
-   **Bestehende Stacks ohne Neu-Stacken** (seit 0.36.1, `stackfix.py`, Nutzerbefund M16: 163 von 451 Rohbildern gelöscht → Neu stacken
+   **Bestehende Stacks ohne Neu-Stacken** (seit 0.37.1, `stackfix.py`, Nutzerbefund M16: 163 von 451 Rohbildern gelöscht → Neu stacken
    gesperrt; `work/defects` war in der Arbeitsinstanz noch leer, eine projizierte Fehlerkarte hätte also meist keine Quelle): `Pipeline.develop`
    ruft bei Farbstacks ohne `defects`-Marke `stackfix.repair(mean, cov)` auf dem linearen Stack auf (vor GraXpert/PCC; Stack selbst bleibt).
    Fund = Spitze > `K` 10σ über dem 7×7-Median in einem Kanal, Median der 8 Ringpunkte bei 3 px < 15 % der Spitze (ein länglicher Fleck
