@@ -13,6 +13,9 @@ Ersetzt wird nur der Fleck selbst (zusammenhängend über dem 7×7-Median, 3σ b
 `MAX_AREA` px) – gefüllt mit einer glatten Fläche, angepasst an einen Ring um den Fleck."""
 from __future__ import annotations
 
+import hashlib
+import json
+
 import numpy as np
 from scipy import ndimage as ndi
 from scipy.spatial import cKDTree
@@ -63,7 +66,8 @@ def find(img: np.ndarray, cov: np.ndarray | None = None) -> tuple[list[tuple[int
             if o != c:
                 # andere Kanäle: höchstens Rauschen bzw. ein kleiner Bruchteil der Spitze (Halo eines Nachbarsterns) –
                 # Sterne, auch rote, haben dort in Grün ≥ ~30 % von Rot
-                good &= np.max([hs[o][y + dy, x + dx] for dy in (-1, 0, 1) for dx in (-1, 0, 1)], axis=0) < np.maximum(QUIET, OTHER * pk)
+                # Anteil in Bildintensität (σ der Kanäle verschieden), die Rauschschwelle je Kanal
+                good &= np.max([hs[o][y + dy, x + dx] for dy in (-1, 0, 1) for dx in (-1, 0, 1)], axis=0) < np.maximum(QUIET, OTHER * pk * sig[c] / sig[o])
         found += [(c, int(a), int(b), float(p)) for a, b, p in zip(y[good], x[good], pk[good])]
     if found:
         t = cKDTree(np.array([(f[2], f[1]) for f in found]))
@@ -113,7 +117,8 @@ def repair(img: np.ndarray, cov: np.ndarray | None = None) -> tuple[np.ndarray, 
             far = np.maximum(np.abs(gy - y), np.abs(gx - x)) >= 6
             bgv = float(np.median(img[c, Y0:Y1, X0:X1][far]))
             h = np.maximum((img[c, y0:y1, x0:x1] - bgv) / sig[c], hs[c, y0:y1, x0:x1])   # neben Sternen ist der Ring angehoben
-            quiet = np.all([hs[o, y0:y1, x0:x1] < np.maximum(QUIET, OTHER * hs[c, y0:y1, x0:x1]) for o in range(C) if o != c], axis=0)
+            quiet = np.all([hs[o, y0:y1, x0:x1] < np.maximum(QUIET, OTHER * hs[c, y0:y1, x0:x1] * sig[c] / sig[o])
+                            for o in range(C) if o != c], axis=0)
             yy, xx = np.mgrid[y0:y1, x0:x1]
             d = np.maximum(np.abs(yy - y), np.abs(xx - x))
             lab, _ = ndi.label((h > max(3, CORE * pk)) & quiet & (d <= 3))
@@ -128,5 +133,7 @@ def repair(img: np.ndarray, cov: np.ndarray | None = None) -> tuple[np.ndarray, 
             if m.sum() <= MAX_AREA:
                 _fill(out[c, y0:y1, x0:x1], hs[c, y0:y1, x0:x1] * sig[c] + 1e9 * mask[y0:y1, x0:x1], m, sig[c])
     groups = len({(f[1] // GROUP_R, f[2] // GROUP_R) for f in found})
+    # Fingerabdruck der Reparatur – für Zwischenspeicher, die das Bild nur ausgedünnt hashen (GraXpert: jeder 7. Pixel)
+    key = hashlib.sha1(json.dumps([VERSION, sorted((c, y, x) for c, y, x, _ in found)]).encode()).hexdigest()[:12]
     return out, {"v": VERSION, "n": len(found), "channels": np.bincount([f[0] for f in found], minlength=3).tolist(),
-                 "areas": groups}
+                 "areas": groups, "key": key}

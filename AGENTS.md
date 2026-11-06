@@ -125,11 +125,12 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    ruft bei Farbstacks ohne `defects`-Marke `stackfix.repair(mean, cov)` auf dem linearen Stack auf (vor GraXpert/PCC; Stack selbst bleibt).
    Fund = Spitze > `K` 10σ über dem 7×7-Median in einem Kanal, Median der 8 Ringpunkte bei 3 px < 15 % der Spitze (ein länglicher Fleck
    trifft 2–3, ein Stern alle; Mittelwert versagte bei Plateaus), andere Kanäle im 3×3-Kern < max(4σ, 20 % der Spitze) (rote Sterne haben in
-   Grün ≥ ~30 %; 5×5 traf den Halo von Nachbarsternen), keine helle Umgebung (Median auf ~20 px < 300σ – sonst M45: Halo-Struktur im
+   Grün ≥ ~30 %; Anteil in Bildintensität, nicht in σ je Kanal – Review PR #61; 5×5 traf den Halo von Nachbarsternen), keine helle Umgebung (Median auf ~20 px < 300σ – sonst M45: Halo-Struktur im
    B-Kanal), Gruppe ≥ 3 in 80 px oder ≥ 40σ. Fleck = Pixel ≤ 3 px (Saum 2 px) um die Spitze über Ring-Hintergrund (6–10 px) bzw. 7×7-Median
    (je der größere Überschuss), in denen die anderen Kanäle ruhig sind (trennt den Sternhang), ≤ 150 px; Füllung = Ebene aus einem Ring um
    den Fleck, auf dessen Wertebereich begrenzt (eine quadratische Fläche schoss über und erzeugte neue Punkte). Ergebnis `stats.hotfix`
-   (`v` = `stackfix.VERSION`, `n`, `channels`, `areas`). Über alle 90 Stacks der Arbeitsinstanz (nur gelesen): 14 ohne Funde (große Nebel),
+   (`v` = `stackfix.VERSION`, `n`, `channels`, `areas`, `key`). `key` geht als `tag` in den GraXpert-Cacheschlüssel ein (der hasht nur jeden
+   7. Pixel und sähe die Reparatur sonst nicht; ohne Reparatur bleibt der alte Schlüssel). Über alle 90 Stacks der Arbeitsinstanz (nur gelesen): 14 ohne Funde (große Nebel),
    sonst R/G (Paare auf dem Sensor), Blau nur vereinzelt. Hinweis: `hotpixel_hint` = Stellina-Stack ohne Marke und neueste Version ohne
    `hotfix` → Menü „Mehr“: „Neu entwickeln – entfernt Hotpixel-Punkte“. Kein automatisches Neu-Entwickeln.
 5. **Stacking** (`registration.py` Dreiecks-Matching + `stacking.py` gewichtetes Sigma-Clipping): **inkrementell** – Zustand

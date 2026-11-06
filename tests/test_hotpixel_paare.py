@@ -248,3 +248,29 @@ def test_develop_repairs_old_stack_and_hint(tmp_path, monkeypatch):
     assert not pl.hotpixel_hint(pid)                                                    # neueste Version ist bereinigt
     img2, _ = StackState.load(wd).result()
     assert np.array_equal(img, img2)                                                   # Stack unverändert
+
+
+def test_stackfix_compares_channels_in_intensity_units():
+    """Review PR #61: scharfer roter Stern (Grün = 30 % von Rot), aber Grün doppelt so verrauscht – in σ gemessen nur 15 %
+    der Spitze. Der Vergleich muss in Bildintensität erfolgen, sonst würde der Stern als Punkt „repariert“."""
+    from astroflow.modules.stacking import stackfix
+    rng = np.random.default_rng(8)
+    H, W = 200, 200
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    noise = np.array([2.0, 4.0, 2.0], np.float32)[:, None, None]
+    img = 20 + noise * rng.normal(size=(3, H, W)).astype(np.float32)
+    star = np.exp(-((xx - 100.3) ** 2 + (yy - 99.6) ** 2) / (2 * 0.7 ** 2))           # knapp abgetastet, besteht den Schärfetest
+    for c, a in enumerate((400.0, 120.0, 40.0)):
+        img[c] += a * star
+    found, _, _ = stackfix.find(img, np.ones((H, W), np.float32))
+    assert not [f for f in found if abs(f[1] - 100) < 3 and abs(f[2] - 100) < 3], found
+    out, info = stackfix.repair(img, np.ones((H, W), np.float32))
+    assert info["n"] == 0 and out is img
+
+
+def test_graxpert_cache_key_sees_stackfix():
+    """GraXpert hasht nur jeden 7. Pixel – eine Reparatur dazwischen muss trotzdem einen neuen Schlüssel ergeben."""
+    from astroflow.modules.stacking import graxpert
+    a = np.zeros((3, 50, 50), np.float32)
+    assert graxpert._cache_key(a, "all", 0.5, False) == graxpert._cache_key(a, "all", 0.5, False, "")   # alte Caches bleiben gültig
+    assert graxpert._cache_key(a, "all", 0.5, False, "hotfix:abc") != graxpert._cache_key(a, "all", 0.5, False)
