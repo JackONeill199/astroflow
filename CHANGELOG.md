@@ -3,6 +3,22 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.36.0 – 06.11.2026
+
+### Neu
+- **Analyse über alle Objekte** (Bilder → Analyse, `#/analyse`): ein Dashboard für die ganze Bibliothek mit hochzählenden Kennzahlen
+  (Objekte, Nächte, Belichtung, tiefste Grenzgröße, fernstes Objekt, dunkelster Himmel, Veränderungen), Rekorden, „Dein Universum“
+  (logarithmische Entfernungsskala der fernsten Sterne, Hauptobjekte und Galaxien je Bild; auf Knopfdruck als 3D-Wolke aller gemessenen
+  Punkte in ihren echten Himmelsrichtungen), Grenzgröße und Himmelshelligkeit über die Zeit, besten Nächten, Verteilung der Bildqualität,
+  häufigsten Tutor-Befunden, Veränderungen und Entdeckungen (Veränderliche, Kleinplaneten), Messier-/Caldwell-Fortschritt, einer Rangliste
+  „Was am meisten gebracht hat“ (Grenzgröße auf 1 h Belichtung umgerechnet) und einer sortierbaren Tabelle mit dem Stand jeder Auswertung.
+  Filter nach Objekt, Gerät, Jahr und Nacht. Nur gespeicherte Messwerte – Fehlendes steht als „noch nicht berechnet“ da.
+- **Alles analysieren:** Tiefe, Vergleich, Himmelsqualität und Tutor für alle (oder die gefilterten) Objekte nachrechnen – nur fehlende
+  und veraltete, auch fehlgeschlagene oder alles neu. Läuft im Hintergrund nacheinander (Online-Abfragen nie gleichzeitig, kurze Pause
+  dazwischen), Fortschritt je Art auf der Seite und unter Aktivität, anhalten, fortsetzen und abbrechen jederzeit.
+- Fehlende Voraussetzungen werden je Objekt genannt und lassen sich beheben: „Neu entwickeln – löst den Stack“ für nicht gelöste Bilder,
+  „Gaia-Abgleich einschalten“.
+- Klick auf eine Kennzahl, einen Rekord, einen Punkt oder eine Veränderung öffnet den Reiter Analyse des Objekts und fährt die Stelle im Bild an.
 ## 0.35.0 – 06.11.2026
 
 ### Neu

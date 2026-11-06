@@ -539,7 +539,7 @@ const coreRoutes = [
 const allRoutes = () => [...coreRoutes, ...AF.order.flatMap(id => AF.modules[id].routes || [])];
 // Inhaltsbreite je Ansicht: Arbeitsflächen (Bild bearbeiten, Spuren prüfen, 3D) nutzen die Breite, Formulare/Import bleiben schmal,
 // alles andere ist zentriert auf --page-max begrenzt (style.css → .page)
-const PAGE_WIDE = [/^\/galerie\/\d+$/, /^\/skytrace\/(?!neu$|statistik$|erfolge$)[^/]+/];
+const PAGE_WIDE = [/^\/galerie\/\d+$/, /^\/analyse$/, /^\/skytrace\/(?!neu$|statistik$|erfolge$)[^/]+/];
 const PAGE_NARROW = [/^\/settings/, /^\/willkommen$/];
 // Weicher Seitenwechsel: Die bisherige Ansicht bleibt als stilles Abbild („Geist“, ohne IDs, nicht klickbar) stehen, bis die neue
 // fertig ist; dann blenden beide kurz ineinander über. Dauert das Laden länger als SKEL_AFTER, erscheint das Skelett.
