@@ -16,6 +16,11 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 - Die Tiefenmessung zählt einen Hotpixel-Punkt an einer Katalogposition nicht mehr als erfassten Stern bzw. sichtbare Galaxie.
   Bisherige Messungen waren davon nicht betroffen und bleiben gültig.
 
+## 0.38.1 – 06.11.2026
+### Behoben
+- 3D-Erde: Das Mausrad scrollt über der Seitenleiste (Nachtliste, Ebenen) wieder die Leiste, statt die Karte zu zoomen.
+- 3D-Erde: Scrollleiste der Nachtliste und die Knöpfe Erdbild/Straßenkarte/Gelände sind über der hellen Karte gut sichtbar.
+
 ## 0.38.0 – 07.11.2026
 
 ### Neu

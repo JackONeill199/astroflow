@@ -255,7 +255,7 @@ function FlatMap(host, deps) {
     if (pxPerKm() < deps.leaveAt()) { const [la, lo] = [latOf(wy), lonOf(wx)]; deps.onLeave(latOf(V.cy), lonOf(V.cx), pxPerKm(), sx, sy, la, lo); }
   }
   host.addEventListener('wheel', (e) => {                  // auch über Schildern/Legende der Bühne
-    if (!S.on || e.target.closest('.ste-card,.ste-tools,.ste-tiles')) return;
+    if (!S.on || e.target.closest('.ste-card,.ste-tools,.ste-tiles,.ste-side')) return;   // Seitenleiste scrollt selbst
     e.preventDefault(); const [sx, sy] = local(e); zoomAt(Math.exp(-clamp(e.deltaY, -300, 300) * .0022), sx, sy);
   }, { passive: false });
   cv.addEventListener('pointerdown', (e) => {
