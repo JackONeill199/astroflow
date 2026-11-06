@@ -86,6 +86,9 @@ async function view(el, nightArg, H) {
   const range = $d('.ste-nightrange');
   range.max = String(Math.max(0, nights.length));        // 0 = alle Nächte, 1… = Nacht
   const listEl = $d('.ste-nights');
+  // Ränder der Liste weich ausblenden, wo weitergescrollt werden kann (angeschnittene Einträge wirken sonst abgeschnitten)
+  const edges = () => { listEl.classList.toggle('fade-t', listEl.scrollTop > 2); listEl.classList.toggle('fade-b', listEl.scrollTop + listEl.clientHeight < listEl.scrollHeight - 2); };
+  listEl.addEventListener('scroll', edges, { passive: true });
   function drawNights() {
     const idx = S.night ? nights.findIndex(n => n.night === S.night) + 1 : 0;
     range.value = String(idx);
@@ -97,8 +100,9 @@ async function view(el, nightArg, H) {
           ${maps.includes(n.night) ? `<i class="ste-heaticon" title="Heatmap vorhanden"></i>` : ''}<span class="chip ${cls}">${esc(label)}</span></button>`;
       }).join('');
     const on = listEl.querySelector('.on');                // nur die Liste scrollen, nie die Seite (Handy)
-    if (on && (on.offsetTop < listEl.scrollTop || on.offsetTop + on.offsetHeight > listEl.scrollTop + listEl.clientHeight))
-      listEl.scrollTop = on.offsetTop - listEl.clientHeight / 2 + on.offsetHeight / 2;
+    if (on && on.offsetTop < listEl.scrollTop) listEl.scrollTop = on.offsetTop;
+    else if (on && on.offsetTop + on.offsetHeight > listEl.scrollTop + listEl.clientHeight) listEl.scrollTop = on.offsetTop + on.offsetHeight - listEl.clientHeight;
+    edges();
   }
   const layersEl = $d('.ste-layers');
   layersEl.innerHTML = LAYERS.map(([k, name, c, tip]) => `<label class="ste-layer" style="--c:${c}" title="${esc(tip)}"><input type="checkbox" data-layer="${k}"${S.on[k] ? ' checked' : ''}>
@@ -215,7 +219,8 @@ void main(){
   float v = texture2D(tex, vUv).r;
   if (v < 0.004) discard;
   float th = 1.0 - reveal * 1.08;
-  float a = smoothstep(th, th + 0.08, v) * (0.38 + 0.6 * v) * opacity;
+  // Zellen mit nur 1–2 Stimmen (zufällige Bodenpunkte einzelner Spuren) fast durchsichtig, Häufungen deckend
+  float a = smoothstep(th, th + 0.08, v) * smoothstep(0.04, 0.3, v) * (0.3 + 0.65 * v) * opacity;
   if (a < 0.004) discard;
   gl_FragColor = vec4(ramp(v), a);
 }`;
