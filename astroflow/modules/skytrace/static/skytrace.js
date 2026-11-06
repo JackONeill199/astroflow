@@ -1298,6 +1298,11 @@ async function moveSite(n, id, nights = []) {
   try { d = await api('/sites?nights=false'); } catch (e) { toast(e.message, 'err'); return false; }
   const site = (d.list || []).find(s => s.id === id);
   if (!site) { toast('Der Ort steht nicht mehr in der Ortsliste.', 'err'); return false; }
+  // wie applyNights: SkyTrace-Ausnahmen der Beobachtungen hätten Vorrang vor der Ortsliste, ein Uhrvorschlag gehört zum zurückgerechneten Ort
+  let ex = {};
+  try { ex = (await api(T + '/settings')).sites || {}; } catch { /* ohne Einstellungen: keine Ausnahme bekannt */ }
+  const sessions = [...new Set((n.observations || []).map(o => o.session))].filter(x => ex[x]);
+  const q = n.clock?.proposal;
   const periods = (d.periods || []).filter(q => q.site_id === id && !(q.from && q.from === q.to && (n.assign || [n.night]).includes(q.from)));
   const others = nights.filter(x => x.night !== n.night && x.current?.id === id);
   const uses = [d.default === id ? 'ist der Standard-Ort (gilt für alle Nächte ohne Zeitraum)' : '',
@@ -1307,12 +1312,20 @@ async function moveSite(n, id, nights = []) {
   const text = `„${esc(site.name || 'Ort')}“ wird um ${mText(a.distance_m)} auf den zurückgerechneten Punkt verschoben (Genauigkeit ± ${mText(acc)}, Höhe bleibt)${n.current?.id === id ? '.' : `
     und der Nacht ${esc(n.night)} zugeordnet.`}${uses.length ? ` <b>Der Ort gilt auch für: ${esc(uses.join(' · '))} – dort wirkt die Verschiebung mit.</b>` : ' Er wird sonst nirgends verwendet.'}
     ${others.length ? ` Abgleich der anderen Nächte dort bisher: ${others.slice(0, 4).map(x => `${esc(x.night)} ${x.current?.sure ?? 0}/${x.tracks} (quer ${arcText(x.current?.rms)})`).join(', ')}.` : ''}
+    ${q ? ` Für die Nacht ${esc(n.night)} gilt beim Abgleich außerdem die Uhrkorrektur ${offsetText(q.offset_s)} (gespeicherte Aufnahmezeiten bleiben unverändert).` : ''}
+    ${sessions.length ? ` <b>${sessions.length} Beobachtung(en) dieser Nacht haben in SkyTrace einen eigenen Standort, der sonst Vorrang hätte – diese Ausnahmen werden entfernt.</b>` : ''}
     Danach werden alle Analysen mit geändertem Ort neu abgeglichen.`;
   if (!await confirmDlg(`„${site.name || 'Ort'}“ hierher verschieben?`, text, 'Verschieben')) return false;
   try {
     const stamp = new Date().toLocaleDateString('de-DE');
     const list = d.list.map(s => s.id !== id ? s : { ...s, lat: p.lat, lon: p.lon, accuracy_m: acc,
       note: [s.note, `${stamp}: um ${mText(a.distance_m)} auf die Rückrechnung der Nacht ${n.night} verschoben (vorher ${(+s.lat).toFixed(5)}, ${(+s.lon).toFixed(5)})`].filter(Boolean).join(' · ') });
+    for (const x of sessions) await send(T + '/settings', { session: x, site: null });
+    if (q) {
+      const offsets = {};
+      for (const night of q.nights?.length ? q.nights : [n.night]) offsets[night] = { offset_s: q.offset_s, sigma_s: q.sigma_s, support: q.support, confidence: q.confidence };
+      await send(T + '/settings', { clock_offsets: offsets });
+    }
     await send('/sites', { ...d, list });
     for (const night of (n.assign?.length ? n.assign : [n.night])) await send('/sites/night', { night, site_id: id, nights: false });
     await send(T + '/sitesearch/nights/applied', { nights: [n.night] });

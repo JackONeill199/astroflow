@@ -106,7 +106,8 @@ def _skytrace_run(run):
            "tested": [{"id": "a", "name": LONG, "sure": 0, "compatible": 0, "rms": None}, {"id": "b", "name": "Beispielberg", "sure": 3, "compatible": 3, "rms": 113.3}],
            "proposal": {"kind": "fit", "lat": 45.0 + 0.30 / 111.195, "lon": 6.0 + 0.22 / (111.195 * 0.7071), "alt_m": 0, "accuracy_m": 115, "sure": 3, "rms": 6.1,
                         "trails": 3, "timed": 1, "clock_s": -2.4, "clock_sigma_s": 0.6, "rms_before_arcsec": 900, "snap_limit_m": 300,
-                        "ellipse_km": {"major": 0.115, "minor": 0.04, "angle_deg": 30}, "shift_from_current_km": 380.0, "from_name": "Beispielberg"}}
+                        "ellipse_km": {"major": 0.115, "minor": 0.04, "angle_deg": 30}, "shift_from_current_km": 380.0, "from_name": "Beispielberg"},
+           "clock": {"proposal": {"offset_s": -42.0, "sigma_s": 1.0, "support": 3, "sure": 3, "before": 0, "confidence": 0.999, "chance": 0.1, "nights": ["2022-05-17"]}}}
     nights = [alt, {"night": "2022-09-01", "observations": obs, "tracks": 5, "before": 0, "status": "better", "current": cur, "proposal": fit, "assign": ["2022-09-01"]},
               {"night": "2022-08-30", "observations": obs[:1], "tracks": 2, "before": 0, "status": "better", "current": cur,
                "proposal": {"kind": "list", "id": "b", "name": LONG, "sure": 2, "rms": 40}, "note": "Nur 2 eindeutige Spur(en) – zu wenig für eine Rückrechnung, nur Auswahl aus der Ortsliste."},
@@ -220,6 +221,7 @@ def test_standort_alternative(server, browser):
     dlg = page.locator("#dlg")
     dlg.get_by_text("hierher verschieben?").wait_for()
     assert "2 Zeiträume" in dlg.inner_text() and "wirkt die Verschiebung mit" in dlg.inner_text()
+    assert "Uhrkorrektur −42 s" in dlg.inner_text()                     # Uhr gehört zum zurückgerechneten Ort (Review PR #62)
     page.keyboard.press("Escape")
     row.locator('[data-map-open="2022-05-17"]').click()
     row.locator("svg.stn-map line.alt").wait_for()
