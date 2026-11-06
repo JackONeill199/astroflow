@@ -117,7 +117,7 @@ async function runsView(el) {
       <p class="mut">Bildfolgen sternregistrieren, Lichtspuren erkennen und mit Meteor-, Satelliten-, Asteroiden- und Flugkatalogen abgleichen.</p></div>
       <div class="page-actions"><a class="btn ghost" href="#/settings/skytrace">${icon('pin')}Standort &amp; Kataloge</a><a class="btn" href="#/skytrace/neu">${icon('play')}Neue Analyse</a></div></div>
     <div id="stEngine">${engineNotice(boot.engine)}</div><div id="stLive"></div><div id="stViz" style="margin:-8px 0 20px" hidden></div>
-    ${window.SkyTrace3D && boot.runs?.length ? `<a class="st3d-entry" href="#/skytrace/3d"><span class="st3d-entry-ic">${icon('globe')}</span><span><b>3D-Ansicht</b>
+    ${window.SkyTrace3D && boot.runs?.length ? `<a class="st3d-entry" href="#/skytrace/3d"><span class="st3d-entry-ic">${icon('globe')}</span><span><b>3D-Erde</b>
       <small>Wohin das Teleskop über die Nacht geschaut hat und welche Satellitenbahnen das Bildfeld gekreuzt haben – auf der Erde zur Aufnahmezeit.</small></span>${icon('arrow')}</a>` : ''}
     <div class="toolbar"><input type="search" id="stq" placeholder="Analyse suchen …" title="Taste /"><span class="mut sm" id="stsum"></span><span class="grow"></span>
       <div class="seg" id="stview" aria-label="Ansicht"><button data-v="table" title="Tabelle">${icon('list')}</button><button data-v="cards" title="Karten">${icon('grid')}</button></div></div>
@@ -704,7 +704,7 @@ async function runView(root, runId, tab = 'vorschau') {
   function tab3d(t) {
     const focus = focus3d; focus3d = null;
     t.innerHTML = '<div id="st3dHost"></div>';
-    S.view3d = SkyTrace3D.mount($('#st3dHost', t), runId, { focus, session: focus ? null : session()?.session, onCandidate: focusCandidate });
+    S.view3d = SkyTraceErde.embed($('#st3dHost', t), { run: runId, focus, session: focus ? null : session()?.session, onCandidate: focusCandidate });
   }
   function tabLog(t) {
     t.innerHTML = `<div class="panel"><div class="panel-h"><h2>Aktivitätsprotokoll</h2><span class="grow"></span><span class="mut sm">${isLive() ? '<span class="live"></span> live' : S.engine.run === runId ? 'letzter Lauf dieser Sitzung' : 'Protokoll nur während und nach einem Lauf in dieser Sitzung'}</span></div>
@@ -1033,57 +1033,6 @@ async function statsView(el) {
 // ------------------------------------------------------------ 3D-Ansicht --- //
 // Zentrale Ansicht: Lauf wählen (zuletzt gewählter bleibt), darunter dieselbe Bühne wie im Reiter „3D“ eines Laufs.
 // Eine gemeinsame Szene über alle Läufe gibt es nicht – jede Beobachtung hat eigene Zeit, eigenen Standort und Teleskopweg.
-async function sky3dView(el) {
-  crumbs([['SkyTrace', '#/skytrace'], ['3D-Ansicht']]);
-  const runs = await api(T + '/runs');
-  let runId = runs.some(r => r.id === store.get('skytrace.3drun')) ? store.get('skytrace.3drun') : runs[0]?.id, view = null;
-  const label = (r) => ({ id: r.id, name: shortName(r.title), info: `${runDate(r.id) || ago(r.modified)} · ${nf.format(r.frames)} Aufnahmen · ${r.candidates} Kandidat${r.candidates === 1 ? '' : 'en'}` });
-  el.innerHTML = `<div class="pagehead"><div style="min-width:0"><h1>3D-Ansicht</h1>
-      <p class="mut">Erde zur Aufnahmezeit, Weg und Blickfeld des Teleskops über die Nacht und alle zugeordneten Bahnen einer Beobachtung.</p></div>
-      ${runs.length ? '<div class="page-actions"><a class="btn ghost" id="st3dOpen" href="#">Zur Analyse</a></div>' : ''}</div>
-    ${runs.length ? '<div id="st3dHost"></div>' : `<div class="empty"><h2>Noch keine Analysen</h2><p class="mut">Die 3D-Ansicht zeigt fertige SkyTrace-Läufe.</p><a class="btn" href="#/skytrace/neu">${icon('play')}Neue Analyse</a></div>`}`;
-  if (!runs.length) return;
-  // Analysenliste: bleibt beim Wechsel erhalten (wird nach jedem mount wieder oben in die Seitenleiste gesetzt)
-  const variant = runVariants(runs);
-  let onlyHits = store.get('skytrace.3dhits', runs.some(r => r.candidates)), q = '';
-  const box = document.createElement('section');
-  box.className = 'st3d-runs';
-  box.innerHTML = `<h3 class="st3d-sec">Analysen</h3>
-    <input type="search" class="st3d-rq" placeholder="Analyse suchen …" aria-label="Analyse suchen">
-    <div class="seg st3d-rf" aria-label="Filter"><button data-v="hits">Mit Kandidaten</button><button data-v="all">Alle</button></div>
-    <div class="st3d-rl" role="listbox" aria-label="Analysen"></div>`;
-  const drawRuns = () => {
-    $$('.st3d-rf button', box).forEach(b => b.classList.toggle('on', (b.dataset.v === 'hits') === onlyHits));
-    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-    const shown = runs.filter(r => (!onlyHits || r.candidates || r.id === runId) && words.every(w => (shortName(r.title) + ' ' + (runDate(r.id) || '')).toLowerCase().includes(w)));
-    $('.st3d-rl', box).innerHTML = shown.map(r => `<button role="option" data-run="${esc(r.id)}" class="${r.id === runId ? 'on' : ''}" aria-selected="${r.id === runId}">
-        <span class="st3d-rt">${r.preview ? `<img src="${media(r.preview)}" alt="" loading="lazy">` : icon('orbit')}</span>
-        <span class="st3d-rn"><b>${esc(shortName(r.title))}</b><small>${esc(runDate(r.id) || ago(r.modified))}${variant(r).replace(/<[^>]+>/g, '').replace(/^ /, ' · ')}</small></span>
-        ${r.candidates ? `<span class="chip acc">${r.candidates}</span>` : ''}</button>`).join('') || '<p class="mut sm">Keine Analyse passt.</p>';
-  };
-  $('.st3d-rq', box).oninput = (e) => { q = e.target.value; drawRuns(); };
-  $('.st3d-rf', box).onclick = (e) => { const b = e.target.closest('button[data-v]'); if (!b) return; onlyHits = b.dataset.v === 'hits'; store.set('skytrace.3dhits', onlyHits); drawRuns(); };
-  $('.st3d-rl', box).onclick = (e) => { const b = e.target.closest('[data-run]'); if (!b || b.dataset.run === runId) return; runId = b.dataset.run; store.set('skytrace.3drun', runId); show(); };
-  const show = () => {
-    view?.dispose();
-    const r = runs.find(x => x.id === runId);
-    crumbs([['SkyTrace', '#/skytrace'], ['3D-Ansicht', '#/skytrace/3d'], [shortName(r?.title || runId)]]);
-    $('#st3dOpen', el).href = `#/skytrace/${encodeURIComponent(runId)}/kandidaten`;
-    view = SkyTrace3D.mount($('#st3dHost', el), runId, { onCandidate: (key) => { focusNext = key; location.hash = `#/skytrace/${encodeURIComponent(runId)}/kandidaten`; } });
-    $('#st3dHost .st3d-side', el).prepend(box);
-    $('#st3dHost .st3d-side', el).classList.remove('empty');
-    drawRuns();
-    box.querySelector('.st3d-rl .on')?.scrollIntoView({ block: 'nearest' });
-  };
-  show();
-  const onKey = (e) => {
-    if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input,select,textarea')) return;
-    if (e.key === 'f' || e.key === 'F') { view?.fullscreen(); e.preventDefault(); }
-  };
-  document.addEventListener('keydown', onKey);
-  return { destroy: () => { view?.dispose(); document.removeEventListener('keydown', onKey); } };
-}
-
 // ------------------------------------------------ Standorte aller Nächte (Vorschläge) --- //
 // engine/rematch_sites.py nights: je Nacht alle Beobachtungen gemeinsam, jeder Ort der Ortsliste, sonst Rückrechnung.
 const NIGHT_STATUS = { better: ['Besserer Ort', 'acc'], ok: ['Passt', 'ok'], none: ['Kein Ort passt', 'warn'], fits: ['Ort aus FITS', ''], error: ['Fehler', 'bad'] };
@@ -1482,22 +1431,23 @@ async function nightsView(el) {
   };
 }
 
-// Erde (0.35.0, skytrace-erde.js): zentrale Erd-Ansicht – teilt Heatmap-/Karten-Helfer und das Übernehmen mit „Standorte aller Nächte“
-function earthView(el, night) {
-  return SkyTraceErde.view(el, night || null, { heatCells, heatColor, nightMarks, ellipsePts, outlines, applyNights, NIGHT_STATUS, globalHtml, kmText, arcText, clockText, shortName });
-}
+// 3D-Erde (0.35.0, skytrace-erde.js + Lauf-Ebene skytrace-3d.js): eine Ansicht für Nächte/Standorte und Analysen – teilt Heatmap-/Karten-Helfer,
+// das Übernehmen und die Laufliste mit dem Rest von SkyTrace (window.SkyTraceHelpers, auch für den eingebetteten Lauf-Reiter „3D“)
+window.SkyTraceHelpers = { heatCells, heatColor, nightMarks, ellipsePts, outlines, applyNights, NIGHT_STATUS, globalHtml, kmText, arcText, clockText, shortName,
+  runVariants, runDate, media, openCandidate: (runId, key) => { focusNext = key; location.hash = `#/skytrace/${encodeURIComponent(runId)}/kandidaten`; } };
+const earthView = (ctx) => (el, night) => SkyTraceErde.view(el, { ctx: night ? 'nights' : ctx, night: night || null });
 
 // ---------------------------------------------------------- Registrierung --- //
 AF.register('skytrace', {
   nav: [{ href: '#/skytrace', label: 'SkyTrace', icon: 'orbit', key: 'skytrace', area: 'work' }, { href: '#/skytrace/neu', label: 'Neue Analyse', icon: 'play', key: 'skytrace-new' },
-    { href: '#/skytrace/erde', label: 'Erde', icon: 'globe', key: 'skytrace-erde' }, { href: '#/skytrace/3d', label: '3D-Ansicht', icon: 'target', key: 'skytrace-3d' }, { href: '#/skytrace/statistik', label: 'Statistik', icon: 'pulse', key: 'skytrace-stats' }],
+    { href: '#/skytrace/erde', label: '3D-Erde', icon: 'globe', key: 'skytrace-erde' }, { href: '#/skytrace/statistik', label: 'Statistik', icon: 'pulse', key: 'skytrace-stats' }],
   routes: [
     [/^\/skytrace$/, 'skytrace', runsView],
     [/^\/skytrace\/neu$/, 'skytrace-new', newView],
     [/^\/skytrace\/statistik$/, 'skytrace-stats', statsView],
-    [/^\/skytrace\/3d$/, 'skytrace-3d', sky3dView],
+    [/^\/skytrace\/3d$/, 'skytrace-erde', earthView('runs')],          // alter Link: Kontext „Analysen“
     [/^\/skytrace\/standorte$/, 'skytrace-stats', nightsView],
-    [/^\/skytrace\/erde(?:\/(\d{4}-\d{2}-\d{2}))?$/, 'skytrace-erde', earthView],
+    [/^\/skytrace\/erde(?:\/(\d{4}-\d{2}-\d{2}))?$/, 'skytrace-erde', earthView('nights')],
     [/^\/skytrace\/([^/]+)(?:\/(\w+))?$/, 'skytrace', runView],
   ],
   settings,
@@ -1515,7 +1465,7 @@ AF.register('skytrace', {
   },
   async palette() {
     const runs = await api(T + '/runs');
-    return [['play', 'Neue Spurenanalyse', 'SkyTrace', '#/skytrace/neu'], ['globe', 'SkyTrace Erde', 'Standorte, Heatmap der Standortsuche und Bahnen auf dem Globus', '#/skytrace/erde'], ['target', 'SkyTrace 3D-Ansicht', 'Teleskopweg und Satellitenbahnen auf der Erde', '#/skytrace/3d'], ['pulse', 'SkyTrace-Statistik', 'Objektarten, Satelliten, Kataloge', '#/skytrace/statistik'], ['pin', 'Standorte aller Nächte suchen', 'SkyTrace: Ortsliste an Satellitenspuren prüfen', '#/skytrace/standorte'],
+    return [['play', 'Neue Spurenanalyse', 'SkyTrace', '#/skytrace/neu'], ['globe', 'SkyTrace 3D-Erde', 'Standorte, Heatmap der Standortsuche, Teleskopweg und Bahnen auf dem Globus', '#/skytrace/erde'], ['orbit', 'SkyTrace 3D-Erde: Analysen', 'Teleskopweg und Satellitenbahnen eines Laufs', '#/skytrace/3d'], ['pulse', 'SkyTrace-Statistik', 'Objektarten, Satelliten, Kataloge', '#/skytrace/statistik'], ['pin', 'Standorte aller Nächte suchen', 'SkyTrace: Ortsliste an Satellitenspuren prüfen', '#/skytrace/standorte'],
       ...runs.map(r => ['orbit', shortName(r.title), `${r.candidates} Kandidaten · ${runDate(r.id)}`, `#/skytrace/${encodeURIComponent(r.id)}`, r.preview ? media(r.preview) : null])];
   },
 });

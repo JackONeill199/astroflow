@@ -6,7 +6,12 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 ## 0.35.0 – 06.11.2026
 
 ### Neu
-- **SkyTrace: Erde** – neue zentrale Ansicht (Navigation „Erde“, `#/skytrace/erde`). Ein großer Globus zeigt Orte der Liste,
+- **SkyTrace: 3D-Erde** – eine zentrale Ansicht statt zwei (Navigation „3D-Erde“). Oben in der Seitenleiste wechselt man zwischen
+  **Nächte & Standorte** (`#/skytrace/erde`) und **Analysen** (`#/skytrace/3d`, die bisherige 3D-Ansicht: Laufliste, Teleskopweg, Treffer,
+  Zeitleiste, Kameraansichten Erde/Teleskop/Durchgang/Folgen) – auf demselben Globus, mit Kamerafahrt und zurückdrehender Erde.
+  Heatmap, Orte, Grenzen, Tag/Nacht und Nachtsicht gibt es auch bei einer Analyse (für die Nacht des Laufs).
+  Der Lauf-Reiter „3D“ zeigt dieselbe Ansicht für seinen Lauf. Alte Links bleiben gültig.
+- Der Globus zeigt Orte der Liste,
   den Ort je Nacht, die **Heatmap der Standortsuche**, Vorschläge mit Unsicherheitsellipse, Satellitenbahnen und Teleskop-Blickrichtung
   der Nacht, Grenzen/Küsten und die Tag/Nacht-Grenze zur Aufnahmezeit. Jede Ebene lässt sich einzeln weich ein- und ausblenden.
 - Nächte als Liste und Regler (auch „Alle Nächte“, Pfeiltasten): Der Globus dreht sich zur gewählten Nacht und zoomt auf die Region,

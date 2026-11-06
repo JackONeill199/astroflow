@@ -118,3 +118,43 @@ def test_erde_bahnen_und_verweis(server, browser, tmp_path):
         shutil.copy(tmp_path / "erde-bahnen.png", out)
     assert not errors, errors
     page.close()
+
+
+@pytest.mark.parametrize("width", [375, 1440])
+def test_eine_3d_erde_mit_zwei_kontexten(server, browser, width, tmp_path):
+    """Eine Ansicht, ein Globus: „Nächte & Standorte“ ↔ „Analysen“ (Lauf mit Zeitleiste dreht die Erde), alter Link #/skytrace/3d führt dorthin,
+    gemeinsame Ebenen (Heatmap der Nacht des Laufs) bleiben schaltbar."""
+    base, _ = server
+    scene = _scene(tmp_path)
+    page = browser.new_page(viewport={"width": width, "height": 900})
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.route("**/api/skytrace/run3d?*", lambda route: route.fulfill(json=scene))
+    page.route("**/api/skytrace/runs", lambda route: route.fulfill(json=[dict(id="synthetic", title="Testfeld", modified=1, sessions=1, frames=60, excluded=3, candidates=2, preview=None)]))
+    page.goto(base + "/#/skytrace/erde/2022-08-01")
+    page.wait_for_function("document.querySelector('#steHost')?._ste?.state().night === '2022-08-01'")
+    assert page.locator("#nav a[href='#/skytrace/3d'], nav a[href='#/skytrace/3d']").count() == 0      # nur noch ein Navigationspunkt
+    page.locator(".ste-ctx [data-ctx=runs]").click()
+    page.wait_for_function("document.querySelector('#steHost')._ste.state().runReady")
+    st = _state(page)
+    assert st["ctx"] == "runs" and st["on"]["runs"] and page.url.endswith("#/skytrace/3d")
+    assert page.locator(".st3d-runs [data-run]").count() >= 1 and page.locator(".st3d-bar").is_visible() and page.locator(".st3d-views").is_visible()
+    assert page.locator(".ste-sec-nights").is_hidden() and page.locator(".ste-layer:has([data-layer=heat])").is_visible()
+    # Zeitleiste dreht die Erde (Erdfestes dreht mit)
+    page.locator(".st3d-range input").evaluate(f"r => {{ r.value = {scene['pointing']['t'][0] + 1800}; r.dispatchEvent(new Event('input')); }}")
+    assert abs(_state(page)["earthRot"]) > 0.1
+    run = page.evaluate("document.querySelector('#steHost')._st3d.state()")
+    assert run["t"] == pytest.approx(scene["pointing"]["t"][0] + 1800)
+    page.locator(".st3d-views [data-v=scope]").click()
+    page.wait_for_function("document.querySelector('#steHost')._st3d.state().mode === 'scope'")
+    assert not page.evaluate(FIND_OVERFLOW)
+    page.screenshot(path=str(tmp_path / f"erde-analysen-{width}.png"))
+    # zurück: Erde dreht sich in die erdfeste Lage, Lauf-Teile verschwinden
+    page.locator(".ste-ctx [data-ctx=nights]").click()
+    page.wait_for_function("(s => s.ctx === 'nights' && !s.runReady && Math.abs(s.earthRot) < 1e-6 && !s.flying)(document.querySelector('#steHost')._ste.state())")
+    assert page.locator(".st3d-bar").is_hidden() and "/skytrace/erde" in page.url
+    # alter Link
+    page.goto(base + "/#/skytrace/3d")
+    page.wait_for_function("(s => s?.ctx === 'runs' && s.runReady)(document.querySelector('#steHost')?._ste?.state())")
+    assert not errors, errors
+    page.close()

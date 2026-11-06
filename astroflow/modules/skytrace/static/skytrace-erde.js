@@ -1,28 +1,26 @@
 'use strict';
-/* SkyTrace „Erde“ (#/skytrace/erde[/<Nacht>], 0.35.0): zentrale Erd-Ansicht für Standorte, Standortsuche und Bahnen.
-   Globus (three.js aus /vendor/) als Bühne, Ebenen einzeln weich ein-/ausblendbar:
-   Orte der Liste · Ort je Nacht · Heatmap der Standortsuche (standortsuche-karten/<Nacht>.json, engine/global_site.heat_map) ·
-   Vorschläge mit Unsicherheitsellipse · Satellitenbahnen und Teleskop-Blickrichtung (run3d der Beobachtungen der Nacht) ·
-   Grenzen/Küsten (Natural Earth, offline) · Tag/Nacht-Grenze zur Aufnahmezeit.
+/* SkyTrace „3D-Erde“ (0.35.0): EINE Erd-Ansicht für Standorte, Standortsuche und Analysen.
+   Zentrale Seite #/skytrace/erde[/<Nacht>] (Kontext „Nächte & Standorte“) bzw. #/skytrace/3d (Kontext „Analysen“) und eingebettet im
+   Lauf-Reiter „3D“ (embed, Lauf fest). Ein Globus (three.js aus /vendor/), Ebenen einzeln weich ein-/ausblendbar:
+   Orte der Liste · Ort je Nacht · Heatmap der Standortsuche (standortsuche-karten/<Nacht>.json) · Vorschläge mit Unsicherheitsellipse ·
+   Satellitenbahnen und Teleskop (Lauf-Ebene aus skytrace-3d.js, gleiche Darstellung in beiden Kontexten) · Grenzen/Küsten · Tag/Nacht-Grenze.
+   Die Erde ist eine Gruppe (`earth`): im Analysen-Kontext dreht sie sich mit der Zeit des Laufs, alles Erdfeste dreht mit.
    „Nachtsicht“: liegt, was gezeigt wird, auf der Nachtseite, hellt der Erd-Shader die Nachtseite weich in ein gedämpftes Blaugrün auf.
-   Kartenkacheln (OSM) nur auf Knopfdruck und erst bei starkem Zoom – sonst verlässt kein Ort den Rechner.
-   Szene in Erdradien, Achsen wie skytrace-3d.js: ECEF (x, y, z) → three (x, z, −y), Nordpol = +y. Gezeichnet wird nur bei Änderung. */
+   Kartenkacheln (OSM) nur auf Knopfdruck und erst bei starkem Zoom. Achsen: ECEF (x, y, z) → three (x, z, −y)/a, Nordpol = +y, WGS84. */
 (() => {
 const LIB = '/vendor/', TEX = '/m/skytrace/vendor/earth-2048.jpg', T = '/skytrace';
-const R_KM = 6378.137, D2R = Math.PI / 180;
+const R_KM = 6378.137, F_WGS = 1 / 298.257223563, E2 = F_WGS * (2 - F_WGS), D2R = Math.PI / 180;
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const LAYERS = [
   ['sites', 'Orte der Liste', '#c9d2e3', 'Alle Standorte aus Einstellungen → Standorte'],
   ['current', 'Ort je Nacht', '#f2d385', 'Ort, der der Nacht bisher zugeordnet ist (Ring)'],
   ['heat', 'Heatmap der Standortsuche', '#f06e32', 'Bodenpunkte, von denen aus die Spuren der Nacht zu sehen waren'],
   ['proposals', 'Vorschläge mit Unsicherheit', '#6b86ff', 'Vorgeschlagener Ort mit 1σ-Ellipse'],
-  ['runs', 'Satellitenbahnen und Teleskop', '#5eead4', 'Bahnen der zugeordneten Satelliten und Blickrichtung des Teleskops über die Nacht'],
+  ['runs', 'Satellitenbahnen und Teleskop', '#5eead4', 'Teleskopweg, Blickfeld und zugeordnete Bahnen der Analysen'],
   ['borders', 'Grenzen und Küsten', '#9fb0d9', 'Natural Earth, ohne Netz'],
   ['terminator', 'Tag/Nacht-Grenze', '#fbbf24', 'Beleuchtung zur Aufnahmezeit'],
 ];
 const DEFAULT_ON = { sites: true, current: true, heat: true, proposals: true, runs: false, borders: true, terminator: true };
-const PALETTE = ['#5eead4', '#7c9cff', '#f2a6ff', '#fbbf24', '#4ade80', '#f87171', '#60a5fa', '#fb923c'];
-const nf1 = (v, d = 0) => Number.isFinite(v) ? v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d }) : '–';
 const ease = (k) => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 let lib = null;
@@ -31,7 +29,7 @@ function load() {
     .then(([THREE, c]) => ({ THREE, OrbitControls: c.OrbitControls })).catch(e => { lib = null; throw e; });
 }
 
-// Sonnenstand (vereinfachte Formel, ~0,01°): Unterpunkt der Sonne → Richtung in Szenenachsen
+// Sonnenstand (vereinfachte Formel, ~0,01°): Unterpunkt der Sonne
 function sunLatLon(t) {
   const d = t / 86400 + 2440587.5 - 2451545.0, g = (357.529 + .98560028 * d) * D2R, q = 280.459 + .98564736 * d;
   const L = (q + 1.915 * Math.sin(g) + .02 * Math.sin(2 * g)) * D2R, e = (23.439 - 3.6e-7 * d) * D2R;
@@ -41,52 +39,100 @@ function sunLatLon(t) {
 }
 // Zeitpunkt einer Nacht ohne genauere Angabe: Mitternacht Ortszeit an der Länge der Region
 const nightTime = (night, lon = 0) => Date.parse(night + 'T00:00:00Z') / 1000 + (24 - lon / 15) * 3600;
+const nightOfTime = (t) => new Date((t - 43200) * 1000).toISOString().slice(0, 10);          // wie core/sites.night_of: UTC − 12 h
 const fmtNight = (night, long = false) => new Date(night + 'T12:00:00Z').toLocaleDateString('de-DE', long ? { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' } : { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
+const helpers = () => window.SkyTraceHelpers;          // aus skytrace.js (Heatmap-Zellen, Ortsmarken, Übernehmen, Texte, Läufe)
 
-const MARKUP = `<div class="ste-main">
-    <div class="ste-stage"><canvas aria-label="Drehbarer Globus mit Standorten, Heatmap der Standortsuche und Bahnen"></canvas><div class="ste-labels"></div>
-      <div class="ste-tools"><span class="ste-pill ste-nvpill" hidden>${icon('target')}Nachtsicht</span><span class="grow"></span>
+const MARKUP = (page) => `<div class="ste-main">
+    <div class="ste-stage"><canvas aria-label="Drehbarer Globus mit Standorten, Heatmap der Standortsuche, Teleskopweg und Bahnen"></canvas><div class="ste-labels"></div>
+      <div class="ste-tools"><div class="seg st3d-views" hidden aria-label="Kamera"><button data-v="earth" class="on">Erde</button><button data-v="scope">Teleskop</button><button data-v="pass">Durchgang</button><button data-v="sat">Folgen</button></div>
+        <span class="ste-pill ste-nvpill" hidden>${icon('target')}Nachtsicht</span><span class="grow"></span>
+        <span class="st3d-schema" hidden title="Kuppel, Himmel und Ziel sind nicht maßstäblich">Schema</span>
         <button class="btn ghost sm ste-home" title="Ganze Region zeigen">${icon('fit')}<span>Übersicht</span></button>
         <button class="btn ghost icon sm ste-fs" title="Vollbild (F)" aria-label="Vollbild">${icon('expand')}</button></div>
       <div class="ste-msg"><span class="spinner"></span>Globus wird geladen …</div>
       <div class="ste-legend" hidden><span class="ramp"></span><span class="ste-legend-t"></span></div>
       <div class="ste-tiles" hidden><button class="btn sm ste-tiles-b">${icon('globe')}Karte laden</button><span class="ste-attr sm"></span></div>
       <div class="ste-card" hidden></div>
-      <div class="ste-help">Ziehen dreht · Mausrad/zwei Finger zoomen · Antippen zeigt Details</div></div></div>
+      <div class="ste-help">Ziehen dreht · Mausrad/zwei Finger zoomen · Antippen zeigt Details</div></div>
+    <div class="st3d-bar" hidden><button class="btn icon ghost sm" data-play title="Abspielen" aria-label="Abspielen">${icon('play')}</button>
+      <div class="st3d-range"><canvas class="st3d-strip" aria-hidden="true"></canvas><input type="range" aria-label="Zeit der Beobachtung"></div>
+      <span class="st3d-time tnum"></span><select aria-label="Abspielgeschwindigkeit"><option value="1">1×</option><option value="10">10×</option>
+        <option value="60">60×</option><option value="300" selected>300×</option><option value="1200">1200×</option></select></div></div>
   <aside class="ste-side">
-    <section><h3 class="ste-sec">Nächte</h3><div class="ste-nightbar"><button class="btn ghost icon sm" data-step="-1" aria-label="Vorige Nacht">${icon('back')}</button>
+    ${page ? `<div class="seg ste-ctx" role="tablist" aria-label="Inhalt"><button data-ctx="nights" role="tab">Nächte &amp; Standorte</button><button data-ctx="runs" role="tab">Analysen</button></div>` : ''}
+    <section class="ste-sec-nights" hidden><h3 class="ste-sec">Nächte</h3><div class="ste-nightbar"><button class="btn ghost icon sm" data-step="-1" aria-label="Vorige Nacht">${icon('back')}</button>
       <input type="range" class="ste-nightrange" min="0" max="0" value="0" aria-label="Nacht wählen"><button class="btn ghost icon sm" data-step="1" aria-label="Nächste Nacht">${icon('arrow')}</button></div>
       <div class="ste-nights" role="listbox" aria-label="Nächte"></div></section>
+    <section class="st3d-runs" hidden><h3 class="ste-sec">Analysen</h3>
+      <input type="search" class="st3d-rq" placeholder="Analyse suchen …" aria-label="Analyse suchen">
+      <div class="seg st3d-rf" aria-label="Filter"><button data-v="hits">Mit Kandidaten</button><button data-v="all">Alle</button></div>
+      <div class="st3d-rl" role="listbox" aria-label="Analysen"></div>${page ? '<a class="btn ghost sm ste-runopen" href="#">Zur Analyse</a>' : ''}</section>
+    <section class="ste-sec-objects" hidden><h3 class="ste-sec">Objekte</h3><div class="st3d-legend"></div></section>
     <section><h3 class="ste-sec">Ebenen</h3><div class="ste-layers"></div></section>
-    <section><h3 class="ste-sec">Nachtsicht</h3><div class="seg ste-nv" aria-label="Nachtsicht"><button data-nv="auto">Auto</button><button data-nv="on">An</button><button data-nv="off">Aus</button></div>
-      <p class="mut sm ste-nvnote"></p></section>
-    <p class="ste-note mut sm"></p></aside>`;
+    <section><h3 class="ste-sec">Nachtsicht</h3><div class="seg ste-nv" aria-label="Nachtsicht"><button data-nv="auto">Auto</button><button data-nv="on">An</button><button data-nv="off">Aus</button></div></section>
+    <p class="st3d-note mut sm"></p><p class="ste-note mut sm"></p></aside>`;
 
-/* Ansicht. helpers kommen aus skytrace.js (gemeinsam mit „Standorte aller Nächte“):
-   { heatCells, heatColor, nightMarks, ellipsePts, outlines, applyNights, NIGHT_STATUS, globalHtml, kmText, arcText, clockText, shortName } */
-async function view(el, nightArg, H) {
-  crumbs([['SkyTrace', '#/skytrace'], ['Erde']]);
-  el.innerHTML = `<div class="pagehead"><div style="min-width:0"><h1>Erde</h1>
-      <p class="mut readable">Standorte, Heatmap der Standortsuche und Satellitenbahnen auf einem Globus. Jede Ebene lässt sich einzeln ein- und ausschalten; liegt etwas auf der Nachtseite, hellt die Nachtsicht sie auf.</p></div>
+// Zentrale Seite. route: { ctx: 'nights'|'runs'|null, night }
+async function view(el, route = {}) {
+  const H = helpers();
+  crumbs([['SkyTrace', '#/skytrace'], ['3D-Erde']]);
+  el.innerHTML = `<div class="pagehead"><div style="min-width:0"><h1>3D-Erde</h1>
+      <p class="mut readable">Standorte, Heatmap der Standortsuche, Teleskopweg und Satellitenbahnen auf einem Globus. Jede Ebene lässt sich einzeln ein- und ausschalten; liegt etwas auf der Nachtseite, hellt die Nachtsicht sie auf.</p></div>
       <div class="page-actions"><a class="btn ghost" href="#/skytrace/standorte">${icon('list')}Standorte aller Nächte</a></div></div>
-    <div class="ste" id="steHost">${MARKUP}</div>`;
-  const host = $('#steHost', el), $d = (s) => host.querySelector(s);
-  let data = null, sites = [], maps = [], heats = {}, scene = null, dead = false;
+    <div class="ste" id="steHost">${MARKUP(true)}</div>`;
+  const ctx = route.ctx || 'nights';                     // #/skytrace/erde = Nächte & Standorte, #/skytrace/3d = Analysen
+  const C = await component($('#steHost', el), el, { page: true, ctx, night: route.night || null, H });
+  if (!C) return;
+  const onKey = (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input,select,textarea')) return;
+    if (e.key === 'f' || e.key === 'F') { C.fullscreen(); e.preventDefault(); }
+    else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && C.ctx() === 'nights') { C.step(e.key === 'ArrowRight' ? 1 : -1); e.preventDefault(); }
+  };
+  document.addEventListener('keydown', onKey);
+  return {
+    destroy() { C.dispose(); document.removeEventListener('keydown', onKey); },
+    actions: () => [['globe', '3D-Erde: Übersicht', 'Ganze Region zeigen', () => C.home()]],
+  };
+}
+
+// Lauf-Reiter „3D“: dieselbe Komponente mit festem Lauf (ohne Lauf-/Nachtliste). → { dispose, fullscreen }; host._st3d.state() = Lauf, host._ste.state() = Globus
+function embed(host, { run, focus = null, session = null, onCandidate = null } = {}) {
+  host.classList.add('ste', 'ste-embed');
+  host.innerHTML = MARKUP(false);
+  let C = null, dead = false;
+  component(host, host, { page: false, ctx: 'runs', run, focus, session, onCandidate, H: helpers() }).then(c => { if (dead) c?.dispose(); else C = c; });
+  return {
+    fullscreen: () => { if (document.fullscreenElement) document.exitFullscreen(); else host.requestFullscreen?.().catch(() => {}); },
+    dispose() { dead = true; C?.dispose(); host._st3d = host._ste = null; if (document.fullscreenElement === host) document.exitFullscreen(); },
+  };
+}
+
+// Gemeinsamer Aufbau: Daten laden, Globus anlegen, Kontexte. opts: { page, ctx, night, run, focus, session, onCandidate, H }
+async function component(host, el, opts) {
+  const { page, H } = opts, $d = (s) => host.querySelector(s);
+  let data = null, sites = [], maps = [], runs = [], scene = null, dead = false;
+  const heats = {};
+  const msg = (html) => { const m = $d('.ste-msg'); m.innerHTML = html; m.hidden = false; m.classList.add('hint'); };
   try {
-    const [d, s] = await Promise.all([api(T + '/sitesearch/nights'), api('/sites?nights=false').catch(() => ({}))]);
-    data = d; sites = (s.list || []).filter(x => x.lat != null && x.lon != null); maps = d.maps || [];
-  } catch (e) { $d('.ste-msg').innerHTML = `${icon('alert')}<span>${esc(e.message)}</span>`; return; }
-  if (!el.isConnected) return;
+    const [d, s, r] = await Promise.all([api(T + '/sitesearch/nights'), api('/sites?nights=false').catch(() => ({})), page ? api(T + '/runs').catch(() => []) : Promise.resolve([])]);
+    data = d; sites = (s.list || []).filter(x => x.lat != null && x.lon != null); maps = d.maps || []; runs = r || [];
+  } catch (e) { msg(`${icon('alert')}<span>${esc(e.message)}</span>`); return null; }
+  if (!host.isConnected) return null;
   const nights = (data.result?.nights || []).slice().sort((a, b) => a.night < b.night ? -1 : 1);
   const S = {
-    night: nights.some(n => n.night === nightArg) ? nightArg : null,
+    ctx: opts.ctx, night: nights.some(n => n.night === opts.night) ? opts.night : null,
     on: { ...DEFAULT_ON, ...store.get('skytrace.erde.layers', {}) }, nv: store.get('skytrace.erde.nv', 'auto'),
+    runId: opts.run || (runs.some(r => r.id === store.get('skytrace.3drun')) ? store.get('skytrace.3drun') : runs[0]?.id) || null,
+    onlyHits: store.get('skytrace.3dhits', runs.some(r => r.candidates)), q: '',
   };
-  if (!S.night && !nightArg) S.night = (nights.filter(n => maps.includes(n.night) || n.proposal?.kind === 'global').at(-1) || nights.filter(n => n.proposal && !n.applied).at(-1))?.night || null;
-  const range = $d('.ste-nightrange');
+  if (S.ctx === 'runs') S.on.runs = true;                // im Analysen-Kontext ist der Lauf das Thema
+  if (!S.night && !opts.night) S.night = (nights.filter(n => maps.includes(n.night) || n.proposal?.kind === 'global').at(-1) || nights.filter(n => n.proposal && !n.applied).at(-1))?.night || null;
+  const nightOf = (night) => nights.find(n => n.night === night);
+
+  // ---- Seitenleiste: Nächte ----
+  const range = $d('.ste-nightrange'), listEl = $d('.ste-nights');
   range.max = String(Math.max(0, nights.length));        // 0 = alle Nächte, 1… = Nacht
-  const listEl = $d('.ste-nights');
-  // Ränder der Liste weich ausblenden, wo weitergescrollt werden kann (angeschnittene Einträge wirken sonst abgeschnitten)
   const edges = () => { listEl.classList.toggle('fade-t', listEl.scrollTop > 2); listEl.classList.toggle('fade-b', listEl.scrollTop + listEl.clientHeight < listEl.scrollHeight - 2); };
   listEl.addEventListener('scroll', edges, { passive: true });
   function drawNights() {
@@ -104,50 +150,86 @@ async function view(el, nightArg, H) {
     else if (on && on.offsetTop + on.offsetHeight > listEl.scrollTop + listEl.clientHeight) listEl.scrollTop = on.offsetTop + on.offsetHeight - listEl.clientHeight;
     edges();
   }
+  // ---- Seitenleiste: Analysen (wie bisher #/skytrace/3d) ----
+  const runsBox = $d('.st3d-runs'), variant = page ? H.runVariants(runs) : () => '';
+  function drawRuns() {
+    if (!page) return;
+    $$('.st3d-rf button', runsBox).forEach(b => b.classList.toggle('on', (b.dataset.v === 'hits') === S.onlyHits));
+    const words = S.q.toLowerCase().split(/\s+/).filter(Boolean);
+    const shown = runs.filter(r => (!S.onlyHits || r.candidates || r.id === S.runId) && words.every(w => (H.shortName(r.title) + ' ' + (H.runDate(r.id) || '')).toLowerCase().includes(w)));
+    $('.st3d-rl', runsBox).innerHTML = shown.map(r => `<button role="option" data-run="${esc(r.id)}" class="${r.id === S.runId ? 'on' : ''}" aria-selected="${r.id === S.runId}">
+        <span class="st3d-rt">${r.preview ? `<img src="${H.media(r.preview)}" alt="" loading="lazy">` : icon('orbit')}</span>
+        <span class="st3d-rn"><b>${esc(H.shortName(r.title))}</b><small>${esc(H.runDate(r.id) || ago(r.modified))}${variant(r).replace(/<[^>]+>/g, '').replace(/^ /, ' · ')}</small></span>
+        ${r.candidates ? `<span class="chip acc">${r.candidates}</span>` : ''}</button>`).join('') || (runs.length ? '<p class="mut sm">Keine Analyse passt.</p>' : `<p class="mut sm">Noch keine Analysen. <a href="#/skytrace/neu">Neue Analyse</a></p>`);
+    const open = $d('.ste-runopen'); if (open) { open.hidden = !S.runId; open.href = `#/skytrace/${encodeURIComponent(S.runId || '')}/kandidaten`; }
+    const on = $('.st3d-rl .on', runsBox), rl = $('.st3d-rl', runsBox);
+    if (on && (on.offsetTop < rl.scrollTop || on.offsetTop + on.offsetHeight > rl.scrollTop + rl.clientHeight)) rl.scrollTop = on.offsetTop - 4;
+  }
+  if (page) {
+    $('.st3d-rq', runsBox).oninput = (e) => { S.q = e.target.value; drawRuns(); };
+    $('.st3d-rf', runsBox).onclick = (e) => { const b = e.target.closest('button[data-v]'); if (!b) return; S.onlyHits = b.dataset.v === 'hits'; store.set('skytrace.3dhits', S.onlyHits); drawRuns(); };
+    $('.st3d-rl', runsBox).onclick = (e) => { const b = e.target.closest('[data-run]'); if (!b || b.dataset.run === S.runId) return; S.runId = b.dataset.run; store.set('skytrace.3drun', S.runId); drawRuns(); scene?.openRun(S.runId); };
+  }
   const layersEl = $d('.ste-layers');
-  layersEl.innerHTML = LAYERS.map(([k, name, c, tip]) => `<label class="ste-layer" style="--c:${c}" title="${esc(tip)}"><input type="checkbox" data-layer="${k}"${S.on[k] ? ' checked' : ''}>
-    <i></i><span>${esc(name)}</span></label>`).join('');
+  const drawLayers = () => { layersEl.innerHTML = LAYERS.map(([k, name, c, tip]) => `<label class="ste-layer" style="--c:${c}" title="${esc(tip)}"><input type="checkbox" data-layer="${k}"${S.on[k] ? ' checked' : ''}>
+    <i></i><span>${esc(name)}</span></label>`).join(''); };
   const drawNv = () => $$('.ste-nv button', host).forEach(b => b.classList.toggle('on', b.dataset.nv === S.nv));
-  drawNights(); drawNv();
-  const nightOf = (night) => nights.find(n => n.night === night);
+  const drawCtx = () => {
+    $$('.ste-ctx button', host).forEach(b => { b.classList.toggle('on', b.dataset.ctx === S.ctx); b.setAttribute('aria-selected', b.dataset.ctx === S.ctx); });
+    $d('.ste-sec-nights').hidden = S.ctx !== 'nights';
+    runsBox.hidden = !page || S.ctx !== 'runs';
+    $d('.ste-sec-objects').hidden = S.ctx !== 'runs';
+    $d('.st3d-note').hidden = S.ctx !== 'runs';
+  };
+  drawNights(); drawRuns(); drawLayers(); drawNv(); drawCtx();
   async function loadHeats(list) {
     const want = list.filter(n => maps.includes(n) && !(n in heats));
-    if (!want.length) return;
     for (let i = 0; i < want.length; i += 100) {             // Endpunkt nimmt höchstens 120 Nächte je Anfrage
       try { Object.assign(heats, (await api(T + '/sitesearch/nights/heatmaps?nights=' + encodeURIComponent(want.slice(i, i + 100).join(',')))).heat || {}); }
       catch { /* ohne Heatmap – beim Wählen der Nacht erneut versucht */ }
     }
   }
   await loadHeats(maps);
-  if (!el.isConnected) return;
+  if (!host.isConnected) return null;
   let mods;
-  try { mods = await load(); } catch (e) { $d('.ste-msg').innerHTML = `${icon('alert')}<span>3D-Bibliothek konnte nicht geladen werden: ${esc(e.message)}</span>`; return; }
-  if (!el.isConnected) return;
-  try { scene = globe(host, mods, { nights, sites, heats, S, H, nightOf, onPick: (night) => pick(night, true), onCompute: computeHeat }); host._ste = scene; }
-  catch (e) { $d('.ste-msg').innerHTML = `${icon('alert')}<span>3D-Darstellung nicht möglich (WebGL nicht verfügbar?): ${esc(e.message)}</span>`; return; }
+  try { mods = await load(); } catch (e) { msg(`${icon('alert')}<span>3D-Bibliothek konnte nicht geladen werden: ${esc(e.message)}</span>`); return null; }
+  if (!host.isConnected) return null;
+  const onCandidate = opts.onCandidate || (page ? (key) => H.openCandidate(S.runId, key) : null);
+  try { scene = globe(host, mods, { nights, sites, heats, S, H, nightOf, onPick: (night) => pickNight(night), onCompute: computeHeat, onCandidate, focus: opts.focus, session: opts.session, page }); host._ste = scene; }
+  catch (e) { msg(`${icon('alert')}<span>3D-Darstellung nicht möglich (WebGL nicht verfügbar?): ${esc(e.message)}</span>`); return null; }
   $d('.ste-msg').hidden = true;
-  if (!nights.length) $d('.ste-note').innerHTML = 'Noch keine Standortsuche: <a href="#/skytrace/standorte">Standorte aller Nächte</a> rechnet je Nacht Vorschläge und Heatmaps. Bis dahin zeigt der Globus die Orte der Liste.';
 
-  function pick(night, fromScene = false) {
-    S.night = night || null;
-    drawNights();
-    const url = '#/skytrace/erde' + (S.night ? '/' + S.night : '');
+  function setHash() {
+    if (!page) return;
+    const url = S.ctx === 'runs' ? '#/skytrace/3d' : '#/skytrace/erde' + (S.night ? '/' + S.night : '');
     if (location.hash !== url) history.replaceState(null, '', url);
-    crumbs([['SkyTrace', '#/skytrace'], ['Erde', '#/skytrace/erde'], ...(S.night ? [[fmtNight(S.night)]] : [])]);
-    scene.setNight(S.night, { card: !!S.night, fly: true, fromScene });
+    const r = runs.find(x => x.id === S.runId);
+    crumbs([['SkyTrace', '#/skytrace'], ['3D-Erde', '#/skytrace/erde'], ...(S.ctx === 'runs' ? (r ? [[H.shortName(r.title)]] : []) : S.night ? [[fmtNight(S.night)]] : [])]);
+  }
+  function pickNight(night, { card = true } = {}) {
+    if (S.ctx !== 'nights') { scene.nightCard(night); return; }
+    S.night = night || null;
+    drawNights(); setHash();
+    scene.setNight(S.night, { card: card && !!S.night, fly: true });
     if (S.night && maps.includes(S.night) && !heats[S.night]) {         // fehlte beim Laden (Netz, Fehler): einzeln nachholen
       const want = S.night; delete heats[want];
       loadHeats([want]).then(() => { if (heats[want] && scene) scene.heatChanged(want); });
     }
   }
-  listEl.onclick = (e) => { const b = e.target.closest('[data-n]'); if (b) pick(b.dataset.n); };
-  range.oninput = () => pick(+range.value ? nights[+range.value - 1].night : null);
-  $$('[data-step]', host).forEach(b => b.onclick = () => { const i = clamp(+range.value + +b.dataset.step, 0, nights.length); pick(i ? nights[i - 1].night : null); });
-  layersEl.onchange = (e) => {
-    const k = e.target.dataset.layer; if (!k) return;
-    S.on[k] = e.target.checked; store.set('skytrace.erde.layers', S.on); scene.layersChanged(k);
-  };
+  function setCtx(c) {
+    if (c === S.ctx) return;
+    S.ctx = c; drawCtx();
+    if (c === 'runs') { S.on.runs = true; drawLayers(); scene.openRun(S.runId); }
+    else { scene.closeRun(); pickNight(S.night, { card: false }); }
+    setHash();
+  }
+  listEl.onclick = (e) => { const b = e.target.closest('[data-n]'); if (b) pickNight(b.dataset.n); };
+  range.oninput = () => pickNight(+range.value ? nights[+range.value - 1].night : null);
+  const step = (d) => { const i = clamp(+range.value + d, 0, nights.length); pickNight(i ? nights[i - 1].night : null); };
+  $$('[data-step]', host).forEach(b => b.onclick = () => step(+b.dataset.step));
+  layersEl.onchange = (e) => { const k = e.target.dataset.layer; if (!k) return; S.on[k] = e.target.checked; store.set('skytrace.erde.layers', S.on); scene.layersChanged(k); };
   $d('.ste-nv').onclick = (e) => { const b = e.target.closest('[data-nv]'); if (!b) return; S.nv = b.dataset.nv; store.set('skytrace.erde.nv', S.nv); drawNv(); scene.layersChanged('nv'); };
+  $d('.ste-ctx')?.addEventListener('click', (e) => { const b = e.target.closest('[data-ctx]'); if (b) setCtx(b.dataset.ctx); });
   const fullscreen = () => { if (document.fullscreenElement) document.exitFullscreen(); else host.requestFullscreen?.().catch(() => {}); };
   $d('.ste-fs').onclick = fullscreen;
   $d('.ste-home').onclick = () => scene.home();
@@ -159,7 +241,7 @@ async function view(el, nightArg, H) {
     catch (e) { toast(e.message, 'err'); if (btn) btn.disabled = false; return; }
     for (;;) {
       await new Promise(r => setTimeout(r, 1500));
-      if (dead || !el.isConnected) return;
+      if (dead || !host.isConnected) return;
       let d; try { d = await api(T + '/sitesearch/nights/heatmap?night=' + encodeURIComponent(night)); } catch { continue; }
       const j = d.job;
       if (j && j.state === 'running') { if (btn?.isConnected) btn.textContent = j.text ? j.text.replace(night + ': ', '').slice(0, 50) : 'Rechnet …'; continue; }
@@ -169,16 +251,13 @@ async function view(el, nightArg, H) {
       return;
     }
   }
-  scene.setNight(S.night, { card: false, fly: true, first: true });
-  const onKey = (e) => {
-    if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input,select,textarea')) return;
-    if (e.key === 'f' || e.key === 'F') { fullscreen(); e.preventDefault(); }
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { const i = clamp(+range.value + (e.key === 'ArrowRight' ? 1 : -1), 0, nights.length); pick(i ? nights[i - 1].night : null); e.preventDefault(); }
-  };
-  document.addEventListener('keydown', onKey);
+  if (S.ctx === 'runs') { if (opts.run || S.runId) scene.openRun(S.runId, { focus: opts.focus, session: opts.session }); else scene.setNight(null, { fly: true, first: true }); }
+  else scene.setNight(S.night, { card: false, fly: true, first: true });
+  if (!nights.length && S.ctx === 'nights') $d('.ste-note').innerHTML = 'Noch keine Standortsuche: <a href="#/skytrace/standorte">Standorte aller Nächte</a> rechnet je Nacht Vorschläge und Heatmaps. Bis dahin zeigt der Globus die Orte der Liste.';
+  setHash();
   return {
-    destroy() { dead = true; scene?.dispose(); host._ste = null; document.removeEventListener('keydown', onKey); if (document.fullscreenElement === host) document.exitFullscreen(); },
-    actions: () => [['globe', 'Erde: Übersicht', 'Ganze Region zeigen', () => scene?.home()]],
+    ctx: () => S.ctx, step, home: () => scene.home(), fullscreen,
+    dispose() { dead = true; scene?.dispose(); host._ste = host._st3d = null; if (document.fullscreenElement === host) document.exitFullscreen(); },
   };
 }
 
@@ -226,24 +305,36 @@ void main(){
 }`;
 
 function globe(host, { THREE, OrbitControls }, ctx) {
-  const { nights, sites, heats, S, H, nightOf, onPick, onCompute } = ctx;
+  const { nights, sites, heats, S, H, nightOf, onPick, onCompute, onCandidate, page } = ctx;
   const $d = (s) => host.querySelector(s), stage = $d('.ste-stage'), canvas = $d('.ste-stage canvas'), labelsHost = $d('.ste-labels');
-  const llv = (lat, lon, r = 1) => { const a = lat * D2R, b = lon * D2R; return new THREE.Vector3(r * Math.cos(a) * Math.cos(b), r * Math.sin(a), -r * Math.cos(a) * Math.sin(b)); };
-  const vll = (v) => { const n = v.clone().normalize(); return [Math.asin(n.y) / D2R, Math.atan2(-n.z, n.x) / D2R]; };
-  const V = (p) => new THREE.Vector3(p[0] / R_KM, p[2] / R_KM, -p[1] / R_KM);           // ECEF bzw. System D (km) → Szene
-  const U = (p) => new THREE.Vector3(p[0], p[2], -p[1]).normalize();
+  // geodätisch (WGS84) → Szene; lift in Erdradien über dem Ellipsoid
+  const llv = (lat, lon, lift = 0) => { const a = lat * D2R, b = lon * D2R, s = Math.sin(a), n = 1 / Math.sqrt(1 - E2 * s * s);
+    return new THREE.Vector3((n + lift) * Math.cos(a) * Math.cos(b), (n * (1 - E2) + lift) * s, -(n + lift) * Math.cos(a) * Math.sin(b)); };
+  const dirLL = (lat, lon) => { const a = lat * D2R, b = lon * D2R; return new THREE.Vector3(Math.cos(a) * Math.cos(b), Math.sin(a), -Math.cos(a) * Math.sin(b)); };
+  const vll = (v) => { const n = v.clone().normalize(); return [Math.atan2(n.y, (1 - E2) * Math.hypot(n.x, n.z)) / D2R, Math.atan2(-n.z, n.x) / D2R]; };
+  // Kugelkappe/Kugel → Ellipsoid: Breite der Kugelgeometrie als geodätische Breite deuten (Textur, Heatmap, Kacheln liegen damit lagerichtig)
+  const toEllipsoid = (g, lift = 0) => { const p = g.attributes.position, v = new THREE.Vector3();
+    for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); const [la, lo] = [Math.asin(clamp(v.y / v.length(), -1, 1)) / D2R, Math.atan2(-v.z, v.x) / D2R]; p.setXYZ(i, ...llv(la, lo, lift).toArray()); }
+    p.needsUpdate = true; g.computeVertexNormals(); g.computeBoundingSphere(); return g; };
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
   const sc = new THREE.Scene(); sc.background = new THREE.Color('#03050b');
   const camera = new THREE.PerspectiveCamera(38, 1, .001, 400);
   camera.position.set(0, 1.2, 4.2);
-  const controls = new OrbitControls(camera, canvas);
-  controls.enablePan = false; controls.enableZoom = false; controls.enableDamping = false; controls.rotateSpeed = .5;
+  const M = { dirty: true, raf: 0, fly: null, frames: 0, frameMs: 0, flyFrames: [], anim: new Set(), zoom: 'globe', hooks: { draw: [], frame: [], resize: [], pick: [] } };
+  let controls = null;
+  function makeControls(up) {
+    const tgt = controls ? controls.target.clone() : new THREE.Vector3();
+    controls?.dispose(); camera.up.copy(up);
+    controls = new OrbitControls(camera, canvas); controls.target.copy(tgt);
+    controls.enablePan = false; controls.enableDamping = false; controls.rotateSpeed = .5; controls.zoomSpeed = .9; controls.maxDistance = 90;
+    controls.enableZoom = M.zoom === 'orbit';
+    controls.addEventListener('change', () => { M.dirty = true; });
+    controls.addEventListener('start', () => { M.fly = null; });
+  }
+  makeControls(new THREE.Vector3(0, 1, 0));
   const disposables = [], keep = (x) => { disposables.push(x); return x; };
   const glow = keep(glowTexture(THREE)), ring = keep(glowTexture(THREE, true));
-  const M = { dirty: true, raf: 0, fly: null, frames: 0, frameMs: 0, flyFrames: [], anim: new Set() };
-  controls.addEventListener('change', () => { M.dirty = true; });
-  controls.addEventListener('start', () => { M.fly = null; });
 
   // ---- Sterne, Erde, Saum ----
   { const n = 1500, pos = new Float32Array(n * 3); let s = 11;
@@ -251,11 +342,11 @@ function globe(host, { THREE, OrbitControls }, ctx) {
     for (let i = 0; i < n; i++) { const z = rnd() * 2 - 1, a = rnd() * Math.PI * 2, r = Math.sqrt(1 - z * z) * 150; pos.set([r * Math.cos(a), z * 150, r * Math.sin(a)], i * 3); }
     const g = keep(new THREE.BufferGeometry()); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     sc.add(new THREE.Points(g, keep(new THREE.PointsMaterial({ color: '#cdd6ff', size: 1.2, sizeAttenuation: false, transparent: true, opacity: .7 })))); }
+  const earth = new THREE.Group(); sc.add(earth);          // dreht sich im Analysen-Kontext mit der Zeit; alles Erdfeste hängt daran
   const tex = keep(new THREE.TextureLoader().load(TEX, () => { M.dirty = true; }));
   tex.anisotropy = 8;
   const U_E = { map: { value: tex }, sun: { value: new THREE.Vector3(1, 0, 0) }, shade: { value: S.on.terminator ? 1 : 0 }, nv: { value: 0 } };
-  const earth = new THREE.Mesh(keep(new THREE.SphereGeometry(1, 128, 96)), keep(new THREE.ShaderMaterial({ uniforms: U_E, vertexShader: EARTH_VS, fragmentShader: EARTH_FS })));
-  sc.add(earth);
+  earth.add(new THREE.Mesh(keep(toEllipsoid(new THREE.SphereGeometry(1, 128, 96))), keep(new THREE.ShaderMaterial({ uniforms: U_E, vertexShader: EARTH_VS, fragmentShader: EARTH_FS }))));
   const atmo = { value: 1 };
   sc.add(new THREE.Mesh(keep(new THREE.SphereGeometry(1.03, 64, 48)), keep(new THREE.ShaderMaterial({
     side: THREE.BackSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, uniforms: { k: atmo },
@@ -263,11 +354,12 @@ function globe(host, { THREE, OrbitControls }, ctx) {
     fragmentShader: 'uniform float k; varying vec3 n; void main(){ float i = pow(max(0.0, 0.72 - dot(n, vec3(0.0, 0.0, 1.0))), 3.0); gl_FragColor = vec4(0.42, 0.6, 1.0, 1.0) * i * 1.4 * k; }' }))));
 
   // ---- Ebenen: Gruppe + Deckkraft k (weich zum Ziel) ----
-  const layer = {}, mats = {};
-  for (const [k] of LAYERS) { layer[k] = { k: 0, group: new THREE.Group(), mats: [] }; sc.add(layer[k].group); }
-  const addMat = (k, m, base = 1) => { m.transparent = true; m.userData.base = base; layer[k].mats.push(m); return keep(m); };
+  const layer = {};
+  for (const [k] of LAYERS) { layer[k] = { k: 0, group: new THREE.Group(), mats: [] }; (k === 'runs' ? sc : earth).add(layer[k].group); }
+  const addMat = (k, m, base = 1) => { m.transparent = true; m.userData.base = base; m.opacity = base * ease(layer[k].k); layer[k].mats.push(m); return keep(m); };
+  const dropMats = (k, list) => { const set = new Set(list); layer[k].mats = layer[k].mats.filter(m => !set.has(m)); };
   const sprite = (k, color, size, base = 1, map = glow) => { const m = addMat(k, new THREE.SpriteMaterial({ map, color, sizeAttenuation: false, depthWrite: false, depthTest: true }), base);
-    const s = new THREE.Sprite(m); s.scale.setScalar(size); s.userData.size = size; return s; };
+    const s = new THREE.Sprite(m); s.scale.setScalar(size); return s; };
   const lineOn = (k, pts, color, base = 1, loop = false) => { const g = keep(new THREE.BufferGeometry().setFromPoints(pts));
     const m = addMat(k, new THREE.LineBasicMaterial({ color, depthWrite: false }), base); return new (loop ? THREE.LineLoop : THREE.Line)(g, m); };
   const labels = [];
@@ -288,9 +380,8 @@ function globe(host, { THREE, OrbitControls }, ctx) {
     for (const r of rings) {
       const m = r.lon.length;
       for (let i = 0; i < m; i++) {
-        const j = (i + 1) % m, a = r.lat[i] * D2R, b = r.lon[i] * D2R, c = r.lat[j] * D2R, d = r.lon[j] * D2R, q = 1.0006;
-        pos[o++] = q * Math.cos(a) * Math.cos(b); pos[o++] = q * Math.sin(a); pos[o++] = -q * Math.cos(a) * Math.sin(b);
-        pos[o++] = q * Math.cos(c) * Math.cos(d); pos[o++] = q * Math.sin(c); pos[o++] = -q * Math.cos(c) * Math.sin(d);
+        const j = (i + 1) % m, a = llv(r.lat[i], r.lon[i], .0006), b = llv(r.lat[j], r.lon[j], .0006);
+        pos[o++] = a.x; pos[o++] = a.y; pos[o++] = a.z; pos[o++] = b.x; pos[o++] = b.y; pos[o++] = b.z;
       }
     }
     const g = keep(new THREE.BufferGeometry()); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -300,31 +391,31 @@ function globe(host, { THREE, OrbitControls }, ctx) {
   // Orte der Liste
   const picks = [];                                    // anklickbare Sprites: {obj, kind, night|site}
   for (const s of sites) {
-    const p = llv(s.lat, s.lon, 1.0012), o = sprite('sites', '#dfe6f5', .016, .95); o.position.copy(p); layer.sites.group.add(o);
+    const p = llv(s.lat, s.lon, .0012), o = sprite('sites', '#dfe6f5', .016, .95); o.position.copy(p); layer.sites.group.add(o);
     picks.push({ obj: o, kind: 'site', site: s, layer: 'sites' });
     label(s.name || 'Ort', null, '#c9d2e3', p, { layer: 'sites', near: 1.9, cls: 'site' });
   }
   // Ort je Nacht (bisher zugeordnet) und Vorschläge: werden je Auswahl neu gebaut
   const coords = (n) => H.nightMarks(n, sites);
   function rebuildMarks() {
-    for (const k of ['current', 'proposals']) { layer[k].group.clear(); layer[k].mats = layer[k].mats.filter(m => m.userData.keep); }
+    for (const k of ['current', 'proposals']) { for (const c of layer[k].group.children) c.geometry?.dispose?.(); layer[k].group.clear(); layer[k].mats = []; }
     dropLabels(L => L.layer === 'current' || L.layer === 'proposals');
     for (let i = picks.length - 1; i >= 0; i--) if (picks[i].layer !== 'sites') picks.splice(i, 1);
-    const shown = S.night ? [nightOf(S.night)].filter(Boolean) : nights;
+    const shown = S.night ? [nightOf(S.night)].filter(Boolean) : S.ctx === 'runs' ? [] : nights;
     const curSeen = new Set();
     M.curPos = null;
     for (const n of shown) {
       const m = coords(n), sel = n.night === S.night;
       if (m.cur && !curSeen.has(m.cur.name + m.cur.lat)) {
         curSeen.add(m.cur.name + m.cur.lat);
-        const o = sprite('current', '#f2d385', sel ? .034 : .024, 1, ring); o.position.copy(llv(m.cur.lat, m.cur.lon, 1.0016)); layer.current.group.add(o);
+        const o = sprite('current', '#f2d385', sel ? .034 : .024, 1, ring); o.position.copy(llv(m.cur.lat, m.cur.lon, .0016)); layer.current.group.add(o);
         picks.push({ obj: o, kind: 'night', night: n.night, layer: 'current' });
-        if (sel) { label('bisher: ' + (m.cur.name || 'Ort'), null, '#f2d385', o.position, { layer: 'current', cls: 'cur' }); M.curPos = llv(m.cur.lat, m.cur.lon, 1.0012); }
+        if (sel) { label('bisher: ' + (m.cur.name || 'Ort'), null, '#f2d385', o.position, { layer: 'current', cls: 'cur' }); M.curPos = llv(m.cur.lat, m.cur.lon, .0012); }
       }
       if (m.prop && !n.applied) {
-        const p = llv(m.prop.lat, m.prop.lon, 1.002), o = sprite('proposals', '#7f98ff', sel ? .03 : .02, 1); o.position.copy(p); layer.proposals.group.add(o);
+        const p = llv(m.prop.lat, m.prop.lon, .002), o = sprite('proposals', '#7f98ff', sel ? .03 : .02, 1); o.position.copy(p); layer.proposals.group.add(o);
         picks.push({ obj: o, kind: 'night', night: n.night, layer: 'proposals' });
-        layer.proposals.group.add(lineOn('proposals', H.ellipsePts(m.prop, 72).map(([la, lo]) => llv(la, lo, 1.0018)), '#8ea4ff', sel ? .95 : .6, true));
+        layer.proposals.group.add(lineOn('proposals', H.ellipsePts(m.prop, 72).map(([la, lo]) => llv(la, lo, .0018)), '#8ea4ff', sel ? .95 : .6, true));
         if (sel || !S.night) label(m.prop.kind === 'list' ? m.prop.name : m.prop.kind === 'global' ? 'Unbekannter Ort' : 'Vorschlag', sel ? fmtNight(n.night) + ' · ± ' + H.kmText((m.prop.ellipse?.major ?? m.prop.acc / 1000)) : fmtNight(n.night),
           '#7f98ff', p, { layer: 'proposals', onClick: () => onPick(n.night), near: sel ? 99 : 2.6 });
       }
@@ -335,7 +426,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
 
   // ---- Heatmap je Nacht: Kugelkappe über dem belegten Ausschnitt, grob (20 km) + fein (1 km, beim Heranzoomen) ----
   const patches = {};
-  function patch(cells, km, r) {
+  function patch(cells, km, lift) {
     if (!cells.length) return null;
     const max = cells.reduce((a, c) => Math.max(a, c.v), 0);
     let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180;
@@ -353,7 +444,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
     }
     const t = keep(new THREE.DataTexture(buf, cols, rows, THREE.RGBAFormat)); t.magFilter = t.minFilter = THREE.LinearFilter; t.needsUpdate = true;
     const u = { tex: { value: t }, reveal: { value: 0 }, opacity: { value: 0 } };
-    const g = keep(new THREE.SphereGeometry(r, clamp(cols >> 2, 8, 96), clamp(rows >> 2, 8, 96), (lo0 + 180) * D2R, (lo1 - lo0) * D2R, (90 - la1) * D2R, (la1 - la0) * D2R));
+    const g = keep(toEllipsoid(new THREE.SphereGeometry(1, clamp(cols >> 2, 8, 96), clamp(rows >> 2, 8, 96), (lo0 + 180) * D2R, (lo1 - lo0) * D2R, (90 - la1) * D2R, (la1 - la0) * D2R), lift));
     const m = keep(new THREE.ShaderMaterial({ uniforms: u, transparent: true, depthWrite: false, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }', fragmentShader: HEAT_FS }));
     const mesh = new THREE.Mesh(g, m); mesh.renderOrder = 2;
     return { mesh, u, max, box: [la0, la1, lo0, lo1] };
@@ -361,12 +452,11 @@ function globe(host, { THREE, OrbitControls }, ctx) {
   function buildPatch(night) {
     const h = heats[night]; if (!h) return null;
     const old = patches[night]; if (old) { layer.heat.group.remove(old.group); }
-    const coarse = patch(H.heatCells(h.coarse), h.coarse?.cell_km || 20, 1.0009), fine = patch(H.heatCells(h.fine), h.fine?.km || 1, 1.0013);
+    const coarse = patch(H.heatCells(h.coarse), h.coarse?.cell_km || 20, .0009), fine = patch(H.heatCells(h.fine), h.fine?.km || 1, .0013);
     if (!coarse && !fine) return null;
     const group = new THREE.Group(); if (coarse) group.add(coarse.mesh); if (fine) group.add(fine.mesh);
     layer.heat.group.add(group);
-    const P = patches[night] = { night, group, coarse, fine, reveal: 0, revealStart: 0, h };
-    return P;
+    return patches[night] = { night, group, coarse, fine, reveal: 0, revealStart: 0, h };
   }
   function revealHeat(list) {
     const now = performance.now();
@@ -374,57 +464,85 @@ function globe(host, { THREE, OrbitControls }, ctx) {
     M.anim.add('reveal'); M.dirty = true;
   }
 
-  // ---- Satellitenbahnen und Teleskop (run3d je Beobachtung der Nacht, System D → erdfest) ----
-  const runs = {};
-  const Y = new THREE.Vector3(0, 1, 0);
-  async function loadRuns(night) {
-    if (runs[night]) return runs[night];
+  // ---- Gemeinsame Schnittstelle für die Lauf-Ebene (skytrace-3d.js runLayer) ----
+  const G = {
+    THREE, sc, earth, camera, stage, labelsHost, $d, glow, cardEl: $d('.ste-card'),
+    controls: () => controls, makeControls, addMat, dropMats,
+    zoomMode(m) { M.zoom = m; controls.enableZoom = m === 'orbit'; },
+    setFly(fn) { M.fly = fn; M.dirty = true; },
+    dirty() { M.dirty = true; },
+    layerK: (k) => layer[k].k,
+    hook(kind, fn) { M.hooks[kind].push(fn); return () => { M.hooks[kind] = M.hooks[kind].filter(f => f !== fn); }; },
+    setSun(v) { sunNow.copy(v); U_E.sun.value.copy(v); M.dirty = true; },
+    onRunPick: null,
+  };
+  // ---- Analysen-Kontext: ein Lauf interaktiv (Zeitleiste dreht die Erde) ----
+  const R = { run: null, id: null, ticket: 0 };
+  const runMsg = (text, link) => { const m = $d('.ste-msg'); m.innerHTML = `${icon('alert')}<span>${esc(text)}${link ? ` <a href="${link[1]}">${esc(link[0])}</a>` : ''}</span>`; m.classList.add('hint'); m.hidden = false; };
+  async function openRun(id, { focus = null, session = null } = {}) {
+    closeRun(false);
+    S.ctx = 'runs'; R.id = id;
+    for (const P of Object.values(nightRuns)) P.layers.forEach(l => l.setVisible(false));
+    if (!id) { setNight(null, { fly: true }); return; }
+    const ticket = ++R.ticket, m = $d('.ste-msg');
+    m.classList.remove('hint'); m.innerHTML = '<span class="spinner"></span>Teleskopweg und Bahnen werden berechnet …'; m.hidden = false;
+    let data;
+    const q = `run=${encodeURIComponent(id)}` + (focus ? `&focus=${encodeURIComponent(focus)}` : '') + (session ? `&session=${encodeURIComponent(session)}` : '');
+    try { data = await api(T + '/run3d?' + q); } catch (e) { if (ticket === R.ticket) runMsg(e.message); return; }
+    if (ticket !== R.ticket || M.dead) return;
+    if (!data.ok) { runMsg(data.reason, data.need_site ? ['Standort eintragen →', '#/settings/skytrace'] : null); notes(); return; }
+    m.hidden = true;
+    $d('.st3d-schema').hidden = false;
+    R.run = SkyTrace3D.runLayer(G, data, { interactive: true, focus, onCandidate, legendEl: $d('.st3d-legend'), noteEl: $d('.st3d-note') });
+    host._st3d = { state: () => R.run?.state() };
+    // Nacht des Laufs: deren Orte, Vorschlag und Heatmap gehören dazu (gemeinsame Ebenen)
+    S.night = nightOfTime(data.anchor);
+    rebuildMarks(); for (const P of Object.values(patches)) setPatchK(P);
+    if (S.on.heat && patches[S.night]) revealHeat([patches[S.night]]);
+    M.sunTime = data.anchor;
+    M.anim.add('layers'); notes();
+    R.run.begin(true);
+  }
+  function closeRun(animate = true) {
+    R.ticket++;
+    if (R.run) { R.run.dispose(); R.run = null; }
+    host._st3d = null;
+    $d('.st3d-schema').hidden = true; $d('.st3d-views').hidden = true; $d('.st3d-bar').hidden = true;
+    $d('.ste-msg').hidden = true;
+    G.zoomMode('globe');
+    if (camera.up.y < .999) makeControls(new THREE.Vector3(0, 1, 0));
+    // Erde weich zurück in die erdfeste Lage (Nächte-Kontext), Blick wieder auf den Mittelpunkt
+    const r0 = earth.rotation.y, t0 = controls.target.clone(), start = performance.now(), ms = animate && !reduced() ? 900 : 0;
+    if (Math.abs(r0) > 1e-6 || t0.lengthSq() > 1e-9) {
+      const step = (now) => { const k = ms ? Math.min(1, (now - start) / ms) : 1, e = ease(k);
+        earth.rotation.y = r0 * (1 - e); controls.target.copy(t0).multiplyScalar(1 - e); controls.update();
+        if (k >= 1) M.spin = null; M.dirty = true; };
+      if (ms) M.spin = step; else step(start);
+    }
+  }
+
+  // ---- „Nächte & Standorte“: Satellitenbahnen = dieselbe Lauf-Ebene, statisch zur Ankerzeit (bei Erddrehung 0 ist System D erdfest) ----
+  const nightRuns = {};
+  async function loadNightRuns(night) {
+    if (nightRuns[night]) return nightRuns[night];
     const n = nightOf(night), obs = [];
     for (const o of n?.observations || []) if (!obs.some(x => x.run === o.run && x.session === o.session)) obs.push(o);
-    const P = runs[night] = { group: new THREE.Group(), notes: [], hits: 0, obs: obs.length, ready: false, time: null, points: [] };
-    layer.runs.group.add(P.group); P.group.visible = false;
-    let ci = 0;
+    const P = nightRuns[night] = { layers: [], notes: [], hits: 0, obs: obs.length, ready: false, time: null, points: [] };
     for (const o of obs.slice(0, 6)) {
       let d;
       try { d = await api(`${T}/run3d?run=${encodeURIComponent(o.run)}&session=${encodeURIComponent(o.session)}`); } catch (e) { P.notes.push(`${H.shortName(o.session)}: ${e.message}`); continue; }
       if (M.dead) return P;
       if (!d.ok) { P.notes.push(`${H.shortName(o.session)}: ${d.reason || 'keine 3D-Daten'}`); continue; }
-      const toE = (p, t) => V(p).applyAxisAngle(Y, -d.earth_rate * (t - d.anchor));
-      const dirE = (p, t) => U(p).applyAxisAngle(Y, -d.earth_rate * (t - d.anchor));
-      const obsP = V(d.observer), Pt = d.pointing;
-      P.points.push(obsP.clone());
-      P.time ??= d.anchor;
-      // Blickrichtung über die Nacht: Fächer aus höchstens 48 Strahlen (~600 km), mittlerer kräftiger
-      const step = Math.max(1, Math.floor(Pt.t.length / 48)), fan = [];
-      for (let i = 0; i < Pt.t.length; i += step) fan.push(obsP, obsP.clone().add(dirE(Pt.center[i], Pt.t[i]).multiplyScalar(.095)));
-      { const g = keep(new THREE.BufferGeometry().setFromPoints(fan)); P.group.add(new THREE.LineSegments(g, addMat('runs', new THREE.LineBasicMaterial({ color: '#f2d385', depthWrite: false }), .32))); }
-      const mid = Math.floor(Pt.t.length / 2);
-      P.group.add(lineOn('runs', [obsP, obsP.clone().add(dirE(Pt.center[mid], Pt.t[mid]).multiplyScalar(.16))], '#ffe8a8', .95));
-      const so = sprite('runs', '#f2d385', .02); so.position.copy(obsP); P.group.add(so);
-      label(H.shortName(o.session), 'Teleskop · ' + (d.target?.name || ''), '#f2d385', obsP, { layer: 'runs', night, near: 2.2 });
-      for (const h of d.hits || []) {
-        const color = PALETTE[ci++ % PALETTE.length];
-        if (h.kind === 'sat') {
-          const tr = h.track.map((p, i) => toE(p, h.window[0] + 2 * i));
-          P.group.add(lineOn('runs', tr, color, .95));
-          if (h.ring?.length) P.group.add(lineOn('runs', h.ring.map(p => toE(p, h.t_pass)), color, h.alternative ? .14 : .26));
-          const at = tr[clamp(Math.round((h.t_pass - h.window[0]) / 2), 0, tr.length - 1)];
-          P.points.push(at.clone());
-          const s = sprite('runs', color, .022); s.position.copy(at); P.group.add(s);
-          label(h.name || 'Satellit', `${h.candidate || ''} · ${nf1(h.at_t0?.height_km)} km`, color, at, { layer: 'runs', night, near: 3.5 });
-          for (const seg of h.fov_segments || []) { const pts = seg.pos.map((p, i) => toE(p, h.t_pass + seg.t[i])); /* seg.t relativ zum Durchgang (orbit3d: fine − t0) */ if (pts.length > 1) P.group.add(lineOn('runs', pts, '#ffffff', 1)); }
-        } else if (h.ecef?.length) {
-          const pts = h.ecef.map(V); P.group.add(lineOn('runs', pts, color, 1));
-          label(h.name || (h.kind === 'meteor' ? 'Meteor' : 'Flugzeug'), h.candidate || '', color, pts.at(-1), { layer: 'runs', night, near: 2.2 });
-        }
-        P.hits++;
-      }
-      for (const m of d.missing || []) P.notes.push(`${m.candidate}: ${m.name || 'NORAD ' + m.norad_id} – ${m.reason}`);
+      const L = SkyTrace3D.runLayer(G, d, { interactive: false, label: H.shortName(o.session) });
+      L.setVisible(S.ctx === 'nights' && S.night === night);
+      P.layers.push(L); P.time ??= d.anchor; P.hits += L.hits; P.notes.push(...L.notes); P.points.push(...L.points);
     }
     P.ready = true;
     applyK('runs'); M.dirty = true;
     return P;
   }
+  function showNightRuns() { for (const [night, P] of Object.entries(nightRuns)) P.layers.forEach(l => l.setVisible(S.ctx === 'nights' && night === S.night)); }
+  G.onRunPick = () => { if (S.ctx === 'nights' && S.night) card(nightOf(S.night)); };      // statische Lauf-Ebene: Karte der Nacht
 
   // ---- Deckkraft der Ebenen (weich, 450 ms) ----
   function applyK(k) {
@@ -436,33 +554,31 @@ function globe(host, { THREE, OrbitControls }, ctx) {
     M.dirty = true;
   }
   function setPatchK(P) {
-    const f = ease(layer.heat.k), sel = !S.night || P.night === S.night;
+    const f = ease(layer.heat.k), sel = S.night ? P.night === S.night : S.ctx === 'nights';
     const dist = camera.position.length(), fineK = P.fine ? clamp((1.55 - dist) / .35, 0, 1) : 0;
     P.group.visible = sel && f > .002;
     if (P.coarse) { P.coarse.u.opacity.value = f * (1 - .55 * fineK); P.coarse.u.reveal.value = ease(P.reveal); }
     if (P.fine) { P.fine.u.opacity.value = f * fineK; P.fine.u.reveal.value = ease(P.reveal); }
   }
   const target = (k) => {
-    if (k === 'runs') return S.on.runs && S.night && runs[S.night]?.ready ? 1 : 0;
-    if (k === 'heat') return S.on.heat ? 1 : 0;
+    if (k === 'runs') return S.on.runs && (S.ctx === 'runs' ? !!R.run : S.night && nightRuns[S.night]?.ready) ? 1 : 0;
     return S.on[k] ? 1 : 0;
   };
-  // Nachtsicht: Auto = an, sobald Orte/Heatmap/Vorschläge gezeigt werden und die betrachtete Region auf der Nachtseite liegt
+  // Nachtsicht: Auto = an, sobald Daten gezeigt werden und die betrachtete Region auf der Nachtseite liegt
   const sunNow = new THREE.Vector3(1, 0, 0);
   function nvTarget() {
     if (S.nv === 'on') return 1;
     if (S.nv === 'off' || !S.on.terminator) return 0;
     const any = ['sites', 'current', 'heat', 'proposals', 'runs'].some(k => S.on[k]);
-    const look = M.focus || camera.position.clone().normalize();
+    const look = S.ctx === 'runs' ? (controls.target.lengthSq() > 1e-6 ? controls.target.clone() : camera.position.clone()).normalize() : (M.focus || camera.position.clone().normalize());
     return any && look.dot(sunNow) < .12 ? 1 : 0;
   }
   function layersChanged(k) {
     if (k === 'heat' && S.on.heat) revealHeat(Object.values(patches).filter(P => !S.night || P.night === S.night));
-    if (k === 'runs' && S.on.runs && S.night) loadRuns(S.night).then((P) => { if (!M.dead) { showRuns(); applyK('runs'); M.anim.add('layers'); notes(); if (S.night && !cardEl.hidden) card(nightOf(S.night)); if (P?.points.length && S.on.runs) home(); } });
+    if (k === 'runs' && S.on.runs && S.night && S.ctx === 'nights') loadNightRuns(S.night).then((P) => { if (!M.dead) { showNightRuns(); applyK('runs'); M.anim.add('layers'); notes(); if (P?.points.length && S.on.runs) home(); } });
     M.anim.add('layers'); M.dirty = true;
     notes();
   }
-  function showRuns() { for (const [night, P] of Object.entries(runs)) P.group.visible = night === S.night; }
 
   // ---- Kamera: Fahrt (Kugel-Slerp mit Bogen nach außen) zu Richtung und Abstand ----
   function flyTo(dir, dist, ms = 1500) {
@@ -479,15 +595,14 @@ function globe(host, { THREE, OrbitControls }, ctx) {
       const r = d0 + (d1 - d0) * e + lift * Math.sin(Math.PI * e) * Math.min(1, 1.2 / Math.max(d0, d1));
       camera.position.copy(a).applyQuaternion(q).multiplyScalar(r);
       controls.update();
-      M.flyFrames.push(now);
       if (k >= 1) M.fly = null;
       M.dirty = true;
     };
   }
-  // Region einer Nacht: Heatmap-Ausschnitt, Vorschlag, bisheriger Ort; ohne Nacht alle Orte
+  // Region einer Nacht: Heatmap-Ausschnitt, Vorschlag, bisheriger Ort (+ Bahnen); ohne Nacht alle Orte
   function region(night) {
     const pts = [];
-    const add = (la, lo) => pts.push(llv(la, lo));
+    const add = (la, lo) => pts.push(dirLL(la, lo));
     const ns = night ? [nightOf(night)].filter(Boolean) : nights;
     for (const n of ns) {
       const m = coords(n);
@@ -496,7 +611,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
       const P = patches[n.night];
       if (P?.coarse && (night || S.on.heat)) { const [a, b, c, d] = P.coarse.box; add(a, c); add(b, d); add(a, d); add(b, c); }
     }
-    const rp = night && S.on.runs && runs[night]?.ready ? runs[night] : null;
+    const rp = night && S.on.runs && nightRuns[night]?.ready ? nightRuns[night] : null;
     if (rp) pts.push(...rp.points.map(p => p.clone().normalize()));
     if (!pts.length) for (const s of sites) add(s.lat, s.lon);
     if (!pts.length) return { dir: new THREE.Vector3(.6, .55, -.3).normalize(), dist: 3.6 };
@@ -505,44 +620,47 @@ function globe(host, { THREE, OrbitControls }, ctx) {
     const narrow = stage.clientWidth / Math.max(1, stage.clientHeight) < 1 ? 1.6 : 1;
     return { dir: c, dist: clamp(1 + spread * 2.6 * narrow + .03, 1.09, 3.6) };      // mindestens ~570 km Höhe: Umgebung bleibt erkennbar
   }
-  function home() { const r = region(S.night); M.focus = r.dir; flyTo(r.dir, r.dist); M.anim.add('layers'); }
+  function home() {
+    if (S.ctx === 'runs' && R.run) { R.run.setView('earth'); return; }
+    const r = region(S.night); M.focus = r.dir; flyTo(r.dir, r.dist); M.anim.add('layers');
+  }
 
-  // ---- Auswahl einer Nacht ----
+  // ---- Auswahl einer Nacht (Kontext „Nächte & Standorte“) ----
   function setNight(night, { card: showCard = false, fly = true, first = false } = {}) {
     S.night = night;
     // Sonne zur Aufnahmezeit: run3d-Anker, sonst Mitternacht Ortszeit an der Region; ohne Nacht: jetzt
     const r = region(night), [, lon] = vll(r.dir);
-    const t = night ? (runs[night]?.time || nightTime(night, lon)) : Date.now() / 1000;
-    const [sla, slo] = sunLatLon(t); sunNow.copy(llv(sla, slo)); U_E.sun.value.copy(sunNow);
+    const t = night ? (nightRuns[night]?.time || nightTime(night, lon)) : Date.now() / 1000;
+    G.setSun(dirLL(...sunLatLon(t)));
     M.sunTime = t;
     rebuildMarks();
     for (const P of Object.values(patches)) setPatchK(P);
     if (S.on.heat) revealHeat(Object.values(patches).filter(P => !night || P.night === night));
-    showRuns();
+    showNightRuns();
     if (S.on.runs && night) {
-      const had = runs[night]?.ready;
-      loadRuns(night).then((P) => { if (!M.dead && S.night === night) { showRuns(); applyK('runs'); M.anim.add('layers'); notes(); if (!had && P?.points.length) home(); } });
+      const had = nightRuns[night]?.ready;
+      loadNightRuns(night).then((P) => { if (!M.dead && S.night === night && S.ctx === 'nights') { showNightRuns(); applyK('runs'); M.anim.add('layers'); notes(); if (!had && P?.points.length) home(); } });
     }
     M.focus = r.dir;
     if (fly) flyTo(r.dir, r.dist, first ? 1800 : 1500);
     if (showCard && night) card(nightOf(night)); else if (!night) cardEl.hidden = true;
     M.anim.add('layers'); notes(); M.dirty = true;
   }
-  function heatChanged(night) { const P = buildPatch(night); if (P) { setPatchK(P); if (S.on.heat) revealHeat([P]); } if (S.night === night) card(nightOf(night)); M.dirty = true; }
+  function heatChanged(night) { const P = buildPatch(night); if (P) { setPatchK(P); if (S.on.heat) revealHeat([P]); } if (S.night === night && !cardEl.hidden) card(nightOf(night)); M.dirty = true; }
 
-  // ---- Detailkarte ----
-  const cardEl = $d('.ste-card');
+  // ---- Detailkarte einer Nacht ----
+  const cardEl = G.cardEl;
   function card(n) {
     if (!n) { cardEl.hidden = true; return; }
     const p = n.proposal, c = n.current || {}, hh = heats[n.night];
-    const [label, cls] = n.applied ? ['Übernommen', 'ok'] : p?.kind === 'global' ? ['Unbekannter Ort', 'acc'] : (H.NIGHT_STATUS[n.status] || [n.status || '–', '']);
+    const [lab, cls] = n.applied ? ['Übernommen', 'ok'] : p?.kind === 'global' ? ['Unbekannter Ort', 'acc'] : (H.NIGHT_STATUS[n.status] || [n.status || '–', '']);
     const prop = !p ? '' : p.kind === 'list' ? `<b>${esc(p.name || 'Ort der Liste')}</b><span class="mut sm">bestehender Ort · ${p.sure} von ${n.tracks} Spuren · quer ${H.arcText(p.rms)}</span>`
       : p.kind === 'global' ? H.globalHtml(p, n, sites)
       : `<b>Neuer Ort ${p.shift_from_current_km != null ? H.kmText(p.shift_from_current_km) + ' neben „' + esc(c.name || 'bisher') + '“' : ''}</b><span class="mut sm">± ${H.kmText(p.accuracy_m / 1000)} · ${p.sure} von ${n.tracks} Spuren · quer ${H.arcText(p.rms)}${H.clockText(p) ? ' · ' + H.clockText(p) : ''}</span>`;
     const runsOf = [...new Map((n.observations || []).map(o => [o.run, o])).values()];
-    const rp = runs[n.night];
+    const rp = nightRuns[n.night];
     cardEl.innerHTML = `<div class="ste-card-h"><div><b>${esc(fmtNight(n.night, true))}</b><small>${esc([...new Set((n.observations || []).map(o => H.shortName(o.session)))].join(' · '))}</small></div>
-        <span class="chip ${cls}">${esc(label)}</span><button class="btn ghost icon sm" data-a="x" aria-label="Schließen">${icon('x')}</button></div>
+        <span class="chip ${cls}">${esc(lab)}</span><button class="btn ghost icon sm" data-a="x" aria-label="Schließen">${icon('x')}</button></div>
       <div class="ste-card-g"><div><small class="dim">Bisher</small><b>${esc(c.name || 'kein Ort')}</b><span class="mut sm">${c.sure ?? n.before ?? 0} von ${n.tracks} Spuren eindeutig · quer ${H.arcText(c.rms)}</span></div>
         ${p ? `<div><small class="dim">Vorschlag</small>${prop}</div>` : ''}
         ${hh ? `<div><small class="dim">Heatmap</small><span class="mut sm">Suchgebiet ± ${hh.region_km} km · Uhr ± ${Math.round(hh.clock_s)} s · bis ${patches[n.night]?.coarse?.max ?? hh.coarse?.max ?? '–'} verschiedene Spuren je ${hh.coarse?.cell_km || 20}-km-Zelle${hh.fine ? ' · fein 1 km beim Heranzoomen' : ''}</span></div>` : ''}
@@ -551,12 +669,13 @@ function globe(host, { THREE, OrbitControls }, ctx) {
       <div class="row ste-card-a">${p && !n.applied ? '<button class="btn sm" data-a="apply">Für diese Nacht übernehmen …</button>' : ''}
         <button class="btn ghost sm" data-a="heat">${hh ? 'Heatmap neu berechnen' : 'Heatmap berechnen'}</button>
         ${runsOf.slice(0, 3).map(o => `<a class="btn ghost sm" href="#/skytrace/${encodeURIComponent(o.run)}/beobachtungen">${esc(H.shortName(o.session))}</a>`).join('')}
-        ${runsOf[0] ? `<a class="btn ghost sm" href="#/skytrace/${encodeURIComponent(runsOf[0].run)}/3d" title="Teleskopweg und Durchgänge über die Nacht">${icon('globe')}3D-Lauf</a>` : ''}</div>`;
+        ${runsOf[0] && page ? `<button class="btn ghost sm" data-a="run" title="Teleskopweg und Durchgänge über die Nacht">${icon('globe')}Als Analyse zeigen</button>` : ''}</div>`;
     cardEl.onclick = async (e) => {
       const a = e.target.closest('[data-a]')?.dataset.a;
       if (a === 'x') cardEl.hidden = true;
       else if (a === 'apply') { if (await H.applyNights([n])) { n.applied = Math.floor(Date.now() / 1000); rebuildMarks(); card(n); } }
       else if (a === 'heat') onCompute(n.night, e.target.closest('button'));
+      else if (a === 'run') { cardEl.hidden = true; host.querySelector('.ste-ctx [data-ctx=runs]') && (S.runId = runsOf[0].run, store.set('skytrace.3drun', S.runId), host.querySelector('.ste-ctx [data-ctx=runs]').click()); }
     };
     cardEl.hidden = false;
   }
@@ -571,27 +690,29 @@ function globe(host, { THREE, OrbitControls }, ctx) {
   // ---- Hinweise, Legende ----
   function notes() {
     const out = [];
-    if (S.on.runs && !S.night) out.push('Satellitenbahnen: eine Nacht wählen.');
-    const rp = S.night && runs[S.night];
-    if (S.on.runs && rp && !rp.ready) out.push('Bahnen werden berechnet …');
-    if (S.on.runs && rp?.ready) { out.push(rp.hits ? `${rp.hits} Bahnen/Treffer, Teleskop-Blickrichtung als Fächer über die Nacht.` : 'In dieser Nacht keine Katalogtreffer – gezeigt wird die Blickrichtung des Teleskops.'); out.push(...rp.notes); }
-    if (S.night && !heats[S.night] && S.on.heat) out.push('Für diese Nacht liegt keine Heatmap vor – „Heatmap berechnen“ in der Karte der Nacht holt sie nach.');
-    if (S.on.terminator) out.push(`Beleuchtung ${S.night ? (runs[S.night]?.time ? 'zur Aufnahmezeit' : '≈ Mitternacht Ortszeit') : 'jetzt'} (${new Date(M.sunTime * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC).`);
+    if (S.ctx === 'nights') {
+      if (S.on.runs && !S.night) out.push('Satellitenbahnen: eine Nacht wählen.');
+      const rp = S.night && nightRuns[S.night];
+      if (S.on.runs && rp && !rp.ready) out.push('Bahnen werden berechnet …');
+      if (S.on.runs && rp?.ready) { out.push(rp.hits ? `${rp.hits} Bahnen/Treffer mit Teleskop-Blickrichtung, je Beobachtung zu ihrem Beginn.` : 'In dieser Nacht keine Katalogtreffer – gezeigt wird die Blickrichtung des Teleskops.'); out.push(...rp.notes); }
+      if (S.night && !heats[S.night] && S.on.heat) out.push('Für diese Nacht liegt keine Heatmap vor – „Heatmap berechnen“ in der Karte der Nacht holt sie nach.');
+    }
+    if (S.on.terminator && M.sunTime) out.push(`Beleuchtung ${S.ctx === 'runs' ? 'zur Aufnahmezeit' : S.night ? (nightRuns[S.night]?.time ? 'zur Aufnahmezeit' : '≈ Mitternacht Ortszeit') : 'jetzt'} (${new Date(M.sunTime * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC).`);
     out.push('Erde: NASA Blue Marble · Umrisse: Natural Earth.');
     $d('.ste-note').textContent = out.join(' ');
     const P = S.night ? patches[S.night] : null, any = Object.keys(patches).length;
     const lg = $d('.ste-legend');
-    lg.hidden = !S.on.heat || !(P || (!S.night && any));
+    lg.hidden = !S.on.heat || !(P || (!S.night && S.ctx === 'nights' && any));
     $d('.ste-legend-t').textContent = P ? `verschiedene Spuren: 1 … ${P.coarse?.max ?? P.fine?.max}` : 'verschiedene Spuren (je Nacht relativ)';
   }
 
   // ---- Kartenkacheln (OSM) nur auf Knopfdruck, erst bei starkem Zoom ----
   const tilesBox = $d('.ste-tiles'), tilesBtn = $d('.ste-tiles-b');
   let tilesMesh = null;
-  const clearTiles = () => { if (!tilesMesh) return; sc.remove(tilesMesh); tilesMesh.geometry.dispose(); tilesMesh.material.map?.dispose(); tilesMesh.material.dispose(); tilesMesh = null; $d('.ste-attr').textContent = ''; tilesBtn.innerHTML = `${icon('globe')}Karte laden`; M.dirty = true; };
+  const clearTiles = () => { if (!tilesMesh) return; earth.remove(tilesMesh); tilesMesh.geometry.dispose(); tilesMesh.material.map?.dispose(); tilesMesh.material.dispose(); tilesMesh = null; $d('.ste-attr').textContent = ''; tilesBtn.innerHTML = `${icon('globe')}Karte laden`; M.dirty = true; };
   tilesBtn.onclick = async () => {
     if (tilesMesh) { clearTiles(); return; }
-    const [lat, lon] = vll(camera.position), alt = (camera.position.length() - 1) * R_KM;
+    const look = earth.worldToLocal(camera.position.clone()), [lat, lon] = vll(look), alt = (camera.position.length() - 1) * R_KM;
     const z = clamp(Math.round(Math.log2(40000 / Math.max(alt * 1.2, 2))) + 1, 5, 14), n = 2 ** z, N = 4;
     const tx = Math.floor((lon + 180) / 360 * n), ty = Math.floor((1 - Math.log(Math.tan(lat * D2R) + 1 / Math.cos(lat * D2R)) / Math.PI) / 2 * n);
     const x0 = tx - N / 2 + 1, y0 = clamp(ty - N / 2 + 1, 0, n - N);
@@ -606,57 +727,63 @@ function globe(host, { THREE, OrbitControls }, ctx) {
         return get(x, y).then(im => { const a = (la1 - tLat(y)) / (la1 - la0) * cv.height, b = (la1 - tLat(y + 1)) / (la1 - la0) * cv.height; g.drawImage(im, (i % N) * 256, a, 256, b - a); }); }));
       if (M.dead) return;
       const t = new THREE.CanvasTexture(cv); t.anisotropy = 8;
-      tilesMesh = new THREE.Mesh(new THREE.SphereGeometry(1.0004, 64, 64, (lo0 + 180) * D2R, (lo1 - lo0) * D2R, (90 - la1) * D2R, (la1 - la0) * D2R), new THREE.MeshBasicMaterial({ map: t, transparent: true, opacity: .92, depthWrite: false }));
-      tilesMesh.renderOrder = 1; sc.add(tilesMesh);
+      tilesMesh = new THREE.Mesh(toEllipsoid(new THREE.SphereGeometry(1, 64, 64, (lo0 + 180) * D2R, (lo1 - lo0) * D2R, (90 - la1) * D2R, (la1 - la0) * D2R), .0004), new THREE.MeshBasicMaterial({ map: t, transparent: true, opacity: .92, depthWrite: false }));
+      tilesMesh.renderOrder = 1; earth.add(tilesMesh);
       $d('.ste-attr').innerHTML = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>-Mitwirkende';
       tilesBtn.innerHTML = `${icon('x')}Karte entfernen`;
     } catch (e) { toast((e.message || 'Kacheln nicht geladen') + ' – Karte braucht Internet.', 'err'); tilesBtn.innerHTML = `${icon('globe')}Karte laden`; }
     tilesBtn.disabled = false; M.dirty = true;
   };
 
-  // ---- Zoom: eigenes Mausrad/Zwei-Finger-Zoomen nach Höhe über dem Boden (OrbitControls zoomt nur multiplikativ zum Mittelpunkt) ----
+  // ---- Zoom: im Globus-Modus eigenes Mausrad/Zwei-Finger-Zoomen nach Höhe über dem Boden (OrbitControls zoomt nur multiplikativ zum Mittelpunkt);
+  //      in den Lauf-Ansichten Teleskop/Durchgang/Folgen zoomt OrbitControls zum jeweiligen Blickpunkt ----
   const zoomBy = (f) => { const d = camera.position.length(), alt = clamp((d - 1) * f, .012, 7); camera.position.multiplyScalar((1 + alt) / d); M.fly = null; controls.update(); M.dirty = true; M.anim.add('layers'); };
-  canvas.addEventListener('wheel', (e) => { e.preventDefault(); zoomBy(Math.exp(clamp(e.deltaY, -300, 300) * .0018)); }, { passive: false });
-  const touches = new Map(); let pinch = 0;
+  canvas.addEventListener('wheel', (e) => { if (M.zoom !== 'globe') return; e.preventDefault(); zoomBy(Math.exp(clamp(e.deltaY, -300, 300) * .0018)); }, { passive: false });
+  const touches = new Map(); let pinch = 0, down = null;
   canvas.addEventListener('pointerdown', (e) => { touches.set(e.pointerId, [e.clientX, e.clientY]); down = [e.clientX, e.clientY]; });
   canvas.addEventListener('pointermove', (e) => {
     if (!touches.has(e.pointerId)) return; touches.set(e.pointerId, [e.clientX, e.clientY]);
-    if (touches.size === 2) { const [a, b] = [...touches.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (pinch) zoomBy(pinch / d); pinch = d; }
+    if (touches.size === 2 && M.zoom === 'globe') { const [a, b] = [...touches.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (pinch) zoomBy(pinch / d); pinch = d; }
   });
   const up = (e) => { touches.delete(e.pointerId); if (touches.size < 2) pinch = 0; };
   canvas.addEventListener('pointercancel', up);
-  // Antippen: Ort / Nacht wählen
-  const rc = new THREE.Raycaster(), ndc = new THREE.Vector2(); let down = null;
+  // Antippen: Objekte des Laufs, sonst Ort / Nacht
+  const rc = new THREE.Raycaster(), ndc = new THREE.Vector2(), wp = new THREE.Vector3(), camN = new THREE.Vector3();
   canvas.addEventListener('pointerup', (e) => {
     up(e);
     if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6) return;
     const b = canvas.getBoundingClientRect(); ndc.set((e.clientX - b.left) / b.width * 2 - 1, -(e.clientY - b.top) / b.height * 2 + 1);
     rc.setFromCamera(ndc, camera);
-    const objs = picks.filter(p => layer[p.layer].group.visible && p.obj.position.clone().normalize().dot(camera.position.clone().normalize()) > .05);
+    for (const f of M.hooks.pick) if (f(rc)) return;
+    camN.copy(camera.position).normalize();
+    const objs = picks.filter(p => layer[p.layer].group.visible && p.obj.getWorldPosition(wp).normalize().dot(camN) > .05);
     const hit = rc.intersectObjects(objs.map(p => p.obj), false)[0], p = hit && objs.find(x => x.obj === hit.object);
     if (!p) return;
     if (p.kind === 'site') siteCard(p.site); else onPick(p.night);
   });
 
   // ---- Zeichnen ----
-  const wp = new THREE.Vector3(), camN = new THREE.Vector3();
   function draw() {
     const w = stage.clientWidth, h = stage.clientHeight, dist = camera.position.length();
-    camera.near = clamp((dist - 1) * .3, 1e-4, .5); camera.updateProjectionMatrix(); camera.updateMatrixWorld();
-    controls.rotateSpeed = clamp((dist - 1) * .45, .012, .55);
+    const toTarget = camera.position.distanceTo(controls.target), ground = Math.max(dist - 1, 1e-6);     // Nahebene an Abstand anpassen (Nahansicht ↔ Globus)
+    camera.near = clamp(Math.min(toTarget, ground) * .3, 1e-5, .5); camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+    controls.rotateSpeed = controls.target.lengthSq() > 1e-6 ? .6 : clamp((dist - 1) * .45, .012, .55);
     atmo.value = clamp((dist - 1.4) / 1.2, 0, 1);
     camN.copy(camera.position).normalize();
+    earth.updateMatrixWorld(true);
     for (const L of labels) {
       const on = layer[L.layer].group.visible && layer[L.layer].k > .4 && (!L.night || L.night === S.night) && dist < (L.near ?? 99)
         && !(L.layer === 'sites' && M.curPos && layer.current.k > .4 && L.pos.distanceTo(M.curPos) < 2e-5);     // Listenort = bisheriger Ort: nur ein Schild
-      let hide = !on || wp.copy(L.pos).normalize().dot(camN) < .08;
-      if (!hide) { wp.copy(L.pos).project(camera); hide = Math.abs(wp.z) > 1 || Math.abs(wp.x) > 1.05 || Math.abs(wp.y) > 1.05; }
+      wp.copy(L.pos).applyMatrix4(earth.matrixWorld);
+      let hide = !on || wp.clone().normalize().dot(camN) < .08;
+      if (!hide) { wp.project(camera); hide = Math.abs(wp.z) > 1 || Math.abs(wp.x) > 1.05 || Math.abs(wp.y) > 1.05; }
       L.el.hidden = hide;
       if (!hide) L.el.style.transform = `translate(${((wp.x + 1) / 2 * w).toFixed(1)}px, ${((1 - wp.y) / 2 * h).toFixed(1)}px)`;
     }
+    for (const f of M.hooks.draw) f(w, h);
     for (const P of Object.values(patches)) setPatchK(P);
     bordersMat.color.set(U_E.nv.value > .5 ? '#9ff3e4' : '#c5d3ef'); bordersMat.userData.base = .38 + .3 * U_E.nv.value; bordersMat.opacity = bordersMat.userData.base * ease(layer.borders.k);
-    tilesBox.hidden = dist > 1.08 && !tilesMesh;
+    tilesBox.hidden = (dist > 1.08 || M.zoom !== 'globe') && !tilesMesh;
     if (tilesMesh && dist > 1.5) clearTiles();
     $d('.ste-nvpill').hidden = U_E.nv.value < .5;
     const t0 = performance.now(); renderer.render(sc, camera); M.frameMs = performance.now() - t0; M.frames++;
@@ -664,7 +791,9 @@ function globe(host, { THREE, OrbitControls }, ctx) {
   function frame(now) {
     M.raf = requestAnimationFrame(frame);
     const dt = Math.min(.1, (now - (M.last || now)) / 1000); M.last = now;
-    M.fly?.(now);
+    if (M.fly) { M.flyFrames.push(now); M.fly(now); }
+    M.spin?.(now);
+    for (const f of M.hooks.frame) f(now, dt);
     if (M.anim.size) {
       let busy = false;
       const step = reduced() ? 1 : dt / .45;
@@ -676,33 +805,39 @@ function globe(host, { THREE, OrbitControls }, ctx) {
         for (const P of Object.values(patches)) if (P.reveal < 1) { P.reveal = reduced() ? 1 : Math.min(1, (now - P.revealStart) / 1400); r = true; }
         if (!r) M.anim.delete('reveal'); busy = true;
       }
-      if (!busy && !M.fly) M.anim.delete('layers');
+      if (!busy && !M.fly && !M.spin) M.anim.delete('layers');
       M.dirty = true;
     }
     if (M.dirty) { M.dirty = false; draw(); }
   }
-  const resize = () => { const w = stage.clientWidth, h = stage.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); M.dirty = true; };
+  const resize = () => { const w = stage.clientWidth, h = stage.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); for (const f of M.hooks.resize) f(); M.dirty = true; };
   const ro = new ResizeObserver(resize); ro.observe(stage); resize();
   for (const night of Object.keys(heats)) if (heats[night]) buildPatch(night);
   controls.update();
   M.anim.add('layers');
   M.raf = requestAnimationFrame(frame);
   return {
-    setNight, layersChanged, heatChanged, home,
+    setNight, layersChanged, heatChanged, home, openRun, closeRun: () => closeRun(true),
+    nightCard: (night) => card(nightOf(night)),
     state: () => {
       const f = M.flyFrames, gaps = f.slice(1).map((t, i) => t - f[i]);
-      return { night: S.night, nv: +U_E.nv.value.toFixed(3), shade: +U_E.shade.value.toFixed(3), dist: +camera.position.length().toFixed(4),
+      return { ctx: S.ctx, night: S.night, run: R.id, runReady: !!R.run, nv: +U_E.nv.value.toFixed(3), shade: +U_E.shade.value.toFixed(3), dist: +camera.position.length().toFixed(4),
+        earthRot: +earth.rotation.y.toFixed(5),
         layers: Object.fromEntries(LAYERS.map(([k]) => [k, +layer[k].k.toFixed(3)])), on: { ...S.on }, patches: Object.keys(patches).length,
         heatVisible: Object.values(patches).filter(P => P.group.visible).map(P => P.night), reveal: Object.fromEntries(Object.values(patches).map(P => [P.night, +P.reveal.toFixed(3)])),
         marks: { current: layer.current.group.children.length, proposals: layer.proposals.group.children.length, sites: layer.sites.group.children.length },
-        borders: M.borders || 0, runs: Object.fromEntries(Object.entries(runs).map(([k, v]) => [k, { ready: v.ready, hits: v.hits }])),
-        flying: !!M.fly, animating: M.anim.size > 0, frameMs: +M.frameMs.toFixed(2), flyFrameMs: gaps.length ? +(gaps.reduce((a, b) => a + b, 0) / gaps.length).toFixed(2) : null,
+        borders: M.borders || 0, runs: Object.fromEntries(Object.entries(nightRuns).map(([k, v]) => [k, { ready: v.ready, hits: v.hits, layers: v.layers.length }])),
+        flying: !!M.fly || !!M.spin, animating: M.anim.size > 0, frameMs: +M.frameMs.toFixed(2), flyFrameMs: gaps.length ? +(gaps.reduce((a, b) => a + b, 0) / gaps.length).toFixed(2) : null,
         flyMaxMs: gaps.length ? +Math.max(...gaps).toFixed(2) : null, sun: vll(sunNow).map(v => +v.toFixed(2)), card: !cardEl.hidden };
     },
-    focus: (lat, lon, dist) => flyTo(llv(lat, lon), dist, 0),
-    dispose() { M.dead = true; cancelAnimationFrame(M.raf); ro.disconnect(); controls.dispose(); clearTiles(); for (const x of disposables) x.dispose?.(); renderer.dispose(); renderer.forceContextLoss?.(); },
+    focus: (lat, lon, dist) => flyTo(dirLL(lat, lon), dist, 0),
+    dispose() {
+      M.dead = true; cancelAnimationFrame(M.raf); ro.disconnect(); R.run?.dispose();
+      for (const P of Object.values(nightRuns)) P.layers.forEach(l => l.dispose());
+      controls.dispose(); clearTiles(); for (const x of disposables) x.dispose?.(); renderer.dispose(); renderer.forceContextLoss?.();
+    },
   };
 }
 
-window.SkyTraceErde = { view, href: (night) => '#/skytrace/erde' + (night ? '/' + night : '') };
+window.SkyTraceErde = { view, embed, href: (night) => '#/skytrace/erde' + (night ? '/' + night : '') };
 })();
