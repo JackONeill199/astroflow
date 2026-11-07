@@ -18,6 +18,46 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 - **Flache Karte:** Satelliten erscheinen dort als Punkt unter dem Satelliten beim Durchgang mit gestrichelter Bodenspur (± 5 min).
 - Fürs Handy bleibt die 3D-Antwort klein: Details und Ausschnitt (~50 KB) werden erst beim Anklicken geladen.
 
+## 0.44.0 – 07.11.2026
+
+### Neu
+- **Vollständiger Windows-Installer mit Komponenten.** Eine Komponentenseite im Installer bietet mit Größenangabe und
+  vorausgewählt an:
+  - ASTAP + Sterndatenbank, D05 für Smart-Teleskope bzw. D50 für klassische Teleskope
+  - **GraXpert 3.0.2**
+  - GPU-Beschleunigung
+  - SkyTrace-Analyse-Engine (OpenCV, PyTorch für den Prozessor)
+  - Demo-Aufnahmen
+
+  Nach der Installation lädt AstroFlow das Gewählte selbst im Hintergrund:
+  - Der Fortschritt erscheint unter „Aufträge“.
+  - Abgebrochene Downloads setzen fort.
+  - Fehlt das Netz, startet AstroFlow trotzdem und bietet die Komponente später erneut an.
+  - Die Demo kommt zuletzt, damit das erste Bild schon mit GraXpert entsteht.
+- **Herkunft und Lizenzen:**
+  - **GraXpert** (GPL-3) kommt als offizielles Release von GitHub, mit geprüfter Prüfsumme. Es wird ohne Administratorrechte und
+    ohne eigene Windows-Installation in einen eigenen Ordner ausgepackt; AstroFlow findet es dort von selbst.
+  - **ASTAP** und die Sterndatenbanken lädt AstroFlow wie bisher nur von der Originalquelle.
+  - **StarNet** wird aus Lizenzgründen nie geladen (Link + ZIP-Import).
+- **Einstellungen → Module & System → Komponenten:** zeigt je Werkzeug den Zustand (installiert/fehlt/Version), die erkannte
+  Grafikkarte und Lizenz/Quelle, mit „Installieren“, „Reparieren“ und „Entfernen“. Dieselbe Liste steht im
+  Einrichtungsassistenten unter „Extras“.
+- **Deinstallation** fragt, ob auch GraXpert und ASTAP mit entfernt werden sollen. Nur von AstroFlow selbst Installiertes wird
+  gelöscht, ein vorhandenes ASTAP bleibt. Bilder, Stacks und Einstellungen bleiben immer erhalten.
+- **Update:** Das mitgelieferte Python wird vollständig ersetzt. GPU-Paket und SkyTrace-Engine liegen in einem eigenen Paketordner und
+  bleiben erhalten; nach dem Update prüft AstroFlow sie nur und lädt nichts neu, solange die Python-Version gleich bleibt. Ein
+  vorhandenes, normal installiertes GraXpert hat Vorrang und wird nie verändert.
+- Fehlt die Microsoft-C++-Laufzeit, die PyTorch braucht, meldet AstroFlow das klar mit dem Weg zur Reparatur, statt die
+  Spurenanalyse still abbrechen zu lassen. AstroFlow lädt sie zusammen mit der Engine; sie bleibt neben dem eigenen Python
+  von AstroFlow, ohne Administratorrechte.
+- **Symbol im Infobereich** (Taskleiste unten rechts):
+  - **Menü:** „AstroFlow öffnen“ (auch per Doppelklick), „Aufträge“, „Aufträge anhalten/fortsetzen“, „Benachrichtigung, wenn ein
+    Bild fertig ist“, „Beim Anmelden starten“, „Beenden“.
+  - **Anzeige:** Ein oranger Punkt zeigt, dass gerechnet wird; der Tooltip nennt den laufenden Auftrag.
+  - **Beenden** fragt bei laufendem Auftrag nach; der Auftrag wird später fortgesetzt. Mit AstroFlow endet auch das Symbol.
+  - Abschaltbar mit `ASTROFLOW_NO_TRAY=1`.
+- Befehl `astroflow components status | install NAME | remove NAME` für Skripte.
+
 ## 0.43.5 – 07.11.2026
 
 ### Behoben

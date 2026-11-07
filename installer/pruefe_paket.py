@@ -87,7 +87,168 @@ def flow(port: int, times: dict, t0: float, astap: bool):
 
 
 
-def check_setup(exe: Path, astap: bool):
+FULL = "astap,astap\\d05,graxpert,gpu,skytrace,demo"
+
+
+def diagnose(port: int):
+    """Bei Zeitüberschreitung: Aktivität, SkyTrace-Zustand und Serverprotokoll ausgeben (Fehlersuche in der Sandbox)."""
+    for path in ("/activity?limit=15", "/skytrace/status", "/components"):
+        try:
+            print(f"--- {path}", json.dumps(call(port, path), ensure_ascii=False)[:3000], flush=True)
+        except Exception as e:
+            print(f"--- {path}: {e}", flush=True)
+    log = Path(os.environ.get("USERPROFILE", "")) / "AstroFlow" / "server.log.err"
+    if log.is_file():
+        print("--- server.log.err (Ende)", log.read_text(encoding="utf-8", errors="replace")[-4000:], flush=True)
+
+
+def full_flow(port: int, times: dict, t0: float):
+    """Vollinstallation: Komponenten aus dem Installer-Auftrag laufen im Hintergrund durch (ASTAP, GraXpert, GPU, SkyTrace, Demo).
+    Danach: Demo-Bild mit GraXpert, SkyTrace-Lauf auf den Demodaten (automatisch nach dem Stack), GPU-Erkennung."""
+    t1 = time.time()
+
+    def comps_done():
+        c = call(port, "/components")
+        running = [i["id"] for i in c["items"] if (i.get("task") or {}).get("state") == "running"]
+        if running:
+            print(f"  … {running[0]}: {(c['items'][[i['id'] for i in c['items']].index(running[0])]['task'] or {}).get('detail', '')}", flush=True)
+        return (not c["pending"] and not running) and c
+    c = wait(comps_done, 3600, 10)
+    times["komponenten_s"] = round(time.time() - t1, 1)
+    for i in c["items"]:
+        t = i.get("task") or {}
+        times[f"k_{i['id']}"] = {"zustand": i["state"], "version": i.get("version") or "", "detail": (i.get("detail") or "")[:120],
+                                 "dauer_s": round((t.get("finished") or 0) - (t.get("started") or 0), 1) if t else None,
+                                 "meldung": (t.get("detail") or "")[:160]}
+    print(json.dumps({k: v for k, v in times.items() if k.startswith("k_")}, indent=2, ensure_ascii=False), flush=True)
+    for need in ("astap", "graxpert", "gpu", "skytrace"):
+        assert times[f"k_{need}"]["zustand"] == "installed", f"{need}: {times[f'k_{need}']}"
+    res = wait(lambda: next((p["result"] for p in call(port, "/stacking/projects") if p.get("result")), None), 1800, 5)
+    times["bis_erstes_bild_min"] = round((time.time() - t0) / 60, 2)
+    gx = (res.get("stats") or {}).get("graxpert")
+    times["graxpert_im_bild"] = gx
+    assert gx and not (isinstance(gx, dict) and gx.get("error")), f"GraXpert nicht genutzt: {gx}"
+    print(f"Erstes Bild nach {times['bis_erstes_bild_min']} min, GraXpert: {gx}", flush=True)
+    t2 = time.time()
+    last = [0.0]
+
+    def runs_ready():
+        st = call(port, "/skytrace/state")
+        if st.get("failed") and not st.get("running"):
+            raise SystemExit("SkyTrace-Lauf fehlgeschlagen: " + " | ".join(l.get("text", "") for l in (st.get("logs") or [])[-6:])[-900:])
+        r = [x for x in call(port, "/skytrace/runs") if x.get("frames")] if not st.get("running") else []
+        if not r and time.time() - last[0] > 120:                # alle 2 min Zustand ausgeben
+            last[0] = time.time()
+            st = call(port, "/skytrace/status")
+            auto = [a for a in call(port, "/activity?limit=30") if a.get("module") == "skytrace"][:4]
+            print(f"  … SkyTrace: {st.get('text')} | Engine {st.get('engine')} | wartend {st.get('auto_waiting')} | {auto}", flush=True)
+        return r
+    try:
+        runs = wait(runs_ready, 1200, 15)
+    except TimeoutError:
+        diagnose(port)
+        raise
+    times["skytrace_lauf_s"] = round(time.time() - t2, 1)
+    times["skytrace"] = {k: runs[0].get(k) for k in ("id", "sessions", "frames", "candidates")}
+    times["gpu"] = call(port, "/stacking/gpu")
+    times["gesamt_min"] = round((time.time() - t0) / 60, 2)
+    print(f"SkyTrace-Lauf {times['skytrace']}, GPU {times['gpu']}", flush=True)
+
+
+def app_processes(app: Path) -> list[str]:
+    """Python-Prozesse aus dem Programmordner (Server, Symbol im Infobereich, Engine)."""
+    ps = ("Get-Process python,pythonw -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '" + str(app) + "*' } | "
+          "ForEach-Object { \"$($_.Id) $($_.ProcessName)\" }")
+    r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True)
+    return [l for l in r.stdout.splitlines() if l.strip()]
+
+
+def check_tray(times: dict):
+    pid_file = Path(os.environ["APPDATA"]) / "AstroFlow" / "tray.pid"
+    try:
+        pid = int(wait(lambda: pid_file.is_file() and pid_file.read_text().strip(), 30, 1))
+        times["tray"] = f"läuft (PID {pid})"
+    except TimeoutError:
+        times["tray"] = "kein Symbol gestartet"
+    print(f"Infobereich: {times['tray']}", flush=True)
+
+
+RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+
+
+def run_value() -> str | None:
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:
+            return winreg.QueryValueEx(k, "AstroFlow")[0]
+    except OSError:
+        return None
+
+
+def tray_menu(py: Path, port: int, env: dict, times: dict):
+    """Menü des Symbols im Infobereich durchspielen – dieselben Methoden, die die Menüeinträge aufrufen, im Python der Installation:
+    Öffnen und Aufträge (Browser), Anhalten/Fortsetzen, Beim Anmelden starten (an/aus), Benachrichtigung. „Beenden“ folgt danach."""
+    code = (
+        "import json, sys, time; from astroflow.core import tray; t = tray.Tray(int(sys.argv[1])); t.refresh(); r = {}\n"
+        "t.open(); t.jobs(); r['oeffnen'] = 'ok'\n"
+        "p0 = t.paused(); t.toggle_pause(); time.sleep(1); t.refresh(); r['anhalten'] = (p0, t.paused())\n"
+        "t.toggle_pause(); time.sleep(1); t.refresh(); r['fortsetzen'] = t.paused()\n"
+        "a0 = tray.autostart_enabled(); t.toggle_autostart(); r['autostart_an'] = tray.autostart_enabled()\n"
+        "import winreg; k = winreg.OpenKey(winreg.HKEY_CURRENT_USER, tray.RUN_KEY); r['autostart_befehl'] = winreg.QueryValueEx(k, 'AstroFlow')[0]\n"
+        "t.toggle_autostart(); r['autostart_aus'] = tray.autostart_enabled()\n"
+        "print(json.dumps(r))\n")
+    r = subprocess.run([str(py), "-I", "-c", code, str(port)], capture_output=True, text=True, env=env, timeout=120)
+    assert r.returncode == 0, r.stderr[-800:]
+    res = json.loads(r.stdout.strip().splitlines()[-1])
+    times["tray_menue"] = res
+    print(f"Infobereich-Menü: {res}", flush=True)
+    assert res["anhalten"] == [False, True] and res["fortsetzen"] is False, res
+    assert res["autostart_an"] is True and res["autostart_aus"] is False and "astroflow start --no-browser" in res["autostart_befehl"], res
+
+
+def tray_quit(py: Path, port: int, env: dict, app: Path, times: dict):
+    """„Beenden“ aus dem Menü: Server und Symbol enden, kein Prozess bleibt."""
+    t0 = time.time()
+    r = subprocess.run([str(py), "-I", "-c", "import sys; from astroflow.core import tray; t = tray.Tray(int(sys.argv[1])); t.refresh(); t.quit()",
+                        str(port)], capture_output=True, text=True, env=env, timeout=60)
+    assert r.returncode == 0, r.stderr[-500:]
+    t_end = time.time() + 40
+    while app_processes(app) and time.time() < t_end:
+        time.sleep(1)
+    times["tray_beenden_s"] = round(time.time() - t0, 1)
+    times["prozesse_nach_tray_beenden"] = app_processes(app)
+    print(f"Beenden über das Symbol: {times['tray_beenden_s']} s, übrig: {times['prozesse_nach_tray_beenden']}", flush=True)
+    assert not times["prozesse_nach_tray_beenden"]
+
+
+def update_flow(exe: Path, pyw: Path, app: Path, env: dict, port: int, times: dict):
+    """Update über die laufende Version (gleicher Installer drüber): Python wird ersetzt, GPU-/Engine-Pakete im Paketordner bleiben
+    und werden nur geprüft – nichts Großes neu laden."""
+    pk = Path(os.environ["LOCALAPPDATA"]) / "AstroFlow" / "Pakete"
+    size = sum(f.stat().st_size for f in pk.rglob("*") if f.is_file()) if pk.exists() else 0
+    times["paketordner_mb"] = round(size / 1e6)
+    t0 = time.time()
+    subprocess.run([str(exe), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/CURRENTUSER", "/NORESTART", f"/COMPONENTS={FULL}"], check=True, timeout=900)
+    times["update_installieren_s"] = round(time.time() - t0, 1)
+    subprocess.Popen([str(pyw), "-I", "-m", "astroflow", "start", "--no-browser"], env=env, cwd=str(app))
+    wait(lambda: call(port, "/status"), 180, 0.5)
+
+    def done():
+        c = call(port, "/components")
+        busy = any((i.get("task") or {}).get("state") == "running" for i in c["items"])
+        return (not c["pending"] and not busy) and c
+    c = wait(done, 1800, 3)
+    times["update_komponenten_s"] = round(time.time() - t0, 1)
+    sky = next(i for i in c["items"] if i["id"] == "skytrace")
+    gpu = next(i for i in c["items"] if i["id"] == "gpu")
+    times["update_skytrace"] = (sky.get("task") or {}).get("detail")
+    times["update_gpu"] = (gpu.get("task") or {}).get("detail")
+    print(f"Update: {times['update_komponenten_s']} s, Engine: {times['update_skytrace']}, GPU: {times['update_gpu']}", flush=True)
+    assert sky["state"] == "installed" and "nichts neu geladen" in (times["update_skytrace"] or ""), sky
+    assert gpu["state"] == "installed" and "bereits installiert" in (times["update_gpu"] or ""), gpu
+
+
+def check_setup(exe: Path, astap: bool, full: bool = False):
     env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHON")}
     with socket.socket() as sk:                                   # Standardport wie nach dem Installieren, falls frei
         port = free_port() if sk.connect_ex(("127.0.0.1", 8766)) == 0 else 8766
@@ -97,7 +258,8 @@ def check_setup(exe: Path, astap: bool):
     app = Path(os.environ["LOCALAPPDATA"]) / "Programs" / "AstroFlow"
     data = Path(os.environ["USERPROFILE"]) / "AstroFlow"
     times, t0 = {}, time.time()
-    subprocess.run([str(exe), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/CURRENTUSER", "/NORESTART"], check=True, timeout=900)
+    args = [f"/COMPONENTS={FULL}"] if full else ["/TYPE=compact"]
+    subprocess.run([str(exe), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/CURRENTUSER", "/NORESTART", *args], check=True, timeout=900)
     times["installieren_s"] = round(time.time() - t0, 1)
     pyw = app / "python" / "pythonw.exe"
     assert pyw.is_file(), f"Installation fehlt: {pyw}"
@@ -108,36 +270,89 @@ def check_setup(exe: Path, astap: bool):
     subprocess.Popen([str(pyw), "-I", "-m", "astroflow", "start"], env=env, cwd=str(app))    # = Startmenü „AstroFlow“
     wait(lambda: call(port, "/status"), 180, 0.5)
     times["start_s"] = round(time.time() - t1, 1)
+    check_tray(times)
     st = call(port, "/setup")
     assert call(port, "/app")["setup"]["pending"] and st["launched"], "Einrichtungsassistent sollte erscheinen"
     assert Path(st["data"]["path"]).resolve() == data.resolve(), st["data"]["path"]
     times["astap_vorher"] = st["astap"]["path"] or "keins"
     print(f"Server läuft nach {times['start_s']} s, Daten {st['data']['path']}", flush=True)
-    flow(port, times, t0, astap)
+    if full:
+        full_flow(port, times, t0)
+        update_flow(exe, pyw, app, env, port, times)
+        check_tray(times)
+        tray_menu(app / "python" / "python.exe", port, env, times)
+        tray_quit(app / "python" / "python.exe", port, env, app, times)
+        subprocess.Popen([str(pyw), "-I", "-m", "astroflow", "start", "--no-browser"], env=env, cwd=str(app))   # für den Abschluss unten
+        wait(lambda: call(port, "/status"), 180, 0.5)
+    else:
+        flow(port, times, t0, astap)
     t4 = time.time()
     subprocess.run([str(pyw), "-I", "-m", "astroflow", "stop"], env=env, cwd=str(app), timeout=120)   # = „AstroFlow beenden“
     with socket.socket() as s:
         s.settimeout(1)
         assert s.connect_ex(("127.0.0.1", port)) != 0, "Server läuft nach dem Beenden noch"
     times["beenden_s"] = round(time.time() - t4, 1)
+    t_end = time.time() + 30                                      # Symbol prüft alle 5 s, ob es enden soll
+    while app_processes(app) and time.time() < t_end:
+        time.sleep(1)
+    left = app_processes(app)
+    times["prozesse_nach_beenden"] = left
+    assert not left, f"Nach dem Beenden laufen noch: {left}"
     t5 = time.time()
-    subprocess.run([str(app / "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], check=True, timeout=300)
+    tools = Path(os.environ["LOCALAPPDATA"]) / "AstroFlow" / "Werkzeuge"
+    subprocess.run([str(app / "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
+                    *(["/WERKZEUGE=entfernen"] if full else [])], check=True, timeout=600)
     wait(lambda: not (app / "python").exists(), 120, 1)          # Deinstaller kopiert sich und läuft kurz weiter
     times["deinstallieren_s"] = round(time.time() - t5, 1)
     assert not menu.exists() or not list(menu.glob("*.lnk")), "Startmenü-Einträge nach Deinstallation noch da"
     assert (data / "astroflow.db").is_file(), "Daten sollten nach der Deinstallation bleiben"
+    if full:
+        wait(lambda: not (tools / "GraXpert").exists(), 120, 1)
+        astap = Path(os.environ["LOCALAPPDATA"]) / "astap"
+        assert not list(astap.glob("d05_*")), "Sterndatenbank sollte mit entfernt sein (/WERKZEUGE=entfernen)"
+        assert not (Path(os.environ["LOCALAPPDATA"]) / "AstroFlow" / "Pakete").exists(), "Paketordner sollte mit entfernt sein"
     print(json.dumps(times, indent=2, ensure_ascii=False))
 
+def portable_autostart(app: Path, env: dict, port: int, times: dict):
+    """Portable Version: „Beim Anmelden starten“ muss den Programmordner (--home) mitgeben. Eintrag setzen, Server beenden,
+    den eingetragenen Befehl wie beim Anmelden ausführen – ohne ASTROFLOW_HOME –, dann muss er die portablen Daten nutzen."""
+    py = app / "python" / "python.exe"
+    home_env = {**env, "ASTROFLOW_HOME": str(app)}               # wie im Symbol, das AstroFlow.cmd gestartet hat
+    r = subprocess.run([str(py), "-I", "-c", "from astroflow.core import tray; tray.set_autostart(True)"], env=home_env,
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr[-500:]
+    cmd = run_value()
+    times["autostart_portabel"] = cmd
+    assert cmd and "--home" in cmd and str(app) in cmd, cmd
+    subprocess.run(["cmd", "/c", str(app / "AstroFlow beenden.cmd")], env=env, cwd=str(app), capture_output=True, timeout=120)
+    login_env = {k: v for k, v in env.items() if k != "ASTROFLOW_HOME"}
+    subprocess.Popen(cmd, env=login_env)                         # Befehlszeile wie im Run-Eintrag
+    wait(lambda: call(port, "/status"), 120, 0.5)
+    data = call(port, "/setup")["data"]["path"]
+    times["autostart_daten"] = data
+    print(f"Autostart portabel: {cmd} -> Daten {data}", flush=True)
+    assert Path(data).resolve() == (app / "Daten").resolve(), data
+    subprocess.run([str(py), "-I", "-c", "from astroflow.core import tray; tray.set_autostart(False)"], env=home_env)
+    assert run_value() is None
+
+
 def main():
+    for stream in (sys.stdout, sys.stderr):                     # Ausgabe in Dateien (cp1252): nie an Sonderzeichen scheitern
+        try:
+            stream.reconfigure(errors="replace")
+        except Exception:
+            pass
     ap = argparse.ArgumentParser()
     ap.add_argument("zip", nargs="?")
     ap.add_argument("--setup", default=None, help="Installer prüfen statt ZIP (nur in Sandbox/VM)")
     ap.add_argument("--astap", action="store_true", help="ASTAP + D05 wirklich herunterladen (~100 MB)")
+    ap.add_argument("--voll", action="store_true", help="mit --setup: alle Komponenten (ASTAP, GraXpert, GPU, SkyTrace, Demo)")
+    ap.add_argument("--autostart", action="store_true", help="portabel: Autostart mit --home prüfen (schreibt HKCU\\…\\Run – nur Sandbox/VM)")
     ap.add_argument("--keep", action="store_true", help="Testordner behalten")
     ap.add_argument("--dir", default=None)
     a = ap.parse_args()
     if a.setup:
-        return check_setup(Path(a.setup), a.astap)
+        return check_setup(Path(a.setup), a.astap, a.voll)
 
     root = Path(a.dir or tempfile.mkdtemp(prefix="astroflow-sauber-"))
     home = root / "home"
@@ -174,6 +389,8 @@ def main():
     flow(port, times, t0, a.astap)
 
     t4 = time.time()
+    if a.autostart:
+        portable_autostart(app, env, port, times)
     subprocess.run(["cmd", "/c", str(app / "AstroFlow beenden.cmd")], env=env, cwd=str(app), capture_output=True, timeout=120)
     with socket.socket() as s:
         s.settimeout(1)

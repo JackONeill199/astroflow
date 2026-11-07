@@ -55,6 +55,11 @@ def graxpert_path() -> str | None:
     for p in (GRAXPERT.path, os.environ.get("ASTROFLOW_GRAXPERT")):
         if p and Path(p).is_file():
             return p
+    return system_graxpert() or own_graxpert()
+
+
+def system_graxpert() -> str | None:
+    """Normal installiertes GraXpert (PATH, Programmordner) – hat Vorrang vor dem von AstroFlow ausgepackten."""
     for name in ("GraXpert", "graxpert", "GraXpert-win64", "GraXpert-linux"):
         p = shutil.which(name)
         if p:
@@ -65,6 +70,16 @@ def graxpert_path() -> str | None:
             if hits:
                 return str(hits[0])
     return None
+
+
+def own_graxpert() -> str | None:
+    """Vom Installer/Assistenten ausgepacktes GraXpert (core/components.py)."""
+    try:
+        from ...core.components import graxpert_dir
+        own = graxpert_dir() / "GraXpert.exe"
+        return str(own) if own.is_file() else None
+    except Exception:
+        return None
 
 
 def mode_for(option: str | None) -> str:

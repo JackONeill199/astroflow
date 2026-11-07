@@ -28,3 +28,13 @@
   .su-extras { grid-template-columns: 1fr; gap: 0.25rem }
   .su-extras dd { margin-bottom: 0.625rem }
 }
+
+/* Komponentenliste (Assistent → Extras, Einstellungen → Module & System) */
+.cmp-list { display: grid; margin: 0.25rem 0 0.75rem }
+.cmp-row { display: flex; gap: 0.75rem; align-items: flex-start; padding: 0.75rem 0; border-top: 1px solid var(--border-soft) }
+.cmp-row:first-child { border-top: 0; padding-top: 0.25rem }
+.cmp-main { flex: 1; min-width: 0 }
+.cmp-main > div { margin-top: 0.1875rem; overflow-wrap: anywhere }
+.cmp-detail { font-size: 0.75rem }
+.cmp-acts { display: flex; gap: 0.375rem; flex-wrap: wrap; justify-content: flex-end; flex: none }
+@media (max-width: 600px) { .cmp-row { flex-direction: column } .cmp-acts { justify-content: flex-start } }
