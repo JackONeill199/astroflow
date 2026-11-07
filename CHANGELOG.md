@@ -3,6 +3,12 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.45.4 – 07.11.2026
+
+### Behoben
+- Sage: Mit `ASTROFLOW_SAGE_OFFLINE=1` (abgeschottete Installationen) fragt auch eine bereits laufende Recherche im Hintergrund
+  keine Fachdienste (SIMBAD, arXiv …) mehr ab; die Einstellung galt bisher nur für neu gestartete Abfragen.
+
 ## 0.45.2 – 07.11.2026
 
 ### Behoben

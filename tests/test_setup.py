@@ -258,7 +258,8 @@ def test_update_hinweis(home, tmp_path, monkeypatch):
         status_code = 200
         def json(self):
             return {"tag_name": "v99.0.0", "html_url": "https://github.com/x/y/releases/tag/v99.0.0"}
-    monkeypatch.setattr(httpx, "get", lambda url, **kw: calls.append(url) or R())
+    # nur Anfragen an die Releases-URL zählen: httpx.get ist prozessweit ersetzt, Hintergrundthreads anderer Module laufen mit
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: (calls.append(url) if url == setup_mod.RELEASES_API else None) or R())
     info = setup.check_update(force=True)
     assert info["newer"] and info["latest"] == "99.0.0" and calls == [setup_mod.RELEASES_API]
     assert c.get("/api/app").json()["update"]["latest"] == "99.0.0"

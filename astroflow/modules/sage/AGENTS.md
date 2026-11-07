@@ -32,7 +32,7 @@ insights/runs/usage/stories/chats/http_cache. Regeln: **Messwerte nur aus Fachqu
   Export als Markdown mit Quellen: `/kb/entities/<id>/export.md`.
   Raster „Alle“ (`/kb/entities` ohne `q`) blendet Grundeinträge ohne eigenes Bild aus (`stats.hidden_stubs`; meist SIMBAD-Gruppen aus
   `_related_stub`, beim Nutzer 67 von 90 – Nutzerwunsch 31.10.2026); Suche, Wissensnetz und „Verwandte“ zeigen sie weiter. SIMBAD `h_link` liefert eine Zeile je Beleg → nach `main_id` deduplizieren.
-- Tests: `tests/test_sage_kb.py` (SIMBAD/arXiv/KI als Attrappen). `ASTROFLOW_SAGE_OFFLINE=1` (conftest) schaltet Fachdienste ab.
+- Tests: `tests/test_sage_kb.py` (SIMBAD/arXiv/KI als Attrappen). `ASTROFLOW_SAGE_OFFLINE=1` (conftest) schaltet Fachdienste ab – `sources.Net.fetch` prüft sie bei jedem Abruf (seit 0.45.4; Hintergrundthreads überleben ihren Test).
 
 Herkunft: Repo `JackONeill199/starlight-sage` („Astronomy Buddy“, Node/Express – bleibt unverändert bestehen), hier nach Python portiert.
 Lokal für **einen** Nutzer: Konten, Login, Rechtsseiten (Impressum/DSGVO) und der Git-Updater wurden bewusst weggelassen (Nutzerentscheidung 28.10.2026).

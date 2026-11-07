@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import time
 import xml.etree.ElementTree as ET
@@ -62,11 +63,14 @@ class Net:
     def fetch(self, url: str, data: dict | None = None, params: dict | None = None, headers: dict | None = None,
               ttl: float = 30 * DAY, binary: bool = False):
         key = hashlib.sha1(json.dumps([url, data, params], sort_keys=True).encode()).hexdigest()
+        # bei jedem Abruf prüfen, nicht nur beim Anlegen: Hintergrundthreads (Recherche, Entdeckungen) laufen länger als
+        # die Einstellung, mit der sie gestartet wurden (Tests: ASTROFLOW_SAGE_OFFLINE wird nach dem Test wieder 1)
+        offline = self.offline or os.environ.get("ASTROFLOW_SAGE_OFFLINE") == "1"
         if not binary:
             hit = self.kb.one("SELECT body, fetched FROM http_cache WHERE key=?", (key,))
-            if hit and (self.offline or time.time() - hit["fetched"] < ttl):
+            if hit and (offline or time.time() - hit["fetched"] < ttl):
                 return hit["body"]
-        if self.offline:
+        if offline:
             raise SourceError("offline – keine zwischengespeicherte Antwort")
         self.calls += 1
         try:
