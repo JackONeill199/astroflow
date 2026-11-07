@@ -63,9 +63,12 @@ def _iso(t: float) -> str:
 def predict(bodies: list[dict], wcs, shape: tuple[int, int], cov: np.ndarray | None, t_mid: float, t0: float, t1: float,
             fetch_later=None) -> list[dict]:
     """Kleinkörper der JPL-Antwort → Bahn im Stack-Raster: Lage zur Zeit t_mid, Bewegung in px/s (aus der Rate oder einer
-    zweiten Abfrage `fetch_later()` eine Stunde später). Nur Körper, deren Bahn [t0, t1] im bedeckten Bild liegt."""
+    zweiten Abfrage `fetch_later()` eine Stunde später). Nur Körper, deren Bahn [t0, t1] im bedeckten Bild liegt – bei nur
+    genäherter Bahn (JPL erster Durchgang) auch knapp daneben, um den Unsicherheitskreis (`rough_search`): solche
+    Randkandidaten tragen `_edge` und werden erst nach dem Nachschärfen bzw. der Suche behalten oder verworfen (Review PR #73)."""
     H, W = shape
     later = None
+    pix_as = float(np.sqrt(abs(np.linalg.det(wcs.pixel_scale_matrix)))) * 3600
     out = []
     for b in bodies:
         ra, dec = b.get("ra"), b.get("dec")
@@ -89,19 +92,42 @@ def predict(bodies: list[dict], wcs, shape: tuple[int, int], cov: np.ndarray | N
             cosd = max(1e-3, math.cos(math.radians(dec)))
             x2, y2 = (float(v) for v in wcs.world_to_pixel_values(ra + r_ra / 3600 / cosd, dec + r_dec / 3600))
             vx, vy = (x2 - x) / 3600, (y2 - y) / 3600
-        ends = [(x, y)] if vx is None else [(x + vx * (t - t_mid), y + vy * (t - t_mid)) for t in (t0, t1)]
-        inside = [0 <= px < W and 0 <= py < H and (cov is None or cov[int(py), int(px)] > 0.3) for px, py in ends + [(x, y)]]
+        genau = bool(b.get("genau", True))
+        inside = in_field(x, y, vx, vy, t0, t1, t_mid, (H, W), cov)
+        edge = False
         if not any(inside):
-            continue
+            if genau or not any(in_field(x, y, vx, vy, t0, t1, t_mid, (H, W), cov, rough_search(_num(b.get("fehler")), 0.0, pix_as))):
+                continue
+            edge = True
         rate = None if r_ra is None else math.hypot(r_ra, r_dec)
         if rate is None and vx is not None:
             scale = float(np.sqrt(abs(np.linalg.det(wcs.pixel_scale_matrix)))) * 3600
             rate = math.hypot(vx, vy) * 3600 * scale
         out.append({"name": b["name"], "art": "Komet" if b.get("kind") == "c" else "Asteroid", "vmag": _num(b.get("vmag")),
-                    "genau": bool(b.get("genau", True)), "fehler": _num(b.get("fehler")),
+                    "genau": genau, "fehler": _num(b.get("fehler")), "_edge": edge,
                     "ra": ra, "dec": dec, "rate": None if rate is None else round(rate, 1),
                     "_x": x, "_y": y, "_vx": vx, "_vy": vy, "_inside": all(inside)})
     out.sort(key=lambda o: o["vmag"] if o["vmag"] is not None else 99)
+    return out
+
+
+def in_field(x, y, vx, vy, t0, t1, t_mid, shape, cov, margin: float = 0.0) -> list[bool]:
+    """Liegen Anfang, Ende und Mitte der Bahn im bedeckten Bild? Mit `margin` (px): auch so weit daneben; die Abdeckung
+    wird dann an der nächsten Bildstelle geprüft."""
+    H, W = shape
+    pts = [(x, y)] if vx is None else [(x + vx * (t - t_mid), y + vy * (t - t_mid)) for t in (t0, t1)]
+    out = []
+    for px, py in pts + [(x, y)]:
+        ok = -margin <= px < W + margin and -margin <= py < H + margin
+        if ok and cov is not None:
+            cx, cy = int(min(max(px, 0), W - 1)), int(min(max(py, 0), H - 1))
+            if margin:                                    # nächste bedeckte Stelle im Umkreis zählt
+                r = int(math.ceil(margin))
+                win = cov[max(0, cy - r):cy + r + 1, max(0, cx - r):cx + r + 1]
+                ok = bool(win.size) and float(win.max()) > 0.3
+            else:
+                ok = cov[cy, cx] > 0.3
+        out.append(ok)
     return out
 
 
@@ -345,9 +371,11 @@ def compute(pl, rid: int, *, small_bodies=None, gaia: bool = True, m5: float | N
         pred = predict(bodies, wcs, (H, W), cov, t_mid, t0, t1,
                        fetch_later=lambda: small_bodies(_iso(t_mid + 3600), ra0, dec0, hw, hw, cache, timeout=min(60.0, left)))
         avail = [f for f in fr if not f["deleted"] and f["path"] and Path(f["path"]).exists() and f["id"] in links]
-        ni = {"night": night, "zeit": _iso(t_mid), "aufnahmen": len(fr), "rohbilder": len(avail), "im_feld": len(pred),
+        ni = {"night": night, "zeit": _iso(t_mid), "aufnahmen": len(fr), "rohbilder": len(avail), "im_feld": 0,
               "dauer_min": round((t1 - t0) / 60, 1)}
         night_info.append(ni)
+        if not avail:                                        # ohne Rohbilder lässt sich ein Randkandidat nie klären
+            pred = [b for b in pred if not b["_edge"]]
         todo = []
         for b in pred:
             b.update(night=night, status="keine_rohbilder")
@@ -377,6 +405,11 @@ def compute(pl, rid: int, *, small_bodies=None, gaia: bool = True, m5: float | N
                 if still:
                     notes.append(f"{still} Kleinkörper nur mit genäherter Bahn gesucht (Horizons nicht erreichbar) – "
                                  f"größerer Suchkreis nach JPLs Fehlerschätzung, höchstens {SEARCH_AS_ROUGH:.0f}″.")
+            gone = {id(b) for b in todo if b["_edge"] and b["genau"]
+                    and not any(in_field(b["_x"], b["_y"], b["_vx"], b["_vy"], t0, t1, t_mid, (H, W), cov))}
+            if gone:                                          # genau gerechnet: liegt doch außerhalb
+                todo = [b for b in todo if id(b) not in gone]
+                pred = [b for b in pred if id(b) not in gone]
             for b in todo:
                 b["_search"] = search_px if b["genau"] else rough_search(b["fehler"], search_px, pix_as)
             half = int(math.ceil(max(b["_search"] for b in todo) + 3 * aperture + 2 * fwhm + 2))
@@ -435,6 +468,12 @@ def compute(pl, rid: int, *, small_bodies=None, gaia: bool = True, m5: float | N
                         b["mag_err"] = round(1.0857 * d["flux_err"] / d["flux"], 2)
                 b["_img"] = d["img"]
         for b in pred:                                         # Bahn und Lage im angezeigten Bild
+            # Randkandidat (genäherte Bahn knapp außerhalb): nur behalten, wenn nachgewiesen oder genau gerechnet im Feld
+            if b.pop("_edge") and b["status"] != "nachgewiesen" and not (
+                    b["genau"] and any(in_field(b["_x"], b["_y"], b["_vx"], b["_vy"], t0, t1, t_mid, (H, W), cov))):
+                b.pop("_img", None)
+                continue
+            ni["im_feld"] += 1
             dx, dy = b.pop("_dx", 0.0), b.pop("_dy", 0.0)
             x, y, vx, vy = b.pop("_x"), b.pop("_y"), b.pop("_vx"), b.pop("_vy")
             b.update(pos(x + dx, y + dy))

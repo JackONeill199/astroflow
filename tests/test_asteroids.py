@@ -352,3 +352,34 @@ def test_rough_first_pass_found_with_wider_search(env, monkeypatch):
     a = out["kleinkoerper"][0]
     assert a["status"] == "nachgewiesen" and 20 < a["abweichung"] < 40, a
     assert not a["genau"] and any("genäherter Bahn" in h for h in out["hinweise"])
+
+
+def test_rough_edge_candidate_survives(env, monkeypatch):
+    """Review PR #73: liegt die genäherte Lage knapp außerhalb des Bildes, darf der Körper nicht vor der Suche wegfallen;
+    ein genäherter Körper weit außerhalb und ein Randkandidat ohne Fund erscheinen nicht in der Liste."""
+    s, db, pl, p, rid, st, truth = env
+    H, W = st.sw.shape[1:]
+    w = WCS({**_hdr(H, W), "NAXIS": 2})
+    pr = asteroids.predict([{"name": "rand", "ra": float(w.pixel_to_world_values(W + 10, H / 2)[0]), "dec": float(w.pixel_to_world_values(W + 10, H / 2)[1]),
+                             "vmag": "15", "rate_ra": 0.0, "rate_dec": 0.0, "genau": False, "fehler": 20.0},
+                            {"name": "weit", "ra": float(w.pixel_to_world_values(W + 400, H / 2)[0]), "dec": float(w.pixel_to_world_values(W + 400, H / 2)[1]),
+                             "vmag": "15", "rate_ra": 0.0, "rate_dec": 0.0, "genau": False, "fehler": 20.0},
+                            {"name": "rand_genau", "ra": float(w.pixel_to_world_values(W + 10, H / 2)[0]), "dec": float(w.pixel_to_world_values(W + 10, H / 2)[1]),
+                             "vmag": "15", "rate_ra": 0.0, "rate_dec": 0.0}],
+                           w, (H, W), None, 1000.0, 0.0, 2000.0)
+    assert [b["name"] for b in pr] == ["rand"] and pr[0]["_edge"]
+    # Ende zu Ende: echter Punkt 30″ außerhalb vorhergesagt (genähert) → im erweiterten Kreis gesucht und gefunden;
+    # ein zusätzlicher Randkandidat ohne Signal fällt am Ende weg
+    monkeypatch.setattr(asteroids, "_zero_point", lambda *a, **k: {"zp": ZP, "aperture_px": 5.0})
+    fn, _ = _fake_jpl(db, st, truth, offset_as=(24.0, -18.0))
+
+    def rough(*a, **k):
+        out = [dict(b, genau=False) for b in fn(*a, **k)]
+        rr, dd = (float(v) for v in w.pixel_to_world_values(W + 8, H * 0.2))
+        out.append({"name": "(1927 LA)", "ra": rr, "dec": dd, "vmag": "16.0", "kind": "a", "rate_ra": 120.0, "rate_dec": -40.0,
+                    "genau": False, "fehler": 15.0})
+        return out
+    out = asteroids.compute(pl, rid, small_bodies=rough, gaia=True)
+    names = [b["name"] for b in out["kleinkoerper"]]
+    assert "(4711) Testoid" in names and "(1927 LA)" not in names
+    assert out["naechte"][0]["im_feld"] == len(out["kleinkoerper"])

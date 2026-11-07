@@ -555,6 +555,9 @@ Kleinkörper-Abgleich im Vergleich). Endpunkte `GET|POST /results/{id}/asteroids
   falschen Körper. Der erste Durchgang liefert `Est. error RA/Dec (″)` → `fehler` (Betrag): ≤ `ERR_OK` 5″ gilt als genau (keine Nachrechnung),
   sonst bleibt eine nicht nachgerechnete Bahn genähert mit Suchkreis `rough_search` = 15″ + 3 × Fehler, höchstens `SEARCH_AS_ROUGH` 60″ (ohne
   Schätzung 60″; Ausschnittgröße je Nacht nach dem größten Kreis) und Hinweis; UI „Bahn genähert“.
+  **Randkandidaten** (Review PR #73): `predict` behält genäherte Bahnen auch knapp außerhalb des bedeckten Bildes (`in_field` mit Rand =
+  `rough_search`, Abdeckung an der nächsten Bildstelle) als `_edge`. Ohne Rohbilder fallen sie weg; nach dem Nachschärfen genau außerhalb → weg;
+  am Ende bleiben sie nur, wenn nachgewiesen oder genau gerechnet im Feld. `naechte[].im_feld` zählt die behaltenen.
   **Standort nie senden:** die Parallaxe (Hauptgürtel ≤ ~6″) fängt der Suchkreis `SEARCH_AS` 15″ ab.
 - **Nachweis** (nur mit erreichbaren Rohbildern, `frames.deleted=0`): je Nacht ≤ `SAMPLE` 40 Aufnahmen über die Zeit verteilt, je
   Aufnahme `pl._load` (Kalibrierung + cosmetic wie beim Stacken; gespeicherte Glüh- und Fehlerkarten legt `_sensor_cache` vorher in den Cache,
