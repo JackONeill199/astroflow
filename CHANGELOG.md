@@ -3,6 +3,13 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.45.1 – 07.11.2026
+
+### Behoben
+- **3D-Erde, flache Karte:** Ein Satellit, dessen Bahn nahe der Datumsgrenze bzw. weit von der Kartenmitte entfernt lag, konnte samt
+  Bodenspur an der falschen Stelle erscheinen (um eine ganze Erdbreite versetzt) und ließ sich dort nicht richtig anklicken. Er steht
+  jetzt immer dort, wo auch die übrigen Marken der Karte liegen.
+
 ## 0.45.0 – 07.11.2026
 
 ### Neu

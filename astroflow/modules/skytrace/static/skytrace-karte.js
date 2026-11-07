@@ -223,10 +223,14 @@ function FlatMap(host, deps) {
     // Satelliten: Bodenspur ±5 min (gestrichelt) und Punkt unter dem Satelliten beim Durchgang – anklickbar (Bahn im Raum zeigt nur der Globus)
     const sats = kR > .01 && deps.satellites ? deps.satellites() : [];
     for (const s of sats) {
-      const [la0, lo0] = s.pts[0], [x0] = llS(la0, lo0);
-      let prev = lo0, lu = lo0;                          // Länge stetig fortsetzen (Datumsgrenze)
-      const poly = s.pts.map(([la, lo], i) => { if (i) { let d = lo - prev; d -= 360 * Math.round(d / 360); lu += d; prev = lo; } return [x0 + (lu - lo0) / 360 * V.Z, toS(0, my(la))[1]]; });
-      const [ax, ay] = poly[Math.max(0, s.pts.indexOf(s.at))];
+      // Länge stetig fortsetzen (Datumsgrenze) und am Punkt beim Durchgang verankern: er liegt wie alle übrigen Marken in der Weltkopie
+      // nächst der Kartenmitte. Verankert an pts[0] landete er um genau eine Weltbreite daneben, sobald pts[0] und er auf verschiedenen
+      // Seiten des Gegenpunkts der Mitte lagen (CI-Befund 0.45.0).
+      let prev = s.pts[0][1], lu = prev;
+      const lus = s.pts.map(([, lo], i) => { if (i) { let d = lo - prev; d -= 360 * Math.round(d / 360); lu += d; prev = lo; } return lu; });
+      const ia = Math.max(0, s.pts.indexOf(s.at)), [xa] = llS(s.pts[ia][0], s.pts[ia][1]);
+      const poly = s.pts.map(([la], i) => [xa + (lus[i] - lus[ia]) / 360 * V.Z, toS(0, my(la))[1]]);
+      const [ax, ay] = poly[ia];
       g.globalAlpha = kR * (s.on ? 1 : .8); g.strokeStyle = s.color; g.lineWidth = s.on ? 2.5 : 1.5; g.setLineDash([6, 4]);
       g.beginPath(); poly.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.stroke(); g.setLineDash([]);
       const r = s.on ? 8 : 6;
