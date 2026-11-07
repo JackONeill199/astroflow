@@ -484,6 +484,21 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   (Referenzstellen per WCS umgerechnet), Ergebnis `hotpixel {aktuell, referenz}`; Tiefe: Sterne/Galaxien ≤ max(2, 0,8 FWHM) an einer
   Stelle gelten nicht als erfasst/sichtbar. Schwelle nicht senken: ab 5σ fanden sich 1 400–9 000 Rauschspitzen je Stellina-Stack.
   `COMPARE_VERSION` 2; `DEPTH_VERSION` bleibt 1 (keine der 18 sichtbaren Galaxien der Arbeitsinstanz lag auf einem Punkt).
+- **Grenzgröße / Erreichbarkeit** (seit 0.43.1, `compare._limits`, Nutzerbefund: ~40-s-Bilder meldeten „Stern verschwunden“): Ursache
+  an echten Daten M104 (4 × 10 s gegen DSS): `_flux_relation` hatte nur wenige ungesättigte Sterne (Gerade statt Parabel, Platte nicht
+  linear) → k ≈ 0,22 statt ~0,01, also erwarteter Fluss ~20× zu hoch; `expect(fb) > vanish·σ` hielt deshalb nicht. Jetzt je Bild
+  m5 = 5σ-Grenze **in der Vergleichsapertur** (r = FWHM, nach Weichzeichnen/Skalieren – dieselben Flüsse wie die Kandidaten) und eine
+  Helligkeitsskala: `_calibrate` an Gaia-Positionen (`photometry.gaia_field` mit denselben Parametern wie die Tiefe → gemeinsamer Cache;
+  SNR > 10, frei, ungesättigt, ≥ `MIN_CAL` 6; eigene Stacks Nullpunkt, Platte Gerade/Parabel in log Fluss, monoton). Rückfälle:
+  `stats.depth.grenze` (m5 → Nullpunkt + Aperturrauschen → `lim50`) → `_device_m5` (andere Bilder derselben `INSTRUME`, m5 auf 1 h
+  über 1,25·log10 t, ≥ 2 Werte) → Platte `DSS_M5` 20,5. Referenz-Nullpunkt wirkt auf fb/(k·area) (k-unabhängig; `area` = Pixelfläche Referenz/aktuell,
+  weil `reproject` Pixelwerte abtastet und den Fluss nicht erhält – Review PR #72). „verschwunden“ nur, wenn
+  Helligkeit in der Referenz (bei Gaia-Stern an der Stelle das schwächere von beiden, solange < 2,5 mag Unterschied) ≤ m5(aktuell) −
+  `REACH_MARGIN` 1,0 (≈ 12,6σ erwartet; Durchmusterung 1,5 wegen Rotfilter), „neu“ spiegelbildlich gegen m5(Referenz); sonst
+  `verworfen.unter_grenze`. Ohne Aussage: eigene Referenz wie bisher über `expect`, Durchmusterung nie „verschwunden“. Ergebnis
+  `grenze {aktuell, referenz: {m5, quelle, belichtung_s, aufnahmen, sterne}, abstand}`, Kandidat `grenze`. M104 danach: m5 13,0 (10 Sterne)
+  gegen 19,0 → 0 statt 25 Meldungen; M33/M32/NGC 1579 (eigene Referenzen) unverändert. `COMPARE_VERSION` 3. Test
+  `test_compare_short_stack_reachability` (kurzer gesättigter Stack, Flussbeziehung wie bei M104 verfälscht).
 - **UI** (`static/depth.js|css`, globale Funktionen, `stacking.js` prüft `typeof depthPanel`): `depthPanel`, `depthOverlay`
   (umhüllt `plateLabels`, Klasse `marks-on`), `depthTunnel` (three.js aus `/vendor/`, Richtung = Bildposition aufgeweitet, Abstand
   log10(Lj)), `comparePanel` + `compareViewer` (Blinken über `createViewer().setSplit`, Stelle anfahren mit `zoomTo`).

@@ -118,7 +118,7 @@ class Insights:
         cfg = self.settings()
         out = compare.compute(self.eng.db, self.eng.s.work_dir, rid, ref, survey=cfg["survey"],
                               catalogs=cfg["simbad"] or cfg["small_bodies"], log=log,
-                              simbad=cfg["simbad"], small_bodies=cfg["small_bodies"])
+                              simbad=cfg["simbad"], small_bodies=cfg["small_bodies"], gaia=cfg["gaia"])
         self._store(rid, "compare", out)
 
     def diagnose(self, rid: int, log, **_):

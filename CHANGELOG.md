@@ -3,6 +3,19 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.43.1 – 07.11.2026
+
+### Behoben
+- **Vergleich: keine falschen „verschwunden“-Meldungen mehr bei kurzen Aufnahmen.** Ein Bild mit nur wenigen Sekunden
+  Gesamtbelichtung meldete gegen eine tiefere Referenz (eigene Aufnahme oder Himmelsdurchmusterung) viele Sterne als
+  „verschwunden“, die es mit seiner kurzen Belichtung gar nicht zeigen konnte (Beispiel M104, 4 × 10 s gegen DSS: 25 Fehlalarme).
+  Ursache: Die Helligkeitsangleichung stützte sich bei so kurzen Stacks auf wenige Sterne und lag gegen die Fotoplatte um ein
+  Vielfaches daneben. Jetzt bestimmt der Vergleich für **beide Bilder die Grenzgröße** – aus den Gaia-Sternen im Bild, sonst aus
+  der gespeicherten Tiefenmessung oder anderen Bildern derselben Kamera – und meldet „verschwunden“ bzw. „neu“ nur, wenn die
+  Quelle mindestens 1 mag (gegen die Durchmusterung 1,5 mag) heller ist als die Grenze des Bilds, in dem sie fehlt. Der Abschnitt
+  „Veränderungen“ zeigt die Grenzgröße und Belichtung beider Bilder und wie viele Stellen unter der Grenze verworfen wurden.
+  Bisherige Vergleiche gelten als veraltet und werden beim nächsten Vergleich neu berechnet.
+
 ## 0.43.0 – 07.11.2026
 
 ### Neu
