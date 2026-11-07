@@ -274,14 +274,17 @@ def test_compare_ignores_hotpixel_pairs(setup, monkeypatch):
         return any(math.hypot(c["x"] - hx, c["y"] - (H - 1 - hy - 1)) < 6 for hx, hy in hot)
 
     # ohne Bereinigung (Zustand bis 0.38.1): die Punkte erscheinen als „neu“ bzw. „verschwunden“
-    real = compare.stackfix.spots
+    # (auch ohne die Grenzgrößen-Prüfung seit 0.43.1 – die verwirft schwache Punkte inzwischen ebenfalls)
+    real, real_lim = compare.stackfix.spots, compare._limits
     monkeypatch.setattr(compare.stackfix, "spots", lambda d: (d, {"n": 0}, np.zeros((0, 2))))
+    monkeypatch.setattr(compare, "_limits", _ohne_grenze(real_lim))
     before = compare.compute(db, s.work_dir, r_new, r_old, catalogs=False)
     assert sum(near_hot(c) for c in before["kandidaten"]) >= 3, before["kandidaten"]
     monkeypatch.setattr(compare.stackfix, "spots", real)
+    monkeypatch.setattr(compare, "_limits", real_lim)
 
     out = compare.compute(db, s.work_dir, r_new, r_old, catalogs=False)
-    assert out["v"] == compare.COMPARE_VERSION == 2
+    assert out["v"] == compare.COMPARE_VERSION == 3
     assert not [c for c in out["kandidaten"] if near_hot(c)], out["kandidaten"]
     neu = [c for c in out["kandidaten"] if c["art"] == "neu"]
     assert len(neu) == 1 and neu[0]["x"] == pytest.approx(77, abs=2)
@@ -300,3 +303,74 @@ def test_depth_ignores_hotpixel_pair_at_galaxy(setup):
     names = {o["name"]: o for o in out["galaxien"]}
     assert not names["Galaxie A"]["sichtbar"] and out["fernstes"] is None
     assert out["grenze"]["m5"] and abs(out["grenze"]["nullpunkt"] - ZP) < 0.3      # Sterne unverändert gemessen
+
+
+def _ohne_grenze(real):
+    """`compare._limits` ohne Aussage (Zustand bis 0.43.0): „verschwunden“ nur über die Flussbeziehung geprüft."""
+    def f(*a, **k):
+        lim, notes = real(*a, **k)
+        return {**lim, "reach": lambda *x: (None, None, None)}, notes
+    return f
+
+
+def _short_stack(x, y, g, seed, noise=300.0, ceiling=6000.0):
+    """Sehr kurzer Stack (wenige Aufnahmen): Rauschen ×300 (≈ 6 mag flacher), helle Sterne gesättigt."""
+    d = _render(x, y, g, seed=seed)
+    rng = np.random.default_rng(seed + 50)
+    return np.minimum(d + rng.normal(0, noise, d.shape[1:]).astype(np.float32)[None], ceiling)
+
+
+def test_compare_short_stack_reachability(setup, monkeypatch):
+    """Nutzerbefund: kurzer Stack (~40 s) gegen tiefe Referenz meldete Sterne als „verschwunden“, die das kurze Bild gar nicht
+    zeigen konnte. Ursache an echten Daten (M104, 4 × 10 s gegen DSS): die Flussbeziehung stützte sich auf wenige Sterne und war
+    ~20× zu groß – die erwarteten Flüsse damit auch. Jetzt entscheidet die Grenzgröße des kurzen Bilds (Gaia-geeicht)."""
+    s, db, pid, cat, x, y, _ = setup
+    g = np.array(cat["g"])
+    gone = int(np.argmin(np.abs(g - 11)))                          # hell, ungesättigt in der Referenz: echt verschwunden
+    keep = np.ones(len(g), bool)
+    keep[gone] = False
+    r_ref = _result(s, db, pid, _render(x, y, g, seed=5), "tief", ["2025-12-01"])
+    r_new = _result(s, db, pid, _short_stack(x[keep], y[keep], g[keep], seed=6), "kurz", ["2026-01-01"])
+    db.x("UPDATE results SET n_frames=4, exposure=40 WHERE id=?", (r_new,))
+    real_rel = compare._flux_relation
+
+    def biased(*a, **k):                                           # Flussbeziehung wie bei M104 verfälscht
+        k0, _ = real_rel(*a, **k)
+        return 20 * k0, (lambda f: 20 * k0 * np.asarray(f))
+    monkeypatch.setattr(compare, "_flux_relation", biased)
+
+    def gone_mags(out):
+        res = []
+        for c in out["kandidaten"]:
+            if c["art"] == "verschwunden":
+                j = int(np.argmin(np.hypot(x - c["x"], y - (H - 1 - c["y"]))))
+                res.append(float(g[j]))
+        return res
+
+    # bisher: schwache Sterne der Referenz unterhalb der Grenze des kurzen Bilds galten als verschwunden
+    real_lim = compare._limits
+    monkeypatch.setattr(compare, "_limits", _ohne_grenze(real_lim))
+    before = gone_mags(compare.compute(db, s.work_dir, r_new, r_ref, catalogs=False))
+    assert sum(m > 13 for m in before) >= 3, before
+    monkeypatch.setattr(compare, "_limits", real_lim)
+
+    out = compare.compute(db, s.work_dir, r_new, r_ref, catalogs=False)
+    lim = out["grenze"]
+    a, b = lim["aktuell"], lim["referenz"]
+    assert a["quelle"] == b["quelle"] == "gaia" and a["belichtung_s"] == 40 and a["aufnahmen"] == 4
+    assert 12.5 < a["m5"] < 15 and b["m5"] > 18 and lim["abstand"] == compare.REACH_MARGIN
+    mags = gone_mags(out)
+    assert mags == [pytest.approx(11.0, abs=0.1)], out["kandidaten"]          # nur der echte, helle Stern
+    c = next(c for c in out["kandidaten"] if c["art"] == "verschwunden")
+    assert c["grenze"] == pytest.approx(a["m5"], abs=0.05) and c["mag_ref"] == pytest.approx(11.0, abs=0.3)
+    assert out["verworfen"]["unter_grenze"] >= 3 and any("Grenzgröße" in h for h in out["hinweise"])
+
+    # ohne Gaia: gespeicherte Tiefe (m5, Nullpunkt) der Versionen – die Nullpunkte gelten je Bild, unabhängig vom
+    # (hier weiter verfälschten) Faktor k
+    db.x("UPDATE results SET stats=? WHERE id=?", (json.dumps({"nights": ["2026-01-01"], "depth": {"grenze": {
+        "m5": a["m5"], "nullpunkt": ZP}}}), r_new))
+    db.x("UPDATE results SET stats=? WHERE id=?", (json.dumps({"nights": ["2025-12-01"], "depth": {"grenze": {
+        "nullpunkt": ZP}}}), r_ref))
+    out = compare.compute(db, s.work_dir, r_new, r_ref, catalogs=False, gaia=False)
+    assert out["grenze"]["aktuell"]["quelle"] == "tiefe" and out["grenze"]["referenz"]["quelle"] == "nullpunkt"
+    assert gone_mags(out) == [pytest.approx(11.0, abs=0.1)], out["kandidaten"]

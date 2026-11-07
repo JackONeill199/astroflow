@@ -24,7 +24,15 @@ import numpy as np
 
 from . import services, stackfix
 
-COMPARE_VERSION = 2                # 2: Hotpixel-Reste (stackfix) werden entfernt bzw. verworfen
+COMPARE_VERSION = 3                # 2: Hotpixel-Reste (stackfix) werden entfernt bzw. verworfen; 3: Grenzgröße beider Bilder
+# „verschwunden“/„neu“ nur, wenn das Bild ohne die Quelle sie hätte zeigen müssen: Quelle mindestens REACH_MARGIN heller als
+# dessen 5σ-Grenzgröße → dort ≥ 5·10^(0,4·1) ≈ 12,6σ erwartet; fehlt sie (< 3σ), ist das kein Rauschen mehr. Der Abstand deckt
+# die Unsicherheit von Nullpunkt und Grenzgröße (~0,2–0,3 mag) und Farbunterschiede der Kameras ab. Gegen die Durchmusterung
+# (Rotfilter, Fotoplatte) mehr: rote Sterne und Galaxien erscheinen dort über 1 mag heller als bei uns.
+REACH_MARGIN = 1.0
+REACH_MARGIN_SURVEY = 1.5
+DSS_M5 = 20.5                      # POSS-II/UKST rot: Grenzgröße ~20,5–21 (nur ohne eigene Eichung der Platte genutzt)
+MIN_CAL = 6                        # Gaia-Sterne für einen Nullpunkt (Durchmusterung: 8 für eine Gerade, 25 für eine Parabel)
 K_SIGMA = 6.0                      # Schwelle im Differenzbild (geglättet)
 MAX_CANDIDATES = 25
 MIN_DMAG_SURVEY = math.inf         # Durchmusterung: anderes Band – nur „neu“/„verschwunden“, keine Helligkeitsänderungen
@@ -222,7 +230,7 @@ def _stretch(a: np.ndarray, lo: float, hi: float) -> np.ndarray:
 
 # ------------------------------------------------------------- Auswertung -- #
 def compute(db, work_dir: Path, rid: int, ref: str | int = "auto", survey: bool = True, catalogs: bool = True,
-            log=lambda m: None, simbad: bool = True, small_bodies: bool = True) -> dict:
+            log=lambda m: None, simbad: bool = True, small_bodies: bool = True, gaia: bool = True) -> dict:
     """Differenz gegen eine Referenz. Wirft CompareError mit verständlicher Meldung."""
     from scipy import ndimage as ndi
 
@@ -258,6 +266,7 @@ def compute(db, work_dir: Path, rid: int, ref: str | int = "auto", survey: bool 
         info = {"art": "survey", "label": label, "datum": date}
         ref_time = []
         fixB = None
+        r2 = None
     else:
         r2 = db.one("SELECT r.*, p.name FROM results r JOIN projects p ON p.id=r.project_id WHERE r.id=?", (int(ref),))
         if not r2:
@@ -303,6 +312,9 @@ def compute(db, work_dir: Path, rid: int, ref: str | int = "auto", survey: bool 
     Z = Ds / _noise_map(Ds, valid)
     Z[~valid] = 0
 
+    log("Grenzgröße beider Bilder bestimmen")
+    lim, lim_notes = _limits(db, work_dir, cur, r2, info, A, B, valid, wcs, fwhm, k, gaia)
+
     log("Unterschiede prüfen")
     # Durchmusterung: anderes Band (Rotfilter, Fotoplatte) – rote Sterne (z. B. Riesen in Kugelhaufen) erscheinen dort
     # über 1 mag heller; Helligkeitsänderungen werden nur gegen eigene Aufnahmen gemeldet
@@ -310,13 +322,12 @@ def compute(db, work_dir: Path, rid: int, ref: str | int = "auto", survey: bool 
                                   min_dmag=MIN_DMAG_SURVEY if info["art"] == "survey" else MIN_DMAG,
                                   # „fehlt bei mir“ gegen die Platte nur bei sehr hellen Quellen: Galaxien und rote Sterne sind
                                   # im Rotfilter heller, als die an Sternen angepasste Helligkeitsbeziehung erwartet (M3: 25 Fehlalarme)
-                                  vanish=30.0 if info["art"] == "survey" else 10.0)
-    zp = ((cur["stats"].get("depth") or {}).get("grenze") or {}).get("nullpunkt")
+                                  vanish=30.0 if info["art"] == "survey" else 10.0, reach=lim["reach"],
+                                  survey_ref=info["art"] == "survey")
     for c in cands:
-        if zp:
-            for key in ("f_neu", "f_ref"):
-                if c[key] > 0:
-                    c["mag_" + key[2:]] = round(zp - 2.5 * math.log10(c[key]), 1)
+        for key, fn in (("f_neu", lim["mag_a"]), ("f_ref", lim["mag_b"])):
+            if fn and c[key] > 0:
+                c["mag_" + key[2:]] = round(fn(c[key]), 1)
         (c["ra"], c["dec"]), = [tuple(float(v) for v in wcs.pixel_to_world_values(c["_x"], c["_y"]))]
         c["ra"], c["dec"] = round(c["ra"], 5), round(c["dec"], 5)
 
@@ -345,13 +356,187 @@ def compute(db, work_dir: Path, rid: int, ref: str | int = "auto", survey: bool 
         c["bild"] = f"k{i}.png"
         _cutout(A, B, D, c["_x"], c["_y"], lo, hi, out_dir / c["bild"])
         c["x"], c["y"] = round(c.pop("_x"), 1), round(H - 1 - c.pop("_y"), 1)
+    notes += lim_notes
+    if rejected.get("unter_grenze"):
+        n = rejected["unter_grenze"]
+        notes.append(f"{n} {'Stelle' if n == 1 else 'Stellen'} verworfen, weil das Bild ohne die Quelle sie mit seiner Belichtung "
+                     "nicht sicher zeigen konnte (Quelle schwächer als dessen Grenzgröße − "
+                     f"{de_num(lim['abstand'])} mag) – das ist kein Verschwinden, sondern fehlende Tiefe.")
     hot = {"aktuell": fixA.get("n", 0), "referenz": (fixB or {}).get("n", 0)}
     if hot["aktuell"] or hot["referenz"]:
         notes.append(f"Hotpixel-Punkte des Sensors vor dem Vergleich entfernt ({hot['aktuell']} im Bild"
                      + (f", {hot['referenz']} in der Referenz" if fixB else "") + ") – sie sind keine Veränderung am Himmel.")
     return {"v": COMPARE_VERSION, "ok": True, "ref": info, "kandidaten": cands, "verworfen": rejected, "fwhm_px": round(fwhm, 2),
             "skala": round(float(k), 4), "bild": {"w": W, "h": H}, "hinweise": notes, "erstellt": time.time(),
-            "referenzen": len(refs), "hotpixel": hot}
+            "referenzen": len(refs), "hotpixel": hot,
+            "grenze": {"aktuell": lim["aktuell"], "referenz": lim["referenz"], "abstand": lim["abstand"]}}
+
+
+def de_num(v: float, nd: int = 1) -> str:
+    return f"{v:.{nd}f}".replace(".", ",")
+
+
+# ------------------------------------------------------------- Grenzgröße -- #
+def _calibrate(img, valid, gx, gy, g, r, sig_ap, curved=False):
+    """Helligkeitsskala eines Vergleichsbilds aus Gaia-Sternen (gleiche Apertur wie die Kandidaten): Funktion
+    Fluss → G-Helligkeit. Eigene Stacks sind linear (Nullpunkt), die Fotoplatte nicht (Gerade bzw. Parabel in log Fluss)."""
+    from scipy.spatial import cKDTree
+
+    from .depth import _ring_phot
+
+    if len(gx) < MIN_CAL or not sig_ap > 0:
+        return None
+    flux, _, off, peak, _ = _ring_phot(img, gx, gy, r)
+    top = float(np.nanpercentile(img[valid], 99.99))
+    tree = cKDTree(np.c_[gx, gy])
+    blended = np.array([any(j != i and g[j] < g[i] + 2.0 for j in nb)
+                        for i, nb in enumerate(tree.query_ball_point(np.c_[gx, gy], r * 3.2))], bool)
+    with np.errstate(invalid="ignore"):
+        ok = (np.isfinite(flux) & (flux > 10 * sig_ap) & (np.nan_to_num(off, nan=99) < max(1.5, 0.6 * r))
+              & ~blended & (np.nan_to_num(peak, nan=np.inf) < 0.7 * top))
+    if ok.sum() < MIN_CAL:
+        return None
+    x, y = np.log10(flux[ok]), g[ok]
+    deg = 0 if not curved else 2 if ok.sum() >= 25 else 1 if ok.sum() >= 8 else None
+    if deg is None:
+        return None
+    use = np.ones(len(x), bool)
+    for _ in range(5):                               # robust: Veränderliche, Doppelsterne, Galaxienkerne fallen heraus
+        if deg == 0:
+            zp = float(np.median(y[use] + 2.5 * x[use]))
+            res = y - (zp - 2.5 * x)
+        else:
+            c = np.polyfit(x[use], y[use], deg)
+            res = y - np.polyval(c, x)
+        s = 1.4826 * np.median(np.abs(res[use])) + 0.02
+        new = np.abs(res) < 3 * s
+        if new.sum() < MIN_CAL or (new == use).all():
+            break
+        use = new
+    lo, hi = float(x[use].min()), float(x[use].max())
+    if deg == 0:
+        return {"fn": lambda f: zp - 2.5 * math.log10(max(float(f), 1e-9)), "n": int(use.sum()), "streuung": round(float(s), 2)}
+    poly = np.poly1d(c)
+    dpoly = poly.deriv()
+    if not all(dpoly(v) < 0 for v in np.linspace(lo, hi, 9)):      # Platte: Skala muss mit dem Fluss heller werden
+        return None
+
+    def fn(f):                                        # außerhalb des Messbereichs mit der Steigung am Rand fortsetzen
+        lf = math.log10(max(float(f), 1e-9))
+        edge = lo if lf < lo else hi if lf > hi else None
+        return float(poly(lf)) if edge is None else float(poly(edge) + dpoly(edge) * (lf - edge))
+    return {"fn": fn, "n": int(use.sum()), "streuung": round(float(s), 2)}
+
+
+def _device_m5(db, pid: int, exposure: float | None, skip_rid: int | None = None) -> float | None:
+    """Grob geschätzte Grenzgröße aus anderen Bildern derselben Kamera (`INSTRUME`): deren m5 auf 1 h umgerechnet
+    (Rauschen ∝ 1/√t → 1,25·log10 t, wie `m5_1h` im Dashboard), Median, dann auf diese Belichtung."""
+    if not exposure or exposure <= 0:
+        return None
+    ins: dict[int, tuple[int, str]] = {}
+    for x in db.q("SELECT project_id, json_extract(info,'$.instrument') ins, COUNT(*) n FROM frames WHERE kind='light' "
+                  "GROUP BY project_id, ins"):
+        if x["ins"] and x["n"] > ins.get(x["project_id"], (0, ""))[0]:
+            ins[x["project_id"]] = (x["n"], x["ins"])
+    mine = ins.get(pid, (0, None))[1]
+    if not mine:
+        return None
+    vals = []
+    for r in db.q("SELECT id, project_id, exposure, json_extract(stats,'$.depth.grenze.m5') m5 FROM results WHERE exposure > 60"):
+        if r["id"] != skip_rid and r["m5"] is not None and ins.get(r["project_id"], (0, None))[1] == mine:
+            vals.append(float(r["m5"]) - 1.25 * math.log10(r["exposure"] / 3600))
+    if len(vals) < 2:
+        return None
+    return float(np.median(vals)) + 1.25 * math.log10(exposure / 3600)
+
+
+def _limits(db, work_dir: Path, cur: dict, r2, info: dict, A, B, valid, wcs, fwhm: float, k: float, gaia: bool):
+    """Grenzgröße (5σ in der Vergleichsapertur) und Helligkeitsskala beider Vergleichsbilder – dynamisch je Teleskop und
+    Belichtung. Reihenfolge: Gaia-Sterne im Bild (gleiche Apertur, Schärfe und Skalierung wie die Kandidaten) → gespeicherte
+    Tiefe der Version (`stats.depth.grenze`: m5, sonst Nullpunkt + Aperturrauschen, sonst 50-%-Vollständigkeit) → andere
+    Bilder derselben Kamera über das √t-Gesetz → bei der Durchmusterung ihre Nenngrenze. Liefert `reach(art, fa, fb)`:
+    True/False = Quelle hätte im anderen Bild sicher erscheinen müssen bzw. nicht, None = nicht bestimmbar."""
+    H, W = A.shape
+    r = max(2.0, fwhm)
+    survey = info["art"] == "survey"
+    sig_a, sig_b = _ap_noise(A, valid, r), _ap_noise(B, valid, r)
+    notes: list[str] = []
+    gx = gy = g = np.zeros(0)
+    if gaia:
+        from . import photometry
+        ra0, dec0 = (float(v) for v in wcs.pixel_to_world_values((W - 1) / 2, (H - 1) / 2))
+        scale = float(np.sqrt(abs(np.linalg.det(wcs.pixel_scale_matrix))))
+        try:                                          # gleiche Abfrage wie die Tiefe → gemeinsamer Zwischenspeicher
+            cat = photometry.gaia_field(ra0, dec0, 0.5 * scale * math.hypot(W, H), work_dir / "gaia")
+            px, py = wcs.world_to_pixel_values(cat["ra"], cat["dec"])
+            px, py = np.asarray(px, float), np.asarray(py, float)
+            inside = np.isfinite(px) & np.isfinite(py) & (px >= 0) & (py >= 0) & (px < W) & (py < H)
+            inside[inside] = valid[py[inside].astype(int), px[inside].astype(int)]
+            gx, gy, g = px[inside], py[inside], np.asarray(cat["g"], float)[inside]
+        except Exception as e:
+            notes.append(f"Gaia nicht erreichbar – Grenzgrößen nur aus gespeicherten Werten geschätzt ({str(e)[:80]}).")
+    cal_a = _calibrate(A, valid, gx, gy, g, r, sig_a)
+    cal_b = _calibrate(B, valid, gx, gy, g, r, sig_b, curved=survey)
+
+    def grenze(st):
+        return ((st or {}).get("depth") or {}).get("grenze") or {}
+    ga = grenze(cur["stats"])
+    gb = grenze(json.loads(r2["stats"] or "{}")) if r2 is not None else {}
+    # Rückfall ohne Gaia-Sterne im Vergleichsbild: Nullpunkt aus der gespeicherten Tiefe (Apertur 0,8 FWHM statt FWHM →
+    # Quellen hier ~0,1–0,3 mag heller, vom Abstand gedeckt). B ist mit k auf A skaliert: fb/k = eigener Fluss der Referenz,
+    # ihr Nullpunkt gilt also unabhängig von k; nur wenn einer fehlt, rechnet k zwischen beiden um.
+    def zp_fn(zp, kk=1.0):
+        return lambda f: zp - 2.5 * math.log10(max(float(f) / kk, 1e-9))
+    za, zb = ga.get("nullpunkt"), (None if survey else gb.get("nullpunkt"))
+    ok_k = k > 0 and math.isfinite(k)
+    zfa = zp_fn(za) if za else (zp_fn(zb, k) if zb and ok_k else None)
+    zfb = zp_fn(zb, k) if zb and ok_k else (zp_fn(za) if za and not survey else None)
+    mag_a = cal_a["fn"] if cal_a else zfa
+    mag_b = cal_b["fn"] if cal_b else zfb
+
+    def side(cal, sig, gr, zfn, pid, rid, exposure, n_frames, plate=False):
+        out = {"belichtung_s": exposure, "aufnahmen": n_frames, "m5": None, "quelle": None}
+        if cal:
+            out.update(m5=cal["fn"](5 * sig), quelle="gaia", sterne=cal["n"])
+        elif not plate and gr.get("m5"):
+            out.update(m5=float(gr["m5"]), quelle="tiefe")
+        elif not plate and zfn:
+            out.update(m5=zfn(5 * sig), quelle="nullpunkt")
+        elif not plate and gr.get("lim50"):
+            out.update(m5=float(gr["lim50"]), quelle="vollstaendigkeit")
+        elif not plate and (m := _device_m5(db, pid, exposure, rid)) is not None:
+            out.update(m5=m, quelle="geraet")
+        elif plate:
+            out.update(m5=DSS_M5, quelle="durchmusterung")
+        if out["m5"] is not None:
+            out["m5"] = round(float(out["m5"]), 2)
+        return out
+
+    a = side(cal_a, sig_a, ga, zfa, cur["project_id"], cur["id"], cur.get("exposure"), cur.get("n_frames"))
+    b = (side(cal_b, sig_b, {}, None, None, None, None, None, plate=True) if survey else
+         side(cal_b, sig_b, gb, zfb, r2["project_id"], r2["id"], r2["exposure"], r2["n_frames"]))
+    margin = REACH_MARGIN_SURVEY if survey else REACH_MARGIN
+    tree = None
+    if len(gx):
+        from scipy.spatial import cKDTree
+        tree = cKDTree(np.c_[gx, gy])
+
+    def reach(kind, fa, fb, x, y):
+        """Konnte das Bild ohne die Quelle sie zeigen? Rückgabe (True/False/None, Helligkeit der Quelle, Grenze)."""
+        if kind == "verschwunden":
+            m5, m = a["m5"], (mag_b(fb) if mag_b and fb > 0 else None)
+            if m is not None and tree is not None:
+                # Gaia-Stern an der Stelle: dessen G, falls schwächer als geschätzt (Rotfilter, Farbterm) – vorsichtig
+                d, j = tree.query((x, y))
+                if d <= max(2.0, 0.8 * fwhm) and g[j] - m < 2.5:
+                    m = max(m, float(g[j]))
+        else:
+            m5, m = b["m5"], (mag_a(fa) if mag_a and fa > 0 else None)
+        if m is None or m5 is None:
+            return None, m, m5
+        return m <= m5 - margin, m, m5
+
+    return {"aktuell": a, "referenz": b, "abstand": margin, "mag_a": mag_a, "mag_b": mag_b, "reach": reach}, notes
 
 
 def _flux_relation(A, B, valid, fwhm, curved=False):
@@ -391,10 +576,13 @@ def _flux_relation(A, B, valid, fwhm, curved=False):
 
 
 def _candidates(A, B, D, Z, valid, fwhm, expect, min_dmag: float = 0.5, vanish: float = 10.0,
-                spots=None) -> tuple[list[dict], dict]:
+                spots=None, reach=None, survey_ref: bool = False) -> tuple[list[dict], dict]:
     """Auffällige Stellen im Differenzbild. `expect(fb)` = erwarteter aktueller Fluss bei Referenzfluss fb (B ist schon
     mit k skaliert). Bei Sternen, die in beiden Bildern da sind, zählt nur eine Abweichung ≥ `MIN_DMAG` von dieser Beziehung.
-    `spots` (N, 2: x, y) = Hotpixel-Stellen aus `stackfix.spots` beider Bilder – Kandidaten dort werden verworfen."""
+    `spots` (N, 2: x, y) = Hotpixel-Stellen aus `stackfix.spots` beider Bilder – Kandidaten dort werden verworfen.
+    `reach(art, fa, fb, x, y)` → (hätte das andere Bild die Quelle sicher gezeigt?, Helligkeit, Grenzgröße) aus `_limits`;
+    „neu“/„verschwunden“ unter dieser Grenze → `unter_grenze`. Ohne Antwort gilt für „verschwunden“ die Flussbeziehung
+    (`vanish`·σ), gegen die Durchmusterung (`survey_ref`, Platte nicht geeicht) dann gar nicht."""
     from scipy import ndimage as ndi
     from scipy.spatial import cKDTree
 
@@ -407,7 +595,8 @@ def _candidates(A, B, D, Z, valid, fwhm, expect, min_dmag: float = 0.5, vanish: 
     edge = ndi.distance_transform_edt(valid)
     hot = cKDTree(spots) if spots is not None and len(spots) else None
     hot_r = max(3.0, fwhm)                            # Kandidat im Differenzbild: Lage nach dem Weichzeichnen ± 1–2 px
-    rej = {"hotpixel": 0, "rand": 0, "rauschen": 0, "form": 0, "einzelpixel": 0, "heller_stern": 0, "helligkeit": 0, "zu_schwach": 0}
+    rej = {"hotpixel": 0, "rand": 0, "rauschen": 0, "form": 0, "einzelpixel": 0, "heller_stern": 0, "helligkeit": 0, "zu_schwach": 0,
+           "unter_grenze": 0}
     margin = max(3 * fwhm + 4, 0.02 * min(H, W))       # Abstand zum Rand der gemeinsamen Fläche
     out = []
     r = max(2.0, fwhm)
@@ -471,11 +660,23 @@ def _candidates(A, B, D, Z, valid, fwhm, expect, min_dmag: float = 0.5, vanish: 
         if kind == "neu" and not (fa > 8 * sig_b and fa > 5 * sig_a):
             rej["zu_schwach"] += 1
             continue
-        if kind == "verschwunden":
-            ex = float(expect(fb))
-            if not (math.isfinite(ex) and ex > vanish * sig_a and fb > 5 * sig_b):
-                rej["zu_schwach"] += 1
+        if kind == "verschwunden" and not fb > 5 * sig_b:
+            rej["zu_schwach"] += 1
+            continue
+        lim_m5 = None
+        if kind in ("neu", "verschwunden"):
+            # Physikalisch: Helligkeit der Quelle gegen die Grenzgröße des Bilds ohne sie (Teleskop + Belichtung).
+            # Die Flussbeziehung k allein genügt nicht: bei kurzen Stacks stützt sie sich auf wenige, teils gesättigte
+            # Sterne, gegen die Fotoplatte ist sie zudem nicht linear (M104, 4 × 10 s: k ~20× zu groß → 25 Fehlalarme)
+            ok, m_src, lim_m5 = reach(kind, fa, fb, x0 + cx, y0 + cy) if reach else (None, None, None)
+            if ok is False:
+                rej["unter_grenze"] += 1
                 continue
+            if ok is None and kind == "verschwunden":
+                ex = float(expect(fb))               # ohne Grenzgröße: bisherige Prüfung über die Flussbeziehung
+                if survey_ref or not (math.isfinite(ex) and ex > vanish * sig_a):
+                    rej["unter_grenze" if survey_ref else "zu_schwach"] += 1
+                    continue
         dm = None
         if fa > 3 * sig_a and fb > 3 * sig_b:            # in beiden Bildern: gegen die Helligkeitsbeziehung prüfen
             ex = float(expect(fb))
@@ -487,7 +688,8 @@ def _candidates(A, B, D, Z, valid, fwhm, expect, min_dmag: float = 0.5, vanish: 
                 rej["helligkeit"] += 1
                 continue
         out.append({"_x": x0 + cx, "_y": y0 + cy, "sigma": round(abs(z), 1), "art": kind, "f_neu": round(fa, 2), "f_ref": round(fb, 2),
-                    "dmag": None if dm is None else round(dm, 2), "laenglich": round(math.sqrt(l1 / l2), 2)})
+                    "dmag": None if dm is None else round(dm, 2), "laenglich": round(math.sqrt(l1 / l2), 2),
+                    **({"grenze": round(lim_m5, 1)} if lim_m5 is not None else {})})
         if len(out) >= MAX_CANDIDATES:
             break
     return out, rej
