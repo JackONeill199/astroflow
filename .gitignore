@@ -19,6 +19,7 @@ Thumbs.db
 
 # Lokale, private Agenten-Notizen (Pfade, Instanz, Standort)
 AGENTS.local.md
+*.local.txt
 
 # Paketbau (pyproject.toml, installer/build_windows.py)
 build/

@@ -15,21 +15,80 @@ dem Umschalten auf „öffentlich“.
 | `.github/ISSUE_TEMPLATE/` | Formulare „Fehler melden“, „Wunsch äußern“, Verweis auf Discussions und vertrauliche Sicherheitsmeldung |
 | `.github/rulesets/main-schutz.json` | Regeln für `main` zum Einspielen per API (s. u.) |
 | `SECURITY.md`, `CONTRIBUTING.md` | Meldeweg für Lücken, Regeln für Beiträge |
+| `installer/historie_bereinigen.py` | Bereinigte Historie für das neue Repo erzeugen und prüfen (Abschnitt 1); private Begriffe nur aus einer lokalen Datei |
 
-## 1. Historie
+## 1. Historie bereinigen – neues Repo
 
-Vor dem Umschalten entscheiden, wie mit der Historie verfahren wird (Bericht der Datenschutzprüfung liegt dem Maintainer
-vor; Inhalte stehen bewusst nicht im Repo). Ein Force-Push ins bestehende Repo entfernt **keine** `refs/pull/*` – für eine
-bereinigte Historie ein neues Repo anlegen. Danach lokal und auf GitHub:
+Entscheidung: Das bestehende Repo bleibt **privat als Archiv**. Ein neues, öffentliches Repo bekommt die vollständige,
+bereinigte Historie: nur `main` und die Tags `v*`, Autor-Adressen auf GitHub-noreply und private Begriffe ersetzt.
+Ein Force-Push ins bestehende Repo genügt nicht, weil GitHub die `refs/pull/*` alter PRs behält.
 
-- `git config --global user.email "<id>+<name>@users.noreply.github.com"`
-- GitHub → Settings → Emails: „Keep my email addresses private“ und „Block command line pushes that expose my email“.
-- Alte, gemergte Branches löschen (Settings → General: „Automatically delete head branches“ einschalten).
-- Release-Entwürfe alter Versionen löschen bzw. nur den neuesten veröffentlichen.
+Erst ausführen, wenn alle gewünschten PRs gemergt sind. Offene Branches gehen nicht mit, sie lassen sich später
+per `git format-patch` übertragen.
+
+**a) Ersetzungsliste anlegen (nur lokal).** Die Datei `historie-ersetzungen.local.txt` kommt in den Repo-Wurzelordner
+(`*.local.txt` steht in `.gitignore`). Die Begriffe stehen in `AGENTS.local.md`: Benutzername, Heimnetz,
+Rohdaten-Laufwerk, Geräte-Kennung. Format siehe Kopf von `installer/historie_bereinigen.py`:
+
+```text
+Pfad Benutzer | regex:(?i)(users(?:\\\\|\\|/)+)<benutzername>\b ==> \1nutzer
+Heimnetz      | regex:192\.168\.<netz>\.(\d+) ==> 192.168.1.\1
+Laufwerk      | regex:\b<LW>:((?:\\\\|\\|/)+)<Ordner> ==> D:\1Astro
+Gerätekennung | <kennung> ==> a1b2c3
+```
+
+**b) Umschreiben und prüfen.** Das braucht `pip install git-filter-repo` und `gh auth login` für die noreply-ID.
+Der Ordner muss leer oder neu sein:
+
+```bash
+python installer/historie_bereinigen.py --ziel ../astroflow-neu
+```
+
+Das Skript arbeitet in diesen Schritten:
+- Es klont das alte Repo zweimal (`alt.git` zum Vergleich, `neu.git`) und behält in `neu.git` nur `main` und die `v*`-Tags.
+- Es ruft `git filter-repo` mit `--mailmap` (jede Adresse außer GitHub-noreply wird zu `<ID>+JackONeill199@users.noreply.github.com`),
+  `--replace-text` und `--replace-message` auf.
+- Danach prüft es:
+  - Es bleiben keine Muster oder alten Adressen übrig, weder in Inhalten noch in Commit- und Tag-Texten oder Autoren.
+  - Main hat gleich viele Commits.
+  - Jedes Tag zeigt auf den umgeschriebenen Commit.
+  - Die Bäume von `main` und allen Tags sind bis auf die Ersetzungen gleich.
+- Am Ende steht `ERGEBNIS: in Ordnung`.
+- Der Bericht nennt nur die Art („Heimnetz“ …), nie die Begriffe selbst.
+- Gepusht wird **nichts**.
+
+**c) Altes Repo umbenennen, neues anlegen, hochladen:**
+
+1. GitHub → altes Repo → Settings → General → Repository name: `astroflow-archiv` (bleibt privat).
+2. Neues, **leeres** Repo `JackONeill199/astroflow` anlegen (ohne README/Lizenz, zunächst privat).
+3. Hochladen: `git -C ../astroflow-neu/neu.git push --mirror https://github.com/JackONeill199/astroflow.git`
+4. Release-Entwürfe neu erzeugen: Der Tag-Push startet den Workflow „Windows-Paket“ für **jedes** Tag. Besser zuerst
+   nur `main` pushen (`git push <url> main`), dann ausschließlich das neueste Tag. Ältere Tags danach pushen, wenn der
+   Workflow sie nicht bauen soll: Die Tags vor 0.33.0 kennen den Workflow nicht, alle neueren würden bauen.
+   Alternativ den Workflow vorher in den Repo-Einstellungen kurz deaktivieren.
+
+**d) Nacharbeiten:**
+
+- **Lokale Klone neu holen:** Der alte Verlauf hat andere Commit-IDs. Bestehende Checkouts und Worktrees zeigen auf das
+  Archiv (`git remote -v`). Am einfachsten frisch klonen. `AGENTS.local.md`, `data/` und `.venv` von Hand übernehmen.
+- **Adresse:** `git config --global user.email "<ID>+JackONeill199@users.noreply.github.com"`. Mit
+  `git config user.email` in jedem Klon prüfen. Ein lokal gesetzter Wert hat Vorrang vor dem globalen.
+- **GitHub → Settings → Emails:** „Keep my email addresses private“ und „Block command line pushes that expose my email“.
+- **Actions:** Das alte Repo hat keine Secrets oder Variablen (geprüft am 07.11.2026), die Workflows brauchen nur das
+  automatische `GITHUB_TOKEN`. Im neuen Repo unter Settings → Actions → General → Workflow permissions „Read and write“
+  setzen, sonst kann „Windows-Paket“ keinen Release-Entwurf anlegen.
+- **Update-Check der App:** `astroflow/core/setup.py` → `REPO = "JackONeill199/astroflow"` fragt
+  `…/releases/latest` ab. Bleibt der Name `astroflow`, finden auch installierte Versionen das neue Repo. Bei einem
+  anderen Namen `REPO`, die URLs in `installer/astroflow.iss`, `modules/sage/sources.py`, README, `docs/site/index.html`,
+  `SECURITY.md` und den Issue-Vorlagen anpassen. GitHub leitet nach dem Umbenennen des alten Repos **nicht** auf das neue
+  weiter, sobald dort ein Repo gleichen Namens existiert.
+- **PR-Verweise:** Links auf alte PRs (`…/pull/<n>`) in CHANGELOG oder AGENTS.md führen im neuen Repo ins Leere bzw. auf
+  andere Nummern. Sie stehen nur in der Doku und sind unkritisch.
 
 ## 2. Sichtbarkeit
 
-Settings → General → Danger Zone → „Change repository visibility“ → Public.
+Im neuen Repo: Settings → General → Danger Zone → „Change repository visibility“ → Public. Danach
+„Automatically delete head branches“ einschalten (Settings → General → Pull Requests).
 
 ## 3. Geschützter `main` (Ruleset)
 
