@@ -71,7 +71,7 @@ def _compare_info(c: dict) -> dict:
 def _asteroid_info(a: dict) -> dict:
     found = [b for b in a.get("kleinkoerper") or [] if b.get("status") == "nachgewiesen"]
     return {"n": a.get("nachgewiesen") or 0, "in_field": a.get("im_feld") or 0, "faintest": a.get("schwaechster"), "bild": a.get("bild"),
-            "items": [{k: b.get(k) for k in ("name", "art", "mag", "vmag", "rate", "night", "x", "y", "snr")} for b in found][:30]}
+            "items": [{k: b.get(k) for k in ("name", "art", "mag", "vmag", "rate", "night", "x", "y", "snr")} for b in found]}          # vollständig: summarize zählt und sucht den Rekord, gekürzt wird erst die Ausgabe
 
 
 def _cloud(pid: int, d: dict) -> list[dict]:

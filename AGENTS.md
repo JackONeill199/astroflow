@@ -493,7 +493,8 @@ Kleinkörper-Abgleich im Vergleich). Endpunkte `GET|POST /results/{id}/asteroids
   `predict` rechnet Lage + Bewegung (px/s) im Stack-Raster; fehlt die Rate, zweite Abfrage eine Stunde später. Zeitbudget `JPL_BUDGET` 180 s.
   **Standort nie senden:** die Parallaxe (Hauptgürtel ≤ ~6″) fängt der Suchkreis `SEARCH_AS` 15″ ab.
 - **Nachweis** (nur mit erreichbaren Rohbildern, `frames.deleted=0`): je Nacht ≤ `SAMPLE` 40 Aufnahmen über die Zeit verteilt, je
-  Aufnahme `pl._load` (Kalibrierung + cosmetic wie beim Stacken) → Luminanz (`skyquality.luma`), Registrierung aus den gespeicherten
+  Aufnahme `pl._load` (Kalibrierung + cosmetic wie beim Stacken; gespeicherte Glüh- und Fehlerkarten legt `_sensor_cache` vorher in den Cache,
+  sonst wendet `_load` sie nicht an – Review PR #67) → Luminanz (`skyquality.luma`), Registrierung aus den gespeicherten
   Sternlisten (`skyquality.frame_links`, Flussfaktor kr/flux_k0), je Kleinkörper ein Ausschnitt um die vorhergesagte Lage auf dem Stack-Raster
   (`frame_stamp`, Maßstab `resolution_scale` beachtet) minus Master-Stack. `detect` mittelt die Ausschnitte (Shift-and-Add), Fund =
   geglättetes Maximum im Suchkreis ≥ `SNR_MIN` 5σ, **frühe und späte Hälfte** der Aufnahmen je ≥ `HALF_MIN` 2,5σ an derselben Stelle

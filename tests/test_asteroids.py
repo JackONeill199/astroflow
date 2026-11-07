@@ -226,3 +226,28 @@ def test_api_dashboard_and_sage(env, tmp_path, monkeypatch):
         # ausgeschaltet → klare Meldung
         c.post("/api/stacking/insights", json={"small_bodies": False})
         assert c.post(f"/api/stacking/results/{rid}/asteroids").status_code == 400
+
+
+def test_sensor_maps_reach_detection_frames(env, tmp_path):
+    """Review PR #67: Einzelbilder bekommen dieselbe Fehlerkarte wie der Master-Stack (Pipeline._load wendet sie nur aus dem Cache an)."""
+    from astroflow.modules.stacking import calibration
+    s, db, pl, p, rid, st, truth = env
+    rows = asteroids._frames(db, p["id"], set())
+    key = calibration.GlowLibrary.key(rows[0]["infod"])
+    dlib = calibration.DefectLibrary(s.work_dir / "defects")
+    had = dlib.get(key, rows[0]["night"])[0]
+    dlib.add(key, rows[0]["night"], np.array([5, 77, 1234], np.int64))
+    try:
+        cache = {}
+        asteroids._sensor_cache(pl, p["id"], rows[:3], rows[0]["night"], cache)
+        assert list(cache[("defects", key, rows[0]["night"])]) == [5, 77, 1234]
+    finally:
+        dlib.add(key, rows[0]["night"], had if had is not None else np.zeros(0, np.int64))
+
+
+def test_dashboard_counts_all_detections():
+    """Review PR #67: Zählung und Rekord aus allen Funden, nicht nur aus den ersten 30."""
+    from astroflow.modules.stacking import dashboard
+    found = [{"name": f"({i}) Fund", "status": "nachgewiesen", "mag": 14.0 + i * 0.1} for i in range(60)]
+    info = dashboard._asteroid_info({"nachgewiesen": 60, "im_feld": 60, "kleinkoerper": found})
+    assert len(info["items"]) == 60 and max(b["mag"] for b in info["items"]) == pytest.approx(19.9)

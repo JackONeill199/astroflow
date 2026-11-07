@@ -365,6 +365,7 @@ def compute(pl, rid: int, *, small_bodies=None, gaia: bool = True, m5: float | N
             pick = [avail[int(i)] for i in np.unique(np.linspace(0, len(avail) - 1, min(SAMPLE, len(avail))).round())]
             if lib is None:
                 lib = pl._library()
+            _sensor_cache(pl, pid, pick, night, fcache)
             log(f"{len(todo)} Kleinkörper in {len(pick)} Aufnahmen suchen ({night})")
 
             def one(f):
@@ -443,6 +444,33 @@ def compute(pl, rid: int, *, small_bodies=None, gaia: bool = True, m5: float | N
             "grenze": round(lim, 1), "nullpunkt": round(zp["zp"], 2) if zp else None, "suchradius": round(search_px * pix_as, 1),
             "bild": {"w": geo["view"][0], "h": geo["view"][1]} if geo and geo.get("offset") is not None else None,
             "hinweise": notes}
+
+
+def _sensor_cache(pl, pid: int, frames: list[dict], night: str, cache: dict) -> None:
+    """Gespeicherte Glüh- und Fehlerkarten der Kamera in den Lade-Cache legen – `Pipeline._load` wendet sie nur an, wenn sie
+    dort stehen. Sonst behielten die Einzelbilder Randglühen und Hotpixel-Grüppchen, die im Master-Stack schon fehlen
+    (Review PR #67). Nur gespeicherte Bibliotheken, kein Nachmessen; Glühen nur bei eingeschalteter Projektoption."""
+    from . import calibration
+    p = pl.db.one("SELECT options FROM projects WHERE id=?", (pid,))
+    glow = json.loads((p or {}).get("options") or "{}").get("sensor_glow", True)
+    glib = calibration.GlowLibrary(pl.s.work_dir / "glow")
+    dlib = calibration.DefectLibrary(pl.s.work_dir / "defects")
+    for key in {glib.key(f["infod"]) for f in frames}:
+        if glow and ("glow", key, night) not in cache:
+            try:
+                med, _ = glib.medians(key, night)
+                model = calibration.model_from(med)
+                if model:
+                    cache[("glow", key, night)] = model
+            except Exception:
+                pass
+        if ("defects", key, night) not in cache:
+            try:
+                bad, _ = dlib.get(key, night)
+                if bad is not None and len(bad):
+                    cache[("defects", key, night)] = bad
+            except Exception:
+                pass
 
 
 def _zero_point(mean, cov, hdr, ra0, dec0, pix_as, W, H, exptime, wd) -> dict:
