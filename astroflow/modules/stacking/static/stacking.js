@@ -1306,8 +1306,7 @@ async function housekeeping(panel) {
 async function stackingSettings(el) {
   const [c, st, sv, sn, gx, gp, tu, ins] = await Promise.all([api('/stacking/reviewer'), api('/stacking/status'), api('/stacking/solver'), api('/stacking/starnet'),
     api('/stacking/graxpert'), api('/stacking/gpu'), api('/stacking/tutor'), api('/stacking/insights')]);
-  const insBox = (k, title, text) => `<label class="row" style="align-items:flex-start;gap:10px;cursor:pointer;flex-wrap:nowrap;margin-top:14px"><input type="checkbox" name="${k}" ${ins[k] ? 'checked' : ''} style="height:auto;margin-top:4px">
-        <span><b>${title}</b><br><span class="mut sm">${text}</span></span></label>`;
+  const insBox = (k, title, text) => `<label class="modrow opt"><div><b>${title}</b><div class="mut sm">${text}</div></div><input type="checkbox" name="${k}" ${ins[k] ? 'checked' : ''}><span class="switch"></span></label>`;
   const astapOk = sv.astap && sv.astap_databases.length;
   el.innerHTML = `<div class="split"><div><form class="panel" id="tf">
       <div class="panel-h"><h2>Bild-Tutor</h2><span class="grow"></span><span class="chip ${tu.mode === 'einsteiger' ? 'acc' : ''}">${tu.mode === 'einsteiger' ? 'Einsteiger' : 'Erfahren'}</span></div>
@@ -1317,9 +1316,8 @@ async function stackingSettings(el) {
         <option value="experte">Erfahren – kompakt, Details auf Klick</option></select></label>
       <div class="field"><span>Beobachtungsort</span><p class="sm" style="margin:2px 0 0">Orte und Zeiträume pflegst du gemeinsam für alle Module unter
         <a href="#/settings/standorte">Einstellungen → Standorte</a>. Der Tutor nimmt den Ort der jeweiligen Aufnahmenacht.</p></div>
-      <label class="row" style="align-items:flex-start;gap:10px;cursor:pointer;flex-wrap:nowrap;margin-bottom:14px"><input type="checkbox" name="weather" ${tu.weather ? 'checked' : ''} style="height:auto;margin-top:4px">
-        <span><b>Wetter für Aufnahmen und Nachtplanung abrufen</b><br><span class="mut sm">Aufnahmewetter aus dem Open-Meteo-Archiv und Vorhersage für „Heute Nacht“ (kostenlos, ohne Konto).
-        Dazu werden nur der auf ~10 km gerundete Ort und das Datum gesendet; Ergebnisse werden lokal gespeichert.</span></span></label>
+      <label class="modrow opt"><div><b>Wetter für Aufnahmen und Nachtplanung abrufen</b><div class="mut sm">Aufnahmewetter aus dem Open-Meteo-Archiv und Vorhersage für „Heute Nacht“ (kostenlos, ohne Konto).
+        Dazu werden nur der auf ~10 km gerundete Ort und das Datum gesendet; Ergebnisse werden lokal gespeichert.</div></div><input type="checkbox" name="weather" ${tu.weather ? 'checked' : ''}><span class="switch"></span></label>
       <label class="field"><span>KI-Einschätzung</span><select name="llm_provider"><option value="off">Aus</option><option value="lmstudio">LM Studio (lokal)</option><option value="openrouter">OpenRouter (Cloud)</option></select>
         <small>Auf Knopfdruck sieht sich ein Vision-Modell das Bild mit allen Messwerten an und ergänzt, was es sieht. Server-URL und API-Key kommen vom KI-Bildprüfer unten.</small></label>
       <div class="field"><span>Modell</span><div id="tmodel"></div></div>
@@ -1389,21 +1387,18 @@ async function stackingSettings(el) {
         <li>AstroFlow findet es danach im üblichen Installationsordner automatisch – sonst unten den Pfad zur GraXpert.exe angeben.</li></ol>`}
       <label class="field"><span>Standard für alle Objekte</span><select name="mode">${['all', 'bge', 'denoise', 'off'].map(v => `<option value="${v}" ${gx.mode === v ? 'selected' : ''}>${GX_LABEL[v]}</option>`).join('')}</select>
         <small>Je Objekt unter „Optionen“ änderbar. Beim ersten Lauf lädt GraXpert seine KI-Modelle selbst herunter.</small></label>
-      <label class="row" style="gap:10px;cursor:pointer;flex-wrap:nowrap;margin-bottom:12px"><input type="checkbox" name="gpu" ${gx.gpu ? 'checked' : ''} style="height:auto">
-        <span>Grafikkarte nutzen (deutlich schneller beim Entrauschen)</span></label>
+      <label class="modrow opt"><div><b>Grafikkarte nutzen</b><div class="mut sm">Deutlich schneller beim Entrauschen.</div></div><input type="checkbox" name="gpu" ${gx.gpu ? 'checked' : ''}><span class="switch"></span></label>
       <label class="field"><span>GraXpert-Programm</span><input name="path" value="${esc(gx.custom || '')}" placeholder="leer = automatisch suchen"></label>
       <div class="row"><button class="btn" type="submit">Speichern</button></div>
     </form>
     <form class="panel" id="stf"><h2 style="margin-bottom:10px">Speicher &amp; Daten</h2>
       ${st.disk ? `<div class="row sm" style="justify-content:space-between"><span class="mut">Frei auf dem Datenlaufwerk</span><b>${fmb(st.disk.free)} von ${fmb(st.disk.total)}</b></div>
         <div class="progress" style="margin:6px 0 14px"><i style="width:${(1 - st.disk.free / st.disk.total) * 100}%"></i></div>` : ''}
-      <label class="row" style="align-items:flex-start;gap:10px;cursor:pointer;flex-wrap:nowrap"><input type="checkbox" name="delete_uploads" ${st.delete_uploads ? 'checked' : ''} style="height:auto;margin-top:4px">
-        <span><b>Hochgeladene Einzelbilder nach dem Stacking löschen</b><br><span class="mut sm">Der Stack bleibt erhalten: neue Nächte werden weiter ergänzt, die Bearbeitung funktioniert wie gewohnt.
-        Danach ist aber kein komplettes Neu-Stacken mehr möglich (z. B. andere Bildauswahl). Dateien in eingebundenen Ordnern und Kalibrierbilder werden nie gelöscht.</span></span></label>
-      <label class="row" style="align-items:flex-start;gap:10px;cursor:pointer;flex-wrap:nowrap;margin-top:14px"><input type="checkbox" name="gaia" ${st.gaia ? 'checked' : ''} style="height:auto;margin-top:4px">
-        <span><b>Farbkalibrierung über Gaia-Sternfarben</b><br><span class="mut sm">Wie PCC in PixInsight/Siril: der Stack wird plate-gesolvt und der Weißabgleich an den
-        Katalogfarben der Sterne ausgerichtet. Dazu werden nur die Feldkoordinaten an das ESA-Gaia-Archiv geschickt; das Ergebnis wird lokal gespeichert.
-        Aus: Weißabgleich über das Mittel der Sternfarben.</span></span></label>
+      <label class="modrow opt"><div><b>Hochgeladene Einzelbilder nach dem Stacking löschen</b><div class="mut sm">Der Stack bleibt erhalten: neue Nächte werden weiter ergänzt, die Bearbeitung funktioniert wie gewohnt.
+        Danach ist aber kein komplettes Neu-Stacken mehr möglich (z. B. andere Bildauswahl). Dateien in eingebundenen Ordnern und Kalibrierbilder werden nie gelöscht.</div></div><input type="checkbox" name="delete_uploads" ${st.delete_uploads ? 'checked' : ''}><span class="switch"></span></label>
+      <label class="modrow opt"><div><b>Farbkalibrierung über Gaia-Sternfarben</b><div class="mut sm">Wie PCC in PixInsight/Siril: der Stack wird plate-gesolvt und der Weißabgleich an den
+        Katalogfarben der Sterne ausgerichtet. Dazu gehen nur die Feldkoordinaten an einen Gaia-Dienst (zuerst GAVO, dann ARI Heidelberg, zuletzt das ESA-Archiv); das Ergebnis wird lokal gespeichert.
+        Aus: Weißabgleich über das Mittel der Sternfarben.</div></div><input type="checkbox" name="gaia" ${st.gaia ? 'checked' : ''}><span class="switch"></span></label>
     </form>
     <form class="panel" id="insf"><h2 style="margin-bottom:4px">Was dein Bild zeigt</h2>
       <p class="mut sm" style="margin:0">„Wie tief schaust du?“ und „Veränderungen“ auf der Objektseite. Gesendet werden nur Himmelskoordinaten und Aufnahmezeiten – nie Bilder oder dein Standort.
@@ -1423,9 +1418,8 @@ async function stackingSettings(el) {
       <dt>Lights</dt><dd>${st.frames?.light || 0}</dd>
       <dt>Darks / Flats / Bias</dt><dd>${st.frames?.dark || 0} / ${st.frames?.flat || 0} / ${st.frames?.bias || 0}</dd>
     </dl>
-      <label class="row" style="align-items:flex-start;gap:10px;cursor:pointer;flex-wrap:nowrap;margin-top:14px"><input type="checkbox" id="gpuOn" ${gp.mode !== 'off' ? 'checked' : ''} style="height:auto;margin-top:4px">
-        <span><b>Grafikkarte fürs Stacking nutzen</b><br><span class="mut sm">Ausrichten und Ausreißer-Erkennung laufen dann auf der GPU (OpenCL: AMD, NVIDIA, Intel) –
-        deutlich schneller. Ohne geeignete Karte oder bei Fehlern rechnet automatisch der Prozessor.</span></span></label>
+      <label class="modrow opt"><div><b>Grafikkarte fürs Stacking nutzen</b><div class="mut sm">Ausrichten und Ausreißer-Erkennung laufen dann auf der GPU (OpenCL: AMD, NVIDIA, Intel) –
+        deutlich schneller. Ohne geeignete Karte oder bei Fehlern rechnet automatisch der Prozessor.</div></div><input type="checkbox" id="gpuOn" ${gp.mode !== 'off' ? 'checked' : ''}><span class="switch"></span></label>
       <p class="mut sm" style="margin:14px 0 0">Tipp: Im Browser-Menü „App installieren“ wählen – AstroFlow läuft dann wie eine eigene App.</p></div></div></div>`;
   if (!el.isConnected) return;      // inzwischen weiternavigiert – die Abfragen unten gingen ins Leere
   housekeeping($('#hk'));

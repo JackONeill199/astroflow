@@ -798,7 +798,7 @@ Hash-Routing: `#/` Übersicht, `#/nacht`, `#/himmel` (Himmelsqualität), `#/anal
 **Designsystem (seit 0.21.0, Nutzerauftrag „professionelles, konsistentes Designsystem wie eine native Desktop-App“):** Tokens in `:root` von `style.css`
 (`--bg/--sidebar/--surface/--surface-2/--border/--fg/--mut/--dim/--acc/--ok/--warn/--bad`, Maße, `--t` 160 ms); alte Namen (`--panel`, `--grad`, `--acc2/3` …)
 sind Aliase. **Inhaltsbreiten:** der Router gibt jedem Ansichtsbehälter die Klasse `page` (zentriert, `--page-max` 80rem), `page wide`
-(Arbeitsflächen: `PAGE_WIDE` in `app.js` – Galerie-Betrachter, SkyTrace-Lauf und 3D; die Objektseite `#/p/…` ist eine normale Seite) bzw. `page narrow` (`--page-narrow` 60rem, Einstellungen);
+(Arbeitsflächen: `PAGE_WIDE` in `app.js` – Galerie-Betrachter, SkyTrace-Lauf und 3D; die Objektseite `#/p/…` ist eine normale Seite) bzw. `page narrow` (`--page-narrow` 60rem, nur Willkommen-Assistent; Einstellungen seit 0.45.5 normale `page`, Abschnitte `#sbody .split` ab 60rem Containerbreite zweispaltig; Ein/Aus-Optionen immer als `label.modrow` mit `input[type=checkbox]` + `span.switch`, nie nacktes Kästchen);
 Lesetext mit `.readable` / `--read` 42rem. Keine Karte in der Karte (`.panel .panel` ohne Fläche). Kontextpanel startet geschlossen
 (`AF.ctx.shown`, je Ansicht neu, nicht gespeichert), Knöpfe mit `data-ctx-toggle` öffnen es. Objektseite, Reiter Bild: Details als
 Spalte `.imgwrap > #imgSide` neben dem Bild (Standard sichtbar, `bild.details`); der „Details“-Knopf schaltet dort die Spalte (`data-side`).
