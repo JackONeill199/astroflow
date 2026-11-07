@@ -232,7 +232,7 @@ def cleanup(s, db, keys: list[str], keep: int = KEEP_VERSIONS) -> dict:
         freed += sum(_rm(p, s.work_dir) for p in f)
         removed["temp"] = len(f)
     if "backups" in keys:
-        f = [s.data_dir / "backups", *s.data_dir.glob("*.vor-*")]
+        f = [p for p in [s.data_dir / "backups", *s.data_dir.glob("*.vor-*")] if p.exists()]   # nur Vorhandenes zählt
         freed += sum(_rm(p, s.data_dir) for p in f)
         removed["backups"] = sum(1 for p in f if not p.exists())
     if "empty_dirs" in keys:                          # nach den Dateien, damit frisch geleerte Ordner mitgehen

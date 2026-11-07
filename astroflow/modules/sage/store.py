@@ -11,6 +11,8 @@ from pathlib import Path
 
 from . import collection
 
+RETRIES, RETRY_PAUSE = 8, 0.02
+
 # (id, Titel, Beschreibung, Symbol, Gruppe, Kennzahl in den Statistiken, Ziel) – IDs bestehender Erfolge nie ändern
 ACHIEVEMENTS = [
     ("first_star", "Erste Entdeckung", "Dein erstes Himmelsobjekt identifiziert", "star", "Sammlung", "total_objects", 1),
@@ -110,15 +112,34 @@ class SageStore:
 
     # ---- Dateien ------------------------------------------------------------
     def _load(self, path: Path, default):
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return default
+        """Fehlende Datei oder ungültiges JSON → `default`. Ein Lesefehler bei vorhandener Datei (Windows: kurz gesperrt)
+        wird wiederholt und dann gemeldet – nie als leerer Verlauf ausgegeben."""
+        with self._lock:
+            for attempt in range(RETRIES):
+                try:
+                    return json.loads(path.read_text(encoding="utf-8"))
+                except FileNotFoundError:
+                    return default
+                except ValueError:
+                    return default
+                except OSError:
+                    if attempt == RETRIES - 1:
+                        raise
+                    time.sleep(RETRY_PAUSE * (attempt + 1))
 
     def _save(self, path: Path, data):
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(path)
+        """Atomar schreiben; unter Windows scheitert das Ersetzen kurz, solange ein Leser die Datei offen hält."""
+        with self._lock:
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False), encoding="utf-8")
+            for attempt in range(RETRIES):
+                try:
+                    tmp.replace(path)
+                    return
+                except PermissionError:
+                    if attempt == RETRIES - 1:
+                        raise
+                    time.sleep(RETRY_PAUSE * (attempt + 1))
 
     # ---- Verlauf --------------------------------------------------------------
     def entries(self) -> list[dict]:

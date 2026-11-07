@@ -1009,6 +1009,7 @@ async function boot() {
   addEventListener('hashchange', route);
   // Erster Start der installierten Version → Einrichtung; neue Version → einmaliger Hinweis je Version
   if (AF.app.setup?.pending && /^#?\/?$/.test(location.hash)) location.hash = '#/willkommen';
+  if (AF.app.settings_problem) toast('Die Einstellungsdatei (settings.json) ist beschädigt und wird nicht überschrieben. Eine Kopie liegt daneben (settings.json.defekt-…). Bitte reparieren oder löschen.', 'err');
   const upd = AF.app.update;
   if (upd?.latest && store.get('update.seen', '') !== upd.latest) {
     store.set('update.seen', upd.latest);
