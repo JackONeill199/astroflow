@@ -24,7 +24,13 @@ import numpy as np
 
 from . import services, stackfix
 
-COMPARE_VERSION = 3                # 2: Hotpixel-Reste (stackfix) werden entfernt bzw. verworfen; 3: Grenzgröße beider Bilder
+COMPARE_VERSION = 4                # 2: Hotpixel-Reste (stackfix) werden entfernt bzw. verworfen; 3: Grenzgröße beider Bilder;
+#                                    4: Sättigung/Halos heller Sterne, örtliche Grenzgröße, bekannte Katalogsterne
+# Bildbereiche, in denen ein Bild „blind“ ist: Rohwert (vor dem Hintergrundabzug) über Himmel + BLIND_LEVEL·(99,99-%-Wert −
+# Himmel). Fotoplatten sättigen um sehr helle Sterne in großen Flächen (Alnitak in DSS2 rot: ~200 px Radius auf 86 % dieses
+# Werts) – der Kachel-Hintergrund nimmt so ein Plateau als Himmel, das Bild zeigt dort ≈ 0, und ein Stern darin galt als „neu“.
+BLIND_LEVEL = 0.7
+BLIND_GROW = 1.0                   # × Aperturradius: Maske so weit wachsen lassen, dass die Apertur sie nicht berührt
 # „verschwunden“/„neu“ nur, wenn das Bild ohne die Quelle sie hätte zeigen müssen: Quelle mindestens REACH_MARGIN heller als
 # dessen 5σ-Grenzgröße → dort ≥ 5·10^(0,4·1) ≈ 12,6σ erwartet; fehlt sie (< 3σ), ist das kein Rauschen mehr. Der Abstand deckt
 # die Unsicherheit von Nullpunkt und Grenzgröße (~0,2–0,3 mag) und Farbunterschiede der Kameras ab. Gegen die Durchmusterung
@@ -216,6 +222,50 @@ def _noise_map(a: np.ndarray, valid: np.ndarray, tile: int = 96) -> np.ndarray:
     return ndi.zoom(grid, (H / ny, W / nx), order=1)[:H, :W]
 
 
+def _blind(raw: np.ndarray, valid: np.ndarray, grow: float) -> np.ndarray:
+    """Gesättigte bzw. fast gesättigte Flächen (Sternkerne, Halos, Spikes und Reflexe sehr heller Sterne) auf dem Rohbild –
+    dort kann das Bild eine weitere Quelle nicht zeigen. Um `grow` Pixel vergrößert."""
+    v = valid & np.isfinite(raw)
+    if v.sum() < 100:
+        return np.zeros(raw.shape, bool)
+    sky, top = (float(x) for x in np.percentile(raw[v], [50, 99.99]))
+    if not top > sky:
+        return np.zeros(raw.shape, bool)
+    m = v & (np.nan_to_num(raw, nan=sky) > sky + BLIND_LEVEL * (top - sky))
+    return _grow(m, grow)
+
+
+def _grow(m: np.ndarray, grow: float) -> np.ndarray:
+    from scipy import ndimage as ndi
+
+    if grow <= 0 or not m.any():
+        return m
+    return ndi.distance_transform_edt(~m) <= grow
+
+
+def _local_factor(img: np.ndarray, valid: np.ndarray, x: float, y: float, fwhm: float, glob: float) -> float:
+    """Wie viel stärker streut das Bild um (x, y) als im Mittel? Robuste Streuung in einem Ring 3–8 FWHM (Halo, Nebel,
+    Spikes eines hellen Nachbarn) gegen die des ganzen Bilds; ≥ 1. Dient der örtlichen Grenzgröße."""
+    H, W = img.shape
+    ro, ri = max(16, int(8 * fwhm)), 3 * fwhm
+    y0, y1, x0, x1 = max(0, int(y) - ro), min(H, int(y) + ro + 1), max(0, int(x) - ro), min(W, int(x) + ro + 1)
+    yy, xx = np.mgrid[y0:y1, x0:x1]
+    rr = np.hypot(xx - x, yy - y)
+    sel = valid[y0:y1, x0:x1] & (rr >= ri) & (rr <= ro)
+    v = img[y0:y1, x0:x1][sel]
+    v = v[np.isfinite(v)]
+    if len(v) < 50 or not glob > 0:
+        return 1.0
+    loc = 1.4826 * float(np.median(np.abs(v - np.median(v))))
+    return max(1.0, loc / glob)
+
+
+def _pixel_noise(img: np.ndarray, valid: np.ndarray) -> float:
+    v = img[valid]
+    v = v[np.isfinite(v)][:: max(1, int(v.size // 400_000))]
+    return float(1.4826 * np.median(np.abs(v - np.median(v)))) if len(v) > 100 else 0.0
+
+
 def _fwhm(a: np.ndarray) -> float:
     from .quality import detect_stars
 
@@ -296,6 +346,9 @@ def compute(db, work_dir: Path, rid: int, ref: str | int = "auto", survey: bool 
     valid = ndi.binary_erosion(validA & validB, iterations=16, border_value=0)
     if valid.mean() < 0.15:
         raise CompareError("Referenz und Bild überlappen kaum.")
+    # Sättigung und Halos sehr heller Sterne auf den Rohbildern – nach dem Hintergrundabzug sind große Plateaus nicht mehr
+    # zu sehen (Kachel-Median = Plateau). Vergrößert wird erst, wenn die Apertur (FWHM nach dem Angleichen) bekannt ist.
+    blindA, blindB = _blind(A, validA & valid, 0), _blind(B, validB & valid, 0)
     A = np.where(validA, A, 0) - _background(np.where(validA, A, 0), valid)
     B = np.where(validB, B, 0) - _background(np.where(validB, B, 0), valid)
 
@@ -327,7 +380,31 @@ def compute(db, work_dir: Path, rid: int, ref: str | int = "auto", survey: bool 
                                   # „fehlt bei mir“ gegen die Platte nur bei sehr hellen Quellen: Galaxien und rote Sterne sind
                                   # im Rotfilter heller, als die an Sternen angepasste Helligkeitsbeziehung erwartet (M3: 25 Fehlalarme)
                                   vanish=30.0 if info["art"] == "survey" else 10.0, reach=lim["reach"],
-                                  survey_ref=info["art"] == "survey")
+                                  survey_ref=info["art"] == "survey",
+                                  blind=(_grow(blindA, BLIND_GROW * max(2.0, fwhm)), _grow(blindB, BLIND_GROW * max(2.0, fwhm))))
+    # „neu“ an der Stelle eines Gaia-Sterns, den die Referenz nach ihrer Grenzgröße hätte zeigen müssen: bekannter Stern,
+    # den die Referenz hier nicht erfasst hat (Halo, Spike, Plattenfehler) – außer SIMBAD kennt ihn als veränderlich
+    # (Mira-Sterne schwanken um mehrere Größenklassen). Ohne SIMBAD-Antwort vorsichtig verwerfen.
+    keep = []
+    for c in cands:
+        if c.get("_gaia") is None:
+            keep.append(c)
+            continue
+        var = False
+        if catalogs and simbad:
+            try:
+                ra_c, dec_c = (float(v) for v in wcs.pixel_to_world_values(c["_x"], c["_y"]))
+                near = _simbad_near(ra_c, dec_c, 8, work_dir / "vergleich")
+                var = bool(near) and (bool(VARIABLE.fullmatch(near[0]["otype"])) or near[0]["otype"] in ("QSO", "Bla", "BLL", "AGN"))
+            except Exception:
+                var = False
+        if var:
+            keep.append(c)
+        else:
+            rejected["katalogstern"] += 1
+    cands = keep
+    for c in cands:
+        c.pop("_gaia", None)
     for c in cands:
         for key, fn in (("f_neu", lim["mag_a"]), ("f_ref", lim["mag_b"])):
             if fn and c[key] > 0:
@@ -366,6 +443,14 @@ def compute(db, work_dir: Path, rid: int, ref: str | int = "auto", survey: bool 
         notes.append(f"{n} {'Stelle' if n == 1 else 'Stellen'} verworfen, weil das Bild ohne die Quelle sie mit seiner Belichtung "
                      "nicht sicher zeigen konnte (Quelle schwächer als dessen Grenzgröße − "
                      f"{de_num(lim['abstand'])} mag) – das ist kein Verschwinden, sondern fehlende Tiefe.")
+    if rejected.get("heller_nachbar"):
+        n = rejected["heller_nachbar"]
+        notes.append(f"{n} {'Stelle' if n == 1 else 'Stellen'} im Licht eines sehr hellen Sterns verworfen: Dort ist das andere Bild "
+                     "gesättigt bzw. vom Halo überstrahlt (Fotoplatten besonders weit) und kann keine weitere Quelle zeigen.")
+    if rejected.get("katalogstern"):
+        n = rejected["katalogstern"]
+        notes.append(f"{n} bekannte{'r Stern' if n == 1 else ' Sterne'} (Gaia) nicht als neu gemeldet: Die Referenz hätte "
+                     f"{'ihn' if n == 1 else 'sie'} zeigen müssen, hat {'ihn' if n == 1 else 'sie'} an der Stelle aber nicht erfasst.")
     hot = {"aktuell": fixA.get("n", 0), "referenz": (fixB or {}).get("n", 0)}
     if hot["aktuell"] or hot["referenz"]:
         notes.append(f"Hotpixel-Punkte des Sensors vor dem Vergleich entfernt ({hot['aktuell']} im Bild"
@@ -531,20 +616,27 @@ def _limits(db, work_dir: Path, cur: dict, r2, info: dict, A, B, valid, wcs, fwh
         from scipy.spatial import cKDTree
         tree = cKDTree(np.c_[gx, gy])
 
-    def reach(kind, fa, fb, x, y):
-        """Konnte das Bild ohne die Quelle sie zeigen? Rückgabe (True/False/None, Helligkeit der Quelle, Grenze)."""
+    def reach(kind, fa, fb, x, y, fac=1.0):
+        """Konnte das Bild ohne die Quelle sie zeigen? `fac` = örtliche Streuung des Bilds ohne die Quelle gegen sein Mittel
+        (Halo, Nebel): die Grenzgröße dort ist um 2,5·log10(fac) schlechter. Rückgabe (True/False/None, Helligkeit der
+        Quelle, örtliche Grenze, G eines Gaia-Sterns an der Stelle, den das Bild ohne die Quelle hätte zeigen müssen)."""
+        star = None
+        if tree is not None:
+            d, j = tree.query((x, y))
+            star = float(g[j]) if d <= max(2.0, 0.8 * fwhm) and math.isfinite(g[j]) else None
         if kind == "verschwunden":
             m5, m = a["m5"], (mag_b(fb) if mag_b and fb > 0 else None)
-            if m is not None and tree is not None:
+            if m is not None and star is not None and star - m < 2.5:
                 # Gaia-Stern an der Stelle: dessen G, falls schwächer als geschätzt (Rotfilter, Farbterm) – vorsichtig
-                d, j = tree.query((x, y))
-                if d <= max(2.0, 0.8 * fwhm) and g[j] - m < 2.5:
-                    m = max(m, float(g[j]))
+                m = max(m, star)
         else:
             m5, m = b["m5"], (mag_a(fa) if mag_a and fa > 0 else None)
+        if m5 is not None:
+            m5 = m5 - 2.5 * math.log10(max(1.0, fac))
+        known = star if kind == "neu" and star is not None and m5 is not None and star <= m5 - margin else None
         if m is None or m5 is None:
-            return None, m, m5
-        return m <= m5 - margin, m, m5
+            return None, m, m5, known
+        return m <= m5 - margin, m, m5, known
 
     return {"aktuell": a, "referenz": b, "abstand": margin, "mag_a": mag_a, "mag_b": mag_b, "reach": reach}, notes
 
@@ -586,13 +678,16 @@ def _flux_relation(A, B, valid, fwhm, curved=False):
 
 
 def _candidates(A, B, D, Z, valid, fwhm, expect, min_dmag: float = 0.5, vanish: float = 10.0,
-                spots=None, reach=None, survey_ref: bool = False) -> tuple[list[dict], dict]:
+                spots=None, reach=None, survey_ref: bool = False, blind=None) -> tuple[list[dict], dict]:
     """Auffällige Stellen im Differenzbild. `expect(fb)` = erwarteter aktueller Fluss bei Referenzfluss fb (B ist schon
     mit k skaliert). Bei Sternen, die in beiden Bildern da sind, zählt nur eine Abweichung ≥ `MIN_DMAG` von dieser Beziehung.
     `spots` (N, 2: x, y) = Hotpixel-Stellen aus `stackfix.spots` beider Bilder – Kandidaten dort werden verworfen.
     `reach(art, fa, fb, x, y)` → (hätte das andere Bild die Quelle sicher gezeigt?, Helligkeit, Grenzgröße) aus `_limits`;
     „neu“/„verschwunden“ unter dieser Grenze → `unter_grenze`. Ohne Antwort gilt für „verschwunden“ die Flussbeziehung
-    (`vanish`·σ), gegen die Durchmusterung (`survey_ref`, Platte nicht geeicht) dann gar nicht."""
+    (`vanish`·σ), gegen die Durchmusterung (`survey_ref`, Platte nicht geeicht) dann gar nicht.
+    `blind` = (Maske aktuell, Maske Referenz) aus `_blind`: liegt die Stelle im gesättigten Bereich bzw. Halo eines sehr
+    hellen Sterns des Bilds ohne die Quelle → `heller_nachbar`. `_gaia` je Kandidat = G eines bekannten Sterns, den die
+    Referenz hätte zeigen müssen (nur „neu“; `compute` verwirft ihn als `katalogstern`, wenn er nicht veränderlich ist)."""
     from scipy import ndimage as ndi
     from scipy.spatial import cKDTree
 
@@ -606,11 +701,11 @@ def _candidates(A, B, D, Z, valid, fwhm, expect, min_dmag: float = 0.5, vanish: 
     hot = cKDTree(spots) if spots is not None and len(spots) else None
     hot_r = max(3.0, fwhm)                            # Kandidat im Differenzbild: Lage nach dem Weichzeichnen ± 1–2 px
     rej = {"hotpixel": 0, "rand": 0, "rauschen": 0, "form": 0, "einzelpixel": 0, "heller_stern": 0, "helligkeit": 0, "zu_schwach": 0,
-           "unter_grenze": 0}
+           "unter_grenze": 0, "heller_nachbar": 0, "katalogstern": 0}
     margin = max(3 * fwhm + 4, 0.02 * min(H, W))       # Abstand zum Rand der gemeinsamen Fläche
     out = []
     r = max(2.0, fwhm)
-    sig_ap = None
+    sig_ap = glob = None
     topa, topb = float(np.nanpercentile(A[valid], 99.99)), float(np.nanpercentile(B[valid], 99.99))
     for i in order:
         x0, y0 = int(xs[i]), int(ys[i])
@@ -673,12 +768,27 @@ def _candidates(A, B, D, Z, valid, fwhm, expect, min_dmag: float = 0.5, vanish: 
         if kind == "verschwunden" and not fb > 5 * sig_b:
             rej["zu_schwach"] += 1
             continue
+        # Im gesättigten Kern bzw. Halo eines sehr hellen Sterns ist das Bild ohne die Quelle blind (NGC 2024: ζ Ori C lag auf
+        # der DSS-Platte im Plateau von Alnitak und galt als „neu“). Nach dem Hintergrundabzug ist das Plateau ≈ 0 – daher
+        # auf den Rohbildern geprüft. Nur das Bild ohne die Quelle zählt: eine helle Nova darf im eigenen Bild gesättigt sein.
+        if blind is not None:
+            bx, by = min(W - 1, max(0, int(round(x0 + cx)))), min(H - 1, max(0, int(round(y0 + cy))))
+            masks = (blind[1],) if kind == "neu" else (blind[0],) if kind == "verschwunden" else blind
+            if any(m[by, bx] for m in masks):
+                rej["heller_nachbar"] += 1
+                continue
         lim_m5 = None
+        known = None
         if kind in ("neu", "verschwunden"):
-            # Physikalisch: Helligkeit der Quelle gegen die Grenzgröße des Bilds ohne sie (Teleskop + Belichtung).
-            # Die Flussbeziehung k allein genügt nicht: bei kurzen Stacks stützt sie sich auf wenige, teils gesättigte
-            # Sterne, gegen die Fotoplatte ist sie zudem nicht linear (M104, 4 × 10 s: k ~20× zu groß → 25 Fehlalarme)
-            ok, m_src, lim_m5 = reach(kind, fa, fb, x0 + cx, y0 + cy) if reach else (None, None, None)
+            # Physikalisch: Helligkeit der Quelle gegen die Grenzgröße des Bilds ohne sie (Teleskop + Belichtung), dort
+            # örtlich: im Halo eines hellen Nachbarn oder in Nebeln streut es stärker. Die Flussbeziehung k allein genügt
+            # nicht: bei kurzen Stacks stützt sie sich auf wenige, teils gesättigte Sterne, gegen die Fotoplatte ist sie
+            # zudem nicht linear (M104, 4 × 10 s: k ~20× zu groß → 25 Fehlalarme)
+            if glob is None:
+                glob = (_pixel_noise(A, valid), _pixel_noise(B, valid))
+            other, gl = (B, glob[1]) if kind == "neu" else (A, glob[0])
+            fac = _local_factor(other, valid, x0 + cx, y0 + cy, fwhm, gl)
+            ok, m_src, lim_m5, known = reach(kind, fa, fb, x0 + cx, y0 + cy, fac) if reach else (None, None, None, None)
             if ok is False:
                 rej["unter_grenze"] += 1
                 continue
@@ -699,7 +809,7 @@ def _candidates(A, B, D, Z, valid, fwhm, expect, min_dmag: float = 0.5, vanish: 
                 continue
         out.append({"_x": x0 + cx, "_y": y0 + cy, "sigma": round(abs(z), 1), "art": kind, "f_neu": round(fa, 2), "f_ref": round(fb, 2),
                     "dmag": None if dm is None else round(dm, 2), "laenglich": round(math.sqrt(l1 / l2), 2),
-                    **({"grenze": round(lim_m5, 1)} if lim_m5 is not None else {})})
+                    **({"grenze": round(lim_m5, 1)} if lim_m5 is not None else {}), "_gaia": known})
         if len(out) >= MAX_CANDIDATES:
             break
     return out, rej

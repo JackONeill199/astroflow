@@ -502,6 +502,20 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   `grenze {aktuell, referenz: {m5, quelle, belichtung_s, aufnahmen, sterne}, abstand}`, Kandidat `grenze`. M104 danach: m5 13,0 (10 Sterne)
   gegen 19,0 → 0 statt 25 Meldungen; M33/M32/NGC 1579 (eigene Referenzen) unverändert. `COMPARE_VERSION` 3. Test
   `test_compare_short_stack_reachability` (kurzer gesättigter Stack, Flussbeziehung wie bei M104 verfälscht).
+- **Helle Nachbarn / örtliche Grenze** (seit 0.43.3, Nutzerbefund NGC 2024: ζ Ori C „neu“, 19,8σ, 9,2 mag gegen DSS2 rot):
+  Ursache an echten Daten: Alnitak ist auf der Platte ein gesättigtes Plateau (~20 000 bei Himmel ~7 400, Radius ~200 px auf dem
+  Stack-Raster), ζ Ori C liegt 46 px daneben darin. `_background` (Kachel-Median 64 px) nahm das Plateau als Himmel → Referenz dort
+  ≈ 0 (f_ref 22) → „neu“; die `sat`-Prüfung sah nach dem Hintergrundabzug nichts mehr, `reach` nutzte die globale m5 17,6.
+  Jetzt: `_blind` auf den **Rohbildern** (vor dem Hintergrundabzug): Wert > Himmel + `BLIND_LEVEL` 0,7·(99,99-%-Wert − Himmel)
+  (Plateau lag bei 0,86), um `BLIND_GROW`·Apertur vergrößert (`_grow`). Stelle im Blindbereich des Bilds **ohne** die Quelle
+  („neu“ → Referenz, „verschwunden“ → aktuell, sonst beide) → `verworfen.heller_nachbar` (eine helle Nova darf im eigenen Bild
+  gesättigt sein). Örtliche Grenze: `_local_factor` = robuste Streuung im Ring 3–8 FWHM gegen die des ganzen Bilds (`_pixel_noise`),
+  m5 − 2,5·log10(fac) in `reach` (gesättigte Plateaus sind flach – die fängt nur `_blind`). Katalog: `reach` liefert als 4. Wert G
+  eines Gaia-Sterns an der Stelle (≤ max(2, 0,8 FWHM)) mit G ≤ örtliche m5(Referenz) − Abstand (nur „neu“); `compute` verwirft ihn als
+  `katalogstern`, außer SIMBAD (8″) nennt einen Veränderlichen (Mira …) – ohne SIMBAD vorsichtig verwerfen. Gegencheck an Kopien
+  aller gespeicherten Vergleiche: s. PR. `COMPARE_VERSION` 4. Tests `test_compare_bright_neighbor_halo_not_new` (Platte mit gesättigtem
+  Plateau + Spikes, Nachbar darin; Nova im freien Feld bleibt), `test_compare_known_star_missing_in_reference` (Gaia-Stern fehlt auf
+  der Platte; als Mira bleibt er „neu“).
 - **UI** (`static/depth.js|css`, globale Funktionen, `stacking.js` prüft `typeof depthPanel`): `depthPanel`, `depthOverlay`
   (umhüllt `plateLabels`, Klasse `marks-on`), `depthTunnel` (three.js aus `/vendor/`, Richtung = Bildposition aufgeweitet, Abstand
   log10(Lj)), `comparePanel` + `compareViewer` (Blinken über `createViewer().setSplit`, Stelle anfahren mit `zoomTo`).
