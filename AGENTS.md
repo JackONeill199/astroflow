@@ -507,7 +507,10 @@ Nutzerwunsch „eigene Seite, wo man alle gleichzeitig analysieren kann, mit Sta
   Pause → nie zwei Netzauswertungen gleichzeitig. Himmel = `skyquality.compute_project` (wartet, solange `SkyRunner` rechnet), Tutor = `build_report(refresh=True)`
   (mit Wetter ebenfalls Pause). Anhalten wirkt nach dem laufenden Schritt; Zustand nur im Speicher.
 - **UI:** Abschnitte zeichnen nur bei geänderten Daten neu (`paint` mit Signatur – sonst liefen Animationen bei jedem Poll erneut); Poll der Shell lädt nur
-  während eines Auftrags laufend, sonst alle 15 s. Diagramme als eigene SVG-Helfer (`scatter`, `ring`), 3D-Wolke mit three.js aus `/vendor/` (`loadThree`).
+  während eines Auftrags laufend, sonst alle 15 s. Diagramme als eigene Helfer (`scatter` = SVG mit festem viewBox 400 breit, `sbar` = gestapelter Balken je Art), 3D-Wolke mit three.js aus `/vendor/` (`loadThree`).
+  **Dichtes Raster** (seit 0.38.3, Nutzerwunsch „Informationen dichter“): Seite `.ad-page` mit engeren Panels, Kennzahlen als eine Leiste (`.ad-kpis`, nur Mengen –
+  Rekordwerte nur unter „Rekorde“), Reihen `.ad-row` (`.ad-top` 2:3, `.ad-c3` dreispaltig → ab 1279 px zwei, ab 760 px eine Spalte, `.ad-chgrow` Veränderungen 3:2 Kataloge),
+  Abschnitte einer Reihe gleich hoch. Veränderungen zeigen erst `CHG_ROWS` 8 Zeilen (CSS `.ad-chg:not(.all)`), „Alle anzeigen“ schaltet ohne Neuzeichnen um.
   Animationen über `.an-sec.in` (`anReveal`/`anCountUp` aus `analysis.js`), aus bei `prefers-reduced-motion`. Sprung zur Bildstelle: `sessionStorage af.an.focus`
   `{rid, x, y, w}` → `analysisTab` zoomt nach dem Laden des Fotos. localStorage `af.analysis.filter|kinds|sort`.
 - Tests: `tests/test_analysis_dashboard.py` (synthetische Bibliothek `tests/analysis_seed.py`, Attrappen statt Netz; prüft u. a. höchstens eine

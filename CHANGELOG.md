@@ -12,6 +12,16 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   Hauptwertung (Gesamtwertung 60 % Dunkelheit, 20 % Seeing, 20 % Durchsicht); Nächte mit unsicherem Wert (ab ±0,35 mag) stehen getrennt.
   Ausgewertet aus den vorhandenen Messungen, nichts wird neu berechnet.
 
+## 0.38.3 – 07.11.2026
+
+### Behoben
+- **Analyse-Dashboard dichter.** **Bilder → Analyse** zeigt dieselben Inhalte auf rund 40 % weniger Höhe (1440 px: 4 090 → 2 500 px):
+  Kennzahlen als eine Leiste statt sieben Kacheln (die Rekordwerte stehen nur noch unter „Rekorde“, dafür erfasste Sterne und
+  Galaxien), „Was schon berechnet ist“ als Tabelle mit Balken je Art statt großer Ringe, Rekorde dreispaltig, Verläufe, Rangliste,
+  Beste Nächte, Bildqualität und Tutor-Befunde in Dreierreihen mit gleich hohen Kästen, Rangliste und Nächte einzeilig,
+  Veränderungen neben den Katalogen (erst 8 Zeilen, „Alle anzeigen“ klappt den Rest auf), kleinere Katalogfelder und engere
+  Tabellenzeilen. Filter, „Alles analysieren“, 3D-Wolke, Sprung zur Bildstelle und Animationen bleiben unverändert.
+
 ## 0.38.2 – 07.11.2026
 
 ### Behoben
