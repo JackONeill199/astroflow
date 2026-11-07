@@ -76,7 +76,7 @@ function hrdPanel(host, r, opts = {}) {
           </ul>
         </div>
       </div>
-      <details class="hrd-help"><summary>Was zeigt das Diagramm?</summary><div class="readable sm">
+      <div class="hrd-foot"><details class="hrd-help"><summary>Was zeigt das Diagramm?</summary><div class="readable sm">
         <p>Jeder Punkt ist ein Stern des Haufens: <b>rechts</b> rötlicher (kühler), <b>links</b> bläulicher (heißer), <b>oben</b> heller. Weil alle Haufensterne
           etwa gleich weit entfernt und gleich alt sind, ordnen sie sich zu Linien statt zu einer Wolke.</p>
         <p>Das schräge Band ist die <b>Hauptreihe</b>: Sterne, die in ihrem Kern Wasserstoff verbrennen. Schwere Sterne sind heller und blauer – und verbrauchen
@@ -85,7 +85,7 @@ function hrdPanel(host, r, opts = {}) {
         <p>Die Entfernung stammt aus Gaias Parallaxen, die Haufenmitglieder aus Gaias Eigenbewegungen (sie ziehen gemeinsam über den Himmel). Staub zwischen uns
           und dem Haufen macht die Sterne röter und schwächer (<b>Rötung</b>). Die Hauptreihe ist eine Näherung für sonnenähnliche Zusammensetzung – das Alter
           ist deshalb nur auf etwa einen Faktor 2 genau, bei Kugelsternhaufen schätzen wir es gar nicht.</p></div></details>
-      <div class="row depth-acts"><span class="grow"></span><button class="linkbtn sm" data-hrd-run>Neu messen</button></div>`)
+      <button class="linkbtn sm" data-hrd-run>Neu messen</button></div>`)
       + (d.hinweise || []).map(h => `<p class="dim sm depth-note">${esc(h)}</p>`).join('');
     $('[data-hrd-run]', host)?.addEventListener('click', run);
     const plot = $('.hrd-plot', host);
@@ -108,7 +108,7 @@ function hrdPanel(host, r, opts = {}) {
 
 // Diagramm als SVG: x = Farbe BP−RP, y = G (hell oben); rechte Achse absolute Helligkeit M_G, wenn Entfernung und Rötung bekannt
 function hrdSvg(d) {
-  const W = 640, H = 420, L = 46, R = d.entfernung ? 46 : 14, T = 12, B = 38;
+  const W = 680, H = 340, L = 46, R = d.entfernung ? 46 : 14, T = 12, B = 38;
   const mem = d.mitglieder || [], gaia = d.gaia || [], field = d.feld || [];
   const cs = mem.map(m => m.c), gs = mem.map(m => m.g);
   const q = (a, p) => { const s = [...a].sort((x, y) => x - y); return s[Math.max(0, Math.min(s.length - 1, Math.round(p * (s.length - 1))))]; };

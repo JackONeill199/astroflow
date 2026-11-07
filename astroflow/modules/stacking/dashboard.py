@@ -254,6 +254,9 @@ def summarize(base: dict, f: dict | None = None) -> dict:
         rec["most_gal"] = ref(x, value=x["depth"]["galaxies"])
     if x := best(D, lambda r: r["depth"]["m5_1h"]):
         rec["efficient"] = ref(x, value=x["depth"]["m5_1h"])
+    H = [r for r in rows if r.get("hrd") and r["hrd"]["found"] and not r["hrd"]["globular"]]
+    if x := best(H, lambda r: r["hrd"]["age"]):                # grobe Schätzung aus dem Abknickpunkt (HR-Diagramm)
+        rec["oldest_cluster"] = ref(x, value=x["hrd"]["age"], lo=x["hrd"]["age_lo"], hi=x["hrd"]["age_hi"], members=x["hrd"]["members"])
     if x := best(rows, lambda r: r["score"]):
         rec["score"] = ref(x, value=x["score"])
     if x := best(rows, lambda r: r["exposure"] or None):

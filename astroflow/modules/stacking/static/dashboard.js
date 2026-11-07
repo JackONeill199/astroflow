@@ -271,6 +271,8 @@ async function analysisView(el) {
           r.far_star && { ...r.far_star, pos: r.far_star.bild && r.far_star.star.x != null ? { x: r.far_star.star.x, y: r.far_star.star.y, w: r.far_star.bild.w } : null }),
         item('layers', 'Meiste Galaxien', r.most_gal && nf.format(r.most_gal.value), r.most_gal && esc(r.most_gal.name), r.most_gal),
         item('pulse', 'Am effizientesten', r.efficient && `${de(r.efficient.value, 2)} mag`, r.efficient && `${esc(r.efficient.name)} · Grenzgröße auf 1 h umgerechnet`, r.efficient),
+        item('star', 'Ältester Sternhaufen', r.oldest_cluster && `~${yrText(r.oldest_cluster.value)}`,
+          r.oldest_cluster && `${esc(r.oldest_cluster.name)} · HR-Diagramm, grob geschätzt`, r.oldest_cluster),
         item('globe', 'Dunkelster Himmel', r.darkest && `${de(r.darkest.value, 2)} mag/″²`, r.darkest && `${fday(r.darkest.night)} · ${esc(r.darkest.name)}`, r.darkest),
         item('sparkle', 'Schärfste Nacht', r.seeing && `${de(r.seeing.value, 1)}″`, r.seeing && `${fday(r.seeing.night)} · ${esc(r.seeing.name)}`, r.seeing),
         item('medal', 'Beste Bildqualität', r.score && `${de(r.score.value, 1)}/10`, r.score && esc(r.score.name), r.score),
@@ -424,7 +426,7 @@ async function analysisView(el) {
     const th = (k, l) => `<th data-sort="${k}" class="${sort.k === k ? (sort.d > 0 ? 'asc' : 'desc') : ''}">${l}</th>`;
     paint('adTable', [rows.map(r => [r.id, r.status, r.depth?.m5, r.sky?.sqm, r.score]), sort], () => `<div class="panel-h"><h2>Alle Objekte</h2><span class="grow"></span>
         <span class="ad-legend sm">${['done', 'old', 'none', 'error', 'blocked'].map(s => `<span><i class="ad-dot s-${s}"></i>${ST[s]}</span>`).join('')}</span></div>
-      <div class="ad-scroll"><table class="ad-tab ad-all"><thead><tr>${th('name', 'Objekt')}${th('night', 'Letzte Nacht')}${th('exposure', 'Belichtung')}${th('score', 'Qualität')}${th('m5', 'Grenzgröße')}${th('gal', 'Fernste Galaxie')}${th('sqm', 'Himmel')}<th>Tiefe · Vergl. · Himmel · Tutor</th></tr></thead><tbody>
+      <div class="ad-scroll"><table class="ad-tab ad-all"><thead><tr>${th('name', 'Objekt')}${th('night', 'Letzte Nacht')}${th('exposure', 'Belichtung')}${th('score', 'Qualität')}${th('m5', 'Grenzgröße')}${th('gal', 'Fernste Galaxie')}${th('sqm', 'Himmel')}<th>Tiefe · Vergl. · HR · Himmel · Tutor</th></tr></thead><tbody>
         ${rows.map(r => `<tr data-href="#/p/${r.id}/analyse" tabindex="0"><td class="ad-name"><a href="#/p/${r.id}/analyse">${esc(r.name)}</a> <small class="mut">${esc(r.device || '')}</small></td>
           <td>${fday(r.nights.at(-1))}${r.nights.length > 1 ? ` <small class="mut">+${r.nights.length - 1}</small>` : ''}</td><td class="tnum">${hrs(r.exposure)}</td>
           <td class="tnum">${r.score != null ? de(r.score, 1) : '–'}</td><td class="tnum">${r.depth?.m5 != null ? de(r.depth.m5, 1) + ' mag' : '–'}</td>

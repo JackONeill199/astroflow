@@ -510,7 +510,8 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
 - **UI** (`hrdPanel(host, r, {onFocus, onShow})` in `analysisTab`, Abschnitt `#anHrd` + Inhaltsverzeichnis-Eintrag erst sichtbar bei `haufen_art`
   oder gefundenem Haufen): Kennzahlen, SVG-Diagramm (`hrdSvg`, rechte Achse M_G), Ebenen Gaia/Feld (localStorage `af.analyse.hrd.gaia|feld`),
   Klick auf einen Stern → `viewer.zoomTo`, Einsteigertext in `<details>`. Dashboard: Art `hrd` in `KINDS`/`NET_KINDS`; Nicht-Haufen haben Status
-  `na` (zählt nicht in der Abdeckung, nie im Sammelauftrag), der Ring bezieht sich nur auf Haufen; `_hrd_info` in den Zeilen.
+  `na` (zählt nicht in der Abdeckung, nie im Sammelauftrag), die Zeile der Status-Matrix (`sbar`) bezieht sich nur auf Haufen; `_hrd_info` in den
+  Zeilen, Rekord `oldest_cluster` „Ältester Sternhaufen“ (nur offene Haufen mit erkanntem Haufen). Diagramm kompakt (SVG 680×340, Fuß mit Erklärung + „Neu messen“ in einer Zeile).
 - Tests: `tests/test_hrd.py` (synthetischer Haufen 500 pc, E 0,2, Abknickpunkt M_G 1,3 im erfundenen Feld, Gaia-Attrappe; Feld ohne Haufen;
   alter Gaia-Zwischenspeicher; API/Insights/Dashboard).
 
