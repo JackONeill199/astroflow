@@ -15,7 +15,7 @@ window.stSatellites = async function (host) {
   if (!d.cells.some(c => c.n || c.h > 0)) { host.innerHTML = ''; return; }
   let site = d.sites[0]?.key ?? '', unit = 'year';
   host.innerHTML = `<section class="panel sts-sat"><div class="row"><h2>Satelliten am Himmel</h2><span class="grow"></span>
-      <select id="ss-site" aria-label="Standort" ${d.sites.length > 1 ? '' : 'hidden'}>${d.sites.map(s => `<option value="${esc(s.key)}">${esc(s.name)}</option>`).join('')}</select>
+      <select id="ss-site" aria-label="Standort" ${d.sites.length > 1 ? '' : 'hidden'}>${d.sites.map(s => `<option value="${esc(s.key)}">${esc(s.name)}${d.sites.filter(o => o.name === s.name).length > 1 ? ' · ' + esc(s.device) : ''}</option>`).join('')}</select>
       <div class="seg" id="ss-unit"><button type="button" data-u="year" class="on">Jahre</button><button type="button" data-u="month">Monate</button></div></div>
     <div id="ss-body"></div></section>`;
   const body = $('#ss-body', host), sel = $('#ss-site', host), seg = $('#ss-unit', host);
@@ -43,8 +43,7 @@ window.stSatellites = async function (host) {
     const bins = Array.from({ length: Math.max(1, hi - lo) }, () => 0);
     for (const m of mags) bins[Math.min(bins.length - 1, Math.floor(m - lo))]++;
     const bmax = Math.max(1, ...bins), med = median(mags);
-    const siteName = d.sites.find(s => s.key === site)?.name;
-    const best = d.brightest.find(b => b.site === siteName);
+    const best = d.brightest.find(b => b.group === site);
     const sl = cells.reduce((a, c) => a + c.sl, 0), ow = cells.reduce((a, c) => a + c.ow, 0);
     const est = d.zp.estimate;
     const parts = (g) => [['sl', g.sl], ['ow', g.ow], ['ot', g.n - g.sl - g.ow]].filter(x => x[1] > 0).map(([k, n]) => `<i class="ss-${k}" style="flex:${n}"></i>`).join('');
@@ -58,7 +57,7 @@ window.stSatellites = async function (host) {
           ${best ? `<a class="sts-row ss-best" href="#/skytrace/${encodeURIComponent(best.run)}/kandidaten"><span class="sts-name"><b>Hellste Spur: ${f1.format(best.mag)} mag</b><small class="mut">${esc(best.name || 'NORAD ' + best.norad)} · ${esc(best.night || '')}</small></span><span class="grow"></span>${icon('arrow')}</a>` : ''}</div></div>`
       : '<p class="mut sm">Für diesen Standort liegen noch keine Belichtungszeiten vor.</p>'}
       <p class="dim sm ss-note">Helligkeit = scheinbare Helligkeit im Luminanzband aus Spurfluss, Durchgangszeit der zugeordneten Bahn und Nullpunkt ${d.zp.night || d.zp.device ? 'der Gaia-geeichten Stacks' : 'nach Richtwert'}; Unsicherheit etwa ${String(err.night).replace('.', ',')}–${String(err.estimate).replace('.', ',')} mag${est ? `, ${nf.format(est)} Werte nur nach Richtwert (Schätzung)` : ''}.
-        Die Rate hängt vom Bildfeld ab und gilt nur für dieses Gerät.</p>`;
+        Die Rate hängt vom Bildfeld ab; Geräte werden getrennt gezählt.</p>`;
   }
   draw();
 };

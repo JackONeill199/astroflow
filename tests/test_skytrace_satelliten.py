@@ -99,7 +99,7 @@ def test_rate_und_helligkeit_je_standort(tmp_path, monkeypatch):
     assert "_full" not in st and all("ph" not in x for x in st["candidates"]) and "_sat" not in st["sessions"][0]
     assert [s["name"] for s in d["sites"]] == ["Beispielberg"]
     (cell,) = d["cells"]
-    assert (cell["y"], cell["m"], cell["site"]) == (2022, 8, "bsp")
+    assert (cell["y"], cell["m"], cell["site"]) == (2022, 8, "bsp|stellina-test")      # Rate je Standort und Gerät
     assert cell["h"] == pytest.approx(120 * 10 / 3600, abs=0.01)                     # nur die Nachtaufnahmen, Tagesaufnahmen zählen nicht
     assert (cell["n"], cell["sl"], cell["ow"]) == (4, 2, 1)                          # Tag-Spur fehlt; GLONASS ohne Profil zählt, hat aber keine mag
     assert len(cell["mags"]) == 3 and all(10.5 < m < 12.0 for m in cell["mags"])     # 22 − 0,2·X − 10 (Richtwert Stellina)
@@ -122,3 +122,18 @@ def test_nullpunkt_aus_dem_bilder_modul_und_ohne_standort(tmp_path, monkeypatch)
     out = sat.collect(data, {"nights": {"2022-08-10|stellina-test|200.0": 20.0}, "devices": {}}, lambda s: None)
     assert out["zp"]["night"] == 4 and out["zp"]["estimate"] == 0
     assert all(8.0 < m < 10.0 for m in out["cells"][0]["mags"])
+
+
+def test_rate_nutzt_echte_belichtungen_und_trennt_geraete():
+    """Wechselnde Belichtungen werden je Aufnahme summiert (nicht Median × Anzahl); zwei Geräte am selben Ort geben zwei Raten."""
+    t0 = _ts(2022, 8, 10, 23)
+
+    def sess(dev, exps, run):
+        return {"session": "2022-08-10_observation_X", "run": run, "night": "2022-08-10", "candidates": [], "_sat": [],
+                "_times": [t0 + 20 * i for i in range(len(exps))], "_exps": exps, "_exp": sorted(exps)[len(exps) // 2], "_dev": dev}
+    data = {"_full": [sess("kamera-a|200.0", [10.0, 10.0, 60.0], "r1"), sess("kamera-b|100.0", [30.0, 30.0], "r2")]}
+    site = {"site_id": "bsp", "name": "Beispielberg", "lat": 47.0, "lon": 8.0}
+    out = sat.collect(data, None, lambda s: site)
+    hours = {c["site"]: c["h"] for c in out["cells"]}
+    assert hours["bsp|kamera-a"] == pytest.approx(80 / 3600, abs=0.005) and hours["bsp|kamera-b"] == pytest.approx(60 / 3600, abs=0.005)
+    assert {s["device"] for s in out["sites"]} == {"kamera-a", "kamera-b"}

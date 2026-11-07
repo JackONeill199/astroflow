@@ -161,6 +161,9 @@ def collect(data: dict, zps: dict | None, resolve_site, top: int = 5) -> dict:
         if ym is None:
             skipped += 1
             continue
+        exps = np.asarray(s.get("_exps") or [], float)
+        exps = np.where(np.isfinite(exps), exps, exp) if len(exps) == len(times) else np.full(len(times), float(exp))
+        dev = (s.get("_dev") or "").split("|")[0] or "Gerät unbekannt"      # verschiedene Bildfelder nie in einer Rate mischen
         site = resolve_site(s)
         if site and site.get("lat") is not None:
             key = str(site.get("site_id") or f"{site['lat']:.3f},{site['lon']:.3f}")
@@ -168,8 +171,9 @@ def collect(data: dict, zps: dict | None, resolve_site, top: int = 5) -> dict:
             night = sun_altitude(times, site["lat"], site["lon"]) < SUN_NIGHT
         else:
             key, name, night = "?", "Standort unbekannt", np.ones(len(times), bool)
-        hours = float(night.sum()) * exp / 3600.0
-        sites.setdefault(key, {"key": key, "name": name, "hours": 0.0, "n": 0})["hours"] += hours
+        hours = float(exps[night].sum()) / 3600.0
+        key = f"{key}|{dev}"
+        sites.setdefault(key, {"key": key, "name": name, "device": dev, "hours": 0.0, "n": 0})["hours"] += hours
         cell = cells.setdefault((key, *ym), {"site": key, "y": ym[0], "m": ym[1], "h": 0.0, "n": 0, "sl": 0, "ow": 0, "mags": []})
         cell["h"] += hours
         for c in s.get("_sat") or []:
@@ -190,7 +194,7 @@ def collect(data: dict, zps: dict | None, resolve_site, top: int = 5) -> dict:
             src_count[src] += 1
             cell["mags"].append(mag)
             best.append(dict(mag=mag, src=src, name=c.get("name"), norad=c.get("norad"), family=fam, night=s.get("night"),
-                             run=c.get("run"), id=c.get("id"), site=name, err=ZP_ERR[src]))
+                             run=c.get("run"), id=c.get("id"), site=name, group=key, err=ZP_ERR[src]))
     best.sort(key=lambda b: b["mag"])
     out_cells = [dict(c, h=round(c["h"], 2)) for c in sorted(cells.values(), key=lambda c: (c["site"], c["y"], c["m"]))
                  if c["h"] > 0 or c["n"]]

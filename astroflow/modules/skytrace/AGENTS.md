@@ -53,7 +53,7 @@ Server (nur numpy, kein Engine-Interpreter) auf den **gespeicherten** Läufen, o
   mag = ZP − `K_EXT` (0,20) × Luftmasse(Bildfeldhöhe aus `world_path`, Ort, Zeit) − 2,5·lg(ADU/s): scheinbare Helligkeit im Luminanzband, **keine** Normhelligkeit
   (keine Entfernungs-/Phasenreduktion), Unsicherheit grob 0,3 (Nacht) – 0,6 mag (Schätzung). An den echten Läufen (203 Spuren): Starlink-Median ≈ 7 mag (4,2–8,4),
   Raketenstufen bis 3,5 mag, GLONASS ≈ 11 mag – passt zur Erwartung.
-- **Rate:** je Beobachtung (neueste vollständige Analyse, wie die Statistik) Σ Belichtung der angenommenen Aufnahmen (`frames.jsonl`) bei Sonnenhöhe < −12° (`SUN_NIGHT`,
+- **Rate:** je Beobachtung (neueste vollständige Analyse, wie die Statistik) Σ der tatsächlichen Belichtungen je angenommener Aufnahme (`frames.jsonl`, `_exps` parallel zu `_times`; Rückfall Median) – Zellen je Standort **und Gerät** (`INSTRUME`, Schlüssel `<Ort>|<Gerät>`) bei Sonnenhöhe < −12° (`SUN_NIGHT`,
   Näherung ~0,05°), Ort über `observation_settings.resolve_site` (Ortsliste der Nacht), ohne Ort „Standort unbekannt“ ohne Nachtfilter. Spuren in der Dämmerung zählen nicht. Zeiträume
   unter 0,5 h zeigt die Oberfläche nicht als Rate. Die Rate hängt vom Bildfeld ab (Stellina 1,06° × 0,72°) und gilt je Gerät.
 - `stats.collect` liefert zusätzlich `_full` (interne Sitzungen mit `_times/_exp/_dev/_sat`); `/statistics` entfernt alle `_`-Schlüssel, damit die Antwort schlank bleibt.

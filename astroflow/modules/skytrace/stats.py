@@ -66,7 +66,7 @@ def _first_file(folder: Path) -> str | None:
 def _frames_info(folder: Path) -> dict:
     """Aufnahmezeiten (Unix-s), Belichtung, Gerät und Pfad der ersten Aufnahme aus frames.jsonl – Grundlage der Satellitenrate."""
     from json_store import open_read
-    times, exps, dev, first = [], [], None, None
+    times, exps, dev, first = [], [], None, None          # exps parallel zu times (nan = unbekannt)
     try:
         with open_read(folder / "frames.jsonl") as rows:
             for line in rows:
@@ -78,8 +78,7 @@ def _frames_info(folder: Path) -> dict:
                     continue
                 times.append(float(r["timestamp"]))
                 m = r.get("meta") if isinstance(r.get("meta"), dict) else {}
-                if isinstance(m.get("exposure_seconds"), (int, float)):
-                    exps.append(float(m["exposure_seconds"]))
+                exps.append(float(m["exposure_seconds"]) if isinstance(m.get("exposure_seconds"), (int, float)) else float("nan"))
                 if dev is None and m.get("INSTRUME"):
                     dev = f"{m['INSTRUME']}|{m.get('GAIN')}"
                     try:
@@ -90,7 +89,8 @@ def _frames_info(folder: Path) -> dict:
                     first = r["file"]
     except OSError:
         pass
-    return dict(_times=times, _exp=sorted(exps)[len(exps) // 2] if exps else None, _dev=dev, _first_path=first)
+    known = sorted(e for e in exps if e == e)
+    return dict(_times=times, _exps=exps, _exp=known[len(known) // 2] if known else None, _dev=dev, _first_path=first)
 
 
 def _satellites(items: list, run: str) -> list[dict]:
