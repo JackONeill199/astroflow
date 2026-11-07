@@ -391,6 +391,8 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   Symbol im Infobereich läuft; Komponenten im Hintergrund 334 s (ASTAP + D05 131 s, GraXpert 144 s, GPU 3 s – Sandbox reicht die
   Grafikkarte durch –, SkyTrace-Engine 50 s); **erstes Bild mit GraXpert nach 6,7 min** ab Installerstart, SkyTrace-Lauf auf den
   Demodaten 15 s danach (18 Aufnahmen, 1 Kandidat); Beenden 7 s ohne übrige Prozesse, Deinstallation samt Werkzeugen 7 s, Daten bleiben.
+  Mit Paketordner (Commit ed5088b): erstes Bild 7,0 min; **Update** (gleicher Installer drüber) 19 s + 28 s Prüfen der Komponenten,
+  Engine und GPU „nichts neu geladen“ (Paketordner 1,4 GB bleibt); Deinstallation entfernt Paketordner und Werkzeuge.
 - Ohne eingerichtete SkyTrace-Engine (kein Interpreter gewählt, keine venv) überspringt `skytrace.auto` still (Zustand `skipped`) statt je Nacht
   „Analyse-Engine unvollständig“ zu melden. Engine per Knopf seit 0.44.0 (Komponente `skytrace`).
 
