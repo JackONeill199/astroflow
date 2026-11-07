@@ -613,7 +613,7 @@ def test_einstellungen_schalter_und_breite(server, browser):
     assert page.locator("#sbody").bounding_box()["width"] > 700
     assert page.locator("#sbody input[type=checkbox]:not(#hkForm input)").count() == page.locator("#sbody .modrow:not(#hkForm .modrow) .switch").count()
     box = page.locator("#stf input[name=gaia]")
-    row = page.locator("#stf label.modrow", has=box)
+    row = page.locator("#stf label.modrow", has=page.locator("input[name=gaia]"))
     sw = row.locator(".switch")
     assert sw.bounding_box()["width"] >= 36 and sw.bounding_box()["height"] >= 20
     before = box.is_checked()
