@@ -937,7 +937,7 @@ async function statsView(el) {
   const date = s => s ? new Date(s + 'T12:00:00Z').toLocaleDateString('de-DE', { timeZone: 'UTC' }) : 'Nacht unbekannt';
   const pct = (a, b) => b ? (100 * a / b).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' %' : '—';
   el.innerHTML = `<div class="pagehead"><div><h1>SkyTrace-Statistik</h1><p class="mut">Erkannte Spuren, Satellitenzuordnungen und Katalogabgleiche über alle Analysen.</p></div>
-    <span class="grow"></span><select id="sts-year" aria-label="Beobachtungsjahr"><option value="">Alle Jahre</option></select></div><div id="sts-body"></div><div id="sts-rematch"></div>`;
+    <span class="grow"></span><select id="sts-year" aria-label="Beobachtungsjahr"><option value="">Alle Jahre</option></select></div><div id="sts-body"></div><div id="sts-sat"></div><div id="sts-rematch"></div>`;
   const body = $('#sts-body', el), select = $('#sts-year', el);
   rematchPanel($('#sts-rematch', el));
   select.onchange = () => { year = select.value; draw(); };
@@ -1021,6 +1021,7 @@ async function statsView(el) {
     draw();
   }
   await load();
+  if (typeof stSatellites === 'function') stSatellites($('#sts-sat', el));      // Helligkeit und Rate (skytrace-satelliten.js), lädt eigenständig
   return {
     async update(st) {            // nach einer fertigen Analyse neu zählen
       const r = !!st.modules.skytrace?.running;

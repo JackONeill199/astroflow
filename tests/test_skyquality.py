@@ -245,6 +245,23 @@ def test_deleted_project_leaves_no_measurements(tmp_path, monkeypatch):
     assert sq.nights_of(db) == [] and db.q("SELECT * FROM sky_nights WHERE project_id=?", (pid,)) == []
 
 
+def test_dienst_nullpunkte_je_nacht(tmp_path, monkeypatch):
+    """`night_zero_points` (für die Satellitenhelligkeit in SkyTrace): Median je Nacht und Gerät, nur Gaia-geeichte Nächte."""
+    monkeypatch.setenv("ASTROFLOW_GAIA", "0")
+    with TestClient(create_app(load_settings(tmp_path / "data"), only=("stacking",))) as c:
+        assert c.app.state.modules["stacking"].night_zero_points() == {"nights": {}, "devices": {}}
+        eng = c.app.state.modules["stacking"].eng
+        pa = eng.db.x("INSERT INTO projects(key, name, created) VALUES('a', 'A', 0)")
+        pb = eng.db.x("INSERT INTO projects(key, name, created) VALUES('b', 'B', 0)")
+        for pid, night, zp, src in ((pa, "2026-01-20", 22.0, "stack"), (pb, "2026-01-20", 22.2, "stack"), (pa, "2026-01-21", 21.8, "stack"),
+                                    (pa, "2026-01-22", 25.0, "device")):
+            eng.db.x("INSERT INTO sky_nights VALUES(?,?,?,?,?,?,?,?)", (pid, night, "x", "Testwiese", "stellina|200.0", 1.0, 1,
+                                                                        json.dumps({"zp": zp, "zp_source": src})))
+        z = c.app.state.modules["stacking"].night_zero_points()
+    assert z["nights"] == {"2026-01-20|stellina|200.0": 22.1, "2026-01-21|stellina|200.0": 21.8}      # 25,0 (Gerätewert) bleibt draußen
+    assert z["devices"] == {"stellina|200.0": 21.95}
+
+
 def _clean_seed(db):
     """Erfundene Nächte an zwei erfundenen Orten für die Auswertung „Saubere Nächte“."""
     sq.ensure_table(db)

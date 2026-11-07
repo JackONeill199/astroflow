@@ -502,7 +502,11 @@ def build_router(mod) -> APIRouter:
     def statistics():
         from .stats import collect
         s = ctl.snapshot(logs=False)
-        return collect(ctl.results, skip=s["run"] if s["running"] else None)
+        return {k: v for k, v in collect(ctl.results, skip=s["run"] if s["running"] else None).items() if not k.startswith("_")}
+
+    @r.get("/statistics/satellites")
+    def statistics_satellites():
+        return mod.satellite_stats()
 
     @r.get("/achievements")
     def achievements():

@@ -30,6 +30,7 @@ class Module(BaseModule):
         ctx.services["catalog_objects"] = catalog_objects
         self.eng.pl.on_stacked = self._stacked
         ctx.services["site_sky"] = self.site_sky                  # Ortsliste: Himmelsqualität je Standort
+        ctx.services["night_zero_points"] = self.night_zero_points  # Nullpunkte je Nacht/Gerät (SkyTrace: Satellitenhelligkeit)
         if isinstance(ctx.services.get("night_sources"), list):   # Einstellungen → Standorte: Nachtliste
             ctx.services["night_sources"].append(self.nights)
 
@@ -77,6 +78,26 @@ class Module(BaseModule):
         from .skyquality import summary
         return {s["id"]: {k: s[k] for k in ("sqm", "bortle", "seeing", "n_nights", "n_site_nights")}
                 for s in summary(self.eng.db, with_dirs=False)["sites"] if s["id"]}
+
+    def night_zero_points(self) -> dict:
+        """Photometrische Nullpunkte (mag für 1 ADU/s, Luminanz, über der Atmosphäre) aus den Gaia-geeichten Stacks:
+        `nights` = {"<Nacht>|<Gerät>": zp} (Median über die Objekte der Nacht), `devices` = {Gerät: zp} (ab 2 Nächten).
+        Gerät = "<INSTRUME>|<Gain>" wie in `sky_nights.device`. Nur Nächte mit eigener Gaia-Eichung (`zp_source == stack`)."""
+        import json as _json
+        import statistics
+
+        from .skyquality import ensure_table
+        ensure_table(self.eng.db)
+        by_night: dict[str, list] = {}
+        by_dev: dict[str, list] = {}
+        for r in self.eng.db.q("SELECT s.night, s.device, s.data FROM sky_nights s JOIN projects p ON p.id=s.project_id"):
+            d = _json.loads(r["data"] or "{}")
+            if d.get("zp_source") == "stack" and isinstance(d.get("zp"), (int, float)):
+                by_night.setdefault(f"{r['night']}|{r['device']}", []).append(d["zp"])
+        for k, v in by_night.items():
+            by_dev.setdefault(k.split("|", 1)[1], []).append(statistics.median(v))
+        return {"nights": {k: round(statistics.median(v), 3) for k, v in by_night.items()},
+                "devices": {k: round(statistics.median(v), 3) for k, v in by_dev.items() if len(v) >= 2}}
 
     def nights(self) -> list[dict]:
         """Aufnahmenächte mit Objektnamen (für die Nachtliste unter Einstellungen → Standorte)."""
