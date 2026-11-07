@@ -1,6 +1,6 @@
 """Release-Text aus CHANGELOG.md: Abschnitt der Version + kurzer Download-Hinweis (für den Release-Entwurf der CI).
 
-    python installer/release_notes.py 0.44.1 [notizen.md]
+    python installer/release_notes.py 0.45.1 [notizen.md]
 """
 from __future__ import annotations
 

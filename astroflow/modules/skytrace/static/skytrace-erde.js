@@ -58,6 +58,7 @@ const MARKUP = (page) => `<div class="ste-main">
       <div class="ste-tiles" hidden><div class="seg"><button data-tiles="" class="on" title="Erdbild, ohne Netz">Erdbild</button><button data-tiles="osm" title="Kacheln von OpenStreetMap laden – der Kartendienst sieht den Ausschnitt">Straßenkarte</button><button data-tiles="topo" title="Kacheln von OpenTopoMap laden – der Kartendienst sieht den Ausschnitt">Gelände</button></div><span class="ste-attr sm"></span></div>
       <div class="ste-readout" hidden><span class="ste-scale"><i></i><b></b></span><span class="ste-coord tnum"></span></div>
       <div class="ste-card" hidden></div>
+      <div class="ste-pick" role="menu" aria-label="Mehrere Objekte an dieser Stelle" hidden></div><div class="ste-tip" hidden></div>
       <div class="ste-help">${HELP}</div></div>
     <div class="st3d-bar" hidden><button class="btn icon ghost sm" data-play title="Abspielen" aria-label="Abspielen">${icon('play')}</button>
       <div class="st3d-range"><canvas class="st3d-strip" aria-hidden="true"></canvas><input type="range" aria-label="Zeit der Beobachtung"></div>
@@ -369,7 +370,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
   const sc = new THREE.Scene(); sc.background = new THREE.Color('#03050b');
   const camera = new THREE.PerspectiveCamera(38, 1, .001, 400);
   camera.position.set(0, 1.2, 4.2);
-  const M = { dirty: true, raf: 0, fly: null, frames: 0, frameMs: 0, flyFrames: [], anim: new Set(), zoom: 'globe', hooks: { draw: [], frame: [], resize: [], pick: [] } };
+  const M = { dirty: true, raf: 0, fly: null, frames: 0, frameMs: 0, flyFrames: [], anim: new Set(), zoom: 'globe', hooks: { draw: [], frame: [], resize: [], pick: [], near: [] } };
   let controls = null;
   function makeControls(up) {
     const tgt = controls ? controls.target.clone() : new THREE.Vector3();
@@ -536,6 +537,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
     layerK: (k) => layer[k].k,
     hook(kind, fn) { M.hooks[kind].push(fn); return () => { M.hooks[kind] = M.hooks[kind].filter(f => f !== fn); }; },
     setSun(v) { sunNow.copy(v); U_E.sun.value.copy(v); M.dirty = true; },
+    refresh(k) { applyK(k); flat?.dirty(); },
     onRunPick: null,
   };
   // ---- Analysen-Kontext: ein Lauf interaktiv (Zeitleiste dreht die Erde) ----
@@ -556,7 +558,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
     m.hidden = true;
     $d('.st3d-schema').hidden = false;
     R.run = SkyTrace3D.runLayer(G, data, { interactive: true, focus, onCandidate, legendEl: $d('.st3d-legend'), noteEl: $d('.st3d-note') });
-    host._st3d = { state: () => R.run?.state() };
+    host._st3d = { state: () => R.run?.state(), screen: () => R.run?.screen() || [], sel: () => R.run?.sel() };
     // Nacht des Laufs: deren Orte, Vorschlag und Heatmap gehören dazu (gemeinsame Ebenen)
     S.night = nightOfTime(data.anchor);
     rebuildMarks(); for (const P of Object.values(patches)) setPatchK(P);
@@ -805,8 +807,13 @@ function globe(host, { THREE, OrbitControls }, ctx) {
       else for (const L of nightRuns[S.night]?.layers || []) add(L.data, L.name);
       return out;
     },
-    onPick: (t) => { if (t.kind === 'site') siteCard(t.site); else onPick(t.night); },
+    satellites: () => S.ctx === 'runs' ? (R.run?.ground() || []) : (nightRuns[S.night]?.layers || []).flatMap(L => L.ground()),
+    onPick: (t) => {
+      if (t.kind === 'sat') { setHover(null); t.ref.pick(); } else if (t.kind === 'multi') { setHover(null); chooser(t.list, t.sx, t.sy); }
+      else if (t.kind === 'site') siteCard(t.site); else onPick(t.night);
+    },
     onHover: (la, lo) => showCoord(la, lo),
+    onHoverHit: (x, sx, sy) => { setHover(x); if (x) { tipEl.style.left = Math.min(sx + 14, stage.clientWidth - tipEl.offsetWidth - 6) + 'px'; tipEl.style.top = Math.max(6, sy - tipEl.offsetHeight - 10) + 'px'; } },
     leaveAt: () => ppkAt((FLAT_OUT - 1) * R_KM),
     onLeave: (clat, clon, ppk, sx, sy, la, lo) => leaveFlat({ clat, clon, ppk, sx, sy, la, lo }),
   }) : null;
@@ -887,9 +894,10 @@ function globe(host, { THREE, OrbitControls }, ctx) {
   });
   canvas.addEventListener('pointermove', (e) => {
     const xy = localXY(e);
-    if (!touches.has(e.pointerId)) {                   // nur zeigen: Koordinaten unter dem Zeiger
+    if (!touches.has(e.pointerId)) {                   // nur zeigen: Koordinaten unter dem Zeiger, Treffer hervorheben
       const h = M.zoom === 'globe' ? rayGlobe(...xy) : null;
       if (h) { const [la, lo] = vll(toLocalDir(h)); showCoord(la, lo); } else showCoord(null);
+      if (e.pointerType === 'mouse') hoverAt(...xy);
       return;
     }
     touches.set(e.pointerId, xy);
@@ -910,7 +918,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
   });
   const up = (e) => { touches.delete(e.pointerId); if (touches.size < 2) pinch = 0; if (!touches.size) grab = null; };
   canvas.addEventListener('pointercancel', up);
-  canvas.addEventListener('pointerleave', () => { if (!touches.size) showCoord(null); });
+  canvas.addEventListener('pointerleave', () => { if (!touches.size) showCoord(null); setHover(null); });
   // Antippen: Objekte des Laufs, sonst Ort / Nacht
   const rc = new THREE.Raycaster(), ndc = new THREE.Vector2(), wp = new THREE.Vector3(), camN = new THREE.Vector3();
   canvas.addEventListener('pointerup', (e) => {
@@ -918,6 +926,9 @@ function globe(host, { THREE, OrbitControls }, ctx) {
     if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6) return;
     const b = canvas.getBoundingClientRect(); ndc.set((e.clientX - b.left) / b.width * 2 - 1, -(e.clientY - b.top) / b.height * 2 + 1);
     rc.setFromCamera(ndc, camera);
+    // Treffer (Satelliten, Meteore, Flugzeuge) im Bildschirmraum: großzügig, fürs Antippen mit dem Finger noch mehr; mehrere → Auswahl
+    const [lx, ly] = localXY(e), list = nearAt(lx, ly, e.pointerType === 'touch' ? 26 : e.pointerType === 'pen' ? 18 : 14);
+    if (list.length) { setHover(null); if (list.length === 1) list[0].pick(); else chooser(list, lx, ly); return; }
     for (const f of M.hooks.pick) if (f(rc)) return;
     camN.copy(camera.position).normalize();
     const objs = picks.filter(p => layer[p.layer].group.visible && p.obj.getWorldPosition(wp).normalize().dot(camN) > .05);
@@ -925,6 +936,51 @@ function globe(host, { THREE, OrbitControls }, ctx) {
     if (!p) return;
     if (p.kind === 'site') siteCard(p.site); else onPick(p.night);
   });
+
+  // ---- Treffer anklicken: Auswahl bei mehreren, Hervorheben beim Überfahren (Maus) ----
+  const pickEl = $d('.ste-pick'), tipEl = $d('.ste-tip');
+  function nearAt(sx, sy, r) {
+    const all = M.hooks.near.flatMap(f => f(sx, sy, r, stage.clientWidth, stage.clientHeight)), seen = new Set();
+    return all.sort((a, b) => a.d - b.d).filter(x => !seen.has(x.id) && seen.add(x.id));
+  }
+  function chooser(list, sx, sy) {
+    M.choices = list.slice(0, 8);
+    pickEl.innerHTML = `<p class="ste-pick-h">${list.length} Objekte an dieser Stelle</p>` + M.choices.map((x, i) => `<button type="button" role="menuitem" data-i="${i}" style="--c:${x.color}" aria-label="${esc(x.name + ' – ' + x.sub)}">
+      <i></i><span><b>${esc(x.name)}</b><small>${esc(x.sub)}</small></span></button>`).join('');
+    pickEl.hidden = false;
+    const w = pickEl.offsetWidth, h = pickEl.offsetHeight;
+    pickEl.style.left = clamp(sx + 10, 6, stage.clientWidth - w - 6) + 'px'; pickEl.style.top = clamp(sy + 10, 6, stage.clientHeight - h - 6) + 'px';
+    setTimeout(() => pickEl.hidden || pickEl.querySelector('button')?.focus({ preventScroll: true }));      // nach dem Klick (sonst holt die Karte den Fokus zurück)
+  }
+  const closeChooser = () => { if (!pickEl.hidden) { pickEl.hidden = true; M.choices = null; } };
+  pickEl.onclick = (e) => { const b = e.target.closest('[data-i]'); if (!b) return; const x = M.choices?.[+b.dataset.i]; closeChooser(); x?.pick(); };
+  pickEl.onpointerover = (e) => { const b = e.target.closest('[data-i]'); setHover(b ? M.choices?.[+b.dataset.i] : null, false); };
+  pickEl.onkeydown = (e) => {
+    const bs = [...pickEl.querySelectorAll('button')], i = bs.indexOf(document.activeElement);
+    if (e.key === 'Escape') { closeChooser(); canvas.focus?.(); }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); bs[(i + (e.key === 'ArrowDown' ? 1 : bs.length - 1)) % bs.length]?.focus(); }
+  };
+  stage.addEventListener('pointerdown', (e) => { if (!e.target.closest('.ste-pick')) closeChooser(); }, true);
+  // Bühne nie scrollen lassen (Fokus/scrollIntoView eines Menüpunkts würde sie sonst samt Karte verschieben)
+  stage.addEventListener('scroll', () => { if (stage.scrollTop || stage.scrollLeft) stage.scrollTop = stage.scrollLeft = 0; });
+  function setHover(x, tip = true) {
+    if (M.hover?.id === x?.id) return;
+    M.hover?.hover(false); M.hover = x || null; x?.hover(true);
+    canvas.classList.toggle('ste-hot', !!x); flat?.hot(!!x);
+    tipEl.hidden = !x || !tip;
+    if (x && tip) { tipEl.innerHTML = `<b style="--c:${x.color}">${esc(x.name)}</b><small>${esc(x.sub)}</small>`; }
+    M.dirty = true;
+  }
+  let hoverRaf = 0;
+  function hoverAt(sx, sy) {                           // höchstens einmal je Bild
+    M.hoverXY = [sx, sy]; if (hoverRaf) return;
+    hoverRaf = requestAnimationFrame(() => {
+      hoverRaf = 0; if (M.dead || touches.size || !M.hoverXY) return;
+      const [x, y] = M.hoverXY, hit = nearAt(x, y, 12)[0] || null;
+      setHover(hit);
+      if (hit) { tipEl.style.left = Math.min(x + 14, stage.clientWidth - tipEl.offsetWidth - 6) + 'px'; tipEl.style.top = Math.max(6, y - tipEl.offsetHeight - 10) + 'px'; }
+    });
+  }
 
   // ---- Zeichnen ----
   function draw() {
@@ -999,6 +1055,9 @@ function globe(host, { THREE, OrbitControls }, ctx) {
         flat: flat?.state() || null, coord: M.coord || null };
     },
     focus: (lat, lon, dist) => flyTo(dirLL(lat, lon), dist, 0),
+    satScreen: () => (S.ctx === 'runs' ? [R.run] : nightRuns[S.night]?.layers || []).filter(Boolean).flatMap(L => L.screen()),
+    satSel: () => (S.ctx === 'runs' ? [R.run] : nightRuns[S.night]?.layers || []).filter(Boolean).map(L => L.sel()).find(Boolean) || null,
+    chooser: () => pickEl.hidden ? null : [...pickEl.querySelectorAll('b')].map(b => b.textContent),
     flat: flat && { at: flat.at, screenOf: flat.screenOf, flyTo: flat.flyTo, enter: (sx, sy) => enterFlat(sx, sy, ppkAt((FLAT_IN - 1) * R_KM) * 1.15), leave: () => leaveFlat(null) },
     dispose() {
       M.dead = true; cancelAnimationFrame(M.raf); ro.disconnect(); R.run?.dispose();

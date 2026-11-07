@@ -14,7 +14,7 @@ body:
     attributes:
       label: AstroFlow-Version
       description: Steht unter Einstellungen → Module & System (oder unten links in der Seitenleiste).
-      placeholder: z. B. 0.44.1
+      placeholder: z. B. 0.45.1
     validations:
       required: true
   - type: dropdown

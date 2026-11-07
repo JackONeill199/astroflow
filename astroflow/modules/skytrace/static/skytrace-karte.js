@@ -36,7 +36,8 @@ function earthVariants(img) {
 
 /* host = .ste-stage. deps (Getter, vom Globus): { H, sites, layerK(k), nv(), shade(), sunLocal() → [x,y,z] ECEF-Einheitsvektor,
    patches() → [{night, coarse, fine, reveal, h}], marks() → {current:[{lat,lon,name,night,sel}], proposals:[{lat,lon,name,night,sel,mark}], alts:[{lat1,lon1,lat2,lon2,text,name}]},
-   observers() → [{lat, lon, name}], onPick(p), onLeave(lat, lon, pxPerKm, px, py), texture: Image } */
+   observers() → [{lat, lon, name}], satellites() → [{id, name, sub, color, pts:[[lat,lon]…], at, on}] (Bodenspur, seit 0.45.0),
+   onPick(p) (p.kind 'site'|'night'|'sat'|'multi'), onHoverHit(sat|null, px, py), onLeave(lat, lon, pxPerKm, px, py), texture: Image } */
 function FlatMap(host, deps) {
   const cv = document.createElement('canvas'); cv.className = 'ste-flat'; cv.setAttribute('aria-label', 'Flache Karte: Ziehen verschiebt, Mausrad oder zwei Finger zoomen');
   cv.hidden = true; host.insertBefore(cv, host.querySelector('.ste-labels'));
@@ -219,7 +220,26 @@ function FlatMap(host, deps) {
       g.globalAlpha = kR; g.fillStyle = '#f2d385'; g.strokeStyle = '#0b0d10'; g.lineWidth = 2; g.beginPath(); g.rect(sx - 5, sy - 5, 10, 10); g.stroke(); g.fill();
       pill(o.name || 'Teleskop', sx, sy, '#f2d385', 'Teleskop'); g.globalAlpha = 1;
     }
+    // Satelliten: Bodenspur ±5 min (gestrichelt) und Punkt unter dem Satelliten beim Durchgang – anklickbar (Bahn im Raum zeigt nur der Globus)
+    const sats = kR > .01 && deps.satellites ? deps.satellites() : [];
+    for (const s of sats) {
+      const [la0, lo0] = s.pts[0], [x0] = llS(la0, lo0);
+      let prev = lo0, lu = lo0;                          // Länge stetig fortsetzen (Datumsgrenze)
+      const poly = s.pts.map(([la, lo], i) => { if (i) { let d = lo - prev; d -= 360 * Math.round(d / 360); lu += d; prev = lo; } return [x0 + (lu - lo0) / 360 * V.Z, toS(0, my(la))[1]]; });
+      const [ax, ay] = poly[Math.max(0, s.pts.indexOf(s.at))];
+      g.globalAlpha = kR * (s.on ? 1 : .8); g.strokeStyle = s.color; g.lineWidth = s.on ? 2.5 : 1.5; g.setLineDash([6, 4]);
+      g.beginPath(); poly.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.stroke(); g.setLineDash([]);
+      const r = s.on ? 8 : 6;
+      g.fillStyle = s.color; g.strokeStyle = '#0b0d10'; g.lineWidth = 2; g.beginPath(); g.moveTo(ax, ay - r); g.lineTo(ax + r, ay); g.lineTo(ax, ay + r); g.lineTo(ax - r, ay); g.closePath(); g.stroke(); g.fill();
+      if (s.on || sats.length <= 3) pill(s.name, ax, ay, s.color, s.on ? s.sub : 'unter dem Satelliten beim Durchgang');
+      g.globalAlpha = 1; targets.push({ sx: ax, sy: ay, kind: 'sat', ref: s, poly });
+    }
   }
+  const segD = (x, y, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], l = dx * dx + dy * dy, t = l ? clamp(((x - a[0]) * dx + (y - a[1]) * dy) / l, 0, 1) : 0;
+    return Math.hypot(a[0] + t * dx - x, a[1] + t * dy - y); };
+  const distTo = (t, x, y) => t.poly ? Math.min(Math.hypot(t.sx - x, t.sy - y), ...t.poly.slice(1).map((b, i) => segD(x, y, t.poly[i], b))) : Math.hypot(t.sx - x, t.sy - y);
+  // Satelliten unter dem Zeiger (großzügig; mehrere → Auswahl im Globus)
+  const satsAt = (x, y, r) => targets.filter(t => t.kind === 'sat').map(t => ({ t, d: distTo(t, x, y) })).filter(o => o.d <= r).sort((a, b) => a.d - b.d);
   function draw() {
     if (!S.on && S.fade <= 0) return;
     const t0 = performance.now(), ctx = g;
@@ -265,7 +285,11 @@ function FlatMap(host, deps) {
   });
   cv.addEventListener('pointermove', (e) => {
     const p = local(e);
-    if (!pts.has(e.pointerId)) { S.hover = toW(...p); deps.onHover?.(latOf(S.hover[1]), lonOf(S.hover[0])); return; }
+    if (!pts.has(e.pointerId)) {
+      S.hover = toW(...p); deps.onHover?.(latOf(S.hover[1]), lonOf(S.hover[0]));
+      if (e.pointerType === 'mouse') deps.onHoverHit?.(satsAt(p[0], p[1], 12)[0]?.t.ref || null, p[0], p[1]);
+      return;
+    }
     const old = pts.get(e.pointerId); moved += Math.hypot(p[0] - old[0], p[1] - old[1]); pts.set(e.pointerId, p);
     if (pts.size === 2 && pinch) {
       const [a, b] = [...pts.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -280,15 +304,18 @@ function FlatMap(host, deps) {
     const p = local(e); pts.delete(e.pointerId);
     if (pts.size < 2) pinch = null;
     if (!pts.size) {
-      if (drag && moved < 5) {                            // Antippen: nächste Marke ≤ 12 px
-        const hit = targets.map(t => ({ t, d: Math.hypot(t.sx - p[0], t.sy - p[1]) })).filter(x => x.d < 12).sort((a, b) => a.d - b.d)[0];
-        if (hit) deps.onPick(hit.t);
+      if (drag && moved < 5) {                            // Antippen: Satelliten (Spur oder Punkt) zuerst, sonst nächste Marke ≤ 12 px
+        const sats = satsAt(p[0], p[1], e.pointerType === 'touch' ? 24 : 14);
+        const hit = targets.filter(t => t.kind !== 'sat').map(t => ({ t, d: Math.hypot(t.sx - p[0], t.sy - p[1]) })).filter(x => x.d < 12).sort((a, b) => a.d - b.d)[0];
+        if (sats.length > 1) deps.onPick({ kind: 'multi', list: sats.map(o => o.t.ref), sx: p[0], sy: p[1] });
+        else if (sats.length) deps.onPick(sats[0].t);
+        else if (hit) deps.onPick(hit.t);
       }
       drag = null;
     } else if (pts.size === 1) drag = { w: toW(...pts.values().next().value) };
   };
   cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
-  cv.addEventListener('pointerleave', () => deps.onHover?.(null));
+  cv.addEventListener('pointerleave', () => { deps.onHover?.(null); deps.onHoverHit?.(null); });
   new ResizeObserver(resize).observe(host); resize();
 
   return {
@@ -309,6 +336,7 @@ function FlatMap(host, deps) {
       return S.fade >= 1;
     },
     dirty() { S.dirty = true; },
+    hot(on) { cv.classList.toggle('ste-hot', !!on); },
     setTiles(kind) { S.tiles = kind || null; S.dirty = true; return TILES[kind]?.[1] || ''; },
     get tiles() { return S.tiles; },
     flyTo(lat, lon, ppk) { V.cx = mx(lon); V.cy = my(lat); if (ppk) V.Z = ppk * EQ_KM * Math.cos(lat * D2R); S.dirty = true; },
@@ -317,7 +345,8 @@ function FlatMap(host, deps) {
     // Prüfwerte: Weltpunkt unter einem Bildschirmpunkt (Tests: Punkt unter dem Zeiger bleibt beim Verschieben)
     at: (sx, sy) => { const [x, y] = toW(sx, sy); return [latOf(y), lonOf(x)]; },
     screenOf: (lat, lon) => llS(lat, lon),
-    state: () => ({ on: S.on, fade: +S.fade.toFixed(3), center: [latOf(V.cy), lonOf(V.cx)].map(v => +v.toFixed(5)), pxPerKm: +pxPerKm().toFixed(4), frameMs: +S.frameMs.toFixed(2), tiles: S.tiles, tileZ: S.tileZ, tileWant: S.tileWant, tileReq: S.tileReq, Z: V.Z, dpr: V.dpr, earth: !!S.earth, targets: targets.length }),
+    state: () => ({ on: S.on, fade: +S.fade.toFixed(3), center: [latOf(V.cy), lonOf(V.cx)].map(v => +v.toFixed(5)), pxPerKm: +pxPerKm().toFixed(4), frameMs: +S.frameMs.toFixed(2), tiles: S.tiles, tileZ: S.tileZ, tileWant: S.tileWant, tileReq: S.tileReq, Z: V.Z, dpr: V.dpr, earth: !!S.earth, targets: targets.length,
+      sats: targets.filter(t => t.kind === 'sat').map(t => ({ id: t.ref.id, name: t.ref.name, x: +t.sx.toFixed(1), y: +t.sy.toFixed(1), on: !!t.ref.on })) }),
     dispose() { cv.remove(); S.tileCache.clear(); },
   };
 }

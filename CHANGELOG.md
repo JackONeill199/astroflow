@@ -3,7 +3,7 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
-## 0.44.1 – 07.11.2026
+## 0.45.1 – 07.11.2026
 
 ### Behoben
 - **Downloads überstehen Verbindungsabbrüche.** Bricht die Übertragung von ASTAP, Sterndatenbank oder GraXpert mitten
@@ -13,6 +13,21 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 - Ordnerdialog unter Linux und macOS: Im obersten Ordner „/“ fehlte die anklickbare Pfadleiste.
 - Handy: Der Knopf „… für diese Nacht übernehmen“ (SkyTrace → Standorte) und die Budgetfelder in den Sage-Einstellungen
   ragten bei breiterer Schrift über den Rand; sie brechen jetzt um.
+
+## 0.45.0 – 07.11.2026
+
+### Neu
+- **3D-Erde: Satelliten anklicken.** Bahnen und Treffer auf dem Globus und in der flachen Karte lassen sich anklicken bzw. antippen
+  (große Trefferfläche, mit dem Finger noch größer). Beim Überfahren mit der Maus wird die Bahn hervorgehoben und ihr Name erscheint.
+  Liegen mehrere Objekte an derselben Stelle (z. B. ein Starlink-Zug), erscheint eine kleine Auswahl – auch per Tastatur bedienbar.
+- **Infokarte zum Satelliten:** Name, NORAD-Nummer, internationale Kennung, Art (Starlink, Raketenstufe, Trümmerteil …), Start und
+  Herkunft (aus der lokalen SATCAT-Kopie), Bahn (Höhe beim Durchgang, Umlauf, Neigung), Zeitpunkt des Durchgangs, Winkelgeschwindigkeit,
+  gemessene Helligkeit und wie sicher die Zuordnung ist (eindeutig, wahrscheinlich, mehrdeutig, unsicher, Alternative – mit Begründung).
+  Dazu Verweise auf CelesTrak und N2YO (nur Links, es wird nichts abgefragt). Fehlt ein Wert, fehlt die Zeile – nichts wird geschätzt.
+- **Ausschnitt deiner Aufnahme:** Die Karte zeigt die Spur im Trefferbild (gestreckt, Spur in der Mitte, zwischen zwei Linien markiert).
+  Ein Klick darauf öffnet den Kandidaten im SkyTrace-Lauf. Ist kein Ausschnitt gespeichert, steht dort ein klarer Hinweis.
+- **Flache Karte:** Satelliten erscheinen dort als Punkt unter dem Satelliten beim Durchgang mit gestrichelter Bodenspur (± 5 min).
+- Fürs Handy bleibt die 3D-Antwort klein: Details und Ausschnitt (~50 KB) werden erst beim Anklicken geladen.
 
 ## 0.44.0 – 07.11.2026
 
