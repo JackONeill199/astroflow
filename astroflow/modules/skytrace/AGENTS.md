@@ -528,7 +528,7 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
   Bahnen im Raum auf der Karte – das bleibt so; die Bodenspur ist eindeutig ein Erdort.)
 - **Karte** (`card` in `runLayer`): Grundzeilen sofort aus `run3d` (Durchgang, Höhe/Entfernung/Geschwindigkeit beim Durchgang bzw. zur Zeitleiste, Umlauf, Neigung,
   Bahnelemente, Blickfeld, Abgleich); gleiche Auswahl beim Abspielen erneuert nur `.st3d-rows` (Ausschnitt flackert nicht). Details erst beim Anklicken:
-  `GET /api/skytrace/satellite?run=&key=<Ordner>/<K>&norad=` (`satdetail.details`, Antwort ~2 KB, im Browser je Satellit einmal gemerkt) → Ausschnitt + Zuordnung oben, Katalogzeilen unten.
+  `GET /api/skytrace/satellite?run=&key=<Ordner>/<K>&norad=` (`satdetail.details`, Antwort ~2 KB, im Browser je Satellit gemerkt, solange die Lauf-Ebene lebt – neue Ansicht/Laufwahl lädt neu, nach einem Neuabgleich also nichts Veraltetes; Review PR #85) → Ausschnitt + Zuordnung oben, Katalogzeilen unten.
 - **`satdetail.py` (nur Gespeichertes, kein Netz):** Kandidat über `videos.json` (`find`, K-Nummer `^[A-Za-z0-9_-]{1,40}$`, Ordner muss eine Beobachtung sein);
   SATCAT aus `catalog_cache/archives/satcat.csv` (eigener kleiner Leser, `lru_cache` je Dateistand; Spalten Name/COSPAR/Art/Betreiber/Start/Wiedereintritt/Bahn), sonst
   `satcat-names.json`, sonst COSPAR aus TLE-Zeile 1 (`intl_from_tle`). Art: Konstellation aus dem Namen (`kind_of`), sonst SATCAT-Typ. Winkelgeschwindigkeit = Spurlänge ÷

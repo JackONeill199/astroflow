@@ -21,14 +21,15 @@ const angleDiff = (a, b) => ((b - a + 540) % 360) - 180;
 
 function available(c) { return !!c?.view3d; }
 
-/* Satellit angeklickt (0.45.0): Details erst jetzt laden (Handy: run3d bleibt schlank), je Satellit einmal je Seite.
+/* Satellit angeklickt (0.45.0): Details erst jetzt laden (Handy: run3d bleibt schlank). Gemerkt nur so lange wie die Lauf-Ebene (`cache`
+   aus runLayer): Ansicht neu öffnen bzw. Lauf neu wählen lädt run3d und die Details neu – nach „Satelliten neu abgleichen“ oder
+   „Zeitreihen aktualisieren“ also nie veraltete Zuordnung, Helligkeit oder ein fehlender Ausschnitt (Review PR #85).
    Nur Gespeichertes – fehlt ein Wert, fehlt die Zeile. */
-const DETAILS = new Map();
-function loadDetails(run, key, norad) {
+function loadDetails(cache, run, key, norad) {
   const id = run + '|' + key + '|' + norad;
-  if (!DETAILS.has(id)) DETAILS.set(id, api(`/skytrace/satellite?run=${encodeURIComponent(run)}&key=${encodeURIComponent(key)}&norad=${encodeURIComponent(norad)}`)
-    .catch((e) => { DETAILS.delete(id); throw e; }));
-  return DETAILS.get(id);
+  if (!cache.has(id)) cache.set(id, api(`/skytrace/satellite?run=${encodeURIComponent(run)}&key=${encodeURIComponent(key)}&norad=${encodeURIComponent(norad)}`)
+    .catch((e) => { cache.delete(id); throw e; }));
+  return cache.get(id);
 }
 const LEVEL = { eindeutig: ['Eindeutig', 'ok'], wahrscheinlich: ['Wahrscheinlich', 'acc'], mehrdeutig: ['Mehrdeutig', 'warn'], unsicher: ['Unsicher', 'warn'],
   alternative: ['Alternative', ''], keine: ['Kein Treffer', 'bad'] };
@@ -42,9 +43,9 @@ function cropHtml(c, it) {
       <svg viewBox="0 0 ${c.width} ${c.height}" preserveAspectRatio="none" aria-hidden="true" style="--c:${it.color}">${guide(1)}${guide(-1)}</svg></button>
     <figcaption>${c.kind === 'kandidat' ? 'Trefferbild' : 'Vollbild der Trefferaufnahme'}${c.time ? ' · ' + esc(String(c.time).replace('T', ' ')) : ''} · Spur zwischen den Linien</figcaption></figure>`;
 }
-async function satDetails(el, more, run, it) {
+async function satDetails(el, more, run, it, cache) {
   let d;
-  try { d = await loadDetails(run, it.key, it.norad_id); }
+  try { d = await loadDetails(cache, run, it.key, it.norad_id); }
   catch (e) { if (el.isConnected) el.innerHTML = `<p class="mut sm">${icon('alert')} Details nicht verfügbar: ${esc(e.message)}</p>`; return; }
   if (!el.isConnected) return;
   const rows = [];
@@ -270,7 +271,7 @@ function runLayer(G, data, { interactive = false, focus = null, onCandidate = nu
   if (views) views.onclick = (e) => { const b = e.target.closest('[data-v]'); if (b) setView(b.dataset.v); };
 
   // ---- Auswahl und Infokarte (nur interaktiv) ----
-  const cardEl = G.cardEl;
+  const cardEl = G.cardEl, details = new Map();          // Satelliten-Details dieser Lauf-Ebene (siehe loadDetails)
   const openCand = (key) => onCandidate ? onCandidate(key) : window.SkyTraceHelpers?.openCandidate(data.run, key);
   function card(it) {
     const rows = [], k = S.k;
@@ -317,7 +318,7 @@ function runLayer(G, data, { interactive = false, focus = null, onCandidate = nu
     cardEl.onclick = (e) => { const a = e.target.closest('[data-a]')?.dataset.a;
       if (a === 'x') select(null); else if (a === 'pass') { stop(); setTime(it.t_pass); setView('pass'); } else if (a === 'cand' || a === 'crop') openCand(it.key); };
     cardEl.hidden = false;
-    if (sat) satDetails(cardEl.querySelector('.st3d-sx'), cardEl.querySelector('.st3d-sxd'), data.run, it);
+    if (sat) satDetails(cardEl.querySelector('.st3d-sx'), cardEl.querySelector('.st3d-sxd'), data.run, it, details);
   }
   // Hervorheben (Antippen, Überfahren, Auswahl): Linien kräftiger, Punkt größer
   let hov = null, picked = null;
