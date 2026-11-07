@@ -457,7 +457,7 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
 - **Geometrie:** `services.view_geometry` (aus `project_solution` herausgelöst) = WCS des linearen Stacks der Version + Lage des
   JPG-Ausschnitts (Korrelation), `to_view` rechnet FITS-Pixel → JPG-Pixel (Zeile 0 oben). Schlüssel in `wcs.json` muss zur Stackgröße passen.
 - **Tiefe:** `photometry.gaia_field` (GAVO `gaia.dr3lite` → ARI → ESA, bis G 20,7, TOP 40 000, Cache `work/gaia/gaia_feld2_*` mit
-  Parallaxenfehler/Eigenbewegung seit 0.39.0; ältere `gaia_feld_*` gelten für die Tiefe weiter, Spalten dann NaN, `need_pm=True` fragt neu) →
+  Parallaxenfehler/Eigenbewegung seit 0.41.0; ältere `gaia_feld_*` gelten für die Tiefe weiter, Spalten dann NaN, `need_pm=True` fragt neu) →
   erzwungene Aperturfotometrie an allen Katalogpositionen (Apertur 0,8 FWHM, Ring-Median). **Rauschen an leeren Himmelsstellen
   messen**: Stack-Pixel sind korreliert, Pixel-σ×√N war bei M101 2,9× zu klein. Erfasst = SNR ≥ 5, Schwerpunkt ≤ 0,6 FWHM,
   kein hellerer Nachbar und gemessene Helligkeit ±0,75 mag zur Katalog-G (sonst zählten HII-Knoten in M101 als G-20-Sterne).
@@ -489,7 +489,7 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   log10(Lj)), `comparePanel` + `compareViewer` (Blinken über `createViewer().setSplit`, Stelle anfahren mit `zoomTo`).
 - Tests: `tests/test_depth_compare.py` (synthetisches Feld, Attrappen für Gaia/SIMBAD/DSS/JPL).
 
-## HR-Diagramm von Sternhaufen (`modules/stacking/hrd.py`, `static/hrd.js|css`; seit 0.39.0, Wunsch 9)
+## HR-Diagramm von Sternhaufen (`modules/stacking/hrd.py`, `static/hrd.js|css`; seit 0.41.0, Wunsch 9)
 - **Ablauf** wie Tiefe/Vergleich über `insights.py` (Art `hrd`, Ergebnis `results.stats.hrd` mit `v` = `HRD_VERSION`, nicht in `_slim`),
   Endpunkte `GET|POST /results/{id}/hrd` (GET liefert zusätzlich `haufen_art` = `hrd.is_cluster(kind, name)`). `after_develop` misst nach der
   Tiefe automatisch, wenn das Objekt ein Haufen ist (`open_cluster`/`globular` oder Name in `CLUSTER_NAMES`, z. B. M45 – im kleinen Katalog

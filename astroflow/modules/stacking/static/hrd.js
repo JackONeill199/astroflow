@@ -1,5 +1,5 @@
 'use strict';
-// HR-Diagramm (Farben-Helligkeits-Diagramm) von Sternhaufen – Abschnitt im Reiter Analyse (seit 0.39.0, Wunsch 9).
+// HR-Diagramm (Farben-Helligkeits-Diagramm) von Sternhaufen – Abschnitt im Reiter Analyse (seit 0.41.0, Wunsch 9).
 // Daten: /stacking/results/<id>/hrd (eigener Endpunkt, nicht in der gepollten Projektansicht). Eigene Messung = farbige Punkte
 // (Haufenmitglieder) auf der Gaia-Skala, Gaias eigene Werte der Mitglieder als graue Wolke dahinter. Klick auf einen Stern zeigt
 // ihn im Bild (opts.onFocus). Erscheint nur bei Sternhaufen bzw. wenn eine Messung genug Mitglieder gefunden hat.

@@ -1,4 +1,4 @@
-"""HR-Diagramm (Farben-Helligkeits-Diagramm) von Sternhaufen aus dem eigenen Bild (Wunsch 9, seit 0.39.0).
+"""HR-Diagramm (Farben-Helligkeits-Diagramm) von Sternhaufen aus dem eigenen Bild (Wunsch 9, seit 0.41.0).
 
 Grundlage wie bei „Wie tief schaust du?“ (`depth.py`): Plate-Solving-Lösung des Master-Stacks + linearer Stack + die gemeinsame
 Gaia-Schicht (`photometry.gaia_field`, jetzt mit Parallaxenfehler und Eigenbewegung – keine zweite Abfrage).
