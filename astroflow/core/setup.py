@@ -107,6 +107,7 @@ class Setup:
             "platform": platform.system(), "astap": astap, "dbs": {k: v[1] for k, v in ASTAP_DBS.items()},
             "demo": {"exists": demo.exists()}, "gpu": self._gpu_state(), "components": self.components(),
             "update_check": sysc.get("update_check", True), "update": sysc.get("update") or {},
+            "tray_notify": sysc.get("tray_notify", True),
             "version": VERSION, "tasks": dict(self.tasks),
         }
 
@@ -127,6 +128,8 @@ class Setup:
             self.ctx.store.update("setup", vals)
         if "update_check" in body:
             self.ctx.store.update("system", {"update_check": bool(body["update_check"])})
+        if "tray_notify" in body:
+            self.ctx.store.update("system", {"tray_notify": bool(body["tray_notify"])})
         restart, target = False, None
         if body.get("data_dir"):
             if not self.launched:
@@ -323,6 +326,9 @@ class Setup:
             time.sleep(0.5)                            # Antwort noch ausliefern
             if restart:
                 launcher.restart_detached(launcher.port(), data or self.ctx.settings.data_dir)
+            else:
+                from . import tray
+                tray.request_stop()                    # Symbol im Infobereich mit beenden (beim Neustart bleibt es)
             try:
                 signal.raise_signal(signal.SIGINT)    # uvicorn fährt sauber herunter (Module stoppen, Checkpoints)
             except Exception:

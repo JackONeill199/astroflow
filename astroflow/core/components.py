@@ -191,8 +191,18 @@ def _status_gpu(rec, *_):
     return {"state": "installed", "version": ver, "detail": detail, "supported": True}
 
 
+def vc_runtime_ok() -> bool:
+    """Windows: Microsoft-C++-Laufzeit für PyTorch vorhanden (neben python.exe aus „msvc-runtime“ oder systemweit)?"""
+    if os.name != "nt":
+        return True
+    sysdir = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"
+    return any((d / "msvcp140.dll").is_file() for d in (Path(sys.prefix), Path(sys.executable).parent, sysdir))
+
+
 def _status_skytrace(rec, solver_cfg, health):
     missing = [m for m in ENGINE_MODULES if importlib.util.find_spec(m) is None]
+    if not missing and not vc_runtime_ok():
+        missing = ["Microsoft-C++-Laufzeit (msvcp140.dll)"]
     if health and health.get("checked") and health.get("python") and Path(health["python"]).resolve() != Path(sys.executable).resolve():
         # eigener Interpreter in Einstellungen → SkyTrace
         return {"state": "installed" if health.get("ok") else "partial", "supported": True,
@@ -418,8 +428,15 @@ def _install_skytrace(prog, option, force) -> str:
     pip(extra + ["-r", str(ENGINE_REQS)], prog, 0.6, 0.97, 45, "Engine")
     importlib.invalidate_caches()
     missing = [m for m in ENGINE_MODULES if importlib.util.find_spec(m) is None]
+    if not vc_runtime_ok():
+        missing.append("Microsoft-C++-Laufzeit")
     if missing:
         raise RuntimeError("Nach der Installation fehlen noch: " + ", ".join(missing))
+    prog(0.98, "Prüfe PyTorch …")                    # Importtest im eigenen Prozess: fängt fehlende DLLs ab
+    r = subprocess.run([console_python(), "-c", "import torch, cv2, ultralytics; print(torch.__version__)"], capture_output=True,
+                       text=True, timeout=300, creationflags=NO_WINDOW)
+    if r.returncode:
+        raise RuntimeError("PyTorch lässt sich nicht laden: " + (r.stderr or r.stdout).strip().splitlines()[-1][:300])
     return f"SkyTrace-Engine installiert (torch {_dist_version('torch')}, CPU)."
 
 

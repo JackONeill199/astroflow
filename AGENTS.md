@@ -340,6 +340,19 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
     `Setup.run_order` (Thread beim Start, nur mit Starter, `ASTROFLOW_COMPONENTS_AUTO=0` aus) übernimmt sie in `config.json` →
     `components_pending`, arbeitet in der Reihenfolge astap, graxpert, gpu, skytrace, **demo zuletzt** (erstes Bild schon mit GraXpert,
     Spurenanalyse läuft automatisch mit) ab und streicht nur Erfolge – Fehlschläge (kein Netz) bleiben vorgemerkt („vom Installer vorgemerkt“).
+  - **Microsoft-C++-Laufzeit:** PyTorch braucht `msvcp140.dll` u. a., auf frischem Windows fehlt sie (Sandbox 07.11.2026: `c10.dll`
+    ließ sich nicht laden, Analyse brach nach 1 s ab; python-build-standalone bringt nur `vcruntime140*.dll`). Deshalb steht
+    `msvc-runtime` (PyPI, DLLs app-lokal neben python.exe, ohne Admin) in `requirements-engine.txt`; `vc_runtime_ok()` prüft sie im
+    Zustand („unvollständig“ → Reparieren), nach der Installation ein Importtest `import torch, cv2, ultralytics` im eigenen Prozess.
+- **Symbol im Infobereich** (`core/tray.py`, seit 0.44.0, Nutzerwunsch; App-Fenster ohne Adressleiste ausdrücklich nicht gewünscht):
+  eigener leichter Prozess `pythonw -m astroflow tray --port P` (nur HTTP zum Server, kein Modulimport), `launcher.start` stößt ihn
+  nach dem Serverstart an (`tray.ensure`), je Benutzer einmal (`tray.pid` neben config.json). pystray + Pillow (in `requirements.txt`);
+  ohne pystray/Infobereich bzw. `ASTROFLOW_NO_TRAY=1` kein Symbol. Abfrage alle 5 s `/api/status` (+ `/api/activity`): Symbol mit
+  orangem Punkt bei `busy`, Tooltip ≤ 120 Zeichen, Benachrichtigung bei fertigem Bilder-Auftrag (`system.tray_notify`, auch im Menü).
+  „Beim Anmelden starten“ = Registry `HKCU\…\Run\AstroFlow` (erkennt auch die Autostart-Verknüpfung der Installer-Aufgabe).
+  Beenden: Menü → Rückfrage bei laufendem Auftrag → `/api/system/shutdown`; Shutdown aus der Oberfläche und `astroflow stop` legen
+  `tray.stop` ab (das Symbol endet sauber beim nächsten Abfragen, ohne Geistersymbol), `stop` beendet es notfalls hart (Deinstallation:
+  sonst bliebe python gesperrt). Server länger als `GONE_S` 40 s weg → Symbol endet selbst; Neustart lässt es stehen.
 - **ASTAP auf Knopfdruck:** nur von SourceForge „astap-program“ (CLI je OS, `astapwin32.zip` nur für `deep_sky.csv` – laut Danksagung
   **nur nicht-kommerziell frei**, Lizenz der Sterndatenbanken nicht eindeutig → nie mitliefern), nach `%LOCALAPPDATA%\astap` bzw. `~/astap`
   (sucht `platesolve`/`objects` ohnehin dort), vorhandene Dateien bleiben. D05 als ZIP (~102 MB), D50 ~900 MB.

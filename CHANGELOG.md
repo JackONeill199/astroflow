@@ -30,6 +30,12 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 - **Deinstallation** fragt, ob auch GraXpert und ASTAP mit entfernt werden sollen. Nur von AstroFlow selbst Installiertes wird
   gelöscht, ein vorhandenes ASTAP bleibt. Bilder, Stacks und Einstellungen bleiben immer erhalten.
 - **Update:** Das mitgelieferte Python wird vollständig ersetzt; die gewählten Komponenten richtet AstroFlow danach selbst wieder ein.
+- **Symbol im Infobereich** (Taskleiste unten rechts):
+  - **Menü:** „AstroFlow öffnen“ (auch per Doppelklick), „Aufträge“, „Aufträge anhalten/fortsetzen“, „Benachrichtigung, wenn ein
+    Bild fertig ist“, „Beim Anmelden starten“, „Beenden“.
+  - **Anzeige:** Ein oranger Punkt zeigt, dass gerechnet wird; der Tooltip nennt den laufenden Auftrag.
+  - **Beenden** fragt bei laufendem Auftrag nach; der Auftrag wird später fortgesetzt. Mit AstroFlow endet auch das Symbol.
+  - Abschaltbar mit `ASTROFLOW_NO_TRAY=1`.
 - Befehl `astroflow components status | install NAME | remove NAME` für Skripte.
 
 ## 0.43.2 – 07.11.2026

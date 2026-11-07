@@ -323,3 +323,50 @@ def test_neustart_behaelt_datenordner(home, tmp_path, monkeypatch):
     setup.restart(neu)
     args = started[-1]
     assert args[args.index("--data") + 1] == str(neu)
+
+
+def test_infobereich_tooltip_und_meldung():
+    from astroflow.core import tray
+    assert tray.tooltip(None, []) == "AstroFlow – Server nicht erreichbar"
+    assert tray.tooltip({"busy": 0}, []) == "AstroFlow – bereit"
+    act = [{"key": "stacking:7", "module": "stacking", "title": "M31", "state": "running", "progress": 0.42}]
+    assert tray.tooltip({"busy": 1}, act) == "AstroFlow – M31 42 %"
+    assert len(tray.tooltip({"busy": 1}, [{**act[0], "title": "X" * 300}])) <= 120     # Windows: höchstens 127 Zeichen
+    seen, done = tray.finished_pictures({}, act)
+    assert done == [] and seen == {"stacking:7": "running"}
+    seen, done = tray.finished_pictures(seen, [{**act[0], "state": "done"}])
+    assert done == ["M31"]
+    _, done = tray.finished_pictures(seen, [{**act[0], "state": "done"}])                # nur einmal melden
+    assert done == []
+    img = tray.draw_icon(True, 32)
+    assert img.size == (32, 32) and img.getpixel((26, 26))[0] > 200                    # oranger Punkt unten rechts
+
+
+def test_infobereich_abschaltbar_und_einmalig(home, monkeypatch):
+    from astroflow.core import tray
+    started = []
+    monkeypatch.setattr(tray, "running_pid", lambda: None)
+    monkeypatch.setattr("subprocess.Popen", lambda args, **kw: started.append(args))
+    monkeypatch.setenv("ASTROFLOW_NO_TRAY", "1")
+    tray.ensure(8766)
+    assert started == [] and tray.main(8766) == 0
+    monkeypatch.delenv("ASTROFLOW_NO_TRAY")
+    tray.ensure(8766)
+    assert started and started[0][-3:] == ["tray", "--port", "8766"]
+    monkeypatch.setattr(tray, "running_pid", lambda: 4242)                              # läuft schon → kein zweites Symbol
+    started.clear()
+    tray.ensure(8766)
+    assert started == []
+
+
+def test_infobereich_endet_mit_stoppmarke(home, monkeypatch):
+    from astroflow.core import tray
+    t = tray.Tray(8799)
+    closed = []
+    monkeypatch.setattr(t, "close", lambda: closed.append(1) or t.stop.set())
+    monkeypatch.setattr(t, "get", lambda path, timeout=4: {"tray_notify": False} if path == "/api/setup" else {})
+    monkeypatch.setattr(tray, "POLL_S", 0.01)
+    tray.stop_path().parent.mkdir(parents=True, exist_ok=True)
+    tray.stop_path().write_text("1")
+    t.loop()
+    assert closed and not tray.stop_path().exists() and t.notify is False

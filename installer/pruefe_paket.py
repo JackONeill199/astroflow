@@ -90,6 +90,18 @@ def flow(port: int, times: dict, t0: float, astap: bool):
 FULL = "astap,astap\\d05,graxpert,gpu,skytrace,demo"
 
 
+def diagnose(port: int):
+    """Bei Zeitüberschreitung: Aktivität, SkyTrace-Zustand und Serverprotokoll ausgeben (Fehlersuche in der Sandbox)."""
+    for path in ("/activity?limit=15", "/skytrace/status", "/components"):
+        try:
+            print(f"--- {path}", json.dumps(call(port, path), ensure_ascii=False)[:3000], flush=True)
+        except Exception as e:
+            print(f"--- {path}: {e}", flush=True)
+    log = Path(os.environ.get("USERPROFILE", "")) / "AstroFlow" / "server.log.err"
+    if log.is_file():
+        print("--- server.log.err (Ende)", log.read_text(encoding="utf-8", errors="replace")[-4000:], flush=True)
+
+
 def full_flow(port: int, times: dict, t0: float):
     """Vollinstallation: Komponenten aus dem Installer-Auftrag laufen im Hintergrund durch (ASTAP, GraXpert, GPU, SkyTrace, Demo).
     Danach: Demo-Bild mit GraXpert, SkyTrace-Lauf auf den Demodaten (automatisch nach dem Stack), GPU-Erkennung."""
@@ -118,12 +130,44 @@ def full_flow(port: int, times: dict, t0: float):
     assert gx and not (isinstance(gx, dict) and gx.get("error")), f"GraXpert nicht genutzt: {gx}"
     print(f"Erstes Bild nach {times['bis_erstes_bild_min']} min, GraXpert: {gx}", flush=True)
     t2 = time.time()
-    runs = wait(lambda: call(port, "/skytrace/runs"), 3600, 15)
+    last = [0.0]
+
+    def runs_ready():
+        r = call(port, "/skytrace/runs")
+        if not r and time.time() - last[0] > 120:                # alle 2 min Zustand ausgeben
+            last[0] = time.time()
+            st = call(port, "/skytrace/status")
+            auto = [a for a in call(port, "/activity?limit=30") if a.get("module") == "skytrace"][:4]
+            print(f"  … SkyTrace: {st.get('text')} | Engine {st.get('engine')} | wartend {st.get('auto_waiting')} | {auto}", flush=True)
+        return r
+    try:
+        runs = wait(runs_ready, 1200, 15)
+    except TimeoutError:
+        diagnose(port)
+        raise
     times["skytrace_lauf_s"] = round(time.time() - t2, 1)
     times["skytrace"] = {k: runs[0].get(k) for k in ("id", "sessions", "frames", "candidates")}
     times["gpu"] = call(port, "/stacking/gpu")
     times["gesamt_min"] = round((time.time() - t0) / 60, 2)
     print(f"SkyTrace-Lauf {times['skytrace']}, GPU {times['gpu']}", flush=True)
+
+
+def app_processes(app: Path) -> list[str]:
+    """Python-Prozesse aus dem Programmordner (Server, Symbol im Infobereich, Engine)."""
+    ps = ("Get-Process python,pythonw -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '" + str(app) + "*' } | "
+          "ForEach-Object { \"$($_.Id) $($_.ProcessName)\" }")
+    r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True)
+    return [l for l in r.stdout.splitlines() if l.strip()]
+
+
+def check_tray(times: dict):
+    pid_file = Path(os.environ["APPDATA"]) / "AstroFlow" / "tray.pid"
+    try:
+        pid = int(wait(lambda: pid_file.is_file() and pid_file.read_text().strip(), 30, 1))
+        times["tray"] = f"läuft (PID {pid})"
+    except TimeoutError:
+        times["tray"] = "kein Symbol gestartet"
+    print(f"Infobereich: {times['tray']}", flush=True)
 
 
 def check_setup(exe: Path, astap: bool, full: bool = False):
@@ -148,6 +192,7 @@ def check_setup(exe: Path, astap: bool, full: bool = False):
     subprocess.Popen([str(pyw), "-I", "-m", "astroflow", "start"], env=env, cwd=str(app))    # = Startmenü „AstroFlow“
     wait(lambda: call(port, "/status"), 180, 0.5)
     times["start_s"] = round(time.time() - t1, 1)
+    check_tray(times)
     st = call(port, "/setup")
     assert call(port, "/app")["setup"]["pending"] and st["launched"], "Einrichtungsassistent sollte erscheinen"
     assert Path(st["data"]["path"]).resolve() == data.resolve(), st["data"]["path"]
@@ -163,6 +208,12 @@ def check_setup(exe: Path, astap: bool, full: bool = False):
         s.settimeout(1)
         assert s.connect_ex(("127.0.0.1", port)) != 0, "Server läuft nach dem Beenden noch"
     times["beenden_s"] = round(time.time() - t4, 1)
+    t_end = time.time() + 30                                      # Symbol prüft alle 5 s, ob es enden soll
+    while app_processes(app) and time.time() < t_end:
+        time.sleep(1)
+    left = app_processes(app)
+    times["prozesse_nach_beenden"] = left
+    assert not left, f"Nach dem Beenden laufen noch: {left}"
     t5 = time.time()
     tools = Path(os.environ["LOCALAPPDATA"]) / "AstroFlow" / "Werkzeuge"
     subprocess.run([str(app / "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",

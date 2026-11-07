@@ -6,6 +6,9 @@ scipy>=1.13
 astropy>=6.0
 pillow>=10.0
 torch>=2.2
+# Microsoft-C++-Laufzeit (msvcp140.dll …) neben python.exe – PyTorch braucht sie, auf frischem Windows fehlt sie
+# (Sandbox-Befund 07.11.2026: c10.dll ließ sich nicht laden). App-lokal, ohne Administratorrechte.
+msvc-runtime>=14.40; sys_platform == "win32"
 torchvision>=0.17
 ultralytics>=8.3
 opencv-python>=4.9
