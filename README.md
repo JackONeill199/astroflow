@@ -27,11 +27,11 @@ bleiben die Daten erhalten.
 
 ```bash
 python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install .                                      # oder: pip install -r requirements.txt
+pip install .                                      # legt den Befehl `astroflow` an
 astroflow                                          # startet den Server und öffnet den Browser (astroflow stop beendet ihn)
 ```
 
-Ohne Installation geht es auch direkt: `python -m astroflow serve` (Web-UI auf Port 8080, Daten in `./data`) und `python -m astroflow demo` für synthetische
+Ohne Installation des Pakets (nur `pip install -r requirements.txt`) startest du mit `python -m astroflow serve` (Web-UI auf Port 8080, Daten in `./data`) und `python -m astroflow demo` für synthetische
 Testdaten. `Start.bat` / `Stop.bat` starten und beenden den Server unter Windows im Hintergrund (Port 8766).
 
 ### Docker
