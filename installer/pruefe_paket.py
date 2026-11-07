@@ -133,7 +133,10 @@ def full_flow(port: int, times: dict, t0: float):
     last = [0.0]
 
     def runs_ready():
-        r = call(port, "/skytrace/runs")
+        st = call(port, "/skytrace/state")
+        if st.get("failed") and not st.get("running"):
+            raise SystemExit("SkyTrace-Lauf fehlgeschlagen: " + " | ".join(l.get("text", "") for l in (st.get("logs") or [])[-6:])[-900:])
+        r = [x for x in call(port, "/skytrace/runs") if x.get("frames")] if not st.get("running") else []
         if not r and time.time() - last[0] > 120:                # alle 2 min Zustand ausgeben
             last[0] = time.time()
             st = call(port, "/skytrace/status")

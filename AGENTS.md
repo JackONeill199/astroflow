@@ -376,7 +376,10 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   **Windows-Sandbox** (frisches Windows ohne Python, CI-Pakete): Installer 96 MB – installieren 18 s, Start 9 s, ASTAP + D05 20 s, Demo bis Bild 9 s
   → **0,93 min**, Beenden 3 s, Deinstallieren 3 s (Daten bleiben); portabel 0,58 min. CI-Runner: Installer 0,84 min, portabel 3,6 min (ASTAP 177 s).
   `platform.machine()` ist unter Windows ohne `PROCESSOR_ARCHITECTURE` leer → `components.system()` rät über die Zeigerbreite.
-  Vollinstallation (0.44.0): Messwerte im Abschnitt unten nachtragen, `pruefe_paket.py --setup … --voll`.
+  **Vollinstallation 0.44.0** (Sandbox 07.11.2026, `pruefe_paket.py --setup … --voll`, alle Komponenten): installieren 16 s, Start 9 s,
+  Symbol im Infobereich läuft; Komponenten im Hintergrund 334 s (ASTAP + D05 131 s, GraXpert 144 s, GPU 3 s – Sandbox reicht die
+  Grafikkarte durch –, SkyTrace-Engine 50 s); **erstes Bild mit GraXpert nach 6,7 min** ab Installerstart, SkyTrace-Lauf auf den
+  Demodaten 15 s danach (18 Aufnahmen, 1 Kandidat); Beenden 7 s ohne übrige Prozesse, Deinstallation samt Werkzeugen 7 s, Daten bleiben.
 - Ohne eingerichtete SkyTrace-Engine (kein Interpreter gewählt, keine venv) überspringt `skytrace.auto` still (Zustand `skipped`) statt je Nacht
   „Analyse-Engine unvollständig“ zu melden. Engine per Knopf seit 0.44.0 (Komponente `skytrace`).
 
