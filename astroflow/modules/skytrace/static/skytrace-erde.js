@@ -54,7 +54,7 @@ const MARKUP = (page) => `<div class="ste-main">
         <button class="btn ghost icon sm ste-fs" title="Vollbild (F)" aria-label="Vollbild">${icon('expand')}</button>
         <button class="btn ghost icon sm ste-paneltg" title="Ebenen und Nächte ein-/ausblenden" aria-label="Seitenleiste" aria-expanded="true">${icon('sidebar')}</button></div>
       <div class="ste-msg"><span class="spinner"></span>Globus wird geladen …</div>
-      <div class="ste-legend" hidden><span class="ramp"></span><span class="ste-legend-t"></span></div>
+      <div class="ste-legend" hidden><span class="ramp"></span><span class="ste-legend-t"></span><button type="button" class="btn ghost sm ste-legend-off" title="Heatmap ausblenden – wieder einblenden unter Ebenen oder in der Karte der Nacht (Deckkraft: Regler unter Ebenen)">Ausblenden</button></div>
       <div class="ste-tiles" hidden><div class="seg"><button data-tiles="" class="on" title="Erdbild, ohne Netz">Erdbild</button><button data-tiles="osm" title="Kacheln von OpenStreetMap laden – der Kartendienst sieht den Ausschnitt">Straßenkarte</button><button data-tiles="topo" title="Kacheln von OpenTopoMap laden – der Kartendienst sieht den Ausschnitt">Gelände</button></div><span class="ste-attr sm"></span></div>
       <div class="ste-readout" hidden><span class="ste-scale"><i></i><b></b></span><span class="ste-coord tnum"></span></div>
       <div class="ste-card" hidden></div>
@@ -148,6 +148,7 @@ async function component(host, el, opts) {
   const S = {
     ctx: opts.ctx, night: nights.some(n => n.night === opts.night) ? opts.night : null,
     on: { ...DEFAULT_ON, ...store.get('skytrace.erde.layers', {}) }, nv: store.get('skytrace.erde.nv', 'auto'),
+    heatOp: Math.min(1, Math.max(.1, +store.get('skytrace.erde.heatop', .4) || .4)),
     runId: opts.run || (runs.some(r => r.id === store.get('skytrace.3drun')) ? store.get('skytrace.3drun') : runs[0]?.id) || null,
     onlyHits: store.get('skytrace.3dhits', runs.some(r => r.candidates)), q: '',
   };
@@ -197,7 +198,16 @@ async function component(host, el, opts) {
   }
   const layersEl = $d('.ste-layers');
   const drawLayers = () => { layersEl.innerHTML = LAYERS.map(([k, name, c, tip]) => `<label class="ste-layer" style="--c:${c}" title="${esc(tip)}"><input type="checkbox" data-layer="${k}"${S.on[k] ? ' checked' : ''}>
-    <i></i><span>${esc(name)}</span></label>`).join(''); };
+    <i></i><span>${esc(name)}</span></label>${k === 'heat' ? `<label class="ste-layer-op${S.on.heat ? '' : ' off'}" title="Deckkraft des heißesten Bereichs der Heatmap"><span>Deckkraft</span><input type="range" class="ste-heatop" min="10" max="100" step="5" value="${Math.round(S.heatOp * 100)}" aria-label="Deckkraft der Heatmap"><b class="tnum">${Math.round(S.heatOp * 100)} %</b></label>` : ''}`).join(''); };
+  // Ebene schalten bzw. Deckkraft setzen – gemeinsam für Ebenenliste, Legende und Karte der Nacht
+  const setLayer = (k, on) => { S.on[k] = on; store.set('skytrace.erde.layers', S.on); drawLayers(); scene?.layersChanged(k); };
+  const setHeatOp = (v) => {
+    S.heatOp = Math.min(1, Math.max(.1, v)); store.set('skytrace.erde.heatop', S.heatOp);
+    const t = Math.round(S.heatOp * 100) + ' %';
+    $$('.ste-heatop', host).forEach(i => { if (+i.value !== Math.round(S.heatOp * 100)) i.value = Math.round(S.heatOp * 100); });
+    $$('.ste-layer-op b', host).forEach(b => { b.textContent = t; });
+    scene?.heatOpacity();
+  };
   const drawNv = () => $$('.ste-nv button', host).forEach(b => b.classList.toggle('on', b.dataset.nv === S.nv));
   const drawCtx = () => {
     $$('.ste-ctx button', host).forEach(b => { b.classList.toggle('on', b.dataset.ctx === S.ctx); b.setAttribute('aria-selected', b.dataset.ctx === S.ctx); });
@@ -220,7 +230,7 @@ async function component(host, el, opts) {
   try { mods = await load(); } catch (e) { msg(`${icon('alert')}<span>3D-Bibliothek konnte nicht geladen werden: ${esc(e.message)}</span>`); return null; }
   if (!host.isConnected) return null;
   const onCandidate = opts.onCandidate || (page ? (key) => H.openCandidate(S.runId, key) : null);
-  try { scene = globe(host, mods, { nights, sites, heats, S, H, nightOf, onPick: (night) => pickNight(night), onCompute: computeHeat, onCandidate, focus: opts.focus, session: opts.session, page }); host._ste = scene; }
+  try { scene = globe(host, mods, { nights, sites, heats, S, H, nightOf, onPick: (night) => pickNight(night), onCompute: computeHeat, setLayer, setHeatOp, onCandidate, focus: opts.focus, session: opts.session, page }); host._ste = scene; }
   catch (e) { msg(`${icon('alert')}<span>3D-Darstellung nicht möglich (WebGL nicht verfügbar?): ${esc(e.message)}</span>`); return null; }
   $d('.ste-msg').hidden = true;
 
@@ -252,6 +262,7 @@ async function component(host, el, opts) {
   range.oninput = () => pickNight(+range.value ? nights[+range.value - 1].night : null);
   const step = (d) => { const i = clamp(+range.value + d, 0, nights.length); pickNight(i ? nights[i - 1].night : null); };
   $$('[data-step]', host).forEach(b => b.onclick = () => step(+b.dataset.step));
+  layersEl.oninput = (e) => { if (e.target.classList.contains('ste-heatop')) setHeatOp(+e.target.value / 100); };
   layersEl.onchange = (e) => { const k = e.target.dataset.layer; if (!k) return; S.on[k] = e.target.checked; store.set('skytrace.erde.layers', S.on); scene.layersChanged(k); };
   $d('.ste-nv').onclick = (e) => { const b = e.target.closest('[data-nv]'); if (!b) return; S.nv = b.dataset.nv; store.set('skytrace.erde.nv', S.nv); drawNv(); scene.layersChanged('nv'); };
   $d('.ste-ctx')?.addEventListener('click', (e) => { const b = e.target.closest('[data-ctx]'); if (b) setCtx(b.dataset.ctx); });
@@ -334,14 +345,15 @@ void main(){
   float v = texture2D(tex, vUv).r;
   if (v < 0.004) discard;
   float th = 1.0 - reveal * 1.08;
-  // Zellen mit nur 1–2 Stimmen (zufällige Bodenpunkte einzelner Spuren) fast durchsichtig, Häufungen deckend
-  float a = smoothstep(th, th + 0.08, v) * smoothstep(0.04, 0.3, v) * (0.3 + 0.65 * v) * opacity;
+  // Zellen mit nur 1–2 Stimmen (zufällige Bodenpunkte einzelner Spuren) fast durchsichtig, Häufungen am deutlichsten;
+  // opacity = Deckkraft des heißesten Bereichs (Regler, Standard 40 %) – die Karte darunter bleibt lesbar
+  float a = smoothstep(th, th + 0.08, v) * smoothstep(0.04, 0.3, v) * (0.08 + 0.92 * pow(v, 1.3)) * opacity;
   if (a < 0.004) discard;
   gl_FragColor = vec4(ramp(v), a);
 }`;
 
 function globe(host, { THREE, OrbitControls }, ctx) {
-  const { nights, sites, heats, S, H, nightOf, onPick, onCompute, onCandidate, page } = ctx;
+  const { nights, sites, heats, S, H, nightOf, onPick, onCompute, onCandidate, page, setLayer, setHeatOp } = ctx;
   const $d = (s) => host.querySelector(s), stage = $d('.ste-stage'), canvas = $d('.ste-stage canvas'), labelsHost = $d('.ste-labels');
   // geodätisch (WGS84) → Szene; lift in Erdradien über dem Ellipsoid
   const llv = (lat, lon, lift = 0) => { const a = lat * D2R, b = lon * D2R, s = Math.sin(a), n = 1 / Math.sqrt(1 - E2 * s * s);
@@ -607,8 +619,8 @@ function globe(host, { THREE, OrbitControls }, ctx) {
     const f = ease(layer.heat.k), sel = S.night ? P.night === S.night : S.ctx === 'nights';
     const dist = camera.position.length(), fineK = P.fine ? clamp((1.55 - dist) / .35, 0, 1) : 0;
     P.group.visible = sel && f > .002;
-    if (P.coarse) { P.coarse.u.opacity.value = f * (1 - .55 * fineK); P.coarse.u.reveal.value = ease(P.reveal); }
-    if (P.fine) { P.fine.u.opacity.value = f * fineK; P.fine.u.reveal.value = ease(P.reveal); }
+    if (P.coarse) { P.coarse.u.opacity.value = f * S.heatOp * (1 - .55 * fineK); P.coarse.u.reveal.value = ease(P.reveal); }
+    if (P.fine) { P.fine.u.opacity.value = f * S.heatOp * fineK; P.fine.u.reveal.value = ease(P.reveal); }
   }
   const target = (k) => {
     if (k === 'runs') return S.on.runs && (S.ctx === 'runs' ? !!R.run : S.night && nightRuns[S.night]?.ready) ? 1 : 0;
@@ -722,6 +734,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
       ${n.note || why ? `<p class="dim sm">${esc([n.note, why].filter(Boolean).join(' '))}</p>` : ''}
       <div class="row ste-card-a">${p && !n.applied ? '<button class="btn sm" data-a="apply">Für diese Nacht übernehmen …</button>' : ''}
         <button class="btn ghost sm" data-a="heat">${hh ? 'Heatmap neu berechnen' : 'Heatmap berechnen'}</button>
+        ${hh ? `<button class="btn ghost sm" data-a="heatvis" aria-pressed="${S.on.heat}" title="Heatmap auf Globus und Karte ${S.on.heat ? 'ausblenden' : 'einblenden'}">${S.on.heat ? 'Heatmap ausblenden' : 'Heatmap einblenden'}</button>` : ''}
         ${runsOf.slice(0, 3).map(o => `<a class="btn ghost sm" href="#/skytrace/${encodeURIComponent(o.run)}/beobachtungen">${esc(H.shortName(o.session))}</a>`).join('')}
         ${runsOf[0] && page ? `<button class="btn ghost sm" data-a="run" title="Teleskopweg und Durchgänge über die Nacht">${icon('globe')}Als Analyse zeigen</button>` : ''}</div>`;
     cardEl.onclick = async (e) => {
@@ -729,6 +742,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
       if (a === 'x') cardEl.hidden = true;
       else if (a === 'apply') { if (await H.applyNights([n])) { n.applied = Math.floor(Date.now() / 1000); rebuildMarks(); card(n); } }
       else if (a === 'heat') onCompute(n.night, e.target.closest('button'));
+      else if (a === 'heatvis') { setLayer('heat', !S.on.heat); card(n); }
       const al = e.target.closest('[data-alt-apply],[data-alt-move]');
       if (al?.dataset.altApply && await H.applyAlt(n, al.dataset.altApply)) { n.applied = Math.floor(Date.now() / 1000); rebuildMarks(); card(n); }
       else if (al?.dataset.altMove && await H.moveSite(n, al.dataset.altMove, nights)) {
@@ -781,7 +795,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
   const flatAllowed = () => M.zoom === 'globe' && !!window.SkyTraceKarte;
   const flat = window.SkyTraceKarte ? SkyTraceKarte.FlatMap(stage, {
     H, sites, texture: texImg,
-    layerK: (k) => ease(layer[k].k), nv: () => U_E.nv.value, shade: () => U_E.shade.value,
+    layerK: (k) => ease(layer[k].k), heatOp: () => S.heatOp, nv: () => U_E.nv.value, shade: () => U_E.shade.value,
     sunLocal: () => { const v = toLocalDir(sunNow); return [v.x, -v.z, v.y]; },
     patches: () => Object.values(patches).filter(P => S.night ? P.night === S.night : S.ctx === 'nights'),
     marks: () => M.flatMarks || { current: [], proposals: [] },
@@ -963,11 +977,14 @@ function globe(host, { THREE, OrbitControls }, ctx) {
   const resize = () => { const w = stage.clientWidth, h = stage.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); for (const f of M.hooks.resize) f(); M.dirty = true; };
   const ro = new ResizeObserver(resize); ro.observe(stage); resize();
   for (const night of Object.keys(heats)) if (heats[night]) buildPatch(night);
+  { const lg = $d('.ste-legend');
+    lg.querySelector('.ste-legend-off').onclick = () => { setLayer('heat', false); if (S.night && !cardEl.hidden) card(nightOf(S.night)); }; }
+  function heatOpacity() { for (const P of Object.values(patches)) setPatchK(P); M.anim.add('layers'); M.dirty = true; }
   controls.update();
   M.anim.add('layers');
   M.raf = requestAnimationFrame(frame);
   return {
-    setNight, layersChanged, heatChanged, home, openRun, closeRun: () => closeRun(true),
+    setNight, layersChanged, heatChanged, heatOpacity, home, openRun, closeRun: () => closeRun(true),
     nightCard: (night) => card(nightOf(night)),
     state: () => {
       const f = M.flyFrames, gaps = f.slice(1).map((t, i) => t - f[i]);
