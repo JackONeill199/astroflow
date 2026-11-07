@@ -243,3 +243,69 @@ def test_deleted_project_leaves_no_measurements(tmp_path, monkeypatch):
     assert len(sq.nights_of(db)) == 1                       # verwaiste Zeile (Objekt 999 gibt es nicht) zählt nicht
     pl.delete_project(pid)
     assert sq.nights_of(db) == [] and db.q("SELECT * FROM sky_nights WHERE project_id=?", (pid,)) == []
+
+
+def _clean_seed(db):
+    """Erfundene Nächte an zwei erfundenen Orten für die Auswertung „Saubere Nächte“."""
+    sq.ensure_table(db)
+    p1 = db.x("INSERT INTO projects(key, name, created) VALUES('k1', 'Objekt A', 0)")
+    p2 = db.x("INSERT INTO projects(key, name, created) VALUES('k2', 'Objekt B', 0)")
+
+    def curve(day, vals):
+        t0 = dt.datetime.fromisoformat(day + "T20:00:00+00:00")
+        return [{"t": "x", "ts": int((t0 + dt.timedelta(minutes=20 * i)).timestamp()), "sqm": v, "flags": []} for i, v in enumerate(vals)]
+
+    def put(pid, night, site, sqm, seeing, loss, err=0.2, curve_v=None, good=30):
+        d = {"night": night, "sqm": sqm, "sqm_all": sqm, "err": err, "seeing": seeing, "transparency": loss, "good": good,
+             "bortle": sq.bortle(sqm, err) if sqm else None, "curve": curve(night, curve_v) if curve_v else []}
+        db.x("INSERT OR REPLACE INTO sky_nights VALUES(?,?,?,?,?,?,?,?)",
+             (pid, night, site, {"w": "Testwiese", "g": "Gipfelblick"}[site], "stellina|200.0", 1.0, sq.SKY_VERSION, json.dumps(d)))
+    put(p1, "2026-01-10", "w", 20.4, 3.2, 0.1)
+    put(p1, "2026-02-14", "w", 20.8, 2.9, 0.05)
+    put(p2, "2026-02-14", "w", 21.0, 3.0, 0.07, curve_v=[20.9, 21.0, 21.2, 21.4, 21.3, 21.1, 20.8])       # Mittel der Objekte 20,9
+    put(p1, "2026-08-02", "g", 21.9, 2.5, 0.02, curve_v=[21.8, 21.9, 22.0, 22.1, 22.0, 21.9])
+    put(p2, "2026-08-20", "g", 21.6, 2.2, 0.3)
+    put(p2, "2026-09-05", "g", 22.0, 2.4, 0.04, err=0.5)                                                    # unsicher
+    put(p2, "2026-09-06", "g", None, 2.0, 0.6)                                                              # Mond/Dunst: kein Ortswert
+    return p1, p2
+
+
+def test_clean_nights(tmp_path, monkeypatch):
+    monkeypatch.setenv("ASTROFLOW_GAIA", "0")
+    s = load_settings(tmp_path / "data")
+    with TestClient(create_app(s, only=("stacking",))) as c:
+        eng = c.app.state.modules["stacking"].eng
+        empty = c.get("/api/stacking/sky/clean").json()
+        assert empty["dark"] == [] and empty["best_site"] is None and empty["n_nights"] == 0
+        _clean_seed(eng.db)
+        d = c.get("/api/stacking/sky/clean").json()
+    assert [(x["site_name"], x["night"]) for x in d["dark"]][:2] == [("Gipfelblick", "2026-08-02"), ("Gipfelblick", "2026-08-20")]
+    assert all(x["sure"] for x in d["dark"]) and "2026-09-05" not in {x["night"] for x in d["dark"]}
+    assert [x["night"] for x in d["uncertain"]] == ["2026-09-05"]                       # unsicher: getrennt ausgewiesen
+    assert "2026-09-06" not in {x["night"] for x in d["dark"] + d["score"] + d["uncertain"]}     # ohne Ortswert nie in der Dunkelheits-Liste
+    n = next(x for x in d["dark"] if x["night"] == "2026-08-02")
+    assert n["weekday"] == dt.date(2026, 8, 2).weekday() == 6 and n["month"] == 8 and {o["name"] for o in n["objects"]} == {"Objekt A"}
+    w = n["window"]
+    assert w["sqm"] == 22.0 and w["from"] < w["to"]                                    # bester Abschnitt statt Einzelspitze
+    assert d["seeing"][0]["night"] == "2026-09-06" and d["seeing"][0]["seeing"] == 2.0   # Seeing zählt auch gestörte Nächte
+    assert d["clear"][0]["night"] == "2026-08-02" or d["clear"][0]["loss"] == 0.02
+    # zwei Objekte in einer Nacht: Median der Objekte, beide verlinkt
+    m = next(x for x in d["score"] if x["night"] == "2026-02-14")
+    assert m["sqm"] == 20.9 and len(m["objects"]) == 2
+    assert all(0 <= x["score"] <= 100 for x in d["score"]) and d["score"][0]["score"] >= d["score"][-1]["score"]
+    # bester Ort / Monat
+    assert d["best_site"]["name"] == "Gipfelblick"
+    g = next(x for x in d["sites"] if x["name"] == "Gipfelblick")
+    assert g["best_month"] == 8                      # September hat nur eine Nacht, August zwei
+    assert g["months"][7]["sqm"] == 21.75 and g["months"][0]["sqm"] is None and len(g["months"]) == 12
+    wz = next(x for x in d["sites"] if x["name"] == "Testwiese")
+    assert wz["best_month"] == 2 and d["n_nights"] == 6 and d["n_sure"] == 4
+
+
+def test_best_window_never_spans_a_disturbance():
+    """Gestörte Punkte teilen die Kurve: das dunkelste Fenster liegt in einem ungestörten Lauf, nicht über der Wolke."""
+    pts = [{"ts": 60 * i, "sqm": 21.9, "flags": ["cloud"] if i == 3 else []} for i in range(8)]
+    w = sq._best_window([{"curve": pts}])
+    assert w is not None and not (w["from"] <= 180 <= w["to"])          # Punkt 3 (ts 180) liegt nie im Fenster
+    assert (w["from"], w["to"]) in ((240, 420), (0, 120))               # Lauf 4–7 (5 Punkte nicht möglich -> 4 Punkte) bzw. 0–2
+    assert sq._best_window([{"curve": [{"ts": 0, "sqm": 21.0, "flags": ["moon"]}]}]) is None

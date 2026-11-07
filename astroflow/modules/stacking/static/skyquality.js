@@ -71,12 +71,83 @@ function lightText(l) {
     ${l.reliable ? '' : 'Noch unsicher – mehr Nächte mit Zielen in verschiedenen Himmelsrichtungen verbessern die Schätzung.'}</p>`;
 }
 
+
+// ---- Saubere Nächte: Ranglisten, bester Ort, Monats-Heatmap ----------------------------------------------------
+const WD = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+const MON = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+const MONTH_LONG = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+const hm = ts => new Date(ts * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+const CLEAN_TABS = [['score', 'Gesamt'], ['dark', 'Dunkelster Himmel'], ['seeing', 'Schärfstes Seeing'], ['clear', 'Beste Durchsicht']];
+const CLEAN_HELP = `<details class="sq-help"><summary>Was heißt „sauber“?</summary>
+  <p><b>Sauber = vor allem dunkel.</b> Die Hauptwertung ist die Himmelshelligkeit (mag/″², größer = dunkler) mit der Bortle-Klasse dazu.
+  Die <b>Gesamtwertung</b> (0–100) mischt drei Teile: 60 % Dunkelheit, 20 % Seeing, 20 % Durchsicht – jeweils als Rang unter allen Nächten mit Ortswert.</p>
+  <p><b>Ortswert:</b> Eine Nacht zählt für Dunkelheit und Gesamtwertung nur, wenn genug Aufnahmen ungestört waren (astronomische Dunkelheit, kein Mond, über 30°, kein Dunst).
+  Nächte mit größerer Unsicherheit (ab ±0,35 mag, z. B. Eichung aus anderen Nächten) stehen getrennt darunter.
+  <b>Seeing</b> (Sternscheibchen in ″, kleiner = schärfer) und <b>Durchsicht</b> (Verlust an Sternlicht in mag, kleiner = klarer) werden in ihren Ranglisten auch aus Nächten ohne Ortswert gewertet.</p>
+  <p><b>Bester Abschnitt:</b> die dunkelste Zeitspanne der Nacht (Median aus fünf aufeinanderfolgenden Messpunkten), in der Zeit deines Browsers.
+  Der Wochentag gehört zum Abend, an dem die Nacht begann.</p></details>`;
+
+function cleanSection(c, state) {
+  if (!c || !c.n_nights) return '';
+  const objs = n => n.objects.map(o => `<a href="#/p/${o.id}">${esc(o.name || 'Objekt')}</a>`).join(', ');
+  const day = n => `<b>${WD[n.weekday]}, ${fday(n.night)}</b>`;
+  const win = n => n.window ? `${hm(n.window.from)}–${hm(n.window.to)}<small class="dim"> · ${de(n.window.sqm, 2)}</small>` : '<span class="dim">–</span>';
+  const best = c.dark[0];
+  const bs = c.best_site, bsSite = bs && c.sites.find(s => s.name === bs.name && s.id === bs.id);
+  const stats = `<div class="stats sq-stats">
+    <div class="stat"><small>Bester Ort</small><b>${bs ? esc(bs.name) : '–'}</b><small class="dim">${bs ? `${sqm(bs.sqm)} · ${bs.n} ${bs.n === 1 ? 'Nacht' : 'Nächte'}${bs.n < 3 ? ' (vorläufig)' : ''}` : 'noch keine Ortswerte'}</small></div>
+    <div class="stat"><small>Dunkelste Nacht</small><b class="tnum">${best ? `${WD[best.weekday]}, ${fday(best.night)}` : '–'}</b><small class="dim">${best ? `${esc(best.site_name)} · ${sqm(best.sqm)}` : ''}</small></div>
+    <div class="stat"><small>Bester Monat am besten Ort</small><b>${bsSite?.best_month ? MONTH_LONG[bsSite.best_month - 1] : '–'}</b><small class="dim">${bsSite?.best_month ? sqm(bsSite.months[bsSite.best_month - 1].sqm) + ' · Median' : ''}</small></div>
+    <div class="stat"><small>Nächte mit Ortswert</small><b class="tnum">${c.n_site_nights} von ${c.n_nights}</b><small class="dim">${c.n_sure} davon sicher</small></div></div>`;
+  const tab = state.tab;
+  const list = c[tab] || [];
+  const dk = tab === 'dark' || tab === 'score';
+  const val = n => tab === 'seeing' ? (n.seeing != null ? de(n.seeing, 1) + '″' : '–') : tab === 'clear' ? (n.loss != null ? '−' + de(Math.max(0, n.loss), 2) + ' mag' : '–')
+    : tab === 'score' ? `<b>${n.score}</b><small class="dim"> / 100</small>` : sqm(n.sqm);
+  const tabs = `<div class="tabs sq-tabs" role="tablist">${CLEAN_TABS.map(([k, l]) => `<a href="#" class="${k === tab ? 'on' : ''}" role="tab" aria-selected="${k === tab}" data-ctab="${k}">${l}</a>`).join('')}</div>`;
+  const table = list.length ? `<div class="sq-scroll"><table class="sq-table sq-top"><thead><tr><th>#</th><th>Nacht</th><th>Ort</th><th>${CLEAN_TABS.find(t => t[0] === tab)[1]}</th>
+      <th>${dk ? 'Bortle' : 'Himmel'}</th><th>Seeing</th><th>Bester Abschnitt</th><th>Objekte</th></tr></thead><tbody>
+      ${list.map((n, i) => `<tr><td class="tnum">${i + 1}</td><td>${day(n)}</td><td>${esc(n.site_name)}</td><td class="tnum">${val(n)}${n.err != null && tab === 'dark' ? `<small class="dim"> ±${de(n.err, 1)}</small>` : ''}</td>
+        <td class="tnum">${dk ? (n.bortle ? esc(n.bortle.text.replace('Bortle ', 'B ')) : '–') : n.sqm != null ? sqm(n.sqm) : `<span class="dim" title="gestört – Median aller Aufnahmen">(${de(n.sqm_all, 2)})</span>`}</td>
+        <td class="tnum">${n.seeing != null ? de(n.seeing, 1) + '″' : '–'}</td><td class="tnum">${win(n)}</td><td class="sq-objs">${objs(n)}</td></tr>`).join('')}
+      </tbody></table></div>` : '<p class="mut sm">Für diese Wertung gibt es noch keine Nächte.</p>';
+  // Heatmap Ort × Monat (Median der Nächte mit Ortswert, über alle Jahre)
+  const vals = c.sites.flatMap(s => s.months.filter(m => m.sqm != null).map(m => m.sqm));
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const heat = vals.length ? `<div class="sq-scroll"><table class="sq-heat"><thead><tr><th></th>${MON.map(m => `<th>${m}</th>`).join('')}</tr></thead><tbody>
+      ${c.sites.filter(s => s.n).map(s => `<tr><th class="sq-hsite" title="${esc(s.name)}">${esc(s.name)}</th>${s.months.map((m, i) => {
+        if (m.sqm == null) return '<td class="empty"></td>';
+        const t = hi > lo ? (m.sqm - lo) / (hi - lo) : 1;
+        return `<td class="${s.best_month === i + 1 ? 'best' : ''}" style="--t:${(t * 100).toFixed(0)}%" title="${esc(s.name)} · ${MONTH_LONG[i]}: ${de(m.sqm, 2)} mag/″² (${m.n} ${m.n === 1 ? 'Nacht' : 'Nächte'})">${de(m.sqm, 1)}<small>${m.n}</small></td>`;
+      }).join('')}</tr>`).join('')}</tbody></table></div>
+      <p class="mut sm">Median der Ortswerte je Monat, über alle Jahre. Kräftige Farbe = dunkler Himmel; kleine Zahl = Anzahl Nächte; Rahmen = bester Monat des Ortes (bevorzugt mit mindestens zwei Nächten).</p>` : '';
+  const unsure = c.uncertain.length ? `<details class="sq-nights"><summary>${c.uncertain.length} unsichere ${c.uncertain.length === 1 ? 'Nacht' : 'Nächte'} (dunkel gemessen, aber ab ±0,35 mag unsicher)</summary>
+      <div class="sq-scroll"><table class="sq-table"><thead><tr><th>Nacht</th><th>Ort</th><th>Himmel</th><th>Objekte</th></tr></thead><tbody>
+      ${c.uncertain.map(n => `<tr><td>${day(n)}</td><td>${esc(n.site_name)}</td><td class="tnum">${sqm(n.sqm)}<small class="dim"> ±${de(n.err, 1)}</small></td><td class="sq-objs">${objs(n)}</td></tr>`).join('')}</tbody></table></div></details>` : '';
+  return `<section class="panel sq-clean"><div class="panel-h"><h2>${icon('globe')}Saubere Nächte</h2><span class="grow"></span></div>
+    <p class="mut sm">Wann und wo der Himmel am dunkelsten, ruhigsten und klarsten war – ausgewertet aus den bereits gemessenen Nächten.</p>
+    ${stats}${tabs}${table}${unsure}${heat ? `<h3 class="sq-h3">Bester Monat je Ort</h3>${heat}` : ''}${CLEAN_HELP}</section>`;
+}
+
 // ---- eigene Ansicht ----------------------------------------------------------------------------------
 async function skyView(el) {
   crumbs([['Übersicht', '#/'], ['Himmelsqualität']]);
-  let sig = '', ticket = 0;
+  let sig = '', ticket = 0, clean = null;
+  const cstate = { tab: 'score' };
+  try { cstate.tab = localStorage.getItem('af.sky.cleantab') || 'score'; } catch {}
+  const paintClean = () => {
+    const h = $('#sqClean', el);
+    if (!h) return;
+    h.innerHTML = cleanSection(clean, cstate);
+    h.querySelectorAll('[data-ctab]').forEach(b => b.onclick = (e) => {
+      e.preventDefault();
+      cstate.tab = b.dataset.ctab;
+      try { localStorage.setItem('af.sky.cleantab', cstate.tab); } catch {}
+      paintClean();
+    });
+  };
   el.innerHTML = `<div class="pagehead"><div><h1>Himmelsqualität</h1><p class="mut">Wie dunkel und ruhig der Himmel an deinen Standorten ist – gemessen an deinen eigenen Aufnahmen.</p></div>
-    <span class="grow"></span><div class="row"><button class="btn ghost sm" id="sqMissing">Nur neue Objekte</button><button class="btn sm" id="sqAll">${icon('refresh')}Für alle Nächte berechnen</button></div></div><div id="sqJob"></div><div id="sqBody"></div>`;
+    <span class="grow"></span><div class="row"><button class="btn ghost sm" id="sqMissing">Nur neue Objekte</button><button class="btn sm" id="sqAll">${icon('refresh')}Für alle Nächte berechnen</button></div></div><div id="sqJob"></div><div id="sqClean"></div><div id="sqBody"></div>`;
   const start = async (missing) => {
     try { await send('/stacking/sky/compute', { missing }); toast('Himmelsqualität wird berechnet – Fortschritt unter Aktivität.', 'ok'); load(); }
     catch (e) { toast(e.message, 'err'); }
@@ -86,11 +157,12 @@ async function skyView(el) {
   async function load() {
     const cur = ++ticket;
     let d;
-    try { d = await api('/stacking/sky'); } catch (e) { if (cur === ticket) $('#sqBody', el).innerHTML = `<div class="panel">${esc(e.message)}</div>`; return; }
+    try { [d, clean] = await Promise.all([api('/stacking/sky'), api('/stacking/sky/clean').catch(() => null)]); } catch (e) { if (cur === ticket) $('#sqBody', el).innerHTML = `<div class="panel">${esc(e.message)}</div>`; return; }
     if (cur !== ticket || !el.isConnected) return;
-    const s = JSON.stringify(d);
+    const s = JSON.stringify([d, clean]);
     if (s === sig) return;
     sig = s;
+    paintClean();
     const j = d.job || {};
     $('#sqJob', el).innerHTML = j.state === 'running' ? `<div class="notice sq-job"><span class="spinner"></span><div><b>Berechnung läuft</b> · ${j.done}/${j.total} Objekte${j.current ? ' · ' + esc(j.current) : ''}
         <div class="progress"><i style="width:${(j.done / Math.max(1, j.total) * 100).toFixed(0)}%"></i></div><div class="mut sm">${esc(j.detail || '')}</div></div></div>`

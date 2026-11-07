@@ -3,6 +3,15 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.39.0 – 07.11.2026
+
+### Neu
+- **Saubere Nächte** (Himmelsqualität, `#/himmel`): wo und wann der Himmel am dunkelsten, ruhigsten und klarsten war. Ranglisten
+  „Gesamt“, „Dunkelster Himmel“, „Schärfstes Seeing“ und „Beste Durchsicht“ mit Datum, Wochentag, Ort, Bortle, bestem Abschnitt der Nacht
+  (Uhrzeit) und verlinkten Objekten; dazu bester Ort, dunkelste Nacht, bester Monat und eine Monats-Heatmap je Ort. Dunkelheit ist die
+  Hauptwertung (Gesamtwertung 60 % Dunkelheit, 20 % Seeing, 20 % Durchsicht); Nächte mit unsicherem Wert (ab ±0,35 mag) stehen getrennt.
+  Ausgewertet aus den vorhandenen Messungen, nichts wird neu berechnet.
+
 ## 0.38.3 – 07.11.2026
 
 ### Behoben
