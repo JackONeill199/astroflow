@@ -393,6 +393,9 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   Demodaten 15 s danach (18 Aufnahmen, 1 Kandidat); Beenden 7 s ohne übrige Prozesse, Deinstallation samt Werkzeugen 7 s, Daten bleiben.
   Mit Paketordner (Commit ed5088b): erstes Bild 7,0 min; **Update** (gleicher Installer drüber) 19 s + 28 s Prüfen der Komponenten,
   Engine und GPU „nichts neu geladen“ (Paketordner 1,4 GB bleibt); Deinstallation entfernt Paketordner und Werkzeuge.
+  Mit einem pip-Lauf + CPU-Index (66fac85): Engine 81 s, erstes Bild 7,4 min, Paketordner 1,1 GB (Doppel entfernt), Update 21 s + 28 s;
+  Infobereich-Menü per Prüfskript durchgespielt (Öffnen, Aufträge, Anhalten/Fortsetzen, Autostart an/aus, Beenden 2 s, keine
+  übrigen Prozesse); portabler Autostart-Eintrag mit `--home` startet ohne ASTROFLOW_HOME in den portablen Daten.
 - Ohne eingerichtete SkyTrace-Engine (kein Interpreter gewählt, keine venv) überspringt `skytrace.auto` still (Zustand `skipped`) statt je Nacht
   „Analyse-Engine unvollständig“ zu melden. Engine per Knopf seit 0.44.0 (Komponente `skytrace`).
 

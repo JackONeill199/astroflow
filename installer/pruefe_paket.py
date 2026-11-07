@@ -173,6 +173,54 @@ def check_tray(times: dict):
     print(f"Infobereich: {times['tray']}", flush=True)
 
 
+RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+
+
+def run_value() -> str | None:
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:
+            return winreg.QueryValueEx(k, "AstroFlow")[0]
+    except OSError:
+        return None
+
+
+def tray_menu(py: Path, port: int, env: dict, times: dict):
+    """Menü des Symbols im Infobereich durchspielen – dieselben Methoden, die die Menüeinträge aufrufen, im Python der Installation:
+    Öffnen und Aufträge (Browser), Anhalten/Fortsetzen, Beim Anmelden starten (an/aus), Benachrichtigung. „Beenden“ folgt danach."""
+    code = (
+        "import json, sys, time; from astroflow.core import tray; t = tray.Tray(int(sys.argv[1])); t.refresh(); r = {}\n"
+        "t.open(); t.jobs(); r['oeffnen'] = 'ok'\n"
+        "p0 = t.paused(); t.toggle_pause(); time.sleep(1); t.refresh(); r['anhalten'] = (p0, t.paused())\n"
+        "t.toggle_pause(); time.sleep(1); t.refresh(); r['fortsetzen'] = t.paused()\n"
+        "a0 = tray.autostart_enabled(); t.toggle_autostart(); r['autostart_an'] = tray.autostart_enabled()\n"
+        "import winreg; k = winreg.OpenKey(winreg.HKEY_CURRENT_USER, tray.RUN_KEY); r['autostart_befehl'] = winreg.QueryValueEx(k, 'AstroFlow')[0]\n"
+        "t.toggle_autostart(); r['autostart_aus'] = tray.autostart_enabled()\n"
+        "print(json.dumps(r))\n")
+    r = subprocess.run([str(py), "-I", "-c", code, str(port)], capture_output=True, text=True, env=env, timeout=120)
+    assert r.returncode == 0, r.stderr[-800:]
+    res = json.loads(r.stdout.strip().splitlines()[-1])
+    times["tray_menue"] = res
+    print(f"Infobereich-Menü: {res}", flush=True)
+    assert res["anhalten"] == [False, True] and res["fortsetzen"] is False, res
+    assert res["autostart_an"] is True and res["autostart_aus"] is False and "astroflow start --no-browser" in res["autostart_befehl"], res
+
+
+def tray_quit(py: Path, port: int, env: dict, app: Path, times: dict):
+    """„Beenden“ aus dem Menü: Server und Symbol enden, kein Prozess bleibt."""
+    t0 = time.time()
+    r = subprocess.run([str(py), "-I", "-c", "import sys; from astroflow.core import tray; t = tray.Tray(int(sys.argv[1])); t.refresh(); t.quit()",
+                        str(port)], capture_output=True, text=True, env=env, timeout=60)
+    assert r.returncode == 0, r.stderr[-500:]
+    t_end = time.time() + 40
+    while app_processes(app) and time.time() < t_end:
+        time.sleep(1)
+    times["tray_beenden_s"] = round(time.time() - t0, 1)
+    times["prozesse_nach_tray_beenden"] = app_processes(app)
+    print(f"Beenden über das Symbol: {times['tray_beenden_s']} s, übrig: {times['prozesse_nach_tray_beenden']}", flush=True)
+    assert not times["prozesse_nach_tray_beenden"]
+
+
 def update_flow(exe: Path, pyw: Path, app: Path, env: dict, port: int, times: dict):
     """Update über die laufende Version (gleicher Installer drüber): Python wird ersetzt, GPU-/Engine-Pakete im Paketordner bleiben
     und werden nur geprüft – nichts Großes neu laden."""
@@ -231,6 +279,11 @@ def check_setup(exe: Path, astap: bool, full: bool = False):
     if full:
         full_flow(port, times, t0)
         update_flow(exe, pyw, app, env, port, times)
+        check_tray(times)
+        tray_menu(app / "python" / "python.exe", port, env, times)
+        tray_quit(app / "python" / "python.exe", port, env, app, times)
+        subprocess.Popen([str(pyw), "-I", "-m", "astroflow", "start", "--no-browser"], env=env, cwd=str(app))   # für den Abschluss unten
+        wait(lambda: call(port, "/status"), 180, 0.5)
     else:
         flow(port, times, t0, astap)
     t4 = time.time()
@@ -260,12 +313,41 @@ def check_setup(exe: Path, astap: bool, full: bool = False):
         assert not (Path(os.environ["LOCALAPPDATA"]) / "AstroFlow" / "Pakete").exists(), "Paketordner sollte mit entfernt sein"
     print(json.dumps(times, indent=2, ensure_ascii=False))
 
+def portable_autostart(app: Path, env: dict, port: int, times: dict):
+    """Portable Version: „Beim Anmelden starten“ muss den Programmordner (--home) mitgeben. Eintrag setzen, Server beenden,
+    den eingetragenen Befehl wie beim Anmelden ausführen – ohne ASTROFLOW_HOME –, dann muss er die portablen Daten nutzen."""
+    py = app / "python" / "python.exe"
+    home_env = {**env, "ASTROFLOW_HOME": str(app)}               # wie im Symbol, das AstroFlow.cmd gestartet hat
+    r = subprocess.run([str(py), "-I", "-c", "from astroflow.core import tray; tray.set_autostart(True)"], env=home_env,
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr[-500:]
+    cmd = run_value()
+    times["autostart_portabel"] = cmd
+    assert cmd and "--home" in cmd and str(app) in cmd, cmd
+    subprocess.run(["cmd", "/c", str(app / "AstroFlow beenden.cmd")], env=env, cwd=str(app), capture_output=True, timeout=120)
+    login_env = {k: v for k, v in env.items() if k != "ASTROFLOW_HOME"}
+    subprocess.Popen(cmd, env=login_env)                         # Befehlszeile wie im Run-Eintrag
+    wait(lambda: call(port, "/status"), 120, 0.5)
+    data = call(port, "/setup")["data"]["path"]
+    times["autostart_daten"] = data
+    print(f"Autostart portabel: {cmd} -> Daten {data}", flush=True)
+    assert Path(data).resolve() == (app / "Daten").resolve(), data
+    subprocess.run([str(py), "-I", "-c", "from astroflow.core import tray; tray.set_autostart(False)"], env=home_env)
+    assert run_value() is None
+
+
 def main():
+    for stream in (sys.stdout, sys.stderr):                     # Ausgabe in Dateien (cp1252): nie an Sonderzeichen scheitern
+        try:
+            stream.reconfigure(errors="replace")
+        except Exception:
+            pass
     ap = argparse.ArgumentParser()
     ap.add_argument("zip", nargs="?")
     ap.add_argument("--setup", default=None, help="Installer prüfen statt ZIP (nur in Sandbox/VM)")
     ap.add_argument("--astap", action="store_true", help="ASTAP + D05 wirklich herunterladen (~100 MB)")
     ap.add_argument("--voll", action="store_true", help="mit --setup: alle Komponenten (ASTAP, GraXpert, GPU, SkyTrace, Demo)")
+    ap.add_argument("--autostart", action="store_true", help="portabel: Autostart mit --home prüfen (schreibt HKCU\\…\\Run – nur Sandbox/VM)")
     ap.add_argument("--keep", action="store_true", help="Testordner behalten")
     ap.add_argument("--dir", default=None)
     a = ap.parse_args()
@@ -307,6 +389,8 @@ def main():
     flow(port, times, t0, a.astap)
 
     t4 = time.time()
+    if a.autostart:
+        portable_autostart(app, env, port, times)
     subprocess.run(["cmd", "/c", str(app / "AstroFlow beenden.cmd")], env=env, cwd=str(app), capture_output=True, timeout=120)
     with socket.socket() as s:
         s.settimeout(1)

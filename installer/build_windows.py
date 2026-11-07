@@ -102,7 +102,7 @@ rem Zum Ausprobieren von Hand (Symbol im Infobereich, Menü): danach noch einmal
 "%SETUP%" /VERYSILENT /SUPPRESSMSGBOXES /CURRENTUSER /NORESTART /TYPE=compact
 start "" "%LOCALAPPDATA%\Programs\AstroFlow\python\pythonw.exe" -I -m astroflow start
 :portabel
-"PY" -I pruefe_paket.py "%ZIP%" --astap --dir C:\Sauber > "RES\portabel.txt" 2>&1
+"PY" -I pruefe_paket.py "%ZIP%" --astap --autostart --dir C:\Sauber > "RES\portabel.txt" 2>&1
 echo Exitcode %errorlevel% >> "RES\portabel.txt"
 echo fertig > "RES\fertig.txt"
 """
