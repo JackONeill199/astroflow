@@ -16,6 +16,15 @@ anderen bewegten Objekten und erklärt dir, was du fotografiert hast – im Brow
 Von der Releases-Seite des Repositories laden:
 
 - **`AstroFlow-Setup-<Version>.exe`** – Installer pro Benutzer (keine Administratorrechte), Startmenü, optional Desktop-Verknüpfung und Start beim Anmelden.
+  Bei „Vollständig“ richtet AstroFlow danach selbst ein:
+  - ASTAP + Sterndatenbank (D05 für Smart-Teleskope, D50 für kleine Bildfelder)
+  - **GraXpert**
+  - GPU-Beschleunigung
+  - SkyTrace-Analyse-Engine
+  - Demo-Aufnahmen
+
+  Alles kommt aus dem Internet von der jeweiligen Originalquelle, der Fortschritt steht unter „Aufträge“. StarNet lädt AstroFlow
+  aus Lizenzgründen nicht.
 - **Portables ZIP** – entpacken und `AstroFlow.cmd` starten; die Daten liegen im Ordner `Daten` daneben.
 
 Python und alle Pakete sind enthalten, es muss nichts weiter installiert werden. Beim ersten Start führt ein **Einrichtungsassistent** durch Datenordner
@@ -166,10 +175,10 @@ AstroFlow läuft ohne diese Programme; sie verbessern oder erweitern einzelne Fu
 | Werkzeug | Wofür | Einrichtung |
 |---|---|---|
 | [ASTAP](https://www.hnsky.org/astap.htm) (ab 2023) + Sterndatenbank D05/D20/D50 | Plate-Solving, Objektnamen, Gaia-Farbkalibrierung, Tiefenanalyse | Im Assistenten auf Knopfdruck (D05 ~100 MB, D50 ~900 MB) oder selbst installieren; wird automatisch gesucht, sonst Einstellungen → Bilder → Plate-Solving. Alternativen: lokales astrometry.net, nova.astrometry.net (nur auf ausdrückliche Wahl) |
-| [GraXpert](https://github.com/Steffenhir/GraXpert/releases/latest) | KI-Hintergrundextraktion und -Entrauschen des linearen Stacks | Von der Herstellerseite installieren; Einstellungen → Bilder → „GraXpert (KI)“. Ohne GraXpert: Polynom + Wavelets |
+| [GraXpert](https://github.com/Steffenhir/GraXpert/releases/latest) | KI-Hintergrundextraktion und -Entrauschen des linearen Stacks | Windows: im Installer oder unter Einstellungen → Module & System → Komponenten (lädt das offizielle Release, GPL-3); sonst von der Herstellerseite installieren. Ohne GraXpert: Polynom + Wavelets |
 | StarNet2 | Sterntrennung bei Nebeln | Einstellungen → Bilder → StarNet: ZIP installieren oder Pfad setzen. Ohne StarNet keine Sterntrennung bei Nebeln |
-| `pyopencl` (GPU) | Ausrichten und Sigma-Clipping auf der Grafikkarte (OpenCL), Stacking etwa 3× schneller | Im Assistenten oder `pip install pyopencl`; ohne GPU rechnet der Prozessor |
-| SkyTrace-Engine (OpenCV, PyTorch/YOLO, PyAV, Skyfield …) | Spurenanalyse in SkyTrace | `pip install -r astroflow/modules/skytrace/requirements.txt` oder unter Einstellungen → SkyTrace einen vorhandenen Interpreter wählen. Ohne Engine startet AstroFlow trotzdem; vorhandene Ergebnisse bleiben ansehbar |
+| `pyopencl` (GPU) | Ausrichten und Sigma-Clipping auf der Grafikkarte (OpenCL), Stacking etwa 3× schneller | Im Installer, unter Einstellungen → Module & System → Komponenten oder `pip install pyopencl`; ohne GPU rechnet der Prozessor |
+| SkyTrace-Engine (OpenCV, PyTorch/YOLO, PyAV, Skyfield …) | Spurenanalyse in SkyTrace | Im Installer bzw. unter Einstellungen → Module & System → Komponenten (PyTorch für den Prozessor, ~1,4 GB), sonst `pip install -r astroflow/modules/skytrace/requirements-engine.txt` oder unter Einstellungen → SkyTrace einen vorhandenen Interpreter wählen. Ohne Engine startet AstroFlow trotzdem; vorhandene Ergebnisse bleiben ansehbar |
 | Vision-LLM (LM Studio, OpenRouter) | optionaler KI-Bildprüfer und KI-Ergänzung im Tutor | siehe unten |
 | KI/Sprache für Sage (OpenAI, OpenRouter, LM Studio, Qwen3-TTS, ElevenLabs) | Geschichten schreiben und vorlesen | Einstellungen → Sage |
 
