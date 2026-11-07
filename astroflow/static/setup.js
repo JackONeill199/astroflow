@@ -44,7 +44,7 @@
       const t = c.task, busy = t?.state === 'running';
       const btns = c.id === 'starnet'
         ? `<a class="btn ghost sm" href="#/settings/stacking">ZIP einspielen</a>`
-        : c.state === 'unsupported' ? ''
+        : c.state === 'unsupported' || c.can_install === false ? ''
         : `${c.state === 'installed' ? `<button class="btn ghost sm" data-cmp="${c.id}" data-force="1" ${busy ? 'disabled' : ''}>Reparieren</button>`
             : `<button class="btn sm" data-cmp="${c.id}" ${busy ? 'disabled' : ''}>${icon('down')}Installieren</button>`}
            ${c.can_remove ? `<button class="btn ghost sm" data-rm="${c.id}" ${busy ? 'disabled' : ''}>Entfernen</button>` : ''}`;

@@ -157,6 +157,9 @@ def build(out: Path, installer: bool = True, cache: Path | None = None) -> dict:
         for p in sorted((site / pkg).rglob("tests"), key=lambda p: len(p.parts)):
             if p.is_dir():
                 shutil.rmtree(p, ignore_errors=True)
+    # Eigener Paketordner für GPU/SkyTrace-Pakete (übersteht Updates): Haken per .pth, siehe installer/astroflow_pakete.py
+    shutil.copy2(HERE / "astroflow_pakete.py", site / "astroflow_pakete.py")
+    (site / "astroflow-pakete.pth").write_text("import astroflow_pakete\n", encoding="utf-8")
 
     # 3) Starter, Symbol, Lizenz
     make_icon(stage / "astroflow.ico")
@@ -167,7 +170,7 @@ def build(out: Path, installer: bool = True, cache: Path | None = None) -> dict:
 
     # Selbsttest im Paket: Import + Version
     r = subprocess.run([str(py), "-I", "-c", "import astroflow, astroflow.server, astroflow.modules.stacking.pipeline, scipy.ndimage, scipy.optimize, "
-                        "scipy.signal, scipy.spatial, astropy.wcs, astropy.coordinates, imagecodecs, tifffile; print(astroflow.__version__)"],
+                        "scipy.signal, scipy.spatial, astropy.wcs, astropy.coordinates, imagecodecs, tifffile, pystray, astroflow_pakete; print(astroflow.__version__)"],
                        capture_output=True, text=True, env=env)
     assert r.returncode == 0 and r.stdout.strip() == ver, r.stderr
     size = sum(f.stat().st_size for f in stage.rglob("*") if f.is_file())

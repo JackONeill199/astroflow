@@ -173,6 +173,33 @@ def check_tray(times: dict):
     print(f"Infobereich: {times['tray']}", flush=True)
 
 
+def update_flow(exe: Path, pyw: Path, app: Path, env: dict, port: int, times: dict):
+    """Update über die laufende Version (gleicher Installer drüber): Python wird ersetzt, GPU-/Engine-Pakete im Paketordner bleiben
+    und werden nur geprüft – nichts Großes neu laden."""
+    pk = Path(os.environ["LOCALAPPDATA"]) / "AstroFlow" / "Pakete"
+    size = sum(f.stat().st_size for f in pk.rglob("*") if f.is_file()) if pk.exists() else 0
+    times["paketordner_mb"] = round(size / 1e6)
+    t0 = time.time()
+    subprocess.run([str(exe), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/CURRENTUSER", "/NORESTART", f"/COMPONENTS={FULL}"], check=True, timeout=900)
+    times["update_installieren_s"] = round(time.time() - t0, 1)
+    subprocess.Popen([str(pyw), "-I", "-m", "astroflow", "start", "--no-browser"], env=env, cwd=str(app))
+    wait(lambda: call(port, "/status"), 180, 0.5)
+
+    def done():
+        c = call(port, "/components")
+        busy = any((i.get("task") or {}).get("state") == "running" for i in c["items"])
+        return (not c["pending"] and not busy) and c
+    c = wait(done, 1800, 3)
+    times["update_komponenten_s"] = round(time.time() - t0, 1)
+    sky = next(i for i in c["items"] if i["id"] == "skytrace")
+    gpu = next(i for i in c["items"] if i["id"] == "gpu")
+    times["update_skytrace"] = (sky.get("task") or {}).get("detail")
+    times["update_gpu"] = (gpu.get("task") or {}).get("detail")
+    print(f"Update: {times['update_komponenten_s']} s, Engine: {times['update_skytrace']}, GPU: {times['update_gpu']}", flush=True)
+    assert sky["state"] == "installed" and "nichts neu geladen" in (times["update_skytrace"] or ""), sky
+    assert gpu["state"] == "installed" and "bereits installiert" in (times["update_gpu"] or ""), gpu
+
+
 def check_setup(exe: Path, astap: bool, full: bool = False):
     env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHON")}
     with socket.socket() as sk:                                   # Standardport wie nach dem Installieren, falls frei
@@ -203,6 +230,7 @@ def check_setup(exe: Path, astap: bool, full: bool = False):
     print(f"Server läuft nach {times['start_s']} s, Daten {st['data']['path']}", flush=True)
     if full:
         full_flow(port, times, t0)
+        update_flow(exe, pyw, app, env, port, times)
     else:
         flow(port, times, t0, astap)
     t4 = time.time()
@@ -229,6 +257,7 @@ def check_setup(exe: Path, astap: bool, full: bool = False):
         wait(lambda: not (tools / "GraXpert").exists(), 120, 1)
         astap = Path(os.environ["LOCALAPPDATA"]) / "astap"
         assert not list(astap.glob("d05_*")), "Sterndatenbank sollte mit entfernt sein (/WERKZEUGE=entfernen)"
+        assert not (Path(os.environ["LOCALAPPDATA"]) / "AstroFlow" / "Pakete").exists(), "Paketordner sollte mit entfernt sein"
     print(json.dumps(times, indent=2, ensure_ascii=False))
 
 def main():

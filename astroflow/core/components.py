@@ -67,7 +67,8 @@ INFO = {
                  "what": "KI-Hintergrund und KI-Entrauschen des linearen Stacks"},
     "gpu": {"title": "GPU-Beschleunigung (pyopencl)", "license": "MIT", "source": "https://pypi.org/project/pyopencl/",
             "what": "Ausrichten und Stacking auf der Grafikkarte (OpenCL), etwa 3× schneller"},
-    "skytrace": {"title": "SkyTrace-Analyse-Engine", "license": "PyTorch BSD · Ultralytics/Detektormodell AGPL-3.0",
+    "skytrace": {"title": "SkyTrace-Analyse-Engine",
+                 "license": "PyTorch BSD · Ultralytics/Detektormodell AGPL-3.0 · Microsoft Visual C++ Runtime (weitergebbar laut Microsoft)",
                  "source": "https://pytorch.org", "what": "Lichtspuren in Bildfolgen finden (OpenCV, PyTorch CPU, YOLO)"},
     "starnet": {"title": "StarNet", "license": "Hersteller: „all rights reserved“ – kein automatischer Download",
                 "source": "https://www.starnetastro.com", "what": "Sterntrennung bei Nebeln (ZIP unter Einstellungen → Bilder → StarNet)"},
@@ -169,6 +170,9 @@ def _status_graxpert(rec, *_):
     from ..modules.stacking import graxpert
     p = graxpert.graxpert_path()
     supported = os.name == "nt"
+    if p and p != graxpert.own_graxpert():
+        return {"state": "installed", "version": "", "detail": f"{p} – eigene Installation, AstroFlow verändert sie nicht",
+                "supported": supported, "can_install": False, "can_remove": False}
     if p:
         return {"state": "installed", "version": rec.get("version") or "", "detail": p, "supported": supported}
     return {"state": "missing" if supported else "unsupported", "supported": supported,
@@ -196,7 +200,93 @@ def vc_runtime_ok() -> bool:
     if os.name != "nt":
         return True
     sysdir = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"
-    return any((d / "msvcp140.dll").is_file() for d in (Path(sys.prefix), Path(sys.executable).parent, sysdir))
+    dirs = [Path(sys.prefix), Path(sys.executable).parent, sysdir] + ([packages_dir()] if packages_dir() else [])
+    return any((d / "msvcp140.dll").is_file() for d in dirs)
+
+
+VC_MISSING = ("Microsoft-C++-Laufzeit fehlt (msvcp140.dll) – PyTorch lässt sich ohne sie nicht laden. "
+              "Einstellungen → Module & System → Komponenten → SkyTrace-Analyse-Engine → Reparieren.")
+
+
+# --------------------------------------------------------------------------- #
+# Eigener Paketordner (Windows-Paket): Zusatzpakete überstehen Updates des mitgelieferten Pythons
+# --------------------------------------------------------------------------- #
+def packages_dir() -> Path | None:
+    """`%LOCALAPPDATA%\\AstroFlow\\Pakete\\cp312-win_amd64`, wenn das Paket den Haken `astroflow_pakete` (.pth) mitbringt;
+    sonst None → pip installiert wie gewohnt ins laufende Python (Entwickler-venv, macOS/Linux)."""
+    try:
+        import astroflow_pakete
+        return Path(astroflow_pakete.DIR)
+    except Exception:
+        return None
+
+
+def _activate_packages(pk: Path):
+    """Frisch angelegten Paketordner im laufenden Server sofort nutzbar machen."""
+    try:
+        import astroflow_pakete
+        astroflow_pakete.activate(str(pk))
+    except Exception:
+        if str(pk) not in sys.path:
+            sys.path.append(str(pk))
+    sys.path_importer_cache.pop(str(pk), None)
+    importlib.invalidate_caches()
+
+
+def _prune_duplicates(pk: Path):
+    """pip --target legt auch Abhängigkeiten ab, die das mitgelieferte Python schon hat (numpy, pillow … – per Constraints
+    in gleicher Version). Diese Doppel entfernen, damit nur eine Kopie geladen werden kann und der Ordner klein bleibt."""
+    own = set()
+    for d in importlib.metadata.distributions():
+        loc = Path(str(d.locate_file(""))).resolve()
+        if pk.resolve() not in (loc, *loc.parents):
+            own.add((d.metadata["Name"] or "").lower().replace("_", "-"))
+    for info in pk.glob("*.dist-info"):
+        name = info.name.rsplit("-", 1)[0].lower().replace("_", "-")
+        if name not in own:
+            continue
+        try:
+            rows = (info / "RECORD").read_text(encoding="utf-8").splitlines()
+        except OSError:
+            rows = []
+        for row in rows:
+            rel = row.split(",")[0]
+            if rel and not rel.startswith(".."):
+                (pk / rel).unlink(missing_ok=True)
+        shutil.rmtree(info, ignore_errors=True)
+    for d in sorted((p for p in pk.rglob("*") if p.is_dir()), key=lambda p: -len(p.parts)):
+        try:
+            d.rmdir()                                 # leere Paketordner der entfernten Doppel
+        except OSError:
+            pass
+
+
+def _drop_old_tags(pk: Path):
+    """Paketordner anderer Python-Versionen (ABI) entfernen – sie würden nie mehr geladen."""
+    for other in pk.parent.glob("cp*"):
+        if other.is_dir() and other.name != pk.name:
+            shutil.rmtree(other, ignore_errors=True)
+
+
+def _install_vc_runtime(pk: Path, prog):
+    """msvc-runtime-Wheel laden und seine DLLs in den Paketordner legen (pip --target übernimmt Datendateien nicht)."""
+    if (pk / "msvcp140.dll").is_file():
+        return
+    tmp = tools_dir() / "vc-runtime"
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    prog(0.965, "Lade Microsoft-C++-Laufzeit …")
+    r = subprocess.run([console_python(), "-m", "pip", "download", "--disable-pip-version-check", "--no-deps", "--only-binary=:all:",
+                        "msvc-runtime", "-d", str(tmp)], capture_output=True, text=True, timeout=600, creationflags=NO_WINDOW)
+    whl = next(tmp.glob("msvc_runtime-*.whl"), None)
+    if r.returncode or not whl:
+        raise RuntimeError(VC_MISSING + " (Download: " + (r.stderr or r.stdout).strip()[-200:] + ")")
+    with zipfile.ZipFile(whl) as z:
+        for n in z.namelist():
+            parts = n.split("/")
+            if len(parts) == 3 and parts[1] == "data" and n.lower().endswith(".dll"):
+                (pk / parts[2]).write_bytes(z.read(n))
+    shutil.rmtree(tmp, ignore_errors=True)
 
 
 def _status_skytrace(rec, solver_cfg, health):
@@ -209,7 +299,9 @@ def _status_skytrace(rec, solver_cfg, health):
                 "detail": f"Eigener Interpreter: {health['python']}" + ("" if health.get("ok") else f" – fehlt: {', '.join(health.get('missing') or [])}"),
                 "version": ""}
     if not missing:
-        return {"state": "installed", "version": f"torch {_dist_version('torch')}", "detail": "im Python von AstroFlow", "supported": True}
+        pk = packages_dir()
+        return {"state": "installed", "version": f"torch {_dist_version('torch')}", "supported": True,
+                "detail": f"Paketordner {pk} (bleibt bei Updates)" if pk else "im Python von AstroFlow"}
     if len(missing) < len(ENGINE_MODULES) - 3:
         return {"state": "partial", "detail": "fehlt: " + ", ".join(missing), "supported": True}
     return {"state": "missing", "supported": True}
@@ -340,6 +432,10 @@ def _refresh_astap():
 def _install_graxpert(prog, option, force) -> str:
     if os.name != "nt":
         raise ValueError("GraXpert installiert AstroFlow nur unter Windows selbst – bitte von der GraXpert-Seite installieren.")
+    from ..modules.stacking import graxpert as gx
+    other = gx.system_graxpert()
+    if other:                                         # normal installiertes GraXpert hat Vorrang und wird nie angefasst
+        return f"GraXpert ist bereits installiert ({other}) – AstroFlow nutzt diese Installation."
     dest = graxpert_dir()
     exe = dest / "GraXpert.exe"
     if exe.is_file() and not force:
@@ -389,8 +485,12 @@ def _constraints() -> Path:
 
 def pip(args: list[str], prog, start: float, end: float, expect: int, label: str) -> None:
     """pip im Python von AstroFlow; Fortschritt grob über die Zahl der „Collecting“-Zeilen."""
+    pk = packages_dir()
+    target = ["--target", str(pk), "--upgrade"] if pk else []
+    if pk:
+        pk.mkdir(parents=True, exist_ok=True)
     cmd = [console_python(), "-m", "pip", "install", "--disable-pip-version-check", "--no-warn-script-location",
-           "--progress-bar", "off", "-c", str(_constraints()), *args]
+           "--progress-bar", "off", "-c", str(_constraints()), *target, *args]
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PIP_NO_INPUT": "1"}
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
                          env=env, creationflags=NO_WINDOW)
@@ -406,9 +506,15 @@ def pip(args: list[str], prog, start: float, end: float, expect: int, label: str
             prog(start + (end - start) * min(0.95, n / max(1, expect)), f"{label}: {what[:60]}")
     if p.wait():
         raise RuntimeError("pip: " + " | ".join(tail[-3:])[-400:])
+    if pk:
+        _prune_duplicates(pk)
+        _drop_old_tags(pk)
+        _activate_packages(pk)
 
 
 def _install_gpu(prog, option, force) -> str:
+    if not force and importlib.util.find_spec("pyopencl") is not None:
+        return f"pyopencl {_dist_version('pyopencl')} ist bereits installiert."
     prog(0.05, "Installiere pyopencl …")
     pip((["--force-reinstall", "--no-deps"] if force else []) + ["pyopencl"], prog, 0.05, 0.95, 4, "GPU")
     try:
@@ -420,23 +526,40 @@ def _install_gpu(prog, option, force) -> str:
     return "pyopencl installiert."
 
 
+def _engine_import_test() -> str | None:
+    """Importtest im eigenen Prozess (fängt fehlende DLLs ab); None = in Ordnung, sonst Fehlermeldung."""
+    r = subprocess.run([console_python(), "-c", "import torch, cv2, ultralytics; print(torch.__version__)"], capture_output=True,
+                       text=True, timeout=300, creationflags=NO_WINDOW)
+    if not r.returncode:
+        return None
+    last = ((r.stderr or r.stdout).strip().splitlines() or ["?"])[-1][:300]
+    return VC_MISSING if ("c10.dll" in last or "WinError 126" in last) else "PyTorch lässt sich nicht laden: " + last
+
+
 def _install_skytrace(prog, option, force) -> str:
+    pk = packages_dir()
+    if not force and all(importlib.util.find_spec(m) for m in ENGINE_MODULES) and vc_runtime_ok():
+        prog(0.5, "Prüfe vorhandene Engine …")       # nach einem Update: Pakete im Paketordner sind noch da
+        if not _engine_import_test():
+            return f"SkyTrace-Engine vorhanden (torch {_dist_version('torch')}) – nichts neu geladen."
     extra = ["--force-reinstall"] if force else []
     prog(0.02, "Installiere PyTorch (CPU) …")
     pip(extra + ["--index-url", TORCH_CPU_INDEX, "torch", "torchvision"], prog, 0.02, 0.6, 12, "PyTorch")
     prog(0.6, "Installiere OpenCV, YOLO, Skyfield …")
     pip(extra + ["-r", str(ENGINE_REQS)], prog, 0.6, 0.97, 45, "Engine")
+    if pk and os.name == "nt":
+        _install_vc_runtime(pk, prog)
+        _activate_packages(pk)
     importlib.invalidate_caches()
     missing = [m for m in ENGINE_MODULES if importlib.util.find_spec(m) is None]
-    if not vc_runtime_ok():
-        missing.append("Microsoft-C++-Laufzeit")
     if missing:
         raise RuntimeError("Nach der Installation fehlen noch: " + ", ".join(missing))
-    prog(0.98, "Prüfe PyTorch …")                    # Importtest im eigenen Prozess: fängt fehlende DLLs ab
-    r = subprocess.run([console_python(), "-c", "import torch, cv2, ultralytics; print(torch.__version__)"], capture_output=True,
-                       text=True, timeout=300, creationflags=NO_WINDOW)
-    if r.returncode:
-        raise RuntimeError("PyTorch lässt sich nicht laden: " + (r.stderr or r.stdout).strip().splitlines()[-1][:300])
+    if not vc_runtime_ok():
+        raise RuntimeError(VC_MISSING)
+    prog(0.98, "Prüfe PyTorch …")
+    err = _engine_import_test()
+    if err:
+        raise RuntimeError(err)
     return f"SkyTrace-Engine installiert (torch {_dist_version('torch')}, CPU)."
 
 

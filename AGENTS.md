@@ -328,10 +328,18 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   `POST /api/components/install {id, option, force}`, `…/remove {id}`; UI `componentsPanel` in `setup.js` (Einstellungen → Module & System,
   Assistent → Extras ohne ASTAP). CLI `astroflow components status|install NAME[:OPT]|remove NAME` (Deinstaller).
   - **GraXpert** 3.0.2 (letzte stabile, 3.1 nur rc): MSI von GitHub, SHA-256 fest im Code (GitHub liefert keine), **`msiexec /a`** =
-    Admin-Abbild nach `<Werkzeuge>/GraXpert` – ohne Adminrechte, ohne Registrierung (18 s, 413 MB); `graxpert.graxpert_path` sieht dort
-    zuerst nach. Nur Windows (sonst „unsupported“ + Hinweis). GPL-3 + Quellcode-Link in UI/Installer.
-  - **SkyTrace-Engine + GPU per pip ins mitgelieferte Python** (kein zweiter Interpreter; `Module.python` fällt ohnehin auf
-    `sys.executable` zurück): erst `torch torchvision` aus dem PyTorch-CPU-Index, dann `modules/skytrace/requirements-engine.txt`
+    Admin-Abbild nach `<Werkzeuge>/GraXpert` – ohne Adminrechte, ohne Registrierung (18 s, 413 MB). **Ein normal installiertes GraXpert
+    hat Vorrang** (`graxpert.system_graxpert` vor `own_graxpert`; Entscheidung des Masters) und wird nie angefasst: Zustand „eigene
+    Installation“, keine Knöpfe, `install` lädt dann nichts. Nur Windows (sonst „unsupported“ + Hinweis). GPL-3 + Quellcode-Link in UI/Installer.
+  - **SkyTrace-Engine + GPU per pip** (kein zweiter Interpreter; `Module.python` fällt ohnehin auf `sys.executable` zurück).
+    Im Windows-Paket mit `--target` in den **eigenen Paketordner** `%LOCALAPPDATA%\AstroFlow\Pakete\cp312-win_amd64` (portabel
+    `<App>\Pakete\…`): `installer/astroflow_pakete.py` + `astroflow-pakete.pth` im mitgelieferten site-packages hängen ihn bei jedem
+    Start an `sys.path` (hinten – das Bündel hat Vorrang) und per `os.add_dll_directory` für DLLs frei, auch in Engine-Unterprozessen und
+    mit `-I`. Update ersetzt `{app}\python`, der Paketordner bleibt; `_install_gpu/_skytrace` prüfen dann nur (Module da + Importtest →
+    „nichts neu geladen“). Anderer Python-Minor = anderer Unterordner (ABI) → neu installieren, alte Tags löscht `_drop_old_tags`.
+    `_prune_duplicates` entfernt, was pip --target an Abhängigkeiten doppelt ablegt (numpy, pillow … – gleiche Version per Constraints).
+    Deinstallation löscht den Paketordner. Ohne Haken (Entwickler-venv, macOS/Linux) `packages_dir()` = None → pip wie gewohnt.
+    Paketquellen: erst `torch torchvision` aus dem PyTorch-CPU-Index, dann `modules/skytrace/requirements-engine.txt`
     (plattformneutral; das alte `requirements.txt` dort ist ein Windows-Lockfile). Immer mit `-c <Werkzeuge>/constraints.txt` = Versionen
     der vom Server geladenen Pakete (numpy, scipy, astropy …) – sonst will pip sie ersetzen, unter Windows sind geladene .pyd gesperrt.
     Nur CPU-PyTorch (GPU-Variante nicht verlässlich ohne Hardwareprüfung). Danach `skytrace.Module.check_engine()`; `gpu._TRIED` zurück.
@@ -342,8 +350,11 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
     Spurenanalyse läuft automatisch mit) ab und streicht nur Erfolge – Fehlschläge (kein Netz) bleiben vorgemerkt („vom Installer vorgemerkt“).
   - **Microsoft-C++-Laufzeit:** PyTorch braucht `msvcp140.dll` u. a., auf frischem Windows fehlt sie (Sandbox 07.11.2026: `c10.dll`
     ließ sich nicht laden, Analyse brach nach 1 s ab; python-build-standalone bringt nur `vcruntime140*.dll`). Deshalb steht
-    `msvc-runtime` (PyPI, DLLs app-lokal neben python.exe, ohne Admin) in `requirements-engine.txt`; `vc_runtime_ok()` prüft sie im
-    Zustand („unvollständig“ → Reparieren), nach der Installation ein Importtest `import torch, cv2, ultralytics` im eigenen Prozess.
+    `msvc-runtime` (PyPI, nur mit der Engine geladen, nie mitgeliefert; Lizenzangabe „Microsoft Visual C++ Runtime (weitergebbar laut
+    Microsoft)“) in `requirements-engine.txt`. pip --target übernimmt Datendateien nicht → `_install_vc_runtime` legt die DLLs aus dem Wheel
+    in den Paketordner. `vc_runtime_ok()` prüft sie im Zustand („unvollständig“ → Reparieren) und in `skytrace.check_engine`
+    (`health.error` = `VC_MISSING`, Automatik meldet das als Fehler statt still zu überspringen); nach der Installation Importtest
+    `import torch, cv2, ultralytics` im eigenen Prozess (`c10.dll`/WinError 126 → dieselbe klare Meldung).
 - **Symbol im Infobereich** (`core/tray.py`, seit 0.44.0, Nutzerwunsch; App-Fenster ohne Adressleiste ausdrücklich nicht gewünscht):
   eigener leichter Prozess `pythonw -m astroflow tray --port P` (nur HTTP zum Server, kein Modulimport), `launcher.start` stößt ihn
   nach dem Serverstart an (`tray.ensure`), je Benutzer einmal (`tray.pid` neben config.json). pystray + Pillow (in `requirements.txt`);

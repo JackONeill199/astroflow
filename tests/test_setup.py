@@ -220,6 +220,8 @@ def test_graxpert_auspacken(home, tmp_path, monkeypatch):
         return type("R", (), {"returncode": 0})()
     monkeypatch.setattr(comp, "download", fake_dl)
     monkeypatch.setattr(comp.subprocess, "run", fake_run)
+    from astroflow.modules.stacking import graxpert as gx_mod
+    monkeypatch.setattr(gx_mod, "system_graxpert", lambda: None)        # ein echt installiertes GraXpert hätte Vorrang
     msg = comp.install("graxpert")
     exe = comp.graxpert_dir() / "GraXpert.exe"
     assert exe.is_file() and not list(comp.graxpert_dir().glob("*.msi")) and "GPL-3.0" in msg
@@ -370,3 +372,53 @@ def test_infobereich_endet_mit_stoppmarke(home, monkeypatch):
     tray.stop_path().write_text("1")
     t.loop()
     assert closed and not tray.stop_path().exists() and t.notify is False
+
+
+def test_graxpert_vorhandenes_hat_vorrang(home, monkeypatch, tmp_path):
+    """Ein normal installiertes GraXpert wird genutzt und nie angefasst – AstroFlow lädt dann nichts."""
+    from astroflow.modules.stacking import graxpert as gx_mod
+    fremd = tmp_path / "Programme" / "GraXpert" / "GraXpert.exe"
+    fremd.parent.mkdir(parents=True)
+    fremd.write_bytes(b"exe")
+    monkeypatch.setattr(gx_mod, "system_graxpert", lambda: str(fremd))
+    monkeypatch.setattr(comp, "download", lambda *a, **k: (_ for _ in ()).throw(AssertionError("kein Download erwartet")))
+    if sys.platform == "win32":
+        assert "bereits installiert" in comp.install("graxpert")
+    monkeypatch.delenv("ASTROFLOW_GRAXPERT")
+    st = next(c for c in comp.status() if c["id"] == "graxpert")
+    assert st["state"] == "installed" and st["can_install"] is False and st["can_remove"] is False and "eigene Installation" in st["detail"]
+    assert fremd.read_bytes() == b"exe"
+
+
+def test_paketordner_haken(tmp_path, monkeypatch):
+    """installer/astroflow_pakete.py: Ordner je Python-Version, an sys.path angehängt (mitgeliefertes Python hat Vorrang)."""
+    import importlib.util
+    monkeypatch.setenv("ASTROFLOW_HOME", str(tmp_path / "app"))
+    spec = importlib.util.spec_from_file_location("astroflow_pakete_test", ROOT / "installer" / "astroflow_pakete.py")
+    mod = importlib.util.module_from_spec(spec)
+    before = list(sys.path)
+    try:
+        spec.loader.exec_module(mod)
+        assert mod.DIR == str(tmp_path / "app" / "Pakete" / f"cp{sys.version_info[0]}{sys.version_info[1]}-" + ("win_amd64" if sys.maxsize > 2**32 else "win32"))
+        assert sys.path[-1] == mod.DIR and sys.path[:len(before)] == before
+    finally:
+        sys.path[:] = before
+    assert comp.packages_dir() is None                    # Entwickler-venv ohne Haken: pip wie gewohnt ins laufende Python
+
+
+def test_paketordner_ohne_doppel(tmp_path):
+    """pip --target legt numpy & Co. mit ab – diese Doppel zum mitgelieferten Python werden entfernt, Fremdes bleibt."""
+    import numpy
+    pk = tmp_path / "Pakete" / "cp312-win_amd64"
+    for name, files in ((f"numpy-{numpy.__version__}", ["numpy/__init__.py", "numpy/core/x.pyd"]), ("torchfake-1.0", ["torchfake/__init__.py"])):
+        info = pk / f"{name}.dist-info"
+        info.mkdir(parents=True)
+        for f in files:
+            (pk / f).parent.mkdir(parents=True, exist_ok=True)
+            (pk / f).write_text("x")
+        (info / "RECORD").write_text("\n".join(f"{f},," for f in files + [f"{name}.dist-info/RECORD"]))
+    (tmp_path / "Pakete" / "cp311-win_amd64").mkdir()
+    comp._prune_duplicates(pk)
+    comp._drop_old_tags(pk)
+    assert not (pk / "numpy").exists() and not list(pk.glob("numpy-*.dist-info"))
+    assert (pk / "torchfake" / "__init__.py").is_file() and not (tmp_path / "Pakete" / "cp311-win_amd64").exists()

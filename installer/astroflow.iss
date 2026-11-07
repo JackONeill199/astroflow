@@ -62,8 +62,8 @@ Name: "desktopicon"; Description: "Verknüpfung auf dem Desktop"; Flags: uncheck
 Name: "autostart"; Description: "Beim Anmelden im Hintergrund starten (neue Aufnahmen werden sofort verarbeitet)"; Flags: unchecked
 
 [InstallDelete]
-; Update: eigenes Python vollständig ersetzen (keine Reste alter Paketstände); gewählte GPU-/SkyTrace-Pakete lädt AstroFlow danach neu
-; (pip-Zwischenspeicher, deshalb schnell)
+; Update: eigenes Python vollständig ersetzen (keine Reste alter Paketstände). GPU-/SkyTrace-Pakete liegen in
+; %LOCALAPPDATA%\AstroFlow\Pakete\cp312-… und bleiben; AstroFlow prüft sie nach dem Update nur (gleiche Python-Version → behalten)
 Type: filesandordirs; Name: "{app}\python"
 
 [Files]
@@ -83,8 +83,10 @@ Filename: "{app}\python\pythonw.exe"; Parameters: "-I -m astroflow start"; Worki
 Filename: "{app}\python\pythonw.exe"; Parameters: "-I -m astroflow stop"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; RunOnceId: "StopAstroFlow"
 
 [UninstallDelete]
-; Programmordner samt später erzeugtem Bytecode und nachinstallierten Paketen (GPU) – die Daten liegen woanders
+; Programmordner samt später erzeugtem Bytecode – die Daten liegen woanders; nachinstallierte Pakete (GPU, SkyTrace-Engine) liegen
+; im eigenen Paketordner, damit Updates sie nicht neu laden müssen, und gehören zum Programm
 Type: filesandordirs; Name: "{app}"
+Type: filesandordirs; Name: "{localappdata}\AstroFlow\Pakete"
 
 [Code]
 // Update über eine laufende Version: Server vorher beenden, sonst sind python*.dll gesperrt

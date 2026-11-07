@@ -29,7 +29,12 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   Einrichtungsassistenten unter „Extras“.
 - **Deinstallation** fragt, ob auch GraXpert und ASTAP mit entfernt werden sollen. Nur von AstroFlow selbst Installiertes wird
   gelöscht, ein vorhandenes ASTAP bleibt. Bilder, Stacks und Einstellungen bleiben immer erhalten.
-- **Update:** Das mitgelieferte Python wird vollständig ersetzt; die gewählten Komponenten richtet AstroFlow danach selbst wieder ein.
+- **Update:** Das mitgelieferte Python wird vollständig ersetzt. GPU-Paket und SkyTrace-Engine liegen in einem eigenen Paketordner und
+  bleiben erhalten; nach dem Update prüft AstroFlow sie nur und lädt nichts neu, solange die Python-Version gleich bleibt. Ein
+  vorhandenes, normal installiertes GraXpert hat Vorrang und wird nie verändert.
+- Fehlt die Microsoft-C++-Laufzeit, die PyTorch braucht, meldet AstroFlow das klar mit dem Weg zur Reparatur, statt die
+  Spurenanalyse still abbrechen zu lassen. AstroFlow lädt sie zusammen mit der Engine; sie bleibt neben dem eigenen Python
+  von AstroFlow, ohne Administratorrechte.
 - **Symbol im Infobereich** (Taskleiste unten rechts):
   - **Menü:** „AstroFlow öffnen“ (auch per Doppelklick), „Aufträge“, „Aufträge anhalten/fortsetzen“, „Benachrichtigung, wenn ein
     Bild fertig ist“, „Beim Anmelden starten“, „Beenden“.
