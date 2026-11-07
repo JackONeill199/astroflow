@@ -148,6 +148,6 @@ zeigt auf das neueste veröffentlichte Release (Installer direkt, sonst die Rele
 ## Bekannte Grenzen der CI
 
 - Übersprungen (bewusst): GPU-Vergleich (`test_gpu.py`, kein OpenCL), GraXpert-Auspacken unter Linux, SkyTrace-Tests, die
-  PyTorch/Ultralytics brauchen. Die leichten Engine-Pakete (skyfield, sgp4, OpenCV headless) installiert die CI mit.
+  PyTorch/Ultralytics brauchen. Die leichten Engine-Pakete (skyfield, sgp4, OpenCV headless, photutils, PyAV) installiert die CI mit.
 - Die Suite lief bis zu dieser Änderung nur unter Windows; Fehlschläge unter Linux zuerst als Plattformproblem prüfen.
 - Laufzeit: GitHub-Runner haben 4 Kerne, die Suite läuft mit 4 Workern (lokal 8).
