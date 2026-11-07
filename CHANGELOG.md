@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.40.1 – 07.11.2026
+
+### Behoben
+- SkyTrace-Statistik: Beim schnellen Wechsel zwischen Ansichten trat ein Skriptfehler im Abschnitt „Satelliten am Himmel“ auf.
+
 ## 0.40.0 – 07.11.2026
 
 ### Neu
