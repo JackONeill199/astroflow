@@ -16,7 +16,7 @@ from skyfield.api import EarthSatellite,load,wgs84
 from project_paths import BASE, CODE
 CACHE=BASE/'catalog_cache'
 TS=load.timescale(builtin=True)
-SOURCES={'meteors':'https://globalmeteornetwork.org/data/traj_summary_data/monthly/','asteroids':'https://ssd-api.jpl.nasa.gov/doc/sb_ident.html','fireballs':'https://ssd-api.jpl.nasa.gov/doc/fireball.html','satellites':'https://celestrak.org/NORAD/archives/','aircraft':'https://opensky-network.org/data'}
+SOURCES={'meteors':'https://globalmeteornetwork.org/data/traj_summary_data/monthly/','asteroids':'https://ssd-api.jpl.nasa.gov/doc/sb_ident.html','fireballs':'https://ssd-api.jpl.nasa.gov/doc/fireball.html','satellites':'https://celestrak.org/NORAD/archives/','aircraft':''}
 
 # Satellitenabgleich: Querabstand zur Bahn (TLE-Fehler quer ~1 km ≈ 6′ bei 600 km), Richtung an der Durchgangsstelle,
 # Uhrtoleranz um die Belichtung; Rangfolge Abstand + 20″ je Sekunde außerhalb der Belichtung.
@@ -79,7 +79,7 @@ def retrieve(url,params=None,text=False,cached_only=False,settings=None):
     saved=cached()
     if saved is not None:return saved
     if cached_only:
-        from opensky_archive import ArchiveAccessError
+        from archive_errors import ArchiveAccessError
         raise ArchiveAccessError('needs_archive','Diese Quelle unterstützt keinen Standortfilter. Nur vorhandene lokale Daten werden genutzt; kein weltweiter Abruf.')
     jpl=url.startswith('https://ssd-api.jpl.nasa.gov/')
     lock=CACHE/('jpl-service.lock' if jpl else key+'.lock')
@@ -364,10 +364,7 @@ def aircraft_check(candidate,site,settings):
     if not site: return status('aircraft','not_checkable','Beobachtungsstandort fehlt.')
     start,duration=_times(candidate,settings)
     text,source=_file_or_url(settings,'flight')
-    if not text and settings.get('auto_aircraft',False):
-        from opensky_archive import fetch_flights
-        text,source=fetch_flights(start,duration,site,settings)
-    if not text: return status('aircraft','needs_archive',f'Für {iso(start)} UTC ist ein historischer ADS-B-Positionsdatenexport nötig. CSV-Datei oder HTTPS-Download-URL hinterlegen; Live-Flugdaten eignen sich dafür nicht.')
+    if not text: return status('aircraft','needs_archive',f'Für {iso(start)} UTC ist ein eigener ADS-B-Positionsdatenexport nötig (Einstellungen → Eigene Archivdateien → Flugdaten). CSV-Datei oder HTTPS-Download-URL hinterlegen; Live-Flugdaten eignen sich dafür nicht.')
     tracks={}
     for row in csv.DictReader(io.StringIO(text)):
         if not {'timestamp','latitude','longitude','geo_altitude','icao24'}.issubset(row): raise ValueError('ADS-B CSV benötigt timestamp,latitude,longitude,geo_altitude,icao24; optional callsign. Höhe geometrisch in Metern.')
@@ -425,7 +422,7 @@ def compare(candidate,site,settings):
     providers=[('asteroids',asteroid_check),('satellites',satellite_check),('aircraft',aircraft_check)]
     if settings.get('auto_meteors',False):providers.append(('meteors',meteor_check))
     providers.append(('fireballs',fireball_check))
-    from opensky_archive import ArchiveAccessError
+    from archive_errors import ArchiveAccessError
     for provider,function in providers:
         request_key=provider+':'+hashlib.sha256(json.dumps([candidate.get('timestamp'),candidate.get('world_path')],sort_keys=True).encode()).hexdigest()
         if settings.get('_stop_file') and Path(settings['_stop_file']).exists():

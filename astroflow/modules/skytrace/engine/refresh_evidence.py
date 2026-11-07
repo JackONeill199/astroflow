@@ -6,7 +6,7 @@ import numpy as np
 from candidate_report import _image
 from candidate_evidence import enrich
 from catalog_matching import satellite_check,status
-from opensky_archive import ArchiveAccessError
+from archive_errors import ArchiveAccessError
 from observation_settings import load_settings
 from sequence import report,stretch
 from json_store import write_json
