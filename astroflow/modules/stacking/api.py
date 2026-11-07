@@ -722,6 +722,10 @@ def build_router(eng: Engine) -> APIRouter:
         return {**out, "computed": len(have), "projects": todo, "gaia": eng.s.gaia, "solver": eng.pl.solver_cfg.enabled,
                 "job": {k: st.get(k) for k in ("state", "total", "done", "current", "detail", "nights", "errors", "finished")}}
 
+    @r.get("/sky/clean")
+    def get_sky_clean():
+        return skyquality.clean_nights(db)
+
     @r.get("/projects/{pid}/sky")
     def get_project_sky(pid: int):
         nights = skyquality.nights_of(db, pid)

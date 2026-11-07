@@ -394,7 +394,13 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   `GET /projects/{pid}/sky` (Nächte mit Verlauf); `tonight` liefert `sky_quality` des gewählten Orts (`sky` ist dort die Wettervorhersage); Dienst `site_sky` → `/api/sites` → `sky` je Ort.
 - **UI:** `static/skyquality.js|css` (Präfix `sq-`): Ansicht `#/himmel` (unter Übersicht), Kasten „Himmel in der Aufnahmenacht“ auf der Objektseite
   (`AFsky.panel`), Kachel in Heute Nacht (`AFsky.tonightTile`), Zeile je Ort in Einstellungen → Standorte (`sites.js` → `skyLine`).
-- Tests: `test_skyquality.py` (synthetisch, erfundener Ort), UI-Fixture `_sky_seed`.
+- **Saubere Nächte** (seit 0.39.0, Nutzerwunsch „wo und wann waren die saubersten Nächte“; `skyquality.clean_nights`, `GET /api/stacking/sky/clean`, Abschnitt oben in `#/himmel`,
+  `cleanSection` in `skyquality.js`): reine Auswertung von `sky_nights`, nichts wird gemessen. Eine Nacht je Ort = Median ihrer Objekte. Dunkelheit (`sqm`, nur Ortswert ≥ `MIN_GOOD`) ist die
+  Hauptwertung; `sure` = Fehler ≤ `SURE_ERR` 0,35 (sonst Liste `uncertain`, getrennt). Seeing/Durchsicht (`transparency` = Verlust in mag) zählen auch aus Nächten ohne Ortswert in ihren eigenen
+  Listen. `score` 0–100 = 60 % Dunkelheit, 20 % Seeing, 20 % Durchsicht (Rang unter den Nächten mit Ortswert, fehlende Teile renormiert). `window` = bester Abschnitt (Median aus 5 Kurvenpunkten ohne
+  Flags, Uhrzeit im Browser). Wochentag/Monat vom Nacht-Datum (= Abend). Heatmap Ort × Monat = Median der Ortswerte über alle Jahre, `best_month` bevorzugt Monate mit ≥ 2 Nächten, bester Ort
+  bevorzugt ≥ 3 Nächte. Bewusst auf `#/himmel` statt im Analyse-Dashboard (das Dashboard hat andere Sitzungen im Umbau; Himmel-Daten gehören ohnehin hierher).
+- Tests: `test_skyquality.py` (synthetisch, erfundener Ort; `test_clean_nights`), UI-Fixture `_sky_seed`, `test_saubere_naechte_himmel`.
 
 ## Kometenmodus (`modules/stacking/comet.py`, seit 0.22.0 – Nutzerwunsch, nur noch Kometenaufnahmen fehlten)
 - **Erkennung:** `comet.designation/is_comet` (C/P/D/X/A/I + Jahr + Halbmonat, `12P`, Wörter Komet/Comet; `IC 1396`,
