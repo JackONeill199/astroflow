@@ -18,7 +18,7 @@ from .core.modules import AVAILABLE, Context, load_modules
 from .core import sites as sites_mod
 from .core import setup as setup_mod
 from . import __version__ as VERSION
-from .core.store import SettingsStore
+from .core.store import SettingsError, SettingsStore
 
 STATIC = Path(__file__).parent / "static"
 
@@ -66,11 +66,16 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
     stamp = sorted(f"{p}:{p.stat().st_mtime_ns}" for d in statics for p in d.rglob("*") if p.is_file())
     build = hashlib.sha1("|".join(stamp).encode()).hexdigest()[:10]
 
+    @app.exception_handler(SettingsError)
+    async def _settings_broken(request, exc):            # defekte settings.json: klare Meldung statt 500, nichts wird überschrieben
+        return JSONResponse({"detail": str(exc)}, status_code=409)
+
     @app.get("/api/app")
     def app_info():
         upd = ctx.store.get("system").get("update") or {}
         return {"version": VERSION, "build": build, "modules": [m.info() for m in loaded],
                 "setup": {"pending": setup.state()["pending"] if setup.launched else False, "launched": setup.launched},
+                "settings_problem": ctx.store.problem,
                 "update": upd if upd.get("newer") and ctx.store.get("system").get("update_check", True) else None}
 
     @app.get("/api/status")

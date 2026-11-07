@@ -5,13 +5,14 @@ import asyncio
 import json
 import queue
 import re
+import secrets
 import shutil
 import threading
 import time
 import traceback
 from pathlib import Path
 
-from fastapi import APIRouter, Body, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from . import calibration, channels, comet, diskspace, gpu, graxpert, objects, platesolve, reviewer, skyquality, stars, tonight, tutor
@@ -597,9 +598,12 @@ def build_router(eng: Engine) -> APIRouter:
         return db.q("SELECT j.*, p.name project FROM jobs j LEFT JOIN projects p ON p.id=j.project_id ORDER BY j.id DESC LIMIT 50")
 
     @r.post("/upload")
-    async def upload(files: list[UploadFile] = File(...)):
+    async def upload(files: list[UploadFile] = File(...), upload_id: str = Form("")):
         from .picture_import import PICTURE_EXT, attach_previews, import_picture, skipped_pictures
-        dest = eng.s.input_dir / "uploads" / time.strftime("%Y%m%d")
+        # Je Upload-Vorgang ein eigener Ordner: gleichnamige Dateien (Stellina img-0001r.fits in jeder Beobachtung)
+        # überschreiben sich so nie. Die Kennung kommt vom Client (alle Teilanfragen eines Vorgangs teilen sie).
+        token = upload_id if re.fullmatch(r"[A-Za-z0-9]{6,32}", upload_id or "") else time.strftime("%H%M%S") + secrets.token_hex(3)
+        dest = eng.s.input_dir / "uploads" / time.strftime("%Y%m%d") / token
         dest.mkdir(parents=True, exist_ok=True)
         n, raw, skipped, pictures, errors = 0, 0, 0, [], []
         skip_ext = skipped_pictures([f.filename or "" for f in files])
@@ -623,7 +627,15 @@ def build_router(eng: Engine) -> APIRouter:
                 continue
             target = dest.joinpath(*parts[-4:])
             target.parent.mkdir(parents=True, exist_ok=True)
-            with open(target, "wb") as out:
+            n_try = 0
+            while True:                                   # nie überschreiben: bei Namensgleichheit eindeutig nummerieren
+                try:
+                    out = open(target, "xb")
+                    break
+                except FileExistsError:
+                    n_try += 1
+                    target = target.with_name(f"{Path(parts[-1]).stem}-{n_try}{Path(parts[-1]).suffix}")
+            with out:
                 shutil.copyfileobj(f.file, out)
             n += 1
             raw += 1
