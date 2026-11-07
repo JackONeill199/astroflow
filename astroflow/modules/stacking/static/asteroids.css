@@ -1,0 +1,22 @@
+/* Asteroiden im Bild (seit 0.39.0) – Abschnitt im Reiter Analyse und Marken im Betrachter */
+.ast-lead { font-size: 1.05rem; margin: 0 0 0.875rem }
+.ast-lead b { color: var(--acc) }
+.ast-kpis { margin-bottom: 0.875rem }
+.ast-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr)); gap: 0.5rem }
+.ast-item { display: flex; gap: 0.75rem; align-items: flex-start; padding: 0.5rem; border-radius: var(--r); background: var(--surface-2); min-width: 0 }
+.ast-item > div { min-width: 0; overflow-wrap: anywhere }
+.ast-item.focusable { cursor: pointer; transition: background var(--t) }
+.ast-item.focusable:hover, .ast-item.focusable:focus-visible { background: var(--surface-3, var(--border)) }
+.ast-item img, .ast-ph { width: 4.5rem; height: 4.5rem; flex: none; border-radius: 0.375rem; background: #000; image-rendering: pixelated; object-fit: cover }
+.ast-ph { display: grid; place-items: center; color: var(--dim) }
+.ast-item .chip { font-size: 0.75rem; vertical-align: 0.0625rem }
+.ast-item .chip.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent) }
+
+/* Marken im Betrachter: nachgewiesen = Kreis + Bahnstrich, nur vorhergesagt = gestrichelt */
+.viewer.hover-labels.ast-on.ready .vov { opacity: 1 }
+.viewer.ast-on:not(:hover) .vov > g:not(.depth-marks):not(.ast-marks) { display: none }
+.vov .ast-marks circle { fill: none; stroke-width: 0.125rem }
+.vov .ast-marks line { stroke-width: 0.125rem; stroke-linecap: round; opacity: 0.85 }
+.vov .ast-marks text { paint-order: stroke; stroke: #000000b3; stroke-width: 0.1875rem; font-weight: 500 }
+.vov .am-ok circle, .vov .am-ok line { stroke: #7fe0a0 } .vov .am-ok text { fill: #d4f7df }
+.vov .am-pred circle, .vov .am-pred line { stroke: #9aa3b2; stroke-dasharray: 3 3 } .vov .am-pred text { fill: #d7dbe2 }

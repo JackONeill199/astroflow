@@ -57,6 +57,9 @@ Der Reiter **Analyse** misst aus dem plate-gelösten Bild die Grenzgröße, die 
 (Gaia-Parallaxen) und die fernsten sichtbaren Galaxien und Quasare (SIMBAD-Rotverschiebung, Lichtlaufzeit) – als Kennzahlen, Markierungen im
 Bild und als **3D-Ansicht** direkt im Betrachter. Der **Vergleich** blinkt das Bild gegen eine frühere eigene Aufnahme oder die
 DSS2-Durchmusterung; auffällige Stellen werden mit SIMBAD und JPL-Kleinkörpern abgeglichen – als Hinweis, nicht als Entdeckung.
+**Asteroiden:** welche bekannten Kleinplaneten laut JPL im Feld lagen und welche du wirklich fotografiert hast – nachgewiesen
+entlang der Bahn in den Einzelbildern, mit gemessener Helligkeit und Bahnstrich im Bild („Du hast 9 Asteroiden fotografiert, der
+schwächste mit 16,2 mag“). An JPL gehen nur Himmelskoordinaten und Zeit, nie der Standort.
 Dazu kommen die **Himmelsqualität der Aufnahmenacht** und der **Bild-Tutor** (Befunde mit Tipps passend zum Gerät, Bedingungen der Nacht).
 
 ![3D-Ansicht der Entfernungen](docs/screenshots/analyse-3d.webp)
@@ -69,7 +72,7 @@ Die 3D-Ansicht (Knopf „3D“ im Betrachter) legt die Sterne und Galaxien des B
 Objekt, dunkelster Himmel), Rekorde, „Dein Universum“ als Entfernungsskala bzw. 3D-Wolke aller gemessenen Sterne und Galaxien, Grenzgröße
 und Himmel über die Zeit, beste Nächte, Bildqualität, häufigste Tutor-Befunde, Veränderungen, Messier-/Caldwell-Fortschritt und eine
 Rangliste „Was am meisten gebracht hat“ (Grenzgröße auf 1 h umgerechnet). Filter nach Objekt, Gerät, Jahr und Nacht. **Alles analysieren**
-rechnet fehlende oder veraltete Auswertungen (Tiefe, Vergleich, Himmel, Tutor) im Hintergrund nach – nacheinander, damit Online-Dienste
+rechnet fehlende oder veraltete Auswertungen (Tiefe, Vergleich, Asteroiden, Himmel, Tutor) im Hintergrund nach – nacheinander, damit Online-Dienste
 geschont werden; anhalten und abbrechen jederzeit. Fehlende Voraussetzungen (nicht gelöst, Gaia aus) stehen mit Knopf zum Beheben dabei.
 Jede Zahl führt ins Objekt, Rekorde und Veränderungen direkt zur Stelle im Bild. *(Bild: Demo-Instanz mit synthetischen Werten.)*
 

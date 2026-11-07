@@ -482,6 +482,38 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   log10(Lj)), `comparePanel` + `compareViewer` (Blinken über `createViewer().setSplit`, Stelle anfahren mit `zoomTo`).
 - Tests: `tests/test_depth_compare.py` (synthetisches Feld, Attrappen für Gaia/SIMBAD/DSS/JPL).
 
+## Asteroiden im Bild (`modules/stacking/asteroids.py`, `static/asteroids.js|css`; seit 0.39.0 – Wunsch 10)
+Ziel: „Du hast 9 Asteroiden fotografiert, der schwächste 16,2 mag“. Läuft als dritte Art in `insights.Insights` (`kind="asteroids"`,
+Ergebnis `results.stats.asteroids`, `v` = `ASTEROID_VERSION`), schaltbar über `insights.small_bodies` (gleiche Einstellung wie der
+Kleinkörper-Abgleich im Vergleich). Endpunkte `GET|POST /results/{id}/asteroids`, Ausschnitte `/results/{id}/asteroids/a<n>.png`
+(streng geprüft, Ablage `work/p<id>/asteroiden/r<rid>/`); `_slim` lässt `asteroids` aus der gepollten Projektansicht weg.
+- **Vorhersage:** Master-Stack (`pl._master`) + `wcs.json` (Schlüssel muss zur Stackgröße passen), je Nacht (≤ `MAX_NIGHTS` 3, die mit den
+  meisten Aufnahmen) eine JPL-SB-Ident-Abfrage zur mittleren Aufnahmezeit über `compare.small_bodies` (geozentrisch, MPC 500, Cache
+  `work/vergleich/jpl_*` – Schlüssel seit 0.39.0 `sb2|…`, weil jetzt `rate_ra`/`rate_dec` („/h, RA-Rate = dRA·cos δ) und `kind` a/c mitkommen).
+  `predict` rechnet Lage + Bewegung (px/s) im Stack-Raster; fehlt die Rate, zweite Abfrage eine Stunde später. Zeitbudget `JPL_BUDGET` 180 s.
+  **Standort nie senden:** die Parallaxe (Hauptgürtel ≤ ~6″) fängt der Suchkreis `SEARCH_AS` 15″ ab.
+- **Nachweis** (nur mit erreichbaren Rohbildern, `frames.deleted=0`): je Nacht ≤ `SAMPLE` 40 Aufnahmen über die Zeit verteilt, je
+  Aufnahme `pl._load` (Kalibrierung + cosmetic wie beim Stacken) → Luminanz (`skyquality.luma`), Registrierung aus den gespeicherten
+  Sternlisten (`skyquality.frame_links`, Flussfaktor kr/flux_k0), je Kleinkörper ein Ausschnitt um die vorhergesagte Lage auf dem Stack-Raster
+  (`frame_stamp`, Maßstab `resolution_scale` beachtet) minus Master-Stack. `detect` mittelt die Ausschnitte (Shift-and-Add), Fund =
+  geglättetes Maximum im Suchkreis ≥ `SNR_MIN` 5σ, **frühe und späte Hälfte** der Aufnahmen je ≥ `HALF_MIN` 2,5σ an derselben Stelle
+  (≤ max(2 px, 0,8 FWHM)) und rund (Achsenverhältnis ≤ `MAX_ELONG` 2). Die Hälften-Prüfung trennt Asteroiden von allem, was im
+  Ausschnitt wandert: mit falscher Bahnrichtung wurde ein heller Punkt sonst als verschmierte Spur „gefunden“ (Test). Gesucht werden nur
+  Körper bis Grenzgröße (`depth.grenze.m5`) + 1 mag (ohne Messung 20,5), höchstens `MAX_DETECT` 25 je Nacht; Gesamtbewegung < 2 FWHM →
+  `zu_langsam` (im Stack ein Stern, die Differenz zeigt nichts).
+- **Helligkeit:** Aperturfotometrie (Radius = Nullpunkt-Apertur 2·FWHM) auf dem Mittel; Nullpunkt `skyquality.zero_point` (Gaia, V-nah,
+  gemeinsamer Gaia-Cache), mag = ZP − 2,5 log(F/t). Der Master-Stack enthält die Asteroidenspur selbst (ungeclippte Anteile) und wird
+  mit abgezogen → Korrektur `self_overlap` (Überlapp der Bahn-Gauß-Profile / N_Stack; > 50 % → `zu_langsam`). Ohne Gaia: kein mag, Hinweis.
+  Synthetisch (Test): Fluss 900 ADU in 10 s → erwartete Helligkeit ±0,35 mag getroffen, SNR ~70 aus 36 Aufnahmen.
+- **Status je Körper:** `nachgewiesen`, `nicht_gefunden`, `keine_rohbilder` (UI „im Feld, nicht nachgewiesen“), `zu_langsam`,
+  `zu_schwach`, `nicht_geprueft`. Gezählt (`nachgewiesen`, Dashboard, Sage) werden nur nachgewiesene, je Name einmal.
+- **Dashboard:** Art `asteroids` in `KINDS`/`NET_KINDS` (nach dem Vergleich, nutzt die Grenzgröße der Tiefe), Sperre `nosolve` bzw.
+  `nosmall`; `totals.asteroids` = verschiedene Namen, Rekord `faint_asteroid`, Liste `asteroids`. **Sage:** Dienst `asteroid_tally`
+  (Stacking) → Kennzahl `asteroids` in `log_stats`, Erfolge `asteroid_first`/`asteroids_10`; Ereignis `stacking.asteroids` → `store.refresh`.
+- **UI:** `asteroidPanel` (Abschnitt „Asteroiden“ im Reiter Analyse), `asteroidOverlay` umhüllt `depthOverlay` im Analyse-Betrachter
+  (Klasse `ast-on`, localStorage `bild.asteroiden.marken`, Standard an). Test: `tests/test_asteroids.py` (`demo.generate_asteroid` =
+  wandernder Punkt mit bekannter Bahn, JPL-Attrappe, fester Nullpunkt; Seed in `tests/analysis_seed.py`).
+
 ## Analyse-Dashboard über alle Objekte (`modules/stacking/dashboard.py`, `static/dashboard.js|css`; seit 0.36.0)
 Nutzerwunsch „eigene Seite, wo man alle gleichzeitig analysieren kann, mit Statistiken und Animationen“. Route `#/analyse` (Unterpunkt von Bilder, `PAGE_WIDE`).
 - **Aggregat:** `collect(eng)` = je Objekt die neueste Version (gleiche Reihenfolge wie `project_views`), Status je Art `depth|compare|sky|tutor`
@@ -497,7 +529,7 @@ Nutzerwunsch „eigene Seite, wo man alle gleichzeitig analysieren kann, mit Sta
   {kinds, scope: missing|errors|all, ids?}`, `POST /analysis/pause {paused}`, `POST /analysis/stop`, `POST /analysis/develop {ids}` (Objekte mit Stack,
   ohne `wcs.json` → Entwicklungsauftrag; die Lösung entsteht beim Entwickeln, `auto_depth` misst danach). Nicht in `/projects` (wird gepollt).
 - **Sammelauftrag** `Batch` (eigener Thread, Aktivität „Analyse aller Objekte“, zählt in `busy_jobs`): Reihenfolge `KINDS` = Tutor, Himmel (lokal),
-  Tiefe, Vergleich (nutzt den Nullpunkt der Tiefe). Tiefe/Vergleich gehen einzeln durch `insights.submit` und werden abgewartet, danach `GAP_S` 3 s
+  Tiefe, Vergleich (nutzt den Nullpunkt der Tiefe), Asteroiden (seit 0.39.0). Tiefe/Vergleich/Asteroiden gehen einzeln durch `insights.submit` und werden abgewartet, danach `GAP_S` 3 s
   Pause → nie zwei Netzauswertungen gleichzeitig. Himmel = `skyquality.compute_project` (wartet, solange `SkyRunner` rechnet), Tutor = `build_report(refresh=True)`
   (mit Wetter ebenfalls Pause). Anhalten wirkt nach dem laufenden Schritt; Zustand nur im Speicher.
 - **UI:** Abschnitte zeichnen nur bei geänderten Daten neu (`paint` mit Signatur – sonst liefen Animationen bei jedem Poll erneut); Poll der Shell lädt nur

@@ -582,7 +582,8 @@ def small_bodies(when: str, ra: float, dec: float, hw_ra: float, hw_dec: float, 
     der Standort verlässt den Rechner nie). Positionen sind daher bis ~10″ ungenau (Parallaxe naher Objekte)."""
     import httpx
 
-    key = hashlib.sha1(f"sb|{when}|{ra:.3f}|{dec:.3f}|{hw_ra:.2f}|{hw_dec:.2f}".encode()).hexdigest()[:16]
+    # v2: mit Bewegung („/h) und Art (a/c) – ältere Zwischenspeicher hatten beides nicht
+    key = hashlib.sha1(f"sb2|{when}|{ra:.3f}|{dec:.3f}|{hw_ra:.2f}|{hw_dec:.2f}".encode()).hexdigest()[:16]
     f = cache_dir / f"jpl_{key}.json"
     if f.exists():
         return json.loads(f.read_text(encoding="utf-8"))
@@ -610,13 +611,23 @@ def small_bodies(when: str, ra: float, dec: float, hw_ra: float, hw_dec: float, 
                 hh, mm, ss = (float(v) for v in re.split(r"[: ]", ra_s.strip())[:3])
                 sg = -1 if de_s.strip().startswith("-") else 1
                 a, b, c = (abs(float(v)) for v in re.split(r"[ '\"]+", de_s.strip().lstrip("+-"))[:3])
+                rate = {k.split(" ")[0]: v for k, v in d.items() if " rate" in k}          # „RA rate ("/h)“, „Dec rate ("/h)“
                 out.append({"name": d.get("Object name") or "", "ra": (hh + mm / 60 + ss / 3600) * 15, "dec": sg * (a + b / 60 + c / 3600),
-                            "vmag": d.get("Visual magnitude (V)")})
+                            "vmag": d.get("Visual magnitude (V)"), "kind": kind,
+                            "rate_ra": _num(rate.get("RA")), "rate_dec": _num(rate.get("Dec"))})
             except (ValueError, TypeError):
                 continue
     cache_dir.mkdir(parents=True, exist_ok=True)
     f.write_text(json.dumps(out), encoding="utf-8")
     return out
+
+
+def _num(v):
+    try:
+        x = float(str(v).strip().lstrip("+"))
+        return x if math.isfinite(x) else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _catalog_check(cands, wcs, shape, t_cur: list, t_ref: list, cache_dir: Path, simbad=True, small=True) -> list[str]:

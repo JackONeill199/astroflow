@@ -8,6 +8,7 @@ import time
 
 import numpy as np
 
+from astroflow.modules.stacking.asteroids import ASTEROID_VERSION
 from astroflow.modules.stacking.compare import COMPARE_VERSION
 from astroflow.modules.stacking.depth import DEPTH_VERSION
 
@@ -66,6 +67,24 @@ def _compare(rng, i):
             "verworfen": {}, "fwhm_px": 3.1, "skala": 1.0, "bild": {"w": 1500, "h": 1050}, "hinweise": [], "erstellt": time.time(), "referenzen": 0}
 
 
+ASTEROIDS = {0: [("(1036) Ganymed", 15.8, 42.0), ("(2201) Oljato", 17.9, 61.0)], 1: [("(4179) Toutatis", 16.4, 88.0)],
+             7: [("(1036) Ganymed", 16.1, 40.0), ("(99942) Apophis", 18.6, 120.0)]}      # erfundene Funde (Namen echter Körper)
+
+
+def _asteroids(rng, i, night):
+    found = ASTEROIDS.get(i, [])
+    items = [{"name": n, "art": "Asteroid", "vmag": round(m - 0.2, 1), "mag": m, "mag_err": 0.08, "rate": r, "night": night, "status": "nachgewiesen",
+              "snr": round(float(rng.uniform(8, 40)), 1), "abweichung": 2.1, "aufnahmen": 40, "x": round(float(rng.uniform(80, 1400)), 1),
+              "y": round(float(rng.uniform(80, 1000)), 1), "bahn": None} for n, m, r in found]
+    items.append({"name": "(31415) Beispiel", "art": "Asteroid", "vmag": 19.4, "rate": 33.0, "night": night, "status": "keine_rohbilder",
+                  "x": 300.0, "y": 200.0, "bahn": None})
+    faint = max(items[:len(found)], key=lambda b: b["mag"]) if found else None
+    return {"v": ASTEROID_VERSION, "ok": True, "erstellt": time.time(), "naechte": [{"night": night, "aufnahmen": 40, "rohbilder": 40, "im_feld": len(items)}],
+            "kleinkoerper": items, "nachgewiesen": len(found), "im_feld": len(items),
+            "schwaechster": {"name": faint["name"], "mag": faint["mag"], "x": faint["x"], "y": faint["y"]} if faint else None,
+            "grenze": 19.5, "nullpunkt": 21.3, "suchradius": 15.0, "bild": {"w": 1500, "h": 1050}, "hinweise": []}
+
+
 def seed(db, work_dir, files: dict | None = None, device="Vaonis Stellina") -> list[int]:
     """Legt die Objekte samt Frames, Ergebnis und Himmelsnächten an. Rückgabe: Projekt-IDs in der Reihenfolge von OBJECTS."""
     from astroflow.modules.stacking import skyquality as sq
@@ -93,6 +112,7 @@ def seed(db, work_dir, files: dict | None = None, device="Vaonis Stellina") -> l
         if state == "ok":
             stats["depth"] = _depth(rng, name, ra, dec, m5, hours)
             stats["compare"] = _compare(rng, i)
+            stats["asteroids"] = _asteroids(rng, i, night)
         rid = db.x("INSERT INTO results(project_id,created,n_frames,exposure,files,stats) VALUES(?,?,?,?,?,?)",
                    (pid, time.time() - 86400 * (len(OBJECTS) - i), n, hours * 3600, json.dumps(files or {}), json.dumps(stats)))
         if state != "nosolve":

@@ -8,6 +8,7 @@ und über Ereignisse (`ctx.on` / `ctx.emit`):
   stacking.stacked(project_id, result_id, name) – neue Aufnahmen gestackt und entwickelt; vor dem Löschen der Rohbilder
                                                   (hochgeladene werden direkt danach gelöscht).
   stacking.imported(project_id, result_id, name) – fertiges JPG/PNG/TIFF in die Galerie importiert (Sage, kein SkyTrace).
+  stacking.asteroids(project_id, result_id, count) – Asteroiden in einem Bild nachgewiesen (Sage: Erfolge prüfen).
 """
 from __future__ import annotations
 

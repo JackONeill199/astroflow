@@ -27,7 +27,7 @@
 .ad-errs ul { margin: 0.375rem 0 0; padding-left: 1.125rem }
 
 /* Kennzahlen */
-.ad-kpis { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.625rem; margin-bottom: 1rem }
+.ad-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.625rem; margin-bottom: 1rem }
 .ad-kpi { display: block; padding: 0.875rem 1rem; border-radius: var(--r-lg); background: var(--surface); color: var(--fg); min-width: 0; position: relative; overflow: hidden;
   animation: fadeUp var(--t2) var(--ease) both; animation-delay: calc(var(--i, 0) * 45ms); transition: background var(--t), transform 120ms var(--ease) }
 .ad-kpi.skel { height: 5.5rem; animation: sk 1.3s linear infinite }
@@ -203,7 +203,7 @@ a.ad-kpi[href]:active { transform: scale(.985) }
 .ad-cat > a.on:hover { transform: scale(1.15) }
 .an-sec.in .ad-cat > a.on { animation: adPop 500ms var(--spring) both; animation-delay: calc(min(var(--i), 60) * 25ms + 200ms) }
 
-@media (max-width: 1400px) { .ad-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)) } }
+@media (min-width: 1900px) { .ad-kpis { grid-template-columns: repeat(8, minmax(0, 1fr)) } }      /* 8 Kennzahlen: eine Zeile nur auf breiten Schirmen */
 @media (max-width: 1100px) {
   .ad-grid2, .ad-cats { grid-template-columns: minmax(0, 1fr) }
   .ad-recs { grid-template-columns: minmax(0, 1fr) }
@@ -220,3 +220,7 @@ a.ad-kpi[href]:active { transform: scale(.985) }
 @media (prefers-reduced-motion: reduce) {
   .ad-kpi, .ad-kpi::after, .ad-u, .ad-seg, .ad-pt, .ad-line, .ad-bt i, .ad-hist i, .ad-cat > a.on, .ad-nights li, .ad-recs li, .ad-dot { animation: none !important }
 }
+
+/* Asteroiden über alle Bilder (seit 0.39.0) */
+.ad-ast-lead { font-size: 1.05rem; margin: 0 0 0.75rem }
+.ad-ast-lead b { color: var(--acc) }

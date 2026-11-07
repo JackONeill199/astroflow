@@ -49,7 +49,7 @@ class Module(BaseModule):
         self.store = SageStore(ctx.module_dir("sage"))
         self.kb = KB(self.store.root / "knowledge.db")
         self.store.enrich = lambda names: collection.enrich(self, names)
-        self.store.log_stats = lambda: collection.log_stats(observation_log(self))
+        self.store.log_stats = lambda: {**collection.log_stats(observation_log(self)), **self._asteroids()}
         self.scheduler = Scheduler(self)
         self._research_q: list[str] = []
         self.tasks: dict[str, dict] = {}
@@ -57,6 +57,7 @@ class Module(BaseModule):
         self.analyze_project = None                 # setzt api.build_router
         ctx.on("stacking.stacked", self._stacked)
         ctx.on("stacking.imported", self._stacked)
+        ctx.on("stacking.asteroids", self._asteroids_found)
         ctx.services["object_facts"] = self.object_facts     # SkyTrace-3D: Typ/Entfernung des Zielobjekts
         ctx.services["collection_progress"] = self.collection_progress   # Bilder → „Heute Nacht“: Messier-Raster
 
@@ -72,6 +73,18 @@ class Module(BaseModule):
         d = self.kb.fact(e["id"], "distance_ly")
         return {"id": e["id"], "name": e["name"], "otype": e.get("otype_label") or None,
                 "distance": d and d["value"], "distance_ly": d and d.get("num")}
+
+    def _asteroids(self) -> dict:
+        """Nachgewiesene Asteroiden aus dem Bilder-Modul (Dienst `asteroid_tally`) – Kennzahl `asteroids` für Erfolge."""
+        fn = self.ctx.services.get("asteroid_tally")
+        try:
+            return {"asteroids": int((fn() or {}).get("asteroids") or 0)} if fn else {}
+        except Exception:
+            return {}
+
+    def _asteroids_found(self, project_id: int, result_id: int, count: int = 0):
+        """Asteroiden in einem Bild nachgewiesen → Erfolge prüfen (eigener Thread, der Absender wartet nicht)."""
+        threading.Thread(target=self.store.refresh, daemon=True, name="sage-asteroids").start()
 
     def _stacked(self, project_id: int, result_id: int, name: str = ""):
         """Fertig gestacktes Bild automatisch bestimmen und in die Entdeckungen eintragen."""

@@ -50,6 +50,8 @@ ACHIEVEMENTS = [
     ("exposure_1h", "Geduldsprobe", "1 Stunde Belichtung an einem Objekt", "pulse", "Beobachtung", "max_obj_hours", 1),
     ("exposure_10h", "Langzeitbelichter", "10 Stunden Belichtung an einem Objekt", "pulse", "Beobachtung", "max_obj_hours", 10),
     ("total_100h", "Hundert Stunden", "100 Stunden Belichtung insgesamt", "medal", "Beobachtung", "total_hours", 100),
+    ("asteroid_first", "Kleinplanetenjäger", "Ersten Asteroiden in einem eigenen Bild nachgewiesen", "orbit", "Himmel", "asteroids", 1),
+    ("asteroids_10", "Asteroidengürtel", "10 verschiedene Asteroiden in eigenen Bildern nachgewiesen", "orbit", "Himmel", "asteroids", 10),
 ]
 # Kennzahlen, die sich aus den Objekten allein ergeben und deshalb rückwirkend datiert werden können
 OBJECT_KEYS = {"total_objects", "messier", "ngc", "caldwell", "galaxy", "planetary", "globular", "open_cluster", "snr",

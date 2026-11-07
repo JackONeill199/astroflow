@@ -18,11 +18,12 @@ import threading
 import time
 from collections import Counter
 
-KINDS = ("tutor", "sky", "depth", "compare")         # Reihenfolge im Sammelauftrag: schnell/lokal zuerst, Vergleich nach der Tiefe
-LABEL = {"tutor": "Tutor", "sky": "Himmel", "depth": "Tiefe", "compare": "Vergleich"}
+# Reihenfolge im Sammelauftrag: schnell/lokal zuerst, Vergleich und Asteroiden nach der Tiefe (nutzen deren Nullpunkt/Grenzgröße)
+KINDS = ("tutor", "sky", "depth", "compare", "asteroids")
+LABEL = {"tutor": "Tutor", "sky": "Himmel", "depth": "Tiefe", "compare": "Vergleich", "asteroids": "Asteroiden"}
 BLOCK = {"nosolve": "nicht per Plate-Solving gelöst", "nogaia": "Gaia-Abgleich ausgeschaltet", "noframes": "keine Einzelbild-Analysen",
-         "noquality": "keine Bildprüfung gespeichert"}
-NET_KINDS = ("depth", "compare")
+         "noquality": "keine Bildprüfung gespeichert", "nosmall": "Kleinkörper-Abgleich (JPL) ausgeschaltet"}
+NET_KINDS = ("depth", "compare", "asteroids")
 GAP_S = 3.0                                          # Pause nach jeder Netzauswertung (Dienste schonen)
 CACHE_S = 120.0                                      # spätestens dann neu sammeln (Nächte/Aufnahmen ändern sich selten)
 MAX_CLOUD = 4000                                     # Punkte im „Universum“
@@ -67,6 +68,12 @@ def _compare_info(c: dict) -> dict:
             "bild": c.get("bild")}
 
 
+def _asteroid_info(a: dict) -> dict:
+    found = [b for b in a.get("kleinkoerper") or [] if b.get("status") == "nachgewiesen"]
+    return {"n": a.get("nachgewiesen") or 0, "in_field": a.get("im_feld") or 0, "faintest": a.get("schwaechster"), "bild": a.get("bild"),
+            "items": [{k: b.get(k) for k in ("name", "art", "mag", "vmag", "rate", "night", "x", "y", "snr")} for b in found][:30]}
+
+
 def _cloud(pid: int, d: dict) -> list[dict]:
     """Punkte eines Bildes am Himmel: Feldmitte + Lage im Bild (genähert, Norden oben), Entfernung in Lichtjahren."""
     f, b = d.get("feld"), d.get("bild")
@@ -88,11 +95,13 @@ def _cloud(pid: int, d: dict) -> list[dict]:
 def collect(eng) -> dict:
     """Je Objekt die neueste Version mit Status und Kennzahlen der Auswertungen (ohne Live-Zustand der Warteschlangen)."""
     from . import deepsky, objects, skyquality, tutor
+    from .asteroids import ASTEROID_VERSION
     from .compare import COMPARE_VERSION
     from .depth import DEPTH_VERSION
     db, wd = eng.db, eng.s.work_dir
     skyquality.ensure_table(db)
     gaia, solver = bool(eng.s.gaia), bool(eng.pl.solver_cfg.enabled)
+    small = bool(eng.insights.settings().get("small_bodies"))
     projs = {p["id"]: p for p in db.q("SELECT id, name, kind, obj_id, options FROM projects")}
     newest = db.q("SELECT * FROM (SELECT id rid, project_id, created, exposure, n_frames, stats, ROW_NUMBER() OVER (PARTITION BY project_id "
                   "ORDER BY COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC, id DESC) rn FROM results) WHERE rn=1")
@@ -139,23 +148,26 @@ def collect(eng) -> dict:
         solved = (wd / f"p{pid}" / "wcs.json").exists()
         quality = st.get("quality") or {}
         # Status je Art
-        status = {"depth": _status(st.get("depth"), DEPTH_VERSION), "compare": _status(st.get("compare"), COMPARE_VERSION)}
+        status = {"depth": _status(st.get("depth"), DEPTH_VERSION), "compare": _status(st.get("compare"), COMPARE_VERSION),
+                  "asteroids": _status(st.get("asteroids"), ASTEROID_VERSION)}
         tc = st.get("tutor") or {}
         status["tutor"] = "done" if str(tc.get("key", "")).startswith(f"{tutor.TUTOR_VERSION}|") else "old" if tc else "none"
         status["sky"] = "none" if pid not in sky_ver else "done" if sky_ver[pid] >= skyquality.SKY_VERSION else "old"
         blocked = {}
         if not solved:
-            blocked["depth"] = blocked["compare"] = "nosolve"
+            blocked["depth"] = blocked["compare"] = blocked["asteroids"] = "nosolve"
         elif not gaia:
             blocked["depth"] = "nogaia"
         if not fr["metrics"]:
             blocked["sky"] = "noframes"
+        if solved and not small:
+            blocked["asteroids"] = "nosmall"
         if not quality:
             blocked["tutor"] = "noquality"
         row = {"id": pid, "rid": r["rid"], "name": p["name"], "kind": p["kind"], "kind_label": objects.KIND_LABEL.get(p["kind"] or "generic"),
                "created": r["created"], "exposure": r["exposure"] or 0, "n_frames": r["n_frames"] or 0, "nights": nights,
                "device": dev["name"], "score": quality.get("score"), "solved": solved, "status": status, "blocked": blocked,
-               "catalog": cat, "depth": None, "compare": None, "sky": None, "findings": [],
+               "catalog": cat, "depth": None, "compare": None, "sky": None, "asteroids": None, "findings": [],
                "can_develop": any((wd / f"p{pid}").glob("stack*/state.json"))}
         if status["depth"] in ("done", "old") and st["depth"].get("ok"):
             row["depth"] = _depth_info(st["depth"], r["exposure"])
@@ -165,6 +177,8 @@ def collect(eng) -> dict:
             row["compare"] = _compare_info(st["compare"])
             row["compare"]["items"] = [{k: c.get(k) for k in ("art", "sigma", "dmag", "mag_neu", "mag_ref", "x", "y", "katalog", "kleinkoerper")}
                                        for c in st["compare"].get("kandidaten") or []][:30]
+        if status["asteroids"] in ("done", "old") and st["asteroids"].get("ok"):
+            row["asteroids"] = _asteroid_info(st["asteroids"])
         ns = sky_rows.get(pid) or []
         if ns:
             own = [n for n in ns if n.get("sqm") is not None]
@@ -244,6 +258,18 @@ def summarize(base: dict, f: dict | None = None) -> dict:
         rec["score"] = ref(x, value=x["score"])
     if x := best(rows, lambda r: r["exposure"] or None):
         rec["exposure"] = ref(x, value=x["exposure"])
+    # Asteroiden: verschiedene nachgewiesene Kleinkörper, schwächster als Rekord
+    ast, seen = [], {}
+    for r in rows:
+        for b in (r.get("asteroids") or {}).get("items") or []:
+            ast.append({"id": r["id"], "name_obj": r["name"], "rid": r["rid"], "bild": r["asteroids"]["bild"], **b})
+            old = seen.get(b["name"])
+            if old is None or (b.get("mag") is not None and (old.get("mag") is None or b["mag"] > old["mag"])):
+                seen[b["name"]] = ast[-1]
+    ast_unique = sorted(seen.values(), key=lambda b: -(b.get("mag") or 0))
+    if x := best(ast_unique, lambda b: b.get("mag")):
+        rec["faint_asteroid"] = {"id": x["id"], "name": x["name_obj"], "rid": x["rid"], "value": x["mag"], "body": x["name"],
+                                 "x": x.get("x"), "y": x.get("y"), "bild": x.get("bild")}
     sky_nights = [dict(n, id=r["id"], name=r["name"]) for r in rows if r["sky"] for n in r["sky"]["nights"]]
     if f.get("night"):
         sky_nights = [n for n in sky_nights if n["night"] == f["night"]]
@@ -308,12 +334,15 @@ def summarize(base: dict, f: dict | None = None) -> dict:
     totals = {"objects": len(rows), "nights": len(nights), "exposure": sum(r["exposure"] for r in rows),
               "frames": sum(r["n_frames"] for r in rows), "analysed": sum(1 for r in rows if r["depth"]),
               "changes": sum(r["compare"]["n"] for r in rows if r["compare"]), "galaxies": sum(r["depth"]["galaxies"] for r in D),
-              "stars": sum(r["depth"]["erfasst"] or 0 for r in D), "imported": base["imported"]}
+              "stars": sum(r["depth"]["erfasst"] or 0 for r in D), "imported": base["imported"], "asteroids": len(seen)}
     years = sorted({n[:4] for r in all_rows for n in r["nights"]}, reverse=True)
     return {"totals": totals, "records": rec, "coverage": {k: dict(v) for k, v in cov.items()}, "blocked": list(blocked.values()),
             "sky_series": sky_series, "best_nights": best_nights, "depth_series": depth_series, "ranking": ranking,
             "score_hist": hist, "findings": findings, "catalogs": catalogs, "changes": changes[:40], "change_counts": dict(counts),
-            "rows": [{k: v for k, v in r.items() if k not in ("compare",)} | {"compare": {k: v for k, v in (r["compare"] or {}).items() if k != "items"} or None}
+            "asteroids": ast_unique[:40],
+            "rows": [{k: v for k, v in r.items() if k not in ("compare", "asteroids")}
+                     | {"compare": {k: v for k, v in (r["compare"] or {}).items() if k != "items"} or None,
+                        "asteroids": {k: v for k, v in (r.get("asteroids") or {}).items() if k != "items"} or None}
                      for r in rows],
             "filters": {"devices": base["devices"], "years": years, "nights": sorted({n for r in all_rows for n in r["nights"]}, reverse=True)},
             "gaia": base["gaia"], "solver": base["solver"], "filtered": filtered, "built": base["built"]}

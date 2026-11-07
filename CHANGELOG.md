@@ -3,6 +3,21 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.39.0 – 07.11.2026
+
+### Neu
+- **Asteroiden in deinen Bildern.** Im Reiter **Analyse** jedes Objekts zeigt der neue Abschnitt „Asteroiden“, welche bekannten
+  Kleinplaneten (und Kometen) laut JPL während deiner Aufnahmen im Bildfeld lagen – und welche du wirklich erwischt hast:
+  „Du hast 9 Asteroiden fotografiert, der schwächste mit 16,2 mag“. Nachgewiesen wird in den Einzelbildern: AstroFlow mittelt
+  alle Aufnahmen entlang der vorhergesagten Bahn (der Stack zeigt Asteroiden meist gar nicht – sie werden als Ausreißer
+  weggerechnet). Gezählt wird nur, was dabei als Punkt erscheint, mit gemessener Helligkeit (Gaia-Nullpunkt). Je Asteroid:
+  Name, gemessene und vorhergesagte Helligkeit, Bewegung in ″/h und der gemittelte Ausschnitt; im Bild markiert mit
+  Bahnstrich (abschaltbar). Sind die Rohbilder schon gelöscht, steht dort „im Feld, nicht nachgewiesen“.
+  An JPL gehen nur Himmelskoordinaten und Zeit – nie dein Standort (geozentrische Abfrage).
+- **Analyse-Dashboard:** neue Kennzahl „Asteroiden“, Rekord „Schwächster Asteroid“ und die Liste aller nachgewiesenen
+  Asteroiden über alle Bilder; „Alles analysieren“ kann die Suche für alle gelösten Objekte nacheinander ausführen.
+- **Sage:** neue Erfolge „Kleinplanetenjäger“ (erster Asteroid) und „Asteroidengürtel“ (10 verschiedene).
+
 ## 0.38.2 – 07.11.2026
 
 ### Behoben
