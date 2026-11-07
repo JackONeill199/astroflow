@@ -51,7 +51,9 @@ def test_erde_ansicht(server, browser, width, tmp_path):
     page.on("request", lambda r: tiles.append(r.url) if "tile." in r.url else None)
     page.goto(base + "/#/skytrace/erde/2022-08-01")
     page.wait_for_function("document.querySelector('#steHost')?._ste && !document.querySelector('#steHost')._ste.state().flying "
-                           "&& Object.values(document.querySelector('#steHost')._ste.state().reveal).every(v => v >= 1)", timeout=15000)
+                           "&& Object.values(document.querySelector('#steHost')._ste.state().reveal).every(v => v >= 1)"
+                           # Ebenen blenden auf langsamen Rechnern (CI ohne GPU) noch ein, wenn die Heatmap schon fertig ist
+                           "&& document.querySelector('#steHost')._ste.state().layers.heat >= 1", timeout=15000)
     st = _state(page)
     assert st["night"] == "2022-08-01" and st["heatVisible"] == ["2022-08-01"] and st["borders"] > 100000
     assert st["layers"]["heat"] == 1 and st["layers"]["runs"] == 0 and st["marks"]["sites"] == 3

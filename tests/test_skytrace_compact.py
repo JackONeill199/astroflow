@@ -44,6 +44,8 @@ def test_noise_stars_and_registration_residuals_stay_empty():
 
 def test_sequence_keeps_measured_neighbour_registration():
     """Gespeicherte Videogeometrie muss zum echten Nachbarbild passen, auch wenn Referenzlösungen springen."""
+    import pytest
+    pytest.importorskip("av")                      # sequence.py schreibt das Ereignisvideo mit PyAV (Engine-Paket)
     import contextlib
     import io
     import json

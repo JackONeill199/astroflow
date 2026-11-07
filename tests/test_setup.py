@@ -17,6 +17,8 @@ from astroflow.core import components as comp, launcher, setup as setup_mod
 from astroflow.core.config import load_settings
 from astroflow.server import create_app
 
+CLI_NAME = "astap_cli.exe" if sys.platform == "win32" else "astap_cli"     # components._install_astap nach os.name
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -151,7 +153,8 @@ def test_astap_herunterladen(home, tmp_path, monkeypatch):
     t = _wait_task(c, "astap")
     assert t["state"] == "done", t
     dest = tmp_path / "lad" / "astap"
-    assert (dest / "astap_cli.exe").is_file() and (dest / "deep_sky.csv").is_file() and (dest / "d05_0101.1476").is_file()
+    cli = CLI_NAME
+    assert (dest / cli).is_file() and (dest / "deep_sky.csv").is_file() and (dest / "d05_0101.1476").is_file()
     assert not list(dest.glob(".*part"))
     assert all("sourceforge.net/projects/astap-program/" in u for u in urls)
     # zweiter Lauf: nichts mehr laden, vorhandene Dateien bleiben
@@ -161,7 +164,7 @@ def test_astap_herunterladen(home, tmp_path, monkeypatch):
     assert any(a["key"] == "setup:astap" for a in c.get("/api/activity").json())
     # Entfernen löscht nur, was AstroFlow geladen hat
     rec = comp.records()["astap"]
-    assert {"astap_cli.exe", "deep_sky.csv", "d05_0101.1476"} <= set(rec["files"])
+    assert {cli, "deep_sky.csv", "d05_0101.1476"} <= set(rec["files"])
     assert c.post("/api/components/remove", json={"id": "astap"}).status_code == 200
     assert not (dest / "d05_0101.1476").exists() and (dest / "fremd.txt").is_file() and "astap" not in comp.records()
 
@@ -431,19 +434,20 @@ def test_paketordner_ohne_doppel(tmp_path):
 def test_astap_reparieren_laesst_fremdes_unberuehrt(home, tmp_path, monkeypatch):
     """Vorhandenes ASTAP (nicht von AstroFlow): „Reparieren“ lädt nichts, überschreibt nichts und vermerkt nichts als eigen."""
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "lad"))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "lad"))    # astap_dir() außerhalb von Windows
     monkeypatch.setattr(comp.platform, "system", lambda: "Windows")
     monkeypatch.setattr(comp.platform, "machine", lambda: "AMD64")
     dest = tmp_path / "lad" / "astap"
     dest.mkdir(parents=True)
-    for f in ("astap_cli.exe", "deep_sky.csv", "d05_0101.1476"):
+    for f in (CLI_NAME, "deep_sky.csv", "d05_0101.1476"):
         (dest / f).write_text("vom Nutzer")
     monkeypatch.setattr(comp, "download", lambda *a, **k: (_ for _ in ()).throw(AssertionError("kein Download erwartet")))
     monkeypatch.setattr(comp.subprocess, "run", lambda *a, **k: None)
     comp.install("astap", option="d05", force=True)
-    assert all((dest / f).read_text() == "vom Nutzer" for f in ("astap_cli.exe", "deep_sky.csv", "d05_0101.1476"))
+    assert all((dest / f).read_text() == "vom Nutzer" for f in (CLI_NAME, "deep_sky.csv", "d05_0101.1476"))
     assert "astap" not in comp.records()
     assert "verändert sie nicht" in comp.remove("astap") or "nicht von AstroFlow" in comp.remove("astap")
-    assert (dest / "astap_cli.exe").is_file()
+    assert (dest / CLI_NAME).is_file()
 
 
 def test_start_mit_portablem_ordner(monkeypatch, tmp_path):
