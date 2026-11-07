@@ -34,6 +34,14 @@ eine bestehende Installation übernimmt das bisherige Verhalten. Neu ist nur: am
 **Einstellungen → Heimnetz** öffnen, den QR-Code mit dem Handy scannen – fertig, das Handy bleibt gekoppelt. Wer das Heimnetz
 nicht braucht, schaltet es dort aus (wirkt nach Stop.bat/Start.bat). Der installierte Starter behält seine Einstellung ohnehin.
 
+## 0.45.6 – 07.11.2026
+
+### Behoben
+- Einstellungen: Eine beschädigte `settings.json` (z. B. von Hand bearbeitet, Komma vergessen) wird nie mehr überschrieben. Vorher ging beim nächsten Speichern alles außer dem geänderten Abschnitt verloren (Orte, Schlüssel, Modulauswahl …). Jetzt entsteht eine Kopie `settings.json.defekt-<Zeit>`, die App zeigt einen Hinweis, und Speichern meldet den Fehler, bis die Datei repariert ist. Kurz gesperrte Dateien (Windows) werden erneut gelesen; vor jedem Schreiben bleibt der letzte gute Stand als `settings.json.bak`.
+- Upload: Einzeln hochgeladene Rohbilder mit gleichem Namen (z. B. Stellina `img-0001r.fits` aus zwei Beobachtungen am selben Tag) überschreiben sich nicht mehr. Jeder Upload bekommt einen eigenen Ordner, und eine vorhandene Datei wird nie ersetzt.
+- Sage: Der Verlauf wird unter Windows nicht mehr sporadisch mit einem Fehler beendet, wenn die Oberfläche ihn gleichzeitig abfragt (Lesen und Schreiben unter derselben Sperre, kurze Wiederholung). Ein Lesefehler erscheint nicht mehr als leerer Verlauf.
+- Speicher aufräumen: „Sicherungen“ zählt nur noch tatsächlich entfernte Einträge.
+
 ## 0.45.5 – 07.11.2026
 
 ### Behoben

@@ -1223,6 +1223,7 @@ function upload(files) {
   ($('#ups') || document.body).prepend(box);
   if (!$('#ups')) { location.hash = '#/import'; }
   const fd = new FormData();
+  fd.append('upload_id', Date.now().toString(36) + Math.random().toString(36).slice(2, 10));   // eigener Ordner je Upload-Vorgang
   files.forEach(f => fd.append('files', f, f.relPath || f.webkitRelativePath || f.name));
   const xhr = new XMLHttpRequest();
   xhr.open('POST', '/api/stacking/upload');
