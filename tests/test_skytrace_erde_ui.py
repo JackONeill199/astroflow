@@ -426,7 +426,7 @@ def _sat_page(browser, base, tmp_path, width, touch=False):
 
 
 def _sat_xy(page):
-    box = page.locator(".ste-stage canvas").bounding_box()
+    box = page.locator(".ste-stage canvas:not(.ste-flat)").bounding_box()
     pts = page.evaluate("document.querySelector('#steHost')._st3d.screen()")
     p = next(p for p in pts if p["x"] is not None)
     return box["x"] + p["x"], box["y"] + p["y"]
@@ -448,7 +448,7 @@ def test_satellit_anklicken(server, browser, tmp_path):
     # Überfahren: Zeiger, Namensschild, Hervorhebung
     page.mouse.move(x + 6, y + 6)
     page.wait_for_selector(".ste-tip:not([hidden])")
-    assert "TESTSAT" in page.locator(".ste-tip").inner_text() and "ste-hot" in page.locator(".ste-stage canvas").get_attribute("class")
+    assert "TESTSAT" in page.locator(".ste-tip").inner_text() and "ste-hot" in page.locator(".ste-stage canvas:not(.ste-flat)").get_attribute("class")
     # Klick: zwei Objekte an dieser Stelle → Auswahl
     page.mouse.click(x + 6, y + 6)
     page.wait_for_selector(".ste-pick:not([hidden])")
