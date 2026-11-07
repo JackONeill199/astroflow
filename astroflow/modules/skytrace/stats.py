@@ -63,6 +63,54 @@ def _first_file(folder: Path) -> str | None:
     return min(names, default=None)
 
 
+def _frames_info(folder: Path) -> dict:
+    """Aufnahmezeiten (Unix-s), Belichtung, Gerät und Pfad der ersten Aufnahme aus frames.jsonl – Grundlage der Satellitenrate."""
+    from json_store import open_read
+    times, exps, dev, first = [], [], None, None
+    try:
+        with open_read(folder / "frames.jsonl") as rows:
+            for line in rows:
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(r, dict) or not isinstance(r.get("timestamp"), (int, float)):
+                    continue
+                times.append(float(r["timestamp"]))
+                m = r.get("meta") if isinstance(r.get("meta"), dict) else {}
+                if isinstance(m.get("exposure_seconds"), (int, float)):
+                    exps.append(float(m["exposure_seconds"]))
+                if dev is None and m.get("INSTRUME"):
+                    dev = f"{m['INSTRUME']}|{m.get('GAIN')}"
+                    try:
+                        dev = f"{m['INSTRUME']}|{float(m['GAIN'])}"
+                    except (KeyError, TypeError, ValueError):
+                        pass
+                if first is None and isinstance(r.get("file"), str):
+                    first = r["file"]
+    except OSError:
+        pass
+    return dict(_times=times, _exp=sorted(exps)[len(exps) // 2] if exps else None, _dev=dev, _first_path=first)
+
+
+def _satellites(items: list, run: str) -> list[dict]:
+    """Zugeordnete Satelliten eines Laufs mit Helligkeits-Messwerten (satellites.phot_of) – wie `achievements.classify` eingeordnet."""
+    from .achievements import classify
+    from .satellites import phot_of
+    out = []
+    for c in items or []:
+        if not isinstance(c, dict):
+            continue
+        slim = _candidate(c, run)
+        kind, hit, _ = classify(slim)
+        if kind != "satellite" or not hit:
+            continue
+        full = next((r for r in c.get("catalogs") or [] if r.get("provider") == "satellites" and r.get("status") == "compatible" and r.get("matches")), None)
+        ph = phot_of(c, full["matches"][0]) if full else None
+        out.append(dict(id=c.get("id"), run=run, ts=c.get("timestamp"), name=hit.get("name"), norad=hit.get("norad_id"), ph=ph))
+    return out
+
+
 def _run(path: Path) -> dict:
     """Beobachtungen eines Laufs samt Kandidaten (gecacht nach Dateizeiten)."""
     summaries = _read(path / "videos.json", []) or []
@@ -79,7 +127,8 @@ def _run(path: Path) -> dict:
         items = _read(path / s["candidates_file"], []) if s.get("candidates_file") else []
         cands = [_candidate(c, path.name) for c in items or [] if isinstance(c, dict)]
         first = s.get('source_first_file') or (_first_file(path / Path(s["video"]).parent) if s.get("video") else None)
-        sessions.append(dict(session=s["session"], run=path.name, folder=Path(s["video"]).parent.name if s.get("video") else None, first=first, frames=s.get("frames") or 0, excluded=s.get("excluded") or 0,
+        extra = _frames_info(path / Path(s["video"]).parent) if s.get("video") else {}
+        sessions.append(dict(extra, _sat=_satellites(items, path.name), session=s["session"], run=path.name, folder=Path(s["video"]).parent.name if s.get("video") else None, first=first, frames=s.get("frames") or 0, excluded=s.get("excluded") or 0,
                              hits=s.get("hits") or 0, complete=s.get("state") == "Fertig" and not s.get("limited", False),
                              night=_night(s["session"], [c["timestamp"] for c in cands if isinstance(c["timestamp"], (int, float))]),
                              candidates=cands))
@@ -106,5 +155,5 @@ def collect(results: Path, skip: str | None = None) -> dict:
     sessions = sorted(best.values(), key=lambda s: (s["night"] or "", s["session"]), reverse=True)
     candidates = [c for s in sessions for c in s["candidates"]]
     return dict(runs=len({s["run"] for s in sessions}), all_runs=len(runs), repeated=total - len(sessions),
-                sessions=[{k: v for k, v in s.items() if k != "candidates"} | {"candidate_count": len(s["candidates"])} for s in sessions],
-                candidates=candidates)
+                sessions=[{k: v for k, v in s.items() if k != "candidates" and not k.startswith("_")} | {"candidate_count": len(s["candidates"])} for s in sessions],
+                candidates=candidates, _full=sessions)         # `_full`: interne Daten (Satellitenstatistik), nie an den Browser

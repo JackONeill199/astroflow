@@ -39,6 +39,27 @@ Nachstellen: Playwright `Pixel 7` + CDP `Network.emulateNetworkConditions` über
 Originalaufnahmen liegen nie im Ergebnisordner. UI: Papierkorb auf den Karten (bei Hover), in der Lauf-Ansicht und in der Befehlspalette,
 jeweils mit Bestätigungsdialog.
 
+## Satellitenhelligkeit und Satelliten je Stunde (`satellites.py`, `static/skytrace-satelliten.js`, 0.39.0, Wunsch 18)
+`GET /api/skytrace/statistics/satellites` → `Module.satellite_stats` (20 s gecacht) → `satellites.collect(stats.collect(...), zps, resolve_site)`. Läuft im
+Server (nur numpy, kein Engine-Interpreter) auf den **gespeicherten** Läufen, ohne Neuanalyse; Antwort klein (Zellen je Ort/Jahr/Monat, ~3 KB für 200 Spuren).
+- **Fluss:** `evidence.profile` des Kandidaten (Querprofil im Trefferbild, ADU nach 2×2-Mittelung, Seitenhintergrund abgezogen, Median entlang der
+  Spur) – Summe über ±7 px × `length_pixels` × Binning² (`plausibility.original_size/analysis_size`) = Rohpixel-ADU der Spur; geteilt durch die
+  Durchgangszeit `|passage_seconds[1] − [0]|` des Katalogtreffers = ADU/s (`phot_of`, `flux_rate`). Die Spurenden sind grob gerastert (Länge in 48-px-Schritten),
+  Länge und Zeit kürzen sich aber weitgehend. Verworfen: kein Profil/Länge, Durchgangszeit < 0,02 s oder > 1,3 × Belichtung, Fluss ≤ 0.
+  Nur Kandidaten, die `achievements.classify` als Satellit einordnet. Ältere Läufe ohne `evidence.profile` zählen für die Rate, haben keine mag.
+- **Nullpunkt:** Dienst `night_zero_points` des Bilder-Moduls (`{nights: {"<Nacht>|<INSTRUME>|<Gain>": zp}, devices: {...}}`, Median der `sky_nights.zp`
+  mit `zp_source == stack`, mag für 1 ADU/s über der Atmosphäre). Rangfolge `pick_zp`: Nacht → Gerät → `NOMINAL_ZP` (Stellina 22,0, Median der Gaia-Nullpunkte aller
+  Nächte) als „Schätzung“. Gerät/Nacht aus `frames.jsonl` (`stats._frames_info`: `INSTRUME`, `GAIN` als Float, Belichtung, Zeiten). Ohne Dienst/Gerät keine mag.
+  mag = ZP − `K_EXT` (0,20) × Luftmasse(Bildfeldhöhe aus `world_path`, Ort, Zeit) − 2,5·lg(ADU/s): scheinbare Helligkeit im Luminanzband, **keine** Normhelligkeit
+  (keine Entfernungs-/Phasenreduktion), Unsicherheit grob 0,3 (Nacht) – 0,6 mag (Schätzung). An den echten Läufen (203 Spuren): Starlink-Median ≈ 7 mag (4,2–8,4),
+  Raketenstufen bis 3,5 mag, GLONASS ≈ 11 mag – passt zur Erwartung.
+- **Rate:** je Beobachtung (neueste vollständige Analyse, wie die Statistik) Σ Belichtung der angenommenen Aufnahmen (`frames.jsonl`) bei Sonnenhöhe < −12° (`SUN_NIGHT`,
+  Näherung ~0,05°), Ort über `observation_settings.resolve_site` (Ortsliste der Nacht), ohne Ort „Standort unbekannt“ ohne Nachtfilter. Spuren in der Dämmerung zählen nicht. Zeiträume
+  unter 0,5 h zeigt die Oberfläche nicht als Rate. Die Rate hängt vom Bildfeld ab (Stellina 1,06° × 0,72°) und gilt je Gerät.
+- `stats.collect` liefert zusätzlich `_full` (interne Sitzungen mit `_times/_exp/_dev/_sat`); `/statistics` entfernt alle `_`-Schlüssel, damit die Antwort schlank bleibt.
+- UI: `window.stSatellites(host)` aus `statsView` (Abschnitt unter der Statistik): Balken je Jahr/Monat (Starlink/OneWeb/übrige), Standort-Auswahl, Histogramm, hellste Spur.
+- Tests: `tests/test_skytrace_satelliten.py` (Astronomie, Fluss/mag, Nullpunkt-Rangfolge, synthetische Läufe mit erfundenem Ort), `test_skyquality.py::test_dienst_nullpunkte_je_nacht`.
+
 ## Statistik (`stats.py`, 01.11.2026, Nutzerwunsch)
 `GET /api/skytrace/statistics` → `stats.collect`: alle Läufe mit `videos.json` (laufende Analyse ausgenommen), je Beobachtung
 (`session` + Name der ersten Aufnahme aus `frames.jsonl`/`ausgeschlossen.jsonl`) nur die neueste vollständige Analyse (sonst die
