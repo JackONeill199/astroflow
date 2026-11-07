@@ -812,14 +812,30 @@ def summary(db, with_dirs: bool = True) -> dict:
 
 
 def _best_window(nights: list[dict], k: int = 5) -> dict | None:
-    """Dunkelster zusammenhängender Abschnitt einer Nacht: Median über k aufeinanderfolgende ungestörte Kurvenpunkte aller Objekte."""
-    pts = sorted((p["ts"], p["sqm"]) for n in nights for p in n.get("curve") or [] if p.get("sqm") is not None and not p.get("flags"))
-    if not pts:
+    """Dunkelster zusammenhängender Abschnitt einer Nacht: Median über k aufeinanderfolgende ungestörte Kurvenpunkte.
+    Die Kurve eines Objekts wird an gestörten Punkten (Flags, ohne Wert) in ungestörte Läufe geteilt – ein Fenster überspannt nie eine Störung."""
+    runs: list[list[tuple]] = []
+    for n in nights:
+        run: list[tuple] = []
+        for p in sorted(n.get("curve") or [], key=lambda p: p["ts"]):
+            if p.get("sqm") is not None and not p.get("flags"):
+                run.append((p["ts"], p["sqm"]))
+            elif run:
+                runs.append(run)
+                run = []
+        if run:
+            runs.append(run)
+    if not runs:
         return None
-    k = min(k, len(pts))
-    best = max(range(len(pts) - k + 1), key=lambda i: float(np.median([v for _, v in pts[i:i + k]])))
-    w = pts[best:best + k]
-    return {"from": w[0][0], "to": w[-1][0], "sqm": _r(float(np.median([v for _, v in w])), 2)}
+    long = [r for r in runs if len(r) >= 3] or runs          # Mini-Läufe nur, wenn es nichts Besseres gibt
+    cand = []
+    for r in long:
+        kk = min(k, len(r))
+        for i in range(len(r) - kk + 1):
+            w = r[i:i + kk]
+            cand.append((float(np.median([v for _, v in w])), w))
+    med, w = max(cand, key=lambda c: c[0])
+    return {"from": w[0][0], "to": w[-1][0], "sqm": _r(med, 2)}
 
 
 def _pct(vals: list[float], v: float, higher_better: bool) -> float:

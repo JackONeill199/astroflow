@@ -300,3 +300,12 @@ def test_clean_nights(tmp_path, monkeypatch):
     assert g["months"][7]["sqm"] == 21.75 and g["months"][0]["sqm"] is None and len(g["months"]) == 12
     wz = next(x for x in d["sites"] if x["name"] == "Testwiese")
     assert wz["best_month"] == 2 and d["n_nights"] == 6 and d["n_sure"] == 4
+
+
+def test_best_window_never_spans_a_disturbance():
+    """Gestörte Punkte teilen die Kurve: das dunkelste Fenster liegt in einem ungestörten Lauf, nicht über der Wolke."""
+    pts = [{"ts": 60 * i, "sqm": 21.9, "flags": ["cloud"] if i == 3 else []} for i in range(8)]
+    w = sq._best_window([{"curve": pts}])
+    assert w is not None and not (w["from"] <= 180 <= w["to"])          # Punkt 3 (ts 180) liegt nie im Fenster
+    assert (w["from"], w["to"]) in ((240, 420), (0, 120))               # Lauf 4–7 (5 Punkte nicht möglich -> 4 Punkte) bzw. 0–2
+    assert sq._best_window([{"curve": [{"ts": 0, "sqm": 21.0, "flags": ["moon"]}]}]) is None
