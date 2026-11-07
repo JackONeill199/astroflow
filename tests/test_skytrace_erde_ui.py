@@ -385,7 +385,7 @@ def test_mausrad_ueber_seitenleiste_scrollt_statt_zu_zoomen(server, browser, tmp
 
 # ---- Satellit anklicken (0.45.0): Hover, Auswahl bei mehreren, Infokarte mit Ausschnitt, flache Karte, Handy ----
 def _sat_detail(name, norad):
-    crop = {"url": "/api/skytrace/satellite/crop?run=x&key=Testfeld/K0001", "width": 300, "height": 200, "line": [[30, 170], [270, 30]],
+    crop = {"url": "/api/skytrace/satellite/crop?run=x&key=Testfeld%2FK0001", "width": 300, "height": 200, "line": [[30, 170], [270, 30]],
             "kind": "kandidat", "frame": 31, "time": "2024-03-01T21:00:05 UTC"}
     return dict(ok=True, name=name, norad_id=norad, intl_id="2024-001A", kind="Satellit", launch_date="2024-01-15", launch_year=2024, owner="ESA",
                 decay_date=None, catalog_source="SATCAT-Kopie", orbit_catalog={"perigee_km": 410, "apogee_km": 420}, tle_age_days=.4,
@@ -417,8 +417,8 @@ def _sat_page(browser, base, tmp_path, width, touch=False):
     page.route("**/api/skytrace/run3d?*", lambda route: route.fulfill(json=scene))
     page.route("**/api/skytrace/runs", lambda route: route.fulfill(json=[dict(id=scene["run"], title="Testfeld", modified=1, sessions=1, frames=60, excluded=3,
                                                                               candidates=2, preview=None)]))
-    page.route("**/api/skytrace/satellite?*", detail)
-    page.route("**/api/skytrace/satellite/crop?*", lambda route: route.fulfill(body=buf.getvalue(), content_type="image/png"))
+    page.route("**/api/skytrace/satellite?**", detail)
+    page.route("**/api/skytrace/satellite/crop?**", lambda route: route.fulfill(body=buf.getvalue(), content_type="image/png"))
     page.goto(base + "/#/skytrace/3d")
     page.wait_for_function("(s => s?.runReady && !s.flying)(document.querySelector('#steHost')?._ste?.state())", timeout=15000)
     page.locator(".ste-stage").scroll_into_view_if_needed()

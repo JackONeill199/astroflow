@@ -331,7 +331,7 @@ def details(run_path: Path, key: str, norad: int, home: Path, zps=None) -> dict:
     g = crop_geometry(run_path, c)
     if g:
         from urllib.parse import quote
-        out["crop"] = dict(url=f"/api/skytrace/satellite/crop?run={quote(run_path.name)}&key={quote(key)}&v={g['stamp'] % 10 ** 9}",
+        out["crop"] = dict(url=f"/api/skytrace/satellite/crop?run={quote(run_path.name, safe='')}&key={quote(key, safe='')}&v={g['stamp'] % 10 ** 9}",
                            width=g["width"], height=g["height"], line=g["line"], kind=g["kind"], frame=g["frame"], time=g["time"])
     else:
         out["crop"] = None
