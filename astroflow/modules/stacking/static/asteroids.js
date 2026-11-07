@@ -3,7 +3,13 @@
 // Daten: /stacking/results/<id>/asteroids (eigener Endpunkt, Auswertung in insights.py → asteroids.py). Nutzt insightLoad/insightData
 // und de1 aus depth.js.
 
-const AST_MARKS = { on: store.get('bild.asteroiden.marken', true) };
+// Marken im Bild: 'aus' | 'ok' (nur nachgewiesene, beschriftet) | 'alle' (dazu nicht nachgewiesene als kleine Punkte ohne Text).
+// Seit 0.43.4 – vorher ein Knopf an/aus, der alle Körper beschriftete (M16: ~50 übereinanderliegende Namen). Alter Wert „aus“ bleibt aus.
+const AST_MARKS = { mode: store.get('bild.asteroiden.markenart', store.get('bild.asteroiden.marken', true) ? 'ok' : 'aus') };
+const AST_MODES = [['aus', 'Aus', 'Keine Asteroiden-Marken im Bild'], ['ok', 'Nachgewiesen', 'Nur in deinen Einzelbildern nachgewiesene Asteroiden markieren und beschriften'],
+  ['alle', 'Alle', 'Zusätzlich alle laut JPL im Feld liegenden Kleinkörper als kleine Punkte (ohne Namen)']];
+// Zeigt das Overlay in diesem Modus überhaupt etwas? (sonst blendet .ast-on die Objektnamen grundlos aus)
+const astShows = (d) => !!d?.bild && (d.kleinkoerper || []).some(b => b.x != null && (AST_MARKS.mode === 'alle' || (AST_MARKS.mode === 'ok' && b.status === 'nachgewiesen')));
 const AST_STATUS = {
   nachgewiesen: ['nachgewiesen', 'ok'], nicht_gefunden: ['nicht gefunden', ''], keine_rohbilder: ['im Feld, nicht nachgewiesen', ''],
   zu_langsam: ['zu langsam für den Nachweis', ''], zu_schwach: ['zu schwach für dein Bild', ''], nicht_geprueft: ['nicht geprüft', ''],
@@ -25,7 +31,7 @@ function asteroidPanel(host, r, viewer, opts = {}) {
     draw(d);
     if (d.state === 'queued' || d.state === 'running') timer = setTimeout(() => poll(true), 2000);
     else if (d.state === 'done') viewer?.redraw();
-    viewer?.el.classList.toggle('ast-on', AST_MARKS.on && d.state === 'done' && !!d.bild);
+    viewer?.el.classList.toggle('ast-on', d.state === 'done' && astShows(d));
   };
   const run = async () => {
     try { await send(`/stacking/results/${r.id}/asteroids`, {}); insightData.delete(`asteroids:${r.id}`); poll(true); } catch (e) { toast(e.message, 'bad'); }
@@ -47,7 +53,9 @@ function asteroidPanel(host, r, viewer, opts = {}) {
     }
     const items = d.kleinkoerper || [], n = d.nachgewiesen || 0, f = d.schwaechster;
     const q = `?t=${Math.round(d.erstellt || 0)}`, nn = (d.naechte || []).length;
-    const acts = `${d.bild && items.length ? `<button class="btn ghost sm${AST_MARKS.on ? ' on' : ''}" data-ast-marks aria-pressed="${AST_MARKS.on}">${icon('target')}Im Bild markieren</button>` : ''}
+    const nAll = items.filter(b => b.x != null).length;
+    const acts = `${d.bild && nAll ? `<span class="dim sm ast-seg-l">Im Bild</span><div class="seg ast-seg" role="group" aria-label="Asteroiden im Bild markieren">${AST_MODES.map(([k, l, t]) =>
+        `<button type="button" data-ast-mode="${k}" class="${AST_MARKS.mode === k ? 'on' : ''}" aria-pressed="${AST_MARKS.mode === k}" title="${t}">${l}${k === 'alle' ? ` <span class="dim tnum">${nf.format(nAll)}</span>` : ''}</button>`).join('')}</div>` : ''}
       <button class="linkbtn sm" data-ast-run>Neu suchen</button>`;
     // dicht wie das Analyse-Dashboard: ein Satz, Kennzahlen als Leiste, Funde als Tabelle (erst AST_ROWS Zeilen)
     host.innerHTML = head(acts) + `
@@ -82,31 +90,46 @@ function asteroidPanel(host, r, viewer, opts = {}) {
       astAll = !astAll; tab.classList.toggle('all', astAll);
       ev.currentTarget.textContent = astAll ? 'Weniger anzeigen' : `Alle ${nf.format(items.length)} anzeigen`;
     });
-    $('[data-ast-marks]', host)?.addEventListener('click', (ev) => {
-      AST_MARKS.on = !AST_MARKS.on; store.set('bild.asteroiden.marken', AST_MARKS.on);
-      ev.currentTarget.classList.toggle('on', AST_MARKS.on); ev.currentTarget.setAttribute('aria-pressed', AST_MARKS.on);
-      viewer?.el.classList.toggle('ast-on', AST_MARKS.on); viewer?.redraw();
+    $('.ast-seg', host)?.addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-ast-mode]'); if (!b) return;
+      AST_MARKS.mode = b.dataset.astMode; store.set('bild.asteroiden.markenart', AST_MARKS.mode);
+      $$('[data-ast-mode]', host).forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on); });
+      viewer?.el.classList.toggle('ast-on', astShows(d)); viewer?.redraw();
     });
   }
   host.innerHTML = head() + '<div class="skel-line"></div>';
   poll(false);
 }
 
-// Overlay für createViewer: base (Objektnamen, Tiefenmarken) + Asteroiden: Bahnstrich der Nacht, Kreis an der Lage, Name.
+// Overlay für createViewer: base (Objektnamen, Tiefenmarken) + Asteroiden. Nachgewiesene: Bahnstrich der Nacht, Kreis, Name –
+// Namen überlappen nie (gierig vom hellsten an: rechts, sonst links, sonst ohne Text). Modus „Alle“: übrige nur als kleine
+// gedämpfte Punkte ohne Text und ohne Bahn (bei M16 lagen ~50 Körper im Feld; Namen stehen in der Tabelle darunter).
 function asteroidOverlay(rid, base) {
   return (svg, width) => {
     base?.(svg, width);
     svg.querySelector('.ast-marks')?.remove();
     const d = insightData.get(`asteroids:${rid}`);
-    if (!AST_MARKS.on || !d?.bild) return;
+    if (AST_MARKS.mode === 'aus' || !d?.bild) return;
     const sc = width / (d.bild.w || width), fs = Math.max(12, width / 60);
-    const html = (d.kleinkoerper || []).filter(b => b.x != null).map((b) => {
-      const ok = b.status === 'nachgewiesen', rr = fs * (ok ? 1.1 : 0.8);
+    const all = (d.kleinkoerper || []).filter(b => b.x != null);
+    const ok = all.filter(b => b.status === 'nachgewiesen').sort((a, b) => (a.mag ?? 99) - (b.mag ?? 99));
+    const rest = AST_MARKS.mode === 'alle' ? all.filter(b => b.status !== 'nachgewiesen') : [];
+    const dots = rest.map(b => `<circle cx="${b.x * sc}" cy="${b.y * sc}" r="${fs * .32}"/>`).join('');
+    const boxes = [], hit = (q) => boxes.some(o => q.x < o.x + o.w && o.x < q.x + q.w && q.y < o.y + o.h && o.y < q.y + q.h);
+    for (const b of ok) boxes.push({ x: b.x * sc - fs * 1.1, y: b.y * sc - fs * 1.1, w: fs * 2.2, h: fs * 2.2 });   // Kreise freihalten
+    const marks = ok.map((b) => {
+      const x = b.x * sc, y = b.y * sc, rr = fs * 1.1;
       const line = b.bahn ? `<line x1="${b.bahn[0][0] * sc}" y1="${b.bahn[0][1] * sc}" x2="${b.bahn[1][0] * sc}" y2="${b.bahn[1][1] * sc}"/>` : '';
-      const label = ok && b.mag != null ? `${b.name} · ${de1(b.mag)} mag` : b.name;
-      return `<g class="am ${ok ? 'am-ok' : 'am-pred'}">${line}<circle cx="${b.x * sc}" cy="${b.y * sc}" r="${rr}"/>
-        <text x="${b.x * sc + rr + fs * .3}" y="${b.y * sc + fs * .35}" font-size="${fs}">${esc(label)}</text><title>${esc(label)}</title></g>`;
+      const label = b.mag != null ? `${b.name} · ${de1(b.mag)} mag` : b.name, w = label.length * fs * 0.56, h = fs * 1.25;
+      let text = '';
+      for (const [tx, anchor] of [[x + rr + fs * .3, 'start'], [x - rr - fs * .3, 'end']]) {
+        const box = { x: anchor === 'start' ? tx : tx - w, y: y - h * .6, w, h };
+        if (box.x < 0 || box.x + w > width || hit(box)) continue;
+        boxes.push(box);
+        text = `<text x="${tx}" y="${y + fs * .35}" font-size="${fs}" text-anchor="${anchor}">${esc(label)}</text>`; break;
+      }
+      return `<g class="am am-ok">${line}<circle cx="${x}" cy="${y}" r="${rr}"/>${text}<title>${esc(label)}</title></g>`;
     }).join('');
-    svg.insertAdjacentHTML('beforeend', `<g class="ast-marks">${html}</g>`);
+    svg.insertAdjacentHTML('beforeend', `<g class="ast-marks">${dots ? `<g class="am am-pred">${dots}</g>` : ''}${marks}</g>`);
   };
 }

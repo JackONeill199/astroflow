@@ -3,6 +3,18 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.43.3 – 07.11.2026
+
+### Behoben
+- **Umschaltknöpfe zeigen jetzt, ob sie an sind.** „Im Bild markieren“ (Tiefe) und „Details“ sahen eingeschaltet genauso aus
+  wie ausgeschaltet – der Glas-Stil überdeckte die Markierung. Eingeschaltet tragen sie jetzt einen Akzentrahmen, eine
+  getönte Fläche und ein farbiges Symbol, in allen Darstellungsstilen.
+- **Asteroiden-Marken verdecken das Bild nicht mehr.** Bei Feldern mit vielen Kleinkörpern (M16: rund 50) lagen die
+  Namen übereinander auf dem Foto. Statt des Knopfs gibt es eine Auswahl „Aus / Nachgewiesen / Alle“: Standard sind nur
+  die in deinen Einzelbildern nachgewiesenen Asteroiden mit Kreis, Bahn und Namen; „Alle“ zeigt die übrigen laut JPL im
+  Feld liegenden Körper als kleine, gedämpfte Punkte ohne Namen (die stehen in der Tabelle). Namen überlappen sich nie –
+  passt einer weder rechts noch links, bleibt nur der Kreis.
+
 ## 0.43.2 – 07.11.2026
 
 ### Behoben

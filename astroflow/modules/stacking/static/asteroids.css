@@ -14,6 +14,9 @@
 .ast-tab .chip { height: 1.125rem; font-size: 0.6875rem }
 .ast-tab .chip.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent) }
 .ast-tab .ast-chip-m { display: none }
+.ast-seg-l { margin-right: 0.375rem }
+.ast-seg .dim { font-size: 0.6875rem }
+@media (max-width: 760px) { .ast-seg-l { display: none } }
 .ast-note { margin: 0.375rem 0 0; font-size: 0.6875rem }
 @media (max-width: 760px) {
   .ad-kpis.ast-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) }
@@ -25,11 +28,11 @@
   .ast-tab .ast-chip-m { display: inline-flex; margin-top: 0.125rem }
 }
 
-/* Marken im Betrachter: nachgewiesen = Kreis + Bahnstrich, nur vorhergesagt = gestrichelt */
+/* Marken im Betrachter: nachgewiesen = Kreis + Bahnstrich + Name, im Modus „Alle“ übrige als kleine gedämpfte Punkte */
 .viewer.hover-labels.ast-on.ready .vov { opacity: 1 }
 .viewer.ast-on:not(:hover) .vov > g:not(.depth-marks):not(.ast-marks) { display: none }
 .vov .ast-marks circle { fill: none; stroke-width: 0.125rem }
 .vov .ast-marks line { stroke-width: 0.125rem; stroke-linecap: round; opacity: 0.85 }
 .vov .ast-marks text { paint-order: stroke; stroke: #000000b3; stroke-width: 0.1875rem; font-weight: 500 }
 .vov .am-ok circle, .vov .am-ok line { stroke: #7fe0a0 } .vov .am-ok text { fill: #d4f7df }
-.vov .am-pred circle, .vov .am-pred line { stroke: #9aa3b2; stroke-dasharray: 3 3 } .vov .am-pred text { fill: #d7dbe2 }
+.vov .am-pred circle { stroke: #c3cad6; stroke-width: 0.0938rem; opacity: 0.55 }
