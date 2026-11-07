@@ -64,16 +64,16 @@ unter einer Oberfläche (einzeln abschaltbar unter Einstellungen → Module & Sy
 Jedes Objekt erscheint automatisch, sobald seine Rohbilder im Eingangsordner liegen – Objekt, Kamera und Nacht erkennt AstroFlow aus Header, Ordnername oder
 Plate-Solving. Beim Stacken zeigt die **Live-Ansicht** echte Zwischenvorschauen mit dem aktuellen Schritt.
 
-![Live-Ansicht beim Stacken](docs/media/stacking-live.gif)
+![Live-Ansicht beim Stacken](docs/media/stacking-live.webp)
 
 Der **Stacking-Verlauf** zeigt, was 1, 3, 10, 30, 100 … Aufnahmen ausmachen, und **Vorher/Nachher** vergleicht den linearen Stack mit dem entwickelten Bild
 (Gradienten, Gaia-Farbkalibrierung, optional GraXpert und StarNet).
 
 | | |
 |---|---|
-| ![Stacking-Verlauf](docs/media/stacking-stufen.gif) | ![Vorher/Nachher](docs/media/vorher-nachher.gif) |
+| ![Stacking-Verlauf](docs/media/stacking-stufen.webp) | ![Vorher/Nachher](docs/media/vorher-nachher.webp) |
 
-*(Live-Ansicht: synthetische Demodaten. Stacking-Verlauf: M16 Adlernebel, Vorher/Nachher: M17 Omeganebel – echte Aufnahmen eines Smart-Teleskops.)*
+*(Die Animationen zeigen M17 Omeganebel aus echten Rohaufnahmen eines Smart-Teleskops.)*
 
 ### Ergebnisse
 
@@ -93,12 +93,12 @@ Fertige Bilder aus AstroFlow, vollautomatisch aus Rohaufnahmen eines Smart-Teles
 Im Reiter **Analyse** jedes Objekts misst AstroFlow aus dem plate-gelösten Bild die **Grenzgröße**, die erfassten Sterne, den nächsten und fernsten Stern
 (Gaia-Parallaxen) und die fernsten sichtbaren Galaxien und Quasare (Rotverschiebung, Lichtlaufzeit) – als Kennzahlen, Markierungen und **in 3D**.
 
-![Tiefe in 3D](docs/media/tiefe-3d.gif)
+![Tiefe in 3D](docs/media/tiefe-3d.webp)
 
 Der **Blinkvergleich** stellt das Bild gegen eine frühere eigene Aufnahme oder die DSS2-Durchmusterung. Neue oder verschwundene Lichtquellen werden nur gemeldet,
 wenn sie über der Grenzgröße beider Bilder liegen, und mit SIMBAD und JPL-Kleinkörpern abgeglichen – als Hinweis, nicht als Entdeckung.
 
-![Blinkvergleich](docs/media/blinkvergleich.gif)
+![Blinkvergleich](docs/media/blinkvergleich.webp)
 
 Weitere Auswertungen je Objekt, alle aus gespeicherten Daten:
 
@@ -134,12 +134,12 @@ gemessen). Beide Einzelstacks bleiben ansehbar.
 Spuren in Bildfolgen werden als **Kandidaten** mit Ausschnitt, Zeitreihe und Messdetails erfasst und zur echten Aufnahmezeit mit Satelliten, Meteoren und Flugzeugen
 abgeglichen. Ein Kandidat ist ein Hinweis, kein bestätigtes Objekt.
 
-![SkyTrace erkennt Spuren](docs/media/skytrace-spuren.gif)
+![SkyTrace erkennt Spuren](docs/media/skytrace-spuren.webp)
 
 Die **3D-Erde** zeigt den Standort, das Blickfeld des Teleskops, Satellitenbahnen und – beim Hineinzoomen – eine flache Karte; auch Orte, Heatmaps der
 Standortsuche und die Tag/Nacht-Grenze liegen auf demselben Globus.
 
-![3D-Erde](docs/media/erde-3d.gif)
+![3D-Erde](docs/media/erde-3d.webp)
 
 *(Die Animationen zeigen Demodaten mit erfundenem Ort.)*
 

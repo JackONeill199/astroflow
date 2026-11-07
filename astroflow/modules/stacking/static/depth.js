@@ -430,7 +430,7 @@ function comparePanel(host, r, onBlink, blinkOn) {
     const gz = d.grenze || {}, srcTxt = { gaia: 'Gaia-Sterne im Bild', tiefe: 'gespeicherte Tiefe', nullpunkt: 'Nullpunkt + Rauschen',
       vollstaendigkeit: '50-%-Vollständigkeit', geraet: 'geschätzt aus anderen Bildern der Kamera', durchmusterung: 'Nennwert der Durchmusterung' };
     const gzSide = (s, label) => s && s.m5 != null ? `<span title="5σ-Grenzgröße – Quelle: ${esc(srcTxt[s.quelle] || s.quelle || '')}">${label} <b class="tnum">≈ ${de1(s.m5)} mag</b>${s.belichtung_s ? ` <span class="dim">(${dur(s.belichtung_s)}${s.aufnahmen ? `, ${s.aufnahmen} Aufn.` : ''})</span>` : ''}</span>` : `<span class="dim">${label} unbekannt</span>`;
-    // Verwerfgründe, die eine Aussage über die Referenz bzw. das Bild treffen (seit 0.43.3: Halo/Sättigung, bekannte Sterne)
+    // Verwerfgründe, die eine Aussage über die Referenz bzw. das Bild treffen (seit 0.43.4: Halo/Sättigung, bekannte Sterne)
     const rejTxt = [['unter_grenze', 'unter der Grenze'], ['heller_nachbar', 'im Licht heller Sterne'], ['katalogstern', 'bekannte Sterne']]
       .filter(([key]) => vw[key]).map(([key, t]) => `${vw[key]} ${key === 'katalogstern' && vw[key] === 1 ? 'bekannter Stern' : t}`);
     const rejAll = { hotpixel: 'Hotpixel', rand: 'Rand', rauschen: 'Rauschen', form: 'Form', einzelpixel: 'Einzelpixel', heller_stern: 'Rest heller Sterne',

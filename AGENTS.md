@@ -502,7 +502,7 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   `grenze {aktuell, referenz: {m5, quelle, belichtung_s, aufnahmen, sterne}, abstand}`, Kandidat `grenze`. M104 danach: m5 13,0 (10 Sterne)
   gegen 19,0 → 0 statt 25 Meldungen; M33/M32/NGC 1579 (eigene Referenzen) unverändert. `COMPARE_VERSION` 3. Test
   `test_compare_short_stack_reachability` (kurzer gesättigter Stack, Flussbeziehung wie bei M104 verfälscht).
-- **Helle Nachbarn / örtliche Grenze** (seit 0.43.3, Nutzerbefund NGC 2024: ζ Ori C „neu“, 19,8σ, 9,2 mag gegen DSS2 rot):
+- **Helle Nachbarn / örtliche Grenze** (seit 0.43.4, Nutzerbefund NGC 2024: ζ Ori C „neu“, 19,8σ, 9,2 mag gegen DSS2 rot):
   Ursache an echten Daten: Alnitak ist auf der Platte ein gesättigtes Plateau (~20 000 bei Himmel ~7 400, Radius ~200 px auf dem
   Stack-Raster), ζ Ori C liegt 46 px daneben darin. `_background` (Kachel-Median 64 px) nahm das Plateau als Himmel → Referenz dort
   ≈ 0 (f_ref 22) → „neu“; die `sat`-Prüfung sah nach dem Hintergrundabzug nichts mehr, `reach` nutzte die globale m5 17,6.
@@ -595,8 +595,11 @@ Kleinkörper-Abgleich im Vergleich). Endpunkte `GET|POST /results/{id}/asteroids
   `nosmall`; `totals.asteroids` = verschiedene Namen, Rekord `faint_asteroid`, Liste `asteroids`. **Sage:** Dienst `asteroid_tally`
   (Stacking) → Kennzahl `asteroids` in `log_stats`, Erfolge `asteroid_first`/`asteroids_10`; Ereignis `stacking.asteroids` → `store.refresh`.
 - **UI:** `asteroidPanel` (Abschnitt „Asteroiden“ im Reiter Analyse, dicht wie das Dashboard: Satz + Kennzahlen als Leiste, Liste als Tabelle
-  mit kleinem Ausschnitt, erst 8 Zeilen), `asteroidOverlay` umhüllt `depthOverlay` im Analyse-Betrachter
-  (Klasse `ast-on`, localStorage `bild.asteroiden.marken`, Standard an). Test: `tests/test_asteroids.py` (`demo.generate_asteroid` =
+  mit kleinem Ausschnitt, erst 8 Zeilen), `asteroidOverlay` umhüllt `depthOverlay` im Analyse-Betrachter. Marken über `.seg` „Aus / Nachgewiesen /
+  Alle“ (`AST_MARKS.mode` aus|ok|alle, localStorage `bild.asteroiden.markenart`, Standard `ok`; alter Schalter `bild.asteroiden.marken` = false → aus).
+  Seit 0.43.3 (Nutzerbefund M16, ~50 Körper, Namen übereinander): beschriftet werden nur nachgewiesene, Namen gierig ohne Überlappung (rechts, links,
+  sonst nur Kreis); „Alle“ = übrige als kleine Punkte ohne Text/Bahn (das Overlay hat `pointer-events: none`, Hover-Namen je Marke gehen nicht).
+  Klasse `ast-on` nur, wenn der Modus etwas zeigt (`astShows`) – sie blendet sonst die Objektnamen aus. Test: `tests/test_asteroids.py` (`demo.generate_asteroid` =
   wandernder Punkt mit bekannter Bahn, JPL-Attrappe, fester Nullpunkt; Seed in `tests/analysis_seed.py`).
 
 ## Gerätediagnose (`modules/stacking/diagnose.py`, `static/diagnose.js|css`; seit 0.43.0, Wunsch 17)
