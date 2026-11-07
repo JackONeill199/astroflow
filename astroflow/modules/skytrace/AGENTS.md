@@ -522,7 +522,7 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
 - **Statisch (Nächte & Standorte)** öffnet ein Satellit jetzt seine Karte statt der Nachtkarte; Teleskop/Ziel weiter `onRunPick`. Kandidat öffnen über
   `onCandidate` bzw. `SkyTraceHelpers.openCandidate(data.run, key)` – dafür liefert `run3d` jetzt `run` (Laufname).
 - **Flache Karte:** `orbit3d.build` gibt je Satellit `ground` (geodätisch, `erfa.gc2gd`, jede `GROUND_EVERY` = 5. Stützstelle → 10 s, 61 Punkte ≈ 1 KB) und `ground_step`.
-  `runLayer().ground()` → `deps.satellites()`: gestrichelte Bodenspur (Länge stetig über die Datumsgrenze), Raute = Punkt unter dem Satelliten beim Durchgang, Schild nur bei
+  `runLayer().ground()` → `deps.satellites()`: gestrichelte Bodenspur (Länge stetig über die Datumsgrenze, **verankert am Punkt beim Durchgang** in der Weltkopie nächst der Mitte wie alle Marken – an `pts[0]` verankert lag er bei Kartenmitte nahe dem Gegenpunkt genau eine Weltbreite daneben, CI-Befund), Raute = Punkt unter dem Satelliten beim Durchgang, Schild nur bei
   Hervorhebung oder ≤ 3 Satelliten. Abstand auch zur Spur (`distTo`), Satelliten vor Orten/Nächten, mehrere → `{kind:'multi'}` → dieselbe Auswahl. (0.37 zeigte bewusst keine
   Bahnen im Raum auf der Karte – das bleibt so; die Bodenspur ist eindeutig ein Erdort.)
 - **Karte** (`card` in `runLayer`): Grundzeilen sofort aus `run3d` (Durchgang, Höhe/Entfernung/Geschwindigkeit beim Durchgang bzw. zur Zeitleiste, Umlauf, Neigung,
