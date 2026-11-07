@@ -13,6 +13,7 @@ def main(argv=None):
     st.add_argument("--data", default=None)
     st.add_argument("--port", type=int, default=None)
     st.add_argument("--no-browser", action="store_true")
+    st.add_argument("--home", default=None, help="portabler Programmordner (wie ASTROFLOW_HOME; Autostart der portablen Version)")
     st.add_argument("--wait-pid", type=int, default=None, help=argparse.SUPPRESS)
     co = sub.add_parser("components", help="optionale Komponenten: status | install NAME[:OPTION] … | remove NAME …")
     co.add_argument("args", nargs="*")
@@ -33,6 +34,9 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     if a.cmd in (None, "start"):
+        import os
+        if getattr(a, "home", None):
+            os.environ["ASTROFLOW_HOME"] = a.home        # gilt auch für Server und Symbol (Unterprozesse erben sie)
         from .core import launcher
         return launcher.start(getattr(a, "data", None), getattr(a, "port", None), not getattr(a, "no_browser", False),
                               getattr(a, "wait_pid", None))

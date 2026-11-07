@@ -130,6 +130,8 @@ def set_autostart(on: bool):
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:
         if on:
             cmd = f'"{launcher._gui_python()}" {"-I " if sys.flags.isolated else ""}-m astroflow start --no-browser'
+            if launcher.home():                       # portabel: Konfiguration, Daten und Pakete liegen im Programmordner
+                cmd += f' --home "{launcher.home()}"'
             winreg.SetValueEx(k, RUN_NAME, 0, winreg.REG_SZ, cmd)
         else:
             try:

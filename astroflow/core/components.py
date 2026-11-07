@@ -159,6 +159,9 @@ def _status_astap(rec, solver_cfg, _):
     path, dbs = cfg.astap_path(), cfg.astap_databases()
     supported = system() in ASTAP_CLI
     if path and dbs:
+        if not rec:                                   # vorhandenes ASTAP, nichts davon von AstroFlow: nie „reparieren“
+            return {"state": "installed", "version": ", ".join(dbs), "supported": supported, "can_install": False,
+                    "detail": f"{path} – eigene Installation, AstroFlow verändert sie nicht"}
         return {"state": "installed", "version": ", ".join(dbs), "detail": path, "supported": supported}
     if path:
         return {"state": "partial", "detail": f"{path} – Sterndatenbank fehlt", "supported": supported}
@@ -366,8 +369,14 @@ def _install_astap(prog, option, force) -> str:
     dest.mkdir(parents=True, exist_ok=True)
     rec = records().get("astap") or {"dir": str(dest), "files": []}
     files, steps = set(rec.get("files") or []), []
+    owned = set(files)
+
+    def need(p: Path) -> bool:
+        """Fehlt → laden. Vorhanden → nur beim Reparieren und nur, wenn AstroFlow die Datei selbst angelegt hat."""
+        return not p.exists() or (force and p.name in owned)
+
     cli = dest / ("astap_cli.exe" if os.name == "nt" else "astap_cli")
-    if force or not cli.exists():
+    if need(cli):
         prog(0.01, "Lade ASTAP-Kommandozeile …")
         data = download(SF.format(ASTAP_CLI[key]), lambda f: prog(0.01 + 0.04 * f, "Lade ASTAP-Kommandozeile …"))
         with zipfile.ZipFile(io.BytesIO(data)) as z:
@@ -379,16 +388,17 @@ def _install_astap(prog, option, force) -> str:
             cli.chmod(0o755)
         files.add(cli.name)
         steps.append("Kommandozeile")
-    if force or not (dest / "deep_sky.csv").exists():
+    if need(dest / "deep_sky.csv"):
         prog(0.06, "Lade Objektkatalog deep_sky.csv …")
         data = download(SF.format(ASTAP_CATALOG), lambda f: prog(0.06 + 0.04 * f, "Lade Objektkatalog deep_sky.csv …"))
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             for n in z.namelist():
-                if Path(n).name in ("deep_sky.csv", "acknowledgement of databases.txt"):
+                if Path(n).name in ("deep_sky.csv", "acknowledgement of databases.txt") and need(dest / Path(n).name):
                     (dest / Path(n).name).write_bytes(z.read(n))
                     files.add(Path(n).name)
         steps.append("Objektkatalog")
-    if force or not list(dest.glob(f"{db}_0101.*")):
+    dbfiles = list(dest.glob(f"{db}_*"))
+    if not list(dest.glob(f"{db}_0101.*")) or (force and dbfiles and all(f.name in owned for f in dbfiles)):
         mb = ASTAP_DBS[db][1]
         tmp = tools_dir() / f".{db}.zip.part"
         tmp.parent.mkdir(parents=True, exist_ok=True)
@@ -399,7 +409,7 @@ def _install_astap(prog, option, force) -> str:
             with zipfile.ZipFile(tmp) as z:
                 for n in z.namelist():
                     base = Path(n).name
-                    if base.lower().startswith(db) and not n.endswith("/"):
+                    if base.lower().startswith(db) and not n.endswith("/") and need(dest / base):
                         with z.open(n) as src, open(dest / base, "wb") as out:
                             shutil.copyfileobj(src, out, 1 << 20)
                         files.add(base)
@@ -544,10 +554,11 @@ def _install_skytrace(prog, option, force) -> str:
         if not _engine_import_test():
             return f"SkyTrace-Engine vorhanden (torch {_dist_version('torch')}) – nichts neu geladen."
     extra = ["--force-reinstall"] if force else []
-    prog(0.02, "Installiere PyTorch (CPU) …")
-    pip(extra + ["--index-url", TORCH_CPU_INDEX, "torch", "torchvision"], prog, 0.02, 0.6, 12, "PyTorch")
-    prog(0.6, "Installiere OpenCV, YOLO, Skyfield …")
-    pip(extra + ["-r", str(ENGINE_REQS)], prog, 0.6, 0.97, 45, "Engine")
+    prog(0.02, "Installiere PyTorch (CPU), OpenCV, YOLO, Skyfield …")
+    # Ein einziger Lauf: der CPU-Index von PyTorch zuerst, PyPI für den Rest. „2.x+cpu“ ist nach PEP 440 neuer als „2.x“,
+    # pip bleibt also bei den CPU-Wheels. (Zwei Läufe mit --target --upgrade ersetzten die CPU-Wheels im zweiten durch PyPI.)
+    pip(extra + ["--index-url", TORCH_CPU_INDEX, "--extra-index-url", "https://pypi.org/simple", "-r", str(ENGINE_REQS)],
+        prog, 0.02, 0.97, 60, "Engine")
     if pk and os.name == "nt":
         _install_vc_runtime(pk, prog)
         _activate_packages(pk)

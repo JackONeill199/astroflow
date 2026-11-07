@@ -426,3 +426,44 @@ def test_paketordner_ohne_doppel(tmp_path):
     comp._drop_old_tags(pk)
     assert not (pk / "numpy").exists() and [i.name for i in pk.glob("numpy-*.dist-info")] == ["numpy-0.0.1.dist-info"]
     assert (pk / "torchfake" / "__init__.py").is_file() and not (tmp_path / "Pakete" / "cp311-win_amd64").exists()
+
+
+def test_astap_reparieren_laesst_fremdes_unberuehrt(home, tmp_path, monkeypatch):
+    """Vorhandenes ASTAP (nicht von AstroFlow): „Reparieren“ lädt nichts, überschreibt nichts und vermerkt nichts als eigen."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "lad"))
+    monkeypatch.setattr(comp.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(comp.platform, "machine", lambda: "AMD64")
+    dest = tmp_path / "lad" / "astap"
+    dest.mkdir(parents=True)
+    for f in ("astap_cli.exe", "deep_sky.csv", "d05_0101.1476"):
+        (dest / f).write_text("vom Nutzer")
+    monkeypatch.setattr(comp, "download", lambda *a, **k: (_ for _ in ()).throw(AssertionError("kein Download erwartet")))
+    monkeypatch.setattr(comp.subprocess, "run", lambda *a, **k: None)
+    comp.install("astap", option="d05", force=True)
+    assert all((dest / f).read_text() == "vom Nutzer" for f in ("astap_cli.exe", "deep_sky.csv", "d05_0101.1476"))
+    assert "astap" not in comp.records()
+    assert "verändert sie nicht" in comp.remove("astap") or "nicht von AstroFlow" in comp.remove("astap")
+    assert (dest / "astap_cli.exe").is_file()
+
+
+def test_start_mit_portablem_ordner(monkeypatch, tmp_path):
+    """Autostart der portablen Version: `astroflow start --home <App>` setzt ASTROFLOW_HOME für Starter, Server und Symbol."""
+    from astroflow import __main__ as cli
+    monkeypatch.delenv("ASTROFLOW_HOME", raising=False)
+    seen = {}
+    monkeypatch.setattr(launcher, "start", lambda *a: seen.setdefault("home", launcher.home()) and 0)
+    cli.main(["start", "--no-browser", "--home", str(tmp_path / "App")])
+    assert seen["home"] == tmp_path / "App" and launcher.config_path() == tmp_path / "App" / "config.json"
+    monkeypatch.delenv("ASTROFLOW_HOME")
+
+
+def test_engine_ein_pip_lauf_mit_cpu_index(home, monkeypatch):
+    """PyTorch-CPU-Wheels dürfen nicht durch einen zweiten pip-Lauf von PyPI ersetzt werden: ein Lauf, CPU-Index zuerst."""
+    calls = []
+    monkeypatch.setattr(comp, "ENGINE_MODULES", ("gibt_es_nicht_xyz",))
+    monkeypatch.setattr(comp, "pip", lambda args, *a, **k: calls.append(args))
+    with pytest.raises(RuntimeError, match="fehlen noch"):
+        comp.install("skytrace")
+    assert len(calls) == 1
+    args = calls[0]
+    assert args[args.index("--index-url") + 1] == comp.TORCH_CPU_INDEX and "--extra-index-url" in args and "-r" in args
