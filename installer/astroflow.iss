@@ -98,20 +98,23 @@ begin
 end;
 
 // Auswahl der Komponenten für AstroFlow ablegen (eine je Zeile; AstroFlow installiert sie beim nächsten Start im Hintergrund)
-procedure CurStepChanged(CurStep: TSetupStep);
 var
   Lines: TArrayOfString;
   N: Integer;
-  procedure Add(S: String);
-  begin
-    SetArrayLength(Lines, N + 1);
-    Lines[N] := S;
-    N := N + 1;
-  end;
+
+procedure Add(S: String);
+begin
+  SetArrayLength(Lines, N + 1);
+  Lines[N] := S;
+  N := N + 1;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep <> ssPostInstall then
     exit;
   N := 0;
+  SetArrayLength(Lines, 0);
   if WizardIsComponentSelected('astap\d50') then Add('astap:d50')
   else if WizardIsComponentSelected('astap') then Add('astap:d05');
   if WizardIsComponentSelected('graxpert') then Add('graxpert');

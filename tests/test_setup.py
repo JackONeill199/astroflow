@@ -13,7 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from astroflow import __version__
-from astroflow.core import launcher, setup as setup_mod
+from astroflow.core import components as comp, launcher, setup as setup_mod
 from astroflow.core.config import load_settings
 from astroflow.server import create_app
 
@@ -134,7 +134,7 @@ def test_astap_herunterladen(home, tmp_path, monkeypatch):
               "d05_star_database.zip": zbytes({"d05_0101.1476": b"sterne", "d05_0102.1476": b"sterne"})}
     urls = []
 
-    def fake(url, prog, to=None):
+    def fake(url, prog, to=None, resume=False):
         urls.append(url)
         data = served[url.split("/")[-2]]
         prog(1.0)
@@ -142,7 +142,9 @@ def test_astap_herunterladen(home, tmp_path, monkeypatch):
             Path(to).write_bytes(data)
             return None
         return data
-    monkeypatch.setattr(setup_mod, "_download", fake)
+    monkeypatch.setattr(comp, "download", fake)
+    (tmp_path / "lad" / "astap").mkdir(parents=True)
+    (tmp_path / "lad" / "astap" / "fremd.txt").write_text("vom Nutzer")          # gehört nicht AstroFlow
     c = client(home / "Daten", True, monkeypatch)
     assert c.post("/api/setup/astap", json={"db": "d07"}).status_code == 400
     assert c.post("/api/setup/astap", json={"db": "d05"}).status_code == 200
@@ -157,6 +159,88 @@ def test_astap_herunterladen(home, tmp_path, monkeypatch):
     c.post("/api/setup/astap", json={"db": "d05"})
     assert "Bereits vorhanden" in _wait_task(c, "astap")["detail"] and not urls
     assert any(a["key"] == "setup:astap" for a in c.get("/api/activity").json())
+    # Entfernen löscht nur, was AstroFlow geladen hat
+    rec = comp.records()["astap"]
+    assert {"astap_cli.exe", "deep_sky.csv", "d05_0101.1476"} <= set(rec["files"])
+    assert c.post("/api/components/remove", json={"id": "astap"}).status_code == 200
+    assert not (dest / "d05_0101.1476").exists() and (dest / "fremd.txt").is_file() and "astap" not in comp.records()
+
+
+def test_komponenten_liste(home, tmp_path, monkeypatch):
+    c = client(home / "Daten", True, monkeypatch)
+    d = c.get("/api/components").json()
+    ids = [i["id"] for i in d["items"]]
+    assert ids == ["astap", "graxpert", "gpu", "skytrace", "starnet"]
+    star = d["items"][-1]
+    assert star["can_install"] is False and "all rights reserved" in star["license"]
+    assert c.post("/api/components/install", json={"id": "starnet"}).status_code == 400
+    assert c.post("/api/components/install", json={"id": "unsinn"}).status_code == 400
+    gx = d["items"][1]
+    assert gx["license"].startswith("GPL-3.0") and gx["source"] == comp.GRAXPERT_SOURCE
+    assert all(i["state"] in ("installed", "missing", "partial", "unsupported", "error") for i in d["items"])
+
+
+def test_installer_auftrag(home, tmp_path, monkeypatch):
+    """Installer schreibt die Auswahl; AstroFlow arbeitet sie beim Start ab – Demo zuletzt, Fehlschläge bleiben vorgemerkt."""
+    home.mkdir(parents=True, exist_ok=True)
+    comp.order_path().write_text("\ufeffdemo\nskytrace\nastap:d50\ngraxpert\n", encoding="utf-8")
+    c = client(home / "Daten", True, monkeypatch)
+    setup = c.app.state.setup
+    seen = []
+
+    def fake_install(self, name, option=None, force=False):
+        seen.append((name, option))
+        self.tasks[name] = {"state": "error" if name == "graxpert" else "done", "detail": "x"}
+    monkeypatch.setattr(setup_mod.Setup, "install_component", fake_install)
+    setup.run_order()
+    assert seen == [("astap", "d50"), ("graxpert", None), ("skytrace", None), ("demo", None)]
+    assert not comp.order_path().exists()
+    assert launcher.read_config()["components_pending"] == ["graxpert"]          # wird später erneut angeboten
+    assert c.get("/api/components").json()["pending"] == ["graxpert"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="GraXpert-Installation nur unter Windows")
+def test_graxpert_auspacken(home, tmp_path, monkeypatch):
+    """MSI-Attrappe: Prüfsumme wird geprüft, msiexec /a packt ins eigene Werkzeugverzeichnis, AstroFlow findet GraXpert dort."""
+    import hashlib
+    blob = b"msi-attrappe" * 1000
+    monkeypatch.setattr(comp, "GRAXPERT_SHA256", hashlib.sha256(blob).hexdigest())
+
+    def fake_dl(url, prog, to=None, resume=False):
+        assert url == comp.GRAXPERT_MSI and resume
+        Path(to).write_bytes(blob)
+    calls = []
+
+    def fake_run(args, **kw):
+        calls.append(args)
+        target = Path(next(a for a in args if str(a).startswith("TARGETDIR=")).split("=", 1)[1])
+        (target / "lib").mkdir(parents=True)
+        (target / "GraXpert.exe").write_bytes(b"exe")
+        (target / "graxpert.msi").write_bytes(b"kopie")
+        return type("R", (), {"returncode": 0})()
+    monkeypatch.setattr(comp, "download", fake_dl)
+    monkeypatch.setattr(comp.subprocess, "run", fake_run)
+    msg = comp.install("graxpert")
+    exe = comp.graxpert_dir() / "GraXpert.exe"
+    assert exe.is_file() and not list(comp.graxpert_dir().glob("*.msi")) and "GPL-3.0" in msg
+    assert calls[0][:2] == ["msiexec", "/a"] and "/qn" in calls[0]
+    monkeypatch.delenv("ASTROFLOW_GRAXPERT")
+    from astroflow.modules.stacking import graxpert
+    assert graxpert.graxpert_path() == str(exe)
+    # falsche Prüfsumme → verworfen
+    comp.remove("graxpert")
+    monkeypatch.setattr(comp, "GRAXPERT_SHA256", "0" * 64)
+    with pytest.raises(RuntimeError, match="Prüfsumme"):
+        comp.install("graxpert")
+    assert not comp.graxpert_dir().exists()
+
+
+def test_pip_haelt_serverpakete_fest(home):
+    cons = comp._constraints().read_text(encoding="utf-8").splitlines()
+    import numpy
+    assert f"numpy=={numpy.__version__}" in cons
+    reqs = comp.ENGINE_REQS.read_text(encoding="utf-8")
+    assert "torch" in reqs and "ultralytics" in reqs and "pywin32" not in reqs          # plattformneutral
 
 
 def test_update_hinweis(home, tmp_path, monkeypatch):

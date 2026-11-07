@@ -63,7 +63,7 @@ ORDER = ("astap", "graxpert", "gpu", "skytrace", "starnet")
 INFO = {
     "astap": {"title": "Plate-Solving: ASTAP + Sterndatenbank", "license": "ASTAP: MPL-2.0/LGPL-3 · deep_sky.csv nur nicht-kommerziell",
               "source": "https://www.hnsky.org/astap.htm", "what": "Himmelsausschnitt bestimmen, Objektnamen, Gaia-Farbkalibrierung, Tiefe"},
-    "graxpert": {"title": f"GraXpert {GRAXPERT_VERSION}", "license": "GPL-3.0", "source": GRAXPERT_SOURCE,
+    "graxpert": {"title": "GraXpert", "license": f"GPL-3.0 · lädt Version {GRAXPERT_VERSION} von GitHub", "source": GRAXPERT_SOURCE,
                  "what": "KI-Hintergrund und KI-Entrauschen des linearen Stacks"},
     "gpu": {"title": "GPU-Beschleunigung (pyopencl)", "license": "MIT", "source": "https://pypi.org/project/pyopencl/",
             "what": "Ausrichten und Stacking auf der Grafikkarte (OpenCL), etwa 3× schneller"},
