@@ -147,7 +147,7 @@ def test_errors_are_clear(env, monkeypatch):
 
     def down(*a, **k):
         raise TimeoutError("timed out")
-    with pytest.raises(asteroids.AsteroidError, match="zu langsam"):
+    with pytest.raises(asteroids.AsteroidError, match="sehr langsam"):
         asteroids.compute(pl, rid, small_bodies=down, gaia=False)
 
 
@@ -251,3 +251,92 @@ def test_dashboard_counts_all_detections():
     found = [{"name": f"({i}) Fund", "status": "nachgewiesen", "mag": 14.0 + i * 0.1} for i in range(60)]
     info = dashboard._asteroid_info({"nachgewiesen": 60, "im_feld": 60, "kleinkoerper": found})
     assert len(info["items"]) == 60 and max(b["mag"] for b in info["items"]) == pytest.approx(19.9)
+
+
+# ------------------------------------------- JPL schnell abfragen (Fehlerbericht 07.11.2026, 0.43.2) #
+class _Resp:
+    def __init__(self, j):
+        self.j = j
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self.j
+
+
+def _sb_answer(second: bool, rows):
+    f = ["Object name", "Astrometric RA (hh:mm:ss)", "Astrometric Dec (dd mm'ss\")", "Visual magnitude (V)", "RA rate (\"/h)", "Dec rate (\"/h)"]
+    return {"fields_second" if second else "fields_first": f, "data_second_pass" if second else "data_first_pass": rows}
+
+
+def test_small_bodies_fast_first_pass_and_failure_pause(tmp_path, monkeypatch):
+    """Asteroiden nur im ersten Durchgang (der zweite brauchte 127 s), Kometen genau; nach Zeitüberschreitung Pause mit
+    ehrlicher Meldung statt erneuter Abfrage."""
+    import httpx
+
+    from astroflow.modules.stacking import compare
+    seen = []
+
+    def get(url, params=None, timeout=None):
+        seen.append(dict(params))
+        if params["sb-kind"] == "c":
+            return _Resp(_sb_answer(True, [["C/2026 A1", "10:00:00.00", "+20 00 00.0", "14.0", "30.0", "-5.0"]]))
+        return _Resp(_sb_answer(False, [["433 Eros (A898 PA)", "10:00:10.00", "+20 01 00.0", "12.1", "40.0", "2.0"]]))
+    monkeypatch.setattr(httpx, "get", get)
+    out = compare.small_bodies("2025-04-10T22:00:00", 150.0, 20.0, 0.5, 0.35, tmp_path)
+    by = {p["sb-kind"]: p for p in seen}
+    assert by["c"].get("two-pass") == "true" and "two-pass" not in by["a"]
+    eros = next(b for b in out if b["name"].startswith("433"))
+    assert eros["genau"] is False and eros["rate_ra"] == 40.0 and abs(eros["ra"] - 150.0417) < 1e-3
+    assert next(b for b in out if b["kind"] == "c")["genau"] is True
+    n = len(seen)
+    assert compare.small_bodies("2025-04-10T22:00:00", 150.0, 20.0, 0.5, 0.35, tmp_path) == out and len(seen) == n   # Zwischenspeicher
+
+    def slow(url, params=None, timeout=None):
+        seen.append(dict(params))
+        raise httpx.ReadTimeout("timed out")
+    monkeypatch.setattr(httpx, "get", slow)
+    with pytest.raises(compare.SmallBodyError, match="sehr langsam"):
+        compare.small_bodies("2025-04-11T22:00:00", 150.0, 20.0, 0.5, 0.35, tmp_path)
+    n = len(seen)
+    with pytest.raises(compare.SmallBodyError, match="Nächster Versuch"):           # Pause: keine neue Abfrage
+        compare.small_bodies("2025-04-12T22:00:00", 151.0, 20.0, 0.5, 0.35, tmp_path)
+    assert len(seen) == n
+    assert "sehr langsam" in compare.jpl_message(TimeoutError("timed out"))
+
+
+def test_horizons_command_and_refine(monkeypatch, tmp_path):
+    from astroflow.modules.stacking import comet
+    assert asteroids.horizons_command("433 Eros (A898 PA)") == "433;"
+    assert asteroids.horizons_command("(4711) Testoid") == "4711;"
+    assert asteroids.horizons_command("2004 MN4") == "DES=2004 MN4;"
+    w = WCS({**_hdr(200, 300), "NAXIS": 2})
+    calls = []
+
+    def hz(desig, t0, t1, cache_dir, timeout=25, command=None):
+        calls.append(command)
+        t = np.arange(t0 - 600, t1 + 601, 120.0)
+        return np.c_[t, RA0 + (t - 1000) * 36 / 3600 / 3600 / math.cos(math.radians(DEC0)), np.full_like(t, DEC0), np.full_like(t, 1.5)]
+    monkeypatch.setattr(comet, "horizons", hz)
+    monkeypatch.setattr(comet, "horizons_enabled", lambda: True)
+    b = {"name": "433 Eros (A898 PA)", "genau": False, "_x": 0.0, "_y": 0.0, "_vx": 0.0, "_vy": 0.0}
+    left = asteroids.refine_all([b], w, 1000.0, 0.0, 2000.0, tmp_path, 60.0)
+    assert calls == ["433;"] and b["genau"] and left > 0
+    x0, y0 = (float(v) for v in w.world_to_pixel_values(RA0, DEC0))
+    assert abs(b["_x"] - x0) < 0.05 and abs(b["_y"] - y0) < 0.05
+    assert abs(abs(b["_vx"]) * 3600 - 30.0) < 0.3 and abs(b["_vy"]) < 0.01            # 36″/h bei 1,2″/px
+
+
+def test_rough_first_pass_found_with_wider_search(env, monkeypatch):
+    """Ohne Horizons (Tests) bleibt die Bahn genähert: 30″ daneben wird mit dem größeren Suchkreis trotzdem gefunden."""
+    s, db, pl, p, rid, st, truth = env
+    monkeypatch.setattr(asteroids, "_zero_point", lambda *a, **k: {"zp": ZP, "aperture_px": 5.0})
+    fn, _ = _fake_jpl(db, st, truth, offset_as=(24.0, -18.0))
+
+    def rough(*a, **k):
+        return [dict(b, genau=False) for b in fn(*a, **k)]
+    out = asteroids.compute(pl, rid, small_bodies=rough, gaia=True)
+    a = out["kleinkoerper"][0]
+    assert a["status"] == "nachgewiesen" and 20 < a["abweichung"] < 40, a
+    assert not a["genau"] and any("genäherter Bahn" in h for h in out["hinweise"])

@@ -172,14 +172,16 @@ def parse_horizons(text: str) -> np.ndarray:
     return np.array(rows)
 
 
-def horizons(desig: str, t_start: float, t_stop: float, cache_dir: Path, timeout: float = HORIZONS_TIMEOUT) -> np.ndarray:
-    """Geozentrische Ephemeride (astrometrisch, ICRF) zwischen zwei Unixzeiten, gecacht. Wirft bei Fehlern."""
+def horizons(desig: str, t_start: float, t_stop: float, cache_dir: Path, timeout: float = HORIZONS_TIMEOUT,
+             command: str | None = None) -> np.ndarray:
+    """Geozentrische Ephemeride (astrometrisch, ICRF) zwischen zwei Unixzeiten, gecacht. Wirft bei Fehlern.
+    `command`: eigener Horizons-Befehl (Asteroiden, z. B. „433;“), sonst Kometenbezeichnung `desig`."""
     if not horizons_enabled():
         raise RuntimeError("Horizons abgeschaltet")
     t0 = math.floor(t_start / 60) * 60 - 600
     t1 = math.ceil(t_stop / 60) * 60 + 600
     step = max(2, int(math.ceil((t1 - t0) / 60 / 200)))                # höchstens ~200 Zeilen
-    params = {"format": "json", "COMMAND": f"'DES={desig};CAP;NOFRAG'", "OBJ_DATA": "'NO'", "MAKE_EPHEM": "'YES'",
+    params = {"format": "json", "COMMAND": f"'{command}'" if command else f"'DES={desig};CAP;NOFRAG'", "OBJ_DATA": "'NO'", "MAKE_EPHEM": "'YES'",
               "EPHEM_TYPE": "'OBSERVER'", "CENTER": "'500@399'", "START_TIME": f"'{_hz_time(t0)}'",
               "STOP_TIME": f"'{_hz_time(t1)}'", "STEP_SIZE": f"'{step}m'", "QUANTITIES": "'1,20'", "ANG_FORMAT": "'DEG'",
               "CSV_FORMAT": "'YES'", "EXTRA_PREC": "'YES'"}

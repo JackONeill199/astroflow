@@ -69,7 +69,7 @@ function asteroidPanel(host, r, viewer, opts = {}) {
             <td><span class="chip ${cls}">${esc(lab)}</span></td>
             <td class="tnum">${b.mag != null ? `<b>${astMag(b.mag)}</b>${b.mag_err >= 0.05 ? ` ± ${de1(b.mag_err, 1)}` : ''}` : '–'}</td>
             <td class="tnum mut">${astMag(b.vmag)}</td><td class="tnum">${b.rate != null ? `${de1(b.rate, 0)}″/h` : '–'}</td>
-            <td class="ast-why sm">${b.status === 'nachgewiesen' && b.snr != null ? `SNR ${de1(b.snr)} · ${b.aufnahmen} Aufn. · ${de1(b.abweichung)}″ neben der Vorhersage` : esc(b.grund || '')}</td></tr>`;
+            <td class="ast-why sm">${b.genau === false ? '<span title="Bahn nur genähert (JPL erster Durchgang) – größerer Suchkreis">Bahn genähert</span> · ' : ''}${b.status === 'nachgewiesen' && b.snr != null ? `SNR ${de1(b.snr)} · ${b.aufnahmen} Aufn. · ${de1(b.abweichung)}″ neben der Vorhersage` : esc(b.grund || '')}</td></tr>`;
         }).join('')}</tbody></table></div>
         ${items.length > AST_ROWS ? `<button class="linkbtn sm ad-more" data-ast-more>${astAll ? 'Weniger anzeigen' : `Alle ${nf.format(items.length)} anzeigen`}</button>` : ''}
         <p class="dim sm ast-note">Bildchen: alle Aufnahmen entlang der vorhergesagten Bahn gemittelt, Stack abgezogen – ein echter Asteroid erscheint als Punkt in der Mitte.</p>` : ''}

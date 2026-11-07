@@ -30,13 +30,16 @@ SAMPLE = 40                 # Aufnahmen je Nacht für den Nachweis (über die Ze
 MAX_NIGHTS = 3              # JPL-Abfragen je Bild (je Nacht eine, Asteroiden brauchen 15–120 s)
 MAX_DETECT = 25             # höchstens so viele Kleinkörper je Nacht nachweisen (hellste zuerst)
 SEARCH_AS = 15.0            # ″: Suchradius um die Vorhersage (geozentrisch ↔ Standort, Bahnfehler)
+SEARCH_AS_ROUGH = 60.0      # ″: dasselbe für nur genäherte Bahnen (JPL erster Durchgang, Horizons nicht erreichbar)
+HZ_BUDGET = 90.0            # s für das Nachschärfen der Kandidaten über Horizons je Bild
+HZ_TIMEOUT = 20.0           # s je Horizons-Abfrage
 SNR_MIN = 5.0               # Signifikanz im gemittelten Ausschnitt
 HALF_MIN = 2.5              # … und in der frühen wie der späten Hälfte der Aufnahmen an derselben Stelle
 MAX_ELONG = 2.0             # Achsenverhältnis des Funds (eine mitgeschleppte Spur ist länglich)
 MIN_MOTION_FWHM = 2.0       # langsamer: im Stack ein Stern, Differenz zum Stack zeigt nichts
 MAG_MARGIN = 1.0            # Vorhersage bis Grenzgröße (5σ) + MAG_MARGIN versuchen
 MAG_DEFAULT = 20.5          # ohne gemessene Grenzgröße
-JPL_BUDGET = 180.0          # s für alle JPL-Abfragen eines Bildes
+JPL_BUDGET = 180.0          # s für alle JPL-Abfragen eines Bildes (erster Durchgang ~20 s je Nacht)
 
 
 class AsteroidError(Exception):
@@ -94,6 +97,7 @@ def predict(bodies: list[dict], wcs, shape: tuple[int, int], cov: np.ndarray | N
             scale = float(np.sqrt(abs(np.linalg.det(wcs.pixel_scale_matrix)))) * 3600
             rate = math.hypot(vx, vy) * 3600 * scale
         out.append({"name": b["name"], "art": "Komet" if b.get("kind") == "c" else "Asteroid", "vmag": _num(b.get("vmag")),
+                    "genau": bool(b.get("genau", True)),
                     "ra": ra, "dec": dec, "rate": None if rate is None else round(rate, 1),
                     "_x": x, "_y": y, "_vx": vx, "_vy": vy, "_inside": all(inside)})
     out.sort(key=lambda o: o["vmag"] if o["vmag"] is not None else 99)
@@ -321,7 +325,7 @@ def compute(pl, rid: int, *, small_bodies=None, gaia: bool = True, m5: float | N
         services.to_view(geo, x, y) if geo else None)
     search_px = max(2.5 * fwhm, SEARCH_AS / pix_as)
     half = int(math.ceil(search_px + 3 * aperture + 2 * fwhm + 2))
-    lib, fcache = None, {}
+    lib, fcache, hz_left = None, {}, HZ_BUDGET
     items, night_info, t_start = [], [], time.time()
     n_stack = len(st.meta.get("frames") or frames)
     for night in nights:
@@ -334,12 +338,11 @@ def compute(pl, rid: int, *, small_bodies=None, gaia: bool = True, m5: float | N
             break
         log(f"Kleinkörper im Feld abfragen ({night})")
         try:
-            bodies = small_bodies(_iso(t_mid), ra0, dec0, hw, hw, cache, timeout=min(90.0, left))
+            bodies = small_bodies(_iso(t_mid), ra0, dec0, hw, hw, cache, timeout=min(60.0, left))
         except Exception as e:
-            raise AsteroidError("Kleinkörper-Abfrage (JPL) nicht möglich – Dienst " +
-                                ("antwortet gerade zu langsam" if "timed out" in str(e) else f"nicht erreichbar ({str(e)[:80]})") + ".")
+            raise AsteroidError("Kleinkörper-Abfrage nicht möglich: " + compare.jpl_message(e))
         pred = predict(bodies, wcs, (H, W), cov, t_mid, t0, t1,
-                       fetch_later=lambda: small_bodies(_iso(t_mid + 3600), ra0, dec0, hw, hw, cache, timeout=min(90.0, left)))
+                       fetch_later=lambda: small_bodies(_iso(t_mid + 3600), ra0, dec0, hw, hw, cache, timeout=min(60.0, left)))
         avail = [f for f in fr if not f["deleted"] and f["path"] and Path(f["path"]).exists() and f["id"] in links]
         ni = {"night": night, "zeit": _iso(t_mid), "aufnahmen": len(fr), "rohbilder": len(avail), "im_feld": len(pred),
               "dauer_min": round((t1 - t0) / 60, 1)}
@@ -362,6 +365,17 @@ def compute(pl, rid: int, *, small_bodies=None, gaia: bool = True, m5: float | N
             else:
                 b["status"] = "nicht_geprueft"
         if todo:
+            rough = [b for b in todo if not b["genau"]]
+            if rough:
+                log(f"{len(rough)} Bahnen bei JPL Horizons genau berechnen ({night})")
+                hz_left = refine_all(rough, wcs, t_mid, t0, t1, wd / "komet", hz_left)
+                still = sum(1 for b in rough if not b["genau"])
+                if still:
+                    notes.append(f"{still} Kleinkörper nur mit genäherter Bahn gesucht (Horizons nicht erreichbar) – "
+                                 f"größerer Suchkreis {SEARCH_AS_ROUGH:.0f}″.")
+            for b in todo:
+                b["_search"] = search_px if b["genau"] else max(search_px, SEARCH_AS_ROUGH / pix_as)
+            half = int(math.ceil(max(b["_search"] for b in todo) + 3 * aperture + 2 * fwhm + 2))
             pick = [avail[int(i)] for i in np.unique(np.linspace(0, len(avail) - 1, min(SAMPLE, len(avail))).round())]
             if lib is None:
                 lib = pl._library()
@@ -396,7 +410,7 @@ def compute(pl, rid: int, *, small_bodies=None, gaia: bool = True, m5: float | N
                     b["status"] = "nicht_geprueft"
                     b["grund"] = "zu wenige Aufnahmen decken die Bahn ab"
                     continue
-                d = detect(stamps, fwhm, search_px, aperture)
+                d = detect(stamps, fwhm, b["_search"], aperture)
                 b["snr"] = d.get("snr")
                 if not d["found"]:
                     b["grund"] = d.get("why")
@@ -424,6 +438,7 @@ def compute(pl, rid: int, *, small_bodies=None, gaia: bool = True, m5: float | N
                 p0, p1 = pos(x + dx + vx * (t0 - t_mid), y + dy + vy * (t0 - t_mid)), pos(x + dx + vx * (t1 - t_mid), y + dy + vy * (t1 - t_mid))
                 b["bahn"] = [[p0["x"], p0["y"]], [p1["x"], p1["y"]]] if p0["x"] is not None else None
             b.pop("_inside", None)
+            b.pop("_search", None)
             img = b.pop("_img", None)
             if img is not None:
                 name = f"a{len(items)}.png"
@@ -444,6 +459,45 @@ def compute(pl, rid: int, *, small_bodies=None, gaia: bool = True, m5: float | N
             "grenze": round(lim, 1), "nullpunkt": round(zp["zp"], 2) if zp else None, "suchradius": round(search_px * pix_as, 1),
             "bild": {"w": geo["view"][0], "h": geo["view"][1]} if geo and geo.get("offset") is not None else None,
             "hinweise": notes}
+
+
+def horizons_command(name: str) -> str:
+    """Horizons-Befehl aus dem SB-Ident-Namen: „433 Eros (A898 PA)“/„(433) Eros“ → „433;“, „2004 MN4“ → „DES=2004 MN4;“."""
+    import re
+    m = re.match(r"^\(?(\d+)\)?(\s|$)", name.strip())
+    if m:
+        return f"{m.group(1)};"
+    return f"DES={name.split('(')[0].strip()};"
+
+
+def refine(b: dict, wcs, t_mid: float, t0: float, t1: float, cache_dir: Path, timeout: float = HZ_TIMEOUT) -> None:
+    """Genaue geozentrische Bahn eines Kandidaten über JPL Horizons (wie der Kometenmodus; nur Name und Zeiten werden
+    gesendet). Setzt Lage zur Zeit t_mid und Bewegung neu, `genau` = True. Wirft bei Fehlern."""
+    from . import comet
+    rows = comet.horizons(b["name"], t0, t1, cache_dir, timeout=timeout, command=horizons_command(b["name"]))
+    span = max(600.0, t1 - t0)
+    ra, dec, _ = comet.topocentric(rows, np.array([t_mid - span / 2, t_mid, t_mid + span / 2]), None)
+    x, y = (np.asarray(v, float) for v in wcs.world_to_pixel_values(ra, dec))
+    b["_x"], b["_y"] = float(x[1]), float(y[1])
+    b["_vx"], b["_vy"] = float((x[2] - x[0]) / span), float((y[2] - y[0]) / span)
+    b["genau"] = True
+
+
+def refine_all(bodies: list[dict], wcs, t_mid: float, t0: float, t1: float, cache_dir: Path, budget: float) -> float:
+    """Kandidaten nacheinander nachschärfen, solange das Zeitbudget reicht; gibt das restliche Budget zurück."""
+    from . import comet
+    if not comet.horizons_enabled():
+        return budget
+    for b in bodies:
+        if budget < 3:
+            break
+        t = time.time()
+        try:
+            refine(b, wcs, t_mid, t0, t1, cache_dir, timeout=min(HZ_TIMEOUT, budget))
+        except Exception:
+            pass                                          # bleibt genähert, größerer Suchkreis
+        budget -= time.time() - t
+    return budget
 
 
 def _sensor_cache(pl, pid: int, frames: list[dict], night: str, cache: dict) -> None:
