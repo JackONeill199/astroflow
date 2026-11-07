@@ -738,15 +738,13 @@ def build_router(mod) -> APIRouter:
     def catalog_status():
         cache = mod.home / "catalog_cache" / "archives"
         files = list(cache.glob("*")) if cache.exists() else []
-        conn = _read_json(mod.home / "catalog_cache" / "opensky-connection.json",
-                          {"status": "not_connected", "detail": "Noch kein OpenSky-Trino-Konto verbunden."})
         # Namensabfrage CelesTrak-SATCAT: angehalten (`stopped`, z. B. HTTP 403) bzw. kurz pausiert – engine/archive_sources.py
         satcat = _read_json(cache / "satcat-pause.json", {}) or {}
         if not satcat.get("stopped") and float(satcat.get("until") or 0) <= time.time():
             satcat = {}
         csv = cache / "satcat.csv"                  # lokale Kopie des Namenskatalogs (täglich bei Bedarf erneuert)
         satcat_file = dict(updated=csv.stat().st_mtime, bytes=csv.stat().st_size) if csv.is_file() else None
-        return dict(opensky=conn, satcat=satcat, satcat_file=satcat_file, satellite_time_queries=sum(p.name.startswith("eth-") and p.suffix == ".json" for p in files),
+        return dict(satcat=satcat, satcat_file=satcat_file, satellite_time_queries=sum(p.name.startswith("eth-") and p.suffix == ".json" for p in files),
                     satellite_years=[p.stem.removeprefix("tle_") for p in files if p.suffix == ".parquet"],
                     meteor_months=[p.stem.removeprefix("traj_summary_monthly_") for p in files
                                    if p.suffix == ".sqlite" and ".building." not in p.name],
@@ -757,22 +755,6 @@ def build_router(mod) -> APIRouter:
         """Angehaltene Satelliten-Namensabfrage wieder freigeben (CelesTrak verlangt bei Fehlern eine Prüfung durch einen Menschen)."""
         (mod.home / "catalog_cache" / "archives" / "satcat-pause.json").unlink(missing_ok=True)
         return catalog_status()["satcat"]
-
-    @r.post("/catalog/connect")
-    def catalog_connect(body: dict = Body(...)):
-        from observation_settings import update_settings
-        try:
-            user = update_settings({"opensky_user": body.get("user", "")})["opensky_user"]
-        except (ValueError, TypeError) as e:
-            bad(e)
-        # OAuth-Anmeldung läuft im Engine-Interpreter (braucht trino/requests) und wartet dort auf den Abschluss
-        code = ("import sys,opensky_archive as o;o.start_connection(sys.argv[1]);"
-                "o.WORKER and o.WORKER.join(900)")
-        subprocess.Popen([mod.python, "-c", code, user], cwd=str(Path(__file__).parent / "engine"), env=mod.engine_env(),
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        time.sleep(1.5)
-        return catalog_status()["opensky"]
 
     @r.get("/geocode")
     def geocode(q: str = ""):

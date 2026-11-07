@@ -40,7 +40,7 @@ def _book(path: Path, site: dict, accuracy=100):
 
 # ---------------------------------------------------------------- Engine (skyfield) ---
 ENGINE_MODULES = {"project_paths", "observation_settings", "catalog_matching", "archive_sources", "satellite_archive", "rematch_sites",
-                  "json_store", "analyse", "opensky_archive", "sequence", "satellite_overlay", "motion_plausibility", "clock_scan", "global_site"}
+                  "json_store", "analyse", "archive_errors", "sequence", "satellite_overlay", "motion_plausibility", "clock_scan", "global_site"}
 
 
 @pytest.fixture
@@ -232,7 +232,7 @@ def test_rematch_keeps_old_result_without_local_orbits(engine, tmp_path, monkeyp
     _book(tmp_path / "settings.json", TRUE)
     sats = _satellites(1)
     _patch(monkeypatch, sats)
-    from opensky_archive import ArchiveAccessError
+    from archive_errors import ArchiveAccessError
     import satellite_archive
 
     def missing(start, settings):
@@ -248,6 +248,26 @@ def test_rematch_keeps_old_result_without_local_orbits(engine, tmp_path, monkeyp
 
 
 # ---------------------------------------------------------------- Server (ohne skyfield) ---
+def test_old_opensky_settings_are_ignored(engine, tmp_path):
+    """Alte catalog_settings.json mit der entfernten OpenSky-Anbindung lädt ohne Fehler; die Schlüssel verschwinden."""
+    import observation_settings as obs
+    obs.CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    obs.CONFIG.write_text(json.dumps({"opensky_user": "jemand", "auto_aircraft": True, "auto_meteors": False, "flight_file": "x.csv"}), encoding="utf-8")
+    s = obs.load_settings()
+    assert "opensky_user" not in s and "auto_aircraft" not in s
+    assert s["auto_meteors"] is False and s["flight_file"] == "x.csv"       # übrige Werte bleiben
+    saved = obs.update_settings({"auto_satellites": False})
+    assert "opensky_user" not in saved and "auto_aircraft" not in saved
+
+
+def test_aircraft_check_needs_own_flight_data(engine):
+    """Ohne eigene Flugdatei kein Flug-Abgleich (kein Trino mehr), auch wenn die alte Einstellung auto_aircraft noch gesetzt ist."""
+    import catalog_matching as cm
+    c = dict(timestamp=1.7e9, timestamp_text="UTC", exposure_seconds=10, world_path=[[10.0, 20.0]])
+    r = cm.aircraft_check(c, dict(lat=49.0, lon=8.0, alt_m=100), {"auto_aircraft": True})
+    assert r["status"] == "needs_archive"
+
+
 def test_sites_signature_and_jobs(tmp_path, monkeypatch):
     from astroflow.modules.skytrace.rematch import sites_signature
     a = {"list": [{"id": "home", "name": "Testhausen", "lat": 47.5, "lon": 10.25, "accuracy_m": 100}], "default": "home", "periods": []}

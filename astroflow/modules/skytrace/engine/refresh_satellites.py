@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 from candidate_report import _wcs
 from catalog_matching import satellite_check,status
-from opensky_archive import ArchiveAccessError
+from archive_errors import ArchiveAccessError
 from observation_settings import load_settings
 from satellite_overlay import project_paths
 from sequence import report

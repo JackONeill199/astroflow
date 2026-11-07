@@ -1,4 +1,4 @@
-"""Offline validation for automated historical propagation, meteor paths and Trino bounds."""
+"""Offline validation for automated historical propagation, meteor paths and archive bounds."""
 import datetime as dt
 import math
 from pathlib import Path
@@ -8,7 +8,7 @@ import numpy as np
 from skyfield.api import EarthSatellite,wgs84
 import catalog_matching as cm
 from satellite_archive import model_from_record,sky_prefilter
-from opensky_archive import flight_query,fetch_flights,ArchiveAccessError
+from archive_errors import ArchiveAccessError
 
 sat=EarthSatellite('1 25544U 98067A   24123.50000000  .00010000  00000-0  18000-3 0  9990','2 25544  51.6400  40.0000 0005000  20.0000  30.0000 15.50000000123456','fixture',cm.TS)
 factor=2*math.pi/1440
@@ -36,30 +36,6 @@ with patch('archive_sources.gmn_events',return_value=([event],1)):
     assert cm.meteor_check(c,site,{})['status']=='compatible'
     assert cm.meteor_check(c,None,{})['status']=='not_checkable'
 print('OK: measured meteor trajectory projected topocentrically; missing site prevents archive access')
-
-query=flight_query(start,10,site)
-assert 'hour IN (' in query and 'time BETWEEN ' in query and 'lat BETWEEN ' in query and 'lastposupdate' in query and 'LIMIT 50001' in query
-try:fetch_flights(start,10,site,{})
-except ArchiveAccessError as error:assert error.status=='needs_login'
-else:raise AssertionError('Unconnected OpenSky must not claim historical coverage')
-print('OK: Trino queries are time/area/partition-bounded; no login is explicit')
-
-# Run the exact server-side horizon predicate in SQLite with Trino-compatible
-# math functions: an overhead plane must survive, a distant plane must not.
-import sqlite3
-from contextlib import closing
-from visibility import above_horizon,aircraft_horizon_sql
-with sqlite3.connect(':memory:') as db:
-    for name,function,arity in [('radians',math.radians,1),('sin',math.sin,1),('cos',math.cos,1),('sqrt',math.sqrt,1),('power',pow,2)]:db.create_function(name,arity,function)
-    db.execute('CREATE TABLE points(lat REAL,lon REAL,geoaltitude REAL)')
-    for location in (site,dict(lat=89,lon=179,alt_m=300),dict(lat=0,lon=-179.9,alt_m=0)):
-        points=[(location['lat'],location['lon'],10000),(location['lat'],(location['lon']+180)%360-180,10000),(0,0,10000),(-location['lat'],-location['lon'],10000)]
-        db.execute('DELETE FROM points');db.executemany('INSERT INTO points VALUES(?,?,?)',points)
-        actual=[bool(r[0]) for r in db.execute('SELECT '+aircraft_horizon_sql(location)+' FROM points')]
-        assert actual==[above_horizon(*point,location) for point in points]
-        assert actual[0]
-assert not above_horizon(-49,-172,10000,site)
-print('OK: server horizon agrees with WGS84 local test, including poles/date line')
 
 import archive_sources as sources
 with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as temp,patch('requests.get',side_effect=AssertionError('Worldwide download attempted')):

@@ -23,7 +23,7 @@ from pathlib import Path
 from json_store import read_json, write_json
 from observation_settings import load_settings, resolve_site
 from catalog_matching import satellite_check, status, clock_offset
-from opensky_archive import ArchiveAccessError
+from archive_errors import ArchiveAccessError
 from project_paths import BASE, CODE
 
 SEARCH_RADIUS_KM = 10.0           # Vorinformation der Suche: Ort liegt höchstens so weit daneben

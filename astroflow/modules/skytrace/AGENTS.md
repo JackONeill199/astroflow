@@ -15,7 +15,6 @@ Messgrafiken/Zoomdialoge (`static/evidence.js/css`) sind unverändert und werden
 - **Interpreter:** Analysen laufen als Unterprozess mit dem Interpreter aus Einstellungen → SkyTrace, sonst `<SKYTRACE_HOME>/.venv`, sonst
   AstroFlows Python. Der AstroFlow-Server importiert nur leichte Engine-Teile (`json_store`, `observation_settings`, `video_overlays`) –
   ohne OpenCV/PyTorch startet die App trotzdem; die Engine-Prüfung (`Module.check_engine`) zeigt fehlende Pakete an.
-  OpenSky-Anmeldung läuft im Engine-Interpreter (braucht `trino`).
 - Nicht übernommen: Tk-Desktop-Oberfläche (`desktop_app.py`, `catalog_dialog.py`, `location_picker.py`), Starter (`*.cmd/*.vbs`),
   Web-Prüfungen gegen den alten Server (`check_web.py`, `check_lan.py`, `check_preview_race.py`). Die übrigen `check_*.py` liegen in `engine/`
   und laufen mit gesetztem `SKYTRACE_HOME` (manche brauchen echte Stellina-Daten: Ordner per `SKYTRACE_SAMPLES`).
@@ -670,7 +669,7 @@ Alle Python-Module, Startpunkte, Prüfungen und Wartungsskripte liegen unter `py
 | `python/report_view.py` | Eigenständiges HTML mit eingebettetem Evidence-JS/CSS; Ausschnitte/Videos bleiben relative Begleitdateien |
 | `python/catalog_matching.py`, `python/catalog_http.py` | Katalogvergleich, Cache, begrenzte/abbrechbare JPL-Abfragen und geometrische Diagnostik |
 | `python/archive_sources.py`, `python/satellite_archive.py` | Vorhandene historische Archive, lokaler Zeitindex, SGP4 und konservative Satellitenvorauswahl |
-| `python/opensky_archive.py`, `python/visibility.py` | OpenSky-Trino-OAuth, begrenzte Flugabfragen und gemeinsamer geometrischer Horizontfilter |
+| `python/archive_errors.py`, `python/visibility.py` | Gemeinsame Archiv-Ausnahme `ArchiveAccessError` (Status needs_archive, not_checkable …) und geometrischer Horizontfilter |
 | `python/observation_settings.py` | Validierte Standort-/Katalogeinstellungen, FITS-/Beobachtungs-/Standardstandort |
 | `python/json_store.py`, `python/image_store.py` | Atomare Veröffentlichung und Wiederholung bei vorübergehenden Windows-Dateisperren |
 
@@ -702,7 +701,7 @@ Videos: PyAV/libx264. ASTAP: bevorzugt `tools/astap/astap_cli.exe`, sonst `C:/Pr
 - **Satelliten:** vorhandenes Space-Track-Archiv/Mirror Julien Simon (CC-BY-4.0) bevorzugen; bei fehlenden zeitnahen Bahnen dynamischer ETH-Abruf (`archive_sources.eth_tles`) anhand des UTC-Belichtungsmittelpunkts, auch bei aktuellen Aufnahmen. Eine UTC-Minute plus je höchstens 3 Tage für benachbarte TLEs; vollständige Pagination mit unverändertem Zeitfilter, maximal 120 Seiten/180 s einschließlich stoppbarer Sperrwartezeit. Nur vollständige, nichtleere Antworten atomar cachen. ETH sammelt seit 10.03.2023, mit möglichen Lücken; fehlende Abdeckung ist kein Ausschluss. Keine aktuellen TLEs als Ersatz für alte Daten. Vorhandene Nachbarjahre werden am Jahreswechsel lokal berücksichtigt. Gerundete lokale Bahnelemente bzw. ETH-TLEs mit SGP4; standardmäßig höchstens 3 Tage Bahnalter. Erst Standort/Zeit/Bildfeld vorauswählen, dann exakt propagieren. Vergleichstoleranz 360″, mindestens 50 % Spurabdeckung und passende Ausrichtung. Bis zu 8 nächste geprüfte Bahnen samt Ablehnungsgründen für Grafiken speichern.
 - **GMN:** vorhandene offizielle Monatsdateien mit gemessenen Meteorflugbahnen, lokaler SQLite-Zeitindex plus Standorthorizont. Kein vollständiger Meteorkatalog.
 - **CNEOS:** nur bereits vorhandener Zeitcache, weil der Dienst keinen räumlichen Serverfilter bietet; unterhalb des Horizonts liegende Ereignisse verwerfen.
-- **OpenSky:** Trino-OAuth ist implementiert, echter Flugabruf benötigt vom Anbieter freigeschalteten Archivzugang. Ohne solchen Zugang keine funktionsfähige Flugarchivprüfung behaupten. Keine Passwörter in App/Chat sammeln. Offizieller Client speichert Token im Windows-Anmeldespeicher. SQL auf Stundenpartition, Zeit, geografischen Bereich und WGS84-Horizont begrenzen.
+- **Flugzeuge:** Kein automatischer Flug-Abgleich. Die OpenSky-Trino-Anbindung (Archivzugang nur für Forschung/Institutionen) wurde in 0.45.2 entfernt; `aircraft_check` nutzt nur eigene Flugdaten (`flight_file`/`flight_url`, CSV timestamp, icao24, latitude, longitude, geo_altitude, optional callsign), sonst Status `needs_archive`. Alte Einstellungen `opensky_user`/`auto_aircraft` und `catalog_cache/opensky-connection.json` werden ignoriert (`load_settings` entfernt die Schlüssel). Die Erkennung von Flugzeugen über Bewegung/Modell bleibt.
 - Cache: `catalog_cache/`, Archive darunter `archives/`. Vorhandene globale Bestände erhalten, lokal filtern. `archive_sources.download()` darf fehlende Sammelarchive nicht automatisch herunterladen. Manuell konfigurierte TLE-/CSV-Dateien oder HTTPS-URLs sind ausdrücklich gewählte alternative Quellen.
 
 ## Prüfen und Berichte ergänzen

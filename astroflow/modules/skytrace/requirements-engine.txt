@@ -21,4 +21,3 @@ filelock>=3.12
 photutils>=1.12
 polars>=1.0
 matplotlib>=3.8
-trino>=0.330

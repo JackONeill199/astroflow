@@ -8,7 +8,7 @@ import requests
 import archive_sources as sources
 import satellite_archive as satellites
 import catalog_matching as cm
-from opensky_archive import ArchiveAccessError
+from archive_errors import ArchiveAccessError
 
 TLE='ISS\n1 25544U 98067A   24123.50000000  .00010000  00000-0  18000-3 0  9990\n2 25544  51.6400  40.0000 0005000  20.0000  30.0000 15.50000000123456\n'
 stamp=dt.datetime(2024,5,2,12,tzinfo=dt.timezone.utc).timestamp()

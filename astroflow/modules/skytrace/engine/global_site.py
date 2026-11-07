@@ -153,7 +153,7 @@ def load_orbits(trails, settings):
     """Bahnen je Spur aus den lokalen Archiven (wie der normale Abgleich, `historical_models` zur Kamerazeit) → Gruppen
     {Schlüssel: (SatrecArray, [Satrec], [NORAD])}; Spuren mit gleicher Bahnauswahl teilen sich eine Gruppe."""
     from satellite_archive import historical_models
-    from opensky_archive import ArchiveAccessError
+    from archive_errors import ArchiveAccessError
     from sgp4.api import SatrecArray
     groups, missing = {}, 0
     for tr in trails:

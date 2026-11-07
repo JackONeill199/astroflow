@@ -27,7 +27,7 @@ def models_for_day(day):
 
 def historical_models(start,settings):
     from archive_sources import orbit_snapshot,eth_tles,check_stop
-    from opensky_archive import ArchiveAccessError
+    from archive_errors import ArchiveAccessError
     from catalog_matching import TS
     maximum=float(settings.get('max_tle_age_days',3));mid=dt.datetime.fromtimestamp(start,dt.timezone.utc)
     models=[];payload=None

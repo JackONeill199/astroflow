@@ -9,13 +9,15 @@ from astropy.io import fits
 
 from project_paths import BASE, CODE
 CONFIG=BASE/'catalog_settings.json'
-DEFAULTS=dict(enabled=True,auto_solve=True,auto_satellites=True,auto_meteors=True,auto_aircraft=True,opensky_user='',site=None,sites={},tle_file='',tle_url='',flight_file='',flight_url='',geocoder_url='https://photon.komoot.io/api/',max_tle_age_days=3,asteroid_mag_limit=20)
+DEFAULTS=dict(enabled=True,auto_solve=True,auto_satellites=True,auto_meteors=True,site=None,sites={},tle_file='',tle_url='',flight_file='',flight_url='',geocoder_url='https://photon.komoot.io/api/',max_tle_age_days=3,asteroid_mag_limit=20)
 SETTINGS_LOCK=threading.RLock()
 
 def load_settings():
     from json_store import read_json
     saved=read_json(CONFIG,{})
-    return dict(copy.deepcopy(DEFAULTS),**saved) if isinstance(saved,dict) else copy.deepcopy(DEFAULTS)
+    if not isinstance(saved,dict): return copy.deepcopy(DEFAULTS)
+    for old in ('opensky_user','auto_aircraft'): saved.pop(old,None)   # entfernte Einstellungen (OpenSky-Anbindung) still ignorieren
+    return dict(copy.deepcopy(DEFAULTS),**saved)
 
 def night_key(stamp):
     """Nacht einer Aufnahme wie in AstroFlow (UTC-Datum von Zeit − 12 h)."""
@@ -49,14 +51,10 @@ def update_settings(data):
                 if site: settings.setdefault('sites',{})[scope]=site
                 else: settings.setdefault('sites',{}).pop(scope,None)
             else: settings['site']=site
-        for key in ('enabled','auto_solve','auto_satellites','auto_meteors','auto_aircraft'):
+        for key in ('enabled','auto_solve','auto_satellites','auto_meteors'):
             if key in data:
                 if not isinstance(data[key],bool): raise ValueError(key+' muss true oder false sein.')
                 settings[key]=data[key]
-        if 'opensky_user' in data:
-            user=data['opensky_user']
-            if not isinstance(user,str) or len(user)>150 or any(c in user for c in '\r\n'):raise ValueError('Ungültiger OpenSky-Benutzername.')
-            settings['opensky_user']=user.strip().lower()
         for key in ('tle_file','tle_url','flight_file','flight_url'):
             if key in data:
                 if not isinstance(data[key],str): raise ValueError('Katalogpfade müssen Text sein.')
