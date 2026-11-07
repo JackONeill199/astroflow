@@ -22,7 +22,9 @@ def main(argv=None):
     so = sub.add_parser("stop", help="laufenden Server beenden")
     so.add_argument("--port", type=int, default=None)
     sv = sub.add_parser("serve", help="Web-Oberfläche starten")
-    sv.add_argument("--host", default="0.0.0.0")
+    sv.add_argument("--host", default=None, help="Adresse (Standard 127.0.0.1 = nur dieser Rechner; mit --lan bzw. "
+                    "Einstellungen → Heimnetz 0.0.0.0)")
+    sv.add_argument("--lan", action="store_true", help="auch im Heimnetz erreichbar (Geräte koppeln per QR-Code)")
     sv.add_argument("--port", type=int, default=8080)
     sv.add_argument("--data", default=None)
     pr = sub.add_parser("process", help="Eingabeordner scannen und alles verarbeiten (ohne Server)")
@@ -51,11 +53,15 @@ def main(argv=None):
         return launcher.stop(a.port)
     if a.cmd == "serve":
         import uvicorn
+        from .core import security
         from .core.config import load_settings
         from .server import create_app
         import os
         os.environ["ASTROFLOW_PORT"] = str(a.port)                    # Einrichtung/Neustart kennen den eigenen Port
-        uvicorn.run(create_app(load_settings(a.data)), host=a.host, port=a.port)
+        s = load_settings(a.data)
+        host = a.host or ("0.0.0.0" if a.lan or security.lan_enabled(s) else "127.0.0.1")
+        os.environ["ASTROFLOW_BIND"] = host                            # Einstellungen → Heimnetz zeigt, ob es gerade gilt
+        uvicorn.run(create_app(s), host=host, port=a.port)
     elif a.cmd == "process":
         from .core.config import load_settings
         from .modules.stacking.db import DB

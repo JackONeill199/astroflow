@@ -1,4 +1,5 @@
 """Einfache Installation: Starter (core/launcher.py), Einrichtungsassistent und Update-Hinweis (core/setup.py), Paketbeschreibung."""
+import hashlib
 import io
 import json
 import re
@@ -145,6 +146,9 @@ def test_astap_herunterladen(home, tmp_path, monkeypatch):
             return None
         return data
     monkeypatch.setattr(comp, "download", fake)
+    # Attrappen-Dateien gelten als geprüfte Fassung (echte Prüfsummen: test_security.py)
+    monkeypatch.setattr(comp, "ASTAP_SHA256", {p: (hashlib.sha256(served[p.split("/")[-1]]).hexdigest(),)
+                                               for p in (comp.ASTAP_CLI[("Windows", "AMD64")], comp.ASTAP_CATALOG, comp.ASTAP_DBS["d05"][0])})
     (tmp_path / "lad" / "astap").mkdir(parents=True)
     (tmp_path / "lad" / "astap" / "fremd.txt").write_text("vom Nutzer")          # gehört nicht AstroFlow
     c = client(home / "Daten", True, monkeypatch)

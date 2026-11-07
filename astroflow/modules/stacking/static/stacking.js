@@ -1342,8 +1342,8 @@ async function stackingSettings(el) {
         <option value="auto">Automatisch (lokale Solver)</option><option value="astap">ASTAP</option><option value="astrometry">astrometry.net (lokal)</option>
         <option value="nova">nova.astrometry.net (Online)</option><option value="off">Aus</option></select>
         <small>Beim Online-Dienst wird ein verkleinertes Graustufenbild hochgeladen (nicht öffentlich). „Automatisch“ nutzt ihn nie.</small></label>
-      <label class="field"><span>ASTAP-Programm</span><input name="astap" value="${esc(sv.astap || '')}" placeholder="leer = automatisch suchen"></label>
-      <label class="field"><span>Ordner der Sterndatenbank</span><input name="astap_db" value="${esc(sv.astap_db)}" placeholder="leer = ASTAP-Ordner"></label>
+      <label class="field"><span>ASTAP-Programm</span><input name="astap" value="${esc(sv.astap || '')}" placeholder="leer = automatisch suchen" data-local-only></label>
+      <label class="field"><span>Ordner der Sterndatenbank</span><input name="astap_db" value="${esc(sv.astap_db)}" placeholder="leer = ASTAP-Ordner" data-local-only></label>
       <label class="field"><span>nova.astrometry.net API-Key</span><input name="nova_key" type="password" autocomplete="off" placeholder="${sv.has_nova_key ? '•••••• (gesetzt)' : 'nur für den Online-Dienst'}"></label>
       <label class="field"><span>Zeitlimit je Bild (s)</span><input name="timeout" type="number" min="20" max="900" value="${sv.timeout}" style="width:110px"></label>
       <div class="row"><button class="btn" type="submit">Speichern</button><span class="mut sm">Danach werden fehlgeschlagene Versuche beim nächsten Scan wiederholt.</span></div>
@@ -1366,16 +1366,16 @@ async function stackingSettings(el) {
       <p class="mut sm" style="margin:-6px 0 12px">AstroFlow trennt Sterne und Nebel und bearbeitet beides getrennt. Ohne Zusatzsoftware nutzt es ein eigenes Verfahren;
         mit <b>StarNet2</b> (optional) werden auch helle Sterne sauberer entfernt.</p>
       ${sn.found ? `<dl class="kv" style="margin-bottom:12px"><dt>Programm</dt><dd style="word-break:break-all">${esc(sn.path)}</dd></dl>
-        <div class="row">${sn.installed_here || sn.custom ? '<button class="btn ghost danger" id="snrm">Entfernen</button>' : ''}</div>`
+        <div class="row">${sn.installed_here || sn.custom ? '<button class="btn ghost danger" id="snrm" data-local-only>Entfernen</button>' : ''}</div>`
       : `<ol class="mut sm steps"><li>Kommandozeilen-Version (CLI) für dein System von der offiziellen Seite laden:
           <a class="btn sm ghost" href="${esc(sn.page)}" target="_blank" rel="noopener">${icon('down')}starnetastro.com öffnen</a></li>
         <li>Die heruntergeladene ZIP hier auswählen – AstroFlow entpackt und testet sie:
-          <label class="btn sm" style="margin-top:6px">${icon('upload')}ZIP installieren<input type="file" id="snzip" accept=".zip" hidden></label>
+          <label class="btn sm" style="margin-top:6px" data-local-only>${icon('upload')}ZIP installieren<input type="file" id="snzip" accept=".zip" hidden></label>
           <span id="snbusy" class="mut sm"></span></li></ol>
         <p class="dim sm" style="margin:10px 0 0">StarNet2 ist kostenlose Software von Mikita Misiura (alle Rechte beim Autor). AstroFlow liefert es nicht mit,
           sondern ruft es nur auf – mit dem Herunterladen akzeptierst du die Bedingungen des Autors.</p>
         <details style="margin-top:10px"><summary class="sm mut" style="cursor:pointer">Schon installiert? Pfad angeben</summary>
-          <form id="snpath" class="row" style="margin-top:8px"><input name="path" placeholder="z. B. C:\\starnet\\starnet2.exe" style="flex:1"><button class="btn sm">Übernehmen</button></form></details>`}
+          <form id="snpath" class="row" style="margin-top:8px" data-local-only><input name="path" placeholder="z. B. C:\\starnet\\starnet2.exe" style="flex:1"><button class="btn sm">Übernehmen</button></form></details>`}
     </div>
     <form class="panel" id="gxp">
       <div class="panel-h"><h2>GraXpert (KI)</h2><span class="grow"></span>
@@ -1389,7 +1389,7 @@ async function stackingSettings(el) {
       <label class="field"><span>Standard für alle Objekte</span><select name="mode">${['all', 'bge', 'denoise', 'off'].map(v => `<option value="${v}" ${gx.mode === v ? 'selected' : ''}>${GX_LABEL[v]}</option>`).join('')}</select>
         <small>Je Objekt unter „Optionen“ änderbar. Beim ersten Lauf lädt GraXpert seine KI-Modelle selbst herunter.</small></label>
       <label class="modrow opt"><div><b>Grafikkarte nutzen</b><div class="mut sm">Deutlich schneller beim Entrauschen.</div></div><input type="checkbox" name="gpu" ${gx.gpu ? 'checked' : ''}><span class="switch"></span></label>
-      <label class="field"><span>GraXpert-Programm</span><input name="path" value="${esc(gx.custom || '')}" placeholder="leer = automatisch suchen"></label>
+      <label class="field"><span>GraXpert-Programm</span><input name="path" value="${esc(gx.custom || '')}" placeholder="leer = automatisch suchen" data-local-only></label>
       <div class="row"><button class="btn" type="submit">Speichern</button></div>
     </form>
     <form class="panel" id="stf"><h2 style="margin-bottom:10px">Speicher &amp; Daten</h2>
@@ -1481,7 +1481,7 @@ async function stackingSettings(el) {
   // Modell-Auswahl: Liste vom gewählten (auch noch nicht gespeicherten) Anbieter
   const rf = $('#rf');
   const mp = picker($('#rmodel'), { name: 'model', value: c.model, placeholder: 'Modell wählen …',
-    load: () => api(`/stacking/reviewer/models?provider=${encodeURIComponent(rf.elements.provider.value)}&base_url=${encodeURIComponent(rf.elements.base_url.value)}`) });
+    load: () => send('/stacking/reviewer/models', { provider: rf.elements.provider.value, base_url: rf.elements.base_url.value }) });
   rf.elements.provider.addEventListener('change', () => mp.reload());
   rf.elements.base_url.addEventListener('change', () => mp.reload());
   const tf = $('#tf');
@@ -1490,7 +1490,7 @@ async function stackingSettings(el) {
   const tp = picker($('#tmodel'), { name: 'llm_model', value: tu.llm_model, placeholder: 'wie beim KI-Bildprüfer',
     load: () => {             // gleiche Server-URL wie tutor.llm_config: die des KI-Prüfers, außer er nutzt einen anderen Anbieter
       const prov = tf.elements.llm_provider.value, url = c.provider === prov || c.provider === 'off' ? c.base_url : '';
-      return api(`/stacking/reviewer/models?provider=${encodeURIComponent(prov)}&base_url=${encodeURIComponent(url)}`);
+      return send('/stacking/reviewer/models', { provider: prov, base_url: url });
     } });
   tf.elements.llm_provider.addEventListener('change', () => tp.reload());
   tf.onsubmit = async (e) => {

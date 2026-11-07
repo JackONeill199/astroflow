@@ -44,6 +44,44 @@ ASTAP_CLI = {   # (Betriebssystem, Architektur) → Datei auf SourceForge
 }
 ASTAP_CATALOG = "windows_installer/astapwin32.zip"          # enthält deep_sky.csv (plattformunabhängig, ~1 MB)
 ASTAP_DBS = {"d05": ("star_databases/d05_star_database.zip", 102), "d50": ("star_databases/d50_star_database.zip", 900)}
+# SourceForge hat keine versionierten Dateinamen (die Dateien werden bei neuen ASTAP-Versionen ersetzt). Deshalb gilt nur die
+# geprüfte Fassung: SHA-256 selbst gebildet am 07.11.2026 (alle Weiterleitungen über https). Neue ASTAP-Fassung → Abbruch mit
+# Hinweis; dann hier bewusst ergänzen (Tupel = erlaubte Fassungen).
+ASTAP_SHA256 = {
+    "windows_installer/astap_command-line_version_win64.zip": ("19918dcc91db608b14153b9233e5776e7ca8d5c839cba52a117d559174c01b0c",),
+    "linux_installer/astap_command-line_version_Linux_amd64.zip": ("5e2229e936fc53587dbacc8b0892822552af275b0c2d6f66b38947e0e41aeb47",),
+    "linux_installer/astap_command-line_version_Linux_aarch64.zip": ("2e56d79a626c895298d49c9d841d4a449154f5764e2f39eee8bba669fdc6fa35",),
+    "macOS installer/astap_command-line_version_macOS_M1.zip": ("9c64e6bd5087ce910ff43d56e860a4dcea6abacfd556aca80dcf9eae129096e7",),
+    "macOS installer/astap_command-line_version_macOS_x86_64.zip": ("f75a359a86d3b320d62df9f72df26a23f754c574b155372e38eea71c22078517",),
+    "windows_installer/astapwin32.zip": ("f39b180633896f494b2db26bd8aca6b7e17c33c355fbccc19f6813e1e638eb4e",),
+    "star_databases/d05_star_database.zip": ("39d59b73cb960fa0956c35162e70b09a8af10ef20a1e8f5cae7b77d48be5ce31",),
+    "star_databases/d50_star_database.zip": ("ca89a958ca0808185f0e546541b4ac73addc40fee4ad8bdd8bb79981c1dd8b43",),
+}
+
+
+class ChecksumError(RuntimeError):
+    pass
+
+
+def sha256_of(data) -> str:
+    h = hashlib.sha256()
+    if isinstance(data, (bytes, bytearray)):
+        h.update(data)
+    else:
+        with open(data, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+    return h.hexdigest()
+
+
+def verify_astap(path: str, data) -> None:
+    """Geladene ASTAP-Datei gegen die geprüfte Fassung vergleichen; Abweichung → Abbruch (Datei wird nicht verwendet)."""
+    if sha256_of(data) not in ASTAP_SHA256.get(path, ()):
+        if isinstance(data, Path):
+            data.unlink(missing_ok=True)
+        raise ChecksumError(f"Prüfsumme von „{Path(path).name}“ stimmt nicht mit der geprüften Fassung überein – Datei verworfen. "
+                            "Vermutlich gibt es eine neue ASTAP-Version: AstroFlow aktualisieren oder ASTAP selbst von "
+                            "hnsky.org installieren (AstroFlow findet es dann von allein).")
 
 # GraXpert: letzte stabile Version (3.1.0 nur als Vorabversion). Prüfsumme selbst gebildet (GitHub nennt keine), 07.11.2026.
 GRAXPERT_VERSION = "3.0.2"
@@ -379,6 +417,7 @@ def _install_astap(prog, option, force) -> str:
     if need(cli):
         prog(0.01, "Lade ASTAP-Kommandozeile …")
         data = download(SF.format(ASTAP_CLI[key]), lambda f: prog(0.01 + 0.04 * f, "Lade ASTAP-Kommandozeile …"))
+        verify_astap(ASTAP_CLI[key], data)
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             name = next((n for n in z.namelist() if Path(n).name.startswith("astap_cli")), None)
             if not name:
@@ -391,6 +430,7 @@ def _install_astap(prog, option, force) -> str:
     if need(dest / "deep_sky.csv"):
         prog(0.06, "Lade Objektkatalog deep_sky.csv …")
         data = download(SF.format(ASTAP_CATALOG), lambda f: prog(0.06 + 0.04 * f, "Lade Objektkatalog deep_sky.csv …"))
+        verify_astap(ASTAP_CATALOG, data)
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             for n in z.namelist():
                 if Path(n).name in ("deep_sky.csv", "acknowledgement of databases.txt") and need(dest / Path(n).name):
@@ -404,6 +444,8 @@ def _install_astap(prog, option, force) -> str:
         tmp.parent.mkdir(parents=True, exist_ok=True)
         download(SF.format(ASTAP_DBS[db][0]), lambda f: prog(0.10 + 0.8 * f, f"Lade Sterndatenbank {db.upper()} (~{mb} MB) … {f*100:.0f} %"),
                  to=tmp, resume=True)
+        prog(0.91, "Prüfe Prüfsumme …")
+        verify_astap(ASTAP_DBS[db][0], tmp)
         prog(0.92, "Entpacke Sterndatenbank …")
         try:
             with zipfile.ZipFile(tmp) as z:
@@ -458,11 +500,7 @@ def _install_graxpert(prog, option, force) -> str:
     download(GRAXPERT_MSI, lambda f: prog(0.01 + 0.7 * f, f"Lade GraXpert {GRAXPERT_VERSION} (~{GRAXPERT_MB} MB) … {f*100:.0f} %"),
              to=msi, resume=True)
     prog(0.72, "Prüfe Prüfsumme …")
-    h = hashlib.sha256()
-    with open(msi, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    if h.hexdigest() != GRAXPERT_SHA256:
+    if sha256_of(msi) != GRAXPERT_SHA256:
         msi.unlink(missing_ok=True)
         raise RuntimeError("Prüfsumme des GraXpert-Pakets stimmt nicht – Download verworfen, bitte erneut versuchen.")
     prog(0.75, "Packe GraXpert aus …")
@@ -613,13 +651,20 @@ def _short(e: Exception) -> str:
     return ((str(e) or type(e).__name__).splitlines() or [type(e).__name__])[0][:160]
 
 
+def _https_only(request) -> None:
+    """Jede Anfrage der Kette (auch nach Weiterleitungen) nur über https – außer an den eigenen Rechner (Tests, lokaler Spiegel)."""
+    if request.url.scheme != "https" and request.url.host not in ("127.0.0.1", "localhost", "::1"):
+        raise ChecksumError(f"Unsichere Download-Adresse ({request.url.scheme}://{request.url.host}) – abgebrochen, nur https ist erlaubt.")
+
+
 def _fetch(httpx, url: str, prog, to: Path | None, mem: bytearray | None) -> None:
     """Ein Versuch: setzt bei vorhandenen Bytes (Datei bzw. `mem`) per Range fort."""
     have = len(mem) if mem is not None else (to.stat().st_size if to.exists() else 0)
     headers = {"User-Agent": "AstroFlow", "Accept-Encoding": "identity"}   # Bytes wie auf dem Server (Range zählt sie)
     if have:
         headers["Range"] = f"bytes={have}-"
-    with httpx.stream("GET", url, follow_redirects=True, timeout=httpx.Timeout(60, read=120), headers=headers) as r:
+    with httpx.Client(follow_redirects=True, timeout=httpx.Timeout(60, read=120), event_hooks={"request": [_https_only]}) as cl, \
+            cl.stream("GET", url, headers=headers) as r:
         if r.status_code == 416 and have:             # schon vollständig
             prog(1.0)
             return

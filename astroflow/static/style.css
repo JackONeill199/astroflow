@@ -547,6 +547,9 @@ dialog::backdrop { background: #05060899; animation: fadeIn var(--t2) }
 .namebtn { background: none; border: 0; color: inherit; font: inherit; padding: 0; cursor: text; text-align: left; max-width: 100% }
 .namebtn h1 { overflow-wrap: anywhere }
 .namebtn:hover svg { opacity: 1 } .namebtn svg { opacity: 0; color: var(--dim); width: 0.9375rem; height: 0.9375rem; margin-left: 0.375rem; vertical-align: middle; transition: opacity var(--t) }
+/* Nur am Rechner selbst (app.js markLocalOnly): auf gekoppelten Geräten ausgegraut */
+.local-only { opacity: 0.5; cursor: not-allowed }
+label.local-only, a.local-only, form.local-only { pointer-events: none }
 .notice { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; padding: 0.625rem 0.875rem; margin-bottom: 0.875rem; border-radius: var(--r-lg); border: 1px solid color-mix(in srgb, var(--acc) 30%, transparent);
   background: color-mix(in srgb, var(--acc) 7%, var(--surface)) }
 .notice > svg { color: var(--acc); width: 1.125rem; height: 1.125rem }

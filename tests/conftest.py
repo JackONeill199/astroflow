@@ -44,6 +44,25 @@ def pytest_configure(config):
 
     subprocess.Popen.__init__ = guarded
     _block_network()
+    _local_testclient()
+
+
+def _local_testclient():
+    """TestClient wie der Browser auf dem eigenen Rechner: Adresse 127.0.0.1, Client-IP Loopback und die eigene Herkunft
+    (Origin) – die Host-/Herkunftsprüfung in server.py lehnt sonst „testserver“ und schreibende Anfragen ohne Origin ab.
+    Tests der Prüfungen selbst geben base_url/client/headers ausdrücklich an (test_security.py)."""
+    from starlette.testclient import TestClient
+
+    real = TestClient.__init__
+
+    def init(self, app, *a, **kw):
+        if not a:                                    # nur Schlüsselwort-Aufrufe ergänzen (alle Tests nutzen sie so)
+            kw.setdefault("base_url", "http://127.0.0.1:8766")
+            kw.setdefault("client", ("127.0.0.1", 50000))
+            kw.setdefault("headers", {"Origin": kw["base_url"]})
+        real(self, app, *a, **kw)
+
+    TestClient.__init__ = init
 
 
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]", "testserver"}

@@ -22,6 +22,8 @@ async function api(u, opt = {}) {
 }
 async function apiFetch(u, opt) {
   const r = await fetch('/api' + u, opt);
+  // Kopplung entfernt (Heimnetz-Gerät): Startseite zeigt dann die Kopplungsseite
+  if (r.status === 401 && AF.app?.local === false) { location.replace('/'); throw new Error('Gerät nicht gekoppelt.'); }
   if (!r.ok) {
     let msg = r.statusText;
     try { const j = await r.json(); msg = j.detail || j.error || msg; } catch { /* kein JSON */ }
@@ -29,6 +31,22 @@ async function apiFetch(u, opt) {
   }
   return r.json();
 }
+// Nur am Rechner selbst (core/security.py → require_local): auf gekoppelten Heimnetz-Geräten ausgrauen.
+// Markiert werden Elemente mit data-local-only (auch Formulare/Abschnitte: dann alle Felder darin).
+const LOCAL_ONLY_HINT = 'Nur am Rechner selbst möglich, auf dem AstroFlow läuft';
+let localOnlyQueued = false;
+function markLocalOnly() {
+  localOnlyQueued = false;
+  if (AF.app?.local !== false) return;
+  for (const el of $$('[data-local-only]:not(.local-only)')) {
+    el.classList.add('local-only');
+    el.title = LOCAL_ONLY_HINT;
+    el.setAttribute('aria-disabled', 'true');
+    for (const x of [el, ...el.querySelectorAll('input, button, select, textarea')]) if ('disabled' in x) x.disabled = true;
+  }
+}
+new MutationObserver(() => { if (!localOnlyQueued && AF.app?.local === false) { localOnlyQueued = true; requestAnimationFrame(markLocalOnly); } })
+  .observe(document.documentElement, { childList: true, subtree: true });
 const send = (u, body, method = 'POST') => api(u, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
 const dur = (s) => {
   s = Math.round(s || 0);
@@ -857,7 +875,7 @@ async function activityView(el) {
 // ------------------------------------------------------------ Einstellungen --- //
 async function settingsView(el, section) {
   crumbs([['Einstellungen']]);
-  const secs = [...AF.order.filter(id => AF.modules[id].settings).map(id => [id, AF.info(id).name, AF.info(id).icon]), ['standorte', 'Standorte', 'pin'], ['module', 'Module & System', 'gear']];
+  const secs = [...AF.order.filter(id => AF.modules[id].settings).map(id => [id, AF.info(id).name, AF.info(id).icon]), ['standorte', 'Standorte', 'pin'], ['heimnetz', 'Heimnetz', 'globe'], ['module', 'Module & System', 'gear']];
   section = secs.some(s => s[0] === section) ? section : secs[0][0];
   el.innerHTML = `<div class="pagehead"><div><h1>Einstellungen</h1><p class="mut">Alles wird im Datenordner gespeichert und gilt auch nach einem Neustart.</p></div></div>
     <div class="settings"><nav class="snav" id="snav">${secs.map(([k, l, ic]) => `<a href="#/settings/${k}" data-s="${k}" class="${k === section ? 'on' : ''}">${icon(ic)}${esc(l)}</a>`).join('')}</nav>
@@ -868,7 +886,7 @@ async function settingsView(el, section) {
     $$('#snav a').forEach(a => a.classList.toggle('on', a.dataset.s === k));
     body.classList.remove('enter');
     body.innerHTML = '<div class="skel" style="height:300px"></div>';
-    try { await (k === 'module' ? moduleSettings(body) : k === 'standorte' ? window.sitesSettings(body) : AF.modules[k].settings(body)); }
+    try { await (k === 'module' ? moduleSettings(body) : k === 'standorte' ? window.sitesSettings(body) : k === 'heimnetz' ? window.pairingSettings(body) : AF.modules[k].settings(body)); }
     catch (e) { body.innerHTML = `<div class="notice err"><div><b>Fehler</b><div class="mut sm">${esc(e.message)}</div></div></div>`; }
     void body.offsetWidth; body.classList.add('enter');
   };

@@ -3,6 +3,37 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.46.0 – 07.11.2026
+
+### Neu
+- **Heimnetz: Geräte koppeln per QR-Code.** Handy, Tablet oder ein anderer PC öffnen AstroFlow im Heimnetz nur noch, wenn sie
+  einmal gekoppelt wurden: am Rechner unter **Einstellungen → Heimnetz** den QR-Code mit dem Gerät scannen (oder den Link dort
+  eingeben). Das Gerät bleibt danach gekoppelt. Unter Einstellungen → Heimnetz stehen auch die gekoppelten Geräte (zum Entfernen),
+  „Neuen Kopplungscode erzeugen“ und der Schalter „Im Heimnetz erreichbar“. Ein Kopplungscode gilt 15 Minuten und für ein Gerät.
+  Ein noch nicht gekoppeltes Gerät sieht eine Seite mit genau diesem Hinweis.
+- `python -m astroflow serve --lan` bzw. `ASTROFLOW_LAN=1` für `Start.bat`: auch im Heimnetz erreichbar (mit Kopplung).
+- Einstellungen, die Programme starten oder den Rechner betreffen (Komponenten installieren/entfernen, Programmpfade für StarNet,
+  GraXpert, ASTAP und SkyTrace, StarNet-ZIP, Heimnetz, Firewall, Datenordner, Beenden/Neustart), gehen nur noch am Rechner selbst;
+  auf gekoppelten Geräten sind die Knöpfe ausgegraut („Nur am Rechner selbst möglich“).
+
+### Behoben
+- **`serve`, `Start.bat` und Docker sind standardmäßig nur vom eigenen Rechner erreichbar** (`127.0.0.1`, Docker
+  `127.0.0.1:8080:8080`). Das Heimnetz ist eine bewusste Einstellung.
+- Strengere Prüfung eingehender Anfragen: unbekannte Hostnamen werden abgewiesen, schreibende Anfragen brauchen immer die
+  eigene Herkunft.
+- Modelllisten der KI-Anbieter (KI-Prüfer, Sage) senden gespeicherte API-Schlüssel nur noch an die gespeicherte bzw. die feste
+  Adresse des Anbieters; die Abfrage läuft jetzt per POST.
+- ASTAP (Kommandozeile, Objektkatalog, Sterndatenbanken D05/D50) wird nur noch in der geprüften Fassung (SHA-256) und nur über
+  https geladen. Hat ASTAP inzwischen eine neue Version veröffentlicht, bricht die Installation mit einem klaren Hinweis ab –
+  dann AstroFlow aktualisieren oder ASTAP selbst installieren. Der Paketbau prüft das mitgelieferte Python ebenso.
+- StarNet-ZIP: genauere Prüfung der Pfade beim Entpacken.
+- Paket-Workflow (CI): nur Lesezugriff, Schreibrecht nur für den Release-Entwurf bei Versions-Tags.
+
+**Wer AstroFlow bisher vom Handy aus genutzt hat (z. B. mit `Start.bat`):** Nach dem Update bleibt das Heimnetz eingeschaltet –
+eine bestehende Installation übernimmt das bisherige Verhalten. Neu ist nur: am Handy erscheint einmal „Gerät koppeln“. Dann am PC
+**Einstellungen → Heimnetz** öffnen, den QR-Code mit dem Handy scannen – fertig, das Handy bleibt gekoppelt. Wer das Heimnetz
+nicht braucht, schaltet es dort aus (wirkt nach Stop.bat/Start.bat). Der installierte Starter behält seine Einstellung ohnehin.
+
 ## 0.45.6 – 07.11.2026
 
 ### Behoben

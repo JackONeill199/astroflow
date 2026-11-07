@@ -32,6 +32,8 @@ PBS_TAG = "20261021"
 PBS_PY = "3.12.15"
 PBS_FILE = f"cpython-{PBS_PY}+{PBS_TAG}-x86_64-pc-windows-msvc-install_only_stripped.tar.gz"
 PBS_URL = f"https://github.com/astral-sh/python-build-standalone/releases/download/{PBS_TAG}/{PBS_FILE.replace('+', '%2B')}"
+# Aus SHA256SUMS des Releases, beim Festlegen gegen die geladene Datei nachgerechnet (07.11.2026). Beim Anheben mit ändern.
+PBS_SHA256 = "aac5d331fc3307343f95928fdbea4583f0d53973d08c7e1d081884fbd229a0e1"
 
 
 def version() -> str:
@@ -42,14 +44,32 @@ def log(*a):
     print("[build]", *a, flush=True)
 
 
-def fetch(url: str, cache: Path) -> Path:
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def fetch(url: str, cache: Path, sha256: str) -> Path:
+    """Datei laden (bzw. aus dem Zwischenspeicher) und gegen die feste Prüfsumme prüfen – sonst Abbruch."""
     cache.mkdir(parents=True, exist_ok=True)
     dest = cache / url.rsplit("/", 1)[-1].replace("%2B", "+")
+    if dest.exists() and _sha256(dest) != sha256:
+        log("Zwischenspeicher passt nicht zur Prüfsumme – lade neu:", dest.name)
+        dest.unlink()
     if not dest.exists():
         log("Lade", url)
         tmp = dest.with_suffix(".part")
         with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "AstroFlow-Build"}), timeout=120) as r, open(tmp, "wb") as f:
+            if not r.geturl().startswith("https://"):
+                raise SystemExit(f"Unsichere Weiterleitung beim Laden von {url}")
             shutil.copyfileobj(r, f, 1 << 20)
+        got = _sha256(tmp)
+        if got != sha256:
+            tmp.unlink(missing_ok=True)
+            raise SystemExit(f"Prüfsumme von {dest.name} stimmt nicht ({got} statt {sha256}) – Abbruch.")
         tmp.replace(dest)
     return dest
 
@@ -134,7 +154,7 @@ def build(out: Path, installer: bool = True, cache: Path | None = None) -> dict:
     out.mkdir(parents=True, exist_ok=True)
 
     # 1) Python entpacken (Archiv enthält den Ordner python/)
-    tgz = fetch(PBS_URL, cache)
+    tgz = fetch(PBS_URL, cache, PBS_SHA256)
     log("Entpacke", tgz.name)
     with tarfile.open(tgz) as t:
         t.extractall(stage, filter="data")

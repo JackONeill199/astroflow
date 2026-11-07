@@ -19,10 +19,13 @@ Nur die jeweils neueste Version bekommt Sicherheitskorrekturen.
 
 - AstroFlow ist für **einen Nutzer auf dem eigenen Rechner** gebaut: keine Konten, keine Anmeldung. Der Server lauscht
   standardmäßig nur auf `127.0.0.1`.
-- Wer „Im Heimnetz erreichbar“ einschaltet, gibt die Oberfläche **ohne Passwort** für das lokale Netz frei
-  (Windows-Firewall-Regel nur für das private Subnetz). Nicht ins Internet weiterleiten.
-- Schreibende Anfragen mit fremdem `Origin` werden abgewiesen (Schutz gegen Webseiten, die im Hintergrund auf
-  `localhost` zugreifen).
+- Wer „Im Heimnetz erreichbar“ einschaltet, gibt die Oberfläche für das lokale Netz frei (Windows-Firewall-Regel nur für
+  das private Subnetz). Andere Geräte brauchen eine einmalige Kopplung per QR-Code (Geräte-Token als Cookie). Nicht ins
+  Internet weiterleiten – es gibt kein https.
+- Der `Host`-Kopf muss ein bekannter Name sein (localhost, IP-Adresse, Rechnername). Schreibende Anfragen brauchen eine
+  `Origin` (bzw. `Referer`) mit derselben Adresse.
+- Programmpfade, Komponenten, Heimnetz, Datenordner und Beenden gehen nur vom eigenen Rechner aus, auch für gekoppelte Geräte.
+- Heruntergeladene Werkzeuge (ASTAP, GraXpert) werden gegen feste SHA-256-Prüfsummen geprüft und nur über https geladen.
 - API-Schlüssel (z. B. für einen KI-Prüfer) stehen im Klartext in `settings.json` im Datenordner.
 
 Lücken in diesen Grenzen (z. B. Umgehen des Herkunftsschutzes, Pfad-Traversal über die API, Zugriff auf Dateien außerhalb

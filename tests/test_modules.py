@@ -24,7 +24,7 @@ def test_alle_module_laden(tmp_path, monkeypatch):
         assert c.get("/").headers["cache-control"] == "no-cache"
         # Schreibzugriffe nur von der eigenen Oberfläche
         assert c.post("/api/stacking/scan", headers={"origin": "http://boese.example"}).status_code == 403
-        assert c.post("/api/stacking/scan", headers={"origin": "http://testserver"}).status_code == 200
+        assert c.post("/api/stacking/scan", headers={"origin": "http://127.0.0.1:8766"}).status_code == 200
         # Module abschalten wirkt nach dem Neustart; das Kernmodul bleibt
         assert c.post("/api/modules", json={"sage": False, "stacking": False}).json()["saved"] == {"sage": False}
     with TestClient(create_app(load_settings(tmp_path / "d"))) as c:

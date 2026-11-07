@@ -35,7 +35,24 @@ astroflow/static/          Shell: index.html, app.js (Router, Navigation, Übers
   `createViewer`, `folderDialog(start, pick, {title, ok, hint})` (Ordner auf dem Server-Rechner wählen, über `/api/folders` → `core/folders.py`: Laufwerke, Unterordner, FITS-/Bildzählung; genutzt von Hauptordner und SkyTrace; Suchfeld seit 0.31.0: sofort im aktuellen Ordner, entprellt 300 ms + abbrechbar `/api/folders/search?path=&q=` = Breitensuche Tiefe ≤ 4, ≤ 200 Treffer, ≤ 300 000 Einträge/5 s – je Eintrag geprüft, auch mitten in großen Ordnern, Schlüssel `folders.norm`/`folderKey` ohne Leerzeichen/„_“/„-“; bewusst keine Mehrfachauswahl, beide Aufrufer nehmen genau einen Ordner), `picker` (Dropdown mit Suche für Modelle/Stimmen, Listen aus `core/models.list_models`), `jobLine`, `confirmDlg`, `crumbs`, `store` …) sind global. Modul-Skripte lädt die Shell aus `/api/app` mit `?v=<build>`
   (Build-Kennung aus Dateizeiten) – nur `index.html` braucht weiter das manuelle `?v=`.
 - Module ein/aus: Einstellungen → Module & System bzw. `ASTROFLOW_MODULES=stacking,skytrace`; ein defektes Modul erscheint mit Fehler, die App läuft weiter.
-- Sicherheit: schreibende Anfragen mit fremdem `Origin` → 403 (Middleware `guard`). Antworten ab 2 KB werden per `core/gzip.py` komprimiert (seit 0.31.1, Handy im Heimnetz; eigene Middleware statt Starlettes `GZipMiddleware`, deren Ausschlussliste ältere erlaubte Versionen nicht kennen). Nur Text/JSON/JS/SVG mit Status 200, nie Downloads, Medien oder 206. Große JSON-Antworten trotzdem klein halten, siehe SkyTrace „Laufdaten fürs Handy“. Schlüssel stehen im Klartext in `data/settings.json`.
+- **Sicherheit** (`core/security.py`, Middleware `guard` in `server.py`, seit 0.46.0; Befunde eines Reviews vor der Veröffentlichung):
+  (1) **Host-Prüfung:** `Host` muss `localhost`, eine IP-Adresse (eine über eine IP geladene Seite gehört zu diesem Rechner), der
+  Rechnername (auch `.local`, `.fritz.box`, `.home`, `.lan`, FQDN) oder ein Name aus `ASTROFLOW_HOSTS`/`settings.json` → `lan.hosts` sein, sonst 400.
+  (2) **Herkunft:** schreibende Methoden brauchen `Origin` (Rückfall `Referer`) mit derselben Adresse wie `Host` (sonst 403) – auch
+  eigene Hilfsprogramme setzen ihn (`tray.py`, `launcher.stop`, `installer/pruefe_paket.py`).
+  (3) **Kopplung:** Clients, die nicht Loopback sind (`request.client.host`; Docker: `ASTROFLOW_TRUSTED_NETS`), brauchen das Cookie
+  `af_geraet` (HttpOnly, SameSite=Strict, 10 Jahre). Es kommt aus `GET /api/pair?code=` (Code aus Einstellungen → Heimnetz, QR-Code
+  per `core/qr.py` – eigener Encoder, Byte-Modus/Stufe M, ohne Fremdpaket; Code 15 min, einmalig, danach neuer). Gespeichert wird nur
+  der SHA-256 (`settings.json` → `pairing.devices`). Sonst 401: JSON `{pair: true}` unter `/api`, sonst HTML-Seite „Gerät koppeln“.
+  `GET/POST /api/pairing[/code|/remove]` nur lokal. Frontend `static/pairing.js` (Abschnitt `heimnetz` in `settingsView`).
+  (4) **Nur am Rechner selbst** (`security.require_local(request, was)` → 403, auch mit Token): Komponenten installieren/entfernen,
+  `/setup/astap|gpu|firewall`, `/setup {lan|data_dir}`, `/system/shutdown|restart`, StarNet-Pfad/-ZIP/-Entfernen, GraXpert-, ASTAP- und
+  SkyTrace-Pfade (nur bei **geänderten** Werten – Formulare schicken die Felder mit). Neue gefährliche Endpunkte genauso schützen.
+  UI: `data-local-only` an Knöpfen/Feldern/Formularen – `app.js` (`markLocalOnly`, MutationObserver) graut sie aus, wenn
+  `/api/app` → `local: false`. (5) **GET ohne Seiteneffekte mit Geheimnissen:** Modelllisten (`/stacking/reviewer/models`,
+  `/sage/models`) sind POST; gespeicherte Schlüssel nur an die gespeicherte bzw. feste Anbieteradresse (`core/models.key_for`).
+  Tests: `tests/test_security.py`; `conftest.py` lässt den TestClient standardmäßig als 127.0.0.1 mit eigener `Origin` laufen.
+  Antworten ab 2 KB werden per `core/gzip.py` komprimiert (seit 0.31.1, Handy im Heimnetz; eigene Middleware statt Starlettes `GZipMiddleware`, deren Ausschlussliste ältere erlaubte Versionen nicht kennen). Nur Text/JSON/JS/SVG mit Status 200, nie Downloads, Medien oder 206. Große JSON-Antworten trotzdem klein halten, siehe SkyTrace „Laufdaten fürs Handy“. Schlüssel stehen im Klartext in `data/settings.json`.
 - **Neues Modul:** Unterpaket mit `Module(BaseModule)` anlegen, in `AVAILABLE` eintragen, `static/<id>.js` mit `AF.register`, Tests in `tests/`.
 
 ## Versionierung (verbindlich, seit 01.11.2026 – Nutzerwunsch)
@@ -56,7 +73,7 @@ astroflow/static/          Shell: index.html, app.js (Router, Navigation, Übers
 .venv/Scripts/python -m pytest -q                # Windows-venv liegt im Repo (.venv); parallel (xdist, pytest.ini) ~1,2 min auf 16 Kernen (seriell 5,5 min); muss grün sein
 .venv/Scripts/python -m pytest -q -m "not ui"    # schneller Teilsatz ohne Browser-Tests (~40 s)
 .venv/Scripts/python -m pytest -q -p no:xdist -o addopts=""   # seriell (zum Debuggen eines einzelnen Tests, `-s`, pdb)
-python -m astroflow serve --port 8080 --data ./data   # Web-UI (alle Module)
+python -m astroflow serve --port 8080 --data ./data   # Web-UI (alle Module), nur dieser Rechner; --lan = auch Heimnetz (Kopplung)
 python -m astroflow process --data ./data             # alles per CLI verarbeiten
 Start.bat / Stop.bat                                  # Windows: Server im Hintergrund starten/beenden (Port 8766, ./data)
 Netzwerk-freigeben.bat [entfernen]                    # Firewall-Regel „AstroFlow LAN“ (TCP 8766, privat, LocalSubnet; braucht Admin – Nutzer führt aus)
@@ -306,8 +323,15 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
 
 ## Installation und Einrichtung (`core/launcher.py`, `core/setup.py`, `installer/`; seit 0.33.0 – Voraussetzung fürs öffentliche Repo)
 - **Zwei Wege, getrennt:** Bestehende Instanzen (`serve --data`, `ASTROFLOW_DATA`, `Start.bat` mit `./data`, Port 8080/8766) bleiben unverändert.
+  **Heimnetz bei `serve`** (seit 0.46.0): ohne `--host` gilt `127.0.0.1`, außer `--lan` (Start.bat: `ASTROFLOW_LAN=1`) oder
+  `settings.json` → `lan.enabled` (Einstellungen → Heimnetz, wirkt nach dem nächsten Start). Fehlt die Einstellung, setzt
+  `security.lan_enabled` sie einmalig: bestehende Instanz (`astroflow.db` vorhanden – bis 0.45 lauschte `serve` immer auf 0.0.0.0)
+  → an + `migrated` (Hinweis in Einstellungen → Heimnetz), neue Instanz → aus. `serve` setzt `ASTROFLOW_BIND` (→ `lan_active`).
+  Docker: CMD `--host 0.0.0.0`, Compose veröffentlicht nur `127.0.0.1:8080` und setzt `ASTROFLOW_TRUSTED_NETS` für die Bridge.
+  Heimnetz unter Docker nur mit `network_mode: host` (Linux) ohne `TRUSTED_NETS` – mit "8080:8080" kämen je nach Docker-Variante
+  auch Heimnetz-Geräte von der Bridge-Adresse (dann keine Unterscheidung lokal/fremd; ohne `TRUSTED_NETS` könnte der Host nicht koppeln).
   Neu ist der **Starter** `astroflow` / `astroflow start` (Standard ohne Befehl): Port 8766, `127.0.0.1` (Heimnetz erst nach Einschalten im
-  Assistenten → `config.lan`, sonst fragte die Windows-Firewall beim ersten Start), Datenordner `--data` > `ASTROFLOW_DATA` > `config.json` →
+  Assistenten bzw. Einstellungen → Heimnetz → `config.lan`, sonst fragte die Windows-Firewall beim ersten Start; Geräte dann koppeln, s. „Sicherheit“), Datenordner `--data` > `ASTROFLOW_DATA` > `config.json` →
   `data_dir` > `%USERPROFILE%\AstroFlow` bzw. `~/AstroFlow` (**nicht** „Dokumente“ – OneDrive, Entscheidung des Masters 06.11.2026).
   `config.json` liegt außerhalb des Datenordners (`%APPDATA%\AstroFlow`, `~/.config/astroflow`; portabel `ASTROFLOW_HOME` → `<App>\config.json`,
   Daten `<App>\Daten`). Läuft schon ein AstroFlow auf dem Port (`/api/status`) → nur Browser; fremdes Programm → Meldung (MessageBox ohne Konsole).
@@ -343,6 +367,10 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
     (plattformneutral; das alte `requirements.txt` dort ist ein Windows-Lockfile). Immer mit `-c <Werkzeuge>/constraints.txt` = Versionen
     der vom Server geladenen Pakete (numpy, scipy, astropy …) – sonst will pip sie ersetzen, unter Windows sind geladene .pyd gesperrt.
     Nur CPU-PyTorch (GPU-Variante nicht verlässlich ohne Hardwareprüfung). Danach `skytrace.Module.check_engine()`; `gpu._TRIED` zurück.
+  - **Prüfsummen** (seit 0.46.0): ASTAP-CLI je System, `astapwin32.zip` (deep_sky.csv), D05/D50 nur mit SHA-256 aus `ASTAP_SHA256`
+    (SourceForge hat keine versionierten Dateinamen → geprüfte Fassung vom 07.11.2026; neue ASTAP-Fassung = `ChecksumError` mit Hinweis,
+    dann bewusst ergänzen), GraXpert `GRAXPERT_SHA256`, Paketbau `PBS_SHA256` (aus `SHA256SUMS` des Releases). Jede Anfrage der Kette
+    (auch Weiterleitungen) nur https (`_https_only`, Ausnahme Loopback für Tests).
   - Downloads (`components.download`) setzen Teil-Downloads per HTTP-Range fort (`.part` im Werkzeugordner); kaputtes ZIP → neu laden.
     Seit 0.45.2 auch innerhalb eines Laufs: bis `DL_TRIES` 6 Versuche (Pause `DL_PAUSE`·2ⁿ, ≤ 30 s) bei Verbindungsabbruch, zu wenig Bytes,
     5xx/429 oder HTML statt Datei; auch Downloads in den Speicher (ASTAP-CLI, Katalog) setzen per Range fort, `iter_raw` + `Accept-Encoding: identity`
@@ -385,6 +413,7 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   beschreibbar, Netz an, sonst nichts eingebunden; Logonbefehl prüft Installer (`pruefe_paket.py --setup`, nur in Sandbox/VM – installiert ins
   echte Profil) und ZIP, Protokolle + `fertig.txt` im Ergebnisordner. Start per Doppelklick oder `WindowsSandbox.exe <wsb>` (geht auch aus der Sitzung).
   CI: `.github/workflows/windows-paket.yml` (PR mit Paketänderungen, manuell, Tag `v*` → Release-Entwurf) baut, prüft sauber und installiert still.
+  Rechte: Workflow `contents: read`; nur der Job `release` (Tags `v*`, lädt das Artefakt des Bau-Jobs) hat `contents: write`.
 - **Gemessen 06.11.2026** (`installer/pruefe_paket.py`, leeres Profil, PATH ohne Python, 16 Kerne): Paket 150 MB ZIP / 379 MB entpackt;
   entpacken 8 s, erster Start 21 s, ASTAP + D05 12 s (schnelle Leitung), Demo bis Bild 11 s, Beenden 4 s → **0,9 min bis zum ersten Bild**.
   **Windows-Sandbox** (frisches Windows ohne Python, CI-Pakete): Installer 96 MB – installieren 18 s, Start 9 s, ASTAP + D05 20 s, Demo bis Bild 9 s

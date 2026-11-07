@@ -266,9 +266,10 @@ def install_zip(zip_path: Path, target: Path) -> str:
     tmp.mkdir(parents=True)
     try:
         with zipfile.ZipFile(zip_path) as z:
+            root = tmp.resolve()
             for m in z.infolist():
                 dest = (tmp / m.filename).resolve()
-                if not str(dest).startswith(str(tmp.resolve())):
+                if dest != root and not dest.is_relative_to(root):
                     raise ValueError(f"unzulässiger Pfad in der ZIP: {m.filename}")
             z.extractall(tmp)
         exe = _find_exe(tmp)

@@ -86,15 +86,18 @@ def write_story(cfg: dict, data: dict, timeout: float = 300) -> str:
 
 def story_endpoint(cfg: dict, provider: str | None = None, base_url: str | None = None) -> tuple[str, str]:
     """Adresse + Schlüssel der Erzähl-KI (für die Modellliste auch mit noch nicht gespeicherter Auswahl)."""
+    from ...core.models import key_for
     provider = provider or cfg.get("story_provider") or "openai"
     base = (base_url if base_url is not None else cfg.get("story_base_url")) or PROVIDERS.get(provider) or ""
     saved = cfg.get("story_provider") or "openai"
+    saved_base = cfg.get("story_base_url") or PROVIDERS.get(saved) or ""
+    # Gespeicherte Schlüssel nur an die gespeicherte bzw. die feste Anbieteradresse – eine fremde Adresse bekommt keinen
     if provider == "lmstudio":
         key = ""
     elif provider == saved:
-        key = cfg.get("story_api_key") or ""
+        key = key_for(base, cfg.get("story_api_key") or "", saved_base, PROVIDERS.get(provider))
     else:                                   # Anbieter gewechselt, aber noch nicht gespeichert: nur passende Schlüssel verwenden
-        key = openrouter_key(cfg) if provider == "openrouter" else ""
+        key = key_for(base, openrouter_key(cfg), OPENROUTER) if provider == "openrouter" else ""
     return base.rstrip("/"), key
 
 

@@ -311,12 +311,12 @@ async function settings(el) {
 
   // Auswahlfelder: Modelle und Stimmen kommen live vom jeweiligen Dienst
   const story = picker($('#pStory'), { name: 'story_model', value: c.story_model, placeholder: 'Modell wählen …',
-    load: () => api(`${G}/models?kind=story&provider=${encodeURIComponent(f1.elements.story_provider.value)}&base_url=${encodeURIComponent(f1.elements.story_base_url.value)}`) });
+    load: () => send(`${G}/models`, { kind: 'story', provider: f1.elements.story_provider.value, base_url: f1.elements.story_base_url.value }) });
   f1.elements.story_provider.addEventListener('change', () => story.reload());
   f1.elements.story_base_url.addEventListener('change', () => story.reload());
 
   let speech = null;                                     // OpenRouter-Sprachmodelle samt Stimmen
-  const speechModels = async () => speech || (speech = await api(`${G}/models?kind=speech`).catch(fail));
+  const speechModels = async () => speech || (speech = await send(`${G}/models`, { kind: 'speech' }).catch(fail));
   const orModel = picker($('#pOrModel'), { name: 'openrouter_tts_model', value: c.openrouter_tts_model, load: speechModels });
   const orVoice = picker($('#pOrVoice'), { name: 'openrouter_tts_voice', value: c.openrouter_tts_voice, empty: 'Standardstimme des Modells',
     load: async () => ((await speechModels()).find(m => m.id === f3.elements.openrouter_tts_model.value)?.voices || []).map(v => ({ id: v, name: v })) });
@@ -328,7 +328,7 @@ async function settings(el) {
   picker($('#pQwenVoice'), { name: 'qwen_voice', value: c.qwen_voice, load: () => api(`${G}/tts/voices?provider=qwen`) });
   picker($('#pElVoice'), { name: 'elevenlabs_voice', value: c.elevenlabs_voice, empty: 'Automatisch (erste eigene Stimme)',
     load: async () => (await api(`${G}/tts/voices?provider=elevenlabs`)).map(v => ({ id: v.id, name: v.name, info: (v.recommended ? '★ ' : '') + (v.category || '') })) });
-  picker($('#pElModel'), { name: 'elevenlabs_model', value: c.elevenlabs_model, load: () => api(`${G}/models?kind=elevenlabs`) });
+  picker($('#pElModel'), { name: 'elevenlabs_model', value: c.elevenlabs_model, load: () => send(`${G}/models`, { kind: 'elevenlabs' }) });
   orModel.preload();
   const markProvider = () => $$('.sg-fs', f3).forEach(fs => fs.classList.toggle('active', fs.dataset.p === f3.elements.tts_provider.value));
   f3.elements.tts_provider.addEventListener('change', markProvider);
