@@ -814,7 +814,10 @@ input:focus-visible + .switch { outline: 2px solid var(--acc); outline-offset: 2
   .sequence-loader .seq-scan, .sequence-loader .seq-object { display: none }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important }
 }
-.btn.ghost.on { background: var(--surface-3); color: var(--fg); border-color: var(--border) }
+/* Umschaltknopf an (`.btn.ghost.on`, aria-pressed): Akzentrahmen, Akzentfläche, Symbol in Akzentfarbe – vorher kaum von „aus“ zu unterscheiden */
+.btn.ghost.on { background: var(--acc-soft); color: var(--fg); border-color: color-mix(in srgb, var(--acc) 70%, transparent) }
+.btn.ghost.on:hover:not(:disabled) { background: color-mix(in srgb, var(--acc) 22%, transparent); border-color: var(--acc) }
+.btn.ghost.on > svg { color: var(--acc) }
 
 /* ---- Rückmeldung (seit 0.24.0, Nutzerwunsch „responsiver“): jede Aktion spürbar quittieren ---------------------------
    Nur transform/opacity/Farben, 120–180 ms. Drücken = leicht eindrücken, Überfahren = Farb-/Randwechsel.

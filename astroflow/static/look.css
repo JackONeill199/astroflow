@@ -81,6 +81,9 @@
 :root[data-look] .chip.acc { box-shadow: 0 0 0.75rem -0.375rem color-mix(in srgb, var(--acc) 70%, transparent) }
 :root[data-look] .btn.ghost { background: color-mix(in srgb, var(--surface-2) 70%, transparent); border-color: var(--glass-border) }
 :root[data-look] .btn.ghost:hover:not(:disabled) { background: var(--surface-3); border-color: var(--border) }
+:root[data-look] .btn.ghost.on { background: var(--grad-soft), color-mix(in srgb, var(--surface-2) 70%, transparent); border-color: color-mix(in srgb, var(--acc) 70%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--acc) 25%, transparent) }
+:root[data-look] .btn.ghost.on:hover:not(:disabled) { background: var(--grad-soft), var(--surface-3); border-color: var(--acc) }
+:root[data-look] .btn.ghost.on > svg { color: #a5b4ff }
 
 /* Aktive Navigation: weicher Verlauf, Leiste links mit Verlauf */
 :root[data-look] .side nav a:hover { background: #ffffff0a }
