@@ -9,6 +9,121 @@ anderen bewegten Objekten und erklärt dir, was du fotografiert hast – im Brow
 
 ![AstroFlow – Übersicht](docs/screenshots/uebersicht.webp)
 
+**Schnellzugriff:** [Installation](#installation) · [Highlights](#highlights) · [Optionale Werkzeuge](#optionale-werkzeuge) · [Datenschutz](#datenschutz-und-lokaler-betrieb)
+
+## Was ist AstroFlow?
+
+Eine lokale Anwendung (Python/FastAPI, Oberfläche ohne Build-Schritt) für Smart-Teleskope (Seestar, Vespera, Stellina) und klassische Astrokameras mit drei Modulen
+unter einer Oberfläche (einzeln abschaltbar unter Einstellungen → Module & System):
+
+| Modul | Was es tut |
+|---|---|
+| **Bilder** | FITS-Aufnahmen automatisch sortieren, kalibrieren, stacken und entwickeln; neue Nächte werden nachgestackt. Dazu Analysen (Tiefe, Vergleich, Himmelsqualität, Gerätediagnose, Asteroiden, HR-Diagramm), Bild-Tutor, „Heute Nacht“, Kometenmodus |
+| **SkyTrace** | Bildfolgen auf Lichtspuren und bewegte Objekte untersuchen; Abgleich mit Satelliten (historische Bahndaten), Meteoren und Flugzeugen zur Aufnahmezeit, 3D-Erde, Standort- und Uhrsuche, Statistik, Erfolge |
+| **Sage** | Lebende Astronomie-Enzyklopädie: Objekte im Bild bestimmen, aus Fachkatalogen recherchieren (mit Quellen), Geschichten erzählen und vorlesen, Entdeckungen, Wissensnetz, Sammlung mit Erfolgen |
+
+## Highlights
+
+### Vom Rohbild zum fertigen Foto
+
+Jedes Objekt erscheint automatisch, sobald seine Rohbilder im Eingangsordner liegen – Objekt, Kamera und Nacht erkennt AstroFlow aus Header, Ordnername oder
+Plate-Solving. Beim Stacken zeigt die **Live-Ansicht** echte Zwischenvorschauen mit dem aktuellen Schritt.
+
+![Live-Ansicht beim Stacken](docs/media/stacking-live.webp)
+
+Der **Stacking-Verlauf** zeigt, was 1, 3, 10, 30, 100 … Aufnahmen ausmachen, und **Vorher/Nachher** vergleicht den linearen Stack mit dem entwickelten Bild
+(Gradienten, Gaia-Farbkalibrierung, optional GraXpert und StarNet).
+
+| | |
+|---|---|
+| ![Stacking-Verlauf](docs/media/stacking-stufen.webp) | ![Vorher/Nachher](docs/media/vorher-nachher.webp) |
+
+*(Die Animationen zeigen M17 Omeganebel aus echten Rohaufnahmen eines Smart-Teleskops.)*
+
+### Ergebnisse
+
+Fertige Bilder aus AstroFlow, vollautomatisch aus Rohaufnahmen eines Smart-Teleskops (80 mm Öffnung) entwickelt, verkleinert:
+
+| | | |
+|---|---|---|
+| ![NGC 7000](docs/screenshots/ergebnis-ngc7000.webp) | ![NGC 6888](docs/screenshots/ergebnis-ngc6888.webp) | ![Plejaden](docs/screenshots/ergebnis-m45.webp) |
+| NGC 7000, 58 min | NGC 6888, 45 min | M45 Plejaden, 91 min |
+| ![M101](docs/screenshots/ergebnis-m101.webp) | ![NGC 7023](docs/screenshots/ergebnis-ngc7023.webp) | ![IC 1396](docs/screenshots/ergebnis-ic1396.webp) |
+| M101, 115 min | NGC 7023, 3 h 58 min | IC 1396, 60 min |
+
+![Galerie](docs/screenshots/galerie.webp)
+
+### Analyse: Was dein Bild zeigt
+
+Im Reiter **Analyse** jedes Objekts misst AstroFlow aus dem plate-gelösten Bild die **Grenzgröße**, die erfassten Sterne, den nächsten und fernsten Stern
+(Gaia-Parallaxen) und die fernsten sichtbaren Galaxien und Quasare (Rotverschiebung, Lichtlaufzeit) – als Kennzahlen, Markierungen und **in 3D**.
+
+![Tiefe in 3D](docs/media/tiefe-3d.webp)
+
+Der **Blinkvergleich** stellt das Bild gegen eine frühere eigene Aufnahme oder die DSS2-Durchmusterung. Neue oder verschwundene Lichtquellen werden nur gemeldet,
+wenn sie über der Grenzgröße beider Bilder liegen, und mit SIMBAD und JPL-Kleinkörpern abgeglichen – als Hinweis, nicht als Entdeckung.
+
+![Blinkvergleich](docs/media/blinkvergleich.webp)
+
+Weitere Auswertungen je Objekt, alle aus gespeicherten Daten:
+
+- **Himmel der Aufnahmenacht** (Bortle-Schätzung, Seeing, Lichtrichtung) und **Dein Gerät** (Nachführung, Fokus, Bildfeld-Schärfe)
+- **Asteroiden:** welche bekannten Kleinplaneten im Feld lagen und welche du wirklich erwischt hast
+- **HR-Diagramm** bei Sternhaufen: Farben-Helligkeits-Diagramm aus deinem Bild mit Entfernung, Rötung und grobem Alter
+- **Bild-Tutor:** Befunde mit Tipps passend zum Gerät, Bedingungen der Nacht (Mond, Dämmerung, Wolken)
+
+Das **Analyse-Dashboard** (Bilder → Analyse) fasst die ganze Bibliothek zusammen: Kennzahlen, Rekorde, „Dein Universum“ als 3D-Wolke, Verläufe und die Frage,
+was am meisten gebracht hat; „Alles analysieren“ rechnet fehlende Auswertungen im Hintergrund nach.
+
+![Analyse-Dashboard](docs/screenshots/analyse-dashboard.webp)
+
+### Himmelsqualität und „Heute Nacht“
+
+| | |
+|---|---|
+| ![Heute Nacht](docs/screenshots/heute-nacht.webp) | ![Himmelsqualität](docs/screenshots/himmel.webp) |
+| **Heute Nacht:** gut sichtbare Ziele (neue Objekte aus Messier und Caldwell, eigene Aufnahmen mit Bedarf an mehr Belichtung), Höhenverläufe, Mond, Nachtplan, optional Wetter. | **Himmelsqualität:** aus deinen Aufnahmen gemessen, an Gaia-Sternen geeicht – mag/″², Bortle mit Spanne, Seeing, Lichtrichtung, dazu die **sauberen Nächte** mit Ranglisten. |
+
+*(Demodaten mit erfundenem Ort.)*
+
+Orte legst du unter Einstellungen → Standorte **nach Datum** an (Zeiträume, einzelne Nächte, Standard-Ort); „Heute bin ich in …“ wechselt den Ort für die
+aktuelle Nacht. Der Ort einer Aufnahme ergibt sich aus FITS-Kopf → Zeitraum → Standard.
+
+### Kometenmodus
+
+Kometen bekommen zwei Stacks – auf die Sterne und auf den Kometenkern – und werden zu einem Bild zusammengesetzt (Bahn aus der JPL-Ephemeride oder im Bild
+gemessen). Beide Einzelstacks bleiben ansehbar.
+
+### SkyTrace – was sich zwischen den Sternen bewegt
+
+Spuren in Bildfolgen werden als **Kandidaten** mit Ausschnitt, Zeitreihe und Messdetails erfasst und zur echten Aufnahmezeit mit Satelliten, Meteoren und Flugzeugen
+abgeglichen. Ein Kandidat ist ein Hinweis, kein bestätigtes Objekt.
+
+![SkyTrace erkennt Spuren](docs/media/skytrace-spuren.webp)
+
+Die **3D-Erde** zeigt den Standort, das Blickfeld des Teleskops, Satellitenbahnen und – beim Hineinzoomen – eine flache Karte; auch Orte, Heatmaps der
+Standortsuche und die Tag/Nacht-Grenze liegen auf demselben Globus.
+
+![3D-Erde](docs/media/erde-3d.webp)
+
+*(Die Animationen zeigen Demodaten mit erfundenem Ort.)*
+
+Weitere Funktionen: **Standort suchen** (aus Satellitenspuren zurückgerechnet, auch ohne Vorwissen), **Uhrversatz suchen**, **Satelliten neu abgleichen**,
+**Erneut analysieren**, Statistik mit **Satellitenhelligkeit** und „Satelliten am Himmel“ sowie **Erfolge**. Vorschläge für Orte und Uhrkorrekturen werden nie
+automatisch übernommen.
+
+![SkyTrace-Erfolge](docs/screenshots/skytrace-erfolge.webp)
+
+### Sage – die lebende Enzyklopädie
+
+| | |
+|---|---|
+| ![Sage-Enzyklopädie](docs/screenshots/sage-enzyklopaedie.webp) | ![Sammlung und Erfolge](docs/screenshots/sage-sammlung.webp) |
+| **Enzyklopädie:** jedes fotografierte Objekt bekommt einen Eintrag mit deinem Bild, Katalogdaten und Beobachtungen; jede Aussage hat eine Quelle oder ist als KI-Vorschlag gekennzeichnet. | **Sammlung & Erfolge:** Messier-Fortschritt, Meilensteine und Erfolge für jedes neu bestimmte Objekt. |
+
+Dazu: **Bild bestimmen**, **Geschichte erzählen** und vorlesen lassen, **Meine Entdeckungen**, **Wissensnetz**. Gestackte Aufnahmen landen auf Wunsch automatisch in
+Sage und SkyTrace.
+
 ## Installation
 
 ### Windows: Installer oder portables ZIP (empfohlen)
@@ -54,119 +169,6 @@ Die Oberfläche ist eine Web-App für Desktop und Smartphone. Im Assistenten (od
 privates Netzwerkprofil, nur eigenes Subnetz, nicht ins Internet. **Es gibt kein Passwort; jedes Gerät im Heimnetz kann AstroFlow bedienen.**
 
 <img src="docs/screenshots/handy.webp" alt="AstroFlow am Handy" width="260">
-
-## Was ist AstroFlow?
-
-Eine lokale Anwendung (Python/FastAPI, Oberfläche ohne Build-Schritt) für Smart-Teleskope (Seestar, Vespera, Stellina) und klassische Astrokameras mit drei Modulen
-unter einer Oberfläche (einzeln abschaltbar unter Einstellungen → Module & System):
-
-| Modul | Was es tut |
-|---|---|
-| **Bilder** | FITS-Aufnahmen automatisch sortieren, kalibrieren, stacken und entwickeln; neue Nächte werden nachgestackt. Dazu Analysen (Tiefe, Vergleich, Himmelsqualität, Gerätediagnose, Asteroiden, HR-Diagramm), Bild-Tutor, „Heute Nacht“, Kometenmodus |
-| **SkyTrace** | Bildfolgen auf Lichtspuren und bewegte Objekte untersuchen; Abgleich mit Satelliten (historische Bahndaten), Meteoren und Flugzeugen zur Aufnahmezeit, 3D-Erde, Standort- und Uhrsuche, Statistik, Erfolge |
-| **Sage** | Lebende Astronomie-Enzyklopädie: Objekte im Bild bestimmen, aus Fachkatalogen recherchieren (mit Quellen), Geschichten erzählen und vorlesen, Entdeckungen, Wissensnetz, Sammlung mit Erfolgen |
-
-## Highlights
-
-### Vom Rohbild zum fertigen Foto
-
-Jedes Objekt erscheint automatisch, sobald seine Rohbilder im Eingangsordner liegen – Objekt, Kamera und Nacht erkennt AstroFlow aus Header, Ordnername oder
-Plate-Solving. Beim Stacken zeigt die **Live-Ansicht** echte Zwischenvorschauen mit dem aktuellen Schritt.
-
-![Live-Ansicht beim Stacken](docs/media/stacking-live.gif)
-
-Der **Stacking-Verlauf** zeigt, was 1, 3, 10, 30, 100 … Aufnahmen ausmachen, und **Vorher/Nachher** vergleicht den linearen Stack mit dem entwickelten Bild
-(Gradienten, Gaia-Farbkalibrierung, optional GraXpert und StarNet).
-
-| | |
-|---|---|
-| ![Stacking-Verlauf](docs/media/stacking-stufen.gif) | ![Vorher/Nachher](docs/media/vorher-nachher.gif) |
-
-*(Die Animationen zeigen synthetische Demodaten.)*
-
-### Ergebnisse
-
-Fertige Bilder aus AstroFlow, vollautomatisch aus Rohaufnahmen eines Smart-Teleskops (80 mm Öffnung) entwickelt, verkleinert:
-
-| | | |
-|---|---|---|
-| ![NGC 7000](docs/screenshots/ergebnis-ngc7000.webp) | ![NGC 6888](docs/screenshots/ergebnis-ngc6888.webp) | ![Plejaden](docs/screenshots/ergebnis-m45.webp) |
-| NGC 7000, 58 min | NGC 6888, 45 min | M45 Plejaden, 91 min |
-| ![M101](docs/screenshots/ergebnis-m101.webp) | ![NGC 7023](docs/screenshots/ergebnis-ngc7023.webp) | ![IC 1396](docs/screenshots/ergebnis-ic1396.webp) |
-| M101, 115 min | NGC 7023, 3 h 58 min | IC 1396, 60 min |
-
-![Galerie](docs/screenshots/galerie.webp)
-
-### Analyse: Was dein Bild zeigt
-
-Im Reiter **Analyse** jedes Objekts misst AstroFlow aus dem plate-gelösten Bild die **Grenzgröße**, die erfassten Sterne, den nächsten und fernsten Stern
-(Gaia-Parallaxen) und die fernsten sichtbaren Galaxien und Quasare (Rotverschiebung, Lichtlaufzeit) – als Kennzahlen, Markierungen und **in 3D**.
-
-![Tiefe in 3D](docs/media/tiefe-3d.gif)
-
-Der **Blinkvergleich** stellt das Bild gegen eine frühere eigene Aufnahme oder die DSS2-Durchmusterung. Neue oder verschwundene Lichtquellen werden nur gemeldet,
-wenn sie über der Grenzgröße beider Bilder liegen, und mit SIMBAD und JPL-Kleinkörpern abgeglichen – als Hinweis, nicht als Entdeckung.
-
-![Blinkvergleich](docs/media/blinkvergleich.gif)
-
-Weitere Auswertungen je Objekt, alle aus gespeicherten Daten:
-
-- **Himmel der Aufnahmenacht** (Bortle-Schätzung, Seeing, Lichtrichtung) und **Dein Gerät** (Nachführung, Fokus, Bildfeld-Schärfe)
-- **Asteroiden:** welche bekannten Kleinplaneten im Feld lagen und welche du wirklich erwischt hast
-- **HR-Diagramm** bei Sternhaufen: Farben-Helligkeits-Diagramm aus deinem Bild mit Entfernung, Rötung und grobem Alter
-- **Bild-Tutor:** Befunde mit Tipps passend zum Gerät, Bedingungen der Nacht (Mond, Dämmerung, Wolken)
-
-Das **Analyse-Dashboard** (Bilder → Analyse) fasst die ganze Bibliothek zusammen: Kennzahlen, Rekorde, „Dein Universum“ als 3D-Wolke, Verläufe und die Frage,
-was am meisten gebracht hat; „Alles analysieren“ rechnet fehlende Auswertungen im Hintergrund nach.
-
-![Analyse-Dashboard](docs/screenshots/analyse-dashboard.webp)
-
-### Himmelsqualität und „Heute Nacht“
-
-| | |
-|---|---|
-| ![Heute Nacht](docs/screenshots/heute-nacht.webp) | ![Himmelsqualität](docs/screenshots/himmel.webp) |
-| **Heute Nacht:** gut sichtbare Ziele (neue Objekte aus Messier und Caldwell, eigene Aufnahmen mit Bedarf an mehr Belichtung), Höhenverläufe, Mond, Nachtplan, optional Wetter. | **Himmelsqualität:** aus deinen Aufnahmen gemessen, an Gaia-Sternen geeicht – mag/″², Bortle mit Spanne, Seeing, Lichtrichtung, dazu die **sauberen Nächte** mit Ranglisten. |
-
-*(Demodaten mit erfundenem Ort.)*
-
-Orte legst du unter Einstellungen → Standorte **nach Datum** an (Zeiträume, einzelne Nächte, Standard-Ort); „Heute bin ich in …“ wechselt den Ort für die
-aktuelle Nacht. Der Ort einer Aufnahme ergibt sich aus FITS-Kopf → Zeitraum → Standard.
-
-### Kometenmodus
-
-Kometen bekommen zwei Stacks – auf die Sterne und auf den Kometenkern – und werden zu einem Bild zusammengesetzt (Bahn aus der JPL-Ephemeride oder im Bild
-gemessen). Beide Einzelstacks bleiben ansehbar.
-
-### SkyTrace – was sich zwischen den Sternen bewegt
-
-Spuren in Bildfolgen werden als **Kandidaten** mit Ausschnitt, Zeitreihe und Messdetails erfasst und zur echten Aufnahmezeit mit Satelliten, Meteoren und Flugzeugen
-abgeglichen. Ein Kandidat ist ein Hinweis, kein bestätigtes Objekt.
-
-![SkyTrace erkennt Spuren](docs/media/skytrace-spuren.gif)
-
-Die **3D-Erde** zeigt den Standort, das Blickfeld des Teleskops, Satellitenbahnen und – beim Hineinzoomen – eine flache Karte; auch Orte, Heatmaps der
-Standortsuche und die Tag/Nacht-Grenze liegen auf demselben Globus.
-
-![3D-Erde](docs/media/erde-3d.gif)
-
-*(Die Animationen zeigen Demodaten mit erfundenem Ort.)*
-
-Weitere Funktionen: **Standort suchen** (aus Satellitenspuren zurückgerechnet, auch ohne Vorwissen), **Uhrversatz suchen**, **Satelliten neu abgleichen**,
-**Erneut analysieren**, Statistik mit **Satellitenhelligkeit** und „Satelliten am Himmel“ sowie **Erfolge**. Vorschläge für Orte und Uhrkorrekturen werden nie
-automatisch übernommen.
-
-![SkyTrace-Erfolge](docs/screenshots/skytrace-erfolge.webp)
-
-### Sage – die lebende Enzyklopädie
-
-| | |
-|---|---|
-| ![Sage-Enzyklopädie](docs/screenshots/sage-enzyklopaedie.webp) | ![Sammlung und Erfolge](docs/screenshots/sage-sammlung.webp) |
-| **Enzyklopädie:** jedes fotografierte Objekt bekommt einen Eintrag mit deinem Bild, Katalogdaten und Beobachtungen; jede Aussage hat eine Quelle oder ist als KI-Vorschlag gekennzeichnet. | **Sammlung & Erfolge:** Messier-Fortschritt, Meilensteine und Erfolge für jedes neu bestimmte Objekt. |
-
-Dazu: **Bild bestimmen**, **Geschichte erzählen** und vorlesen lassen, **Meine Entdeckungen**, **Wissensnetz**. Gestackte Aufnahmen landen auf Wunsch automatisch in
-Sage und SkyTrace.
 
 ## Optionale Werkzeuge
 

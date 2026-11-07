@@ -43,6 +43,45 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   - Abschaltbar mit `ASTROFLOW_NO_TRAY=1`.
 - Befehl `astroflow components status | install NAME | remove NAME` für Skripte.
 
+## 0.43.5 – 07.11.2026
+
+### Behoben
+- **3D-Erde: Die Heatmap der Standortsuche verdeckte die Karte und ließ sich nicht bequem abschalten.** Sie ist jetzt
+  deutlich durchsichtiger (heißester Bereich standardmäßig 40 % Deckkraft, schwache Zellen fast durchsichtig), sodass
+  Straßen, Ortsnamen und Marken darunter lesbar bleiben – auf dem Globus und auf der flachen Karte gleich.
+- **Heatmap ein-/ausblenden direkt dort, wo sie erscheint:** Knopf „Ausblenden“ an der Legende unten links und
+  „Heatmap ausblenden/einblenden“ in der Karte der Nacht (neben „Heatmap neu berechnen“); ausgeblendet verschwindet auch
+  die Legende. Unter „Ebenen“ gibt es zusätzlich einen Regler für die Deckkraft. Ein/Aus und Deckkraft werden gemerkt.
+- **3D-Erde, flache Karte: Die Leiste „Erdbild / Straßenkarte / Gelände“ sitzt jetzt auf derselben Höhe wie die Knöpfe oben rechts**
+  (vorher etwas tiefer). Der Hinweis „Nachtsicht“ rückt in der flachen Karte darunter. Auf dem Handy bleibt die Leiste unter den
+  Knöpfen; Legende und Maßstab überlappen dort nicht mehr.
+
+## 0.43.4 – 07.11.2026
+
+### Behoben
+- **Vergleich meldete einen hellen, bekannten Stern als „neu“, wenn er auf der Referenz im Licht eines sehr hellen
+  Nachbarn lag.** Beispiel Flammennebel (NGC 2024): ζ Ori C (≈ 9 mag) liegt knapp eine Bogenminute neben Alnitak. Auf der
+  Fotoplatte der Durchmusterung (DSS2 rot, 1988) ist Alnitak eine riesige gesättigte Scheibe mit Spikes – die Platte konnte
+  dort gar keinen weiteren Stern zeigen. AstroFlow erkennt solche gesättigten bzw. überstrahlten Flächen jetzt in beiden
+  Bildern und meldet darin weder „neu“ noch „verschwunden“ („im Licht heller Sterne verworfen“).
+- Die Grenzgröße der Referenz gilt jetzt **örtlich**: Im Halo eines hellen Sterns oder in hellem Nebel ist sie schlechter
+  als im Mittel des Bilds, und das wird bei „neu“/„verschwunden“ berücksichtigt.
+- Liegt an einer „neuen“ Stelle ein bekannter Gaia-Stern, den die Referenz nach ihrer Grenzgröße hätte zeigen müssen, gilt er
+  als „von der Referenz nicht erfasst“ statt neu – außer SIMBAD kennt ihn als veränderlich. Echte neue Quellen (Nova,
+  Supernova) ohne Katalogstern werden weiter gemeldet. Bestehende Vergleiche bitte mit „Erneut vergleichen“ auffrischen.
+
+## 0.43.3 – 07.11.2026
+
+### Behoben
+- **Umschaltknöpfe zeigen jetzt, ob sie an sind.** „Im Bild markieren“ (Tiefe) und „Details“ sahen eingeschaltet genauso aus
+  wie ausgeschaltet – der Glas-Stil überdeckte die Markierung. Eingeschaltet tragen sie jetzt einen Akzentrahmen, eine
+  getönte Fläche und ein farbiges Symbol, in allen Darstellungsstilen.
+- **Asteroiden-Marken verdecken das Bild nicht mehr.** Bei Feldern mit vielen Kleinkörpern (M16: rund 50) lagen die
+  Namen übereinander auf dem Foto. Statt des Knopfs gibt es eine Auswahl „Aus / Nachgewiesen / Alle“: Standard sind nur
+  die in deinen Einzelbildern nachgewiesenen Asteroiden mit Kreis, Bahn und Namen; „Alle“ zeigt die übrigen laut JPL im
+  Feld liegenden Körper als kleine, gedämpfte Punkte ohne Namen (die stehen in der Tabelle). Namen überlappen sich nie –
+  passt einer weder rechts noch links, bleibt nur der Kreis.
+
 ## 0.43.2 – 07.11.2026
 
 ### Behoben

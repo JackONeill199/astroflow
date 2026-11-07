@@ -284,7 +284,7 @@ def test_compare_ignores_hotpixel_pairs(setup, monkeypatch):
     monkeypatch.setattr(compare, "_limits", real_lim)
 
     out = compare.compute(db, s.work_dir, r_new, r_old, catalogs=False)
-    assert out["v"] == compare.COMPARE_VERSION == 3
+    assert out["v"] == compare.COMPARE_VERSION == 4
     assert not [c for c in out["kandidaten"] if near_hot(c)], out["kandidaten"]
     neu = [c for c in out["kandidaten"] if c["art"] == "neu"]
     assert len(neu) == 1 and neu[0]["x"] == pytest.approx(77, abs=2)
@@ -309,7 +309,7 @@ def _ohne_grenze(real):
     """`compare._limits` ohne Aussage (Zustand bis 0.43.0): „verschwunden“ nur über die Flussbeziehung geprüft."""
     def f(*a, **k):
         lim, notes = real(*a, **k)
-        return {**lim, "reach": lambda *x: (None, None, None)}, notes
+        return {**lim, "reach": lambda *x: (None, None, None, None)}, notes
     return f
 
 
@@ -406,3 +406,89 @@ def test_compare_reference_zero_point_other_pixel_scale(setup):
     assert out["grenze"]["referenz"]["quelle"] == "nullpunkt"
     c = [c for c in out["kandidaten"] if c["art"] == "verschwunden"]
     assert len(c) == 1 and c[0]["mag_ref"] == pytest.approx(11.0, abs=0.4), out["kandidaten"]
+
+
+BRIGHT = (438.0, 200.0)                                          # sehr heller Stern (wie Alnitak bei NGC 2024)
+NEIGHBOR = (473.0, 236.0)                                        # Nachbar im Plattenhalo – nicht in Gaia
+NOVA = (110.0, 92.0)                                             # echte neue Quelle im freien Feld
+
+
+def _plate_with_halo(x, y, g, seed=9, sat=20000.0):
+    """Fotoplatte (nicht linear) mit großem, gesättigtem Halo samt Beugungsspikes um einen sehr hellen Stern – der
+    Nachbar darin ist auf der Platte nicht zu sehen (Plateau), sein Licht geht im gesättigten Bereich unter."""
+    big = _render(x, y, g, seed=seed)[0]
+    plate = np.sqrt(np.clip(big - 100, 0, None)) * 40 + 3000
+    yy, xx = np.mgrid[0:H, 0:W]
+    rr = np.hypot(xx - BRIGHT[0], yy - BRIGHT[1])
+    plate += 17500 * np.exp(-(np.clip(rr - 110, 0, None) / 25.0) ** 2)      # Plateau bis 110 px, dann steil abfallend
+    spike = ((np.abs(yy - BRIGHT[1]) <= 1) | (np.abs(xx - BRIGHT[0]) <= 1)) & (rr < 170)
+    plate[spike] += 30000
+    return np.minimum(plate, sat).astype(np.float32)
+
+
+def test_compare_bright_neighbor_halo_not_new(setup, monkeypatch):
+    """Nutzerbefund NGC 2024: ζ Ori C galt gegen DSS2 rot als „neu“ (19,8σ, 9,2 mag), lag auf der Platte aber im gesättigten
+    Halo von Alnitak. Der Kachel-Hintergrund nahm das Plateau als Himmel, die Referenz zeigte dort ≈ 0. Jetzt prüft der
+    Vergleich die Sättigung auf den Rohbildern: Stellen im Halo/Spike sind `heller_nachbar`; die Nova im freien Feld bleibt."""
+    s, db, pid, cat, x, y, _ = setup
+    g = np.array(cat["g"])
+    plate = _plate_with_halo(x, y, g)
+    sw = photometry.wcs_from({**HDR, "NAXIS1": W, "NAXIS2": H})
+    monkeypatch.setattr(compare, "survey_image", lambda *a, **k: (plate, sw, "DSS2 rot (Attrappe)", "1988-12-30"))
+    new = _render(x, y, g, seed=6, extra=[(*BRIGHT, 7.0), (*NEIGHBOR, 11.5), (*NOVA, 13.0)])
+    rid = _result(s, db, pid, new, "neu", ["2026-01-01"])
+
+    def near(c, p):
+        return math.hypot(c["x"] - p[0], c["y"] - (H - 1 - p[1])) < 4
+
+    # ohne Sättigungsprüfung (Zustand bis 0.43.2): der Nachbar im Halo erscheint als „neu“
+    real_blind = compare._blind
+    monkeypatch.setattr(compare, "_blind", lambda raw, valid, grow: np.zeros(raw.shape, bool))
+    before = compare.compute(db, s.work_dir, rid, "survey", catalogs=False)
+    assert any(near(c, NEIGHBOR) and c["art"] == "neu" for c in before["kandidaten"]), before["kandidaten"]
+    monkeypatch.setattr(compare, "_blind", real_blind)
+
+    out = compare.compute(db, s.work_dir, rid, "survey", catalogs=False)
+    assert out["v"] == compare.COMPARE_VERSION == 4
+    assert not [c for c in out["kandidaten"] if near(c, NEIGHBOR)], out["kandidaten"]
+    neu = [c for c in out["kandidaten"] if c["art"] == "neu"]
+    assert len(neu) == 1 and near(neu[0], NOVA), out["kandidaten"]
+    assert out["verworfen"]["heller_nachbar"] >= 1 and any("sehr hellen Sterns" in h for h in out["hinweise"])
+
+
+def test_compare_known_star_missing_in_reference(setup, monkeypatch):
+    """Ein Gaia-Stern, den die Referenz nach ihrer Grenzgröße hätte zeigen müssen, fehlt dort (Plattenfehler, Halo ohne
+    Sättigung): kein „neu“, sondern `katalogstern` – außer SIMBAD kennt ihn als veränderlich (Mira-Sterne). Die Nova ohne
+    Katalogstern bleibt immer „neu“."""
+    s, db, pid, cat, x, y, _ = setup
+    g = np.array(cat["g"])
+    miss = int(np.argmin(np.abs(g - 12.0)))
+    keep = np.ones(len(g), bool)
+    keep[miss] = False
+    big = _render(x[keep], y[keep], g[keep], seed=9)[0]
+    plate = (np.sqrt(np.clip(big - 100, 0, None)) * 40 + 3000).astype(np.float32)
+    sw = photometry.wcs_from({**HDR, "NAXIS1": W, "NAXIS2": H})
+    monkeypatch.setattr(compare, "survey_image", lambda *a, **k: (plate, sw, "DSS2 rot (Attrappe)", "1988-12-30"))
+    new = _render(x, y, g, seed=6, extra=[(*NOVA, 13.0)])
+    rid = _result(s, db, pid, new, "neu", ["2026-01-01"])
+    nova_ra, nova_dec = _wcs().pixel_to_world_values(*NOVA)
+    monkeypatch.setattr(compare, "small_bodies", lambda *a, **k: [])
+
+    def is_star(c):
+        return math.hypot(c["x"] - x[miss], c["y"] - (H - 1 - y[miss])) < 4
+
+    monkeypatch.setattr(compare, "_simbad_near", lambda ra, dec, r, c: [])
+    out = compare.compute(db, s.work_dir, rid, "survey")
+    assert not [c for c in out["kandidaten"] if is_star(c)], out["kandidaten"]
+    assert [c["art"] for c in out["kandidaten"]] == ["neu"] and math.hypot(out["kandidaten"][0]["x"] - NOVA[0],
+                                                                         out["kandidaten"][0]["y"] - (H - 1 - NOVA[1])) < 4
+    assert out["verworfen"]["katalogstern"] == 1 and any("Gaia" in h for h in out["hinweise"])
+
+    # bekannt veränderlich (SIMBAD): bleibt als „neu“ stehen, mit Katalogeintrag
+    def simbad(ra, dec, r, c):
+        return [] if abs(ra - nova_ra) < 1e-3 and abs(dec - nova_dec) < 1e-3 else [{"name": "V* XX Test", "otype": "Mi*", "sep": 0.3}]
+    monkeypatch.setattr(compare, "_simbad_near", simbad)
+    out = compare.compute(db, s.work_dir, rid, "survey")
+    star = [c for c in out["kandidaten"] if is_star(c)]
+    assert len(star) == 1 and star[0]["art"] == "neu" and star[0]["katalog"]["veraenderlich"], out["kandidaten"]
+    assert out["verworfen"]["katalogstern"] == 0 and len([c for c in out["kandidaten"] if c["art"] == "neu"]) == 2

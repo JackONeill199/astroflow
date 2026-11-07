@@ -430,12 +430,17 @@ function comparePanel(host, r, onBlink, blinkOn) {
     const gz = d.grenze || {}, srcTxt = { gaia: 'Gaia-Sterne im Bild', tiefe: 'gespeicherte Tiefe', nullpunkt: 'Nullpunkt + Rauschen',
       vollstaendigkeit: '50-%-Vollständigkeit', geraet: 'geschätzt aus anderen Bildern der Kamera', durchmusterung: 'Nennwert der Durchmusterung' };
     const gzSide = (s, label) => s && s.m5 != null ? `<span title="5σ-Grenzgröße – Quelle: ${esc(srcTxt[s.quelle] || s.quelle || '')}">${label} <b class="tnum">≈ ${de1(s.m5)} mag</b>${s.belichtung_s ? ` <span class="dim">(${dur(s.belichtung_s)}${s.aufnahmen ? `, ${s.aufnahmen} Aufn.` : ''})</span>` : ''}</span>` : `<span class="dim">${label} unbekannt</span>`;
-    const nGz = vw.unter_grenze || 0;
+    // Verwerfgründe, die eine Aussage über die Referenz bzw. das Bild treffen (seit 0.43.4: Halo/Sättigung, bekannte Sterne)
+    const rejTxt = [['unter_grenze', 'unter der Grenze'], ['heller_nachbar', 'im Licht heller Sterne'], ['katalogstern', 'bekannte Sterne']]
+      .filter(([key]) => vw[key]).map(([key, t]) => `${vw[key]} ${key === 'katalogstern' && vw[key] === 1 ? 'bekannter Stern' : t}`);
+    const rejAll = { hotpixel: 'Hotpixel', rand: 'Rand', rauschen: 'Rauschen', form: 'Form', einzelpixel: 'Einzelpixel', heller_stern: 'Rest heller Sterne',
+      helligkeit: 'Helligkeit gleich', zu_schwach: 'zu schwach', unter_grenze: 'unter der Grenze', heller_nachbar: 'im Licht heller Sterne', katalogstern: 'bekannter Stern' };
+    const rejTitle = Object.entries(vw).filter(([, n]) => n).map(([key, n]) => `${rejAll[key] || key}: ${n}`).join(' · ');
     host.innerHTML = head() + `
       <p class="sm cmp-ref">Referenz: <b>${esc(ref.art === 'survey' ? ref.label : ref.label || 'eigene Aufnahme')}</b>${ref.datum ? ` · ${esc(ref.datum)}` : ''}${ref.n_frames ? ` · ${ref.n_frames} Aufnahmen` : ''}</p>
-      ${d.grenze ? `<p class="sm cmp-lim">Grenzgröße: ${gzSide(gz.aktuell, 'Bild')} · ${gzSide(gz.referenz, 'Referenz')}${nGz ? ` · <span class="mut">${nGz} ${nGz === 1 ? 'Stelle' : 'Stellen'} unter der Grenze verworfen</span>` : ''}</p>` : ''}
+      ${d.grenze ? `<p class="sm cmp-lim">Grenzgröße: ${gzSide(gz.aktuell, 'Bild')} · ${gzSide(gz.referenz, 'Referenz')}${rejTxt.length ? ` · <span class="mut">${rejTxt.join(', ')} verworfen</span>` : ''}</p>` : ''}
       <div class="row cmp-acts"><div class="seg" id="cmpBlink"><button data-b="0" class="${blinkOn ? '' : 'on'}">Bild</button><button data-b="1" class="${blinkOn ? 'on' : ''}">Blinken</button></div>
-        <span class="mut sm">${k.length ? `${k.length} ${k.length === 1 ? 'Stelle' : 'Stellen'} auffällig` : 'Nichts Auffälliges'}${nrej ? ` · ${nrej} geprüft und verworfen` : ''}</span></div>
+        <span class="mut sm"${rejTitle ? ` title="${esc(rejTitle)}"` : ''}>${k.length ? `${k.length} ${k.length === 1 ? 'Stelle' : 'Stellen'} auffällig` : 'Nichts Auffälliges'}${nrej ? ` · ${nrej} geprüft und verworfen` : ''}</span></div>
       ${k.length ? `<ul class="cmp-list">${k.map((c, i) => `<li data-i="${i}" tabindex="0" title="Im Blinkbild anzeigen">
           <img src="/api/stacking/results/${r.id}/compare/${esc(c.bild)}?t=${Math.round(d.erstellt || 0)}" alt="Referenz, aktuell, Differenz" loading="lazy" width="147" height="49">
           <div><b class="cmp-kind ${c.art === 'neu' || c.art === 'heller' ? 'up' : 'down'}">${kindTxt[c.art] || esc(c.art)}</b> <span class="mut sm tnum">${de1(c.sigma)} σ${c.dmag != null ? ` · ${c.dmag > 0 ? '+' : ''}${de1(c.dmag, 2)} mag` : ''}${c.art === 'verschwunden' ? (c.mag_ref ? ` · war ≈ ${de1(c.mag_ref)} mag` : '') : c.mag_neu ? ` · ≈ ${de1(c.mag_neu)} mag` : ''}${c.grenze != null ? ` <span class="dim">(Grenze ${c.art === 'verschwunden' ? 'hier' : 'Referenz'} ${de1(c.grenze)})</span>` : ''}</span>
