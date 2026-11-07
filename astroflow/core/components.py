@@ -578,34 +578,82 @@ def _install_skytrace(prog, option, force) -> str:
 # --------------------------------------------------------------------------- #
 # Herunterladen (mit Fortsetzen)
 # --------------------------------------------------------------------------- #
-def download(url: str, prog, to: Path | None = None, resume: bool = False) -> bytes | None:
-    """Datei laden. Mit `to` + `resume` wird ein vorhandener Teil-Download per Range fortgesetzt (Abbruch, Netzwechsel)."""
+DL_TRIES = 6            # Versuche je Datei (SourceForge-Spiegel brechen gelegentlich mitten in der Übertragung ab)
+DL_PAUSE = 2.0          # Wartezeit vor dem n. neuen Versuch: DL_PAUSE · 2^(n−1) s, höchstens 30 s
+
+
+class _Retry(Exception):
+    """Vorübergehender Fehler – neu ansetzen (zu kurze Übertragung, HTTP 5xx/429, HTML-Seite statt Datei)."""
+
+
+def download(url: str, prog, to: Path | None = None, resume: bool = False, tries: int | None = None) -> bytes | None:
+    """Datei laden – nach `to` oder in den Speicher (Rückgabe der Bytes).
+
+    Bricht die Übertragung ab (Verbindung getrennt, Zeitüberschreitung, zu wenige Bytes, Serverfehler), wird bis zu
+    `tries`-mal neu angesetzt und per HTTP-Range fortgesetzt; ignoriert der Server Range, beginnt der Versuch von vorn.
+    Mit `to` + `resume` wird außerdem ein Teil-Download aus einem früheren Lauf fortgesetzt – die `.part`-Datei bleibt
+    bei einem endgültigen Fehlschlag liegen (Anlass: Tag-Lauf v0.44.0, SourceForge trennte nach 1,4 von 5,8 MB)."""
     import httpx
-    have = to.stat().st_size if (to and resume and to.exists()) else 0
-    headers = {"User-Agent": "AstroFlow"}
+    tries = max(1, tries or DL_TRIES)
+    if to and not resume:
+        to.unlink(missing_ok=True)
+    mem = None if to else bytearray()
+    for attempt in range(1, tries + 1):
+        try:
+            _fetch(httpx, url, prog, to, mem)
+            return None if to else bytes(mem)
+        except (httpx.TransportError, _Retry) as e:
+            if attempt >= tries:
+                raise RuntimeError(f"Download abgebrochen nach {tries} Versuchen ({_short(e)}) – bitte später erneut "
+                                   "versuchen.") from e
+            time.sleep(min(30.0, DL_PAUSE * 2 ** (attempt - 1)))
+
+
+def _short(e: Exception) -> str:
+    return ((str(e) or type(e).__name__).splitlines() or [type(e).__name__])[0][:160]
+
+
+def _fetch(httpx, url: str, prog, to: Path | None, mem: bytearray | None) -> None:
+    """Ein Versuch: setzt bei vorhandenen Bytes (Datei bzw. `mem`) per Range fort."""
+    have = len(mem) if mem is not None else (to.stat().st_size if to.exists() else 0)
+    headers = {"User-Agent": "AstroFlow", "Accept-Encoding": "identity"}   # Bytes wie auf dem Server (Range zählt sie)
     if have:
         headers["Range"] = f"bytes={have}-"
     with httpx.stream("GET", url, follow_redirects=True, timeout=httpx.Timeout(60, read=120), headers=headers) as r:
         if r.status_code == 416 and have:             # schon vollständig
             prog(1.0)
-            return None
+            return
+        if r.status_code >= 500 or r.status_code == 429:
+            raise _Retry(f"HTTP {r.status_code}")
         r.raise_for_status()
         if "text/html" in (r.headers.get("content-type") or ""):
-            raise RuntimeError("Download-Seite statt Datei erhalten – Quelle nicht erreichbar?")
-        append = have and r.status_code == 206
-        total = int(r.headers.get("content-length") or 0) + (have if append else 0)
-        got = have if append else 0
-        buf = open(to, "ab" if append else "wb") if to else io.BytesIO()
+            raise _Retry("Download-Seite statt Datei erhalten – Quelle nicht erreichbar?")
+        append = bool(have) and r.status_code == 206
+        if not append:                                # Server ignoriert Range (oder neuer Download) → von vorn
+            have = 0
+            if mem is not None:
+                del mem[:]
+        size = r.headers.get("content-length") or ""
+        total = int(size) + have if size.isdigit() else 0
+        rng = r.headers.get("content-range") or ""    # „bytes 1381144-5785578/5785579“
+        if append and rng.rsplit("/", 1)[-1].isdigit():
+            total = int(rng.rsplit("/", 1)[-1])
+        got = have
+        out = open(to, "ab" if append else "wb") if to else None
         try:
-            for chunk in r.iter_bytes(1 << 20):
-                buf.write(chunk)
+            for chunk in r.iter_raw():                # ungepuffert: bei Abbruch ist alles Empfangene schon gesichert
+                if out:
+                    out.write(chunk)
+                else:
+                    mem.extend(chunk)
                 got += len(chunk)
                 if total:
                     prog(min(1.0, got / total))
         finally:
-            if to:
-                buf.close()
-        return None if to else buf.getvalue()
+            if out:
+                out.close()
+        if total and got < total:                     # Verbindung ohne Fehler beendet, aber zu kurz
+            raise _Retry(f"nur {got} von {total} Bytes erhalten")
 
 
 # --------------------------------------------------------------------------- #

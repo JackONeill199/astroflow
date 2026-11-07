@@ -1,0 +1,44 @@
+# Projektseite auf GitHub Pages: docs/site/index.html + Animationen aus docs/media + einige Screenshots.
+# Voraussetzung (einmalig, durch den Maintainer): Settings → Pages → Source „GitHub Actions“. Läuft nur im öffentlichen Repo.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/site/**", "docs/media/**", "docs/screenshots/uebersicht.webp", "astroflow/static/icon.svg", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Seite zusammenstellen
+        run: |
+          mkdir -p _site/media _site/screenshots
+          cp docs/site/index.html _site/
+          cp astroflow/static/icon.svg _site/
+          cp docs/media/*.webp _site/media/
+          cp docs/screenshots/uebersicht.webp _site/screenshots/
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

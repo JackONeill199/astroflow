@@ -7,7 +7,7 @@ on:
   push:
     tags: ["v*"]
   pull_request:
-    paths: ["installer/**", "pyproject.toml", "requirements.txt", "astroflow/core/launcher.py", "astroflow/core/setup.py", ".github/workflows/windows-paket.yml"]
+    paths: ["installer/**", "pyproject.toml", "requirements.txt", "astroflow/core/launcher.py", "astroflow/core/setup.py", "astroflow/core/components.py", ".github/workflows/windows-paket.yml"]
 
 permissions:
   contents: write
@@ -61,4 +61,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          gh release create $env:GITHUB_REF_NAME --draft --title "AstroFlow $($env:GITHUB_REF_NAME.TrimStart('v'))" --notes "Windows: AstroFlow-Setup-….exe (Installer) oder das portable ZIP. Änderungen: siehe CHANGELOG.md." (Get-ChildItem dist\AstroFlow-*.zip, dist\AstroFlow-Setup-*.exe)
+          $ver = $env:GITHUB_REF_NAME.TrimStart('v')
+          python installer/release_notes.py $ver dist/notizen.md      # Abschnitt der Version aus CHANGELOG.md
+          if ($LASTEXITCODE) { exit 1 }
+          gh release create $env:GITHUB_REF_NAME --draft --title "AstroFlow $ver" --notes-file dist/notizen.md (Get-ChildItem dist\AstroFlow-*.zip, dist\AstroFlow-Setup-*.exe)

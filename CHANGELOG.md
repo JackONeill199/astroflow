@@ -11,6 +11,15 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   abrufen“ und das Paket `trino`. Eigene Flugdaten (CSV oder URL unter „Eigene Archivdateien“) funktionieren weiter; das
   Erkennungsmodell (OpenSkyCam) und die Flugzeug-Erkennung über Bewegung sind nicht betroffen. Alte Einstellungen werden still ignoriert.
 
+### Behoben
+- **Downloads überstehen Verbindungsabbrüche.** Bricht die Übertragung von ASTAP, Sterndatenbank oder GraXpert mitten
+  drin ab (SourceForge-Spiegel trennen gelegentlich), versucht AstroFlow es bis zu sechsmal und setzt dort fort, wo es
+  aufgehört hat. Bisher scheiterte die ASTAP-Installation in diesem Fall sofort, die Sterndatenbank setzte erst beim
+  nächsten Klick fort.
+- Ordnerdialog unter Linux und macOS: Im obersten Ordner „/“ fehlte die anklickbare Pfadleiste.
+- Handy: Der Knopf „… für diese Nacht übernehmen“ (SkyTrace → Standorte) und die Budgetfelder in den Sage-Einstellungen
+  ragten bei breiterer Schrift über den Rand; sie brechen jetzt um.
+
 ## 0.45.1 – 07.11.2026
 
 ### Behoben
