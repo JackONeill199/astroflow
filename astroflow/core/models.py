@@ -31,6 +31,20 @@ def _price(m: dict, kind: str) -> str:
         return ""
 
 
+def same_url(a: str | None, b: str | None) -> bool:
+    """Gleiche Server-Adresse (Groß-/Kleinschreibung von Schema und Host, abschließender Schrägstrich egal)."""
+    from urllib.parse import urlsplit
+    if not a or not b:
+        return False
+    ua, ub = urlsplit(a.strip().rstrip("/")), urlsplit(b.strip().rstrip("/"))
+    return (ua.scheme.lower(), ua.netloc.lower(), ua.path) == (ub.scheme.lower(), ub.netloc.lower(), ub.path)
+
+
+def key_for(url: str, key: str, *allowed: str | None) -> str:
+    """Gespeicherten Schlüssel nur an eine der erlaubten Adressen (gespeicherte bzw. feste Anbieteradresse) schicken."""
+    return key if key and any(same_url(url, a) for a in allowed) else ""
+
+
 def list_models(base_url: str, api_key: str = "", kind: str = "text", ttl: float = 300) -> list[dict]:
     """`kind`: text (Chat), vision (Chat mit Bildeingabe) oder speech (Sprachausgabe, OpenRouter).
     Ergebnis: [{id, name, info, voices}] – nach Name sortiert, 5 min zwischengespeichert."""

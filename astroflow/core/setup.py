@@ -18,9 +18,10 @@ import threading
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, HTTPException, Request
 
 from . import launcher
+from . import security
 from .. import __version__ as VERSION
 
 REPO = "JackONeill199/astroflow"
@@ -90,7 +91,6 @@ class Setup:
     def state(self) -> dict:
         sec = self.ctx.store.get("setup")
         sysc = self.ctx.store.get("system")
-        cfg = launcher.read_config() if self.launched else {}
         st = self.ctx.settings
         stacking = self.app_state.modules.get("stacking")
         solver = getattr(getattr(stacking, "eng", None), "pl", None)
@@ -103,13 +103,20 @@ class Setup:
             "done": bool(sec.get("done")), "launched": self.launched, "telescope": sec.get("telescope") or "",
             "data": folder_info(st.data_dir), "default_data": str(launcher.default_data_dir()),
             "config": str(launcher.config_path()) if self.launched else None,
-            "drives": drives(), "lan": bool(cfg.get("lan")), "port": launcher.port(),
+            "drives": drives(), **self.lan_state(), "port": launcher.port(),
             "platform": platform.system(), "astap": astap, "dbs": {k: v[1] for k, v in ASTAP_DBS.items()},
             "demo": {"exists": demo.exists()}, "gpu": self._gpu_state(), "components": self.components(),
             "update_check": sysc.get("update_check", True), "update": sysc.get("update") or {},
             "tray_notify": sysc.get("tray_notify", True),
             "version": VERSION, "tasks": dict(self.tasks),
         }
+
+    def lan_state(self) -> dict:
+        """Heimnetz: eingestellt (`lan`), gerade wirksam (`lan_active`), beim Update übernommen (`lan_migrated`).
+        Starter: `config.json` → `lan` (Neustart automatisch); `serve`/Start.bat: `settings.json` → `lan.enabled` (Neustart von Hand)."""
+        sec = self.ctx.store.get("lan")
+        lan = bool(launcher.read_config().get("lan")) if self.launched else bool(sec.get("enabled"))
+        return {"lan": lan, "lan_active": security.bind_is_lan(), "lan_migrated": bool(sec.get("migrated")) and not self.launched}
 
     def _gpu_state(self) -> dict:
         try:
@@ -151,6 +158,8 @@ class Setup:
         if "lan" in body and self.launched and bool(body["lan"]) != bool(launcher.read_config().get("lan")):
             launcher.write_config({"lan": bool(body["lan"])})       # Server lauscht danach im Heimnetz bzw. nur lokal
             restart = True
+        elif "lan" in body and not self.launched:                   # serve/Start.bat: gilt nach dem nächsten Start
+            self.ctx.store.update("lan", {"enabled": bool(body["lan"]), "migrated": None})
         if restart:
             self.restart(target)
         return {**self.state(), "restart": restart}
@@ -356,7 +365,9 @@ def build_router(setup: Setup) -> APIRouter:
         return setup.state()
 
     @r.post("/setup")
-    def post_setup(body: dict = Body(...)):
+    def post_setup(request: Request, body: dict = Body(...)):
+        if "data_dir" in body or "lan" in body:
+            security.require_local(request, "Datenordner und Heimnetz")
         return setup.save(body)
 
     @r.get("/setup/folder")
@@ -364,7 +375,8 @@ def build_router(setup: Setup) -> APIRouter:
         return folder_info(Path(path))
 
     @r.post("/setup/astap")
-    def post_astap(body: dict = Body({})):
+    def post_astap(request: Request, body: dict = Body({})):
+        security.require_local(request, "Komponenten installieren")
         return setup.install_astap(str(body.get("db") or "d05").lower())
 
     @r.post("/setup/demo")
@@ -372,7 +384,8 @@ def build_router(setup: Setup) -> APIRouter:
         return setup.make_demo()
 
     @r.post("/setup/gpu")
-    def post_gpu():
+    def post_gpu(request: Request):
+        security.require_local(request, "Komponenten installieren")
         return setup.install_gpu()
 
     @r.get("/components")
@@ -380,15 +393,18 @@ def build_router(setup: Setup) -> APIRouter:
         return setup.components()
 
     @r.post("/components/install")
-    def post_component(body: dict = Body(...)):
+    def post_component(request: Request, body: dict = Body(...)):
+        security.require_local(request, "Komponenten installieren")
         return setup.install_component(str(body.get("id") or ""), body.get("option"), bool(body.get("force")))
 
     @r.post("/components/remove")
-    def post_component_remove(body: dict = Body(...)):
+    def post_component_remove(request: Request, body: dict = Body(...)):
+        security.require_local(request, "Komponenten entfernen")
         return setup.remove_component(str(body.get("id") or ""))
 
     @r.post("/setup/firewall")
-    def post_firewall():
+    def post_firewall(request: Request):
+        security.require_local(request, "Firewall freigeben")
         return setup.firewall()
 
     @r.get("/system/update")
@@ -396,12 +412,14 @@ def build_router(setup: Setup) -> APIRouter:
         return setup.check_update(force)
 
     @r.post("/system/shutdown")
-    def post_shutdown():
+    def post_shutdown(request: Request):
+        security.require_local(request, "AstroFlow beenden")
         setup.shutdown()
         return {"ok": True}
 
     @r.post("/system/restart")
-    def post_restart():
+    def post_restart(request: Request):
+        security.require_local(request, "Neu starten")
         if not setup.launched:
             raise HTTPException(400, "Neustart nur bei Start über AstroFlow (Startmenü/Starter) möglich.")
         setup.restart()

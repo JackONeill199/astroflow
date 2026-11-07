@@ -43,11 +43,11 @@
       const [kind, label] = STATE[c.state] || ['', c.state];
       const t = c.task, busy = t?.state === 'running';
       const btns = c.id === 'starnet'
-        ? `<a class="btn ghost sm" href="#/settings/stacking">ZIP einspielen</a>`
+        ? `<a class="btn ghost sm" href="#/settings/stacking" data-local-only>ZIP einspielen</a>`
         : c.state === 'unsupported' || c.can_install === false ? ''
-        : `${c.state === 'installed' ? `<button class="btn ghost sm" data-cmp="${c.id}" data-force="1" ${busy ? 'disabled' : ''}>Reparieren</button>`
-            : `<button class="btn sm" data-cmp="${c.id}" ${busy ? 'disabled' : ''}>${icon('down')}Installieren</button>`}
-           ${c.can_remove ? `<button class="btn ghost sm" data-rm="${c.id}" ${busy ? 'disabled' : ''}>Entfernen</button>` : ''}`;
+        : `${c.state === 'installed' ? `<button class="btn ghost sm" data-cmp="${c.id}" data-force="1" data-local-only ${busy ? 'disabled' : ''}>Reparieren</button>`
+            : `<button class="btn sm" data-cmp="${c.id}" data-local-only ${busy ? 'disabled' : ''}>${icon('down')}Installieren</button>`}
+           ${c.can_remove ? `<button class="btn ghost sm" data-rm="${c.id}" data-local-only ${busy ? 'disabled' : ''}>Entfernen</button>` : ''}`;
       return `<div class="cmp-row" data-id="${c.id}"><div class="cmp-main"><b>${esc(c.title)}</b> <span class="chip ${kind}">${label}</span>
           ${c.version ? `<span class="mut sm">${esc(c.version)}</span>` : ''}${c.pending && c.state !== 'installed' ? ' <span class="chip acc">vom Installer vorgemerkt</span>' : ''}
           <div class="mut sm">${esc(c.what)}${c.size_mb ? ` · ~${fsize(c.size_mb)}` : ''}</div>
@@ -101,8 +101,8 @@
           <div class="su-path"><code>${esc(s.data.path)}</code><span class="chip">${sizeOf(s.data.free)} frei</span></div>
           ${cloud}${low}
           ${s.launched ? `<div class="su-drives">${s.drives.map(d => `<span class="chip">${esc(d.path)} ${sizeOf(d.free)} frei</span>`).join('')}</div>
-            <div class="su-acts"><button class="btn ghost sm" id="suDir">${icon('folder')}Anderen Ordner wählen …</button>
-            ${s.data.path !== s.default_data ? `<button class="linkbtn sm" id="suDirDef">Standard (${esc(s.default_data)})</button>` : ''}</div>`
+            <div class="su-acts"><button class="btn ghost sm" id="suDir" data-local-only>${icon('folder')}Anderen Ordner wählen …</button>
+            ${s.data.path !== s.default_data ? `<button class="linkbtn sm" id="suDirDef" data-local-only>Standard (${esc(s.default_data)})</button>` : ''}</div>`
           : `<p class="mut sm">Bei dieser Instanz fest vorgegeben (<code>--data</code> bzw. <code>ASTROFLOW_DATA</code>).</p>`}
         </li>
         <li class="panel su-step"><h2>Teleskop</h2>
@@ -120,7 +120,7 @@
           : !a.supported ? `<p class="sm">Für dieses System bitte ASTAP selbst installieren: <a href="https://www.hnsky.org/astap.htm" target="_blank" rel="noopener">hnsky.org/astap.htm</a></p>`
           : `<div class="seg" id="suDb">${Object.entries(s.dbs).map(([k, mb]) => `<button data-v="${k}" class="${k === db ? 'on' : ''}">${k.toUpperCase()} · ~${mb} MB</button>`).join('')}</div>
             <p class="mut sm su-why">D05 reicht für Smart-Teleskope (Bildfeld ab 0,6°), D50 für kleinere Bildfelder klassischer Teleskope.</p>
-            <div class="su-acts"><button class="btn sm" id="suAstap" ${t.astap?.state === 'running' ? 'disabled' : ''}>${icon('down')}Herunterladen und einrichten</button></div>
+            <div class="su-acts"><button class="btn sm" id="suAstap" data-local-only ${t.astap?.state === 'running' ? 'disabled' : ''}>${icon('down')}Herunterladen und einrichten</button></div>
             <p class="mut sm su-lic">Quelle: ASTAP von Han Kleijn (<a href="https://www.hnsky.org/astap.htm" target="_blank" rel="noopener">hnsky.org</a>), geladen direkt von SourceForge nach <code>${esc(a.target)}</code>.
               Der Objektkatalog <code>deep_sky.csv</code> ist nur für nicht-kommerzielle Nutzung frei.</p>`}
           ${taskLine(t.astap)}
@@ -136,9 +136,10 @@
         <li class="panel su-step"><h2>Extras <span class="mut sm">(optional)</span></h2>
           <div id="suCompSlot"></div>
           <dl class="su-extras">
-            ${s.launched ? `<dt>Heimnetz</dt><dd><label class="modrow su-row"><div>Vom Handy oder Tablet im eigenen WLAN erreichbar (ohne Passwort, nur Geräte im eigenen Netz).</div>
+            ${s.launched ? `<dt>Heimnetz</dt><dd><label class="modrow su-row" data-local-only><div>Vom Handy oder Tablet im eigenen WLAN erreichbar. Jedes Gerät wird einmal per QR-Code gekoppelt (Einstellungen → Heimnetz).</div>
               <input type="checkbox" id="suLan" ${s.lan ? 'checked' : ''}><span class="switch"></span></label>
-              ${s.lan && s.platform === 'Windows' ? `<button class="btn ghost sm" id="suFw">Windows-Firewall freigeben</button>` : ''}</dd>` : ''}
+              ${s.lan && s.platform === 'Windows' ? `<button class="btn ghost sm" id="suFw" data-local-only>Windows-Firewall freigeben</button>` : ''}
+              ${s.lan ? `<a class="btn ghost sm" href="#/settings/heimnetz">Gerät koppeln</a>` : ''}</dd>` : ''}
             <dt>Updates</dt><dd><label class="modrow su-row"><div>Einmal am Tag nach einer neuen Version fragen (eine anonyme Anfrage an GitHub).</div>
               <input type="checkbox" id="suUpd" ${s.update_check ? 'checked' : ''}><span class="switch"></span></label></dd>
           </dl>
@@ -206,8 +207,8 @@
         <input type="checkbox" id="sysUpd" ${s.update_check ? 'checked' : ''}><span class="switch"></span></label>
       <div class="su-acts" style="margin-top:0.875rem"><a class="btn ghost sm" href="#/willkommen">${icon('gear')}Einrichtungsassistent</a>
         <button class="btn ghost sm" id="sysCheck">Jetzt prüfen</button>
-        ${s.launched ? `<button class="btn ghost sm" id="sysRestart">Neu starten</button>` : ''}
-        <button class="btn danger sm" id="sysQuit">AstroFlow beenden</button></div>`;
+        ${s.launched ? `<button class="btn ghost sm" id="sysRestart" data-local-only>Neu starten</button>` : ''}
+        <button class="btn danger sm" id="sysQuit" data-local-only>AstroFlow beenden</button></div>`;
     el.append(p);
     const cp = document.createElement('div');
     cp.className = 'panel';
@@ -233,6 +234,7 @@
   }
 
   window.setupView = setupView;
+  window.restartOverlay = restartOverlay;
   window.setupSystemPanel = setupSystemPanel;
   window.componentsPanel = componentsPanel;
 })();

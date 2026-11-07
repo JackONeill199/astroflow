@@ -302,10 +302,14 @@ def build_router(mod) -> APIRouter:
         return mod.public_config()
 
     # ---- Modelle (Auswahlfelder) --------------------------------------------------------
-    @r.get("/models")
-    def models(kind: str = "story", provider: str | None = None, base_url: str | None = None):
-        """Modelle für die Auswahlfelder: story (Erzähl-KI des gewählten Anbieters), speech (OpenRouter), elevenlabs."""
+    @r.post("/models")
+    def models(body: dict = Body({})):
+        """Modelle für die Auswahlfelder: story (Erzähl-KI des gewählten Anbieters), speech (OpenRouter), elevenlabs.
+        POST, weil gespeicherte Schlüssel im Spiel sind (Herkunftsprüfung); Schlüssel nur an die gespeicherte/feste Adresse."""
         from ...core.models import ModelListError, list_models
+        kind = str(body.get("kind") or "story")
+        provider = body.get("provider") or None
+        base_url = None if body.get("base_url") is None else str(body["base_url"])
         c = mod.config()
         try:
             if kind == "speech":

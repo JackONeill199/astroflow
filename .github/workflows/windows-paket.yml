@@ -10,7 +10,7 @@ on:
     paths: ["installer/**", "pyproject.toml", "requirements.txt", "astroflow/core/launcher.py", "astroflow/core/setup.py", "astroflow/core/components.py", ".github/workflows/windows-paket.yml"]
 
 permissions:
-  contents: write
+  contents: read          # Bauen und Prüfen (auch in PRs) nur lesend; Schreibrecht nur im Job „release“ bei Tags
 
 jobs:
   windows:
@@ -55,8 +55,27 @@ jobs:
             dist/AstroFlow-Setup-*.exe
           retention-days: 14
 
+  release:
+    # Release-Entwurf nur bei Versions-Tags, als eigener Job mit Schreibrecht (der Bau-Job oben bleibt lesend)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: windows
+    runs-on: windows-2022
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: astroflow-windows
+          path: dist
+
       - name: Release-Entwurf
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh

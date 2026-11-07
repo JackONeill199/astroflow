@@ -210,7 +210,7 @@ class Tray:
 
     def post(self, path: str, body: dict, timeout: float = 10):
         req = urllib.request.Request(self.base + path, data=json.dumps(body).encode(), method="POST",
-                                     headers={"Content-Type": "application/json"})
+                                     headers={"Content-Type": "application/json", "Origin": self.base})   # Herkunftsprüfung
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read().decode("utf-8"))
 

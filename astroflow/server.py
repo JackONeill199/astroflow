@@ -2,19 +2,21 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib.parse import urlsplit
 
-from fastapi import Body, FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import Body, FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .core.config import Settings, load_settings
 from .core.folders import list_folders, search_folders
 from .core.gzip import GZip
 from .core.modules import AVAILABLE, Context, load_modules
+from .core import qr
+from .core import security
 from .core import sites as sites_mod
 from .core import setup as setup_mod
 from . import __version__ as VERSION
@@ -59,6 +61,8 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
     app.state.modules = {m.id: m.module for m in active}
     setup = setup_mod.Setup(ctx, app.state)           # Einrichtungsassistent, Werkzeuge, Update-Hinweis, Beenden
     app.state.setup = setup
+    access = security.Access(ctx.store)                # Host-/Herkunftsprüfung, Kopplung von Heimnetz-Geräten
+    app.state.access = access
 
     # Build-Kennung aus den Änderungszeiten aller Oberflächendateien: Modul-Skripte werden mit ?v=<build> geladen,
     # damit der Browser nach einem Update nie alte Dateien aus dem Cache nimmt
@@ -67,9 +71,10 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
     build = hashlib.sha1("|".join(stamp).encode()).hexdigest()[:10]
 
     @app.get("/api/app")
-    def app_info():
+    def app_info(request: Request):
         upd = ctx.store.get("system").get("update") or {}
         return {"version": VERSION, "build": build, "modules": [m.info() for m in loaded],
+                "local": security.is_loopback(request.client.host if request.client else ""),
                 "setup": {"pending": setup.state()["pending"] if setup.launched else False, "launched": setup.launched},
                 "update": upd if upd.get("newer") and ctx.store.get("system").get("update_check", True) else None}
 
@@ -99,6 +104,48 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
         rank = {"running": 0, "queued": 1}
         items.sort(key=lambda a: (rank.get(a.get("state"), 2), -(a.get("started") or 0)))
         return items[:limit]
+
+    # ---- Kopplung von Heimnetz-Geräten (Einstellungen → Heimnetz) ------------------
+    @app.get("/api/pair")
+    def pair(request: Request, code: str = ""):
+        """Link aus dem QR-Code: Kopplungscode einlösen → Geräte-Token als Cookie, weiter zur Oberfläche."""
+        token = access.redeem(code, request.headers.get("user-agent") or "")
+        if not token:
+            return HTMLResponse(security.pair_page(
+                "Kopplung fehlgeschlagen",
+                "<p>Der Kopplungslink ist abgelaufen oder wurde schon benutzt.</p>"
+                "<p>Am Rechner unter <b>Einstellungen → Heimnetz</b> einen neuen QR-Code anzeigen und erneut scannen.</p>"),
+                status_code=403, headers={"Cache-Control": "no-store"})
+        r = RedirectResponse("/", status_code=303, headers={"Cache-Control": "no-store"})
+        r.set_cookie(security.COOKIE, token, max_age=10 * 365 * 86400, httponly=True, samesite="strict", path="/")
+        return r
+
+    def _pairing_view(request: Request) -> dict:
+        lan = setup.lan_state()
+        port = request.url.port or int(os.environ.get("ASTROFLOW_PORT") or 80)
+        c = access.code()
+        hosts = security.lan_addresses()
+        links = [f"http://{h}:{port}/api/pair?code={c['code']}" for h in hosts]
+        return {**lan, "port": port, "addresses": hosts, "expires": c["expires"], "links": links,
+                "qr": qr.svg(links[0]) if links else None, "devices": access.devices()}
+
+    @app.get("/api/pairing")
+    def pairing(request: Request):
+        security.require_local(request, "Kopplung verwalten")
+        return _pairing_view(request)
+
+    @app.post("/api/pairing/code")
+    def pairing_code(request: Request):
+        security.require_local(request, "Kopplung verwalten")
+        access.code(renew=True)
+        return _pairing_view(request)
+
+    @app.post("/api/pairing/remove")
+    def pairing_remove(request: Request, body: dict = Body(...)):
+        security.require_local(request, "Kopplung verwalten")
+        if not access.remove(str(body.get("id") or "")):
+            raise HTTPException(404, "Gerät nicht gefunden.")
+        return _pairing_view(request)
 
     @app.post("/api/modules")
     def set_modules(body: dict = Body(...)):
@@ -225,11 +272,24 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
 
     @app.middleware("http")
     async def guard(request, call_next):
-        # Schreibende Anfragen nur von der eigenen Oberfläche (Schutz gegen fremde Webseiten im selben Netz)
-        if request.method not in ("GET", "HEAD", "OPTIONS"):
-            origin = request.headers.get("origin")
-            if origin and urlsplit(origin).netloc != request.headers.get("host"):
-                return JSONResponse({"detail": "Anfrage nicht zugelassen (fremde Herkunft)."}, status_code=403)
+        # Zugriffsschutz (core/security.py): bekannter Hostname, gekoppeltes Gerät, Herkunft schreibender Anfragen
+        if not access.host_ok(request.headers.get("host") or ""):
+            return JSONResponse({"detail": "Unbekannter Hostname – AstroFlow über localhost, die IP-Adresse oder den Rechnernamen öffnen."},
+                                status_code=400)
+        client = request.client.host if request.client else ""
+        path = request.url.path
+        if not security.is_loopback(client) and path not in security.OPEN_PATHS:
+            try:
+                paired = access.device_ok(request.cookies.get(security.COOKIE))
+            except Exception:
+                paired = False
+            if not paired:
+                if path.startswith("/api/"):
+                    return JSONResponse({"detail": "Gerät nicht gekoppelt: QR-Code am Rechner unter Einstellungen → Heimnetz scannen.",
+                                         "pair": True}, status_code=401)
+                return HTMLResponse(security.NEED_PAIRING, status_code=401, headers={"Cache-Control": "no-store"})
+        if request.method not in security.SAFE_METHODS and not access.origin_ok(request):
+            return JSONResponse({"detail": "Anfrage nicht zugelassen (fremde oder fehlende Herkunft)."}, status_code=403)
         r = await call_next(request)
         # Startseite immer neu prüfen – sonst hängt der Browser an alten ?v=-Verweisen auf app.js/style.css
         if request.url.path in ("/", "/index.html"):

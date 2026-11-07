@@ -18,6 +18,8 @@ from urllib.parse import quote
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 
+from ...core import security
+
 DEFAULT_SOURCE = str(Path.home())
 MODES = ("Bildfolge → Ereignisvideo", "Fotos", "Videos")
 DEFAULT_PREFS = dict(source=DEFAULT_SOURCE, observation="", samples=0, fps=8, mode=MODES[0], solve=True)
@@ -716,8 +718,11 @@ def build_router(mod) -> APIRouter:
         return {**mod.health, "home": str(mod.home), "python": mod.python, "configured": mod.ctx.store.get("skytrace")}
 
     @r.post("/engine")
-    def set_engine(body: dict = Body(...)):
+    def set_engine(request: Request, body: dict = Body(...)):
         """Datenordner/Interpreter der Engine. Der Datenordner wirkt nach einem Neustart."""
+        cur = mod.ctx.store.get("skytrace")
+        if any(k in body and str(body[k] or "").strip() != (cur.get(k) or "") for k in ("home", "python")):
+            security.require_local(request, "Programmpfade setzen")
         vals = {}
         for k in ("home", "python"):
             if k in body:

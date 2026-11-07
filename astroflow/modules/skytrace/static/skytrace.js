@@ -818,8 +818,8 @@ async function settings(el) {
         <span class="chip ${eng.ok ? 'ok' : eng.checked ? 'warn' : ''}">${eng.ok ? 'bereit' : eng.checked ? 'unvollständig' : 'wird geprüft …'}</span></div>
       <p class="mut sm" style="margin:-4px 0 12px">Die Analyse läuft als eigener Prozess und braucht OpenCV, PyTorch/YOLO, PyAV und Skyfield. Ein vorhandenes SkyTrace-Python kann direkt verwendet werden.</p>
       ${eng.checked && !eng.ok ? `<p class="warn sm">${eng.error ? esc(eng.error) : 'Fehlende Pakete: ' + esc((eng.missing || []).join(', '))}</p>` : ''}
-      <label class="field"><span>Python-Interpreter</span><input name="python" value="${esc(eng.configured.python || '')}" placeholder="${esc(eng.python)}"><small>Leer = <code>.venv</code> im Datenordner, sonst der AstroFlow-Interpreter.</small></label>
-      <label class="field"><span>Datenordner</span><input name="home" value="${esc(eng.configured.home || '')}" placeholder="${esc(eng.home)}"><small>Ergebnisse, Katalog-Cache und Standort. Ein bestehender SkyTrace-Ordner (mit <code>Ergebnisse/</code>) kann übernommen werden – wirkt nach einem Neustart.</small></label>
+      <label class="field"><span>Python-Interpreter</span><input name="python" value="${esc(eng.configured.python || '')}" placeholder="${esc(eng.python)}" data-local-only><small>Leer = <code>.venv</code> im Datenordner, sonst der AstroFlow-Interpreter.</small></label>
+      <label class="field"><span>Datenordner</span><input name="home" value="${esc(eng.configured.home || '')}" placeholder="${esc(eng.home)}" data-local-only><small>Ergebnisse, Katalog-Cache und Standort. Ein bestehender SkyTrace-Ordner (mit <code>Ergebnisse/</code>) kann übernommen werden – wirkt nach einem Neustart.</small></label>
       <div class="row"><button class="btn" type="submit">Speichern &amp; prüfen</button></div></form>
     <div class="panel"><label class="modrow" style="border:0;padding:0"><div><b>Gestackte Aufnahmen automatisch analysieren</b>
         <div class="mut sm">Nach jedem Stacken sucht SkyTrace in den neuen Aufnahmen nach Meteoren und Satelliten – je Nacht ein Lauf, nacheinander im Hintergrund.</div></div>

@@ -26,4 +26,5 @@ RUN if [ "$SKYTRACE" = "1" ]; then pip install --no-cache-dir -r astroflow/modul
 ENV ASTROFLOW_DATA=/data
 VOLUME /data
 EXPOSE 8080
-CMD ["python", "-m", "astroflow", "serve", "--port", "8080"]
+# Im Container auf allen Schnittstellen; nach außen begrenzt docker-compose.yml den Port auf 127.0.0.1
+CMD ["python", "-m", "astroflow", "serve", "--host", "0.0.0.0", "--port", "8080"]

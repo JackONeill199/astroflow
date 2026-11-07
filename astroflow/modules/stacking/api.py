@@ -11,10 +11,11 @@ import time
 import traceback
 from pathlib import Path
 
-from fastapi import APIRouter, Body, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from . import calibration, channels, comet, diskspace, gpu, graxpert, objects, platesolve, reviewer, skyquality, stars, tonight, tutor
+from ...core import security
 from .db import DB
 from .pipeline import Pipeline
 
@@ -443,8 +444,10 @@ def build_router(eng: Engine) -> APIRouter:
         return eng.pl.solver_cfg.status()
 
     @r.post("/solver")
-    def set_solver(body: dict = Body(...)):
+    def set_solver(request: Request, body: dict = Body(...)):
         c = eng.pl.solver_cfg
+        if any(k in body and str(body[k]).strip() != (getattr(c, k) or "") for k in ("astap", "astap_db")):
+            security.require_local(request, "Programmpfade setzen")
         if body.get("backend") in platesolve.BACKENDS:
             c.backend = body["backend"]
         for k in ("astap", "astap_db"):
@@ -1046,7 +1049,8 @@ def build_router(eng: Engine) -> APIRouter:
                 "page": stars.STARNET_PAGE}
 
     @r.post("/starnet")
-    def set_starnet(body: dict = Body(...)):
+    def set_starnet(request: Request, body: dict = Body(...)):
+        security.require_local(request, "Programmpfade setzen")
         p = str(body.get("path") or "").strip()
         if p and not Path(p).is_file():
             raise HTTPException(400, f"Datei nicht gefunden: {p}")
@@ -1055,7 +1059,8 @@ def build_router(eng: Engine) -> APIRouter:
         return get_starnet()
 
     @r.post("/starnet/install")
-    async def install_starnet(file: UploadFile = File(...)):
+    async def install_starnet(request: Request, file: UploadFile = File(...)):
+        security.require_local(request, "StarNet installieren")
         if not (file.filename or "").lower().endswith(".zip"):
             raise HTTPException(400, "Bitte die heruntergeladene ZIP-Datei der StarNet-Kommandozeilenversion wählen.")
         tmp = eng.s.data_dir / "tools" / "starnet_upload.zip"
@@ -1072,7 +1077,8 @@ def build_router(eng: Engine) -> APIRouter:
         return {**get_starnet(), "installed": exe}
 
     @r.delete("/starnet")
-    def remove_starnet():
+    def remove_starnet(request: Request):
+        security.require_local(request, "StarNet entfernen")
         shutil.rmtree(stars.STARNET.tools_dir, ignore_errors=True)
         stars.STARNET.path = ""
         eng.save_settings()
@@ -1085,9 +1091,10 @@ def build_router(eng: Engine) -> APIRouter:
         return {"path": exe, "found": bool(exe), "custom": g.path, "mode": g.mode, "gpu": g.gpu, "page": graxpert.PAGE}
 
     @r.post("/graxpert")
-    async def set_graxpert(body: dict = Body(...)):
+    async def set_graxpert(request: Request, body: dict = Body(...)):
         g = graxpert.GRAXPERT
-        if "path" in body:
+        if "path" in body and str(body.get("path") or "").strip().strip('"') != (g.path or ""):
+            security.require_local(request, "Programmpfade setzen")
             p = str(body.get("path") or "").strip().strip('"')
             if p:
                 if not Path(p).is_file():
@@ -1123,18 +1130,23 @@ def build_router(eng: Engine) -> APIRouter:
         c = eng.review_cfg
         return {"provider": c.provider, "base_url": c.base_url, "model": c.model, "max_rounds": c.max_rounds, "has_key": bool(c.api_key)}
 
-    @r.get("/reviewer/models")
-    def reviewer_models(provider: str | None = None, base_url: str | None = None):
-        """Modelle mit Bildeingabe für den KI-Prüfer (auch für eine noch nicht gespeicherte Anbieterwahl)."""
+    @r.post("/reviewer/models")
+    def reviewer_models(body: dict = Body({})):
+        """Modelle mit Bildeingabe für den KI-Prüfer (auch für eine noch nicht gespeicherte Anbieterwahl). Der gespeicherte
+        Schlüssel geht nur an die gespeicherte bzw. die feste OpenRouter-Adresse, sonst wird ohne Schlüssel gefragt."""
         from dataclasses import replace
-        from ...core.models import ModelListError, list_models
+        from ...core.models import ModelListError, key_for, list_models
         c = eng.review_cfg
-        prov = provider or c.provider
+        prov = body.get("provider") or c.provider
+        base_url = body.get("base_url")
         if prov not in ("lmstudio", "openrouter"):
             raise HTTPException(400, "Erst einen Anbieter wählen.")
-        cfg = replace(c, provider=prov, base_url=c.base_url if base_url is None else base_url).resolved()
+        cfg = replace(c, provider=prov, base_url=c.base_url if base_url is None else str(base_url)).resolved()
+        saved = c.resolved()
+        key = key_for(cfg.base_url, c.api_key, saved.base_url if c.provider == "openrouter" else None,
+                      "https://openrouter.ai/api/v1") if prov == "openrouter" else ""
         try:
-            return list_models(cfg.base_url, c.api_key if prov == "openrouter" else "", "vision")
+            return list_models(cfg.base_url, key, "vision")
         except ModelListError as e:
             raise HTTPException(502, str(e))
 

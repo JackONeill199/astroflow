@@ -1005,7 +1005,7 @@ async function settingsExtra(el) {
       <div class="row"><button class="btn" type="submit">Speichern</button></div></form></div>`;
   el.append(box);
   $('[name=proactive_llm]', box).checked = !!c.proactive_llm;
-  picker($('#pRes', box), { name: 'research_model', value: c.research_model, placeholder: 'wie Erzähl-KI', empty: 'wie Erzähl-KI', load: () => api('/sage/models?kind=story') });
+  picker($('#pRes', box), { name: 'research_model', value: c.research_model, placeholder: 'wie Erzähl-KI', empty: 'wie Erzähl-KI', load: () => send('/sage/models', { kind: 'story' }) });
   for (const f of [$('#swS1', box), $('#swS2', box)]) f.onsubmit = async (ev) => {
     ev.preventDefault();
     const body = {};

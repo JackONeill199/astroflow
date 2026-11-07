@@ -38,7 +38,7 @@ def free_port() -> int:
 def call(port: int, path: str, body: dict | None = None, timeout: float = 30):
     req = urllib.request.Request(f"http://127.0.0.1:{port}/api{path}", method="POST" if body is not None else "GET",
                                  data=json.dumps(body).encode() if body is not None else None,
-                                 headers={"Content-Type": "application/json"})
+                                 headers={"Content-Type": "application/json", "Origin": f"http://127.0.0.1:{port}"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read().decode("utf-8"))

@@ -157,17 +157,25 @@ astroflow                                          # startet den Server und öff
 ```
 
 Ohne Installation des Pakets (nur `pip install -r requirements.txt`) startest du mit `python -m astroflow serve` (Web-UI auf Port 8080, Daten in `./data`) und `python -m astroflow demo` für synthetische
-Testdaten. `Start.bat` / `Stop.bat` starten und beenden den Server unter Windows im Hintergrund (Port 8766).
+Testdaten. `Start.bat` / `Stop.bat` starten und beenden den Server unter Windows im Hintergrund (Port 8766). Beide sind standardmäßig
+nur auf diesem Rechner erreichbar (`127.0.0.1`); fürs Heimnetz siehe unten (`serve --lan` bzw. Einstellungen → Heimnetz).
 
 ### Docker
 
-In `docker-compose.yml` den Pfad zu deinen FITS-Dateien eintragen, dann `docker compose up -d --build` und <http://localhost:8080> öffnen. Das Image enthält ASTAP
+In `docker-compose.yml` den Pfad zu deinen FITS-Dateien eintragen, dann `docker compose up -d --build` und <http://localhost:8080> öffnen
+(nur von diesem Rechner aus; fürs Heimnetz in `docker-compose.yml` die Hinweise bei `ports` beachten). Das Image enthält ASTAP
 mit Sterndatenbank D05 (`--build-arg ASTAP_DB=d50` für kleine Bildfelder) und optional die SkyTrace-Engine (`--build-arg SKYTRACE=1`).
 
 ### Heimnetz und Handy
 
-Die Oberfläche ist eine Web-App für Desktop und Smartphone. Im Assistenten (oder mit `Netzwerk-freigeben.bat`) lässt sich AstroFlow im Heimnetz freigeben – nur
-privates Netzwerkprofil, nur eigenes Subnetz, nicht ins Internet. **Es gibt kein Passwort; jedes Gerät im Heimnetz kann AstroFlow bedienen.**
+Die Oberfläche ist eine Web-App für Desktop und Smartphone. Standardmäßig ist AstroFlow nur auf dem eigenen Rechner erreichbar.
+Unter **Einstellungen → Heimnetz** (bzw. im Assistenten, mit `serve --lan` oder `ASTROFLOW_LAN=1` für `Start.bat`) wird es im
+Heimnetz erreichbar – nicht ins Internet weiterleiten. Unter Windows gibt die Firewall-Regel (Knopf dort oder `Netzwerk-freigeben.bat`)
+nur das private Netzwerkprofil und das eigene Subnetz frei.
+
+Jedes Gerät wird **einmal gekoppelt**: am Rechner unter Einstellungen → Heimnetz den QR-Code mit dem Handy scannen. Das Handy bleibt
+danach gekoppelt; gekoppelte Geräte lassen sich dort wieder entfernen. Ungekoppelte Geräte sehen nur einen Hinweis. Einstellungen, die
+Programme starten oder den Rechner betreffen (Komponenten, Programmpfade, Heimnetz, Datenordner, Beenden), gehen nur am Rechner selbst.
 
 <img src="docs/screenshots/handy.webp" alt="AstroFlow am Handy" width="260">
 

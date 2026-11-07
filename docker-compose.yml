@@ -2,12 +2,15 @@ services:
   astroflow:
     build: .
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"         # nur von diesem Rechner; fürs Heimnetz "8080:8080" und Geräte koppeln (Einstellungen → Heimnetz)
     volumes:
       - ./data:/data                  # Datenbank, Zwischenstände, Ergebnisse
       - /pfad/zu/deinen/fits:/data/input   # Eingangsordner (Rohaufnahmen) – anpassen!
     environment:
       ASTROFLOW_AUTO: "1"             # neue Aufnahmen automatisch verarbeiten
+      # Anfragen über den veröffentlichten Port kommen im Container von der Docker-Bridge – wie „dieser Rechner“ behandeln.
+      # Nur zusammen mit 127.0.0.1:… oben; bei "8080:8080" diese Zeile entfernen (sonst bräuchten Heimnetz-Geräte keine Kopplung).
+      ASTROFLOW_TRUSTED_NETS: "172.16.0.0/12,192.168.65.0/24"   # Docker-Bridge bzw. Docker Desktop
       ASTROFLOW_SCAN_INTERVAL: "60"
       # Optionaler KI-Bildprüfer (Vision-LLM):
       # ASTROFLOW_REVIEW_PROVIDER: lmstudio        # oder openrouter

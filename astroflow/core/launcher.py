@@ -187,7 +187,8 @@ def stop(p: int | None = None, timeout: float = 30) -> int:
         return 0
     try:
         urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{p}/api/system/shutdown", data=b"{}", method="POST",
-                                                      headers={"Content-Type": "application/json"}), timeout=10).read()
+                                                      headers={"Content-Type": "application/json", "Origin": f"http://127.0.0.1:{p}"}),
+                               timeout=10).read()
     except Exception:
         pass
     t0 = time.time()
