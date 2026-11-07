@@ -9,7 +9,7 @@
 .ad-run[hidden] { display: none }
 .ad-run.active { box-shadow: 0 0 0 1px color-mix(in srgb, var(--acc) 30%, transparent) }
 .ad-run h2 { font-size: 1rem }
-.ad-pick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; margin-bottom: 0.75rem }
+.ad-pick { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.5rem; margin-bottom: 0.75rem }
 .ad-kind { display: flex; align-items: center; gap: 0.5rem; padding: 0.625rem 0.75rem; border: 1px solid var(--border); border-radius: var(--r); cursor: pointer;
   background: var(--surface-2); transition: border-color var(--t), background var(--t), transform 120ms var(--ease); min-width: 0 }
 .ad-kind:active { transform: scale(.98) }
@@ -22,7 +22,7 @@
 .ad-prog .progress { flex: 1; height: 0.375rem }
 .ad-prog .progress i { transition: width 400ms var(--ease) }
 .ad-now { display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap; margin: 0.625rem 0 0 }
-.ad-kinds { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; margin: 0.75rem 0 0.5rem }
+.ad-kinds { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.75rem; margin: 0.75rem 0 0.5rem }
 .ad-kinds > div { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.5rem; min-width: 0 }
 .ad-errs ul { margin: 0.375rem 0 0; padding-left: 1.125rem }
 
@@ -47,7 +47,7 @@ a.ad-kpi[href]:active { transform: scale(.985) }
 .ad-scroll { overflow-x: auto; max-width: 100% }
 
 /* Abdeckung: Ringe je Art */
-.ad-rings { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem }
+.ad-rings { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.75rem }
 .ad-ringbox { display: grid; justify-items: center; text-align: center; gap: 0.25rem; position: relative; min-width: 0 }
 .ad-ring { width: 5rem; height: 5rem; transform: rotate(-90deg) }
 .ad-ringbox > b { position: absolute; top: 1.75rem; left: 0; right: 0; font-size: 0.9375rem }
@@ -188,6 +188,7 @@ a.ad-kpi[href]:active { transform: scale(.985) }
 .ad-dot { display: inline-block; width: 0.625rem; height: 0.625rem; border-radius: 50%; margin-right: 0.375rem; background: var(--surface-3); vertical-align: middle }
 .ad-dot.s-done { background: var(--ok) } .ad-dot.s-old { background: var(--warn) } .ad-dot.s-error { background: var(--bad) }
 .ad-dot.s-blocked { background: transparent; box-shadow: inset 0 0 0 1.5px var(--dim) }
+.ad-dot.s-na { background: transparent; opacity: .35; box-shadow: inset 0 0 0 1px var(--dim); transform: scale(.6) }
 .ad-dot.s-running, .ad-dot.s-queued { background: var(--acc); animation: adPulse 1.2s ease-in-out infinite }
 .ad-dot.s-queued { opacity: .5; animation: none }
 @keyframes adPulse { 50% { opacity: .35 } }
@@ -207,6 +208,7 @@ a.ad-kpi[href]:active { transform: scale(.985) }
 @media (max-width: 1100px) {
   .ad-grid2, .ad-cats { grid-template-columns: minmax(0, 1fr) }
   .ad-recs { grid-template-columns: minmax(0, 1fr) }
+  .ad-pick, .ad-rings { grid-template-columns: repeat(3, minmax(0, 1fr)) }
 }
 @media (max-width: 760px) {
   .ad-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) }

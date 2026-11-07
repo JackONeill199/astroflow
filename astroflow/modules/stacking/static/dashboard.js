@@ -5,9 +5,9 @@
    Animationen: Zahlen zählen hoch (anCountUp), Abschnitte blenden ein (anReveal aus analysis.js), Diagramme bauen sich auf – alles
    per CSS an `.an-sec.in`, aus bei prefers-reduced-motion. Jeder Abschnitt zeichnet nur neu, wenn sich seine Daten ändern. */
 (() => {
-const KINDS = [['depth', 'Tiefe', 'target'], ['compare', 'Vergleich', 'compare'], ['sky', 'Himmel', 'globe'], ['tutor', 'Tutor', 'sparkle']];
+const KINDS = [['depth', 'Tiefe', 'target'], ['compare', 'Vergleich', 'compare'], ['hrd', 'HR-Diagramm', 'star'], ['sky', 'Himmel', 'globe'], ['tutor', 'Tutor', 'sparkle']];
 const KL = Object.fromEntries(KINDS.map(([k, l]) => [k, l]));
-const ST = { done: 'berechnet', old: 'veraltet', none: 'noch nicht berechnet', error: 'Fehler', blocked: 'Voraussetzung fehlt', queued: 'wartet', running: 'läuft' };
+const ST = { done: 'berechnet', old: 'veraltet', none: 'noch nicht berechnet', error: 'Fehler', blocked: 'Voraussetzung fehlt', queued: 'wartet', running: 'läuft', na: 'entfällt (kein Sternhaufen)' };
 const ART = { neu: 'neu', verschwunden: 'verschwunden', heller: 'heller', 'schwächer': 'schwächer' };
 const de = (v, nd = 1) => v == null ? '–' : Number(v).toLocaleString('de-DE', { minimumFractionDigits: nd, maximumFractionDigits: nd });
 const fday = s => s ? new Date(s + 'T12:00:00Z').toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '–';
@@ -75,7 +75,7 @@ function ring(cov, total) {
 async function analysisView(el) {
   crumbs([['Bilder', '#/bilder'], ['Analyse']]);
   let f = load('af.analysis.filter', { q: '', device: '', year: '', night: '' });
-  let kinds = load('af.analysis.kinds', ['depth', 'compare', 'sky', 'tutor']), scope = 'missing';
+  let kinds = load('af.analysis.kinds', ['depth', 'compare', 'hrd', 'sky', 'tutor']), scope = 'missing';
   let data = null, ticket = 0, lastFull = 0, uniLoaded = '', sort = load('af.analysis.sort', { k: 'name', d: 1 });
   const sigs = {};
   el.innerHTML = `<div class="pagehead"><div><h1>Analyse</h1><p class="mut">Alle Objekte auf einen Blick: wie tief, wie dunkel, was sich verändert hat – nur gemessene Werte aus deinen Bildern.</p></div>
@@ -236,8 +236,10 @@ async function analysisView(el) {
       return `<div class="panel-h"><h2>Was schon berechnet ist</h2></div>
         <div class="ad-rings">${KINDS.map(([k, l, ic]) => {
           const c = d.coverage[k] || {};
-          return `<div class="ad-ringbox" title="${Object.entries(c).map(([s, n]) => `${n} ${ST[s] || s}`).join(' · ')}">${ring(c, tot)}<span>${icon(ic)}${l}</span>
-            <small class="mut">${[['done', 'fertig'], ['old', 'veraltet'], ['none', 'offen'], ['error', 'Fehler'], ['blocked', 'blockiert']].filter(([s]) => c[s]).map(([s, w]) => `${c[s]} ${w}`).join(' · ') || '–'}</small></div>`;
+          // HR-Diagramm nur bei Sternhaufen: Ring bezogen auf die Haufen, nicht auf alle Objekte
+          const of = k === 'hrd' ? Object.values(c).reduce((x, y) => x + y, 0) : tot;
+          return `<div class="ad-ringbox" title="${Object.entries(c).map(([s, n]) => `${n} ${ST[s] || s}`).join(' · ')}${k === 'hrd' ? ' – nur Sternhaufen' : ''}">${ring(c, of)}<span>${icon(ic)}${l}</span>
+            <small class="mut">${[['done', 'fertig'], ['old', 'veraltet'], ['none', 'offen'], ['error', 'Fehler'], ['blocked', 'blockiert']].filter(([s]) => c[s]).map(([s, w]) => `${c[s]} ${w}`).join(' · ') || (k === 'hrd' ? 'kein Sternhaufen' : '–')}</small></div>`;
         }).join('')}</div>
         ${d.blocked.length ? `<h3 class="ad-h3">Voraussetzungen fehlen</h3><ul class="ad-blocked">${d.blocked.map(b => `<li><div><b>${b.ids.length} ${b.ids.length === 1 ? 'Objekt' : 'Objekte'}</b> ${esc(b.text)}
             <small class="mut">– betrifft ${b.kinds.map(k => KL[k]).join(', ')}</small>
