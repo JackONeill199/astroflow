@@ -157,8 +157,12 @@ def test_gefaehrliche_endpunkte_nur_am_rechner(tmp_path, monkeypatch):
         assert ph.post("/api/setup", json={"telescope": "stellina"}).status_code == 200
         gx = ph.get("/api/stacking/graxpert").json()
         assert ph.post("/api/stacking/graxpert", json={"mode": gx["mode"], "gpu": False, "path": gx["custom"] or ""}).status_code == 200
-        sv = ph.get("/api/stacking/solver").json()
-        assert ph.post("/api/stacking/solver", json={"astap": sv.get("astap") or "", "timeout": 120}).status_code == 200
+        sv = ph.get("/api/stacking/solver").json()          # liefert den gefundenen ASTAP-Pfad (auch ohne Einstellung)
+        assert ph.post("/api/stacking/solver", json={"astap": sv.get("astap") or "", "astap_db": sv.get("astap_db") or "",
+                                                     "timeout": 120}).status_code == 200
+        monkeypatch.setattr(type(app.state.modules["stacking"].eng.pl.solver_cfg), "astap_path", lambda self: str(tmp_path / "astap_cli.exe"))
+        assert ph.post("/api/stacking/solver", json={"astap": str(tmp_path / "astap_cli.exe")}).status_code == 200   # = gefunden
+        assert ph.post("/api/stacking/solver", json={"astap": str(tmp_path / "anderes.exe")}).status_code == 403
         assert ph.post("/api/skytrace/engine", json={"auto": False}).status_code == 200
     assert not (tmp_path / "x").exists()
 

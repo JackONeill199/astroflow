@@ -446,7 +446,9 @@ def build_router(eng: Engine) -> APIRouter:
     @r.post("/solver")
     def set_solver(request: Request, body: dict = Body(...)):
         c = eng.pl.solver_cfg
-        if any(k in body and str(body[k]).strip() != (getattr(c, k) or "") for k in ("astap", "astap_db")):
+        # Formular schickt die Felder mit – unverändert heißt: wie gespeichert oder wie gerade gefunden (GET liefert astap_path())
+        same = {"astap": {c.astap or "", c.astap_path() or ""}, "astap_db": {c.astap_db or ""}}
+        if any(k in body and str(body[k] or "").strip() not in same[k] for k in same):
             security.require_local(request, "Programmpfade setzen")
         if body.get("backend") in platesolve.BACKENDS:
             c.backend = body["backend"]
