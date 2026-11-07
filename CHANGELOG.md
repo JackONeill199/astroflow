@@ -18,6 +18,11 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   und eine kompakte Liste aller nachgewiesenen Asteroiden (erst 8 Zeilen, „Alle anzeigen“); „Alles analysieren“ kann die Suche für alle gelösten Objekte nacheinander ausführen.
 - **Sage:** neue Erfolge „Kleinplanetenjäger“ (erster Asteroid) und „Asteroidengürtel“ (10 verschiedene).
 
+## 0.41.1 – 07.11.2026
+
+### Behoben
+- SkyTrace-Statistik: Beim schnellen Wechsel zwischen Ansichten trat ein Skriptfehler im Abschnitt „Satelliten am Himmel“ auf.
+
 ## 0.41.0 – 07.11.2026
 
 ### Neu
