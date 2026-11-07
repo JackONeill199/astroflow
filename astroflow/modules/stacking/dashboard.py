@@ -18,11 +18,11 @@ import threading
 import time
 from collections import Counter
 
-KINDS = ("tutor", "sky", "depth", "compare")         # Reihenfolge im Sammelauftrag: schnell/lokal zuerst, Vergleich nach der Tiefe
-LABEL = {"tutor": "Tutor", "sky": "Himmel", "depth": "Tiefe", "compare": "Vergleich"}
+KINDS = ("tutor", "sky", "depth", "compare", "hrd")  # Reihenfolge im Sammelauftrag: schnell/lokal zuerst, Vergleich nach der Tiefe
+LABEL = {"tutor": "Tutor", "sky": "Himmel", "depth": "Tiefe", "compare": "Vergleich", "hrd": "HR-Diagramm"}
 BLOCK = {"nosolve": "nicht per Plate-Solving gelöst", "nogaia": "Gaia-Abgleich ausgeschaltet", "noframes": "keine Einzelbild-Analysen",
          "noquality": "keine Bildprüfung gespeichert"}
-NET_KINDS = ("depth", "compare")
+NET_KINDS = ("depth", "compare", "hrd")              # HR-Diagramm nur bei Sternhaufen, sonst Status „na“ (entfällt)
 GAP_S = 3.0                                          # Pause nach jeder Netzauswertung (Dienste schonen)
 CACHE_S = 120.0                                      # spätestens dann neu sammeln (Nächte/Aufnahmen ändern sich selten)
 MAX_CLOUD = 4000                                     # Punkte im „Universum“
@@ -58,6 +58,12 @@ def _depth_info(d: dict, exposure: float | None) -> dict:
             "bild": d.get("bild")}
 
 
+def _hrd_info(h: dict) -> dict:
+    hf, a, d = h.get("haufen") or {}, h.get("alter") or {}, h.get("entfernung") or {}
+    return {"members": hf.get("n_gemessen"), "found": bool(hf.get("erkannt")), "age": a.get("jahre"), "age_lo": a.get("lo"),
+            "age_hi": a.get("hi"), "pc": d.get("pc"), "globular": bool(hf.get("kugel"))}
+
+
 def _compare_info(c: dict) -> dict:
     cands = c.get("kandidaten") or []
     return {"ref": (c.get("ref") or {}).get("art"), "ref_label": (c.get("ref") or {}).get("label") or (c.get("ref") or {}).get("name"),
@@ -90,6 +96,7 @@ def collect(eng) -> dict:
     from . import deepsky, objects, skyquality, tutor
     from .compare import COMPARE_VERSION
     from .depth import DEPTH_VERSION
+    from .hrd import HRD_VERSION, is_cluster
     db, wd = eng.db, eng.s.work_dir
     skyquality.ensure_table(db)
     gaia, solver = bool(eng.s.gaia), bool(eng.pl.solver_cfg.enabled)
@@ -143,11 +150,14 @@ def collect(eng) -> dict:
         tc = st.get("tutor") or {}
         status["tutor"] = "done" if str(tc.get("key", "")).startswith(f"{tutor.TUTOR_VERSION}|") else "old" if tc else "none"
         status["sky"] = "none" if pid not in sky_ver else "done" if sky_ver[pid] >= skyquality.SKY_VERSION else "old"
+        status["hrd"] = _status(st.get("hrd"), HRD_VERSION) if is_cluster(p["kind"], p["name"]) or st.get("hrd") else "na"
         blocked = {}
         if not solved:
             blocked["depth"] = blocked["compare"] = "nosolve"
         elif not gaia:
             blocked["depth"] = "nogaia"
+        if status["hrd"] != "na" and "depth" in blocked:
+            blocked["hrd"] = blocked["depth"]
         if not fr["metrics"]:
             blocked["sky"] = "noframes"
         if not quality:
@@ -155,7 +165,7 @@ def collect(eng) -> dict:
         row = {"id": pid, "rid": r["rid"], "name": p["name"], "kind": p["kind"], "kind_label": objects.KIND_LABEL.get(p["kind"] or "generic"),
                "created": r["created"], "exposure": r["exposure"] or 0, "n_frames": r["n_frames"] or 0, "nights": nights,
                "device": dev["name"], "score": quality.get("score"), "solved": solved, "status": status, "blocked": blocked,
-               "catalog": cat, "depth": None, "compare": None, "sky": None, "findings": [],
+               "catalog": cat, "depth": None, "compare": None, "sky": None, "hrd": None, "findings": [],
                "can_develop": any((wd / f"p{pid}").glob("stack*/state.json"))}
         if status["depth"] in ("done", "old") and st["depth"].get("ok"):
             row["depth"] = _depth_info(st["depth"], r["exposure"])
@@ -165,6 +175,8 @@ def collect(eng) -> dict:
             row["compare"] = _compare_info(st["compare"])
             row["compare"]["items"] = [{k: c.get(k) for k in ("art", "sigma", "dmag", "mag_neu", "mag_ref", "x", "y", "katalog", "kleinkoerper")}
                                        for c in st["compare"].get("kandidaten") or []][:30]
+        if status["hrd"] in ("done", "old") and st["hrd"].get("ok"):
+            row["hrd"] = _hrd_info(st["hrd"])
         ns = sky_rows.get(pid) or []
         if ns:
             own = [n for n in ns if n.get("sqm") is not None]
@@ -213,6 +225,8 @@ def summarize(base: dict, f: dict | None = None) -> dict:
     blocked: dict[str, dict] = {}
     for r in rows:
         for k in KINDS:
+            if r["status"][k] == "na":                   # entfällt (HR-Diagramm bei Nicht-Haufen)
+                continue
             b = r["blocked"].get(k)
             cov[k]["blocked" if b and r["status"][k] not in ("done", "old") else r["status"][k]] += 1
             if b:
@@ -240,6 +254,9 @@ def summarize(base: dict, f: dict | None = None) -> dict:
         rec["most_gal"] = ref(x, value=x["depth"]["galaxies"])
     if x := best(D, lambda r: r["depth"]["m5_1h"]):
         rec["efficient"] = ref(x, value=x["depth"]["m5_1h"])
+    H = [r for r in rows if r.get("hrd") and r["hrd"]["found"] and not r["hrd"]["globular"]]
+    if x := best(H, lambda r: r["hrd"]["age"]):                # grobe Schätzung aus dem Abknickpunkt (HR-Diagramm)
+        rec["oldest_cluster"] = ref(x, value=x["hrd"]["age"], lo=x["hrd"]["age_lo"], hi=x["hrd"]["age_hi"], members=x["hrd"]["members"])
     if x := best(rows, lambda r: r["score"]):
         rec["score"] = ref(x, value=x["score"])
     if x := best(rows, lambda r: r["exposure"] or None):
@@ -356,6 +373,8 @@ class Dashboard:
             r["status"] = dict(r["status"])
             for k in KINDS:
                 st = ins.get((k, r["rid"])) if k in NET_KINDS else None
+                if r["status"][k] == "na" and not st:
+                    continue
                 if st and st.get("state") in ("queued", "running", "error"):
                     r["status"][k] = st["state"]
                 elif cur and cur[0] == k and cur[1] == r["id"]:

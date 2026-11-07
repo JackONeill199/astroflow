@@ -314,6 +314,7 @@ def _slim(stats: str | None) -> dict:
     st = json.loads(stats or "{}")
     st.pop("depth", None)
     st.pop("compare", None)
+    st.pop("hrd", None)
     return st
 
 
@@ -867,6 +868,20 @@ def build_router(eng: Engine) -> APIRouter:
         if not db.one("SELECT id FROM results WHERE id=?", (rid,)):
             raise HTTPException(404)
         return eng.insights.submit("depth", rid)
+
+    @r.get("/results/{rid}/hrd")
+    def get_hrd(rid: int):
+        from .hrd import HRD_VERSION, is_cluster
+        out = _insight(rid, "hrd", HRD_VERSION)
+        p = db.one("SELECT p.kind, p.name FROM results r JOIN projects p ON p.id=r.project_id WHERE r.id=?", (rid,))
+        out["haufen_art"] = bool(p and is_cluster(p["kind"], p["name"]))
+        return out
+
+    @r.post("/results/{rid}/hrd")
+    def run_hrd(rid: int):
+        if not db.one("SELECT id FROM results WHERE id=?", (rid,)):
+            raise HTTPException(404)
+        return eng.insights.submit("hrd", rid)
 
     @r.get("/results/{rid}/compare")
     def get_compare(rid: int):
