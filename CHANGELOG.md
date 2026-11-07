@@ -12,6 +12,9 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 - **Heatmap ein-/ausblenden direkt dort, wo sie erscheint:** Knopf „Ausblenden“ an der Legende unten links und
   „Heatmap ausblenden/einblenden“ in der Karte der Nacht (neben „Heatmap neu berechnen“); ausgeblendet verschwindet auch
   die Legende. Unter „Ebenen“ gibt es zusätzlich einen Regler für die Deckkraft. Ein/Aus und Deckkraft werden gemerkt.
+- **3D-Erde, flache Karte: Die Leiste „Erdbild / Straßenkarte / Gelände“ sitzt jetzt auf derselben Höhe wie die Knöpfe oben rechts**
+  (vorher etwas tiefer). Der Hinweis „Nachtsicht“ rückt in der flachen Karte darunter. Auf dem Handy bleibt die Leiste unter den
+  Knöpfen; Legende und Maßstab überlappen dort nicht mehr.
 
 ## 0.43.4 – 07.11.2026
 
