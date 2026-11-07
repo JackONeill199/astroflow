@@ -5,9 +5,9 @@
    Animationen: Zahlen zählen hoch (anCountUp), Abschnitte blenden ein (anReveal aus analysis.js), Diagramme bauen sich auf – alles
    per CSS an `.an-sec.in`, aus bei prefers-reduced-motion. Jeder Abschnitt zeichnet nur neu, wenn sich seine Daten ändern. */
 (() => {
-const KINDS = [['depth', 'Tiefe', 'target'], ['compare', 'Vergleich', 'compare'], ['asteroids', 'Asteroiden', 'orbit'], ['sky', 'Himmel', 'globe'], ['tutor', 'Tutor', 'sparkle']];
+const KINDS = [['depth', 'Tiefe', 'target'], ['compare', 'Vergleich', 'compare'], ['hrd', 'HR-Diagramm', 'star'], ['asteroids', 'Asteroiden', 'orbit'], ['sky', 'Himmel', 'globe'], ['tutor', 'Tutor', 'sparkle']];
 const KL = Object.fromEntries(KINDS.map(([k, l]) => [k, l]));
-const ST = { done: 'berechnet', old: 'veraltet', none: 'noch nicht berechnet', error: 'Fehler', blocked: 'Voraussetzung fehlt', queued: 'wartet', running: 'läuft' };
+const ST = { done: 'berechnet', old: 'veraltet', none: 'noch nicht berechnet', error: 'Fehler', blocked: 'Voraussetzung fehlt', queued: 'wartet', running: 'läuft', na: 'entfällt (kein Sternhaufen)' };
 const ART = { neu: 'neu', verschwunden: 'verschwunden', heller: 'heller', 'schwächer': 'schwächer' };
 const de = (v, nd = 1) => v == null ? '–' : Number(v).toLocaleString('de-DE', { minimumFractionDigits: nd, maximumFractionDigits: nd });
 const fday = s => s ? new Date(s + 'T12:00:00Z').toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '–';
@@ -68,7 +68,7 @@ function sbar(cov, total) {
 async function analysisView(el) {
   crumbs([['Bilder', '#/bilder'], ['Analyse']]);
   let f = load('af.analysis.filter', { q: '', device: '', year: '', night: '' });
-  let kinds = load('af.analysis.kinds', ['depth', 'compare', 'sky', 'tutor']), scope = 'missing';
+  let kinds = load('af.analysis.kinds', ['depth', 'compare', 'hrd', 'asteroids', 'sky', 'tutor']), scope = 'missing';
   let data = null, ticket = 0, lastFull = 0, uniLoaded = '', sort = load('af.analysis.sort', { k: 'name', d: 1 });
   const sigs = {};
   // Dichtes Raster (0.38.3): Reihen `.ad-row` mit 2–3 Spalten, gleich hohe Abschnitte, kompakte Kennzahlenleiste
@@ -237,8 +237,10 @@ async function analysisView(el) {
       return `<div class="panel-h"><h2>Was schon berechnet ist</h2></div>
         <ul class="ad-cov">${KINDS.map(([k, l, ic]) => {
           const c = d.coverage[k] || {};
-          return `<li title="${Object.entries(c).map(([s, n]) => `${n} ${ST[s] || s}`).join(' · ')}"><span class="ad-cov-l">${icon(ic)}${l}</span>${sbar(c, tot)}
-            <small class="mut">${[['done', 'fertig'], ['old', 'veraltet'], ['none', 'offen'], ['error', 'Fehler'], ['blocked', 'blockiert']].filter(([s]) => c[s]).map(([s, w]) => `${c[s]} ${w}`).join(' · ') || '–'}</small></li>`;
+          // HR-Diagramm nur bei Sternhaufen: Anteil bezogen auf die Haufen, nicht auf alle Objekte
+          const of = k === 'hrd' ? Object.values(c).reduce((x, y) => x + y, 0) : tot;
+          return `<li title="${Object.entries(c).map(([s, n]) => `${n} ${ST[s] || s}`).join(' · ')}${k === 'hrd' ? ' – nur Sternhaufen' : ''}"><span class="ad-cov-l">${icon(ic)}${l}</span>${sbar(c, of)}
+            <small class="mut">${[['done', 'fertig'], ['old', 'veraltet'], ['none', 'offen'], ['error', 'Fehler'], ['blocked', 'blockiert']].filter(([s]) => c[s]).map(([s, w]) => `${c[s]} ${w}`).join(' · ') || (k === 'hrd' ? 'kein Sternhaufen' : '–')}</small></li>`;
         }).join('')}</ul>
         ${d.blocked.length ? `<h3 class="ad-h3">Voraussetzungen fehlen</h3><ul class="ad-blocked">${d.blocked.map(b => `<li><div><b>${b.ids.length} ${b.ids.length === 1 ? 'Objekt' : 'Objekte'}</b> ${esc(b.text)}
             <small class="mut">– betrifft ${b.kinds.map(k => KL[k]).join(', ')}</small>
@@ -271,6 +273,8 @@ async function analysisView(el) {
           r.far_star && { ...r.far_star, pos: r.far_star.bild && r.far_star.star.x != null ? { x: r.far_star.star.x, y: r.far_star.star.y, w: r.far_star.bild.w } : null }),
         item('layers', 'Meiste Galaxien', r.most_gal && nf.format(r.most_gal.value), r.most_gal && esc(r.most_gal.name), r.most_gal),
         item('pulse', 'Am effizientesten', r.efficient && `${de(r.efficient.value, 2)} mag`, r.efficient && `${esc(r.efficient.name)} · Grenzgröße auf 1 h umgerechnet`, r.efficient),
+        item('star', 'Ältester Sternhaufen', r.oldest_cluster && `~${yrText(r.oldest_cluster.value)}`,
+          r.oldest_cluster && `${esc(r.oldest_cluster.name)} · HR-Diagramm, grob geschätzt`, r.oldest_cluster),
         item('globe', 'Dunkelster Himmel', r.darkest && `${de(r.darkest.value, 2)} mag/″²`, r.darkest && `${fday(r.darkest.night)} · ${esc(r.darkest.name)}`, r.darkest),
         item('sparkle', 'Schärfste Nacht', r.seeing && `${de(r.seeing.value, 1)}″`, r.seeing && `${fday(r.seeing.night)} · ${esc(r.seeing.name)}`, r.seeing),
         item('medal', 'Beste Bildqualität', r.score && `${de(r.score.value, 1)}/10`, r.score && esc(r.score.name), r.score),
@@ -450,7 +454,7 @@ async function analysisView(el) {
     const th = (k, l) => `<th data-sort="${k}" class="${sort.k === k ? (sort.d > 0 ? 'asc' : 'desc') : ''}">${l}</th>`;
     paint('adTable', [rows.map(r => [r.id, r.status, r.depth?.m5, r.sky?.sqm, r.score]), sort], () => `<div class="panel-h"><h2>Alle Objekte</h2><span class="grow"></span>
         <span class="ad-legend sm">${['done', 'old', 'none', 'error', 'blocked'].map(s => `<span><i class="ad-dot s-${s}"></i>${ST[s]}</span>`).join('')}</span></div>
-      <div class="ad-scroll"><table class="ad-tab ad-all"><thead><tr>${th('name', 'Objekt')}${th('night', 'Letzte Nacht')}${th('exposure', 'Belichtung')}${th('score', 'Qualität')}${th('m5', 'Grenzgröße')}${th('gal', 'Fernste Galaxie')}${th('sqm', 'Himmel')}<th>Tiefe · Vergl. · Asteroiden · Himmel · Tutor</th></tr></thead><tbody>
+      <div class="ad-scroll"><table class="ad-tab ad-all"><thead><tr>${th('name', 'Objekt')}${th('night', 'Letzte Nacht')}${th('exposure', 'Belichtung')}${th('score', 'Qualität')}${th('m5', 'Grenzgröße')}${th('gal', 'Fernste Galaxie')}${th('sqm', 'Himmel')}<th>Tiefe · Vergl. · HR · Asteroiden · Himmel · Tutor</th></tr></thead><tbody>
         ${rows.map(r => `<tr data-href="#/p/${r.id}/analyse" tabindex="0"><td class="ad-name"><a href="#/p/${r.id}/analyse">${esc(r.name)}</a> <small class="mut">${esc(r.device || '')}</small></td>
           <td>${fday(r.nights.at(-1))}${r.nights.length > 1 ? ` <small class="mut">+${r.nights.length - 1}</small>` : ''}</td><td class="tnum">${hrs(r.exposure)}</td>
           <td class="tnum">${r.score != null ? de(r.score, 1) : '–'}</td><td class="tnum">${r.depth?.m5 != null ? de(r.depth.m5, 1) + ' mag' : '–'}</td>

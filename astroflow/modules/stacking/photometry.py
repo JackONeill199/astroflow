@@ -98,7 +98,7 @@ def gaia_stars(ra: float, dec: float, radius_deg: float, cache_dir: Path, gmag_m
     return np.array(rows, dtype=np.float64).reshape(-1, ncol)
 
 
-FIELD_COLS = ("source_id", "ra", "dec", "g", "bp_rp", "parallax", "poe")
+FIELD_COLS = ("source_id", "ra", "dec", "g", "bp_rp", "parallax", "poe", "plx_err", "pmra", "pmdec")
 
 
 def _tap_csv(url: str, query: str, timeout: float, maxrec: int = 60000) -> list[list[str]]:
@@ -125,27 +125,36 @@ def _num(v: str):
 
 
 def gaia_field(ra: float, dec: float, radius_deg: float, cache_dir: Path, gmag_max: float = 20.7,
-               top: int = 40000, timeout: float = 60.0) -> dict:
-    """Gaia-DR3-Sterne im Feld bis `gmag_max` mit Helligkeit, Farbe und Parallaxe (für „Wie tief schaust du?“).
-    Gesendet werden nur Feldmitte und Radius. Rückgabe: Spaltenarrays (`FIELD_COLS`) + `truncated` (TOP-Grenze erreicht)."""
-    key = hashlib.sha1(f"field|{ra:.3f}|{dec:.3f}|{radius_deg:.3f}|{gmag_max}|{top}".encode()).hexdigest()[:16]
-    f = Path(cache_dir) / f"gaia_feld_{key}.json"
+               top: int = 40000, timeout: float = 60.0, need_pm: bool = False) -> dict:
+    """Gaia-DR3-Sterne im Feld bis `gmag_max` mit Helligkeit, Farbe, Parallaxe und Eigenbewegung (für „Wie tief schaust du?“
+    und das HR-Diagramm). Gesendet werden nur Feldmitte und Radius. Rückgabe: Spaltenarrays (`FIELD_COLS`) + `truncated`
+    (TOP-Grenze erreicht). Ältere Zwischenspeicher ohne Eigenbewegung werden weiter genutzt (Spalten dann NaN), außer `need_pm`
+    – dann wird einmal neu abgefragt, und die neue Datei dient danach allen Auswertungen."""
+    key = hashlib.sha1(f"field2|{ra:.3f}|{dec:.3f}|{radius_deg:.3f}|{gmag_max}|{top}".encode()).hexdigest()[:16]
+    old = hashlib.sha1(f"field|{ra:.3f}|{dec:.3f}|{radius_deg:.3f}|{gmag_max}|{top}".encode()).hexdigest()[:16]
+    f = Path(cache_dir) / f"gaia_feld2_{key}.json"
+    f_old = Path(cache_dir) / f"gaia_feld_{old}.json"
+    ncol = len(FIELD_COLS)
     if f.exists():
         rows = json.loads(f.read_text())
+    elif f_old.exists() and not need_pm:
+        rows = [r + [None] * (ncol - len(r)) for r in json.loads(f_old.read_text())]
     else:
         circle = f"1=CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', {ra:.5f}, {dec:.5f}, {radius_deg:.4f}))"
         queries = (
             (GAVO_TAP, f"SELECT TOP {top} source_id, ra, dec, phot_g_mean_mag, phot_bp_mean_mag - phot_rp_mean_mag, parallax, "
-                       f"parallax / parallax_error FROM gaia.dr3lite WHERE {circle} AND phot_g_mean_mag < {gmag_max} "
-                       f"ORDER BY phot_g_mean_mag", min(timeout, 40)),
-            (ARI_TAP, f"SELECT TOP {top} source_id, ra, dec, phot_g_mean_mag, bp_rp, parallax, parallax_over_error "
-                      f"FROM gaiadr3.gaia_source WHERE {circle} AND phot_g_mean_mag < {gmag_max} ORDER BY phot_g_mean_mag", timeout),
-            (ESA_TAP, f"SELECT TOP {top} source_id, ra, dec, phot_g_mean_mag, bp_rp, parallax, parallax_over_error "
-                      f"FROM gaiadr3.gaia_source WHERE {circle} AND phot_g_mean_mag < {gmag_max} ORDER BY phot_g_mean_mag", timeout * 2))
+                       f"parallax / parallax_error, parallax_error, pmra, pmdec FROM gaia.dr3lite WHERE {circle} "
+                       f"AND phot_g_mean_mag < {gmag_max} ORDER BY phot_g_mean_mag", min(timeout, 40)),
+            (ARI_TAP, f"SELECT TOP {top} source_id, ra, dec, phot_g_mean_mag, bp_rp, parallax, parallax_over_error, parallax_error, "
+                      f"pmra, pmdec FROM gaiadr3.gaia_source WHERE {circle} AND phot_g_mean_mag < {gmag_max} ORDER BY phot_g_mean_mag",
+             timeout),
+            (ESA_TAP, f"SELECT TOP {top} source_id, ra, dec, phot_g_mean_mag, bp_rp, parallax, parallax_over_error, parallax_error, "
+                      f"pmra, pmdec FROM gaiadr3.gaia_source WHERE {circle} AND phot_g_mean_mag < {gmag_max} ORDER BY phot_g_mean_mag",
+             timeout * 2))
         rows, errors = None, []
         for url, q, t in queries:
             try:
-                rows = [[int(r[0])] + [_num(v) for v in r[1:7]] for r in _tap_csv(url, q, t) if len(r) >= 7 and r[0].isdigit()]
+                rows = [[int(r[0])] + [_num(v) for v in r[1:ncol]] for r in _tap_csv(url, q, t) if len(r) >= ncol and r[0].isdigit()]
                 break
             except Exception as e:
                 errors.append(f"{url.split('/')[2]}: {e}")
@@ -153,7 +162,7 @@ def gaia_field(ra: float, dec: float, radius_deg: float, cache_dir: Path, gmag_m
             raise RuntimeError("Gaia-Katalog nicht erreichbar (" + "; ".join(errors)[:160] + ")")
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text(json.dumps(rows))
-    a = np.array([[np.nan if v is None else v for v in r[1:]] for r in rows], dtype=np.float64).reshape(-1, 6)
+    a = np.array([[np.nan if v is None else v for v in r[1:ncol]] for r in rows], dtype=np.float64).reshape(-1, ncol - 1)
     out = {c: a[:, i] for i, c in enumerate(FIELD_COLS[1:])}
     out["source_id"] = [r[0] for r in rows]                 # 19 Stellen – als float gingen Ziffern verloren
     out["truncated"] = len(rows) >= top

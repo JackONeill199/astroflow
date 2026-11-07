@@ -456,7 +456,8 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   Einstellungen `GET|POST /insights` (`data/settings.json` → `insights`: `auto_depth`, `simbad`, `survey`, `small_bodies`; Gaia = `storage.gaia`).
 - **Geometrie:** `services.view_geometry` (aus `project_solution` herausgelöst) = WCS des linearen Stacks der Version + Lage des
   JPG-Ausschnitts (Korrelation), `to_view` rechnet FITS-Pixel → JPG-Pixel (Zeile 0 oben). Schlüssel in `wcs.json` muss zur Stackgröße passen.
-- **Tiefe:** `photometry.gaia_field` (GAVO `gaia.dr3lite` → ARI → ESA, bis G 20,7, TOP 40 000, Cache `work/gaia/gaia_feld_*`) →
+- **Tiefe:** `photometry.gaia_field` (GAVO `gaia.dr3lite` → ARI → ESA, bis G 20,7, TOP 40 000, Cache `work/gaia/gaia_feld2_*` mit
+  Parallaxenfehler/Eigenbewegung seit 0.41.0; ältere `gaia_feld_*` gelten für die Tiefe weiter, Spalten dann NaN, `need_pm=True` fragt neu) →
   erzwungene Aperturfotometrie an allen Katalogpositionen (Apertur 0,8 FWHM, Ring-Median). **Rauschen an leeren Himmelsstellen
   messen**: Stack-Pixel sind korreliert, Pixel-σ×√N war bei M101 2,9× zu klein. Erfasst = SNR ≥ 5, Schwerpunkt ≤ 0,6 FWHM,
   kein hellerer Nachbar und gemessene Helligkeit ±0,75 mag zur Katalog-G (sonst zählten HII-Knoten in M101 als G-20-Sterne).
@@ -488,8 +489,40 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   log10(Lj)), `comparePanel` + `compareViewer` (Blinken über `createViewer().setSplit`, Stelle anfahren mit `zoomTo`).
 - Tests: `tests/test_depth_compare.py` (synthetisches Feld, Attrappen für Gaia/SIMBAD/DSS/JPL).
 
+## HR-Diagramm von Sternhaufen (`modules/stacking/hrd.py`, `static/hrd.js|css`; seit 0.41.0, Wunsch 9)
+- **Ablauf** wie Tiefe/Vergleich über `insights.py` (Art `hrd`, Ergebnis `results.stats.hrd` mit `v` = `HRD_VERSION`, nicht in `_slim`),
+  Endpunkte `GET|POST /results/{id}/hrd` (GET liefert zusätzlich `haufen_art` = `hrd.is_cluster(kind, name)`). `after_develop` misst nach der
+  Tiefe automatisch, wenn das Objekt ein Haufen ist (`open_cluster`/`globular` oder Name in `CLUSTER_NAMES`, z. B. M45 – im kleinen Katalog
+  „reflection“).
+- **Fotometrie:** gleiche Bausteine wie `depth.py` (`_ring_phot`, `_empty_sky`, `_fwhm`, `stackfix.spots`), Apertur 1,0 FWHM (Farben brauchen den
+  Kern), an allen Gaia-Positionen; Luminanz zuerst (SNR ≥ `SNR_MIN` 10), dann R/G/B nur für diese. Mischlicht: hellerer Nachbar (g < g+2) näher als
+  r + 1 FWHM oder deutlich hellerer (g < g−1) im Ring. Übersättigt = Spitze/Fluss < 0,7 × Median heller sauberer Sterne (SNR > 200) – nicht das
+  99,99-%-Perzentil wie bei PCC (verwarf synthetisch die hellsten unversehrten Sterne).
+- **Eichung:** Instrumentenfarbe −2,5·log(B/R) → BP−RP als robuste Gerade (`_robust_line`, 3σ, ≥ `MIN_CAL` 15 Sterne mit SNR > 30), danach
+  G − m_inst = ZP + k·Farbe. Ergebnis `eichung` (Steigung, Streuung Farbe/Helligkeit, Farbterm). Die Punkte im Diagramm sind eigene Messungen auf
+  der Gaia-Skala; `gaia` = Gaias Werte aller Mitglieder (Hintergrund), `feld` = gemessene Nicht-Mitglieder (Stichprobe).
+- **Mitglieder** (`members`, nur Gaia-Astrometrie, G < 19,5): Haufenmitte/-radius aus dem Katalog (`resolve_name`/`resolve_extended`), sonst
+  Bildmitte und halber Feldradius. Dichte in der Eigenbewegung (Nachbarn ≤ 1 mas/a) innen minus Umfeld × Flächenverhältnis → Startpunkt,
+  dann Median/Fenster 6× verfeinern (Fenster 3·1,18·robuste Streuung, 0,4–5 mas/a), Parallaxe gewichtet mit Toleranz
+  3·√(σ² + (6 % ϖ)² + 0,03²); Mitglieder nur bis 2 Haufenradien. Flächen innen/Umfeld aus Gleichverteilung über die gültige Bildfläche.
+  RA-Differenzen über `dra` (kürzester Bogen, Felder über 0°/360°). Mittel und Unsicherheit der Parallaxe aus derselben Auswahl (Kernsterne
+  mit passender Parallaxe, Unsicherheit ≥ Streuung/√n; äußere Mitglieder senken sie nicht – Review PR #66). `verunreinigung` = Umfeld-Treffer je Fläche hochgerechnet; `ok` erst ab 8 Mitgliedern innen und Verunreinigung < 50 %.
+- **Deutung (vorsichtig, `estimate`):** Entfernung aus der gewichteten Parallaxe (Nullpunkt −0,017 mas, systematisch `PLX_SYS` 0,015 mas;
+  `sicher` ab ϖ/σ ≥ 5). Genäherte Hauptreihe `MS` (Pecaut & Mamajek, sonnennahe Metallizität), Rötung E(BP−RP) per Gitter 0–1,5 mit begrenztem
+  Fehler min(|Δ|, 0,8) (Riesen/Doppelsterne zählen gedeckelt), A_G = 1,89·E, Spanne = Bereich mit Fehler < Minimum + 0,03. Abknickpunkt = Median
+  der 2.–4. hellsten Hauptreihensterne (Δ −1…+0,6 mag), Alter aus `TURNOFF_AGE` (M_G → log t, grob aus Isochronen) mit Spanne aus ±0,5 mag ⊕
+  Entfernung ⊕ Rötung und ±0,15 dex; übersättigte Mitglieder heller als der Abknickpunkt → `hoechstens`. Gegenprobe `gaia_schaetzung` mit Gaias
+  Werten. **Kugelsternhaufen:** keine Rötung/kein Alter (metallarm), nur erwarteter Abknickpunkt M_G 3,8 als Linie.
+- **UI** (`hrdPanel(host, r, {onFocus, onShow})` in `analysisTab`, Abschnitt `#anHrd` + Inhaltsverzeichnis-Eintrag erst sichtbar bei `haufen_art`
+  oder gefundenem Haufen): Kennzahlen, SVG-Diagramm (`hrdSvg`, rechte Achse M_G), Ebenen Gaia/Feld (localStorage `af.analyse.hrd.gaia|feld`),
+  Klick auf einen Stern → `viewer.zoomTo`, Einsteigertext in `<details>`. Dashboard: Art `hrd` in `KINDS`/`NET_KINDS`; Nicht-Haufen haben Status
+  `na` (zählt nicht in der Abdeckung, nie im Sammelauftrag), die Zeile der Status-Matrix (`sbar`) bezieht sich nur auf Haufen; `_hrd_info` in den
+  Zeilen, Rekord `oldest_cluster` „Ältester Sternhaufen“ (nur offene Haufen mit erkanntem Haufen). Diagramm kompakt (SVG 680×340, Fuß mit Erklärung + „Neu messen“ in einer Zeile).
+- Tests: `tests/test_hrd.py` (synthetischer Haufen 500 pc, E 0,2, Abknickpunkt M_G 1,3 im erfundenen Feld, Gaia-Attrappe; Feld ohne Haufen;
+  alter Gaia-Zwischenspeicher; API/Insights/Dashboard).
+
 ## Asteroiden im Bild (`modules/stacking/asteroids.py`, `static/asteroids.js|css`; seit 0.42.0 – Wunsch 10)
-Ziel: „Du hast 9 Asteroiden fotografiert, der schwächste 16,2 mag“. Läuft als dritte Art in `insights.Insights` (`kind="asteroids"`,
+Ziel: „Du hast 9 Asteroiden fotografiert, der schwächste 16,2 mag“. Läuft als vierte Art in `insights.Insights` (`kind="asteroids"`,
 Ergebnis `results.stats.asteroids`, `v` = `ASTEROID_VERSION`), schaltbar über `insights.small_bodies` (gleiche Einstellung wie der
 Kleinkörper-Abgleich im Vergleich). Endpunkte `GET|POST /results/{id}/asteroids`, Ausschnitte `/results/{id}/asteroids/a<n>.png`
 (streng geprüft, Ablage `work/p<id>/asteroiden/r<rid>/`); `_slim` lässt `asteroids` aus der gepollten Projektansicht weg.
@@ -537,7 +570,7 @@ Nutzerwunsch „eigene Seite, wo man alle gleichzeitig analysieren kann, mit Sta
   {kinds, scope: missing|errors|all, ids?}`, `POST /analysis/pause {paused}`, `POST /analysis/stop`, `POST /analysis/develop {ids}` (Objekte mit Stack,
   ohne `wcs.json` → Entwicklungsauftrag; die Lösung entsteht beim Entwickeln, `auto_depth` misst danach). Nicht in `/projects` (wird gepollt).
 - **Sammelauftrag** `Batch` (eigener Thread, Aktivität „Analyse aller Objekte“, zählt in `busy_jobs`): Reihenfolge `KINDS` = Tutor, Himmel (lokal),
-  Tiefe, Vergleich (nutzt den Nullpunkt der Tiefe), Asteroiden (seit 0.42.0). Tiefe/Vergleich/Asteroiden gehen einzeln durch `insights.submit` und werden abgewartet, danach `GAP_S` 3 s
+  Tiefe, Vergleich (nutzt den Nullpunkt der Tiefe), HR-Diagramm (nur Haufen), Asteroiden (seit 0.42.0). Tiefe/Vergleich/HR-Diagramm/Asteroiden gehen einzeln durch `insights.submit` und werden abgewartet, danach `GAP_S` 3 s
   Pause → nie zwei Netzauswertungen gleichzeitig. Himmel = `skyquality.compute_project` (wartet, solange `SkyRunner` rechnet), Tutor = `build_report(refresh=True)`
   (mit Wetter ebenfalls Pause). Anhalten wirkt nach dem laufenden Schritt; Zustand nur im Speicher.
 - **UI:** Abschnitte zeichnen nur bei geänderten Daten neu (`paint` mit Signatur – sonst liefen Animationen bei jedem Poll erneut); Poll der Shell lädt nur

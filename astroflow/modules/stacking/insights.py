@@ -1,6 +1,6 @@
 """Hintergrundauswertungen fertiger Bilder: „Wie tief schaust du?“ (`depth.py`), Vergleich mit einer Referenz
-(`compare.py`) und Asteroiden im Bild (`asteroids.py`). Eigener Thread mit Warteschlange – Netzabfragen (Gaia, SIMBAD, DSS, JPL) halten so weder Stacking
-noch Entwicklung auf. Ergebnisse landen in `results.stats.depth`, `.compare` bzw. `.asteroids` (mit Versionsnummer).
+(`compare.py`), HR-Diagramm von Sternhaufen (`hrd.py`) und Asteroiden im Bild (`asteroids.py`). Eigener Thread mit Warteschlange – Netzabfragen (Gaia, SIMBAD, DSS, JPL) halten so weder Stacking
+noch Entwicklung auf. Ergebnisse landen in `results.stats.depth`, `.compare`, `.hrd` bzw. `.asteroids` (mit Versionsnummer).
 
 Einstellungen (`data/settings.json` → `insights`): `auto_depth` (nach jeder Entwicklung messen), `simbad`
 (Rotverschiebungen/Veränderliche), `survey` (Himmelsdurchmusterung DSS2 als Referenz), `small_bodies` (JPL-Kleinkörper).
@@ -47,12 +47,16 @@ class Insights:
         return self.state.get((kind, rid))
 
     def after_develop(self, rid: int | None):
-        """Nach einer Entwicklung automatisch messen (nur gelöste Bilder, Einstellung `auto_depth`, Gaia an)."""
+        """Nach einer Entwicklung automatisch messen (nur gelöste Bilder, Einstellung `auto_depth`, Gaia an);
+        bei Sternhaufen danach auch das HR-Diagramm."""
+        from .hrd import is_cluster
         cfg = self.settings()
         if rid and cfg["auto_depth"] and cfg["gaia"]:
-            row = self.eng.db.one("SELECT project_id FROM results WHERE id=?", (rid,))
+            row = self.eng.db.one("SELECT r.project_id, p.kind, p.name FROM results r JOIN projects p ON p.id=r.project_id WHERE r.id=?", (rid,))
             if row and (self.eng.s.work_dir / f"p{row['project_id']}" / "wcs.json").exists():
                 self.submit("depth", rid)
+                if is_cluster(row["kind"], row["name"]):
+                    self.submit("hrd", rid)
 
     def worker(self):
         while not self.eng.stop.is_set():
@@ -63,14 +67,15 @@ class Insights:
             st = self.state.setdefault((kind, rid), {})
             st.update(state="running", message="läuft", t=time.time())
             try:
-                fn = {"depth": self.depth, "compare": self.compare, "asteroids": self.asteroids}[kind]
+                fn = {"depth": self.depth, "compare": self.compare, "hrd": self.hrd, "asteroids": self.asteroids}[kind]
                 fn(rid, lambda m: st.update(message=m), **opts)
                 self.state.pop((kind, rid), None)
             except Exception as e:
                 from .asteroids import AsteroidError
                 from .compare import CompareError
                 from .depth import DepthError
-                if not isinstance(e, (DepthError, CompareError, AsteroidError)):
+                from .hrd import HrdError
+                if not isinstance(e, (DepthError, CompareError, HrdError, AsteroidError)):
                     traceback.print_exc()
                 try:                                     # erst speichern, dann melden (Abfragen dazwischen sähen sonst nichts)
                     self._store(rid, kind, {"v": 0, "ok": False, "error": str(e)[:300], "erstellt": time.time()})
@@ -93,6 +98,16 @@ class Insights:
                             stats=json.loads(r["stats"] or "{}"), log=log)
         out["erstellt"] = time.time()
         self._store(rid, "depth", out)
+
+    def hrd(self, rid: int, log, **_):
+        from . import hrd
+        r = self.eng.db.one("SELECT r.*, p.name, p.kind FROM results r JOIN projects p ON p.id=r.project_id WHERE r.id=?", (rid,))
+        if not r:
+            return
+        out = hrd.compute(self.eng.s.work_dir, r["project_id"], json.loads(r["files"] or "{}"), r["name"], kind=r["kind"],
+                          gaia=self.settings()["gaia"], log=log)
+        out["erstellt"] = time.time()
+        self._store(rid, "hrd", out)
 
     def compare(self, rid: int, log, ref="auto", **_):
         from . import compare
