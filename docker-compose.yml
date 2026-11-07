@@ -1,15 +1,20 @@
 services:
   astroflow:
     build: .
+    # Nur von diesem Rechner erreichbar. Heimnetz (Handy/Tablet): nicht einfach "8080:8080" – dann kämen je nach Docker-Variante
+    # alle Anfragen von der Bridge-Adresse und AstroFlow könnte den eigenen Rechner nicht von anderen Geräten unterscheiden.
+    # Stattdessen unter Linux: `ports` und ASTROFLOW_TRUSTED_NETS entfernen und `network_mode: host` setzen (Client-Adressen
+    # bleiben echt, der Browser auf dem Rechner ist Loopback und kann unter Einstellungen → Heimnetz Geräte koppeln).
     ports:
-      - "127.0.0.1:8080:8080"         # nur von diesem Rechner; fürs Heimnetz "8080:8080" und Geräte koppeln (Einstellungen → Heimnetz)
+      - "127.0.0.1:8080:8080"
+    # network_mode: host
     volumes:
       - ./data:/data                  # Datenbank, Zwischenstände, Ergebnisse
       - /pfad/zu/deinen/fits:/data/input   # Eingangsordner (Rohaufnahmen) – anpassen!
     environment:
       ASTROFLOW_AUTO: "1"             # neue Aufnahmen automatisch verarbeiten
       # Anfragen über den veröffentlichten Port kommen im Container von der Docker-Bridge – wie „dieser Rechner“ behandeln.
-      # Nur zusammen mit 127.0.0.1:… oben; bei "8080:8080" diese Zeile entfernen (sonst bräuchten Heimnetz-Geräte keine Kopplung).
+      # Nur zusammen mit 127.0.0.1:… oben (dann erreicht nur dieser Rechner den Port); mit network_mode: host entfernen.
       ASTROFLOW_TRUSTED_NETS: "172.16.0.0/12,192.168.65.0/24"   # Docker-Bridge bzw. Docker Desktop
       ASTROFLOW_SCAN_INTERVAL: "60"
       # Optionaler KI-Bildprüfer (Vision-LLM):

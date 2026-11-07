@@ -163,7 +163,7 @@ nur auf diesem Rechner erreichbar (`127.0.0.1`); fürs Heimnetz siehe unten (`se
 ### Docker
 
 In `docker-compose.yml` den Pfad zu deinen FITS-Dateien eintragen, dann `docker compose up -d --build` und <http://localhost:8080> öffnen
-(nur von diesem Rechner aus; fürs Heimnetz in `docker-compose.yml` die Hinweise bei `ports` beachten). Das Image enthält ASTAP
+(nur von diesem Rechner aus; fürs Heimnetz unter Linux `network_mode: host` statt `ports`, siehe Hinweise in `docker-compose.yml`). Das Image enthält ASTAP
 mit Sterndatenbank D05 (`--build-arg ASTAP_DB=d50` für kleine Bildfelder) und optional die SkyTrace-Engine (`--build-arg SKYTRACE=1`).
 
 ### Heimnetz und Handy

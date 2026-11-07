@@ -328,6 +328,8 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   `security.lan_enabled` sie einmalig: bestehende Instanz (`astroflow.db` vorhanden – bis 0.45 lauschte `serve` immer auf 0.0.0.0)
   → an + `migrated` (Hinweis in Einstellungen → Heimnetz), neue Instanz → aus. `serve` setzt `ASTROFLOW_BIND` (→ `lan_active`).
   Docker: CMD `--host 0.0.0.0`, Compose veröffentlicht nur `127.0.0.1:8080` und setzt `ASTROFLOW_TRUSTED_NETS` für die Bridge.
+  Heimnetz unter Docker nur mit `network_mode: host` (Linux) ohne `TRUSTED_NETS` – mit "8080:8080" kämen je nach Docker-Variante
+  auch Heimnetz-Geräte von der Bridge-Adresse (dann keine Unterscheidung lokal/fremd; ohne `TRUSTED_NETS` könnte der Host nicht koppeln).
   Neu ist der **Starter** `astroflow` / `astroflow start` (Standard ohne Befehl): Port 8766, `127.0.0.1` (Heimnetz erst nach Einschalten im
   Assistenten bzw. Einstellungen → Heimnetz → `config.lan`, sonst fragte die Windows-Firewall beim ersten Start; Geräte dann koppeln, s. „Sicherheit“), Datenordner `--data` > `ASTROFLOW_DATA` > `config.json` →
   `data_dir` > `%USERPROFILE%\AstroFlow` bzw. `~/AstroFlow` (**nicht** „Dokumente“ – OneDrive, Entscheidung des Masters 06.11.2026).
