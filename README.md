@@ -73,7 +73,7 @@ Der **Stacking-Verlauf** zeigt, was 1, 3, 10, 30, 100 … Aufnahmen ausmachen, u
 |---|---|
 | ![Stacking-Verlauf](docs/media/stacking-stufen.gif) | ![Vorher/Nachher](docs/media/vorher-nachher.gif) |
 
-*(Live-Ansicht: synthetische Demodaten. Stacking-Verlauf: M16 Adlernebel, Vorher/Nachher: M17 Omeganebel – echte Aufnahmen eines Smart-Teleskops.)*
+*(Die Animationen zeigen M17 Omeganebel aus echten Rohaufnahmen eines Smart-Teleskops.)*
 
 ### Ergebnisse
 
