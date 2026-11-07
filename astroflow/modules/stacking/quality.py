@@ -20,6 +20,7 @@ class Stars:
     flux: np.ndarray
     fwhm: np.ndarray
     ecc: np.ndarray
+    pa: np.ndarray | None = None      # Richtung der Längsachse (Grad, 0 = +x, 90 = +y, achsial 0–180)
 
     def __len__(self):
         return len(self.x)
@@ -90,16 +91,16 @@ def detect_stars(img: np.ndarray, max_stars: int = 150, thresh: float = 5.0, min
         fwhm = 2.3548 * np.sqrt(max(tr / 2, 0)) + 0.5
         if not (min_fwhm <= fwhm <= max_fwhm) or abs(cx) > 2.5 or abs(cy) > 2.5:
             continue
-        out.append((x0 + cx, y0 + cy, f, fwhm, float(np.sqrt(1 - l2 / l1))))
+        out.append((x0 + cx, y0 + cy, f, fwhm, float(np.sqrt(1 - l2 / l1)), float(np.degrees(0.5 * np.arctan2(2 * sxy, sxx - syy)) % 180)))
         if len(out) >= max_stars:
             break
     if not out:
         z = np.zeros(0)
-        return Stars(z, z, z, z, z)
+        return Stars(z, z, z, z, z, z)
     a = np.array(out)
     o = np.argsort(a[:, 2])[::-1]
     a = a[o]
-    return Stars(a[:, 0], a[:, 1], a[:, 2], a[:, 3], a[:, 4])
+    return Stars(a[:, 0], a[:, 1], a[:, 2], a[:, 3], a[:, 4], a[:, 5])
 
 
 def detect_trails(img: np.ndarray, min_len_frac: float = 0.08) -> int:
@@ -155,7 +156,36 @@ def analyze_frame(raw: np.ndarray, bayer: bool) -> dict:
     # Zusätzliche Felder ohne Erhöhung von METRICS_VERSION: ältere Frames bekommen sie im Himmelsqualitäts-Auftrag nach.
     from .skyquality import bg_plane
     m.update(bg_plane(luma, s))
+    m.update(shape_metrics(stars, luma.shape, s))      # Gerätediagnose (diagnose.py), ebenfalls ohne Versionserhöhung
     return m
+
+
+def shape_metrics(stars: Stars, shape: tuple, s: int = 1, grid: int = 3) -> dict:
+    """Für die Gerätediagnose: Vorzugsrichtung länglicher Sterne (`ecc_pa` = [Winkel°, Einheitlichkeit 0–1]; 1 = alle gleich
+    ausgerichtet, typisch für Nachführung/Wind) und Schärfe je Bildbereich (`tiles` = grid×grid Median-FWHM in Vollauflösungs-
+    Pixeln, Zeile 0 oben; None bei < 3 Sternen) – Grundlage für Verkippung je Aufnahme."""
+    out: dict = {}
+    if not len(stars):
+        return out
+    top = slice(0, min(len(stars), 60))
+    if stars.pa is not None:
+        e, a = stars.ecc[top], np.radians(stars.pa[top]) * 2
+        sel = e > 0.3
+        if sel.sum() >= 5:
+            c, d = float(np.mean(np.cos(a[sel]))), float(np.mean(np.sin(a[sel])))
+            out["ecc_pa"] = [round(float(np.degrees(np.arctan2(d, c)) / 2 % 180), 1), round(float(np.hypot(c, d)), 3)]
+    h, w = shape
+    iy = np.clip((stars.y / h * grid).astype(int), 0, grid - 1)
+    ix = np.clip((stars.x / w * grid).astype(int), 0, grid - 1)
+    tiles = []
+    for r in range(grid):
+        row = []
+        for c in range(grid):
+            v = stars.fwhm[(iy == r) & (ix == c)]
+            row.append(round(float(np.median(v)) * s, 2) if len(v) >= 3 else None)
+        tiles.append(row)
+    out["tiles"] = tiles
+    return out
 
 
 def _mad_sigma(a: np.ndarray) -> float:

@@ -3,6 +3,27 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.39.0 – 07.11.2026
+
+### Neu
+- **Gerätediagnose: Nachführung, Fokus und Bildfeld** (Wunsch 17). Neuer Abschnitt **„Dein Gerät“** im Reiter Analyse jedes Objekts –
+  berechnet nur aus gespeicherten Daten, Rohbilder sind nicht nötig, kein Netz:
+  - **Nachführung:** Aus der Lage jeder Aufnahme zum Referenzbild misst AstroFlow, wie schnell das Bild zwischen zwei Nachzentrierungen
+    driftet, wie stark es während einer Belichtung verschmiert (im Verhältnis zur Sterngröße), wie unruhig es läuft und ob sich das
+    Bildfeld dreht. Bei langen, ungestörten Abschnitten (klassische Montierungen) wird ein periodischer Nachführfehler erkannt.
+    Gruppen schlagartig unscharfer oder verzogener Aufnahmen bei sichtbaren Sternen erscheinen als „Stöße oder Böen“ mit Uhrzeit.
+  - **Fokus:** Sterngröße über die Nacht, der Einfluss der Luftmasse wird herausgerechnet (mit Standort). Eine Fokusdrift wird nur
+    gemeldet, wenn sie mit und ohne diese Korrektur gleich ausfällt. Die Sensortemperatur (Stellina: `TEMP` im FITS-Kopf, ältere
+    Aufnahmen werden – wo erreichbar – nachgelesen) und das automatische Nachfokussieren der Stellina (Ordner `02-images-adjust-focus`)
+    erscheinen im Diagramm.
+  - **Bildfeld:** Schärfekarte aus dem Master-Stack – einseitiger Schärfeabfall (Verkippung des Sensors) und größere Sterne am Rand
+    (Bildfeldwölbung), mit Messunsicherheit; neu analysierte Aufnahmen tragen zusätzlich eine eigene 3×3-Karte zur Bestätigung.
+  - **Über alle Nächte:** Verlauf je Gerät (Sterngröße, Verschmieren, Schärfeabfall, Drift) mit Hinweis, ob es schlechter wird.
+- Der **Tutor** nennt die Ergebnisse als Befunde mit vorsichtigen, gerätebezogenen Tipps (z. B. Drift während der Belichtung,
+  Fokus wanderte, Schärfe fällt zu einer Seite ab).
+- **Analyse-Dashboard:** neue Auswertung „Gerät“ in „Alles analysieren“ (lokal), Status-Punkt je Objekt und Abschnitt
+  „Gerätediagnose“ mit dem Verlauf jedes Geräts. Die Diagnose läuft nach jedem Entwickeln automatisch und beim ersten Öffnen nach.
+
 ## 0.38.2 – 07.11.2026
 
 ### Behoben

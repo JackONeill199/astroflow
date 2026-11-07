@@ -8,6 +8,7 @@ Gaia hängt an der bestehenden Einstellung „Fotometrische Farbkalibrierung“ 
 from __future__ import annotations
 
 import json
+import os
 import queue
 import threading
 import time
@@ -53,6 +54,8 @@ class Insights:
             row = self.eng.db.one("SELECT project_id FROM results WHERE id=?", (rid,))
             if row and (self.eng.s.work_dir / f"p{row['project_id']}" / "wcs.json").exists():
                 self.submit("depth", rid)
+        if rid and os.environ.get("ASTROFLOW_DIAG", "1") != "0":     # Gerätediagnose: lokal, ohne Netz
+            self.submit("diagnose", rid)
 
     def worker(self):
         while not self.eng.stop.is_set():
@@ -63,7 +66,7 @@ class Insights:
             st = self.state.setdefault((kind, rid), {})
             st.update(state="running", message="läuft", t=time.time())
             try:
-                fn = self.depth if kind == "depth" else self.compare
+                fn = {"depth": self.depth, "compare": self.compare, "diagnose": self.diagnose}[kind]
                 fn(rid, lambda m: st.update(message=m), **opts)
                 self.state.pop((kind, rid), None)
             except Exception as e:
@@ -100,3 +103,14 @@ class Insights:
                               catalogs=cfg["simbad"] or cfg["small_bodies"], log=log,
                               simbad=cfg["simbad"], small_bodies=cfg["small_bodies"])
         self._store(rid, "compare", out)
+
+    def diagnose(self, rid: int, log, **_):
+        """Gerätediagnose (diagnose.py) für die Nächte dieser Version – nur gespeicherte Daten, kein Netz."""
+        from . import diagnose, tutor
+        r = self.eng.db.one("SELECT project_id, stats FROM results WHERE id=?", (rid,))
+        if not r:
+            return
+        nights = set(json.loads(r["stats"] or "{}").get("nights") or []) or None
+        out = diagnose.compute(self.eng.pl, r["project_id"], nights, site_for=self.eng.ctx.services.get("site_for"),
+                               cfg=tutor.settings(self.eng.ctx.store), log=log)
+        self._store(rid, "diagnose", out)

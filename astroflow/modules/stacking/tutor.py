@@ -397,6 +397,12 @@ def findings(quality: dict, nights: list[dict], device: dict, ctx: dict) -> list
                           "Ungekühlte Sensoren rauschen bei Wärme stärker und zeigen mehr Hotpixel.",
                           ["Darks bei gleicher Temperatur aufnehmen (Objektiv abdecken) – AstroFlow zieht sie automatisch ab."
                            if not device.get("smart") else "Gerät vor der Session im Schatten auskühlen lassen; kühle Nächte rauschen weniger."]))
+    # --- Gerätediagnose (diagnose.py): Nachführung, Fokus, Bildfeld ---------------------------
+    if (dg := ctx.get("diag")) and dg.get("ok"):
+        from . import diagnose
+        if any((n.get("focus") or {}).get("time") for n in dg.get("nights") or []):
+            out = [f for f in out if f["code"] != "softening"]          # Fokusmessung mit Luftmasse ist genauer
+        out += diagnose.findings(dg, device)
     # --- Bildprobleme -----------------------------------------------------------
     cond = {f["code"] for f in out}
     for code, text in issues.items():
@@ -615,10 +621,17 @@ def build_report(db, rid: int, cfg: dict, work_dir: Path, refresh: bool = False,
         db.x("UPDATE results SET stats=? WHERE id=?", (json.dumps(stats), rid))
     ctx = {"exposure_s": r["exposure"], "kind": r["kind"], "latitude": site and site[0],
            "auto_fixed": bool(stats.get("color_gradient") or (stats.get("params") or {}).get("color_gradient")),
-           "comet": stats.get("comet")}
+           "comet": stats.get("comet"), "diag": diag_of(stats)}
     return {**base, "available": True, "quality": stats["quality"], "device": cached["device"], "nights": cached["nights"],
             "site": site_src, "site_name": site_name, "weather_error": cached.get("weather_error"), "neutral_sky": sky,
             "findings": findings(stats["quality"], cached["nights"], cached["device"], ctx), "ki": stats.get("tutor_ki")}
+
+
+def diag_of(stats: dict) -> dict | None:
+    """Gespeicherte Gerätediagnose der aktuellen Version (sonst None – ältere Ergebnisse rechnen neu)."""
+    from .diagnose import DIAG_VERSION
+    d = stats.get("diagnose")
+    return d if d and d.get("ok") and d.get("v") == DIAG_VERSION else None
 
 
 def llm_config(cfg: dict, review_cfg):

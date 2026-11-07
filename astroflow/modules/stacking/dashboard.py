@@ -18,8 +18,8 @@ import threading
 import time
 from collections import Counter
 
-KINDS = ("tutor", "sky", "depth", "compare")         # Reihenfolge im Sammelauftrag: schnell/lokal zuerst, Vergleich nach der Tiefe
-LABEL = {"tutor": "Tutor", "sky": "Himmel", "depth": "Tiefe", "compare": "Vergleich"}
+KINDS = ("diagnose", "tutor", "sky", "depth", "compare")   # Reihenfolge im Sammelauftrag: lokal zuerst (Tutor nutzt die Diagnose), Vergleich nach der Tiefe
+LABEL = {"diagnose": "Gerät", "tutor": "Tutor", "sky": "Himmel", "depth": "Tiefe", "compare": "Vergleich"}
 BLOCK = {"nosolve": "nicht per Plate-Solving gelöst", "nogaia": "Gaia-Abgleich ausgeschaltet", "noframes": "keine Einzelbild-Analysen",
          "noquality": "keine Bildprüfung gespeichert"}
 NET_KINDS = ("depth", "compare")
@@ -67,6 +67,19 @@ def _compare_info(c: dict) -> dict:
             "bild": c.get("bild")}
 
 
+def _diag_info(d: dict | None) -> dict | None:
+    """Kurzfassung der Gerätediagnose für Zeile und Gerätetrend."""
+    from .diagnose import DIAG_VERSION
+    if not d or not d.get("ok") or d.get("v") != DIAG_VERSION:
+        return None
+    tr = [n["tracking"] for n in d.get("nights") or [] if (n.get("tracking") or {}).get("smear_ratio") is not None]
+    fo = [n["focus"]["time"] for n in d.get("nights") or [] if (n.get("focus") or {}).get("time")]
+    fld = d.get("field") or {}
+    return {"smear": max((t["smear_ratio"] for t in tr), default=None), "focus": max((f["pct_h"] for f in fo if f["sig"]), default=None),
+            "tilt": None if fld.get("smeared") else fld.get("tilt_pct"), "tilt_sig": bool(fld.get("tilt_sig")),
+            "events": sum(len((n.get("events") or {}).get("events") or []) for n in d.get("nights") or [])}
+
+
 def _cloud(pid: int, d: dict) -> list[dict]:
     """Punkte eines Bildes am Himmel: Feldmitte + Lage im Bild (genähert, Norden oben), Entfernung in Lichtjahren."""
     f, b = d.get("feld"), d.get("bild")
@@ -90,6 +103,7 @@ def collect(eng) -> dict:
     from . import deepsky, objects, skyquality, tutor
     from .compare import COMPARE_VERSION
     from .depth import DEPTH_VERSION
+    from .diagnose import DIAG_VERSION
     db, wd = eng.db, eng.s.work_dir
     skyquality.ensure_table(db)
     gaia, solver = bool(eng.s.gaia), bool(eng.pl.solver_cfg.enabled)
@@ -139,7 +153,8 @@ def collect(eng) -> dict:
         solved = (wd / f"p{pid}" / "wcs.json").exists()
         quality = st.get("quality") or {}
         # Status je Art
-        status = {"depth": _status(st.get("depth"), DEPTH_VERSION), "compare": _status(st.get("compare"), COMPARE_VERSION)}
+        status = {"depth": _status(st.get("depth"), DEPTH_VERSION), "compare": _status(st.get("compare"), COMPARE_VERSION),
+                  "diagnose": _status(st.get("diagnose"), DIAG_VERSION)}
         tc = st.get("tutor") or {}
         status["tutor"] = "done" if str(tc.get("key", "")).startswith(f"{tutor.TUTOR_VERSION}|") else "old" if tc else "none"
         status["sky"] = "none" if pid not in sky_ver else "done" if sky_ver[pid] >= skyquality.SKY_VERSION else "old"
@@ -149,13 +164,13 @@ def collect(eng) -> dict:
         elif not gaia:
             blocked["depth"] = "nogaia"
         if not fr["metrics"]:
-            blocked["sky"] = "noframes"
+            blocked["sky"] = blocked["diagnose"] = "noframes"
         if not quality:
             blocked["tutor"] = "noquality"
         row = {"id": pid, "rid": r["rid"], "name": p["name"], "kind": p["kind"], "kind_label": objects.KIND_LABEL.get(p["kind"] or "generic"),
                "created": r["created"], "exposure": r["exposure"] or 0, "n_frames": r["n_frames"] or 0, "nights": nights,
                "device": dev["name"], "score": quality.get("score"), "solved": solved, "status": status, "blocked": blocked,
-               "catalog": cat, "depth": None, "compare": None, "sky": None, "findings": [],
+               "catalog": cat, "depth": None, "compare": None, "sky": None, "findings": [], "diag": _diag_info(st.get("diagnose")),
                "can_develop": any((wd / f"p{pid}").glob("stack*/state.json"))}
         if status["depth"] in ("done", "old") and st["depth"].get("ok"):
             row["depth"] = _depth_info(st["depth"], r["exposure"])
@@ -178,6 +193,7 @@ def collect(eng) -> dict:
             try:
                 fs = tutor.findings(quality, tc["nights"], tc.get("device") or dev,
                                     {"exposure_s": r["exposure"], "kind": p["kind"], "latitude": None, "comet": st.get("comet"),
+                                     "diag": tutor.diag_of(st),
                                      "auto_fixed": bool(st.get("color_gradient") or (st.get("params") or {}).get("color_gradient"))})
                 row["findings"] = [{"code": f["code"], "level": f["level"], "title": f["title"]} for f in fs if f["level"] in ("bad", "warn")]
             except Exception:
@@ -186,8 +202,9 @@ def collect(eng) -> dict:
     if len(cloud) > MAX_CLOUD:
         cloud = [c for c in cloud if c["t"] == "g"] + [c for c in cloud if c["t"] == "s"][:: max(1, len(cloud) // MAX_CLOUD)]
         cloud = cloud[:MAX_CLOUD]
+    from .diagnose import device_summary
     return {"rows": rows, "cloud": cloud, "imported": imported, "devices": sorted(devices), "gaia": gaia, "solver": solver,
-            "built": time.time()}
+            "diag_devices": device_summary(db), "built": time.time()}
 
 
 def _match(row: dict, f: dict) -> bool:
@@ -316,6 +333,7 @@ def summarize(base: dict, f: dict | None = None) -> dict:
             "rows": [{k: v for k, v in r.items() if k not in ("compare",)} | {"compare": {k: v for k, v in (r["compare"] or {}).items() if k != "items"} or None}
                      for r in rows],
             "filters": {"devices": base["devices"], "years": years, "nights": sorted({n for r in all_rows for n in r["nights"]}, reverse=True)},
+            "diag_devices": [d for d in base.get("diag_devices") or [] if not f.get("device") or d["name"] == f["device"]],
             "gaia": base["gaia"], "solver": base["solver"], "filtered": filtered, "built": base["built"]}
 
 
@@ -355,7 +373,7 @@ class Dashboard:
                 continue
             r["status"] = dict(r["status"])
             for k in KINDS:
-                st = ins.get((k, r["rid"])) if k in NET_KINDS else None
+                st = ins.get((k, r["rid"])) if k in NET_KINDS or k == "diagnose" else None
                 if st and st.get("state") in ("queued", "running", "error"):
                     r["status"][k] = st["state"]
                 elif cur and cur[0] == k and cur[1] == r["id"]:
@@ -504,6 +522,9 @@ class Batch:
                 time.sleep(0.5)
             skyquality.compute_project(eng.pl, pid, eng.ctx.services.get("site_for"),
                                        log=lambda m: self.state.update(detail=m))
+            return None
+        if k == "diagnose":
+            eng.insights.diagnose(rid, lambda m: self.state.update(detail=m))
             return None
         if k == "tutor":
             from . import tutor

@@ -142,7 +142,7 @@ def read_info(path: str | Path) -> FrameInfo:
             imagetyp=_clean(h.get("IMAGETYP") or h.get("FRAME")),
             instrument=_clean(h.get("INSTRUME") or h.get("TELESCOP")),
             bayerpat=bp,
-            temp=_float(h.get("CCD-TEMP", h.get("TEMPERAT"))),
+            temp=_float(h.get("CCD-TEMP", h.get("TEMPERAT", h.get("TEMP")))),   # Stellina: TEMP (Sensor, °C) – Gerätediagnose
             processed=_processed(h, dims),
             site=_site(h),
         )

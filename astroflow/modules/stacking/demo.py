@@ -34,7 +34,8 @@ def _sky(rng, size=(620, 800)):
     return stars, ext
 
 
-def _frame(rng, stars, ext, angle_deg, shift, fwhm, trail=0.0, clouds=1.0, sat_trail=False):
+def _frame(rng, stars, ext, angle_deg, shift, fwhm, trail=0.0, clouds=1.0, sat_trail=False, tilt=0.0):
+    """tilt: Sterngröße wächst linear nach rechts (±tilt um die Mitte) – verkippter Sensor für die Gerätediagnose."""
     sh, sw = ext.shape[1:]
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
     th = np.deg2rad(angle_deg)
@@ -56,8 +57,9 @@ def _frame(rng, stars, ext, angle_deg, shift, fwhm, trail=0.0, clouds=1.0, sat_t
         if not (R < px < W - R - 1 and R < py < H - R - 1):
             continue
         ix, iy = int(px), int(py)
-        gx = np.exp(-((d + ix - px) ** 2) / (2 * (sig * (1 + trail)) ** 2))
-        gy = np.exp(-((d + iy - py) ** 2) / (2 * sig**2))
+        sg = sig * (1 + tilt * (px / W - 0.5) * 2) if tilt else sig
+        gx = np.exp(-((d + ix - px) ** 2) / (2 * (sg * (1 + trail)) ** 2))
+        gy = np.exp(-((d + iy - py) ** 2) / (2 * sg**2))
         psf = np.outer(gy, gx)
         psf /= psf.sum()
         rgb = np.array([0.5 + col, 1.0, 1.5 - col])
@@ -225,4 +227,34 @@ def generate_comet(out: Path, n_lights=30, seed=3, name="C_2026_A1", rate=(1.1, 
         t = t0 + dt.timedelta(seconds=i * (exptime + 5))
         write_fits(d / f"img-{i + 1:04d}r.fits", np.clip(raw, 0, 65535).astype(np.uint16),
                    dict(INSTRUME="DemoScope", BAYERPAT="RGGB", EXPTIME=exptime, GAIN=100.0, **{"DATE-OBS": t.isoformat()}))
+    return out
+
+
+DRIFT_V = (0.25, -0.1)                                         # Himmelspixel je Sekunde (generate_drift)
+DRIFT_JUMPS = [(0, 0), (-35, -25), (30, 30), (-30, 35), (35, -35), (-5, 45)]   # Nachzentrieren: deutliche Sprünge wie bei Stellina
+
+
+def generate_drift(out: Path, n_lights=36, per_seg=6, step_s=20.0, exptime=10.0, tilt=0.3, seed=7, temp0=12.0,
+                   start: dt.datetime | None = None) -> Path:
+    """Stellina-artige Serie für die Gerätediagnose: gleichmäßige Drift `DRIFT_V` zwischen Nachzentrierungen (alle `per_seg`
+    Aufnahmen Sprung auf den nächsten Versatz aus `DRIFT_JUMPS`), Sterne zur rechten Seite größer (`tilt`), Ordner „01-images-initial“
+    und danach „02-images-adjust-focus“ (Nachfokussieren), Sensortemperatur im Kopf (TEMP, fällt um 0,1 °C je Aufnahme)."""
+    rng = np.random.default_rng(seed)
+    out = Path(out)
+    t0 = start or dt.datetime(2026, 8, 20, 22, 0, 0)
+    base = out / f"{t0:%Y-%m-%d_%H-%M-%S}_observation_M31"
+    stars, ext = _sky(rng)
+    ext = ext * 0.3
+    for i in range(n_lights):
+        seg, k = divmod(i, per_seg)
+        t = i * step_s
+        jump = np.array(DRIFT_JUMPS[seg % len(DRIFT_JUMPS)], float)
+        shift = jump + np.array(DRIFT_V) * (t - seg * per_seg * step_s)
+        img = _frame(rng, stars, ext, 0.0, shift, rng.normal(3.6, 0.1), tilt=tilt)
+        raw = _mosaic(img) + 300 + rng.normal(0, 10, (H, W))
+        d = base / ("01-images-initial" if i < per_seg else "02-images-adjust-focus")
+        d.mkdir(parents=True, exist_ok=True)
+        write_fits(d / f"img-{i + 1:04d}r.fits", np.clip(raw, 0, 65535).astype(np.uint16),
+                   dict(INSTRUME="stellina-demo", BAYERPAT="RGGB", EXPTIME=exptime, GAIN=200.0, OBJECT="M 31", RA=10.684, DEC=41.269,
+                        TEMP=round(temp0 - 0.1 * i, 1), **{"DATE-OBS": (t0 + dt.timedelta(seconds=t)).isoformat()}))
     return out

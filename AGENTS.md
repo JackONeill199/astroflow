@@ -482,6 +482,42 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   log10(Lj)), `comparePanel` + `compareViewer` (Blinken über `createViewer().setSplit`, Stelle anfahren mit `zoomTo`).
 - Tests: `tests/test_depth_compare.py` (synthetisches Feld, Attrappen für Gaia/SIMBAD/DSS/JPL).
 
+## Gerätediagnose (`modules/stacking/diagnose.py`, `static/diagnose.js|css`; seit 0.39.0, Wunsch 17)
+Nachführung, Fokus und Bildfeld **ohne Rohbilder**, nur aus `frames.metrics`, Master-Stack und FITS-Infos. Ergebnis `results.stats.diagnose`
+(`v` = `DIAG_VERSION`, Nächte der Version aus `stats.nights`), Kind `diagnose` in der Insights-Warteschlange (lokal): nach jedem Entwickeln
+(`after_develop`, `ASTROFLOW_DIAG=0` schaltet ab – setzt `conftest.py`), beim ersten `GET /results/{id}/diagnose` (rechnet dann im Hintergrund),
+`POST` = neu. Gerätetrend `GET /diagnose/devices` = `device_summary` (neueste Version je Objekt, je `device_key` alle Nächte, Theil-Sen über
+die Zeit, `worse` erst wenn der 95-%-Bereich über 0 liegt, ab 8 Nächten / 3 Monaten). Rechenzeit Arbeitsinstanz: 3–20 s je Objekt.
+- **Nachführung** (`tracking`): `skyquality.frame_links` (gleiche Dreieckszuordnung wie beim Stacken) → Lage der Bildmitte im Referenzraster und
+  Drehung je Aufnahme. `segments` teilt bei Pause > `GAP_S` oder Abweichung von der Fortsetzung > `JUMP_PX` + 30 % des Driftwegs (Nachzentrieren,
+  Dithern); kleine Sprünge in Driftrichtung (< ~12 px) bleiben unerkannt. Je Abschnitt Gerade → Drift, Unruhe (RMS), Drehrate. Verschmieren =
+  Drift × Belichtung (Annahme: gleichmäßige Bewegung, durch `ecc_vs_speed` gestützt). Periodischer Fehler (Lomb-Scargle 1–20 min, FAP < 1 %) nur in
+  Abschnitten ≥ 10 min/24 Aufnahmen – bei Stellina nie (zentriert alle 1–3 min neu).
+  **Befund Arbeitsinstanz (Stellina, nur gelesen):** Drift 0,2–0,7 px/s (16–52″/min), Verschmieren 0,35–1,0 der Sterngröße bei 10 s, Drehung
+  < 0,12°/min (Derotator), Unruhe 2–5 px. Warnung erst ab Verschmieren ≥ 1 × FWHM, Hinweis ab 0,5.
+- **Stöße/Böen** (`events`): ≥ 3 Aufnahmen kurz hintereinander mit FWHM > Median + max(4 MAD, 35 %) bzw. ecc > max(0,8; …) bei ≥ 50 % der
+  Sternzahl (sonst Wolken). Achtung: `n_stars` ist auf 150 gedeckelt, Wolken erkennt das nur grob.
+- **Fokus** (`focus`): FWHM ohne Stoß-Aufnahmen; mit Standort (`tutor.pick_site`) Luftmasse aus `tutor.ephemeris`, Korrektur FWHM·X^−0,6.
+  Zeit und Luftmasse sind bei auf-/untergehenden Objekten fast kollinear – an echten Daten drehte die Korrektur die Richtung oft um
+  (roh −7 %/h, korrigiert +8 %/h). Daher: `sig` nur, wenn roh und korrigiert sicher dasselbe Vorzeichen haben und |kleinerer Wert| ≥ `FOCUS_MIN`
+  4 %/h; `stable` nur, wenn beide Bereiche innerhalb ±4 %/h liegen. Temperatur: `FrameInfo.temp` (jetzt auch Stellina `TEMP`; ältere Frames:
+  `header_temps` liest bis 400 erreichbare Köpfe, ändert die DB nicht). Marken: Stellina-Ordner `NN-images…` – Wechsel innerhalb einer Beobachtung
+  = `refocus`, zurück auf `01` = `restart`; Änderung der Sterngröße 10 Aufnahmen davor/danach.
+- **Bildfeld** (`field_stack`): Luminanz des Master-Stacks (auf native Pixel gebinnt, Abdeckung ≥ 0,9, 12 px Rand weg), `detect_stars` (jetzt mit
+  Richtung `pa`), ohne hellste 3 %. Fit FWHM = a + b·u + c·v + d·r² (u, v auf die halbe Diagonale), robust; Verkippung = 2·|(b, c)|/a (Ecke zu Ecke),
+  Wölbung = d/a, Fehler per Bootstrap. Gemeldet ab `TILT_MIN` 10 % bzw. `CURV_MIN` 12 % und 3σ. Drehen sich die Aufnahmen um > 3° (`rot_spread`),
+  gilt die Karte als verwischt (`smeared`, nie gemeldet). **Richtung:** Stack-Zeile wächst nach unten in den Daten, das fertige Bild ist vertikal
+  gespiegelt → Winkel mathematisch (y oben) = Stack-Winkel, `side_text`; Karten werden für die Anzeige zeilenweise umgedreht. Arbeitsinstanz:
+  6–9 % (± 0,3–1,6), keine Meldung. `field_frames`: Mittel der neuen 3×3-Karten je Aufnahme (`metrics.tiles`), unabhängig von der Registrierung.
+- **Neue Frame-Metriken ohne `METRICS_VERSION`-Erhöhung** (`quality.shape_metrics`): `ecc_pa` = [Winkel der Längsachse, Einheitlichkeit] und
+  `tiles` (3×3 Median-FWHM) – nur neu analysierte Aufnahmen; der Vergleich Längsachse ↔ Driftrichtung (`elong_vs_drift`) fehlt bei Altbestand.
+- **Tutor:** `tutor.findings` hängt `diagnose.findings` an (`ctx["diag"]` = `tutor.diag_of(stats)`), Codes `tracking_drift`, `periodic_error`
+  (nur Nicht-Smart), `gusts`, `focus_drift`, `focus_stable`, `tilt`, `curvature`; mit Fokusmessung entfällt das ältere `softening`.
+  Tipps gerätebezogen und vorsichtig (Stellina: Tauheizung → kein Tau-Hinweis; Sensorlage nicht selbst justierbar → Support bei bleibender Kippung).
+- **UI:** `diagPanel(host, r)` (Abschnitt `#anDiag` in `analysisTab`, lädt nach Fertigstellung den Tutor neu), `diagDevices(list, host)` im
+  Dashboard (`#adDiag`). Diagramme eigene SVGs, Breite `CW` aus der Spaltenbreite (Schrift bleibt 11 px).
+- Tests: `tests/test_diagnose.py` (synthetische Matrizen/Metriken, Sternfelder mit Kippung/Wölbung, `demo.generate_drift` Ende zu Ende).
+
 ## Analyse-Dashboard über alle Objekte (`modules/stacking/dashboard.py`, `static/dashboard.js|css`; seit 0.36.0)
 Nutzerwunsch „eigene Seite, wo man alle gleichzeitig analysieren kann, mit Statistiken und Animationen“. Route `#/analyse` (Unterpunkt von Bilder, `PAGE_WIDE`).
 - **Aggregat:** `collect(eng)` = je Objekt die neueste Version (gleiche Reihenfolge wie `project_views`), Status je Art `depth|compare|sky|tutor`
@@ -496,7 +532,7 @@ Nutzerwunsch „eigene Seite, wo man alle gleichzeitig analysieren kann, mit Sta
 - **API:** `GET /api/stacking/analysis?device=&year=&night=&q=`, `GET /analysis/universe` (erst auf Knopfdruck „3D-Wolke“), `POST /analysis/plan|run
   {kinds, scope: missing|errors|all, ids?}`, `POST /analysis/pause {paused}`, `POST /analysis/stop`, `POST /analysis/develop {ids}` (Objekte mit Stack,
   ohne `wcs.json` → Entwicklungsauftrag; die Lösung entsteht beim Entwickeln, `auto_depth` misst danach). Nicht in `/projects` (wird gepollt).
-- **Sammelauftrag** `Batch` (eigener Thread, Aktivität „Analyse aller Objekte“, zählt in `busy_jobs`): Reihenfolge `KINDS` = Tutor, Himmel (lokal),
+- **Sammelauftrag** `Batch` (eigener Thread, Aktivität „Analyse aller Objekte“, zählt in `busy_jobs`): Reihenfolge `KINDS` = Gerät (`diagnose`, seit 0.39.0), Tutor, Himmel (lokal),
   Tiefe, Vergleich (nutzt den Nullpunkt der Tiefe). Tiefe/Vergleich gehen einzeln durch `insights.submit` und werden abgewartet, danach `GAP_S` 3 s
   Pause → nie zwei Netzauswertungen gleichzeitig. Himmel = `skyquality.compute_project` (wartet, solange `SkyRunner` rechnet), Tutor = `build_report(refresh=True)`
   (mit Wetter ebenfalls Pause). Anhalten wirkt nach dem laufenden Schritt; Zustand nur im Speicher.

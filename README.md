@@ -58,6 +58,9 @@ Der Reiter **Analyse** misst aus dem plate-gelösten Bild die Grenzgröße, die 
 Bild und als **3D-Ansicht** direkt im Betrachter. Der **Vergleich** blinkt das Bild gegen eine frühere eigene Aufnahme oder die
 DSS2-Durchmusterung; auffällige Stellen werden mit SIMBAD und JPL-Kleinkörpern abgeglichen – als Hinweis, nicht als Entdeckung.
 Dazu kommen die **Himmelsqualität der Aufnahmenacht** und der **Bild-Tutor** (Befunde mit Tipps passend zum Gerät, Bedingungen der Nacht).
+Der Abschnitt **Dein Gerät** prüft ohne Rohbilder Nachführung (Drift und Verschmieren je Belichtung, Stöße/Böen), Fokus über die Nacht
+(Luftmasse herausgerechnet, Sensortemperatur, automatisches Nachfokussieren) und das Bildfeld (Verkippung, größere Sterne am Rand) – mit
+Verlauf je Gerät über alle Nächte.
 
 ![3D-Ansicht der Entfernungen](docs/screenshots/analyse-3d.webp)
 

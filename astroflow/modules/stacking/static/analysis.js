@@ -68,7 +68,7 @@ async function analysisSummary(host, r, pid) {
 // Reiter Analyse. ctx: { p, r, viewerFor(host) → createViewer-Objekt } – gibt { viewer, destroy } zurück
 function analysisTab(t, ctx) {
   const { p, r } = ctx;
-  const secs = [['anDepth', 'Wie tief schaust du?', 'target'], ['anCmp', 'Veränderungen', 'compare'], ['anSky', 'Der Himmel in dieser Nacht', 'globe'], ['anTutor', 'Tutor', 'sparkle']];
+  const secs = [['anDepth', 'Wie tief schaust du?', 'target'], ['anCmp', 'Veränderungen', 'compare'], ['anSky', 'Der Himmel in dieser Nacht', 'globe'], ['anDiag', 'Dein Gerät', 'camera'], ['anTutor', 'Tutor', 'sparkle']];
   t.innerHTML = `<div class="an">
       <div class="an-top"><div id="anViewer"></div>
         <nav class="an-toc" aria-label="Abschnitte">${secs.map(([id, l, ic], i) => `<a href="#${id}" data-sec="${id}" style="--i:${i}">${icon(ic)}<span>${l}</span></a>`).join('')}
@@ -76,6 +76,7 @@ function analysisTab(t, ctx) {
       <section class="panel an-sec depth-panel" id="anDepth"></section>
       <section class="panel an-sec" id="anCmpWrap"><div class="an-cmp"><div class="an-blink" id="anBlink"></div><div class="depth-panel" id="anCmp"></div></div></section>
       <section class="panel an-sec" id="anSky"></section>
+      <section class="panel an-sec" id="anDiag"></section>
       <section class="an-sec an-tutor" id="anTutor"><div id="anTutorBox">${qualityPanel(r.stats || {})}</div></section>
     </div>`;
   const viewer = ctx.viewerFor($('#anViewer', t));
@@ -123,6 +124,7 @@ function analysisTab(t, ctx) {
   comparePanel($('#anCmp', t), r, showBlink, false);
   insightLoad('compare', r.id).then(d => { if (d?.state === 'done' && t.isConnected && !blink) showBlink(true); }).catch(() => {});
   window.AFsky?.analysis?.($('#anSky', t), p.id);
+  window.diagPanel?.($('#anDiag', t), r);                // Gerätediagnose (diagnose.js)
   if (r.stats?.quality) tutorPanel($('#anTutorBox', t), r);
   $$('.an-sec', t).forEach(anReveal);
   // Sprung aus dem Dashboard (#/analyse): Stelle im Bild anfahren, sobald das Foto geladen ist

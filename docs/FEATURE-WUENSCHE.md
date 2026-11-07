@@ -22,7 +22,7 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md`, Erledigtes im `CHANGELOG.md`.
 | 14 | 05.11.2026 | Himmelshelligkeit (mag/arcsec²) je Nacht und Standort | in Arbeit |
 | 15 | 05.11.2026 | Richtung der Lichtverschmutzung | in Arbeit |
 | 16 | 05.11.2026 | Seeing in Bogensekunden je Nacht und Standort | in Arbeit |
-| 17 | 05.11.2026 | Gerätediagnose: Nachführung, Fokusdrift, Sensorneigung | offen |
+| 17 | 05.11.2026 | Gerätediagnose: Nachführung, Fokusdrift, Sensorneigung | umgesetzt in 0.39.0 (ohne Rohbilder; Kippung aus Master-Stack) |
 | 18 | 05.11.2026 | SkyTrace: Satellitenhelligkeit und Satelliten pro Stunde | offen |
 | 19 | 05.11.2026 | Interaktive Bildführung: KI zeigt und erklärt im Bild | offen |
 

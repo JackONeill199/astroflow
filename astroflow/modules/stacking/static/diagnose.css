@@ -1,0 +1,54 @@
+/* Gerätediagnose (diagnose.js): nur eigene Klassen dg-*, Farben aus den globalen Tokens */
+.dg-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.25rem; align-items: start }
+.dg-block { min-width: 0 }
+.dg-block + .dg-block, .dg-grid + .dg-block { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border-soft, var(--border)) }
+.dg-grid > .dg-block { margin-top: 0; padding-top: 0; border-top: 0 }
+.dg-block h3 { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9375rem; margin: 0 0 0.625rem }
+.dg-block h3 svg { width: 1rem; height: 1rem; color: var(--acc) }
+.dg-block h3 small { font-weight: 400 }
+.dg-block h4 { font-size: 0.8125rem; margin: 0.875rem 0 0.375rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap }
+.dg-nights { margin: 0 0 1rem; flex-wrap: wrap }
+.dg-kpis { grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); margin-bottom: 0.625rem }
+.dg-kpis .stat b { white-space: normal }
+.dg-kpis .stat.ok b { color: var(--ok) }
+.dg-kpis .stat.warn b { color: var(--warn) }
+.dg-kpis .stat.bad b { color: var(--bad) }
+.dg-chart { width: 100%; height: auto; display: block; overflow: visible }
+.dg-chart text { fill: var(--dim); font-size: 11px }
+.dg-chart .dg-gl { stroke: var(--border); stroke-dasharray: 2 4 }
+.dg-line { fill: none; stroke-width: 1.5; stroke: var(--acc) }
+.dg-line.b { stroke: var(--warn) }
+.dg-dot.b { fill: var(--warn) }
+.dg-line.a { stroke: var(--acc) }
+.dg-dot { fill: var(--acc); opacity: 0.75 }
+.dg-dot.a { opacity: 0.45 }
+.dg-mark { stroke: var(--ok); stroke-width: 1.5; stroke-dasharray: 3 3 }
+.dg-leg { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; margin: 0.25rem 0 0.375rem; color: var(--mut) }
+.dg-leg span { display: inline-flex; align-items: center; gap: 0.375rem }
+.dg-sw { display: inline-block; width: 0.75rem; height: 0.1875rem; border-radius: 2px; background: var(--acc) }
+.dg-sw.b { background: var(--warn) }
+.dg-events { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.375rem }
+.dg-events li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem; font-size: 0.8125rem }
+.dg-fieldwrap { display: grid; grid-template-columns: minmax(0, 22rem) minmax(0, 1fr); gap: 1.25rem; align-items: start }
+.dg-map { position: relative; display: grid; grid-template-columns: repeat(var(--cols), 1fr); gap: 2px; aspect-ratio: 3 / 2;
+  border: 1px solid var(--border); border-radius: var(--r-sm, 0.375rem); overflow: hidden; background: var(--border) }
+.dg-cell { display: grid; place-items: center; font-style: normal; font-size: 0.6875rem; color: var(--fg);
+  background: color-mix(in srgb, var(--surface-2) 100%, transparent) }
+.dg-cell[style] { background: color-mix(in srgb, var(--bad) calc(max(var(--k), 0) * 55%), color-mix(in srgb, var(--ok) calc(max(calc(var(--k) * -1), 0) * 55%), var(--surface-2))) }
+.dg-cell.na { background: var(--surface) }
+.dg-arrow { position: absolute; inset: 0; margin: auto; width: 34%; height: 50%; pointer-events: none; overflow: visible }
+.dg-arrow line { stroke: var(--fg); stroke-width: 3; stroke-linecap: round; opacity: 0.55 }
+.dg-arrow path { fill: var(--fg); opacity: 0.55 }
+.dg-arrow.sig line { stroke: var(--warn); opacity: 0.95 }
+.dg-arrow.sig path { fill: var(--warn); opacity: 0.95 }
+.dg-field p { margin: 0.375rem 0 0 }
+.dg-kpis2 { grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)) }
+.dg-trends { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem }
+.dg-trend { min-width: 0 }
+.dg-trend h4 { margin-top: 0 }
+/* Kurven zeichnen sich beim Einblenden des Abschnitts */
+.an-sec .dg-line { stroke-dasharray: 1; stroke-dashoffset: 0 }
+.an-sec.in .dg-line { animation: dg-draw 0.9s ease-out both }
+@keyframes dg-draw { from { stroke-dashoffset: 1 } to { stroke-dashoffset: 0 } }
+@media (prefers-reduced-motion: reduce) { .an-sec.in .dg-line { animation: none } }
+@media (max-width: 960px) { .dg-grid, .dg-fieldwrap { grid-template-columns: 1fr } }
