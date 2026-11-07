@@ -33,8 +33,10 @@ RING = [(-3, 0), (3, 0), (0, -3), (0, 3), (-2, -2), (-2, 2), (2, -2), (2, 2)]
 VERSION = 1
 
 
-def find(img: np.ndarray, cov: np.ndarray | None = None) -> tuple[list[tuple[int, int, int, float]], np.ndarray, np.ndarray]:
-    """Fehlerpunkte (Kanal, y, x, Spitze in σ) sowie Median-Bild und σ je Kanal."""
+def find(img: np.ndarray, cov: np.ndarray | None = None,
+         group: bool = True) -> tuple[list[tuple[int, int, int, float]], np.ndarray, np.ndarray]:
+    """Fehlerpunkte (Kanal, y, x, Spitze in σ) sowie Median-Bild und σ je Kanal. `group=False` (für `spots`): auch
+    einzeln stehende Punkte unter `STRONG` – Schwelle, Form- und Kanalprüfung bleiben gleich."""
     C, H, W = img.shape
     med = np.stack([ndi.median_filter(c, size=7) for c in img])
     hp = img - med
@@ -69,11 +71,16 @@ def find(img: np.ndarray, cov: np.ndarray | None = None) -> tuple[list[tuple[int
                 # Anteil in Bildintensität (σ der Kanäle verschieden), die Rauschschwelle je Kanal
                 good &= np.max([hs[o][y + dy, x + dx] for dy in (-1, 0, 1) for dx in (-1, 0, 1)], axis=0) < np.maximum(QUIET, OTHER * pk * sig[c] / sig[o])
         found += [(c, int(a), int(b), float(p)) for a, b, p in zip(y[good], x[good], pk[good])]
-    if found:
-        t = cKDTree(np.array([(f[2], f[1]) for f in found]))
-        n = [len(t.query_ball_point((f[2], f[1]), GROUP_R)) for f in found]
-        found = [f for f, m in zip(found, n) if m >= GROUP_N or f[3] >= STRONG]
-    return found, med, sig
+    return (grouped(found) if group else found), med, sig
+
+
+def grouped(found: list) -> list:
+    """Nur Punkte in einer Gruppe (eine je Zeigegruppe der Stellina) bzw. sehr deutliche einzelne."""
+    if not found:
+        return found
+    t = cKDTree(np.array([(f[2], f[1]) for f in found]))
+    n = [len(t.query_ball_point((f[2], f[1]), GROUP_R)) for f in found]
+    return [f for f, m in zip(found, n) if m >= GROUP_N or f[3] >= STRONG]
 
 
 def _fill(a: np.ndarray, hp: np.ndarray, m: np.ndarray, sig: float) -> bool:
@@ -93,11 +100,13 @@ def _fill(a: np.ndarray, hp: np.ndarray, m: np.ndarray, sig: float) -> bool:
     return True
 
 
-def repair(img: np.ndarray, cov: np.ndarray | None = None) -> tuple[np.ndarray, dict]:
-    """Gibt (korrigierter Stack, Info) zurück; ohne Treffer unverändert (gleiches Objekt)."""
+def repair(img: np.ndarray, cov: np.ndarray | None = None, found=None, med=None, sig=None) -> tuple[np.ndarray, dict]:
+    """Gibt (korrigierter Stack, Info) zurück; ohne Treffer unverändert (gleiches Objekt). `found/med/sig` aus einem
+    vorherigen `find` sparen die zweite Suche."""
     if img.ndim != 3 or img.shape[0] != 3:
         return img, {"v": VERSION, "n": 0}
-    found, med, sig = find(img, cov)
+    if found is None:
+        found, med, sig = find(img, cov)
     if not found:
         return img, {"v": VERSION, "n": 0}
     out = img.copy()
@@ -137,3 +146,22 @@ def repair(img: np.ndarray, cov: np.ndarray | None = None) -> tuple[np.ndarray, 
     key = hashlib.sha1(json.dumps([VERSION, sorted((c, y, x) for c, y, x, _ in found)]).encode()).hexdigest()[:12]
     return out, {"v": VERSION, "n": len(found), "channels": np.bincount([f[0] for f in found], minlength=3).tolist(),
                  "areas": groups, "key": key}
+
+
+def spots(data: np.ndarray) -> tuple[np.ndarray, dict, np.ndarray]:
+    """Für Auswertungen bestehender Ergebnisse (Vergleich, Tiefe) am gespeicherten linearen Stack (FITS, ohne Abdeckung):
+    Punktgruppen wie beim Entwickeln entfernen und zusätzlich alle Stellen melden, die nach denselben Regeln wie ein
+    Hotpixel-Punkt aussehen (nur ein Kanal, schärfer als ein Stern, `K` σ), aber einzeln stehen. Eine niedrigere Schwelle
+    taugt nicht: ab 5 σ fanden sich in echten Stellina-Stacks 1 400–9 000 Rauschspitzen, die Kandidaten zufällig trafen.
+    Rückgabe: (bereinigter Stack, Info wie `repair`, Positionen (N, 2) als x, y). Stacks mit `hotfix` sind schon
+    bereinigt – dann findet sich nichts. Nur Farbstacks (3 Kanäle); sonst unverändert und keine Stellen."""
+    none = np.zeros((0, 2))
+    if data.ndim != 3 or data.shape[0] != 3:
+        return data, {"v": VERSION, "n": 0}, none
+    img = np.nan_to_num(data.astype(np.float32, copy=False))
+    cov = np.all(img != 0, axis=0).astype(np.float32)          # ungedeckte Ränder des Stacks sind 0
+    loose, med, sig = find(img, cov, group=False)
+    strict = grouped(loose)
+    out, info = repair(img, cov, found=strict, med=med, sig=sig) if strict else (img, {"v": VERSION, "n": 0})
+    info["stellen"] = len(loose)
+    return out, info, np.array([(f[2], f[1]) for f in loose], float).reshape(-1, 2)

@@ -8,6 +8,9 @@ import time
 
 import numpy as np
 
+from astroflow.modules.stacking.compare import COMPARE_VERSION
+from astroflow.modules.stacking.depth import DEPTH_VERSION
+
 # (Name, Art, RA, Dec, Nacht, Startstunde UTC, Belichtung h, m5 oder None, Status)
 OBJECTS = [
     ("M 31", "galaxy", 10.68, 41.27, "2025-10-18", 21, 3.2, 17.9, "ok"),
@@ -39,7 +42,7 @@ def _depth(rng, name, ra, dec, m5, hours):
                     "sichtbar": True, "x": round(float(rng.uniform(40, w - 40)), 1), "y": round(float(rng.uniform(40, h - 40)), 1)})
     pts = stars + [{"t": "g", "x": o["x"], "y": o["y"], "ly": o["ly"], "n": o["name"], "z": o["z"], "art": o["art"]} for o in gal]
     fg = max(gal, key=lambda o: o["z"])
-    return {"v": 1, "ok": True, "grenze": {"m5": m5, "lim50": round(m5 - 0.4, 1), "erfasst": int(80 + hours * 300), "katalog": int(200 + hours * 400),
+    return {"v": DEPTH_VERSION, "ok": True, "grenze": {"m5": m5, "lim50": round(m5 - 0.4, 1), "erfasst": int(80 + hours * 300), "katalog": int(200 + hours * 400),
                                           "nullpunkt": 21.4, "fwhm_px": 3.1, "klassen": []},
             "entfernung": {"mit_parallaxe": len(stars), "naechster": {"id": near["n"], "ly": near["ly"], "g": near["g"], "x": near["x"], "y": near["y"]},
                            "fernster": {"id": far["n"], "ly": far["ly"], "g": far["g"], "x": far["x"], "y": far["y"]}, "median_ly": 2400, "verteilung": []},
@@ -59,7 +62,7 @@ def _compare(rng, i):
         if k == 1 and i % 3 == 0:
             c["kleinkoerper"] = {"name": f"({rng.integers(1000, 99999)}) Beispiel", "abstand": 3.4, "vmag": 17.8, "zeit": "2026-01-03T21:00:00"}
         cands.append(c)
-    return {"v": 1, "ok": True, "ref": {"art": "survey", "label": "DSS2 rot", "datum": "1990"}, "kandidaten": cands,
+    return {"v": COMPARE_VERSION, "ok": True, "ref": {"art": "survey", "label": "DSS2 rot", "datum": "1990"}, "kandidaten": cands,
             "verworfen": {}, "fwhm_px": 3.1, "skala": 1.0, "bild": {"w": 1500, "h": 1050}, "hinweise": [], "erstellt": time.time(), "referenzen": 0}
 
 

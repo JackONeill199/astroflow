@@ -100,7 +100,7 @@ def test_batch_runs_one_network_job_at_a_time(app, monkeypatch):
             with lock:
                 active[0] -= 1
             calls.append(kind)
-            return {"v": 1, "ok": True, "grenze": {"m5": 15.0}, "entfernung": {}, "galaxien_sichtbar": 0, "punkte": [], "kandidaten": []}
+            return {"v": {"depth": depth.DEPTH_VERSION, "compare": compare.COMPARE_VERSION}[kind], "ok": True, "grenze": {"m5": 15.0}, "entfernung": {}, "galaxien_sichtbar": 0, "punkte": [], "kandidaten": []}
         return run
     monkeypatch.setattr(depth, "compute", fake("depth"))
     monkeypatch.setattr(compare, "compute", fake("compare"))

@@ -22,9 +22,9 @@ from pathlib import Path
 
 import numpy as np
 
-from . import services
+from . import services, stackfix
 
-COMPARE_VERSION = 1
+COMPARE_VERSION = 2                # 2: Hotpixel-Reste (stackfix) werden entfernt bzw. verworfen
 K_SIGMA = 6.0                      # Schwelle im Differenzbild (geglättet)
 MAX_CANDIDATES = 25
 MIN_DMAG_SURVEY = math.inf         # Durchmusterung: anderes Band – nur „neu“/„verschwunden“, keine Helligkeitsänderungen
@@ -236,7 +236,10 @@ def compute(db, work_dir: Path, rid: int, ref: str | int = "auto", survey: bool 
     if not services.geometry_matches(geo):
         raise CompareError("Die gespeicherte Plate-Solving-Lösung gehört zu einem anderen Stack – bitte neu entwickeln.")
     H, W, wcs = geo["H"], geo["W"], geo["wcs"]
-    A = geo["data"].mean(0).astype(np.float32)
+    # Hotpixel-Punkte älterer Stacks (vor 0.31.2, nicht neu entwickelt): im Kanalmittel und nach dem Angleichen der Schärfe
+    # sehen Paare wie Sterne aus – vorher entfernen bzw. ihre Stellen merken (dieselbe Erkennung wie beim Entwickeln)
+    data, fixA, spots = stackfix.spots(geo["data"])
+    A = data.mean(0).astype(np.float32)
     validA = np.isfinite(A) & (A != 0)
 
     refs = references(db, work_dir, rid)
@@ -254,6 +257,7 @@ def compute(db, work_dir: Path, rid: int, ref: str | int = "auto", survey: bool 
         B = reproject(S, swcs, wcs, (H, W))
         info = {"art": "survey", "label": label, "datum": date}
         ref_time = []
+        fixB = None
     else:
         r2 = db.one("SELECT r.*, p.name FROM results r JOIN projects p ON p.id=r.project_id WHERE r.id=?", (int(ref),))
         if not r2:
@@ -264,7 +268,11 @@ def compute(db, work_dir: Path, rid: int, ref: str | int = "auto", survey: bool 
         if not services.geometry_matches(g2):
             raise CompareError("Die Plate-Solving-Lösung passt nicht zur Auflösung dieser Referenz-Version – bitte eine andere wählen.")
         log("Referenz auf das Raster bringen")
-        B = reproject(g2["data"].mean(0), g2["wcs"], wcs, (H, W))
+        data2, fixB, spots2 = stackfix.spots(g2["data"])
+        B = reproject(data2.mean(0), g2["wcs"], wcs, (H, W))
+        if len(spots2):                              # Stellen der Referenz auf das Raster dieses Bilds
+            sx, sy = wcs.world_to_pixel_values(*g2["wcs"].pixel_to_world_values(spots2[:, 0], spots2[:, 1]))
+            spots = np.vstack([spots, np.c_[sx, sy]])
         st2 = json.loads(r2["stats"] or "{}")
         info = {"art": "eigen", "rid": r2["id"], "name": r2["name"], "created": r2["created"], "n_frames": r2["n_frames"],
                 "nights": st2.get("nights"), "label": f"eigene Aufnahme vom {datetime.fromtimestamp(r2['created']).strftime('%d.%m.%Y')}"}
@@ -298,7 +306,7 @@ def compute(db, work_dir: Path, rid: int, ref: str | int = "auto", survey: bool 
     log("Unterschiede prüfen")
     # Durchmusterung: anderes Band (Rotfilter, Fotoplatte) – rote Sterne (z. B. Riesen in Kugelhaufen) erscheinen dort
     # über 1 mag heller; Helligkeitsänderungen werden nur gegen eigene Aufnahmen gemeldet
-    cands, rejected = _candidates(A, B, D, Z, valid, fwhm, lambda fb: expect(fb / k),
+    cands, rejected = _candidates(A, B, D, Z, valid, fwhm, lambda fb: expect(fb / k), spots=spots,
                                   min_dmag=MIN_DMAG_SURVEY if info["art"] == "survey" else MIN_DMAG,
                                   # „fehlt bei mir“ gegen die Platte nur bei sehr hellen Quellen: Galaxien und rote Sterne sind
                                   # im Rotfilter heller, als die an Sternen angepasste Helligkeitsbeziehung erwartet (M3: 25 Fehlalarme)
@@ -337,9 +345,13 @@ def compute(db, work_dir: Path, rid: int, ref: str | int = "auto", survey: bool 
         c["bild"] = f"k{i}.png"
         _cutout(A, B, D, c["_x"], c["_y"], lo, hi, out_dir / c["bild"])
         c["x"], c["y"] = round(c.pop("_x"), 1), round(H - 1 - c.pop("_y"), 1)
+    hot = {"aktuell": fixA.get("n", 0), "referenz": (fixB or {}).get("n", 0)}
+    if hot["aktuell"] or hot["referenz"]:
+        notes.append(f"Hotpixel-Punkte des Sensors vor dem Vergleich entfernt ({hot['aktuell']} im Bild"
+                     + (f", {hot['referenz']} in der Referenz" if fixB else "") + ") – sie sind keine Veränderung am Himmel.")
     return {"v": COMPARE_VERSION, "ok": True, "ref": info, "kandidaten": cands, "verworfen": rejected, "fwhm_px": round(fwhm, 2),
             "skala": round(float(k), 4), "bild": {"w": W, "h": H}, "hinweise": notes, "erstellt": time.time(),
-            "referenzen": len(refs)}
+            "referenzen": len(refs), "hotpixel": hot}
 
 
 def _flux_relation(A, B, valid, fwhm, curved=False):
@@ -378,10 +390,13 @@ def _flux_relation(A, B, valid, fwhm, curved=False):
     return k, expect
 
 
-def _candidates(A, B, D, Z, valid, fwhm, expect, min_dmag: float = 0.5, vanish: float = 10.0) -> tuple[list[dict], dict]:
+def _candidates(A, B, D, Z, valid, fwhm, expect, min_dmag: float = 0.5, vanish: float = 10.0,
+                spots=None) -> tuple[list[dict], dict]:
     """Auffällige Stellen im Differenzbild. `expect(fb)` = erwarteter aktueller Fluss bei Referenzfluss fb (B ist schon
-    mit k skaliert). Bei Sternen, die in beiden Bildern da sind, zählt nur eine Abweichung ≥ `MIN_DMAG` von dieser Beziehung."""
+    mit k skaliert). Bei Sternen, die in beiden Bildern da sind, zählt nur eine Abweichung ≥ `MIN_DMAG` von dieser Beziehung.
+    `spots` (N, 2: x, y) = Hotpixel-Stellen aus `stackfix.spots` beider Bilder – Kandidaten dort werden verworfen."""
     from scipy import ndimage as ndi
+    from scipy.spatial import cKDTree
 
     from .depth import _ring_phot
 
@@ -390,7 +405,9 @@ def _candidates(A, B, D, Z, valid, fwhm, expect, min_dmag: float = 0.5, vanish: 
     ys, xs = np.nonzero((np.abs(Z) == mx) & (np.abs(Z) > K_SIGMA))
     order = np.argsort(-np.abs(Z[ys, xs]))[:400]
     edge = ndi.distance_transform_edt(valid)
-    rej = {"rand": 0, "rauschen": 0, "form": 0, "einzelpixel": 0, "heller_stern": 0, "helligkeit": 0, "zu_schwach": 0}
+    hot = cKDTree(spots) if spots is not None and len(spots) else None
+    hot_r = max(3.0, fwhm)                            # Kandidat im Differenzbild: Lage nach dem Weichzeichnen ± 1–2 px
+    rej = {"hotpixel": 0, "rand": 0, "rauschen": 0, "form": 0, "einzelpixel": 0, "heller_stern": 0, "helligkeit": 0, "zu_schwach": 0}
     margin = max(3 * fwhm + 4, 0.02 * min(H, W))       # Abstand zum Rand der gemeinsamen Fläche
     out = []
     r = max(2.0, fwhm)
@@ -401,6 +418,9 @@ def _candidates(A, B, D, Z, valid, fwhm, expect, min_dmag: float = 0.5, vanish: 
         z = float(Z[y0, x0])
         if edge[y0, x0] < margin:
             rej["rand"] += 1
+            continue
+        if hot is not None and hot.query_ball_point((x0, y0), hot_r):
+            rej["hotpixel"] += 1
             continue
         # örtliches Rauschen: an Stack-Rändern (weniger Aufnahmen) und in Nebeln streut die Differenz stärker als in der Kachel
         win = Z[max(0, y0 - 24):y0 + 25, max(0, x0 - 24):x0 + 25].copy()

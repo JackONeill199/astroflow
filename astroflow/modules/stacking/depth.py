@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import photometry, services
+from . import photometry, services, stackfix
 
 DEPTH_VERSION = 1
 SNR_MIN = 5.0
@@ -163,6 +163,9 @@ def compute(work_dir: Path, pid: int, files: dict, name: str = "", facts=None, g
     if not services.geometry_matches(geo):
         raise DepthError("Die gespeicherte Plate-Solving-Lösung gehört zu einem anderen Stack – bitte neu entwickeln.")
     data, wcs, H, W = geo["data"], geo["wcs"], geo["H"], geo["W"]
+    # Hotpixel-Punkte älterer Stacks entfernen bzw. ihre Stellen merken (wie im Vergleich): ein Punkt an einer
+    # Katalogposition zählte sonst als erfasster Stern bzw. sichtbare Galaxie
+    data, hotfix, spots = stackfix.spots(data)
     L = data.mean(0).astype(np.float32)
     valid = np.isfinite(L) & (L != 0)
     from scipy import ndimage as ndi
@@ -208,7 +211,8 @@ def compute(work_dir: Path, pid: int, files: dict, name: str = "", facts=None, g
         blended[i] = any(j != i and g[j] < g[i] + 1.0 for j in nb)
     top = np.nanpercentile(L[valid], 99.99)
     good_pos = np.nan_to_num(off, nan=99) < max(1.5, 0.6 * fwhm)
-    det = (snr >= SNR_MIN) & good_pos & ~blended
+    hot = _near_spots(spots, x, y, max(2.0, 0.8 * fwhm))
+    det = (snr >= SNR_MIN) & good_pos & ~blended & ~hot
     meas = ~blended                                 # sinnvoll messbar (für die Vollständigkeit)
 
     # Nullpunkt: helle, ungesättigte, freistehende Sterne
@@ -244,6 +248,8 @@ def compute(work_dir: Path, pid: int, files: dict, name: str = "", facts=None, g
              "katalog_bis": round(float(np.nanmax(cat["g"])), 2) if cat["truncated"] else None}
     if cat["truncated"]:
         notes.append(f"Sehr sternreiches Feld: Katalog nur bis G {limit['katalog_bis']:.1f} abgefragt – die Grenzgröße kann tiefer liegen.")
+    if hotfix.get("n"):
+        notes.append(f"{hotfix['n']} Hotpixel-Punkte des Sensors vor der Messung entfernt.")
     if (stats or {}).get("graxpert", {}).get("denoise"):
         notes.append("Der Stack wurde KI-entrauscht (GraXpert) – Rauschen und damit die Grenzgröße wirken etwas günstiger.")
 
@@ -275,7 +281,7 @@ def compute(work_dir: Path, pid: int, files: dict, name: str = "", facts=None, g
         log("Galaxien im Feld abfragen (SIMBAD)")
         try:
             gal = _galaxies(simbad_redshifts(ra0, dec0, radius, work_dir / "simbad"), wcs, valid, L, r, sig_ap, sig_ring_med,
-                            fwhm, x, y, poe, geo, zp, m5)
+                            fwhm, x, y, poe, geo, zp, m5, spots)
         except Exception as e:
             gal_err = f"SIMBAD nicht erreichbar ({str(e)[:100]})"
     else:
@@ -337,7 +343,16 @@ def _pos(geo, x, y) -> dict:
     return {"x": round(float(v[0]), 1), "y": round(float(v[1]), 1)}
 
 
-def _galaxies(rows, wcs, valid, L, r, sig_ap, sig_ring_med, fwhm, sx, sy, poe, geo, zp=None, m5=None) -> list[dict]:
+def _near_spots(spots, x, y, rad: float) -> np.ndarray:
+    """Liegt an (x, y) eine Hotpixel-Stelle aus `stackfix.spots` (innerhalb `rad` px)?"""
+    if spots is None or not len(spots) or not len(x):
+        return np.zeros(len(x), bool)
+    from scipy.spatial import cKDTree
+    d, _ = cKDTree(spots).query(np.c_[x, y])
+    return d < rad
+
+
+def _galaxies(rows, wcs, valid, L, r, sig_ap, sig_ring_med, fwhm, sx, sy, poe, geo, zp=None, m5=None, spots=None) -> list[dict]:
     """SIMBAD-Objekte mit Rotverschiebung im Bild; sichtbar = SNR ≥ 5 an der Position, Lichtschwerpunkt dort, kein
     Vordergrundstern davor und – mit Katalog-Helligkeit – nicht schwächer als die Bildgrenze bzw. nicht viel heller gemessen."""
     rows = [o for o in rows if o["otype"] in GALAXY_TYPES]
@@ -363,11 +378,12 @@ def _galaxies(rows, wcs, valid, L, r, sig_ap, sig_ring_med, fwhm, sx, sy, poe, g
     if stars.any():
         d, _ = cKDTree(np.c_[sx[stars], sy[stars]]).query(np.c_[x[k], y[k]])
         fg = d < 1.5 * fwhm
+    hot = _near_spots(spots, x[k], y[k], max(2.0, 0.8 * fwhm))
     t, dc = lookback([rows[i]["z"] for i in k])
     out = []
     for j, i in enumerate(k):
         o = rows[i]
-        vis = bool(snr[j] >= SNR_MIN and not fg[j] and np.nan_to_num(off[j], nan=99) < max(2.0, 0.8 * fwhm))
+        vis = bool(snr[j] >= SNR_MIN and not fg[j] and not hot[j] and np.nan_to_num(off[j], nan=99) < max(2.0, 0.8 * fwhm))
         mag = o.get("mag")
         if vis and mag is not None and zp is not None:
             m_meas = zp - 2.5 * math.log10(max(f[j], 1e-12))

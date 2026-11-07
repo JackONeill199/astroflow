@@ -3,6 +3,19 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.38.2 – 07.11.2026
+
+### Behoben
+- **Veränderungsanalyse meldet keine Hotpixel mehr.** In älteren Stacks (vor 0.31.2, nicht neu entwickelt) stehen Gruppen
+  roter bzw. grüner Hotpixel-Punkte. Der Vergleich arbeitet auf dem linearen Stack, mittelt die Farben und gleicht die Schärfe an –
+  dadurch sahen diese Punkte wie Sterne aus und erschienen als „neu“, „schwächer“ oder „verschwunden“. Jetzt erkennt der Vergleich
+  sie wie das Neu-Entwickeln (nur ein Farbkanal, schärfer als ein Stern) in beiden Bildern, entfernt sie vorher und verwirft
+  einzelne Stellen dort. In der Arbeitsinstanz waren 3 der 5 bisherigen Meldungen solche Punkte, die echten Veränderlichen bleiben.
+  Kein Neu-Stacken und kein Neu-Entwickeln nötig: Bisherige Vergleiche gelten als veraltet und lassen sich unter
+  **Bilder → Analyse** („Vergleich“, Umfang „Fehlende und veraltete“) oder auf der Objektseite neu rechnen.
+- Die Tiefenmessung zählt einen Hotpixel-Punkt an einer Katalogposition nicht mehr als erfassten Stern bzw. sichtbare Galaxie.
+  Bisherige Messungen waren davon nicht betroffen und bleiben gültig.
+
 ## 0.38.1 – 06.11.2026
 ### Behoben
 - 3D-Erde: Das Mausrad scrollt über der Seitenleiste (Nachtliste, Ebenen) wieder die Leiste, statt die Karte zu zoomen.
