@@ -24,7 +24,7 @@ class Module(BaseModule):
     name = "SkyTrace"
     description = "Lichtspuren und bewegte Objekte in Bildfolgen erkennen und mit Katalogen abgleichen."
     icon = "orbit"
-    scripts = ("evidence.js", "skytrace.js", "skytrace-3d.js", "skytrace-karte.js", "skytrace-erde.js", "skytrace-erfolge.js")
+    scripts = ("evidence.js", "skytrace.js", "skytrace-3d.js", "skytrace-karte.js", "skytrace-erde.js", "skytrace-erfolge.js", "skytrace-satelliten.js")
     styles = ("evidence.css", "skytrace.css", "skytrace-3d.css", "skytrace-erde.css", "skytrace-erfolge.css")
 
     def __init__(self, ctx):
@@ -85,6 +85,32 @@ class Module(BaseModule):
         from .stats import collect
         s = self.ctl.snapshot(logs=False)
         return collect(self.ctl.results, skip=s["run"] if s["running"] else None)
+
+    def satellite_stats(self) -> dict:
+        """Satellitenhelligkeit und Rate je Standort/Jahr (satellites.py); Nullpunkte aus dem Bilder-Modul, falls vorhanden."""
+        import time
+        from .satellites import collect
+        hit = getattr(self, "_sat_cache", None)
+        if hit and time.time() - hit[0] < 20:
+            return hit[1]
+        import observation_settings
+        settings = observation_settings.load_settings()
+
+        def site(s: dict):
+            try:
+                when = s["_times"][0] if s.get("_times") else None
+                return observation_settings.resolve_site(s.get("_first_path") or "", s["session"], settings, when=when)
+            except Exception:
+                return None
+        zps = None
+        try:
+            if "night_zero_points" in self.ctx.services:
+                zps = self.ctx.services["night_zero_points"]()
+        except Exception:
+            zps = None
+        out = collect(self._stats(), zps, site)
+        self._sat_cache = (time.time(), out)
+        return out
 
     def _achievements_check(self, running: bool) -> None:
         """Endet eine Analyse, werden die Erfolge im Hintergrund neu geprüft (Hinweis erscheint über `status`)."""
