@@ -266,7 +266,8 @@ class _Resp:
 
 
 def _sb_answer(second: bool, rows):
-    f = ["Object name", "Astrometric RA (hh:mm:ss)", "Astrometric Dec (dd mm'ss\")", "Visual magnitude (V)", "RA rate (\"/h)", "Dec rate (\"/h)"]
+    f = ["Object name", "Astrometric RA (hh:mm:ss)", "Astrometric Dec (dd mm'ss\")", "Visual magnitude (V)", "RA rate (\"/h)", "Dec rate (\"/h)",
+         "Est. error RA (\")", "Est. error Dec (\")"]
     return {"fields_second" if second else "fields_first": f, "data_second_pass" if second else "data_first_pass": rows}
 
 
@@ -281,14 +282,15 @@ def test_small_bodies_fast_first_pass_and_failure_pause(tmp_path, monkeypatch):
     def get(url, params=None, timeout=None):
         seen.append(dict(params))
         if params["sb-kind"] == "c":
-            return _Resp(_sb_answer(True, [["C/2026 A1", "10:00:00.00", "+20 00 00.0", "14.0", "30.0", "-5.0"]]))
-        return _Resp(_sb_answer(False, [["433 Eros (A898 PA)", "10:00:10.00", "+20 01 00.0", "12.1", "40.0", "2.0"]]))
+            return _Resp(_sb_answer(True, [["C/2026 A1", "10:00:00.00", "+20 00 00.0", "14.0", "30.0", "-5.0", "1", "1"]]))
+        return _Resp(_sb_answer(False, [["433 Eros (A898 PA)", "10:00:10.00", "+20 01 00.0", "12.1", "40.0", "2.0", "3", "4"]]))
     monkeypatch.setattr(httpx, "get", get)
     out = compare.small_bodies("2025-04-10T22:00:00", 150.0, 20.0, 0.5, 0.35, tmp_path)
     by = {p["sb-kind"]: p for p in seen}
     assert by["c"].get("two-pass") == "true" and "two-pass" not in by["a"]
     eros = next(b for b in out if b["name"].startswith("433"))
     assert eros["genau"] is False and eros["rate_ra"] == 40.0 and abs(eros["ra"] - 150.0417) < 1e-3
+    assert eros["fehler"] == pytest.approx(5.0)
     assert next(b for b in out if b["kind"] == "c")["genau"] is True
     n = len(seen)
     assert compare.small_bodies("2025-04-10T22:00:00", 150.0, 20.0, 0.5, 0.35, tmp_path) == out and len(seen) == n   # Zwischenspeicher
@@ -311,6 +313,16 @@ def test_horizons_command_and_refine(monkeypatch, tmp_path):
     assert asteroids.horizons_command("433 Eros (A898 PA)") == "433;"
     assert asteroids.horizons_command("(4711) Testoid") == "4711;"
     assert asteroids.horizons_command("2004 MN4") == "DES=2004 MN4;"
+    # SB-Ident schreibt vorläufige Bezeichnungen in Klammern – nicht als Nummer lesen (sonst falscher Körper)
+    assert asteroids.horizons_command("(1927 LA)") == "DES=1927 LA;"
+    assert asteroids.horizons_command("(1988 RH9)") == "DES=1988 RH9;"
+    assert asteroids.horizons_command("(1991 BA)") == "DES=1991 BA;"
+    assert asteroids.horizons_command("(4711)") == "4711;"
+    assert asteroids.horizons_command("Eros") == "Eros;"
+    # Suchkreis nach JPLs Fehlerschätzung: 15″ + 3 × Fehler, höchstens 60″
+    assert asteroids.rough_search(None, 10.0, 1.2) == pytest.approx(50.0)
+    assert asteroids.rough_search(5.0, 10.0, 1.2) == pytest.approx(25.0)
+    assert asteroids.rough_search(40.0, 10.0, 1.2) == pytest.approx(50.0)
     w = WCS({**_hdr(200, 300), "NAXIS": 2})
     calls = []
 

@@ -818,7 +818,7 @@ def small_bodies(when: str, ra: float, dec: float, hw_ra: float, hw_dec: float, 
     Nach einem Zeitüberschreitungs-/Verbindungsfehler wird `JPL_FAIL_PAUSE` lang nicht erneut gefragt (Marke im Cache)."""
     import httpx
 
-    # v3: Asteroiden nur erster Durchgang (Feld `genau`); v2 hatte zwei Durchgänge für beide Arten
+    # v3: Asteroiden nur erster Durchgang (Felder `genau`, `fehler` = JPL-Fehlerschätzung in ″); v2 hatte zwei Durchgänge für beide Arten
     key = hashlib.sha1(f"sb3|{when}|{ra:.3f}|{dec:.3f}|{hw_ra:.2f}|{hw_dec:.2f}".encode()).hexdigest()[:16]
     f = cache_dir / f"jpl_{key}.json"
     if f.exists():
@@ -862,8 +862,10 @@ def small_bodies(when: str, ra: float, dec: float, hw_ra: float, hw_dec: float, 
                 sg = -1 if de_s.strip().startswith("-") else 1
                 a, b, c = (abs(float(v)) for v in re.split(r"[ '\"]+", de_s.strip().lstrip("+-"))[:3])
                 rate = {k.split(" ")[0]: v for k, v in d.items() if " rate" in k}          # „RA rate ("/h)“, „Dec rate ("/h)“
+                err = {k.split(" ")[2]: _num(v) for k, v in d.items() if k.startswith("Est. error")}   # „Est. error RA (")“
                 out.append({"name": d.get("Object name") or "", "ra": (hh + mm / 60 + ss / 3600) * 15, "dec": sg * (a + b / 60 + c / 3600),
                             "vmag": d.get("Visual magnitude (V)"), "kind": kind, "genau": second,
+                            "fehler": math.hypot(err["RA"], err["Dec"]) if err.get("RA") is not None and err.get("Dec") is not None else None,
                             "rate_ra": _num(rate.get("RA")), "rate_dec": _num(rate.get("Dec"))})
             except (ValueError, TypeError):
                 continue

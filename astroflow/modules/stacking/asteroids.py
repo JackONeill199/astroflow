@@ -30,7 +30,8 @@ SAMPLE = 40                 # Aufnahmen je Nacht für den Nachweis (über die Ze
 MAX_NIGHTS = 3              # JPL-Abfragen je Bild (je Nacht eine, Asteroiden brauchen 15–120 s)
 MAX_DETECT = 25             # höchstens so viele Kleinkörper je Nacht nachweisen (hellste zuerst)
 SEARCH_AS = 15.0            # ″: Suchradius um die Vorhersage (geozentrisch ↔ Standort, Bahnfehler)
-SEARCH_AS_ROUGH = 60.0      # ″: dasselbe für nur genäherte Bahnen (JPL erster Durchgang, Horizons nicht erreichbar)
+SEARCH_AS_ROUGH = 60.0      # ″: höchstens so groß für nur genäherte Bahnen (JPL erster Durchgang, Horizons nicht erreichbar)
+ERR_OK = 5.0                # ″: JPL-Fehlerschätzung des ersten Durchgangs, bis zu der keine Horizons-Nachrechnung nötig ist
 HZ_BUDGET = 90.0            # s für das Nachschärfen der Kandidaten über Horizons je Bild
 HZ_TIMEOUT = 20.0           # s je Horizons-Abfrage
 SNR_MIN = 5.0               # Signifikanz im gemittelten Ausschnitt
@@ -97,7 +98,7 @@ def predict(bodies: list[dict], wcs, shape: tuple[int, int], cov: np.ndarray | N
             scale = float(np.sqrt(abs(np.linalg.det(wcs.pixel_scale_matrix)))) * 3600
             rate = math.hypot(vx, vy) * 3600 * scale
         out.append({"name": b["name"], "art": "Komet" if b.get("kind") == "c" else "Asteroid", "vmag": _num(b.get("vmag")),
-                    "genau": bool(b.get("genau", True)),
+                    "genau": bool(b.get("genau", True)), "fehler": _num(b.get("fehler")),
                     "ra": ra, "dec": dec, "rate": None if rate is None else round(rate, 1),
                     "_x": x, "_y": y, "_vx": vx, "_vy": vy, "_inside": all(inside)})
     out.sort(key=lambda o: o["vmag"] if o["vmag"] is not None else 99)
@@ -365,6 +366,9 @@ def compute(pl, rid: int, *, small_bodies=None, gaia: bool = True, m5: float | N
             else:
                 b["status"] = "nicht_geprueft"
         if todo:
+            for b in todo:                                # JPL schätzt den Fehler selbst klein: wie genau behandeln
+                if not b["genau"] and b["fehler"] is not None and b["fehler"] <= ERR_OK:
+                    b["genau"] = True
             rough = [b for b in todo if not b["genau"]]
             if rough:
                 log(f"{len(rough)} Bahnen bei JPL Horizons genau berechnen ({night})")
@@ -372,9 +376,9 @@ def compute(pl, rid: int, *, small_bodies=None, gaia: bool = True, m5: float | N
                 still = sum(1 for b in rough if not b["genau"])
                 if still:
                     notes.append(f"{still} Kleinkörper nur mit genäherter Bahn gesucht (Horizons nicht erreichbar) – "
-                                 f"größerer Suchkreis {SEARCH_AS_ROUGH:.0f}″.")
+                                 f"größerer Suchkreis nach JPLs Fehlerschätzung, höchstens {SEARCH_AS_ROUGH:.0f}″.")
             for b in todo:
-                b["_search"] = search_px if b["genau"] else max(search_px, SEARCH_AS_ROUGH / pix_as)
+                b["_search"] = search_px if b["genau"] else rough_search(b["fehler"], search_px, pix_as)
             half = int(math.ceil(max(b["_search"] for b in todo) + 3 * aperture + 2 * fwhm + 2))
             pick = [avail[int(i)] for i in np.unique(np.linspace(0, len(avail) - 1, min(SAMPLE, len(avail))).round())]
             if lib is None:
@@ -461,13 +465,33 @@ def compute(pl, rid: int, *, small_bodies=None, gaia: bool = True, m5: float | N
             "hinweise": notes}
 
 
+_DESIG = r"\d{4} [A-Z]{1,2}\d*"                # vorläufige Bezeichnung „1927 LA“, „1988 RH9“, „2004 MN4“
+
+
 def horizons_command(name: str) -> str:
-    """Horizons-Befehl aus dem SB-Ident-Namen: „433 Eros (A898 PA)“/„(433) Eros“ → „433;“, „2004 MN4“ → „DES=2004 MN4;“."""
+    """Horizons-Befehl aus dem SB-Ident-Namen. Nummer → „433;“ („433 Eros (A898 PA)“, „(4711)“, „(4711) Testoid“);
+    vorläufige Bezeichnung → „DES=1927 LA;“ – SB-Ident schreibt sie ohne Nummer **in Klammern** („(1927 LA)“), eine
+    Klammer nur mit Ziffern ist dagegen eine Nummer. Sonst der Name selbst („Eros;“)."""
     import re
-    m = re.match(r"^\(?(\d+)\)?(\s|$)", name.strip())
+    n = name.strip()
+    m = re.fullmatch(r"\(([^)]*)\)(.*)", n)
+    if m:                                             # „(…)“ am Anfang: Ziffern = Nummer, sonst Bezeichnung
+        inner = m.group(1).strip()
+        return f"{inner};" if inner.isdigit() else f"DES={inner};"
+    if re.fullmatch(_DESIG, n.split("(")[0].strip()):
+        return f"DES={n.split('(')[0].strip()};"
+    m = re.match(r"^(\d+)(\s|$)", n)
     if m:
         return f"{m.group(1)};"
-    return f"DES={name.split('(')[0].strip()};"
+    return f"{n.split('(')[0].strip()};"
+
+
+def rough_search(err_as: float | None, search_px: float, pix_as: float) -> float:
+    """Suchkreis (Stack-Pixel) für eine nur genäherte Bahn: Normalkreis + 3 × JPL-Fehlerschätzung, höchstens SEARCH_AS_ROUGH;
+    ohne Schätzung gleich SEARCH_AS_ROUGH."""
+    if err_as is None:
+        return max(search_px, SEARCH_AS_ROUGH / pix_as)
+    return max(search_px, min(SEARCH_AS_ROUGH, SEARCH_AS + 3 * err_as) / pix_as)
 
 
 def refine(b: dict, wcs, t_mid: float, t0: float, t1: float, cache_dir: Path, timeout: float = HZ_TIMEOUT) -> None:

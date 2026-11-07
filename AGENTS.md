@@ -549,9 +549,12 @@ Kleinkörper-Abgleich im Vergleich). Endpunkte `GET|POST /results/{id}/asteroids
   `work/vergleich/jpl_*` – Schlüssel `sb3|…`, mit `rate_ra`/`rate_dec` („/h, RA-Rate = dRA·cos δ), `kind` a/c und `genau`).
   `predict` rechnet Lage + Bewegung (px/s) im Stack-Raster; fehlt die Rate, zweite Abfrage eine Stunde später. Zeitbudget `JPL_BUDGET` 180 s.
   **Nachschärfen (seit 0.43.2):** Asteroiden kommen nur genähert (erster Durchgang, s. „Vergleich“). Die Nachweis-Kandidaten (`todo`) rechnet
-  `refine_all` einzeln über `comet.horizons(…, command=horizons_command(name))` nach („433;“ bzw. „DES=2004 MN4;“, geozentrisch 500@399,
-  Cache `work/komet/`), Budget `HZ_BUDGET` 90 s, je Abfrage `HZ_TIMEOUT` 20 s. Bleibt eine Bahn genähert (Horizons aus/nicht erreichbar),
-  Suchkreis `SEARCH_AS_ROUGH` 60″ statt 15″ (Ausschnittgröße je Nacht nach dem größten Kreis) und Hinweis; UI „Bahn genähert“.
+  `refine_all` einzeln über `comet.horizons(…, command=horizons_command(name))` nach (geozentrisch 500@399, Cache `work/komet/`), Budget
+  `HZ_BUDGET` 90 s, je Abfrage `HZ_TIMEOUT` 20 s. **Namen:** SB-Ident schreibt vorläufige Bezeichnungen ohne Nummer in Klammern („(1927 LA)“ →
+  „DES=1927 LA;“), nur Ziffern in Klammern sind eine Nummer („(4711)“ → „4711;“), „433 Eros (A898 PA)“ → „433;“ – sonst rechnete Horizons einen
+  falschen Körper. Der erste Durchgang liefert `Est. error RA/Dec (″)` → `fehler` (Betrag): ≤ `ERR_OK` 5″ gilt als genau (keine Nachrechnung),
+  sonst bleibt eine nicht nachgerechnete Bahn genähert mit Suchkreis `rough_search` = 15″ + 3 × Fehler, höchstens `SEARCH_AS_ROUGH` 60″ (ohne
+  Schätzung 60″; Ausschnittgröße je Nacht nach dem größten Kreis) und Hinweis; UI „Bahn genähert“.
   **Standort nie senden:** die Parallaxe (Hauptgürtel ≤ ~6″) fängt der Suchkreis `SEARCH_AS` 15″ ab.
 - **Nachweis** (nur mit erreichbaren Rohbildern, `frames.deleted=0`): je Nacht ≤ `SAMPLE` 40 Aufnahmen über die Zeit verteilt, je
   Aufnahme `pl._load` (Kalibrierung + cosmetic wie beim Stacken; gespeicherte Glüh- und Fehlerkarten legt `_sensor_cache` vorher in den Cache,
