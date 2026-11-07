@@ -96,7 +96,7 @@ for %%f in (AstroFlow-*-Windows-portabel.zip) do set ZIP=%%f
 for %%f in (AstroFlow-Setup-*.exe) do set SETUP=%%f
 powershell -NoProfile -Command "Expand-Archive -Force '%ZIP%' C:\Werkzeug" > "RES\werkzeug.txt" 2>&1
 if not defined SETUP goto portabel
-"PY" -I pruefe_paket.py --setup "%SETUP%" --astap > "RES\installer.txt" 2>&1
+"PY" -I pruefe_paket.py --setup "%SETUP%" --voll >"RES\installer.txt" 2>&1
 echo Exitcode %errorlevel% >> "RES\installer.txt"
 :portabel
 "PY" -I pruefe_paket.py "%ZIP%" --astap --dir C:\Sauber > "RES\portabel.txt" 2>&1
@@ -108,7 +108,7 @@ echo fertig > "RES\fertig.txt"
     wsb = out / "AstroFlow-Test.wsb"
     wsb.write_text(f"""<Configuration>
   <Networking>Enable</Networking>
-  <MemoryInMB>6144</MemoryInMB>
+  <MemoryInMB>8192</MemoryInMB>
   <ClipboardRedirection>Disable</ClipboardRedirection>
   <PrinterRedirection>Disable</PrinterRedirection>
   <MappedFolders>

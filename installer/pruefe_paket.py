@@ -87,7 +87,46 @@ def flow(port: int, times: dict, t0: float, astap: bool):
 
 
 
-def check_setup(exe: Path, astap: bool):
+FULL = "astap,astap\\d05,graxpert,gpu,skytrace,demo"
+
+
+def full_flow(port: int, times: dict, t0: float):
+    """Vollinstallation: Komponenten aus dem Installer-Auftrag laufen im Hintergrund durch (ASTAP, GraXpert, GPU, SkyTrace, Demo).
+    Danach: Demo-Bild mit GraXpert, SkyTrace-Lauf auf den Demodaten (automatisch nach dem Stack), GPU-Erkennung."""
+    t1 = time.time()
+
+    def comps_done():
+        c = call(port, "/components")
+        running = [i["id"] for i in c["items"] if (i.get("task") or {}).get("state") == "running"]
+        if running:
+            print(f"  … {running[0]}: {(c['items'][[i['id'] for i in c['items']].index(running[0])]['task'] or {}).get('detail', '')}", flush=True)
+        return (not c["pending"] and not running) and c
+    c = wait(comps_done, 3600, 10)
+    times["komponenten_s"] = round(time.time() - t1, 1)
+    for i in c["items"]:
+        t = i.get("task") or {}
+        times[f"k_{i['id']}"] = {"zustand": i["state"], "version": i.get("version") or "", "detail": (i.get("detail") or "")[:120],
+                                 "dauer_s": round((t.get("finished") or 0) - (t.get("started") or 0), 1) if t else None,
+                                 "meldung": (t.get("detail") or "")[:160]}
+    print(json.dumps({k: v for k, v in times.items() if k.startswith("k_")}, indent=2, ensure_ascii=False), flush=True)
+    for need in ("astap", "graxpert", "gpu", "skytrace"):
+        assert times[f"k_{need}"]["zustand"] == "installed", f"{need}: {times[f'k_{need}']}"
+    res = wait(lambda: next((p["result"] for p in call(port, "/stacking/projects") if p.get("result")), None), 1800, 5)
+    times["bis_erstes_bild_min"] = round((time.time() - t0) / 60, 2)
+    gx = (res.get("stats") or {}).get("graxpert")
+    times["graxpert_im_bild"] = gx
+    assert gx and not (isinstance(gx, dict) and gx.get("error")), f"GraXpert nicht genutzt: {gx}"
+    print(f"Erstes Bild nach {times['bis_erstes_bild_min']} min, GraXpert: {gx}", flush=True)
+    t2 = time.time()
+    runs = wait(lambda: call(port, "/skytrace/runs"), 3600, 15)
+    times["skytrace_lauf_s"] = round(time.time() - t2, 1)
+    times["skytrace"] = {k: runs[0].get(k) for k in ("id", "sessions", "frames", "candidates")}
+    times["gpu"] = call(port, "/stacking/gpu")
+    times["gesamt_min"] = round((time.time() - t0) / 60, 2)
+    print(f"SkyTrace-Lauf {times['skytrace']}, GPU {times['gpu']}", flush=True)
+
+
+def check_setup(exe: Path, astap: bool, full: bool = False):
     env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHON")}
     with socket.socket() as sk:                                   # Standardport wie nach dem Installieren, falls frei
         port = free_port() if sk.connect_ex(("127.0.0.1", 8766)) == 0 else 8766
@@ -97,7 +136,8 @@ def check_setup(exe: Path, astap: bool):
     app = Path(os.environ["LOCALAPPDATA"]) / "Programs" / "AstroFlow"
     data = Path(os.environ["USERPROFILE"]) / "AstroFlow"
     times, t0 = {}, time.time()
-    subprocess.run([str(exe), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/CURRENTUSER", "/NORESTART"], check=True, timeout=900)
+    args = [f"/COMPONENTS={FULL}"] if full else ["/TYPE=compact"]
+    subprocess.run([str(exe), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/CURRENTUSER", "/NORESTART", *args], check=True, timeout=900)
     times["installieren_s"] = round(time.time() - t0, 1)
     pyw = app / "python" / "pythonw.exe"
     assert pyw.is_file(), f"Installation fehlt: {pyw}"
@@ -113,7 +153,10 @@ def check_setup(exe: Path, astap: bool):
     assert Path(st["data"]["path"]).resolve() == data.resolve(), st["data"]["path"]
     times["astap_vorher"] = st["astap"]["path"] or "keins"
     print(f"Server läuft nach {times['start_s']} s, Daten {st['data']['path']}", flush=True)
-    flow(port, times, t0, astap)
+    if full:
+        full_flow(port, times, t0)
+    else:
+        flow(port, times, t0, astap)
     t4 = time.time()
     subprocess.run([str(pyw), "-I", "-m", "astroflow", "stop"], env=env, cwd=str(app), timeout=120)   # = „AstroFlow beenden“
     with socket.socket() as s:
@@ -121,11 +164,17 @@ def check_setup(exe: Path, astap: bool):
         assert s.connect_ex(("127.0.0.1", port)) != 0, "Server läuft nach dem Beenden noch"
     times["beenden_s"] = round(time.time() - t4, 1)
     t5 = time.time()
-    subprocess.run([str(app / "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], check=True, timeout=300)
+    tools = Path(os.environ["LOCALAPPDATA"]) / "AstroFlow" / "Werkzeuge"
+    subprocess.run([str(app / "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
+                    *(["/WERKZEUGE=entfernen"] if full else [])], check=True, timeout=600)
     wait(lambda: not (app / "python").exists(), 120, 1)          # Deinstaller kopiert sich und läuft kurz weiter
     times["deinstallieren_s"] = round(time.time() - t5, 1)
     assert not menu.exists() or not list(menu.glob("*.lnk")), "Startmenü-Einträge nach Deinstallation noch da"
     assert (data / "astroflow.db").is_file(), "Daten sollten nach der Deinstallation bleiben"
+    if full:
+        wait(lambda: not (tools / "GraXpert").exists(), 120, 1)
+        astap = Path(os.environ["LOCALAPPDATA"]) / "astap"
+        assert not list(astap.glob("d05_*")), "Sterndatenbank sollte mit entfernt sein (/WERKZEUGE=entfernen)"
     print(json.dumps(times, indent=2, ensure_ascii=False))
 
 def main():
@@ -133,11 +182,12 @@ def main():
     ap.add_argument("zip", nargs="?")
     ap.add_argument("--setup", default=None, help="Installer prüfen statt ZIP (nur in Sandbox/VM)")
     ap.add_argument("--astap", action="store_true", help="ASTAP + D05 wirklich herunterladen (~100 MB)")
+    ap.add_argument("--voll", action="store_true", help="mit --setup: alle Komponenten (ASTAP, GraXpert, GPU, SkyTrace, Demo)")
     ap.add_argument("--keep", action="store_true", help="Testordner behalten")
     ap.add_argument("--dir", default=None)
     a = ap.parse_args()
     if a.setup:
-        return check_setup(Path(a.setup), a.astap)
+        return check_setup(Path(a.setup), a.astap, a.voll)
 
     root = Path(a.dir or tempfile.mkdtemp(prefix="astroflow-sauber-"))
     home = root / "home"

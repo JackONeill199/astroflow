@@ -1,0 +1,21 @@
+# SkyTrace-Analyse-Engine, plattformneutral (statt des Windows-Lockfiles requirements.txt), für die Installation per Knopf
+# (core/components.py → Komponente „skytrace“). PyTorch kommt vorher aus dem CPU-Index (https://download.pytorch.org/whl/cpu);
+# numpy/scipy/astropy/pillow bleiben auf den Versionen des laufenden Servers (Constraints).
+numpy>=2.0
+scipy>=1.13
+astropy>=6.0
+pillow>=10.0
+torch>=2.2
+torchvision>=0.17
+ultralytics>=8.3
+opencv-python>=4.9
+av>=12.0
+rawpy>=0.21
+skyfield>=1.48
+sgp4>=2.20
+requests>=2.31
+filelock>=3.12
+photutils>=1.12
+polars>=1.0
+matplotlib>=3.8
+trino>=0.330

@@ -9,7 +9,6 @@
 """
 from __future__ import annotations
 
-import io
 import os
 import platform
 import shutil
@@ -17,7 +16,6 @@ import signal
 import sys
 import threading
 import time
-import zipfile
 from pathlib import Path
 
 from fastapi import APIRouter, Body, HTTPException
@@ -30,34 +28,14 @@ RELEASES_API = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_PAGE = f"https://github.com/{REPO}/releases"
 UPDATE_EVERY = 24 * 3600
 
-SF = "https://sourceforge.net/projects/astap-program/files/{}/download"
-ASTAP_CLI = {   # (Betriebssystem, Architektur) → Datei auf SourceForge
-    ("Windows", "AMD64"): "windows_installer/astap_command-line_version_win64.zip",
-    ("Linux", "x86_64"): "linux_installer/astap_command-line_version_Linux_amd64.zip",
-    ("Linux", "aarch64"): "linux_installer/astap_command-line_version_Linux_aarch64.zip",
-    ("Darwin", "arm64"): "macOS installer/astap_command-line_version_macOS_M1.zip",
-    ("Darwin", "x86_64"): "macOS installer/astap_command-line_version_macOS_x86_64.zip",
-}
-ASTAP_CATALOG = "windows_installer/astapwin32.zip"          # enthält deep_sky.csv (plattformunabhängig, ~1 MB)
-ASTAP_DBS = {"d05": ("star_databases/d05_star_database.zip", 102), "d50": ("star_databases/d50_star_database.zip", 900)}
+from .components import ASTAP_CLI, ASTAP_DBS, astap_dir, system as _system   # noqa: F401 (Rückwärtskompatibilität)
+from . import components as comp
+
 TELESCOPES = {   # Auswahl im Assistenten → empfohlene Sterndatenbank (Bildfeld ≥ 0,6° → D05)
     "stellina": "d05", "vespera": "d05", "seestar": "d05", "dwarf": "d05", "andere": "d50",
 }
-
-
-def _system() -> tuple[str, str]:
-    """(Betriebssystem, Architektur) für die ASTAP-Auswahl. Unter Windows liest platform.machine() PROCESSOR_ARCHITECTURE –
-    fehlt die Variable (gestartet aus stark reduzierter Umgebung), ist das Ergebnis leer; dann über die Zeigerbreite raten."""
-    sysname, mach = platform.system(), platform.machine()
-    if sysname == "Windows" and not mach:
-        mach = "AMD64" if sys.maxsize > 2**32 else "x86"
-    return sysname, mach
-
-
-def astap_dir() -> Path:
-    if os.name == "nt" and os.environ.get("LOCALAPPDATA"):
-        return Path(os.environ["LOCALAPPDATA"]) / "astap"
-    return Path.home() / "astap"
+TASK_NAMES = {"astap": "ASTAP + Sterndatenbank", "demo": "Demo-Aufnahmen", "gpu": "GPU-Beschleunigung",
+              "graxpert": "GraXpert", "skytrace": "SkyTrace-Analyse-Engine"}
 
 
 def _version_tuple(v: str) -> tuple:
@@ -127,7 +105,7 @@ class Setup:
             "config": str(launcher.config_path()) if self.launched else None,
             "drives": drives(), "lan": bool(cfg.get("lan")), "port": launcher.port(),
             "platform": platform.system(), "astap": astap, "dbs": {k: v[1] for k, v in ASTAP_DBS.items()},
-            "demo": {"exists": demo.exists()}, "gpu": self._gpu_state(),
+            "demo": {"exists": demo.exists()}, "gpu": self._gpu_state(), "components": self.components(),
             "update_check": sysc.get("update_check", True), "update": sysc.get("update") or {},
             "version": VERSION, "tasks": dict(self.tasks),
         }
@@ -191,77 +169,91 @@ class Setup:
         return self.tasks[key]
 
     def activity(self) -> list[dict]:
-        names = {"astap": "ASTAP + Sterndatenbank", "demo": "Demo-Aufnahmen", "gpu": "GPU-Beschleunigung"}
-        return [{"key": f"setup:{k}", "title": names.get(k, k), "kind": "Einrichtung", "detail": t.get("detail", ""),
+        return [{"key": f"setup:{k}", "title": TASK_NAMES.get(k, k), "kind": "Einrichtung", "detail": t.get("detail", ""),
                  "state": t["state"], "progress": t.get("progress"), "started": t.get("started"), "finished": t.get("finished"),
                  "href": "#/willkommen"} for k, t in self.tasks.items()]
 
-    # ASTAP ---------------------------------------------------------------------
-    def install_astap(self, db: str):
-        if db not in ASTAP_DBS:
-            raise HTTPException(400, "Unbekannte Sterndatenbank.")
-        key = _system()
-        if key not in ASTAP_CLI:
-            raise HTTPException(400, f"Für {key[0]} {key[1]} gibt es keine ASTAP-Kommandozeile – bitte ASTAP selbst installieren.")
-        return self._run("astap", self._astap_job, db)
+    # Komponenten -----------------------------------------------------------------
+    def _solver_cfg(self):
+        stacking = self.app_state.modules.get("stacking")
+        return getattr(getattr(getattr(stacking, "eng", None), "pl", None), "solver_cfg", None)
 
-    def _astap_job(self, prog, db: str) -> str:
-        import httpx
-        dest = astap_dir()
-        dest.mkdir(parents=True, exist_ok=True)
-        steps = []
-        cli = dest / ("astap_cli.exe" if os.name == "nt" else "astap_cli")
-        if not cli.exists():
-            prog(0.01, "Lade ASTAP-Kommandozeile …")
-            data = _download(SF.format(ASTAP_CLI[_system()]), lambda f: prog(0.01 + 0.04 * f, "Lade ASTAP-Kommandozeile …"))
-            with zipfile.ZipFile(io.BytesIO(data)) as z:
-                name = next((n for n in z.namelist() if Path(n).name.startswith("astap_cli")), None)
-                if not name:
-                    raise RuntimeError("ASTAP-Paket enthält keine astap_cli.")
-                cli.write_bytes(z.read(name))
-            if os.name != "nt":
-                cli.chmod(0o755)
-            steps.append("Kommandozeile")
-        if not (dest / "deep_sky.csv").exists():
-            prog(0.06, "Lade Objektkatalog deep_sky.csv …")
-            data = _download(SF.format(ASTAP_CATALOG), lambda f: prog(0.06 + 0.04 * f, "Lade Objektkatalog deep_sky.csv …"))
-            with zipfile.ZipFile(io.BytesIO(data)) as z:
-                for n in z.namelist():
-                    if Path(n).name in ("deep_sky.csv", "acknowledgement of databases.txt"):
-                        (dest / Path(n).name).write_bytes(z.read(n))
-            steps.append("Objektkatalog")
-        if not list(dest.glob(f"{db}_0101.*")):
-            mb = ASTAP_DBS[db][1]
-            prog(0.10, f"Lade Sterndatenbank {db.upper()} (~{mb} MB) …")
-            tmp = dest / f".{db}.zip.part"
-            _download(SF.format(ASTAP_DBS[db][0]), lambda f: prog(0.10 + 0.8 * f, f"Lade Sterndatenbank {db.upper()} (~{mb} MB) … {f*100:.0f} %"),
-                      to=tmp)
-            prog(0.92, "Entpacke Sterndatenbank …")
-            with zipfile.ZipFile(tmp) as z:
-                for n in z.namelist():
-                    base = Path(n).name
-                    if base.lower().startswith(db) and not n.endswith("/"):
-                        with z.open(n) as src, open(dest / base, "wb") as out:
-                            shutil.copyfileobj(src, out, 1 << 20)
-            tmp.unlink(missing_ok=True)
-            if not list(dest.glob(f"{db}_0101.*")):
-                raise RuntimeError("Die Sterndatenbank wurde nicht gefunden – Paketaufbau hat sich geändert?")
-            steps.append(f"Sterndatenbank {db.upper()}")
-        prog(0.97, "Prüfe ASTAP …")
-        import subprocess
-        try:
-            subprocess.run([str(cli), "-h"], capture_output=True, timeout=30,
-                           creationflags=0x08000000 if os.name == "nt" else 0)
-        except OSError as e:
-            raise RuntimeError(f"ASTAP lässt sich nicht starten: {e}")
-        from ..modules.stacking import platesolve
-        platesolve._AVAILABLE.clear()
-        try:
-            from ..modules.stacking import objects
-            objects._EXT = None
-        except Exception:
-            pass
-        return ("Installiert: " + ", ".join(steps) if steps else "Bereits vorhanden.") + f" Ordner: {dest}"
+    def _skytrace_health(self):
+        return getattr(self.app_state.modules.get("skytrace"), "health", None)
+
+    def components(self) -> dict:
+        items = comp.status(self._solver_cfg(), self._skytrace_health())
+        pend = comp.take_order() if self.launched else []
+        for c in items:
+            c["task"] = self.tasks.get(c["id"])
+            c["pending"] = any(x.split(":")[0] == c["id"] for x in pend)
+        return {"items": items, "pending": pend, "tools_dir": str(comp.tools_dir()),
+                "telescope_db": TELESCOPES.get(self.ctx.store.get("setup").get("telescope") or "", "d05")}
+
+    def install_component(self, name: str, option: str | None = None, force: bool = False):
+        if name == "demo":
+            return self.make_demo()
+        if name not in ("astap", "graxpert", "gpu", "skytrace"):
+            raise HTTPException(400, comp.INFO.get(name, {}).get("license") if name == "starnet" else "Unbekannte Komponente.")
+        if name == "astap":
+            option = (option or "d05").lower()
+            if option not in ASTAP_DBS:
+                raise HTTPException(400, "Unbekannte Sterndatenbank.")
+            if _system() not in ASTAP_CLI:
+                raise HTTPException(400, f"Für {_system()[0]} {_system()[1]} gibt es keine ASTAP-Kommandozeile – bitte ASTAP selbst installieren.")
+        if name == "graxpert" and os.name != "nt":
+            raise HTTPException(400, "GraXpert installiert AstroFlow nur unter Windows selbst.")
+        return self._run(name, self._component_job, name, option, force)
+
+    def _component_job(self, prog, name, option, force) -> str:
+        msg = comp.install(name, prog, option, force)
+        if name == "skytrace" and self.app_state.modules.get("skytrace"):
+            try:
+                self.app_state.modules["skytrace"].check_engine()      # Engine-Zustand sofort neu prüfen
+            except Exception:
+                pass
+        return msg
+
+    def remove_component(self, name: str) -> dict:
+        if (self.tasks.get(name) or {}).get("state") == "running":
+            raise HTTPException(409, "Läuft gerade.")
+        msg = comp.remove(name)
+        comp._refresh_astap()
+        return {"detail": msg}
+
+    def run_order(self):
+        """Vom Installer gewählte Komponenten nacheinander installieren (Hintergrund, Fortschritt in der Aktivität).
+        Fehlschläge bleiben in `components_pending` und werden im Assistenten/den Einstellungen erneut angeboten;
+        die Demo kommt zuletzt, damit sie GraXpert und die SkyTrace-Engine schon nutzt."""
+        if not self.launched or os.environ.get("ASTROFLOW_COMPONENTS_AUTO") == "0":
+            return
+        pend = comp.take_order()
+        if not pend:
+            return
+        rank = {"astap": 0, "graxpert": 1, "gpu": 2, "skytrace": 3, "demo": 9}
+        for item in sorted(pend, key=lambda x: rank.get(x.split(":")[0], 5)):
+            if self._stop.is_set():
+                return
+            name, _, opt = item.partition(":")
+            if name == "demo" and (self.ctx.settings.input_dir / "demo").exists():
+                comp.done_order(item)
+                continue
+            try:
+                self.install_component(name, opt or None)
+            except HTTPException as e:
+                self.tasks[name] = {"state": "error", "detail": str(e.detail), "started": time.time(), "finished": time.time()}
+                continue
+            while (self.tasks.get(name) or {}).get("state") == "running" and not self._stop.wait(1):
+                pass
+            if (self.tasks.get(name) or {}).get("state") == "done":
+                comp.done_order(item)
+
+    # Rückwärtskompatibel (Assistent 0.33)
+    def install_astap(self, db: str):
+        return self.install_component("astap", db)
+
+    def install_gpu(self):
+        return self.install_component("gpu")
 
     # Demo ----------------------------------------------------------------------
     def make_demo(self):
@@ -277,19 +269,6 @@ class Setup:
         if eng is not None:
             eng.scan_and_queue()
         return "Demo-Aufnahmen liegen bereit und werden verarbeitet."
-
-    # GPU -----------------------------------------------------------------------
-    def install_gpu(self):
-        return self._run("gpu", self._gpu_job)
-
-    def _gpu_job(self, prog) -> str:
-        import subprocess
-        prog(0.1, "Installiere pyopencl …")
-        r = subprocess.run([sys.executable.replace("pythonw.exe", "python.exe"), "-m", "pip", "install", "--disable-pip-version-check", "pyopencl"],
-                           capture_output=True, text=True, timeout=900, creationflags=0x08000000 if os.name == "nt" else 0)
-        if r.returncode:
-            raise RuntimeError("pip: " + (r.stderr or r.stdout).strip()[-250:])
-        return "pyopencl installiert – wirkt nach einem Neustart (Einstellungen → Bilder → System)."
 
     # Heimnetz ----------------------------------------------------------------------
     def firewall(self) -> dict:
@@ -360,24 +339,7 @@ class Setup:
 
 
 def _download(url: str, prog, to: Path | None = None) -> bytes | None:
-    import httpx
-    with httpx.stream("GET", url, follow_redirects=True, timeout=httpx.Timeout(60, read=120),
-                      headers={"User-Agent": "AstroFlow"}) as r:
-        r.raise_for_status()
-        total = int(r.headers.get("content-length") or 0)
-        if "text/html" in (r.headers.get("content-type") or ""):
-            raise RuntimeError("Download-Seite statt Datei erhalten – SourceForge nicht erreichbar?")
-        got, buf = 0, (open(to, "wb") if to else io.BytesIO())
-        try:
-            for chunk in r.iter_bytes(1 << 20):
-                buf.write(chunk)
-                got += len(chunk)
-                if total:
-                    prog(min(1.0, got / total))
-        finally:
-            if to:
-                buf.close()
-        return None if to else buf.getvalue()
+    return comp.download(url, prog, to)
 
 
 def build_router(setup: Setup) -> APIRouter:
@@ -406,6 +368,18 @@ def build_router(setup: Setup) -> APIRouter:
     @r.post("/setup/gpu")
     def post_gpu():
         return setup.install_gpu()
+
+    @r.get("/components")
+    def get_components():
+        return setup.components()
+
+    @r.post("/components/install")
+    def post_component(body: dict = Body(...)):
+        return setup.install_component(str(body.get("id") or ""), body.get("option"), bool(body.get("force")))
+
+    @r.post("/components/remove")
+    def post_component_remove(body: dict = Body(...)):
+        return setup.remove_component(str(body.get("id") or ""))
 
     @r.post("/setup/firewall")
     def post_firewall():

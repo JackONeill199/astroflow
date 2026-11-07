@@ -14,6 +14,8 @@ def main(argv=None):
     st.add_argument("--port", type=int, default=None)
     st.add_argument("--no-browser", action="store_true")
     st.add_argument("--wait-pid", type=int, default=None, help=argparse.SUPPRESS)
+    co = sub.add_parser("components", help="optionale Komponenten: status | install NAME[:OPTION] … | remove NAME …")
+    co.add_argument("args", nargs="*")
     so = sub.add_parser("stop", help="laufenden Server beenden")
     so.add_argument("--port", type=int, default=None)
     sv = sub.add_parser("serve", help="Web-Oberfläche starten")
@@ -32,6 +34,9 @@ def main(argv=None):
         from .core import launcher
         return launcher.start(getattr(a, "data", None), getattr(a, "port", None), not getattr(a, "no_browser", False),
                               getattr(a, "wait_pid", None))
+    if a.cmd == "components":
+        from .core import components
+        return components.cli(a.args)
     if a.cmd == "stop":
         from .core import launcher
         return launcher.stop(a.port)
