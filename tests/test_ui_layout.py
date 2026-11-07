@@ -599,3 +599,27 @@ def test_unused_site_hint_and_assign(server, browser, size):
         page.evaluate("(d) => fetch('/api/sites', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(d)})",
                       {**d, "periods": [p for p in d["periods"] if p["from"] != "2030-02-01"]})
     page.close()
+
+
+def test_einstellungen_schalter_und_breite(server, browser):
+    """Einstellungen: normale Seitenbreite, Ein/Aus-Optionen sind sichtbare Schalter (Klick auf die Zeile und Leertaste schalten),
+    kein nacktes Kästchen mehr in den Einstellungen."""
+    base, _ = server
+    page = browser.new_page(viewport={"width": 1440, "height": 900})
+    page.goto(f"{base}/#/settings/stacking")
+    page.wait_for_selector("#stf")
+    page.wait_for_timeout(500)
+    assert "narrow" not in page.locator("#view .page").first.get_attribute("class")
+    assert page.locator("#sbody").bounding_box()["width"] > 700
+    assert page.locator("#sbody input[type=checkbox]:not(#hkForm input)").count() == page.locator("#sbody .modrow:not(#hkForm .modrow) .switch").count()
+    box = page.locator("#stf input[name=gaia]")
+    row = page.locator("#stf label.modrow", has=page.locator("input[name=gaia]"))
+    sw = row.locator(".switch")
+    assert sw.bounding_box()["width"] >= 36 and sw.bounding_box()["height"] >= 20
+    before = box.is_checked()
+    row.locator("b").click()
+    assert box.is_checked() != before
+    box.focus()
+    page.keyboard.press("Space")
+    assert box.is_checked() == before
+    page.close()

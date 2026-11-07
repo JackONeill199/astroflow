@@ -3,6 +3,13 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.45.5 – 07.11.2026
+
+### Behoben
+- Einstellungen: Die Seite nutzt jetzt die normale Seitenbreite statt der schmalsten, und die Abschnitte stehen ab genug Platz in zwei gleich breiten Spalten (vorher lagen sie in einer ~21 rem schmalen Spalte, Texte brachen nach wenigen Wörtern um).
+- Einstellungen: Alle Ein/Aus-Optionen (Bilder, Bild-Tutor, GraXpert, Speicher, Gaia, „Was dein Bild zeigt“, GPU) sind jetzt echte Schalter mit klarer Ein/Aus-Farbe, größerer Fläche und Fokusring statt eines winzigen Kästchens; die ganze Zeile ist klickbar. Der Schalter selbst ist größer und hebt sich im ausgeschalteten Zustand deutlicher ab.
+- Gaia-Farbkalibrierung: Der Hilfetext nennt die tatsächlich abgefragten Dienste (GAVO, ARI Heidelberg, zuletzt ESA).
+
 ## 0.45.4 – 07.11.2026
 
 ### Behoben

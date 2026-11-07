@@ -73,7 +73,7 @@ jobs:
         run: python -m playwright install-deps chromium
 
       - name: pytest
-        run: python -m pytest -q -rs --durations=15 --junitxml=pytest-${{ matrix.os }}.xml
+        run: python -m pytest -q -rsfE --timeout=300 --durations=15 --junitxml=pytest-${{ matrix.os }}.xml
 
       - name: Testprotokoll
         if: always()
