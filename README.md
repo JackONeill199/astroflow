@@ -64,6 +64,9 @@ vorsichtige Altersschätzung.
 entlang der Bahn in den Einzelbildern, mit gemessener Helligkeit und Bahnstrich im Bild („Du hast 9 Asteroiden fotografiert, der
 schwächste mit 16,2 mag“). An JPL gehen nur Himmelskoordinaten und Zeit, nie der Standort.
 Dazu kommen die **Himmelsqualität der Aufnahmenacht** und der **Bild-Tutor** (Befunde mit Tipps passend zum Gerät, Bedingungen der Nacht).
+Der Abschnitt **Dein Gerät** prüft ohne Rohbilder Nachführung (Drift und Verschmieren je Belichtung, Stöße/Böen), Fokus über die Nacht
+(Luftmasse herausgerechnet, Sensortemperatur, automatisches Nachfokussieren) und das Bildfeld (Verkippung, größere Sterne am Rand) – mit
+Verlauf je Gerät über alle Nächte.
 
 ![3D-Ansicht der Entfernungen](docs/screenshots/analyse-3d.webp)
 
@@ -75,7 +78,7 @@ Die 3D-Ansicht (Knopf „3D“ im Betrachter) legt die Sterne und Galaxien des B
 Objekt, dunkelster Himmel), Rekorde, „Dein Universum“ als Entfernungsskala bzw. 3D-Wolke aller gemessenen Sterne und Galaxien, Grenzgröße
 und Himmel über die Zeit, beste Nächte, Bildqualität, häufigste Tutor-Befunde, Veränderungen, Messier-/Caldwell-Fortschritt und eine
 Rangliste „Was am meisten gebracht hat“ (Grenzgröße auf 1 h umgerechnet). Filter nach Objekt, Gerät, Jahr und Nacht. **Alles analysieren**
-rechnet fehlende oder veraltete Auswertungen (Tiefe, Vergleich, HR-Diagramm, Asteroiden, Himmel, Tutor) im Hintergrund nach – nacheinander, damit Online-Dienste
+rechnet fehlende oder veraltete Auswertungen (Tiefe, Vergleich, HR-Diagramm, Asteroiden, Himmel, Tutor, Gerät) im Hintergrund nach – nacheinander, damit Online-Dienste
 geschont werden; anhalten und abbrechen jederzeit. Fehlende Voraussetzungen (nicht gelöst, Gaia aus) stehen mit Knopf zum Beheben dabei.
 Jede Zahl führt ins Objekt, Rekorde und Veränderungen direkt zur Stelle im Bild. *(Bild: Demo-Instanz mit synthetischen Werten.)*
 

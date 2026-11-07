@@ -19,7 +19,8 @@ import pytest
 # Nie ein echtes GraXpert/StarNet/GPU/Netz in Tests: schon beim Import setzen (vor allen Modul-/Sitzungs-Fixtures,
 # in jedem xdist-Worker, und von Unterprozessen geerbt). Einzelne Tests überschreiben per monkeypatch.
 os.environ.update({"ASTROFLOW_GAIA": "0", "ASTROFLOW_GRAXPERT": "0", "ASTROFLOW_GPU": "0", "ASTROFLOW_SAGE_OFFLINE": "1",
-                   "ASTROFLOW_HORIZONS": "0", "ASTROFLOW_SKY": "0", "ASTROFLOW_UPDATE_CHECK": "0"})
+                   "ASTROFLOW_HORIZONS": "0", "ASTROFLOW_SKY": "0", "ASTROFLOW_UPDATE_CHECK": "0",
+                   "ASTROFLOW_DIAG": "0"})
 os.environ.pop("ASTROFLOW_LAUNCHER", None)           # Einrichtungsassistent nur in eigenen Tests (monkeypatch)
 
 

@@ -316,6 +316,7 @@ def _slim(stats: str | None) -> dict:
     st.pop("compare", None)
     st.pop("asteroids", None)
     st.pop("hrd", None)
+    st.pop("diagnose", None)                       # Gerätediagnose: eigener Endpunkt, Verläufe bis 400 Punkte je Nacht
     return st
 
 
@@ -900,6 +901,28 @@ def build_router(eng: Engine) -> APIRouter:
         if ref not in ("auto", "survey") and not (isinstance(ref, int) or str(ref).isdigit()):
             raise HTTPException(400, "Unbekannte Referenz")
         return eng.insights.submit("compare", rid, ref=ref if ref in ("auto", "survey") else int(ref))
+
+    # ---- Gerätediagnose (diagnose.py): Nachführung, Fokus, Bildfeld – lokal, ohne Netz ----------------
+    @r.get("/results/{rid}/diagnose")
+    def get_diagnose(rid: int):
+        from .diagnose import DIAG_VERSION
+        out = _insight(rid, "diagnose", DIAG_VERSION)
+        if out["state"] in ("none", "old"):              # noch nie bzw. mit älterer Version gerechnet: im Hintergrund nachholen
+            st = eng.insights.submit("diagnose", rid)
+            out = {**out, "state": st["state"], "message": st["message"]}
+        return out
+
+    @r.post("/results/{rid}/diagnose")
+    def run_diagnose(rid: int):
+        if not db.one("SELECT id FROM results WHERE id=?", (rid,)):
+            raise HTTPException(404)
+        return eng.insights.submit("diagnose", rid)
+
+    @r.get("/diagnose/devices")
+    def diagnose_devices():
+        """Gerätetrend über alle Nächte (neueste Version je Objekt mit Gerätediagnose)."""
+        from .diagnose import device_summary
+        return {"devices": device_summary(db)}
 
     @r.get("/results/{rid}/compare/{name}")
     def compare_file(rid: int, name: str):
