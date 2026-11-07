@@ -3,7 +3,7 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
-## 0.39.0 – 07.11.2026
+## 0.40.0 – 07.11.2026
 
 ### Neu
 - **SkyTrace-Statistik: „Satelliten am Himmel“.** Unter der Statistik steht jetzt, wie viele Satelliten pro Stunde Belichtung durchs Bild laufen –
@@ -13,6 +13,15 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   Fluss und eicht ihn mit dem Nullpunkt der Nacht aus den Gaia-geeichten Stacks des Bilder-Moduls (sonst Gerätewert, sonst ein Richtwert für
   Stellina – dann als Schätzung gekennzeichnet). Die Statistik zeigt die Verteilung (Median, Histogramm) und die hellste Spur. Alte Läufe
   werden ohne Neuanalyse ausgewertet; Starlink liegt an den eigenen Läufen im Median bei etwa 7 mag.
+
+## 0.39.0 – 07.11.2026
+
+### Neu
+- **Saubere Nächte** (Himmelsqualität, `#/himmel`): wo und wann der Himmel am dunkelsten, ruhigsten und klarsten war. Ranglisten
+  „Gesamt“, „Dunkelster Himmel“, „Schärfstes Seeing“ und „Beste Durchsicht“ mit Datum, Wochentag, Ort, Bortle, bestem Abschnitt der Nacht
+  (Uhrzeit) und verlinkten Objekten; dazu bester Ort, dunkelste Nacht, bester Monat und eine Monats-Heatmap je Ort. Dunkelheit ist die
+  Hauptwertung (Gesamtwertung 60 % Dunkelheit, 20 % Seeing, 20 % Durchsicht); Nächte mit unsicherem Wert (ab ±0,35 mag) stehen getrennt.
+  Ausgewertet aus den vorhandenen Messungen, nichts wird neu berechnet.
 
 ## 0.38.3 – 07.11.2026
 

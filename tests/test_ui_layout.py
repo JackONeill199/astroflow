@@ -230,6 +230,22 @@ def test_standort_alternative(server, browser):
     page.close()
 
 
+def test_saubere_naechte_himmel(server, browser):
+    """#/himmel: Abschnitt „Saubere Nächte“ (Seed: zwei Nächte am erfundenen Ort) – Kennzahlen, Reiter, Heatmap, Verlinkung."""
+    base, _ = server
+    page = browser.new_page(viewport={"width": 1440, "height": 900})
+    page.goto(f"{base}/#/himmel")
+    page.wait_for_selector(".sq-clean .sq-top tbody tr")
+    assert "Bester Ort" in page.inner_text(".sq-clean") and page.locator(".sq-heat td:not(.empty)").count() >= 1
+    n = page.locator(".sq-top tbody tr").count()
+    assert n >= 1 and page.locator(".sq-top tbody tr a[href^='#/p/']").count() >= 1
+    page.locator("[data-ctab=seeing]").click()
+    page.wait_for_function("document.querySelector('.sq-tabs a.on').dataset.ctab === 'seeing'")
+    assert "Schärfstes Seeing" in page.inner_text(".sq-top thead")
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    page.close()
+
+
 def test_night_map_heatmap(server, browser):
     """Standorte aller Nächte: Karte je Nacht mit Heatmap (synthetisch), Umrissen, Nah-Ansicht; ohne Heatmap Knopf „berechnen“ – ohne Kartendienst."""
     base, _ = server
