@@ -236,14 +236,15 @@ def _activate_packages(pk: Path):
 def _prune_duplicates(pk: Path):
     """pip --target legt auch Abhängigkeiten ab, die das mitgelieferte Python schon hat (numpy, pillow … – per Constraints
     in gleicher Version). Diese Doppel entfernen, damit nur eine Kopie geladen werden kann und der Ordner klein bleibt."""
-    own = set()
+    norm = lambda n: (n or "").lower().replace("_", "-")
+    own = set()                                       # (Name, Version) außerhalb des Paketordners – Test-Python oder Bündel
     for d in importlib.metadata.distributions():
         loc = Path(str(d.locate_file(""))).resolve()
         if pk.resolve() not in (loc, *loc.parents):
-            own.add((d.metadata["Name"] or "").lower().replace("_", "-"))
+            own.add((norm(d.metadata["Name"]), d.version))
     for info in pk.glob("*.dist-info"):
-        name = info.name.rsplit("-", 1)[0].lower().replace("_", "-")
-        if name not in own:
+        name, _, ver = info.name.removesuffix(".dist-info").rpartition("-")      # „numpy-2.5.4.dist-info“ → numpy, 2.5.4
+        if (norm(name), ver) not in own:              # nur exakt gleiche Version (andere bleiben unangetastet)
             continue
         try:
             rows = (info / "RECORD").read_text(encoding="utf-8").splitlines()

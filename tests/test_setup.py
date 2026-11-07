@@ -399,7 +399,8 @@ def test_paketordner_haken(tmp_path, monkeypatch):
     before = list(sys.path)
     try:
         spec.loader.exec_module(mod)
-        assert mod.DIR == str(tmp_path / "app" / "Pakete" / f"cp{sys.version_info[0]}{sys.version_info[1]}-" + ("win_amd64" if sys.maxsize > 2**32 else "win32"))
+        tag = f"cp{sys.version_info[0]}{sys.version_info[1]}-" + ("win_amd64" if sys.maxsize > 2**32 else "win32")
+        assert mod.DIR == str(tmp_path / "app" / "Pakete" / tag)
         assert sys.path[-1] == mod.DIR and sys.path[:len(before)] == before
     finally:
         sys.path[:] = before
@@ -417,8 +418,11 @@ def test_paketordner_ohne_doppel(tmp_path):
             (pk / f).parent.mkdir(parents=True, exist_ok=True)
             (pk / f).write_text("x")
         (info / "RECORD").write_text("\n".join(f"{f},," for f in files + [f"{name}.dist-info/RECORD"]))
+    other = pk / "numpy-0.0.1.dist-info"                                                  # andere Version: bleibt
+    other.mkdir()
+    (other / "RECORD").write_text("numpy-0.0.1.dist-info/RECORD,,")
     (tmp_path / "Pakete" / "cp311-win_amd64").mkdir()
     comp._prune_duplicates(pk)
     comp._drop_old_tags(pk)
-    assert not (pk / "numpy").exists() and not list(pk.glob("numpy-*.dist-info"))
+    assert not (pk / "numpy").exists() and [i.name for i in pk.glob("numpy-*.dist-info")] == ["numpy-0.0.1.dist-info"]
     assert (pk / "torchfake" / "__init__.py").is_file() and not (tmp_path / "Pakete" / "cp311-win_amd64").exists()
