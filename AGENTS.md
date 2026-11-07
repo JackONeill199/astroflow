@@ -482,14 +482,14 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   log10(Lj)), `comparePanel` + `compareViewer` (Blinken über `createViewer().setSplit`, Stelle anfahren mit `zoomTo`).
 - Tests: `tests/test_depth_compare.py` (synthetisches Feld, Attrappen für Gaia/SIMBAD/DSS/JPL).
 
-## Asteroiden im Bild (`modules/stacking/asteroids.py`, `static/asteroids.js|css`; seit 0.39.0 – Wunsch 10)
+## Asteroiden im Bild (`modules/stacking/asteroids.py`, `static/asteroids.js|css`; seit 0.42.0 – Wunsch 10)
 Ziel: „Du hast 9 Asteroiden fotografiert, der schwächste 16,2 mag“. Läuft als dritte Art in `insights.Insights` (`kind="asteroids"`,
 Ergebnis `results.stats.asteroids`, `v` = `ASTEROID_VERSION`), schaltbar über `insights.small_bodies` (gleiche Einstellung wie der
 Kleinkörper-Abgleich im Vergleich). Endpunkte `GET|POST /results/{id}/asteroids`, Ausschnitte `/results/{id}/asteroids/a<n>.png`
 (streng geprüft, Ablage `work/p<id>/asteroiden/r<rid>/`); `_slim` lässt `asteroids` aus der gepollten Projektansicht weg.
 - **Vorhersage:** Master-Stack (`pl._master`) + `wcs.json` (Schlüssel muss zur Stackgröße passen), je Nacht (≤ `MAX_NIGHTS` 3, die mit den
   meisten Aufnahmen) eine JPL-SB-Ident-Abfrage zur mittleren Aufnahmezeit über `compare.small_bodies` (geozentrisch, MPC 500, Cache
-  `work/vergleich/jpl_*` – Schlüssel seit 0.39.0 `sb2|…`, weil jetzt `rate_ra`/`rate_dec` („/h, RA-Rate = dRA·cos δ) und `kind` a/c mitkommen).
+  `work/vergleich/jpl_*` – Schlüssel seit 0.42.0 `sb2|…`, weil jetzt `rate_ra`/`rate_dec` („/h, RA-Rate = dRA·cos δ) und `kind` a/c mitkommen).
   `predict` rechnet Lage + Bewegung (px/s) im Stack-Raster; fehlt die Rate, zweite Abfrage eine Stunde später. Zeitbudget `JPL_BUDGET` 180 s.
   **Standort nie senden:** die Parallaxe (Hauptgürtel ≤ ~6″) fängt der Suchkreis `SEARCH_AS` 15″ ab.
 - **Nachweis** (nur mit erreichbaren Rohbildern, `frames.deleted=0`): je Nacht ≤ `SAMPLE` 40 Aufnahmen über die Zeit verteilt, je
@@ -511,7 +511,8 @@ Kleinkörper-Abgleich im Vergleich). Endpunkte `GET|POST /results/{id}/asteroids
 - **Dashboard:** Art `asteroids` in `KINDS`/`NET_KINDS` (nach dem Vergleich, nutzt die Grenzgröße der Tiefe), Sperre `nosolve` bzw.
   `nosmall`; `totals.asteroids` = verschiedene Namen, Rekord `faint_asteroid`, Liste `asteroids`. **Sage:** Dienst `asteroid_tally`
   (Stacking) → Kennzahl `asteroids` in `log_stats`, Erfolge `asteroid_first`/`asteroids_10`; Ereignis `stacking.asteroids` → `store.refresh`.
-- **UI:** `asteroidPanel` (Abschnitt „Asteroiden“ im Reiter Analyse), `asteroidOverlay` umhüllt `depthOverlay` im Analyse-Betrachter
+- **UI:** `asteroidPanel` (Abschnitt „Asteroiden“ im Reiter Analyse, dicht wie das Dashboard: Satz + Kennzahlen als Leiste, Liste als Tabelle
+  mit kleinem Ausschnitt, erst 8 Zeilen), `asteroidOverlay` umhüllt `depthOverlay` im Analyse-Betrachter
   (Klasse `ast-on`, localStorage `bild.asteroiden.marken`, Standard an). Test: `tests/test_asteroids.py` (`demo.generate_asteroid` =
   wandernder Punkt mit bekannter Bahn, JPL-Attrappe, fester Nullpunkt; Seed in `tests/analysis_seed.py`).
 
@@ -530,11 +531,16 @@ Nutzerwunsch „eigene Seite, wo man alle gleichzeitig analysieren kann, mit Sta
   {kinds, scope: missing|errors|all, ids?}`, `POST /analysis/pause {paused}`, `POST /analysis/stop`, `POST /analysis/develop {ids}` (Objekte mit Stack,
   ohne `wcs.json` → Entwicklungsauftrag; die Lösung entsteht beim Entwickeln, `auto_depth` misst danach). Nicht in `/projects` (wird gepollt).
 - **Sammelauftrag** `Batch` (eigener Thread, Aktivität „Analyse aller Objekte“, zählt in `busy_jobs`): Reihenfolge `KINDS` = Tutor, Himmel (lokal),
-  Tiefe, Vergleich (nutzt den Nullpunkt der Tiefe), Asteroiden (seit 0.39.0). Tiefe/Vergleich/Asteroiden gehen einzeln durch `insights.submit` und werden abgewartet, danach `GAP_S` 3 s
+  Tiefe, Vergleich (nutzt den Nullpunkt der Tiefe), Asteroiden (seit 0.42.0). Tiefe/Vergleich/Asteroiden gehen einzeln durch `insights.submit` und werden abgewartet, danach `GAP_S` 3 s
   Pause → nie zwei Netzauswertungen gleichzeitig. Himmel = `skyquality.compute_project` (wartet, solange `SkyRunner` rechnet), Tutor = `build_report(refresh=True)`
   (mit Wetter ebenfalls Pause). Anhalten wirkt nach dem laufenden Schritt; Zustand nur im Speicher.
 - **UI:** Abschnitte zeichnen nur bei geänderten Daten neu (`paint` mit Signatur – sonst liefen Animationen bei jedem Poll erneut); Poll der Shell lädt nur
-  während eines Auftrags laufend, sonst alle 15 s. Diagramme als eigene SVG-Helfer (`scatter`, `ring`), 3D-Wolke mit three.js aus `/vendor/` (`loadThree`).
+  während eines Auftrags laufend, sonst alle 15 s. Diagramme als eigene Helfer (`scatter` = SVG mit festem viewBox 400 breit, `sbar` = gestapelter Balken je Art), 3D-Wolke mit three.js aus `/vendor/` (`loadThree`).
+  **Dichtes Raster** (seit 0.38.3, Nutzerwunsch „Informationen dichter“): Seite `.ad-page` mit engeren Panels, Kennzahlen als eine Leiste (`.ad-kpis`, nur Mengen –
+  Rekordwerte nur unter „Rekorde“), Reihen `.ad-row` (`.ad-top` 2:3, `.ad-c3` dreispaltig → ab 1279 px zwei, ab 760 px eine Spalte, `.ad-chgrow` Veränderungen 3:2 Kataloge),
+  Abschnitte einer Reihe gleich hoch. Veränderungen zeigen erst `CHG_ROWS` 8 Zeilen (CSS `.ad-chg:not(.all)`), „Alle anzeigen“ schaltet ohne Neuzeichnen um.
+  Asteroiden (seit 0.42.0): Kennzahl in der Leiste (7 Felder; ≤ 1100 px 4 + 3), Zeile in der Status-Matrix, Rekord „Schwächster Asteroid“ und Abschnitt
+  `#adAst` als schmale Tabelle über die volle Breite vor „Alle Objekte“, ebenfalls erst `CHG_ROWS` Zeilen (`.ad-asts:not(.all)`).
   Animationen über `.an-sec.in` (`anReveal`/`anCountUp` aus `analysis.js`), aus bei `prefers-reduced-motion`. Sprung zur Bildstelle: `sessionStorage af.an.focus`
   `{rid, x, y, w}` → `analysisTab` zoomt nach dem Laden des Fotos. localStorage `af.analysis.filter|kinds|sort`.
 - Tests: `tests/test_analysis_dashboard.py` (synthetische Bibliothek `tests/analysis_seed.py`, Attrappen statt Netz; prüft u. a. höchstens eine

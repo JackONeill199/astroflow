@@ -1,5 +1,5 @@
 'use strict';
-// „Asteroiden in deinem Bild“ (seit 0.39.0, Wunsch 10) – Abschnitt im Reiter Analyse der Objektseite + Marken/Bahnstriche im Betrachter.
+// „Asteroiden in deinem Bild“ (seit 0.42.0, Wunsch 10) – Abschnitt im Reiter Analyse der Objektseite + Marken/Bahnstriche im Betrachter.
 // Daten: /stacking/results/<id>/asteroids (eigener Endpunkt, Auswertung in insights.py → asteroids.py). Nutzt insightLoad/insightData
 // und de1 aus depth.js.
 
@@ -8,12 +8,13 @@ const AST_STATUS = {
   nachgewiesen: ['nachgewiesen', 'ok'], nicht_gefunden: ['nicht gefunden', ''], keine_rohbilder: ['im Feld, nicht nachgewiesen', ''],
   zu_langsam: ['zu langsam für den Nachweis', ''], zu_schwach: ['zu schwach für dein Bild', ''], nicht_geprueft: ['nicht geprüft', ''],
 };
+const AST_ROWS = 8;                    // Tabelle zeigt erst so viele Zeilen (wie die Veränderungen im Dashboard)
 const astMag = (v) => v == null ? '–' : `${de1(v)} mag`;
 
 // Abschnitt. opts.onFocus(x, y, w) zoomt im Betrachter oben.
 function asteroidPanel(host, r, viewer, opts = {}) {
   if (!host) return;
-  let timer = 0;
+  let timer = 0, astAll = false;
   const head = (extra = '') => `<div class="panel-h"><h2>Asteroiden</h2><span class="grow"></span>${extra}</div>`;
   const poll = async (force) => {
     clearTimeout(timer);
@@ -45,32 +46,42 @@ function asteroidPanel(host, r, viewer, opts = {}) {
       return;
     }
     const items = d.kleinkoerper || [], n = d.nachgewiesen || 0, f = d.schwaechster;
-    const at = (b) => opts.onFocus && b.x != null && d.bild ? ` class="ast-item focusable" tabindex="0" data-x="${b.x}" data-y="${b.y}" title="Im Bild zeigen"` : ' class="ast-item"';
-    const q = `?t=${Math.round(d.erstellt || 0)}`;
-    host.innerHTML = head('<span class="chip">JPL · Gaia</span>') + `
-      <p class="ast-lead">${n ? `Du hast <b class="tnum" data-count>${n}</b> Asteroiden fotografiert${f ? `, der schwächste mit <b class="tnum">${astMag(f.mag)}</b>: ${esc(f.name)}` : ''}.`
-        : items.length ? `Laut JPL lagen ${items.length} Kleinkörper im Feld – nachgewiesen ist keiner.` : 'Laut JPL lag in deinen Aufnahmenächten kein bekannter Kleinkörper im Bildfeld.'}</p>
-      <div class="depth-kpis ast-kpis">
-        <div><small>Nachgewiesen</small><b class="tnum" data-count>${nf.format(n)}</b><span>in deinen Einzelbildern</span></div>
-        <div><small>Schwächster</small><b class="tnum">${f ? astMag(f.mag) : '–'}</b><span>${f ? esc(f.name) : 'keine Helligkeit gemessen'}</span></div>
-        <div><small>Im Feld laut JPL</small><b class="tnum" data-count>${nf.format(d.im_feld || 0)}</b><span>${(d.naechte || []).length} ${(d.naechte || []).length === 1 ? 'Nacht' : 'Nächte'} abgeglichen</span></div>
-        <div><small>Suchgrenze</small><b class="tnum">${astMag(d.grenze)}</b><span>Suchkreis ${de1(d.suchradius || 0, 0)}″ um die Bahn</span></div>
+    const q = `?t=${Math.round(d.erstellt || 0)}`, nn = (d.naechte || []).length;
+    const acts = `${d.bild && items.length ? `<button class="btn ghost sm${AST_MARKS.on ? ' on' : ''}" data-ast-marks aria-pressed="${AST_MARKS.on}">${icon('target')}Im Bild markieren</button>` : ''}
+      <button class="linkbtn sm" data-ast-run>Neu suchen</button>`;
+    // dicht wie das Analyse-Dashboard: ein Satz, Kennzahlen als Leiste, Funde als Tabelle (erst AST_ROWS Zeilen)
+    host.innerHTML = head(acts) + `
+      <p class="ast-lead">${n ? `Du hast <b class="tnum">${n}</b> Asteroiden fotografiert${f ? `, der schwächste mit <b class="tnum">${astMag(f.mag)}</b>: ${esc(f.name)}` : ''}.`
+        : items.length ? `Laut JPL lagen ${items.length} Kleinkörper im Feld – nachgewiesen ist keiner.` : 'Laut JPL lag in deinen Aufnahmenächten kein bekannter Kleinkörper im Bildfeld.'}
+        <span class="dim">Bahnen von JPL (nur Himmelskoordinaten und Zeit), Nachweis entlang der Bahn in den Einzelbildern.</span></p>
+      <div class="ad-kpis ast-kpis">
+        <div class="ad-kpi"><small>Nachgewiesen</small><b class="tnum" data-count>${nf.format(n)}</b><small class="dim">in Einzelbildern</small></div>
+        <div class="ad-kpi"><small>Schwächster</small><b class="tnum">${f ? astMag(f.mag) : '–'}</b><small class="dim">${f ? esc(f.name) : 'keine Helligkeit gemessen'}</small></div>
+        <div class="ad-kpi"><small>Im Feld laut JPL</small><b class="tnum" data-count>${nf.format(d.im_feld || 0)}</b><small class="dim">${nn} ${nn === 1 ? 'Nacht' : 'Nächte'} abgeglichen</small></div>
+        <div class="ad-kpi"><small>Suchgrenze</small><b class="tnum">${astMag(d.grenze)}</b><small class="dim">Kreis ${de1(d.suchradius || 0, 0)}″ um die Bahn</small></div>
       </div>
-      ${items.length ? `<ul class="ast-list">${items.map((b) => {
-        const [lab, cls] = AST_STATUS[b.status] || [b.status, ''];
-        return `<li${at(b)}>${b.bild ? `<img src="/api/stacking/results/${r.id}/asteroids/${esc(b.bild)}${q}" alt="Gemittelter Ausschnitt entlang der Bahn" loading="lazy" width="72" height="72">` : `<span class="ast-ph">${icon('orbit')}</span>`}
-          <div><div><b>${esc(b.name)}</b>${b.art === 'Komet' ? ' <small class="mut">Komet</small>' : ''} <span class="chip ${cls}">${esc(lab)}</span></div>
-          <div class="sm tnum">${b.mag != null ? `gemessen <b>${astMag(b.mag)}</b>${b.mag_err >= 0.05 ? ` ± ${de1(b.mag_err, 1)}` : ''} · ` : ''}JPL ${astMag(b.vmag)}${b.rate != null ? ` · ${de1(b.rate, 0)}″/h` : ''}</div>
-          <div class="dim sm">${fnight(b.night)}${b.snr != null && b.status === 'nachgewiesen' ? ` · SNR ${de1(b.snr)} in ${b.aufnahmen} Aufnahmen · ${de1(b.abweichung)}″ neben der Vorhersage` : b.grund ? ` · ${esc(b.grund)}` : ''}</div></div></li>`;
-      }).join('')}</ul>
-        <p class="dim sm">Bild links: alle Aufnahmen entlang der vorhergesagten Bahn gemittelt (Stack abgezogen) – ein echter Asteroid erscheint als Punkt in der Mitte.</p>` : ''}
-      <div class="row depth-acts">${d.bild && items.length ? `<button class="btn ghost sm${AST_MARKS.on ? ' on' : ''}" data-ast-marks aria-pressed="${AST_MARKS.on}">${icon('target')}Im Bild markieren</button>` : ''}
-        <span class="grow"></span><button class="linkbtn sm" data-ast-run>Neu suchen</button></div>
+      ${items.length ? `<div class="ad-scroll"><table class="ad-tab ast-tab${astAll ? ' all' : ''}"><thead><tr><th></th><th>Kleinkörper</th><th>Status</th><th>gemessen</th><th>JPL</th><th>Bewegung</th><th>Nachweis</th></tr></thead><tbody>
+        ${items.map((b) => {
+          const [lab, cls] = AST_STATUS[b.status] || [b.status, ''], go = opts.onFocus && b.x != null && d.bild;
+          return `<tr${go ? ` tabindex="0" data-x="${b.x}" data-y="${b.y}" title="Im Bild zeigen"` : ' class="nofocus"'}>
+            <td class="ast-img">${b.bild ? `<img src="/api/stacking/results/${r.id}/asteroids/${esc(b.bild)}${q}" alt="Gemittelter Ausschnitt entlang der Bahn" loading="lazy" width="40" height="40">` : ''}</td>
+            <td class="ad-name"><b>${esc(b.name)}</b>${b.art === 'Komet' ? ' <small class="mut">Komet</small>' : ''}<small class="mut"> · ${fnight(b.night)}</small><span class="chip ast-chip-m ${cls}">${esc(lab)}</span></td>
+            <td><span class="chip ${cls}">${esc(lab)}</span></td>
+            <td class="tnum">${b.mag != null ? `<b>${astMag(b.mag)}</b>${b.mag_err >= 0.05 ? ` ± ${de1(b.mag_err, 1)}` : ''}` : '–'}</td>
+            <td class="tnum mut">${astMag(b.vmag)}</td><td class="tnum">${b.rate != null ? `${de1(b.rate, 0)}″/h` : '–'}</td>
+            <td class="ast-why sm">${b.status === 'nachgewiesen' && b.snr != null ? `SNR ${de1(b.snr)} · ${b.aufnahmen} Aufn. · ${de1(b.abweichung)}″ neben der Vorhersage` : esc(b.grund || '')}</td></tr>`;
+        }).join('')}</tbody></table></div>
+        ${items.length > AST_ROWS ? `<button class="linkbtn sm ad-more" data-ast-more>${astAll ? 'Weniger anzeigen' : `Alle ${nf.format(items.length)} anzeigen`}</button>` : ''}
+        <p class="dim sm ast-note">Bildchen: alle Aufnahmen entlang der vorhergesagten Bahn gemittelt, Stack abgezogen – ein echter Asteroid erscheint als Punkt in der Mitte.</p>` : ''}
       ${(d.hinweise || []).map(h => `<p class="dim sm depth-note">${esc(h)}</p>`).join('')}`;
-    $('[data-ast-run]', host)?.addEventListener('click', run);
-    const list = $('.ast-list', host);
-    list?.addEventListener('click', (ev) => { const li = ev.target.closest('[data-x]'); if (li) opts.onFocus(+li.dataset.x, +li.dataset.y, d.bild.w); });
-    list?.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') ev.target.closest('[data-x]')?.click(); });
+    $$('[data-ast-run]', host).forEach(b => b.addEventListener('click', run));
+    const tab = $('.ast-tab', host);
+    tab?.addEventListener('click', (ev) => { const tr = ev.target.closest('[data-x]'); if (tr) opts.onFocus(+tr.dataset.x, +tr.dataset.y, d.bild.w); });
+    tab?.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') ev.target.closest('[data-x]')?.click(); });
+    $('[data-ast-more]', host)?.addEventListener('click', (ev) => {
+      astAll = !astAll; tab.classList.toggle('all', astAll);
+      ev.currentTarget.textContent = astAll ? 'Weniger anzeigen' : `Alle ${nf.format(items.length)} anzeigen`;
+    });
     $('[data-ast-marks]', host)?.addEventListener('click', (ev) => {
       AST_MARKS.on = !AST_MARKS.on; store.set('bild.asteroiden.marken', AST_MARKS.on);
       ev.currentTarget.classList.toggle('on', AST_MARKS.on); ev.currentTarget.setAttribute('aria-pressed', AST_MARKS.on);

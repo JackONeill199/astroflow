@@ -3,7 +3,7 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
-## 0.39.0 – 07.11.2026
+## 0.42.0 – 07.11.2026
 
 ### Neu
 - **Asteroiden in deinen Bildern.** Im Reiter **Analyse** jedes Objekts zeigt der neue Abschnitt „Asteroiden“, welche bekannten
@@ -14,9 +14,19 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   Name, gemessene und vorhergesagte Helligkeit, Bewegung in ″/h und der gemittelte Ausschnitt; im Bild markiert mit
   Bahnstrich (abschaltbar). Sind die Rohbilder schon gelöscht, steht dort „im Feld, nicht nachgewiesen“.
   An JPL gehen nur Himmelskoordinaten und Zeit – nie dein Standort (geozentrische Abfrage).
-- **Analyse-Dashboard:** neue Kennzahl „Asteroiden“, Rekord „Schwächster Asteroid“ und die Liste aller nachgewiesenen
-  Asteroiden über alle Bilder; „Alles analysieren“ kann die Suche für alle gelösten Objekte nacheinander ausführen.
+- **Analyse-Dashboard:** neue Kennzahl „Asteroiden“ in der Leiste, Rekord „Schwächster Asteroid“, Spalte in „Was schon berechnet ist“
+  und eine kompakte Liste aller nachgewiesenen Asteroiden (erst 8 Zeilen, „Alle anzeigen“); „Alles analysieren“ kann die Suche für alle gelösten Objekte nacheinander ausführen.
 - **Sage:** neue Erfolge „Kleinplanetenjäger“ (erster Asteroid) und „Asteroidengürtel“ (10 verschiedene).
+
+## 0.38.3 – 07.11.2026
+
+### Behoben
+- **Analyse-Dashboard dichter.** **Bilder → Analyse** zeigt dieselben Inhalte auf rund 40 % weniger Höhe (1440 px: 4 090 → 2 500 px):
+  Kennzahlen als eine Leiste statt sieben Kacheln (die Rekordwerte stehen nur noch unter „Rekorde“, dafür erfasste Sterne und
+  Galaxien), „Was schon berechnet ist“ als Tabelle mit Balken je Art statt großer Ringe, Rekorde dreispaltig, Verläufe, Rangliste,
+  Beste Nächte, Bildqualität und Tutor-Befunde in Dreierreihen mit gleich hohen Kästen, Rangliste und Nächte einzeilig,
+  Veränderungen neben den Katalogen (erst 8 Zeilen, „Alle anzeigen“ klappt den Rest auf), kleinere Katalogfelder und engere
+  Tabellenzeilen. Filter, „Alles analysieren“, 3D-Wolke, Sprung zur Bildstelle und Animationen bleiben unverändert.
 
 ## 0.38.2 – 07.11.2026
 

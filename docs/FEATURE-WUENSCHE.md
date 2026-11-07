@@ -15,7 +15,7 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md`, Erledigtes im `CHANGELOG.md`.
 | 7 | 04.11.2026 | Standorte nach Datum | umgesetzt in 0.23.0 (Kür Standort-Rückrechnung: Vorschlag, kein Automatismus) |
 | 8 | 05.11.2026 | Lichtkurven veränderlicher Sterne | offen |
 | 9 | 05.11.2026 | HR-Diagramm von Sternhaufen | offen |
-| 10 | 05.11.2026 | Asteroiden in eigenen Bildern | umgesetzt in 0.39.0 |
+| 10 | 05.11.2026 | Asteroiden in eigenen Bildern | umgesetzt in 0.42.0 |
 | 11 | 05.11.2026 | Exoplanet-Transits | offen |
 | 12 | 05.11.2026 | „Wie tief schaust du?“ – Gaia-Entfernungen, Grenzgröße, 3D | umgesetzt in 0.25.0 |
 | 13 | 05.11.2026 | Vergleich mit Referenzbild/früheren Nächten (neue Lichtquellen) | umgesetzt in 0.25.0 (Durchmusterung: nur neu/fehlend) |
@@ -139,7 +139,7 @@ Gaia-Abgleich der Farbkalibrierung, Einzelbild-Zeitreihen über Stunden, SkyTrac
 - **9 HR-Diagramm:** Farbe/Helligkeit jedes Sterns aus dem Stack, an Gaia geeicht → Farben-Helligkeits-Diagramm (M3, M45,
   h und χ Persei), Abknickpunkt/Alter; Erklärung über Sage.
 - **10 Asteroiden:** langsame Punkte, die über die Einzelbilder wandern, mit JPL SB-Ident abgleichen (SkyTrace hat die Abfrage) –
-  „Du hast 9 Asteroiden fotografiert, der schwächste 16,2 mag“. **Umgesetzt in 0.39.0** (`asteroids.py`): JPL-Vorhersage
+  „Du hast 9 Asteroiden fotografiert, der schwächste 16,2 mag“. **Umgesetzt in 0.42.0** (`asteroids.py`): JPL-Vorhersage
   geozentrisch je Nacht, Nachweis per Shift-and-Add entlang der Bahn in den Einzelbildern, Abschnitt im Reiter Analyse,
   Dashboard-Rekord, Sage-Erfolge. Ohne Rohbilder nur „im Feld, nicht nachgewiesen“.
 - **11 Exoplanet-Transits:** bei hellen Sternen (z. B. HD 189733, 2,5 % Tiefe) mit 80 mm knapp machbar – ambitioniert.
