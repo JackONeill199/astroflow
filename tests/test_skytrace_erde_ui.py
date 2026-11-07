@@ -500,10 +500,16 @@ def test_satellit_in_der_flachen_karte(server, browser, tmp_path):
     h = next(x for x in scene["hits"] if x["kind"] == "sat")
     lat, lon = h["ground"][round((h["t_pass"] - h["window"][0]) / h["ground_step"])]
     page.evaluate(f"document.querySelector('#steHost')._ste.flat.flyTo({lat}, {lon}, 0.12)")
-    page.wait_for_function("document.querySelector('#steHost')._ste.state().flat.sats.length === 2")
+    # flyTo setzt nur „dirty“ – die Lage der Punkte stammt aus dem nächsten gezeichneten Bild (CI ohne GPU zeichnet langsamer)
+    near = ("(() => { const s = document.querySelector('#steHost')._ste.state().flat.sats, b = document.querySelector('.ste-stage')"
+            ".getBoundingClientRect(); return s.length === 2 && Math.abs(s[0].x - b.width / 2) < 2 && Math.abs(s[0].y - b.height / 2) < 2 })()")
+    try:
+        page.wait_for_function(near, timeout=10000)                       # Punkt beim Durchgang liegt am Bodenpunkt
+    except Exception:
+        s = page.evaluate("document.querySelector('#steHost')._ste.state().flat.sats")
+        raise AssertionError(f"Satellitenpunkt nicht am Bodenpunkt (Bühne {page.locator('.ste-stage').bounding_box()}): {s}")
     s = page.evaluate("document.querySelector('#steHost')._ste.state().flat.sats")
     box = page.locator(".ste-stage").bounding_box()
-    assert abs(s[0]["x"] - box["width"] / 2) < 2 and abs(s[0]["y"] - box["height"] / 2) < 2       # Punkt beim Durchgang liegt am Bodenpunkt
     px, py = box["x"] + s[0]["x"] + 5, box["y"] + s[0]["y"] + 4
     page.mouse.move(px, py)
     page.wait_for_selector(".ste-tip:not([hidden])")
