@@ -26,7 +26,7 @@ def download(url,path,settings,max_bytes=1200*1024**2):
     """Reuse existing bulk files only; worldwide network fallback is forbidden."""
     check_stop(settings)
     if path.exists():return path
-    from opensky_archive import ArchiveAccessError
+    from archive_errors import ArchiveAccessError
     raise ArchiveAccessError('needs_archive','Diese öffentliche Quelle bietet nur weltweite Sammelarchive ohne Standortfilter. Automatischer Vollarchiv-Download ist gesperrt; passenden lokalen Bestand oder eine eigene Archivquelle verwenden.')
 
 
@@ -170,7 +170,7 @@ def eth_tles(stamp,settings):
     archive. Publish only after every page succeeded, and cache by UTC minute.
     ETH started collecting on 2023-03-10; absence is not negative evidence.
     """
-    from opensky_archive import ArchiveAccessError
+    from archive_errors import ArchiveAccessError
     from catalog_matching import _bounded_jpl
     from filelock import Timeout as LockTimeout
     from json_store import read_json
@@ -257,7 +257,7 @@ def orbit_snapshot(stamp,settings):
 
 def gmn_events(start,end,settings,site=None):
     """Import official GMN monthly trajectories once, then query a UTC time index."""
-    from opensky_archive import ArchiveAccessError
+    from archive_errors import ArchiveAccessError
     from visibility import above_horizon
     if not site:raise ArchiveAccessError('not_checkable','Standort fehlt; ohne Standort wird kein Meteorarchiv geladen.')
     first=dt.datetime.fromtimestamp(start,dt.timezone.utc).date().replace(day=1)

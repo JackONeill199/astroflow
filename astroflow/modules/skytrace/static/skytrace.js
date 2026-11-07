@@ -804,14 +804,13 @@ async function settings(el) {
       <div class="row"><button class="btn" type="submit">Standort speichern</button><span class="mut sm" id="siteNote"></span></div></form>
     <form class="panel" id="catf"><h2 style="margin-bottom:12px">${icon('orbit')}Katalogabgleich</h2>
       ${[['enabled', 'Online-Abgleich aktivieren', 'Keine Fotos werden übertragen'], ['auto_solve', 'Plate Solving automatisch nachholen', 'Für Katalogkoordinaten, auch bei alten Läufen'],
-        ['auto_satellites', 'Satellitendaten zur Aufnahmezeit abrufen', 'UTC aus Astrofotos · Cache, Standort und Bildfeld'], ['auto_meteors', 'Lokale Meteorflugbahnen prüfen', 'GMN · nur im Zeitfenster über deinem Horizont'],
-        ['auto_aircraft', 'Historische Flugpositionen abrufen', 'Standorthorizont + Zeitfenster · OpenSky-Konto nötig']]
+        ['auto_satellites', 'Satellitendaten zur Aufnahmezeit abrufen', 'UTC aus Astrofotos · Cache, Standort und Bildfeld'], ['auto_meteors', 'Lokale Meteorflugbahnen prüfen', 'GMN · nur im Zeitfenster über deinem Horizont']]
         .map(([k, l, s]) => `<label class="modrow"><div><b>${l}</b><div class="mut sm">${s}</div></div><input type="checkbox" name="${k}" ${cfg[k] !== false ? 'checked' : ''}><span class="switch"></span></label>`).join('')}
       <div class="srcs"><span><b>JPL</b> bekannte Asteroiden · Ephemeriden zur echten Aufnahmezeit</span><span><b>CNEOS</b> Feuerkugeln · nur vorhandener Zeitcache</span><span><b>GMN</b> vermessene Meteorflugbahnen</span></div>
       <p class="dim sm" id="archive">Archivstatus wird geladen …</p>
       <details><summary class="sm mut">Eigene Archivdateien / Download-URLs (optional)</summary>
         <label class="field" style="margin-top:10px"><span>Historische Satellitenbahnen · TLE</span><input name="tle_file" placeholder="Lokaler Pfad zur TLE-Datei" value="${esc(cfg.tle_file || '')}"><input name="tle_url" type="url" placeholder="oder https://… (direkter Download)" value="${esc(cfg.tle_url || '')}" style="margin-top:6px"></label>
-        <label class="field"><span>Historische Flugpositionen · CSV</span><input name="flight_file" placeholder="Lokaler Pfad zur ADS-B-Datei" value="${esc(cfg.flight_file || '')}"><input name="flight_url" type="url" placeholder="oder https://…" value="${esc(cfg.flight_url || '')}" style="margin-top:6px">
+        <label class="field"><span>Eigene Flugdaten (ADS-B) · CSV</span><input name="flight_file" placeholder="Lokaler Pfad zur ADS-B-Datei" value="${esc(cfg.flight_file || '')}"><input name="flight_url" type="url" placeholder="oder https://…" value="${esc(cfg.flight_url || '')}" style="margin-top:6px">
           <small>CSV: timestamp (UTC/Unix), icao24, latitude, longitude, geo_altitude (m), optional callsign. Maximal 15 s Lücke.</small></label></details>
       <div class="row" style="margin-top:12px"><button class="btn" type="submit">Speichern</button><span class="mut sm">Bestehende Ergebnisse über „Zeitreihen aktualisieren“ erneuern.</span></div></form></div>
     <div>
@@ -825,11 +824,6 @@ async function settings(el) {
     <div class="panel"><label class="modrow" style="border:0;padding:0"><div><b>Gestackte Aufnahmen automatisch analysieren</b>
         <div class="mut sm">Nach jedem Stacken sucht SkyTrace in den neuen Aufnahmen nach Meteoren und Satelliten – je Nacht ein Lauf, nacheinander im Hintergrund.</div></div>
         <input type="checkbox" id="autoSt" ${eng.configured.auto !== false ? 'checked' : ''}><span class="switch"></span></label></div>
-    <form class="panel" id="oskf"><h2 style="margin-bottom:8px">OpenSky verbinden</h2>
-      <p class="mut sm" style="margin:0 0 12px">Der Anbieter muss dein Konto für historische Trino-Daten freischalten. Das Passwort gibst du nur auf der offiziellen HTTPS-Anmeldeseite ein.</p>
-      <div class="row" style="flex-wrap:nowrap"><input name="user" placeholder="OpenSky-Benutzername" value="${esc(cfg.opensky_user || '')}" autocomplete="username" style="flex:1"><button class="btn ghost" type="submit">Verbinden</button></div>
-      <p class="sm mut" id="oskState" style="margin:10px 0 0"></p><a class="btn sm" id="oskLogin" target="_blank" rel="noreferrer" hidden>Bei OpenSky anmelden ↗</a>
-      <p class="sm" style="margin:8px 0 0"><a href="https://opensky-network.org/data/trino" target="_blank" rel="noreferrer">Archivzugang beim Anbieter beantragen ↗</a></p></form>
     <div class="panel" id="satcatp" hidden><h2 style="margin-bottom:8px">Satellitennamen (CelesTrak)</h2>
       <p class="sm warn" id="satcatState" style="margin:0 0 12px"></p>
       <p class="mut sm" style="margin:0 0 12px">CelesTrak verlangt, nach einer Fehlerantwort nicht weiter abzufragen, bis ein Mensch die Ursache geprüft hat. Bei einer Sperre (HTTP 403) erst freigeben, wenn sie aufgehoben ist – sonst wird sie verlängert.</p>
@@ -873,7 +867,7 @@ async function settings(el) {
   $('#catf').onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target.elements, body = {};
-    for (const k of ['enabled', 'auto_solve', 'auto_satellites', 'auto_meteors', 'auto_aircraft']) body[k] = f[k].checked;
+    for (const k of ['enabled', 'auto_solve', 'auto_satellites', 'auto_meteors']) body[k] = f[k].checked;
     for (const k of ['tle_file', 'tle_url', 'flight_file', 'flight_url']) body[k] = f[k].value;
     try { Object.assign(cfg, await send(T + '/settings', body)); toast('Katalogeinstellungen gespeichert.', 'ok'); } catch (err) { toast(err.message, 'err'); }
   };
@@ -892,26 +886,16 @@ async function settings(el) {
   const archive = async () => {
     try {
       const d = await api(T + '/catalog/status');
-      if (!$('#archive') || !$('#oskState')) return null;   // inzwischen weiternavigiert
+      if (!$('#archive')) return null;   // inzwischen weiternavigiert
       $('#archive').textContent = `Satelliten: ${d.satellite_time_queries} gespeicherte Zeitabfragen · lokale Jahre ${d.satellite_years.join(', ') || 'keine'} · GMN-Monate ${d.meteor_months.join(', ') || 'keine'} · Satellitennamen ${d.satcat_file ? 'vom ' + new Date(d.satcat_file.updated * 1000).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : 'noch nicht geladen'} · ${Math.round(d.bytes / 1048576)} MB Cache`;
-      $('#oskState').textContent = d.opensky.detail;
       $('#satcatp').hidden = !d.satcat?.reason;
       if (d.satcat?.reason) $('#satcatState').textContent = d.satcat.reason;
-      $('#oskLogin').hidden = !d.opensky.auth_url;
-      if (d.opensky.auth_url) $('#oskLogin').href = d.opensky.auth_url;
-      return d.opensky.status;
+      return null;
     } catch { if ($('#archive')) $('#archive').textContent = 'Archivstatus vorübergehend nicht erreichbar.'; return null; }
   };
   archive();
   $('#satcatRelease').onclick = async () => {
     try { await send(T + '/catalog/satcat/release', {}); toast('Namensabfrage freigegeben – gilt für die nächste Analyse.', 'ok'); archive(); } catch (err) { toast(err.message, 'err'); }
-  };
-  $('#oskf').onsubmit = async (e) => {
-    e.preventDefault();
-    try {
-      await send(T + '/catalog/connect', { user: e.target.elements.user.value });
-      for (let i = 0; i < 20 && $('#oskState'); i++) { const s = await archive(); if (s !== 'connecting') break; await new Promise(r => setTimeout(r, 1500)); }
-    } catch (err) { toast(err.message, 'err'); }
   };
   const of = $('#ovf');
   of.elements.unit.value = ov.unit || 'arcsec';
