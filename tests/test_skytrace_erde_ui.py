@@ -500,14 +500,31 @@ def test_satellit_in_der_flachen_karte(server, browser, tmp_path):
     h = next(x for x in scene["hits"] if x["kind"] == "sat")
     lat, lon = h["ground"][round((h["t_pass"] - h["window"][0]) / h["ground_step"])]
     page.evaluate(f"document.querySelector('#steHost')._ste.flat.flyTo({lat}, {lon}, 0.12)")
-    # flyTo setzt nur „dirty“ – die Lage der Punkte stammt aus dem nächsten gezeichneten Bild (CI ohne GPU zeichnet langsamer)
-    near = ("(() => { const s = document.querySelector('#steHost')._ste.state().flat.sats, b = document.querySelector('.ste-stage')"
-            ".getBoundingClientRect(); return s.length === 2 && Math.abs(s[0].x - b.width / 2) < 2 && Math.abs(s[0].y - b.height / 2) < 2 })()")
+    # Auf den fertig gezeichneten Zustand warten: `flat.sats` sind die Marken der letzten Zeichnung. Direkt nach dem Umschalten stehen beide
+    # Satelliten schon darin, aber noch in der alten Ansicht (CI ohne GPU: −1428 px); `flyTo` zeichnet erst im nächsten Bild. Der Punkt beim
+    # Durchgang liegt am Bodenpunkt → nach der Fahrt in der Mitte der Bühne.
+    centered = ("(() => { const st = document.querySelector('.ste-stage'), s = document.querySelector('#steHost')._ste.state().flat.sats;"
+                " return s.length === 2 && s.every(x => Math.abs(x.x - st.clientWidth / 2) < 2 && Math.abs(x.y - st.clientHeight / 2) < 2); })()")
     try:
-        page.wait_for_function(near, timeout=10000)                       # Punkt beim Durchgang liegt am Bodenpunkt
+        page.wait_for_function(centered, timeout=10000)
     except Exception:
-        s = page.evaluate("document.querySelector('#steHost')._ste.state().flat.sats")
-        raise AssertionError(f"Satellitenpunkt nicht am Bodenpunkt (Bühne {page.locator('.ste-stage').bounding_box()}): {s}")
+        raise AssertionError(page.evaluate("JSON.stringify({sats: document.querySelector('#steHost')._ste.state().flat.sats,"
+                                           " w: document.querySelector('.ste-stage').clientWidth, h: document.querySelector('.ste-stage').clientHeight})"))
+    # Datumsgrenze/Weltkopien: Kartenmitte fast gegenüber (179° daneben, weit herausgezoomt). Der Punkt beim Durchgang muss in derselben
+    # Weltkopie liegen wie alle übrigen Marken (`screenOf` = nächste Kopie) – an pts[0] verankert lag er genau eine Weltbreite daneben.
+    far = (lon + 179 + 180) % 360 - 180
+    page.evaluate(f"document.querySelector('#steHost')._ste.flat.flyTo({lat}, {far}, 0.02)")
+    # erst erfüllt, wenn neu gezeichnet ist (vorher stehen die Marken noch in der Bildmitte, `want` liegt weit daneben)
+    same = (f"(() => {{ const f = document.querySelector('#steHost')._ste.flat, s = document.querySelector('#steHost')._ste.state().flat.sats;"
+            f" const want = f.screenOf({lat}, {lon})[0]; return s.length === 2 && s.every(x => Math.abs(x.x - want) < 1); }})()")
+    try:
+        page.wait_for_function(same, timeout=10000)
+    except Exception:
+        raise AssertionError(page.evaluate(f"JSON.stringify({{sats: document.querySelector('#steHost')._ste.state().flat.sats,"
+                                           f" want: document.querySelector('#steHost')._ste.flat.screenOf({lat}, {lon}),"
+                                           f" Z: document.querySelector('#steHost')._ste.state().flat.Z}})"))
+    page.evaluate(f"document.querySelector('#steHost')._ste.flat.flyTo({lat}, {lon}, 0.12)")
+    page.wait_for_function(centered, timeout=10000)
     s = page.evaluate("document.querySelector('#steHost')._ste.state().flat.sats")
     box = page.locator(".ste-stage").bounding_box()
     px, py = box["x"] + s[0]["x"] + 5, box["y"] + s[0]["y"] + 4

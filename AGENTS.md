@@ -344,7 +344,7 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
     der vom Server geladenen Pakete (numpy, scipy, astropy …) – sonst will pip sie ersetzen, unter Windows sind geladene .pyd gesperrt.
     Nur CPU-PyTorch (GPU-Variante nicht verlässlich ohne Hardwareprüfung). Danach `skytrace.Module.check_engine()`; `gpu._TRIED` zurück.
   - Downloads (`components.download`) setzen Teil-Downloads per HTTP-Range fort (`.part` im Werkzeugordner); kaputtes ZIP → neu laden.
-    Seit 0.45.1 auch innerhalb eines Laufs: bis `DL_TRIES` 6 Versuche (Pause `DL_PAUSE`·2ⁿ, ≤ 30 s) bei Verbindungsabbruch, zu wenig Bytes,
+    Seit 0.45.2 auch innerhalb eines Laufs: bis `DL_TRIES` 6 Versuche (Pause `DL_PAUSE`·2ⁿ, ≤ 30 s) bei Verbindungsabbruch, zu wenig Bytes,
     5xx/429 oder HTML statt Datei; auch Downloads in den Speicher (ASTAP-CLI, Katalog) setzen per Range fort, `iter_raw` + `Accept-Encoding: identity`
     (sonst gingen bis 1 MB gepufferte Bytes verloren). Anlass: Tag-Lauf v0.44.0, SourceForge trennte nach 1,4 von 5,8 MB. Test `test_download.py`.
   - **Installer-Auftrag:** Inno schreibt die Auswahl nach `%APPDATA%\AstroFlow\komponenten-auftrag.txt` (eine je Zeile, `astap:d05` …);
@@ -863,7 +863,7 @@ Tastenkürzel: `/` Suche in Listen, `1–4` Tabs (Objekt, SkyTrace-Lauf), `F` Vo
 **Nach Änderungen an `index.html`/`app.js`/`style.css` `?v=` in `index.html` hochzählen**; Modul-Dateien bekommen die Build-Kennung automatisch.
 
 ## Tests (`tests/`)
-**CI** (seit 0.45.1, `.github/workflows/tests.yml`): volle Suite bei jedem PR/Push auf `main`, Ubuntu + Windows, Python 3.12, Playwright-Chromium, dazu skyfield/sgp4/OpenCV headless/photutils/PyAV (SkyTrace-Tests ohne PyTorch). Pflichtprüfungen für `main`: `pytest (ubuntu-latest)`, `pytest (windows-latest)` (Ruleset `.github/rulesets/main-schutz.json`, Veröffentlichung: `docs/PUBLIC-RELEASE.md`). Neue Tests müssen auch unter Linux laufen oder sauber überspringen.
+**CI** (seit 0.45.2, `.github/workflows/tests.yml`): volle Suite bei jedem PR/Push auf `main`, Ubuntu + Windows, Python 3.12, Playwright-Chromium, dazu skyfield/sgp4/OpenCV headless/photutils/PyAV (SkyTrace-Tests ohne PyTorch). Pflichtprüfungen für `main`: `pytest (ubuntu-latest)`, `pytest (windows-latest)` (Ruleset `.github/rulesets/main-schutz.json`, Veröffentlichung: `docs/PUBLIC-RELEASE.md`). Neue Tests müssen auch unter Linux laufen oder sauber überspringen.
 **Parallel (seit 04.11.2026):** `pytest.ini` setzt `-n auto --maxprocesses=8 --dist load` (höchstens 8 Worker; voller Lauf ~82 s, zusätzlicher RAM-Bedarf gemessen ~3,3 GB) (pytest-xdist, `requirements-dev.txt` – dort auch Playwright). Seriell 5,5 min → parallel ~1,2 min,
 gleiche 240 bestanden / 4 übersprungen. Regeln für neue Tests: nur `tmp_path`/`tmp_path_factory` für Dateien (nie feste Pfade oder die Arbeitsinstanz), Server auf Port 0/`_free_port()`,
 Umgebungsvariablen nur per `monkeypatch`, keine Abhängigkeit von der Reihenfolge oder anderen Tests. `conftest.py` begrenzt unter xdist BLAS-/Pipeline-Threads auf 2 je Worker
