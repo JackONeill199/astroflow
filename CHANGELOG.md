@@ -10,6 +10,12 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 - Einstellungen: Alle Ein/Aus-Optionen (Bilder, Bild-Tutor, GraXpert, Speicher, Gaia, „Was dein Bild zeigt“, GPU) sind jetzt echte Schalter mit klarer Ein/Aus-Farbe, größerer Fläche und Fokusring statt eines winzigen Kästchens; die ganze Zeile ist klickbar. Der Schalter selbst ist größer und hebt sich im ausgeschalteten Zustand deutlicher ab.
 - Gaia-Farbkalibrierung: Der Hilfetext nennt die tatsächlich abgefragten Dienste (GAVO, ARI Heidelberg, zuletzt ESA).
 
+## 0.45.4 – 07.11.2026
+
+### Behoben
+- Sage: Mit `ASTROFLOW_SAGE_OFFLINE=1` (abgeschottete Installationen) fragt auch eine bereits laufende Recherche im Hintergrund
+  keine Fachdienste (SIMBAD, arXiv …) mehr ab; die Einstellung galt bisher nur für neu gestartete Abfragen.
+
 ## 0.45.3 – 07.11.2026
 
 ### Entfernt

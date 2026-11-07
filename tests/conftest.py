@@ -43,6 +43,35 @@ def pytest_configure(config):
         real_init(self, args, *a, **kw)
 
     subprocess.Popen.__init__ = guarded
+    _block_network()
+
+
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]", "testserver"}
+
+
+def _block_network():
+    """Schutz: Tests gehen nie ins echte Netz (httpx). Nur localhost/Testserver; alles andere scheitert sofort wie ein
+    Verbindungsfehler. Anlass 07.11.2026: ein Sage-Hintergrundthread aus einem früheren Test fragte arXiv ab und
+    landete in der Zählung von test_update_hinweis. Tests mit Attrappen (monkeypatch auf httpx.get o. ä.) sind nicht betroffen."""
+    import httpx
+
+    def check(request):
+        host = request.url.host or ""
+        if host not in LOCAL_HOSTS:
+            raise httpx.ConnectError(f"Netz in Tests gesperrt: {request.url.scheme}://{host}", request=request)
+
+    real, real_async = httpx.HTTPTransport.handle_request, httpx.AsyncHTTPTransport.handle_async_request
+
+    def handle(self, request):
+        check(request)
+        return real(self, request)
+
+    async def handle_async(self, request):
+        check(request)
+        return await real_async(self, request)
+
+    httpx.HTTPTransport.handle_request = handle
+    httpx.AsyncHTTPTransport.handle_async_request = handle_async
 
 UI_FILES = ("test_ui_layout.py", "test_skytrace_3d_ui.py", "test_skytrace_video_ui.py", "test_skytrace_erde_ui.py")
 
