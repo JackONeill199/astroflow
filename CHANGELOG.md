@@ -3,13 +3,15 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
-## 0.45.2 – 07.11.2026
+## 0.45.3 – 07.11.2026
 
 ### Entfernt
 - **SkyTrace: OpenSky-Flugarchiv (Trino) entfernt.** Der Archivzugang wird praktisch nur Forschung und Institutionen freigegeben, für
   normale Nutzer war die Funktion wirkungslos. Weg sind das Formular „OpenSky verbinden“, die Option „Historische Flugpositionen
   abrufen“ und das Paket `trino`. Eigene Flugdaten (CSV oder URL unter „Eigene Archivdateien“) funktionieren weiter; das
   Erkennungsmodell (OpenSkyCam) und die Flugzeug-Erkennung über Bewegung sind nicht betroffen. Alte Einstellungen werden still ignoriert.
+
+## 0.45.2 – 07.11.2026
 
 ### Behoben
 - **Downloads überstehen Verbindungsabbrüche.** Bricht die Übertragung von ASTAP, Sterndatenbank oder GraXpert mitten
