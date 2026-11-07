@@ -150,7 +150,7 @@ function FlatMap(host, deps) {
         if (!hh || f <= .01) continue;
         const cs = cells(hh); if (!cs.max) continue;
         for (const c of cs) {
-          const t = c.v / cs.max, a = smooth(th, th + .08, t) * smooth(.04, .3, t) * (.3 + .65 * t) * k * f; if (a < .01) continue;
+          const t = c.v / cs.max, a = smooth(th, th + .08, t) * smooth(.04, .3, t) * (.08 + .92 * Math.pow(t, 1.3)) * k * f * deps.heatOp(); if (a < .004) continue;
           const dl = c.km / 2 / 111.195, dn = c.km / 2 / (111.195 * Math.cos(c.lat * D2R));
           const [sx0, sy0] = llS(c.lat + dl, c.lon - dn), [sx1, sy1] = llS(c.lat - dl, c.lon + dn);
           if (sx1 < 0 || sy1 < 0 || sx0 > V.W || sy0 > V.H) continue;

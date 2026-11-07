@@ -3,6 +3,16 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.43.5 – 07.11.2026
+
+### Behoben
+- **3D-Erde: Die Heatmap der Standortsuche verdeckte die Karte und ließ sich nicht bequem abschalten.** Sie ist jetzt
+  deutlich durchsichtiger (heißester Bereich standardmäßig 40 % Deckkraft, schwache Zellen fast durchsichtig), sodass
+  Straßen, Ortsnamen und Marken darunter lesbar bleiben – auf dem Globus und auf der flachen Karte gleich.
+- **Heatmap ein-/ausblenden direkt dort, wo sie erscheint:** Knopf „Ausblenden“ an der Legende unten links und
+  „Heatmap ausblenden/einblenden“ in der Karte der Nacht (neben „Heatmap neu berechnen“); ausgeblendet verschwindet auch
+  die Legende. Unter „Ebenen“ gibt es zusätzlich einen Regler für die Deckkraft. Ein/Aus und Deckkraft werden gemerkt.
+
 ## 0.43.4 – 07.11.2026
 
 ### Behoben

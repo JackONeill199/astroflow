@@ -89,6 +89,16 @@ def test_erde_ansicht(server, browser, width, tmp_path):
     assert page.locator(".ste-legend").is_hidden()
     page.locator(".ste-layer:has([data-layer=heat])").click()
     page.wait_for_function("(s => s.layers.heat === 1 && s.reveal['2022-08-01'] === 1)(document.querySelector('#steHost')._ste.state())")
+    # Heatmap: Deckkraft-Regler (Standard 40 %, gemerkt) und Knopf an der Legende blenden sie samt Legende aus
+    assert page.locator(".ste-layers .ste-heatop").input_value() == "40"
+    page.evaluate("(() => { const i = document.querySelector('.ste-layers .ste-heatop'); i.value = 60; i.dispatchEvent(new Event('input', { bubbles: true })); })()")
+    assert page.evaluate("JSON.parse(localStorage.getItem('af.skytrace.erde.heatop'))") == 0.6
+    page.locator(".ste-legend-off").click()
+    page.wait_for_function("document.querySelector('#steHost')._ste.state().layers.heat === 0")
+    assert page.locator(".ste-legend").is_hidden() and not page.locator("[data-layer=heat]").is_checked()
+    page.locator(".ste-layer:has([data-layer=heat])").click()
+    page.wait_for_function("(s => s.layers.heat === 1 && s.reveal['2022-08-01'] === 1)(document.querySelector('#steHost')._ste.state())")
+    page.evaluate("(() => { const i = document.querySelector('.ste-layers .ste-heatop'); i.value = 40; i.dispatchEvent(new Event('input', { bubbles: true })); })()")
     # Detailkarte über das Schild des Vorschlags: Übernehmen, Heatmap, Lauf
     page.locator(".ste-lbl", has_text="Unbekannter Ort").first.click()
     card = page.locator(".ste-card")
