@@ -520,16 +520,19 @@ def compute(pl, pid: int, nights: set | None = None, site_for=None, cfg: dict | 
             field = field_stack(mean, cov, sc)
         except Exception as e:
             field = {"error": str(e)[:200]}
-    site, site_src, _ = tutor.pick_site(fr, cfg or {}, site_for)
     by_night: dict[str, list] = {}
     for f in fr:
         by_night.setdefault(f["night"], []).append(f)
-    out_n = []
+    out_n, sources = [], []
     log("Nachführung und Fokus je Nacht")
     for night, rows in sorted(by_night.items()):
         exps = [f["exptime"] for f in rows if f.get("exptime")]
         exptime = float(np.median(exps)) if exps else None
         ev = events(rows)
+        # Standort je Nacht (FITS-Ort bzw. Zeitraum der Ortsliste) – ein Objekt kann an mehreren Orten aufgenommen sein
+        site, site_src, _ = tutor.pick_site(rows, cfg or {}, site_for)
+        if site:
+            sources.append(site_src)
         alt = None
         if site and proj["ra"] is not None and proj["dec"] is not None:
             try:
@@ -540,7 +543,8 @@ def compute(pl, pid: int, nights: set | None = None, site_for=None, cfg: dict | 
         n = {"night": night, "frames": len(rows), "exptime": exptime,
              "tracking": tracking(rows, links, exptime, scale, rows[0].get("shape")) if links else None,
              "events": {k: v for k, v in ev.items() if k != "bad_idx"},
-             "focus": focus(rows, alt, scale, set(ev.get("bad_idx", []))),
+             "focus": focus(rows, alt, scale, set(ev.get("bad_idx", []))), "site_source": site_src,
+             "field_frames": field_frames(rows),                 # Kippung dieser Nacht (neuere Analysen) – für den Gerätetrend
              "start": rows[0]["t"].isoformat(), "end": rows[-1]["t"].isoformat()}
         out_n.append(n)
     rot_spread = max([(n["tracking"] or {}).get("rot_spread") or 0 for n in out_n] or [0])
@@ -548,12 +552,21 @@ def compute(pl, pid: int, nights: set | None = None, site_for=None, cfg: dict | 
         field["smeared"] = True                                  # Feldrotation zwischen den Aufnahmen verwischt die Karte
         field["tilt_sig"] = False
     return {"v": DIAG_VERSION, "ok": True, "erstellt": time.time(), "device": {"id": device["id"], "name": device["name"]},
-            "device_key": f"{device['id']}|{fr[0]['instrument'] or ''}", "scale": _r(scale, 3), "site": bool(site),
-            "site_source": site_src, "nights": out_n, "field": field, "field_frames": field_frames(fr),
+            "device_key": f"{device['id']}|{fr[0]['instrument'] or ''}", "scale": _r(scale, 3), "site": bool(sources),
+            "site_source": max(set(sources), key=sources.count) if sources else None, "nights": out_n, "field": field, "field_frames": field_frames(fr),
             "linked": len(links), "total": len(fr), "temps": sum(1 for f in fr if f["temp"] is not None)}
 
 
 # ------------------------------------------------------------------ Gerätetrend ---
+def _night_tilt(n: dict, fld: dict, single: bool):
+    """Kippung einer Nacht für den Trend: eigene Karten der Aufnahmen dieser Nacht; die Stack-Messung nur, wenn der Stack
+    aus genau dieser einen Nacht besteht (sonst wäre sie ein Mittel über alle Nächte und ergäbe einen falschen Verlauf)."""
+    ff = n.get("field_frames") or {}
+    if ff.get("tilt_pct") is not None:
+        return ff["tilt_pct"]
+    return fld.get("tilt_pct") if single and not fld.get("smeared") else None
+
+
 def device_summary(db) -> list[dict]:
     """Je Gerät alle Nächte (neueste Version je Objekt) mit Kennzahlen und Trend über die Zeit."""
     rows = db.q("SELECT * FROM (SELECT r.id rid, r.project_id, p.name, r.stats, ROW_NUMBER() OVER (PARTITION BY r.project_id "
@@ -567,6 +580,7 @@ def device_summary(db) -> list[dict]:
         x = dev.setdefault(d.get("device_key") or "?", {"key": d.get("device_key"), "name": (d.get("device") or {}).get("name"),
                                                          "id": (d.get("device") or {}).get("id"), "nights": []})
         fld = d.get("field") or {}
+        single = len(d.get("nights") or []) == 1
         for n in d.get("nights") or []:
             tr, fo = n.get("tracking") or {}, n.get("focus") or {}
             x["nights"].append({"night": n["night"], "pid": r["project_id"], "rid": r["rid"], "name": r["name"],
@@ -574,7 +588,7 @@ def device_summary(db) -> list[dict]:
                                 "fwhm": fo.get("fwhm_corr") if fo.get("unit") == "as" else None,
                                 "focus": (fo.get("time") or {}).get("pct_h"),
                                 "events": (n.get("events") or {}).get("share"),
-                                "tilt": fld.get("tilt_pct") if not fld.get("smeared") else None, "curv": fld.get("curv_pct")})
+                                "tilt": _night_tilt(n, fld, single), "curv": fld.get("curv_pct") if single else None})
     out = []
     for x in dev.values():
         x["nights"].sort(key=lambda n: n["night"])

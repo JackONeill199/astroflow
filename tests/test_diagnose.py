@@ -267,3 +267,15 @@ def test_device_trend_detects_worsening(tmp_path):
     dv = diagnose.device_summary(db)[0]
     assert len(dv["nights"]) == 10
     assert dv["trends"]["tilt"]["worse"] and not dv["trends"]["fwhm"]["worse"]
+
+
+def test_device_trend_uses_only_night_specific_tilt(tmp_path):
+    """Ein Stack über mehrere Nächte ist kein Messwert je Nacht: ohne eigene Karten der Nacht keine Kippung im Trend."""
+    db = DB(tmp_path / "t.db")
+    db.x("INSERT INTO projects(id, key, name) VALUES(1, 'k', 'Obj')")
+    nights = [{"night": "2026-01-01", "field_frames": {"tilt_pct": 7.0}}, {"night": "2026-02-01"}]
+    d = {"v": diagnose.DIAG_VERSION, "ok": True, "device": {"id": "stellina", "name": "Vaonis Stellina"}, "device_key": "stellina|x",
+         "field": {"tilt_pct": 15.0, "curv_pct": 3.0}, "nights": nights}
+    db.x("INSERT INTO results(project_id, created, stats) VALUES(1, 0, ?)", (json.dumps({"diagnose": d}),))
+    ns = diagnose.device_summary(db)[0]["nights"]
+    assert [n["tilt"] for n in ns] == [7.0, None] and all(n["curv"] is None for n in ns)

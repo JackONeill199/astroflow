@@ -178,8 +178,9 @@ function diagPanel(host, r) {
       if (waited && tb && typeof tutorPanel === 'function' && typeof tutorCache !== 'undefined') { tutorCache.delete(r.id); tutorPanel(tb, r); }
       waited = false;
     }
-    $('[data-dg-redo]', host)?.addEventListener('click', () => load(true));
   };
+  // Delegiert am bleibenden Behälter: der Knopf wird bei jedem Nachtwechsel (render) neu gezeichnet
+  host.addEventListener('click', (e) => { if (e.target.closest('[data-dg-redo]')) load(true); });
   wait();
   load(false);
 }
