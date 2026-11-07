@@ -3,7 +3,7 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
-## 0.39.0 – 07.11.2026
+## 0.41.0 – 07.11.2026
 
 ### Neu
 - **HR-Diagramm von Sternhaufen.** Im Reiter **Analyse** von Sternhaufen (offen und kugelförmig, auch M45) steht jetzt das
@@ -13,9 +13,19 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   Abknickpunkt; daraus folgen die Entfernung (aus der Parallaxe), die Rötung durch Staub und grob das Alter – mit Spanne und
   Gegenprobe gegen Gaias Werte, bei Kugelsternhaufen ohne eigene Altersschätzung. Ein Klick auf einen Stern zeigt ihn im Bild,
   „Was zeigt das Diagramm?“ erklärt es für Einsteiger. Gemessen wird nach dem Entwickeln automatisch (wie die Tiefe) oder per
-  „Jetzt messen“; in **Bilder → Analyse** ist das HR-Diagramm eine weitere Auswertung (nur bei Sternhaufen).
+  „Jetzt messen“; in **Bilder → Analyse** ist das HR-Diagramm eine weitere Zeile der Status-Matrix (nur bei Sternhaufen; andere Objekte „entfallen“).
 - Die Gaia-Abfrage für Tiefe und HR-Diagramm enthält jetzt Parallaxenfehler und Eigenbewegung. Vorhandene Zwischenspeicher
   bleiben für die Tiefe gültig; das HR-Diagramm fragt das Feld einmal neu ab.
+
+## 0.38.3 – 07.11.2026
+
+### Behoben
+- **Analyse-Dashboard dichter.** **Bilder → Analyse** zeigt dieselben Inhalte auf rund 40 % weniger Höhe (1440 px: 4 090 → 2 500 px):
+  Kennzahlen als eine Leiste statt sieben Kacheln (die Rekordwerte stehen nur noch unter „Rekorde“, dafür erfasste Sterne und
+  Galaxien), „Was schon berechnet ist“ als Tabelle mit Balken je Art statt großer Ringe, Rekorde dreispaltig, Verläufe, Rangliste,
+  Beste Nächte, Bildqualität und Tutor-Befunde in Dreierreihen mit gleich hohen Kästen, Rangliste und Nächte einzeilig,
+  Veränderungen neben den Katalogen (erst 8 Zeilen, „Alle anzeigen“ klappt den Rest auf), kleinere Katalogfelder und engere
+  Tabellenzeilen. Filter, „Alles analysieren“, 3D-Wolke, Sprung zur Bildstelle und Animationen bleiben unverändert.
 
 ## 0.38.2 – 07.11.2026
 
