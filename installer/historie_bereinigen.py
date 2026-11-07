@@ -198,9 +198,10 @@ def main(argv=None) -> int:
     if not uid.isdigit():
         raise SystemExit("GitHub-ID unbekannt – `gh auth login` oder --noreply-id angeben.")
     noreply = f"{uid}+{a.login}@users.noreply.github.com".encode()
-    fr = [sys.executable, a.filter_repo] if a.filter_repo else ["git", "filter-repo"]
+    # Pfade absolut: filter-repo läuft später mit cwd=neu.git (Review PR #84)
+    fr = [sys.executable, str(Path(a.filter_repo).resolve())] if a.filter_repo else ["git", "filter-repo"]
 
-    ziel = Path(a.ziel)
+    ziel = Path(a.ziel).resolve()
     if ziel.exists() and any(ziel.iterdir()):
         raise SystemExit(f"{ziel} ist nicht leer.")
     ziel.mkdir(parents=True, exist_ok=True)
