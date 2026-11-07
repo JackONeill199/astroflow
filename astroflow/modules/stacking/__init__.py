@@ -13,8 +13,8 @@ class Module(BaseModule):
     name = "Bilder"
     description = "Rohbilder automatisch kalibrieren, stacken und zum fertigen Astrofoto entwickeln."
     icon = "grid"
-    scripts = ("live.js", "stacking.js", "tonight.js", "depth.js", "hrd.js", "skyquality.js", "analysis.js", "dashboard.js")
-    styles = ("depth.css", "hrd.css", "analysis.css", "dashboard.css", "statistics.css", "housekeeping.css", "library.css", "stages.css", "tutor.css", "versions.css", "live.css", "tonight.css", "skyquality.css")
+    scripts = ("live.js", "stacking.js", "tonight.js", "depth.js", "hrd.js", "asteroids.js", "skyquality.js", "analysis.js", "dashboard.js")
+    styles = ("depth.css", "hrd.css", "asteroids.css", "analysis.css", "dashboard.css", "statistics.css", "housekeeping.css", "library.css", "stages.css", "tutor.css", "versions.css", "live.css", "tonight.css", "skyquality.css")
 
     def __init__(self, ctx):
         super().__init__(ctx)
@@ -29,6 +29,7 @@ class Module(BaseModule):
         ctx.services["catalog_resolve"] = catalog_resolve
         ctx.services["catalog_objects"] = catalog_objects
         self.eng.pl.on_stacked = self._stacked
+        ctx.services["asteroid_tally"] = self.asteroid_tally       # Sage-Erfolge: nachgewiesene Asteroiden
         ctx.services["site_sky"] = self.site_sky                  # Ortsliste: Himmelsqualität je Standort
         ctx.services["night_zero_points"] = self.night_zero_points  # Nullpunkte je Nacht/Gerät (SkyTrace: Satellitenhelligkeit)
         if isinstance(ctx.services.get("night_sources"), list):   # Einstellungen → Standorte: Nachtliste
@@ -72,6 +73,11 @@ class Module(BaseModule):
                 "image": img, "result_id": r["id"], "exposure": r["exposure"], "n_frames": r["n_frames"],
                 "imported": json.loads(p["options"] or "{}").get("input_type") == "picture",
                 "ra": p["ra"], "dec": p["dec"], "files": files}
+
+    def asteroid_tally(self) -> dict:
+        """Verschiedene nachgewiesene Asteroiden über alle Bilder und der schwächste (mag)."""
+        from .asteroids import tally
+        return tally(self.eng.db)
 
     def site_sky(self) -> dict:
         """Himmelsqualität je Standort-ID (Mittel über die Nächte) für die Ortsliste – ohne Lichtrichtung (schnell)."""

@@ -226,3 +226,33 @@ def generate_comet(out: Path, n_lights=30, seed=3, name="C_2026_A1", rate=(1.1, 
         write_fits(d / f"img-{i + 1:04d}r.fits", np.clip(raw, 0, 65535).astype(np.uint16),
                    dict(INSTRUME="DemoScope", BAYERPAT="RGGB", EXPTIME=exptime, GAIN=100.0, **{"DATE-OBS": t.isoformat()}))
     return out
+
+
+def generate_asteroid(out: Path, n_lights=36, seed=11, rate=(0.9, 0.35), flux=900.0, exptime=10.0, gap=20.0):
+    """Sternfeld mit einem schwachen, wandernden Punkt (Asteroid): Bayer, leichte Drift/Feldrotation wie eine Stellina.
+    Gibt (Ordner, Wahrheit) zurück – Wahrheit = Himmelsraster-Lage je Aufnahme und die Lage (Drehwinkel, Versatz) jeder Aufnahme,
+    damit Tests die wahre Bahn im Referenzraster nachrechnen können (demo._frame: Himmel → Aufnahme)."""
+    rng = np.random.default_rng(seed)
+    out = Path(out)
+    d = out / "2026-09-20_22-00-00_observation_Feld" / "01-images-initial"
+    d.mkdir(parents=True, exist_ok=True)
+    stars, ext = _sky(rng)
+    ext = ext * 0.0
+    sh, sw = ext.shape[1:]
+    t0 = dt.datetime(2026, 9, 20, 22, 0, 0)
+    c0 = np.array([sw / 2 - 0.5 * rate[0] * n_lights - 25, sh / 2 - 0.5 * rate[1] * n_lights + 20])
+    truth = {"sky": [], "angle": [], "shift": [], "time": [], "shape": (sh, sw), "frame": (H, W)}
+    for i in range(n_lights):
+        pos = c0 + np.array(rate) * i
+        ang, shift = i * 0.2, rng.normal(0, 3, 2)
+        st = np.vstack([stars, [[pos[0], pos[1], flux, 0.5]]])
+        img = _frame(rng, st, ext, ang, shift, rng.normal(3.6, 0.12))
+        raw = _mosaic(img) + 300 + rng.normal(0, 12, (H, W))
+        t = t0 + dt.timedelta(seconds=i * gap)
+        write_fits(d / f"img-{i + 1:04d}r.fits", np.clip(raw, 0, 65535).astype(np.uint16),
+                   dict(INSTRUME="DemoScope", BAYERPAT="RGGB", EXPTIME=exptime, GAIN=100.0, **{"DATE-OBS": t.isoformat()}))
+        truth["sky"].append(pos.tolist())
+        truth["angle"].append(ang)
+        truth["shift"].append(shift.tolist())
+        truth["time"].append((t + dt.timedelta(seconds=exptime / 2)).replace(tzinfo=dt.timezone.utc).timestamp())
+    return out, truth

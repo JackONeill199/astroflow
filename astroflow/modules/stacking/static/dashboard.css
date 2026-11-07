@@ -14,7 +14,7 @@
 .ad-run[hidden] { display: none }
 .ad-run.active { box-shadow: 0 0 0 1px color-mix(in srgb, var(--acc) 30%, transparent) }
 .ad-run h2 { font-size: 1rem }
-.ad-pick { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.5rem; margin-bottom: 0.5rem }
+.ad-pick { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.5rem; margin-bottom: 0.5rem }
 .ad-kind { display: flex; align-items: center; gap: 0.5rem; padding: 0.4375rem 0.75rem; border: 1px solid var(--border); border-radius: var(--r); cursor: pointer;
   background: var(--surface-2); transition: border-color var(--t), background var(--t), transform 120ms var(--ease); min-width: 0 }
 .ad-kind:active { transform: scale(.98) }
@@ -32,7 +32,7 @@
 .ad-errs ul { margin: 0.375rem 0 0; padding-left: 1.125rem }
 
 /* Kennzahlen: eine Leiste mit Trennstrichen statt einzelner Kacheln */
-.ad-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); margin-bottom: 0.75rem; border-radius: var(--r-lg); background: var(--surface); overflow: hidden }
+.ad-kpis { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); margin-bottom: 0.75rem; border-radius: var(--r-lg); background: var(--surface); overflow: hidden }
 .ad-kpi { display: block; padding: 0.5rem 0.875rem 0.5625rem; color: var(--fg); min-width: 0; position: relative; overflow: hidden; border-left: 1px solid var(--border-soft);
   animation: fadeUp var(--t2) var(--ease) both; animation-delay: calc(var(--i, 0) * 45ms); transition: background var(--t), transform 120ms var(--ease) }
 .ad-kpi:first-child { border-left: 0 }
@@ -187,7 +187,9 @@ a.ad-kpi[href]:active { transform: scale(.985) }
 .ad-tab tbody tr:hover, .ad-tab tbody tr:focus-visible { background: var(--surface-2); outline: none }
 .ad-tab td.ad-name { white-space: normal; min-width: 8rem }
 .ad-tab td.ad-name small { font-size: 0.6875rem }
-.ad-chg:not(.all) tbody tr:nth-child(n+9) { display: none }
+.ad-chg:not(.all) tbody tr:nth-child(n+9), .ad-asts:not(.all) tbody tr:nth-child(n+9) { display: none }
+.ad-asts { min-width: 34rem }
+.ad-ast-n { color: var(--acc); font-weight: 650 }
 .ad-more { margin-top: 0.375rem }
 .ad-tab td.ad-what { white-space: normal; min-width: 12rem }
 .ad-all th[data-sort] { cursor: pointer; user-select: none }
@@ -224,10 +226,10 @@ a.ad-kpi[href]:active { transform: scale(.985) }
 }
 @media (max-width: 1100px) {
   .ad-top { grid-template-columns: minmax(0, 1fr) }
-  .ad-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)) }
-  .ad-kpi:nth-child(3n+1) { border-left: 0 }
-  .ad-kpi:nth-child(n+4) { border-top: 1px solid var(--border-soft) }
-  .ad-pick { grid-template-columns: repeat(3, minmax(0, 1fr)) }
+  .ad-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)) }           /* 7 Kennzahlen: 4 + 3 */
+  .ad-kpi:nth-child(4n+1) { border-left: 0 }
+  .ad-kpi:nth-child(n+5) { border-top: 1px solid var(--border-soft) }
+  .ad-pick { grid-template-columns: repeat(3, minmax(0, 1fr)) }                  /* 6 Arten: 3 + 3 */
 }
 @media (max-width: 760px) {
   .ad-c3, .ad-cats { grid-template-columns: minmax(0, 1fr) }
@@ -237,6 +239,7 @@ a.ad-kpi[href]:active { transform: scale(.985) }
   .ad-kpi:nth-child(n) { border-left: 1px solid var(--border-soft); border-top: 0 }
   .ad-kpi:nth-child(2n+1) { border-left: 0 }
   .ad-kpi:nth-child(n+3) { border-top: 1px solid var(--border-soft) }
+  .ad-kpis:not(.ast-kpis) .ad-kpi:last-child:nth-child(odd) { grid-column: 1 / -1 }   /* 7 Kennzahlen: die letzte über die volle Breite */
   .ad-pick, .ad-kinds { grid-template-columns: repeat(2, minmax(0, 1fr)) }
   .ad-cov li { grid-template-columns: 6.75rem minmax(2rem, 1fr) 2.5rem }
   .ad-cov li > small { grid-column: 1 / -1; margin-top: -0.25rem }

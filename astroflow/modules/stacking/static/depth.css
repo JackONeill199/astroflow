@@ -37,7 +37,7 @@
 
 /* Markierungen im Bild (gleiche SVG-Ebene wie die Objektnamen; eingeschaltet immer sichtbar) */
 .viewer.hover-labels.marks-on.ready .vov, .viewer.cmp-view.ready .vov { opacity: 1 }
-.viewer.marks-on:not(:hover) .vov > g:not(.depth-marks) { display: none }      /* Objektnamen weiter nur beim Überfahren */
+.viewer.marks-on:not(:hover) .vov > g:not(.depth-marks):not(.ast-marks) { display: none }      /* Objektnamen weiter nur beim Überfahren */
 .vov .depth-marks circle { stroke-width: 0.125rem }
 .vov .depth-marks text { paint-order: stroke; stroke: #000000b3; stroke-width: 0.1875rem; font-weight: 500 }
 .vov .dm-gal circle { stroke: #c19bff } .vov .dm-gal text { fill: #e2d2ff }

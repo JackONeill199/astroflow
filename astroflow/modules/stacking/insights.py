@@ -1,6 +1,6 @@
 """Hintergrundauswertungen fertiger Bilder: „Wie tief schaust du?“ (`depth.py`), Vergleich mit einer Referenz
-(`compare.py`) und HR-Diagramm von Sternhaufen (`hrd.py`). Eigener Thread mit Warteschlange – Netzabfragen (Gaia, SIMBAD, DSS, JPL) halten so weder Stacking
-noch Entwicklung auf. Ergebnisse landen in `results.stats.depth`, `.compare` bzw. `.hrd` (mit Versionsnummer).
+(`compare.py`), HR-Diagramm von Sternhaufen (`hrd.py`) und Asteroiden im Bild (`asteroids.py`). Eigener Thread mit Warteschlange – Netzabfragen (Gaia, SIMBAD, DSS, JPL) halten so weder Stacking
+noch Entwicklung auf. Ergebnisse landen in `results.stats.depth`, `.compare`, `.hrd` bzw. `.asteroids` (mit Versionsnummer).
 
 Einstellungen (`data/settings.json` → `insights`): `auto_depth` (nach jeder Entwicklung messen), `simbad`
 (Rotverschiebungen/Veränderliche), `survey` (Himmelsdurchmusterung DSS2 als Referenz), `small_bodies` (JPL-Kleinkörper).
@@ -67,14 +67,15 @@ class Insights:
             st = self.state.setdefault((kind, rid), {})
             st.update(state="running", message="läuft", t=time.time())
             try:
-                fn = {"depth": self.depth, "compare": self.compare, "hrd": self.hrd}[kind]
+                fn = {"depth": self.depth, "compare": self.compare, "hrd": self.hrd, "asteroids": self.asteroids}[kind]
                 fn(rid, lambda m: st.update(message=m), **opts)
                 self.state.pop((kind, rid), None)
             except Exception as e:
+                from .asteroids import AsteroidError
                 from .compare import CompareError
                 from .depth import DepthError
                 from .hrd import HrdError
-                if not isinstance(e, (DepthError, CompareError, HrdError)):
+                if not isinstance(e, (DepthError, CompareError, HrdError, AsteroidError)):
                     traceback.print_exc()
                 try:                                     # erst speichern, dann melden (Abfragen dazwischen sähen sonst nichts)
                     self._store(rid, kind, {"v": 0, "ok": False, "error": str(e)[:300], "erstellt": time.time()})
@@ -115,3 +116,20 @@ class Insights:
                               catalogs=cfg["simbad"] or cfg["small_bodies"], log=log,
                               simbad=cfg["simbad"], small_bodies=cfg["small_bodies"])
         self._store(rid, "compare", out)
+
+    def asteroids(self, rid: int, log, **_):
+        from . import asteroids
+        cfg = self.settings()
+        if not cfg["small_bodies"]:
+            raise asteroids.AsteroidError("Der Abgleich mit Kleinkörpern (JPL) ist ausgeschaltet – siehe Einstellungen → Bilder.")
+        r = self.eng.db.one("SELECT stats FROM results WHERE id=?", (rid,))
+        st = json.loads((r or {}).get("stats") or "{}")
+        m5 = ((st.get("depth") or {}).get("grenze") or {}).get("m5")
+        out = asteroids.compute(self.eng.pl, rid, gaia=cfg["gaia"], m5=m5, log=log)
+        self._store(rid, "asteroids", out)
+        if out.get("nachgewiesen"):
+            row = self.eng.db.one("SELECT project_id FROM results WHERE id=?", (rid,))
+            try:                                         # Sage: Erfolge für Asteroiden prüfen
+                self.eng.ctx.emit("stacking.asteroids", project_id=row["project_id"], result_id=rid, count=out["nachgewiesen"])
+            except Exception:
+                traceback.print_exc()

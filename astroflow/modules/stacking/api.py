@@ -310,10 +310,11 @@ _coll_cache: dict = {}          # Dienst collection_progress (Sage), 2 min zwisc
 
 
 def _slim(stats: str | None) -> dict:
-    """Ergebnis-Kennzahlen für Listen/Objektseite – ohne die großen Auswertungen (Tiefe, Vergleich: eigene Endpunkte)."""
+    """Ergebnis-Kennzahlen für Listen/Objektseite – ohne die großen Auswertungen (Tiefe, Vergleich, Asteroiden: eigene Endpunkte)."""
     st = json.loads(stats or "{}")
     st.pop("depth", None)
     st.pop("compare", None)
+    st.pop("asteroids", None)
     st.pop("hrd", None)
     return st
 
@@ -907,6 +908,33 @@ def build_router(eng: Engine) -> APIRouter:
             raise HTTPException(404)
         x = db.one("SELECT project_id FROM results WHERE id=?", (rid,))
         f = x and eng.s.work_dir / f"p{x['project_id']}" / "vergleich" / f"r{rid}" / name
+        if not f or not f.exists():
+            raise HTTPException(404)
+        return FileResponse(f)
+
+    # ---- Asteroiden im Bild (asteroids.py) ---------------------------------------------------------
+    @r.get("/results/{rid}/asteroids")
+    def get_asteroids(rid: int):
+        from .asteroids import ASTEROID_VERSION
+        out = _insight(rid, "asteroids", ASTEROID_VERSION)
+        out["enabled"] = eng.insights.settings()["small_bodies"]
+        return out
+
+    @r.post("/results/{rid}/asteroids")
+    def run_asteroids(rid: int):
+        if not db.one("SELECT id FROM results WHERE id=?", (rid,)):
+            raise HTTPException(404)
+        if not eng.insights.settings()["small_bodies"]:
+            raise HTTPException(400, "Der Abgleich mit Kleinkörpern (JPL) ist ausgeschaltet.")
+        return eng.insights.submit("asteroids", rid)
+
+    @r.get("/results/{rid}/asteroids/{name}")
+    def asteroid_file(rid: int, name: str):
+        import re as _re
+        if not _re.fullmatch(r"a\d{1,3}\.png", name):
+            raise HTTPException(404)
+        x = db.one("SELECT project_id FROM results WHERE id=?", (rid,))
+        f = x and eng.s.work_dir / f"p{x['project_id']}" / "asteroiden" / f"r{rid}" / name
         if not f or not f.exists():
             raise HTTPException(404)
         return FileResponse(f)
