@@ -513,7 +513,9 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   m5 − 2,5·log10(fac) in `reach` (gesättigte Plateaus sind flach – die fängt nur `_blind`). Katalog: `reach` liefert als 4. Wert G
   eines Gaia-Sterns an der Stelle (≤ max(2, 0,8 FWHM)) mit G ≤ örtliche m5(Referenz) − Abstand (nur „neu“); `compute` verwirft ihn als
   `katalogstern`, außer SIMBAD (8″) nennt einen Veränderlichen (Mira …) – ohne SIMBAD vorsichtig verwerfen. Gegencheck an Kopien
-  aller gespeicherten Vergleiche: s. PR. `COMPARE_VERSION` 4. Tests `test_compare_bright_neighbor_halo_not_new` (Platte mit gesättigtem
+  aller 73 gespeicherten Vergleiche (ohne Katalogabgleich): 69 Meldungen gleich, ASASSN-16og (NGC 1579, eigene Referenz) bleibt; weg sind
+  ζ Ori C (NGC 2024, `heller_nachbar`) und je ein „neu“ in IC 410 (11,3 mag), M15 (10,9) und SH2-155 (15,4, LSPM-Eigenbewegungsstern –
+  `katalogstern` verbirgt also auch Eigenbewegung gegen die alte Platte). `COMPARE_VERSION` 4. Tests `test_compare_bright_neighbor_halo_not_new` (Platte mit gesättigtem
   Plateau + Spikes, Nachbar darin; Nova im freien Feld bleibt), `test_compare_known_star_missing_in_reference` (Gaia-Stern fehlt auf
   der Platte; als Mira bleibt er „neu“).
 - **UI** (`static/depth.js|css`, globale Funktionen, `stacking.js` prüft `typeof depthPanel`): `depthPanel`, `depthOverlay`
