@@ -482,7 +482,7 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   log10(Lj)), `comparePanel` + `compareViewer` (Blinken über `createViewer().setSplit`, Stelle anfahren mit `zoomTo`).
 - Tests: `tests/test_depth_compare.py` (synthetisches Feld, Attrappen für Gaia/SIMBAD/DSS/JPL).
 
-## Gerätediagnose (`modules/stacking/diagnose.py`, `static/diagnose.js|css`; seit 0.39.0, Wunsch 17)
+## Gerätediagnose (`modules/stacking/diagnose.py`, `static/diagnose.js|css`; seit 0.43.0, Wunsch 17)
 Nachführung, Fokus und Bildfeld **ohne Rohbilder**, nur aus `frames.metrics`, Master-Stack und FITS-Infos. Ergebnis `results.stats.diagnose`
 (`v` = `DIAG_VERSION`, Nächte der Version aus `stats.nights`), Kind `diagnose` in der Insights-Warteschlange (lokal): nach jedem Entwickeln
 (`after_develop`, `ASTROFLOW_DIAG=0` schaltet ab – setzt `conftest.py`), beim ersten `GET /results/{id}/diagnose` (rechnet dann im Hintergrund),
@@ -514,13 +514,15 @@ die Zeit, `worse` erst wenn der 95-%-Bereich über 0 liegt, ab 8 Nächten / 3 Mo
 - **Tutor:** `tutor.findings` hängt `diagnose.findings` an (`ctx["diag"]` = `tutor.diag_of(stats)`), Codes `tracking_drift`, `periodic_error`
   (nur Nicht-Smart), `gusts`, `focus_drift`, `focus_stable`, `tilt`, `curvature`; mit Fokusmessung entfällt das ältere `softening`.
   Tipps gerätebezogen und vorsichtig (Stellina: Tauheizung → kein Tau-Hinweis; Sensorlage nicht selbst justierbar → Support bei bleibender Kippung).
-- **UI:** `diagPanel(host, r)` (Abschnitt `#anDiag` in `analysisTab`, lädt nach Fertigstellung den Tutor neu), `diagDevices(list, host)` im
-  Dashboard (`#adDiag`). Diagramme eigene SVGs, Breite `CW` aus der Spaltenbreite (Schrift bleibt 11 px).
+- **UI** (Formensprache des dichten Dashboards 0.38.3): `diagPanel(host, r)` (Abschnitt `#anDiag` in `analysisTab`) = Kennzahlenleiste der Nacht
+  (`dg-strip`, Zellen mit Trennstrichen) → Dreierreihe Nachführung/Fokus/Bildfeld (`dg-c3`, SVG mit fester viewBox 400 breit) → eine Zeile
+  Stöße/Längsachse/Einzelkarten → Gerät über alle Nächte (Leiste + drei Verläufe) → Erklärung eingeklappt; lädt nach Fertigstellung den Tutor neu,
+  „Neu berechnen“ per Delegation am Behälter. Dashboard: fünfte Zeile „Gerät“ in der Status-Matrix (`KINDS`), Abschnitt `#adDiag` = `diagDevices(list)`.
 - Tests: `tests/test_diagnose.py` (synthetische Matrizen/Metriken, Sternfelder mit Kippung/Wölbung, `demo.generate_drift` Ende zu Ende).
 
 ## Analyse-Dashboard über alle Objekte (`modules/stacking/dashboard.py`, `static/dashboard.js|css`; seit 0.36.0)
 Nutzerwunsch „eigene Seite, wo man alle gleichzeitig analysieren kann, mit Statistiken und Animationen“. Route `#/analyse` (Unterpunkt von Bilder, `PAGE_WIDE`).
-- **Aggregat:** `collect(eng)` = je Objekt die neueste Version (gleiche Reihenfolge wie `project_views`), Status je Art `depth|compare|sky|tutor`
+- **Aggregat:** `collect(eng)` = je Objekt die neueste Version (gleiche Reihenfolge wie `project_views`), Status je Art `depth|compare|sky|tutor|diagnose`
   (`done|old|none|error`; Tiefe/Vergleich über `v` = `DEPTH_/COMPARE_VERSION`, Himmel über `sky_nights.version`, Tutor über den Schlüssel
   in `stats.tutor`) + fehlende Voraussetzung `blocked` (`nosolve` = kein `wcs.json`, `nogaia`, `noframes` = keine Frame-Metriken, `noquality`).
   Tutor-Befunde ohne Netz aus `stats.tutor` über `tutor.findings` (nur bad/warn). Kataloge über `deepsky.keys_for` gegen `deepsky.fixed()` (auch
@@ -532,12 +534,15 @@ Nutzerwunsch „eigene Seite, wo man alle gleichzeitig analysieren kann, mit Sta
 - **API:** `GET /api/stacking/analysis?device=&year=&night=&q=`, `GET /analysis/universe` (erst auf Knopfdruck „3D-Wolke“), `POST /analysis/plan|run
   {kinds, scope: missing|errors|all, ids?}`, `POST /analysis/pause {paused}`, `POST /analysis/stop`, `POST /analysis/develop {ids}` (Objekte mit Stack,
   ohne `wcs.json` → Entwicklungsauftrag; die Lösung entsteht beim Entwickeln, `auto_depth` misst danach). Nicht in `/projects` (wird gepollt).
-- **Sammelauftrag** `Batch` (eigener Thread, Aktivität „Analyse aller Objekte“, zählt in `busy_jobs`): Reihenfolge `KINDS` = Gerät (`diagnose`, seit 0.39.0), Tutor, Himmel (lokal),
+- **Sammelauftrag** `Batch` (eigener Thread, Aktivität „Analyse aller Objekte“, zählt in `busy_jobs`): Reihenfolge `KINDS` = Gerät (`diagnose`, seit 0.43.0), Tutor, Himmel (lokal),
   Tiefe, Vergleich (nutzt den Nullpunkt der Tiefe). Tiefe/Vergleich gehen einzeln durch `insights.submit` und werden abgewartet, danach `GAP_S` 3 s
   Pause → nie zwei Netzauswertungen gleichzeitig. Himmel = `skyquality.compute_project` (wartet, solange `SkyRunner` rechnet), Tutor = `build_report(refresh=True)`
   (mit Wetter ebenfalls Pause). Anhalten wirkt nach dem laufenden Schritt; Zustand nur im Speicher.
 - **UI:** Abschnitte zeichnen nur bei geänderten Daten neu (`paint` mit Signatur – sonst liefen Animationen bei jedem Poll erneut); Poll der Shell lädt nur
-  während eines Auftrags laufend, sonst alle 15 s. Diagramme als eigene SVG-Helfer (`scatter`, `ring`), 3D-Wolke mit three.js aus `/vendor/` (`loadThree`).
+  während eines Auftrags laufend, sonst alle 15 s. Diagramme als eigene Helfer (`scatter` = SVG mit festem viewBox 400 breit, `sbar` = gestapelter Balken je Art), 3D-Wolke mit three.js aus `/vendor/` (`loadThree`).
+  **Dichtes Raster** (seit 0.38.3, Nutzerwunsch „Informationen dichter“): Seite `.ad-page` mit engeren Panels, Kennzahlen als eine Leiste (`.ad-kpis`, nur Mengen –
+  Rekordwerte nur unter „Rekorde“), Reihen `.ad-row` (`.ad-top` 2:3, `.ad-c3` dreispaltig → ab 1279 px zwei, ab 760 px eine Spalte, `.ad-chgrow` Veränderungen 3:2 Kataloge),
+  Abschnitte einer Reihe gleich hoch. Veränderungen zeigen erst `CHG_ROWS` 8 Zeilen (CSS `.ad-chg:not(.all)`), „Alle anzeigen“ schaltet ohne Neuzeichnen um.
   Animationen über `.an-sec.in` (`anReveal`/`anCountUp` aus `analysis.js`), aus bei `prefers-reduced-motion`. Sprung zur Bildstelle: `sessionStorage af.an.focus`
   `{rid, x, y, w}` → `analysisTab` zoomt nach dem Laden des Fotos. localStorage `af.analysis.filter|kinds|sort`.
 - Tests: `tests/test_analysis_dashboard.py` (synthetische Bibliothek `tests/analysis_seed.py`, Attrappen statt Netz; prüft u. a. höchstens eine

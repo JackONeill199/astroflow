@@ -3,7 +3,7 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
-## 0.39.0 – 07.11.2026
+## 0.43.0 – 07.11.2026
 
 ### Neu
 - **Gerätediagnose: Nachführung, Fokus und Bildfeld** (Wunsch 17). Neuer Abschnitt **„Dein Gerät“** im Reiter Analyse jedes Objekts –
@@ -21,8 +21,18 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   - **Über alle Nächte:** Verlauf je Gerät (Sterngröße, Verschmieren, Schärfeabfall, Drift) mit Hinweis, ob es schlechter wird.
 - Der **Tutor** nennt die Ergebnisse als Befunde mit vorsichtigen, gerätebezogenen Tipps (z. B. Drift während der Belichtung,
   Fokus wanderte, Schärfe fällt zu einer Seite ab).
-- **Analyse-Dashboard:** neue Auswertung „Gerät“ in „Alles analysieren“ (lokal), Status-Punkt je Objekt und Abschnitt
-  „Gerätediagnose“ mit dem Verlauf jedes Geräts. Die Diagnose läuft nach jedem Entwickeln automatisch und beim ersten Öffnen nach.
+- **Analyse-Dashboard:** neue Auswertung „Gerät“ in „Alles analysieren“ (lokal), eigene Zeile in „Was schon berechnet ist“,
+  Status-Punkt je Objekt und Abschnitt „Gerätediagnose“ (je Gerät eine Kennzahlenleiste und drei Verläufe in einer Reihe). Die Diagnose läuft nach jedem Entwickeln automatisch und beim ersten Öffnen nach.
+
+## 0.38.3 – 07.11.2026
+
+### Behoben
+- **Analyse-Dashboard dichter.** **Bilder → Analyse** zeigt dieselben Inhalte auf rund 40 % weniger Höhe (1440 px: 4 090 → 2 500 px):
+  Kennzahlen als eine Leiste statt sieben Kacheln (die Rekordwerte stehen nur noch unter „Rekorde“, dafür erfasste Sterne und
+  Galaxien), „Was schon berechnet ist“ als Tabelle mit Balken je Art statt großer Ringe, Rekorde dreispaltig, Verläufe, Rangliste,
+  Beste Nächte, Bildqualität und Tutor-Befunde in Dreierreihen mit gleich hohen Kästen, Rangliste und Nächte einzeilig,
+  Veränderungen neben den Katalogen (erst 8 Zeilen, „Alle anzeigen“ klappt den Rest auf), kleinere Katalogfelder und engere
+  Tabellenzeilen. Filter, „Alles analysieren“, 3D-Wolke, Sprung zur Bildstelle und Animationen bleiben unverändert.
 
 ## 0.38.2 – 07.11.2026
 

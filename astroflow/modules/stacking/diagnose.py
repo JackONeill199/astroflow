@@ -1,4 +1,4 @@
-"""Gerätediagnose aus vorhandenen Daten (Wunsch 17, seit 0.39.0) – ohne Rohbilder.
+"""Gerätediagnose aus vorhandenen Daten (Wunsch 17, seit 0.43.0) – ohne Rohbilder.
 
 Drei Teile, alle aus gespeicherten Messwerten:
 - **Nachführung:** Lage und Drehung jeder Aufnahme relativ zum Referenzbild aus den gespeicherten Sternlisten (dieselbe
