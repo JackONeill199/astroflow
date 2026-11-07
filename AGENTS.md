@@ -581,7 +581,7 @@ Kleinkörper-Abgleich im Vergleich). Endpunkte `GET|POST /results/{id}/asteroids
 - **UI:** `asteroidPanel` (Abschnitt „Asteroiden“ im Reiter Analyse, dicht wie das Dashboard: Satz + Kennzahlen als Leiste, Liste als Tabelle
   mit kleinem Ausschnitt, erst 8 Zeilen), `asteroidOverlay` umhüllt `depthOverlay` im Analyse-Betrachter. Marken über `.seg` „Aus / Nachgewiesen /
   Alle“ (`AST_MARKS.mode` aus|ok|alle, localStorage `bild.asteroiden.markenart`, Standard `ok`; alter Schalter `bild.asteroiden.marken` = false → aus).
-  Seit 0.43.4 (Nutzerbefund M16, ~50 Körper, Namen übereinander): beschriftet werden nur nachgewiesene, Namen gierig ohne Überlappung (rechts, links,
+  Seit 0.43.3 (Nutzerbefund M16, ~50 Körper, Namen übereinander): beschriftet werden nur nachgewiesene, Namen gierig ohne Überlappung (rechts, links,
   sonst nur Kreis); „Alle“ = übrige als kleine Punkte ohne Text/Bahn (das Overlay hat `pointer-events: none`, Hover-Namen je Marke gehen nicht).
   Klasse `ast-on` nur, wenn der Modus etwas zeigt (`astShows`) – sie blendet sonst die Objektnamen aus. Test: `tests/test_asteroids.py` (`demo.generate_asteroid` =
   wandernder Punkt mit bekannter Bahn, JPL-Attrappe, fester Nullpunkt; Seed in `tests/analysis_seed.py`).

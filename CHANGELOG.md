@@ -3,7 +3,7 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
-## 0.43.4 – 07.11.2026
+## 0.43.3 – 07.11.2026
 
 ### Behoben
 - **Umschaltknöpfe zeigen jetzt, ob sie an sind.** „Im Bild markieren“ (Tiefe) und „Details“ sahen eingeschaltet genauso aus
