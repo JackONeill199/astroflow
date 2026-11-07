@@ -9,42 +9,7 @@ anderen bewegten Objekten und erklärt dir, was du fotografiert hast – im Brow
 
 ![AstroFlow – Übersicht](docs/screenshots/uebersicht.webp)
 
-## Installation
-
-### Windows: Installer oder portables ZIP (empfohlen)
-
-Von der Releases-Seite des Repositories laden:
-
-- **`AstroFlow-Setup-<Version>.exe`** – Installer pro Benutzer (keine Administratorrechte), Startmenü, optional Desktop-Verknüpfung und Start beim Anmelden.
-- **Portables ZIP** – entpacken und `AstroFlow.cmd` starten; die Daten liegen im Ordner `Daten` daneben.
-
-Python und alle Pakete sind enthalten, es muss nichts weiter installiert werden. Beim ersten Start führt ein **Einrichtungsassistent** durch Datenordner
-(Standard `%USERPROFILE%\AstroFlow`), Teleskop, Standort, **ASTAP mit Sterndatenbank auf Knopfdruck**, eine **Demo für das erste Bild** (nach rund einer halben
-Minute fertig), GPU-Beschleunigung und Heimnetz-Freigabe. „AstroFlow beenden“ steht im Startmenü und unter Einstellungen → Module & System. Beim Deinstallieren
-bleiben die Daten erhalten.
-
-### Mit Python (Windows, Linux, macOS)
-
-```bash
-python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install .                                      # legt den Befehl `astroflow` an
-astroflow                                          # startet den Server und öffnet den Browser (astroflow stop beendet ihn)
-```
-
-Ohne Installation des Pakets (nur `pip install -r requirements.txt`) startest du mit `python -m astroflow serve` (Web-UI auf Port 8080, Daten in `./data`) und `python -m astroflow demo` für synthetische
-Testdaten. `Start.bat` / `Stop.bat` starten und beenden den Server unter Windows im Hintergrund (Port 8766).
-
-### Docker
-
-In `docker-compose.yml` den Pfad zu deinen FITS-Dateien eintragen, dann `docker compose up -d --build` und <http://localhost:8080> öffnen. Das Image enthält ASTAP
-mit Sterndatenbank D05 (`--build-arg ASTAP_DB=d50` für kleine Bildfelder) und optional die SkyTrace-Engine (`--build-arg SKYTRACE=1`).
-
-### Heimnetz und Handy
-
-Die Oberfläche ist eine Web-App für Desktop und Smartphone. Im Assistenten (oder mit `Netzwerk-freigeben.bat`) lässt sich AstroFlow im Heimnetz freigeben – nur
-privates Netzwerkprofil, nur eigenes Subnetz, nicht ins Internet. **Es gibt kein Passwort; jedes Gerät im Heimnetz kann AstroFlow bedienen.**
-
-<img src="docs/screenshots/handy.webp" alt="AstroFlow am Handy" width="260">
+**Schnellzugriff:** [Installation](#installation) · [Highlights](#highlights) · [Optionale Werkzeuge](#optionale-werkzeuge) · [Datenschutz](#datenschutz-und-lokaler-betrieb)
 
 ## Was ist AstroFlow?
 
@@ -158,6 +123,43 @@ automatisch übernommen.
 
 Dazu: **Bild bestimmen**, **Geschichte erzählen** und vorlesen lassen, **Meine Entdeckungen**, **Wissensnetz**. Gestackte Aufnahmen landen auf Wunsch automatisch in
 Sage und SkyTrace.
+
+## Installation
+
+### Windows: Installer oder portables ZIP (empfohlen)
+
+Von der Releases-Seite des Repositories laden:
+
+- **`AstroFlow-Setup-<Version>.exe`** – Installer pro Benutzer (keine Administratorrechte), Startmenü, optional Desktop-Verknüpfung und Start beim Anmelden.
+- **Portables ZIP** – entpacken und `AstroFlow.cmd` starten; die Daten liegen im Ordner `Daten` daneben.
+
+Python und alle Pakete sind enthalten, es muss nichts weiter installiert werden. Beim ersten Start führt ein **Einrichtungsassistent** durch Datenordner
+(Standard `%USERPROFILE%\AstroFlow`), Teleskop, Standort, **ASTAP mit Sterndatenbank auf Knopfdruck**, eine **Demo für das erste Bild** (nach rund einer halben
+Minute fertig), GPU-Beschleunigung und Heimnetz-Freigabe. „AstroFlow beenden“ steht im Startmenü und unter Einstellungen → Module & System. Beim Deinstallieren
+bleiben die Daten erhalten.
+
+### Mit Python (Windows, Linux, macOS)
+
+```bash
+python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
+pip install .                                      # legt den Befehl `astroflow` an
+astroflow                                          # startet den Server und öffnet den Browser (astroflow stop beendet ihn)
+```
+
+Ohne Installation des Pakets (nur `pip install -r requirements.txt`) startest du mit `python -m astroflow serve` (Web-UI auf Port 8080, Daten in `./data`) und `python -m astroflow demo` für synthetische
+Testdaten. `Start.bat` / `Stop.bat` starten und beenden den Server unter Windows im Hintergrund (Port 8766).
+
+### Docker
+
+In `docker-compose.yml` den Pfad zu deinen FITS-Dateien eintragen, dann `docker compose up -d --build` und <http://localhost:8080> öffnen. Das Image enthält ASTAP
+mit Sterndatenbank D05 (`--build-arg ASTAP_DB=d50` für kleine Bildfelder) und optional die SkyTrace-Engine (`--build-arg SKYTRACE=1`).
+
+### Heimnetz und Handy
+
+Die Oberfläche ist eine Web-App für Desktop und Smartphone. Im Assistenten (oder mit `Netzwerk-freigeben.bat`) lässt sich AstroFlow im Heimnetz freigeben – nur
+privates Netzwerkprofil, nur eigenes Subnetz, nicht ins Internet. **Es gibt kein Passwort; jedes Gerät im Heimnetz kann AstroFlow bedienen.**
+
+<img src="docs/screenshots/handy.webp" alt="AstroFlow am Handy" width="260">
 
 ## Optionale Werkzeuge
 
