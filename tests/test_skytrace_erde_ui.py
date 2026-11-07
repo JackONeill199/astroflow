@@ -381,3 +381,153 @@ def test_mausrad_ueber_seitenleiste_scrollt_statt_zu_zoomen(server, browser, tmp
     page.screenshot(path=str(tmp_path / "erde-seitenleiste.png"))
     assert not errors, errors
     page.close()
+
+
+# ---- Satellit anklicken (0.45.0): Hover, Auswahl bei mehreren, Infokarte mit Ausschnitt, flache Karte, Handy ----
+def _sat_detail(name, norad):
+    crop = {"url": "/api/skytrace/satellite/crop?run=x&key=Testfeld/K0001", "width": 300, "height": 200, "line": [[30, 170], [270, 30]],
+            "kind": "kandidat", "frame": 31, "time": "2024-03-01T21:00:05 UTC"}
+    return dict(ok=True, name=name, norad_id=norad, intl_id="2024-001A", kind="Satellit", launch_date="2024-01-15", launch_year=2024, owner="ESA",
+                decay_date=None, catalog_source="SATCAT-Kopie", orbit_catalog={"perigee_km": 410, "apogee_km": 420}, tle_age_days=.4,
+                speed={"arcsec_s": 2250.0, "kind": "bahn", "text": "Spurlänge ÷ Durchgangszeit der Bahn"},
+                brightness={"mag": 7.2, "err": .6, "src": "estimate", "note": "Richtwert des Geräts – nur Schätzung"},
+                certainty={"level": "eindeutig", "text": "Eindeutig – Lage, Richtung und Zeit passen.", "facts": ["Bahn im Mittel 12″ neben der Spur"]},
+                links={"celestrak": f"https://celestrak.org/satcat/table-satcat.php?CATNR={norad}", "n2yo": f"https://www.n2yo.com/satellite/?s={norad}"},
+                crop=crop if norad == 99001 else None,
+                crop_note=None if norad == 99001 else "Für diese Spur ist kein Bildausschnitt gespeichert.")
+
+
+def _sat_page(browser, base, tmp_path, width, touch=False):
+    """Seite mit zwei Satelliten auf derselben Bahn (wie ein Starlink-Zug); Details, Ausschnitt und Lauf werden im Browser ersetzt."""
+    import io
+    from PIL import Image
+    scene = _scene(tmp_path)
+    hit = next(h for h in scene["hits"] if h["kind"] == "sat")
+    scene["hits"].append(dict(hit, name="TESTSAT-B", norad_id=99002, key="Testfeld/K0003", candidate="K0003", focus=False))
+    buf = io.BytesIO()
+    Image.new("RGB", (300, 200), (12, 14, 18)).save(buf, "PNG")
+    page = browser.new_page(viewport={"width": width, "height": 900}, reduced_motion="reduce", has_touch=touch)
+    errors, asked = [], []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+
+    def detail(route):
+        asked.append(route.request.url)
+        b = "99002" in route.request.url
+        route.fulfill(json=_sat_detail("TESTSAT-B" if b else "TESTSAT", 99002 if b else 99001))
+    page.route("**/api/skytrace/run3d?*", lambda route: route.fulfill(json=scene))
+    page.route("**/api/skytrace/runs", lambda route: route.fulfill(json=[dict(id=scene["run"], title="Testfeld", modified=1, sessions=1, frames=60, excluded=3,
+                                                                              candidates=2, preview=None)]))
+    page.route("**/api/skytrace/satellite?*", detail)
+    page.route("**/api/skytrace/satellite/crop?*", lambda route: route.fulfill(body=buf.getvalue(), content_type="image/png"))
+    page.goto(base + "/#/skytrace/3d")
+    page.wait_for_function("(s => s?.runReady && !s.flying)(document.querySelector('#steHost')?._ste?.state())", timeout=15000)
+    page.locator(".ste-stage").scroll_into_view_if_needed()
+    return page, scene, errors, asked
+
+
+def _sat_xy(page):
+    box = page.locator(".ste-stage canvas").bounding_box()
+    pts = page.evaluate("document.querySelector('#steHost')._st3d.screen()")
+    p = next(p for p in pts if p["x"] is not None)
+    return box["x"] + p["x"], box["y"] + p["y"]
+
+
+def _shot(page, tmp_path, name):
+    page.screenshot(path=str(tmp_path / name))
+    out = os.environ.get("ASTROFLOW_SCREENSHOTS")
+    if out:
+        shutil.copy(tmp_path / name, out)
+
+
+def test_satellit_anklicken(server, browser, tmp_path):
+    from test_skytrace_3d import T0
+    base, _ = server
+    page, scene, errors, asked = _sat_page(browser, base, tmp_path, 1440)
+    x, y = _sat_xy(page)
+    assert not asked                                                   # Details erst beim Anklicken (Handy: run3d bleibt schlank)
+    # Überfahren: Zeiger, Namensschild, Hervorhebung
+    page.mouse.move(x + 6, y + 6)
+    page.wait_for_selector(".ste-tip:not([hidden])")
+    assert "TESTSAT" in page.locator(".ste-tip").inner_text() and "ste-hot" in page.locator(".ste-stage canvas").get_attribute("class")
+    # Klick: zwei Objekte an dieser Stelle → Auswahl
+    page.mouse.click(x + 6, y + 6)
+    page.wait_for_selector(".ste-pick:not([hidden])")
+    assert page.evaluate("document.querySelector('#steHost')._ste.chooser()") == ["TESTSAT", "TESTSAT-B"]
+    page.locator(".ste-pick [role=menuitem]").first.click()
+    card = page.locator(".ste-card")
+    page.wait_for_function("document.querySelector('.ste-card .st3d-crop img')?.naturalWidth > 0")
+    txt = card.inner_text()
+    for want in ("NORAD 99001", "Eindeutig", "2024-001A", "15.01.2024", "7,2 mag", "Spur zwischen den Linien", "410–420 km"):
+        assert want in txt, want
+    link = card.locator("a", has_text="CelesTrak")
+    assert link.get_attribute("href").endswith("CATNR=99001") and link.get_attribute("rel") == "noopener noreferrer"
+    assert page.evaluate("document.querySelector('#steHost')._ste.satSel()")["name"] == "TESTSAT"
+    assert len(asked) == 1 and "norad=99001" in asked[0] and page.locator(".ste-pick").is_hidden()
+    assert not page.evaluate(FIND_OVERFLOW)
+    _shot(page, tmp_path, "satellit-karte-1440.png")
+    # zweiter Satellit: ohne Ausschnitt → klarer Hinweis; erneut der erste (per Tastatur) → aus dem Zwischenspeicher
+    page.mouse.click(x + 6, y + 6)
+    page.locator(".ste-pick [role=menuitem]").nth(1).click()
+    page.wait_for_function("document.querySelector('.ste-card').innerText.includes('kein Bildausschnitt')")
+    assert "TESTSAT-B" in card.inner_text()
+    page.mouse.click(x + 6, y + 6)
+    page.wait_for_function("document.activeElement?.closest('.ste-pick')")
+    page.keyboard.press("Enter")
+    page.wait_for_selector(".ste-card .st3d-crop img")
+    assert len(asked) == 2
+    # Klick auf den Ausschnitt öffnet die Aufnahme im Lauf (Kandidat mit Trefferbild)
+    frame = dict(index=31, url="/synthetic/crop.png", width=40, height=30, hit=True, timestamp=T0, timestamp_text="Bild 1")
+    cand = dict(id="K0001", key="Testfeld/K0001", session="Testfeld", kind="trail", timestamp=T0 + 5, exposure_seconds=10, view3d=True, frames=[frame],
+                initial_frame=0, hit_indices=[0], crop=[0, 0, 40, 30], plausibility={}, catalogs=[])
+    run = dict(id=scene["run"], sessions=[dict(session="Testfeld", frames=60, excluded=3, hits=1, video_url="/synthetic/v.mp4")], candidates=[cand],
+               report_url=None, modified=1)
+    page.route("**/api/skytrace/run?id=*", lambda route: route.fulfill(json=run))
+    page.locator(".st3d-crop button").click()
+    page.wait_for_selector(".ccard.on")
+    assert page.url.endswith(f"#/skytrace/{scene['run']}/kandidaten") and "K0001" in page.locator(".ccard.on").inner_text()
+    assert not errors, errors
+    page.close()
+
+
+def test_satellit_in_der_flachen_karte(server, browser, tmp_path):
+    """Flache Karte: Bodenspur + Punkt unter dem Satelliten beim Durchgang, anklickbar (zwei an derselben Stelle → Auswahl)."""
+    base, _ = server
+    page, scene, errors, asked = _sat_page(browser, base, tmp_path, 1440)
+    page.locator(".ste-mode").click()
+    page.wait_for_function("document.querySelector('#steHost')._ste.state().flat.on")
+    h = next(x for x in scene["hits"] if x["kind"] == "sat")
+    lat, lon = h["ground"][round((h["t_pass"] - h["window"][0]) / h["ground_step"])]
+    page.evaluate(f"document.querySelector('#steHost')._ste.flat.flyTo({lat}, {lon}, 0.12)")
+    page.wait_for_function("document.querySelector('#steHost')._ste.state().flat.sats.length === 2")
+    s = page.evaluate("document.querySelector('#steHost')._ste.state().flat.sats")
+    box = page.locator(".ste-stage").bounding_box()
+    assert abs(s[0]["x"] - box["width"] / 2) < 2 and abs(s[0]["y"] - box["height"] / 2) < 2       # Punkt beim Durchgang liegt am Bodenpunkt
+    px, py = box["x"] + s[0]["x"] + 5, box["y"] + s[0]["y"] + 4
+    page.mouse.move(px, py)
+    page.wait_for_selector(".ste-tip:not([hidden])")
+    page.wait_for_function("document.querySelector('#steHost')._ste.state().flat.sats.some(x => x.on)")
+    page.mouse.click(px, py)
+    page.wait_for_selector(".ste-pick:not([hidden])")
+    page.locator(".ste-pick [role=menuitem]").nth(1).click()
+    page.wait_for_function("document.querySelector('.ste-card').innerText.includes('NORAD 99002')")
+    assert page.evaluate("document.querySelector('#steHost')._ste.satSel()")["name"] == "TESTSAT-B"
+    assert not errors, errors
+    page.close()
+
+
+def test_satellit_antippen_handy(server, browser, tmp_path):
+    """Handy: Antippen mit dem Finger trifft auch knapp neben der Bahn (große Trefferfläche), Karte unten, nichts ragt heraus."""
+    base, _ = server
+    page, scene, errors, asked = _sat_page(browser, base, tmp_path, 375, touch=True)
+    x, y = _sat_xy(page)
+    page.touchscreen.tap(x + 15, y + 12)                               # bis ~19 px neben der Bahn: Fingerradius 26 px (Maus 14 px)
+    page.wait_for_selector(".ste-pick:not([hidden])")
+    page.locator(".ste-pick [role=menuitem]").first.tap()
+    page.wait_for_selector(".ste-card .st3d-crop img")
+    card = page.locator(".ste-card").bounding_box()
+    stage = page.locator(".ste-stage").bounding_box()
+    assert card["y"] > stage["y"] + stage["height"] * .3 and card["x"] >= stage["x"] and card["x"] + card["width"] <= stage["x"] + stage["width"] + 1
+    assert not page.evaluate(FIND_OVERFLOW)
+    _shot(page, tmp_path, "satellit-karte-375.png")
+    assert not errors, errors
+    page.close()

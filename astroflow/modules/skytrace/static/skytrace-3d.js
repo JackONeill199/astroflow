@@ -20,6 +20,53 @@ const compass = (az) => ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'][Math.round(
 const angleDiff = (a, b) => ((b - a + 540) % 360) - 180;
 
 function available(c) { return !!c?.view3d; }
+
+/* Satellit angeklickt (0.45.0): Details erst jetzt laden (Handy: run3d bleibt schlank), je Satellit einmal je Seite.
+   Nur Gespeichertes – fehlt ein Wert, fehlt die Zeile. */
+const DETAILS = new Map();
+function loadDetails(run, key, norad) {
+  const id = run + '|' + key + '|' + norad;
+  if (!DETAILS.has(id)) DETAILS.set(id, api(`/skytrace/satellite?run=${encodeURIComponent(run)}&key=${encodeURIComponent(key)}&norad=${encodeURIComponent(norad)}`)
+    .catch((e) => { DETAILS.delete(id); throw e; }));
+  return DETAILS.get(id);
+}
+const LEVEL = { eindeutig: ['Eindeutig', 'ok'], wahrscheinlich: ['Wahrscheinlich', 'acc'], mehrdeutig: ['Mehrdeutig', 'warn'], unsicher: ['Unsicher', 'warn'],
+  alternative: ['Alternative', ''], keine: ['Kein Treffer', 'bad'] };
+const deDate = (s) => /^\d{4}-\d\d-\d\d/.test(s || '') ? new Date(s.slice(0, 10) + 'T12:00:00Z').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }) : s;
+function cropHtml(c, it) {
+  if (!c) return '';
+  const [[x1, y1], [x2, y2]] = c.line, L = Math.hypot(x2 - x1, y2 - y1) || 1, nx = -(y2 - y1) / L * 9, ny = (x2 - x1) / L * 9;
+  const guide = (s) => `<line x1="${(x1 + s * nx).toFixed(1)}" y1="${(y1 + s * ny).toFixed(1)}" x2="${(x2 + s * nx).toFixed(1)}" y2="${(y2 + s * ny).toFixed(1)}"/>`;
+  return `<figure class="st3d-crop"><button type="button" data-a="crop" title="Aufnahme im SkyTrace-Lauf öffnen (Kandidat ${esc(it.candidate)})" style="aspect-ratio:${c.width} / ${c.height}">
+      <img src="${esc(c.url)}" width="${c.width}" height="${c.height}" alt="Ausschnitt der eigenen Aufnahme mit der Spur von ${esc(it.name)}" decoding="async">
+      <svg viewBox="0 0 ${c.width} ${c.height}" preserveAspectRatio="none" aria-hidden="true" style="--c:${it.color}">${guide(1)}${guide(-1)}</svg></button>
+    <figcaption>${c.kind === 'kandidat' ? 'Trefferbild' : 'Vollbild der Trefferaufnahme'}${c.time ? ' · ' + esc(String(c.time).replace('T', ' ')) : ''} · Spur zwischen den Linien</figcaption></figure>`;
+}
+async function satDetails(el, more, run, it) {
+  let d;
+  try { d = await loadDetails(run, it.key, it.norad_id); }
+  catch (e) { if (el.isConnected) el.innerHTML = `<p class="mut sm">${icon('alert')} Details nicht verfügbar: ${esc(e.message)}</p>`; return; }
+  if (!el.isConnected) return;
+  const rows = [];
+  if (d.intl_id) rows.push(['Kennung', `${esc(d.intl_id)} <span class="dim">(international)</span>`]);
+  if (d.kind) rows.push(['Art', esc(d.kind)]);
+  if (d.launch_date || d.launch_year) rows.push(['Start', esc(d.launch_date ? deDate(d.launch_date) : String(d.launch_year)) + (d.owner ? ' · ' + esc(d.owner) : '')]);
+  else if (d.owner) rows.push(['Herkunft', esc(d.owner)]);
+  if (d.decay_date) rows.push(['Verglüht', esc(deDate(d.decay_date))]);
+  const oc = d.orbit_catalog;
+  if (oc?.perigee_km != null && oc?.apogee_km != null) rows.push(['Bahnhöhe', `${fmt(oc.perigee_km)}–${fmt(oc.apogee_km)} km <span class="dim">(Katalog, heute)</span>`]);
+  if (d.speed) rows.push(['Winkelgeschw.', `${d.speed.kind === 'mindestens' ? '≥ ' : ''}${fmt(d.speed.arcsec_s, d.speed.arcsec_s < 100 ? 1 : 0)}″/s <span class="dim">(${esc(d.speed.text)})</span>`]);
+  const b = d.brightness;
+  if (b?.mag != null) rows.push(['Helligkeit', `≈ ${fmt(b.mag, 1)} mag ± ${fmt(b.err, 1)} <span class="dim">(gemessen; ${esc(b.note)})</span>`]);
+  else if (b?.note) rows.push(['Helligkeit', `<span class="dim">${esc(b.note)}</span>`]);
+  else rows.push(['Helligkeit', '<span class="dim">nicht messbar (kein Querprofil oder keine Durchgangszeit gespeichert)</span>']);
+  const c = d.certainty || {}, [lab, cls] = LEVEL[c.level] || [c.level || '–', ''];
+  el.innerHTML = `${cropHtml(d.crop, it)}${d.crop ? '' : `<p class="mut sm st3d-nocrop">${icon('image')} ${esc(d.crop_note || 'Kein Bildausschnitt gespeichert.')}</p>`}
+    <div class="st3d-sure"><span class="chip ${cls}">${esc(lab)}</span><span>${esc(c.text || '')}</span>${c.facts?.length ? `<small>${esc(c.facts.join(' · '))}${c.others?.length ? ' · ebenfalls: ' + esc(c.others.join(', ')) : ''}</small>` : ''}</div>`;
+  more.innerHTML = `<dl>${rows.map(([a, v]) => `<dt>${a}</dt><dd>${v}</dd>`).join('')}</dl>
+    <p class="st3d-ext sm"><span class="dim">Extern:</span> <a href="${esc(d.links.celestrak)}" target="_blank" rel="noopener noreferrer">CelesTrak</a> · <a href="${esc(d.links.n2yo)}" target="_blank" rel="noopener noreferrer">N2YO</a>
+      ${d.catalog_source ? `<span class="dim"> · Katalog: ${esc(d.catalog_source)}</span>` : ''}</p>`;
+}
 // Adresse der 3D-Ansicht eines Laufs (Reiter im Lauf); den Fokus-Kandidaten übergibt skytrace.js selbst
 const href = (runId) => `#/skytrace/${encodeURIComponent(runId)}/3d`;
 
@@ -94,22 +141,26 @@ function runLayer(G, data, { interactive = false, focus = null, onCandidate = nu
   if (!interactive) { ray.visible = false; target.visible = false; }
 
   // ---- Treffer ----
+  // Je Treffer: Linien-Materialien (Hervorheben) und Stützpunkte für das Antippen im Bildschirmraum (`polys`, großzügige Trefferfläche)
+  const thin = (arr, k) => arr.filter((_, i) => i % k === 0 || i === arr.length - 1);
   for (const h of hits) {
-    h.group = new THREE.Group(); world.add(h.group);
+    h.group = new THREE.Group(); world.add(h.group); h.mats = [];
     if (h.kind === 'sat') {
-      line(h.ring.map(V), h.color, h.alternative ? .18 : .3, h.group);
-      line(h.track.map(V), h.color, .9, h.group);
+      h.mats.push(line(h.ring.map(V), h.color, h.alternative ? .18 : .3, h.group).material, line(h.track.map(V), h.color, .9, h.group).material);
+      h.polys = [thin(h.track, 3).map(V), thin(h.ring, 2).map(V)];
       for (const seg of h.fov_segments) {
         const pts = seg.pos.map(V);
         if (pts.length > 1) h.group.add(new THREE.Mesh(keep(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), Math.max(4, pts.length), .0003, 6)), mat(new THREE.MeshBasicMaterial({ color: '#ffffff', depthWrite: false }))));
         h.pierce = h.pierce || pts[Math.floor(pts.length / 2)];
         sprite('#ffffff', .02, h.group).position.copy(pts[Math.floor(pts.length / 2)]);
+        h.polys.push(thin(pts, Math.max(1, Math.floor(pts.length / 12))));
       }
       h.obj = sprite(h.color, .04);
     } else {
       const pts = h.ecef.map(V);
-      line(pts, h.color, 1, fixed); h.obj = sprite(h.color, .03, fixed); h.obj.position.copy(pts.at(-1)); h.pts = pts;
+      h.mats.push(line(pts, h.color, 1, fixed).material); h.obj = sprite(h.color, .03, fixed); h.obj.position.copy(pts.at(-1)); h.pts = pts; h.polys = [pts];
     }
+    h.size = h.obj.scale.x;
     h.name = h.name || (h.kind === 'meteor' ? 'Meteor' : 'Flugzeug');
   }
   const items = [{ kind: 'scope', name: interactive ? 'Teleskop' : (runLabel || 'Teleskop'), color: '#f2d385', obj: observer }, { kind: 'target', name: tg.name || 'Ziel', color: '#ffe8a8', obj: target }, ...hits];
@@ -220,15 +271,16 @@ function runLayer(G, data, { interactive = false, focus = null, onCandidate = nu
 
   // ---- Auswahl und Infokarte (nur interaktiv) ----
   const cardEl = G.cardEl;
+  const openCand = (key) => onCandidate ? onCandidate(key) : window.SkyTraceHelpers?.openCandidate(data.run, key);
   function card(it) {
     const rows = [], k = S.k;
     let head, actions = '';
     if (it.kind === 'sat') {
-      const type = TYPES[it.object_type] || it.object_type, inside = S.t >= it.window[0] && S.t <= it.window[1], f = (S.t - it.window[0]) / 2;
-      head = `<b style="--c:${it.color}">${esc(it.name)}</b><small>NORAD ${esc(it.norad_id)}${type ? ' · ' + esc(type) : ''} · ${esc(it.candidate)}${it.alternative ? ' · Alternative' : ''}</small>`;
-      rows.push(['Durchgang', `${utc(it.t_pass)} (${rel(S.t - it.t_pass)})`]);
+      const type = TYPES[it.object_type] || it.object_type, inside = interactive && S.t >= it.window[0] && S.t <= it.window[1], f = (S.t - it.window[0]) / 2;
+      head = `<b style="--c:${it.color}">${esc(it.name)}</b><small>NORAD ${esc(it.norad_id)}${type ? ' · ' + esc(type) : ''} · ${esc(it.candidate)}${it.alternative ? ' · Alternative' : ''}${!interactive && runLabel ? ' · ' + esc(runLabel) : ''}</small>`;
+      rows.push(['Durchgang', utc(it.t_pass) + (interactive ? ` (${rel(S.t - it.t_pass)})` : '')]);
       if (inside) rows.push(['Höhe', fmt(lerp(it.height_km, f)) + ' km'], ['Geschwindigkeit', fmt(lerp(it.speed_kms, f), 2) + ' km/s'], ['Entfernung', fmt(lerp(it.range_km, f)) + ' km']);
-      else rows.push(['Höhe', fmt(it.at_t0.height_km) + ' km beim Durchgang']);
+      else rows.push(['Höhe', fmt(it.at_t0.height_km) + ' km beim Durchgang'], ['Entfernung', fmt(it.at_t0.range_km) + ' km zum Teleskop · ' + fmt(it.at_t0.speed_kms, 2) + ' km/s']);
       rows.push(['Umlauf', fmt(it.period_min, 1) + ' min · ' + fmt(it.inclination_deg, 1) + '° Neigung'],
         ['Bahnelemente', (Number.isFinite(it.tle_age_days) ? fmt(it.tle_age_days, 1) + ' Tage alt · ' : '') + esc(it.tle_source || '')],
         ['Im Blickfeld', it.fov_segments.length ? `ja, ${fmt(it.fov_segments[0].t.at(-1) - it.fov_segments[0].t[0], 1)} s` : 'nicht innerhalb ±2 min'],
@@ -251,21 +303,77 @@ function runLayer(G, data, { interactive = false, focus = null, onCandidate = nu
         ['Quelle', P.source === 'wcs' ? 'Plate-Solving je Aufnahme' : 'Katalogkoordinate des Ziels – ohne Plate-Solving geschätzt'],
         ['Aufnahmen', `${data.frames.accepted} genutzt · ${data.frames.excluded} ausgelassen · ${dur(P.t.at(-1) - P.t[0] + data.exposure)}` + (data.gaps.length ? ` · ${data.gaps.length} Pause${data.gaps.length > 1 ? 'n' : ''}` : '')]);
     }
-    if (it.t_pass) actions += `<button class="btn ghost sm" data-a="pass">Zum Durchgang</button>`;
-    if (it.key && onCandidate) actions += `<button class="btn ghost sm" data-a="cand">Kandidat ${esc(it.candidate)} öffnen</button>`;
+    if (it.t_pass && interactive) actions += `<button class="btn ghost sm" data-a="pass">Zum Durchgang</button>`;
+    if (it.key && (onCandidate || (data.run && window.SkyTraceHelpers))) actions += `<button class="btn ghost sm" data-a="cand">Kandidat ${esc(it.candidate)} öffnen</button>`;
+    const dl = rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('');
+    // gleiche Auswahl (Zeitleiste läuft): nur die Zeilen erneuern – Details und Bildausschnitt bleiben stehen
+    if (cardEl._st3d === it && cardEl.querySelector('.st3d-rows')) { cardEl.querySelector('.st3d-rows').innerHTML = dl; cardEl.hidden = false; return; }
+    cardEl._st3d = it;
+    const sat = it.kind === 'sat' && data.run && it.key;
     cardEl.innerHTML = `<div class="st3d-card-h"><div>${head}</div><button class="btn ghost icon sm" data-a="x" aria-label="Schließen">${icon('x')}</button></div>
-      <dl>${rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl>${actions ? `<div class="row st3d-card-a">${actions}</div>` : ''}`;
+      ${sat ? `<div class="st3d-sx" aria-live="polite"><p class="mut sm"><span class="spinner"></span>Details und Bildausschnitt werden geladen …</p></div>` : ''}
+      <dl class="st3d-rows">${dl}</dl>${sat ? '<div class="st3d-sx st3d-sxd"></div>' : ''}
+      ${actions ? `<div class="row st3d-card-a">${actions}</div>` : ''}`;
     cardEl.onclick = (e) => { const a = e.target.closest('[data-a]')?.dataset.a;
-      if (a === 'x') select(null); else if (a === 'pass') { stop(); setTime(it.t_pass); setView('pass'); } else if (a === 'cand') onCandidate(it.key); };
+      if (a === 'x') select(null); else if (a === 'pass') { stop(); setTime(it.t_pass); setView('pass'); } else if (a === 'cand' || a === 'crop') openCand(it.key); };
     cardEl.hidden = false;
+    if (sat) satDetails(cardEl.querySelector('.st3d-sx'), cardEl.querySelector('.st3d-sxd'), data.run, it);
+  }
+  // Hervorheben (Antippen, Überfahren, Auswahl): Linien kräftiger, Punkt größer
+  let hov = null, picked = null;
+  function emph(it) {
+    if (!it?.mats) return;
+    const on = it === hov || it === S.sel || it === picked;
+    for (const m of it.mats) { m.userData.base0 ??= m.userData.base; m.userData.base = on ? Math.min(1, m.userData.base0 * 2.4 + .12) : m.userData.base0; }
+    it.obj.scale.setScalar(on ? it.size * 1.6 : it.size);
+    G.refresh?.('runs');
   }
   function select(it) {
-    if (!interactive) { G.onRunPick?.(data); return; }
-    S.sel = it; legendEl?.querySelectorAll('[data-k]').forEach(b => b.classList.toggle('on', !!it && b.dataset.k === String(items.indexOf(it))));
+    const was = picked; picked = it && it.kind !== 'scope' && it.kind !== 'target' ? it : null; emph(was); emph(picked);
+    if (!interactive) {
+      if (it?.kind === 'sat' || it?.kind === 'meteor' || it?.kind === 'plane') card(it);
+      else if (it) G.onRunPick?.(data); else cardEl.hidden = true;
+      return;
+    }
+    const old = S.sel; S.sel = it; emph(old); emph(it);
+    legendEl?.querySelectorAll('[data-k]').forEach(b => b.classList.toggle('on', !!it && b.dataset.k === String(items.indexOf(it))));
     if (it) card(it); else cardEl.hidden = true;
     if (S.mode === 'sat' && it?.kind === 'sat') setView('sat');
     if (it?.kind === 'target') setView('aim');
   }
+  // Treffer nahe einem Bildschirmpunkt (Abstand zu Punkt, Bahn, Umlauf, Durchstoß) – Antippen, Überfahren, Auswahl bei mehreren
+  const pv = new THREE.Vector3(), cp = new THREE.Vector3();
+  const scr = (p, w, h) => { if (behind(p)) return null; pv.copy(p).project(camera); return Math.abs(pv.z) > 1 ? null : [(pv.x + 1) / 2 * w, (1 - pv.y) / 2 * h]; };
+  const segD = (x, y, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], l = dx * dx + dy * dy, t = l ? Math.min(1, Math.max(0, ((x - a[0]) * dx + (y - a[1]) * dy) / l)) : 0;
+    return Math.hypot(a[0] + t * dx - x, a[1] + t * dy - y); };
+  function near(sx, sy, r, w, h) {
+    if (!world.visible || G.layerK('runs') < .4) return [];
+    const out = [];
+    for (const it of hits) {
+      if (!it.on) continue;
+      let best = Infinity;
+      const polys = it.obj.visible ? [[it.obj.getWorldPosition(new THREE.Vector3())], ...it.polys] : it.polys;
+      for (const poly of polys) {
+        let prev = null;
+        for (const p0 of poly) {
+          const s = scr(it.kind === 'sat' || poly.length === 1 ? p0 : fixed.localToWorld(cp.copy(p0)), w, h);
+          if (s) best = Math.min(best, prev ? segD(sx, sy, prev, s) : Math.hypot(s[0] - sx, s[1] - sy));
+          prev = s;
+        }
+      }
+      if (best <= r) out.push(entry(it, best));
+    }
+    return out;
+  }
+  const entry = (it, d) => ({ d, it, id: (data.run || '') + '|' + it.key + '|' + (it.norad_id ?? it.name), name: it.name, color: it.color, kind: it.kind,
+    sub: [utc(it.t_pass ?? it.times?.[0]).slice(0, 8) + ' UTC', TYPES[it.object_type] || (it.kind === 'meteor' ? 'Meteor' : it.kind === 'plane' ? 'Flugzeug' : ''), it.candidate, !interactive && runLabel].filter(Boolean).join(' · '),
+    pick: () => { select(it); if (interactive && it.t_pass) { stop(); setTime(it.t_pass); } }, hover: (on) => { hov = on ? it : hov === it ? null : hov; emph(it); } });
+  const offNear = G.hook('near', near);
+  // Bodenspur je Satellit für die flache Karte (Punkt unter dem Satelliten beim Durchgang + ±5 min)
+  const ground = () => (world.visible && G.layerK('runs') > .01 ? hits : []).filter(h => h.on && h.ground?.length).map(h => {
+    const i = Math.round((h.t_pass - h.window[0]) / (h.ground_step || 10));
+    return { ...entry(h, 0), pts: h.ground, at: h.ground[Math.min(Math.max(i, 0), h.ground.length - 1)], on: h === hov || h === S.sel || h === picked };
+  });
   if (legendEl) {
     legendEl.innerHTML = items.map((it, i) => `<span class="st3d-chip" style="--c:${it.color}">${it.t_pass ? `<input type="checkbox" checked data-v="${i}" aria-label="${esc(it.name)} ein-/ausblenden">` : ''}<button data-k="${i}"><i></i>${esc(it.name)}${it.t_pass ? `<small>${utc(it.t_pass).slice(0, 8)}</small>` : ''}</button></span>`).join('');
     legendEl.onclick = (e) => { const b = e.target.closest('[data-k]'); if (!b) return; const it = items[+b.dataset.k]; select(it); if (it.t_pass) { stop(); setTime(it.t_pass); } };
@@ -318,14 +426,21 @@ function runLayer(G, data, { interactive = false, focus = null, onCandidate = nu
   // Stützpunkte für den Bildausschnitt (statisch: Standort und Satelliten beim Durchgang, Szenenkoordinaten)
   const points = [obsLocal.clone(), ...hits.filter(h => h.obj).map(h => h.obj.position.clone())];
   return {
-    data, items, hits: hits.length, notes, time: anchor, points, world, fixed, name: runLabel,
+    data, items, hits: hits.length, notes, time: anchor, points, world, fixed, name: runLabel, ground, near,
+    // Prüfwert (Tests): je Treffer ein sichtbarer Bildschirmpunkt seiner Bahn (Punkt, Bahnstück oder Umlauf)
+    screen: () => { const w = stage.clientWidth, h = stage.clientHeight;
+      return hits.map(it => { for (const poly of [[it.obj.visible ? it.obj.getWorldPosition(new THREE.Vector3()) : null], ...it.polys]) for (const p of poly) {
+        if (!p) continue; const s = scr(it.kind === 'sat' || poly.length === 1 ? p : fixed.localToWorld(cp.copy(p)), w, h);
+        if (s && s[0] > 20 && s[1] > 20 && s[0] < w - 20 && s[1] < h - 20) return { name: it.name, norad: it.norad_id ?? null, key: it.key, x: +s[0].toFixed(1), y: +s[1].toFixed(1) }; }
+        return { name: it.name, norad: it.norad_id ?? null, key: it.key, x: null, y: null }; }); },
+    sel: () => picked && { name: picked.name, key: picked.key, norad: picked.norad_id ?? null },
     begin(animate = true) { if (!interactive) return; if (start) { select(start); setView('pass', animate); } else setView('earth', animate); },
     setView, setVisible(on) { world.visible = fixed.visible = on; for (const Lb of labels) Lb.el.hidden = true; G.dirty(); },
     state: () => ({ t: S.t, mode: S.mode, hits: hits.length, sample: S.k, visible: hits.filter(h => h.obj.visible).length,
       // Prüfwerte: Höhe der Blickrichtung über dem lokalen Horizont, Kamera hinter dem Standort (< 0)
       alt: Math.asin(bore.dot(obsW.clone().normalize())) * 180 / Math.PI, camAlong: camera.position.clone().sub(obsW).dot(bore) }),
     dispose() {
-      stop(); offPick(); offDraw(); offFrame?.(); offResize?.();
+      stop(); offPick(); offNear(); offDraw(); offFrame?.(); offResize?.();
       G.sc.remove(world); G.earth.remove(fixed); for (const Lb of labels) Lb.el.remove();
       G.dropMats('runs', own); for (const x of own) x.dispose?.();
       if (bar) bar.hidden = true; if (views) views.hidden = true;

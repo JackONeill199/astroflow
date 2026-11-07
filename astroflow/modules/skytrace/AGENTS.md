@@ -514,6 +514,37 @@ Synthetischer A/B-Test (1040×1536, Sternfeld + Spur): 0,75 → 0,58 s (rund 22 
   Maßstab/Koordinaten, Antippen → Karte der Nacht, Kacheln erst nach Klick, zurück zur Kugel), `test_kartenkacheln_passend_zur_aufloesung` (dpr 1/2, Kachel-Attrappe mit z/x/y: Stufe passend,
   ≤ 96 Kacheln, nichts doppelt, Quellenangabe). `host._ste.state().flat`, `_ste.flat.at/screenOf`.
 
+## Satellit anklicken – Infokarte und Bildausschnitt (0.45.0, 07.11.2026, Nutzerwunsch „auf so einen Satelliten klicken können und Infos zu diesem bekommen plus den Ausschnitt vom Bild, das ich gemacht habe, wo er zu sehen ist“)
+- **Antippen im Bildschirmraum** (`skytrace-3d.js` `near`, Hook `near` in `globe()`): je Treffer Stützpunkte `polys` (Bahn ±5 min jede 3., Umlauf jede 2., Durchstoß, Punkt
+  selbst), projiziert, Abstand zu Punkt/Segment; hinter der Erde (`behind`) zählt nicht. Radius Maus 14 px, Stift 18, Finger 26 (`pointerType`). Ein Treffer → `select`,
+  mehrere → Auswahl `.ste-pick` (≤ 8, Pfeiltasten/Enter/Esc, Fokus per `setTimeout` nach dem Klick). Erst danach die alten Raycast-`pick`-Hooks (Teleskop, Ziel, Orte).
+  Überfahren (nur Maus, einmal je Bild): `setHover` → `emph` (Linien-Basisdeckkraft ×2,4, Punkt ×1,6 über `G.refresh` = `applyK`), Namensschild `.ste-tip`, Zeiger `.ste-hot`.
+  Die Bühne darf nie scrollen (`scroll`-Wächter) – sonst verschob ein Fokus/`scrollIntoView` im Menü die ganze Karte.
+- **Statisch (Nächte & Standorte)** öffnet ein Satellit jetzt seine Karte statt der Nachtkarte; Teleskop/Ziel weiter `onRunPick`. Kandidat öffnen über
+  `onCandidate` bzw. `SkyTraceHelpers.openCandidate(data.run, key)` – dafür liefert `run3d` jetzt `run` (Laufname).
+- **Flache Karte:** `orbit3d.build` gibt je Satellit `ground` (geodätisch, `erfa.gc2gd`, jede `GROUND_EVERY` = 5. Stützstelle → 10 s, 61 Punkte ≈ 1 KB) und `ground_step`.
+  `runLayer().ground()` → `deps.satellites()`: gestrichelte Bodenspur (Länge stetig über die Datumsgrenze), Raute = Punkt unter dem Satelliten beim Durchgang, Schild nur bei
+  Hervorhebung oder ≤ 3 Satelliten. Abstand auch zur Spur (`distTo`), Satelliten vor Orten/Nächten, mehrere → `{kind:'multi'}` → dieselbe Auswahl. (0.37 zeigte bewusst keine
+  Bahnen im Raum auf der Karte – das bleibt so; die Bodenspur ist eindeutig ein Erdort.)
+- **Karte** (`card` in `runLayer`): Grundzeilen sofort aus `run3d` (Durchgang, Höhe/Entfernung/Geschwindigkeit beim Durchgang bzw. zur Zeitleiste, Umlauf, Neigung,
+  Bahnelemente, Blickfeld, Abgleich); gleiche Auswahl beim Abspielen erneuert nur `.st3d-rows` (Ausschnitt flackert nicht). Details erst beim Anklicken:
+  `GET /api/skytrace/satellite?run=&key=<Ordner>/<K>&norad=` (`satdetail.details`, Antwort ~2 KB, im Browser je Satellit einmal gemerkt) → Ausschnitt + Zuordnung oben, Katalogzeilen unten.
+- **`satdetail.py` (nur Gespeichertes, kein Netz):** Kandidat über `videos.json` (`find`, K-Nummer `^[A-Za-z0-9_-]{1,40}$`, Ordner muss eine Beobachtung sein);
+  SATCAT aus `catalog_cache/archives/satcat.csv` (eigener kleiner Leser, `lru_cache` je Dateistand; Spalten Name/COSPAR/Art/Betreiber/Start/Wiedereintritt/Bahn), sonst
+  `satcat-names.json`, sonst COSPAR aus TLE-Zeile 1 (`intl_from_tle`). Art: Konstellation aus dem Namen (`kind_of`), sonst SATCAT-Typ. Winkelgeschwindigkeit = Spurlänge ÷
+  Durchgangszeit der Bahn (`passage_seconds`), sonst Untergrenze aus `evidence`/`plausibility` („≥“). Helligkeit exakt wie die Statistik (`satellites.phot_of` des
+  angeklickten Treffers, `pick_zp` mit Nacht/Gerät aus `stats._run`, Dienst `night_zero_points`). **Zuordnung** `certainty`: `alternative` (nicht der beste Treffer),
+  `unsicher` (`site_widened`), `mehrdeutig` (Zweiter wie `sitefit._sure` fast gleich gut, Namen in `others`), `eindeutig` (≤ 60″, Abdeckung ≥ 80 %, ≤ 2 s außerhalb), sonst
+  `wahrscheinlich`; dazu Fakten (Abstand, Abdeckung, Richtung, Zeit). Externe Links CelesTrak/N2YO nur als `<a rel="noopener noreferrer">`.
+- **Ausschnitt:** Quelle = Ausschnitt-PNG des Trefferbilds (`frames[hit].image` + `overlay.points`, bei fehlender Linie `context_image.points` − `crop`), sonst Vollbild
+  (`full_image`/`context_image`). `crop_box`: Spur + Rand (≥ 24 px bzw. 12 %), ≥ 160 px, Seitenverhältnis 1,4, im Bild; ≤ 560 px, Streckung Perzentil 1/99,8, γ 0,85, JPEG 82
+  (~30–60 KB). `GET /api/skytrace/satellite/crop?run=&key=` liefert ihn; Zwischenspeicher **`kandidaten/<K>/satellit-ausschnitt.jpg`** (fester Name, Kennung `v<CROP_VERSION>-<mtime>-<box>`
+  als Kommentar hinter dem JPEG-Ende, atomar ersetzt; schreibgeschützter Lauf → nur ausliefern). Die Karte legt zwei gestrichelte Linien (±9 px) beidseits der Spur
+  (SVG über dem Bild); Klick öffnet den Kandidaten im Lauf. Fehlt alles → `crop: null` + `crop_note` (Hinweis auf „Zeitreihen aktualisieren“).
+- Prüfwerte: `host._st3d.screen()` (je Treffer ein sichtbarer Bildschirmpunkt), `_st3d.sel()`, `_ste.satScreen()`, `_ste.satSel()`, `_ste.chooser()`, `_ste.state().flat.sats`.
+- Tests: `test_skytrace_satellit.py` (Details, Stufen, ohne SATCAT, Pfadprüfungen, Zwischenspeicher, Bodenspur gegen astropy), `test_skytrace_erde_ui.py::test_satellit_anklicken`,
+  `::test_satellit_in_der_flachen_karte`, `::test_satellit_antippen_handy` (zwei Satelliten auf derselben Bahn → Auswahl; Details lazy; Ausschnitt → Kandidat).
+
 ## Alternativen zum zurückgerechneten Ort (0.38.0, 07.11.2026, Nutzerfrage „Wieso wird hier nicht <Listenort> vorgeschlagen?“)
 - **Anlass** (nur gelesen): M108 2022-05-17, 3 Spuren, Vorschlag `fit` ± 115 m, 3/3, quer 6″. Ein Listenort (Genauigkeit 30 m, Koordinaten aus der
   Adresssuche) lag **372 m** daneben und hatte streng ebenfalls 3/3, quer 113″ – nicht vorgeschlagen, weil die Einrastgrenze max(300 m, 2 × Genauigkeit)
