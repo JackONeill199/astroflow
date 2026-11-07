@@ -31,6 +31,59 @@
     return `<p class="ok sm su-task">${icon('check')} ${esc(t.detail || 'Fertig.')}</p>`;
   }
 
+
+  // Optionale Komponenten (core/components.py): Zustand, Installieren, Reparieren, Entfernen – Assistent und Einstellungen
+  const STATE = { installed: ['ok', 'installiert'], partial: ['warn', 'unvollständig'], missing: ['', 'fehlt'], unsupported: ['', 'nicht verfügbar'], error: ['warn', 'Fehler'] };
+  const fsize = (mb) => mb >= 1000 ? (mb / 1000).toFixed(1).replace('.', ',') + ' GB' : mb + ' MB';
+  function componentsPanel(host, { skip = [] } = {}) {
+    let timer = null, data = null;
+    host.className = 'cmp-list';
+    host.innerHTML = '<div class="skel" style="height:8rem"></div>';
+    const row = (c) => {
+      const [kind, label] = STATE[c.state] || ['', c.state];
+      const t = c.task, busy = t?.state === 'running';
+      const btns = c.id === 'starnet'
+        ? `<a class="btn ghost sm" href="#/settings/stacking">ZIP einspielen</a>`
+        : c.state === 'unsupported' || c.can_install === false ? ''
+        : `${c.state === 'installed' ? `<button class="btn ghost sm" data-cmp="${c.id}" data-force="1" ${busy ? 'disabled' : ''}>Reparieren</button>`
+            : `<button class="btn sm" data-cmp="${c.id}" ${busy ? 'disabled' : ''}>${icon('down')}Installieren</button>`}
+           ${c.can_remove ? `<button class="btn ghost sm" data-rm="${c.id}" ${busy ? 'disabled' : ''}>Entfernen</button>` : ''}`;
+      return `<div class="cmp-row" data-id="${c.id}"><div class="cmp-main"><b>${esc(c.title)}</b> <span class="chip ${kind}">${label}</span>
+          ${c.version ? `<span class="mut sm">${esc(c.version)}</span>` : ''}${c.pending && c.state !== 'installed' ? ' <span class="chip acc">vom Installer vorgemerkt</span>' : ''}
+          <div class="mut sm">${esc(c.what)}${c.size_mb ? ` · ~${fsize(c.size_mb)}` : ''}</div>
+          <div class="dim sm">${esc(c.license)} · <a href="${esc(c.source)}" target="_blank" rel="noopener">${c.id === 'graxpert' ? 'Quellcode' : 'Quelle'}</a></div>
+          ${c.detail ? `<div class="dim sm cmp-detail">${esc(c.detail)}</div>` : ''}${taskLine(t)}</div>
+        <div class="cmp-acts">${btns}</div></div>`;
+    };
+    const paint = () => { host.innerHTML = data.items.filter(c => !skip.includes(c.id)).map(row).join(''); };
+    const stop = () => { clearInterval(timer); timer = null; };
+    const watch = () => { if (!timer) timer = setInterval(load, 1500); };
+    const busy = () => data && (data.items.some(c => c.task?.state === 'running') || data.pending.length);
+    async function load() {
+      if (data && !host.isConnected) return stop();
+      try { data = await api('/components'); } catch (e) { host.innerHTML = `<p class="bad sm">${esc(e.message)}</p>`; return stop(); }
+      paint();
+      if (busy()) watch(); else stop();
+    }
+    host.onclick = async (e) => {
+      const b = e.target.closest('button[data-cmp], button[data-rm]');
+      if (!b) return;
+      try {
+        if (b.dataset.rm) {
+          if (!await confirmDlg('Komponente entfernen?', `${esc(data.items.find(c => c.id === b.dataset.rm)?.title || '')} wird gelöscht. Deine Bilder und Einstellungen bleiben.`, 'Entfernen', true)) return;
+          const r = await send('/components/remove', { id: b.dataset.rm });
+          toast(r.detail, 'ok');
+        } else {
+          await send('/components/install', { id: b.dataset.cmp, option: b.dataset.cmp === 'astap' ? data.telescope_db : null, force: !!b.dataset.force });
+        }
+        await load();
+      } catch (err) { toast(err.message, 'err'); }
+    };
+    host._stop = stop;
+    load();
+    return { reload: load, stop };
+  }
+
   async function setupView(el) {
     crumbs([['Einrichtung']]);
     let s = await api('/setup'), sites = await api('/sites?nights=false').catch(() => ({ list: [] }));
@@ -81,11 +134,8 @@
           ${taskLine(t.demo)}
         </li>
         <li class="panel su-step"><h2>Extras <span class="mut sm">(optional)</span></h2>
+          <div id="suCompSlot"></div>
           <dl class="su-extras">
-            <dt>GPU</dt><dd>${s.gpu.installed ? `${icon('check')} pyopencl vorhanden – Einstellungen → Bilder → System.`
-              : `Stacking auf der Grafikkarte, etwa 3× schneller. <button class="btn ghost sm" id="suGpu" ${t.gpu?.state === 'running' ? 'disabled' : ''}>Installieren</button>`}${taskLine(t.gpu)}</dd>
-            <dt>GraXpert</dt><dd>KI-Hintergrund und -Entrauschen. <a href="https://github.com/Steffenhir/GraXpert/releases/latest" target="_blank" rel="noopener">Offizielle Seite</a> – nach der Installation findet AstroFlow es selbst.</dd>
-            <dt>StarNet</dt><dd>Sterntrennung bei Nebeln. Nur vom Hersteller erhältlich; ZIP unter Einstellungen → Bilder → StarNet installieren.</dd>
             ${s.launched ? `<dt>Heimnetz</dt><dd><label class="modrow su-row"><div>Vom Handy oder Tablet im eigenen WLAN erreichbar (ohne Passwort, nur Geräte im eigenen Netz).</div>
               <input type="checkbox" id="suLan" ${s.lan ? 'checked' : ''}><span class="switch"></span></label>
               ${s.lan && s.platform === 'Windows' ? `<button class="btn ghost sm" id="suFw">Windows-Firewall freigeben</button>` : ''}</dd>` : ''}
@@ -96,10 +146,13 @@
       </ol>
       <div class="su-foot"><button class="btn" id="suDone">${icon('check')}${s.done ? 'Fertig' : 'Einrichtung abschließen'}</button></div>`;
     };
+    const comps = document.createElement('div');
+    componentsPanel(comps, { skip: ['astap'] });
+    const repaint = () => { paint(); $('#suCompSlot', el)?.replaceWith(comps); };
     const refresh = async () => {
       if (!el.isConnected) return stop();
       s = await api('/setup').catch(() => s);
-      paint();
+      repaint();
       if (!Object.values(s.tasks || {}).some(t => t.state === 'running')) stop();
     };
     const stop = () => { clearInterval(timer); timer = null; };
@@ -111,15 +164,14 @@
     };
     el.onclick = async (e) => {
       const b = e.target.closest('button');
-      if (!b) return;
+      if (!b || b.closest('.cmp-list')) return;
       try {
         if (b.id === 'suDir') folderDialog(s.data.path, (p) => changeDir(p), { title: 'Datenordner wählen', ok: 'Diesen Ordner verwenden', hint: 'Ein leerer oder neuer Ordner auf einem Laufwerk mit viel Platz – nicht in OneDrive/Dropbox.' });
         else if (b.id === 'suDirDef') changeDir(s.default_data);
-        else if (b.closest('#suTel')) { s = await send('/setup', { telescope: b.dataset.v }); db = DB_FOR[b.dataset.v] || 'd05'; paint(); }
-        else if (b.closest('#suDb')) { db = b.dataset.v; paint(); }
-        else if (b.id === 'suAstap') { await send('/setup/astap', { db }); await refresh(); watch(); }
+        else if (b.closest('#suTel')) { s = await send('/setup', { telescope: b.dataset.v }); db = DB_FOR[b.dataset.v] || 'd05'; repaint(); }
+        else if (b.closest('#suDb')) { db = b.dataset.v; repaint(); }
+        else if (b.id === 'suAstap') { await send('/components/install', { id: 'astap', option: db }); await refresh(); watch(); }
         else if (b.id === 'suDemo') { await send('/setup/demo'); await refresh(); watch(); }
-        else if (b.id === 'suGpu') { await send('/setup/gpu'); await refresh(); watch(); }
         else if (b.id === 'suFw') { const r = await send('/setup/firewall'); toast(r.detail, 'ok'); }
         else if (b.id === 'suDone') { await send('/setup', { done: true }); location.hash = s.demo.exists ? '#/bilder' : '#/'; }
       } catch (err) { toast(err.message, 'err'); }
@@ -133,9 +185,9 @@
         }
       } catch (err) { toast(err.message, 'err'); }
     };
-    paint();
+    repaint();
     if (Object.values(s.tasks || {}).some(t => t.state === 'running')) watch();
-    return { destroy: stop };
+    return { destroy: () => { stop(); comps._stop?.(); } };
   }
 
   // Einstellungen → Module & System: Einrichtung, Updates, Beenden
@@ -157,6 +209,11 @@
         ${s.launched ? `<button class="btn ghost sm" id="sysRestart">Neu starten</button>` : ''}
         <button class="btn danger sm" id="sysQuit">AstroFlow beenden</button></div>`;
     el.append(p);
+    const cp = document.createElement('div');
+    cp.className = 'panel';
+    cp.innerHTML = '<h2>Komponenten</h2><p class="mut sm" style="margin:0.375rem 0 0.75rem">Werkzeuge, die AstroFlow auf Wunsch lädt. Fehlt etwas, läuft AstroFlow trotzdem – nur die betroffene Funktion entfällt.</p><div></div>';
+    el.append(cp);
+    componentsPanel(cp.lastElementChild);
     p.onchange = async (e) => { if (e.target.id === 'sysUpd') { try { await send('/setup', { update_check: e.target.checked }); toast('Gespeichert.', 'ok'); } catch (err) { toast(err.message, 'err'); } } };
     p.onclick = async (e) => {
       const b = e.target.closest('button');
@@ -177,4 +234,5 @@
 
   window.setupView = setupView;
   window.setupSystemPanel = setupSystemPanel;
+  window.componentsPanel = componentsPanel;
 })();

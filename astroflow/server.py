@@ -48,6 +48,7 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
             m.module.start()
         import threading
         threading.Thread(target=setup.update_loop, daemon=True, name="update-check").start()
+        threading.Thread(target=setup.run_order, daemon=True, name="komponenten").start()   # Auftrag aus dem Installer
         yield
         setup._stop.set()
         for m in active:

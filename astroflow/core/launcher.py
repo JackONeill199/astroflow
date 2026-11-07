@@ -151,7 +151,9 @@ def start(data: str | None = None, p: int | None = None, browser: bool = True, w
         while time.time() - t0 < 30 and (port_busy(p) or _alive(wait_pid)):
             time.sleep(0.3)
     url = f"http://localhost:{p}/"
+    from . import tray
     if probe(p):
+        tray.ensure(p)
         if browser:
             webbrowser.open(url)
         return 0
@@ -164,6 +166,7 @@ def start(data: str | None = None, p: int | None = None, browser: bool = True, w
     t0 = time.time()
     while time.time() - t0 < timeout:
         if probe(p, 1.0):
+            tray.ensure(p)                       # Symbol im Infobereich (eigener Prozess, je Benutzer einmal)
             if browser:
                 webbrowser.open(url)
             return 0
@@ -178,6 +181,8 @@ def stop(p: int | None = None, timeout: float = 30) -> int:
     import urllib.request
     p = port(p)
     if not probe(p):
+        from . import tray
+        tray.stop_running()
         print(f"AstroFlow läuft nicht (Port {p}).")
         return 0
     try:
@@ -188,6 +193,8 @@ def stop(p: int | None = None, timeout: float = 30) -> int:
     t0 = time.time()
     while time.time() - t0 < timeout and port_busy(p):
         time.sleep(0.3)
+    from . import tray
+    tray.stop_running()
     print("AstroFlow wurde beendet." if not port_busy(p) else "AstroFlow reagiert nicht auf das Beenden.")
     return 0 if not port_busy(p) else 1
 

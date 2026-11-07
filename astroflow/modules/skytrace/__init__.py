@@ -158,8 +158,13 @@ class Module(BaseModule):
                                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             import json
             missing = json.loads(out.stdout.strip() or "null")
-            self.health = {"checked": True, "python": self.python, "ok": missing == [], "missing": missing or [],
-                           "error": None if missing is not None else (out.stderr.strip()[-300:] or "Interpreter antwortet nicht")}
+            error = None if missing is not None else (out.stderr.strip()[-300:] or "Interpreter antwortet nicht")
+            if missing == [] and Path(self.python).resolve().parent == Path(sys.executable).resolve().parent:
+                from ...core.components import VC_MISSING, vc_runtime_ok
+                if not vc_runtime_ok():                   # PyTorch würde beim ersten Lauf mit „c10.dll“ abstürzen
+                    error = VC_MISSING
+            self.health = {"checked": True, "python": self.python, "ok": missing == [] and not error, "missing": missing or [],
+                           "error": error}
         except Exception as e:
             self.health = {"checked": True, "python": self.python, "ok": False, "missing": [], "error": str(e)}
 
