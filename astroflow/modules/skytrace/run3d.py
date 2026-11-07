@@ -254,7 +254,7 @@ def _build(run_path, folder, session, focus, home, names, services):
     accepted = _rows(folder / "frames.jsonl")
     excluded = _rows(folder / "ausgeschlossen.jsonl", keys=("index", "timestamp", "file"))
     cands = _read_json(folder / "kandidaten.json", []) or []
-    base = dict(sessions=names, session=session)
+    base = dict(run=run_path.name, sessions=names, session=session)
     if not accepted:
         return dict(base, ok=False, reason="Für diese Beobachtung sind keine Aufnahmezeiten gespeichert.")
     site = _site(cands, accepted, session)

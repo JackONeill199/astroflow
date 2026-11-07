@@ -26,6 +26,7 @@ import numpy as np
 EARTH_RATE = 7.292115855e-5                 # rad/s, Änderung der mittleren Sternzeit
 WINDOW_S = 600                              # Zeitregler ± 10 min um den Durchgang
 STEP_S = 2
+GROUND_EVERY = 5                             # Bodenspur: jede 5. Stützstelle (10 s) – klein genug fürs Handy
 RING_POINTS = 360
 COLORS = ("#7c9cff", "#5eead4", "#f2d385", "#b18cff", "#f87171")
 
@@ -266,7 +267,11 @@ def build(payload: dict) -> dict:
         inside = inside_fov(look, boresight, corners) & visible & (err[ring_n + 1 + len(dense):] == 0)
         segments = [dict(t=_r(fine[a:b + 1] - t0, 2), pos=_r(near[a:b + 1], 2)) for a, b in _runs(inside)]
         k = int(np.argmin(abs(dense - t0)))
+        # Bodenspur (Punkt unter dem Satelliten, geodätisch) alle GROUND_EVERY Stützstellen – für die flache Karte (0.45.0)
+        lon_g, lat_g, _ = erfa.gc2gd(1, ecef[::GROUND_EVERY] * 1000)
+        ground = _r(np.degrees(np.column_stack([lat_g, lon_g])), 3)
         out["satellites"].append(dict(
+            ground=ground, ground_step=STEP_S * GROUND_EVERY,
             name=s.get("name") or f"NORAD {s.get('norad_id')}", norad_id=s.get("norad_id"), object_type=s.get("object_type"),
             tle_age_days=s.get("tle_age_days"), tle_source=origin, color=COLORS[i % len(COLORS)],
             separation_arcsec=s.get("separation_arcsec"), time_offset_s=s.get("time_offset_s"),

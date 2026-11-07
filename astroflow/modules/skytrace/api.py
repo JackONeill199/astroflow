@@ -540,6 +540,35 @@ def build_router(mod) -> APIRouter:
         except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as e:
             bad(e)
 
+    @r.get("/satellite")
+    def satellite(run: str, key: str, norad: int):
+        """Infokarte eines zugeordneten Satelliten (3D-Erde): Katalog, Bahn, Zuordnung, Helligkeit, Ausschnitt – nur Gespeichertes."""
+        from .satdetail import details
+        zps = None
+        try:
+            if "night_zero_points" in mod.ctx.services:
+                zps = mod.ctx.services["night_zero_points"]()
+        except Exception:
+            zps = None
+        try:
+            return details(ctl.run_path(run), key, norad, mod.home, zps)
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            bad(e)
+
+    @r.get("/satellite/crop")
+    def satellite_crop(run: str, key: str):
+        """Bildausschnitt der Spur (JPEG, Zwischenspeicher im Kandidatenordner unter festem Namen)."""
+        from .satdetail import crop_jpeg, find
+        try:
+            path = ctl.run_path(run)
+            folder, c, _ = find(path, key)
+            data = crop_jpeg(path, folder, c)
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            bad(e)
+        if not data:
+            raise HTTPException(404, "Für diese Spur ist kein Bildausschnitt gespeichert")
+        return Response(data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"})
+
     @r.get("/sitefit")
     def sitefit(run: str, folder: str):
         try:
