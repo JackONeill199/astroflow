@@ -181,7 +181,8 @@ a.sts-row:hover b { color: var(--acc) }
 .stn-alt-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; justify-content: space-between }
 .stn-alt-row > div:first-child { display: flex; flex-direction: column; gap: 0.125rem; min-width: 0 }
 .stn-alt-row b { overflow-wrap: anywhere }
-.stn-alt-row .row { flex-wrap: wrap; gap: 0.375rem }
+.stn-alt-row .row { flex-wrap: wrap; gap: 0.375rem; min-width: 0; max-width: 100% }
+.stn-alt-row .row .btn { height: auto; min-height: 2rem; padding-block: 0.25rem; white-space: normal; text-align: left; max-width: 100% }   /* langer Ortsname am Handy */
 .stn-alt-tip { background: #10162e; color: #f2d385; border: 0; box-shadow: none; font-size: 0.6875rem }
 .stn-legend { display: flex; align-items: center; gap: 0.5rem }
 .stn-legend .ramp { width: 6rem; height: 0.5rem; border-radius: 0.25rem; background: linear-gradient(90deg, rgb(40, 20, 90), rgb(150, 40, 130), rgb(240, 110, 50), rgb(255, 235, 120)) }

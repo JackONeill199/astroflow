@@ -194,10 +194,12 @@ function folderDialog(start, pick, { title = 'Ordner wählen', ok = 'Diesen Ordn
       $('#fdr', d).innerHTML = r.drives.map(x => `<button class="chip${r.path.toLowerCase().startsWith(x.toLowerCase()) ? ' acc' : ''}" data-p="${esc(x)}">${esc(x)}</button>`).join('');
       // Pfad als klickbare Brotkrumen; Trenner je nach System
       const sep = r.path.includes('\\') ? '\\' : '/', parts = r.path.split(sep).filter(Boolean);
-      $('#fcr', d).innerHTML = r.path ? parts.map((x, i) => {
+      // Linux/macOS: Wurzel „/“ als eigener Knopf (sonst gäbe es im Wurzelordner keine Brotkrume)
+      const root = sep === '/' && r.path.startsWith('/') ? '<button class="linkbtn" data-p="/">/</button>' : '';
+      $('#fcr', d).innerHTML = r.path ? root + parts.map((x, i) => {
         const p = (r.path.startsWith(sep) ? sep : '') + parts.slice(0, i + 1).join(sep) + (i === 0 && sep === '\\' ? sep : '');
         return `<button class="linkbtn" data-p="${esc(p)}">${esc(x)}</button>`;
-      }).join(`<span class="dim">${esc(sep)}</span>`) || esc(sep) : '<span class="mut">Laufwerke</span>';
+      }).join(`<span class="dim">${esc(sep)}</span>`) : '<span class="mut">Laufwerke</span>';
       fq.placeholder = r.path ? 'Ordner suchen, auch in Unterordnern – z. B. NGC 4395' : 'Laufwerk suchen …';
       draw();
       fl.scrollTop = 0;
