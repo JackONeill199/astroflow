@@ -473,8 +473,11 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   `_candidates` verwirft Rand, Einzelpixel, Form (Achsen > 3:1, Größe außerhalb 0,5–2,5 FWHM), gesättigte/helle Reste, Helligkeits-
   abweichung < 0,5 mag, und „neu/verschwunden“ nur, wenn das andere Bild die Quelle sicher zeigen müsste (DSS: 30σ erwartet –
   Galaxien und rote Riesen sind im Rotfilter heller, M3 gab sonst 25 Fehlalarme). Gegen DSS keine Helligkeitsänderungen.
-  Katalog: SIMBAD-Kegel 8″ je Stelle (Veränderlichen-Typen), JPL SB-Ident **geozentrisch** (`mpc-code=500`) je Nacht (≤ 2), zwei
-  Durchgänge, Kometen und Asteroiden getrennt – Asteroiden brauchen je nach Last 15–120 s (Zeitlimit 60 s → Hinweis).
+  Katalog: SIMBAD-Kegel 8″ je Stelle (Veränderlichen-Typen), JPL SB-Ident **geozentrisch** (`mpc-code=500`) je Nacht (≤ 2), Kometen
+  und Asteroiden getrennt. **Seit 0.43.2:** Kometen mit zweitem Durchgang (genau, ~4 s), Asteroiden **nur erster Durchgang**
+  (Zweikörper-Näherung, ~20 s; Einträge `genau: false`) – der zweite brauchte am 07.11.2026 für ein 1°-Feld 127 s und scheiterte am
+  Zeitlimit immer. Cache-Schlüssel `sb3|…`. Zeitüberschreitung/Verbindungsfehler → `SmallBodyError`, Marke `work/vergleich/jpl_fehler.json`,
+  `JPL_FAIL_PAUSE` 30 min keine neue Abfrage (dienstweit); Meldungen über `compare.jpl_message` („sehr langsam“ / „nicht erreichbar“).
   Ausgabe: `work/p<id>/vergleich/r<rid>/` Blinkbilder (gleiche Streckung, Raster des Stacks) + Ausschnitte; Caches `work/vergleich/`.
 - **Hotpixel-Reste** (seit 0.38.2, `stackfix.spots`): Ältere Stacks ohne `hotfix` enthalten Hotpixel-Paare (ein Kanal, R/G). Im
   Kanalmittel und nach dem Falten der schärferen Aufnahme wurden sie sternförmig und passierten Form-/Einzelpixelprüfung (Arbeitsinstanz:
@@ -543,8 +546,18 @@ Kleinkörper-Abgleich im Vergleich). Endpunkte `GET|POST /results/{id}/asteroids
 (streng geprüft, Ablage `work/p<id>/asteroiden/r<rid>/`); `_slim` lässt `asteroids` aus der gepollten Projektansicht weg.
 - **Vorhersage:** Master-Stack (`pl._master`) + `wcs.json` (Schlüssel muss zur Stackgröße passen), je Nacht (≤ `MAX_NIGHTS` 3, die mit den
   meisten Aufnahmen) eine JPL-SB-Ident-Abfrage zur mittleren Aufnahmezeit über `compare.small_bodies` (geozentrisch, MPC 500, Cache
-  `work/vergleich/jpl_*` – Schlüssel seit 0.42.0 `sb2|…`, weil jetzt `rate_ra`/`rate_dec` („/h, RA-Rate = dRA·cos δ) und `kind` a/c mitkommen).
+  `work/vergleich/jpl_*` – Schlüssel `sb3|…`, mit `rate_ra`/`rate_dec` („/h, RA-Rate = dRA·cos δ), `kind` a/c und `genau`).
   `predict` rechnet Lage + Bewegung (px/s) im Stack-Raster; fehlt die Rate, zweite Abfrage eine Stunde später. Zeitbudget `JPL_BUDGET` 180 s.
+  **Nachschärfen (seit 0.43.2):** Asteroiden kommen nur genähert (erster Durchgang, s. „Vergleich“). Die Nachweis-Kandidaten (`todo`) rechnet
+  `refine_all` einzeln über `comet.horizons(…, command=horizons_command(name))` nach (geozentrisch 500@399, Cache `work/komet/`), Budget
+  `HZ_BUDGET` 90 s, je Abfrage `HZ_TIMEOUT` 20 s. **Namen:** SB-Ident schreibt vorläufige Bezeichnungen ohne Nummer in Klammern („(1927 LA)“ →
+  „DES=1927 LA;“), nur Ziffern in Klammern sind eine Nummer („(4711)“ → „4711;“), „433 Eros (A898 PA)“ → „433;“ – sonst rechnete Horizons einen
+  falschen Körper. Der erste Durchgang liefert `Est. error RA/Dec (″)` → `fehler` (Betrag): ≤ `ERR_OK` 5″ gilt als genau (keine Nachrechnung),
+  sonst bleibt eine nicht nachgerechnete Bahn genähert mit Suchkreis `rough_search` = 15″ + 3 × Fehler, höchstens `SEARCH_AS_ROUGH` 60″ (ohne
+  Schätzung 60″; Ausschnittgröße je Nacht nach dem größten Kreis) und Hinweis; UI „Bahn genähert“.
+  **Randkandidaten** (Review PR #73): `predict` behält genäherte Bahnen auch knapp außerhalb des bedeckten Bildes (`in_field` mit Rand =
+  `rough_search`, Abdeckung an der nächsten Bildstelle) als `_edge`. Ohne Rohbilder fallen sie weg; nach dem Nachschärfen genau außerhalb → weg;
+  am Ende bleiben sie nur, wenn nachgewiesen oder genau gerechnet im Feld. `naechte[].im_feld` zählt die behaltenen.
   **Standort nie senden:** die Parallaxe (Hauptgürtel ≤ ~6″) fängt der Suchkreis `SEARCH_AS` 15″ ab.
 - **Nachweis** (nur mit erreichbaren Rohbildern, `frames.deleted=0`): je Nacht ≤ `SAMPLE` 40 Aufnahmen über die Zeit verteilt, je
   Aufnahme `pl._load` (Kalibrierung + cosmetic wie beim Stacken; gespeicherte Glüh- und Fehlerkarten legt `_sensor_cache` vorher in den Cache,

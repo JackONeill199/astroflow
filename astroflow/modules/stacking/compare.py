@@ -789,33 +789,71 @@ def _simbad_near(ra: float, dec: float, radius_as: float, cache_dir: Path) -> li
     return out
 
 
+JPL_FAIL_PAUSE = 1800.0            # s: nach einem Zeitüberschreitungs-/Verbindungsfehler nicht sofort erneut fragen
+
+
+class SmallBodyError(RuntimeError):
+    """JPL SB-Ident nicht erreichbar oder zu langsam – mit ehrlicher Meldung für die Oberfläche."""
+
+
+def jpl_message(e: Exception) -> str:
+    """Verständliche Meldung zu einem Fehler der Kleinkörper-Abfrage."""
+    if isinstance(e, SmallBodyError):
+        return str(e)
+    t = str(e)
+    if "timed out" in t or "Timeout" in type(e).__name__:
+        return "JPL-Kleinkörperdienst antwortet sehr langsam – Zeitlimit überschritten."
+    return f"JPL-Kleinkörperdienst nicht erreichbar ({t[:80]})."
+
+
 def small_bodies(when: str, ra: float, dec: float, hw_ra: float, hw_dec: float, cache_dir: Path, timeout: float = 60) -> list[dict]:
     """Bekannte Kleinplaneten/Kometen im Feld zur Zeit `when` (UTC) – JPL SB-Ident, **geozentrisch** (MPC-Code 500,
-    der Standort verlässt den Rechner nie). Positionen sind daher bis ~10″ ungenau (Parallaxe naher Objekte)."""
+    der Standort verlässt den Rechner nie). Positionen sind daher bis ~10″ ungenau (Parallaxe naher Objekte).
+
+    Kometen mit zweitem Durchgang (genaue Positionen, wenige Sekunden). Asteroiden nur im ersten Durchgang: der zweite
+    brauchte am 07.11.2026 für ein 1°-Feld 127 s statt 18 s und scheiterte damit systematisch am Zeitlimit. Der erste
+    Durchgang rechnet die Bahnen vereinfacht (Zweikörperproblem ab der Epoche der Bahnelemente) – je weiter die Aufnahme
+    davon entfernt ist, desto ungenauer (Bogensekunden bis Bogenminuten). Einträge tragen deshalb `genau` (True/False);
+    wer es genau braucht (Asteroiden-Nachweis), schärft einzelne Kandidaten über Horizons nach (`asteroids.refine`).
+    Nach einem Zeitüberschreitungs-/Verbindungsfehler wird `JPL_FAIL_PAUSE` lang nicht erneut gefragt (Marke im Cache)."""
     import httpx
 
-    # v2: mit Bewegung („/h) und Art (a/c) – ältere Zwischenspeicher hatten beides nicht
-    key = hashlib.sha1(f"sb2|{when}|{ra:.3f}|{dec:.3f}|{hw_ra:.2f}|{hw_dec:.2f}".encode()).hexdigest()[:16]
+    # v3: Asteroiden nur erster Durchgang (Felder `genau`, `fehler` = JPL-Fehlerschätzung in ″); v2 hatte zwei Durchgänge für beide Arten
+    key = hashlib.sha1(f"sb3|{when}|{ra:.3f}|{dec:.3f}|{hw_ra:.2f}|{hw_dec:.2f}".encode()).hexdigest()[:16]
     f = cache_dir / f"jpl_{key}.json"
     if f.exists():
         return json.loads(f.read_text(encoding="utf-8"))
+    fail = cache_dir / "jpl_fehler.json"                  # dienstweit: ist JPL gerade sehr langsam, gilt das für alle Felder
+    try:
+        last = json.loads(fail.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        last = None
+    if last and time.time() - float(last.get("t", 0)) < JPL_FAIL_PAUSE:
+        wait = max(1, round((JPL_FAIL_PAUSE - (time.time() - float(last["t"]))) / 60))
+        raise SmallBodyError(f"{last.get('msg') or 'JPL-Kleinkörperdienst war zuletzt nicht erreichbar.'} "
+                             f"Nächster Versuch in etwa {wait} min.")
     h, m = divmod(ra / 15 * 60, 60)
     rs = f"{int(h):02d}-{int(m):02d}-{(m % 1) * 60:05.2f}"
     sgn, ad = ("-" if dec < 0 else ""), abs(dec)
     dd, dm = int(ad), (ad - int(ad)) * 60
     ds = f"{sgn}{dd:02d}-{int(dm):02d}-{(dm % 1) * 60:05.2f}"
-    # zweiter Durchgang = genaue Positionen nur der Objekte im Feld; Asteroiden und Kometen getrennt (Kometen sind schnell,
-    # Asteroiden je nach Last des Dienstes 15–120 s)
     params = {"mpc-code": "500", "obs-time": when.replace("T", "_"), "fov-ra-center": rs, "fov-dec-center": ds,
-              "fov-ra-hwidth": f"{min(hw_ra, 10):.3f}", "fov-dec-hwidth": f"{min(hw_dec, 10):.3f}",
-              "two-pass": "true", "suppress-first-pass": "true"}
+              "fov-ra-hwidth": f"{min(hw_ra, 10):.3f}", "fov-dec-hwidth": f"{min(hw_dec, 10):.3f}"}
+    passes = {"c": {"two-pass": "true", "suppress-first-pass": "true"}, "a": {}}
     out = []
     for kind in ("c", "a"):
-        r = httpx.get(JPL_SBIDENT, params={**params, "sb-kind": kind}, timeout=timeout)
-        r.raise_for_status()
-        j = r.json()
-        fields = j.get("fields_second") or j.get("fields_first") or []
-        for row in j.get("data_second_pass") or j.get("data_first_pass") or []:
+        try:
+            r = httpx.get(JPL_SBIDENT, params={**params, **passes[kind], "sb-kind": kind}, timeout=timeout)
+            r.raise_for_status()
+            j = r.json()
+        except (httpx.TimeoutException, httpx.TransportError) as e:
+            msg = jpl_message(e)
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            fail.write_text(json.dumps({"t": time.time(), "msg": msg}), encoding="utf-8")
+            raise SmallBodyError(msg) from e
+        second = bool(j.get("data_second_pass"))
+        fields = j.get("fields_second") if second else j.get("fields_first") or []
+        for row in (j.get("data_second_pass") if second else j.get("data_first_pass")) or []:
             d = dict(zip(fields, row))
             try:
                 ra_s = d.get("Astrometric RA (hh:mm:ss)") or ""
@@ -824,13 +862,16 @@ def small_bodies(when: str, ra: float, dec: float, hw_ra: float, hw_dec: float, 
                 sg = -1 if de_s.strip().startswith("-") else 1
                 a, b, c = (abs(float(v)) for v in re.split(r"[ '\"]+", de_s.strip().lstrip("+-"))[:3])
                 rate = {k.split(" ")[0]: v for k, v in d.items() if " rate" in k}          # „RA rate ("/h)“, „Dec rate ("/h)“
+                err = {k.split(" ")[2]: _num(v) for k, v in d.items() if k.startswith("Est. error")}   # „Est. error RA (")“
                 out.append({"name": d.get("Object name") or "", "ra": (hh + mm / 60 + ss / 3600) * 15, "dec": sg * (a + b / 60 + c / 3600),
-                            "vmag": d.get("Visual magnitude (V)"), "kind": kind,
+                            "vmag": d.get("Visual magnitude (V)"), "kind": kind, "genau": second,
+                            "fehler": math.hypot(err["RA"], err["Dec"]) if err.get("RA") is not None and err.get("Dec") is not None else None,
                             "rate_ra": _num(rate.get("RA")), "rate_dec": _num(rate.get("Dec"))})
             except (ValueError, TypeError):
                 continue
     cache_dir.mkdir(parents=True, exist_ok=True)
     f.write_text(json.dumps(out), encoding="utf-8")
+    fail.unlink(missing_ok=True)
     return out
 
 
@@ -876,8 +917,7 @@ def _catalog_check(cands, wcs, shape, t_cur: list, t_ref: list, cache_dir: Path,
             try:
                 bodies = small_bodies(when, ra0, dec0, hw_ra, hw_dec, cache_dir, timeout=min(60.0, left))
             except Exception as e:
-                notes.append("Kleinplaneten-Abgleich (JPL) nicht möglich – Dienst " +
-                             ("antwortet gerade zu langsam" if "timed out" in str(e) else f"nicht erreichbar ({str(e)[:80]})") + ".")
+                notes.append("Kleinplaneten-Abgleich nicht möglich: " + jpl_message(e))
                 break
             for c in sel:
                 best = min(bodies, key=lambda b: _ang(c["ra"], c["dec"], b["ra"], b["dec"]), default=None)

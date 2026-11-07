@@ -3,6 +3,19 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.43.2 – 07.11.2026
+
+### Behoben
+- **Asteroiden-Suche scheiterte an „Dienst antwortet gerade zu langsam“.** Die Asteroiden-Abfrage bei JPL lief mit dem
+  genauen zweiten Durchgang, und der brauchte für ein Feld von 1° gut zwei Minuten – länger als das Zeitlimit von 60–90 s.
+  Die Abfrage scheiterte also fast immer, nicht nur „gerade“. Asteroiden werden jetzt im schnellen ersten Durchgang
+  abgefragt (rund 20 s); die Kandidaten, die in deinen Einzelbildern gesucht werden, rechnet AstroFlow danach einzeln bei
+  JPL Horizons genau nach (wie im Kometenmodus, nur Name und Zeit werden gesendet). Ist Horizons nicht erreichbar, wird mit
+  größerem Suchkreis gesucht und die Bahn als „genähert“ gekennzeichnet. Kometen bleiben bei der genauen Abfrage (wenige Sekunden).
+  Das gilt auch für den Kleinplaneten-Abgleich im Vergleich.
+- Ist der JPL-Dienst sehr langsam oder nicht erreichbar, sagt die Meldung das jetzt genau so, und AstroFlow fragt eine halbe
+  Stunde lang nicht erneut – „Alles analysieren“ wartet damit nicht bei jedem Bild wieder auf das Zeitlimit.
+
 ## 0.43.1 – 07.11.2026
 
 ### Behoben
