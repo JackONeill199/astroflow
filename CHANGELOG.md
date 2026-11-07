@@ -10,6 +10,9 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   drin ab (SourceForge-Spiegel trennen gelegentlich), versucht AstroFlow es bis zu sechsmal und setzt dort fort, wo es
   aufgehört hat. Bisher scheiterte die ASTAP-Installation in diesem Fall sofort, die Sterndatenbank setzte erst beim
   nächsten Klick fort.
+- Ordnerdialog unter Linux und macOS: Im obersten Ordner „/“ fehlte die anklickbare Pfadleiste.
+- Handy: Der Knopf „… für diese Nacht übernehmen“ (SkyTrace → Standorte) und die Budgetfelder in den Sage-Einstellungen
+  ragten bei breiterer Schrift über den Rand; sie brechen jetzt um.
 
 ## 0.44.0 – 07.11.2026
 
