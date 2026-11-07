@@ -9,8 +9,9 @@ const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 
 const median = (a) => { const s = [...a].sort((x, y) => x - y), n = s.length; return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : null; };
 
 window.stSatellites = async function (host) {
+  if (!host) return;                                   // Ansicht schon gewechselt (schnelles Navigieren)
   let d;
-  try { d = await api(T + '/statistics/satellites'); } catch { host.innerHTML = ''; return; }
+  try { d = await api(T + '/statistics/satellites'); } catch { if (host.isConnected) host.innerHTML = ''; return; }
   if (!host.isConnected) return;
   if (!d.cells.some(c => c.n || c.h > 0)) { host.innerHTML = ''; return; }
   let site = d.sites[0]?.key ?? '', unit = 'year';
