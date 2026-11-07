@@ -37,3 +37,21 @@
 @media (max-width:860px) { .sq-grid2 { grid-template-columns:1fr; } }
 .sq-scroll { overflow-x:auto; max-width:100%; }
 @media (max-width:560px) { .sq-table th, .sq-table td { padding:0.375rem 0.5rem; white-space:normal; } }
+
+/* Saubere Nächte */
+.sq-clean { margin-bottom:1rem; }
+.sq-clean .panel-h h2 { display:flex; align-items:center; gap:0.5rem; }
+.sq-clean .panel-h h2 svg { width:1rem; height:1rem; }
+.sq-tabs { margin:0.5rem 0; }
+.sq-top td, .sq-top th { white-space:nowrap; }
+.sq-top td.sq-objs { white-space:normal; min-width:8rem; }
+.sq-h3 { font-size:0.875rem; margin:1.25rem 0 0.5rem; }
+.sq-heat { border-collapse:separate; border-spacing:2px; font-size:0.75rem; width:100%; }
+.sq-heat th { color:var(--mut); font-weight:500; padding:0.125rem 0.25rem; text-align:center; }
+.sq-heat th.sq-hsite { text-align:left; white-space:nowrap; max-width:10rem; overflow:hidden; text-overflow:ellipsis; padding-right:0.5rem; }
+.sq-heat td { text-align:center; padding:0.375rem 0.125rem; border-radius:0.25rem; min-width:2.25rem; font-variant-numeric:tabular-nums;
+  background:color-mix(in srgb, var(--acc) calc(12% + var(--t, 0%) * 0.7), transparent); }
+.sq-heat td.empty { background:var(--surface-2); opacity:0.5; }
+.sq-heat td.best { outline:2px solid var(--fg); outline-offset:-2px; }
+.sq-heat td small { display:block; font-size:0.625rem; color:var(--mut); line-height:1; }
+@media (max-width:560px) { .sq-heat { font-size:0.6875rem; } .sq-heat td { min-width:1.75rem; } }
