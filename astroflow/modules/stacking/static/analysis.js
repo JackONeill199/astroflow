@@ -1,7 +1,7 @@
 'use strict';
 // Reiter „Analyse“ der Objektseite (seit 0.27.0, Nutzerwunsch: Tiefe, Veränderungen und Himmel nicht mehr gequetscht in der Detailspalte).
 // Oben das Bild (kompakter Betrachter mit denselben Overlays; Knopf „3D“ in dessen Werkzeugleiste lässt die Sterne aus dem Bild heraus
-// nach Entfernung in die Tiefe ziehen – kein zweiter Betrachter, seit 0.27.1), darunter breite Abschnitte: Wie tief schaust du?, Veränderungen (Blink groß, Kandidaten daneben), Der Himmel in dieser Nacht (Bortle-Zeiger, Verlauf, Lichtrichtung), Tutor.
+// nach Entfernung in die Tiefe ziehen – kein zweiter Betrachter, seit 0.27.1), darunter breite Abschnitte: Wie tief schaust du?, Veränderungen (Blink groß, Kandidaten daneben), Asteroiden (asteroids.js), Der Himmel in dieser Nacht (Bortle-Zeiger, Verlauf, Lichtrichtung), Tutor.
 // Animationen kurz und funktional: Zahlen zählen hoch, Abschnitte blenden beim Erreichen ein, Kurven zeichnen sich – alles aus bei
 // prefers-reduced-motion. Die Abschnitte selbst kommen aus depth.js (depthPanel/comparePanel), skyquality.js (AFsky.analysis) und tutorPanel.
 
@@ -68,13 +68,15 @@ async function analysisSummary(host, r, pid) {
 // Reiter Analyse. ctx: { p, r, viewerFor(host) → createViewer-Objekt } – gibt { viewer, destroy } zurück
 function analysisTab(t, ctx) {
   const { p, r } = ctx;
-  const secs = [['anDepth', 'Wie tief schaust du?', 'target'], ['anCmp', 'Veränderungen', 'compare'], ['anSky', 'Der Himmel in dieser Nacht', 'globe'], ['anDiag', 'Dein Gerät', 'camera'], ['anTutor', 'Tutor', 'sparkle']];
+  const secs = [['anDepth', 'Wie tief schaust du?', 'target'], ['anHrd', 'HR-Diagramm', 'star'], ['anCmp', 'Veränderungen', 'compare'], ['anAst', 'Asteroiden', 'orbit'], ['anSky', 'Der Himmel in dieser Nacht', 'globe'], ['anDiag', 'Dein Gerät', 'camera'], ['anTutor', 'Tutor', 'sparkle']];
   t.innerHTML = `<div class="an">
       <div class="an-top"><div id="anViewer"></div>
-        <nav class="an-toc" aria-label="Abschnitte">${secs.map(([id, l, ic], i) => `<a href="#${id}" data-sec="${id}" style="--i:${i}">${icon(ic)}<span>${l}</span></a>`).join('')}
+        <nav class="an-toc" aria-label="Abschnitte">${secs.map(([id, l, ic], i) => `<a href="#${id}" data-sec="${id}" style="--i:${i}"${id === 'anHrd' ? ' hidden' : ''}>${icon(ic)}<span>${l}</span></a>`).join('')}
           <p class="dim sm">Klick auf Sterne, Galaxien oder Kandidaten zeigt sie im Bild.</p></nav></div>
       <section class="panel an-sec depth-panel" id="anDepth"></section>
+      <section class="panel an-sec depth-panel hrd-panel" id="anHrd" hidden></section>
       <section class="panel an-sec" id="anCmpWrap"><div class="an-cmp"><div class="an-blink" id="anBlink"></div><div class="depth-panel" id="anCmp"></div></div></section>
+      <section class="panel an-sec depth-panel" id="anAst"></section>
       <section class="panel an-sec" id="anSky"></section>
       <section class="panel an-sec" id="anDiag"></section>
       <section class="an-sec an-tutor" id="anTutor"><div id="anTutorBox">${qualityPanel(r.stats || {})}</div></section>
@@ -110,6 +112,8 @@ function analysisTab(t, ctx) {
   b3d.addEventListener('click', (e) => { e.stopPropagation(); set3d(!t3); });
   const onData = (d) => { depth = d; b3d.hidden = !d.punkte?.length || !d.bild; if (b3d.hidden) set3d(false, false); };
   depthPanel($('#anDepth', t), r, viewer, { wide: true, onFocus: focus, onSolve: ctx.solve, on3d: set3d, onData });
+  // HR-Diagramm: nur bei Sternhaufen (bzw. wenn eine Messung einen Haufen gefunden hat) – Abschnitt und Eintrag links erst dann zeigen
+  if (typeof hrdPanel === 'function') hrdPanel($('#anHrd', t), r, { onFocus: focus, onShow: (on) => { const a = $('.an-toc [data-sec="anHrd"]', t); if (a) a.hidden = !on; } });
   // Veränderungen: Blink-Betrachter groß links, Kandidaten rechts
   let blink = null;
   const showBlink = (on, f) => {
@@ -123,6 +127,7 @@ function analysisTab(t, ctx) {
   };
   comparePanel($('#anCmp', t), r, showBlink, false);
   insightLoad('compare', r.id).then(d => { if (d?.state === 'done' && t.isConnected && !blink) showBlink(true); }).catch(() => {});
+  if (typeof asteroidPanel === 'function') asteroidPanel($('#anAst', t), r, viewer, { onFocus: focus });
   window.AFsky?.analysis?.($('#anSky', t), p.id);
   window.diagPanel?.($('#anDiag', t), r);                // Gerätediagnose (diagnose.js)
   if (r.stats?.quality) tutorPanel($('#anTutorBox', t), r);

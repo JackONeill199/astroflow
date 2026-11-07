@@ -56,7 +56,7 @@ def test_summary_aggregates(app):
     assert d["records"]["darkest"]["value"] == 21.6                      # M 13 (Dämmerung) hat keinen Ortswert
     # Ohne Gaia (conftest) ist die Tiefe für gelöste Bilder blockiert, ungelöste für Tiefe und Vergleich
     row = {r["id"]: r for r in d["rows"]}
-    assert row[ids[6]]["blocked"] == {"depth": "nosolve", "compare": "nosolve"}
+    assert row[ids[6]]["blocked"] == {"depth": "nosolve", "compare": "nosolve", "asteroids": "nosolve"}
     assert row[ids[5]]["blocked"].get("depth") == "nogaia"
     assert row[ids[0]]["status"]["depth"] == "done" and row[ids[5]]["status"]["depth"] == "none"
     assert {b["code"] for b in d["blocked"]} >= {"nosolve", "nogaia"}
@@ -68,6 +68,11 @@ def test_summary_aggregates(app):
     assert sum(d["score_hist"]) == len(OBJECTS)
     assert d["changes"] and all(ch["id"] in ids for ch in d["changes"])
     assert d["changes"][0].get("katalog") or d["changes"][0].get("kleinkoerper")   # erkannte Quellen zuerst
+    # Asteroiden: verschiedene nachgewiesene (Ganymed in zwei Bildern zählt einmal), schwächster als Rekord
+    assert t["asteroids"] == 4
+    assert d["records"]["faint_asteroid"]["value"] == 18.6 and d["records"]["faint_asteroid"]["body"] == "(99942) Apophis"
+    assert [a["mag"] for a in d["asteroids"]] == sorted((a["mag"] for a in d["asteroids"]), reverse=True)
+    assert next(a for a in d["asteroids"] if a["name"] == "(1036) Ganymed")["mag"] == 16.1
 
 
 def test_filters_and_universe(app):

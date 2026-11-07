@@ -719,7 +719,7 @@ async function projectView(el, id, tab = 'bild') {
       return;
     }
     anView = analysisTab(t, { p, r, solve: p.can_solve === false ? null : solve, viewerFor: (host) => createViewer(host, `/api/stacking/results/${r.id}/jpg`, null, undefined, `/api/stacking/results/${r.id}/thumb`,
-      { overlay: typeof depthOverlay === 'function' ? depthOverlay(r.id, plateLabels(r.id)) : plateLabels(r.id) }) });
+      { overlay: typeof asteroidOverlay === 'function' ? asteroidOverlay(r.id, depthOverlay(r.id, plateLabels(r.id))) : depthOverlay(r.id, plateLabels(r.id)) }) });
     viewer = anView.viewer;
   }
 

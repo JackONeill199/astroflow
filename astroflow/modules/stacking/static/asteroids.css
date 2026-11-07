@@ -1,0 +1,35 @@
+/* Asteroiden im Bild (seit 0.42.0) – Abschnitt im Reiter Analyse (dicht wie das Analyse-Dashboard) und Marken im Betrachter */
+.ast-lead { font-size: 0.875rem; margin: 0 0 0.5rem; line-height: 1.45 }
+.ast-lead b { color: var(--acc) }
+.ast-lead .dim { font-size: 0.75rem }
+.ad-kpis.ast-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 0.5rem }
+.ast-tab { min-width: 40rem }
+.ast-tab:not(.all) tbody tr:nth-child(n+9) { display: none }
+.ast-tab tbody tr.nofocus { cursor: default }
+.ast-tab td.ast-img { width: 2.75rem; padding-top: 0.1875rem; padding-bottom: 0.1875rem }
+.ast-tab td.ast-img img { display: block; width: 2.5rem; height: 2.5rem; border-radius: 0.25rem; background: #000; image-rendering: pixelated; object-fit: cover }
+.ast-tab td.ad-name { min-width: 10rem }
+.ast-tab td.ad-name small { white-space: nowrap }
+.ast-tab td.ast-why { white-space: normal; min-width: 12rem; color: var(--mut) }
+.ast-tab .chip { height: 1.125rem; font-size: 0.6875rem }
+.ast-tab .chip.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent) }
+.ast-tab .ast-chip-m { display: none }
+.ast-note { margin: 0.375rem 0 0; font-size: 0.6875rem }
+@media (max-width: 760px) {
+  .ad-kpis.ast-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+  /* Handy: Status unter den Namen, JPL/Bewegung/Nachweis ausblenden – kein Querscrollen */
+  .ast-tab { min-width: 0 }
+  .ast-tab th:nth-child(n+5), .ast-tab td:nth-child(n+5), .ast-tab th:nth-child(3), .ast-tab td:nth-child(3) { display: none }
+  .ast-tab td.ad-name { min-width: 0 }
+  .ast-tab td.ad-name small { display: block }
+  .ast-tab .ast-chip-m { display: inline-flex; margin-top: 0.125rem }
+}
+
+/* Marken im Betrachter: nachgewiesen = Kreis + Bahnstrich, nur vorhergesagt = gestrichelt */
+.viewer.hover-labels.ast-on.ready .vov { opacity: 1 }
+.viewer.ast-on:not(:hover) .vov > g:not(.depth-marks):not(.ast-marks) { display: none }
+.vov .ast-marks circle { fill: none; stroke-width: 0.125rem }
+.vov .ast-marks line { stroke-width: 0.125rem; stroke-linecap: round; opacity: 0.85 }
+.vov .ast-marks text { paint-order: stroke; stroke: #000000b3; stroke-width: 0.1875rem; font-weight: 500 }
+.vov .am-ok circle, .vov .am-ok line { stroke: #7fe0a0 } .vov .am-ok text { fill: #d4f7df }
+.vov .am-pred circle, .vov .am-pred line { stroke: #9aa3b2; stroke-dasharray: 3 3 } .vov .am-pred text { fill: #d7dbe2 }

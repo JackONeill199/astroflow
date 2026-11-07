@@ -24,6 +24,40 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 - **Analyse-Dashboard:** neue Auswertung „Gerät“ in „Alles analysieren“ (lokal), eigene Zeile in „Was schon berechnet ist“,
   Status-Punkt je Objekt und Abschnitt „Gerätediagnose“ (je Gerät eine Kennzahlenleiste und drei Verläufe in einer Reihe). Die Diagnose läuft nach jedem Entwickeln automatisch und beim ersten Öffnen nach.
 
+## 0.42.0 – 07.11.2026
+
+### Neu
+- **Asteroiden in deinen Bildern.** Im Reiter **Analyse** jedes Objekts zeigt der neue Abschnitt „Asteroiden“, welche bekannten
+  Kleinplaneten (und Kometen) laut JPL während deiner Aufnahmen im Bildfeld lagen – und welche du wirklich erwischt hast:
+  „Du hast 9 Asteroiden fotografiert, der schwächste mit 16,2 mag“. Nachgewiesen wird in den Einzelbildern: AstroFlow mittelt
+  alle Aufnahmen entlang der vorhergesagten Bahn (der Stack zeigt Asteroiden meist gar nicht – sie werden als Ausreißer
+  weggerechnet). Gezählt wird nur, was dabei als Punkt erscheint, mit gemessener Helligkeit (Gaia-Nullpunkt). Je Asteroid:
+  Name, gemessene und vorhergesagte Helligkeit, Bewegung in ″/h und der gemittelte Ausschnitt; im Bild markiert mit
+  Bahnstrich (abschaltbar). Sind die Rohbilder schon gelöscht, steht dort „im Feld, nicht nachgewiesen“.
+  An JPL gehen nur Himmelskoordinaten und Zeit – nie dein Standort (geozentrische Abfrage).
+- **Analyse-Dashboard:** neue Kennzahl „Asteroiden“ in der Leiste, Rekord „Schwächster Asteroid“, Spalte in „Was schon berechnet ist“
+  und eine kompakte Liste aller nachgewiesenen Asteroiden (erst 8 Zeilen, „Alle anzeigen“); „Alles analysieren“ kann die Suche für alle gelösten Objekte nacheinander ausführen.
+- **Sage:** neue Erfolge „Kleinplanetenjäger“ (erster Asteroid) und „Asteroidengürtel“ (10 verschiedene).
+
+## 0.41.1 – 07.11.2026
+
+### Behoben
+- SkyTrace-Statistik: Beim schnellen Wechsel zwischen Ansichten trat ein Skriptfehler im Abschnitt „Satelliten am Himmel“ auf.
+
+## 0.41.0 – 07.11.2026
+
+### Neu
+- **HR-Diagramm von Sternhaufen.** Im Reiter **Analyse** von Sternhaufen (offen und kugelförmig, auch M45) steht jetzt das
+  Farben-Helligkeits-Diagramm des Haufens – aus deinem eigenen Bild: Farbe und Helligkeit jedes Sterns werden im linearen Stack
+  gemessen und an Gaia geeicht, Gaias eigene Werte liegen grau dahinter. Welche Sterne zum Haufen gehören, verraten Gaias
+  Parallaxen und Eigenbewegungen (die Mitglieder ziehen gemeinsam über den Himmel). Markiert sind die Hauptreihe und der
+  Abknickpunkt; daraus folgen die Entfernung (aus der Parallaxe), die Rötung durch Staub und grob das Alter – mit Spanne und
+  Gegenprobe gegen Gaias Werte, bei Kugelsternhaufen ohne eigene Altersschätzung. Ein Klick auf einen Stern zeigt ihn im Bild,
+  „Was zeigt das Diagramm?“ erklärt es für Einsteiger. Gemessen wird nach dem Entwickeln automatisch (wie die Tiefe) oder per
+  „Jetzt messen“; in **Bilder → Analyse** ist das HR-Diagramm eine weitere Zeile der Status-Matrix (nur bei Sternhaufen; andere Objekte „entfallen“).
+- Die Gaia-Abfrage für Tiefe und HR-Diagramm enthält jetzt Parallaxenfehler und Eigenbewegung. Vorhandene Zwischenspeicher
+  bleiben für die Tiefe gültig; das HR-Diagramm fragt das Feld einmal neu ab.
+
 ## 0.40.0 – 07.11.2026
 
 ### Neu

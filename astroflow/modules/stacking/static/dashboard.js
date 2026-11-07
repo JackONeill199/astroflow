@@ -5,9 +5,9 @@
    Animationen: Zahlen zählen hoch (anCountUp), Abschnitte blenden ein (anReveal aus analysis.js), Diagramme bauen sich auf – alles
    per CSS an `.an-sec.in`, aus bei prefers-reduced-motion. Jeder Abschnitt zeichnet nur neu, wenn sich seine Daten ändern. */
 (() => {
-const KINDS = [['depth', 'Tiefe', 'target'], ['compare', 'Vergleich', 'compare'], ['sky', 'Himmel', 'globe'], ['tutor', 'Tutor', 'sparkle'], ['diagnose', 'Gerät', 'camera']];
+const KINDS = [['depth', 'Tiefe', 'target'], ['compare', 'Vergleich', 'compare'], ['hrd', 'HR-Diagramm', 'star'], ['asteroids', 'Asteroiden', 'orbit'], ['sky', 'Himmel', 'globe'], ['tutor', 'Tutor', 'sparkle'], ['diagnose', 'Gerät', 'camera']];
 const KL = Object.fromEntries(KINDS.map(([k, l]) => [k, l]));
-const ST = { done: 'berechnet', old: 'veraltet', none: 'noch nicht berechnet', error: 'Fehler', blocked: 'Voraussetzung fehlt', queued: 'wartet', running: 'läuft' };
+const ST = { done: 'berechnet', old: 'veraltet', none: 'noch nicht berechnet', error: 'Fehler', blocked: 'Voraussetzung fehlt', queued: 'wartet', running: 'läuft', na: 'entfällt (kein Sternhaufen)' };
 const ART = { neu: 'neu', verschwunden: 'verschwunden', heller: 'heller', 'schwächer': 'schwächer' };
 const de = (v, nd = 1) => v == null ? '–' : Number(v).toLocaleString('de-DE', { minimumFractionDigits: nd, maximumFractionDigits: nd });
 const fday = s => s ? new Date(s + 'T12:00:00Z').toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '–';
@@ -68,7 +68,7 @@ function sbar(cov, total) {
 async function analysisView(el) {
   crumbs([['Bilder', '#/bilder'], ['Analyse']]);
   let f = load('af.analysis.filter', { q: '', device: '', year: '', night: '' });
-  let kinds = load('af.analysis.kinds', ['depth', 'compare', 'sky', 'tutor', 'diagnose']), scope = 'missing';
+  let kinds = load('af.analysis.kinds', ['depth', 'compare', 'hrd', 'asteroids', 'sky', 'tutor', 'diagnose']), scope = 'missing';
   let data = null, ticket = 0, lastFull = 0, uniLoaded = '', sort = load('af.analysis.sort', { k: 'name', d: 1 });
   const sigs = {};
   // Dichtes Raster (0.38.3): Reihen `.ad-row` mit 2–3 Spalten, gleich hohe Abschnitte, kompakte Kennzahlenleiste
@@ -81,7 +81,7 @@ async function analysisView(el) {
       <select id="adNight" aria-label="Nacht"><option value="">Alle Nächte</option></select>
       <span class="grow"></span><span class="mut sm" id="adCount"></span><button class="linkbtn" id="adReset" hidden>Filter zurücksetzen</button></div>
     <section class="panel ad-run" id="adRun"></section>
-    <div class="ad-kpis" id="adKpis">${'<div class="ad-kpi skel"></div>'.repeat(6)}</div>
+    <div class="ad-kpis" id="adKpis">${'<div class="ad-kpi skel"></div>'.repeat(7)}</div>
     <div class="ad-row ad-top">
       <section class="panel an-sec" id="adCov"><span class="skel skel-card"></span></section>
       <section class="panel an-sec" id="adRec"><span class="skel skel-card"></span></section>
@@ -102,6 +102,7 @@ async function analysisView(el) {
       <section class="panel an-sec" id="adChanges"></section>
       <section class="panel an-sec" id="adCat"></section>
     </div>
+    <section class="panel an-sec ad-sec" id="adAst"></section>
     <section class="panel an-sec ad-sec" id="adTable"></section>`;
   $$('.an-sec', el).forEach(anReveal);
   const q = (s) => $(s, el);
@@ -205,19 +206,20 @@ async function analysisView(el) {
   }
   let seenJob = load('af.analysis.seen', '');
   const markSeen = (j) => { seenJob = j.key || ''; save('af.analysis.seen', seenJob); };
-  const BLOCK_TEXT = { nosolve: 'nicht gelöst', nogaia: 'Gaia aus', noframes: 'ohne Einzelbild-Analysen', noquality: 'ohne Bildprüfung' };
+  const BLOCK_TEXT = { nosolve: 'nicht gelöst', nogaia: 'Gaia aus', noframes: 'ohne Einzelbild-Analysen', noquality: 'ohne Bildprüfung', nosmall: 'Kleinkörper-Abgleich aus' };
 
   // ---- Abschnitte -----------------------------------------------------------------------------------------
   function drawKpis(d) {
     const t = d.totals, r = d.records;
     const k = (label, v, sub, href) => `<a class="ad-kpi" ${href ? `href="${href}"` : 'tabindex="-1"'}><small>${label}</small><b class="tnum" data-count>${v}</b><small class="dim">${sub}</small></a>`;
     // Rekordwerte (tiefstes Bild, fernste Galaxie, dunkelster Himmel) stehen nur unter „Rekorde“ – hier die Mengen
-    paint('adKpis', [t, d.change_counts], () => [
+    paint('adKpis', [t, d.change_counts, r.faint_asteroid], () => [
       k('Objekte', nf.format(t.objects), t.imported ? `+ ${nf.format(t.imported)} fertige Bilder` : `${nf.format(t.analysed)} mit Tiefenmessung`, null),
       k('Nächte', nf.format(t.nights), `${nf.format(t.frames)} Aufnahmen gestackt`, '#/bilder/statistik'),
       k('Belichtung', hrs(t.exposure), 'in den fertigen Bildern', null),
       k('Sterne erfasst', nf.format(t.stars || 0), 'Gaia-Sterne über 5σ', null),
       k('Galaxien', nf.format(t.galaxies || 0), 'sichtbar (SIMBAD)', null),
+      k('Asteroiden', nf.format(t.asteroids || 0), r.faint_asteroid ? `schwächster ${de(r.faint_asteroid.value, 1)} mag` : 'nachgewiesen in Einzelbildern', t.asteroids ? '#adAst' : null),
       k('Veränderungen', nf.format(t.changes), d.change_counts.variables || d.change_counts.small ? `${nf.format(d.change_counts.variables || 0)} Veränderliche · ${nf.format(d.change_counts.small || 0)} Kleinplaneten` : 'Kandidaten im Vergleich', null),
     ].map((h, i) => h.replace('class="ad-kpi"', `class="ad-kpi" style="--i:${i}"`)).join(''));
     if (!reduced()) anCountUp(q('#adKpis'));
@@ -236,8 +238,10 @@ async function analysisView(el) {
       return `<div class="panel-h"><h2>Was schon berechnet ist</h2></div>
         <ul class="ad-cov">${KINDS.map(([k, l, ic]) => {
           const c = d.coverage[k] || {};
-          return `<li title="${Object.entries(c).map(([s, n]) => `${n} ${ST[s] || s}`).join(' · ')}"><span class="ad-cov-l">${icon(ic)}${l}</span>${sbar(c, tot)}
-            <small class="mut">${[['done', 'fertig'], ['old', 'veraltet'], ['none', 'offen'], ['error', 'Fehler'], ['blocked', 'blockiert']].filter(([s]) => c[s]).map(([s, w]) => `${c[s]} ${w}`).join(' · ') || '–'}</small></li>`;
+          // HR-Diagramm nur bei Sternhaufen: Anteil bezogen auf die Haufen, nicht auf alle Objekte
+          const of = k === 'hrd' ? Object.values(c).reduce((x, y) => x + y, 0) : tot;
+          return `<li title="${Object.entries(c).map(([s, n]) => `${n} ${ST[s] || s}`).join(' · ')}${k === 'hrd' ? ' – nur Sternhaufen' : ''}"><span class="ad-cov-l">${icon(ic)}${l}</span>${sbar(c, of)}
+            <small class="mut">${[['done', 'fertig'], ['old', 'veraltet'], ['none', 'offen'], ['error', 'Fehler'], ['blocked', 'blockiert']].filter(([s]) => c[s]).map(([s, w]) => `${c[s]} ${w}`).join(' · ') || (k === 'hrd' ? 'kein Sternhaufen' : '–')}</small></li>`;
         }).join('')}</ul>
         ${d.blocked.length ? `<h3 class="ad-h3">Voraussetzungen fehlen</h3><ul class="ad-blocked">${d.blocked.map(b => `<li><div><b>${b.ids.length} ${b.ids.length === 1 ? 'Objekt' : 'Objekte'}</b> ${esc(b.text)}
             <small class="mut">– betrifft ${b.kinds.map(k => KL[k]).join(', ')}</small>
@@ -270,9 +274,13 @@ async function analysisView(el) {
           r.far_star && { ...r.far_star, pos: r.far_star.bild && r.far_star.star.x != null ? { x: r.far_star.star.x, y: r.far_star.star.y, w: r.far_star.bild.w } : null }),
         item('layers', 'Meiste Galaxien', r.most_gal && nf.format(r.most_gal.value), r.most_gal && esc(r.most_gal.name), r.most_gal),
         item('pulse', 'Am effizientesten', r.efficient && `${de(r.efficient.value, 2)} mag`, r.efficient && `${esc(r.efficient.name)} · Grenzgröße auf 1 h umgerechnet`, r.efficient),
+        item('star', 'Ältester Sternhaufen', r.oldest_cluster && `~${yrText(r.oldest_cluster.value)}`,
+          r.oldest_cluster && `${esc(r.oldest_cluster.name)} · HR-Diagramm, grob geschätzt`, r.oldest_cluster),
         item('globe', 'Dunkelster Himmel', r.darkest && `${de(r.darkest.value, 2)} mag/″²`, r.darkest && `${fday(r.darkest.night)} · ${esc(r.darkest.name)}`, r.darkest),
         item('sparkle', 'Schärfste Nacht', r.seeing && `${de(r.seeing.value, 1)}″`, r.seeing && `${fday(r.seeing.night)} · ${esc(r.seeing.name)}`, r.seeing),
         item('medal', 'Beste Bildqualität', r.score && `${de(r.score.value, 1)}/10`, r.score && esc(r.score.name), r.score),
+        item('orbit', 'Schwächster Asteroid', r.faint_asteroid && `${de(r.faint_asteroid.value, 1)} mag`, r.faint_asteroid && `${esc(r.faint_asteroid.body)} in ${esc(r.faint_asteroid.name)}`,
+          r.faint_asteroid && { ...r.faint_asteroid, pos: r.faint_asteroid.bild && r.faint_asteroid.x != null ? { x: r.faint_asteroid.x, y: r.faint_asteroid.y, w: r.faint_asteroid.bild.w } : null }),
         item('camera', 'Längste Belichtung', r.exposure && hrs(r.exposure.value), r.exposure && esc(r.exposure.name), r.exposure),
       ].join('');
       return `<div class="panel-h"><h2>Rekorde</h2></div>${list ? `<ul class="ad-recs">${list}</ul>` : '<p class="mut">Noch keine Messwerte – starte „Alles analysieren“.</p>'}`;
@@ -403,6 +411,30 @@ async function analysisView(el) {
     });
   }
 
+  // Asteroiden: verschiedene nachgewiesene Kleinkörper über alle Bilder, schwächste zuerst; kompakt wie die Veränderungen
+  let astAll = false;
+  function drawAsteroids(d) {
+    const A = d.asteroids || [], t = d.totals, fa = d.records.faint_asteroid;
+    paint('adAst', [A, t.asteroids, d.coverage.asteroids], () => `<div class="panel-h"><div><h2>Asteroiden in deinen Bildern</h2>
+        <p class="mut sm">${A.length ? `Du hast <b class="ad-ast-n tnum">${nf.format(t.asteroids)}</b> Asteroiden fotografiert${fa ? `, der schwächste mit <b class="ad-ast-n tnum">${de(fa.value, 1)} mag</b> (${esc(fa.body)})` : ''}. ` : ''}Vorhersage von JPL (nur Himmelskoordinaten und Zeit), nachgewiesen entlang der Bahn in den Einzelbildern – gezählt werden nur nachgewiesene.</p></div></div>
+      ${A.length ? `<div class="ad-scroll"><table class="ad-tab ad-asts${astAll ? ' all' : ''}"><thead><tr><th>Kleinkörper</th><th>gemessen</th><th>JPL</th><th>Bewegung</th><th>Bild</th><th>Nacht</th></tr></thead><tbody>
+        ${A.map(b => `<tr tabindex="0" data-id="${b.id}" data-rid="${b.rid}" ${b.x != null && b.bild ? `data-x="${b.x}" data-y="${b.y}" data-w="${b.bild.w}"` : ''}>
+          <td class="ad-name">${esc(b.name)}${b.art === 'Komet' ? ' <small class="mut">Komet</small>' : ''}</td>
+          <td class="tnum">${b.mag != null ? de(b.mag, 1) + ' mag' : '–'}</td><td class="tnum mut">${b.vmag != null ? de(b.vmag, 1) : '–'}</td>
+          <td class="tnum">${b.rate != null ? de(b.rate, 0) + '″/h' : '–'}</td><td class="ad-name">${esc(b.name_obj)}</td><td>${fday(b.night)}</td></tr>`).join('')}
+        </tbody></table></div>${A.length > CHG_ROWS ? `<button class="linkbtn sm ad-more" data-more>${astAll ? 'Weniger anzeigen' : `Alle ${nf.format(A.length)} anzeigen`}</button>` : ''}`
+      : `<p class="mut sm">${(d.coverage.asteroids?.done || 0) ? 'In den berechneten Bildern wurde noch kein Asteroid nachgewiesen.' : 'Noch nicht gesucht – „Alles analysieren“ mit „Asteroiden“.'}</p>`}`);
+    const host = q('#adAst'), more = $('[data-more]', host);
+    if (more) more.onclick = () => {
+      astAll = !astAll; $('.ad-asts', host).classList.toggle('all', astAll);
+      more.textContent = astAll ? 'Weniger anzeigen' : `Alle ${nf.format(A.length)} anzeigen`;
+    };
+    $$('.ad-asts tr[data-id]', host).forEach(tr => {
+      const go = () => goFocus(+tr.dataset.id, +tr.dataset.rid, tr.dataset.x != null ? +tr.dataset.x : null, +tr.dataset.y, +tr.dataset.w);
+      tr.onclick = go; tr.onkeydown = (e) => { if (e.key === 'Enter') go(); };
+    });
+  }
+
   function drawCatalogs(d) {
     paint('adCat', d.catalogs, () => {
       const c = d.catalogs, grid = (pre, n, have, skip = []) => `<div class="ad-cat">${Array.from({ length: n }, (_, i) => {
@@ -428,7 +460,7 @@ async function analysisView(el) {
     const th = (k, l) => `<th data-sort="${k}" class="${sort.k === k ? (sort.d > 0 ? 'asc' : 'desc') : ''}">${l}</th>`;
     paint('adTable', [rows.map(r => [r.id, r.status, r.depth?.m5, r.sky?.sqm, r.score]), sort], () => `<div class="panel-h"><h2>Alle Objekte</h2><span class="grow"></span>
         <span class="ad-legend sm">${['done', 'old', 'none', 'error', 'blocked'].map(s => `<span><i class="ad-dot s-${s}"></i>${ST[s]}</span>`).join('')}</span></div>
-      <div class="ad-scroll"><table class="ad-tab ad-all"><thead><tr>${th('name', 'Objekt')}${th('night', 'Letzte Nacht')}${th('exposure', 'Belichtung')}${th('score', 'Qualität')}${th('m5', 'Grenzgröße')}${th('gal', 'Fernste Galaxie')}${th('sqm', 'Himmel')}<th>Tiefe · Vergl. · Himmel · Tutor · Gerät</th></tr></thead><tbody>
+      <div class="ad-scroll"><table class="ad-tab ad-all"><thead><tr>${th('name', 'Objekt')}${th('night', 'Letzte Nacht')}${th('exposure', 'Belichtung')}${th('score', 'Qualität')}${th('m5', 'Grenzgröße')}${th('gal', 'Fernste Galaxie')}${th('sqm', 'Himmel')}<th>Tiefe · Vergl. · HR · Asteroiden · Himmel · Tutor · Gerät</th></tr></thead><tbody>
         ${rows.map(r => `<tr data-href="#/p/${r.id}/analyse" tabindex="0"><td class="ad-name"><a href="#/p/${r.id}/analyse">${esc(r.name)}</a> <small class="mut">${esc(r.device || '')}</small></td>
           <td>${fday(r.nights.at(-1))}${r.nights.length > 1 ? ` <small class="mut">+${r.nights.length - 1}</small>` : ''}</td><td class="tnum">${hrs(r.exposure)}</td>
           <td class="tnum">${r.score != null ? de(r.score, 1) : '–'}</td><td class="tnum">${r.depth?.m5 != null ? de(r.depth.m5, 1) + ' mag' : '–'}</td>
@@ -448,7 +480,7 @@ async function analysisView(el) {
       q('#adFilters').hidden = true; q('#adGo').disabled = true;
       return;
     }
-    drawKpis(d); drawCoverage(d); drawRecords(d); drawUniverse(d); drawTimes(d); drawRank(d); drawNights(d); drawScore(d); drawFindings(d); drawDiag(d); drawChanges(d); drawCatalogs(d); drawTable(d);
+    drawKpis(d); drawCoverage(d); drawRecords(d); drawUniverse(d); drawTimes(d); drawRank(d); drawNights(d); drawScore(d); drawFindings(d); drawDiag(d); drawChanges(d); drawCatalogs(d); drawAsteroids(d); drawTable(d);
     drawRun();
   }
 

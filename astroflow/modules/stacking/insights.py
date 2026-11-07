@@ -1,6 +1,6 @@
-"""Hintergrundauswertungen fertiger Bilder: „Wie tief schaust du?“ (`depth.py`) und Vergleich mit einer Referenz
-(`compare.py`). Eigener Thread mit Warteschlange – Netzabfragen (Gaia, SIMBAD, DSS, JPL) halten so weder Stacking
-noch Entwicklung auf. Ergebnisse landen in `results.stats.depth` bzw. `results.stats.compare` (mit Versionsnummer).
+"""Hintergrundauswertungen fertiger Bilder: „Wie tief schaust du?“ (`depth.py`), Vergleich mit einer Referenz
+(`compare.py`), HR-Diagramm von Sternhaufen (`hrd.py`) und Asteroiden im Bild (`asteroids.py`). Eigener Thread mit Warteschlange – Netzabfragen (Gaia, SIMBAD, DSS, JPL) halten so weder Stacking
+noch Entwicklung auf. Ergebnisse landen in `results.stats.depth`, `.compare`, `.hrd` bzw. `.asteroids` (mit Versionsnummer).
 
 Einstellungen (`data/settings.json` → `insights`): `auto_depth` (nach jeder Entwicklung messen), `simbad`
 (Rotverschiebungen/Veränderliche), `survey` (Himmelsdurchmusterung DSS2 als Referenz), `small_bodies` (JPL-Kleinkörper).
@@ -48,12 +48,16 @@ class Insights:
         return self.state.get((kind, rid))
 
     def after_develop(self, rid: int | None):
-        """Nach einer Entwicklung automatisch messen (nur gelöste Bilder, Einstellung `auto_depth`, Gaia an)."""
+        """Nach einer Entwicklung automatisch messen (nur gelöste Bilder, Einstellung `auto_depth`, Gaia an);
+        bei Sternhaufen danach auch das HR-Diagramm."""
+        from .hrd import is_cluster
         cfg = self.settings()
         if rid and cfg["auto_depth"] and cfg["gaia"]:
-            row = self.eng.db.one("SELECT project_id FROM results WHERE id=?", (rid,))
+            row = self.eng.db.one("SELECT r.project_id, p.kind, p.name FROM results r JOIN projects p ON p.id=r.project_id WHERE r.id=?", (rid,))
             if row and (self.eng.s.work_dir / f"p{row['project_id']}" / "wcs.json").exists():
                 self.submit("depth", rid)
+                if is_cluster(row["kind"], row["name"]):
+                    self.submit("hrd", rid)
         if rid and os.environ.get("ASTROFLOW_DIAG", "1") != "0":     # Gerätediagnose: lokal, ohne Netz
             self.submit("diagnose", rid)
 
@@ -66,13 +70,16 @@ class Insights:
             st = self.state.setdefault((kind, rid), {})
             st.update(state="running", message="läuft", t=time.time())
             try:
-                fn = {"depth": self.depth, "compare": self.compare, "diagnose": self.diagnose}[kind]
+                fn = {"depth": self.depth, "compare": self.compare, "hrd": self.hrd, "asteroids": self.asteroids,
+                      "diagnose": self.diagnose}[kind]
                 fn(rid, lambda m: st.update(message=m), **opts)
                 self.state.pop((kind, rid), None)
             except Exception as e:
+                from .asteroids import AsteroidError
                 from .compare import CompareError
                 from .depth import DepthError
-                if not isinstance(e, (DepthError, CompareError)):
+                from .hrd import HrdError
+                if not isinstance(e, (DepthError, CompareError, HrdError, AsteroidError)):
                     traceback.print_exc()
                 try:                                     # erst speichern, dann melden (Abfragen dazwischen sähen sonst nichts)
                     self._store(rid, kind, {"v": 0, "ok": False, "error": str(e)[:300], "erstellt": time.time()})
@@ -96,6 +103,16 @@ class Insights:
         out["erstellt"] = time.time()
         self._store(rid, "depth", out)
 
+    def hrd(self, rid: int, log, **_):
+        from . import hrd
+        r = self.eng.db.one("SELECT r.*, p.name, p.kind FROM results r JOIN projects p ON p.id=r.project_id WHERE r.id=?", (rid,))
+        if not r:
+            return
+        out = hrd.compute(self.eng.s.work_dir, r["project_id"], json.loads(r["files"] or "{}"), r["name"], kind=r["kind"],
+                          gaia=self.settings()["gaia"], log=log)
+        out["erstellt"] = time.time()
+        self._store(rid, "hrd", out)
+
     def compare(self, rid: int, log, ref="auto", **_):
         from . import compare
         cfg = self.settings()
@@ -114,3 +131,20 @@ class Insights:
         out = diagnose.compute(self.eng.pl, r["project_id"], nights, site_for=self.eng.ctx.services.get("site_for"),
                                cfg=tutor.settings(self.eng.ctx.store), log=log)
         self._store(rid, "diagnose", out)
+
+    def asteroids(self, rid: int, log, **_):
+        from . import asteroids
+        cfg = self.settings()
+        if not cfg["small_bodies"]:
+            raise asteroids.AsteroidError("Der Abgleich mit Kleinkörpern (JPL) ist ausgeschaltet – siehe Einstellungen → Bilder.")
+        r = self.eng.db.one("SELECT stats FROM results WHERE id=?", (rid,))
+        st = json.loads((r or {}).get("stats") or "{}")
+        m5 = ((st.get("depth") or {}).get("grenze") or {}).get("m5")
+        out = asteroids.compute(self.eng.pl, rid, gaia=cfg["gaia"], m5=m5, log=log)
+        self._store(rid, "asteroids", out)
+        if out.get("nachgewiesen"):
+            row = self.eng.db.one("SELECT project_id FROM results WHERE id=?", (rid,))
+            try:                                         # Sage: Erfolge für Asteroiden prüfen
+                self.eng.ctx.emit("stacking.asteroids", project_id=row["project_id"], result_id=rid, count=out["nachgewiesen"])
+            except Exception:
+                traceback.print_exc()
