@@ -191,7 +191,8 @@ def test_update_hinweis(home, tmp_path, monkeypatch):
 def test_version_vergleich():
     v = setup_mod._version_tuple
     assert v("0.33.0") < v("0.33.1") < v("0.34.0") < v("1.0.0")
-    assert v("v0.40.0") > v(__version__)
+    major, minor, _ = v(__version__)
+    assert v(f"v{major}.{minor + 1}.0") > v(__version__) and not v(f"v{__version__}") > v(__version__)
 
 
 def test_pyproject_passt_zu_requirements():
