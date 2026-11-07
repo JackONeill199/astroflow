@@ -369,13 +369,13 @@ def test_rough_edge_candidate_survives(env, monkeypatch):
                            w, (H, W), None, 1000.0, 0.0, 2000.0)
     assert [b["name"] for b in pr] == ["rand"] and pr[0]["_edge"]
     # Ende zu Ende: echter Punkt 30″ außerhalb vorhergesagt (genähert) → im erweiterten Kreis gesucht und gefunden;
-    # ein zusätzlicher Randkandidat ohne Signal fällt am Ende weg
+    # ein zusätzlicher Randkandidat ohne Signal (40 px außerhalb, Bahn ±10 px – bleibt ganz außerhalb, aber im 50-px-Unsicherheitskreis) fällt am Ende weg
     monkeypatch.setattr(asteroids, "_zero_point", lambda *a, **k: {"zp": ZP, "aperture_px": 5.0})
     fn, _ = _fake_jpl(db, st, truth, offset_as=(24.0, -18.0))
 
     def rough(*a, **k):
         out = [dict(b, genau=False) for b in fn(*a, **k)]
-        rr, dd = (float(v) for v in w.pixel_to_world_values(W + 8, H * 0.2))
+        rr, dd = (float(v) for v in w.pixel_to_world_values(W + 40, H * 0.2))
         out.append({"name": "(1927 LA)", "ra": rr, "dec": dd, "vmag": "16.0", "kind": "a", "rate_ra": 120.0, "rate_dec": -40.0,
                     "genau": False, "fehler": 15.0})
         return out
