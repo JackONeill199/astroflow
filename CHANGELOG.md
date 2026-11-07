@@ -3,6 +3,17 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.40.0 – 07.11.2026
+
+### Neu
+- **SkyTrace-Statistik: „Satelliten am Himmel“.** Unter der Statistik steht jetzt, wie viele Satelliten pro Stunde Belichtung durchs Bild laufen –
+  je Standort, nach Jahren oder Monaten, getrennt nach Starlink, OneWeb und übrigen („wie füllt sich der Himmel“). Gezählt wird nur Nachtzeit
+  (Sonne unter −12°) und nur nutzbare Belichtung; Dämmerungsaufnahmen zählen weder als Zeit noch als Spur.
+- **Helligkeit der Satellitenspuren in mag.** Aus den gespeicherten Spurprofilen und der Durchgangszeit der zugeordneten Bahn rechnet SkyTrace den
+  Fluss und eicht ihn mit dem Nullpunkt der Nacht aus den Gaia-geeichten Stacks des Bilder-Moduls (sonst Gerätewert, sonst ein Richtwert für
+  Stellina – dann als Schätzung gekennzeichnet). Die Statistik zeigt die Verteilung (Median, Histogramm) und die hellste Spur. Alte Läufe
+  werden ohne Neuanalyse ausgewertet; Starlink liegt an den eigenen Läufen im Median bei etwa 7 mag.
+
 ## 0.39.0 – 07.11.2026
 
 ### Neu
