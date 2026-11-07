@@ -1,0 +1,49 @@
+name: Wunsch äußern
+description: Idee für eine neue Funktion oder Verbesserung.
+title: "[Wunsch] "
+labels: ["wunsch"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Schön, dass du AstroFlow besser machen willst! Wünsche sammeln wir auch in `docs/FEATURE-WUENSCHE.md`.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Worum geht es?
+      description: Was möchtest du erreichen, und was fehlt oder stört dich heute?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Vorschlag
+      description: Wie könnte es aussehen oder funktionieren?
+    validations:
+      required: false
+  - type: dropdown
+    id: module
+    attributes:
+      label: Bereich
+      options:
+        - Bilder (Stacking/Entwicklung)
+        - SkyTrace (Spuren/Satelliten)
+        - Sage (Enzyklopädie/Bestimmung)
+        - Installation/Einrichtung
+        - Oberfläche allgemein
+        - Neues Modul
+    validations:
+      required: false
+  - type: input
+    id: device
+    attributes:
+      label: Teleskop / Kamera (falls relevant)
+    validations:
+      required: false
+  - type: textarea
+    id: more
+    attributes:
+      label: Sonstiges
+      description: Beispiele, Bilder, andere Programme, die das schon können …
+    validations:
+      required: false

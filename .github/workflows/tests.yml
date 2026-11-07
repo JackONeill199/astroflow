@@ -1,0 +1,84 @@
+# Volle Testsuite (pytest, parallel wie lokal über pytest.ini) auf Ubuntu und Windows – Pflichtprüfung für PRs gegen main.
+# Browser-Tests laufen mit Playwright-Chromium. Was in der CI nicht geht (GPU/OpenCL, PyTorch-Engine, GraXpert unter Linux),
+# überspringen die Tests selbst (importorskip/skipif) – siehe CONTRIBUTING.md.
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  pytest:
+    name: pytest (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            browsers: ~/.cache/ms-playwright
+          - os: windows-latest
+            browsers: ~/AppData/Local/ms-playwright
+    env:
+      PYTHONUTF8: "1"
+      ASTROFLOW_UPDATE_CHECK: "0"
+      ASTROFLOW_NO_TRAY: "1"
+      ASTROFLOW_NO_BROWSER: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Abhängigkeiten
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+          # Leichte SkyTrace-Engine-Pakete, damit deren Tests nicht übersprungen werden (ohne PyTorch/Ultralytics)
+          python -m pip install skyfield requests filelock opencv-python-headless
+
+      - name: Playwright-Version
+        id: pw
+        shell: bash
+        run: echo "version=$(python -c 'import importlib.metadata as m; print(m.version("playwright"))')" >> "$GITHUB_OUTPUT"
+
+      - name: Chromium aus dem Zwischenspeicher
+        id: pwcache
+        uses: actions/cache@v4
+        with:
+          path: ${{ matrix.browsers }}
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      - name: Chromium installieren
+        if: steps.pwcache.outputs.cache-hit != 'true'
+        run: python -m playwright install chromium
+
+      - name: Systempakete für Chromium (Linux)
+        if: runner.os == 'Linux'
+        run: python -m playwright install-deps chromium
+
+      - name: pytest
+        run: python -m pytest -q -rs --durations=15 --junitxml=pytest-${{ matrix.os }}.xml
+
+      - name: Testprotokoll
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-${{ matrix.os }}
+          path: pytest-${{ matrix.os }}.xml
+          retention-days: 14

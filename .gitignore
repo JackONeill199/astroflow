@@ -24,3 +24,12 @@ AGENTS.local.md
 build/
 dist/
 *.egg-info/
+
+# Protokolle, Teil-Downloads, lokale Arbeitsordner (Claude-Worktrees, Notizbilder)
+*.log
+*.log.err
+*.part
+.claude/
+.scratch/
+_site/
+pytest-*.xml

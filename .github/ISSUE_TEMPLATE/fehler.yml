@@ -1,0 +1,102 @@
+name: Fehler melden
+description: Etwas funktioniert nicht oder anders als erwartet.
+title: "[Fehler] "
+labels: ["fehler"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke fürs Melden! Bitte **keine privaten Angaben** einfügen: Benutzerpfade (`C:\Users\…`), Laufwerke, IP-Adressen,
+        Beobachtungsort/Koordinaten, API-Schlüssel. Ersetze sie z. B. durch `<Pfad>` oder `<Ort>`.
+        Sicherheitslücken bitte **nicht** hier, sondern vertraulich melden (siehe „Security“ im Repo).
+  - type: input
+    id: version
+    attributes:
+      label: AstroFlow-Version
+      description: Steht unter Einstellungen → Module & System (oder unten links in der Seitenleiste).
+      placeholder: z. B. 0.44.1
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Betriebssystem
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS
+        - Linux
+        - Docker
+        - anderes
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installationsart
+      options:
+        - Windows-Installer
+        - Portables ZIP
+        - Aus dem Quellcode (pip/venv)
+        - Docker
+    validations:
+      required: false
+  - type: input
+    id: device
+    attributes:
+      label: Teleskop / Kamera
+      description: z. B. Stellina, Vespera, Seestar S50, ASI 533MC an Refraktor …
+    validations:
+      required: false
+  - type: dropdown
+    id: module
+    attributes:
+      label: Bereich
+      options:
+        - Bilder (Stacking/Entwicklung)
+        - SkyTrace (Spuren/Satelliten)
+        - Sage (Enzyklopädie/Bestimmung)
+        - Installation/Einrichtung
+        - Oberfläche allgemein
+        - weiß nicht
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: Schritte zum Nachstellen
+      placeholder: |
+        1. Bilder → Import → Ordner …
+        2. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Erwartet
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Tatsächlich passiert
+      description: Fehlermeldung möglichst wörtlich.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Protokoll
+      description: |
+        Die letzten Zeilen aus `server.log` bzw. `server.log.err` im Datenordner (Standard `%USERPROFILE%\AstroFlow`
+        bzw. `~/AstroFlow`). **Vorher private Pfade, Orte und Schlüssel entfernen.**
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot
+      description: Bild hier hineinziehen – Standort und Pfade bitte schwärzen.
+    validations:
+      required: false

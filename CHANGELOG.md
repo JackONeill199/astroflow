@@ -3,6 +3,14 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.44.1 – 07.11.2026
+
+### Behoben
+- **Downloads überstehen Verbindungsabbrüche.** Bricht die Übertragung von ASTAP, Sterndatenbank oder GraXpert mitten
+  drin ab (SourceForge-Spiegel trennen gelegentlich), versucht AstroFlow es bis zu sechsmal und setzt dort fort, wo es
+  aufgehört hat. Bisher scheiterte die ASTAP-Installation in diesem Fall sofort, die Sterndatenbank setzte erst beim
+  nächsten Klick fort.
+
 ## 0.44.0 – 07.11.2026
 
 ### Neu

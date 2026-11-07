@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Fragen und Austausch
+    url: https://github.com/JackONeill199/astroflow/discussions
+    about: Fragen zur Bedienung, eigene Bilder zeigen, Erfahrungen mit Teleskopen – bitte in den Discussions.
+  - name: Sicherheitslücke melden (vertraulich)
+    url: https://github.com/JackONeill199/astroflow/security/advisories/new
+    about: Bitte nicht öffentlich als Issue – siehe SECURITY.md.
