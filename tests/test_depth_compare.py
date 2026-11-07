@@ -374,3 +374,35 @@ def test_compare_short_stack_reachability(setup, monkeypatch):
     out = compare.compute(db, s.work_dir, r_new, r_ref, catalogs=False, gaia=False)
     assert out["grenze"]["aktuell"]["quelle"] == "tiefe" and out["grenze"]["referenz"]["quelle"] == "nullpunkt"
     assert gone_mags(out) == [pytest.approx(11.0, abs=0.1)], out["kandidaten"]
+
+
+def test_compare_reference_zero_point_other_pixel_scale(setup):
+    """Ohne Gaia: Nullpunkt einer eigenen Referenz mit gröberem Pixelmaßstab (2,4″ statt 1,2″). `reproject` erhält den Fluss
+    nicht – auf dem feineren Raster ist der Aperturfluss ~4× größer; ohne Flächenfaktor wäre die Quelle 1,5 mag zu hell."""
+    s, db, pid, cat, x, y, _ = setup
+    g = np.array(cat["g"])
+    gone = int(np.argmin(np.abs(g - 11)))
+    keep = np.ones(len(g), bool)
+    keep[gone] = False
+    # Referenz als eigenes Objekt: halbe Auflösung, gleiche Feldmitte, gleicher Nullpunkt je Stern
+    h2, w2 = H // 2, W // 2
+    hdr2 = {**HDR, "CRPIX1": w2 / 2 + 0.5, "CRPIX2": h2 / 2 + 0.5, "CD1_1": -2 * SCALE, "CD2_2": 2 * SCALE}
+    pid2 = db.x("INSERT INTO projects(key, name, created, ra, dec) VALUES('t2','Testgalaxie alt',0,?,?)", (RA0, DEC0))
+    (s.work_dir / f"p{pid2}").mkdir(parents=True, exist_ok=True)
+    (s.work_dir / f"p{pid2}" / "wcs.json").write_text(json.dumps({"key": f"x|{h2}x{w2}", "wcs": hdr2}), encoding="utf-8")
+    x2, y2 = photometry.wcs_from({**hdr2, "NAXIS1": w2, "NAXIS2": h2}).world_to_pixel_values(cat["ra"], cat["dec"])
+    rng = np.random.default_rng(11)
+    img = rng.normal(100, 1.0, (h2, w2)).astype(np.float32)
+    yy, xx = np.mgrid[0:h2, 0:w2]
+    sg = 0.9
+    for xi, yi, gi in zip(x2, y2, g):
+        img += np.float32(10 ** (-0.4 * (gi - ZP)) / (2 * math.pi * sg * sg)) * np.exp(-((xx - xi) ** 2 + (yy - yi) ** 2) / (2 * sg * sg)).astype(np.float32)
+    r_ref = _result(s, db, pid2, np.stack([img] * 3), "grob", ["2025-12-01"])
+    r_new = _result(s, db, pid, _short_stack(x[keep], y[keep], g[keep], seed=6, noise=60.0), "kurz", ["2026-01-01"])
+    for rid, st in ((r_new, {"nights": ["2026-01-01"], "depth": {"grenze": {"nullpunkt": ZP}}}),
+                    (r_ref, {"nights": ["2025-12-01"], "depth": {"grenze": {"nullpunkt": ZP}}})):
+        db.x("UPDATE results SET stats=? WHERE id=?", (json.dumps(st), rid))
+    out = compare.compute(db, s.work_dir, r_new, r_ref, catalogs=False, gaia=False)
+    assert out["grenze"]["referenz"]["quelle"] == "nullpunkt"
+    c = [c for c in out["kandidaten"] if c["art"] == "verschwunden"]
+    assert len(c) == 1 and c[0]["mag_ref"] == pytest.approx(11.0, abs=0.4), out["kandidaten"]

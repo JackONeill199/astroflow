@@ -267,6 +267,7 @@ def compute(db, work_dir: Path, rid: int, ref: str | int = "auto", survey: bool 
         ref_time = []
         fixB = None
         r2 = None
+        area = 1.0
     else:
         r2 = db.one("SELECT r.*, p.name FROM results r JOIN projects p ON p.id=r.project_id WHERE r.id=?", (int(ref),))
         if not r2:
@@ -279,6 +280,9 @@ def compute(db, work_dir: Path, rid: int, ref: str | int = "auto", survey: bool 
         log("Referenz auf das Raster bringen")
         data2, fixB, spots2 = stackfix.spots(g2["data"])
         B = reproject(data2.mean(0), g2["wcs"], wcs, (H, W))
+        # `reproject` tastet Pixelwerte ab, erhält den Fluss nicht: auf einem feineren Raster wächst der Aperturfluss
+        # um das Flächenverhältnis der Pixel (für den gespeicherten Nullpunkt der Referenz, `_limits`)
+        area = _pix_scale(g2["wcs"]) ** 2 / max(_pix_scale(wcs) ** 2, 1e-30)
         if len(spots2):                              # Stellen der Referenz auf das Raster dieses Bilds
             sx, sy = wcs.world_to_pixel_values(*g2["wcs"].pixel_to_world_values(spots2[:, 0], spots2[:, 1]))
             spots = np.vstack([spots, np.c_[sx, sy]])
@@ -313,7 +317,7 @@ def compute(db, work_dir: Path, rid: int, ref: str | int = "auto", survey: bool 
     Z[~valid] = 0
 
     log("Grenzgröße beider Bilder bestimmen")
-    lim, lim_notes = _limits(db, work_dir, cur, r2, info, A, B, valid, wcs, fwhm, k, gaia)
+    lim, lim_notes = _limits(db, work_dir, cur, r2, info, A, B, valid, wcs, fwhm, k, gaia, area)
 
     log("Unterschiede prüfen")
     # Durchmusterung: anderes Band (Rotfilter, Fotoplatte) – rote Sterne (z. B. Riesen in Kugelhaufen) erscheinen dort
@@ -450,7 +454,12 @@ def _device_m5(db, pid: int, exposure: float | None, skip_rid: int | None = None
     return float(np.median(vals)) + 1.25 * math.log10(exposure / 3600)
 
 
-def _limits(db, work_dir: Path, cur: dict, r2, info: dict, A, B, valid, wcs, fwhm: float, k: float, gaia: bool):
+def _pix_scale(w) -> float:
+    return float(np.sqrt(abs(np.linalg.det(w.pixel_scale_matrix))))
+
+
+def _limits(db, work_dir: Path, cur: dict, r2, info: dict, A, B, valid, wcs, fwhm: float, k: float, gaia: bool,
+            area: float = 1.0):
     """Grenzgröße (5σ in der Vergleichsapertur) und Helligkeitsskala beider Vergleichsbilder – dynamisch je Teleskop und
     Belichtung. Reihenfolge: Gaia-Sterne im Bild (gleiche Apertur, Schärfe und Skalierung wie die Kandidaten) → gespeicherte
     Tiefe der Version (`stats.depth.grenze`: m5, sonst Nullpunkt + Aperturrauschen, sonst 50-%-Vollständigkeit) → andere
@@ -484,13 +493,14 @@ def _limits(db, work_dir: Path, cur: dict, r2, info: dict, A, B, valid, wcs, fwh
     gb = grenze(json.loads(r2["stats"] or "{}")) if r2 is not None else {}
     # Rückfall ohne Gaia-Sterne im Vergleichsbild: Nullpunkt aus der gespeicherten Tiefe (Apertur 0,8 FWHM statt FWHM →
     # Quellen hier ~0,1–0,3 mag heller, vom Abstand gedeckt). B ist mit k auf A skaliert: fb/k = eigener Fluss der Referenz,
-    # ihr Nullpunkt gilt also unabhängig von k; nur wenn einer fehlt, rechnet k zwischen beiden um.
+    # ihr Nullpunkt gilt also unabhängig von k; nur wenn einer fehlt, rechnet k zwischen beiden um. `area` = Pixelfläche
+    # Referenz/aktuell: auf das Raster dieses Bilds abgetastet ist ihr Aperturfluss um diesen Faktor größer als im eigenen Stack.
     def zp_fn(zp, kk=1.0):
         return lambda f: zp - 2.5 * math.log10(max(float(f) / kk, 1e-9))
     za, zb = ga.get("nullpunkt"), (None if survey else gb.get("nullpunkt"))
-    ok_k = k > 0 and math.isfinite(k)
-    zfa = zp_fn(za) if za else (zp_fn(zb, k) if zb and ok_k else None)
-    zfb = zp_fn(zb, k) if zb and ok_k else (zp_fn(za) if za and not survey else None)
+    ok_k = k > 0 and math.isfinite(k) and area > 0 and math.isfinite(area)
+    zfa = zp_fn(za) if za else (zp_fn(zb, k * area) if zb and ok_k else None)
+    zfb = zp_fn(zb, k * area) if zb and ok_k else (zp_fn(za) if za and not survey else None)
     mag_a = cal_a["fn"] if cal_a else zfa
     mag_b = cal_b["fn"] if cal_b else zfb
 

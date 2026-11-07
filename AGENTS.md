@@ -491,7 +491,8 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   Helligkeitsskala: `_calibrate` an Gaia-Positionen (`photometry.gaia_field` mit denselben Parametern wie die Tiefe → gemeinsamer Cache;
   SNR > 10, frei, ungesättigt, ≥ `MIN_CAL` 6; eigene Stacks Nullpunkt, Platte Gerade/Parabel in log Fluss, monoton). Rückfälle:
   `stats.depth.grenze` (m5 → Nullpunkt + Aperturrauschen → `lim50`) → `_device_m5` (andere Bilder derselben `INSTRUME`, m5 auf 1 h
-  über 1,25·log10 t, ≥ 2 Werte) → Platte `DSS_M5` 20,5. Referenz-Nullpunkt wirkt auf fb/k (k-unabhängig). „verschwunden“ nur, wenn
+  über 1,25·log10 t, ≥ 2 Werte) → Platte `DSS_M5` 20,5. Referenz-Nullpunkt wirkt auf fb/(k·area) (k-unabhängig; `area` = Pixelfläche Referenz/aktuell,
+  weil `reproject` Pixelwerte abtastet und den Fluss nicht erhält – Review PR #72). „verschwunden“ nur, wenn
   Helligkeit in der Referenz (bei Gaia-Stern an der Stelle das schwächere von beiden, solange < 2,5 mag Unterschied) ≤ m5(aktuell) −
   `REACH_MARGIN` 1,0 (≈ 12,6σ erwartet; Durchmusterung 1,5 wegen Rotfilter), „neu“ spiegelbildlich gegen m5(Referenz); sonst
   `verworfen.unter_grenze`. Ohne Aussage: eigene Referenz wie bisher über `expect`, Durchmusterung nie „verschwunden“. Ergebnis
