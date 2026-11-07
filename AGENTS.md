@@ -499,7 +499,8 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   Bildmitte und halber Feldradius. Dichte in der Eigenbewegung (Nachbarn ≤ 1 mas/a) innen minus Umfeld × Flächenverhältnis → Startpunkt,
   dann Median/Fenster 6× verfeinern (Fenster 3·1,18·robuste Streuung, 0,4–5 mas/a), Parallaxe gewichtet mit Toleranz
   3·√(σ² + (6 % ϖ)² + 0,03²); Mitglieder nur bis 2 Haufenradien. Flächen innen/Umfeld aus Gleichverteilung über die gültige Bildfläche.
-  `verunreinigung` = Umfeld-Treffer je Fläche hochgerechnet; `ok` erst ab 8 Mitgliedern innen und Verunreinigung < 50 %.
+  RA-Differenzen über `dra` (kürzester Bogen, Felder über 0°/360°). Mittel und Unsicherheit der Parallaxe aus derselben Auswahl (Kernsterne
+  mit passender Parallaxe, Unsicherheit ≥ Streuung/√n; äußere Mitglieder senken sie nicht – Review PR #66). `verunreinigung` = Umfeld-Treffer je Fläche hochgerechnet; `ok` erst ab 8 Mitgliedern innen und Verunreinigung < 50 %.
 - **Deutung (vorsichtig, `estimate`):** Entfernung aus der gewichteten Parallaxe (Nullpunkt −0,017 mas, systematisch `PLX_SYS` 0,015 mas;
   `sicher` ab ϖ/σ ≥ 5). Genäherte Hauptreihe `MS` (Pecaut & Mamajek, sonnennahe Metallizität), Rötung E(BP−RP) per Gitter 0–1,5 mit begrenztem
   Fehler min(|Δ|, 0,8) (Riesen/Doppelsterne zählen gedeckelt), A_G = 1,89·E, Spanne = Bereich mit Fehler < Minimum + 0,03. Abknickpunkt = Median

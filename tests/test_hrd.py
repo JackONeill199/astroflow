@@ -251,3 +251,47 @@ def test_api_insights_dashboard(tmp_path, monkeypatch):
         assert rows[pc]["status"]["hrd"] == "done" and rows[pg]["status"]["hrd"] == "error"   # gemessen, obwohl kein Haufen
         assert "hrd" in dashboard.KINDS and dash["coverage"]["hrd"].get("done") == 1
 
+
+
+def _members_field(c_ra, seed=3, n_mem=60, n_field=300, r=0.1):
+    """Mitglieder um (c_ra, 20°), Feldsterne gleichverteilt in ±0,4° – Koordinaten auf 0…360° gefaltet."""
+    rng = np.random.default_rng(seed)
+    ang, rad = rng.uniform(0, 2 * math.pi, n_mem), np.abs(rng.normal(0, r / 2, n_mem))
+    cosd = math.cos(math.radians(20.0))
+    ra = np.r_[c_ra + rad * np.cos(ang) / cosd, c_ra + rng.uniform(-0.4, 0.4, n_field) / cosd] % 360.0
+    dec = np.r_[20.0 + rad * np.sin(ang), 20.0 + rng.uniform(-0.4, 0.4, n_field)]
+    n = n_mem + n_field
+    pmra = np.r_[rng.normal(4.0, 0.1, n_mem), rng.normal(0, 8, n_field)]
+    pmdec = np.r_[rng.normal(-2.0, 0.1, n_mem), rng.normal(0, 8, n_field)]
+    plx = np.r_[rng.normal(2.0, 0.03, n_mem), rng.uniform(0.1, 3, n_field)]
+    return ra, dec, pmra, pmdec, plx, np.full(n, 0.03), np.full(n, 15.0), np.r_[np.ones(n_mem, bool), np.zeros(n_field, bool)]
+
+
+def test_members_across_ra_zero():
+    """Haufen über RA 0°/360°: Sterne auf beiden Seiten gehören dazu (Review PR #66)."""
+    ra, dec, pmra, pmdec, plx, err, g, truth = _members_field(359.98)
+    m = hrd.members(ra, dec, pmra, pmdec, plx, err, g, 359.98, 20.0, 0.1)
+    assert m["ok"] and (ra[truth] < 1).any() and (ra[truth] > 359).any()
+    assert m["mitglied"][truth].mean() > 0.9 and m["mitglied"][~truth].sum() <= 3
+    assert hrd.dra(0.01, 359.99) == pytest.approx(0.02)
+
+
+def test_parallax_error_from_fitted_sample():
+    """Unsicherheit der Haufenparallaxe aus denselben Sternen wie das Mittel – präzise äußere Mitglieder senken sie nicht
+    (Review PR #66), und sie ist mindestens Streuung/√n."""
+    ra, dec, pmra, pmdec, plx, err, g, truth = _members_field(120.0, n_mem=40)
+    cosd = math.cos(math.radians(20.0))
+    sep = np.hypot(hrd.dra(ra, 120.0) * cosd, dec - 20.0)
+    base = hrd.members(ra, dec, pmra, pmdec, plx, err, g, 120.0, 20.0, 0.1)
+    # gleiche Kernsterne, dazu 100 sehr genaue Mitglieder zwischen 1 und 2 Haufenradien
+    rng = np.random.default_rng(5)
+    k = 100
+    a, rr = rng.uniform(0, 2 * math.pi, k), rng.uniform(0.11, 0.19, k)
+    ra2 = np.r_[ra, 120.0 + rr * np.cos(a) / cosd]
+    dec2 = np.r_[dec, 20.0 + rr * np.sin(a)]
+    more = hrd.members(ra2, dec2, np.r_[pmra, np.full(k, 4.0)], np.r_[pmdec, np.full(k, -2.0)], np.r_[plx, np.full(k, 2.0)],
+                       np.r_[err, np.full(k, 0.001)], np.r_[g, np.full(k, 15.0)], 120.0, 20.0, 0.1)
+    assert more["mitglied"][len(ra):].mean() > 0.9                      # sie zählen als Mitglieder …
+    assert more["plx_err"] == pytest.approx(base["plx_err"], rel=1e-6)   # … aber nicht für die Unsicherheit
+    core = truth & (sep < 0.1)
+    assert base["plx_err"] >= 0.03 / math.sqrt(core.sum()) * 0.9

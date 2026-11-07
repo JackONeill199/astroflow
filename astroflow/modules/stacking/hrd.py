@@ -41,6 +41,11 @@ class HrdError(Exception):
     """Klare Meldung für die Oberfläche."""
 
 
+def dra(ra, ra0):
+    """Rektaszensionsdifferenz auf den kürzesten Bogen (−180…180°) – Felder über RA 0°/360°."""
+    return (np.asarray(ra, float) - ra0 + 180.0) % 360.0 - 180.0
+
+
 def is_cluster(kind: str | None, name: str | None = "") -> bool:
     from .objects import normalize_name
     return kind in CLUSTER_KINDS or normalize_name(name or "") in CLUSTER_NAMES or normalize_name((name or "").split()[0] if name else "") in CLUSTER_NAMES
@@ -83,7 +88,7 @@ def members(ra, dec, pmra, pmdec, plx, plx_err, g, c_ra, c_dec, r_in, areas=None
 
     n = len(ra)
     cosd = math.cos(math.radians(c_dec))
-    sep = np.hypot((ra - c_ra) * cosd, dec - c_dec)
+    sep = np.hypot(dra(ra, c_ra) * cosd, dec - c_dec)
     usable = np.isfinite(pmra) & np.isfinite(pmdec) & np.isfinite(plx) & np.isfinite(plx_err) & (g < 19.5)
     inner = usable & (sep < r_in)
     outer = usable & (sep > 1.5 * r_in)
@@ -124,6 +129,14 @@ def members(ra, dec, pmra, pmdec, plx, plx_err, g, c_ra, c_dec, r_in, areas=None
         wts = 1 / plx_err[sel] ** 2
         p0 = float(np.sum(plx[sel] * wts) / wts.sum())
     tol = 3 * np.sqrt(np.nan_to_num(plx_err, nan=9) ** 2 + (0.06 * max(p0, 0)) ** 2 + 0.03 ** 2)
+    # Mittel und Unsicherheit aus derselben Auswahl (Kernsterne mit passender Parallaxe) – äußere Mitglieder gehen nicht ein;
+    # Unsicherheit mindestens die Streuung der Auswahl / √n (Haufentiefe, unterschätzte Fehler)
+    fit = core & (np.abs(np.nan_to_num(plx, nan=-99) - p0) < tol)
+    if fit.sum() < 5:
+        fit = core
+    wts = 1 / plx_err[fit] ** 2
+    p0 = float(np.sum(plx[fit] * wts) / wts.sum())
+    p_err = float(max(math.sqrt(1 / wts.sum()), 1.4826 * np.median(np.abs(plx[fit] - p0)) / math.sqrt(fit.sum())))
     mem = pm_ok & (np.abs(np.nan_to_num(plx, nan=-99) - p0) < tol) & (sep < max(2.0 * r_in, 1e-6))
     # Feldsterne mit zufällig passender Bewegung: aus dem Umfeld je Fläche hochgerechnet
     contam = None
@@ -132,11 +145,8 @@ def members(ra, dec, pmra, pmdec, plx, plx_err, g, c_ra, c_dec, r_in, areas=None
         per_area = (pm_ok & outer & (np.abs(np.nan_to_num(plx, nan=-99) - p0) < tol)).sum() / a_out
         contam = float(min(1.0, per_area * a_in / n_in))
     signif = n_in >= 8 and (contam is None or contam < 0.5)
-    sel = mem & (plx_err > 0)
-    wts = 1 / plx_err[sel] ** 2 if sel.any() else np.ones(1)
-    p_err = float(math.sqrt(1 / wts.sum())) if sel.any() else None
     return {"ok": bool(signif), "mitglied": mem, "pm": [round(float(c[0]), 3), round(float(c[1]), 3)], "pm_radius": round(w, 2),
-            "plx": round(p0, 4), "plx_err": p_err and round(p_err, 4), "n_innen": int(inner.sum()), "verunreinigung": contam and round(contam, 2)}
+            "plx": round(p0, 4), "plx_err": round(p_err, 4), "n_parallaxe": int(fit.sum()), "n_innen": int(inner.sum()), "verunreinigung": contam and round(contam, 2)}
 
 
 # ----------------------------------------------------------------- Deutung -- #
@@ -243,7 +253,7 @@ def compute(work_dir, pid: int, files: dict, name: str = "", kind: str | None = 
 
     # Haufen: Mitte und Größe aus dem Katalog, sonst Bildmitte
     c = resolve_name(name) or resolve_extended(name) if name else None
-    if c is not None and math.hypot((c.ra - ra0) * math.cos(math.radians(dec0)), c.dec - dec0) < radius:
+    if c is not None and math.hypot(float(dra(c.ra, ra0)) * math.cos(math.radians(dec0)), c.dec - dec0) < radius:
         c_ra, c_dec, r_in = c.ra, c.dec, float(np.clip(c.size / 60 / 2, 0.02, radius * 0.9))
         kind = kind or c.kind
     else:
@@ -254,7 +264,7 @@ def compute(work_dir, pid: int, files: dict, name: str = "", kind: str | None = 
     vy, vx = np.nonzero(valid[::8, ::8])
     pick = rng.choice(len(vx), min(len(vx), 20000), replace=False)
     sra, sdec = wcs.pixel_to_world_values(vx[pick] * 8.0, vy[pick] * 8.0)
-    ssep = np.hypot((np.asarray(sra) - c_ra) * math.cos(math.radians(c_dec)), np.asarray(sdec) - c_dec)
+    ssep = np.hypot(dra(sra, c_ra) * math.cos(math.radians(c_dec)), np.asarray(sdec) - c_dec)
     total = float(valid.sum()) * scale ** 2
     areas = (total * float((ssep < r_in).mean()), total * float((ssep > 1.5 * r_in).mean()))
     log("Haufenmitglieder über Gaia-Eigenbewegung und Parallaxe bestimmen")
