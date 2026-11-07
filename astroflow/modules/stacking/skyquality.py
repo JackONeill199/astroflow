@@ -811,6 +811,97 @@ def summary(db, with_dirs: bool = True) -> dict:
     return {"sites": out, "version": SKY_VERSION}
 
 
+def _best_window(nights: list[dict], k: int = 5) -> dict | None:
+    """Dunkelster zusammenhängender Abschnitt einer Nacht: Median über k aufeinanderfolgende ungestörte Kurvenpunkte aller Objekte."""
+    pts = sorted((p["ts"], p["sqm"]) for n in nights for p in n.get("curve") or [] if p.get("sqm") is not None and not p.get("flags"))
+    if not pts:
+        return None
+    k = min(k, len(pts))
+    best = max(range(len(pts) - k + 1), key=lambda i: float(np.median([v for _, v in pts[i:i + k]])))
+    w = pts[best:best + k]
+    return {"from": w[0][0], "to": w[-1][0], "sqm": _r(float(np.median([v for _, v in w])), 2)}
+
+
+def _pct(vals: list[float], v: float, higher_better: bool) -> float:
+    """Anteil der Nächte, die schlechter sind als v (1 = beste Nacht)."""
+    if len(vals) < 2:
+        return 1.0
+    worse = sum(1 for x in vals if (x < v if higher_better else x > v))
+    return worse / (len(vals) - 1)
+
+
+W_DARK, W_SEEING, W_CLEAR = 0.6, 0.2, 0.2     # Gesamtwertung: Dunkelheit zählt am meisten
+SURE_ERR = 0.35                                # darüber gilt der Ortswert einer Nacht als unsicher
+
+
+def clean_nights(db, top: int = 10) -> dict:
+    """Die saubersten Nächte je Himmel, aus den gespeicherten Messungen (nichts wird neu gemessen).
+    Ortswert = Nacht mit mindestens MIN_GOOD ungestörten Aufnahmen (sqm gesetzt). Rangliste Dunkelheit nur mit solchen Nächten,
+    unsichere (err > SURE_ERR, z. B. Eichung aus anderen Nächten) getrennt. Seeing und Durchsicht auch aus gestörten Nächten.
+    Gesamtwertung 0–100 = 60 % Dunkelheit, 20 % Seeing, 20 % Durchsicht (jeweils Rang unter allen Nächten mit Ortswert)."""
+    rows = nights_of(db)
+    groups: dict[tuple, list[dict]] = {}
+    for n in rows:
+        groups.setdefault((n.get("site_id") or "?", n["night"]), []).append(n)
+    items = []
+    for (sid, night), ns in groups.items():
+        def med(key, nn=ns):
+            v = [x[key] for x in nn if x.get(key) is not None]
+            return float(np.median(v)) if v else None
+        own = [x for x in ns if x.get("sqm") is not None]
+        sqm = float(np.median([x["sqm"] for x in own])) if own else None
+        err = float(np.median([x.get("err") or SYS_ERR for x in own])) if own else None
+        bt = bortle(sqm, err) if sqm is not None else None
+        try:
+            d0 = dt.date.fromisoformat(night)
+        except ValueError:
+            continue
+        items.append({"site_id": None if sid == "?" else sid, "site_name": ns[0].get("site_name") or "Ohne Standort", "night": night,
+                      "weekday": d0.weekday(), "month": d0.month, "sqm": _r(sqm, 2), "sqm_all": _r(med("sqm_all"), 2),
+                      "err": _r(err, 2), "sure": bool(own) and err <= SURE_ERR, "bortle": bt, "seeing": _r(med("seeing"), 2),
+                      "loss": _r(med("transparency"), 2), "good": sum(x.get("good") or 0 for x in ns),
+                      "window": _best_window(own),
+                      "objects": [{"id": x["project_id"], "name": x.get("object"), "sqm": x.get("sqm")} for x in ns]})
+    ref = [i for i in items if i["sqm"] is not None]
+    for i in ref:
+        parts = [(W_DARK, _pct([x["sqm"] for x in ref], i["sqm"], True))]
+        if i["seeing"] is not None:
+            parts.append((W_SEEING, _pct([x["seeing"] for x in ref if x["seeing"] is not None], i["seeing"], False)))
+        if i["loss"] is not None:
+            parts.append((W_CLEAR, _pct([x["loss"] for x in ref if x["loss"] is not None], i["loss"], False)))
+        i["score"] = round(100 * sum(w * p for w, p in parts) / sum(w for w, _ in parts))
+    sure = [i for i in ref if i["sure"]]
+
+    def best(lst, key, rev):
+        return sorted(lst, key=lambda i: (-i[key] if rev else i[key], i["night"]))[:top]
+
+    sites: dict[str, dict] = {}
+    for i in items:
+        s = sites.setdefault(i["site_id"] or "?", {"id": i["site_id"], "name": i["site_name"], "months": {}, "n": 0})
+        if i["sqm"] is not None:
+            s["n"] += 1
+            s["months"].setdefault(i["month"], []).append(i["sqm"])
+    site_out = []
+    for s in sites.values():
+        ms = [{"month": m, "n": len(s["months"].get(m, [])),
+               "sqm": _r(float(np.median(s["months"][m])), 2) if m in s["months"] else None} for m in range(1, 13)]
+        vals = [x for x in ms if x["sqm"] is not None]
+        cand = [x for x in vals if x["n"] >= 2] or vals
+        bm = max(cand, key=lambda x: x["sqm"]) if cand else None
+        allv = [v for vs in s["months"].values() for v in vs]
+        site_out.append({"id": s["id"], "name": s["name"], "n": s["n"], "months": ms, "best_month": bm["month"] if bm else None,
+                         "sqm": _r(float(np.median(allv)), 2) if allv else None})
+    site_out.sort(key=lambda s: (s["sqm"] is None, -(s["sqm"] or 0)))
+    ranked = [s for s in site_out if s["sqm"] is not None]
+    best_site = max(ranked, key=lambda s: (s["n"] >= 3, s["sqm"])) if ranked else None
+    return {"dark": best(sure, "sqm", True), "score": best(sure, "score", True),
+            "seeing": best([i for i in items if i["seeing"] is not None], "seeing", False),
+            "clear": best([i for i in items if i["loss"] is not None], "loss", False),
+            "uncertain": best([i for i in ref if not i["sure"]], "sqm", True),
+            "sites": site_out, "best_site": {"id": best_site["id"], "name": best_site["name"], "sqm": best_site["sqm"], "n": best_site["n"]} if best_site else None,
+            "n_nights": len(items), "n_site_nights": len(ref), "n_sure": len(sure), "version": SKY_VERSION}
+
+
 def for_site(db, site_id: str | None) -> dict | None:
     """Kurzfassung für einen Standort (Heute Nacht, Ortsliste)."""
     if not site_id:
