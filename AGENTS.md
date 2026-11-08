@@ -105,8 +105,8 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    `M17-lpc-cbg*.fits`, 3263×2194×3) lagen direkt im Stellina-Ordner `…_observation_M17` (der `APP`-Ordnerausschluss griff nicht) →
    zwei falsche Objekte M17 (596/597), 597 auch an Sage/SkyTrace gemeldet; bereinigt, Sicherung `data/backups/astroflow.db.vor-m17-bereinigung`.
 2. **Analyse** (`quality.py`, parallel): Sterne, FWHM, Exzentrizität, Hintergrund, Rauschen, `snr`, `grad` (Hintergrundgradient in
-   Rauscheinheiten), `trails` → `frames.metrics`. `snr`/`grad` fließen in den Score, wenn alle Frames sie haben (ältere Analysen nicht).
-   `detect_trails` erkennt die Demo-Satellitenspur noch NICHT zuverlässig (offener Punkt) – entfernt werden Spuren ohnehin per Clipping. Nur neue Frames – oder solche
+   Rauscheinheiten), `trails`/`trail_lines` (Satellitenspuren, s. „Satellitenspuren“ unten) → `frames.metrics`. `snr`/`grad` fließen in den Score, wenn alle Frames sie haben (ältere Analysen nicht).
+   Spuren werden **vor** der Sternerkennung durch den Hintergrund ersetzt (sonst Spurpunkte als Sterne → FWHM hoch → Aufnahme verworfen). Nur neue Frames – oder solche
    mit `metrics.mv < quality.METRICS_VERSION` (dann auch automatisch Neu-Stacken). **Bei jeder Änderung an Analyse/Kosmetik `METRICS_VERSION` erhöhen.**
    Sternerkennung verwirft Einzelpixel-Spitzen (Nachbarn < 12 % des Peaks).
 3. **Auswahl**: Ausreißer je **Filter-Band** verwerfen (Wolken, Unschärfe, Nachführfehler); manuelle Ein-/Ausschlüsse (`frames.manual` ±1) gewinnen.
@@ -179,6 +179,39 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    0,0008 ADU bei 5,6 ADU Rauschen, 0,004 % der Pixel mit anderer Clip-Entscheidung. Danach begrenzen Lesen, `cosmetic`, Debayer (CPU).
    **Nebenbefund:** Mit RMS um den Median kann ein einzelner Ausreißer in einem Stapel von B Frames höchstens √B·σ abweichen –
    bei B ≤ 9 wird er im Stapel also nie verworfen, nur über den Abgleich mit dem bestehenden Stack (`check`, ab ~8 Frames Gewicht).
+   Deshalb werden Satellitenspuren seit 0.49.0 gezielt maskiert (folgender Punkt).
+   **Satellitenspuren** (`trails.py`, seit 0.49.0, Auftrag des Masters nach StackingWizard-Vergleich): Befund vorher (Demo): `detect_trails`
+   (Labeling + Streckung, nur eine Zahl) fand roh 0/2 Spuren; Spurpunkte zählten als Sterne (88 statt ~60) → beide Spur-Frames „unscharf“
+   verworfen bzw. manuell eingeschlossen Gewicht 0,1; bei vollem Gewicht ließ Clipping allein die Spur stehen (Stapel à 3, 30 Frames
+   +10/+17 ADU; ein Stapel à 24 +7 ADU; 8 Frames +42 ADU; 4 Frames +71 ADU, Stackrauschen 1–4 ADU). SkyTrace (`line_detection`) braucht
+   OpenCV/Engine und läuft erst nach dem Stacken → nicht als Quelle genutzt.
+   **Erkennung `find`** (je Aufnahme in `analyze_frame`, nur numpy/scipy, ~0,1–0,5 s): Arbeitsbild ≤ 800 px breit, Hintergrund (64-px-Kacheln) ab,
+   Quellmaske `_sources`: flächig = Öffnung von z > 3 mit 17-px-Scheibe ohne langgestreckte Reste (helle breite Spur); Sterne = Maxima > 7σ,
+   deren Ring (4/8/14 px, auf σ 1 geglättet – eine 1-px-Spur verfehlten die Ringproben sonst) **nicht** in zwei gegenüberliegenden Richtungen
+   hell ist, Radius aus der Helligkeit (≤ 12 px; nicht „ganze Komponente“ – in dichten Feldern verbindet eine Spur viele Sterne). Hough per
+   numpy (0,25°, 1 px) über z > 1,5 ohne Quellen, Linie per Hauptachse der nahen Stimmen verfeinert, Prüfung wie SkyTrace: Kontrast in
+   24-px-Abschnitten (gekappt ±4; Seiten = Median ohne Proben auf Sternen, schmal = gegen die dunklere Seite; zweite Skala für helle breite
+   Spuren nur bei Grat > 8σ), Abschnitt ≥ 4 (verdeckte dürfen innen liegen), Score wie SkyTrace (10,5 bzw. kürzer weniger); Enden über
+   verdeckte/schwache Abschnitte bis zum Rand verlängert; Halbbreite aus dem Querprofil (> 1σ je Pixel); angenommene Spur danach aus der
+   Prüfmaske (keine Doppeltreffer). > 15 % Fläche → nichts. Ergebnis `metrics.trail_lines` = [x1, y1, x2, y2, Halbbreite, Kontrast] in
+   Vollauflösungs-Pixeln, `trails` = Anzahl. **Kein `METRICS_VERSION`-Schritt** (Entscheidung Nutzer): ältere Frames ohne `trail_lines`
+   werden in `_stack.work` im ohnehin geladenen Bild nachgesucht; ihre Metriken/Gewichte bleiben wie sie sind.
+   Synthetisch (σ 14, 540×720): 0 Fehlalarme bei 300–30 000 Sternen, Nebel, 1040×1536; gefunden ab ~30 ADU (1 px breit) über die ganze
+   Länge, hell (3000), breit (σ 4 px), zwei gekreuzte; nicht: ≤ 15 ADU (stört auch im Stack nicht), kurze Spuren ~120 px (bleiben dem Clipping).
+   **Maske beim Stacken** (`Pipeline._trail_masks`, im Hauptthread je Stapel): Linien per `transform` (M + `scale`) ins Referenzraster; mit
+   Verzerrungskorrektur (Polynom `P` der Aufnahme) rastert `trails.band(..., poly=P, ref_lines=…)` stattdessen in **Aufnahme**-Pixeln:
+   jedes Ausgabepixel im Umfeld der groben Lage (über M, +8 px) wird mit demselben Polynom (`registration.poly_out`/`_terms`) wie im Warp
+   in die Aufnahme abgebildet und dort gegen die Spur geprüft – Maske und Bild liegen gleich (Saum dann FWHM + 1 in Aufnahme-Pixeln). `confirm`:
+   Band muss gegen den bisherigen Stack bzw. den Median der übrigen Aufnahmen des Stapels signifikant **und** zu ≥ 50 % seines eigenen
+   Signals neu sein – ein statischer gerader Nebelfaden wird erkannt, aber nie maskiert (ohne Anteilsregel 9 von 24 Frames, weil ein dünner
+   Faden in scharfen Aufnahmen spitzer ist). Ohne Vergleich (erste Aufnahme allein) wird maskiert. Band = Halbbreite + FWHM + 1 px,
+   `V[b] &= ~band` → CPU und GPU (`clip_stats/clip_add`) beachten es ohne Änderung. `StackState.swm` (H, W) = Gewicht der ausgeblendeten
+   Pixel, nur für die Abdeckung (`result`: `sw.min + swm`, gespeichert als `swm.npy` nur wenn ≠ 0) – sonst sähe ein Band in kleinen Stacks
+   wie ein ungedeckter Rand aus (GraXpert füllt Abdeckung ≤ 0,5 mit Himmel, `stackfix`/`coverage_box` ebenso). `meta.trails`
+   {frames, lines, pixels, kept} (kept = erkannt, aber nicht neu) → `results.stats.trails` (alle Bänder); der Kometen-Stack übernimmt es nicht.
+   Gemessen (Demo, gleiche Referenz, Differenz zum Stack ohne Spur entlang der Spur): 30 Frames à 3 +0,08/−0,10, 8 Frames −0,14, 4 Frames
+   +0,27 ADU; beide Spur-Frames bleiben ohne manuelles Einschließen im Stack. Tutor-Hinweis bewusst nicht (Nutzer: bringt nichts).
+   Tests `test_trails.py`. Messskripte (Demo mit/ohne Spur, gleiche mtime → gleiche Frame-IDs/Referenz) lagen im Scratchpad der Sitzung.
    **Verzerrungskorrektur** (seit 08.11.2026, Branch `feature/verzerrung`; Anlass: ein Vergleichsprogramm passte bei Stellina-Aufnahmen
    ein Polynom 2. Ordnung über ~360 Sternpaare an, Restfehler 0,50 → 0,37 px): Die Stellina zentriert alle 1–3 min nach, das Feld wandert
    über die Optik, die Verzeichnung bleibt am Sensor – die Ähnlichkeit (Verschieben/Drehen/Maßstab) lässt am Rand Restfehler.
@@ -967,5 +1000,5 @@ Tests und Beispiele nutzen erfundene Orte/Pfade; Screenshots nur mit maskierten 
 
 ## Grenzen / mögliche nächste Schritte
 Keine Mosaike (Stackfläche = Referenzbild), kein echtes Drizzle (2× interpoliert), keine Planeten-/Mond-Modi (Kometenmodus seit 0.22.0, nur ein Band), kleiner eingebauter Katalog
-(großer nur mit ASTAP-`deep_sky.csv`), Dockerfile (ASTAP-Download) noch nicht real gebaut/getestet, Satellitenspur-Erkennung unzuverlässig,
+(großer nur mit ASTAP-`deep_sky.csv`), Dockerfile (ASTAP-Download) noch nicht real gebaut/getestet, kurze Spuren (< ~120 px) nur per Clipping,
 GraXpert/StarNet nicht im Docker-Image, Verzerrungskorrektur nur Polynom 2. Ordnung, keine GPU, waagerechte Hintergrundstreifen bei NGC 1579 (Stack).
