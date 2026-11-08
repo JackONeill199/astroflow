@@ -148,27 +148,26 @@ def test_uhrversatz_der_nacht_wirkt(client):
         x["catalogs"][0]["clock_offset_s"] = clock if x["id"] == "K0001" else None
     (obs / "kandidaten.json").write_text(json.dumps(cands), encoding="utf-8")
     night = dt.datetime.fromtimestamp(T0 - 43200, dt.timezone.utc).date().isoformat()
-    if True:                                                 # Einstellungen liegen dank client-Fixture in tmp_path
-        assert c.post("/api/skytrace/settings", json={"clock_offsets": {night: {"offset_s": clock}}}).status_code == 200
-        r = c.get("/api/skytrace/run3d", params={"run": rid}).json()
-        assert r["ok"] and r["clock_offset_s"] == clock and not r["clock_pending"]
-        p = r["pointing"]
-        assert r["anchor"] == pytest.approx(T0 - 310) and p["t"][0] == pytest.approx(rows[0]["timestamp"] - 10)
-        assert r["frames"]["excluded_times"][0] == pytest.approx(T0 - 300 + 5 - 10)
-        hit = r["hits"][0]
-        assert hit["t_pass"] == pytest.approx(T0)
-        k = int(np.argmin(abs(np.array(p["t"]) - T0)))
-        assert abs(p["t"][k] - T0) < 20                       # Treffer fällt zeitlich in die Aufnahmen
-        from astroflow.modules.skytrace import orbit3d
-        obs_d = orbit3d.rot_z(orbit3d.gmst(T0) - orbit3d.gmst(r["anchor"]), np.array(r["observer"]))
-        look = np.array(hit["track"][len(hit["track"]) // 2]) - obs_d
-        assert math.degrees(math.acos(look @ np.array(p["center"][k]) / np.linalg.norm(look))) < 1.2
-        # Rückfall ohne Satellitenergebnis: Kamerazeit + Versatz
-        assert orbit3d._exposure_start(cands[0], None, clock) == pytest.approx(T0 - 5)
-        # Korrektur wieder entfernt → Kamerazeit, Hinweis „neu abgleichen“ (Cache-Schlüssel enthält den Versatz)
-        assert c.post("/api/skytrace/settings", json={"clock_offsets": {night: None}}).status_code == 200
-        r = c.get("/api/skytrace/run3d", params={"run": rid}).json()
-        assert r["clock_offset_s"] is None and r["anchor"] == pytest.approx(T0 - 310 - clock) and r["clock_pending"]
+    assert c.post("/api/skytrace/settings", json={"clock_offsets": {night: {"offset_s": clock}}}).status_code == 200
+    r = c.get("/api/skytrace/run3d", params={"run": rid}).json()
+    assert r["ok"] and r["clock_offset_s"] == clock and not r["clock_pending"]
+    p = r["pointing"]
+    assert r["anchor"] == pytest.approx(T0 - 310) and p["t"][0] == pytest.approx(rows[0]["timestamp"] - 10)
+    assert r["frames"]["excluded_times"][0] == pytest.approx(T0 - 300 + 5 - 10)
+    hit = r["hits"][0]
+    assert hit["t_pass"] == pytest.approx(T0)
+    k = int(np.argmin(abs(np.array(p["t"]) - T0)))
+    assert abs(p["t"][k] - T0) < 20                       # Treffer fällt zeitlich in die Aufnahmen
+    from astroflow.modules.skytrace import orbit3d
+    obs_d = orbit3d.rot_z(orbit3d.gmst(T0) - orbit3d.gmst(r["anchor"]), np.array(r["observer"]))
+    look = np.array(hit["track"][len(hit["track"]) // 2]) - obs_d
+    assert math.degrees(math.acos(look @ np.array(p["center"][k]) / np.linalg.norm(look))) < 1.2
+    # Rückfall ohne Satellitenergebnis: Kamerazeit + Versatz
+    assert orbit3d._exposure_start(cands[0], None, clock) == pytest.approx(T0 - 5)
+    # Korrektur wieder entfernt → Kamerazeit, Hinweis „neu abgleichen“ (Cache-Schlüssel enthält den Versatz)
+    assert c.post("/api/skytrace/settings", json={"clock_offsets": {night: None}}).status_code == 200
+    r = c.get("/api/skytrace/run3d", params={"run": rid}).json()
+    assert r["clock_offset_s"] is None and r["anchor"] == pytest.approx(T0 - 310 - clock) and r["clock_pending"]
 
 
 def test_bahnrechnung_nicht_moeglich(tmp_path):
