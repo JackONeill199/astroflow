@@ -179,6 +179,28 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    0,0008 ADU bei 5,6 ADU Rauschen, 0,004 % der Pixel mit anderer Clip-Entscheidung. Danach begrenzen Lesen, `cosmetic`, Debayer (CPU).
    **Nebenbefund:** Mit RMS um den Median kann ein einzelner Ausreißer in einem Stapel von B Frames höchstens √B·σ abweichen –
    bei B ≤ 9 wird er im Stapel also nie verworfen, nur über den Abgleich mit dem bestehenden Stack (`check`, ab ~8 Frames Gewicht).
+   **Verzerrungskorrektur** (seit 08.11.2026, Branch `feature/verzerrung`; Anlass: ein Vergleichsprogramm passte bei Stellina-Aufnahmen
+   ein Polynom 2. Ordnung über ~360 Sternpaare an, Restfehler 0,50 → 0,37 px): Die Stellina zentriert alle 1–3 min nach, das Feld wandert
+   über die Optik, die Verzeichnung bleibt am Sensor – die Ähnlichkeit (Verschieben/Drehen/Maßstab) lässt am Rand Restfehler.
+   Projektoption `distortion` (None = Standard aus `ASTROFLOW_DISTORTION`, sonst **aus** | `auto` | `off`; UI: Reiter Optionen, Änderung =
+   „Neu stacken“). Ablauf in `_stack.work`: `find_transform` wie bisher (100 gespeicherte Sterne, Dreiecke) → `quality.dense_stars`
+   (gleiche Erkennung wie die Analyse, bis `DENSE_STARS` 400 Sterne, ~130 ms bei 3072×2080) → `registration.fit_distortion`: alle Sterne
+   über M zuordnen (`POLY_TOL` 2,5 px, eindeutig), Polynom Referenz→Aufnahme in u, v (Mitte, halbe Diagonale), Ausreißer 3σ am Polynom.
+   Übernommen nur mit ≥ 30 Paaren, ≥ 5 je Viertel und ≥ 2 je Eckfeld (3×3) **des Überlappfelds**, größter Korrektur ≤ 4 px und
+   Restfehler aus 5-facher **Kreuzvalidierung** −10 % und −0,02 px (sonst gewinnt das Polynom mit 12 statt 4 Parametern schon am
+   Messrauschen); sonst Ähnlichkeit mit Grund (`why`). Referenzliste `meta.ref_dense` (neue Stacks aus dem Referenzbild; ältere: Referenzbild
+   nachmessen, ohne Rohbild aus dem Stack selbst, `Pipeline._dense_ref`; weitere Filter übernehmen sie). Je Aufnahme `meta.reg[fid]` =
+   `{n, r0, r1, cv0, cv1, quad, corner, k, poly, why}` in `state.json` (nur mit Korrektur); `registration.summary` → `results.stats.distortion`
+   (`frames, poly, pairs, rms_before, rms_after` = wirksamer Restfehler, `max_corr, why`), Details-Liste im Bild-Tab. `warp(..., poly=P)`:
+   CPU `spline_filter` (Spiegelrand) + `map_coordinates` in Streifen `STRIP_ROWS` (für eine reine Ähnlichkeit bitgleich zum affinen Weg), GPU
+   Kernel `warp_poly` (gemeinsame `sample`-Funktion mit `warp`, Polynom in Ausgabepixeln über `poly_out`). Kometen-Stack: Polynom aus der
+   Sternregistrierung, Kernverschiebung über `shift_poly`. `frame_links`/Gerätediagnose/Asteroiden bleiben bei der Ähnlichkeit (unverändert).
+   Kein automatisches Neu-Stacken, inkrementell gemischt möglich (alte Aufnahmen affin, neue mit Polynom).
+   Gemessen (synthetisch, `demo.generate_distortion`, 1536×1024, Ecke ~5 px Verzeichnung, Feld ±120 px, 18 Aufnahmen): Polynom bei 14 von 17,
+   Restfehler (KV) 0,42 → 0,21 px, ~285 Paare; Stack Exzentrizität Ecken 0,33 → 0,23 (Mitte 0,25), FWHM Ecken 3,68 → 3,62 (Mitte 3,63);
+   ohne Verzeichnung 0 von 16 übernommen, Stack identisch. 3072×2080 je Aufnahme: Warp CPU 1,13 → 1,19 s, GPU 72 → 156 ms (Maske auf der
+   CPU), Fit 1 ms. Tests `test_distortion.py`, `test_gpu.py::test_warp_poly_matches_cpu`. **Offen:** Messung an echten Stellina-Daten, dann
+   Entscheidung über den Standard.
 6. **Kanäle** (`channels.py`): L/R/G/B/Ha/OIII/SII → RGB, LRGB, RGB+Hα, HOO, SHO oder Mono (Option `palette`).
 7. **Develop Engine** (`develop.py`): `measure()` (Objekt-SNR, Signalfläche, Dynamik auf gebinnter Vorschau) → `adapt()` passt
    Profilwerte an (Entrauschen, `linear_denoise` = (10/SNR)^1,5, Sättigung, asinh, keine Entfaltung bei wenig Signal) → bis zu 3 Renderings
@@ -921,4 +943,4 @@ Tests und Beispiele nutzen erfundene Orte/Pfade; Screenshots nur mit maskierten 
 ## Grenzen / mögliche nächste Schritte
 Keine Mosaike (Stackfläche = Referenzbild), kein echtes Drizzle (2× interpoliert), keine Planeten-/Mond-Modi (Kometenmodus seit 0.22.0, nur ein Band), kleiner eingebauter Katalog
 (großer nur mit ASTAP-`deep_sky.csv`), Dockerfile (ASTAP-Download) noch nicht real gebaut/getestet, Satellitenspur-Erkennung unzuverlässig,
-GraXpert/StarNet nicht im Docker-Image, keine Verzerrungskorrektur, keine GPU, waagerechte Hintergrundstreifen bei NGC 1579 (Stack).
+GraXpert/StarNet nicht im Docker-Image, Verzerrungskorrektur nur Polynom 2. Ordnung und standardmäßig aus, keine GPU, waagerechte Hintergrundstreifen bei NGC 1579 (Stack).

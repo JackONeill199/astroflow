@@ -34,6 +34,7 @@ DEFAULT_OPTIONS = {
     "graxpert": None,           # None = Einstellung | off | bge | denoise | all (KI-Hintergrund/-Entrauschen, falls installiert)
     "comet_mode": "auto",       # Kometenmodus: auto (nach Name/Typ) | on | off – nicht „mode“, das heißt bei Aufträgen „develop“
     "comet_name": None,         # Bezeichnung für JPL Horizons, falls der Name keine enthält (z. B. „C/2022 E3“)
+    "distortion": None,         # Verzerrungskorrektur: None = Standard (ASTROFLOW_DISTORTION, sonst aus) | auto | off
 }
 GLOW_SAMPLE = 30                # Frames je Nacht für die Glühmessung
 CHECKPOINT_S = 120              # Stack-Zustand spätestens alle 2 min sichern (Wiederaufnahme nach Abbruch)
@@ -659,6 +660,7 @@ class Pipeline:
         order = sorted(by_band, key=lambda b: (b in channels.NARROW, -len(wanted[b])))
         n_all = sum(len(w) for w in wanted.values())
         with_comet = comet.active(proj, opt)
+        dist = registration.distortion_mode(opt.get("distortion")) == "auto"
         full = progress
         if with_comet:                                   # Sterne-Stack 36–60 %, Kometen-Stack 60–84 %
             progress = lambda f, stage, msg="", _p=full: _p(0.36 + (f - 0.36) * 0.5 if f > 0.36 else f, stage, msg)
@@ -674,7 +676,7 @@ class Pipeline:
                 sub = lambda f, stage, msg="", lo=lo, span=span, b=b: progress(
                     0.36 + 0.48 * (lo + span * (f - 0.36) / 0.48), stage, (f"[{b}] " if b else "") + msg)
                 st = self._stack(project_id, todo or wanted[b], st, lib, cache, scale, sub, ref, save_dir=stack_dir(wd, b),
-                                 stages=stage_dir(wd, b))
+                                 stages=stage_dir(wd, b), distortion=dist)
                 states[b] = st
             done_before += len(wanted[b])
         if not states:
@@ -773,7 +775,7 @@ class Pipeline:
         if old is None:
             shutil.rmtree(cdir, ignore_errors=True)
             state = StackState(A.sw.shape)
-            state.meta.update({k: v for k, v in A.meta.items() if k not in ("frames", "exposure")}, frames={}, exposure=0.0)
+            state.meta.update({k: v for k, v in A.meta.items() if k not in ("frames", "exposure", "reg")}, frames={}, exposure=0.0)
             state.meta.setdefault("flux_k0", 1.0)
             state.meta["comet"] = track.to_dict()
         else:
@@ -800,7 +802,8 @@ class Pipeline:
             progress(0.15, "Kometen-Stack", f"{len(todo)} Aufnahmen auf den Kometenkern ausrichten")
             sub = lambda f, stage, msg="": progress(0.15 + 0.85 * min(1.0, max(0.0, (f - 0.36) / 0.48)), "Kometen-Stack", msg)
             state = self._stack(proj["id"], todo, state, lib, cache, scale, sub, save_dir=cdir, stages=None,
-                                shifts=shifts, mask=mask, mark=False, unmasked=head)
+                                shifts=shifts, mask=mask, mark=False, unmasked=head,
+                                distortion=registration.distortion_mode(opt.get("distortion")) == "auto")
         info.update(frames=len(state.meta["frames"]), t0=track.t0, nucleus=[float(v) for v in (c0 + 0.5) * scale - 0.5],
                     track=[[round(float(x), 2), round(float(y), 2)] for x, y in
                            ((pos[np.unique(np.linspace(0, len(pos) - 1, 9).round().astype(int))] + 0.5) * scale - 0.5)])
@@ -1037,6 +1040,11 @@ class Pipeline:
             stats["graxpert"] = gx
         if hotfix is not None:
             stats["hotfix"] = hotfix
+        # Verzerrungskorrektur (nur Stacks, die mit ihr gerechnet wurden): alle Bänder zusammen
+        dsum = registration.summary({"reg": {k: v for st in states.values() for k, v in (st.meta.get("reg") or {}).items()},
+                                     "frames": {k: 1 for st in states.values() for k in st.meta.get("frames", {})}})
+        if dsum:
+            stats["distortion"] = dsum
         if cinfo is not None:
             stats["comet"] = cinfo
         stats.update({"profile": pname, "narrowband": narrow, "frames": len(stacked), "exposure_s": exposure,
@@ -1145,19 +1153,48 @@ class Pipeline:
         self.db.x("UPDATE results SET files=?, stats=? WHERE id=?", (json.dumps(files), json.dumps(st), rid))
 
     # -------------------------------------------------------------- stacking #
+    def _dense_ref(self, state: StackState, lib, cache) -> np.ndarray:
+        """Dichte Sternliste des Referenzbilds für die Verzerrungskorrektur (state.json → ref_dense). Ältere Stacks
+        haben keine: dann aus dem Referenzbild nachmessen, ohne Rohbild aus dem Stack selbst (gleiches Raster)."""
+        meta = state.meta
+        if not meta.get("ref_dense"):
+            r = self.db.one("SELECT path, info, night, deleted FROM frames WHERE id=?", (meta["ref_fid"],))
+            dense = None
+            if r and not r["deleted"] and Path(r["path"]).exists():
+                try:
+                    info = json.loads(r["info"])
+                    raw, _ = self._load(r["path"], info, lib, r["night"], cache)
+                    dense = quality.dense_stars(raw, bool(info["bayerpat"]) and raw.ndim == 2)
+                except Exception:
+                    dense = None
+            if not dense and meta.get("frames") and "comet" not in meta:     # Kometen-Stack ist auf den Kern verschoben
+                mean, cov = state.result()
+                sc = int(meta.get("scale") or 1)
+                lum = mean.mean(0)
+                ok = cov > 0.5
+                lum = np.where(ok, lum, np.median(lum[ok]) if ok.any() else 0.0).astype(np.float32)
+                st = quality.detect_stars(lum, max_stars=quality.DENSE_STARS)
+                dense = [[round(float((x + 0.5) / sc - 0.5), 2), round(float((y + 0.5) / sc - 0.5), 2), round(float(f), 1)]
+                         for x, y, f in zip(st.x, st.y, st.flux)]
+            meta["ref_dense"] = dense or meta["ref_stars"]
+        return np.array([[s[0], s[1]] for s in meta["ref_dense"]], float).reshape(-1, 2)
+
     def _stack(self, pid, todo, state, lib, cache, scale, progress, ref_meta: dict | None = None,
                save_dir: Path | None = None, stages: Path | None = None, shifts: dict | None = None,
-               mask: np.ndarray | None = None, mark: bool = True, unmasked: np.ndarray | None = None) -> StackState:
+               mask: np.ndarray | None = None, mark: bool = True, unmasked: np.ndarray | None = None,
+               distortion: bool = False) -> StackState:
         """shifts: je Frame zusätzliche Verschiebung (Referenzpixel) nach der Sternregistrierung – Kometen-Stack;
         mask: Pixel im Sterne-Raster, die nicht eingehen (Sterne), wird mitverschoben; mark=False: frames.stacked nicht setzen
-        (der Kometen-Stack führt seine Aufnahmen nur in state.json)."""
+        (der Kometen-Stack führt seine Aufnahmen nur in state.json).
+        distortion: je Aufnahme zusätzlich ein Polynom 2. Ordnung anpassen (registration.fit_distortion) und, wenn es
+        trägt, damit statt mit der Ähnlichkeit warpen. Ergebnis je Aufnahme in meta["reg"] (Restfehler, Paare, Grund)."""
         if state is None and ref_meta is not None:
             # weiterer Filter: auf die Referenz des ersten Kanals registrieren, Fluss relativ zum eigenen ersten Batch
             i0 = json.loads(todo[0]["info"])
             C = 3 if channels.is_color(i0) else 1
             _, H, W = ref_meta["shape"]
             state = StackState((C, H * scale, W * scale))
-            state.meta.update({k: ref_meta[k] for k in ("ref_fid", "ref_stars", "scale", "ref_fwhm")},
+            state.meta.update({k: ref_meta[k] for k in ("ref_fid", "ref_stars", "scale", "ref_fwhm", "ref_dense") if k in ref_meta},
                               shape=[C, H, W], flux_k0=None)
         if state is None:
             ref = next((r for r in todo if len(json.loads(r["metrics"]).get("stars", [])) >= 15), None)
@@ -1172,6 +1209,8 @@ class Pipeline:
             state.meta.update(ref_fid=ref["id"], ref_stars=rm["stars"], scale=scale, shape=[C, H, W],
                               ref_bg=[float(np.median(rgb0[c])) for c in range(C)], ref_noise=rm["noise"],
                               ref_fwhm=rm["fwhm"])
+            if distortion:
+                state.meta["ref_dense"] = quality.dense_stars(raw, bool(ri["bayerpat"]) and raw.ndim == 2)
         meta = state.meta
         if not meta.get("frames") and "defects" not in meta:
             # neu aufgebauter Stack: mit Fehlerkarte gerechnet? (ältere Stacks haben die Marke nicht → Hinweis „Neu stacken“)
@@ -1182,6 +1221,8 @@ class Pipeline:
                                    for r in self.db.q(f"SELECT info FROM frames WHERE id IN ({','.join('?' * len(ids[i:i + 500]))})",
                                                       tuple(ids[i:i + 500])))
         exptime = {r["id"]: json.loads(r["info"]).get("exptime") or 0 for r in todo}
+        dense_ref = self._dense_ref(state, lib, cache) if distortion else None
+        reg = meta.setdefault("reg", {}) if distortion else None
         ref_xy = np.array([[s[0], s[1]] for s in meta["ref_stars"]])
         ref_flux = np.array([s[2] for s in meta["ref_stars"]])
         C, H, W = meta["shape"]
@@ -1206,11 +1247,23 @@ class Pipeline:
                         return r["id"], None, "Registrierung fehlgeschlagen"
                     M, pairs, _ = res
                 d = shifts.get(r["id"]) if shifts else None
+                M0 = M                                   # Sternregistrierung ohne Kometenverschiebung
                 if d is not None:
                     M = np.array([[1, 0, d[0]], [0, 1, d[1]], [0, 0, 1]], float) @ M
                 raw, _ = self._load(r["path"], info, lib, r["night"], cache)
+                P, rinfo = None, None
+                if dense_ref is not None and r["id"] != meta["ref_fid"]:
+                    # Verzerrung: Polynom aus allen zugeordneten Sternen (dichte Liste dieser Aufnahme), sonst Ähnlichkeit
+                    try:
+                        tgd = np.array([[s[0], s[1]] for s in quality.dense_stars(raw, bool(info["bayerpat"]) and raw.ndim == 2)])
+                        P, rinfo = registration.fit_distortion(dense_ref, tgd, M0, (H, W))
+                    except Exception as e:               # nie die Aufnahme verlieren – dann eben ohne Polynom
+                        P, rinfo = None, {"n": 0, "why": f"Fehler: {e}"[:120]}
+                    rinfo["poly"] = P is not None
+                    if P is not None and d is not None:
+                        P = registration.shift_poly(P, d)
                 img = to_channels(raw, info["bayerpat"])
-                warped, valid = registration.warp(img, M, (H * scale, W * scale), scale, gpu=g)
+                warped, valid = registration.warp(img, M, (H * scale, W * scale), scale, gpu=g, poly=P)
                 if mask is not None and d is not None:
                     sm = comet.shift_mask(mask, d[0] * scale, d[1] * scale)
                     valid &= ~(sm & ~unmasked) if unmasked is not None else ~sm
@@ -1218,7 +1271,8 @@ class Pipeline:
                 bg = np.array([np.median(warped[c].ravel()[::7][sub]) for c in range(C)])
                 ratio = ref_flux[pairs[:, 1]] / np.maximum(tf[pairs[:, 0]], 1e-6)
                 fw = max(m["fwhm"] or meta["ref_fwhm"], 1.0)
-                return r["id"], ((warped - bg[:, None, None]).astype(np.float32), valid, float(np.median(ratio)), m["noise"], fw), None
+                return r["id"], ((warped - bg[:, None, None]).astype(np.float32), valid, float(np.median(ratio)), m["noise"], fw,
+                                 rinfo), None
             except Exception as e:
                 return r["id"], None, f"Fehler: {e}"
 
@@ -1257,7 +1311,9 @@ class Pipeline:
                 state.add_batch(X, V, ws, workers=self.s.threads, prefixes=cut.values(), gpu=g)
                 del X, V
                 exp0 = meta["exposure"]
-                for (fid, _), w in zip(good, ws):
+                for (fid, d), w in zip(good, ws):
+                    if reg is not None and d[5] is not None:
+                        reg[fid] = d[5]
                     meta["frames"][fid] = float(w)
                     meta["exposure"] += exptime.get(fid, 0)
                     unsaved.append(fid)

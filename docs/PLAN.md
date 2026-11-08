@@ -31,7 +31,7 @@ astronomischen Bildverarbeitung vor zusätzlicher UI.
 | L5 | Qualitätsbewertung: SNR, Gradienten, Satellitenspuren (§2) | nicht gemessen (Spuren werden nur beim Stacken weggeclippt) | mittel |
 | L6 | Vorher-Nachher-Vergleich, Qualitätsschätzung, Verbesserungsvorschläge (§8) | nur Versionsvergleich | mittel |
 | L7 | Fotometrische Farbkalibrierung (§6.3) | Sternfarben-Mittelwert statt Katalogfarben | niedrig (Risiko R2) |
-| L8 | Geometrische Verzerrung (§4) | nur affin | niedrig |
+| L8 | Geometrische Verzerrung (§4) | optional Polynom 2. Ordnung (Projektoption `distortion`, Standard aus) | niedrig |
 | L9 | GPU (§9) | keine | niedrig (optional) |
 | L10 | Sensorprofile (§3) | keine | niedrig (keine Daten verfügbar) |
 
