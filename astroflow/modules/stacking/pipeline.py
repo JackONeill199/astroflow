@@ -1287,7 +1287,9 @@ class Pipeline:
                             or ci == len(chunks) - 1):
                     def show_stack():                    # Stand am Stapelende: direkt aus dem Stack, Rendern im Hintergrund
                         mean, cov, exp = live.stack_sample(state), live.stack_cov(state), meta['exposure']
-                        run.later(lambda: run.stack_frame(mean, n=n1, exposure=exp, band=band, cov=cov))
+                        # Werte jetzt binden – bis der Hintergrund-Thread dran ist, kann schon der nächste Stapel fertig sein
+                        run.later(lambda mean=mean, cov=cov, exp=exp, n1=n1, band=band:
+                                  run.stack_frame(mean, n=n1, exposure=exp, band=band, cov=cov))
                         run.last_picture = time.monotonic()
                     live.optional(show_stack)
             done += len(chunk)

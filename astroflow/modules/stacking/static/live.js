@@ -81,11 +81,14 @@ function createStackLive(host, pid) {
       if (percent == null) track.removeAttribute('aria-valuenow'); else track.setAttribute('aria-valuenow', percent);
       find('.sl-track i').style.width = (percent ?? 28) + '%';
       if (live.run !== run) { run = live.run; played = ''; queue = []; }
-      if (live.preview && live.preview !== preview) {            // Endbearbeitung: deren Vorschau hat Vorrang
-        preview = live.preview; queue = []; clearTimeout(timer); timer = 0; current = null;
-        root.style.removeProperty('--sl-fade');
+      if (live.preview) {                                          // Endbearbeitung: deren Vorschau hat Vorrang
+        if (live.preview !== preview) {
+          preview = live.preview; queue = []; clearTimeout(timer); timer = 0; current = null;
+          root.style.removeProperty('--sl-fade');
+        }
+        // bei jedem Poll: show() übergeht gezeigte/ladende Bilder, ein fehlgeschlagener Abruf wird so erneut versucht
         show(`/api/stacking/projects/${pid}/live/${encodeURIComponent(live.preview)}`);
-      } else if (!live.preview) frames(live.frames);
+      } else frames(live.frames);
       if (!shown && !live.preview && !live.frames?.length && p.results?.[0]) show(`/api/stacking/results/${p.results[0].id}/jpg`, true);
       caption(live.preview ? null : current);
       const steps = live.steps?.length ? live.steps : [{ stage: j.stage || 'Vorbereitung', label: j.message || 'Verarbeitung wird vorbereitet', done: false }];
