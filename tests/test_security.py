@@ -318,3 +318,59 @@ def test_qr_code_aufbau():
         img = np.pad((~np.array(qr.matrix(text), dtype=bool)).astype(np.uint8) * 255, 4, constant_values=255)
         img = cv2.resize(img, None, fx=8, fy=8, interpolation=cv2.INTER_NEAREST)
         assert cv2.QRCodeDetector().detectAndDecode(img)[0] == text
+
+
+# ---- Befunde der Codeanalyse (CodeQL) ----------------------------------------------------------------------------
+def test_keine_pfadabfrage_ohne_zweck(tmp_path, monkeypatch):
+    """Ungenutzte Endpunkte, die beliebige Pfade prüften bzw. auflisteten, sind weg; der Ordnerdialog (/api/folders) bleibt."""
+    monkeypatch.setenv("SKYTRACE_HOME", str(tmp_path / "st"))
+    app = _app(tmp_path, monkeypatch, "stacking,skytrace")
+    (tmp_path / "quelle" / "M42").mkdir(parents=True)
+    with _local(app) as c:
+        for path in ("/api/setup/folder", "/api/skytrace/folders"):
+            assert c.get(path, params={"path": str(tmp_path)}).status_code in (404, 405), path
+        d = c.get("/api/folders", params={"path": str(tmp_path / "quelle")}).json()
+        assert [f["name"] for f in d["folders"]] == ["M42"]
+        assert c.get("/api/skytrace/observations", params={"source": str(tmp_path / "quelle")}).json()["observations"] == ["M42"]
+
+
+def test_fehler_ohne_interna(tmp_path, monkeypatch):
+    """Ausnahmetexte (Pfade, Adressen, Bibliotheksmeldungen) gehen nicht an den Browser, nur feste deutsche Meldungen."""
+    import httpx
+    from astroflow.modules.stacking import api as st_api, tutor
+    app = _app(tmp_path, monkeypatch)
+    gif = io.BytesIO()
+    from PIL import Image
+    Image.new("RGB", (4, 4)).save(gif, "GIF")
+    with _local(app, headers={"Origin": "http://127.0.0.1:8766"}) as c:
+        r = c.post("/api/stacking/upload", files=[("files", ("kaputt.jpg", b"kein Bild " * 50, "image/jpeg")),
+                                                   ("files", ("animiert.png", gif.getvalue(), "image/png"))])
+        assert r.status_code == 200
+        errors = r.json()["errors"]
+        assert errors[0] == "kaputt.jpg: Bild nicht importiert: Datei ist kein lesbares Bild."
+        assert errors[1].endswith("Nur JPG, PNG und TIFF sind als fertige Bilder unterstützt.")
+        assert not any("cannot identify" in e or str(tmp_path) in e for e in errors)
+
+        def boom(*a, **k):
+            raise RuntimeError(f"geheim {tmp_path} http://192.0.2.99/v1")
+        monkeypatch.setattr(tutor, "ask_report", boom)
+        r = c.post("/api/stacking/results/1/tutor/ki")
+        assert r.status_code == 502 and "geheim" not in r.text and "192.0.2.99" not in r.text and "Protokoll" in r.text
+    req = httpx.Request("POST", "http://192.0.2.99/v1/chat")
+    assert "Schlüssel" in st_api.ki_error(httpx.HTTPStatusError("x", request=req, response=httpx.Response(401, request=req)))
+    assert st_api.ki_error(httpx.ConnectTimeout("x", request=req)) == "KI nicht erreichbar: Zeitüberschreitung."
+
+
+def test_regex_ohne_quadratische_laufzeit():
+    """Markdown-Entfernen (Sage) und Kennungsvergleich bleiben bei bösartigen Eingaben schnell und verhalten sich wie vorher."""
+    import time
+    from astroflow.modules.sage.kb import norm
+    from astroflow.modules.sage.store import plain
+    assert norm("M 045") == "m 45" and norm("NGC  0001976") == "ngc 1976" and norm("Messier 0") == "m 0" and norm("m00") == "m 0"
+    assert plain("# Titel\n**fett** und *kursiv* [Link](https://example.org) __u__ _i_") == "Titel\nfett und kursiv Link u i"
+    t = time.perf_counter()
+    norm("m" + "0" * 50000 + "x")
+    plain("[" * 30000)
+    plain("[](" * 30000)
+    plain("*a" * 30000 + "\n" + "_" * 30000)
+    assert time.perf_counter() - t < 2

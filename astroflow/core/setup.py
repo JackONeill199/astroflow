@@ -370,10 +370,6 @@ def build_router(setup: Setup) -> APIRouter:
             security.require_local(request, "Datenordner und Heimnetz")
         return setup.save(body)
 
-    @r.get("/setup/folder")
-    def get_folder(path: str):
-        return folder_info(Path(path))
-
     @r.post("/setup/astap")
     def post_astap(request: Request, body: dict = Body({})):
         security.require_local(request, "Komponenten installieren")

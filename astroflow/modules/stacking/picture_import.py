@@ -76,6 +76,20 @@ def attach_previews(eng):
                  (json.dumps(sorted(ids)), parent))
 
 
+# Meldungen, die der Upload unverändert an den Browser gibt – alles andere nur ins Protokoll (keine Ausnahmetexte nach außen)
+MSG_FORMAT = "Nur JPG, PNG und TIFF sind als fertige Bilder unterstützt."
+MSG_PAGES = "Bitte ein einzelnes Bild statt einer mehrseitigen oder animierten Datei importieren."
+MSG_TIFF = "Das TIFF muss ein Graustufen- oder RGB-Bild sein."
+MESSAGES = (MSG_FORMAT, MSG_PAGES, MSG_TIFF)
+MSG_UNREADABLE = "Datei ist kein lesbares Bild."
+
+
+def user_message(e: Exception) -> str:
+    """Bekannte Meldung aus MESSAGES, sonst eine allgemeine – der Ausnahmetext selbst geht nie an den Browser."""
+    text = str(e)
+    return next((m for m in MESSAGES if m == text), MSG_UNREADABLE)
+
+
 def import_picture(eng, stream, filename: str, notify: bool = True) -> dict:
     """Nur Vorschauen konvertieren; Original und Herkunft bleiben erhalten. Identische Uploads sind idempotent."""
     with tempfile.TemporaryDirectory(prefix="bildimport-", dir=eng.s.work_dir) as tmp:
@@ -95,9 +109,9 @@ def import_picture(eng, stream, filename: str, notify: bool = True) -> dict:
                 fmt = im.format
                 ext = {"JPEG": ".jpg", "PNG": ".png", "TIFF": ".tif"}.get(fmt)
                 if not ext:
-                    raise ValueError("Nur JPG, PNG und TIFF sind als fertige Bilder unterstützt.")
+                    raise ValueError(MSG_FORMAT)
                 if getattr(im, "n_frames", 1) != 1:
-                    raise ValueError("Bitte ein einzelnes Bild statt einer mehrseitigen oder animierten Datei importieren.")
+                    raise ValueError(MSG_PAGES)
                 exif = im.getexif()
                 series = telescope_series(filename, exif)
                 observed = exif.get(36867) or exif.get(306)
@@ -109,7 +123,7 @@ def import_picture(eng, stream, filename: str, notify: bool = True) -> dict:
                     if a.ndim == 3 and a.shape[0] in (3, 4) and im.tag_v2.get(284) == 2:
                         a = np.moveaxis(a, 0, -1)
                     if a.ndim not in (2, 3) or (a.ndim == 3 and a.shape[-1] not in (3, 4)):
-                        raise ValueError("Das TIFF muss ein Graustufen- oder RGB-Bild sein.")
+                        raise ValueError(MSG_TIFF)
                     bit_depth = a.dtype.itemsize * 8
                     if np.issubdtype(a.dtype, np.integer):
                         a = a.astype(np.float32) / np.iinfo(a.dtype).max

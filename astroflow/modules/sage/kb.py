@@ -53,7 +53,9 @@ def norm(name: str) -> str:
     n = re.sub(r"\s+", " ", (name or "").strip().lower())
     n = re.sub(r"^name ", "", n)
     n = re.sub(r"^messier ?", "m ", n)
-    n = re.sub(r"^(m|ngc|ic|sh ?2|ugc|pgc|mel|cr|b|vdb|ldn|lbn|abell|arp|hcg|pk|c|caldwell) ?-?0*(\d+)\b", lambda m: m.group(1).replace(" ", "") + " " + m.group(2), n)
+    # führende Nullen erst im Ersatz entfernen – „0*(\d+)“ wäre mehrdeutig und bei vielen Nullen quadratisch langsam
+    n = re.sub(r"^(m|ngc|ic|sh ?2|ugc|pgc|mel|cr|b|vdb|ldn|lbn|abell|arp|hcg|pk|c|caldwell) ?-?(\d+)\b",
+               lambda m: m.group(1).replace(" ", "") + " " + (m.group(2).lstrip("0") or "0"), n)
     return n.replace("caldwell", "c")
 
 

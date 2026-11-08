@@ -687,20 +687,6 @@ def build_router(mod) -> APIRouter:
         names = sorted(p.name for p in path.iterdir() if p.is_dir() and not p.name.startswith("."))
         return dict(source=str(path), observations=names, history=ctl.observation_history(path, names))
 
-    @r.get("/folders")
-    def folders(path: str = DEFAULT_SOURCE):
-        p = Path(path).resolve()
-        if not p.is_dir():
-            raise HTTPException(400, "Ordner nicht gefunden.")
-        entries = []
-        for x in sorted(p.iterdir(), key=lambda q: q.name.lower()):
-            try:
-                if x.is_dir() and not x.name.startswith("."):
-                    entries.append(dict(name=x.name, path=str(x)))
-            except OSError:
-                pass
-        return dict(path=str(p), parent=str(p.parent), folders=entries[:500])
-
     @r.get("/settings")
     def get_settings():
         return settings()

@@ -4,7 +4,7 @@
 const COLORS = ['var(--acc)', 'var(--acc3)', 'var(--acc2)', 'var(--tn-orange)', 'var(--tn-pink)', 'var(--tn-blue)'];
 const hm = t => t == null ? '–' : new Date(t * 1000).toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
 const period = s => s ? `${hm(s[0])} – ${hm(s[1])}` : '–';
-const targetLink = o => `href="${esc(o.href)}"${o.category === 'new' && AF.on('sage') ? ` data-night-catalog="${o.id}"` : ''}`;
+const targetLink = o => `href="${esc(o.href)}"${o.category === 'new' && AF.on('sage') ? ` data-night-catalog="${esc(o.id)}"` : ''}`;
 const HID = 'af.tonight.hidden';        // „nicht interessiert“: nur lokal im Browser
 const hiddenIds = () => { try { const a = JSON.parse(localStorage.getItem(HID) || '[]'); return Array.isArray(a) ? a.map(String) : []; } catch { return []; } };
 const setHidden = a => { try { localStorage.setItem(HID, JSON.stringify([...new Set(a)])); } catch {} };
@@ -39,7 +39,7 @@ function chart(d, W, H, selected, hidden) {
       <text x="${L - 5}" y="${Y(a) + 4}" text-anchor="end" fill="var(--mut)">${a}°</text>`;
   }
   if (d.cloud) d.cloud.slice(0, -1).forEach((c, i) => {
-    if (c != null) g += `<rect x="${X(d.times[i])}" y="${H - B - 8}" width="${X(d.times[i + 1]) - X(d.times[i]) + .2}" height="8" fill="var(--tn-blue)" opacity="${(c / 100 * .75).toFixed(2)}"><title>${c} % Wolken</title></rect>`;
+    if (c != null) g += `<rect x="${X(d.times[i])}" y="${H - B - 8}" width="${X(d.times[i + 1]) - X(d.times[i]) + .2}" height="8" fill="var(--tn-blue)" opacity="${(c / 100 * .75).toFixed(2)}"><title>${Math.round(+c)} % Wolken</title></rect>`;
   });
   g += `<path d="${path(d.moon.alt)}" fill="none" stroke="var(--mut)" stroke-width="1.5" stroke-dasharray="2 5"><title>Mondhöhe</title></path>`;
   d.recommendations.forEach((o, k) => {
