@@ -206,7 +206,7 @@ def test_satcat_sperre_wird_beachtet(tmp_path, monkeypatch):
     import time
     from pathlib import Path
     import pytest
-    pytest.importorskip("filelock"); requests = pytest.importorskip("requests")   # Engine-Pakete (skytrace/requirements.txt)
+    pytest.importorskip("filelock"); requests = pytest.importorskip("requests")   # Engine-Pakete (skytrace/requirements-engine.txt)
     sys.path.insert(0, str(Path(__file__).parents[1] / "astroflow" / "modules" / "skytrace" / "engine"))
     import archive_sources
 
