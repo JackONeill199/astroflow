@@ -310,6 +310,10 @@ die Oberflächentests laufen in einem echten Chromium.
 - Die Himmelsqualität ohne Dark-Frames ist nur für bekannte Geräte (bisher Stellina) möglich, die Genauigkeit liegt bei etwa ±0,2–0,4 mag.
 - Installer und portables ZIP gibt es bisher nur für Windows; unter Linux und macOS startest du AstroFlow mit Python oder Docker.
 
+## AstroFlow unterstützen
+
+AstroFlow ist kostenlos und quelloffen. Wenn du die Entwicklung unterstützen möchtest, kannst du über [GitHub Sponsors](https://github.com/sponsors/JackONeill199) oder [Ko-fi](https://ko-fi.com/jackoneill199) spenden. Genauso helfen Fehlermeldungen, Ideen und ein Stern auf GitHub.
+
 ## Lizenz
 
 MIT, siehe `LICENSE`. Drittkomponenten: three.js (`astroflow/static/vendor/`) steht unter MIT, die Erdtextur (`astroflow/modules/skytrace/static/vendor/`) ist NASA Blue Marble

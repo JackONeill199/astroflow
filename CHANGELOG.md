@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.46.1 – 08.11.2026
+
+### Neu
+- Einstellungen → Module & System: unauffällige Zeile „AstroFlow unterstützen“ mit Links zu GitHub Sponsors und Ko-fi; `.github/FUNDING.yml` und README-Abschnitt.
+
 ## 0.46.0 – 07.11.2026
 
 ### Neu
