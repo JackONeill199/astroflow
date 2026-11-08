@@ -96,7 +96,7 @@ def find_transform(ref_xy: np.ndarray, tgt_xy: np.ndarray, tol: float = 2.5, max
     return M, pairs, float(np.sqrt(np.mean(d[sel] ** 2)))
 
 
-PATTERN_STARS = 36       # Sterne je Seite in der Sternmuster-Ansicht (hellste zuerst, dazu das Startdreieck)
+PATTERN_STARS = 36       # Sterne der Aufnahme in der Sternmuster-Ansicht (hellste zuerst, dazu das Startdreieck)
 
 
 def _mesh(pts: np.ndarray) -> list[tuple[int, int]]:
@@ -108,55 +108,30 @@ def _mesh(pts: np.ndarray) -> list[tuple[int, int]]:
         tri = Delaunay(pts)
     except Exception:
         return []
-    edges = set()
-    for a, b, c in tri.simplices:
-        for i, j in ((a, b), (b, c), (a, c)):
-            edges.add((int(min(i, j)), int(max(i, j))))
-    edges = sorted(edges)
-    ln = np.array([np.hypot(*(pts[i] - pts[j])) for i, j in edges])
-    lim = 2.5 * float(np.median(ln))
-    return [e for e, l in zip(edges, ln) if l <= lim]
+    s = tri.simplices
+    e = np.sort(np.concatenate([s[:, [0, 1]], s[:, [1, 2]], s[:, [0, 2]]]), axis=1)
+    e = np.unique(e, axis=0)
+    ln = np.hypot(*(pts[e[:, 0]] - pts[e[:, 1]]).T)
+    return [(int(i), int(j)) for i, j in e[ln <= 2.5 * float(np.median(ln))]]
 
 
-def pattern(ref_xy: np.ndarray, tgt_xy: np.ndarray, M: np.ndarray, pairs: np.ndarray, info: dict,
-            shape: tuple[int, int], rms: float | None = None) -> dict:
-    """Kompakte Daten für die Sternmuster-Ansicht (wenige KB): Sterne beider Aufnahmen in Rohbild-Pixeln
-    (ganzzahlig), Netzkanten je Seite, welche Kanten der Aufnahme nach der Transformation auf einer Kante der
-    Referenz liegen, das tatsächlich gefundene Startdreieck und die Transformation."""
-    def pick(n, must):
-        keep = list(range(min(n, PATTERN_STARS)))
-        return keep + [i for i in must if i not in keep and i < n]
-    ri = pick(len(ref_xy), info.get('seed_ref', []))
-    ti = pick(len(tgt_xy), info.get('seed_tgt', []))
-    rpos, tpos = {o: k for k, o in enumerate(ri)}, {o: k for k, o in enumerate(ti)}
-    rp, tp = ref_xy[ri], tgt_xy[ti]
-    redges, tedges = _mesh(rp), _mesh(tp)
-    match = {}                                       # Index Aufnahme (gezeigt) -> Index Referenz (gezeigt)
-    for t, r in pairs:
-        if int(t) in tpos and int(r) in rpos:
-            match[tpos[int(t)]] = rpos[int(r)]
-    rset = set(redges)
-    tl = []
-    for a, b in tedges:
-        ra, rb = match.get(a), match.get(b)
-        ok = ra is not None and rb is not None and (min(ra, rb), max(ra, rb)) in rset
-        tl.append([a, b, 1 if ok else 0])
-    sc = float(np.hypot(M[0, 0], M[1, 0]))
-    H, W = shape
+def pulse(tgt_xy: np.ndarray, M: np.ndarray, pairs: np.ndarray, info: dict, rms: float | None = None) -> dict:
+    """Kompakte Daten für einen Sternmuster-Puls (einige hundert Bytes): nur die Linien zwischen zugeordneten Sternen
+    der Aufnahme (Rohbild-Pixel, ganzzahlig), das gefundene Startdreieck und die Transformation Aufnahme → Referenz."""
+    keep = list(range(min(len(tgt_xy), PATTERN_STARS)))
+    keep += [i for i in info.get('seed_tgt', []) if i not in keep and i < len(tgt_xy)]
+    matched = set(int(t) for t in pairs[:, 0])
+    edges = [(a, b) for a, b in _mesh(tgt_xy[keep]) if keep[a] in matched and keep[b] in matched]
+    used = sorted({i for e in edges for i in e} | {keep.index(i) for i in info.get('seed_tgt', []) if i in keep})
+    pos = {o: k for k, o in enumerate(used)}
     return {
-        'v': 1, 'w': int(W), 'h': int(H),
-        'ref': [[int(round(x)), int(round(y))] for x, y in rp],
-        'tgt': [[int(round(x)), int(round(y))] for x, y in tp],
-        'ref_edges': [list(e) for e in redges], 'tgt_edges': tl,
-        'pairs': [[t, r] for t, r in sorted(match.items())],
-        'seed_ref': [rpos[i] for i in info.get('seed_ref', []) if i in rpos],
-        'seed_tgt': [tpos[i] for i in info.get('seed_tgt', []) if i in tpos],
-        'm': [round(float(v), 5) for v in (M[0, 0], M[0, 1], M[0, 2], M[1, 0], M[1, 1], M[1, 2])],
-        'rot': round(float(np.degrees(np.arctan2(M[1, 0], M[0, 0]))), 3), 'scale': round(sc, 5),
-        'shift': [round(float(M[0, 2]), 1), round(float(M[1, 2]), 1)],
-        'rms': None if rms is None else round(float(rms), 3), 'n_pairs': int(len(pairs)),
-        'n_ref': int(len(ref_xy)), 'n_tgt': int(len(tgt_xy)),
-        'tris_ref': info.get('tris_ref'), 'tris_tgt': info.get('tris_tgt'), 'cands': info.get('cands'),
+        'p': [[int(round(x)), int(round(y))] for x, y in tgt_xy[[keep[i] for i in used]]],
+        'e': [[pos[a], pos[b]] for a, b in edges],
+        's': [pos[keep.index(i)] for i in info.get('seed_tgt', []) if i in keep],
+        'm': [round(float(M[0, 0]), 5), round(float(M[0, 1]), 5), round(float(M[0, 2]), 1),
+              round(float(M[1, 0]), 5), round(float(M[1, 1]), 5), round(float(M[1, 2]), 1)],
+        'r': round(float(np.degrees(np.arctan2(M[1, 0], M[0, 0]))), 2),
+        'q': int(len(pairs)), 'x': None if rms is None else round(float(rms), 2),
     }
 
 

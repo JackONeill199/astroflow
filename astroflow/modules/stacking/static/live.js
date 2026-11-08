@@ -52,7 +52,7 @@ function createStackLive(host, pid) {
       caption.children[0].textContent = live.n != null ? `${live.n} Aufnahmen${live.band ? ' · Kanal ' + live.band : ''}` : '';
       caption.children[1].textContent = live.exposure != null ? dur(live.exposure) + ' integriert' : '';
       if (fallback && !live.preview) caption.children[0].textContent = 'Letzte fertige Version';
-      pattern.update(j.stage === 'Stacking' && !queued ? live.pattern : null);
+      pattern.update(j.stage === 'Stacking' && !queued);
       const steps = live.steps?.length ? live.steps : [{ stage: j.stage || 'Vorbereitung', label: j.message || 'Verarbeitung wird vorbereitet', done: false }];
       const sig = JSON.stringify(steps);
       if (sig !== stepSig) {
@@ -64,77 +64,90 @@ function createStackLive(host, pid) {
   };
 }
 
-/* Sternmuster der Registrierung: echte Daten aus registration.pattern (≤ alle 3 s eine Aufnahme, eigener Endpunkt).
-   Je Aufnahme ein kurzer Puls: die übereinstimmenden Linien der Aufnahme erscheinen an ihrer Rohlage, drehen/verschieben
-   sich mit der gefundenen Transformation auf die Sterne der Referenz (= Stack-Vorschau), leuchten kurz auf und verschwinden. */
+/* Sternmuster der Registrierung: echte Daten je registrierter Aufnahme (registration.pulse → Ringpuffer im Speicher,
+   GET /pattern?seit=). Die seit dem letzten Abruf neuen Aufnahmen werden über das Abrufintervall verteilt abgespielt
+   (Takt = tatsächliche Stack-Rate): je Aufnahme ein kurzer Puls – Linien erscheinen an der Rohlage, gleiten starr auf die
+   Sterne der Referenz (= Stack-Vorschau), leuchten grün und verschwinden. Nur transform/opacity, im Hintergrund pausiert. */
 function createStarPattern(svg, info, toggle, root, pid) {
   const NS = 'http://www.w3.org/2000/svg', reduce = matchMedia('(prefers-reduced-motion: reduce)');
+  const POLL = 2500, MIN_SLOT = 150, MAX_SLOT = 700, MAX_PULSE = 420;
   const nf = (v, d = 1) => Number(v).toLocaleString('de-DE', { maximumFractionDigits: d, minimumFractionDigits: d });
-  const MOVE = 900, HOLD = 650, FADE = 700;
-  let key = '', loading = '', raf = 0, timers = [], dead = false, active = false, on = store.get('live.sternmuster', true);
-  const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent?.appendChild(e); return e; };
-  const later = (fn, ms) => timers.push(setTimeout(() => { if (!dead) fn(); }, ms));
-  const stop = () => { cancelAnimationFrame(raf); timers.forEach(clearTimeout); timers = []; };
-  function apply() {
-    root.classList.toggle('pattern-on', active && on);
-    toggle.setAttribute('aria-pressed', String(on));
+  let run = '', seit = 0, wh = null, queue = [], slot = MAX_SLOT, timer = 0, raf = 0, busy = false, dead = false, live = false;
+  let on = store.get('live.sternmuster', true);
+  const flip = svg.appendChild(document.createElementNS(NS, 'g')), g = flip.appendChild(document.createElementNS(NS, 'g'));
+  const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; };
+  const stop = () => { clearTimeout(timer); cancelAnimationFrame(raf); timer = raf = 0; queue = []; root.classList.remove('pattern-on', 'pattern-play'); };
+  toggle.onclick = () => { on = !on; store.set('live.sternmuster', on); toggle.setAttribute('aria-pressed', String(on)); if (!on) stop(); };
+  toggle.setAttribute('aria-pressed', String(on));
+  function draw(d) {
+    g.textContent = '';
+    const r = Math.max(...wh) / 320;
+    for (const [a, b] of d.e) el('line', { x1: d.p[a][0], y1: d.p[a][1], x2: d.p[b][0], y2: d.p[b][1] }, g);
+    for (const [x, y] of d.p) el('circle', { cx: x, cy: y, r }, g);
+    if (d.s.length === 3) el('polygon', { class: 'seed', points: d.s.map(i => d.p[i].join(',')).join(' ') }, g);
+    info.textContent = `${d.n && d.t ? `Aufnahme ${d.n}/${d.t} · ` : ''}Drehung ${nf(d.r, 2)}° · ${d.q} Sternpaare`;
   }
-  toggle.onclick = () => { on = !on; store.set('live.sternmuster', on); apply(); };
-  function pulse(d) {
-    stop();
-    const fy = y => d.h - 1 - y, r = Math.max(d.w, d.h) / 320;   // fertiges Bild ist vertikal gespiegelt (Norden oben)
-    svg.setAttribute('viewBox', `0 0 ${d.w} ${d.h}`);
-    svg.textContent = '';
-    const g = el('g', {}, svg);
-    // nur deckungsgleiche Linien und ihre Sterne – das Muster, an dem die Aufnahme ausgerichtet wurde
-    const edges = d.tgt_edges.filter(e => e[2]);
-    const used = [...new Set(edges.flatMap(([a, b]) => [a, b]))];
-    const lines = edges.map(([a, b]) => [a, b, el('line', {}, g)]);
-    const dots = used.map(i => [i, el('circle', { r }, g)]);
-    const seed = d.seed_tgt.length === 3 ? el('polygon', { class: 'seed' }, g) : null;
-    const [a, b, tx, c, e, ty] = d.m, rot = Math.atan2(c, a), sc = Math.hypot(a, c);
-    const pts = used.map(i => d.tgt[i]), n = Math.max(pts.length, 1);
-    const cx = pts.reduce((s, p) => s + p[0], 0) / n, cy = pts.reduce((s, p) => s + p[1], 0) / n;
-    const gx = a * cx + b * cy + tx, gy = c * cx + e * cy + ty;
-    const at = (t) => {                                          // starr: Drehung, Maßstab, Versatz anteilig
-      const ro = rot * t, s = 1 + (sc - 1) * t, co = Math.cos(ro) * s, si = Math.sin(ro) * s;
-      const ox = cx + (gx - cx) * t, oy = cy + (gy - cy) * t;
-      return d.tgt.map(([x, y]) => [co * (x - cx) - si * (y - cy) + ox, fy(si * (x - cx) + co * (y - cy) + oy)]);
-    };
-    const set = (t) => {
-      const p = at(t);
-      lines.forEach(([i, j, l]) => { l.setAttribute('x1', p[i][0]); l.setAttribute('y1', p[i][1]); l.setAttribute('x2', p[j][0]); l.setAttribute('y2', p[j][1]); });
-      dots.forEach(([i, c]) => { c.setAttribute('cx', p[i][0]); c.setAttribute('cy', p[i][1]); });
-      if (seed) seed.setAttribute('points', d.seed_tgt.map(i => p[i].join(',')).join(' '));
-    };
-    info.textContent = `Ausrichtung${d.n && d.total ? ` ${d.n}/${d.total}` : ''} · Drehung ${nf(d.rot, 2)}° · Versatz ${nf(Math.hypot(...d.shift))} px`;
+  function matrixAt(d, t) {                             // starr: Drehung, Maßstab, Versatz anteilig um den Schwerpunkt
+    const [a, b, tx, c, e, ty] = d.m, n = Math.max(d.p.length, 1);
+    const cx = d.p.reduce((s, p) => s + p[0], 0) / n, cy = d.p.reduce((s, p) => s + p[1], 0) / n;
+    const ro = Math.atan2(c, a) * t, sc = 1 + (Math.hypot(a, c) - 1) * t, co = Math.cos(ro) * sc, si = Math.sin(ro) * sc;
+    const ox = cx + (a * cx + b * cy + tx - cx) * t, oy = cy + (c * cx + e * cy + ty - cy) * t;
+    return `matrix(${co} ${si} ${-si} ${co} ${ox - co * cx + si * cy} ${oy - si * cx - co * cy})`;
+  }
+  function play() {
+    timer = 0;
+    const d = queue.shift();
+    if (!d || dead || !on || document.hidden) { root.classList.remove('pattern-on', 'pattern-play'); return; }
+    draw(d);
+    root.classList.add('pattern-play');
+    if (reduce.matches) {                                // ohne Bewegung: nur die jüngste Aufnahme, ausgerichtet
+      g.setAttribute('transform', matrixAt(d, 1)); svg.classList.add('aligned'); root.classList.add('pattern-on');
+      timer = setTimeout(play, POLL); return;
+    }
+    const dur = Math.min(slot * 0.9, MAX_PULSE), move = dur * 0.5, t0 = performance.now();
     svg.classList.remove('aligned');
-    active = true; apply();
-    const end = () => { svg.classList.add('aligned'); later(() => { active = false; apply(); }, reduce.matches ? 1200 : HOLD); };
-    if (reduce.matches) { set(1); return end(); }
-    set(0);
-    const t0 = performance.now() + 250;
+    g.setAttribute('transform', matrixAt(d, 0));
+    root.classList.add('pattern-on');
     const step = (now) => {
       if (dead) return;
-      const t = Math.min(1, Math.max(0, (now - t0) / MOVE)), k = t < .5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
-      set(k);
-      if (t < 1) raf = requestAnimationFrame(step); else end();
+      const t = Math.min(1, (now - t0) / move), k = 1 - (1 - t) ** 3;
+      g.setAttribute('transform', matrixAt(d, k));
+      if (t < 1) raf = requestAnimationFrame(step); else svg.classList.add('aligned');
     };
     raf = requestAnimationFrame(step);
+    setTimeout(() => { if (!dead) root.classList.remove('pattern-on'); }, Math.max(dur - 80, move + 40));
+    timer = setTimeout(play, slot);
+  }
+  function enqueue(items) {
+    if (reduce.matches) items = items.slice(-1);
+    const most = Math.floor(POLL / MIN_SLOT);           // sehr hohe Rate: gleichmäßig auslassen statt hinterherzuhinken
+    if (items.length > most) items = Array.from({ length: most }, (_, i) => items[Math.round(i * (items.length - 1) / (most - 1))]);
+    if (!items.length) return;
+    queue = items;                                       // Neueres ersetzt, was noch wartet – nie Rückstand
+    slot = Math.max(MIN_SLOT, Math.min(MAX_SLOT, POLL / items.length));
+    if (!timer) play();
   }
   return {
-    async update(k) {
+    async update(stacking) {
       if (dead) return;
-      if (!k) { stop(); active = false; apply(); toggle.hidden = true; return; }
-      toggle.hidden = false;
-      if (k === key || k === loading) return;
-      loading = k;
+      toggle.hidden = !stacking;
+      if (live && !stacking) stop();
+      live = stacking;
+      if (!stacking || !on || busy || document.hidden) return;
+      busy = true;
       try {
-        const d = await api(`/stacking/projects/${pid}/pattern`);
-        if (dead || loading !== k) return;
-        key = d.key;
-        if (on) pulse(d);
-      } catch { /* nächster Poll versucht es erneut */ } finally { if (loading === k) loading = ''; }
+        const res = await api(`/stacking/projects/${pid}/pattern?seit=${seit}`);
+        if (dead || !live) return;
+        let items = res.items || [];
+        if (res.run !== run) { run = res.run; items = items.slice(-4); }   // neu geöffnet: nur das Jüngste, nichts nachholen
+        seit = res.seq || 0;
+        if (res.wh) {                                    // fertiges Bild ist vertikal gespiegelt (Norden oben)
+          wh = res.wh;
+          svg.setAttribute('viewBox', `0 0 ${wh[0]} ${wh[1]}`);
+          flip.setAttribute('transform', `matrix(1 0 0 -1 0 ${wh[1] - 1})`);
+        }
+        if (wh) enqueue(items);
+      } catch { /* nächster Poll versucht es erneut */ } finally { busy = false; }
     },
     destroy() { dead = true; stop(); },
   };

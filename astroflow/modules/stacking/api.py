@@ -509,13 +509,12 @@ def build_router(eng: Engine) -> APIRouter:
         return v
 
     @r.get('/projects/{pid}/pattern')
-    def live_pattern(pid: int):
-        """Sternmuster der zuletzt gezeigten Registrierung (eigener Endpunkt, nicht im 2,5-s-Poll)."""
-        from .live import read_pattern, read_state
-        state, data = read_state(eng.s.work_dir, pid), read_pattern(eng.s.work_dir, pid)
-        if not data or data.get('key') != state.get('pattern'):
-            raise HTTPException(404)
-        return JSONResponse(data, headers={'Cache-Control': 'no-store'})
+    def live_pattern(pid: int, seit: int = 0):
+        """Sternmuster-Pulse der laufenden Registrierung seit Nummer `seit` (eigener Endpunkt, nicht im 2,5-s-Poll)."""
+        run = eng.pl.live_runs.get(pid)
+        if run is None:
+            return JSONResponse({'run': None, 'seq': 0, 'wh': None, 'items': []}, headers={'Cache-Control': 'no-store'})
+        return JSONResponse(run.pulses_since(seit), headers={'Cache-Control': 'no-store'})
 
     @r.get('/projects/{pid}/live/{name}')
     def live_picture(pid: int, name: str):

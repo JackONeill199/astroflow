@@ -35,19 +35,19 @@
 .sl-track.indet i { animation: sl-wait 2.8s ease-in-out infinite }
 .sl-queued .sl-pulse, .sl-error .sl-pulse, .sl-error .sl-orbit { animation: none }
 /* Sternmuster der Registrierung (live.js → createStarPattern): kurzer Puls je Aufnahme, Striche in Bildschirmpixeln */
-.sl-pattern { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; transition: opacity .7s ease }
-.pattern-on .sl-pattern { opacity: 1; transition-duration: .25s }
+.sl-pattern { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; transition: opacity 80ms linear }
+.pattern-on .sl-pattern { opacity: 1; transition-duration: 70ms }
 .sl-pattern line, .sl-pattern polygon { vector-effect: non-scaling-stroke; stroke-linecap: round; fill: none }
-.sl-pattern line { stroke: var(--acc); stroke-opacity: .75; stroke-width: 1; transition: stroke .35s, stroke-opacity .35s }
-.sl-pattern circle { fill: var(--acc); fill-opacity: .8; transition: fill .35s }
-.sl-pattern .seed { stroke: #fff; stroke-opacity: 0; stroke-width: 1.5; transition: stroke-opacity .35s }
+.sl-pattern line { stroke: var(--acc); stroke-opacity: .8; stroke-width: 1; transition: stroke 90ms }
+.sl-pattern circle { fill: var(--acc); fill-opacity: .85; transition: fill 90ms }
+.sl-pattern .seed { stroke: #fff; stroke-opacity: 0; stroke-width: 1.5; transition: stroke-opacity 90ms }
 .sl-pattern.aligned line { stroke: var(--ok); stroke-opacity: .95 }
 .sl-pattern.aligned circle { fill: var(--ok) }
 .sl-pattern.aligned .seed { stroke-opacity: .85 }
 .sl-pinfo { position: absolute; left: 50%; bottom: 2.75rem; transform: translateX(-50%); max-width: calc(100% - 1.5rem); padding: 0.1875rem 0.5rem;
   border-radius: 0.3125rem; background: #12182dcc; color: #dbe0f3; font-size: 0.6875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  font-variant-numeric: tabular-nums; opacity: 0; transition: opacity .7s ease; pointer-events: none }
-.pattern-on .sl-pinfo { opacity: 1; transition-duration: .25s }
+  font-variant-numeric: tabular-nums; opacity: 0; transition: opacity .4s ease; pointer-events: none }
+.pattern-play .sl-pinfo { opacity: 1; transition-duration: .15s }
 .sl-ptoggle { flex-shrink: 0; border: 1px solid var(--line); border-radius: 0.3125rem; background: none; color: var(--mut); font: inherit; padding: 0.125rem 0.5rem; cursor: pointer }
 .sl-ptoggle[aria-pressed="true"] { color: var(--fg); border-color: var(--acc) }
 @keyframes sl-turn { to { transform: rotate(360deg) } }

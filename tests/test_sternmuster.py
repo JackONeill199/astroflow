@@ -1,5 +1,6 @@
-"""Sternmuster der Registrierung: Daten aus dem echten Dreiecks-Matching, klein, gedrosselt, ohne Einfluss aufs Ergebnis."""
+"""Sternmuster der Registrierung: Daten je Aufnahme aus dem echten Dreiecks-Matching, klein, im Speicher, ohne Einfluss aufs Ergebnis."""
 import json
+import time
 
 import numpy as np
 from fastapi.testclient import TestClient
@@ -22,6 +23,12 @@ def _field(seed=4, n=120, ang=2.5, shift=(17.0, -9.0)):
     return ref, tgt[keep]
 
 
+def _pulse(ref, tgt):
+    info = {}
+    M, pairs, rms = registration.find_transform(ref, tgt, info=info)
+    return registration.pulse(tgt, M, pairs, info, rms), M, info
+
+
 def test_info_does_not_change_result():
     ref, tgt = _field()
     plain = registration.find_transform(ref, tgt)
@@ -37,72 +44,76 @@ def test_info_does_not_change_result():
     assert np.abs(p - ref[info["seed_ref"]]).max() < 1.5
 
 
-def test_pattern_is_small_and_marks_matching_edges():
+def test_pulse_is_small_and_lands_on_reference():
     ref, tgt = _field()
-    info = {}
-    M, pairs, rms = registration.find_transform(ref, tgt, info=info)
-    d = registration.pattern(ref, tgt, M, pairs, info, (620, 800), rms)
-    raw = json.dumps(d, separators=(",", ":"))
-    assert len(raw) < 6000                                       # „wenige KB“
-    assert len(d["ref"]) <= registration.PATTERN_STARS + 3 and len(d["tgt"]) <= registration.PATTERN_STARS + 3
-    assert d["w"] == 800 and d["h"] == 620 and d["n_pairs"] == len(pairs)
-    matched = [e for e in d["tgt_edges"] if e[2]]
-    assert len(matched) > 0.5 * len(d["tgt_edges"])            # gleiches Feld: meiste Kanten deckungsgleich
-    assert abs(d["rot"] - 2.5) < 0.1                             # Aufnahme -> Referenz: zurückdrehen
-    assert len(d["seed_ref"]) == 3 and len(d["seed_tgt"]) == 3
-    # deckungsgleiche Kanten verbinden zugeordnete Sterne
-    pairs_d = dict(map(tuple, d["pairs"]))
-    for a, b, _ in matched:
-        assert a in pairs_d and b in pairs_d
-    # Kennzahlen stimmen mit der Transformation überein
+    d, M, info = _pulse(ref, tgt)
+    assert len(json.dumps(d, separators=(",", ":"))) < 2500            # je Aufnahme höchstens wenige hundert Bytes bis ~2 KB
+    assert len(d["p"]) <= registration.PATTERN_STARS + 3 and len(d["e"]) > 10
+    assert all(0 <= a < len(d["p"]) and 0 <= b < len(d["p"]) for a, b in d["e"])
+    assert len(d["s"]) == 3 and abs(d["r"] - 2.5) < 0.1 and d["q"] > 20
+    # jeder gezeigte Stern landet mit der Transformation auf einem Referenzstern
     a, b, tx, c, e, ty = d["m"]
-    t = np.array(d["tgt"][d["pairs"][0][0]], float)
-    r = np.array(d["ref"][d["pairs"][0][1]], float)
-    assert np.hypot(a * t[0] + b * t[1] + tx - r[0], c * t[0] + e * t[1] + ty - r[1]) < 2.5
+    p = np.array(d["p"], float)
+    q = np.column_stack([a * p[:, 0] + b * p[:, 1] + tx, c * p[:, 0] + e * p[:, 1] + ty])
+    dist = np.min(np.hypot(*(q[:, None] - ref[None]).transpose(2, 0, 1)), axis=1)
+    assert dist.max() < 2.5
 
 
-def test_live_pattern_throttled_and_endpoint(tmp_path, monkeypatch):
+def test_pulse_buffer_and_endpoint(tmp_path):
     s = load_settings(tmp_path)
     s.auto = False
     db = DB(s.db_path)
     pid = db.x("INSERT INTO projects(name, created) VALUES('Testnebel',0)")
-    jid = db.x("INSERT INTO jobs(project_id,state,created) VALUES(?,'running',0)", (pid,))
-    run = live.LiveRun(s.work_dir, pid, job=jid)
-    assert run.want_pattern() and not run.want_pattern()      # zweiter Aufruf sofort: gedrosselt
-    c = TestClient(create_app(s))
-    assert c.get(f"/api/stacking/projects/{pid}/pattern").status_code == 404
+    app = create_app(s)
+    c = TestClient(app)
+    assert c.get(f"/api/stacking/projects/{pid}/pattern").json()["items"] == []
+    pl = app.state.modules["stacking"].eng.pl
+    run = pl.begin_live(pid, job=5)
     ref, tgt = _field()
-    info = {}
-    M, pairs, rms = registration.find_transform(ref, tgt, info=info)
-    run.pattern(registration.pattern(ref, tgt, M, pairs, info, (620, 800), rms), n=3, total=10)
-    state = c.get(f"/api/stacking/projects/{pid}").json()["live"]
-    assert state["pattern"] and "tgt" not in state                # im Poll nur die Kennung
+    d, _, _ = _pulse(ref, tgt)
+    for k in range(live.PULSES + 6):
+        run.add_pulse(d, n=k + 1, total=100, shape=(620, 800))
     r = c.get(f"/api/stacking/projects/{pid}/pattern")
     assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
-    assert r.json()["key"] == state["pattern"] and r.json()["n"] == 3
-    assert c.get(f"/api/stacking/projects/{pid + 1}/pattern").status_code == 404
-    live.LiveRun(s.work_dir, pid, job=jid)                         # neuer Lauf: altes Muster weg
-    assert c.get(f"/api/stacking/projects/{pid}/pattern").status_code == 404
-    run2 = live.LiveRun(s.work_dir, pid, job=jid)
-    run2.event("Fertig")
-    assert not run2.want_pattern()                                 # nach dem Ende nichts mehr
+    j = r.json()
+    assert j["wh"] == [800, 620] and j["seq"] == live.PULSES + 6
+    assert len(j["items"]) == live.PULSES and j["items"][-1]["n"] == live.PULSES + 6   # Ringpuffer
+    j2 = c.get(f"/api/stacking/projects/{pid}/pattern?seit={j['seq'] - 2}").json()
+    assert [x["i"] for x in j2["items"]] == [j["seq"] - 1, j["seq"]]                   # nur Neues
+    pl.begin_live(pid, job=6)                                                            # neuer Lauf: alte Nummer gilt nicht
+    run2 = pl.live_runs[pid]
+    run2.add_pulse(d, n=1, total=3, shape=(620, 800))
+    j3 = c.get(f"/api/stacking/projects/{pid}/pattern?seit={j['seq']}").json()
+    assert j3["run"] != j["run"] and len(j3["items"]) == 1
+    # im gepollten Projekt kommt nichts davon mit
+    assert "items" not in json.dumps(c.get(f"/api/stacking/projects/{pid}").json().get("live", {}))
     c.close()
 
 
-def test_pipeline_writes_pattern_during_stacking(tmp_path, monkeypatch):
+def test_pipeline_pulses_every_registered_frame(tmp_path):
     s = load_settings(tmp_path / "data")
     db = DB(s.db_path)
     pl = Pipeline(s, db, ReviewerConfig())
     demo.generate(s.input_dir / "demo", n_lights=8, n_darks=2, n_flats=2)
     pl.scan()
     pid = db.one("SELECT project_id FROM frames WHERE kind='light' GROUP BY project_id ORDER BY COUNT(*) DESC")["project_id"]
-    monkeypatch.setattr(live, "PATTERN_INTERVAL", 0.0)
-    pl.begin_live(pid, job=1)
+    run = pl.begin_live(pid, job=1)
     seen = []
     pl.process(pid, progress=lambda p, stage, msg="": seen.append((stage, msg)))
     # „Stacking“ steht schon vor der ersten Registrierung an (die Ansicht hängt an diesem Schritt)
     assert any(stage == "Stacking" and msg.startswith("0/") for stage, msg in seen)
-    d = live.read_pattern(s.work_dir, pid)
-    assert d is not None and d["n_pairs"] >= 5 and d["total"] >= 2
-    assert live.read_state(s.work_dir, pid)["pattern"] == d["key"]
-    assert len(json.dumps(d)) < 8000
+    stacked = db.one("SELECT COUNT(*) n FROM frames WHERE project_id=? AND stacked=1", (pid,))["n"]
+    items = run.pulses_since(0)["items"]
+    assert len(items) == stacked - 1                         # jede registrierte Aufnahme außer der Referenz
+    assert all(x["q"] >= 5 and x["t"] >= len(items) for x in items)
+
+
+def test_pulse_cost_is_small():
+    """Zusatzaufwand je Aufnahme klein gegenüber Laden + Ausrichten (Messung, großzügige Grenze)."""
+    ref, tgt = _field()
+    info = {}
+    M, pairs, rms = registration.find_transform(ref, tgt, info=info)
+    t0 = time.perf_counter()
+    for _ in range(50):
+        registration.pulse(tgt, M, pairs, info, rms)
+    assert (time.perf_counter() - t0) / 50 < 0.02

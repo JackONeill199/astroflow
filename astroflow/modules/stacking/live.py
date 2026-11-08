@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from collections import deque
 import math
 import threading
 import time
@@ -12,7 +13,7 @@ from PIL import Image
 
 SIDE = 800
 INTERVAL = 4.0
-PATTERN_INTERVAL = 3.0       # Sternmuster der Registrierung: höchstens alle 3 s eine Aufnahme
+PULSES = 64                  # Sternmuster der Registrierung: Ringpuffer der letzten Aufnahmen (nur im Speicher)
 
 
 def sample(img):
@@ -53,16 +54,17 @@ class LiveRun:
     def __init__(self, work: Path, pid: int, job=None):
         self.path = work / f'p{pid}' / 'live'
         self.path.mkdir(parents=True, exist_ok=True)
-        self.data = {'run': str(time.time_ns()), 'job': job, 'steps': [], 'preview': None, 'pattern': None}
+        self.data = {'run': str(time.time_ns()), 'job': job, 'steps': [], 'preview': None}
         self._write_lock = threading.Lock()      # Sternmuster kommen aus den Registrier-Threads
         self.seq = 0
         self.last_picture = 0.0
-        self.last_pattern = 0.0
-        self.pattern_seq = 0
-        self._pattern_lock = threading.Lock()
+        self.pulses = deque(maxlen=PULSES)
+        self.pulse_seq = 0
+        self.pulse_shape = None
+        self._pulse_lock = threading.Lock()
         self.finished = False
         # Alte Live-Bilder sind in Ergebnissen separat archiviert.
-        for p in [*self.path.glob('*.jpg'), self.path / 'pattern.json']:
+        for p in self.path.glob('*.jpg'):
             p.unlink(missing_ok=True)
         self._write()
 
@@ -102,36 +104,20 @@ class LiveRun:
                 p.unlink(missing_ok=True)
 
 
-    def want_pattern(self):
-        """Genau ein Registrier-Thread darf alle PATTERN_INTERVAL Sekunden Sternmuster liefern (sonst nichts zu tun)."""
-        if self.finished:
-            return False
-        with self._pattern_lock:
-            now = time.monotonic()
-            if now - self.last_pattern < PATTERN_INTERVAL:
-                return False
-            self.last_pattern = now
-            return True
+    def add_pulse(self, data, n=None, total=None, shape=None):
+        """Sternmuster einer registrierten Aufnahme (aus den Registrier-Threads, einige hundert Bytes, keine Datei)."""
+        with self._pulse_lock:
+            self.pulse_seq += 1
+            self.pulses.append({**data, 'i': self.pulse_seq, 'n': n, 't': total})
+            if shape is not None:
+                self.pulse_shape = [int(shape[1]), int(shape[0])]
 
-    def pattern(self, data, n=None, total=None):
-        """Sternmuster in eigener Datei (nicht im gepollten state.json, dort nur die Kennung)."""
-        with self._pattern_lock:
-            self.pattern_seq += 1
-            key = f"{self.data['run']}-{self.pattern_seq}"
-        data = {**data, 'key': key, 'n': n, 'total': total}
-        with self._write_lock:
-            tmp = self.path / 'pattern.tmp'
-            tmp.write_text(json.dumps(data, separators=(',', ':')), encoding='utf-8')
-            tmp.replace(self.path / 'pattern.json')
-        self.data['pattern'] = key
-        self._write()
-
-
-def read_pattern(work, pid):
-    try:
-        return json.loads((work / f'p{pid}' / 'live' / 'pattern.json').read_text(encoding='utf-8'))
-    except (OSError, ValueError):
-        return None
+    def pulses_since(self, seit=0):
+        with self._pulse_lock:
+            if seit > self.pulse_seq:            # Nummer aus einem früheren Lauf
+                seit = 0
+            return {'run': self.data['run'], 'job': self.data.get('job'), 'seq': self.pulse_seq,
+                    'wh': self.pulse_shape, 'items': [d for d in self.pulses if d['i'] > seit]}
 
 
 def optional(fn, *args, **kwargs):

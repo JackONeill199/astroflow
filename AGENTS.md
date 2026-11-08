@@ -261,20 +261,23 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    `_track_live` protokolliert echte Schritte, Vorschau-Hooks in GraXpert/Processing, höchstens alle 4 s plus Endergebnis.
    `/projects/{pid}` liefert `live` nur für den neuesten Auftrag; `/projects/{pid}/live/{name}` liefert streng geprüfte JPG-Namen.
    `static/live.js|css`: Bildwechsel auf zwei Ebenen, kompakte Statuszeile mit aufklappbarem Ablauf; reduzierte Bewegung beachtet.
-   **Sternmuster** (seit 0.47.0, Nutzerwunsch „Sterne zu geometrischen Mustern verbinden, zeigen wie die Muster übereinstimmen“):
-   In `_stack.work` fragt der Registrier-Thread `LiveRun.want_pattern()` (Sperre, höchstens alle `live.PATTERN_INTERVAL` 3 s genau
-   **eine** Aufnahme, nicht im Kometen-Stack); nur dann bekommt `registration.find_transform(…, info={})` ein Dict (Startdreieck
-   `seed_tgt/seed_ref`, Anzahl Dreiecke/Kandidaten – Ergebnis bitgleich, Test). `registration.pattern` = hellste `PATTERN_STARS` 36
-   Sterne je Seite (+ Startdreieck) in Rohbild-Pixeln, Anzeige-Netz = Delaunay ohne lange Randkanten, Kante der Aufnahme „deckungsgleich“,
-   wenn beide Enden zugeordnet sind und die Referenz dieselbe Kante hat; dazu Matrix, Drehung, Versatz, Rest (~3–4 KB).
-   Ablage `work/p<id>/live/pattern.json`, im gepollten `state.json` nur die Kennung `pattern`; Endpunkt `GET /projects/{pid}/pattern`
-   (404, wenn die Kennung nicht zum Lauf passt). GPU und CPU gleich (Registrierung läuft immer auf der CPU).
-   Frontend `createStarPattern` in `live.js`: SVG über `.sl-picture` (viewBox = Rohbildmaß, `meet` wie `object-fit: contain`, y gespiegelt
-   wie das Vorschau-JPG). **Je Aufnahme nur ein kurzer Puls** (Nutzerwunsch: dauerhaftes Netz war „zu viel“): nur die deckungsgleichen
-   Kanten der Aufnahme erscheinen an der Rohlage, drehen/verschieben sich starr (zerlegte Transformation, 0,9 s) auf die Sterne der
-   Stack-Vorschau, leuchten grün (Startdreieck weiß) und blenden aus (~2,3 s); kleine Zeile „Ausrichtung n/N · Drehung · Versatz“.
-   Kein Referenznetz. Nur bei Auftragsschritt „Stacking“; Schalter „Sternmuster“ (`af.live.sternmuster`); reduzierte Bewegung →
-   Endzustand 1,2 s ohne Bewegung. Untersuchung Quad-Hashes (Teil B, 08.11.2026,
+   **Sternmuster** (seit 0.47.0, Nutzerwunsch „Sterne zu geometrischen Mustern verbinden, zeigen wie die Muster übereinstimmen“,
+   danach „zack zack zack“: jede Aufnahme kurz, im Takt des Stackens): In `_stack.work` bekommt `registration.find_transform(…, info={})`
+   bei laufender Live-Ansicht ein Dict (Startdreieck `seed_tgt/seed_ref`, Anzahl Dreiecke/Kandidaten – Ergebnis bitgleich, Test), nicht im
+   Kometen-Stack. `registration.pulse` = hellste `PATTERN_STARS` 36 Sterne der Aufnahme (+ Startdreieck), Delaunay-Netz ohne lange
+   Randkanten, davon nur Kanten zwischen zugeordneten Sternen, Rohbild-Pixel ganzzahlig, Matrix Aufnahme → Referenz, Drehung, Paare.
+   Gemessen (150 Sterne): 1,25 ms je Aufnahme (find_transform 4,8 ms; Laden/Kosmetik/Ausrichten ~Sekunden CPU) → ~0, ~1,2 KB JSON.
+   `LiveRun.add_pulse` → Ringpuffer `live.PULSES` 64 **nur im Speicher** (keine Datei), laufende Nummer; Endpunkt
+   `GET /projects/{pid}/pattern?seit=` = `{run, seq, wh, items}` aus `eng.pl.live_runs` (nicht im 2,5-s-Poll; `seit` aus einem
+   früheren Lauf zählt als 0). GPU und CPU gleich (Registrierung läuft immer auf der CPU). Der Schritt „Stacking“ wird vor der ersten
+   Registrierung gemeldet (sonst stand „Auswahl“ an). Frontend `createStarPattern` in `live.js`: fragt bei jedem Poll im Schritt
+   „Stacking“ das Neue ab und spielt es über das Abrufintervall verteilt ab (Takt 2,5 s / Anzahl, 150–700 ms; mehr als 16 → gleichmäßig
+   auslassen, Neueres ersetzt Wartendes – nie Rückstand; neu geöffnet nur die letzten 4). Puls ≤ 420 ms: Linien an der Rohlage,
+   gleiten starr (SVG-`transform` einer Gruppe, kein Layout) auf die Sterne der Stack-Vorschau, grün (Startdreieck weiß), Ein/Aus 70–80 ms.
+   SVG viewBox = Rohbildmaß, `meet` wie `object-fit: contain`, y gespiegelt wie das Vorschau-JPG. Kleine Zeile „Aufnahme n/N · Drehung ·
+   Sternpaare“. Hintergrund-Tab (`document.hidden`) fragt nicht ab und spielt nicht. Schalter „Sternmuster“ (`af.live.sternmuster`,
+   aus = keine Abrufe); reduzierte Bewegung → je Abruf nur die jüngste Aufnahme ausgerichtet, ohne Bewegung.
+   Untersuchung Quad-Hashes (Teil B, 08.11.2026,
    synthetische Sternlisten): kein klarer Gewinn (≤ +6 Prozentpunkte, 3× Zeit) → nicht eingebaut; ein Wiederholversuch mit nur den
    hellsten 2–3×n Referenzsternen hob „wenige Sterne“ von 24 % auf 90 %, lieferte aber auch mehr falsche Lösungen → offen.
    UI: Regler unter dem Viewer, Standard = fertiges Bild, `viewer.setSrc` tauscht das Bild ohne Zoomverlust.
