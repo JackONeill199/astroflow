@@ -3,6 +3,18 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.50.1 – 09.11.2026
+
+### Behoben
+- **Sicherheit (Befunde der Codeanalyse):** Zwei ungenutzte Schnittstellen, die beliebige Ordner auf dem Rechner prüfen bzw.
+  auflisten konnten, sind entfernt. Fehlermeldungen beim Bild-Import, bei der KI-Einschätzung des Bild-Tutors und bei den
+  Objektnamen im Bild verraten keine internen Details (Pfade, Adressen, Programmmeldungen) mehr – stattdessen eine kurze deutsche
+  Meldung, die Einzelheiten stehen im Server-Protokoll.
+- Sage: Das Entfernen von Markdown (Vorschau, Vorlesen) und der Vergleich von Objektkennungen konnten bei bösartig gebauten
+  Texten sehr langsam werden; beides arbeitet jetzt in linearer Zeit.
+- Oberfläche: Objektkennungen in „Heute Nacht“ und Variantenangaben in der SkyTrace-Erde werden sauber maskiert; bei Sage-
+  Vertonungen werden alle Trennzeichen der Stimmenangabe ersetzt, nicht nur das erste.
+
 ## 0.49.0 – 08.11.2026
 
 ### Neu
