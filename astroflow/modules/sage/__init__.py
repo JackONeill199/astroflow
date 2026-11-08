@@ -92,7 +92,8 @@ class Module(BaseModule):
             self.analyze_project(project_id, auto=True)
 
     def start(self):
-        threading.Thread(target=self.backfill, daemon=True).start()
+        self.backfill_thread = threading.Thread(target=self.backfill, daemon=True)
+        self.backfill_thread.start()
         threading.Thread(target=self.scheduler.loop, daemon=True).start()
 
     def backfill(self):

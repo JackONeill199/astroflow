@@ -130,10 +130,10 @@ def build_router(mod) -> APIRouter:
         except Exception as e:
             if not isinstance(e, clients.ServiceError):
                 traceback.print_exc()
-            task.update(state="error", error=str(e), message=str(e), finished=time.time())
-            for rel in (rel_file, rel_preview):                      # fehlgeschlagen: Dateien nicht aufheben
-                if rel:
+            for rel in (rel_file, rel_preview):                      # fehlgeschlagen: Dateien nicht aufheben –
+                if rel:                                              # erst aufräumen, dann „Fehler“ melden (Polling!)
                     (st.root / rel).unlink(missing_ok=True)
+            task.update(state="error", error=str(e), message=str(e), finished=time.time())
 
     def start(title: str, image: Path, rel_preview: str, rel_file: str | None, size, source: dict) -> dict:
         task = mod.new_task(title)

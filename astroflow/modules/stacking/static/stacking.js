@@ -1261,10 +1261,13 @@ function upload(files) {
 const HK_COLORS = ['var(--acc)', 'var(--acc2)', 'var(--acc3)', 'var(--warn)', 'var(--ok)', 'var(--bad)', '#f0abfc', '#93c5fd', 'var(--dim)'];
 async function housekeeping(panel) {
   const body = $('#hkBody', panel), keepOf = () => +($('#hkKeep', panel)?.value || 2);
+  let seq = 0;      // nur die Antwort der jüngsten Abfrage zeichnet (sonst ersetzt eine späte ältere das schon bedienbare Formular)
   const load = async (keep = 2) => {
+    const mine = ++seq;
     body.innerHTML = '<div class="skel" style="height:120px"></div>';
     let d;
-    try { d = await api(`/stacking/housekeeping?keep=${keep}`); } catch (e) { body.innerHTML = `<p class="bad sm">${esc(e.message)}</p>`; return; }
+    try { d = await api(`/stacking/housekeeping?keep=${keep}`); } catch (e) { if (mine === seq) body.innerHTML = `<p class="bad sm">${esc(e.message)}</p>`; return; }
+    if (mine !== seq || !body.isConnected) return;
     const u = d.usage, cats = u.categories;
     $('#hkTotal', panel).textContent = `${fmb(u.total)} belegt`;
     const big = u.projects.filter(p => p.output + p.stack > 0);
@@ -1425,7 +1428,7 @@ async function stackingSettings(el) {
         deutlich schneller. Ohne geeignete Karte oder bei Fehlern rechnet automatisch der Prozessor.</div></div><input type="checkbox" id="gpuOn" ${gp.mode !== 'off' ? 'checked' : ''}><span class="switch"></span></label>
       <p class="mut sm" style="margin:14px 0 0">Tipp: Im Browser-Menü „App installieren“ wählen – AstroFlow läuft dann wie eine eigene App.</p></div></div></div>`;
   if (!el.isConnected) return;      // inzwischen weiternavigiert – die Abfragen unten gingen ins Leere
-  housekeeping($('#hk'));
+  housekeeping($('#hk', el));
   $('#stf [name=gaia]').onchange = async (e) => {
     try {
       const r = await send('/stacking/storage', { gaia: e.target.checked });

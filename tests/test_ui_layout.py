@@ -404,6 +404,7 @@ def test_live_stack_emerges_from_noise(server, browser, size):
         assert not page.evaluate(FIND_OVERFLOW)
         state['preview'] = '1-9.jpg'                                      # Endbearbeitung: ihre Vorschau gewinnt
         page.wait_for_selector('.sl-image.on[src$="1-9.jpg"]')
+        page.unroute_all(behavior='wait')                                 # laufende Abrufe der Weiterleitung zu Ende, sonst „Target closed“ beim Schließen
         page.close()
         assert not errors, errors
 
