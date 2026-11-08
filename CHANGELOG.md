@@ -3,6 +3,16 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.48.0 – 08.11.2026
+
+### Neu
+- **Verzerrungskorrektur beim Stacken** (Objekt → Optionen → „Verzerrungskorrektur“, standardmäßig aus): Wandert das Bildfeld
+  zwischen den Aufnahmen über die Optik (z. B. Nachzentrieren bei Smart-Teleskopen), richtet AstroFlow jede Aufnahme zusätzlich
+  mit einem Polynom 2. Ordnung aus allen erkannten Sternen aus. Das geschieht nur, wenn die Sterne das Bild bis in die Ecken
+  abdecken und der Restfehler deutlich sinkt – sonst bleibt es beim bisherigen Verschieben und Drehen. Sterne am Bildrand werden
+  dadurch runder. Wirkt auf neu gestackte Aufnahmen; für alle „Komplett neu stacken“. Die Bilddetails zeigen, wie viele Aufnahmen
+  korrigiert wurden und wie stark der Restfehler sank. Auf der Grafikkarte und der CPU.
+
 ## 0.46.1 – 08.11.2026
 
 ### Neu
