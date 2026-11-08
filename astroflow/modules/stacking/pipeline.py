@@ -1204,13 +1204,12 @@ class Pipeline:
                     M, pairs = np.eye(3), np.stack([np.arange(len(tg)), np.arange(len(tg))], 1)
                 else:
                     run = self.live_runs.get(pid) if shifts is None else None
-                    seen = {} if run and not run.finished else None
-                    res = registration.find_transform(ref_xy, tg, info=seen)
+                    res = registration.find_transform(ref_xy, tg)
                     if res is None:
                         return r["id"], None, "Registrierung fehlgeschlagen"
                     M, pairs, rms = res
-                    if seen:                             # Sternmuster-Puls je Aufnahme (Ringpuffer im Speicher)
-                        live.optional(lambda: run.add_pulse(registration.pulse(tg, M, pairs, seen, rms),
+                    if run and not run.finished:         # Sternmuster-Puls je Aufnahme (Ringpuffer im Speicher)
+                        live.optional(lambda: run.add_pulse(registration.pulse(tg, M, pairs, rms),
                                                             n=n_before + order[r["id"]] + 1, total=n_before + len(todo), shape=(H, W)))
                 d = shifts.get(r["id"]) if shifts else None
                 if d is not None:

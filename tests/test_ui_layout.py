@@ -321,7 +321,7 @@ def test_live_processing_is_compact_and_updates_in_place(server, browser, size, 
 
 @pytest.mark.parametrize('size', ['handy', 'schmal', 'desktop'])
 def test_live_star_pattern_overlay(server, browser, size):
-    """Sternmuster der Registrierung: Pulse aus echten Registrierdaten, nur beim Stacken, abschaltbar, im Takt der Aufnahmen."""
+    """Sternmuster der Registrierung (Sternbild-Stil): Pulse aus echten Registrierdaten, nur beim Stacken, abschaltbar, im Takt der Aufnahmen."""
     import numpy as np
     from astroflow.modules.stacking import registration
     base, pid = server
@@ -331,9 +331,8 @@ def test_live_star_pattern_overlay(server, browser, size):
     th = np.deg2rad(4)
     tgt = (ref - [20, -12]) @ np.array([[np.cos(th), -np.sin(th)], [np.sin(th), np.cos(th)]])
     tgt = tgt[(tgt[:, 0] > 5) & (tgt[:, 0] < 795) & (tgt[:, 1] > 5) & (tgt[:, 1] < 615)]
-    info = {}
-    M, pairs, rms = registration.find_transform(ref, tgt, info=info)
-    pulse = registration.pulse(tgt, M, pairs, info, rms)
+    M, pairs, rms = registration.find_transform(ref, tgt)
+    pulse = registration.pulse(tgt, M, pairs, rms)
     state = {'stage': 'Stacking', 'rid': None, 'seq': 0, 'asked': []}
 
     def pattern_response(route):
@@ -368,7 +367,8 @@ def test_live_star_pattern_overlay(server, browser, size):
         if reduced == 'reduce':
             page.wait_for_selector('.stack-live.pattern-on .sl-pattern.aligned')
             assert page.locator('.sl-pattern line').count() == len(pulse['e']) > 0
-            assert page.locator('.sl-pattern polygon.seed').count() == 1
+            assert page.locator('.sl-pattern circle').count() == len(pulse['p'])        # dezent: 5–7 Sterne
+            assert page.locator('.sl-pattern polygon').count() == 0
             assert 'Drehung' in page.inner_text('.sl-pinfo')
             pb, sb = page.locator('.sl-picture').bounding_box(), page.locator('.sl-pattern').bounding_box()
             assert abs(pb['width'] - sb['width']) <= 1 and abs(pb['height'] - sb['height']) <= 1

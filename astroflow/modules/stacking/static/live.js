@@ -64,28 +64,28 @@ function createStackLive(host, pid) {
   };
 }
 
-/* Sternmuster der Registrierung: echte Daten je registrierter Aufnahme (registration.pulse → Ringpuffer im Speicher,
-   GET /pattern?seit=). Die seit dem letzten Abruf neuen Aufnahmen werden über das Abrufintervall verteilt abgespielt
-   (Takt = tatsächliche Stack-Rate): je Aufnahme ein kurzer Puls – Linien erscheinen an der Rohlage, gleiten starr auf die
-   Sterne der Referenz (= Stack-Vorschau), leuchten grün und verschwinden. Nur transform/opacity, im Hintergrund pausiert. */
+/* Sternmuster der Registrierung im Sternbild-Stil: je registrierter Aufnahme die hellsten zugeordneten Sterne, verbunden
+   per minimalem Spannbaum (registration.pulse → Ringpuffer im Speicher, GET /pattern?seit=). Die seit dem letzten Abruf
+   neuen Aufnahmen werden über das Abrufintervall verteilt abgespielt (Takt = tatsächliche Stack-Rate): das Muster gleitet in
+   ~150 ms an seine Stelle auf der Stack-Vorschau, die Ringe rasten kurz ein, leuchten schwach nach und blenden aus.
+   Nur transform/opacity, im Hintergrund-Tab pausiert. */
 function createStarPattern(svg, info, toggle, root, pid) {
   const NS = 'http://www.w3.org/2000/svg', reduce = matchMedia('(prefers-reduced-motion: reduce)');
-  const POLL = 2500, MIN_SLOT = 150, MAX_SLOT = 700, MAX_PULSE = 420;
+  const POLL = 2500, MIN_SLOT = 150, MAX_SLOT = 700, GLIDE = 150, MAX_PULSE = 520;
   const nf = (v, d = 1) => Number(v).toLocaleString('de-DE', { maximumFractionDigits: d, minimumFractionDigits: d });
-  let run = '', seit = 0, wh = null, queue = [], slot = MAX_SLOT, timer = 0, raf = 0, busy = false, dead = false, live = false;
+  let run = '', seit = 0, wh = null, queue = [], slot = MAX_SLOT, timer = 0, fade = 0, raf = 0, busy = false, dead = false, live = false;
   let on = store.get('live.sternmuster', true);
   const flip = svg.appendChild(document.createElementNS(NS, 'g')), g = flip.appendChild(document.createElementNS(NS, 'g'));
   const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; };
-  const stop = () => { clearTimeout(timer); cancelAnimationFrame(raf); timer = raf = 0; queue = []; root.classList.remove('pattern-on', 'pattern-play'); };
+  const stop = () => { clearTimeout(timer); clearTimeout(fade); cancelAnimationFrame(raf); timer = fade = raf = 0; queue = []; root.classList.remove('pattern-on', 'pattern-play'); };
   toggle.onclick = () => { on = !on; store.set('live.sternmuster', on); toggle.setAttribute('aria-pressed', String(on)); if (!on) stop(); };
   toggle.setAttribute('aria-pressed', String(on));
   function draw(d) {
     g.textContent = '';
-    const r = Math.max(...wh) / 320;
+    const r = Math.max(...wh) / 180;                     // Ring etwas größer als ein Stern
     for (const [a, b] of d.e) el('line', { x1: d.p[a][0], y1: d.p[a][1], x2: d.p[b][0], y2: d.p[b][1] }, g);
     for (const [x, y] of d.p) el('circle', { cx: x, cy: y, r }, g);
-    if (d.s.length === 3) el('polygon', { class: 'seed', points: d.s.map(i => d.p[i].join(',')).join(' ') }, g);
-    info.textContent = `${d.n && d.t ? `Aufnahme ${d.n}/${d.t} · ` : ''}Drehung ${nf(d.r, 2)}° · ${d.q} Sternpaare`;
+    info.textContent = `${d.n && d.t ? `${d.n}/${d.t} · ` : ''}Drehung ${nf(d.r, 1)}°`;
   }
   function matrixAt(d, t) {                             // starr: Drehung, Maßstab, Versatz anteilig um den Schwerpunkt
     const [a, b, tx, c, e, ty] = d.m, n = Math.max(d.p.length, 1);
@@ -98,24 +98,25 @@ function createStarPattern(svg, info, toggle, root, pid) {
     timer = 0;
     const d = queue.shift();
     if (!d || dead || !on || document.hidden) { root.classList.remove('pattern-on', 'pattern-play'); return; }
+    clearTimeout(fade); cancelAnimationFrame(raf);
     draw(d);
     root.classList.add('pattern-play');
     if (reduce.matches) {                                // ohne Bewegung: nur die jüngste Aufnahme, ausgerichtet
       g.setAttribute('transform', matrixAt(d, 1)); svg.classList.add('aligned'); root.classList.add('pattern-on');
       timer = setTimeout(play, POLL); return;
     }
-    const dur = Math.min(slot * 0.9, MAX_PULSE), move = dur * 0.5, t0 = performance.now();
+    const dur = Math.min(slot * 0.9, MAX_PULSE), glide = Math.min(GLIDE, dur * 0.4), t0 = performance.now();
     svg.classList.remove('aligned');
     g.setAttribute('transform', matrixAt(d, 0));
     root.classList.add('pattern-on');
     const step = (now) => {
       if (dead) return;
-      const t = Math.min(1, (now - t0) / move), k = 1 - (1 - t) ** 3;
+      const t = Math.min(1, (now - t0) / glide), k = 1 - (1 - t) ** 3;
       g.setAttribute('transform', matrixAt(d, k));
-      if (t < 1) raf = requestAnimationFrame(step); else svg.classList.add('aligned');
+      if (t < 1) raf = requestAnimationFrame(step); else svg.classList.add('aligned');   // einrasten + nachleuchten (CSS)
     };
     raf = requestAnimationFrame(step);
-    setTimeout(() => { if (!dead) root.classList.remove('pattern-on'); }, Math.max(dur - 80, move + 40));
+    fade = setTimeout(() => { if (!dead) root.classList.remove('pattern-on'); }, Math.max(dur - 90, glide + 60));
     timer = setTimeout(play, slot);
   }
   function enqueue(items) {

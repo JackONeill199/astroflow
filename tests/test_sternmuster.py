@@ -1,4 +1,4 @@
-"""Sternmuster der Registrierung: Daten je Aufnahme aus dem echten Dreiecks-Matching, klein, im Speicher, ohne Einfluss aufs Ergebnis."""
+"""Sternmuster der Registrierung (Sternbild-Stil): Daten je Aufnahme aus dem echten Dreiecks-Matching, klein, im Speicher."""
 import json
 import time
 
@@ -24,33 +24,54 @@ def _field(seed=4, n=120, ang=2.5, shift=(17.0, -9.0)):
 
 
 def _pulse(ref, tgt):
-    info = {}
-    M, pairs, rms = registration.find_transform(ref, tgt, info=info)
-    return registration.pulse(tgt, M, pairs, info, rms), M, info
+    M, pairs, rms = registration.find_transform(ref, tgt)
+    return registration.pulse(tgt, M, pairs, rms), M, pairs
 
 
-def test_info_does_not_change_result():
+def test_pulse_is_small_constellation_and_lands_on_reference():
     ref, tgt = _field()
-    plain = registration.find_transform(ref, tgt)
-    info = {}
-    seen = registration.find_transform(ref, tgt, info=info)
-    np.testing.assert_array_equal(plain[0], seen[0])
-    np.testing.assert_array_equal(plain[1], seen[1])
-    assert plain[2] == seen[2]
-    assert len(info["seed_ref"]) == 3 and len(info["seed_tgt"]) == 3
-    assert info["tris_ref"] > 0 and info["cands"] > 0
-    # Startdreieck der Aufnahme liegt nach der Transformation auf dem der Referenz
-    p = registration._apply(seen[0], tgt[info["seed_tgt"]])
-    assert np.abs(p - ref[info["seed_ref"]]).max() < 1.5
+    d, M, pairs = _pulse(ref, tgt)
+    assert len(json.dumps(d, separators=(",", ":"))) < 400              # ~200 Bytes je Aufnahme
+    assert 5 <= len(d["p"]) <= 7 and len(d["p"]) == registration.PATTERN_STARS
+    # hellste zugeordnete Sterne (Sternlisten sind nach Helligkeit sortiert)
+    want = sorted(set(int(t) for t in pairs[:, 0]))[:registration.PATTERN_STARS]
+    assert d["p"] == [[int(round(x)), int(round(y))] for x, y in tgt[want]]
+    # Spannbaum: n−1 Linien, alle Sterne verbunden, keine Schleifen
+    n = len(d["p"])
+    assert len(d["e"]) == n - 1 and all(0 <= a < n and 0 <= b < n and a != b for a, b in d["e"])
+    reach, todo = {0}, [0]
+    while todo:
+        k = todo.pop()
+        for a, b in d["e"]:
+            for u, v in ((a, b), (b, a)):
+                if u == k and v not in reach:
+                    reach.add(v)
+                    todo.append(v)
+    assert reach == set(range(n))
+    assert abs(d["r"] - 2.5) < 0.1 and d["q"] > 20
 
 
-def test_pulse_is_small_and_lands_on_reference():
-    ref, tgt = _field()
-    d, M, info = _pulse(ref, tgt)
-    assert len(json.dumps(d, separators=(",", ":"))) < 2500            # je Aufnahme höchstens wenige hundert Bytes bis ~2 KB
-    assert len(d["p"]) <= registration.PATTERN_STARS + 3 and len(d["e"]) > 10
-    assert all(0 <= a < len(d["p"]) and 0 <= b < len(d["p"]) for a, b in d["e"])
-    assert len(d["s"]) == 3 and abs(d["r"] - 2.5) < 0.1 and d["q"] > 20
+def test_spanning_tree_is_minimal():
+    rng = np.random.default_rng(9)
+    for _ in range(20):
+        pts = rng.uniform(0, 100, (6, 2))
+        tree = registration._spanning_tree(pts)
+        length = sum(np.hypot(*(pts[a] - pts[b])) for a, b in tree)
+        # Vergleich mit Kruskal: gleiche Gesamtlänge = minimal
+        edges = sorted((np.hypot(*(pts[a] - pts[b])), a, b) for a in range(6) for b in range(a + 1, 6))
+        parent = list(range(6))
+
+        def find(x):
+            while parent[x] != x:
+                x = parent[x]
+            return x
+        best = 0.0
+        for w, a, b in edges:
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[ra] = rb
+                best += w
+        assert abs(length - best) < 1e-9
     # jeder gezeigte Stern landet mit der Transformation auf einem Referenzstern
     a, b, tx, c, e, ty = d["m"]
     p = np.array(d["p"], float)
@@ -111,9 +132,8 @@ def test_pipeline_pulses_every_registered_frame(tmp_path):
 def test_pulse_cost_is_small():
     """Zusatzaufwand je Aufnahme klein gegenüber Laden + Ausrichten (Messung, großzügige Grenze)."""
     ref, tgt = _field()
-    info = {}
-    M, pairs, rms = registration.find_transform(ref, tgt, info=info)
+    M, pairs, rms = registration.find_transform(ref, tgt)
     t0 = time.perf_counter()
     for _ in range(50):
-        registration.pulse(tgt, M, pairs, info, rms)
+        registration.pulse(tgt, M, pairs, rms)
     assert (time.perf_counter() - t0) / 50 < 0.02

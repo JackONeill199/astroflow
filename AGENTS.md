@@ -261,22 +261,21 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    `_track_live` protokolliert echte Schritte, Vorschau-Hooks in GraXpert/Processing, höchstens alle 4 s plus Endergebnis.
    `/projects/{pid}` liefert `live` nur für den neuesten Auftrag; `/projects/{pid}/live/{name}` liefert streng geprüfte JPG-Namen.
    `static/live.js|css`: Bildwechsel auf zwei Ebenen, kompakte Statuszeile mit aufklappbarem Ablauf; reduzierte Bewegung beachtet.
-   **Sternmuster** (seit 0.47.0, Nutzerwunsch „Sterne zu geometrischen Mustern verbinden, zeigen wie die Muster übereinstimmen“,
-   danach „zack zack zack“: jede Aufnahme kurz, im Takt des Stackens): In `_stack.work` bekommt `registration.find_transform(…, info={})`
-   bei laufender Live-Ansicht ein Dict (Startdreieck `seed_tgt/seed_ref`, Anzahl Dreiecke/Kandidaten – Ergebnis bitgleich, Test), nicht im
-   Kometen-Stack. `registration.pulse` = hellste `PATTERN_STARS` 36 Sterne der Aufnahme (+ Startdreieck), Delaunay-Netz ohne lange
-   Randkanten, davon nur Kanten zwischen zugeordneten Sternen, Rohbild-Pixel ganzzahlig, Matrix Aufnahme → Referenz, Drehung, Paare.
-   Gemessen (150 Sterne): 1,25 ms je Aufnahme (find_transform 4,8 ms; Laden/Kosmetik/Ausrichten ~Sekunden CPU) → ~0, ~1,2 KB JSON.
-   `LiveRun.add_pulse` → Ringpuffer `live.PULSES` 64 **nur im Speicher** (keine Datei), laufende Nummer; Endpunkt
-   `GET /projects/{pid}/pattern?seit=` = `{run, seq, wh, items}` aus `eng.pl.live_runs` (nicht im 2,5-s-Poll; `seit` aus einem
-   früheren Lauf zählt als 0). GPU und CPU gleich (Registrierung läuft immer auf der CPU). Der Schritt „Stacking“ wird vor der ersten
-   Registrierung gemeldet (sonst stand „Auswahl“ an). Frontend `createStarPattern` in `live.js`: fragt bei jedem Poll im Schritt
-   „Stacking“ das Neue ab und spielt es über das Abrufintervall verteilt ab (Takt 2,5 s / Anzahl, 150–700 ms; mehr als 16 → gleichmäßig
-   auslassen, Neueres ersetzt Wartendes – nie Rückstand; neu geöffnet nur die letzten 4). Puls ≤ 420 ms: Linien an der Rohlage,
-   gleiten starr (SVG-`transform` einer Gruppe, kein Layout) auf die Sterne der Stack-Vorschau, grün (Startdreieck weiß), Ein/Aus 70–80 ms.
-   SVG viewBox = Rohbildmaß, `meet` wie `object-fit: contain`, y gespiegelt wie das Vorschau-JPG. Kleine Zeile „Aufnahme n/N · Drehung ·
-   Sternpaare“. Hintergrund-Tab (`document.hidden`) fragt nicht ab und spielt nicht. Schalter „Sternmuster“ (`af.live.sternmuster`,
-   aus = keine Abrufe); reduzierte Bewegung → je Abruf nur die jüngste Aufnahme ausgerichtet, ohne Bewegung.
+   **Sternmuster** (seit 0.47.0; Nutzerwünsche: Sterne zu Mustern verbinden → „zack zack zack“ je Aufnahme im Stack-Takt →
+   „zu dominant“, daher dezenter **Sternbild-Stil**, nur diese eine Darstellung): In `_stack.work` (nicht im Kometen-Stack, nur bei
+   laufender Live-Ansicht) nach `find_transform` → `registration.pulse` = hellste `PATTERN_STARS` 6 zugeordnete Sterne der Aufnahme
+   (Sternlisten sind nach Helligkeit sortiert), verbunden per minimalem Spannbaum (`_spanning_tree`, Prim → 5 Linien, keine
+   Dreiecksnetze), Rohbild-Pixel ganzzahlig, Matrix Aufnahme → Referenz, Drehung, Paare: gemessen 184 Bytes und 0,07 ms je Aufnahme (find_transform 4,7 ms).
+   `find_transform` selbst ist unverändert. `LiveRun.add_pulse` → Ringpuffer `live.PULSES` 64 **nur im Speicher** (keine Datei),
+   laufende Nummer; Endpunkt `GET /projects/{pid}/pattern?seit=` = `{run, seq, wh, items}` aus `eng.pl.live_runs` (nicht im 2,5-s-Poll;
+   `seit` aus einem früheren Lauf zählt als 0). GPU und CPU gleich. Der Schritt „Stacking“ wird vor der ersten Registrierung gemeldet
+   (sonst stand „Auswahl“ an). Frontend `createStarPattern` in `live.js`: fragt bei jedem Poll im Schritt „Stacking“ das Neue ab und
+   spielt es über das Abrufintervall verteilt ab (Takt 2,5 s / Anzahl, 150–700 ms; mehr als 16 → gleichmäßig auslassen, Neueres ersetzt
+   Wartendes – nie Rückstand; neu geöffnet nur die letzten 4). Puls ≤ 520 ms: Muster gleitet in 150 ms (SVG-`transform` einer Gruppe,
+   kein Layout) auf die Sterne der Stack-Vorschau, Ringe rasten ein (CSS `sl-snap`), schwaches Nachleuchten, Ausblenden 90 ms.
+   Linien 1 px, Deckkraft 0,3, `--acc`; Sterne als kleiner weicher Ring. SVG viewBox = Rohbildmaß, `meet` wie `object-fit: contain`,
+   y gespiegelt wie das Vorschau-JPG. Kleine gedämpfte Zeile „n/N · Drehung“. Hintergrund-Tab fragt nicht ab und spielt nicht.
+   Schalter „Sternmuster“ (`af.live.sternmuster`, aus = keine Abrufe); reduzierte Bewegung → je Abruf nur die jüngste Aufnahme ausgerichtet.
    Untersuchung Quad-Hashes (Teil B, 08.11.2026,
    synthetische Sternlisten): kein klarer Gewinn (≤ +6 Prozentpunkte, 3× Zeit) → nicht eingebaut; ein Wiederholversuch mit nur den
    hellsten 2–3×n Referenzsternen hob „wenige Sterne“ von 24 % auf 90 %, lieferte aber auch mehr falsche Lösungen → offen.

@@ -49,10 +49,8 @@ def _apply(M: np.ndarray, p: np.ndarray) -> np.ndarray:
     return p @ M[:2, :2].T + M[:2, 2]
 
 
-def find_transform(ref_xy: np.ndarray, tgt_xy: np.ndarray, tol: float = 2.5, max_stars: int = 80,
-                   info: dict | None = None):
-    """Gibt (M tgt->ref, Index-Paare (tgt, ref), rms) oder None zurück.
-    info (optional, nur für die Sternmuster-Ansicht): erhält Startdreieck und Zählwerte – ändert das Ergebnis nicht."""
+def find_transform(ref_xy: np.ndarray, tgt_xy: np.ndarray, tol: float = 2.5, max_stars: int = 80):
+    """Gibt (M tgt->ref, Index-Paare (tgt, ref), rms) oder None zurück."""
     ref, tgt = ref_xy[:max_stars], tgt_xy[:max_stars]
     if len(ref) < 5 or len(tgt) < 5:
         return None
@@ -66,7 +64,7 @@ def find_transform(ref_xy: np.ndarray, tgt_xy: np.ndarray, tol: float = 2.5, max
         return None
     cands.sort()
     rtree = cKDTree(ref)
-    best, best_n, seed = None, 0, None
+    best, best_n = None, 0
     for _, ti, ri in cands[:400]:
         M = _similarity(tgt[tr_t[ti]], ref[tr_r[ri]])
         sc = np.hypot(M[0, 0], M[1, 0])
@@ -75,7 +73,7 @@ def find_transform(ref_xy: np.ndarray, tgt_xy: np.ndarray, tol: float = 2.5, max
         d, _ = rtree.query(_apply(M, tgt), distance_upper_bound=tol)
         n = int(np.isfinite(d).sum())
         if n > best_n:
-            best, best_n, seed = M, n, (ti, ri)
+            best, best_n = M, n
             if n >= 0.6 * min(len(ref), len(tgt)):
                 break
     if best is None or best_n < max(5, 0.15 * min(len(ref), len(tgt))):
@@ -90,44 +88,38 @@ def find_transform(ref_xy: np.ndarray, tgt_xy: np.ndarray, tol: float = 2.5, max
     d, j = rtree.query(_apply(M, tgt), distance_upper_bound=1.5)
     sel = np.isfinite(d)
     pairs = np.stack([np.nonzero(sel)[0], j[sel]], axis=1)
-    if info is not None:
-        info.update(seed_tgt=[int(v) for v in tr_t[seed[0]]], seed_ref=[int(v) for v in tr_r[seed[1]]],
-                    tris_ref=len(tr_r), tris_tgt=len(tr_t), cands=len(cands))
     return M, pairs, float(np.sqrt(np.mean(d[sel] ** 2)))
 
 
-PATTERN_STARS = 36       # Sterne der Aufnahme in der Sternmuster-Ansicht (hellste zuerst, dazu das Startdreieck)
+PATTERN_STARS = 6        # Sternbild-Stil: hellste zugeordnete Sterne je Aufnahme (Nutzerwunsch „dezent“, 5–7)
 
 
-def _mesh(pts: np.ndarray) -> list[tuple[int, int]]:
-    """Feines Netz für die Anzeige: Delaunay-Kanten ohne lange Randkanten."""
-    if len(pts) < 3:
+def _spanning_tree(pts: np.ndarray) -> list[tuple[int, int]]:
+    """Minimaler Spannbaum (Prim) – kürzeste Verbindungen ohne Schleifen, wie eine Sternbildzeichnung."""
+    n = len(pts)
+    if n < 2:
         return []
-    from scipy.spatial import Delaunay
-    try:
-        tri = Delaunay(pts)
-    except Exception:
-        return []
-    s = tri.simplices
-    e = np.sort(np.concatenate([s[:, [0, 1]], s[:, [1, 2]], s[:, [0, 2]]]), axis=1)
-    e = np.unique(e, axis=0)
-    ln = np.hypot(*(pts[e[:, 0]] - pts[e[:, 1]]).T)
-    return [(int(i), int(j)) for i, j in e[ln <= 2.5 * float(np.median(ln))]]
+    d = np.hypot(*(pts[:, None] - pts[None]).transpose(2, 0, 1))
+    inside, best, src, edges = np.zeros(n, bool), d[0].copy(), np.zeros(n, int), []
+    inside[0] = True
+    for _ in range(n - 1):
+        j = int(np.argmin(np.where(inside, np.inf, best)))
+        edges.append((int(src[j]), j))
+        inside[j] = True
+        closer = d[j] < best
+        best[closer], src[closer] = d[j][closer], j
+    return edges
 
 
-def pulse(tgt_xy: np.ndarray, M: np.ndarray, pairs: np.ndarray, info: dict, rms: float | None = None) -> dict:
-    """Kompakte Daten für einen Sternmuster-Puls (einige hundert Bytes): nur die Linien zwischen zugeordneten Sternen
-    der Aufnahme (Rohbild-Pixel, ganzzahlig), das gefundene Startdreieck und die Transformation Aufnahme → Referenz."""
-    keep = list(range(min(len(tgt_xy), PATTERN_STARS)))
-    keep += [i for i in info.get('seed_tgt', []) if i not in keep and i < len(tgt_xy)]
-    matched = set(int(t) for t in pairs[:, 0])
-    edges = [(a, b) for a, b in _mesh(tgt_xy[keep]) if keep[a] in matched and keep[b] in matched]
-    used = sorted({i for e in edges for i in e} | {keep.index(i) for i in info.get('seed_tgt', []) if i in keep})
-    pos = {o: k for k, o in enumerate(used)}
+def pulse(tgt_xy: np.ndarray, M: np.ndarray, pairs: np.ndarray, rms: float | None = None) -> dict:
+    """Kompakte Daten für einen Sternmuster-Puls (~200 Bytes): die hellsten zugeordneten Sterne der Aufnahme
+    (Rohbild-Pixel, ganzzahlig; Sternlisten sind nach Helligkeit sortiert), ihr minimaler Spannbaum und die
+    Transformation Aufnahme → Referenz."""
+    keep = sorted(set(int(t) for t in pairs[:, 0]))[:PATTERN_STARS]
+    pts = tgt_xy[keep]
     return {
-        'p': [[int(round(x)), int(round(y))] for x, y in tgt_xy[[keep[i] for i in used]]],
-        'e': [[pos[a], pos[b]] for a, b in edges],
-        's': [pos[keep.index(i)] for i in info.get('seed_tgt', []) if i in keep],
+        'p': [[int(round(x)), int(round(y))] for x, y in pts],
+        'e': [list(e) for e in _spanning_tree(pts)],
         'm': [round(float(M[0, 0]), 5), round(float(M[0, 1]), 5), round(float(M[0, 2]), 1),
               round(float(M[1, 0]), 5), round(float(M[1, 1]), 5), round(float(M[1, 2]), 1)],
         'r': round(float(np.degrees(np.arctan2(M[1, 0], M[0, 0]))), 2),
