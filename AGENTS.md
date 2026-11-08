@@ -824,6 +824,7 @@ Ordnerdialog/Suche und Upload (Server + `droppedFiles`/`upload` im Browser) weg;
 UI-Filter (seit 0.21.0, eine Leiste über der Liste): Zustand als Reiter (`LIB_TABS`, Standard „Offen“ = `n_new > 0`), Art/Format als `.menu`-Mehrfachauswahl,
 localStorage `af.library.filter` (`{tab, kind, ext}`); Formate je Gruppe aus `library.file_formats` → `groups[].exts` (`{"fits": 141}`);
 „Alle neuen“ (Dreifach-Kästchen) und Import wirken nur auf sichtbare Gruppen. Beim ersten Laden sind Gruppen mit Neuem vorgewählt (wie vor 0.21.0).
+**Ziel neuer Gruppen** (`Library._target`): Lights-Gruppen ohne bekannte Aufnahmen bekommen `target {id, name}` = Projekt, dem der Scan sie zuordnen würde (`scanner.assign_project` mit den einmal je Lauf geladenen Projekten, erste Light-Datei, ohne Plate-Solving; Kometen/Felder/Unbekannt kein Ziel); UI-Chip „ergänzt: …“ (`project` bleibt „Dateien schon drin“). Test `test_library_predicts_target_of_new_observation`.
 Bilder gehen über `import_picture` (Kopie in die Ausgabe). Quelldateien bleiben unberührt. API: `GET /library`, `POST /library/scan {root}`, `POST /library/import {ids}` (Ids stammen
 aus dem letzten Suchlauf im Speicher). Zuletzt genutzter Pfad: `data/settings.json` → `library.root`. Test: `tests/test_library.py`.
 

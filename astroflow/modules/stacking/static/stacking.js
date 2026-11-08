@@ -1155,7 +1155,7 @@ async function libraryPanel(view) {
       <div class="lib-list">${list.map(g => {
         const [lab, cls] = LIB_STATE[g.state] || [g.state, ''], off = !g.n_new;
         return `<label class="lib-row ${off ? 'off' : ''}"><input type="checkbox" data-id="${g.id}" ${picked.has(g.id) ? 'checked' : ''} ${off ? 'disabled' : ''}>
-          <div class="lib-main"><div class="lib-title"><b>${esc(g.name)}</b><span class="chip ${cls}">${lab}</span><span class="chip">${LIB_KIND[g.kind] || g.kind}</span>${g.project?.name ? `<a class="chip acc" href="#/p/${g.project.id}">in AstroFlow: ${esc(g.project.name)}</a>` : ''}</div>
+          <div class="lib-main"><div class="lib-title"><b>${esc(g.name)}</b><span class="chip ${cls}">${lab}</span><span class="chip">${LIB_KIND[g.kind] || g.kind}</span>${g.project?.name ? `<a class="chip acc" href="#/p/${g.project.id}">in AstroFlow: ${esc(g.project.name)}</a>` : g.target?.name ? `<a class="chip acc" href="#/p/${g.target.id}" title="Neue Beobachtung eines vorhandenen Objekts – wird beim Import dort ergänzt">ergänzt: ${esc(g.target.name)}</a>` : ''}</div>
             <div class="lib-meta"><span class="chip">${g.n_files} Dateien · ${fmb(g.bytes)}</span>${g.n_known && g.n_new ? `<span class="chip">${g.n_new} davon neu</span>` : ''}${g.night ? `<span class="chip">${esc(g.night)}</span>` : ''}${g.camera ? `<span class="chip">${esc(g.camera)}</span>` : ''}</div>
             <div class="lib-path">${esc(g.rel)}</div></div></label>`;
       }).join('')}</div>`;
