@@ -10,6 +10,13 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   das es in AstroFlow schon gibt (z. B. eine zweite Nacht desselben Nebels), steht dort der Chip „ergänzt: <Objekt>“ mit Link.
   Vorhergesagt wird nach Objektname und Kamera wie beim Einlesen – ohne Plate-Solving, Kometen und Gruppen ohne Namen bekommen keins.
 
+## 0.49.1 – 09.11.2026
+
+### Behoben
+- **Docker-Image mit SkyTrace-Engine** (`--build-arg SKYTRACE=1`): installiert jetzt wie die Komponente „SkyTrace-Engine“ erst PyTorch aus dem CPU-Index und
+  dann `requirements-engine.txt`, statt des Windows-Lockfiles (`pywin32-ctypes`, festes `torch` …), das unter Linux nicht installierbar war. Das Lockfile ist entfernt.
+- Interne Aufräumarbeit an der Oberfläche: alte Farbnamen (`--panel`, `--line`, `--grad` …) sind durch die Tokens des Designsystems ersetzt. Aussehen unverändert.
+
 ## 0.49.0 – 08.11.2026
 
 ### Neu

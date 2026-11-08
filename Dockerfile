@@ -22,7 +22,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY astroflow ./astroflow
 # SkyTrace-Analyse-Engine (OpenCV, PyTorch/YOLO, PyAV …, mehrere GB) nur auf Wunsch: docker compose build --build-arg SKYTRACE=1
 ARG SKYTRACE=0
-RUN if [ "$SKYTRACE" = "1" ]; then pip install --no-cache-dir -r astroflow/modules/skytrace/requirements.txt; fi
+# Gleicher Weg wie die Komponente „skytrace“ (core/components.py): erst PyTorch aus dem CPU-Index, dann requirements-engine.txt;
+# libgl1/libglib2.0-0 braucht OpenCV im schlanken Image
+RUN if [ "$SKYTRACE" = "1" ]; then       apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*       && pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu       && pip install --no-cache-dir -r astroflow/modules/skytrace/requirements-engine.txt;     fi
 ENV ASTROFLOW_DATA=/data
 VOLUME /data
 EXPOSE 8080

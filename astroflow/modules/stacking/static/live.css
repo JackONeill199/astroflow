@@ -21,8 +21,8 @@
 .sl-details { flex-shrink: 0 }
 .sl-details summary { list-style: none; cursor: pointer; color: var(--mut); text-decoration: underline; text-underline-offset: 0.1875rem; padding: 0.1875rem 0 0.1875rem 0.375rem }
 .sl-details summary::-webkit-details-marker { display: none }
-.sl-pop { position: absolute; bottom: 2.5rem; right: 0; z-index: 8; width: min(26.25rem, 100%); padding: 1rem; background: var(--bg2);
-  border: 1px solid var(--line); border-radius: var(--r-sm); box-shadow: 0 0.625rem 2.1875rem #0006 }
+.sl-pop { position: absolute; bottom: 2.5rem; right: 0; z-index: 8; width: min(26.25rem, 100%); padding: 1rem; background: var(--sidebar);
+  border: 1px solid var(--border-soft); border-radius: var(--r-sm); box-shadow: 0 0.625rem 2.1875rem #0006 }
 .sl-details:not([open]) .sl-pop { display: none }   /* sonst hat das Popup im geschlossenen Zustand in Chrome einen Kasten */
 .sl-pop ol { list-style: none; padding: 0; margin: 0.75rem 0; max-height: 15rem; overflow-y: auto }
 .sl-pop li { display: flex; align-items: baseline; gap: 0.5625rem; margin: 0.5625rem 0; color: var(--mut) }
@@ -31,7 +31,7 @@
 .sl-pop li.current { color: var(--fg) }
 .sl-pop li > span { color: var(--acc); flex-shrink: 0 }
 .sl-pop p { margin: 0 }
-.sl-track { height: 0.1875rem; border-radius: 0.1875rem; overflow: hidden; background: var(--line) }
+.sl-track { height: 0.1875rem; border-radius: 0.1875rem; overflow: hidden; background: var(--border-soft) }
 .sl-track i { display: block; height: 100%; background: linear-gradient(90deg, var(--acc), #bd98f8); transition: width 1s ease }
 .sl-track.indet i { animation: sl-wait 2.8s ease-in-out infinite }
 .sl-queued .sl-pulse, .sl-error .sl-pulse { animation: none }

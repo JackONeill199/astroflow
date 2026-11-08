@@ -1,8 +1,8 @@
 /* Bild-Tutor (Befunde, Aufnahmenacht, KI-Einschätzung) */
 .tutor-intro { margin: 0 0 0.75rem }
 .tfinds { display: grid; gap: 0.5rem; margin-bottom: 0.875rem }
-.tfind { --c: var(--mut); border: 1px solid var(--line); border-left: 0.1875rem solid var(--c); border-radius: var(--r-sm); padding: 0.5625rem 0.75rem;
-  background: color-mix(in srgb, var(--bg2) 60%, transparent) }
+.tfind { --c: var(--mut); border: 1px solid var(--border-soft); border-left: 0.1875rem solid var(--c); border-radius: var(--r-sm); padding: 0.5625rem 0.75rem;
+  background: color-mix(in srgb, var(--sidebar) 60%, transparent) }
 .tfind.lvl-bad { --c: var(--bad) } .tfind.lvl-warn { --c: var(--warn) } .tfind.lvl-info { --c: var(--acc) } .tfind.lvl-ok { --c: var(--ok) }
 .tfind summary { cursor: pointer; display: flex; align-items: baseline; gap: 0.5rem; list-style: none; font-size: 0.875rem }
 .tfind summary::-webkit-details-marker { display: none }
@@ -15,11 +15,11 @@
 .tnight { font-size: 0.8125rem }
 .tnight-h { display: flex; gap: 0.5rem; align-items: baseline; flex-wrap: wrap }
 .tchips { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 0.375rem }
-.tchips span { padding: 0.1875rem 0.5rem; border-radius: 62.4375rem; border: 1px solid var(--line2); font-size: 0.75rem; white-space: normal }
+.tchips span { padding: 0.1875rem 0.5rem; border-radius: 62.4375rem; border: 1px solid var(--border); font-size: 0.75rem; white-space: normal }
 .tchips .lvl-ok { border-color: color-mix(in srgb, var(--ok) 40%, transparent) }
 .tchips .lvl-warn { border-color: color-mix(in srgb, var(--warn) 50%, transparent) }
 .tchips .lvl-bad { border-color: color-mix(in srgb, var(--bad) 50%, transparent) }
-.tki { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 0.625rem 0.75rem; margin-bottom: 0.75rem;
+.tki { border: 1px solid var(--border-soft); border-radius: var(--r-sm); padding: 0.625rem 0.75rem; margin-bottom: 0.75rem;
   background: color-mix(in srgb, var(--acc) 6%, transparent) }
 .tki ul { margin: 0.375rem 0 0; padding-left: 1.125rem; font-size: 0.8125rem; display: grid; gap: 0.25rem }
 .tki summary { cursor: pointer }

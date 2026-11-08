@@ -1,6 +1,5 @@
 /* AstroFlow – Designsystem (seit 0.21): neutrales Anthrazit, ein blauer Akzent, Bilder stehen im Vordergrund.
-   Tokens zentral in :root; Module verwenden nur diese Variablen. Alte Namen (--panel, --grad …) bleiben als Aliase,
-   damit Modul-CSS ohne Umbau mitzieht. Bewegung: Mikrointeraktionen 150–250 ms, aufwendigere Animationen nur für
+   Tokens zentral in :root; Module verwenden nur diese Variablen (die alten Aliase --panel, --line, --grad … gibt es nicht mehr). Bewegung: Mikrointeraktionen 150–250 ms, aufwendigere Animationen nur für
    echte Prozesse (static/viz.js). prefers-reduced-motion wird respektiert. */
 @property --p { syntax: "<number>"; inherits: true; initial-value: 0 }
 :root {
@@ -27,10 +26,6 @@
   --t: 160ms; --t2: 240ms;
   --sans: "Inter var", Inter, system-ui, "Segoe UI Variable Text", "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
-  /* Aliase für ältere Modul-Stile */
-  --bg2: var(--sidebar); --panel: var(--surface); --panel-s: var(--surface); --panel2: var(--surface-2);
-  --line: var(--border-soft); --line2: var(--border); --acc2: var(--data-2); --acc3: var(--data-3);
-  --grad: var(--acc); --hi: 0 0 0 0 transparent;
   color-scheme: dark;
 }
 * { box-sizing: border-box }
