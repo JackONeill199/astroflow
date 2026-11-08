@@ -172,12 +172,13 @@ def test_api_and_storage(tmp_path, monkeypatch):
         assert p["nights"][0]["sqm"] == night["sqm"] and "dirs" not in p["nights"][0]
         assert c.post("/api/stacking/sky/compute", json={"project_id": 99999}).status_code == 404
         r = c.post("/api/stacking/sky/compute", json={"project_id": pid}).json()
-        assert r["state"] == "running" and r["total"] == 1
+        assert r["state"] in ("running", "done") and r["total"] == 1     # Hintergrundauftrag kann schon fertig sein
         for _ in range(100):
             if not eng.sky.busy():
                 break
             import time
             time.sleep(0.05)
+        assert not eng.sky.busy()
         assert eng.sky.activity()[0]["title"] == "Himmelsqualität"
         # Ortsliste bekommt den Wert über den Dienst site_sky
         assert c.app.state.modules["stacking"].site_sky()["x"]["sqm"] == night["sqm"]

@@ -126,14 +126,8 @@ def test_standort_aus_den_einstellungen_wirkt_sofort(client):
     rid, _ = _run(home, _site(), with_site=False)
     _frames(home / "Ergebnisse" / rid / "Testfeld")
     assert c.get("/api/skytrace/run3d", params={"run": rid}).json()["need_site"]
-    from astroflow.modules.skytrace.run3d import _settings_file
-    cfg = _settings_file(home)                               # Engine-Einstellungen (Ordner beim ersten Import festgelegt)
-    old = cfg.read_bytes() if cfg.is_file() else None
-    try:
-        assert c.post("/api/skytrace/settings", json={"site": {"lat": 12.0, "lon": 34.0, "alt_m": 0}}).status_code == 200
-        assert c.get("/api/skytrace/run3d", params={"run": rid}).json()["ok"]
-    finally:
-        cfg.write_bytes(old) if old is not None else cfg.unlink(missing_ok=True)
+    assert c.post("/api/skytrace/settings", json={"site": {"lat": 12.0, "lon": 34.0, "alt_m": 0}}).status_code == 200
+    assert c.get("/api/skytrace/run3d", params={"run": rid}).json()["ok"]
 
 
 def test_uhrversatz_der_nacht_wirkt(client):
@@ -154,10 +148,7 @@ def test_uhrversatz_der_nacht_wirkt(client):
         x["catalogs"][0]["clock_offset_s"] = clock if x["id"] == "K0001" else None
     (obs / "kandidaten.json").write_text(json.dumps(cands), encoding="utf-8")
     night = dt.datetime.fromtimestamp(T0 - 43200, dt.timezone.utc).date().isoformat()
-    from astroflow.modules.skytrace.run3d import _settings_file
-    cfg = _settings_file(home)
-    old = cfg.read_bytes() if cfg.is_file() else None
-    try:
+    if True:                                                 # Einstellungen liegen dank client-Fixture in tmp_path
         assert c.post("/api/skytrace/settings", json={"clock_offsets": {night: {"offset_s": clock}}}).status_code == 200
         r = c.get("/api/skytrace/run3d", params={"run": rid}).json()
         assert r["ok"] and r["clock_offset_s"] == clock and not r["clock_pending"]
@@ -178,8 +169,6 @@ def test_uhrversatz_der_nacht_wirkt(client):
         assert c.post("/api/skytrace/settings", json={"clock_offsets": {night: None}}).status_code == 200
         r = c.get("/api/skytrace/run3d", params={"run": rid}).json()
         assert r["clock_offset_s"] is None and r["anchor"] == pytest.approx(T0 - 310 - clock) and r["clock_pending"]
-    finally:
-        cfg.write_bytes(old) if old is not None else cfg.unlink(missing_ok=True)
 
 
 def test_bahnrechnung_nicht_moeglich(tmp_path):
