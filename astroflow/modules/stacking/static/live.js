@@ -16,7 +16,7 @@ function createStackLive(host, pid) {
   const find = s => root.querySelector(s);
   const fmt = (v) => Number(v).toLocaleString('de-DE');
   let active = 0, wanted = '', shown = '', destroyed = false, stepSig = '', fallback = false;
-  let preview = '', done = 0, run = '', queue = [], timer = 0, current = null, lastLive = {};
+  let preview = '', done = 0, run = '', queue = [], timer = 0, current = null, visible = null, lastLive = {};   // current = Ladeversuch, visible = angezeigter Stand
   const inflight = new Set();                            // eingereiht oder ladend (nicht doppelt anfordern)
   const num = f => +(/-f(\d+)\.jpg$/.exec(f.name)?.[1] || 0);   // laufende Nummer des Zwischenstands
   function show(src, previous = false, onShown = null, onFail = null) {
@@ -55,7 +55,7 @@ function createStackLive(host, pid) {
     const slot = Math.max(350, Math.min(1500, LIVE_POLL / (queue.length + 1)));
     root.style.setProperty('--sl-fade', Math.round(Math.min(slot * 0.85, 800)) + 'ms');
     current = f;
-    show(frameSrc(f), false, () => { inflight.delete(f.name); done = Math.max(done, num(f)); if (current === f) caption(f); },
+    show(frameSrc(f), false, () => { inflight.delete(f.name); done = Math.max(done, num(f)); visible = f; caption(f); },
       () => inflight.delete(f.name));                // fehlgeschlagen: beim nächsten Poll wieder dabei
     if (queue.length) timer = setTimeout(step, slot);
   }
@@ -87,14 +87,14 @@ function createStackLive(host, pid) {
       if (live.run !== run) { run = live.run; done = 0; inflight.clear(); queue = []; }
       if (live.preview) {                                          // Endbearbeitung: deren Vorschau hat Vorrang
         if (live.preview !== preview) {
-          preview = live.preview; queue = []; clearTimeout(timer); timer = 0; current = null;
+          preview = live.preview; queue = []; clearTimeout(timer); timer = 0; current = visible = null;
           root.style.removeProperty('--sl-fade');
         }
         // bei jedem Poll: show() übergeht gezeigte/ladende Bilder, ein fehlgeschlagener Abruf wird so erneut versucht
         show(`/api/stacking/projects/${pid}/live/${encodeURIComponent(live.preview)}`);
       } else frames(live.frames);
       if (!shown && !live.preview && !live.frames?.length && p.results?.[0]) show(`/api/stacking/results/${p.results[0].id}/jpg`, true);
-      caption(live.preview ? null : current);
+      caption(live.preview ? null : visible);              // Beschriftung nur für den tatsächlich gezeigten Stand
       const steps = live.steps?.length ? live.steps : [{ stage: j.stage || 'Vorbereitung', label: j.message || 'Verarbeitung wird vorbereitet', done: false }];
       const sig = JSON.stringify(steps);
       if (sig !== stepSig) {
