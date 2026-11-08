@@ -3,6 +3,7 @@
 Braucht Playwright + Chromium (`pip install playwright && python -m playwright install chromium`); fehlt es, wird übersprungen.
 Prüft jede Ansicht mit Demodaten (ein entwickeltes Objekt mit absichtlich langem Namen, alle Module geladen).
 """
+import re
 import socket
 import threading
 import time
@@ -361,8 +362,9 @@ def test_spinners_on_running_object_page(server, browser):
 
 
 @pytest.mark.parametrize('size', ['handy', 'schmal', 'desktop'])
-def test_live_star_pattern_overlay(server, browser, size):
-    """Sternmuster der Registrierung („Sterne rasten ein“): Pulse aus echten Registrierdaten, nur beim Stacken, abschaltbar, im Takt der Aufnahmen."""
+def test_live_frame_space_and_timeline(server, browser, size):
+    """Live-Ansicht beim Stacken: ab 768 px Aufnahmen als Ebenen in 3D (echte Registrierdaten), schmaler 2D;
+    Zeitachse mit den Stacking-Stufen; nach der Registrierung kein 3D mehr."""
     import numpy as np
     from astroflow.modules.stacking import registration
     base, pid = server
@@ -375,13 +377,13 @@ def test_live_star_pattern_overlay(server, browser, size):
     M, pairs, rms = registration.find_transform(ref, tgt)
     pulse = registration.pulse(tgt, M, pairs, rms)
     state = {'stage': 'Stacking', 'rid': None, 'seq': 0, 'asked': []}
+    stages = [{'n': n, 'exposure': n * 10, 'band': '', 'file': f'n{n:05d}.jpg'} for n in (1, 3, 10, 30, 50)]
 
     def pattern_response(route):
-        seit = int(route.request.url.split('seit=')[-1] or 0)
-        state['asked'].append(seit)
+        state['asked'].append(route.request.url)
         first = state['seq']
-        state['seq'] += 10                                               # 10 neue Aufnahmen je Abruf
-        items = [{**pulse, 'i': k, 'n': k, 't': 400} for k in range(first + 1, state['seq'] + 1)]
+        state['seq'] += 6                                                # 6 neue Aufnahmen je Abruf
+        items = [{**pulse, 'i': k, 'n': k, 't': 400, 'img': True} for k in range(first + 1, state['seq'] + 1)]
         route.fulfill(json={'run': '1', 'job': 998, 'seq': state['seq'], 'wh': [800, 620], 'items': items})
 
     def project_response(route):
@@ -393,48 +395,55 @@ def test_live_star_pattern_overlay(server, browser, size):
                         'steps': [{'stage': 'Stacking', 'label': '40/400 Aufnahmen', 'done': False}]}
         route.fulfill(response=response, json=data)
 
-    for reduced in ('reduce', 'no-preference'):
-        if reduced == 'no-preference' and size != 'desktop':
+    def picture(route):
+        route.fulfill(response=route.fetch(url=f"{base}/api/stacking/results/{state['rid']}/jpg"))
+
+    for reduced in ('no-preference', 'reduce'):
+        if reduced == 'reduce' and size != 'desktop':
             continue
         state.update(stage='Stacking', seq=0, asked=[])
         page = browser.new_page(viewport={'width': w, 'height': h}, reduced_motion=reduced)
         errors = []
         page.on('pageerror', lambda e: errors.append(str(e)))
         page.route(f'**/api/stacking/projects/{pid}', project_response)
-        page.route(f'**/api/stacking/projects/{pid}/live/*',
-                   lambda route: route.fulfill(response=route.fetch(url=f"{base}/api/stacking/results/{state['rid']}/jpg")))
-        page.route(f'**/api/stacking/projects/{pid}/pattern*', pattern_response)
+        page.route(f'**/api/stacking/projects/{pid}/live/*', picture)
+        page.route(re.compile(rf'.*/api/stacking/projects/{pid}/pattern\?.*'), pattern_response)
+        page.route(re.compile(rf'.*/api/stacking/projects/{pid}/pattern/\d+\.jpg'), picture)
+        page.route(f'**/api/stacking/projects/{pid}/stages', lambda route: route.fulfill(json={'stages': stages}))
+        page.route(f'**/api/stacking/projects/{pid}/stages/*', picture)
         page.goto(f'{base}/#/p/{pid}/bild')
-        if reduced == 'reduce':
-            page.wait_for_selector('.stack-live.pattern-on .sl-pattern.snap')
-            assert page.locator('.sl-pattern circle').count() == len(pulse['s']) > 0     # nur Punkte
-            assert page.locator('.sl-pattern line, .sl-pattern polygon').count() == 0
-            assert 'Drehung' in page.inner_text('.sl-pinfo')
-            pb, sb = page.locator('.sl-picture').bounding_box(), page.locator('.sl-pattern').bounding_box()
-            assert abs(pb['width'] - sb['width']) <= 1 and abs(pb['height'] - sb['height']) <= 1
-            assert not page.evaluate(FIND_OVERFLOW)
-            page.locator('.sl-ptoggle').click()                              # abschalten: sofort weg, kein Abruf mehr
-            assert page.locator('.sl-ptoggle').get_attribute('aria-pressed') == 'false'
-            assert 'pattern-on' not in page.locator('.stack-live').get_attribute('class')
-            n = len(state['asked'])
+        page.wait_for_selector('.sl-image.on')
+        page.wait_for_selector('.sl-chips button[data-k="|30"]')            # Zeitachse
+        wide = page.evaluate("document.querySelector('.stack-live').clientWidth >= 768")
+        three_d = wide and reduced == 'no-preference'
+        if three_d:
+            page.wait_for_function("['3d', 'failed'].includes(document.querySelector('.stack-live').dataset.space)")
+            if page.locator('.stack-live').get_attribute('data-space') == '3d':   # WebGL vorhanden
+                assert page.locator('.stack-live.mode-3d .sl-space canvas').count() == 1
+                page.wait_for_function("+(document.querySelector('.stack-live').dataset.flown || 0) >= 3", timeout=15000)
+                assert 'Sternpaare' in page.inner_text('.sl-pinfo')
+                assert any('seit=' in u for u in state['asked'])
+                assert not page.evaluate(FIND_OVERFLOW)
+                page.locator('.sl-mode').click()                              # auf 2D umschalten: Abrufe enden
+                assert 'mode-3d' not in page.locator('.stack-live').get_attribute('class')
+                n = len(state['asked'])
+                page.wait_for_timeout(3000)
+                assert len(state['asked']) == n
+                page.locator('.sl-mode').click()
+                page.wait_for_selector('.stack-live.mode-3d')
+        else:                                                                 # schmal bzw. reduzierte Bewegung: 2D, kein three.js
             page.wait_for_timeout(3000)
-            assert len(state['asked']) == n
-            page.locator('.sl-ptoggle').click()
-            page.wait_for_selector('.stack-live.pattern-on')
-            assert state['asked'][-1] > 0                                    # nur Neues seit der letzten Nummer
-        else:
-            # schneller Takt: viele verschiedene Aufnahmen kurz hintereinander, nicht eine je Abruf
-            page.wait_for_selector('.stack-live.pattern-play')
-            shown = page.evaluate("""() => new Promise(res => {
-              const seen = new Set(), el = document.querySelector('.sl-pinfo');
-              const mo = new MutationObserver(() => seen.add(el.textContent));
-              mo.observe(el, {childList: true, characterData: true, subtree: true});
-              setTimeout(() => { mo.disconnect(); res(seen.size); }, 3000);
-            })""")
-            assert shown >= 5, shown
-        state['stage'] = 'Bearbeitung'                                       # nach der Registrierung: kein Schalter mehr
-        page.wait_for_function("document.querySelector('.sl-ptoggle').hidden")
-        assert 'pattern-on' not in page.locator('.stack-live').get_attribute('class')
+            assert page.locator('.sl-space canvas').count() == 0 and not state['asked']
+            assert page.locator('.sl-mode').is_hidden() == (not wide)
+            assert not page.evaluate(FIND_OVERFLOW)
+        page.locator('.sl-chips button[data-k="|10"]').click()               # Zeitachse: Stack nach 10 Aufnahmen
+        page.wait_for_function("document.querySelector('.sl-badge').textContent.includes('NACH 10')")
+        assert page.locator('.sl-chips button[data-k="|10"]').get_attribute('aria-pressed') == 'true'
+        page.locator('.sl-chips button[data-k="live"]').click()
+        page.wait_for_function("document.querySelector('.sl-badge').textContent === 'LIVE-VORSCHAU'")
+        state['stage'] = 'Bearbeitung'                                       # nach der Registrierung: kein 3D mehr
+        page.wait_for_function("document.querySelector('.sl-mode').hidden")
+        assert 'mode-3d' not in page.locator('.stack-live').get_attribute('class')
         page.close()
         assert not errors, errors
 

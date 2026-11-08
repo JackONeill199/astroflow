@@ -252,7 +252,7 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    (`GLOW_MAP_FULL/BAND`), Mitte unberührt. Ergebnis Rohbild NGC 4490: Rest überall ≤ ±4 ADU. Ältere Bibliotheksnächte (nur Profile)
    werden bei vorhandenen Rohbildern neu gemessen (`nights(with_map=True)`), sonst weiter ohne Karte genutzt.
    **Stacking-Stufen** (seit 01.11.2026, Nutzerwunsch „Slider, was mehr Bilder ausmachen“): `_stack` sichert beim Überschreiten von
-   `STAGES` (1, 3, 10, 30, 100 … Frames, kumulativ über alle Läufe) den Zwischenstand – `StackState.add_batch(prefixes=…)` rechnet
+   `STAGES` (1, 3, 10, 30, 50, 100 … Frames, kumulativ über alle Läufe) den Zwischenstand – `StackState.add_batch(prefixes=…)` rechnet
    „bisher + erste k Frames des Stapels“ (Clipping-Maske aus dem ganzen Stapel). Seit 02.11.2026 direkt kleine JPGs (≤ 800 px)
    in `work/p<id>/stufen[_<Band>]/n<t>.jpg` + `.json` (n, Belichtung), keine neuen Vollbild-NPZs. Neuaufbau löscht sie mit.
    `_render_stages` kopiert sie nur noch zu `<base>_s<n>.jpg` (`results.files.s<n>`, `stats.stages`, `stats.stages_live`);
@@ -261,22 +261,29 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    `_track_live` protokolliert echte Schritte, Vorschau-Hooks in GraXpert/Processing, höchstens alle 4 s plus Endergebnis.
    `/projects/{pid}` liefert `live` nur für den neuesten Auftrag; `/projects/{pid}/live/{name}` liefert streng geprüfte JPG-Namen.
    `static/live.js|css`: Bildwechsel auf zwei Ebenen, kompakte Statuszeile mit aufklappbarem Ablauf; reduzierte Bewegung beachtet.
-   **Sternmuster** (seit 0.47.0; Nutzerwünsche: Sterne zu Mustern verbinden → „zack zack zack“ je Aufnahme im Stack-Takt →
-   Dreiecksnetz und Sternbild-Stil waren zu dominant → gewählt **„Sterne rasten ein“**, keine Linien, nur diese eine Darstellung):
-   In `_stack.work` (nicht im Kometen-Stack, nur bei laufender Live-Ansicht) nach `find_transform` → `registration.pulse` = die
-   `PATTERN_STARS` 12 hellsten zugeordneten Sterne der Aufnahme (Sternlisten sind nach Helligkeit sortiert) als Paare
-   `[x_Aufnahme, y_Aufnahme, x_Stack, y_Stack]` (Stack = Transformation der Registrierung, Rohbild-Pixel gerundet), Drehung, Paare,
-   Rest: gemessen ~270 Bytes und 0,06 ms je Aufnahme (find_transform 4,8 ms). `find_transform` selbst ist unverändert. `LiveRun.add_pulse` → Ringpuffer
-   `live.PULSES` 64 **nur im Speicher** (keine Datei), laufende Nummer; Endpunkt `GET /projects/{pid}/pattern?seit=` =
-   `{run, seq, wh, items}` aus `eng.pl.live_runs` (nicht im 2,5-s-Poll; `seit` aus einem früheren Lauf zählt als 0). GPU und CPU gleich.
-   Der Schritt „Stacking“ wird vor der ersten Registrierung gemeldet (sonst stand „Auswahl“ an). Frontend `createStarPattern` in `live.js`:
-   fragt bei jedem Poll im Schritt „Stacking“ das Neue ab und spielt es über das Abrufintervall verteilt ab (Takt 2,5 s / Anzahl,
-   150–700 ms; mehr als 16 → gleichmäßig auslassen, Neueres ersetzt Wartendes – nie Rückstand; neu geöffnet nur die letzten 4).
-   Puls ≤ 480 ms: kleine weiche Punkte (Akzentfarbe, Deckkraft 0,5, schwacher Hof) erscheinen an der Lage in der Aufnahme
-   (CSS-`translate` je Kreis), gleiten in 150 ms per CSS-Übergang auf die Stack-Lage (Klasse `go`), rasten ein (`snap`: kurz heller
-   und kleiner über CSS-`r`) und blenden in 90 ms aus. SVG viewBox = Rohbildmaß, `meet` wie `object-fit: contain`, y gespiegelt wie
-   das Vorschau-JPG. Kleine gedämpfte Zeile „n/N · Drehung“. Hintergrund-Tab fragt nicht ab und spielt nicht. Schalter „Sternmuster“
-   (`af.live.sternmuster`, aus = keine Abrufe); reduzierte Bewegung → je Abruf nur die jüngste Aufnahme kurz am Ziel.
+   **Aufnahmen als Ebenen im Raum** (seit 0.47.0; Weg dorthin: Sternmuster-Netz, Puls je Aufnahme, Sternbild-Stil, „Sterne rasten ein“ –
+   alle als Overlay zu dominant; Nutzerwunsch dann „Einzelaufnahmen als hintereinanderliegende Ebenen, die entlang einer Zeitachse zur Referenz
+   fliegen, Ausrichtung kurz zeigen, Ergebnis nach 10/50/100/300 Frames ansehen“): In `_stack.work` (nicht im Kometen-Stack, nicht die
+   Referenz, nur bei laufender Live-Ansicht) nach dem Laden → `run.add_pulse(registration.pulse(...), thumb=live.thumb(img))`.
+   `registration.pulse` = Transformation `m` Aufnahme → Stack, Drehung, Paare, Rest und die `PATTERN_STARS` 12 hellsten zugeordneten Sterne
+   als `[x_Aufnahme, y_Aufnahme, x_Stack, y_Stack]` (~350 Bytes, 0,06 ms); `live.thumb` = Mini-Vorschau ≤ `THUMB` 160 px (jedes n-te Pixel,
+   schnelle Streckung, JPEG ~3–4 KB, gemessen 1,2 ms je Aufnahme bei 3072×2080 – gegenüber Laden/Kosmetik/Ausrichten vernachlässigbar).
+   `find_transform` ist unverändert. Ringpuffer `live.PULSES` 64 **nur im Speicher** (keine Datei). Endpunkte: `GET /projects/{pid}/pattern?seit=`
+   (`{run, seq, wh, items}` ohne Bilder, nicht im 2,5-s-Poll; `seit` aus einem früheren Lauf zählt als 0), `GET /projects/{pid}/pattern/{i}.jpg`
+   (Mini-Vorschau, solange im Ringpuffer), `GET /projects/{pid}/stages` (`live.stage_list`: gespeicherte Stufen `work/p<id>/stufen[_<Band>]/n<t>`,
+   auch während des Stackens) und `GET /projects/{pid}/stages/n<t>.jpg?band=` (streng geprüft). `STAGES` um 50 ergänzt. Der Schritt „Stacking“
+   wird vor der ersten Registrierung gemeldet (sonst stand „Auswahl“ an).
+   Frontend `live.js`: Umschalter „3D“ in der Statuszeile (nur beim Stacken und ab `LIVE_2D3D_MIN` 768 px Breite der Ansicht; Standard 3D,
+   außer bei reduzierter Bewegung; Wahl in `af.live.ansicht`). `createFrameSpace` lädt three.js erst beim Einschalten (`loadThree` aus `depth.js`),
+   WebGL-Fehler → `data-space="failed"`, zurück auf 2D. Szene: feste, schräge Kamera (OrbitControls ohne Schwenken, kein Autodreh), vorne die
+   Stack-Ebene (Live-Vorschau bzw. gewählte Stufe, weicher Wechsel über zwei Ebenen), dahinter im Abstand `GAP` die nächsten Aufnahmen als dünne
+   Ebenen (vorderste `WITH_IMAGE` 5 mit Mini-Vorschau, übrige getönte Platten). Je Abruf werden die neuen Aufnahmen über das Abrufintervall verteilt
+   (Takt 2,5 s / Anzahl, 260–1100 ms; mehr als 9 → gleichmäßig auslassen, Neueres ersetzt Wartendes): die vorderste fliegt nach vorn, dreht/
+   verschiebt/skaliert sich dabei mit `m` auf die Referenz (Welt = Rohbild-Pixel/Breite, y nach oben = wie das gespiegelte Vorschau-JPG), ihre
+   12 Sterne erscheinen als weiche Punkte und rasten ein, dann blendet sie in den Stack. Gerendert wird nur, solange etwas läuft
+   (`requestAnimationFrame`, pausiert im Hintergrund-Tab); `data-flown` zählt die Ankünfte (Test). Reduzierte Bewegung mit gewähltem 3D:
+   Ebenen stehen still. Darunter **Zeitachse** `.sl-time` (Live, 1, 3, 10, 30, 50 …; beide Modi): Klick zeigt die Stufe statt der Live-Vorschau
+   („NACH n AUFNAHMEN“). Nach dem Stacken bleibt der Stufen-Regler im Reiter Bild. Kleine gedämpfte Zeile „Aufnahme n/N · Drehung · Sternpaare“.
    Untersuchung Quad-Hashes (Teil B, 08.11.2026,
    synthetische Sternlisten): kein klarer Gewinn (≤ +6 Prozentpunkte, 3× Zeit) → nicht eingebaut; ein Wiederholversuch mit nur den
    hellsten 2–3×n Referenzsternen hob „wenige Sterne“ von 24 % auf 90 %, lieferte aber auch mehr falsche Lösungen → offen.

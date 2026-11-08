@@ -6,10 +6,12 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 ## 0.47.0 – 08.11.2026
 
 ### Neu
-- **Sternmuster während der Registrierung:** In der Live-Ansicht eines laufenden Stacks erscheinen für jede registrierte Aufnahme
-  ihre hellsten Sterne als kleine, weiche Punkte an ihrer Lage in der Aufnahme, gleiten auf ihre Stelle im Stack und rasten dort
-  leise ein – im Takt, in dem tatsächlich gestackt wird (bei sehr vielen Aufnahmen gleichmäßig ausgedünnt). Echte Daten der
-  Registrierung, das Stacken wird dadurch nicht langsamer. Über „Sternmuster“ abschaltbar.
+- **Aufnahmen als Ebenen im Raum:** Während des Stackens zeigt die Live-Ansicht auf größeren Bildschirmen die einzelnen Aufnahmen
+  als dünne Ebenen hintereinander auf einer Zeitachse (umschaltbar „3D“). Im Takt, in dem tatsächlich gestackt wird, fliegt die nächste
+  Aufnahme nach vorn, dreht und verschiebt sich dabei auf das Referenzbild, ihre hellsten Sterne rasten ein, dann geht sie im Stack auf.
+  Echte Daten der Registrierung und kleine Vorschauen der Aufnahmen – das Stacken wird dadurch nicht langsamer.
+- **Zeitachse:** Unter der Live-Ansicht lässt sich der Stack nach 1, 3, 10, 30, 50, 100 … Aufnahmen ansehen, schon während des Stackens.
+  Neu ist die Stufe nach 50 Aufnahmen (auch im Stufen-Regler des fertigen Bildes, bei neu aufgebauten Stacks).
 
 ## 0.46.2 – 08.11.2026
 

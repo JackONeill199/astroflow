@@ -1,14 +1,17 @@
-"""Sternmuster der Registrierung („Sterne rasten ein“): Daten je Aufnahme aus dem echten Dreiecks-Matching, klein, im Speicher."""
+"""Aufnahmen als Ebenen in der Live-Ansicht: Ausrichtung + Mini-Vorschau je Aufnahme aus dem echten Dreiecks-Matching,
+klein, im Speicher; Zeitachse aus den Stacking-Stufen."""
+import io
 import json
 import time
 
 import numpy as np
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from astroflow.core.config import load_settings
 from astroflow.modules.stacking import demo, live, registration
 from astroflow.modules.stacking.db import DB
-from astroflow.modules.stacking.pipeline import Pipeline
+from astroflow.modules.stacking.pipeline import STAGES, Pipeline
 from astroflow.modules.stacking.reviewer import ReviewerConfig
 from astroflow.server import create_app
 
@@ -31,8 +34,9 @@ def _pulse(ref, tgt):
 def test_pulse_pairs_are_small_and_land_on_reference():
     ref, tgt = _field()
     d, M, pairs = _pulse(ref, tgt)
-    assert set(d) == {"s", "r", "q", "x"}                                 # nur Punktpaare, keine Linien
-    assert len(json.dumps(d, separators=(",", ":"))) < 400              # ~200 Bytes je Aufnahme
+    assert set(d) == {"s", "m", "r", "q", "x"}                            # Punktpaare + Transformation, keine Linien
+    assert len(json.dumps(d, separators=(",", ":"))) < 500              # einige hundert Bytes je Aufnahme
+    np.testing.assert_allclose(np.array(d["m"]).reshape(2, 3), M[:2], atol=0.06)
     assert 8 <= len(d["s"]) <= 15 and len(d["s"]) == registration.PATTERN_STARS
     # hellste zugeordnete Sterne (Sternlisten sind nach Helligkeit sortiert), Lage in der Aufnahme gerundet
     want = sorted(set(int(t) for t in pairs[:, 0]))[:registration.PATTERN_STARS]
@@ -94,7 +98,58 @@ def test_pipeline_pulses_every_registered_frame(tmp_path):
     stacked = db.one("SELECT COUNT(*) n FROM frames WHERE project_id=? AND stacked=1", (pid,))["n"]
     items = run.pulses_since(0)["items"]
     assert len(items) == stacked - 1                         # jede registrierte Aufnahme außer der Referenz
-    assert all(x["q"] >= 5 and x["t"] >= len(items) for x in items)
+    assert all(x["q"] >= 5 and x["t"] >= len(items) and x["img"] for x in items)
+    assert all("_thumb" not in x for x in items)              # Bilder nur über den eigenen Endpunkt
+    pic = Image.open(io.BytesIO(run.pulse_thumb(items[0]["i"])))
+    assert max(pic.size) <= live.THUMB and pic.format == "JPEG"
+    # Zeitachse: Stufen dieses Laufs (1, 3 …) mit Bild
+    st = live.stage_list(s.work_dir, pid)
+    assert [x["n"] for x in st][:2] == [1, 3] and all((s.work_dir / f"p{pid}" / "stufen" / x["file"]).is_file() for x in st)
+
+
+def test_thumb_small_and_input_untouched():
+    rng = np.random.default_rng(1)
+    img = rng.normal(1000, 20, (3, 900, 1400)).astype(np.float32)
+    img[:, 400:420, 600:620] += 3000
+    before = img.copy()
+    data = live.thumb(img)
+    pic = Image.open(io.BytesIO(data))
+    assert max(pic.size) <= live.THUMB and len(data) < 20000
+    np.testing.assert_array_equal(img, before)
+    assert 50 in STAGES                                       # Zeitachse: 10, 30, 50, 100, 300 …
+
+
+def test_thumb_and_stage_endpoints(tmp_path):
+    s = load_settings(tmp_path)
+    s.auto = False
+    db = DB(s.db_path)
+    pid = db.x("INSERT INTO projects(name, created) VALUES('Testnebel',0)")
+    app = create_app(s)
+    c = TestClient(app)
+    run = app.state.modules["stacking"].eng.pl.begin_live(pid, job=5)
+    ref, tgt = _field()
+    d, _, _ = _pulse(ref, tgt)
+    run.add_pulse(d, n=2, total=9, shape=(620, 800), thumb=live.thumb(np.ones((3, 620, 800), np.float32)))
+    i = run.pulses_since(0)["items"][0]["i"]
+    r = c.get(f"/api/stacking/projects/{pid}/pattern/{i}.jpg")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+    assert c.get(f"/api/stacking/projects/{pid}/pattern/{i + 1}.jpg").status_code == 404
+    assert c.get(f"/api/stacking/projects/{pid + 1}/pattern/{i}.jpg").status_code == 404
+    assert c.get(f"/api/stacking/projects/{pid}/stages").json() == {"stages": []}
+    d1 = s.work_dir / f"p{pid}" / "stufen"
+    d2 = s.work_dir / f"p{pid}" / "stufen_Ha"
+    for d_, n in ((d1, 10), (d1, 3), (d2, 1)):
+        d_.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (8, 6)).save(d_ / f"n{n:05d}.jpg")
+        (d_ / f"n{n:05d}.json").write_text(json.dumps({"n": n, "exposure": n * 10}), encoding="utf-8")
+    st = c.get(f"/api/stacking/projects/{pid}/stages").json()["stages"]
+    assert [(x["band"], x["n"]) for x in st] == [("", 3), ("", 10), ("Ha", 1)]
+    assert c.get(f"/api/stacking/projects/{pid}/stages/n00010.jpg").status_code == 200
+    assert c.get(f"/api/stacking/projects/{pid}/stages/n00001.jpg?band=Ha").status_code == 200
+    for bad in ("n00010.json", "..%2Fstate.json", "n0001.jpg"):
+        assert c.get(f"/api/stacking/projects/{pid}/stages/{bad}").status_code == 404
+    assert c.get(f"/api/stacking/projects/{pid}/stages/n00001.jpg?band=..").status_code == 404
+    c.close()
 
 
 def test_pulse_cost_is_small():
