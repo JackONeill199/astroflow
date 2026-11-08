@@ -288,3 +288,51 @@ def generate_asteroid(out: Path, n_lights=36, seed=11, rate=(0.9, 0.35), flux=90
         truth["shift"].append(shift.tolist())
         truth["time"].append((t + dt.timedelta(seconds=exptime / 2)).replace(tzinfo=dt.timezone.utc).timestamp())
     return out, truth
+
+
+def distort(p: np.ndarray, k: float, size: tuple[int, int]) -> np.ndarray:
+    """Radiale Verzeichnung (Kissen bei k > 0) um die Bildmitte: r' = r·(1 + k·r²), p in Pixeln (N, 2)."""
+    h, w = size
+    c = np.array([(w - 1) / 2, (h - 1) / 2])
+    d = p - c
+    return c + d * (1 + k * (d * d).sum(1, keepdims=True))
+
+
+def generate_distortion(out: Path, n_lights=24, per_seg=4, size=(1024, 1536), k=6.4e-9, wander=120.0, fwhm=3.4,
+                        n_stars=2500, seed=13, exptime=10.0) -> tuple[Path, dict]:
+    """Stellina-artige Serie für die Verzerrungskorrektur: feste radiale Verzeichnung der Optik (`k`, Ecke ~5 px bei
+    1536×1024), das Feld springt alle `per_seg` Aufnahmen auf einen neuen Versatz (±`wander` px, Nachzentrieren) und
+    driftet dazwischen leicht. Graue Sterne auf Bayer-Sensor, ohne Nebel. Gibt (Ordner, Wahrheit) zurück."""
+    rng = np.random.default_rng(seed)
+    out = Path(out)
+    h, w = size
+    t0 = dt.datetime(2026, 9, 2, 22, 0, 0)
+    base = out / f"{t0:%Y-%m-%d_%H-%M-%S}_observation_M13"
+    base.mkdir(parents=True, exist_ok=True)
+    m = wander + 40
+    sky = np.column_stack([rng.uniform(-m, w + m, n_stars), rng.uniform(-m, h + m, n_stars)])
+    flux = 10 ** rng.uniform(2.6, 4.8, n_stars)
+    sig = fwhm / 2.355
+    R = 7
+    d = np.arange(-R, R + 1)
+    truth: dict = {"k": k, "shift": []}
+    jump = np.zeros(2)
+    for i in range(n_lights):
+        seg, j = divmod(i, per_seg)
+        if j == 0:
+            jump = np.zeros(2) if seg == 0 else rng.uniform(-wander, wander, 2)
+        shift = jump + np.array([0.4, -0.25]) * j + rng.normal(0, 0.3, 2)
+        p = distort(sky - shift, k, size)
+        img = np.zeros((h, w), np.float32)
+        for (px, py), f in zip(p, flux):
+            if not (R < px < w - R - 1 and R < py < h - R - 1):
+                continue
+            ix, iy = int(px), int(py)
+            psf = np.outer(np.exp(-((d + iy - py) ** 2) / (2 * sig**2)), np.exp(-((d + ix - px) ** 2) / (2 * sig**2)))
+            img[iy - R: iy + R + 1, ix - R: ix + R + 1] += f * psf / psf.sum()
+        raw = img + 300 + rng.normal(0, 10, (h, w))
+        write_fits(base / f"img-{i + 1:04d}r.fits", np.clip(raw, 0, 65535).astype(np.uint16),
+                   dict(INSTRUME="stellina-demo", BAYERPAT="RGGB", EXPTIME=exptime, GAIN=200.0, OBJECT="M 13",
+                        RA=250.423, DEC=36.461, **{"DATE-OBS": (t0 + dt.timedelta(seconds=30 * i)).isoformat()}))
+        truth["shift"].append(shift.tolist())
+    return out, truth

@@ -103,6 +103,18 @@ def detect_stars(img: np.ndarray, max_stars: int = 150, thresh: float = 5.0, min
     return Stars(a[:, 0], a[:, 1], a[:, 2], a[:, 3], a[:, 4], a[:, 5])
 
 
+DENSE_STARS = 400       # Sterne je Aufnahme für die Verzerrungskorrektur (gespeichert werden nur die hellsten 100)
+
+
+def dense_stars(raw: np.ndarray, bayer: bool, max_stars: int = DENSE_STARS) -> list:
+    """Dichte Sternliste [x, y, Fluss] in Vollauflösungs-Pixeln – gleiche Erkennung und Koordinaten wie
+    `analyze_frame`, nur mehr Sterne (Polynom-Anpassung in registration.fit_distortion braucht alle Bildecken)."""
+    luma, s = analysis_image(raw, bayer)
+    st = detect_stars(luma, max_stars=max_stars)
+    return [[round(float((x + 0.5) * s - 0.5), 2), round(float((y + 0.5) * s - 0.5), 2), round(float(f), 1)]
+            for x, y, f in zip(st.x, st.y, st.flux)]
+
+
 def analyze_frame(raw: np.ndarray, bayer: bool) -> dict:
     """Metriken + Sternliste (in Vollauflösungs-Pixeln) für einen kalibrierten Frame."""
     luma, s = analysis_image(raw, bayer)

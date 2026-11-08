@@ -179,8 +179,8 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    0,0008 ADU bei 5,6 ADU Rauschen, 0,004 % der Pixel mit anderer Clip-Entscheidung. Danach begrenzen Lesen, `cosmetic`, Debayer (CPU).
    **Nebenbefund:** Mit RMS um den Median kann ein einzelner Ausreißer in einem Stapel von B Frames höchstens √B·σ abweichen –
    bei B ≤ 9 wird er im Stapel also nie verworfen, nur über den Abgleich mit dem bestehenden Stack (`check`, ab ~8 Frames Gewicht).
-   Deshalb werden Satellitenspuren seit 0.47.0 gezielt maskiert (folgender Punkt).
-   **Satellitenspuren** (`trails.py`, seit 0.47.0, Auftrag des Masters nach StackingWizard-Vergleich): Befund vorher (Demo): `detect_trails`
+   Deshalb werden Satellitenspuren seit 0.49.0 gezielt maskiert (folgender Punkt).
+   **Satellitenspuren** (`trails.py`, seit 0.49.0, Auftrag des Masters nach StackingWizard-Vergleich): Befund vorher (Demo): `detect_trails`
    (Labeling + Streckung, nur eine Zahl) fand roh 0/2 Spuren; Spurpunkte zählten als Sterne (88 statt ~60) → beide Spur-Frames „unscharf“
    verworfen bzw. manuell eingeschlossen Gewicht 0,1; bei vollem Gewicht ließ Clipping allein die Spur stehen (Stapel à 3, 30 Frames
    +10/+17 ADU; ein Stapel à 24 +7 ADU; 8 Frames +42 ADU; 4 Frames +71 ADU, Stackrauschen 1–4 ADU). SkyTrace (`line_detection`) braucht
@@ -198,7 +198,10 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    werden in `_stack.work` im ohnehin geladenen Bild nachgesucht; ihre Metriken/Gewichte bleiben wie sie sind.
    Synthetisch (σ 14, 540×720): 0 Fehlalarme bei 300–30 000 Sternen, Nebel, 1040×1536; gefunden ab ~30 ADU (1 px breit) über die ganze
    Länge, hell (3000), breit (σ 4 px), zwei gekreuzte; nicht: ≤ 15 ADU (stört auch im Stack nicht), kurze Spuren ~120 px (bleiben dem Clipping).
-   **Maske beim Stacken** (`Pipeline._trail_masks`, im Hauptthread je Stapel): Linien per `transform` (M + `scale`) ins Referenzraster, `confirm`:
+   **Maske beim Stacken** (`Pipeline._trail_masks`, im Hauptthread je Stapel): Linien per `transform` (M + `scale`) ins Referenzraster; mit
+   Verzerrungskorrektur (Polynom `P` der Aufnahme) rastert `trails.band(..., poly=P, ref_lines=…)` stattdessen in **Aufnahme**-Pixeln:
+   jedes Ausgabepixel im Umfeld der groben Lage (über M, +8 px) wird mit demselben Polynom (`registration.poly_out`/`_terms`) wie im Warp
+   in die Aufnahme abgebildet und dort gegen die Spur geprüft – Maske und Bild liegen gleich (Saum dann FWHM + 1 in Aufnahme-Pixeln). `confirm`:
    Band muss gegen den bisherigen Stack bzw. den Median der übrigen Aufnahmen des Stapels signifikant **und** zu ≥ 50 % seines eigenen
    Signals neu sein – ein statischer gerader Nebelfaden wird erkannt, aber nie maskiert (ohne Anteilsregel 9 von 24 Frames, weil ein dünner
    Faden in scharfen Aufnahmen spitzer ist). Ohne Vergleich (erste Aufnahme allein) wird maskiert. Band = Halbbreite + FWHM + 1 px,
@@ -209,6 +212,31 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    Gemessen (Demo, gleiche Referenz, Differenz zum Stack ohne Spur entlang der Spur): 30 Frames à 3 +0,08/−0,10, 8 Frames −0,14, 4 Frames
    +0,27 ADU; beide Spur-Frames bleiben ohne manuelles Einschließen im Stack. Tutor-Hinweis bewusst nicht (Nutzer: bringt nichts).
    Tests `test_trails.py`. Messskripte (Demo mit/ohne Spur, gleiche mtime → gleiche Frame-IDs/Referenz) lagen im Scratchpad der Sitzung.
+   **Verzerrungskorrektur** (seit 08.11.2026, Branch `feature/verzerrung`; Anlass: ein Vergleichsprogramm passte bei Stellina-Aufnahmen
+   ein Polynom 2. Ordnung über ~360 Sternpaare an, Restfehler 0,50 → 0,37 px): Die Stellina zentriert alle 1–3 min nach, das Feld wandert
+   über die Optik, die Verzeichnung bleibt am Sensor – die Ähnlichkeit (Verschieben/Drehen/Maßstab) lässt am Rand Restfehler.
+   **Standard an** (Nutzerentscheidung 08.11.2026): global `settings.json` → `distortion.mode` auto|off (`registration.DISTORTION`, PERSIST in
+   `api.py`, `GET|POST /api/stacking/distortion`, UI Einstellungen → Bilder; ohne gespeicherten Wert `ASTROFLOW_DISTORTION`, sonst auto),
+   je Objekt Projektoption `distortion` global (Standard) | auto | off – `registration.distortion_mode(option)` = Objekt vor global.
+   Neue Stacks merken den Modus (`meta.distortion`, `Pipeline.distortion_state` → `/projects/{id}` `distortion {global, stack}`); weicht
+   der wirksame Modus ab, zeigt der Reiter Optionen den Hinweis „Komplett neu stacken“, eine Änderung dort verlangt Neu-Stacken. Ablauf in `_stack.work`: `find_transform` wie bisher (100 gespeicherte Sterne, Dreiecke) → `quality.dense_stars`
+   (gleiche Erkennung wie die Analyse, bis `DENSE_STARS` 400 Sterne, ~130 ms bei 3072×2080) → `registration.fit_distortion`: alle Sterne
+   über M zuordnen (`POLY_TOL` 2,5 px, eindeutig), Polynom Referenz→Aufnahme in u, v (Mitte, halbe Diagonale), Ausreißer 3σ am Polynom.
+   Übernommen nur mit ≥ 30 Paaren, ≥ 5 je Viertel und ≥ 2 je Eckfeld (3×3) **des Überlappfelds**, größter Korrektur ≤ 4 px und
+   Restfehler aus 5-facher **Kreuzvalidierung** −10 % und −0,02 px (sonst gewinnt das Polynom mit 12 statt 4 Parametern schon am
+   Messrauschen); sonst Ähnlichkeit mit Grund (`why`). Referenzliste `meta.ref_dense` (neue Stacks aus dem Referenzbild; ältere: Referenzbild
+   nachmessen, ohne Rohbild aus dem Stack selbst, `Pipeline._dense_ref`; weitere Filter übernehmen sie). Je Aufnahme `meta.reg[fid]` =
+   `{n, r0, r1, cv0, cv1, quad, corner, k, poly, why}` in `state.json` (nur mit Korrektur); `registration.summary` → `results.stats.distortion`
+   (`frames, poly, pairs, rms_before, rms_after` = wirksamer Restfehler, `max_corr, why`), Details-Liste im Bild-Tab. `warp(..., poly=P)`:
+   CPU `spline_filter` (Spiegelrand) + `map_coordinates` in Streifen `STRIP_ROWS` (für eine reine Ähnlichkeit bitgleich zum affinen Weg), GPU
+   Kernel `warp_poly` (gemeinsame `sample`-Funktion mit `warp`, Polynom in Ausgabepixeln über `poly_out`). Kometen-Stack: Polynom aus der
+   Sternregistrierung, Kernverschiebung über `shift_poly`; die Bahn-Stichproben (`_comet_track`) richtet dasselbe Polynom aus
+   (`binned_poly` auf das gebinnte Raster, Review PR #9 – sonst enthielte die Bahn Registrierungsreste, die der Stack nicht mehr hat). `frame_links`/Gerätediagnose/Asteroiden bleiben bei der Ähnlichkeit (unverändert).
+   Kein automatisches Neu-Stacken, inkrementell gemischt möglich (alte Aufnahmen affin, neue mit Polynom).
+   Gemessen (synthetisch, `demo.generate_distortion`, 1536×1024, Ecke ~5 px Verzeichnung, Feld ±120 px, 18 Aufnahmen): Polynom bei 14 von 17,
+   Restfehler (KV) 0,42 → 0,21 px, ~285 Paare; Stack Exzentrizität Ecken 0,33 → 0,23 (Mitte 0,25), FWHM Ecken 3,68 → 3,62 (Mitte 3,63);
+   ohne Verzeichnung 0 von 16 übernommen, Stack identisch. 3072×2080 je Aufnahme: Warp CPU 1,13 → 1,19 s, GPU 72 → 156 ms (Maske auf der
+   CPU), Fit 1 ms. Tests `test_distortion.py`, `test_gpu.py::test_warp_poly_matches_cpu`. **Offen:** Messung an echten Stellina-Daten.
 6. **Kanäle** (`channels.py`): L/R/G/B/Ha/OIII/SII → RGB, LRGB, RGB+Hα, HOO, SHO oder Mono (Option `palette`).
 7. **Develop Engine** (`develop.py`): `measure()` (Objekt-SNR, Signalfläche, Dynamik auf gebinnter Vorschau) → `adapt()` passt
    Profilwerte an (Entrauschen, `linear_denoise` = (10/SNR)^1,5, Sättigung, asinh, keine Entfaltung bei wenig Signal) → bis zu 3 Renderings
@@ -291,6 +319,22 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    `_track_live` protokolliert echte Schritte, Vorschau-Hooks in GraXpert/Processing, höchstens alle 4 s plus Endergebnis.
    `/projects/{pid}` liefert `live` nur für den neuesten Auftrag; `/projects/{pid}/live/{name}` liefert streng geprüfte JPG-Namen.
    `static/live.js|css`: Bildwechsel auf zwei Ebenen, kompakte Statuszeile mit aufklappbarem Ablauf; reduzierte Bewegung beachtet.
+   **„Das Bild entsteht aus dem Rauschen“** (seit 0.47.0, Nutzerwunsch; vorher verworfen: Sternmuster-Overlays und 3D-Ebenen – zu dominant):
+   Beim Stacken echte Zwischenstände des Stacks nach `live.SCHEDULE` (1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 19, 24, 30, dann je ×1,5) plus
+   höchstens alle `INTERVAL` 4 s am Stapelende. Innerhalb eines Stapels (nur bis `EARLY` 80 Aufnahmen) über `mini_inputs` (verkleinerte
+   Kopien jedes n-ten Pixels: Stack-Summen vor dem Stapel + Aufnahmen, im Ablauf ~50 ms je Stapel bei 3072×2080) und `mini_snapshots`
+   = derselbe `StackState.add_batch` mit `prefixes` auf den Kopien (gleiches Clipping je Pixel; Test: gleich wie der volle Stand an diesen
+   Pixeln). Am Stapelende `stack_sample` (~6 ms). Rechnen und Rendern im Hintergrund-Thread `LiveRun.later` (einer, Reihenfolge bleibt;
+   Mini-Stack ~0,36 s für 10 Stände, Rendern ~27 ms je Stand) → Stacken praktisch nicht langsamer (Bericht PR #8: < 1 % im Ablauf).
+   `StackState._add_rows` rechnet die Zwischenstände (auch die Stacking-Stufen) seit 0.47.0 über laufende Summen statt je k neu – der Stack
+   selbst ist unverändert. **Feste Streckung** je Lauf und Kanal (`fixed_stretch` aus dem ersten Stand: Schwarzpunkt Himmel − 1σ je Kanal,
+   gemeinsamer Weißpunkt am 99,95-%-Wert, asinh mit Himmel bei ~0,13, als Tabelle) – sonst würde jede Auto-Streckung das Rauschen wieder gleich
+   hell machen. `noise_of` = robuste Streuung benachbarter Pixel der Luminanz; `frames[].noise` relativ zum ersten Stand (sinkt ~1/√n).
+   `state.json` → `frames` (letzte `FRAMES_KEEP` 12, Dateien `<lauf>-f<n>.jpg`, `/live/{name}` erlaubt `\d+-f?\d+\.jpg`; `picture()` räumt
+   nur `<lauf>-<n>.jpg` auf). Browser: neue Stände werden über das Abrufintervall verteilt nacheinander überblendet (Takt 2,5 s / Anzahl,
+   350–1500 ms, Überblendung ≤ 800 ms über `--sl-fade`; neu geöffnet nur der jüngste, höchstens 8 in der Warteschlange), Bildunterschrift
+   „n Aufnahmen · Rauschen 37 % · Belichtung“ (Anteil des Anfangsrauschens, Start = 100 %); sobald die Endbearbeitung eine Vorschau (`preview`) liefert, hat diese Vorrang.
+   Reduzierte Bewegung → harte Wechsel. Kein Umschalter. Tests `test_live_rauschen.py`, UI `test_live_stack_emerges_from_noise`.
    UI: Regler unter dem Viewer, Standard = fertiges Bild, `viewer.setSrc` tauscht das Bild ohne Zoomverlust.
    Schnelles Iterieren: `StackState.load(work/p<id>/stack).result()` → `processing.process(...)` (~10 s), kein Neu-Stacken nötig.
    **Schwaches Signal / M57-Vergleich mit Stellina (2026-10-30):** Lineare Stacks waren gleich gut, die Entwicklung schlechter.
@@ -807,6 +851,9 @@ oder als verschwunden behandelt. Gelöscht werden sie nie (`_is_upload`). Wieder
 Master-Kalibrierung: `CalibrationLibrary._cached` merkt je Pfadliste den zuletzt gebauten Master (`<tag>_<hash>.ref`) – ohne erreichbare
 Quelle (keine Änderungszeit für den Schlüssel) wird er weiter genutzt; Bauen/Lesen unter `lock` (parallele Analyse-Threads).
 Test: `tests/test_import_in_place.py`.
+**Versteckte Einträge** (seit 0.46.2, `core/hidden.py` → `hidden_entry`): Name mit „.“ (Stellina-Platte: `.thumbnail`, `.webaxs_*`, `.webview` erschienen als
+„Fertige Bilder · neu“) und unter Windows Attribut „versteckt“ (bei Dateien auch „System“) fallen in `library._walk`, `scanner.list_fits`,
+Ordnerdialog/Suche und Upload (Server + `droppedFiles`/`upload` im Browser) weg; ein bewusst gewählter Startordner selbst wird gelesen. Test `test_versteckt.py`.
 UI-Filter (seit 0.21.0, eine Leiste über der Liste): Zustand als Reiter (`LIB_TABS`, Standard „Offen“ = `n_new > 0`), Art/Format als `.menu`-Mehrfachauswahl,
 localStorage `af.library.filter` (`{tab, kind, ext}`); Formate je Gruppe aus `library.file_formats` → `groups[].exts` (`{"fits": 141}`);
 „Alle neuen“ (Dreifach-Kästchen) und Import wirken nur auf sichtbare Gruppen. Beim ersten Laden sind Gruppen mit Neuem vorgewählt (wie vor 0.21.0).
@@ -889,6 +936,9 @@ HR = ZHR · sin(Radiantenhöhe) · r^(Grenzgröße − 6,5), sporadisch 2 + 10·
 Ort aus `/api/sites/resolve` (sonst 50° N, Länge aus der Zeitzone). Alle 15 s Poisson-Ziehung mit Rate HR/5; Strom-Meteore fliegen vom Radianten weg
 (Blick Süd), Tempo/Länge/Farbe aus v. `info()` liefert den Text unter Darstellung. `localStorage af.ui.meteors`, aus bei reduzierter Bewegung und
 ohne Stil. Test: `test_meteors.py` (Geminiden-/Perseidenmaximum, Tag, Apex morgens > abends, Radiant unter dem Horizont).
+**Kreisel** (seit 0.46.2, Nutzerbefund: vier verschieden schnelle auf der Objektseite): alle über das Token `--spin` (`animation: var(--spin)`),
+keine doppelten im Inhalt. Objektseite bei laufendem Auftrag: Kreisel nur in der Auftragsanzeige oben (`showJobPill`, bleibt immer – Nutzerwunsch)
+und `.sl-pulse` in der Statuszeile; `.sl-orbit` ist ein ruhiger Platzhalter, „Läuft …“ ohne `.busy`. Test `test_spinners_on_running_object_page`.
 **Rückmeldung** (seit 0.24.0, Nutzerwunsch „responsiver“, Ende von `style.css`, gilt für alle Stile): Drücken = `scale(.94–.985)` in 120 ms, nur
 transform/opacity/Farben. `api()` merkt den zuletzt gedrückten Knopf (`lastPress`, ≤ 0,6 s) und setzt bei schreibenden Anfragen `.pending`
 (gesperrt, Kreisel nach 150 ms über `::before/::after`) – `.btn` darf daher keine eigenen `::before/::after` bekommen. Aufwendige Animationen nur für echte Prozesse (`viz.js`, als „Schema“
@@ -951,4 +1001,4 @@ Tests und Beispiele nutzen erfundene Orte/Pfade; Screenshots nur mit maskierten 
 ## Grenzen / mögliche nächste Schritte
 Keine Mosaike (Stackfläche = Referenzbild), kein echtes Drizzle (2× interpoliert), keine Planeten-/Mond-Modi (Kometenmodus seit 0.22.0, nur ein Band), kleiner eingebauter Katalog
 (großer nur mit ASTAP-`deep_sky.csv`), Dockerfile (ASTAP-Download) noch nicht real gebaut/getestet, kurze Spuren (< ~120 px) nur per Clipping,
-GraXpert/StarNet nicht im Docker-Image, keine Verzerrungskorrektur, keine GPU, waagerechte Hintergrundstreifen bei NGC 1579 (Stack).
+GraXpert/StarNet nicht im Docker-Image, Verzerrungskorrektur nur Polynom 2. Ordnung, keine GPU, waagerechte Hintergrundstreifen bei NGC 1579 (Stack).

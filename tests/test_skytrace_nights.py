@@ -186,9 +186,10 @@ def test_nights_api_groups_and_applied(tmp_path, monkeypatch):
         groups = {g["night"]: g["observations"] for g in json.loads((home / "standortsuche-gruppen.json").read_text(encoding="utf-8"))}
         assert sorted(o["run"] for o in groups[NIGHT]) == ["2026-11-01_10-00-00-000001", "2026-11-03_10-00-00-000001"]
         assert [o["folder"] for o in groups["2024-07-05"]] == ["obs"]
-        for _ in range(100):
+        deadline = time.time() + 60                    # Unterprozess startet unter Last (xdist) langsam
+        while True:
             d = c.get("/api/skytrace/sitesearch/nights").json()
-            if d["job"]["state"] != "running":
+            if d["job"]["state"] != "running" or time.time() > deadline:
                 break
             time.sleep(0.05)
         assert d["job"]["state"] == "done" and d["result"]["radius_km"] == 5.0

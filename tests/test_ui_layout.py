@@ -319,6 +319,109 @@ def test_live_processing_is_compact_and_updates_in_place(server, browser, size, 
     assert not errors, errors
 
 
+SPINNING = """() => [...document.querySelectorAll('*')].filter(el => /(^|, )spin(,|$)/.test(getComputedStyle(el).animationName)
+  && el.checkVisibility({opacityProperty: true, visibilityProperty: true})).map(el => el.className.baseVal ?? el.className)"""
+
+
+def test_spinners_on_running_object_page(server, browser):
+    """Objektseite während eines Auftrags: nur Auftragsanzeige oben und Statuszeile drehen sich, im selben Tempo
+    (Nutzerbefund: vier Kreisel, alle verschieden schnell – Bildmitte und „Läuft …“ waren zu viel)."""
+    base, pid = server
+    page = browser.new_page(viewport={'width': 1440, 'height': 900})
+    errors = []
+    page.on('pageerror', lambda e: errors.append(str(e)))
+    job = {'id': 999, 'state': 'running', 'progress': .1, 'stage': 'Analyse', 'message': 'Analyse'}
+
+    def project_response(route):
+        response = route.fetch()
+        data = response.json()
+        data['job'], data['live'] = job, {'job': 999, 'steps': [{'stage': 'Analyse', 'label': 'Analyse', 'done': False}]}
+        route.fulfill(response=response, json=data)
+
+    def status_response(route):
+        response = route.fetch()
+        route.fulfill(response=response, json={**response.json(), 'busy': 1})
+
+    activity = [{'key': 'stacking:999', 'module': 'stacking', 'title': 'Testobjekt', 'kind': 'Verarbeitung', 'detail': '',
+                 'state': 'running', 'progress': .1, 'stage': 'Analyse', 'started': 0, 'finished': None, 'href': f'#/p/{pid}'}]
+    page.route(f'**/api/stacking/projects/{pid}', project_response)
+    page.route('**/api/status', status_response)
+    page.route('**/api/activity*', lambda route: route.fulfill(json=activity))
+    page.goto(f'{base}/#/p/{pid}/bild')
+    page.wait_for_selector('.sl-pulse')
+    page.wait_for_function("!document.querySelector('#jobpill').classList.contains('idle')")
+    page.wait_for_selector('#jobpill .spinner')
+    assert sorted(page.evaluate(SPINNING)) == ['sl-pulse', 'spinner']
+    assert page.locator('#jobpill .spinner').is_visible() and page.locator('#run').is_disabled()
+    # gemeinsames Tempo: alle Kreisel über dasselbe Token
+    for sel in ('.sl-pulse', '#jobpill .spinner'):
+        assert page.evaluate(f"getComputedStyle(document.querySelector('{sel}')).animationDuration") == '0.9s'
+    page.close()
+    assert not errors, errors
+
+
+@pytest.mark.parametrize('size', ['handy', 'desktop'])
+def test_live_stack_emerges_from_noise(server, browser, size):
+    """Beim Stacken: neue echte Zwischenstände werden nacheinander überblendet, mit Aufnahmenzahl und Rauschmaß;
+    die Endbearbeitung (preview) hat danach Vorrang. Reduzierte Bewegung: harte Wechsel."""
+    from playwright.sync_api import Error as PlaywrightError
+    base, pid = server
+    w, h = SIZES[size]
+    state = {'k': 4, 'rid': None, 'preview': None, 'ready': False}
+    seq = [1, 2, 3, 4, 5, 6, 8, 10, 12, 15]
+
+    def project_response(route):
+        try:
+            response = route.fetch()
+            data = response.json()
+        except PlaywrightError:                                           # Seite schon zu: nichts mehr auszuliefern
+            return
+        state['rid'] = data['results'][0]['id']
+        if state['ready']:                                                # erst wenn die Ansicht steht: je Abruf 3 neue Stände
+            state['k'] = min(state['k'] + 3, len(seq))
+        frames = [{'name': f'1-f{i + 1}.jpg', 'n': n, 'exposure': n * 10, 'band': None, 'noise': round(n ** -0.5, 3)}
+                  for i, n in enumerate(seq[:state['k']])]
+        data['job'] = {'id': 997, 'state': 'running', 'progress': .4, 'stage': 'Stacking', 'message': 'Stacking'}
+        data['live'] = {'job': 997, 'run': '1', 'frames': frames, 'preview': state['preview'], 'n': frames[-1]['n'],
+                        'steps': [{'stage': 'Stacking', 'label': 'Stacking', 'done': False}]}
+        try:
+            route.fulfill(response=response, json=data)
+        except PlaywrightError:
+            pass
+
+    def live_file(route):
+        try:
+            route.fulfill(response=route.fetch(url=f"{base}/api/stacking/results/{state['rid']}/jpg"))
+        except PlaywrightError:
+            pass
+
+    for reduced in ('no-preference', 'reduce'):
+        state.update(k=4, preview=None, ready=False)
+        context = browser.new_context(viewport={'width': w, 'height': h}, reduced_motion=reduced)    # je Durchlauf eigener Kontext: nichts Verwaistes zieht den nächsten mit
+        page = context.new_page()
+        errors, shown = [], []
+        page.on('pageerror', lambda e: errors.append(str(e)))
+        page.on('request', lambda r: shown.append(r.url.rsplit('/', 1)[-1]) if '/live/1-f' in r.url else None)
+        page.route(f'**/api/stacking/projects/{pid}', project_response)
+        page.route(f'**/api/stacking/projects/{pid}/live/*', live_file)
+        page.goto(f'{base}/#/p/{pid}/bild')
+        page.wait_for_selector('.sl-image.on[src$="1-f4.jpg"]')        # neu geöffnet: nur der jüngste Stand
+        assert '1-f1.jpg' not in shown                                    # nichts nachgeholt
+        state['ready'] = True
+        page.wait_for_function("document.querySelector('.sl-caption').textContent.includes('Rauschen 50 %')", timeout=20000)   # 4 Aufnahmen: 1/√4
+        assert '−' not in page.inner_text('.sl-caption')                  # Anteil des Anfangsrauschens, kein Minus
+        page.wait_for_function("document.querySelector('.sl-caption').textContent.includes('15 Aufnahmen')", timeout=20000)
+        assert {'1-f5.jpg', '1-f6.jpg', '1-f7.jpg'} <= set(shown)        # mehrere echte Stände je Abruf nacheinander
+        dur = page.evaluate("getComputedStyle(document.querySelector('.sl-image')).transitionDuration")
+        assert (dur == '0s') == (reduced == 'reduce')
+        assert not page.evaluate(FIND_OVERFLOW)
+        state['preview'] = '1-9.jpg'                                      # Endbearbeitung: ihre Vorschau gewinnt
+        page.wait_for_selector('.sl-image.on[src$="1-9.jpg"]')
+        page.unroute_all(behavior='ignoreErrors')                         # keine neuen Weiterleitungen mehr, Fehler laufender Abrufe egal
+        context.close()
+        assert not errors, errors
+
+
 def test_switch_rows_toggle(server, browser):
     """Ein Klick auf die Zeile schaltet ihren Schalter – auch wenn die Zeile noch eine Auswahl enthält (Ältere Versionen)."""
     base, _ = server

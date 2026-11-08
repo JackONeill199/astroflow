@@ -2,19 +2,20 @@
 .stack-live { min-width: 0; animation: sl-enter .45s ease both }
 .sl-picture { position: relative; width: 100%; aspect-ratio: 16/10; max-height: min(62vh, 40rem); overflow: hidden; border-radius: var(--r-sm); background: #080d19;
   background-image: none }
-.sl-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity .8s ease }
+.sl-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity var(--sl-fade, .8s) ease }
 .sl-image.on { opacity: 1 }
 .sl-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 1.125rem;
   color: #a9b1ce; font-size: 0.8125rem; transition: opacity .5s }
 .has-picture .sl-wait { opacity: 0; pointer-events: none }
-.sl-orbit { width: 2.25rem; height: 2.25rem; border: 1px solid #b099ff30; border-top-color: #b099ff; border-radius: 50%; animation: sl-turn 2.6s linear infinite }
+/* ruhiger Platzhalter – der Fortschritt steht in der Statuszeile darunter (dort der einzige Kreisel) */
+.sl-orbit { width: 2.25rem; height: 2.25rem; border: 1px dashed #b099ff40; border-radius: 50% }
 .sl-badge { position: absolute; top: 0.875rem; left: 0.875rem; border-radius: 0.3125rem; padding: 0.3125rem 0.5625rem; background: #12182ddd;
   color: #d8d0fa; font-size: 0.6875rem; letter-spacing: .07em; backdrop-filter: blur(0.5rem) }
 .sl-caption { position: absolute; inset: auto 0 0; display: flex; justify-content: space-between; gap: 0.625rem; padding: 1.625rem 1rem 0.8125rem;
   background: linear-gradient(transparent, #060912d9); color: #dbe0f3; font-size: 0.75rem; font-variant-numeric: tabular-nums }
 .sl-status { position: relative; display: flex; align-items: center; gap: 0.5625rem; min-height: 2.1875rem; padding: 0.4375rem 0; font-size: 0.75rem }
 .sl-pulse { width: 0.6875rem; height: 0.6875rem; border: 1px solid var(--acc); border-right-color: transparent; border-radius: 50%;
-  flex-shrink: 0; animation: sl-turn 1.8s linear infinite }
+  flex-shrink: 0; animation: var(--spin) }
 .sl-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; flex: 1 }
 .sl-percent { color: var(--mut); flex-shrink: 0 }
 .sl-details { flex-shrink: 0 }
@@ -22,6 +23,7 @@
 .sl-details summary::-webkit-details-marker { display: none }
 .sl-pop { position: absolute; bottom: 2.5rem; right: 0; z-index: 8; width: min(26.25rem, 100%); padding: 1rem; background: var(--bg2);
   border: 1px solid var(--line); border-radius: var(--r-sm); box-shadow: 0 0.625rem 2.1875rem #0006 }
+.sl-details:not([open]) .sl-pop { display: none }   /* sonst hat das Popup im geschlossenen Zustand in Chrome einen Kasten */
 .sl-pop ol { list-style: none; padding: 0; margin: 0.75rem 0; max-height: 15rem; overflow-y: auto }
 .sl-pop li { display: flex; align-items: baseline; gap: 0.5625rem; margin: 0.5625rem 0; color: var(--mut) }
 .sl-pop li > div { min-width: 0; display: flex; flex-direction: column; overflow-wrap: anywhere }
@@ -32,8 +34,7 @@
 .sl-track { height: 0.1875rem; border-radius: 0.1875rem; overflow: hidden; background: var(--line) }
 .sl-track i { display: block; height: 100%; background: linear-gradient(90deg, var(--acc), #bd98f8); transition: width 1s ease }
 .sl-track.indet i { animation: sl-wait 2.8s ease-in-out infinite }
-.sl-queued .sl-pulse, .sl-error .sl-pulse, .sl-error .sl-orbit { animation: none }
-@keyframes sl-turn { to { transform: rotate(360deg) } }
+.sl-queued .sl-pulse, .sl-error .sl-pulse { animation: none }
 @keyframes sl-wait { 0%, 100% { transform: translateX(-100%) } 50% { transform: translateX(350%) } }
 @keyframes sl-enter { from { opacity: .5 } to { opacity: 1 } }
 @media (max-width: 480px) { .sl-status { gap: 0.4375rem; font-size: 0.6875rem } .sl-caption { padding-inline: 0.75rem; font-size: 0.6875rem } }

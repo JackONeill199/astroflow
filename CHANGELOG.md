@@ -3,7 +3,7 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
-## 0.47.0 – 08.11.2026
+## 0.49.0 – 08.11.2026
 
 ### Neu
 - **Satellitenspuren werden beim Stacken gezielt ausgeblendet** statt nur weggeclippt. AstroFlow sucht in jeder Aufnahme
@@ -17,6 +17,46 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   Punkte auf der Spur zählten als Sterne und verfälschten die Sterngröße. Die Spur wird jetzt vor der Sternerkennung ausgeblendet,
   solche Aufnahmen gehen normal in den Stack ein. Bereits analysierte Aufnahmen bleiben, wie sie sind (kein automatisches
   Neu-Analysieren); beim Stacken werden ihre Spuren trotzdem gesucht und ausgeblendet.
+
+## 0.48.0 – 08.11.2026
+
+### Neu
+- **Verzerrungskorrektur beim Stacken** (standardmäßig an; Einstellungen → Bilder → „Verzerrungskorrektur beim Stacken“,
+  je Objekt unter Optionen abweichend „An“/„Aus“, sonst „Wie global“): Wandert das Bildfeld
+  zwischen den Aufnahmen über die Optik (z. B. Nachzentrieren bei Smart-Teleskopen), richtet AstroFlow jede Aufnahme zusätzlich
+  mit einem Polynom 2. Ordnung aus allen erkannten Sternen aus. Das geschieht nur, wenn die Sterne das Bild bis in die Ecken
+  abdecken und der Restfehler deutlich sinkt – sonst bleibt es beim bisherigen Verschieben und Drehen. Sterne am Bildrand werden
+  dadurch runder. Wirkt auf neu gestackte Aufnahmen; bestehende Objekte werden nicht automatisch neu gestackt – passt ein Stack
+  nicht zur aktuellen Einstellung, weisen die Optionen des Objekts auf „Komplett neu stacken“ hin. Die Bilddetails zeigen, wie viele
+  Aufnahmen korrigiert wurden und wie stark der Restfehler sank. Auf der Grafikkarte und der CPU.
+
+## 0.47.1 – 08.11.2026
+
+### Behoben
+- **Sage:** Schlug eine Bildbestimmung fehl und ließ sich die Upload- oder Vorschaudatei nicht löschen (z. B. gesperrt), blieb der Auftrag
+  unter Umständen auf „läuft“ stehen. Aufgeräumt wird jetzt vor der Fehlermeldung, Löschfehler werden nur protokolliert.
+- **Sage:** Beim gleichzeitigen Recherchieren eines Objekts (Hintergrund-Verknüpfung und eigener Auftrag) konnten Entfernungsmessungen
+  kurzzeitig unvollständig erscheinen.
+
+## 0.47.0 – 08.11.2026
+
+### Neu
+- **Das Bild entsteht aus dem Rauschen:** Während des Stackens zeigt die Live-Ansicht echte Zwischenstände des Stacks – am Anfang
+  nach fast jeder Aufnahme (1, 2, 3, 4, 5, 6, 8 …), später seltener – und blendet sie nacheinander weich über. Weil die Helligkeitskurve
+  über den ganzen Lauf gleich bleibt, sieht man das Rauschen tatsächlich sinken, Sterne und Nebel treten hervor. Unter dem Bild steht,
+  aus wie vielen Aufnahmen der Stand besteht und wie viel vom Rauschen der ersten Aufnahme noch übrig ist (z. B. „Rauschen 28 %“). Nichts davon wird
+  erfunden; das Stacken wird dadurch nicht spürbar langsamer.
+
+## 0.46.2 – 08.11.2026
+
+### Behoben
+- **Versteckte Dateien und Ordner** (Name beginnt mit „.“, unter Windows Attribut „versteckt“) werden nicht mehr angezeigt
+  oder eingelesen: „Hauptordner durchsuchen“, Ordnerdialog samt Suche, Eingangsordner und Upload. Auf Stellina-Platten
+  erschienen sonst `.thumbnail`, `.webaxs_*` und `.webview` als vorgewählte „Fertige Bilder · neu“. Schon importierte
+  Bilder bleiben unverändert.
+- **Weniger Ladekreise:** Auf der Objektseite drehen sich während eines Auftrags nur noch die Auftragsanzeige oben und
+  die Statuszeile unter dem Bild. Die Mitte zeigt einen ruhigen Platzhalter, „Läuft …“ ist statisch. Alle Kreisel
+  drehen app-weit im selben Tempo.
 
 ## 0.46.1 – 08.11.2026
 

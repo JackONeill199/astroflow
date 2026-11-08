@@ -38,6 +38,22 @@ def test_warp_matches_cpu(eng):
         assert d.max() < 0.05 * 5 and d.mean() < 1e-3, (scale, d.max(), d.mean())
 
 
+def test_warp_poly_matches_cpu(eng):
+    """Verzerrungskorrektur: Polynom 2. Ordnung als Abbildung, gleiche Grenzen wie beim affinen Warp."""
+    img = _sky(np.random.default_rng(4))
+    H, W = img.shape[1:]
+    s = 0.5 * float(np.hypot(W, H))
+    P = {"c": [[(W - 1) / 2 + 7.3, s * 0.9998, -s * 0.02, 1.5, -0.8, 0.6],
+               [(H - 1) / 2 - 4.6, s * 0.02, s * 0.9998, -0.7, 1.1, 0.9]], "ctr": [(W - 1) / 2, (H - 1) / 2], "s": s}
+    for scale in (1, 2):
+        shape = (H * scale, W * scale)
+        a, va = registration.warp(img, None, shape, scale, poly=P)
+        b, vb = registration.warp(img, None, shape, scale, gpu=eng, poly=P)
+        assert np.array_equal(va, vb) and not eng.broken
+        d = np.abs(a - b)[:, va]
+        assert d.max() < 0.05 * 5 and d.mean() < 1e-3, (scale, d.max(), d.mean())
+
+
 def test_accumulate_matches_cpu(eng):
     rng = np.random.default_rng(2)
     base = _sky(rng)

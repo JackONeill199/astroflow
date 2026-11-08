@@ -350,11 +350,16 @@ def transform(lines: list, M: np.ndarray, scale: int = 1) -> list:
     return out
 
 
-def band(shape: tuple, lines: list, pad: float = 0.0, ends: float | None = None) -> np.ndarray:
-    """Pixel mit Abstand ≤ Halbbreite + `pad` zur Strecke (Enden um `ends`, Standard Halbbreite + pad, verlängert)."""
+def band(shape: tuple, lines: list, pad: float = 0.0, ends: float | None = None, poly: dict | None = None,
+         scale: int = 1, ref_lines: list | None = None) -> np.ndarray:
+    """Pixel mit Abstand ≤ Halbbreite + `pad` zur Strecke (Enden um `ends`, Standard Halbbreite + pad, verlängert).
+    Ohne `poly`: Linien, Halbbreite, pad und ends in Pixeln von `shape`. Mit `poly` (Verzerrungskorrektur, Polynom
+    Referenz → Aufnahme wie in `registration.warp`): Linien und Maße in **Aufnahme**-Pixeln; jedes Ausgabepixel im Umfeld
+    (`ref_lines` = dieselben Linien grob über M im Ausgaberaster) wird mit demselben Polynom in die Aufnahme abgebildet
+    und dort geprüft – die Maske sitzt also genau dort, wohin der Warp die Spur legt."""
     H, W = shape[-2:]
     m = np.zeros((H, W), bool)
-    for l in lines:
+    for i, l in enumerate(lines):
         x1, y1, x2, y2, hw = l[:5]
         r = hw + pad
         e = r if ends is None else ends
@@ -365,18 +370,29 @@ def band(shape: tuple, lines: list, pad: float = 0.0, ends: float | None = None)
         d /= L
         x1, y1, x2, y2 = x1 - d[0] * e, y1 - d[1] * e, x2 + d[0] * e, y2 + d[1] * e
         L += 2 * e
-        xa, xb = int(max(0, np.floor(min(x1, x2) - r))), int(min(W, np.ceil(max(x1, x2) + r) + 1))
-        ya, yb = int(max(0, np.floor(min(y1, y2) - r))), int(min(H, np.ceil(max(y1, y2) + r) + 1))
+        if poly is None:
+            bx, by, rr = (x1, x2), (y1, y2), r
+        else:                                          # Umfeld aus der groben Lage; das Polynom korrigiert ≤ 4 px
+            q = ref_lines[i]
+            bx, by, rr = (q[0], q[2]), (q[1], q[3]), (r + e + 8) * scale
+        xa, xb = int(max(0, np.floor(min(bx) - rr))), int(min(W, np.ceil(max(bx) + rr) + 1))
+        ya, yb = int(max(0, np.floor(min(by) - rr))), int(min(H, np.ceil(max(by) + rr) + 1))
         if xa >= xb or ya >= yb:
             continue
-        yy, xx = np.mgrid[ya:yb, xa:xb].astype(np.float32)
+        yy, xx = np.mgrid[ya:yb, xa:xb].astype(np.float64)
+        if poly is not None:
+            from .registration import _terms, poly_out
+            c, ctr, sc = poly_out(poly, scale)
+            T = _terms((xx - ctr[0]) / sc, (yy - ctr[1]) / sc)
+            xx, yy = T @ c[0], T @ c[1]
         u = (xx - x1) * d[0] + (yy - y1) * d[1]
         v = np.abs(-(xx - x1) * d[1] + (yy - y1) * d[0])
         m[ya:yb, xa:xb] |= (v <= r) & (u >= 0) & (u <= L)
     return m
 
 
-def confirm(lum: np.ndarray, ref: np.ndarray | None, valid: np.ndarray, line: list, noise: float) -> bool:
+def confirm(lum: np.ndarray, ref: np.ndarray | None, valid: np.ndarray, line: list, noise: float,
+            poly: dict | None = None, scale: int = 1, ref_line: list | None = None) -> bool:
     """Ist das Band in dieser Aufnahme neu? Überschuss gegen die Vergleichsaufnahme (bisheriger Stack bzw. Median der
     übrigen Aufnahmen) muss signifikant sein **und** mindestens `NEW_FRACTION` des eigenen Bandsignals (gegen die Umgebung)
     ausmachen: eine Spur fehlt im Vergleich ganz, ein statischer Nebelfaden ist dort fast gleich hell – nur in schärferen
@@ -384,12 +400,14 @@ def confirm(lum: np.ndarray, ref: np.ndarray | None, valid: np.ndarray, line: li
     if ref is None:
         return True
     x1, y1, x2, y2, hw = line[:5]
+    k = float(scale) if poly is not None else 1.0       # Ausgabepixel je Linien-Pixel (mit Polynom: Aufnahme-Pixel)
     fin = valid & np.isfinite(ref)
-    core = band(lum.shape, [[x1, y1, x2, y2, max(1.0, hw * 0.6)]], ends=0.0) & fin
+    kw = dict(ends=0.0, poly=poly, scale=scale, ref_lines=[ref_line] if ref_line is not None else None)
+    core = band(lum.shape, [[x1, y1, x2, y2, max(1.0 / k, hw * 0.6)]], **kw) & fin
     n = int(core.sum())
     if n < 20:
         return True
-    side = band(lum.shape, [[x1, y1, x2, y2, hw + 8]], ends=0.0) & ~band(lum.shape, [[x1, y1, x2, y2, hw + 3]], ends=0.0) & fin
+    side = band(lum.shape, [[x1, y1, x2, y2, hw + 8 / k]], **kw) & ~band(lum.shape, [[x1, y1, x2, y2, hw + 3 / k]], **kw) & fin
     excess = float(np.mean((lum - ref)[core]))
     own = float(np.mean(lum[core]) - np.median(lum[side])) if side.sum() >= 20 else excess
     # Nachbarpixel sind nach Debayer/Interpolation korreliert: Rauschen des Mittels konservativ über √(n/9)

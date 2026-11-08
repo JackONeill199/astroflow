@@ -197,7 +197,7 @@ def test_demo_static_filament_not_masked(tmp_path, monkeypatch):
 
 
 def test_old_metrics_without_trail_lines_detected_while_stacking(tmp_path, monkeypatch):
-    """Vor 0.47 analysierte Aufnahmen haben kein `trail_lines`: beim Stacken im geladenen Bild nachsuchen."""
+    """Vor 0.49 analysierte Aufnahmen haben kein `trail_lines`: beim Stacken im geladenen Bild nachsuchen."""
     real = quality.analyze_frame
 
     def old(raw, bayer):
@@ -207,3 +207,30 @@ def test_old_metrics_without_trail_lines_detected_while_stacking(tmp_path, monke
     monkeypatch.setattr(quality, "analyze_frame", old)
     _, db, st = _demo_stack(tmp_path, "alt")
     assert st.meta["trails"]["frames"] == 1
+
+
+@pytest.mark.parametrize("scale", [1, 2])
+def test_band_follows_polynomial_warp(scale):
+    """Verzerrungskorrektur: die Maske muss dort liegen, wohin registration.warp mit demselben Polynom die Spur legt."""
+    from astroflow.modules.stacking import registration
+    H, W, s = 300, 400, 250.0
+    ctr = [200.0, 150.0]
+    c = np.zeros((2, 6))
+    c[0, :3] = [205.0, s * 0.999, -s * 0.03]
+    c[1, :3] = [143.0, s * 0.03, s * 0.999]
+    c[0, 3], c[1, 5], c[0, 4] = 3.0, -2.5, 1.5                         # Verzeichnung, am Rand einige Pixel
+    P = {"c": c.tolist(), "ctr": ctr, "s": s}
+    A = np.array([[c[0, 1] / s, c[0, 2] / s, 0], [c[1, 1] / s, c[1, 2] / s, 0], [0, 0, 1]])
+    A[0, 2] = c[0, 0] - A[0, 0] * ctr[0] - A[0, 1] * ctr[1]
+    A[1, 2] = c[1, 0] - A[1, 0] * ctr[0] - A[1, 1] * ctr[1]
+    M = np.linalg.inv(A)                                                # grobe Lage (Ähnlichkeit/affin)
+    line = [20.0, 40.0, 380.0, 260.0, 2.0]
+    fm = trails.band((H, W), [line], pad=1.5).astype(np.float32)
+    w, valid = registration.warp(fm[None], np.eye(3), (H * scale, W * scale), scale, order=1, poly=P)
+    want = (w[0] > 0.5) & valid
+    ref = trails.transform([line], M, scale)
+    got = trails.band((H * scale, W * scale), [line], pad=1.5, poly=P, scale=scale, ref_lines=ref) & valid
+    naive = trails.band((H * scale, W * scale), ref, pad=1.5 * scale) & valid
+    iou = lambda a, b: (a & b).sum() / max((a | b).sum(), 1)
+    assert iou(want, got) > 0.93                                        # gemessen 0,96 / 0,95
+    assert iou(want, got) > iou(want, naive) + 0.05                     # nur über M: 0,85
