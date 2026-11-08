@@ -503,7 +503,7 @@ async function projectView(el, id, tab = 'bild') {
           ${r && !p.imported ? `<span class="chip">${dur(r.exposure)} integriert</span>` : ''}
           ${p.coords?.source === 'solve' ? `<span class="chip acc" title="Koordinaten per Plate-Solving bestimmt">${icon('star')}Plate-Solved</span>` : ''}
           ${p.comet ? '<span class="chip acc" title="Zwei Stacks: auf die Sterne und auf den Kometenkern">Kometenmodus</span>' : ''}</div></div>
-      <div class="page-actions">${p.imported ? '' : `<button class="btn ${busy ? 'busy' : ''}" id="run" ${busy ? 'disabled' : ''} title="${r ? 'Neue Aufnahmen und Nächte nachstacken – der bisherige Stack bleibt erhalten' : ''}">${icon(busy ? 'refresh' : 'play')}${busy ? 'Läuft …' : r ? 'Nachstacken' : 'Verarbeiten'}</button>`}
+      <div class="page-actions">${p.imported ? '' : `<button class="btn" id="run" ${busy ? 'disabled' : ''} title="${r ? 'Neue Aufnahmen und Nächte nachstacken – der bisherige Stack bleibt erhalten' : ''}">${icon(busy ? 'refresh' : 'play')}${busy ? 'Läuft …' : r ? 'Nachstacken' : 'Verarbeiten'}</button>`}
         ${r ? `<div class="menu" id="dl"><button class="btn ghost">${icon('down')}Export${icon('chev')}</button><div class="pop">
           ${p.imported ? `<a href="/api/stacking/results/${r.id}/original">Originaldatei <small>unverändert · ${esc(r.stats.imported.format)}</small></a>` : `<a href="/api/stacking/results/${r.id}/tif">TIFF 16-bit <small>Druck/Bearbeitung</small></a>`}<a href="/api/stacking/results/${r.id}/png">PNG <small>${p.imported ? 'Anzeigeversion' : 'verlustfrei'}</small></a>
           <a href="/api/stacking/results/${r.id}/jpg" download>JPEG <small>zum Teilen</small></a>${p.imported ? '' : `<a href="/api/stacking/results/${r.id}/fits">FITS linear <small>für PixInsight & Co.</small></a>`}</div></div>` : ''}
@@ -1195,7 +1195,9 @@ async function libraryPanel(view) {
   if (st.state !== 'idle') { seen = st.state === 'done' && !st.imported ? false : true; draw(st); if (st.state === 'scanning' || st.state === 'importing') follow(); }
 }
 function upload(files) {
-  files = files.filter(f => IMPORT_FILE.test(f.name));
+  // versteckte Dateien/Ordner (Name mit „.“, z. B. Stellina „.thumbnail/…“, „.webaxs_L/…“) nie hochladen
+  const hidden = f => (f.relPath || f.webkitRelativePath || f.name).split(/[\\/]/).some(p => p.startsWith('.') && p !== '.' && p !== '..');
+  files = files.filter(f => IMPORT_FILE.test(f.name) && !hidden(f));
   // Teleskop-Ordner enthalten oft hunderte kumulative JPEG-Zwischenstände neben den eigentlichen FITS.
   // Bei Rohdaten sind diese kein zusätzlicher Import; ohne Rohdaten genügt die letzte Vorschau je Ordner.
   const observation = f => {

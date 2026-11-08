@@ -13,6 +13,17 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   dadurch runder. Wirkt auf neu gestackte Aufnahmen; für alle „Komplett neu stacken“. Die Bilddetails zeigen, wie viele Aufnahmen
   korrigiert wurden und wie stark der Restfehler sank. Auf der Grafikkarte und der CPU.
 
+## 0.46.2 – 08.11.2026
+
+### Behoben
+- **Versteckte Dateien und Ordner** (Name beginnt mit „.“, unter Windows Attribut „versteckt“) werden nicht mehr angezeigt
+  oder eingelesen: „Hauptordner durchsuchen“, Ordnerdialog samt Suche, Eingangsordner und Upload. Auf Stellina-Platten
+  erschienen sonst `.thumbnail`, `.webaxs_*` und `.webview` als vorgewählte „Fertige Bilder · neu“. Schon importierte
+  Bilder bleiben unverändert.
+- **Weniger Ladekreise:** Auf der Objektseite drehen sich während eines Auftrags nur noch die Auftragsanzeige oben und
+  die Statuszeile unter dem Bild. Die Mitte zeigt einen ruhigen Platzhalter, „Läuft …“ ist statisch. Alle Kreisel
+  drehen app-weit im selben Tempo.
+
 ## 0.46.1 – 08.11.2026
 
 ### Neu

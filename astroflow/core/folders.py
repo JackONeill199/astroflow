@@ -6,6 +6,8 @@ import os
 import string
 from pathlib import Path
 
+from .hidden import hidden_entry
+
 HIDDEN = {"System Volume Information", "$RECYCLE.BIN", "$Recycle.Bin", "Recovery", "Config.Msi"}
 FITS = (".fit", ".fits", ".fts")
 PICTURES = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
@@ -44,8 +46,10 @@ def list_folders(path: str | None) -> dict:
                     break
                 name = e.name
                 try:
+                    if hidden_entry(e):
+                        continue
                     if e.is_dir(follow_symlinks=True):
-                        if not name.startswith((".", "$")) and name not in HIDDEN:
+                        if not name.startswith("$") and name not in HIDDEN:
                             dirs.append(name)
                     else:
                         low = name.lower()
@@ -108,7 +112,8 @@ def search_folders(path: str, q: str, depth: int = SEARCH_DEPTH, limit: int = SE
                             out["truncated"] = True          # Teilergebnis dieses Ordners noch auswerten
                             break
                         try:
-                            if e.is_dir(follow_symlinks=False) and not e.name.startswith((".", "$")) and e.name not in HIDDEN:
+                            if (e.is_dir(follow_symlinks=False) and not e.name.startswith("$") and e.name not in HIDDEN
+                                    and not hidden_entry(e)):
                                 names.append(e.name)
                         except OSError:
                             pass

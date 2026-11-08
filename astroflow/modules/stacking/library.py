@@ -16,6 +16,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from ...core.hidden import hidden_entry
 from . import diskspace, scanner
 from .fits_io import FITS_EXT
 from .picture_import import PICTURE_EXT, SOURCE_LIMIT, import_picture
@@ -27,7 +28,8 @@ SAMPLE = 4                      # Stichprobe je unbekanntem Beobachtungsordner (
 
 def _walk(root: Path):
     """(Ordner, FITS-Dateien, Bilddateien, {Datei: (Größe, mtime_ns)}) je Ordner; Ordner anderer Software (process,
-    stacked …) fallen weg. Größe/Zeit kommen aus dem Verzeichniseintrag – unter Windows ohne weiteren Plattenzugriff
+    stacked …) und versteckte Einträge (Name mit „.“, z. B. Stellina „.thumbnail“/„.webaxs_L“; Windows-Attribut) fallen
+    weg. Größe/Zeit kommen aus dem Verzeichniseintrag – unter Windows ohne weiteren Plattenzugriff
     (einzelnes stat() kostete auf der Stellina-Platte 3,5 ms je Datei)."""
     todo = [root]
     while todo:
@@ -39,6 +41,8 @@ def _walk(root: Path):
             continue
         for e in entries:
             try:
+                if hidden_entry(e):
+                    continue
                 if e.is_dir():
                     # verknüpfte Ordner (Symlink, Windows-Junction) nicht betreten – wie os.walk; ein Link auf einen
                     # Elternordner liefe sonst endlos im Kreis
