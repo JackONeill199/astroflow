@@ -51,7 +51,7 @@ function createStackLive(host, pid) {
   function caption(f) {
     const live = lastLive, c = find('.sl-caption'), n = f?.n ?? live.n, band = f ? f.band : live.band, exp = f?.exposure ?? live.exposure;
     c.children[0].textContent = n != null ? `${fmt(n)} Aufnahmen${band ? ' · Kanal ' + band : ''}` : '';
-    const noise = f?.noise != null && f.n > 1 ? `Rauschen ${f.noise <= 1 ? '−' : '+'}${Math.round(Math.abs(1 - f.noise) * 100)} %` : '';
+    const noise = f?.noise != null && f.n > 1 ? `Rauschen ${Math.round(f.noise * 100)} %` : '';   // Anteil des Anfangsrauschens (Start = 100 %)
     c.children[1].textContent = [noise, exp != null ? dur(exp) + ' integriert' : ''].filter(Boolean).join(' · ');
     if (fallback && !f && !live.preview) c.children[0].textContent = 'Letzte fertige Version';
   }

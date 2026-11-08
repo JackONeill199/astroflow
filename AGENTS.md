@@ -275,7 +275,7 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    `state.json` → `frames` (letzte `FRAMES_KEEP` 12, Dateien `<lauf>-f<n>.jpg`, `/live/{name}` erlaubt `\d+-f?\d+\.jpg`; `picture()` räumt
    nur `<lauf>-<n>.jpg` auf). Browser: neue Stände werden über das Abrufintervall verteilt nacheinander überblendet (Takt 2,5 s / Anzahl,
    350–1500 ms, Überblendung ≤ 800 ms über `--sl-fade`; neu geöffnet nur der jüngste, höchstens 8 in der Warteschlange), Bildunterschrift
-   „n Aufnahmen · Rauschen −63 % · Belichtung“; sobald die Endbearbeitung eine Vorschau (`preview`) liefert, hat diese Vorrang.
+   „n Aufnahmen · Rauschen 37 % · Belichtung“ (Anteil des Anfangsrauschens, Start = 100 %); sobald die Endbearbeitung eine Vorschau (`preview`) liefert, hat diese Vorrang.
    Reduzierte Bewegung → harte Wechsel. Kein Umschalter. Tests `test_live_rauschen.py`, UI `test_live_stack_emerges_from_noise`.
    UI: Regler unter dem Viewer, Standard = fertiges Bild, `viewer.setSrc` tauscht das Bild ohne Zoomverlust.
    Schnelles Iterieren: `StackState.load(work/p<id>/stack).result()` → `processing.process(...)` (~10 s), kein Neu-Stacken nötig.

@@ -395,7 +395,8 @@ def test_live_stack_emerges_from_noise(server, browser, size):
         page.wait_for_selector('.sl-image.on[src$="1-f4.jpg"]')        # neu geöffnet: nur der jüngste Stand
         assert '1-f1.jpg' not in shown                                    # nichts nachgeholt
         state['ready'] = True
-        page.wait_for_function("document.querySelector('.sl-caption').textContent.includes('Rauschen −')", timeout=20000)
+        page.wait_for_function("document.querySelector('.sl-caption').textContent.includes('Rauschen 50 %')", timeout=20000)   # 4 Aufnahmen: 1/√4
+        assert '−' not in page.inner_text('.sl-caption')                  # Anteil des Anfangsrauschens, kein Minus
         page.wait_for_function("document.querySelector('.sl-caption').textContent.includes('15 Aufnahmen')", timeout=20000)
         assert {'1-f5.jpg', '1-f6.jpg', '1-f7.jpg'} <= set(shown)        # mehrere echte Stände je Abruf nacheinander
         dur = page.evaluate("getComputedStyle(document.querySelector('.sl-image')).transitionDuration")
