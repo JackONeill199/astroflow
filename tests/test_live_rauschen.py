@@ -102,7 +102,10 @@ def test_frames_capped_and_previews_keep_frames(tmp_path):
     for _ in range(3):
         run.picture(X[0], force=True)                               # Endbearbeitung räumt nur ihre Vorschauen auf
     assert all((run.path / n).is_file() for n in names)
-    assert run.data['n'] == live.FRAMES_KEEP + 3                    # Vorschau ohne n überschreibt nichts
+    assert 'n' not in run.data                                     # Gesamtangaben gehören der Endbearbeitung
+    run.data.update(n=99, exposure=990, band=None)                 # wie Pipeline.develop
+    run.stack_frame(X[0], n=3)                                     # verspäteter Zwischenstand …
+    assert run.data['n'] == 99 and run.data['exposure'] == 990     # … ändert sie nicht
 
 
 def test_pipeline_frames_from_noise(tmp_path):

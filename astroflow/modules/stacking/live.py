@@ -247,8 +247,8 @@ class LiveRun:
             for old in frames[:-FRAMES_KEEP]:
                 (self.path / old['name']).unlink(missing_ok=True)
             self.data['frames'] = frames[-FRAMES_KEEP:]
-            if not self.data.get('preview'):          # sonst gehören n/Belichtung schon der Endbearbeitung
-                self.data.update(n=int(n), exposure=exposure, band=band)
+            # n/Belichtung/Kanal stehen je Stand in `frames`; die Gesamtangaben gehören der Endbearbeitung (develop setzt sie,
+            # ein verspätet fertiger Zwischenstand darf sie nicht überschreiben)
             self._write()
 
 
