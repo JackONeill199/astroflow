@@ -510,7 +510,8 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.get('/projects/{pid}/live/{name}')
     def live_picture(pid: int, name: str):
-        if not re.fullmatch(r'\d+-\d+\.jpg', name):
+        # Vorschau bzw. Zwischenstand (…-f<n>.jpg); Länge begrenzt, damit das Muster nie lange prüft
+        if len(name) > 48 or not re.fullmatch(r'\d{1,24}-(?:f\d{1,9}|\d{1,9})\.jpg', name):
             raise HTTPException(404)
         path = eng.s.work_dir / f'p{pid}' / 'live' / name
         if not path.is_file():

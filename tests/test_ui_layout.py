@@ -360,6 +360,54 @@ def test_spinners_on_running_object_page(server, browser):
     assert not errors, errors
 
 
+@pytest.mark.parametrize('size', ['handy', 'desktop'])
+def test_live_stack_emerges_from_noise(server, browser, size):
+    """Beim Stacken: neue echte Zwischenstände werden nacheinander überblendet, mit Aufnahmenzahl und Rauschmaß;
+    die Endbearbeitung (preview) hat danach Vorrang. Reduzierte Bewegung: harte Wechsel."""
+    base, pid = server
+    w, h = SIZES[size]
+    state = {'k': 4, 'rid': None, 'preview': None, 'ready': False}
+    seq = [1, 2, 3, 4, 5, 6, 8, 10, 12, 15]
+
+    def project_response(route):
+        response = route.fetch()
+        data = response.json()
+        state['rid'] = data['results'][0]['id']
+        if state['ready']:                                                # erst wenn die Ansicht steht: je Abruf 3 neue Stände
+            state['k'] = min(state['k'] + 3, len(seq))
+        frames = [{'name': f'1-f{i + 1}.jpg', 'n': n, 'exposure': n * 10, 'band': None, 'noise': round(n ** -0.5, 3)}
+                  for i, n in enumerate(seq[:state['k']])]
+        data['job'] = {'id': 997, 'state': 'running', 'progress': .4, 'stage': 'Stacking', 'message': 'Stacking'}
+        data['live'] = {'job': 997, 'run': '1', 'frames': frames, 'preview': state['preview'], 'n': frames[-1]['n'],
+                        'steps': [{'stage': 'Stacking', 'label': 'Stacking', 'done': False}]}
+        route.fulfill(response=response, json=data)
+
+    for reduced in ('no-preference', 'reduce'):
+        state.update(k=4, preview=None, ready=False)
+        page = browser.new_page(viewport={'width': w, 'height': h}, reduced_motion=reduced)
+        errors, shown = [], []
+        page.on('pageerror', lambda e: errors.append(str(e)))
+        page.on('request', lambda r: shown.append(r.url.rsplit('/', 1)[-1]) if '/live/1-f' in r.url else None)
+        page.route(f'**/api/stacking/projects/{pid}', project_response)
+        page.route(f'**/api/stacking/projects/{pid}/live/*',
+                   lambda route: route.fulfill(response=route.fetch(url=f"{base}/api/stacking/results/{state['rid']}/jpg")))
+        page.goto(f'{base}/#/p/{pid}/bild')
+        page.wait_for_selector('.sl-image.on[src$="1-f4.jpg"]')        # neu geöffnet: nur der jüngste Stand
+        assert '1-f1.jpg' not in shown                                    # nichts nachgeholt
+        state['ready'] = True
+        page.wait_for_function("document.querySelector('.sl-caption').textContent.includes('Rauschen 50 %')", timeout=20000)   # 4 Aufnahmen: 1/√4
+        assert '−' not in page.inner_text('.sl-caption')                  # Anteil des Anfangsrauschens, kein Minus
+        page.wait_for_function("document.querySelector('.sl-caption').textContent.includes('15 Aufnahmen')", timeout=20000)
+        assert {'1-f5.jpg', '1-f6.jpg', '1-f7.jpg'} <= set(shown)        # mehrere echte Stände je Abruf nacheinander
+        dur = page.evaluate("getComputedStyle(document.querySelector('.sl-image')).transitionDuration")
+        assert (dur == '0s') == (reduced == 'reduce')
+        assert not page.evaluate(FIND_OVERFLOW)
+        state['preview'] = '1-9.jpg'                                      # Endbearbeitung: ihre Vorschau gewinnt
+        page.wait_for_selector('.sl-image.on[src$="1-9.jpg"]')
+        page.close()
+        assert not errors, errors
+
+
 def test_switch_rows_toggle(server, browser):
     """Ein Klick auf die Zeile schaltet ihren Schalter – auch wenn die Zeile noch eine Auswahl enthält (Ältere Versionen)."""
     base, _ = server
