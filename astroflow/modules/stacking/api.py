@@ -613,7 +613,8 @@ def build_router(eng: Engine) -> APIRouter:
         n, raw, pictures, errors = 0, 0, [], []
         # versteckte Dateien/Ordner (Name mit „.“, z. B. Stellina „.thumbnail/…“) nie übernehmen – die Oberfläche lässt
         # sie schon weg, ältere Clients oder Skripte nicht
-        visible = lambda f: not any(p.startswith(".") for p in re.split(r"[\\/]+", f.filename or "") if p)
+        visible = lambda f: not any(p.startswith(".") and p not in (".", "..")      # „..“ wird unten nur entfernt
+                                    for p in re.split(r"[\\/]+", f.filename or ""))
         skipped = sum(not visible(f) for f in files)
         files = [f for f in files if visible(f)]
         skip_ext = skipped_pictures([f.filename or "" for f in files])

@@ -1192,7 +1192,7 @@ async function libraryPanel(view) {
 }
 function upload(files) {
   // versteckte Dateien/Ordner (Name mit „.“, z. B. Stellina „.thumbnail/…“, „.webaxs_L/…“) nie hochladen
-  const hidden = f => (f.relPath || f.webkitRelativePath || f.name).split(/[\\/]/).some(p => p.startsWith('.'));
+  const hidden = f => (f.relPath || f.webkitRelativePath || f.name).split(/[\\/]/).some(p => p.startsWith('.') && p !== '.' && p !== '..');
   files = files.filter(f => IMPORT_FILE.test(f.name) && !hidden(f));
   // Teleskop-Ordner enthalten oft hunderte kumulative JPEG-Zwischenstände neben den eigentlichen FITS.
   // Bei Rohdaten sind diese kein zusätzlicher Import; ohne Rohdaten genügt die letzte Vorschau je Ordner.
