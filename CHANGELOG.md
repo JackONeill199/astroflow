@@ -3,6 +3,14 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.47.1 – 08.11.2026
+
+### Behoben
+- **Sage:** Schlug eine Bildbestimmung fehl und ließ sich die Upload- oder Vorschaudatei nicht löschen (z. B. gesperrt), blieb der Auftrag
+  unter Umständen auf „läuft“ stehen. Aufgeräumt wird jetzt vor der Fehlermeldung, Löschfehler werden nur protokolliert.
+- **Sage:** Beim gleichzeitigen Recherchieren eines Objekts (Hintergrund-Verknüpfung und eigener Auftrag) konnten Entfernungsmessungen
+  kurzzeitig unvollständig erscheinen.
+
 ## 0.47.0 – 08.11.2026
 
 ### Neu
