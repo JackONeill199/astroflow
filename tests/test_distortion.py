@@ -102,6 +102,20 @@ def test_poly_warp_matches_affine_for_similarity():
     assert np.array_equal(va, vb) and np.abs(a - b)[:, va].max() < 1e-3
 
 
+def test_binned_poly_matches_binned_transform():
+    """Kometenbahn-Stichproben (gebinnt): Polynom auf dem gebinnten Raster = comet.binned_transform der Ähnlichkeit."""
+    from astroflow.modules.stacking import comet
+    img = _img()[:1]
+    th = np.deg2rad(1.3)
+    M = np.array([[np.cos(th), -np.sin(th), 7.3], [np.sin(th), np.cos(th), -4.6], [0, 0, 1]])
+    P = _as_poly(M, *img.shape[1:])
+    for b in (1, 2, 3):
+        Lb = comet.bin_image(img[0], b)
+        a, va = R.warp(Lb[None], comet.binned_transform(M, b), Lb.shape, 1, order=1)
+        c, vc = R.warp(Lb[None], None, Lb.shape, 1, order=1, poly=R.binned_poly(P, b))
+        assert np.array_equal(va, vc) and np.abs(a - c)[:, va].max() < 1e-3
+
+
 def test_summary_and_mode(monkeypatch):
     meta = {"frames": {"a": 1.0, "b": 1.0, "c": 1.0},
             "reg": {"a": {"n": 300, "cv0": 0.5, "cv1": 0.2, "k": 1.5, "poly": True},

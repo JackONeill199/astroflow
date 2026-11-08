@@ -287,6 +287,15 @@ def shift_poly(P: dict, d) -> dict:
     return {**P, "ctr": [P["ctr"][0] + float(d[0]), P["ctr"][1] + float(d[1])]}
 
 
+def binned_poly(P: dict, b: int) -> dict:
+    """Polynom auf b×b-gebinnte Raster (Referenz und Aufnahme) umrechnen – Gegenstück zu comet.binned_transform:
+    voller Pixel x = b·x_b + (b − 1)/2, also Mitte/Maßstab umrechnen und das Ergebnis zurück auf gebinnte Pixel."""
+    off = (b - 1) / 2
+    c = np.asarray(P["c"], float) / b
+    c[:, 0] -= off / b
+    return {"c": c.tolist(), "ctr": [(P["ctr"][0] - off) / b, (P["ctr"][1] - off) / b], "s": float(P["s"]) / b}
+
+
 def poly_out(P: dict, scale: int) -> tuple[np.ndarray, tuple[float, float], float]:
     """Polynom auf Ausgabepixel (Referenzraster ×scale) umgerechnet: (Koeffizienten, Mitte, Maßstab) – x_ref =
     (x_out + 0.5)/scale − 0.5 ist affin, also bleibt es dasselbe Polynom mit verschobener Mitte und Maßstab."""

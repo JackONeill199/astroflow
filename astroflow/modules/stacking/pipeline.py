@@ -846,6 +846,10 @@ class Pipeline:
         ref_xy = np.array([[s[0], s[1]] for s in A.meta["ref_stars"]])
         ref_flux = np.array([s[2] for s in A.meta["ref_stars"]])
         k0 = A.meta.get("flux_k0") or 1.0
+        # Verzerrungskorrektur: Stichproben genauso ausrichten wie später der Kometen-Stack (`_stack`), sonst enthielte die
+        # Bahn Registrierungsreste, die im korrigierten Stack schon fehlen (Kerne gegeneinander versetzt)
+        dense_ref = self._dense_ref(A, lib, cache) if registration.distortion_mode(opt.get("distortion")) == "auto" else None
+        C0, H0, W0 = A.meta["shape"]
 
         def load(r):
             m = json.loads(r["metrics"])
@@ -860,8 +864,16 @@ class Pipeline:
                     return None
                 M, pairs, _ = res
             raw, _ = self._load(r["path"], i, lib, r["night"], cache)
+            P = None
+            if dense_ref is not None and r["id"] != A.meta["ref_fid"]:
+                try:
+                    tgd = np.array([[s[0], s[1]] for s in quality.dense_stars(raw, bool(i["bayerpat"]) and raw.ndim == 2)])
+                    P, _ = registration.fit_distortion(dense_ref, tgd, M, (H0, W0))
+                except Exception:
+                    P = None
             Lb = comet.bin_image(to_channels(raw, i["bayerpat"]).mean(0), b)
-            w, valid = registration.warp(Lb[None], comet.binned_transform(M, b), LAb.shape, 1, order=1)
+            w, valid = registration.warp(Lb[None], comet.binned_transform(M, b), LAb.shape, 1, order=1,
+                                         poly=registration.binned_poly(P, b) if P is not None else None)
             k = float(np.clip(np.median(ref_flux[pairs[:, 1]] / np.maximum(tf[pairs[:, 0]], 1e-6)) / k0, 0.4, 2.5))
             a = w[0] * k
             a -= float(np.median(a[valid]))

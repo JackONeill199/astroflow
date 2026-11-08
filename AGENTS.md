@@ -197,7 +197,8 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    (`frames, poly, pairs, rms_before, rms_after` = wirksamer Restfehler, `max_corr, why`), Details-Liste im Bild-Tab. `warp(..., poly=P)`:
    CPU `spline_filter` (Spiegelrand) + `map_coordinates` in Streifen `STRIP_ROWS` (für eine reine Ähnlichkeit bitgleich zum affinen Weg), GPU
    Kernel `warp_poly` (gemeinsame `sample`-Funktion mit `warp`, Polynom in Ausgabepixeln über `poly_out`). Kometen-Stack: Polynom aus der
-   Sternregistrierung, Kernverschiebung über `shift_poly`. `frame_links`/Gerätediagnose/Asteroiden bleiben bei der Ähnlichkeit (unverändert).
+   Sternregistrierung, Kernverschiebung über `shift_poly`; die Bahn-Stichproben (`_comet_track`) richtet dasselbe Polynom aus
+   (`binned_poly` auf das gebinnte Raster, Review PR #9 – sonst enthielte die Bahn Registrierungsreste, die der Stack nicht mehr hat). `frame_links`/Gerätediagnose/Asteroiden bleiben bei der Ähnlichkeit (unverändert).
    Kein automatisches Neu-Stacken, inkrementell gemischt möglich (alte Aufnahmen affin, neue mit Polynom).
    Gemessen (synthetisch, `demo.generate_distortion`, 1536×1024, Ecke ~5 px Verzeichnung, Feld ±120 px, 18 Aufnahmen): Polynom bei 14 von 17,
    Restfehler (KV) 0,42 → 0,21 px, ~285 Paare; Stack Exzentrizität Ecken 0,33 → 0,23 (Mitte 0,25), FWHM Ecken 3,68 → 3,62 (Mitte 3,63);
