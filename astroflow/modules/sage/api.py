@@ -132,7 +132,10 @@ def build_router(mod) -> APIRouter:
                 traceback.print_exc()
             for rel in (rel_file, rel_preview):                      # fehlgeschlagen: Dateien nicht aufheben –
                 if rel:                                              # erst aufräumen, dann „Fehler“ melden (Polling!)
-                    (st.root / rel).unlink(missing_ok=True)
+                    try:
+                        (st.root / rel).unlink(missing_ok=True)
+                    except OSError:                                  # z. B. gesperrte Datei: Auftrag trotzdem abschließen
+                        traceback.print_exc()
             task.update(state="error", error=str(e), message=str(e), finished=time.time())
 
     def start(title: str, image: Path, rel_preview: str, rel_file: str | None, size, source: dict) -> dict:
