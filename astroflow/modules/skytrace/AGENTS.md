@@ -18,7 +18,7 @@ Messgrafiken/Zoomdialoge (`static/evidence.js/css`) sind unverändert und werden
 - Nicht übernommen: Tk-Desktop-Oberfläche (`desktop_app.py`, `catalog_dialog.py`, `location_picker.py`), Starter (`*.cmd/*.vbs`),
   Web-Prüfungen gegen den alten Server (`check_web.py`, `check_lan.py`, `check_preview_race.py`). Die übrigen `check_*.py` liegen in `engine/`
   und laufen mit gesetztem `SKYTRACE_HOME` (manche brauchen echte Stellina-Daten: Ordner per `SKYTRACE_SAMPLES`).
-- Abhängigkeiten der Engine: `requirements.txt` (Lock aus SkyTrace). Docker: `--build-arg SKYTRACE=1`.
+- Abhängigkeiten der Engine: `requirements-engine.txt` (plattformneutral; PyTorch vorher aus dem CPU-Index, s. Wurzel-`AGENTS.md` → Komponenten). Docker: `--build-arg SKYTRACE=1`.
 
 ## Laufdaten fürs Handy klein halten (05.11.2026, 0.31.1)
 Befund: Auf dem Handy (Galaxy S24, Brave, Heimnetz) luden Lauf-Ansicht und Medien endlos. Ursache war nicht die Medienauslieferung,
