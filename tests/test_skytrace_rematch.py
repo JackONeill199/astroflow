@@ -312,9 +312,10 @@ def test_rematch_api(tmp_path, monkeypatch):
         assert c.post("/api/skytrace/rematch", json={"all": True}).status_code == 400      # nur ein Auftrag zur Zeit
         act = [a for a in c.get("/api/activity").json() if a["key"].startswith("skytrace:abgleich:")]
         assert act and act[0]["title"] == "Alle SkyTrace-Analysen neu abgleichen"
-        for _ in range(100):
+        deadline = time.time() + 60                    # Unterprozess startet unter Last (xdist) langsam
+        while True:
             j = c.get("/api/skytrace/rematch").json()["job"]
-            if j["state"] != "running":
+            if j["state"] != "running" or time.time() > deadline:
                 break
             time.sleep(0.05)
         assert j["state"] == "done" and j["text"] == "1 Spuren neu abgeglichen."

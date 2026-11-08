@@ -264,12 +264,13 @@ class Researcher:
         except SourceError as x:
             dm = []
             self.step(f"Entfernungsmessungen nicht abrufbar: {x}", "warn")
-        kb.x("DELETE FROM facts WHERE entity_id=? AND key='distance' AND origin='catalog'", (eid,))
-        for m in sorted(dm, key=lambda m: -(m["year"] or 0))[:12]:
-            ms = kb.add_source(f"bib:{m['bibcode']}", "paper", f"Entfernungsmessung {m['bibcode']}", url=sources.ads_url(m["bibcode"]),
-                               year=m["year"])
-            kb.set_fact(eid, "distance", f"{m['pc']:,.0f} pc".replace(",", "."), num=m["pc"], err=m["err_pc"], unit="pc", source_id=ms,
-                        status="alternative", note=m["method"])
+        with kb._lock:          # Löschen + Neueintragen unteilbar: ein zweiter Lauf (Hintergrund-Verknüpfung) darf nicht dazwischen lesen/löschen
+            kb.x("DELETE FROM facts WHERE entity_id=? AND key='distance' AND origin='catalog'", (eid,))
+            for m in sorted(dm, key=lambda m: -(m["year"] or 0))[:12]:
+                ms = kb.add_source(f"bib:{m['bibcode']}", "paper", f"Entfernungsmessung {m['bibcode']}", url=sources.ads_url(m["bibcode"]),
+                                   year=m["year"])
+                kb.set_fact(eid, "distance", f"{m['pc']:,.0f} pc".replace(",", "."), num=m["pc"], err=m["err_pc"], unit="pc", source_id=ms,
+                            status="alternative", note=m["method"])
         best = sources.best_distance(o.get("plx_value"), o.get("plx_err"), dm)
         if best:
             note = f"{best['method']}; {best['n']} Messung{'en' if best['n'] != 1 else ''} in SIMBAD"
