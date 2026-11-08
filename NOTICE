@@ -1,0 +1,27 @@
+AstroFlow
+Copyright (c) 2026 JackONeill199
+
+Der Quellcode von AstroFlow steht unter der MIT-Lizenz (siehe LICENSE).
+Folgende mitgelieferte Drittkomponenten stehen unter eigenen Lizenzen:
+
+- SkyTrace-Erkennungsmodell
+  astroflow/modules/skytrace/models/night-detector/
+  Herkunft: OpenSkyCam (https://github.com/Deibler/openskycam)
+  Lizenz: AGPL-3.0 (siehe LICENSE im selben Ordner)
+
+- three.js
+  astroflow/static/vendor/three.module.min.js, OrbitControls.js
+  Lizenz: MIT (siehe astroflow/static/vendor/LICENSE-three.txt)
+
+- Leaflet
+  astroflow/static/vendor/leaflet.js, leaflet.css
+  Lizenz: BSD-2-Clause (siehe astroflow/static/vendor/LICENSE-leaflet.txt)
+
+- Erdtextur (NASA Blue Marble)
+  astroflow/modules/skytrace/static/vendor/earth-2048.jpg
+  gemeinfrei (siehe README.md im selben Ordner)
+
+Optionale Programme wie ASTAP, GraXpert (GPL-3.0), StarNet und die
+SkyTrace-Engine (u. a. ultralytics, AGPL-3.0) werden nicht mitgeliefert,
+sondern erst auf Wunsch aus ihren Originalquellen installiert und
+behalten ihre eigenen Lizenzen.
