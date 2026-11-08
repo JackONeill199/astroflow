@@ -863,8 +863,8 @@ Ort aus `/api/sites/resolve` (sonst 50° N, Länge aus der Zeitzone). Alle 15 s 
 (Blick Süd), Tempo/Länge/Farbe aus v. `info()` liefert den Text unter Darstellung. `localStorage af.ui.meteors`, aus bei reduzierter Bewegung und
 ohne Stil. Test: `test_meteors.py` (Geminiden-/Perseidenmaximum, Tag, Apex morgens > abends, Radiant unter dem Horizont).
 **Kreisel** (seit 0.46.2, Nutzerbefund: vier verschieden schnelle auf der Objektseite): alle über das Token `--spin` (`animation: var(--spin)`),
-höchstens einer je Ansicht. Objektseite bei laufendem Auftrag: nur `.sl-pulse` in der Statuszeile; `.sl-orbit` ist ein ruhiger Platzhalter,
-„Läuft …“ ohne `.busy`, `showJobPill` zeigt auf der Seite des laufenden Objekts (`a.href`) keinen Kreisel. Test `test_only_one_spinner_on_running_object_page`.
+keine doppelten im Inhalt. Objektseite bei laufendem Auftrag: Kreisel nur in der Auftragsanzeige oben (`showJobPill`, bleibt immer – Nutzerwunsch)
+und `.sl-pulse` in der Statuszeile; `.sl-orbit` ist ein ruhiger Platzhalter, „Läuft …“ ohne `.busy`. Test `test_spinners_on_running_object_page`.
 **Rückmeldung** (seit 0.24.0, Nutzerwunsch „responsiver“, Ende von `style.css`, gilt für alle Stile): Drücken = `scale(.94–.985)` in 120 ms, nur
 transform/opacity/Farben. `api()` merkt den zuletzt gedrückten Knopf (`lastPress`, ≤ 0,6 s) und setzt bei schreibenden Anfragen `.pending`
 (gesperrt, Kreisel nach 150 ms über `::before/::after`) – `.btn` darf daher keine eigenen `::before/::after` bekommen. Aufwendige Animationen nur für echte Prozesse (`viz.js`, als „Schema“

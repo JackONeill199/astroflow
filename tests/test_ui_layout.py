@@ -323,9 +323,9 @@ SPINNING = """() => [...document.querySelectorAll('*')].filter(el => /(^|, )spin
   && el.checkVisibility({opacityProperty: true, visibilityProperty: true})).map(el => el.className.baseVal ?? el.className)"""
 
 
-def test_only_one_spinner_on_running_object_page(server, browser):
-    """Objektseite während eines Auftrags: nur die Statuszeile dreht sich (Nutzerbefund: vier Kreisel, alle verschieden
-    schnell). Auf anderen Seiten zeigt die Auftragsanzeige oben ihren Kreisel."""
+def test_spinners_on_running_object_page(server, browser):
+    """Objektseite während eines Auftrags: nur Auftragsanzeige oben und Statuszeile drehen sich, im selben Tempo
+    (Nutzerbefund: vier Kreisel, alle verschieden schnell – Bildmitte und „Läuft …“ waren zu viel)."""
     base, pid = server
     page = browser.new_page(viewport={'width': 1440, 'height': 900})
     errors = []
@@ -350,13 +350,12 @@ def test_only_one_spinner_on_running_object_page(server, browser):
     page.goto(f'{base}/#/p/{pid}/bild')
     page.wait_for_selector('.sl-pulse')
     page.wait_for_function("!document.querySelector('#jobpill').classList.contains('idle')")
-    assert page.evaluate(SPINNING) == ['sl-pulse']
-    assert page.locator('#run').is_disabled()
-    # gemeinsames Tempo: alle Kreisel über dasselbe Token
-    assert page.evaluate("getComputedStyle(document.querySelector('.sl-pulse')).animationDuration") == '0.9s'
-    page.goto(f'{base}/#/bilder')
     page.wait_for_selector('#jobpill .spinner')
-    assert page.evaluate("getComputedStyle(document.querySelector('#jobpill .spinner')).animationDuration") == '0.9s'
+    assert sorted(page.evaluate(SPINNING)) == ['sl-pulse', 'spinner']
+    assert page.locator('#jobpill .spinner').is_visible() and page.locator('#run').is_disabled()
+    # gemeinsames Tempo: alle Kreisel über dasselbe Token
+    for sel in ('.sl-pulse', '#jobpill .spinner'):
+        assert page.evaluate(f"getComputedStyle(document.querySelector('{sel}')).animationDuration") == '0.9s'
     page.close()
     assert not errors, errors
 
