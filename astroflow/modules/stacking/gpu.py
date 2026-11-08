@@ -3,6 +3,7 @@
 Übernimmt die beiden teuersten Schritte (Profil 219 Stellina-Frames: ~80 % der Stacking-Rechenzeit):
   warp        kubische B-Spline-Interpolation wie scipy.ndimage.affine_transform(order=3) – Vorfilter (rekursiv
               je Zeile/Spalte) und Auswertung auf der GPU; Gültigkeitsmaske weiter analytisch auf der CPU.
+              warp_poly: dasselbe mit Polynom 2. Ordnung als Abbildung (Verzerrungskorrektur, registration.fit_distortion).
   accumulate  Sigma-Clipping des Stapels (Median der gültigen Werte, 2 Runden), Abgleich mit dem bestehenden Stack
               und Aufsummieren in sw/swx/swx2 – je Pixel ein Arbeitselement, Stapel ≤ 32 Frames sortiert im Register.
 
@@ -73,12 +74,8 @@ inline void bspline_w(float t, float *w) {
     w[3] = t3 / 6.0f;
 }
 
-// Ausgabe (y,x) <- Quelle (sy,sx) = mat·(y,x) + off; außerhalb des Quellbildes 0 (mode="constant")
-__kernel void warp(__global const float *coef, __global float *out, int H, int W, int Ho, int Wo,
-                   float m00, float m01, float m10, float m11, float o0, float o1) {
-    int x = get_global_id(0), y = get_global_id(1);
-    if (x >= Wo || y >= Ho) return;
-    float sy = m00 * y + m01 * x + o0, sx = m10 * y + m11 * x + o1;
+// kubischer B-Spline an (sy,sx); außerhalb des Quellbildes 0 (mode="constant")
+inline float sample(__global const float *coef, int H, int W, float sy, float sx) {
     float v = 0.0f;
     if (sy >= 0.0f && sy <= H - 1 && sx >= 0.0f && sx <= W - 1) {
         int iy = (int)floor(sy), ix = (int)floor(sx);
@@ -92,7 +89,28 @@ __kernel void warp(__global const float *coef, __global float *out, int H, int W
             v += wy[j] * r;
         }
     }
-    out[(size_t)y * Wo + x] = v;
+    return v;
+}
+
+// Ausgabe (y,x) <- Quelle (sy,sx) = mat·(y,x) + off
+__kernel void warp(__global const float *coef, __global float *out, int H, int W, int Ho, int Wo,
+                   float m00, float m01, float m10, float m11, float o0, float o1) {
+    int x = get_global_id(0), y = get_global_id(1);
+    if (x >= Wo || y >= Ho) return;
+    out[(size_t)y * Wo + x] = sample(coef, H, W, m00 * y + m01 * x + o0, m10 * y + m11 * x + o1);
+}
+
+// Verzerrungskorrektur: Quelle = Polynom 2. Ordnung in u = (x − cx)/s, v = (y − cy)/s
+// (Terme 1, u, v, u², uv, v²; p[0..5] für sx, p[6..11] für sy)
+__kernel void warp_poly(__global const float *coef, __global float *out, int H, int W, int Ho, int Wo,
+                        float cx, float cy, float s, __constant float *p) {
+    int x = get_global_id(0), y = get_global_id(1);
+    if (x >= Wo || y >= Ho) return;
+    float u = (x - cx) / s, v = (y - cy) / s;
+    float t[6] = {1.0f, u, v, u * u, u * v, v * v};
+    float sx = 0.0f, sy = 0.0f;
+    for (int i = 0; i < 6; i++) { sx += p[i] * t[i]; sy += p[6 + i] * t[i]; }
+    out[(size_t)y * Wo + x] = sample(coef, H, W, sy, sx);
 }
 
 // Runde 0: Median der gültigen Werte und Streuung um ihn (wie stacking._clip, erste Runde)
@@ -181,8 +199,8 @@ class Engine:
         self.name = (getattr(dev, "board_name_amd", "") or dev.name).strip()
         self.queue = cl.CommandQueue(ctx)
         prg = cl.Program(ctx, _SRC).build()
-        self.k = {n: cl.Kernel(prg, n) for n in ("prefilter_rows", "prefilter_cols", "warp", "clip_stats", "clip_add")}
-        self.lock = threading.Lock()
+        self.k = {n: cl.Kernel(prg, n) for n in ("prefilter_rows", "prefilter_cols", "warp", "warp_poly", "clip_stats", "clip_add")}
+        self.lock = threading.RLock()                  # wiedereintrittsfähig: warp_poly hält sie über _warp hinweg
         self._bufs: dict = {}
         self.broken: str | None = None
 
@@ -205,7 +223,7 @@ class Engine:
             self._bufs.clear()
 
     # ---- Registrierung --------------------------------------------------- #
-    def warp(self, img: np.ndarray, mat: np.ndarray, off, out_shape: tuple[int, int]) -> np.ndarray:
+    def _warp(self, img: np.ndarray, out_shape: tuple[int, int], kernel: str, args: list) -> np.ndarray:
         cl, q = self.cl, self.queue
         C, H, W = img.shape
         Ho, Wo = out_shape
@@ -217,11 +235,24 @@ class Engine:
                 cl.enqueue_copy(q, src, np.ascontiguousarray(img[c], np.float32))
                 self.k["prefilter_rows"](q, (H,), None, src, np.int32(H), np.int32(W))
                 self.k["prefilter_cols"](q, (W,), None, src, np.int32(H), np.int32(W))
-                self.k["warp"](q, (Wo, Ho), None, src, dst, np.int32(H), np.int32(W), np.int32(Ho), np.int32(Wo),
-                              *[np.float32(v) for v in (mat[0, 0], mat[0, 1], mat[1, 0], mat[1, 1], off[0], off[1])])
+                self.k[kernel](q, (Wo, Ho), None, src, dst, np.int32(H), np.int32(W), np.int32(Ho), np.int32(Wo), *args)
                 cl.enqueue_copy(q, out[c], dst)
             q.finish()
         return out
+
+    def warp(self, img: np.ndarray, mat: np.ndarray, off, out_shape: tuple[int, int]) -> np.ndarray:
+        return self._warp(img, out_shape, "warp",
+                          [np.float32(v) for v in (mat[0, 0], mat[0, 1], mat[1, 0], mat[1, 1], off[0], off[1])])
+
+    def warp_poly(self, img: np.ndarray, c: np.ndarray, ctr, s: float, out_shape: tuple[int, int]) -> np.ndarray:
+        """Verzerrungskorrektur (registration.poly_out): c (2,6) Koeffizienten für sx, sy in Ausgabepixeln."""
+        cl = self.cl
+        with self.lock:                                # Koeffizienten-Puffer bis zum Ende des Warps für uns
+            pb = self._bufs.get("w_poly")
+            if pb is None:
+                self._bufs["w_poly"] = pb = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY, 12 * 4)
+            cl.enqueue_copy(self.queue, pb, np.ascontiguousarray(np.asarray(c, np.float32).ravel()))
+            return self._warp(img, out_shape, "warp_poly", [np.float32(ctr[0]), np.float32(ctr[1]), np.float32(s), pb])
 
     # ---- Stapeln ------------------------------------------------------------ #
     def accumulate(self, state, X: np.ndarray, V: np.ndarray, w: np.ndarray, check: bool, sd_floor: float,
