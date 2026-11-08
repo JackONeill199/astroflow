@@ -98,7 +98,10 @@ def test_pipeline_writes_pattern_during_stacking(tmp_path, monkeypatch):
     pid = db.one("SELECT project_id FROM frames WHERE kind='light' GROUP BY project_id ORDER BY COUNT(*) DESC")["project_id"]
     monkeypatch.setattr(live, "PATTERN_INTERVAL", 0.0)
     pl.begin_live(pid, job=1)
-    pl.process(pid)
+    seen = []
+    pl.process(pid, progress=lambda p, stage, msg="": seen.append((stage, msg)))
+    # „Stacking“ steht schon vor der ersten Registrierung an (die Ansicht hängt an diesem Schritt)
+    assert any(stage == "Stacking" and msg.startswith("0/") for stage, msg in seen)
     d = live.read_pattern(s.work_dir, pid)
     assert d is not None and d["n_pairs"] >= 5 and d["total"] >= 2
     assert live.read_state(s.work_dir, pid)["pattern"] == d["key"]

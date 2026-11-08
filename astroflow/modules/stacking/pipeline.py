@@ -1237,6 +1237,9 @@ class Pipeline:
         chunks = [todo[i : i + bsz] for i in range(0, total, bsz)]
         unsaved: list = []
         last_save = time.time()
+        # Schritt „Stacking“ schon vor der ersten Registrierung melden (sonst stünde während des ersten Stapels noch
+        # „Auswahl“ da – die Sternmuster-Ansicht der Live-Vorschau hängt an diesem Schritt)
+        progress(0.36, "Stacking", f"0/{total} Aufnahmen" + (f" · Grafikkarte {g.name}" if g and not g.broken else ""))
         pending = [ex.submit(work, r) for r in chunks[0]] if chunks else []
         for ci, chunk in enumerate(chunks):
             results = [f.result() for f in pending]
