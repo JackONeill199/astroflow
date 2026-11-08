@@ -10,6 +10,21 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
   das es in AstroFlow schon gibt (z. B. eine zweite Nacht desselben Nebels), steht dort der Chip „ergänzt: <Objekt>“ mit Link.
   Vorhergesagt wird nach Objektname und Kamera wie beim Einlesen – ohne Plate-Solving, Kometen und Gruppen ohne Namen bekommen keins.
 
+## 0.49.0 – 08.11.2026
+
+### Neu
+- **Satellitenspuren werden beim Stacken gezielt ausgeblendet** statt nur weggeclippt. AstroFlow sucht in jeder Aufnahme
+  gerade Lichtspuren (Satelliten, Flugzeuge, Meteore) und lässt beim Stacken genau diese Pixel mit einem kleinen Saum weg; an
+  diesen Stellen zählen die übrigen Aufnahmen. Bisher blieb eine Spur in kleinen Stapeln und bei wenigen Aufnahmen sichtbar
+  (Demo mit 8 Aufnahmen: +42 ADU entlang der Spur, jetzt ±0,2). Ein gerader Nebelfaden, der in jeder Aufnahme steht, wird nicht
+  ausgeblendet. Im Ergebnis steht, wie viele Aufnahmen und Pixel betroffen waren (`stats.trails`).
+
+### Behoben
+- Aufnahmen mit einer Satellitenspur wurden oft ganz verworfen („unscharf (Seeing/Fokus)“) oder bekamen das kleinste Gewicht:
+  Punkte auf der Spur zählten als Sterne und verfälschten die Sterngröße. Die Spur wird jetzt vor der Sternerkennung ausgeblendet,
+  solche Aufnahmen gehen normal in den Stack ein. Bereits analysierte Aufnahmen bleiben, wie sie sind (kein automatisches
+  Neu-Analysieren); beim Stacken werden ihre Spuren trotzdem gesucht und ausgeblendet.
+
 ## 0.48.0 – 08.11.2026
 
 ### Neu

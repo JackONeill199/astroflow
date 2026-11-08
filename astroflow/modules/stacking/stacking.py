@@ -73,6 +73,9 @@ class StackState:
         self.sw = np.zeros((C, H, W), np.float32)
         self.swx = np.zeros((C, H, W), np.float32)
         self.swx2 = np.zeros((C, H, W), np.float32)
+        # Gewicht der Pixel, die als Satellitenspur ausgeblendet wurden (trails.py) – zählt nur für die Abdeckung, nicht fürs
+        # Mittel: sonst sähe ein Spurband in kleinen Stacks wie ein ungedeckter Rand aus (GraXpert füllt Abdeckung ≤ 0,5 mit Himmel)
+        self.swm = np.zeros((H, W), np.float32)
         self.meta: dict = {"frames": {}, "ref_fid": None, "ref_stars": None, "ref_bg": None, "scale": 1}
         self.snaps: dict = {}
 
@@ -85,6 +88,8 @@ class StackState:
         np.save(tmp / "sw.npy", self.sw)
         np.save(tmp / "swx.npy", self.swx)
         np.save(tmp / "swx2.npy", self.swx2)
+        if self.swm.any():
+            np.save(tmp / "swm.npy", self.swm)
         (tmp / "state.json").write_text(json.dumps(self.meta))
         shutil.rmtree(old, ignore_errors=True)
         if d.exists():
@@ -102,6 +107,8 @@ class StackState:
             st.sw = sw
             st.swx = np.load(d / "swx.npy")
             st.swx2 = np.load(d / "swx2.npy")
+            if (d / "swm.npy").exists():
+                st.swm = np.load(d / "swm.npy")
             st.meta = json.loads((d / "state.json").read_text())
             return st
         except Exception:
@@ -171,7 +178,7 @@ class StackState:
     def result(self) -> tuple[np.ndarray, np.ndarray]:
         """(Mittelwert (C,H,W), Abdeckung (H,W) in 0..1)."""
         mean = self.swx / np.maximum(self.sw, 1e-9)
-        cov = self.sw.min(0)
+        cov = self.sw.min(0) + self.swm
         mx = float(cov.max())
         return mean, (cov / mx if mx > 0 else cov)
 
