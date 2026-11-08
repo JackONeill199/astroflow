@@ -319,6 +319,61 @@ def test_live_processing_is_compact_and_updates_in_place(server, browser, size, 
     assert not errors, errors
 
 
+@pytest.mark.parametrize('size', ['handy', 'schmal', 'desktop'])
+def test_live_star_pattern_overlay(server, browser, size):
+    """Sternmuster der Registrierung: Netz aus echten Registrierdaten über der Live-Vorschau, nur beim Stacken, abschaltbar."""
+    import numpy as np
+    from astroflow.modules.stacking import registration
+    base, pid = server
+    w, h = SIZES[size]
+    rng = np.random.default_rng(3)
+    ref = rng.uniform([10, 10], [790, 610], (90, 2))
+    th = np.deg2rad(4)
+    tgt = (ref - [20, -12]) @ np.array([[np.cos(th), -np.sin(th)], [np.sin(th), np.cos(th)]])
+    tgt = tgt[(tgt[:, 0] > 5) & (tgt[:, 0] < 795) & (tgt[:, 1] > 5) & (tgt[:, 1] < 615)]
+    info = {}
+    M, pairs, rms = registration.find_transform(ref, tgt, info=info)
+    pattern = {**registration.pattern(ref, tgt, M, pairs, info, (620, 800), rms), 'key': '1-1', 'n': 4, 'total': 8}
+    state = {'stage': 'Stacking', 'rid': None}
+    page = browser.new_page(viewport={'width': w, 'height': h}, reduced_motion='reduce')
+    errors = []
+    page.on('pageerror', lambda e: errors.append(str(e)))
+
+    def project_response(route):
+        response = route.fetch()
+        data = response.json()
+        state['rid'] = data['results'][0]['id']
+        data['job'] = {'id': 998, 'state': 'running', 'progress': .5, 'stage': state['stage'], 'message': '4/8 Aufnahmen'}
+        data['live'] = {'job': 998, 'preview': '1-1.jpg', 'n': 4, 'exposure': 40, 'pattern': '1-1',
+                        'steps': [{'stage': 'Stacking', 'label': '4/8 Aufnahmen', 'done': False}]}
+        route.fulfill(response=response, json=data)
+
+    page.route(f'**/api/stacking/projects/{pid}', project_response)
+    page.route(f'**/api/stacking/projects/{pid}/live/*',
+               lambda route: route.fulfill(response=route.fetch(url=f"{base}/api/stacking/results/{state['rid']}/jpg")))
+    page.route(f'**/api/stacking/projects/{pid}/pattern', lambda route: route.fulfill(json=pattern))
+    page.goto(f'{base}/#/p/{pid}/bild')
+    page.wait_for_selector('.stack-live.pattern-on .sl-pattern.aligned')
+    assert page.locator('.sl-pattern .ref line').count() == len(pattern['ref_edges'])
+    assert page.locator('.sl-pattern .tgt line.m').count() == sum(e[2] for e in pattern['tgt_edges']) > 0
+    assert page.locator('.sl-pattern polygon.seed').count() == 2
+    assert 'Sternpaare' in page.inner_text('.sl-pinfo') and 'Visualisierung' in page.inner_text('.sl-pinfo')
+    # gleiche Fläche wie die Vorschau, nichts ragt heraus
+    pb, sb = page.locator('.sl-picture').bounding_box(), page.locator('.sl-pattern').bounding_box()
+    assert abs(pb['width'] - sb['width']) <= 1 and abs(pb['height'] - sb['height']) <= 1
+    assert not page.evaluate(FIND_OVERFLOW)
+    page.locator('.sl-ptoggle').click()                                  # abschalten
+    page.wait_for_function("!document.querySelector('.stack-live').classList.contains('pattern-on')")
+    assert page.locator('.sl-pinfo').is_hidden()
+    page.locator('.sl-ptoggle').click()
+    page.wait_for_selector('.stack-live.pattern-on')
+    state['stage'] = 'Bearbeitung'                                       # nach der Registrierung: weg
+    page.wait_for_function("!document.querySelector('.stack-live').classList.contains('pattern-on')")
+    assert page.locator('.sl-ptoggle').is_hidden()
+    page.close()
+    assert not errors, errors
+
+
 def test_switch_rows_toggle(server, browser):
     """Ein Klick auf die Zeile schaltet ihren Schalter – auch wenn die Zeile noch eine Auswahl enthält (Ältere Versionen)."""
     base, _ = server

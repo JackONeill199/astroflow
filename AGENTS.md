@@ -261,6 +261,20 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    `_track_live` protokolliert echte Schritte, Vorschau-Hooks in GraXpert/Processing, höchstens alle 4 s plus Endergebnis.
    `/projects/{pid}` liefert `live` nur für den neuesten Auftrag; `/projects/{pid}/live/{name}` liefert streng geprüfte JPG-Namen.
    `static/live.js|css`: Bildwechsel auf zwei Ebenen, kompakte Statuszeile mit aufklappbarem Ablauf; reduzierte Bewegung beachtet.
+   **Sternmuster** (seit 0.47.0, Nutzerwunsch „Sterne zu geometrischen Mustern verbinden, zeigen wie die Muster übereinstimmen“):
+   In `_stack.work` fragt der Registrier-Thread `LiveRun.want_pattern()` (Sperre, höchstens alle `live.PATTERN_INTERVAL` 3 s genau
+   **eine** Aufnahme, nicht im Kometen-Stack); nur dann bekommt `registration.find_transform(…, info={})` ein Dict (Startdreieck
+   `seed_tgt/seed_ref`, Anzahl Dreiecke/Kandidaten – Ergebnis bitgleich, Test). `registration.pattern` = hellste `PATTERN_STARS` 36
+   Sterne je Seite (+ Startdreieck) in Rohbild-Pixeln, Anzeige-Netz = Delaunay ohne lange Randkanten, Kante der Aufnahme „deckungsgleich“,
+   wenn beide Enden zugeordnet sind und die Referenz dieselbe Kante hat; dazu Matrix, Drehung, Versatz, Rest (~3–4 KB).
+   Ablage `work/p<id>/live/pattern.json`, im gepollten `state.json` nur die Kennung `pattern`; Endpunkt `GET /projects/{pid}/pattern`
+   (404, wenn die Kennung nicht zum Lauf passt). GPU und CPU gleich (Registrierung läuft immer auf der CPU).
+   Frontend `createStarPattern` in `live.js`: SVG über `.sl-picture` (viewBox = Rohbildmaß, `meet` wie `object-fit: contain`, y gespiegelt
+   wie das Vorschau-JPG), Referenznetz fest, Netz der Aufnahme dreht/verschiebt sich starr per zerlegter Transformation an seinen Platz,
+   danach deckungsgleiche Kanten grün, Startdreieck weiß; nur bei Auftragsschritt „Stacking“; Schalter „Sternmuster“
+   (`af.live.sternmuster`); reduzierte Bewegung → Endzustand ohne Animation. Untersuchung Quad-Hashes (Teil B, 08.11.2026,
+   synthetische Sternlisten): kein klarer Gewinn (≤ +6 Prozentpunkte, 3× Zeit) → nicht eingebaut; ein Wiederholversuch mit nur den
+   hellsten 2–3×n Referenzsternen hob „wenige Sterne“ von 24 % auf 90 %, lieferte aber auch mehr falsche Lösungen → offen.
    UI: Regler unter dem Viewer, Standard = fertiges Bild, `viewer.setSrc` tauscht das Bild ohne Zoomverlust.
    Schnelles Iterieren: `StackState.load(work/p<id>/stack).result()` → `processing.process(...)` (~10 s), kein Neu-Stacken nötig.
    **Schwaches Signal / M57-Vergleich mit Stellina (2026-10-30):** Lineare Stacks waren gleich gut, die Entwicklung schlechter.

@@ -3,6 +3,14 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.47.0 – 08.11.2026
+
+### Neu
+- **Sternmuster während der Registrierung:** In der Live-Ansicht eines laufenden Stacks verbindet AstroFlow die erkannten Sterne
+  durch feine Linien zu einem Netz. Das Muster der neuen Aufnahme dreht und verschiebt sich auf das der Referenz; übereinstimmende
+  Linien und das gefundene Startdreieck leuchten auf, dazu Sternpaare, Drehung, Versatz und Restabweichung. Echte Daten der
+  Registrierung, höchstens alle 3 Sekunden eine Aufnahme – das Stacken wird dadurch nicht langsamer. Über „Sternmuster“ abschaltbar.
+
 ## 0.46.1 – 08.11.2026
 
 ### Neu

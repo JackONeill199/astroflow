@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+import threading
 import time
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from PIL import Image
 
 SIDE = 800
 INTERVAL = 4.0
+PATTERN_INTERVAL = 3.0       # Sternmuster der Registrierung: höchstens alle 3 s eine Aufnahme
 
 
 def sample(img):
@@ -51,19 +53,24 @@ class LiveRun:
     def __init__(self, work: Path, pid: int, job=None):
         self.path = work / f'p{pid}' / 'live'
         self.path.mkdir(parents=True, exist_ok=True)
-        self.data = {'run': str(time.time_ns()), 'job': job, 'steps': [], 'preview': None}
+        self.data = {'run': str(time.time_ns()), 'job': job, 'steps': [], 'preview': None, 'pattern': None}
+        self._write_lock = threading.Lock()      # Sternmuster kommen aus den Registrier-Threads
         self.seq = 0
         self.last_picture = 0.0
+        self.last_pattern = 0.0
+        self.pattern_seq = 0
+        self._pattern_lock = threading.Lock()
         self.finished = False
         # Alte Live-Bilder sind in Ergebnissen separat archiviert.
-        for p in self.path.glob('*.jpg'):
+        for p in [*self.path.glob('*.jpg'), self.path / 'pattern.json']:
             p.unlink(missing_ok=True)
         self._write()
 
     def _write(self):
-        tmp = self.path / 'state.tmp'
-        tmp.write_text(json.dumps(self.data, ensure_ascii=False), encoding='utf-8')
-        tmp.replace(self.path / 'state.json')
+        with self._write_lock:
+            tmp = self.path / 'state.tmp'
+            tmp.write_text(json.dumps(self.data, ensure_ascii=False), encoding='utf-8')
+            tmp.replace(self.path / 'state.json')
 
     def event(self, stage, message=''):
         """Nur tatsächlich besuchte Schritte; erneute QC-Runden bleiben nachvollziehbar."""
@@ -93,6 +100,38 @@ class LiveRun:
         for p in self.path.glob(f"{self.data['run']}-*.jpg"):
             if p.name not in (name, f"{self.data['run']}-{self.seq - 1}.jpg"):
                 p.unlink(missing_ok=True)
+
+
+    def want_pattern(self):
+        """Genau ein Registrier-Thread darf alle PATTERN_INTERVAL Sekunden Sternmuster liefern (sonst nichts zu tun)."""
+        if self.finished:
+            return False
+        with self._pattern_lock:
+            now = time.monotonic()
+            if now - self.last_pattern < PATTERN_INTERVAL:
+                return False
+            self.last_pattern = now
+            return True
+
+    def pattern(self, data, n=None, total=None):
+        """Sternmuster in eigener Datei (nicht im gepollten state.json, dort nur die Kennung)."""
+        with self._pattern_lock:
+            self.pattern_seq += 1
+            key = f"{self.data['run']}-{self.pattern_seq}"
+        data = {**data, 'key': key, 'n': n, 'total': total}
+        with self._write_lock:
+            tmp = self.path / 'pattern.tmp'
+            tmp.write_text(json.dumps(data, separators=(',', ':')), encoding='utf-8')
+            tmp.replace(self.path / 'pattern.json')
+        self.data['pattern'] = key
+        self._write()
+
+
+def read_pattern(work, pid):
+    try:
+        return json.loads((work / f'p{pid}' / 'live' / 'pattern.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return None
 
 
 def optional(fn, *args, **kwargs):

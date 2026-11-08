@@ -1191,6 +1191,8 @@ class Pipeline:
         budget = min(self.s.batch_mb, max(300, free // 5)) if free else self.s.batch_mb
         bsz = batch_size_for((C, H * scale, W * scale), budget)
         g = gpu.engine()                               # Grafikkarte für Ausrichten + Clipping (sonst None = CPU)
+        n_before = len(meta["frames"])
+        order = {r["id"]: i for i, r in enumerate(todo)}
 
         def work(r):
             try:
@@ -1201,10 +1203,15 @@ class Pipeline:
                 if r["id"] == meta["ref_fid"]:
                     M, pairs = np.eye(3), np.stack([np.arange(len(tg)), np.arange(len(tg))], 1)
                 else:
-                    res = registration.find_transform(ref_xy, tg)
+                    run = self.live_runs.get(pid) if shifts is None else None
+                    seen = {} if run and live.optional(run.want_pattern) else None
+                    res = registration.find_transform(ref_xy, tg, info=seen)
                     if res is None:
                         return r["id"], None, "Registrierung fehlgeschlagen"
-                    M, pairs, _ = res
+                    M, pairs, rms = res
+                    if seen:                             # Sternmuster-Ansicht: nur diese eine Aufnahme, gedrosselt
+                        live.optional(lambda: run.pattern(registration.pattern(ref_xy, tg, M, pairs, seen, (H, W), rms),
+                                                          n=n_before + order[r["id"]] + 1, total=n_before + len(todo)))
                 d = shifts.get(r["id"]) if shifts else None
                 if d is not None:
                     M = np.array([[1, 0, d[0]], [0, 1, d[1]], [0, 0, 1]], float) @ M

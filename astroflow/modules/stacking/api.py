@@ -13,7 +13,7 @@ import traceback
 from pathlib import Path
 
 from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from . import calibration, channels, comet, diskspace, gpu, graxpert, objects, platesolve, reviewer, skyquality, stars, tonight, tutor
 from ...core import security
@@ -507,6 +507,15 @@ def build_router(eng: Engine) -> APIRouter:
         v["palettes"] = list(channels.PALETTES)
         v["kind_labels"] = objects.KIND_LABEL
         return v
+
+    @r.get('/projects/{pid}/pattern')
+    def live_pattern(pid: int):
+        """Sternmuster der zuletzt gezeigten Registrierung (eigener Endpunkt, nicht im 2,5-s-Poll)."""
+        from .live import read_pattern, read_state
+        state, data = read_state(eng.s.work_dir, pid), read_pattern(eng.s.work_dir, pid)
+        if not data or data.get('key') != state.get('pattern'):
+            raise HTTPException(404)
+        return JSONResponse(data, headers={'Cache-Control': 'no-store'})
 
     @r.get('/projects/{pid}/live/{name}')
     def live_picture(pid: int, name: str):
