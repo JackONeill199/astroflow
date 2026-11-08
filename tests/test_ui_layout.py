@@ -319,6 +319,48 @@ def test_live_processing_is_compact_and_updates_in_place(server, browser, size, 
     assert not errors, errors
 
 
+SPINNING = """() => [...document.querySelectorAll('*')].filter(el => /(^|, )spin(,|$)/.test(getComputedStyle(el).animationName)
+  && el.checkVisibility({opacityProperty: true, visibilityProperty: true})).map(el => el.className.baseVal ?? el.className)"""
+
+
+def test_only_one_spinner_on_running_object_page(server, browser):
+    """Objektseite während eines Auftrags: nur die Statuszeile dreht sich (Nutzerbefund: vier Kreisel, alle verschieden
+    schnell). Auf anderen Seiten zeigt die Auftragsanzeige oben ihren Kreisel."""
+    base, pid = server
+    page = browser.new_page(viewport={'width': 1440, 'height': 900})
+    errors = []
+    page.on('pageerror', lambda e: errors.append(str(e)))
+    job = {'id': 999, 'state': 'running', 'progress': .1, 'stage': 'Analyse', 'message': 'Analyse'}
+
+    def project_response(route):
+        response = route.fetch()
+        data = response.json()
+        data['job'], data['live'] = job, {'job': 999, 'steps': [{'stage': 'Analyse', 'label': 'Analyse', 'done': False}]}
+        route.fulfill(response=response, json=data)
+
+    def status_response(route):
+        response = route.fetch()
+        route.fulfill(response=response, json={**response.json(), 'busy': 1})
+
+    activity = [{'key': 'stacking:999', 'module': 'stacking', 'title': 'Testobjekt', 'kind': 'Verarbeitung', 'detail': '',
+                 'state': 'running', 'progress': .1, 'stage': 'Analyse', 'started': 0, 'finished': None, 'href': f'#/p/{pid}'}]
+    page.route(f'**/api/stacking/projects/{pid}', project_response)
+    page.route('**/api/status', status_response)
+    page.route('**/api/activity*', lambda route: route.fulfill(json=activity))
+    page.goto(f'{base}/#/p/{pid}/bild')
+    page.wait_for_selector('.sl-pulse')
+    page.wait_for_function("!document.querySelector('#jobpill').classList.contains('idle')")
+    assert page.evaluate(SPINNING) == ['sl-pulse']
+    assert page.locator('#run').is_disabled()
+    # gemeinsames Tempo: alle Kreisel über dasselbe Token
+    assert page.evaluate("getComputedStyle(document.querySelector('.sl-pulse')).animationDuration") == '0.9s'
+    page.goto(f'{base}/#/bilder')
+    page.wait_for_selector('#jobpill .spinner')
+    assert page.evaluate("getComputedStyle(document.querySelector('#jobpill .spinner')).animationDuration") == '0.9s'
+    page.close()
+    assert not errors, errors
+
+
 def test_switch_rows_toggle(server, browser):
     """Ein Klick auf die Zeile schaltet ihren Schalter – auch wenn die Zeile noch eine Auswahl enthält (Ältere Versionen)."""
     base, _ = server

@@ -311,12 +311,14 @@ function picker(host, { name, value = '', placeholder = 'Bitte wählen …', loa
   return { get value() { return hid.value; }, set, reload() { items = null; err = ''; label(); if (!pop.hidden) { draw(); fetchItems(); } }, preload: fetchItems };
 }
 
-// Abgelegte Dateien inkl. Unterordnern einsammeln; relativer Pfad landet in f.relPath
+// Abgelegte Dateien inkl. Unterordnern einsammeln; relativer Pfad landet in f.relPath.
+// Versteckte Einträge (Name mit „.“, z. B. Stellina „.thumbnail“) werden gar nicht erst gelesen.
 async function droppedFiles(dt) {
   const entries = [...(dt?.items || [])].map(i => i.webkitGetAsEntry?.()).filter(Boolean);
-  if (!entries.length) return [...(dt?.files || [])];
+  if (!entries.length) return [...(dt?.files || [])].filter(f => !f.name.startsWith('.'));
   const out = [];
   const walk = async (en) => {
+    if (en.name.startsWith('.')) return;
     if (en.isFile) {
       const f = await new Promise((res, rej) => en.file(res, rej));
       f.relPath = en.fullPath.replace(/^\//, '');
@@ -683,7 +685,9 @@ async function pollActivity() {
   drawJobPop(items);
 }
 // Auftragsanzeige in der Toolbar: Zähler + aktueller Auftrag; Klick öffnet die Liste (Popover)
+let pillArgs = [null, 0];
 function showJobPill(a, n = 0) {
+  pillArgs = [a, n];
   const pill = $('#jobpill');
   const pc = a?.progress != null ? Math.round(a.progress * 100) : null;
   document.title = a?.state === 'running' ? `${pc != null ? pc + ' % · ' : ''}${a.title} – AstroFlow` : 'AstroFlow';
@@ -692,7 +696,9 @@ function showJobPill(a, n = 0) {
   $('.count', pill).hidden = !n;
   pill.title = a ? `${n} laufende${n === 1 ? 'r' : ''} Auftr${n === 1 ? 'ag' : 'äge'}` : 'Keine laufenden Aufträge';
   const symbol = $('.job-symbol', pill), q = a?.state === 'queued';
-  const loader = !a ? 'idle' : !q && a.key?.startsWith('skytrace:') ? 'sequence' : 'spinner';
+  // auf der Seite des laufenden Objekts zeigt die Seite selbst den Fortschritt – dort kein zweiter Kreisel oben
+  const here = !!a?.href && (location.hash === a.href || location.hash.startsWith(a.href + '/'));
+  const loader = !a || here ? 'idle' : !q && a.key?.startsWith('skytrace:') ? 'sequence' : 'spinner';
   if (symbol.dataset.loader !== loader) {
     symbol.innerHTML = loader === 'sequence' ? sequenceLoader() : loader === 'spinner' ? '<span class="spinner" aria-hidden="true"></span>' : icon('pulse');
     symbol.dataset.loader = loader;
@@ -1025,6 +1031,7 @@ async function boot() {
     });
   });
   addEventListener('hashchange', route);
+  addEventListener('hashchange', () => showJobPill(...pillArgs));
   // Erster Start der installierten Version → Einrichtung; neue Version → einmaliger Hinweis je Version
   if (AF.app.setup?.pending && /^#?\/?$/.test(location.hash)) location.hash = '#/willkommen';
   if (AF.app.settings_problem) toast('Die Einstellungsdatei (settings.json) ist beschädigt und wird nicht überschrieben. Eine Kopie liegt daneben (settings.json.defekt-…). Bitte reparieren oder löschen.', 'err');

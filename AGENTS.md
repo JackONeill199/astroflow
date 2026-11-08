@@ -777,6 +777,9 @@ oder als verschwunden behandelt. Gelöscht werden sie nie (`_is_upload`). Wieder
 Master-Kalibrierung: `CalibrationLibrary._cached` merkt je Pfadliste den zuletzt gebauten Master (`<tag>_<hash>.ref`) – ohne erreichbare
 Quelle (keine Änderungszeit für den Schlüssel) wird er weiter genutzt; Bauen/Lesen unter `lock` (parallele Analyse-Threads).
 Test: `tests/test_import_in_place.py`.
+**Versteckte Einträge** (seit 0.46.2, `core/hidden.py` → `hidden_entry`): Name mit „.“ (Stellina-Platte: `.thumbnail`, `.webaxs_*`, `.webview` erschienen als
+„Fertige Bilder · neu“) und unter Windows Attribut „versteckt“ (bei Dateien auch „System“) fallen in `library._walk`, `scanner.list_fits`,
+Ordnerdialog/Suche und Upload (Server + `droppedFiles`/`upload` im Browser) weg; ein bewusst gewählter Startordner selbst wird gelesen. Test `test_versteckt.py`.
 UI-Filter (seit 0.21.0, eine Leiste über der Liste): Zustand als Reiter (`LIB_TABS`, Standard „Offen“ = `n_new > 0`), Art/Format als `.menu`-Mehrfachauswahl,
 localStorage `af.library.filter` (`{tab, kind, ext}`); Formate je Gruppe aus `library.file_formats` → `groups[].exts` (`{"fits": 141}`);
 „Alle neuen“ (Dreifach-Kästchen) und Import wirken nur auf sichtbare Gruppen. Beim ersten Laden sind Gruppen mit Neuem vorgewählt (wie vor 0.21.0).
@@ -859,6 +862,9 @@ HR = ZHR · sin(Radiantenhöhe) · r^(Grenzgröße − 6,5), sporadisch 2 + 10·
 Ort aus `/api/sites/resolve` (sonst 50° N, Länge aus der Zeitzone). Alle 15 s Poisson-Ziehung mit Rate HR/5; Strom-Meteore fliegen vom Radianten weg
 (Blick Süd), Tempo/Länge/Farbe aus v. `info()` liefert den Text unter Darstellung. `localStorage af.ui.meteors`, aus bei reduzierter Bewegung und
 ohne Stil. Test: `test_meteors.py` (Geminiden-/Perseidenmaximum, Tag, Apex morgens > abends, Radiant unter dem Horizont).
+**Kreisel** (seit 0.46.2, Nutzerbefund: vier verschieden schnelle auf der Objektseite): alle über das Token `--spin` (`animation: var(--spin)`),
+höchstens einer je Ansicht. Objektseite bei laufendem Auftrag: nur `.sl-pulse` in der Statuszeile; `.sl-orbit` ist ein ruhiger Platzhalter,
+„Läuft …“ ohne `.busy`, `showJobPill` zeigt auf der Seite des laufenden Objekts (`a.href`) keinen Kreisel. Test `test_only_one_spinner_on_running_object_page`.
 **Rückmeldung** (seit 0.24.0, Nutzerwunsch „responsiver“, Ende von `style.css`, gilt für alle Stile): Drücken = `scale(.94–.985)` in 120 ms, nur
 transform/opacity/Farben. `api()` merkt den zuletzt gedrückten Knopf (`lastPress`, ≤ 0,6 s) und setzt bei schreibenden Anfragen `.pending`
 (gesperrt, Kreisel nach 150 ms über `::before/::after`) – `.btn` darf daher keine eigenen `::before/::after` bekommen. Aufwendige Animationen nur für echte Prozesse (`viz.js`, als „Schema“
