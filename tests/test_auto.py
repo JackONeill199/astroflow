@@ -37,6 +37,7 @@ def test_nach_dem_stacken(tmp_path, monkeypatch):
     frames.append({"id": "einzeln", "path": str(p), "night": "2026-10-29", "status": "ok"})   # eine Aufnahme: keine Bildfolge
     app = _app(tmp_path, monkeypatch, frames)
     with TestClient(app) as c:
+        app.state.modules["sage"].backfill_thread.join(30)     # Start-Verknüpfung fertig, sonst vergibt ihr refresh() mitten im Test neue Erfolge
         c.post("/api/sage/config", json={"story_provider": "lmstudio", "auto_story": False})
         app.state.ctx.emit("stacking.stacked", project_id=3, result_id=7, name="M74")
         t = _wait(c, c.get("/api/sage/tasks").json()[0]["id"])
