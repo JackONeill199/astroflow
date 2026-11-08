@@ -364,14 +364,18 @@ def test_spinners_on_running_object_page(server, browser):
 def test_live_stack_emerges_from_noise(server, browser, size):
     """Beim Stacken: neue echte Zwischenstände werden nacheinander überblendet, mit Aufnahmenzahl und Rauschmaß;
     die Endbearbeitung (preview) hat danach Vorrang. Reduzierte Bewegung: harte Wechsel."""
+    from playwright.sync_api import Error as PlaywrightError
     base, pid = server
     w, h = SIZES[size]
     state = {'k': 4, 'rid': None, 'preview': None, 'ready': False}
     seq = [1, 2, 3, 4, 5, 6, 8, 10, 12, 15]
 
     def project_response(route):
-        response = route.fetch()
-        data = response.json()
+        try:
+            response = route.fetch()
+            data = response.json()
+        except PlaywrightError:                                           # Seite schon zu: nichts mehr auszuliefern
+            return
         state['rid'] = data['results'][0]['id']
         if state['ready']:                                                # erst wenn die Ansicht steht: je Abruf 3 neue Stände
             state['k'] = min(state['k'] + 3, len(seq))
@@ -380,17 +384,26 @@ def test_live_stack_emerges_from_noise(server, browser, size):
         data['job'] = {'id': 997, 'state': 'running', 'progress': .4, 'stage': 'Stacking', 'message': 'Stacking'}
         data['live'] = {'job': 997, 'run': '1', 'frames': frames, 'preview': state['preview'], 'n': frames[-1]['n'],
                         'steps': [{'stage': 'Stacking', 'label': 'Stacking', 'done': False}]}
-        route.fulfill(response=response, json=data)
+        try:
+            route.fulfill(response=response, json=data)
+        except PlaywrightError:
+            pass
+
+    def live_file(route):
+        try:
+            route.fulfill(response=route.fetch(url=f"{base}/api/stacking/results/{state['rid']}/jpg"))
+        except PlaywrightError:
+            pass
 
     for reduced in ('no-preference', 'reduce'):
         state.update(k=4, preview=None, ready=False)
-        page = browser.new_page(viewport={'width': w, 'height': h}, reduced_motion=reduced)
+        context = browser.new_context(viewport={'width': w, 'height': h}, reduced_motion=reduced)    # je Durchlauf eigener Kontext: nichts Verwaistes zieht den nächsten mit
+        page = context.new_page()
         errors, shown = [], []
         page.on('pageerror', lambda e: errors.append(str(e)))
         page.on('request', lambda r: shown.append(r.url.rsplit('/', 1)[-1]) if '/live/1-f' in r.url else None)
         page.route(f'**/api/stacking/projects/{pid}', project_response)
-        page.route(f'**/api/stacking/projects/{pid}/live/*',
-                   lambda route: route.fulfill(response=route.fetch(url=f"{base}/api/stacking/results/{state['rid']}/jpg")))
+        page.route(f'**/api/stacking/projects/{pid}/live/*', live_file)
         page.goto(f'{base}/#/p/{pid}/bild')
         page.wait_for_selector('.sl-image.on[src$="1-f4.jpg"]')        # neu geöffnet: nur der jüngste Stand
         assert '1-f1.jpg' not in shown                                    # nichts nachgeholt
@@ -404,8 +417,8 @@ def test_live_stack_emerges_from_noise(server, browser, size):
         assert not page.evaluate(FIND_OVERFLOW)
         state['preview'] = '1-9.jpg'                                      # Endbearbeitung: ihre Vorschau gewinnt
         page.wait_for_selector('.sl-image.on[src$="1-9.jpg"]')
-        page.unroute_all(behavior='wait')                                 # laufende Abrufe der Weiterleitung zu Ende, sonst „Target closed“ beim Schließen
-        page.close()
+        page.unroute_all(behavior='ignoreErrors')                         # keine neuen Weiterleitungen mehr, Fehler laufender Abrufe egal
+        context.close()
         assert not errors, errors
 
 
