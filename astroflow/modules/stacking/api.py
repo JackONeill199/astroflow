@@ -15,7 +15,7 @@ from pathlib import Path
 from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
-from . import calibration, channels, comet, diskspace, gpu, graxpert, objects, platesolve, reviewer, skyquality, stars, tonight, tutor
+from . import calibration, channels, comet, diskspace, gpu, graxpert, objects, platesolve, registration, reviewer, skyquality, stars, tonight, tutor
 from ...core import security
 from .db import DB
 from .pipeline import Pipeline
@@ -26,7 +26,8 @@ PERSIST = {"reviewer": ("provider", "base_url", "model", "api_key", "max_rounds"
            "storage": ("delete_uploads", "gaia"),
            "starnet": ("path",),
            "graxpert": ("path", "mode", "gpu"),
-           "gpu": ("mode",)}
+           "gpu": ("mode",),
+           "distortion": ("mode",)}
 
 
 class Engine:
@@ -62,7 +63,7 @@ class Engine:
     # ---- gespeicherte Einstellungen -------------------------------------------
     def _targets(self) -> dict:
         return {"reviewer": self.review_cfg, "solver": self.pl.solver_cfg, "storage": self.s, "starnet": stars.STARNET,
-                "graxpert": graxpert.GRAXPERT, "gpu": gpu.GPU}
+                "graxpert": graxpert.GRAXPERT, "gpu": gpu.GPU, "distortion": registration.DISTORTION}
 
     def _apply_saved(self):
         for sec, obj in self._targets().items():
@@ -503,6 +504,8 @@ def build_router(eng: Engine) -> APIRouter:
                          "views": [k for k in ("stars", "comet") if k in json.loads(x["files"] or "{}")]}
                         for x in db.q("SELECT * FROM results WHERE project_id=? ORDER BY COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC,id DESC", (pid,))]
         v["hotpixel_hint"] = not v.get("imported") and eng.pl.hotpixel_hint(pid)
+        # Verzerrungskorrektur: globaler Modus (für „Wie global“) und Modus, mit dem der Stack aufgebaut wurde
+        v["distortion"] = {"global": registration.distortion_mode(None), "stack": eng.pl.distortion_state(pid)}
         v["profiles"] = list(objects.PROFILES)
         v["palettes"] = list(channels.PALETTES)
         v["kind_labels"] = objects.KIND_LABEL
@@ -1133,6 +1136,19 @@ def build_router(eng: Engine) -> APIRouter:
             g.gpu = bool(body["gpu"])
         eng.save_settings()
         return get_graxpert()
+
+    @r.get("/distortion")
+    def get_distortion():
+        """Verzerrungskorrektur global (Objekte mit Option „global“ folgen ihr)."""
+        return {"mode": registration.distortion_mode(None), "modes": list(registration.MODES)}
+
+    @r.post("/distortion")
+    def set_distortion(body: dict = Body(...)):
+        if body.get("mode") not in registration.MODES:
+            raise HTTPException(400, "Unbekannter Modus")
+        registration.DISTORTION.mode = body["mode"]
+        eng.save_settings()
+        return get_distortion()
 
     @r.get("/gpu")
     def get_gpu():

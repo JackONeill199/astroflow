@@ -34,7 +34,7 @@ DEFAULT_OPTIONS = {
     "graxpert": None,           # None = Einstellung | off | bge | denoise | all (KI-Hintergrund/-Entrauschen, falls installiert)
     "comet_mode": "auto",       # Kometenmodus: auto (nach Name/Typ) | on | off – nicht „mode“, das heißt bei Aufträgen „develop“
     "comet_name": None,         # Bezeichnung für JPL Horizons, falls der Name keine enthält (z. B. „C/2022 E3“)
-    "distortion": None,         # Verzerrungskorrektur: None = Standard (ASTROFLOW_DISTORTION, sonst aus) | auto | off
+    "distortion": "global",     # Verzerrungskorrektur: global = Einstellung (Standard an) | auto | off (registration.distortion_mode)
 }
 GLOW_SAMPLE = 30                # Frames je Nacht für die Glühmessung
 CHECKPOINT_S = 120              # Stack-Zustand spätestens alle 2 min sichern (Wiederaufnahme nach Abbruch)
@@ -918,6 +918,29 @@ class Pipeline:
         except Exception:
             return None
 
+    def distortion_state(self, pid: int) -> bool | None:
+        """Wurde der (Sterne-)Stack mit Verzerrungskorrektur aufgebaut? None = noch kein Stack. Ältere Stacks ohne Marke:
+        mit Einträgen je Aufnahme (`reg`) gemischt/an, sonst aus. Je Stand von state.json gecacht (Ansicht wird gepollt)."""
+        wd = self.s.work_dir / f"p{pid}"
+        f = wd / "stack" / "state.json"
+        if not f.exists():
+            f = next((x / "state.json" for x in sorted(wd.glob("stack_*")) if x.name != "stack_comet"
+                      and not x.name.startswith("stack_comet_") and (x / "state.json").exists()), f)
+        try:
+            mt = f.stat().st_mtime
+        except OSError:
+            return None
+        hit = self._hint_cache.get(("dist", str(f)))
+        if hit and hit[0] == mt:
+            return hit[1]
+        try:
+            meta = json.loads(f.read_text(encoding="utf-8"))
+            val = bool(meta.get("distortion", bool(meta.get("reg"))))
+        except (OSError, ValueError):
+            val = None
+        self._hint_cache[("dist", str(f))] = (mt, val)
+        return val
+
     def _master(self, project_id: int) -> dict:
         """Gespeicherte Master-Stacks je Filter (None = Farbkamera)."""
         wd = self.s.work_dir / f"p{project_id}"
@@ -1218,6 +1241,8 @@ class Pipeline:
             if distortion:
                 state.meta["ref_dense"] = quality.dense_stars(raw, bool(ri["bayerpat"]) and raw.ndim == 2)
         meta = state.meta
+        if not meta.get("frames"):
+            meta["distortion"] = bool(distortion)       # mit welchem Modus der Stack aufgebaut wurde (Hinweis „Neu stacken“)
         if not meta.get("frames") and "defects" not in meta:
             # neu aufgebauter Stack: mit Fehlerkarte gerechnet? (ältere Stacks haben die Marke nicht → Hinweis „Neu stacken“)
             meta["defects"] = any(isinstance(k, tuple) and k[0] == "defects" for k in cache)

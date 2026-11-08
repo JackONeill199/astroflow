@@ -112,10 +112,19 @@ def test_summary_and_mode(monkeypatch):
     assert s["rms_before"] == 0.4 and s["rms_after"] == 0.25
     assert s["why"] == {"Restfehler sinkt nicht deutlich": 1, "zu wenige Sterne": 1}
     assert R.summary({"frames": {"a": 1}}) is None
+    # Standard „auto“; Objektoption (auto/off) vor der globalen Einstellung, global/None/Unbekanntes = global
     monkeypatch.delenv("ASTROFLOW_DISTORTION", raising=False)
-    assert R.distortion_mode(None) == "off" and R.distortion_mode("auto") == "auto" and R.distortion_mode("quatsch") == "off"
-    monkeypatch.setenv("ASTROFLOW_DISTORTION", "1")
-    assert R.distortion_mode(None) == "auto" and R.distortion_mode("off") == "off"
+    assert R.DistortionConfig().mode == "auto"
+    monkeypatch.setattr(R.DISTORTION, "mode", "auto")
+    assert R.distortion_mode(None) == R.distortion_mode("global") == R.distortion_mode("quatsch") == "auto"
+    assert R.distortion_mode("off") == "off"
+    monkeypatch.setattr(R.DISTORTION, "mode", "off")
+    assert R.distortion_mode(None) == R.distortion_mode("global") == "off"
+    assert R.distortion_mode("auto") == "auto"
+    monkeypatch.setenv("ASTROFLOW_DISTORTION", "0")
+    assert R.DistortionConfig().mode == "off"
+    from astroflow.modules.stacking.pipeline import DEFAULT_OPTIONS
+    assert DEFAULT_OPTIONS["distortion"] == "global"
 
 
 @pytest.fixture(scope="module")
@@ -137,12 +146,14 @@ def _pipeline(tmp_path, src):
 
 
 def test_stack_with_distortion_end_to_end(tmp_path, series, monkeypatch):
-    monkeypatch.delenv("ASTROFLOW_DISTORTION", raising=False)
+    monkeypatch.setattr(R.DISTORTION, "mode", "auto")
     s, db, pl, pid = _pipeline(tmp_path, series)
-    st = pl.stack(pid)[None]                                  # Standard: aus → keine Einträge, alter Zustand
-    assert "reg" not in st.meta and "ref_dense" not in st.meta
+    st = pl.stack(pid, extra={"distortion": "off"})[None]   # Objekt „aus“ schlägt global „an“
+    assert "reg" not in st.meta and "ref_dense" not in st.meta and st.meta["distortion"] is False
+    assert pl.distortion_state(pid) is False
     db.x("UPDATE projects SET restack=1 WHERE id=?", (pid,))
-    st = pl.stack(pid, extra={"distortion": "auto"})[None]
+    st = pl.stack(pid)[None]                                  # Standard (Objekt „global“, global „an“)
+    assert st.meta["distortion"] is True and pl.distortion_state(pid) is True
     reg, n = st.meta["reg"], len(st.meta["frames"])
     assert len(st.meta["ref_dense"]) > 100 and len(reg) == n - 1           # Referenzbild selbst ohne Eintrag
     poly = [r for r in reg.values() if r["poly"]]
@@ -162,11 +173,13 @@ def test_stack_with_distortion_end_to_end(tmp_path, series, monkeypatch):
     assert stats["distortion"]["poly"] == len(poly)
 
 
-def test_dense_reference_for_older_stacks(tmp_path, series):
+def test_dense_reference_for_older_stacks(tmp_path, series, monkeypatch):
     """Stack ohne dichte Referenzliste (vor der Verzerrungskorrektur): erst aus dem Referenzbild, ohne Rohbild aus dem Stack."""
     from pathlib import Path
+    monkeypatch.setattr(R.DISTORTION, "mode", "off")
     s, db, pl, pid = _pipeline(tmp_path, series)
     st = pl.stack(pid)[None]
+    assert "ref_dense" not in st.meta
     ref = Path(db.one("SELECT path FROM frames WHERE id=?", (st.meta["ref_fid"],))["path"])
     lib = pl._library()
     a = pl._dense_ref(st, lib, {})
@@ -193,3 +206,35 @@ def test_dense_stars_match_analysis():
     from scipy.spatial import cKDTree
     d, _ = cKDTree(dense[:, :2]).query(stored[:, :2])
     assert np.mean(d < 0.02) > 0.95
+
+
+def test_global_setting_api_and_object_override(tmp_path, monkeypatch):
+    """Einstellungen → Bilder: global standardmäßig an, gespeichert in settings.json (übersteht den Neustart);
+    die Objektoption (an/aus) hat Vorrang, „global“ folgt der Einstellung."""
+    from fastapi.testclient import TestClient
+    from astroflow.server import create_app
+    monkeypatch.delenv("ASTROFLOW_DISTORTION", raising=False)
+    monkeypatch.setattr(R.DISTORTION, "mode", "auto")         # stellt den Prozesszustand nach dem Test wieder her
+    s = load_settings(tmp_path / "d")
+    s.auto = False
+    demo.generate(s.input_dir / "n", n_lights=4, n_darks=0, n_flats=0)
+    with TestClient(create_app(s, only=("stacking",))) as c:
+        assert c.get("/api/stacking/distortion").json()["mode"] == "auto"
+        c.post("/api/stacking/scan")
+        pid = c.get("/api/stacking/projects").json()[0]["id"]
+        p = c.get(f"/api/stacking/projects/{pid}").json()
+        assert p["options"].get("distortion", "global") == "global"
+        assert p["distortion"] == {"global": "auto", "stack": None}
+        assert c.post("/api/stacking/distortion", json={"mode": "quatsch"}).status_code == 400
+        assert c.post("/api/stacking/distortion", json={"mode": "off"}).json()["mode"] == "off"
+        assert c.get(f"/api/stacking/projects/{pid}").json()["distortion"]["global"] == "off"
+        c.patch(f"/api/stacking/projects/{pid}", json={"options": {"distortion": "auto"}})
+        opt = c.get(f"/api/stacking/projects/{pid}").json()["options"]
+        assert R.distortion_mode(opt["distortion"]) == "auto" and R.distortion_mode("global") == "off"
+    saved = json.loads((s.data_dir / "settings.json").read_text(encoding="utf-8"))
+    assert saved["distortion"]["mode"] == "off"
+    R.DISTORTION.mode = "auto"                                # Neustart: gespeicherter Wert gewinnt
+    s2 = load_settings(tmp_path / "d")
+    s2.auto = False
+    with TestClient(create_app(s2, only=("stacking",))) as c:
+        assert c.get("/api/stacking/distortion").json()["mode"] == "off"

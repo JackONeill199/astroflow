@@ -842,6 +842,9 @@ async function projectView(el, id, tab = 'bild') {
   // ---- Tab: Optionen ----
   function tabOptions(t) {
     const o = p.options || {};
+    const distGlobal = p.distortion?.global || 'auto';
+    const distOn = (v) => (['auto', 'off'].includes(v) ? v : distGlobal) === 'auto';      // wirksamer Modus (Objekt vor global)
+    const distStale = p.distortion?.stack != null && p.distortion.stack !== distOn(o.distortion) && p.deleted?.can_restack !== false;
     const opt = (list, val, lbl) => list.map(v => `<option value="${esc(v)}" ${String(val) === String(v) ? 'selected' : ''}>${esc(lbl ? lbl(v) : v)}</option>`).join('');
     t.innerHTML = `<div class="split"><form class="panel" id="optf">
         <label class="field"><span>Bearbeitungsprofil</span><select name="profile">${opt(['auto', ...p.profiles], o.profile || 'auto', v => PROFILE_LABEL[v] || v)}</select>
@@ -850,8 +853,9 @@ async function projectView(el, id, tab = 'bild') {
           <small>Nur relevant bei getrennten Filteraufnahmen (L, R, G, B, Hα, OIII, SII).</small></label>
         <label class="field"><span>Auswahl der Einzelbilder</span><select name="keep_percent" ${p.deleted?.can_restack === false ? 'disabled' : ''}>${opt(['', 90, 80, 60, 40], o.keep_percent ?? '', v => v === '' ? 'Alle brauchbaren (nur Ausreißer verwerfen)' : `Nur die besten ${v} %`)}</select></label>
         <label class="field"><span>Auflösung</span><select name="resolution_scale" ${p.deleted?.can_restack === false ? 'disabled' : ''}>${opt([1, 2], o.resolution_scale || 1, v => v === 2 ? '2× (Super-Resolution, viel RAM)' : '1× (Standard)')}</select></label>
-        <label class="field"><span>Verzerrungskorrektur</span><select name="distortion">${opt(['', 'auto', 'off'], o.distortion || '', v => ({ '': 'Standard (aus)', auto: 'Ein – Polynom 2. Ordnung, wenn es die Sterne genauer trifft', off: 'Aus – nur verschieben und drehen' }[v]))}</select>
-          <small>Gleicht die Verzeichnung der Optik aus, wenn das Feld zwischen den Aufnahmen wandert (Nachzentrieren). Wirkt auf neu gestackte Aufnahmen – für alle: „Komplett neu stacken“.</small></label>
+        <label class="field"><span>Verzerrungskorrektur</span><select name="distortion">${opt(['global', 'auto', 'off'], ['auto', 'off'].includes(o.distortion) ? o.distortion : 'global', v => ({ global: `Wie global (${distGlobal === 'off' ? 'aus' : 'an'})`, auto: 'An – Polynom 2. Ordnung, wenn es die Sterne genauer trifft', off: 'Aus – nur verschieben und drehen' }[v]))}</select>
+          <small>Gleicht die Verzeichnung der Optik aus, wenn das Feld zwischen den Aufnahmen wandert (Nachzentrieren). Global unter Einstellungen → Bilder.
+          ${distStale ? `<br><span class="warn">Der Stack wurde ${p.distortion.stack ? 'mit' : 'ohne'} Verzerrungskorrektur gerechnet – für alle Aufnahmen „Komplett neu stacken“ (Menü „Mehr“).</span>` : 'Wirkt auf neu gestackte Aufnahmen – für alle: „Komplett neu stacken“.'}</small></label>
         ${p.deleted?.can_restack === false ? '<p class="mut sm" style="margin:-6px 0 14px">Auswahl und Auflösung sind fest: die Einzelbilder wurden nach dem Stacking gelöscht.</p>' : ''}
         <label class="field"><span>Schmalband-Behandlung</span><select name="narrowband">${opt(['', 'true', 'false'], o.narrowband == null ? '' : String(o.narrowband), v => ({ '': 'Automatisch (nach Filter)', true: 'Ja – keine Sternfarben-Kalibrierung', false: 'Nein' }[v]))}</select></label>
         <label class="field"><span>Sterne getrennt bearbeiten</span><select name="star_separation">${opt(['', 'starnet', 'auto', 'intern', 'off'], o.star_separation || '', v => ({ '': 'Wie Profil (Nebel: StarNet, sonst nein)', starnet: 'Ja – nur mit StarNet', auto: 'Ja – StarNet, falls installiert, sonst eigene Trennung', intern: 'Ja – eigene Trennung', off: 'Nein' }[v]))}</select>
@@ -874,14 +878,14 @@ async function projectView(el, id, tab = 'bild') {
     const v = (k) => form.elements[k].value;
     const read = () => ({ profile: v('profile'), palette: v('palette'), keep_percent: v('keep_percent') ? +v('keep_percent') : null,
       resolution_scale: +v('resolution_scale'), narrowband: v('narrowband') === '' ? null : v('narrowband') === 'true', review: v('review') === 'true', star_separation: v('star_separation') || null, graxpert: v('graxpert') || null,
-      comet_mode: v('comet_mode'), comet_name: v('comet_name').trim() || null, distortion: v('distortion') || null });
+      comet_mode: v('comet_mode'), comet_name: v('comet_name').trim() || null, distortion: v('distortion') });
     const init = Object.fromEntries($$('select,input', form).filter(x => x.name).map(x => [x.name, x.value]));
     let o2, needRestack, needStack, dirty;
     // Erkennt Änderungen und beschriftet die Hauptaktion passend: neu entwickeln (schnell) oder neu stacken
     const check = () => {
       o2 = read();
       needRestack = (o2.keep_percent ?? null) !== (o.keep_percent ?? null) || o2.resolution_scale !== (o.resolution_scale || 1)
-        || ((o2.distortion || null) !== (o.distortion || null) && p.deleted?.can_restack !== false);
+        || (distOn(o2.distortion) !== distOn(o.distortion) && p.deleted?.can_restack !== false);
       // Kometenmodus/-Bezeichnung: Kometen-Stack (nach)bauen – ein normaler Lauf, kein komplettes Neu-Stacken
       needStack = o2.comet_mode !== (o.comet_mode || 'auto') || (o2.comet_name || null) !== (o.comet_name || null);
       const changed = $$('select,input', form).filter(x => x.name && String(init[x.name] ?? '') !== x.value);
@@ -1313,6 +1317,7 @@ async function housekeeping(panel) {
 async function stackingSettings(el) {
   const [c, st, sv, sn, gx, gp, tu, ins] = await Promise.all([api('/stacking/reviewer'), api('/stacking/status'), api('/stacking/solver'), api('/stacking/starnet'),
     api('/stacking/graxpert'), api('/stacking/gpu'), api('/stacking/tutor'), api('/stacking/insights')]);
+  const dist = await api('/stacking/distortion').catch(() => ({ mode: 'auto' }));
   const insBox = (k, title, text) => `<label class="modrow opt"><div><b>${title}</b><div class="mut sm">${text}</div></div><input type="checkbox" name="${k}" ${ins[k] ? 'checked' : ''}><span class="switch"></span></label>`;
   const astapOk = sv.astap && sv.astap_databases.length;
   el.innerHTML = `<div class="split"><div><form class="panel" id="tf">
@@ -1427,6 +1432,9 @@ async function stackingSettings(el) {
     </dl>
       <label class="modrow opt"><div><b>Grafikkarte fürs Stacking nutzen</b><div class="mut sm">Ausrichten und Ausreißer-Erkennung laufen dann auf der GPU (OpenCL: AMD, NVIDIA, Intel) –
         deutlich schneller. Ohne geeignete Karte oder bei Fehlern rechnet automatisch der Prozessor.</div></div><input type="checkbox" id="gpuOn" ${gp.mode !== 'off' ? 'checked' : ''}><span class="switch"></span></label>
+      <label class="modrow opt"><div><b>Verzerrungskorrektur beim Stacken</b><div class="mut sm">Wandert das Bildfeld zwischen den Aufnahmen (Nachzentrieren bei Smart-Teleskopen),
+        richtet AstroFlow jede Aufnahme zusätzlich über alle Sterne aus – nur wenn das die Sterne nachweislich genauer trifft. Sterne am Bildrand werden runder.
+        Gilt für alle Objekte mit „Wie global“ und für neu gestackte Aufnahmen; einzelne Objekte lassen sich unter Optionen abweichend einstellen.</div></div><input type="checkbox" id="distOn" ${dist.mode !== 'off' ? 'checked' : ''}><span class="switch"></span></label>
       <p class="mut sm" style="margin:14px 0 0">Tipp: Im Browser-Menü „App installieren“ wählen – AstroFlow läuft dann wie eine eigene App.</p></div></div></div>`;
   if (!el.isConnected) return;      // inzwischen weiternavigiert – die Abfragen unten gingen ins Leere
   housekeeping($('#hk'));
@@ -1445,6 +1453,13 @@ async function stackingSettings(el) {
       const r = await send('/stacking/gpu', { mode: e.target.checked ? 'auto' : 'off' });
       toast(r.active ? `Stacking auf der Grafikkarte (${r.device}).` : 'Stacking auf dem Prozessor.', 'ok');
       stackingSettings(el);
+    } catch (err) { toast('Fehler: ' + err.message, 'err'); }
+  };
+  $('#distOn').onchange = async (e) => {
+    try {
+      const r = await send('/stacking/distortion', { mode: e.target.checked ? 'auto' : 'off' });
+      toast(r.mode === 'auto' ? 'Verzerrungskorrektur an – wirkt auf neu gestackte Aufnahmen; für vorhandene Objekte „Komplett neu stacken“.'
+        : 'Verzerrungskorrektur aus – wirkt auf neu gestackte Aufnahmen.', 'ok');
     } catch (err) { toast('Fehler: ' + err.message, 'err'); }
   };
   $('#gxp').addEventListener('submit', async (e) => {

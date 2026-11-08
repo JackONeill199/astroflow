@@ -12,6 +12,7 @@ abdecken (jedes Viertel, jede Ecke) und der Restfehler in der Kreuzvalidierung d
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass, field
 from itertools import combinations
 
 import numpy as np
@@ -103,7 +104,8 @@ def find_transform(ref_xy: np.ndarray, tgt_xy: np.ndarray, tol: float = 2.5, max
 
 
 # ------------------------------------------------------------ Verzerrung ---
-MODES = ("off", "auto")  # Projektoption `distortion`: off = nur Ähnlichkeit (Standard), auto = Polynom, wenn es trägt
+MODES = ("auto", "off")  # auto = Polynom, wenn es trägt (Standard) · off = nur Ähnlichkeit
+OPTIONS = ("global",) + MODES   # Projektoption `distortion`: global = wie die Einstellung (Einstellungen → Bilder)
 POLY_TOL = 2.5          # px: Zuordnung aller Sterne über die Ähnlichkeit (Ränder weichen wegen der Verzeichnung ab)
 POLY_MIN_PAIRS = 30     # mindestens so viele zugeordnete Sterne (nach Ausreißern)
 POLY_MIN_QUAD = 5       # … davon je Viertel des Überlappfelds
@@ -115,11 +117,27 @@ POLY_FOLDS = 5
 STRIP_ROWS = 256        # Zeilen je Streifen beim Polynom-Warp auf der CPU (Koordinaten in float64 bleiben klein)
 
 
+def _norm(v) -> str | None:
+    v = str(v or "").strip().lower()
+    v = {"1": "auto", "on": "auto", "true": "auto", "ein": "auto", "an": "auto",
+         "0": "off", "false": "off", "aus": "off"}.get(v, v)
+    return v if v in MODES else None
+
+
+@dataclass
+class DistortionConfig:
+    """Globale Einstellung (settings.json → `distortion.mode`, Einstellungen → Bilder); ohne gespeicherten Wert gilt
+    ASTROFLOW_DISTORTION, sonst „auto“."""
+    mode: str = field(default_factory=lambda: _norm(os.environ.get("ASTROFLOW_DISTORTION")) or "auto")
+
+
+DISTORTION = DistortionConfig()
+
+
 def distortion_mode(value=None) -> str:
-    """Projektoption `distortion` (None = Standard aus ASTROFLOW_DISTORTION, sonst aus) -> "auto" | "off"."""
-    v = str(value or os.environ.get("ASTROFLOW_DISTORTION", "") or "off").strip().lower()
-    v = {"1": "auto", "on": "auto", "true": "auto", "ein": "auto", "0": "off", "false": "off", "aus": "off"}.get(v, v)
-    return v if v in MODES else "off"
+    """Wirksamer Modus "auto" | "off": Projektoption `distortion` (auto|off) vor der globalen Einstellung
+    (Projektoption global/None/unbekannt = global)."""
+    return _norm(value) or _norm(DISTORTION.mode) or "auto"
 
 
 def summary(meta: dict) -> dict | None:
