@@ -3,6 +3,17 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.46.2 – 08.11.2026
+
+### Behoben
+- **Versteckte Dateien und Ordner** (Name beginnt mit „.“, unter Windows Attribut „versteckt“) werden nicht mehr angezeigt
+  oder eingelesen: „Hauptordner durchsuchen“, Ordnerdialog samt Suche, Eingangsordner und Upload. Auf Stellina-Platten
+  erschienen sonst `.thumbnail`, `.webaxs_*` und `.webview` als vorgewählte „Fertige Bilder · neu“. Schon importierte
+  Bilder bleiben unverändert.
+- **Weniger Ladekreise:** Auf der Objektseite drehen sich während eines Auftrags nur noch die Auftragsanzeige oben und
+  die Statuszeile unter dem Bild. Die Mitte zeigt einen ruhigen Platzhalter, „Läuft …“ ist statisch. Alle Kreisel
+  drehen app-weit im selben Tempo.
+
 ## 0.46.1 – 08.11.2026
 
 ### Neu
