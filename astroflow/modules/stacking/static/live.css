@@ -7,14 +7,15 @@
 .sl-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 1.125rem;
   color: #a9b1ce; font-size: 0.8125rem; transition: opacity .5s }
 .has-picture .sl-wait { opacity: 0; pointer-events: none }
-.sl-orbit { width: 2.25rem; height: 2.25rem; border: 1px solid #b099ff30; border-top-color: #b099ff; border-radius: 50%; animation: sl-turn 2.6s linear infinite }
+/* ruhiger Platzhalter – der Fortschritt steht in der Statuszeile darunter (dort der einzige Kreisel) */
+.sl-orbit { width: 2.25rem; height: 2.25rem; border: 1px dashed #b099ff40; border-radius: 50% }
 .sl-badge { position: absolute; top: 0.875rem; left: 0.875rem; border-radius: 0.3125rem; padding: 0.3125rem 0.5625rem; background: #12182ddd;
   color: #d8d0fa; font-size: 0.6875rem; letter-spacing: .07em; backdrop-filter: blur(0.5rem) }
 .sl-caption { position: absolute; inset: auto 0 0; display: flex; justify-content: space-between; gap: 0.625rem; padding: 1.625rem 1rem 0.8125rem;
   background: linear-gradient(transparent, #060912d9); color: #dbe0f3; font-size: 0.75rem; font-variant-numeric: tabular-nums }
 .sl-status { position: relative; display: flex; align-items: center; gap: 0.5625rem; min-height: 2.1875rem; padding: 0.4375rem 0; font-size: 0.75rem }
 .sl-pulse { width: 0.6875rem; height: 0.6875rem; border: 1px solid var(--acc); border-right-color: transparent; border-radius: 50%;
-  flex-shrink: 0; animation: sl-turn 1.8s linear infinite }
+  flex-shrink: 0; animation: var(--spin) }
 .sl-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; flex: 1 }
 .sl-percent { color: var(--mut); flex-shrink: 0 }
 .sl-details { flex-shrink: 0 }
@@ -33,7 +34,7 @@
 .sl-track { height: 0.1875rem; border-radius: 0.1875rem; overflow: hidden; background: var(--line) }
 .sl-track i { display: block; height: 100%; background: linear-gradient(90deg, var(--acc), #bd98f8); transition: width 1s ease }
 .sl-track.indet i { animation: sl-wait 2.8s ease-in-out infinite }
-.sl-queued .sl-pulse, .sl-error .sl-pulse, .sl-error .sl-orbit { animation: none }
+.sl-queued .sl-pulse, .sl-error .sl-pulse { animation: none }
 /* Sternmuster der Registrierung (live.js → createStarPattern): dezenter Sternbild-Stil, Striche in Bildschirmpixeln */
 .sl-pattern { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; transition: opacity 90ms linear }
 .pattern-on .sl-pattern { opacity: 1; transition-duration: 60ms }
@@ -49,7 +50,6 @@
 .pattern-play .sl-pinfo { opacity: .75; transition-duration: .15s }
 .sl-ptoggle { flex-shrink: 0; border: 1px solid var(--line); border-radius: 0.3125rem; background: none; color: var(--mut); font: inherit; padding: 0.125rem 0.5rem; cursor: pointer }
 .sl-ptoggle[aria-pressed="true"] { color: var(--fg); border-color: var(--acc) }
-@keyframes sl-turn { to { transform: rotate(360deg) } }
 @keyframes sl-wait { 0%, 100% { transform: translateX(-100%) } 50% { transform: translateX(350%) } }
 @keyframes sl-enter { from { opacity: .5 } to { opacity: 1 } }
 @media (max-width: 480px) { .sl-status { gap: 0.4375rem; font-size: 0.6875rem } .sl-pinfo { font-size: 0.625rem } .sl-caption { padding-inline: 0.75rem; font-size: 0.6875rem } }

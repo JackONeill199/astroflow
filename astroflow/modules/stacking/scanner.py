@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
+from ...core.hidden import hidden_entry
 from . import comet, objects
 from .fits_io import FITS_EXT, FrameInfo, parse_date, read_info
 
@@ -79,12 +80,27 @@ OBSERVATION = re.compile(r"observation_(.+)$", re.I)
 
 
 def list_fits(root: Path) -> list[Path]:
-    out = []
-    for dp, dirs, files in os.walk(root):
-        dirs[:] = [d for d in dirs if not EXCLUDE_DIR.search(d)]
-        for f in files:
-            if f.lower().endswith(FITS_EXT):
-                out.append(Path(dp) / f)
+    """FITS unterhalb von root; Ordner anderer Software und versteckte Einträge („.thumbnail“, Windows-Attribut) fallen
+    weg, verknüpfte Ordner werden nicht betreten (wie os.walk)."""
+    out, todo = [], [Path(root)]
+    while todo:
+        d = todo.pop()
+        try:
+            with os.scandir(d) as it:
+                entries = list(it)
+        except OSError:
+            continue
+        for e in entries:
+            try:
+                if hidden_entry(e):
+                    continue
+                if e.is_dir(follow_symlinks=False):
+                    if not EXCLUDE_DIR.search(e.name):
+                        todo.append(Path(e.path))
+                elif e.name.lower().endswith(FITS_EXT) and e.is_file():
+                    out.append(Path(e.path))
+            except OSError:
+                pass
     return sorted(out)
 
 

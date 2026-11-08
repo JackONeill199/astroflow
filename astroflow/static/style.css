@@ -4,6 +4,8 @@
    echte Prozesse (static/viz.js). prefers-reduced-motion wird respektiert. */
 @property --p { syntax: "<number>"; inherits: true; initial-value: 0 }
 :root {
+  /* Kreisel: eine gemeinsame Drehung für alle Ladeanzeigen (gleiches Tempo überall, auch Module) */
+  --spin: spin .9s linear infinite;
   /* Flächen */
   --bg: #0f1115; --sidebar: #14171c; --surface: #1a1e24; --surface-2: #22272f; --surface-3: #2a3039;
   --border: #303640; --border-soft: #252a32;
@@ -94,7 +96,7 @@ kbd { font-size: 0.6875rem; font-weight: 500; line-height: 1; padding: 0.1875rem
 .page-ghost.out { opacity: 0 }
 @media (prefers-reduced-motion: reduce) { .page-ghost { display: none } }
 .stagger > * { animation: fadeUp var(--t2) var(--ease) both; animation-delay: calc(min(var(--i, 0), 10) * 18ms) }
-.spinner { width: 0.875rem; height: 0.875rem; border-radius: 50%; border: 2px solid color-mix(in srgb, currentColor 22%, transparent); border-top-color: currentColor; animation: spin .8s linear infinite; flex: none }
+.spinner { width: 0.875rem; height: 0.875rem; border-radius: 50%; border: 2px solid color-mix(in srgb, currentColor 22%, transparent); border-top-color: currentColor; animation: var(--spin); flex: none }
 .live { display: inline-block; width: 0.4375rem; height: 0.4375rem; border-radius: 50%; background: var(--acc); animation: pulse 1.6s ease-in-out infinite; flex: none }
 
 /* Symbolische SkyTrace-Schleife (Bildfolge vergleichen → Spur → Bahn). */
@@ -254,7 +256,7 @@ main { grid-area: main; min-width: 0; padding: 1.75rem var(--pad) 4rem; outline:
 .btn.sm.icon { width: 1.75rem }
 .btn.danger { background: transparent; color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent) }
 .btn.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--bad) 12%, transparent); border-color: var(--bad) }
-.btn.busy svg { animation: spin .9s linear infinite }
+.btn.busy svg { animation: var(--spin) }
 input, select, textarea { font: inherit; font-size: 0.8125rem; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); height: 2rem; padding: 0 0.625rem; max-width: 100%; min-width: 0;
   transition: border-color var(--t), box-shadow var(--t) }
 textarea { height: auto; padding: 0.5rem 0.625rem }
@@ -849,4 +851,4 @@ input:focus-visible + .switch { outline: 2px solid var(--acc); outline-offset: 2
 .btn.pending, .tbtn.pending { pointer-events: none }
 .btn.pending::after { content: ""; position: absolute; inset: -1px; border-radius: inherit; background: inherit; animation: fadeIn 120ms 150ms both }
 .btn.pending::before { content: ""; position: absolute; z-index: 1; left: 50%; top: 50%; width: 0.875rem; height: 0.875rem; margin: -0.4375rem 0 0 -0.4375rem; border-radius: 50%;
-  border: 2px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; animation: fadeIn 120ms 150ms both, spin .8s linear infinite }
+  border: 2px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; animation: fadeIn 120ms 150ms both, var(--spin) }

@@ -618,7 +618,13 @@ def build_router(eng: Engine) -> APIRouter:
         token = upload_id if re.fullmatch(r"[A-Za-z0-9]{6,32}", upload_id or "") else time.strftime("%H%M%S") + secrets.token_hex(3)
         dest = eng.s.input_dir / "uploads" / time.strftime("%Y%m%d") / token
         dest.mkdir(parents=True, exist_ok=True)
-        n, raw, skipped, pictures, errors = 0, 0, 0, [], []
+        n, raw, pictures, errors = 0, 0, [], []
+        # versteckte Dateien/Ordner (Name mit „.“, z. B. Stellina „.thumbnail/…“) nie übernehmen – die Oberfläche lässt
+        # sie schon weg, ältere Clients oder Skripte nicht
+        visible = lambda f: not any(p.startswith(".") and p not in (".", "..")      # „..“ wird unten nur entfernt
+                                    for p in re.split(r"[\\/]+", f.filename or ""))
+        skipped = sum(not visible(f) for f in files)
+        files = [f for f in files if visible(f)]
         skip_ext = skipped_pictures([f.filename or "" for f in files])
         for f in files:
             # relative Ordnerpfade behalten (z. B. „…_observation_M57/img-0001r.fits“ – der Ordner verrät das Objekt),

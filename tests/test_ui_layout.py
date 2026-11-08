@@ -319,6 +319,47 @@ def test_live_processing_is_compact_and_updates_in_place(server, browser, size, 
     assert not errors, errors
 
 
+SPINNING = """() => [...document.querySelectorAll('*')].filter(el => /(^|, )spin(,|$)/.test(getComputedStyle(el).animationName)
+  && el.checkVisibility({opacityProperty: true, visibilityProperty: true})).map(el => el.className.baseVal ?? el.className)"""
+
+
+def test_spinners_on_running_object_page(server, browser):
+    """Objektseite während eines Auftrags: nur Auftragsanzeige oben und Statuszeile drehen sich, im selben Tempo
+    (Nutzerbefund: vier Kreisel, alle verschieden schnell – Bildmitte und „Läuft …“ waren zu viel)."""
+    base, pid = server
+    page = browser.new_page(viewport={'width': 1440, 'height': 900})
+    errors = []
+    page.on('pageerror', lambda e: errors.append(str(e)))
+    job = {'id': 999, 'state': 'running', 'progress': .1, 'stage': 'Analyse', 'message': 'Analyse'}
+
+    def project_response(route):
+        response = route.fetch()
+        data = response.json()
+        data['job'], data['live'] = job, {'job': 999, 'steps': [{'stage': 'Analyse', 'label': 'Analyse', 'done': False}]}
+        route.fulfill(response=response, json=data)
+
+    def status_response(route):
+        response = route.fetch()
+        route.fulfill(response=response, json={**response.json(), 'busy': 1})
+
+    activity = [{'key': 'stacking:999', 'module': 'stacking', 'title': 'Testobjekt', 'kind': 'Verarbeitung', 'detail': '',
+                 'state': 'running', 'progress': .1, 'stage': 'Analyse', 'started': 0, 'finished': None, 'href': f'#/p/{pid}'}]
+    page.route(f'**/api/stacking/projects/{pid}', project_response)
+    page.route('**/api/status', status_response)
+    page.route('**/api/activity*', lambda route: route.fulfill(json=activity))
+    page.goto(f'{base}/#/p/{pid}/bild')
+    page.wait_for_selector('.sl-pulse')
+    page.wait_for_function("!document.querySelector('#jobpill').classList.contains('idle')")
+    page.wait_for_selector('#jobpill .spinner')
+    assert sorted(page.evaluate(SPINNING)) == ['sl-pulse', 'spinner']
+    assert page.locator('#jobpill .spinner').is_visible() and page.locator('#run').is_disabled()
+    # gemeinsames Tempo: alle Kreisel über dasselbe Token
+    for sel in ('.sl-pulse', '#jobpill .spinner'):
+        assert page.evaluate(f"getComputedStyle(document.querySelector('{sel}')).animationDuration") == '0.9s'
+    page.close()
+    assert not errors, errors
+
+
 @pytest.mark.parametrize('size', ['handy', 'schmal', 'desktop'])
 def test_live_star_pattern_overlay(server, browser, size):
     """Sternmuster der Registrierung (Sternbild-Stil): Pulse aus echten Registrierdaten, nur beim Stacken, abschaltbar, im Takt der Aufnahmen."""
