@@ -188,7 +188,7 @@ class LiveRun:
         `frames` (die letzten FRAMES_KEEP; der Browser blendet sie nacheinander über). cov: Gewichtsminimum, 0 = unbedeckt."""
         a = np.asarray(mean, np.float32)
         if cov is not None:
-            a = np.where(np.asarray(cov)[None] > 0, a, 0)
+            a = fill_holes(a, np.asarray(cov) > 0)
         key = band or ''
         if key not in self.stretch:
             self.stretch[key] = fixed_stretch(a)
@@ -214,6 +214,26 @@ class LiveRun:
             if not self.data.get('preview'):          # sonst gehören n/Belichtung schon der Endbearbeitung
                 self.data.update(n=int(n), exposure=exposure, band=band)
             self._write()
+
+
+def fill_holes(a, covered):
+    """Nur für die Anzeige: Ein Zwischenstand hat an einzelnen Pixeln kein Gewicht, wenn das Clipping (über den ganzen
+    Stapel) genau die ersten Aufnahmen dort verworfen hat – etwa nach 1 Aufnahme ein Ausreißer. Solche einzelnen Lücken
+    mitten im bedeckten Feld bekommen das Mittel ihrer bedeckten Nachbarn (sonst schwarze Punkte); unbedeckte Flächen
+    (Bildrand nach dem Ausrichten) bleiben schwarz."""
+    from scipy import ndimage as ndi
+    hole = ~covered
+    if not hole.any():
+        return a
+    m = covered.astype(np.float32)
+    near = ndi.uniform_filter(m, 3, mode='constant') * 9          # bedeckte Pixel im 3×3-Fenster
+    lone = hole & (near >= 5)
+    out = np.where(covered[None], a, 0).astype(np.float32)
+    if lone.any():
+        for c in range(out.shape[0]):
+            s = ndi.uniform_filter(out[c], 3, mode='constant') * 9
+            out[c][lone] = s[lone] / near[lone]
+    return out
 
 
 def stack_targets(n0, n1):

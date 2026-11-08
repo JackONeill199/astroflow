@@ -27,16 +27,37 @@ def test_schedule_dense_at_start_then_sparse():
     assert live.stack_targets(3, 10) == [4, 5, 6, 8, 10]
 
 
-def test_cumulative_prefixes_equal_manual_mean():
+def test_cumulative_prefixes_equal_per_k_sums():
+    """Laufende Summen = frühere Rechnung je k (gleiche Clipping-Maske aus dem ganzen Stapel). Wo das Clipping die
+    ersten k Aufnahmen eines Pixels verwirft (hier Aufnahme 1 an zwei Pixeln: 126 gegen ~80 in den übrigen), hat der
+    Zwischenstand dort kein Gewicht – das war schon immer so und ist kein Fehler der Summen."""
+    from astroflow.modules.stacking.stacking import clip_batch
     rng = np.random.default_rng(2)
     X, V, w = _frames(rng)
     st = StackState(X.shape[1:])
     st.add_batch(X, V, w, prefixes=[1, 4, 12])
+    keep = clip_batch(X, V)                                        # leerer Stack: keine Prüfung gegen den Stack
     for k in (1, 4, 12):
         m, c = st.snaps[k]
-        np.testing.assert_allclose(m, X[:k].mean(0), rtol=1e-5, atol=1e-3)   # ohne Clipping-Treffer = Mittel
-        assert float(c.min()) == k
-    np.testing.assert_allclose(st.result()[0], X.mean(0), rtol=1e-5, atol=1e-3)
+        sw = keep[:k].sum(0)
+        np.testing.assert_allclose(m, np.where(keep[:k], X[:k], 0).sum(0) / np.maximum(sw, 1e-9), rtol=1e-5, atol=1e-3)
+        np.testing.assert_array_equal(c, sw.min(0))
+    assert int((st.snaps[1][1] == 0).sum()) >= 1                  # diese Daten haben solche Pixel
+    np.testing.assert_allclose(st.result()[0], st.snaps[12][0], rtol=1e-5, atol=1e-3)
+
+
+def test_lone_holes_filled_edges_stay_black(tmp_path):
+    a = np.full((3, 32, 48), 50.0, np.float32)
+    covered = np.ones((32, 48), bool)
+    covered[:, :16] = False                                        # Bildrand ohne Daten (zwei JPEG-Blöcke breit)
+    covered[12, 30] = False                                        # einzelne Lücke (alle ersten Aufnahmen verworfen)
+    a[:, ~covered] = 0
+    out = live.fill_holes(a, covered)
+    assert np.allclose(out[:, 12, 30], 50) and np.all(out[:, :, :15] == 0)
+    run = live.LiveRun(tmp_path, 1)
+    run.stack_frame(a, n=1, cov=covered.astype(np.float32))
+    pic = np.asarray(Image.open(run.path / run.data['frames'][0]['name']), np.float32).mean(-1)[::-1]
+    assert pic[12, 30] > 20 and pic[12, 3] < 5                     # kein schwarzer Punkt, Rand bleibt schwarz
 
 
 def test_mini_snapshots_match_full_prefixes_on_sampled_pixels(monkeypatch):

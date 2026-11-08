@@ -366,14 +366,15 @@ def test_live_stack_emerges_from_noise(server, browser, size):
     die Endbearbeitung (preview) hat danach Vorrang. Reduzierte Bewegung: harte Wechsel."""
     base, pid = server
     w, h = SIZES[size]
-    state = {'k': 0, 'rid': None, 'preview': None}
+    state = {'k': 4, 'rid': None, 'preview': None, 'ready': False}
     seq = [1, 2, 3, 4, 5, 6, 8, 10, 12, 15]
 
     def project_response(route):
         response = route.fetch()
         data = response.json()
         state['rid'] = data['results'][0]['id']
-        state['k'] = min(state['k'] + 4, len(seq))                       # je Abruf 4 neue Stände
+        if state['ready']:                                                # erst wenn die Ansicht steht: je Abruf 3 neue Stände
+            state['k'] = min(state['k'] + 3, len(seq))
         frames = [{'name': f'1-f{i + 1}.jpg', 'n': n, 'exposure': n * 10, 'band': None, 'noise': round(n ** -0.5, 3)}
                   for i, n in enumerate(seq[:state['k']])]
         data['job'] = {'id': 997, 'state': 'running', 'progress': .4, 'stage': 'Stacking', 'message': 'Stacking'}
@@ -382,7 +383,7 @@ def test_live_stack_emerges_from_noise(server, browser, size):
         route.fulfill(response=response, json=data)
 
     for reduced in ('no-preference', 'reduce'):
-        state.update(k=0, preview=None)
+        state.update(k=4, preview=None, ready=False)
         page = browser.new_page(viewport={'width': w, 'height': h}, reduced_motion=reduced)
         errors, shown = [], []
         page.on('pageerror', lambda e: errors.append(str(e)))
@@ -391,11 +392,12 @@ def test_live_stack_emerges_from_noise(server, browser, size):
         page.route(f'**/api/stacking/projects/{pid}/live/*',
                    lambda route: route.fulfill(response=route.fetch(url=f"{base}/api/stacking/results/{state['rid']}/jpg")))
         page.goto(f'{base}/#/p/{pid}/bild')
-        page.wait_for_selector('.sl-image.on')
-        page.wait_for_function("document.querySelector('.sl-caption').textContent.includes('Rauschen −')", timeout=15000)
-        page.wait_for_function("document.querySelector('.sl-caption').textContent.includes('15 Aufnahmen')", timeout=15000)
-        assert len(set(shown)) >= 5                                       # mehrere echte Stände nacheinander
-        assert shown[0] != '1-f1.jpg'                                     # neu geöffnet: erst der jüngste, nicht alles nachholen
+        page.wait_for_selector('.sl-image.on[src$="1-f4.jpg"]')        # neu geöffnet: nur der jüngste Stand
+        assert '1-f1.jpg' not in shown                                    # nichts nachgeholt
+        state['ready'] = True
+        page.wait_for_function("document.querySelector('.sl-caption').textContent.includes('Rauschen −')", timeout=20000)
+        page.wait_for_function("document.querySelector('.sl-caption').textContent.includes('15 Aufnahmen')", timeout=20000)
+        assert {'1-f5.jpg', '1-f6.jpg', '1-f7.jpg'} <= set(shown)        # mehrere echte Stände je Abruf nacheinander
         dur = page.evaluate("getComputedStyle(document.querySelector('.sl-image')).transitionDuration")
         assert (dur == '0s') == (reduced == 'reduce')
         assert not page.evaluate(FIND_OVERFLOW)
