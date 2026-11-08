@@ -103,37 +103,15 @@ def detect_stars(img: np.ndarray, max_stars: int = 150, thresh: float = 5.0, min
     return Stars(a[:, 0], a[:, 1], a[:, 2], a[:, 3], a[:, 4], a[:, 5])
 
 
-def detect_trails(img: np.ndarray, min_len_frac: float = 0.08) -> int:
-    """Zahl langer, schmaler heller Strukturen (Satelliten, Flugzeuge, Meteore).
-    Sterne sind rund, Nebel flächig – beide fallen über Länge und Streckung heraus."""
-    res = img - background_map(img)
-    sm = ndi.gaussian_filter(res, 1.0)
-    sig = 1.4826 * float(np.median(np.abs(sm - np.median(sm)))) + 1e-9
-    lab, n = ndi.label(sm > 3.5 * sig, structure=np.ones((3, 3)))
-    if n == 0:
-        return 0
-    idx = np.arange(1, n + 1)
-    cnt = ndi.sum_labels(np.ones_like(sm), lab, idx)
-    big = idx[cnt >= 12]
-    if len(big) == 0:
-        return 0
-    yy, xx = np.mgrid[0 : sm.shape[0], 0 : sm.shape[1]].astype(np.float32)
-    c = cnt[big - 1]
-    mx, my = ndi.sum_labels(xx, lab, big) / c, ndi.sum_labels(yy, lab, big) / c
-    sxx = ndi.sum_labels(xx * xx, lab, big) / c - mx**2
-    syy = ndi.sum_labels(yy * yy, lab, big) / c - my**2
-    sxy = ndi.sum_labels(xx * yy, lab, big) / c - mx * my
-    tr, det = sxx + syy, sxx * syy - sxy**2
-    disc = np.sqrt(np.maximum(tr * tr / 4 - det, 0))
-    l1, l2 = tr / 2 + disc, np.maximum(tr / 2 - disc, 0.05)
-    length = np.sqrt(12 * l1)                       # Länge einer gleichmäßig hellen Linie
-    trail = (length > min_len_frac * min(sm.shape)) & (l1 / l2 > 40)
-    return int(trail.sum())
-
-
 def analyze_frame(raw: np.ndarray, bayer: bool) -> dict:
     """Metriken + Sternliste (in Vollauflösungs-Pixeln) für einen kalibrierten Frame."""
     luma, s = analysis_image(raw, bayer)
+    # Satelliten-/Flugzeugspuren zuerst: ihre Punkte zählten sonst als Sterne (Demo: 88 statt ~60, FWHM hoch → ganze
+    # Aufnahme als „unscharf“ verworfen). Spur durch den Hintergrund ersetzen; Lage für die Maske beim Stacken (trails.py).
+    from . import trails as _trails
+    lines = _trails.find(luma)
+    if lines:
+        luma = _trails.blank(luma, lines, background_map(luma), pad=2.0)
     stars = detect_stars(luma)
     n = len(stars)
     top = slice(0, min(n, 60))
@@ -148,7 +126,8 @@ def analyze_frame(raw: np.ndarray, bayer: bool) -> dict:
         "snr": round(float(np.median(stars.flux[:20]) / (noise_sigma(luma) * max(float(np.median(stars.fwhm[:20])), 1.0))), 1) if n else 0.0,
         # Hintergrundgradient in Rauscheinheiten (Wolken, Mond, Streulicht)
         "grad": round(float(np.ptp(np.percentile(background_map(luma), [2, 98])) / noise_sigma(luma)), 1),
-        "trails": detect_trails(luma),
+        "trails": len(lines),
+        "trail_lines": _trails.to_full(lines, s),       # [x1, y1, x2, y2, Halbbreite, Kontrast] in Vollauflösungs-Pixeln
         "stars": [[round(float((x + 0.5) * s - 0.5), 2), round(float((y + 0.5) * s - 0.5), 2), round(float(f), 1)]
                   for x, y, f in zip(stars.x[:100], stars.y[:100], stars.flux[:100])],
     }

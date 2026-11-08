@@ -7,6 +7,7 @@ import re
 import shutil
 import threading
 import time
+import warnings
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
@@ -14,7 +15,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from . import calibration, channels, comet, develop, stackfix, gpu, graxpert, live, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner, stars, tutor
+from . import calibration, channels, comet, develop, stackfix, gpu, graxpert, live, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner, stars, trails, tutor
 from ...core.config import Settings, free_ram_mb
 from . import diskspace
 from .db import DB
@@ -773,7 +774,7 @@ class Pipeline:
         if old is None:
             shutil.rmtree(cdir, ignore_errors=True)
             state = StackState(A.sw.shape)
-            state.meta.update({k: v for k, v in A.meta.items() if k not in ("frames", "exposure")}, frames={}, exposure=0.0)
+            state.meta.update({k: v for k, v in A.meta.items() if k not in ("frames", "exposure", "trails")}, frames={}, exposure=0.0)
             state.meta.setdefault("flux_k0", 1.0)
             state.meta["comet"] = track.to_dict()
         else:
@@ -1037,6 +1038,9 @@ class Pipeline:
             stats["graxpert"] = gx
         if hotfix is not None:
             stats["hotfix"] = hotfix
+        tr = [st.meta.get("trails") for st in states.values() if st.meta.get("trails")]
+        if tr:                                          # ausgeblendete Satellitenspuren (trails.py), alle Bänder zusammen
+            stats["trails"] = {k: sum(t.get(k, 0) for t in tr) for k in ("frames", "lines", "pixels", "kept")}
         if cinfo is not None:
             stats["comet"] = cinfo
         stats.update({"profile": pname, "narrowband": narrow, "frames": len(stacked), "exposure_s": exposure,
@@ -1218,7 +1222,12 @@ class Pipeline:
                 bg = np.array([np.median(warped[c].ravel()[::7][sub]) for c in range(C)])
                 ratio = ref_flux[pairs[:, 1]] / np.maximum(tf[pairs[:, 0]], 1e-6)
                 fw = max(m["fwhm"] or meta["ref_fwhm"], 1.0)
-                return r["id"], ((warped - bg[:, None, None]).astype(np.float32), valid, float(np.median(ratio)), m["noise"], fw), None
+                lines = m.get("trail_lines")
+                if lines is None:                       # vor 0.47 analysiert: Spuren im ohnehin geladenen Bild suchen
+                    luma, s_an = quality.analysis_image(raw, bool(info.get("bayerpat")) and raw.ndim == 2)
+                    lines = trails.to_full(trails.find(luma), s_an)
+                tl = trails.transform(lines, M, scale) if lines else []
+                return r["id"], ((warped - bg[:, None, None]).astype(np.float32), valid, float(np.median(ratio)), m["noise"], fw, tl), None
             except Exception as e:
                 return r["id"], None, f"Fehler: {e}"
 
@@ -1252,10 +1261,13 @@ class Pipeline:
                 ref_w = ws[0] if "ref_w" not in meta else meta["ref_w"]
                 meta.setdefault("ref_w", float(ref_w))
                 ws = np.clip(ws / meta["ref_w"], 0.1, 3.0)
+                masked = self._trail_masks(state, X, V, [d[5] for _, d in good], fw, scale)
                 n0 = len(meta["frames"])
                 cut = {t: t - n0 for t in STAGES if n0 < t <= n0 + len(good)} if stages is not None else {}
                 state.add_batch(X, V, ws, workers=self.s.threads, prefixes=cut.values(), gpu=g)
-                del X, V
+                for b, mb in masked.items():             # ausgeblendete Spur zählt für die Abdeckung weiter
+                    state.swm += ws[b] * mb
+                del X, V, masked
                 exp0 = meta["exposure"]
                 for (fid, _), w in zip(good, ws):
                     meta["frames"][fid] = float(w)
@@ -1289,6 +1301,48 @@ class Pipeline:
         if g:
             g.free()
         return state
+
+    @staticmethod
+    def _trail_masks(state: StackState, X: np.ndarray, V: np.ndarray, lines: list, fw: np.ndarray, scale: int) -> dict:
+        """Satellitenspuren (Linien im Referenzraster) aus V nehmen, wenn das Band in der Aufnahme heller ist als im
+        bisherigen Stack bzw. im Median der übrigen Aufnahmen des Stapels (trails.confirm). Ändert V; gibt {b: Maske}."""
+        out: dict = {}
+        if not any(lines):
+            return out
+        meta = state.meta
+        info = meta.setdefault("trails", {"frames": 0, "lines": 0, "pixels": 0, "kept": 0})
+        lum = X.mean(1)
+        sw = state.sw.min(0)
+        ref_stack = np.where(sw > 0, (state.swx / np.maximum(state.sw, 1e-9)).mean(0), np.nan) if (sw > 0).any() else None
+        for b, tl in enumerate(lines):
+            if not tl:
+                continue
+            ref = ref_stack
+            if ref is None or not np.isfinite(ref).any():
+                ref = None
+                if len(X) >= 3:                     # Median der übrigen Aufnahmen (nur für Aufnahmen mit Spur)
+                    others = np.delete(np.arange(len(X)), b)
+                    with np.errstate(all="ignore"), warnings.catch_warnings():
+                        warnings.simplefilter("ignore", RuntimeWarning)
+                        ref = np.nanmedian(np.where(V[others], lum[others], np.nan), 0)
+            noise = None
+            if ref is not None:
+                dv = (lum[b] - ref)[V[b] & np.isfinite(ref)][::11]
+                noise = float(1.4826 * np.median(np.abs(dv - np.median(dv)))) if dv.size > 100 else None
+                if noise is None:
+                    ref = None
+            pad = (float(fw[b]) + 1.0) * scale
+            ok = [l for l in tl if trails.confirm(lum[b], ref, V[b], l, noise or 1.0)]
+            info["kept"] += len(tl) - len(ok)
+            if not ok:
+                continue
+            m = trails.band(V.shape[1:], ok, pad=pad) & V[b]
+            V[b] &= ~m
+            out[b] = m
+            info["frames"] += 1
+            info["lines"] += len(ok)
+            info["pixels"] += int(m.sum())
+        return out
 
     # ----------------------------------------------------------------- save #
     def _save(self, proj, rgb, mean, cov, stats, review, n, exposure, params) -> int:
