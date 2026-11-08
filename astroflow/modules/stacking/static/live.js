@@ -16,8 +16,10 @@ function createStackLive(host, pid) {
   const find = s => root.querySelector(s);
   const fmt = (v) => Number(v).toLocaleString('de-DE');
   let active = 0, wanted = '', shown = '', destroyed = false, stepSig = '', fallback = false;
-  let preview = '', played = '', run = '', queue = [], timer = 0, current = null, lastLive = {};
-  function show(src, previous = false, onShown = null) {
+  let preview = '', done = 0, run = '', queue = [], timer = 0, current = null, lastLive = {};
+  const inflight = new Set();                            // eingereiht oder ladend (nicht doppelt anfordern)
+  const num = f => +(/-f(\d+)\.jpg$/.exec(f.name)?.[1] || 0);   // laufende Nummer des Zwischenstands
+  function show(src, previous = false, onShown = null, onFail = null) {
     if (!src) return;
     if (src === shown) { wanted = src; return; }          // schon sichtbar: ausstehenden Wechsel verwerfen
     if (src === wanted) return;
@@ -35,7 +37,7 @@ function createStackLive(host, pid) {
       find('.sl-badge').textContent = previous ? 'BISHERIGES ERGEBNIS' : 'LIVE-VORSCHAU';
       onShown?.();
     };
-    next.onerror = () => { if (wanted === src) wanted = ''; }; // nächster Poll versucht es erneut
+    next.onerror = () => { if (wanted === src) { wanted = ''; onFail?.(); } }; // nächster Poll versucht es erneut
     next.src = src;
   }
   const frameSrc = f => `/api/stacking/projects/${pid}/live/${encodeURIComponent(f.name)}`;
@@ -53,16 +55,18 @@ function createStackLive(host, pid) {
     const slot = Math.max(350, Math.min(1500, LIVE_POLL / (queue.length + 1)));
     root.style.setProperty('--sl-fade', Math.round(Math.min(slot * 0.85, 800)) + 'ms');
     current = f;
-    show(frameSrc(f), false, () => { if (current === f) caption(f); });
+    show(frameSrc(f), false, () => { inflight.delete(f.name); done = Math.max(done, num(f)); if (current === f) caption(f); },
+      () => inflight.delete(f.name));                // fehlgeschlagen: beim nächsten Poll wieder dabei
     if (queue.length) timer = setTimeout(step, slot);
   }
   function frames(list) {
     if (!list?.length) return;
-    const names = list.map(f => f.name), i = names.indexOf(played);
-    let fresh = i >= 0 ? list.slice(i + 1) : list.slice(-1);        // neu geöffnet: nur der jüngste Stand
+    for (const name of inflight) if (num({ name }) <= done) inflight.delete(name);   // von neueren überholt
+    let fresh = list.filter(f => num(f) > done && !inflight.has(f.name));
+    if (!done && !inflight.size) fresh = fresh.slice(-1);          // neu geöffnet: nur der jüngste Stand
     if (!fresh.length) return;
     if (document.hidden) fresh = fresh.slice(-1);                  // Hintergrund-Tab: nicht nachholen
-    played = fresh[fresh.length - 1].name;
+    fresh.forEach(f => inflight.add(f.name));
     queue = queue.concat(fresh).slice(-8);                         // nie weit hinterherhinken
     if (!timer) step();
   }
@@ -80,7 +84,7 @@ function createStackLive(host, pid) {
       track.classList.toggle('indet', percent == null);
       if (percent == null) track.removeAttribute('aria-valuenow'); else track.setAttribute('aria-valuenow', percent);
       find('.sl-track i').style.width = (percent ?? 28) + '%';
-      if (live.run !== run) { run = live.run; played = ''; queue = []; }
+      if (live.run !== run) { run = live.run; done = 0; inflight.clear(); queue = []; }
       if (live.preview) {                                          // Endbearbeitung: deren Vorschau hat Vorrang
         if (live.preview !== preview) {
           preview = live.preview; queue = []; clearTimeout(timer); timer = 0; current = null;

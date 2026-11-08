@@ -112,6 +112,9 @@ class Pipeline:
         self.site_provider = None               # fn(Nacht) -> [Breite, Länge] | None (Ortsliste bzw. Tutor-Einstellung)
 
     def begin_live(self, pid, job=None):
+        old = self.live_runs.get(pid)
+        if old is not None:                           # alter Lauf (auch Fortsetzen): seine Hintergrund-Stände verwerfen
+            live.optional(old.close)
         run = live.optional(live.LiveRun, self.s.work_dir, pid, job)
         self.live_runs[pid] = run
         return run
@@ -234,6 +237,9 @@ class Pipeline:
         proj = self.db.one("SELECT * FROM projects WHERE id=?", (project_id,))
         if not proj:
             raise ValueError("Projekt nicht gefunden")
+        old = self.live_runs.pop(project_id, None)
+        if old is not None:                           # Live-Ansicht: Hintergrund-Thread beenden, nichts mehr schreiben
+            live.optional(old.close)
         files = freed = ignored = 0
         for r in self.db.q("SELECT id, path, deleted FROM frames WHERE project_id=?", (project_id,)):
             if self._is_upload(r["path"]):

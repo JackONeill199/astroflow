@@ -39,6 +39,7 @@ def fixed_stretch(mean):
     ok = np.isfinite(a) & (a != 0)
     bg = np.array([float(np.median(c[k])) if k.any() else 0.0 for c, k in zip(a, ok)])
     sig = np.array([1.4826 * float(np.median(np.abs(c[k] - b))) if k.any() else 1.0 for c, k, b in zip(a, ok, bg)])
+    sig = np.maximum(sig, 1e-3 * np.maximum(np.abs(bg), 1.0))   # völlig flaches Bild: Himmel nicht auf Schwarz legen
     black = bg - 1.0 * sig
     hi = float(np.percentile((a - bg[:, None, None])[ok], 99.95)) if ok.any() else 1.0
     span = max(hi + float(sig.mean()), 1e-6)
@@ -125,7 +126,8 @@ class LiveRun:
         self.finished = False
         self.stretch, self.noise0, self.fseq = {}, {}, 0         # feste Streckung und Anfangsrauschen je Kanal
         self._lock = threading.RLock()                            # Zwischenstände entstehen in einem eigenen Thread
-        self._bg = None
+        self._bg, self._stopped = None, []
+        self.closed = False                                       # abgelöst (neuer Lauf, Objekt gelöscht): nichts mehr schreiben
         # Alte Live-Bilder sind in Ergebnissen separat archiviert.
         for p in [*self.path.glob('*.jpg'), *self.path.glob('*.jpg.tmp')]:
             p.unlink(missing_ok=True)
@@ -133,20 +135,44 @@ class LiveRun:
 
     def _write(self):
         with self._lock:
+            if self.closed:
+                return
             tmp = self.path / 'state.tmp'
             tmp.write_text(json.dumps(self.data, ensure_ascii=False), encoding='utf-8')
             tmp.replace(self.path / 'state.json')
 
     def later(self, fn):
         """Zwischenstand im Hintergrund rechnen (ein Thread, Reihenfolge bleibt) – nicht auf dem Weg des Stackens."""
-        if self._bg is None:
-            self._bg = ThreadPoolExecutor(1, thread_name_prefix='live-zwischenstand')
-        return self._bg.submit(optional, fn)
+        with self._lock:
+            if self.closed or self.finished:
+                return None
+            if self._bg is None:
+                self._bg = ThreadPoolExecutor(1, thread_name_prefix='live-zwischenstand')
+            return self._bg.submit(optional, fn)
+
+    def _stop_bg(self, cancel=False):
+        """Hintergrund-Thread beenden: nach „Fertig“ dürfen wartende Stände noch fertig werden (der Thread endet danach),
+        beim Ablösen werden sie verworfen."""
+        bg, self._bg = self._bg, None
+        if bg is not None:
+            bg.shutdown(wait=False, cancel_futures=cancel)
+            self._stopped = [b for b in self._stopped if any(t.is_alive() for t in b._threads)] + [bg]
+        return bg
 
     def wait(self):
         """Bis alle Zwischenstände geschrieben sind (Tests)."""
-        if self._bg is not None:
-            self._bg.submit(lambda: None).result()
+        with self._lock:
+            self._stop_bg()
+            pending = list(self._stopped)
+        for bg in pending:
+            bg.shutdown(wait=True)
+
+    def close(self):
+        """Lauf abgelöst (neuer Auftrag, Fortsetzen, Objekt gelöscht): wartende Stände verwerfen, ein noch laufender schreibt
+        weder Bilder noch state.json mehr."""
+        with self._lock:
+            self.closed = True
+            self._stop_bg(cancel=True)
 
     def event(self, stage, message=''):
         with self._lock:
@@ -164,6 +190,8 @@ class LiveRun:
         self.data['steps'] = steps[-60:]
         self.finished = stage == 'Fertig'
         self._write()
+        if self.finished:
+            self._stop_bg()
 
     def picture(self, img, *, linear=True, n=None, exposure=None, band=None, force=False):
         if not force and time.monotonic() - self.last_picture < INTERVAL:
@@ -186,6 +214,8 @@ class LiveRun:
     def stack_frame(self, mean, *, n, exposure=None, band=None, cov=None):
         """Echter Zwischenstand des Stacks (verkleinert, (C,h,w) Mittel) mit fester Streckung als JPG in die Folge
         `frames` (die letzten FRAMES_KEEP; der Browser blendet sie nacheinander über). cov: Gewichtsminimum, 0 = unbedeckt."""
+        if self.closed:
+            return
         a = np.asarray(mean, np.float32)
         if cov is not None:
             a = fill_holes(a, np.asarray(cov) > 0)
@@ -201,11 +231,17 @@ class LiveRun:
         self.fseq += 1
         name = f"{self.data['run']}-f{self.fseq}.jpg"
         pic = Image.fromarray(np.ascontiguousarray(np.moveaxis(y, 0, -1)[::-1]))
-        tmp = self.path / (name + '.tmp')
-        pic.save(tmp, format='JPEG', quality=84)
-        tmp.replace(self.path / name)
+        with self._lock:
+            if self.closed:                           # inzwischen abgelöst: nichts mehr ablegen
+                return
+            tmp = self.path / (name + '.tmp')
+            pic.save(tmp, format='JPEG', quality=84)
+            tmp.replace(self.path / name)
         rel = round(noise / self.noise0[key], 3) if noise and self.noise0.get(key) else None
         with self._lock:
+            if self.closed:
+                (self.path / name).unlink(missing_ok=True)
+                return
             frames = list(self.data.get('frames') or [])
             frames.append({'name': name, 'n': int(n), 'exposure': exposure, 'band': band, 'noise': rel})
             for old in frames[:-FRAMES_KEEP]:

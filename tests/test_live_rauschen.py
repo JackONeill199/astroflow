@@ -47,13 +47,13 @@ def test_cumulative_prefixes_equal_per_k_sums():
 
 
 def test_lone_holes_filled_edges_stay_black(tmp_path):
-    a = np.full((3, 32, 48), 50.0, np.float32)
+    a = 50 + np.random.default_rng(6).uniform(-5, 5, (3, 32, 48)).astype(np.float32)   # Himmel mit Rauschen
     covered = np.ones((32, 48), bool)
     covered[:, :16] = False                                        # Bildrand ohne Daten (zwei JPEG-Blöcke breit)
     covered[12, 30] = False                                        # einzelne Lücke (alle ersten Aufnahmen verworfen)
     a[:, ~covered] = 0
     out = live.fill_holes(a, covered)
-    assert np.allclose(out[:, 12, 30], 50) and np.all(out[:, :, :15] == 0)
+    assert np.allclose(out[:, 12, 30], 50, atol=3) and np.all(out[:, :, :15] == 0)    # Mittel der 8 Nachbarn
     run = live.LiveRun(tmp_path, 1)
     run.stack_frame(a, n=1, cov=covered.astype(np.float32))
     pic = np.asarray(Image.open(run.path / run.data['frames'][0]['name']), np.float32).mean(-1)[::-1]
@@ -129,3 +129,38 @@ def test_pipeline_frames_from_noise(tmp_path):
     r = c.get(f"/api/stacking/projects/{pid}/live/{f[0]['name']}")
     assert r.status_code == 200 and r.headers['content-type'] == 'image/jpeg'
     c.close()
+
+
+def test_old_run_cannot_overwrite_new_and_thread_ends(tmp_path):
+    import threading
+    s = load_settings(tmp_path / "data")
+    pl = Pipeline(s, DB(s.db_path), ReviewerConfig())
+    rng = np.random.default_rng(7)
+    X, V, w = _frames(rng, b=2)
+    old = pl.begin_live(5, job=1)
+    gate = threading.Event()
+    old.later(gate.wait)                                           # Hintergrund-Thread beschäftigt …
+    old.later(lambda: old.stack_frame(X[0], n=1))                  # … dahinter ein verspäteter Stand des alten Laufs
+    new = pl.begin_live(5, job=2)                                  # Fortsetzen / neuer Auftrag
+    gate.set()
+    old.wait()
+    state = live.read_state(s.work_dir, 5)
+    assert state['run'] == new.data['run'] and state['job'] == 2 and not state.get('frames')
+    assert not list(new.path.glob('*-f*.jpg'))
+    new.later(lambda: new.stack_frame(X[0], n=1))
+    new.event('Fertig')                                            # wartende Stände dürfen noch fertig werden …
+    new.wait()
+    assert [f['n'] for f in live.read_state(s.work_dir, 5)['frames']] == [1]
+    assert not any(t.is_alive() for run in (old, new) for b in run._stopped for t in b._threads)   # keine Threads übrig
+    assert new.later(lambda: None) is None                         # … danach nimmt der Lauf nichts mehr an
+
+
+def test_delete_project_closes_live_run(tmp_path):
+    s = load_settings(tmp_path / "data")
+    db = DB(s.db_path)
+    pl = Pipeline(s, db, ReviewerConfig())
+    pid = db.x("INSERT INTO projects(name, created) VALUES('Testnebel',0)")
+    run = pl.begin_live(pid, job=1)
+    run.later(lambda: None)
+    pl.delete_project(pid)
+    assert pid not in pl.live_runs and run.closed and run.later(lambda: None) is None
