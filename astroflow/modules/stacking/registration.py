@@ -91,37 +91,17 @@ def find_transform(ref_xy: np.ndarray, tgt_xy: np.ndarray, tol: float = 2.5, max
     return M, pairs, float(np.sqrt(np.mean(d[sel] ** 2)))
 
 
-PATTERN_STARS = 6        # Sternbild-Stil: hellste zugeordnete Sterne je Aufnahme (Nutzerwunsch „dezent“, 5–7)
-
-
-def _spanning_tree(pts: np.ndarray) -> list[tuple[int, int]]:
-    """Minimaler Spannbaum (Prim) – kürzeste Verbindungen ohne Schleifen, wie eine Sternbildzeichnung."""
-    n = len(pts)
-    if n < 2:
-        return []
-    d = np.hypot(*(pts[:, None] - pts[None]).transpose(2, 0, 1))
-    inside, best, src, edges = np.zeros(n, bool), d[0].copy(), np.zeros(n, int), []
-    inside[0] = True
-    for _ in range(n - 1):
-        j = int(np.argmin(np.where(inside, np.inf, best)))
-        edges.append((int(src[j]), j))
-        inside[j] = True
-        closer = d[j] < best
-        best[closer], src[closer] = d[j][closer], j
-    return edges
+PATTERN_STARS = 12       # „Sterne rasten ein“: hellste zugeordnete Sterne je Aufnahme (Nutzerwunsch, 8–15)
 
 
 def pulse(tgt_xy: np.ndarray, M: np.ndarray, pairs: np.ndarray, rms: float | None = None) -> dict:
-    """Kompakte Daten für einen Sternmuster-Puls (~200 Bytes): die hellsten zugeordneten Sterne der Aufnahme
-    (Rohbild-Pixel, ganzzahlig; Sternlisten sind nach Helligkeit sortiert), ihr minimaler Spannbaum und die
-    Transformation Aufnahme → Referenz."""
+    """Kompakte Daten für einen Sternmuster-Puls (~200 Bytes): je hellstem zugeordnetem Stern (Sternlisten sind nach
+    Helligkeit sortiert) die Lage in der Aufnahme und – mit der gefundenen Transformation – im Stack, Rohbild-Pixel gerundet."""
     keep = sorted(set(int(t) for t in pairs[:, 0]))[:PATTERN_STARS]
-    pts = tgt_xy[keep]
+    src = tgt_xy[keep]
+    dst = _apply(M, src)
     return {
-        'p': [[int(round(x)), int(round(y))] for x, y in pts],
-        'e': [list(e) for e in _spanning_tree(pts)],
-        'm': [round(float(M[0, 0]), 5), round(float(M[0, 1]), 5), round(float(M[0, 2]), 1),
-              round(float(M[1, 0]), 5), round(float(M[1, 1]), 5), round(float(M[1, 2]), 1)],
+        's': [[int(round(a)), int(round(b)), int(round(c)), int(round(d))] for (a, b), (c, d) in zip(src, dst)],
         'r': round(float(np.degrees(np.arctan2(M[1, 0], M[0, 0]))), 2),
         'q': int(len(pairs)), 'x': None if rms is None else round(float(rms), 2),
     }

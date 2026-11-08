@@ -64,59 +64,56 @@ function createStackLive(host, pid) {
   };
 }
 
-/* Sternmuster der Registrierung im Sternbild-Stil: je registrierter Aufnahme die hellsten zugeordneten Sterne, verbunden
-   per minimalem Spannbaum (registration.pulse → Ringpuffer im Speicher, GET /pattern?seit=). Die seit dem letzten Abruf
-   neuen Aufnahmen werden über das Abrufintervall verteilt abgespielt (Takt = tatsächliche Stack-Rate): das Muster gleitet in
-   ~150 ms an seine Stelle auf der Stack-Vorschau, die Ringe rasten kurz ein, leuchten schwach nach und blenden aus.
-   Nur transform/opacity, im Hintergrund-Tab pausiert. */
+/* Sternmuster der Registrierung – „Sterne rasten ein“: je registrierter Aufnahme erscheinen ihre hellsten zugeordneten
+   Sterne als kleine weiche Punkte dort, wo sie in der Aufnahme lagen, gleiten in ~150 ms auf ihre Stelle im Stack
+   (Transformation der Registrierung), rasten leise ein und blenden aus. Daten: registration.pulse → Ringpuffer im
+   Speicher, GET /pattern?seit=. Die seit dem letzten Abruf neuen Aufnahmen werden über das Abrufintervall verteilt
+   abgespielt (Takt = tatsächliche Stack-Rate). Bewegung nur per CSS-transform, im Hintergrund-Tab pausiert. */
 function createStarPattern(svg, info, toggle, root, pid) {
   const NS = 'http://www.w3.org/2000/svg', reduce = matchMedia('(prefers-reduced-motion: reduce)');
-  const POLL = 2500, MIN_SLOT = 150, MAX_SLOT = 700, GLIDE = 150, MAX_PULSE = 520;
+  const POLL = 2500, MIN_SLOT = 150, MAX_SLOT = 700, MAX_PULSE = 480;
   const nf = (v, d = 1) => Number(v).toLocaleString('de-DE', { maximumFractionDigits: d, minimumFractionDigits: d });
-  let run = '', seit = 0, wh = null, queue = [], slot = MAX_SLOT, timer = 0, fade = 0, raf = 0, busy = false, dead = false, live = false;
+  let run = '', seit = 0, wh = null, queue = [], slot = MAX_SLOT, timer = 0, fade = 0, snap = 0, busy = false, dead = false, live = false;
   let on = store.get('live.sternmuster', true);
-  const flip = svg.appendChild(document.createElementNS(NS, 'g')), g = flip.appendChild(document.createElementNS(NS, 'g'));
-  const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; };
-  const stop = () => { clearTimeout(timer); clearTimeout(fade); cancelAnimationFrame(raf); timer = fade = raf = 0; queue = []; root.classList.remove('pattern-on', 'pattern-play'); };
+  const flip = svg.appendChild(document.createElementNS(NS, 'g'));
+  const stop = () => {
+    clearTimeout(timer); clearTimeout(fade); clearTimeout(snap);
+    timer = fade = snap = 0; queue = []; root.classList.remove('pattern-on', 'pattern-play');
+  };
   toggle.onclick = () => { on = !on; store.set('live.sternmuster', on); toggle.setAttribute('aria-pressed', String(on)); if (!on) stop(); };
   toggle.setAttribute('aria-pressed', String(on));
-  function draw(d) {
-    g.textContent = '';
-    const r = Math.max(...wh) / 180;                     // Ring etwas größer als ein Stern
-    for (const [a, b] of d.e) el('line', { x1: d.p[a][0], y1: d.p[a][1], x2: d.p[b][0], y2: d.p[b][1] }, g);
-    for (const [x, y] of d.p) el('circle', { cx: x, cy: y, r }, g);
+  function draw(d, moving) {
+    flip.textContent = '';
+    svg.classList.remove('go', 'snap');
+    const box = svg.getBoundingClientRect();              // Radius ≈ 3,5 Bildschirmpixel, unabhängig von der Bildgröße
+    const r = 3.5 * Math.max(wh[0] / Math.max(box.width, 1), wh[1] / Math.max(box.height, 1));
+    svg.style.setProperty('--r', String(r));
+    for (const [fx, fy, sx, sy] of d.s) {
+      const c = document.createElementNS(NS, 'circle');
+      c.setAttribute('cx', sx); c.setAttribute('cy', sy); c.setAttribute('r', r);
+      if (moving) c.style.transform = `translate(${fx - sx}px, ${fy - sy}px)`;   // Start: Lage in der Aufnahme
+      flip.appendChild(c);
+    }
     info.textContent = `${d.n && d.t ? `${d.n}/${d.t} · ` : ''}Drehung ${nf(d.r, 1)}°`;
-  }
-  function matrixAt(d, t) {                             // starr: Drehung, Maßstab, Versatz anteilig um den Schwerpunkt
-    const [a, b, tx, c, e, ty] = d.m, n = Math.max(d.p.length, 1);
-    const cx = d.p.reduce((s, p) => s + p[0], 0) / n, cy = d.p.reduce((s, p) => s + p[1], 0) / n;
-    const ro = Math.atan2(c, a) * t, sc = 1 + (Math.hypot(a, c) - 1) * t, co = Math.cos(ro) * sc, si = Math.sin(ro) * sc;
-    const ox = cx + (a * cx + b * cy + tx - cx) * t, oy = cy + (c * cx + e * cy + ty - cy) * t;
-    return `matrix(${co} ${si} ${-si} ${co} ${ox - co * cx + si * cy} ${oy - si * cx - co * cy})`;
   }
   function play() {
     timer = 0;
     const d = queue.shift();
     if (!d || dead || !on || document.hidden) { root.classList.remove('pattern-on', 'pattern-play'); return; }
-    clearTimeout(fade); cancelAnimationFrame(raf);
-    draw(d);
-    root.classList.add('pattern-play');
-    if (reduce.matches) {                                // ohne Bewegung: nur die jüngste Aufnahme, ausgerichtet
-      g.setAttribute('transform', matrixAt(d, 1)); svg.classList.add('aligned'); root.classList.add('pattern-on');
+    clearTimeout(fade); clearTimeout(snap);
+    const moving = !reduce.matches;
+    draw(d, moving);
+    root.classList.add('pattern-play', 'pattern-on');
+    if (!moving) {                                        // ohne Bewegung: nur kurz am Ziel aufleuchten
+      svg.classList.add('snap');
+      fade = setTimeout(() => { if (!dead) root.classList.remove('pattern-on'); }, 700);
       timer = setTimeout(play, POLL); return;
     }
-    const dur = Math.min(slot * 0.9, MAX_PULSE), glide = Math.min(GLIDE, dur * 0.4), t0 = performance.now();
-    svg.classList.remove('aligned');
-    g.setAttribute('transform', matrixAt(d, 0));
-    root.classList.add('pattern-on');
-    const step = (now) => {
-      if (dead) return;
-      const t = Math.min(1, (now - t0) / glide), k = 1 - (1 - t) ** 3;
-      g.setAttribute('transform', matrixAt(d, k));
-      if (t < 1) raf = requestAnimationFrame(step); else svg.classList.add('aligned');   // einrasten + nachleuchten (CSS)
-    };
-    raf = requestAnimationFrame(step);
-    fade = setTimeout(() => { if (!dead) root.classList.remove('pattern-on'); }, Math.max(dur - 90, glide + 60));
+    const dur = Math.min(slot * 0.9, MAX_PULSE);
+    if (flip.firstChild) getComputedStyle(flip.firstChild).transform;   // Startlage festschreiben, dann gleiten (CSS 150 ms)
+    svg.classList.add('go');
+    snap = setTimeout(() => { if (!dead) svg.classList.add('snap'); }, Math.min(170, dur * 0.45));       // einrasten
+    fade = setTimeout(() => { if (!dead) root.classList.remove('pattern-on'); }, Math.max(dur - 90, 260));
     timer = setTimeout(play, slot);
   }
   function enqueue(items) {

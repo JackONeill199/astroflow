@@ -35,15 +35,14 @@
 .sl-track i { display: block; height: 100%; background: linear-gradient(90deg, var(--acc), #bd98f8); transition: width 1s ease }
 .sl-track.indet i { animation: sl-wait 2.8s ease-in-out infinite }
 .sl-queued .sl-pulse, .sl-error .sl-pulse { animation: none }
-/* Sternmuster der Registrierung (live.js → createStarPattern): dezenter Sternbild-Stil, Striche in Bildschirmpixeln */
+/* Sternmuster der Registrierung (live.js → createStarPattern): „Sterne rasten ein“ – weiche Punkte, keine Linien */
 .sl-pattern { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; transition: opacity 90ms linear }
 .pattern-on .sl-pattern { opacity: 1; transition-duration: 60ms }
-.sl-pattern line { vector-effect: non-scaling-stroke; stroke: var(--acc); stroke-opacity: .3; stroke-width: 1; stroke-linecap: round }
-.sl-pattern circle { vector-effect: non-scaling-stroke; fill: var(--acc); fill-opacity: .06; stroke: var(--acc); stroke-opacity: .45; stroke-width: 1 }
-.sl-pattern.aligned circle { animation: sl-snap .32s ease-out both }
-.sl-pattern.aligned line { animation: sl-glow .32s ease-out both }
-@keyframes sl-snap { 0% { stroke-opacity: .95; stroke-width: 1.75; fill-opacity: .2 } 100% { stroke-opacity: .5; stroke-width: 1; fill-opacity: .06 } }
-@keyframes sl-glow { 0% { stroke-opacity: .5 } 100% { stroke-opacity: .3 } }
+.sl-pattern circle { fill: var(--acc); fill-opacity: .5; stroke: var(--acc); stroke-opacity: .18; stroke-width: 3; vector-effect: non-scaling-stroke;
+  transition: transform 150ms cubic-bezier(.2, .7, .3, 1) }
+.sl-pattern.go circle { transform: none !important }
+.sl-pattern.snap circle { animation: sl-snap .28s ease-out both }
+@keyframes sl-snap { 0% { fill-opacity: .5 } 35% { fill-opacity: .95; stroke-opacity: .35; r: calc(var(--r) * .7px) } 100% { fill-opacity: .55; stroke-opacity: .15 } }
 .sl-pinfo { position: absolute; left: 50%; bottom: 2.75rem; transform: translateX(-50%); max-width: calc(100% - 1.5rem); padding: 0.0625rem 0.375rem;
   border-radius: 0.25rem; background: #0a0f1d80; color: var(--mut); font-size: 0.625rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   font-variant-numeric: tabular-nums; opacity: 0; transition: opacity .4s ease; pointer-events: none }

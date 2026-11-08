@@ -1,4 +1,4 @@
-"""Sternmuster der Registrierung (Sternbild-Stil): Daten je Aufnahme aus dem echten Dreiecks-Matching, klein, im Speicher."""
+"""Sternmuster der Registrierung („Sterne rasten ein“): Daten je Aufnahme aus dem echten Dreiecks-Matching, klein, im Speicher."""
 import json
 import time
 
@@ -28,56 +28,24 @@ def _pulse(ref, tgt):
     return registration.pulse(tgt, M, pairs, rms), M, pairs
 
 
-def test_pulse_is_small_constellation_and_lands_on_reference():
+def test_pulse_pairs_are_small_and_land_on_reference():
     ref, tgt = _field()
     d, M, pairs = _pulse(ref, tgt)
+    assert set(d) == {"s", "r", "q", "x"}                                 # nur Punktpaare, keine Linien
     assert len(json.dumps(d, separators=(",", ":"))) < 400              # ~200 Bytes je Aufnahme
-    assert 5 <= len(d["p"]) <= 7 and len(d["p"]) == registration.PATTERN_STARS
-    # hellste zugeordnete Sterne (Sternlisten sind nach Helligkeit sortiert)
+    assert 8 <= len(d["s"]) <= 15 and len(d["s"]) == registration.PATTERN_STARS
+    # hellste zugeordnete Sterne (Sternlisten sind nach Helligkeit sortiert), Lage in der Aufnahme gerundet
     want = sorted(set(int(t) for t in pairs[:, 0]))[:registration.PATTERN_STARS]
-    assert d["p"] == [[int(round(x)), int(round(y))] for x, y in tgt[want]]
-    # Spannbaum: n−1 Linien, alle Sterne verbunden, keine Schleifen
-    n = len(d["p"])
-    assert len(d["e"]) == n - 1 and all(0 <= a < n and 0 <= b < n and a != b for a, b in d["e"])
-    reach, todo = {0}, [0]
-    while todo:
-        k = todo.pop()
-        for a, b in d["e"]:
-            for u, v in ((a, b), (b, a)):
-                if u == k and v not in reach:
-                    reach.add(v)
-                    todo.append(v)
-    assert reach == set(range(n))
-    assert abs(d["r"] - 2.5) < 0.1 and d["q"] > 20
-    # jeder gezeigte Stern landet mit der Transformation auf einem Referenzstern
-    a, b, tx, c, e, ty = d["m"]
-    p = np.array(d["p"], float)
-    q = np.column_stack([a * p[:, 0] + b * p[:, 1] + tx, c * p[:, 0] + e * p[:, 1] + ty])
-    dist = np.min(np.hypot(*(q[:, None] - ref[None]).transpose(2, 0, 1)), axis=1)
+    assert [s[:2] for s in d["s"]] == [[int(round(x)), int(round(y))] for x, y in tgt[want]]
+    # Ziel = Lage im Stack: mit der Transformation gerechnet und auf einem Referenzstern
+    dst = np.array([s[2:] for s in d["s"]], float)
+    np.testing.assert_allclose(dst, registration._apply(M, tgt[want]), atol=0.51)
+    dist = np.min(np.hypot(*(dst[:, None] - ref[None]).transpose(2, 0, 1)), axis=1)
     assert dist.max() < 2.5
-
-
-def test_spanning_tree_is_minimal():
-    rng = np.random.default_rng(9)
-    for _ in range(20):
-        pts = rng.uniform(0, 100, (6, 2))
-        tree = registration._spanning_tree(pts)
-        length = sum(np.hypot(*(pts[a] - pts[b])) for a, b in tree)
-        # Vergleich mit Kruskal: gleiche Gesamtlänge = minimal
-        edges = sorted((np.hypot(*(pts[a] - pts[b])), a, b) for a in range(6) for b in range(a + 1, 6))
-        parent = list(range(6))
-
-        def find(x):
-            while parent[x] != x:
-                x = parent[x]
-            return x
-        best = 0.0
-        for w, a, b in edges:
-            ra, rb = find(a), find(b)
-            if ra != rb:
-                parent[ra] = rb
-                best += w
-        assert abs(length - best) < 1e-9
+    # die Aufnahme ist gegenüber dem Stack verschoben: Start und Ziel unterscheiden sich
+    src = np.array([s[:2] for s in d["s"]], float)
+    assert np.median(np.hypot(*(dst - src).T)) > 5
+    assert abs(d["r"] - 2.5) < 0.1 and d["q"] > 20
 
 
 def test_pulse_buffer_and_endpoint(tmp_path):

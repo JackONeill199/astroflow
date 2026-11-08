@@ -6,10 +6,10 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 ## 0.47.0 – 08.11.2026
 
 ### Neu
-- **Sternmuster während der Registrierung:** In der Live-Ansicht eines laufenden Stacks erscheint für jede registrierte Aufnahme
-  dezent ein kleines „Sternbild“ aus ihren hellsten Sternen, gleitet an seine Stelle auf der Referenz, rastet kurz ein und blendet
-  aus – im Takt, in dem tatsächlich gestackt wird (bei sehr vielen Aufnahmen gleichmäßig ausgedünnt). Echte Daten der Registrierung,
-  das Stacken wird dadurch nicht langsamer. Über „Sternmuster“ abschaltbar.
+- **Sternmuster während der Registrierung:** In der Live-Ansicht eines laufenden Stacks erscheinen für jede registrierte Aufnahme
+  ihre hellsten Sterne als kleine, weiche Punkte an ihrer Lage in der Aufnahme, gleiten auf ihre Stelle im Stack und rasten dort
+  leise ein – im Takt, in dem tatsächlich gestackt wird (bei sehr vielen Aufnahmen gleichmäßig ausgedünnt). Echte Daten der
+  Registrierung, das Stacken wird dadurch nicht langsamer. Über „Sternmuster“ abschaltbar.
 
 ## 0.46.2 – 08.11.2026
 

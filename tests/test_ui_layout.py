@@ -362,7 +362,7 @@ def test_spinners_on_running_object_page(server, browser):
 
 @pytest.mark.parametrize('size', ['handy', 'schmal', 'desktop'])
 def test_live_star_pattern_overlay(server, browser, size):
-    """Sternmuster der Registrierung (Sternbild-Stil): Pulse aus echten Registrierdaten, nur beim Stacken, abschaltbar, im Takt der Aufnahmen."""
+    """Sternmuster der Registrierung („Sterne rasten ein“): Pulse aus echten Registrierdaten, nur beim Stacken, abschaltbar, im Takt der Aufnahmen."""
     import numpy as np
     from astroflow.modules.stacking import registration
     base, pid = server
@@ -406,10 +406,9 @@ def test_live_star_pattern_overlay(server, browser, size):
         page.route(f'**/api/stacking/projects/{pid}/pattern*', pattern_response)
         page.goto(f'{base}/#/p/{pid}/bild')
         if reduced == 'reduce':
-            page.wait_for_selector('.stack-live.pattern-on .sl-pattern.aligned')
-            assert page.locator('.sl-pattern line').count() == len(pulse['e']) > 0
-            assert page.locator('.sl-pattern circle').count() == len(pulse['p'])        # dezent: 5–7 Sterne
-            assert page.locator('.sl-pattern polygon').count() == 0
+            page.wait_for_selector('.stack-live.pattern-on .sl-pattern.snap')
+            assert page.locator('.sl-pattern circle').count() == len(pulse['s']) > 0     # nur Punkte
+            assert page.locator('.sl-pattern line, .sl-pattern polygon').count() == 0
             assert 'Drehung' in page.inner_text('.sl-pinfo')
             pb, sb = page.locator('.sl-picture').bounding_box(), page.locator('.sl-pattern').bounding_box()
             assert abs(pb['width'] - sb['width']) <= 1 and abs(pb['height'] - sb['height']) <= 1
