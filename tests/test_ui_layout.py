@@ -3,7 +3,6 @@
 Braucht Playwright + Chromium (`pip install playwright && python -m playwright install chromium`); fehlt es, wird übersprungen.
 Prüft jede Ansicht mit Demodaten (ein entwickeltes Objekt mit absichtlich langem Namen, alle Module geladen).
 """
-import re
 import socket
 import threading
 import time
@@ -361,89 +360,47 @@ def test_spinners_on_running_object_page(server, browser):
     assert not errors, errors
 
 
-@pytest.mark.parametrize('size', ['handy', 'schmal', 'desktop'])
-def test_live_frame_space_and_timeline(server, browser, size):
-    """Live-Ansicht beim Stacken: ab 768 px Aufnahmen als Ebenen in 3D (echte Registrierdaten), schmaler 2D;
-    Zeitachse mit den Stacking-Stufen; nach der Registrierung kein 3D mehr."""
-    import numpy as np
-    from astroflow.modules.stacking import registration
+@pytest.mark.parametrize('size', ['handy', 'desktop'])
+def test_live_stack_emerges_from_noise(server, browser, size):
+    """Beim Stacken: neue echte Zwischenstände werden nacheinander überblendet, mit Aufnahmenzahl und Rauschmaß;
+    die Endbearbeitung (preview) hat danach Vorrang. Reduzierte Bewegung: harte Wechsel."""
     base, pid = server
     w, h = SIZES[size]
-    rng = np.random.default_rng(3)
-    ref = rng.uniform([10, 10], [790, 610], (90, 2))
-    th = np.deg2rad(4)
-    tgt = (ref - [20, -12]) @ np.array([[np.cos(th), -np.sin(th)], [np.sin(th), np.cos(th)]])
-    tgt = tgt[(tgt[:, 0] > 5) & (tgt[:, 0] < 795) & (tgt[:, 1] > 5) & (tgt[:, 1] < 615)]
-    M, pairs, rms = registration.find_transform(ref, tgt)
-    pulse = registration.pulse(tgt, M, pairs, rms)
-    state = {'stage': 'Stacking', 'rid': None, 'seq': 0, 'asked': []}
-    stages = [{'n': n, 'exposure': n * 10, 'band': '', 'file': f'n{n:05d}.jpg'} for n in (1, 3, 10, 30, 50)]
-
-    def pattern_response(route):
-        state['asked'].append(route.request.url)
-        first = state['seq']
-        state['seq'] += 6                                                # 6 neue Aufnahmen je Abruf
-        items = [{**pulse, 'i': k, 'n': k, 't': 400, 'img': True} for k in range(first + 1, state['seq'] + 1)]
-        route.fulfill(json={'run': '1', 'job': 998, 'seq': state['seq'], 'wh': [800, 620], 'items': items})
+    state = {'k': 0, 'rid': None, 'preview': None}
+    seq = [1, 2, 3, 4, 5, 6, 8, 10, 12, 15]
 
     def project_response(route):
         response = route.fetch()
         data = response.json()
         state['rid'] = data['results'][0]['id']
-        data['job'] = {'id': 998, 'state': 'running', 'progress': .5, 'stage': state['stage'], 'message': '40/400 Aufnahmen'}
-        data['live'] = {'job': 998, 'preview': '1-1.jpg', 'n': 40, 'exposure': 400,
-                        'steps': [{'stage': 'Stacking', 'label': '40/400 Aufnahmen', 'done': False}]}
+        state['k'] = min(state['k'] + 4, len(seq))                       # je Abruf 4 neue Stände
+        frames = [{'name': f'1-f{i + 1}.jpg', 'n': n, 'exposure': n * 10, 'band': None, 'noise': round(n ** -0.5, 3)}
+                  for i, n in enumerate(seq[:state['k']])]
+        data['job'] = {'id': 997, 'state': 'running', 'progress': .4, 'stage': 'Stacking', 'message': 'Stacking'}
+        data['live'] = {'job': 997, 'run': '1', 'frames': frames, 'preview': state['preview'], 'n': frames[-1]['n'],
+                        'steps': [{'stage': 'Stacking', 'label': 'Stacking', 'done': False}]}
         route.fulfill(response=response, json=data)
 
-    def picture(route):
-        route.fulfill(response=route.fetch(url=f"{base}/api/stacking/results/{state['rid']}/jpg"))
-
     for reduced in ('no-preference', 'reduce'):
-        if reduced == 'reduce' and size != 'desktop':
-            continue
-        state.update(stage='Stacking', seq=0, asked=[])
+        state.update(k=0, preview=None)
         page = browser.new_page(viewport={'width': w, 'height': h}, reduced_motion=reduced)
-        errors = []
+        errors, shown = [], []
         page.on('pageerror', lambda e: errors.append(str(e)))
+        page.on('request', lambda r: shown.append(r.url.rsplit('/', 1)[-1]) if '/live/1-f' in r.url else None)
         page.route(f'**/api/stacking/projects/{pid}', project_response)
-        page.route(f'**/api/stacking/projects/{pid}/live/*', picture)
-        page.route(re.compile(rf'.*/api/stacking/projects/{pid}/pattern\?.*'), pattern_response)
-        page.route(re.compile(rf'.*/api/stacking/projects/{pid}/pattern/\d+\.jpg'), picture)
-        page.route(f'**/api/stacking/projects/{pid}/stages', lambda route: route.fulfill(json={'stages': stages}))
-        page.route(f'**/api/stacking/projects/{pid}/stages/*', picture)
+        page.route(f'**/api/stacking/projects/{pid}/live/*',
+                   lambda route: route.fulfill(response=route.fetch(url=f"{base}/api/stacking/results/{state['rid']}/jpg")))
         page.goto(f'{base}/#/p/{pid}/bild')
-        page.wait_for_selector('.sl-image.on', state='attached')            # im 3D-Modus geladen, aber verborgen (Bild liegt auf der Stack-Ebene)
-        page.wait_for_selector('.sl-chips button[data-k="|30"]')            # Zeitachse
-        wide = page.evaluate("document.querySelector('.stack-live').clientWidth >= 768")
-        three_d = wide and reduced == 'no-preference'
-        if three_d:
-            page.wait_for_function("['3d', 'failed'].includes(document.querySelector('.stack-live').dataset.space)")
-            if page.locator('.stack-live').get_attribute('data-space') == '3d':   # WebGL vorhanden
-                assert page.locator('.stack-live.mode-3d .sl-space canvas').count() == 1
-                page.wait_for_function("+(document.querySelector('.stack-live').dataset.flown || 0) >= 3", timeout=15000)
-                assert 'Sternpaare' in page.inner_text('.sl-pinfo')
-                assert any('seit=' in u for u in state['asked'])
-                assert not page.evaluate(FIND_OVERFLOW)
-                page.locator('.sl-mode').click()                              # auf 2D umschalten: Abrufe enden
-                assert 'mode-3d' not in page.locator('.stack-live').get_attribute('class')
-                n = len(state['asked'])
-                page.wait_for_timeout(3000)
-                assert len(state['asked']) == n
-                page.locator('.sl-mode').click()
-                page.wait_for_selector('.stack-live.mode-3d')
-        else:                                                                 # schmal bzw. reduzierte Bewegung: 2D, kein three.js
-            page.wait_for_timeout(3000)
-            assert page.locator('.sl-space canvas').count() == 0 and not state['asked']
-            assert page.locator('.sl-mode').is_hidden() == (not wide)
-            assert not page.evaluate(FIND_OVERFLOW)
-        page.locator('.sl-chips button[data-k="|10"]').click()               # Zeitachse: Stack nach 10 Aufnahmen
-        page.wait_for_function("document.querySelector('.sl-badge').textContent.includes('NACH 10')")
-        assert page.locator('.sl-chips button[data-k="|10"]').get_attribute('aria-pressed') == 'true'
-        page.locator('.sl-chips button[data-k="live"]').click()
-        page.wait_for_function("document.querySelector('.sl-badge').textContent === 'LIVE-VORSCHAU'")
-        state['stage'] = 'Bearbeitung'                                       # nach der Registrierung: kein 3D mehr
-        page.wait_for_function("document.querySelector('.sl-mode').hidden")
-        assert 'mode-3d' not in page.locator('.stack-live').get_attribute('class')
+        page.wait_for_selector('.sl-image.on')
+        page.wait_for_function("document.querySelector('.sl-caption').textContent.includes('Rauschen −')", timeout=15000)
+        page.wait_for_function("document.querySelector('.sl-caption').textContent.includes('15 Aufnahmen')", timeout=15000)
+        assert len(set(shown)) >= 5                                       # mehrere echte Stände nacheinander
+        assert shown[0] != '1-f1.jpg'                                     # neu geöffnet: erst der jüngste, nicht alles nachholen
+        dur = page.evaluate("getComputedStyle(document.querySelector('.sl-image')).transitionDuration")
+        assert (dur == '0s') == (reduced == 'reduce')
+        assert not page.evaluate(FIND_OVERFLOW)
+        state['preview'] = '1-9.jpg'                                      # Endbearbeitung: ihre Vorschau gewinnt
+        page.wait_for_selector('.sl-image.on[src$="1-9.jpg"]')
         page.close()
         assert not errors, errors
 

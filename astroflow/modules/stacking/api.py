@@ -13,7 +13,7 @@ import traceback
 from pathlib import Path
 
 from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse
 
 from . import calibration, channels, comet, diskspace, gpu, graxpert, objects, platesolve, reviewer, skyquality, stars, tonight, tutor
 from ...core import security
@@ -508,41 +508,9 @@ def build_router(eng: Engine) -> APIRouter:
         v["kind_labels"] = objects.KIND_LABEL
         return v
 
-    @r.get('/projects/{pid}/pattern')
-    def live_pattern(pid: int, seit: int = 0):
-        """Sternmuster-Pulse der laufenden Registrierung seit Nummer `seit` (eigener Endpunkt, nicht im 2,5-s-Poll)."""
-        run = eng.pl.live_runs.get(pid)
-        if run is None:
-            return JSONResponse({'run': None, 'seq': 0, 'wh': None, 'items': []}, headers={'Cache-Control': 'no-store'})
-        return JSONResponse(run.pulses_since(seit), headers={'Cache-Control': 'no-store'})
-
-    @r.get('/projects/{pid}/pattern/{i}.jpg')
-    def live_pattern_thumb(pid: int, i: int):
-        """Mini-Vorschau einer gerade registrierten Aufnahme (nur solange sie im Ringpuffer liegt)."""
-        run = eng.pl.live_runs.get(pid)
-        data = run.pulse_thumb(i) if run else None
-        if not data:
-            raise HTTPException(404)
-        return Response(data, media_type='image/jpeg', headers={'Cache-Control': 'no-store'})
-
-    @r.get('/projects/{pid}/stages')
-    def live_stages(pid: int):
-        """Zeitachse: schon gespeicherte Stacking-Stufen (auch während des Stackens)."""
-        from .live import stage_list
-        return {'stages': stage_list(eng.s.work_dir, pid)}
-
-    @r.get('/projects/{pid}/stages/{name}')
-    def live_stage_picture(pid: int, name: str, band: str = ''):
-        if not re.fullmatch(r'n\d{5}\.jpg', name) or not re.fullmatch(r'[A-Za-z0-9]{0,8}', band):
-            raise HTTPException(404)
-        path = eng.s.work_dir / f'p{pid}' / ('stufen' + (f'_{band}' if band else '')) / name
-        if not path.is_file():
-            raise HTTPException(404)
-        return FileResponse(path, media_type='image/jpeg', headers={'Cache-Control': 'no-store'})
-
     @r.get('/projects/{pid}/live/{name}')
     def live_picture(pid: int, name: str):
-        if not re.fullmatch(r'\d+-\d+\.jpg', name):
+        if not re.fullmatch(r'\d+-f?\d+\.jpg', name):            # Vorschau bzw. Zwischenstand (…-f<n>.jpg)
             raise HTTPException(404)
         path = eng.s.work_dir / f'p{pid}' / 'live' / name
         if not path.is_file():

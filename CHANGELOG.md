@@ -6,12 +6,11 @@ stehen in `AGENTS.md`, die Bedienung in `README.md`.
 ## 0.47.0 – 08.11.2026
 
 ### Neu
-- **Aufnahmen als Ebenen im Raum:** Während des Stackens zeigt die Live-Ansicht auf größeren Bildschirmen die einzelnen Aufnahmen
-  als dünne Ebenen hintereinander auf einer Zeitachse (umschaltbar „3D“). Im Takt, in dem tatsächlich gestackt wird, fliegt die nächste
-  Aufnahme nach vorn, dreht und verschiebt sich dabei auf das Referenzbild, ihre hellsten Sterne rasten ein, dann geht sie im Stack auf.
-  Echte Daten der Registrierung und kleine Vorschauen der Aufnahmen – das Stacken wird dadurch nicht langsamer.
-- **Zeitachse:** Unter der Live-Ansicht lässt sich der Stack nach 1, 3, 10, 30, 50, 100 … Aufnahmen ansehen, schon während des Stackens.
-  Neu ist die Stufe nach 50 Aufnahmen (auch im Stufen-Regler des fertigen Bildes, bei neu aufgebauten Stacks).
+- **Das Bild entsteht aus dem Rauschen:** Während des Stackens zeigt die Live-Ansicht echte Zwischenstände des Stacks – am Anfang
+  nach fast jeder Aufnahme (1, 2, 3, 4, 5, 6, 8 …), später seltener – und blendet sie nacheinander weich über. Weil die Helligkeitskurve
+  über den ganzen Lauf gleich bleibt, sieht man das Rauschen tatsächlich sinken, Sterne und Nebel treten hervor. Unter dem Bild steht,
+  aus wie vielen Aufnahmen der Stand besteht und um wie viel das Rauschen gegenüber der ersten Aufnahme gesunken ist. Nichts davon wird
+  erfunden; das Stacken wird dadurch nicht spürbar langsamer.
 
 ## 0.46.2 – 08.11.2026
 

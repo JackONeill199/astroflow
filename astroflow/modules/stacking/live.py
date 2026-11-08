@@ -1,12 +1,11 @@
 """Kleine echte Zwischenbilder und kompakter Ablauf; keine zusätzliche Vollbild-Entwicklung."""
 from __future__ import annotations
 
-import io
 import json
-from collections import deque
 import math
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -14,8 +13,72 @@ from PIL import Image
 
 SIDE = 800
 INTERVAL = 4.0
-PULSES = 64                  # Aufnahmen-Ebenen der Registrierung: Ringpuffer der letzten Aufnahmen (nur im Speicher)
-THUMB = 160                  # Mini-Vorschau je Aufnahme (längste Seite, px)
+# „Das Bild entsteht aus dem Rauschen“: echte Zwischenstände des Stacks nach diesen Aufnahmenzahlen (anfangs fast jeder
+# Schritt, dann je ×1,5 seltener) – mit fester Streckung über den ganzen Lauf, damit man das Rauschen wirklich sinken sieht.
+FRAMES_KEEP = 12              # so viele Zwischenstände (JPG) bleiben je Lauf liegen
+EARLY = 80                    # bis hierher auch Zwischenstände mitten in einem Stapel (Mini-Stack auf jedem n-ten Pixel)
+
+
+def schedule(limit=10 ** 6):
+    """Aufnahmenzahlen für Zwischenstände: 1, 2, 3, 4, 5, 6, 8, 10, 13, 16, 20, 25, 30 … (je ≥ ×1,25, später ×1,5)."""
+    out, n = [], 1
+    while n <= limit:
+        out.append(n)
+        n = max(n + 1, round(n * (1.25 if n < 30 else 1.5)))
+    return out
+
+
+SCHEDULE = schedule()
+
+
+def fixed_stretch(mean):
+    """Streckung aus dem ersten Zwischenstand, danach für den ganzen Lauf fest: Schwarzpunkt je Kanal knapp unter dem
+    Himmel, gemeinsamer Weißpunkt an den hellen Sternen, asinh so, dass der Himmel bei ~0,13 liegt. Weil sie fest bleibt,
+    wird das Rauschen sichtbar weniger (eine Auto-Streckung je Bild würde es immer gleich hell machen)."""
+    a = np.asarray(mean, np.float32)
+    ok = np.isfinite(a) & (a != 0)
+    bg = np.array([float(np.median(c[k])) if k.any() else 0.0 for c, k in zip(a, ok)])
+    sig = np.array([1.4826 * float(np.median(np.abs(c[k] - b))) if k.any() else 1.0 for c, k, b in zip(a, ok, bg)])
+    black = bg - 1.0 * sig
+    hi = float(np.percentile((a - bg[:, None, None])[ok], 99.95)) if ok.any() else 1.0
+    span = max(hi + float(sig.mean()), 1e-6)
+    r = float(np.clip(sig.mean() / span, 1e-5, 0.5))           # Himmel relativ zur Spanne
+    lo_k, hi_k = 0.1, 1e5                                       # asinh-Faktor per Bisektion: f(r) = 0,13
+    for _ in range(60):
+        k = (lo_k * hi_k) ** 0.5
+        if np.arcsinh(k * r) / np.arcsinh(k) < 0.13:
+            lo_k = k
+        else:
+            hi_k = k
+    return {'black': black.tolist(), 'span': span, 'k': float(k)}
+
+
+LUT_N = 4096
+
+
+def apply_stretch(mean, p):
+    """Feste Kurve als Tabelle (4096 Stufen, schneller als asinh je Pixel) → uint8 (C,h,w)."""
+    a = np.asarray(mean, np.float32)
+    x = (a - np.asarray(p['black'], np.float32)[:, None, None]) * np.float32((LUT_N - 1) / p['span'])
+    lut = p.get('_lut')
+    if lut is None:
+        t = np.linspace(0, 1, LUT_N)
+        lut = p['_lut'] = (np.arcsinh(p['k'] * t) / np.arcsinh(p['k']) * 255 + .5).astype(np.uint8)
+    y = lut[np.clip(np.nan_to_num(x, nan=0.0), 0, LUT_N - 1).astype(np.int32)]
+    y[a == 0] = 0                                               # nicht bedeckte Stellen schwarz
+    return y
+
+
+def noise_of(mean):
+    """Rauschen eines Zwischenstands: robuste Streuung der Differenz benachbarter Pixel der Luminanz (unempfindlich gegen
+    Verläufe und große Strukturen), nur bedeckte Stellen."""
+    lum = np.asarray(mean, np.float32)[:, ::3].mean(0)          # jede 3. Zeile genügt
+    d = lum[:, 1:] - lum[:, :-1]
+    ok = (lum[:, 1:] != 0) & (lum[:, :-1] != 0) & np.isfinite(d)
+    if ok.sum() < 100:
+        return None
+    v = d[ok]
+    return float(1.4826 * np.median(np.abs(v - np.median(v))) / np.sqrt(2))
 
 
 def sample(img):
@@ -28,23 +91,6 @@ def stack_sample(state):
     # Niemals state.result() auf dem ganzen Bild nur für eine Vorschau aufrufen.
     step = max(1, math.ceil(max(state.shape[-2:]) / SIDE))
     return (state.swx[:, ::step, ::step] / np.maximum(state.sw[:, ::step, ::step], 1e-9)).astype(np.float32)
-
-
-def thumb(img, side=THUMB):
-    """Mini-Vorschau einer Aufnahme als JPEG-Bytes (~3 KB): nur jedes n-te Pixel, schnelle Streckung, Norden oben wie
-    die übrigen Vorschauen. Rechnet auf ≤ side² Pixeln – das Original bleibt unangetastet."""
-    step = max(1, math.ceil(max(img.shape[-2:]) / side))
-    a = np.asarray(img[..., ::step, ::step], np.float32)
-    lum = a.mean(0)
-    lo, hi = np.percentile(lum, (30, 99.8))
-    a = np.clip((a - lo) / max(float(hi - lo), 1e-6), 0, 1)
-    a = np.arcsinh(a * 12) / np.arcsinh(12)
-    if a.shape[0] == 1:
-        a = np.repeat(a, 3, axis=0)
-    pic = Image.fromarray((np.moveaxis(a, 0, -1)[::-1] * 255 + .5).astype(np.uint8))
-    buf = io.BytesIO()
-    pic.save(buf, format='JPEG', quality=72)
-    return buf.getvalue()
 
 
 def save_picture(path, img, linear=True):
@@ -74,26 +120,39 @@ class LiveRun:
         self.path = work / f'p{pid}' / 'live'
         self.path.mkdir(parents=True, exist_ok=True)
         self.data = {'run': str(time.time_ns()), 'job': job, 'steps': [], 'preview': None}
-        self._write_lock = threading.Lock()      # Sternmuster kommen aus den Registrier-Threads
         self.seq = 0
         self.last_picture = 0.0
-        self.pulses = deque(maxlen=PULSES)
-        self.pulse_seq = 0
-        self.pulse_shape = None
-        self._pulse_lock = threading.Lock()
         self.finished = False
+        self.stretch, self.noise0, self.fseq = {}, {}, 0         # feste Streckung und Anfangsrauschen je Kanal
+        self._lock = threading.RLock()                            # Zwischenstände entstehen in einem eigenen Thread
+        self._bg = None
         # Alte Live-Bilder sind in Ergebnissen separat archiviert.
-        for p in self.path.glob('*.jpg'):
+        for p in [*self.path.glob('*.jpg'), *self.path.glob('*.jpg.tmp')]:
             p.unlink(missing_ok=True)
         self._write()
 
     def _write(self):
-        with self._write_lock:
+        with self._lock:
             tmp = self.path / 'state.tmp'
             tmp.write_text(json.dumps(self.data, ensure_ascii=False), encoding='utf-8')
             tmp.replace(self.path / 'state.json')
 
+    def later(self, fn):
+        """Zwischenstand im Hintergrund rechnen (ein Thread, Reihenfolge bleibt) – nicht auf dem Weg des Stackens."""
+        if self._bg is None:
+            self._bg = ThreadPoolExecutor(1, thread_name_prefix='live-zwischenstand')
+        return self._bg.submit(optional, fn)
+
+    def wait(self):
+        """Bis alle Zwischenstände geschrieben sind (Tests)."""
+        if self._bg is not None:
+            self._bg.submit(lambda: None).result()
+
     def event(self, stage, message=''):
+        with self._lock:
+            self._event(stage, message)
+
+    def _event(self, stage, message=''):
         """Nur tatsächlich besuchte Schritte; erneute QC-Runden bleiben nachvollziehbar."""
         label = message or stage
         steps = self.data['steps']
@@ -112,52 +171,80 @@ class LiveRun:
         self.seq += 1
         name = f"{self.data['run']}-{self.seq}.jpg"
         save_picture(self.path / name, img, linear)
-        self.data.update(preview=name)
-        if n is not None:
-            self.data.update(n=n, exposure=exposure, band=band)
-        self.last_picture = time.monotonic()
-        self._write()
+        with self._lock:
+            self.data.update(preview=name)
+            if n is not None:
+                self.data.update(n=n, exposure=exposure, band=band)
+            self.last_picture = time.monotonic()
+            self._write()
         # Zwei Bildstände reichen für den weichen Wechsel im Browser.
-        for p in self.path.glob(f"{self.data['run']}-*.jpg"):
+        for p in self.path.glob(f"{self.data['run']}-[0-9]*.jpg"):      # Zwischenstände (…-f<n>.jpg) bleiben
             if p.name not in (name, f"{self.data['run']}-{self.seq - 1}.jpg"):
                 p.unlink(missing_ok=True)
 
 
-    def add_pulse(self, data, n=None, total=None, shape=None, thumb=None):
-        """Ausrichtung einer registrierten Aufnahme (aus den Registrier-Threads, ~3 KB mit Mini-Vorschau, keine Datei)."""
-        with self._pulse_lock:
-            self.pulse_seq += 1
-            self.pulses.append({**data, 'i': self.pulse_seq, 'n': n, 't': total, 'img': bool(thumb), '_thumb': thumb})
-            if shape is not None:
-                self.pulse_shape = [int(shape[1]), int(shape[0])]
+    def stack_frame(self, mean, *, n, exposure=None, band=None, cov=None):
+        """Echter Zwischenstand des Stacks (verkleinert, (C,h,w) Mittel) mit fester Streckung als JPG in die Folge
+        `frames` (die letzten FRAMES_KEEP; der Browser blendet sie nacheinander über). cov: Gewichtsminimum, 0 = unbedeckt."""
+        a = np.asarray(mean, np.float32)
+        if cov is not None:
+            a = np.where(np.asarray(cov)[None] > 0, a, 0)
+        key = band or ''
+        if key not in self.stretch:
+            self.stretch[key] = fixed_stretch(a)
+        y = apply_stretch(a, self.stretch[key])
+        if y.shape[0] == 1:
+            y = np.repeat(y, 3, axis=0)
+        noise = noise_of(a)
+        if noise and key not in self.noise0:
+            self.noise0[key] = noise
+        self.fseq += 1
+        name = f"{self.data['run']}-f{self.fseq}.jpg"
+        pic = Image.fromarray(np.ascontiguousarray(np.moveaxis(y, 0, -1)[::-1]))
+        tmp = self.path / (name + '.tmp')
+        pic.save(tmp, format='JPEG', quality=84)
+        tmp.replace(self.path / name)
+        rel = round(noise / self.noise0[key], 3) if noise and self.noise0.get(key) else None
+        with self._lock:
+            frames = list(self.data.get('frames') or [])
+            frames.append({'name': name, 'n': int(n), 'exposure': exposure, 'band': band, 'noise': rel})
+            for old in frames[:-FRAMES_KEEP]:
+                (self.path / old['name']).unlink(missing_ok=True)
+            self.data['frames'] = frames[-FRAMES_KEEP:]
+            if not self.data.get('preview'):          # sonst gehören n/Belichtung schon der Endbearbeitung
+                self.data.update(n=int(n), exposure=exposure, band=band)
+            self._write()
 
-    def pulses_since(self, seit=0):
-        with self._pulse_lock:
-            if seit > self.pulse_seq:            # Nummer aus einem früheren Lauf
-                seit = 0
-            return {'run': self.data['run'], 'job': self.data.get('job'), 'seq': self.pulse_seq,
-                    'wh': self.pulse_shape,
-                    'items': [{k: v for k, v in d.items() if k != '_thumb'} for d in self.pulses if d['i'] > seit]}
 
-    def pulse_thumb(self, i):
-        with self._pulse_lock:
-            return next((d['_thumb'] for d in self.pulses if d['i'] == i), None)
+def stack_targets(n0, n1):
+    """Aufnahmenzahlen aus SCHEDULE im Bereich (n0, n1]."""
+    return [t for t in SCHEDULE if n0 < t <= n1]
 
 
-def stage_list(work, pid):
-    """Gespeicherte Stacking-Stufen dieses Objekts (work/p<id>/stufen[_<Band>]/n<t>.jpg + .json) für die Zeitachse."""
-    out = []
-    for d in sorted((work / f'p{pid}').glob('stufen*')):
-        band = d.name.removeprefix('stufen').removeprefix('_')
-        for j in sorted(d.glob('n*.json')):
-            if not j.with_suffix('.jpg').is_file():
-                continue
-            try:
-                info = json.loads(j.read_text(encoding='utf-8'))
-            except (OSError, ValueError):
-                continue
-            out.append({'n': int(info.get('n') or 0), 'exposure': info.get('exposure'), 'band': band, 'file': j.with_suffix('.jpg').name})
-    return sorted(out, key=lambda x: (x['band'], x['n']))
+def mini_inputs(state, X, V, w):
+    """Verkleinerte Kopien (jedes n-te Pixel) der Stack-Summen vor dem Stapel und der Aufnahmen des Stapels – schnell,
+    damit der Rest im Hintergrund laufen kann, während der echte Stack weiterrechnet."""
+    step = max(1, math.ceil(max(state.shape[-2:]) / SIDE))
+    s = (slice(None), slice(None, None, step), slice(None, None, step))
+    return (state.sw[s].copy(), state.swx[s].copy(), state.swx2[s].copy(),
+            np.ascontiguousarray(X[:, :, ::step, ::step]), np.ascontiguousarray(V[:, ::step, ::step]), np.array(w, np.float32))
+
+
+def mini_snapshots(inputs, ks, workers=1):
+    """Zwischenstände „bisher + erste k Aufnahmen des Stapels“ für jedes k in ks – mit demselben Stacking-Code
+    (StackState.add_batch, gleiches Clipping je Pixel), aber nur auf jedem n-ten Pixel (Vorschaugröße). Der eigentliche
+    Stack bleibt unberührt (Eingaben aus mini_inputs). Gibt {k: (Mittel, Gewichtsminimum)} zurück."""
+    from .stacking import StackState
+    sw, swx, swx2, Xs, Vs, w = inputs
+    mini = StackState(sw.shape)
+    mini.sw, mini.swx, mini.swx2 = sw, swx, swx2
+    mini.add_batch(Xs, Vs, w, workers=workers, prefixes=ks)
+    return mini.snaps
+
+
+def stack_cov(state):
+    step = max(1, math.ceil(max(state.shape[-2:]) / SIDE))
+    return state.sw[:, ::step, ::step].min(0)
 
 
 def optional(fn, *args, **kwargs):

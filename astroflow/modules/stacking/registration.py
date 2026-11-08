@@ -91,25 +91,6 @@ def find_transform(ref_xy: np.ndarray, tgt_xy: np.ndarray, tol: float = 2.5, max
     return M, pairs, float(np.sqrt(np.mean(d[sel] ** 2)))
 
 
-PATTERN_STARS = 12       # Live-Ansicht: hellste zugeordnete Sterne je Aufnahme, rasten auf der ankommenden Ebene ein
-
-
-def pulse(tgt_xy: np.ndarray, M: np.ndarray, pairs: np.ndarray, rms: float | None = None) -> dict:
-    """Kompakte Ausrichtungsdaten einer Aufnahme (~350 Bytes): je hellstem zugeordnetem Stern (Sternlisten sind nach
-    Helligkeit sortiert) die Lage in der Aufnahme und – mit der gefundenen Transformation – im Stack (Rohbild-Pixel gerundet),
-    dazu die Transformation Aufnahme → Stack selbst."""
-    keep = sorted(set(int(t) for t in pairs[:, 0]))[:PATTERN_STARS]
-    src = tgt_xy[keep]
-    dst = _apply(M, src)
-    return {
-        's': [[int(round(a)), int(round(b)), int(round(c)), int(round(d))] for (a, b), (c, d) in zip(src, dst)],
-        'm': [round(float(M[0, 0]), 5), round(float(M[0, 1]), 5), round(float(M[0, 2]), 1),
-              round(float(M[1, 0]), 5), round(float(M[1, 1]), 5), round(float(M[1, 2]), 1)],
-        'r': round(float(np.degrees(np.arctan2(M[1, 0], M[0, 0]))), 2),
-        'q': int(len(pairs)), 'x': None if rms is None else round(float(rms), 2),
-    }
-
-
 def warp(img: np.ndarray, M: np.ndarray, out_shape: tuple[int, int], scale: int = 1, order: int = 3, gpu=None):
     """img (C,H,W) in Zielframe -> Referenzraster (optional x`scale` überabgetastet).
     Gibt (warped, valid_mask) zurück. `gpu` (gpu.Engine): Interpolation auf der Grafikkarte, bei Fehlern CPU."""

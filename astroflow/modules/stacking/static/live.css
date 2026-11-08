@@ -2,7 +2,7 @@
 .stack-live { min-width: 0; animation: sl-enter .45s ease both }
 .sl-picture { position: relative; width: 100%; aspect-ratio: 16/10; max-height: min(62vh, 40rem); overflow: hidden; border-radius: var(--r-sm); background: #080d19;
   background-image: none }
-.sl-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity .8s ease }
+.sl-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity var(--sl-fade, .8s) ease }
 .sl-image.on { opacity: 1 }
 .sl-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 1.125rem;
   color: #a9b1ce; font-size: 0.8125rem; transition: opacity .5s }
@@ -35,25 +35,8 @@
 .sl-track i { display: block; height: 100%; background: linear-gradient(90deg, var(--acc), #bd98f8); transition: width 1s ease }
 .sl-track.indet i { animation: sl-wait 2.8s ease-in-out infinite }
 .sl-queued .sl-pulse, .sl-error .sl-pulse { animation: none }
-/* Aufnahmen als Ebenen im Raum (live.js → createFrameSpace), Zeitachse der Stacking-Stufen */
-.sl-space { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity .5s ease }
-.sl-space canvas { display: block; width: 100%; height: 100%; touch-action: none }
-.mode-3d .sl-space { opacity: 1; pointer-events: auto }
-.mode-3d .sl-image, .mode-3d .sl-wait { visibility: hidden }
-.sl-time { display: flex; align-items: center; gap: 0.5rem; padding-top: 0.4375rem; min-width: 0 }
-.sl-time-h { color: var(--mut); font-size: 0.6875rem; flex-shrink: 0 }
-.sl-chips { display: flex; gap: 0.25rem; overflow-x: auto; scrollbar-width: none; min-width: 0 }
-.sl-chips button { flex-shrink: 0; border: 1px solid var(--line); border-radius: 0.3125rem; background: none; color: var(--mut); font: inherit;
-  font-size: 0.6875rem; padding: 0.125rem 0.4375rem; cursor: pointer }
-.sl-chips button[aria-pressed="true"] { color: var(--fg); border-color: var(--acc) }
-.sl-pinfo { position: absolute; left: 50%; bottom: 2.75rem; transform: translateX(-50%); max-width: calc(100% - 1.5rem); padding: 0.0625rem 0.375rem;
-  border-radius: 0.25rem; background: #0a0f1d80; color: var(--mut); font-size: 0.625rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  font-variant-numeric: tabular-nums; opacity: 0; transition: opacity .4s ease; pointer-events: none }
-.space-info .sl-pinfo { opacity: .75; transition-duration: .15s }
-.sl-mode { flex-shrink: 0; border: 1px solid var(--line); border-radius: 0.3125rem; background: none; color: var(--mut); font: inherit; padding: 0.125rem 0.5rem; cursor: pointer }
-.sl-mode[aria-pressed="true"] { color: var(--fg); border-color: var(--acc) }
 @keyframes sl-wait { 0%, 100% { transform: translateX(-100%) } 50% { transform: translateX(350%) } }
 @keyframes sl-enter { from { opacity: .5 } to { opacity: 1 } }
-@media (max-width: 480px) { .sl-status { gap: 0.4375rem; font-size: 0.6875rem } .sl-pinfo { font-size: 0.625rem } .sl-caption { padding-inline: 0.75rem; font-size: 0.6875rem } }
+@media (max-width: 480px) { .sl-status { gap: 0.4375rem; font-size: 0.6875rem } .sl-caption { padding-inline: 0.75rem; font-size: 0.6875rem } }
 @media (pointer: coarse) { .sl-details summary { min-height: 2.75rem; display: flex; align-items: center } }
 @media (prefers-reduced-motion: reduce) { .stack-live, .stack-live * { animation: none !important; transition: none !important } }

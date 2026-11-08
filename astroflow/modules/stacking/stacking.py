@@ -154,12 +154,15 @@ class StackState:
             keep &= ~((sw > 0)[None] & (np.abs(X - mean[None]) > 5 * sd[None]))
         wk = keep * w[:, None, None, None]
         Xk = np.where(keep, X, 0).astype(np.float32)
-        for k, (m, c) in self.snaps.items():
-            sw = self.sw[:, ys] + wk[:k].sum(0)
-            m[:, ys] = (self.swx[:, ys] + (wk[:k] * Xk[:k]).sum(0)) / np.maximum(sw, 1e-9)
-            c[ys] = sw.min(0)
-        self.sw[:, ys] += wk.sum(0)
         wx = wk * Xk
+        if self.snaps:                                # Zwischenstände über laufende Summen (linear statt je k neu summiert)
+            cw, cwx = np.cumsum(wk, 0, dtype=np.float32), np.cumsum(wx, 0, dtype=np.float32)
+            for k, (m, c) in self.snaps.items():
+                sw = self.sw[:, ys] + cw[k - 1]
+                m[:, ys] = (self.swx[:, ys] + cwx[k - 1]) / np.maximum(sw, 1e-9)
+                c[ys] = sw.min(0)
+            del cw, cwx
+        self.sw[:, ys] += wk.sum(0)
         self.swx[:, ys] += wx.sum(0)
         self.swx2[:, ys] += (wx * Xk).sum(0)
         return int(V.sum() * X.shape[1] - keep.sum())

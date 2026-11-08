@@ -37,7 +37,7 @@ DEFAULT_OPTIONS = {
 }
 GLOW_SAMPLE = 30                # Frames je Nacht für die Glühmessung
 CHECKPOINT_S = 120              # Stack-Zustand spätestens alle 2 min sichern (Wiederaufnahme nach Abbruch)
-STAGES = (1, 3, 10, 30, 50, 100, 300, 1000, 3000)   # Stacking-Stufen (Aufnahmen) für den Verlaufsregler im Bild-Tab
+STAGES = (1, 3, 10, 30, 100, 300, 1000, 3000)   # Stacking-Stufen (Aufnahmen) für den Verlaufsregler im Bild-Tab
 STAGE_SCALE = 8.0               # nur zum Lesen älterer float16-Stufen; neue Stufen sind kleine Live-JPGs
 
 
@@ -1191,8 +1191,6 @@ class Pipeline:
         budget = min(self.s.batch_mb, max(300, free // 5)) if free else self.s.batch_mb
         bsz = batch_size_for((C, H * scale, W * scale), budget)
         g = gpu.engine()                               # Grafikkarte für Ausrichten + Clipping (sonst None = CPU)
-        n_before = len(meta["frames"])
-        order = {r["id"]: i for i, r in enumerate(todo)}
 
         def work(r):
             try:
@@ -1206,16 +1204,12 @@ class Pipeline:
                     res = registration.find_transform(ref_xy, tg)
                     if res is None:
                         return r["id"], None, "Registrierung fehlgeschlagen"
-                    M, pairs, rms = res
-                run = self.live_runs.get(pid) if shifts is None and r["id"] != meta["ref_fid"] else None
+                    M, pairs, _ = res
                 d = shifts.get(r["id"]) if shifts else None
                 if d is not None:
                     M = np.array([[1, 0, d[0]], [0, 1, d[1]], [0, 0, 1]], float) @ M
                 raw, _ = self._load(r["path"], info, lib, r["night"], cache)
                 img = to_channels(raw, info["bayerpat"])
-                if run and not run.finished:             # Live-Ansicht: Ausrichtung + Mini-Vorschau dieser Aufnahme (Ringpuffer im Speicher)
-                    live.optional(lambda: run.add_pulse(registration.pulse(tg, M, pairs, rms), n=n_before + order[r["id"]] + 1,
-                                                        total=n_before + len(todo), shape=(H, W), thumb=live.thumb(img)))
                 warped, valid = registration.warp(img, M, (H * scale, W * scale), scale, gpu=g)
                 if mask is not None and d is not None:
                     sm = comet.shift_mask(mask, d[0] * scale, d[1] * scale)
@@ -1236,9 +1230,6 @@ class Pipeline:
         chunks = [todo[i : i + bsz] for i in range(0, total, bsz)]
         unsaved: list = []
         last_save = time.time()
-        # Schritt „Stacking“ schon vor der ersten Registrierung melden (sonst stünde während des ersten Stapels noch
-        # „Auswahl“ da – die Sternmuster-Ansicht der Live-Vorschau hängt an diesem Schritt)
-        progress(0.36, "Stacking", f"0/{total} Aufnahmen" + (f" · Grafikkarte {g.name}" if g and not g.broken else ""))
         pending = [ex.submit(work, r) for r in chunks[0]] if chunks else []
         for ci, chunk in enumerate(chunks):
             results = [f.result() for f in pending]
@@ -1263,6 +1254,18 @@ class Pipeline:
                 ws = np.clip(ws / meta["ref_w"], 0.1, 3.0)
                 n0 = len(meta["frames"])
                 cut = {t: t - n0 for t in STAGES if n0 < t <= n0 + len(good)} if stages is not None else {}
+                run = self.live_runs.get(pid) if mark else None    # „Bild entsteht aus dem Rauschen“ (nicht im Kometen-Stack)
+                band = stages.name.removeprefix('stufen_') if stages and stages.name != 'stufen' else None
+                inner = [t for t in live.stack_targets(n0, n0 + len(good) - 1) if t <= live.EARLY] if run else []
+                inp = live.optional(live.mini_inputs, state, X, V, ws) if inner else None
+                if inp:                                  # frühe Zwischenstände mitten im Stapel: Mini-Stack im Hintergrund
+                    exps = [meta["exposure"] + sum(exptime.get(fid, 0) for fid, _ in good[:t - n0]) for t in inner]
+                    def early_frames(inp=inp, inner=inner, n0=n0, exps=exps, band=band):
+                        snaps = live.mini_snapshots(inp, [t - n0 for t in inner], workers=2)
+                        for t, e in zip(inner, exps):
+                            m, c = snaps[t - n0]
+                            run.stack_frame(m, n=t, exposure=e, band=band, cov=c)
+                    run.later(early_frames)
                 state.add_batch(X, V, ws, workers=self.s.threads, prefixes=cut.values(), gpu=g)
                 del X, V
                 exp0 = meta["exposure"]
@@ -1279,11 +1282,13 @@ class Pipeline:
                             {'n': t, 'exposure': exp0 + sum(exptime.get(fid, 0) for fid, _ in good[:k])}), encoding='utf-8')
                     live.optional(save_stage)
                     del m, c
-                run = self.live_runs.get(pid)
-                if run and (time.monotonic() - run.last_picture >= live.INTERVAL or ci == len(chunks) - 1):
-                    def show_stack():
-                        run.picture(live.stack_sample(state), n=len(meta['frames']), exposure=meta['exposure'],
-                                    band=stages.name.removeprefix('stufen_') if stages and stages.name != 'stufen' else None, force=True)
+                n1 = len(meta['frames'])
+                if run and (live.stack_targets(n0 + len(good) - 1, n1) or time.monotonic() - run.last_picture >= live.INTERVAL
+                            or ci == len(chunks) - 1):
+                    def show_stack():                    # Stand am Stapelende: direkt aus dem Stack, Rendern im Hintergrund
+                        mean, cov, exp = live.stack_sample(state), live.stack_cov(state), meta['exposure']
+                        run.later(lambda: run.stack_frame(mean, n=n1, exposure=exp, band=band, cov=cov))
+                        run.last_picture = time.monotonic()
                     live.optional(show_stack)
             done += len(chunk)
             # Checkpoint: Frames gelten erst als gestackt, wenn der Zustand mit ihnen gespeichert ist
