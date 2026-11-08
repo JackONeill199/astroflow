@@ -16,9 +16,16 @@ function createStackLive(host, pid) {
   const find = s => root.querySelector(s);
   const fmt = (v) => Number(v).toLocaleString('de-DE');
   let active = 0, wanted = '', shown = '', destroyed = false, stepSig = '', fallback = false;
-  let preview = '', done = 0, run = '', queue = [], timer = 0, current = null, visible = null, lastLive = {};   // current = Ladeversuch, visible = angezeigter Stand
-  const inflight = new Set();                            // eingereiht oder ladend (nicht doppelt anfordern)
-  const num = f => +(/-f(\d+)\.jpg$/.exec(f.name)?.[1] || 0);   // laufende Nummer des Zwischenstands
+  /* Zustand der Zwischenstand-Folge (ein Lauf = live.run):
+     seen    höchste laufende Nummer, die je eingereiht wurde – alles darunter wird nie mehr nachgeholt (Folge läuft nur vorwärts)
+     queue   eingereihte, noch nicht angeforderte Stände (über das Abrufintervall verteilt, höchstens 8)
+     visible der tatsächlich angezeigte Stand (nur er bestimmt die Bildunterschrift; gesetzt erst nach erfolgreichem Laden)
+     failed  Stände, deren Abruf scheiterte – der jüngste davon wird beim nächsten Poll erneut angefordert
+     Bildebenen: show() mit wanted (ladend) / shown (sichtbar); ein neuerer Wechsel verwirft einen noch ladenden älteren.
+     Endbearbeitung: sobald live.preview da ist, hat sie Vorrang; show() bei jedem Poll wiederholt einen gescheiterten Abruf. */
+  let preview = '', run = '', seen = 0, queue = [], timer = 0, visible = null, lastLive = {};
+  const failed = new Set();
+  const num = f => +(/-f(\d+)\.jpg$/.exec(f?.name || '')?.[1] || 0);   // laufende Nummer des Zwischenstands
   function show(src, previous = false, onShown = null, onFail = null) {
     if (!src) return;
     if (src === shown) { wanted = src; return; }          // schon sichtbar: ausstehenden Wechsel verwerfen
@@ -54,19 +61,19 @@ function createStackLive(host, pid) {
     if (!f || destroyed) return;
     const slot = Math.max(350, Math.min(1500, LIVE_POLL / (queue.length + 1)));
     root.style.setProperty('--sl-fade', Math.round(Math.min(slot * 0.85, 800)) + 'ms');
-    current = f;
-    show(frameSrc(f), false, () => { inflight.delete(f.name); done = Math.max(done, num(f)); visible = f; caption(f); },
-      () => inflight.delete(f.name));                // fehlgeschlagen: beim nächsten Poll wieder dabei
+    show(frameSrc(f), false, () => { failed.delete(f.name); visible = f; caption(f); }, () => failed.add(f.name));
     if (queue.length) timer = setTimeout(step, slot);
   }
   function frames(list) {
     if (!list?.length) return;
-    for (const name of inflight) if (num({ name }) <= done) inflight.delete(name);   // von neueren überholt
-    let fresh = list.filter(f => num(f) > done && !inflight.has(f.name));
-    if (!done && !inflight.size) fresh = fresh.slice(-1);          // neu geöffnet: nur der jüngste Stand
+    const latest = list[list.length - 1];
+    let fresh = list.filter(f => num(f) > seen);
+    if (!seen || document.hidden) fresh = fresh.slice(-1);         // neu geöffnet bzw. Hintergrund-Tab: nur der jüngste
+    if (!fresh.length && !queue.length && !timer && failed.has(latest.name) && num(latest) > num(visible))
+      fresh = [latest];                                            // jüngster Stand scheiterte: erneut anfordern
     if (!fresh.length) return;
-    if (document.hidden) fresh = fresh.slice(-1);                  // Hintergrund-Tab: nicht nachholen
-    fresh.forEach(f => inflight.add(f.name));
+    fresh.forEach(f => failed.delete(f.name));
+    seen = Math.max(seen, ...fresh.map(num));
     queue = queue.concat(fresh).slice(-8);                         // nie weit hinterherhinken
     if (!timer) step();
   }
@@ -84,10 +91,10 @@ function createStackLive(host, pid) {
       track.classList.toggle('indet', percent == null);
       if (percent == null) track.removeAttribute('aria-valuenow'); else track.setAttribute('aria-valuenow', percent);
       find('.sl-track i').style.width = (percent ?? 28) + '%';
-      if (live.run !== run) { run = live.run; done = 0; inflight.clear(); queue = []; }
+      if (live.run !== run) { run = live.run; seen = 0; failed.clear(); queue = []; clearTimeout(timer); timer = 0; visible = null; }
       if (live.preview) {                                          // Endbearbeitung: deren Vorschau hat Vorrang
         if (live.preview !== preview) {
-          preview = live.preview; queue = []; clearTimeout(timer); timer = 0; current = visible = null;
+          preview = live.preview; queue = []; clearTimeout(timer); timer = 0; visible = null;
           root.style.removeProperty('--sl-fade');
         }
         // bei jedem Poll: show() übergeht gezeigte/ladende Bilder, ein fehlgeschlagener Abruf wird so erneut versucht
