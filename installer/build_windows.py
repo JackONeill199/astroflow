@@ -187,6 +187,7 @@ def build(out: Path, installer: bool = True, cache: Path | None = None) -> dict:
     shutil.copy2(HERE / "AstroFlow beenden.cmd", stage / "AstroFlow beenden.cmd")
     shutil.copy2(HERE / "LIESMICH.txt", stage / "LIESMICH.txt")
     shutil.copy2(ROOT / "LICENSE", stage / "LICENSE.txt")
+    shutil.copy2(ROOT / "NOTICE", stage / "NOTICE.txt")
 
     # Selbsttest im Paket: Import + Version
     r = subprocess.run([str(py), "-I", "-c", "import astroflow, astroflow.server, astroflow.modules.stacking.pipeline, scipy.ndimage, scipy.optimize, "

@@ -316,5 +316,5 @@ AstroFlow ist kostenlos und quelloffen. Wenn du die Entwicklung unterstützen m�
 
 ## Lizenz
 
-MIT, siehe `LICENSE`. Drittkomponenten: three.js (`astroflow/static/vendor/`) steht unter MIT, die Erdtextur (`astroflow/modules/skytrace/static/vendor/`) ist NASA Blue Marble
+MIT, siehe `LICENSE`. Drittkomponenten (Überblick in `NOTICE`): three.js (`astroflow/static/vendor/`) steht unter MIT, die Erdtextur (`astroflow/modules/skytrace/static/vendor/`) ist NASA Blue Marble
 (gemeinfrei), siehe die `README.md` in beiden Ordnern. Das SkyTrace-Erkennungsmodell (`astroflow/modules/skytrace/models/night-detector`) stammt aus OpenSkyCam und steht unter AGPL-3.0.
