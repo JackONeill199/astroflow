@@ -34,29 +34,25 @@
 .sl-track i { display: block; height: 100%; background: linear-gradient(90deg, var(--acc), #bd98f8); transition: width 1s ease }
 .sl-track.indet i { animation: sl-wait 2.8s ease-in-out infinite }
 .sl-queued .sl-pulse, .sl-error .sl-pulse, .sl-error .sl-orbit { animation: none }
-/* Sternmuster der Registrierung (live.js → createStarPattern): feine Linien, Striche in Bildschirmpixeln */
-.sl-pattern { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; transition: opacity .6s ease }
-.pattern-on .sl-pattern { opacity: 1 }
-.sl-pattern line, .sl-pattern polygon { vector-effect: non-scaling-stroke; stroke-linecap: round }
-.sl-pattern .ref line { stroke: #c9d2ff; stroke-opacity: .28; stroke-width: 1 }
-.sl-pattern .ref circle { fill: none; stroke: #c9d2ff; stroke-opacity: .55; stroke-width: 1; vector-effect: non-scaling-stroke }
-.sl-pattern .tgt line { stroke: var(--acc); stroke-opacity: .7; stroke-width: 1; transition: stroke .5s, stroke-opacity .5s, stroke-width .5s }
-.sl-pattern .tgt circle { fill: var(--acc); fill-opacity: .85 }
-.sl-pattern .seed { fill: none; stroke: #fff; stroke-opacity: 0; stroke-width: 1.5; transition: stroke-opacity .5s }
-.sl-pattern .tgt { opacity: 0; transition: opacity .45s ease }
-.sl-pattern.enter .tgt, .sl-pattern.aligned .tgt { opacity: 1 }
-.sl-pattern.aligned .tgt line { stroke-opacity: .2 }
-.sl-pattern.aligned .tgt line.m { stroke: var(--ok); stroke-opacity: .95; stroke-width: 1.5 }
-.sl-pattern.aligned .seed { stroke-opacity: .9 }
-.sl-pinfo { position: absolute; top: 0.875rem; right: 0.875rem; max-width: min(22rem, calc(100% - 9rem)); display: flex; flex-direction: column; gap: 0.125rem;
-  padding: 0.375rem 0.5625rem; border-radius: 0.3125rem; background: #12182ddd; color: #dbe0f3; font-size: 0.6875rem; line-height: 1.35;
-  font-variant-numeric: tabular-nums; backdrop-filter: blur(0.5rem) }
-.sl-pinfo b { color: #d8d0fa; font-weight: 600; letter-spacing: .04em }
+/* Sternmuster der Registrierung (live.js → createStarPattern): kurzer Puls je Aufnahme, Striche in Bildschirmpixeln */
+.sl-pattern { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; transition: opacity .7s ease }
+.pattern-on .sl-pattern { opacity: 1; transition-duration: .25s }
+.sl-pattern line, .sl-pattern polygon { vector-effect: non-scaling-stroke; stroke-linecap: round; fill: none }
+.sl-pattern line { stroke: var(--acc); stroke-opacity: .75; stroke-width: 1; transition: stroke .35s, stroke-opacity .35s }
+.sl-pattern circle { fill: var(--acc); fill-opacity: .8; transition: fill .35s }
+.sl-pattern .seed { stroke: #fff; stroke-opacity: 0; stroke-width: 1.5; transition: stroke-opacity .35s }
+.sl-pattern.aligned line { stroke: var(--ok); stroke-opacity: .95 }
+.sl-pattern.aligned circle { fill: var(--ok) }
+.sl-pattern.aligned .seed { stroke-opacity: .85 }
+.sl-pinfo { position: absolute; left: 50%; bottom: 2.75rem; transform: translateX(-50%); max-width: calc(100% - 1.5rem); padding: 0.1875rem 0.5rem;
+  border-radius: 0.3125rem; background: #12182dcc; color: #dbe0f3; font-size: 0.6875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums; opacity: 0; transition: opacity .7s ease; pointer-events: none }
+.pattern-on .sl-pinfo { opacity: 1; transition-duration: .25s }
 .sl-ptoggle { flex-shrink: 0; border: 1px solid var(--line); border-radius: 0.3125rem; background: none; color: var(--mut); font: inherit; padding: 0.125rem 0.5rem; cursor: pointer }
 .sl-ptoggle[aria-pressed="true"] { color: var(--fg); border-color: var(--acc) }
 @keyframes sl-turn { to { transform: rotate(360deg) } }
 @keyframes sl-wait { 0%, 100% { transform: translateX(-100%) } 50% { transform: translateX(350%) } }
 @keyframes sl-enter { from { opacity: .5 } to { opacity: 1 } }
-@media (max-width: 480px) { .sl-status { gap: 0.4375rem; font-size: 0.6875rem } .sl-pinfo { top: auto; bottom: 2.75rem; right: 0.5rem; max-width: calc(100% - 1rem); font-size: 0.625rem } .sl-caption { padding-inline: 0.75rem; font-size: 0.6875rem } }
+@media (max-width: 480px) { .sl-status { gap: 0.4375rem; font-size: 0.6875rem } .sl-pinfo { font-size: 0.625rem } .sl-caption { padding-inline: 0.75rem; font-size: 0.6875rem } }
 @media (pointer: coarse) { .sl-details summary { min-height: 2.75rem; display: flex; align-items: center } }
 @media (prefers-reduced-motion: reduce) { .stack-live, .stack-live * { animation: none !important; transition: none !important } }

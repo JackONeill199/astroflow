@@ -270,9 +270,11 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    Ablage `work/p<id>/live/pattern.json`, im gepollten `state.json` nur die Kennung `pattern`; Endpunkt `GET /projects/{pid}/pattern`
    (404, wenn die Kennung nicht zum Lauf passt). GPU und CPU gleich (Registrierung läuft immer auf der CPU).
    Frontend `createStarPattern` in `live.js`: SVG über `.sl-picture` (viewBox = Rohbildmaß, `meet` wie `object-fit: contain`, y gespiegelt
-   wie das Vorschau-JPG), Referenznetz fest, Netz der Aufnahme dreht/verschiebt sich starr per zerlegter Transformation an seinen Platz,
-   danach deckungsgleiche Kanten grün, Startdreieck weiß; nur bei Auftragsschritt „Stacking“; Schalter „Sternmuster“
-   (`af.live.sternmuster`); reduzierte Bewegung → Endzustand ohne Animation. Untersuchung Quad-Hashes (Teil B, 08.11.2026,
+   wie das Vorschau-JPG). **Je Aufnahme nur ein kurzer Puls** (Nutzerwunsch: dauerhaftes Netz war „zu viel“): nur die deckungsgleichen
+   Kanten der Aufnahme erscheinen an der Rohlage, drehen/verschieben sich starr (zerlegte Transformation, 0,9 s) auf die Sterne der
+   Stack-Vorschau, leuchten grün (Startdreieck weiß) und blenden aus (~2,3 s); kleine Zeile „Ausrichtung n/N · Drehung · Versatz“.
+   Kein Referenznetz. Nur bei Auftragsschritt „Stacking“; Schalter „Sternmuster“ (`af.live.sternmuster`); reduzierte Bewegung →
+   Endzustand 1,2 s ohne Bewegung. Untersuchung Quad-Hashes (Teil B, 08.11.2026,
    synthetische Sternlisten): kein klarer Gewinn (≤ +6 Prozentpunkte, 3× Zeit) → nicht eingebaut; ein Wiederholversuch mit nur den
    hellsten 2–3×n Referenzsternen hob „wenige Sterne“ von 24 % auf 90 %, lieferte aber auch mehr falsche Lösungen → offen.
    UI: Regler unter dem Viewer, Standard = fertiges Bild, `viewer.setSrc` tauscht das Bild ohne Zoomverlust.

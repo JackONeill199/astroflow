@@ -321,7 +321,7 @@ def test_live_processing_is_compact_and_updates_in_place(server, browser, size, 
 
 @pytest.mark.parametrize('size', ['handy', 'schmal', 'desktop'])
 def test_live_star_pattern_overlay(server, browser, size):
-    """Sternmuster der Registrierung: Netz aus echten Registrierdaten über der Live-Vorschau, nur beim Stacken, abschaltbar."""
+    """Sternmuster der Registrierung: je Aufnahme ein kurzer Puls aus echten Registrierdaten, nur beim Stacken, abschaltbar."""
     import numpy as np
     from astroflow.modules.stacking import registration
     base, pid = server
@@ -344,7 +344,7 @@ def test_live_star_pattern_overlay(server, browser, size):
         data = response.json()
         state['rid'] = data['results'][0]['id']
         data['job'] = {'id': 998, 'state': 'running', 'progress': .5, 'stage': state['stage'], 'message': '4/8 Aufnahmen'}
-        data['live'] = {'job': 998, 'preview': '1-1.jpg', 'n': 4, 'exposure': 40, 'pattern': '1-1',
+        data['live'] = {'job': 998, 'preview': '1-1.jpg', 'n': 4, 'exposure': 40, 'pattern': pattern['key'],
                         'steps': [{'stage': 'Stacking', 'label': '4/8 Aufnahmen', 'done': False}]}
         route.fulfill(response=response, json=data)
 
@@ -354,22 +354,27 @@ def test_live_star_pattern_overlay(server, browser, size):
     page.route(f'**/api/stacking/projects/{pid}/pattern', lambda route: route.fulfill(json=pattern))
     page.goto(f'{base}/#/p/{pid}/bild')
     page.wait_for_selector('.stack-live.pattern-on .sl-pattern.aligned')
-    assert page.locator('.sl-pattern .ref line').count() == len(pattern['ref_edges'])
-    assert page.locator('.sl-pattern .tgt line.m').count() == sum(e[2] for e in pattern['tgt_edges']) > 0
-    assert page.locator('.sl-pattern polygon.seed').count() == 2
-    assert 'Sternpaare' in page.inner_text('.sl-pinfo') and 'Visualisierung' in page.inner_text('.sl-pinfo')
-    # gleiche Fläche wie die Vorschau, nichts ragt heraus
+    matched = sum(e[2] for e in pattern['tgt_edges'])
+    assert page.locator('.sl-pattern line').count() == matched > 0       # nur das übereinstimmende Muster
+    assert page.locator('.sl-pattern polygon.seed').count() == 1
+    assert 'Drehung' in page.inner_text('.sl-pinfo')
     pb, sb = page.locator('.sl-picture').bounding_box(), page.locator('.sl-pattern').bounding_box()
     assert abs(pb['width'] - sb['width']) <= 1 and abs(pb['height'] - sb['height']) <= 1
     assert not page.evaluate(FIND_OVERFLOW)
-    page.locator('.sl-ptoggle').click()                                  # abschalten
+    # Puls endet von selbst
     page.wait_for_function("!document.querySelector('.stack-live').classList.contains('pattern-on')")
-    assert page.locator('.sl-pinfo').is_hidden()
+    # abgeschaltet: neue Aufnahme pulst nicht
     page.locator('.sl-ptoggle').click()
+    assert page.locator('.sl-ptoggle').get_attribute('aria-pressed') == 'false'
+    pattern['key'] = '1-2'
+    page.wait_for_timeout(3500)
+    assert 'pattern-on' not in page.locator('.stack-live').get_attribute('class')
+    page.locator('.sl-ptoggle').click()
+    pattern['key'] = '1-3'
     page.wait_for_selector('.stack-live.pattern-on')
-    state['stage'] = 'Bearbeitung'                                       # nach der Registrierung: weg
-    page.wait_for_function("!document.querySelector('.stack-live').classList.contains('pattern-on')")
-    assert page.locator('.sl-ptoggle').is_hidden()
+    state['stage'] = 'Bearbeitung'                                       # nach der Registrierung: kein Schalter mehr
+    page.wait_for_function("document.querySelector('.sl-ptoggle').hidden")
+    assert 'pattern-on' not in page.locator('.stack-live').get_attribute('class')
     page.close()
     assert not errors, errors
 

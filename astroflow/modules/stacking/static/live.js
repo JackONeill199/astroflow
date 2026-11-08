@@ -4,11 +4,11 @@ function createStackLive(host, pid) {
     <div class="sl-picture"><img class="sl-image" alt="Live-Vorschau des Astrofotos"><img class="sl-image" alt="" aria-hidden="true">
       <div class="sl-wait"><span class="sl-orbit" aria-hidden="true"></span><span>Noch keine Bildvorschau</span></div>
       <svg class="sl-pattern" aria-hidden="true" preserveAspectRatio="xMidYMid meet"></svg>
-      <div class="sl-pinfo" hidden><b>Sternmuster · Visualisierung</b><span></span></div>
+      <div class="sl-pinfo" aria-hidden="true"></div>
       <span class="sl-badge">LIVE-VORSCHAU</span><div class="sl-caption"><span></span><span></span></div></div>
     <div class="sl-status"><span class="sl-pulse" aria-hidden="true"></span><span class="sl-label" aria-live="polite"></span>
       <span class="sl-percent tnum"></span>
-      <button type="button" class="sl-ptoggle" aria-pressed="true" hidden title="Sternmuster der Registrierung ein-/ausblenden">Sternmuster</button><details class="sl-details"><summary>Details</summary>
+      <button type="button" class="sl-ptoggle" aria-pressed="true" hidden title="Bei jeder Aufnahme kurz zeigen, wie ihr Sternmuster auf die Referenz ausgerichtet wird (echte Registrierdaten)">Sternmuster</button><details class="sl-details"><summary>Details</summary>
         <div class="sl-pop"><b>Verarbeitungsverlauf</b><ol></ol><p class="mut sm">Zwischenbilder sind verkleinerte Vorschauen. Das fertige Bild erhält die vollständige Bearbeitung.</p></div></details></div>
     <div class="sl-track" role="progressbar" aria-label="Verarbeitungsfortschritt" aria-valuemin="0" aria-valuemax="100"><i></i></div></section>`;
   const root = host.firstElementChild, images = [...root.querySelectorAll('.sl-image')];
@@ -65,36 +65,38 @@ function createStackLive(host, pid) {
 }
 
 /* Sternmuster der Registrierung: echte Daten aus registration.pattern (≤ alle 3 s eine Aufnahme, eigener Endpunkt).
-   Das Netz der Referenz liegt fest über dem Stack, das Netz der neuen Aufnahme dreht/verschiebt sich mit der gefundenen
-   Transformation auf die Referenz; Kanten, die danach auf einer Referenzkante liegen, leuchten auf. */
+   Je Aufnahme ein kurzer Puls: die übereinstimmenden Linien der Aufnahme erscheinen an ihrer Rohlage, drehen/verschieben
+   sich mit der gefundenen Transformation auf die Sterne der Referenz (= Stack-Vorschau), leuchten kurz auf und verschwinden. */
 function createStarPattern(svg, info, toggle, root, pid) {
   const NS = 'http://www.w3.org/2000/svg', reduce = matchMedia('(prefers-reduced-motion: reduce)');
   const nf = (v, d = 1) => Number(v).toLocaleString('de-DE', { maximumFractionDigits: d, minimumFractionDigits: d });
-  let key = '', loading = '', data = null, raf = 0, dead = false, on = store.get('live.sternmuster', true);
+  const MOVE = 900, HOLD = 650, FADE = 700;
+  let key = '', loading = '', raf = 0, timers = [], dead = false, active = false, on = store.get('live.sternmuster', true);
   const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent?.appendChild(e); return e; };
+  const later = (fn, ms) => timers.push(setTimeout(() => { if (!dead) fn(); }, ms));
+  const stop = () => { cancelAnimationFrame(raf); timers.forEach(clearTimeout); timers = []; };
   function apply() {
-    root.classList.toggle('pattern-on', !!data && on);
+    root.classList.toggle('pattern-on', active && on);
     toggle.setAttribute('aria-pressed', String(on));
-    info.hidden = !data || !on;
   }
   toggle.onclick = () => { on = !on; store.set('live.sternmuster', on); apply(); };
-  function draw(d) {
-    cancelAnimationFrame(raf);
-    const H = d.h, fy = y => H - 1 - y, r = Math.max(d.w, d.h) / 260;   // fertiges Bild ist vertikal gespiegelt (Norden oben)
+  function pulse(d) {
+    stop();
+    const fy = y => d.h - 1 - y, r = Math.max(d.w, d.h) / 320;   // fertiges Bild ist vertikal gespiegelt (Norden oben)
     svg.setAttribute('viewBox', `0 0 ${d.w} ${d.h}`);
     svg.textContent = '';
-    const gr = el('g', { class: 'ref' }, svg), gt = el('g', { class: 'tgt' }, svg);
-    for (const [a, b] of d.ref_edges) el('line', { x1: d.ref[a][0], y1: fy(d.ref[a][1]), x2: d.ref[b][0], y2: fy(d.ref[b][1]) }, gr);
-    for (const [x, y] of d.ref) el('circle', { cx: x, cy: fy(y), r }, gr);
-    if (d.seed_ref.length === 3) el('polygon', { class: 'seed', points: d.seed_ref.map(i => `${d.ref[i][0]},${fy(d.ref[i][1])}`).join(' ') }, gr);
-    const lines = d.tgt_edges.map(([a, b, m]) => [a, b, el('line', { class: m ? 'm' : '' }, gt)]);
-    const dots = d.tgt.map(() => el('circle', { r: r * 0.8 }, gt));
-    const seed = d.seed_tgt.length === 3 ? el('polygon', { class: 'seed' }, gt) : null;
-    // Transformation zerlegen und von „ungedreht, an der Rohposition“ bis zur gefundenen Lage überblenden (starr)
+    const g = el('g', {}, svg);
+    // nur deckungsgleiche Linien und ihre Sterne – das Muster, an dem die Aufnahme ausgerichtet wurde
+    const edges = d.tgt_edges.filter(e => e[2]);
+    const used = [...new Set(edges.flatMap(([a, b]) => [a, b]))];
+    const lines = edges.map(([a, b]) => [a, b, el('line', {}, g)]);
+    const dots = used.map(i => [i, el('circle', { r }, g)]);
+    const seed = d.seed_tgt.length === 3 ? el('polygon', { class: 'seed' }, g) : null;
     const [a, b, tx, c, e, ty] = d.m, rot = Math.atan2(c, a), sc = Math.hypot(a, c);
-    const cx = d.tgt.reduce((s, p) => s + p[0], 0) / d.tgt.length, cy = d.tgt.reduce((s, p) => s + p[1], 0) / d.tgt.length;
+    const pts = used.map(i => d.tgt[i]), n = Math.max(pts.length, 1);
+    const cx = pts.reduce((s, p) => s + p[0], 0) / n, cy = pts.reduce((s, p) => s + p[1], 0) / n;
     const gx = a * cx + b * cy + tx, gy = c * cx + e * cy + ty;
-    const at = (t) => {
+    const at = (t) => {                                          // starr: Drehung, Maßstab, Versatz anteilig
       const ro = rot * t, s = 1 + (sc - 1) * t, co = Math.cos(ro) * s, si = Math.sin(ro) * s;
       const ox = cx + (gx - cx) * t, oy = cy + (gy - cy) * t;
       return d.tgt.map(([x, y]) => [co * (x - cx) - si * (y - cy) + ox, fy(si * (x - cx) + co * (y - cy) + oy)]);
@@ -102,44 +104,38 @@ function createStarPattern(svg, info, toggle, root, pid) {
     const set = (t) => {
       const p = at(t);
       lines.forEach(([i, j, l]) => { l.setAttribute('x1', p[i][0]); l.setAttribute('y1', p[i][1]); l.setAttribute('x2', p[j][0]); l.setAttribute('y2', p[j][1]); });
-      dots.forEach((c, i) => { c.setAttribute('cx', p[i][0]); c.setAttribute('cy', p[i][1]); });
+      dots.forEach(([i, c]) => { c.setAttribute('cx', p[i][0]); c.setAttribute('cy', p[i][1]); });
       if (seed) seed.setAttribute('points', d.seed_tgt.map(i => p[i].join(',')).join(' '));
     };
-    const done = () => { set(1); svg.classList.add('aligned'); };
-    svg.classList.remove('aligned', 'enter');
-    if (reduce.matches) return done();
+    info.textContent = `Ausrichtung${d.n && d.total ? ` ${d.n}/${d.total}` : ''} · Drehung ${nf(d.rot, 2)}° · Versatz ${nf(Math.hypot(...d.shift))} px`;
+    svg.classList.remove('aligned');
+    active = true; apply();
+    const end = () => { svg.classList.add('aligned'); later(() => { active = false; apply(); }, reduce.matches ? 1200 : HOLD); };
+    if (reduce.matches) { set(1); return end(); }
     set(0);
-    void svg.getBoundingClientRect();
-    svg.classList.add('enter');
-    const t0 = performance.now() + 450, dur = 1500;
+    const t0 = performance.now() + 250;
     const step = (now) => {
       if (dead) return;
-      const t = Math.min(1, Math.max(0, (now - t0) / dur)), k = t < .5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+      const t = Math.min(1, Math.max(0, (now - t0) / MOVE)), k = t < .5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
       set(k);
-      if (t < 1) raf = requestAnimationFrame(step); else done();
+      if (t < 1) raf = requestAnimationFrame(step); else end();
     };
     raf = requestAnimationFrame(step);
-  }
-  function text(d) {
-    const m = d.tgt_edges.filter(x => x[2]).length;
-    info.lastElementChild.textContent = [d.n && d.total ? `Aufnahme ${d.n}/${d.total}` : '', `${d.n_pairs} Sternpaare`,
-      `${m}/${d.tgt_edges.length} Kanten deckungsgleich`, `Drehung ${nf(d.rot, 2)}°`,
-      `Versatz ${nf(Math.hypot(...d.shift))} px`, d.rms != null ? `Rest ${nf(d.rms, 2)} px` : ''].filter(Boolean).join(' · ');
   }
   return {
     async update(k) {
       if (dead) return;
-      if (!k) { if (data) { data = null; key = ''; svg.textContent = ''; apply(); } toggle.hidden = true; return; }
+      if (!k) { stop(); active = false; apply(); toggle.hidden = true; return; }
       toggle.hidden = false;
       if (k === key || k === loading) return;
       loading = k;
       try {
         const d = await api(`/stacking/projects/${pid}/pattern`);
         if (dead || loading !== k) return;
-        key = d.key; data = d;
-        text(d); draw(d); apply();
+        key = d.key;
+        if (on) pulse(d);
       } catch { /* nächster Poll versucht es erneut */ } finally { if (loading === k) loading = ''; }
     },
-    destroy() { dead = true; cancelAnimationFrame(raf); },
+    destroy() { dead = true; stop(); },
   };
 }
