@@ -1,4 +1,4 @@
-# SkyTrace-Analyse-Engine, plattformneutral (statt des Windows-Lockfiles requirements.txt), für die Installation per Knopf
+# SkyTrace-Analyse-Engine, plattformneutral, für die Installation per Knopf
 # (core/components.py → Komponente „skytrace“). PyTorch kommt vorher aus dem CPU-Index (https://download.pytorch.org/whl/cpu);
 # numpy/scipy/astropy/pillow bleiben auf den Versionen des laufenden Servers (Constraints).
 numpy>=2.0

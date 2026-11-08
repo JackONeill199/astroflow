@@ -1,15 +1,15 @@
 /* Speicherbelegung (Einstellungen → Bilder) */
-.hk-bar { display: flex; height: 0.75rem; border-radius: 0.375rem; overflow: hidden; gap: 2px; background: var(--line); margin: 2px 0 0.75rem }
+.hk-bar { display: flex; height: 0.75rem; border-radius: 0.375rem; overflow: hidden; gap: 2px; background: var(--border-soft); margin: 2px 0 0.75rem }
 .hk-bar i { min-width: 0.1875rem; transition: flex .6s var(--ease) }
 .hk-legend { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(16.25rem, 1fr)); gap: 0.25rem 1.25rem }
-.hk-legend li { display: flex; align-items: center; gap: 0.625rem; padding: 0.3125rem 0; font-size: 0.8125rem; border-bottom: 1px solid var(--line) }
+.hk-legend li { display: flex; align-items: center; gap: 0.625rem; padding: 0.3125rem 0; font-size: 0.8125rem; border-bottom: 1px solid var(--border-soft) }
 .hk-legend li > i { width: 0.625rem; height: 0.625rem; border-radius: 0.1875rem; flex: none }
 .hk-legend li > span:nth-child(2) { flex: 1; min-width: 0; display: grid }
 .hk-legend small { color: var(--dim); font-size: 0.7188rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
 .hk-h { font-size: 0.8125rem; font-weight: 600; color: var(--mut); margin: 1.25rem 0 0.5rem }
 .hk-tab { width: 100%; border-collapse: collapse; font-size: 0.8125rem }
 .hk-tab th { text-align: left; font-weight: 500; color: var(--dim); font-size: 0.75rem; padding: 0.25rem 0.5rem 0.375rem 0 }
-.hk-tab td { padding: 0.375rem 0.5rem 0.375rem 0; border-top: 1px solid var(--line) }
+.hk-tab td { padding: 0.375rem 0.5rem 0.375rem 0; border-top: 1px solid var(--border-soft) }
 .hk-tab th:last-child, .hk-tab td:last-child { padding-right: 0 }
 .hk-tab td:first-child { white-space: normal; overflow-wrap: anywhere }   /* globales nowrap ließ lange Namen über den Rand ragen */
 .hk-tab th:not(:first-child), .hk-tab td:not(:first-child) { text-align: right }

@@ -1,25 +1,25 @@
 /* Sage 2.0 – Enzyklopädie, Objektseiten, Wissenskarte, Wissensnetz, Entdeckungen, Chat (Tokens aus style.css) */
-.sw-grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent }
+.sw-grad { background: var(--acc); -webkit-background-clip: text; background-clip: text; color: transparent }
 .eyebrow { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.6875rem; font-weight: 600; letter-spacing: .06em; color: var(--dim) }
 .eyebrow span { display: none }
 
 /* Startseite der Enzyklopädie */
-.sw-hero { position: relative; padding: 2.125rem 2.125rem 1.625rem; border-radius: 1.5rem; border: 1px solid var(--line); margin-bottom: 1.375rem; overflow: hidden;
+.sw-hero { position: relative; padding: 2.125rem 2.125rem 1.625rem; border-radius: 1.5rem; border: 1px solid var(--border-soft); margin-bottom: 1.375rem; overflow: hidden;
   background: var(--surface) }
 .sw-hero h1 { font-size: 2rem; margin: 0.625rem 0 0.5rem; max-width: 47.5rem }
 .sw-hero > p { max-width: 42.5rem; margin: 0 0 1.125rem }
 .sw-search { display: flex; gap: 0.625rem; max-width: 47.5rem }
 .sw-search input { flex: 1; height: 3rem; font-size: 0.9688rem; padding: 0 1rem 0 2.75rem; border-radius: 0.875rem;
-  background: var(--bg2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b93ab' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") no-repeat 0.9375rem center / 1.125rem }
+  background: var(--sidebar) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b93ab' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") no-repeat 0.9375rem center / 1.125rem }
 .sw-search input:focus { border-color: var(--acc); box-shadow: 0 0 0 0.25rem color-mix(in srgb, var(--acc) 18%, transparent) }
 .sw-search .btn { height: 3rem }
 .sw-kpi { margin-top: 1.25rem; max-width: 56.25rem }
-.sw-cta { display: flex; align-items: center; gap: 0.875rem; margin-bottom: 1rem; border-color: color-mix(in srgb, var(--acc2) 40%, transparent); animation: fadeUp .4s var(--ease) }
-.sw-cta > svg { width: 1.625rem; height: 1.625rem; color: var(--acc2) }
+.sw-cta { display: flex; align-items: center; gap: 0.875rem; margin-bottom: 1rem; border-color: color-mix(in srgb, var(--data-2) 40%, transparent); animation: fadeUp .4s var(--ease) }
+.sw-cta > svg { width: 1.625rem; height: 1.625rem; color: var(--data-2) }
 .sw-task { margin-bottom: 0.875rem; animation: fadeUp .35s var(--ease) }
 .sw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(14.375rem, 1fr)); gap: 1rem }
-.sw-card { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--panel); color: var(--fg);
-  box-shadow: var(--hi); transition: transform .35s var(--spring), border-color .25s, box-shadow .3s }
+.sw-card { display: flex; flex-direction: column; border: 1px solid var(--border-soft); border-radius: var(--r); overflow: hidden; background: var(--surface); color: var(--fg);
+  box-shadow: none; transition: transform .35s var(--spring), border-color .25s, box-shadow .3s }
 .sw-card:hover { border-color: var(--border) }
 .sw-thumb { position: relative; aspect-ratio: 16/10; background: #0b0d10; overflow: hidden }
 .sw-thumb img { width: 100%; height: 100%; object-fit: cover; opacity: 0; transform: scale(1.3); transition: opacity .6s, transform .8s var(--ease) }   /* Objekt sitzt klein in der Feldmitte */
@@ -40,7 +40,7 @@
   background: #0b0d10 }
 .sw-ph svg { width: 1.75rem; height: 1.75rem; color: var(--dim) }
 .k-emission, .k-snr { --c: #f472b6 } .k-reflection { --c: #60a5fa } .k-galaxy { --c: #c4b5fd } .k-planetary { --c: #5eead4 }
-.k-globular, .k-open_cluster, .k-star { --c: #fcd34d } .k-dark { --c: #94a3b8 } .k-concept { --c: var(--acc2) }
+.k-globular, .k-open_cluster, .k-star { --c: #fcd34d } .k-dark { --c: #94a3b8 } .k-concept { --c: var(--data-2) }
 
 /* Objektseite */
 .sw-head { position: relative; margin: -0.375rem -0.375rem 0; padding: 0.375rem; border-radius: 1.5rem; isolation: isolate }
@@ -54,12 +54,12 @@
 .sw-summary { margin-top: 1rem }
 .sw-lead { font-size: 1rem; line-height: 1.7 }
 .sw-lead p { margin: 0.5rem 0 0 }
-.sw-you { border-color: color-mix(in srgb, var(--acc) 30%, transparent); background: linear-gradient(135deg, color-mix(in srgb, var(--acc) 9%, transparent), transparent 60%), var(--panel) }
+.sw-you { border-color: color-mix(in srgb, var(--acc) 30%, transparent); background: linear-gradient(135deg, color-mix(in srgb, var(--acc) 9%, transparent), transparent 60%), var(--surface) }
 .sw-you h2 { display: flex; gap: 0.5rem; align-items: center }
 .sw-you p { margin: 0.5rem 0 0 }
 .sw-toc { display: grid; grid-template-columns: repeat(auto-fill, minmax(13.75rem, 1fr)); gap: 0.625rem; margin-top: 1rem }
-.sw-toc a { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.75rem 0.875rem; border-radius: 0.75rem; border: 1px solid var(--line); background: var(--panel); color: var(--fg); transition: border-color .2s, transform .3s var(--spring) }
-.sw-toc a:hover { border-color: var(--acc2); transform: translateY(-2px) }
+.sw-toc a { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.75rem 0.875rem; border-radius: 0.75rem; border: 1px solid var(--border-soft); background: var(--surface); color: var(--fg); transition: border-color .2s, transform .3s var(--spring) }
+.sw-toc a:hover { border-color: var(--data-2); transform: translateY(-2px) }
 .sw-facts { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 0.875rem; margin: 0; font-size: 0.8438rem }
 .sw-facts dt { color: var(--mut) }
 .sw-facts dd { margin: 0; font-weight: 550 }
@@ -68,7 +68,7 @@
 sup .cite { vertical-align: baseline }
 .cite:hover { background: var(--acc); color: var(--accfg) }
 .sw-rel { display: flex; flex-wrap: wrap; gap: 0.5rem }
-.sw-rel a { display: flex; flex-direction: column; padding: 0.4375rem 0.6875rem; border-radius: 0.625rem; border: 1px solid var(--line); background: var(--panel2); color: var(--fg); font-size: 0.8125rem; font-weight: 550;
+.sw-rel a { display: flex; flex-direction: column; padding: 0.4375rem 0.6875rem; border-radius: 0.625rem; border: 1px solid var(--border-soft); background: var(--surface-2); color: var(--fg); font-size: 0.8125rem; font-weight: 550;
   transition: border-color .2s }
 .sw-rel a small { color: var(--dim); font-size: 0.6875rem; font-weight: 500 }
 .sw-rel a:hover { border-color: var(--acc) }
@@ -84,49 +84,49 @@ sup .cite { vertical-align: baseline }
 .sw-body p { margin: 0 0 0.75rem } .sw-body p:last-child { margin-bottom: 0 }
 .sw-body h3, .sw-body h4 { margin: 0.875rem 0 0.5rem; font-size: 0.9375rem }
 .sw-body ul { margin: 0 0 0.75rem; padding-left: 1.25rem }
-.sw-sec-f { margin-top: 0.75rem; padding-top: 0.625rem; border-top: 1px solid var(--line) }
+.sw-sec-f { margin-top: 0.75rem; padding-top: 0.625rem; border-top: 1px solid var(--border-soft) }
 .sw-edit { width: 100%; font: 0.8438rem/1.6 ui-monospace, Consolas, monospace }
 .sw-tab { width: 100%; border-collapse: collapse; font-size: 0.8438rem }
-.sw-tab th, .sw-tab td { text-align: left; padding: 0.5rem 0.375rem; border-bottom: 1px solid var(--line); vertical-align: top }
+.sw-tab th, .sw-tab td { text-align: left; padding: 0.5rem 0.375rem; border-bottom: 1px solid var(--border-soft); vertical-align: top }
 .sw-tab th { color: var(--mut); font-weight: 500; white-space: nowrap }
 .sw-ses thead th { font-size: 0.75rem }
 .sw-alt { margin-top: 0.75rem; font-size: 0.8125rem }
 .sw-alt summary { cursor: pointer; color: var(--acc); font-weight: 600 }
-.sw-alt .row { padding: 0.3125rem 0; border-bottom: 1px solid var(--line) }
+.sw-alt .row { padding: 0.3125rem 0; border-bottom: 1px solid var(--border-soft) }
 .sw-srcs { margin: 0; padding-left: 1.375rem; font-size: 0.8125rem; display: grid; gap: 0.375rem }
 .sw-ul { margin: 0.375rem 0 0; padding-left: 1.25rem }
 .sw-der { list-style: none; padding: 0; margin: 0.25rem 0 0; display: grid; gap: 0.75rem }
 .sw-der li { display: flex; gap: 0.625rem }
 .sw-der svg { color: var(--acc); margin-top: 2px }
 .sw-verrow { display: flex; gap: 0.75rem; padding: 0.5rem; border-radius: 0.75rem; color: var(--fg); transition: background .2s }
-.sw-verrow:hover { background: var(--panel2) }
+.sw-verrow:hover { background: var(--surface-2) }
 .sw-verrow img { width: 4.625rem; height: 3.125rem; object-fit: cover; border-radius: 0.5rem }
 .sw-verrow > div { flex: 1 }
-.sw-bar { height: 0.3125rem; border-radius: 0.1875rem; background: var(--line); margin-top: 0.375rem; overflow: hidden }
-.sw-bar i { display: block; height: 100%; background: var(--grad); animation: grow .9s var(--ease) both; transform-origin: left }
+.sw-bar { height: 0.3125rem; border-radius: 0.1875rem; background: var(--border-soft); margin-top: 0.375rem; overflow: hidden }
+.sw-bar i { display: block; height: 100%; background: var(--acc); animation: grow .9s var(--ease) both; transform-origin: left }
 .sw-imgs { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.75rem, 1fr)); gap: 0.625rem }
-.sw-imgs a { position: relative; aspect-ratio: 4/3; border-radius: 0.75rem; overflow: hidden; border: 1px solid var(--line); background: #0b0d10; color: #fff; transition: transform .3s var(--spring) }
+.sw-imgs a { position: relative; aspect-ratio: 4/3; border-radius: 0.75rem; overflow: hidden; border: 1px solid var(--border-soft); background: #0b0d10; color: #fff; transition: transform .3s var(--spring) }
 .sw-imgs a:hover { transform: translateY(-2px) }
 .sw-imgs img { width: 100%; height: 100%; object-fit: cover }
 .sw-imgs span { position: absolute; inset: auto 0 0; font-size: 0.6875rem; padding: 0.875rem 0.4375rem 0.3125rem; background: linear-gradient(transparent, #000c); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .sw-note b { display: block; margin-top: 0.5rem }
 .sw-note p { margin: 0.375rem 0 0 }
-.sw-paper { padding: 0.625rem 0; border-bottom: 1px solid var(--line) }
+.sw-paper { padding: 0.625rem 0; border-bottom: 1px solid var(--border-soft) }
 .sw-paper summary { cursor: pointer; display: flex; gap: 0.5rem; align-items: baseline; list-style: none }
 .sw-paper summary b { font-weight: 550; font-size: 0.8438rem; flex: 1 }
 .sw-paper p { margin: 0.5rem 0 }
-.sw-run { padding: 0.5rem 0; border-bottom: 1px solid var(--line) }
+.sw-run { padding: 0.5rem 0; border-bottom: 1px solid var(--border-soft) }
 .sw-run summary { cursor: pointer; display: flex; gap: 0.5rem; align-items: center }
 .sw-stepl { margin: 0.5rem 0 0; padding-left: 1.125rem; font-size: 0.7812rem; display: grid; gap: 0.1875rem; color: var(--mut) }
 .sw-stepl li.warn { color: var(--warn) } .sw-stepl li.tool { color: var(--fg) }
-.sw-edge { padding: 0.5rem 0; border-bottom: 1px solid var(--line); font-size: 0.8438rem }
+.sw-edge { padding: 0.5rem 0; border-bottom: 1px solid var(--border-soft); font-size: 0.8438rem }
 .sw-edge a { color: var(--fg) }
 .sw-formats { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.375rem, 1fr)); gap: 0.625rem; margin-bottom: 1.125rem }
-.sw-fmt { display: flex; flex-direction: column; align-items: flex-start; gap: 0.625rem; padding: 0.875rem; border-radius: 0.875rem; border: 1px solid var(--line); background: var(--panel); color: var(--fg);
+.sw-fmt { display: flex; flex-direction: column; align-items: flex-start; gap: 0.625rem; padding: 0.875rem; border-radius: 0.875rem; border: 1px solid var(--border-soft); background: var(--surface); color: var(--fg);
   font: inherit; text-align: left; cursor: pointer; position: relative; transition: border-color .2s, transform .3s var(--spring) }
-.sw-fmt:hover:not(:disabled) { border-color: var(--acc2); transform: translateY(-2px) }
+.sw-fmt:hover:not(:disabled) { border-color: var(--data-2); transform: translateY(-2px) }
 .sw-fmt:disabled { opacity: .45; cursor: default }
-.sw-fmt svg { color: var(--acc2); width: 1.375rem; height: 1.375rem }
+.sw-fmt svg { color: var(--data-2); width: 1.375rem; height: 1.375rem }
 .sw-fmt .spinner { position: absolute; right: 0.75rem; top: 0.75rem }
 .sw-srow { display: flex; gap: 0.625rem; align-items: center; padding: 0.5rem 0.625rem; border-radius: 0.625rem; color: var(--fg); font-size: 0.8438rem }
 .sw-srow span { display: flex; flex-direction: column }
@@ -137,19 +137,19 @@ sup .cite { vertical-align: baseline }
 #swAud audio { width: 100%; margin-bottom: 1rem }
 .sw-segs { margin: 0.875rem 0 0.375rem; padding-left: 1.25rem; display: grid; gap: 0.5rem; max-height: 18.75rem; overflow: auto; font-size: 0.875rem }
 .sw-segs li { padding: 0.375rem 0.5rem; border-radius: 0.5rem; transition: background .3s }
-.sw-segs li.on { background: color-mix(in srgb, var(--acc2) 16%, transparent) }
+.sw-segs li.on { background: color-mix(in srgb, var(--data-2) 16%, transparent) }
 
 /* Objektmarken: anklickbar, Hauptobjekt und Führung hervorgehoben */
 .viewer .vov g.tap { pointer-events: auto; cursor: pointer }
 .viewer .vov g.tap:hover circle { stroke-width: 3 }
-.viewer .vov g.self circle { stroke: var(--acc2) }
+.viewer .vov g.self circle { stroke: var(--data-2) }
 .viewer .vov g.focus circle { stroke: #fde68a; stroke-width: 4; animation: swPulse 1.2s ease-in-out infinite }
 .viewer .vov g.focus text { fill: #fde68a }
 @keyframes swPulse { 50% { stroke-opacity: .35 } }
 
 /* Schwebekarten: Wissenskarte, Quelle */
-.sw-float { position: fixed; z-index: 90; width: 20.625rem; max-width: calc(100vw - 1.5rem); padding: 0.875rem 1rem; border-radius: 1rem; border: 1px solid var(--line2);
-  background: color-mix(in srgb, var(--panel2) 92%, transparent); backdrop-filter: blur(1.25rem); box-shadow: var(--shadow); animation: pop .28s var(--spring) both; font-size: 0.8438rem }
+.sw-float { position: fixed; z-index: 90; width: 20.625rem; max-width: calc(100vw - 1.5rem); padding: 0.875rem 1rem; border-radius: 1rem; border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent); backdrop-filter: blur(1.25rem); box-shadow: var(--shadow); animation: pop .28s var(--spring) both; font-size: 0.8438rem }
 .sw-kc-h { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 0.625rem }
 .sw-kc-h b { font-size: 1rem }
 .sw-kc-i { width: 2.5rem; height: 2.5rem; border-radius: 0.75rem; display: grid; place-items: center; color: #fff; --c: var(--acc);
@@ -161,7 +161,7 @@ sup .cite { vertical-align: baseline }
 .sw-kc-mine svg { width: 0.875rem; height: 0.875rem; color: var(--acc); margin-top: 1px }
 .sw-srct { display: block; margin: 0.5rem 0 0.25rem; line-height: 1.35 }
 .sw-abs { color: var(--mut); margin: 0.5rem 0 0 }
-.sw-ver { padding: 0.375rem 0; border-bottom: 1px solid var(--line) }
+.sw-ver { padding: 0.375rem 0; border-bottom: 1px solid var(--border-soft) }
 .btn.sm { height: 1.875rem; padding: 0 0.6875rem; font-size: 0.7812rem }
 
 /* Wissensnetz */
@@ -169,76 +169,76 @@ sup .cite { vertical-align: baseline }
 .sw-graph { height: 28.75rem; border-radius: 0.75rem; background: var(--bg); overflow: hidden }
 .sw-gpanel.big .sw-graph { height: min(72vh, 47.5rem) }
 .sw-gsvg { width: 100%; height: 100%; cursor: grab; touch-action: none; user-select: none }
-.sw-gsvg line { stroke: var(--line2); stroke-width: 1.4 }
+.sw-gsvg line { stroke: var(--border); stroke-width: 1.4 }
 .sw-gsvg line.l-cat { stroke: color-mix(in srgb, var(--acc) 55%, transparent) }
-.sw-gsvg line.l-cur { stroke: color-mix(in srgb, var(--acc3) 50%, transparent) }
+.sw-gsvg line.l-cur { stroke: color-mix(in srgb, var(--data-3) 50%, transparent) }
 .sw-gsvg line.l-ai { stroke: var(--warn); stroke-dasharray: 5 4; opacity: .7 }
-.sw-gsvg line.l-per { stroke: color-mix(in srgb, var(--acc2) 60%, transparent); stroke-dasharray: 2 3 }
+.sw-gsvg line.l-per { stroke: color-mix(in srgb, var(--data-2) 60%, transparent); stroke-dasharray: 2 3 }
 .gn { cursor: pointer; animation: fadeUp .6s var(--ease) both }
-.gn circle { fill: var(--panel2); stroke: var(--acc); stroke-width: 2; transition: r .2s, stroke-width .2s }
-.gn text { fill: var(--fg); font-size: 0.6875rem; text-anchor: middle; paint-order: stroke; stroke: var(--bg2); stroke-width: 0.1875rem; pointer-events: none }
-.gn.concept circle { stroke: var(--acc3); fill: color-mix(in srgb, var(--acc3) 22%, var(--panel2)) }
-.gn.observation circle, .gn.session circle, .gn.equipment circle, .gn.processing circle { stroke: var(--acc2); fill: color-mix(in srgb, var(--acc2) 25%, var(--panel2)) }
-.gn.obs circle { fill: color-mix(in srgb, var(--acc) 40%, var(--panel2)) }
+.gn circle { fill: var(--surface-2); stroke: var(--acc); stroke-width: 2; transition: r .2s, stroke-width .2s }
+.gn text { fill: var(--fg); font-size: 0.6875rem; text-anchor: middle; paint-order: stroke; stroke: var(--sidebar); stroke-width: 0.1875rem; pointer-events: none }
+.gn.concept circle { stroke: var(--data-3); fill: color-mix(in srgb, var(--data-3) 22%, var(--surface-2)) }
+.gn.observation circle, .gn.session circle, .gn.equipment circle, .gn.processing circle { stroke: var(--data-2); fill: color-mix(in srgb, var(--data-2) 25%, var(--surface-2)) }
+.gn.obs circle { fill: color-mix(in srgb, var(--acc) 40%, var(--surface-2)) }
 .gn.ctr circle { stroke-width: 3 }
 .gn.ctr text { font-weight: 700; font-size: 0.7812rem }
 .gn:hover circle, .gn.hi circle { stroke-width: 4 }
 .sw-legend { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.625rem; font-size: 0.75rem; color: var(--mut) }
 .sw-legend span { display: inline-flex; align-items: center; gap: 0.375rem }
 .sw-legend i { width: 1.375rem; height: 0; border-top: 2px solid }
-.sw-legend .l-cat { border-color: var(--acc) } .sw-legend .l-cur { border-color: var(--acc3) }
-.sw-legend .l-ai { border-color: var(--warn); border-top-style: dashed } .sw-legend .l-per { border-color: var(--acc2); border-top-style: dotted }
+.sw-legend .l-cat { border-color: var(--acc) } .sw-legend .l-cur { border-color: var(--data-3) }
+.sw-legend .l-ai { border-color: var(--warn); border-top-style: dashed } .sw-legend .l-per { border-color: var(--data-2); border-top-style: dotted }
 #swGQ { width: 16.25rem }
 
 /* Meine Entdeckungen */
 .sw-insl { grid-template-columns: minmax(0, 1fr) 21.25rem }
 .sw-ins { position: relative; transition: opacity .3s, transform .3s }
-.sw-ins.new { border-color: color-mix(in srgb, var(--acc2) 45%, transparent); box-shadow: var(--hi), 0 0 0 1px color-mix(in srgb, var(--acc2) 18%, transparent), 0 0.625rem 2.5rem -1.25rem var(--acc2) }
-.sw-ins.new::after { content: "neu"; position: absolute; top: -0.5625rem; left: 1.125rem; font-size: 0.6562rem; font-weight: 700; padding: 1px 0.5rem; border-radius: 6.1875rem; background: var(--grad); color: #fff }
+.sw-ins.new { border-color: color-mix(in srgb, var(--data-2) 45%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--data-2) 18%, transparent), 0 0.625rem 2.5rem -1.25rem var(--data-2) }
+.sw-ins.new::after { content: "neu"; position: absolute; top: -0.5625rem; left: 1.125rem; font-size: 0.6562rem; font-weight: 700; padding: 1px 0.5rem; border-radius: 6.1875rem; background: var(--acc); color: #fff }
 .sw-ins.out { opacity: 0; transform: translateX(1.25rem) }
 .sw-ins-h { display: flex; gap: 0.75rem; align-items: flex-start; margin-bottom: 0.625rem }
 .sw-ins-h b { font-size: 0.9375rem }
-.sw-ins-i { width: 2.25rem; height: 2.25rem; border-radius: 0.6875rem; display: grid; place-items: center; flex: none; color: var(--acc2); background: color-mix(in srgb, var(--acc2) 14%, transparent) }
+.sw-ins-i { width: 2.25rem; height: 2.25rem; border-radius: 0.6875rem; display: grid; place-items: center; flex: none; color: var(--data-2); background: color-mix(in srgb, var(--data-2) 14%, transparent) }
 .sw-ins-i.k-research { color: var(--acc); background: color-mix(in srgb, var(--acc) 14%, transparent) }
-.sw-ins-i.k-region { color: var(--acc3); background: color-mix(in srgb, var(--acc3) 14%, transparent) }
+.sw-ins-i.k-region { color: var(--data-3); background: color-mix(in srgb, var(--data-3) 14%, transparent) }
 .sw-ins-i.k-targets { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent) }
-.sw-why { display: flex; gap: 0.5rem; margin-top: 0.625rem; padding: 0.5625rem 0.75rem; border-radius: 0.625rem; background: var(--panel2); font-size: 0.7812rem; color: var(--mut) }
+.sw-why { display: flex; gap: 0.5rem; margin-top: 0.625rem; padding: 0.5625rem 0.75rem; border-radius: 0.625rem; background: var(--surface-2); font-size: 0.7812rem; color: var(--mut) }
 .sw-why svg { width: 0.9375rem; height: 0.9375rem; flex: none; margin-top: 1px }
 .sw-x { border: 0; background: transparent; color: var(--dim); font-size: 1.25rem; line-height: 1; cursor: pointer; padding: 2px 0.375rem; border-radius: 0.5rem }
-.sw-x:hover { color: var(--fg); background: var(--panel2) }
-.sw-taskrow { padding: 0.5rem 0; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem; font-size: 0.8438rem }
+.sw-x:hover { color: var(--fg); background: var(--surface-2) }
+.sw-taskrow { padding: 0.5rem 0; border-bottom: 1px solid var(--border-soft); display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem; font-size: 0.8438rem }
 .sw-taskrow > div { width: 100% }
 .sw-taskrow.off { opacity: .5 }
 
 /* Frag Sage */
 .sw-chat { position: fixed; z-index: 80; top: 0.75rem; right: 0.75rem; bottom: 0.75rem; width: min(27.5rem, calc(100vw - 1.5rem)); display: flex; flex-direction: column; border-radius: 1.25rem;
-  border: 1px solid var(--line2); background: color-mix(in srgb, var(--panel-s) 94%, transparent); backdrop-filter: blur(1.375rem); box-shadow: 0 1.875rem 5rem -1.25rem #000c;
+  border: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(1.375rem); box-shadow: 0 1.875rem 5rem -1.25rem #000c;
   transform: translateX(calc(100% + 1.875rem)); transition: transform .45s var(--spring); visibility: hidden }
 .sw-chat.open { transform: none; visibility: visible }
-.sw-chat-h { display: flex; gap: 0.625rem; align-items: center; padding: 0.875rem 1rem; border-bottom: 1px solid var(--line) }
-.sw-chat-h > svg { color: var(--acc2); width: 1.375rem; height: 1.375rem }
+.sw-chat-h { display: flex; gap: 0.625rem; align-items: center; padding: 0.875rem 1rem; border-bottom: 1px solid var(--border-soft) }
+.sw-chat-h > svg { color: var(--data-2); width: 1.375rem; height: 1.375rem }
 .sw-chat-b { flex: 1; overflow: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem }
 .sw-chat-e { margin: auto; text-align: center; color: var(--mut); max-width: 18.75rem; font-size: 0.8438rem }
-.sw-chat-e svg { width: 2.25rem; height: 2.25rem; color: var(--acc2); animation: float 5s ease-in-out infinite }
+.sw-chat-e svg { width: 2.25rem; height: 2.25rem; color: var(--data-2); animation: float 5s ease-in-out infinite }
 .sw-m { max-width: 92%; padding: 0.625rem 0.875rem; border-radius: 1rem; font-size: 0.875rem; line-height: 1.6; animation: fadeUp .3s var(--ease) both }
-.sw-m.u { align-self: flex-end; background: var(--grad); color: #fff; border-bottom-right-radius: 0.3125rem }
-.sw-m.a { align-self: flex-start; background: var(--panel2); border: 1px solid var(--line); border-bottom-left-radius: 0.3125rem }
+.sw-m.u { align-self: flex-end; background: var(--acc); color: #fff; border-bottom-right-radius: 0.3125rem }
+.sw-m.a { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--border-soft); border-bottom-left-radius: 0.3125rem }
 .sw-m p { margin: 0 0 0.5rem } .sw-m p:last-child { margin: 0 }
 .sw-m ul { margin: 0 0 0.5rem; padding-left: 1.125rem }
 .sw-m h3, .sw-m h4 { font-size: 0.875rem; margin: 0.5rem 0 0.25rem }
 .sw-steps { margin-bottom: 0.5rem; font-size: 0.75rem; color: var(--mut) }
 .sw-steps summary { cursor: pointer; display: flex; gap: 0.375rem; align-items: center }
 .sw-steps svg { width: 0.8125rem; height: 0.8125rem }
-.sw-m-src { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--line); color: var(--mut); line-height: 1.8 }
+.sw-m-src { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-soft); color: var(--mut); line-height: 1.8 }
 .sw-chat-q { display: flex; gap: 0.375rem; flex-wrap: wrap; padding: 0 1rem 0.625rem }
-.sw-chat-q button { border: 1px solid var(--line2); background: transparent; color: var(--mut); border-radius: 6.1875rem; padding: 0.25rem 0.625rem; font: inherit; font-size: 0.75rem; cursor: pointer; transition: color .2s, border-color .2s }
+.sw-chat-q button { border: 1px solid var(--border); background: transparent; color: var(--mut); border-radius: 6.1875rem; padding: 0.25rem 0.625rem; font: inherit; font-size: 0.75rem; cursor: pointer; transition: color .2s, border-color .2s }
 .sw-chat-q button:hover { color: var(--fg); border-color: var(--acc) }
-.sw-chat-f { display: flex; gap: 0.5rem; padding: 0.75rem 1rem 1rem; border-top: 1px solid var(--line) }
+.sw-chat-f { display: flex; gap: 0.5rem; padding: 0.75rem 1rem 1rem; border-top: 1px solid var(--border-soft) }
 .sw-chat-f textarea { flex: 1; resize: none; font: inherit; font-size: 0.875rem }
 .sw-chat-f .btn { height: auto; padding: 0 0.875rem }
 
 /* Einstellungen */
-.sw-usage { padding: 0.75rem 0.875rem; border-radius: 0.75rem; background: var(--panel2); margin-bottom: 1rem; font-size: 0.8125rem }
+.sw-usage { padding: 0.75rem 0.875rem; border-radius: 0.75rem; background: var(--surface-2); margin-bottom: 1rem; font-size: 0.8125rem }
 .sw-tasks { display: grid; grid-template-columns: repeat(auto-fill, minmax(14.375rem, 1fr)); gap: 0 1rem; margin-bottom: 0.75rem }   /* schmale Spalte: einspaltig */
 
 @media (max-width: 1100px) { .sw-insl { grid-template-columns: 1fr } }
@@ -253,14 +253,14 @@ sup .cite { vertical-align: baseline }
 .sw-wtop .sw-search { flex: 1; max-width: none }
 .sw-focus { display: flex; gap: 0.375rem; align-items: center; flex-wrap: wrap; margin-bottom: 1.125rem }
 .sw-focus > span { margin-right: 0.25rem }
-.sw-focus button { border: 1px solid var(--line2); background: var(--panel); color: var(--mut); border-radius: 6.1875rem; padding: 0.3125rem 0.8125rem; font: inherit; font-size: 0.8125rem; cursor: pointer;
+.sw-focus button { border: 1px solid var(--border); background: var(--surface); color: var(--mut); border-radius: 6.1875rem; padding: 0.3125rem 0.8125rem; font: inherit; font-size: 0.8125rem; cursor: pointer;
   transition: color .2s, border-color .2s, background .2s }
 .sw-focus button:hover { color: var(--fg) }
-.sw-focus button.on { color: var(--fg); border-color: color-mix(in srgb, var(--acc) 60%, transparent); background: color-mix(in srgb, var(--acc) 14%, var(--panel)) }
+.sw-focus button.on { color: var(--fg); border-color: color-mix(in srgb, var(--acc) 60%, transparent); background: color-mix(in srgb, var(--acc) 14%, var(--surface)) }
 .sw-encl { margin-top: 1.875rem }
 .sw-dtop { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.875rem }
 .sw-dhead { display: grid; grid-template-columns: 18.75rem minmax(0, 1fr) 15rem 16.875rem; gap: 1.125rem; align-items: stretch; margin-bottom: 1.25rem }
-.sw-dh-img { position: relative; border-radius: var(--r); overflow: hidden; border: 1px solid var(--line); background: #0b0d10; min-height: 13.125rem; box-shadow: var(--shadow) }
+.sw-dh-img { position: relative; border-radius: var(--r); overflow: hidden; border: 1px solid var(--border-soft); background: #0b0d10; min-height: 13.125rem; box-shadow: var(--shadow) }
 .sw-dh-img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .6s, transform 6s var(--ease) }
 .sw-dh-img img.ld { opacity: 1 } .sw-dh-img:hover img { transform: scale(1.06) }
 .sw-dh-img .sw-ph { position: absolute; inset: 0 }
@@ -284,7 +284,7 @@ sup .cite { vertical-align: baseline }
 .sw-dh-sky dt { color: var(--mut) } .sw-dh-sky dd { margin: 0; font-variant-numeric: tabular-nums }
 .sw-map { width: 100%; height: auto; display: block; border-radius: 0.625rem; background: var(--bg); font-size: 0.4375rem }
 .sw-map circle { fill: #c7d2fe99 } .sw-map g[data-id] { cursor: pointer }
-.sw-map .mine circle { fill: var(--acc2) } .sw-map .me circle { fill: #fff }
+.sw-map .mine circle { fill: var(--data-2) } .sw-map .me circle { fill: #fff }
 .sw-map g text { fill: var(--fg); font-size: 0.5625rem; font-weight: 600 } .sw-map .mine text { fill: var(--mut); font-weight: 500 }
 .sw-map .con { fill: var(--acc); font-size: 0.625rem; font-weight: 600; letter-spacing: .04em }
 .sw-dtabs a svg { width: 0.9375rem; height: 0.9375rem }
@@ -296,18 +296,18 @@ sup .cite { vertical-align: baseline }
 .sw-cap2 { margin: 0.625rem 0.25rem 0; font-size: 0.8125rem; color: var(--mut) } .sw-cap2 b { color: var(--fg); font-weight: 600 }
 .sw-cap2 svg { width: 0.875rem; height: 0.875rem; vertical-align: -0.1875rem }
 .sw-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.5rem; margin-top: 0.625rem }
-.sw-strip button, .sw-strip a { aspect-ratio: 4/3; padding: 0; border-radius: 0.625rem; overflow: hidden; border: 1px solid var(--line); background: #0b0d10; cursor: pointer;
+.sw-strip button, .sw-strip a { aspect-ratio: 4/3; padding: 0; border-radius: 0.625rem; overflow: hidden; border: 1px solid var(--border-soft); background: #0b0d10; cursor: pointer;
   transition: border-color .2s, transform .3s var(--spring) }
 .sw-strip button:hover { transform: translateY(-2px) }
 .sw-strip button.on { border-color: var(--acc); box-shadow: 0 0 0 2px color-mix(in srgb, var(--acc) 35%, transparent) }
 .sw-strip img { width: 100%; height: 100%; object-fit: cover }
-.sw-strip a { display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--fg); background: var(--panel2) }
+.sw-strip a { display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--fg); background: var(--surface-2) }
 .sw-strip a small { color: var(--mut); font-size: 0.6875rem }
 .sw-d-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem }
 .sw-d-row .panel + .panel { margin-top: 0 }
 .sw-d-card { display: flex; flex-direction: column; gap: 0.625rem; padding: 1rem }
 .sw-d-card h3 { font-size: 0.875rem; display: flex; gap: 0.5rem; align-items: center }
-.sw-d-card h3 > svg { color: var(--acc2); width: 1.0625rem; height: 1.0625rem }
+.sw-d-card h3 > svg { color: var(--data-2); width: 1.0625rem; height: 1.0625rem }
 .sw-d-card p { margin: 0; line-height: 1.6 }
 .sw-d-card > .btn { margin-top: auto; align-self: stretch }
 .sw-d-card > .chip { align-self: flex-start }
@@ -322,24 +322,24 @@ sup .cite { vertical-align: baseline }
 .sw-quick { display: grid; grid-template-columns: auto 1fr; gap: 0.4375rem 0.875rem; margin: 0; font-size: 0.8125rem }
 .sw-quick dt { color: var(--mut) } .sw-quick dd { margin: 0 }
 .sw-d-side h2, .sw-d-mid h2 { display: flex; gap: 0.5rem; align-items: center }
-.sw-d-side h2 > svg { color: var(--acc2); width: 1.0625rem; height: 1.0625rem }
+.sw-d-side h2 > svg { color: var(--data-2); width: 1.0625rem; height: 1.0625rem }
 .sw-relrow { display: flex; gap: 0.75rem; align-items: center; padding: 0.5rem; margin: 0 -0.5rem; border-radius: 0.75rem; color: var(--fg); transition: background .2s }
-.sw-relrow:hover { background: var(--panel2) }
-.sw-rr-img { width: 3.375rem; height: 3.375rem; flex: none; border-radius: 0.75rem; overflow: hidden; background: #0b0d10; border: 1px solid var(--line); display: grid }
+.sw-relrow:hover { background: var(--surface-2) }
+.sw-rr-img { width: 3.375rem; height: 3.375rem; flex: none; border-radius: 0.75rem; overflow: hidden; background: #0b0d10; border: 1px solid var(--border-soft); display: grid }
 .sw-rr-img img { width: 100%; height: 100%; object-fit: cover }
-.sw-rr-ph { display: block; background: radial-gradient(circle, color-mix(in srgb, var(--acc2) 45%, transparent), transparent 70%) }
+.sw-rr-ph { display: block; background: radial-gradient(circle, color-mix(in srgb, var(--data-2) 45%, transparent), transparent 70%) }
 .sw-relrow > span:last-child { display: flex; flex-direction: column; min-width: 0; font-size: 0.8125rem }
 .sw-relrow small { color: var(--mut); font-size: 0.75rem }
 .sw-nlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem }
-.sw-nlist li { display: flex; gap: 0.625rem } .sw-nlist li > i { width: 0.5625rem; height: 0.5625rem; border-radius: 50%; margin-top: 0.3125rem; flex: none; background: var(--acc3) }
-.sw-nlist li.k-plan > i { background: var(--warn) } .sw-nlist li.k-observation > i { background: var(--ok) } .sw-nlist li.k-interest > i { background: var(--acc2) }
+.sw-nlist li { display: flex; gap: 0.625rem } .sw-nlist li > i { width: 0.5625rem; height: 0.5625rem; border-radius: 50%; margin-top: 0.3125rem; flex: none; background: var(--data-3) }
+.sw-nlist li.k-plan > i { background: var(--warn) } .sw-nlist li.k-observation > i { background: var(--ok) } .sw-nlist li.k-interest > i { background: var(--data-2) }
 .sw-nlist div { display: flex; flex-direction: column; font-size: 0.8125rem; min-width: 0 }
 .sw-nf { display: grid; gap: 0.5rem; margin-bottom: 0.75rem }
 .sw-shots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem }
 .sw-shots a { display: flex; flex-direction: column; gap: 2px; color: var(--fg); font-size: 0.7188rem }
-.sw-shots img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 0.625rem; border: 1px solid var(--line); transition: border-color .2s }
+.sw-shots img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 0.625rem; border: 1px solid var(--border-soft); transition: border-color .2s }
 .sw-shots a:hover img { border-color: var(--acc) }
-.sw-shots .more { aspect-ratio: 1; align-items: center; justify-content: center; border-radius: 0.625rem; background: var(--panel2); border: 1px solid var(--line) }
+.sw-shots .more { aspect-ratio: 1; align-items: center; justify-content: center; border-radius: 0.625rem; background: var(--surface-2); border: 1px solid var(--border-soft) }
 /* Knöpfe dürfen umbrechen statt überzulaufen; Messwert-Tabelle bleibt im Panel */
 .sw-d-card > .btn, .sw-d-mid .btn, .sw-dh-sky .btn { height: auto; min-height: 1.875rem; padding: 0.375rem 0.6875rem; white-space: normal; line-height: 1.25; text-align: center }
 .sw-tab { table-layout: fixed } .sw-tab th { width: 38% } .sw-tab td { overflow-wrap: anywhere }
@@ -352,7 +352,7 @@ sup .cite { vertical-align: baseline }
   font-size: 0.625rem; line-height: 1.2; color: var(--dim); background: repeating-linear-gradient(135deg, #ffffff05 0 0.375rem, transparent 0.375rem 0.75rem), #0b0d10; padding: 0.25rem }
 .sw-noimg.big { position: absolute; inset: 0; font-size: 0.8125rem; gap: 0.25rem } .sw-noimg.big svg { width: 1.625rem; height: 1.625rem; opacity: .6 }
 .sw-noimg.big small { color: var(--dim); font-size: 0.7188rem } .sw-noimg.big span { color: var(--mut); font-weight: 600 }
-.sw-noimg.view { aspect-ratio: 16/9.5; border-radius: var(--r); gap: 0.5rem; font-size: 0.875rem; border: 1px dashed var(--line2) }
+.sw-noimg.view { aspect-ratio: 16/9.5; border-radius: var(--r); gap: 0.5rem; font-size: 0.875rem; border: 1px dashed var(--border) }
 .sw-noimg.view svg { width: 2.125rem; height: 2.125rem; opacity: .5 } .sw-noimg.view b { color: var(--fg); font-size: 1rem }
 .sw-noimg.view .btn { margin-top: 0.375rem }
 /* Himmelskarte interaktiv */
@@ -360,11 +360,11 @@ sup .cite { vertical-align: baseline }
 .sw-maphost:active { cursor: grabbing }
 .sw-map-bar { position: absolute; right: 0.375rem; bottom: 0.375rem; display: flex; gap: 0.1875rem; opacity: .55; transition: opacity .2s }
 .sw-maphost:hover .sw-map-bar { opacity: 1 }
-.sw-map-bar button { width: 1.375rem; height: 1.375rem; border-radius: 0.375rem; border: 1px solid var(--line2); background: #0a0e1acc; color: var(--fg); font: 600 0.8125rem/1 inherit;
+.sw-map-bar button { width: 1.375rem; height: 1.375rem; border-radius: 0.375rem; border: 1px solid var(--border); background: #0a0e1acc; color: var(--fg); font: 600 0.8125rem/1 inherit;
   font-family: inherit; cursor: pointer; display: grid; place-items: center; padding: 0 }
 .sw-map-bar button:hover { border-color: var(--acc) }
 .sw-map.big .grid text { font-size: 0.6875rem } .sw-map.big g text { font-size: 0.75rem } .sw-map.big .con { font-size: 0.9375rem }
-.sw-mapdlg { width: min(65rem, calc(100vw - 2rem)); padding: 1rem; border-radius: 1.25rem; border: 1px solid var(--line2); background: var(--panel-s); color: var(--fg);
+.sw-mapdlg { width: min(65rem, calc(100vw - 2rem)); padding: 1rem; border-radius: 1.25rem; border: 1px solid var(--border); background: var(--surface); color: var(--fg);
   box-shadow: 0 1.875rem 5.625rem -1.25rem #000e }
 .sw-mapdlg::backdrop { background: #000a; backdrop-filter: blur(0.25rem) }
 .sw-mapdlg .row { margin-bottom: 0.75rem } .sw-mapdlg .sw-map-bar { bottom: 0.75rem; right: 0.75rem } .sw-mapdlg .sw-map-bar button { width: 1.875rem; height: 1.875rem; font-size: 1rem }
@@ -378,9 +378,9 @@ sup .cite { vertical-align: baseline }
 .sw-hstats { display: flex; flex-wrap: wrap; gap: 0.25rem 1.125rem; color: var(--mut); font-size: 0.8125rem }
 .sw-hstats b { color: var(--fg); font-weight: 650 }
 .sw-feat { position: relative; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); border-radius: 1.375rem; overflow: hidden;
-  border: 1px solid var(--line); background: var(--panel); min-height: 0; animation: fadeUp .45s var(--ease) }
+  border: 1px solid var(--border-soft); background: var(--surface); min-height: 0; animation: fadeUp .45s var(--ease) }
 .sw-fbg { display: none }   /* kein unscharfer Bildhintergrund/Verlauf (Designsystem) */
-.sw-fbg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent 30%, var(--panel-s) 95%) }
+.sw-fbg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent 30%, var(--surface) 95%) }
 /* Foto ganz zeigen (Seitenverhältnis bleibt, kein Zuschnitt) – der Banner richtet sich nach dem Bild */
 .sw-fimg { position: relative; display: flex; align-items: center; justify-content: center; background: #0b0d10; overflow: hidden; min-height: 16.25rem }
 .sw-fimg img { display: block; width: 100%; height: auto; max-height: min(24rem, 44vh); object-fit: contain; opacity: 0; transition: opacity .7s }
@@ -393,46 +393,46 @@ sup .cite { vertical-align: baseline }
 .sw-fsum { margin: 0.625rem 0 0.25rem; font-size: 0.9375rem; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden }
 .sw-ffacts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; margin: 0.625rem 0 0.375rem }
 .sw-ffacts > div { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 0.5rem; padding: 0.5625rem 0.6875rem; border-radius: 0.75rem;
-  background: color-mix(in srgb, var(--panel2) 80%, transparent); border: 1px solid var(--line) }
-.sw-ffacts svg { grid-row: span 2; width: 1rem; height: 1rem; color: var(--acc2); align-self: center }
+  background: color-mix(in srgb, var(--surface-2) 80%, transparent); border: 1px solid var(--border-soft) }
+.sw-ffacts svg { grid-row: span 2; width: 1rem; height: 1rem; color: var(--data-2); align-self: center }
 .sw-ffacts b { font-size: 0.8438rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .sw-ffacts span { font-size: 0.7188rem; color: var(--mut) }
 .sw-fbtn { margin-top: auto; padding-top: 0.75rem; flex-wrap: wrap; gap: 0.5rem }
 .sw-fstrip { display: flex; gap: 0.625rem; overflow-x: auto; padding: 0.75rem 2px 0.375rem; margin-bottom: 1.125rem; scrollbar-width: thin }
-.sw-fstrip button { flex: 1 0 7rem; max-width: 12.5rem; padding: 0; border: 1px solid var(--line); border-radius: 0.75rem; overflow: hidden; background: var(--panel); color: var(--mut);
+.sw-fstrip button { flex: 1 0 7rem; max-width: 12.5rem; padding: 0; border: 1px solid var(--border-soft); border-radius: 0.75rem; overflow: hidden; background: var(--surface); color: var(--mut);
   font: inherit; font-size: 0.75rem; cursor: pointer; text-align: left; transition: border-color .2s, color .2s, transform .2s var(--ease) }
 .sw-fstrip button:hover { color: var(--fg); transform: translateY(-2px) }
 .sw-fstrip button.on { color: var(--fg); border-color: color-mix(in srgb, var(--acc) 70%, transparent); box-shadow: 0 0 0 0.1875rem color-mix(in srgb, var(--acc) 22%, transparent) }
 .sw-fstrip img, .sw-fstrip .sw-ph { display: block; width: 100%; height: 4rem; object-fit: cover; transform: scale(1.3) }
 .sw-fstrip .sw-ph { transform: none } .sw-fstrip .sw-ph svg { width: 1.25rem; height: 1.25rem }
-.sw-fstrip span { position: relative; display: block; padding: 0.375rem 0.5625rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: var(--panel-s) }
+.sw-fstrip span { position: relative; display: block; padding: 0.375rem 0.5625rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: var(--surface) }
 .sw-hgrid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 1rem; margin-bottom: 0.5rem }
 .sw-hgrid > .panel { margin: 0 }
 .sw-ph2 { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem }
-.sw-ph2 > svg { width: 2.125rem; height: 2.125rem; padding: 0.5rem; border-radius: 0.625rem; color: var(--acc2); background: color-mix(in srgb, var(--acc2) 14%, transparent); flex: 0 0 auto }
+.sw-ph2 > svg { width: 2.125rem; height: 2.125rem; padding: 0.5rem; border-radius: 0.625rem; color: var(--data-2); background: color-mix(in srgb, var(--data-2) 14%, transparent); flex: 0 0 auto }
 .sw-ph2 h3 { margin: 0; font-size: 0.9688rem }
 .sw-tn { display: flex; flex-direction: column }
 .sw-tnr { display: grid; grid-template-columns: 2.75rem minmax(0, 1fr) 6.875rem 2.875rem; gap: 0.75rem; align-items: center; padding: 0.4375rem 0.5rem; margin: 0 -0.5rem; border: 0; border-radius: 0.625rem;
   background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer; transition: background .15s }
-.sw-tnr:hover { background: var(--panel2) }
+.sw-tnr:hover { background: var(--surface-2) }
 .sw-tni { width: 2.75rem; height: 2.75rem; border-radius: 0.5625rem; overflow: hidden; background: #0b0d10 }
 .sw-tni img { width: 100%; height: 100%; object-fit: cover; transform: scale(1.4) } .sw-tni .sw-ph svg { width: 1.125rem; height: 1.125rem }
 .sw-tnn { display: flex; flex-direction: column; min-width: 0 } .sw-tnn > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
-.sw-tnm { color: var(--acc3) } .sw-tnm svg { width: 0.6875rem; height: 0.6875rem; vertical-align: -1px; margin-right: 0.1875rem }
+.sw-tnm { color: var(--data-3) } .sw-tnm svg { width: 0.6875rem; height: 0.6875rem; vertical-align: -1px; margin-right: 0.1875rem }
 .sw-tna { display: flex; align-items: center; gap: 0.5rem }
-.sw-alt { flex: 1; height: 0.375rem; border-radius: 0.5625rem; background: var(--line2); overflow: hidden }
+.sw-alt { flex: 1; height: 0.375rem; border-radius: 0.5625rem; background: var(--border); overflow: hidden }
 .sw-alt i { display: block; height: 100%; border-radius: 0.5625rem; background: var(--acc) }
 .sw-tnt { text-align: right; font-variant-numeric: tabular-nums }
 .sw-pfoot { margin: 0.625rem 0 0 }
 .sw-nw { display: flex; gap: 0.75rem; padding: 0.625rem 0.5rem; margin: 0 -0.5rem; border-radius: 0.625rem; color: var(--fg); text-decoration: none; transition: background .15s }
-.sw-nw:hover { background: var(--panel2) }
+.sw-nw:hover { background: var(--surface-2) }
 .sw-nw > span:last-child { display: flex; flex-direction: column; min-width: 0 }
 .sw-nw b { font-weight: 600; font-size: 0.8438rem }
-.sw-nwi { flex: 0 0 auto; width: 1.875rem; height: 1.875rem; display: grid; place-items: center; border-radius: 0.5625rem; color: var(--acc3); background: color-mix(in srgb, var(--acc3) 13%, transparent) }
+.sw-nwi { flex: 0 0 auto; width: 1.875rem; height: 1.875rem; display: grid; place-items: center; border-radius: 0.5625rem; color: var(--data-3); background: color-mix(in srgb, var(--data-3) 13%, transparent) }
 .sw-nwi svg { width: 0.9375rem; height: 0.9375rem }
 .sw-hsect { margin: 1.625rem 0 0.75rem }
 .sw-kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(11.875rem, 1fr)); gap: 0.75rem }
-.sw-kind { position: relative; height: 6rem; padding: 0; border: 1px solid var(--line); border-radius: 0.875rem; overflow: hidden; background: #0b0d10; cursor: pointer;
+.sw-kind { position: relative; height: 6rem; padding: 0; border: 1px solid var(--border-soft); border-radius: 0.875rem; overflow: hidden; background: #0b0d10; cursor: pointer;
   color: #fff; font: inherit; text-align: left; transition: transform .25s var(--ease), border-color .2s }
 .sw-kind:hover { transform: translateY(-0.1875rem); border-color: color-mix(in srgb, var(--c, var(--acc)) 60%, transparent) }
 .sw-kind img, .sw-kind .sw-ph { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.5); transition: transform .8s var(--ease) }
@@ -444,7 +444,7 @@ sup .cite { vertical-align: baseline }
 @media (max-width: 1100px) { .sw-hgrid { grid-template-columns: 1fr } }
 @media (max-width: 860px) {
   .sw-feat { grid-template-columns: 1fr } .sw-fimg { min-height: 0 }
-  .sw-fbg::after { background: linear-gradient(180deg, transparent 20%, var(--panel-s) 80%) }
+  .sw-fbg::after { background: linear-gradient(180deg, transparent 20%, var(--surface) 80%) }
   .sw-ftxt { padding: 1.125rem } .sw-ftxt h2 { font-size: 1.5rem }
 }
 @media (max-width: 700px) {

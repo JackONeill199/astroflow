@@ -778,9 +778,9 @@ async function projectView(el, id, tab = 'bild') {
     const x = (i) => P + i * (W - 2 * P) / (d.length - 1), yN = (v) => H - P - v / mxN * (H - 2 * P), yF = (v) => H - P - v / mxF * (H - 2 * P);
     const path = (fn) => d.map((f, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${fn(f).toFixed(1)}`).join('');
     let nightMarks = '';
-    d.forEach((f, i) => { if (i && f.night !== d[i - 1].night) nightMarks += `<line x1="${x(i - .5)}" x2="${x(i - .5)}" y1="${P / 2}" y2="${H - P}" stroke="var(--line2)" stroke-dasharray="3 4"/><text x="${x(i - .5) + 4}" y="${P / 2 + 8}">${fnight(f.night)}</text>`; });
+    d.forEach((f, i) => { if (i && f.night !== d[i - 1].night) nightMarks += `<line x1="${x(i - .5)}" x2="${x(i - .5)}" y1="${P / 2}" y2="${H - P}" stroke="var(--border)" stroke-dasharray="3 4"/><text x="${x(i - .5) + 4}" y="${P / 2 + 8}">${fnight(f.night)}</text>`; });
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-      <line x1="${P}" x2="${W - P}" y1="${H - P}" y2="${H - P}" stroke="var(--line)"/>${nightMarks}
+      <line x1="${P}" x2="${W - P}" y1="${H - P}" y2="${H - P}" stroke="var(--border-soft)"/>${nightMarks}
       <path class="line" pathLength="1" d="${path(f => yN(f.n_stars))}" fill="none" stroke="var(--acc)" stroke-width="2" vector-effect="non-scaling-stroke"/>
       <path class="line" pathLength="1" d="${path(f => yF(f.fwhm || 0))}" fill="none" stroke="#fb923c" stroke-width="2" vector-effect="non-scaling-stroke"/>
       ${d.map((f, i) => f.status === 'rejected' ? `<rect x="${x(i) - 2}" y="${H - P + 4}" width="4" height="10" rx="1" fill="var(--bad)"><title>${esc(f.name)}: ${esc(f.reason)}</title></rect>` : '').join('')}
@@ -1266,7 +1266,7 @@ function upload(files) {
 }
 
 // ------------------------------------------------------------ Speicherbelegung --- //
-const HK_COLORS = ['var(--acc)', 'var(--acc2)', 'var(--acc3)', 'var(--warn)', 'var(--ok)', 'var(--bad)', '#f0abfc', '#93c5fd', 'var(--dim)'];
+const HK_COLORS = ['var(--acc)', 'var(--data-2)', 'var(--data-3)', 'var(--warn)', 'var(--ok)', 'var(--bad)', '#f0abfc', '#93c5fd', 'var(--dim)'];
 async function housekeeping(panel) {
   const body = $('#hkBody', panel), keepOf = () => +($('#hkKeep', panel)?.value || 2);
   let seq = 0;      // nur die Antwort der jüngsten Abfrage zeichnet (sonst ersetzt eine späte ältere das schon bedienbare Formular)
