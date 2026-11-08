@@ -98,6 +98,9 @@ def client(tmp_path, monkeypatch):
     from astroflow.core.store import SettingsStore
     SettingsStore(s.data_dir / "settings.json").update("skytrace", {"home": str(tmp_path / "skytrace")})
     with TestClient(create_app(s)) as c:
+        # Engine-Einstellungen nie im Paketordner schreiben (xdist-Worker kollidierten dort, lokal änderte es das Repo)
+        import observation_settings
+        monkeypatch.setattr(observation_settings, "CONFIG", tmp_path / "catalog_settings.json")
         yield c, tmp_path / "skytrace"
 
 
