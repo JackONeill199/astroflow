@@ -980,6 +980,7 @@ Umgebungsvariablen nur per `monkeypatch`, keine Abhängigkeit von der Reihenfolg
 tragen automatisch den Marker `ui`. **Sitzungen:** vor dem PR den vollen Lauf; beim Entwickeln `-m "not ui"` bzw. nur die betroffene Datei.
 Synthetische Daten aus `demo.py` (`generate`, `generate(anonymous=True)` ohne Koordinaten, `generate_mono` mit Filtern).
 Plate-Solving-Tests nutzen eine ASTAP-Attrappe (Python-Skript, schreibt echtes `.ini`-Format) über `SolverConfig(cmd_prefix=[...])` – kein echtes ASTAP nötig.
+**Keine kopierten/umbenannten Programme starten** (nie `sys.executable` kopieren und als `.exe` ausführen): Virenscanner (Bitdefender, 09.11.2026) werten das als Malware und beenden den ganzen Prozessbaum. Skripte per `[sys.executable, skript.py]` sind ok; ZIP-Inhalte mit Platzhalter-Bytes, Selbstprüfungen über Haken (`components._astap_selftest`) ersetzen.
 **Oberfläche** (`test_ui_layout.py`, seit 31.10.2026): echter Chromium über Playwright (in `requirements-dev.txt`, nicht in `requirements.txt`;
 fehlt es, wird übersprungen – `pip install playwright && python -m playwright install chromium`). Alle Ansichten mit Demodaten bei 375/790/1440 px:
 nichts darf über seinen Kasten (nächster Vorfahr mit Rahmen/Hintergrund) oder die Seite ragen, keine JS-Fehler; Schalterzeilen müssen per Klick umschalten.

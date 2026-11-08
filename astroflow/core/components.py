@@ -464,13 +464,18 @@ def _install_astap(prog, option, force) -> str:
         steps.append(f"Sterndatenbank {db.upper()}")
     prog(0.97, "Prüfe ASTAP …")
     try:
-        subprocess.run([str(cli), "-h"], capture_output=True, timeout=30, creationflags=NO_WINDOW)
+        _astap_selftest(cli)
     except OSError as e:
         raise RuntimeError(f"ASTAP lässt sich nicht starten: {e}")
     if steps:                                         # nur Selbstinstalliertes merken (vorhandenes ASTAP bleibt fremd)
         _record("astap", {"dir": str(dest), "files": sorted(files), "db": db, "installed": time.time()})
     _refresh_astap()
     return ("Installiert: " + ", ".join(steps) if steps else "Bereits vorhanden.") + f" Ordner: {dest}"
+
+
+def _astap_selftest(cli):
+    """Selbstprüfung der installierten ASTAP-CLI (Haken: Tests ersetzen ihn, statt eine EXE zu starten)."""
+    subprocess.run([str(cli), "-h"], capture_output=True, timeout=30, creationflags=NO_WINDOW)
 
 
 def _refresh_astap():
