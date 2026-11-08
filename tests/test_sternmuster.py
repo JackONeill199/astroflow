@@ -49,6 +49,12 @@ def test_pulse_is_small_constellation_and_lands_on_reference():
                     todo.append(v)
     assert reach == set(range(n))
     assert abs(d["r"] - 2.5) < 0.1 and d["q"] > 20
+    # jeder gezeigte Stern landet mit der Transformation auf einem Referenzstern
+    a, b, tx, c, e, ty = d["m"]
+    p = np.array(d["p"], float)
+    q = np.column_stack([a * p[:, 0] + b * p[:, 1] + tx, c * p[:, 0] + e * p[:, 1] + ty])
+    dist = np.min(np.hypot(*(q[:, None] - ref[None]).transpose(2, 0, 1)), axis=1)
+    assert dist.max() < 2.5
 
 
 def test_spanning_tree_is_minimal():
@@ -72,12 +78,6 @@ def test_spanning_tree_is_minimal():
                 parent[ra] = rb
                 best += w
         assert abs(length - best) < 1e-9
-    # jeder gezeigte Stern landet mit der Transformation auf einem Referenzstern
-    a, b, tx, c, e, ty = d["m"]
-    p = np.array(d["p"], float)
-    q = np.column_stack([a * p[:, 0] + b * p[:, 1] + tx, c * p[:, 0] + e * p[:, 1] + ty])
-    dist = np.min(np.hypot(*(q[:, None] - ref[None]).transpose(2, 0, 1)), axis=1)
-    assert dist.max() < 2.5
 
 
 def test_pulse_buffer_and_endpoint(tmp_path):
