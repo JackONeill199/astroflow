@@ -199,6 +199,42 @@ def _section(bins: np.ndarray):
     return best
 
 
+GAP = 3                   # so viele nicht tragende Abschnitte (Stern-Halo neben der Spur) werden überbrückt
+EDGE_BINS = 4             # so nah am Bildrand wird die Spur bis zum Rand verlängert
+
+
+def _extend(bins: np.ndarray, a: int, e: int, level: float) -> tuple[int, int]:
+    """Abschnitt [a, e) nach außen verlängern: über verdeckte Abschnitte (NaN) und solche > level; bis zu `GAP` nicht
+    tragende werden überbrückt, wenn danach die Spur wieder trägt. In dichten Feldern liegen Halos heller Sterne neben der
+    Spur, dort ist der Kontrast negativ, obwohl sie weiterläuft (Test: 30 ADU, 3000 Sterne – Ende 175 px zu früh).
+    Bleiben bis zum Rand ≤ `EDGE_BINS` Abschnitte, gilt die Spur bis zum Rand (Satelliten queren das Feld meist ganz;
+    eine zu lange Maske kostet in dieser einen Aufnahme nur ein schmales Band)."""
+    nb = len(bins)
+
+    def walk(i, step, stop):
+        best, bad = i, 0
+        while i != stop:
+            j = i if step > 0 else i - 1
+            v = bins[j]
+            if np.isfinite(v) and v <= level:
+                bad += 1
+                if bad > GAP:
+                    break
+            elif np.isfinite(v):
+                bad = 0
+                best = i + step
+            i += step
+        return best
+
+    a = walk(a, -1, 0)
+    e = walk(e, 1, nb)
+    if a <= EDGE_BINS:
+        a = 0
+    if nb - e <= EDGE_BINS:
+        e = nb
+    return a, e
+
+
 def find(img: np.ndarray, fwhm: float | None = None) -> list[list[float]]:
     """Spuren in einem Luminanzbild → [[x1, y1, x2, y2, Halbbreite, Kontrast], …] in Pixeln von `img`."""
     img = np.asarray(img, np.float32)
@@ -260,10 +296,7 @@ def find(img: np.ndarray, fwhm: float | None = None) -> list[list[float]]:
         # Enden: über verdeckte (Stern, Galaxie) und noch schwach helle Abschnitte weiter nach außen, dann ein Abschnitt
         # Zugabe (die Spur kann im letzten, nur teilweise hellen Abschnitt enden); erreicht sie den Rand, bis zum Bildrand
         level = 0.25 * float(np.mean(bins[a:e][np.isfinite(bins[a:e])]))
-        while a > 0 and (np.isnan(bins[a - 1]) or bins[a - 1] > level):
-            a -= 1
-        while e < nb and (np.isnan(bins[e]) or bins[e] > level):
-            e += 1
+        a, e = _extend(bins, a, e, level)
         p1 = pts[0] - direction * 14 if a == 0 else pts[a * BIN] - direction * BIN
         p2 = pts[-1] + direction * 14 if e * BIN >= len(pts) - BIN else pts[e * BIN - 1] + direction * BIN
         mid = (p1 + p2) / 2
