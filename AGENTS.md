@@ -261,6 +261,22 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    `_track_live` protokolliert echte Schritte, Vorschau-Hooks in GraXpert/Processing, höchstens alle 4 s plus Endergebnis.
    `/projects/{pid}` liefert `live` nur für den neuesten Auftrag; `/projects/{pid}/live/{name}` liefert streng geprüfte JPG-Namen.
    `static/live.js|css`: Bildwechsel auf zwei Ebenen, kompakte Statuszeile mit aufklappbarem Ablauf; reduzierte Bewegung beachtet.
+   **„Das Bild entsteht aus dem Rauschen“** (seit 0.47.0, Nutzerwunsch; vorher verworfen: Sternmuster-Overlays und 3D-Ebenen – zu dominant):
+   Beim Stacken echte Zwischenstände des Stacks nach `live.SCHEDULE` (1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 19, 24, 30, dann je ×1,5) plus
+   höchstens alle `INTERVAL` 4 s am Stapelende. Innerhalb eines Stapels (nur bis `EARLY` 80 Aufnahmen) über `mini_inputs` (verkleinerte
+   Kopien jedes n-ten Pixels: Stack-Summen vor dem Stapel + Aufnahmen, im Ablauf ~50 ms je Stapel bei 3072×2080) und `mini_snapshots`
+   = derselbe `StackState.add_batch` mit `prefixes` auf den Kopien (gleiches Clipping je Pixel; Test: gleich wie der volle Stand an diesen
+   Pixeln). Am Stapelende `stack_sample` (~6 ms). Rechnen und Rendern im Hintergrund-Thread `LiveRun.later` (einer, Reihenfolge bleibt;
+   Mini-Stack ~0,36 s für 10 Stände, Rendern ~27 ms je Stand) → Stacken praktisch nicht langsamer (Bericht PR #8: < 1 % im Ablauf).
+   `StackState._add_rows` rechnet die Zwischenstände (auch die Stacking-Stufen) seit 0.47.0 über laufende Summen statt je k neu – der Stack
+   selbst ist unverändert. **Feste Streckung** je Lauf und Kanal (`fixed_stretch` aus dem ersten Stand: Schwarzpunkt Himmel − 1σ je Kanal,
+   gemeinsamer Weißpunkt am 99,95-%-Wert, asinh mit Himmel bei ~0,13, als Tabelle) – sonst würde jede Auto-Streckung das Rauschen wieder gleich
+   hell machen. `noise_of` = robuste Streuung benachbarter Pixel der Luminanz; `frames[].noise` relativ zum ersten Stand (sinkt ~1/√n).
+   `state.json` → `frames` (letzte `FRAMES_KEEP` 12, Dateien `<lauf>-f<n>.jpg`, `/live/{name}` erlaubt `\d+-f?\d+\.jpg`; `picture()` räumt
+   nur `<lauf>-<n>.jpg` auf). Browser: neue Stände werden über das Abrufintervall verteilt nacheinander überblendet (Takt 2,5 s / Anzahl,
+   350–1500 ms, Überblendung ≤ 800 ms über `--sl-fade`; neu geöffnet nur der jüngste, höchstens 8 in der Warteschlange), Bildunterschrift
+   „n Aufnahmen · Rauschen 37 % · Belichtung“ (Anteil des Anfangsrauschens, Start = 100 %); sobald die Endbearbeitung eine Vorschau (`preview`) liefert, hat diese Vorrang.
+   Reduzierte Bewegung → harte Wechsel. Kein Umschalter. Tests `test_live_rauschen.py`, UI `test_live_stack_emerges_from_noise`.
    UI: Regler unter dem Viewer, Standard = fertiges Bild, `viewer.setSrc` tauscht das Bild ohne Zoomverlust.
    Schnelles Iterieren: `StackState.load(work/p<id>/stack).result()` → `processing.process(...)` (~10 s), kein Neu-Stacken nötig.
    **Schwaches Signal / M57-Vergleich mit Stellina (2026-10-30):** Lineare Stacks waren gleich gut, die Entwicklung schlechter.

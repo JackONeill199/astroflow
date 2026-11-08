@@ -112,6 +112,9 @@ class Pipeline:
         self.site_provider = None               # fn(Nacht) -> [Breite, Länge] | None (Ortsliste bzw. Tutor-Einstellung)
 
     def begin_live(self, pid, job=None):
+        old = self.live_runs.get(pid)
+        if old is not None:                           # alter Lauf (auch Fortsetzen): seine Hintergrund-Stände verwerfen
+            live.optional(old.close)
         run = live.optional(live.LiveRun, self.s.work_dir, pid, job)
         self.live_runs[pid] = run
         return run
@@ -234,6 +237,9 @@ class Pipeline:
         proj = self.db.one("SELECT * FROM projects WHERE id=?", (project_id,))
         if not proj:
             raise ValueError("Projekt nicht gefunden")
+        old = self.live_runs.pop(project_id, None)
+        if old is not None:                           # Live-Ansicht: Hintergrund-Thread beenden, nichts mehr schreiben
+            live.optional(old.close)
         files = freed = ignored = 0
         for r in self.db.q("SELECT id, path, deleted FROM frames WHERE project_id=?", (project_id,)):
             if self._is_upload(r["path"]):
@@ -1254,6 +1260,18 @@ class Pipeline:
                 ws = np.clip(ws / meta["ref_w"], 0.1, 3.0)
                 n0 = len(meta["frames"])
                 cut = {t: t - n0 for t in STAGES if n0 < t <= n0 + len(good)} if stages is not None else {}
+                run = self.live_runs.get(pid) if mark else None    # „Bild entsteht aus dem Rauschen“ (nicht im Kometen-Stack)
+                band = stages.name.removeprefix('stufen_') if stages and stages.name != 'stufen' else None
+                inner = [t for t in live.stack_targets(n0, n0 + len(good) - 1) if t <= live.EARLY] if run else []
+                inp = live.optional(live.mini_inputs, state, X, V, ws) if inner else None
+                if inp:                                  # frühe Zwischenstände mitten im Stapel: Mini-Stack im Hintergrund
+                    exps = [meta["exposure"] + sum(exptime.get(fid, 0) for fid, _ in good[:t - n0]) for t in inner]
+                    def early_frames(inp=inp, inner=inner, n0=n0, exps=exps, band=band):
+                        snaps = live.mini_snapshots(inp, [t - n0 for t in inner], workers=2)
+                        for t, e in zip(inner, exps):
+                            m, c = snaps[t - n0]
+                            run.stack_frame(m, n=t, exposure=e, band=band, cov=c)
+                    run.later(early_frames)
                 state.add_batch(X, V, ws, workers=self.s.threads, prefixes=cut.values(), gpu=g)
                 del X, V
                 exp0 = meta["exposure"]
@@ -1270,11 +1288,15 @@ class Pipeline:
                             {'n': t, 'exposure': exp0 + sum(exptime.get(fid, 0) for fid, _ in good[:k])}), encoding='utf-8')
                     live.optional(save_stage)
                     del m, c
-                run = self.live_runs.get(pid)
-                if run and (time.monotonic() - run.last_picture >= live.INTERVAL or ci == len(chunks) - 1):
-                    def show_stack():
-                        run.picture(live.stack_sample(state), n=len(meta['frames']), exposure=meta['exposure'],
-                                    band=stages.name.removeprefix('stufen_') if stages and stages.name != 'stufen' else None, force=True)
+                n1 = len(meta['frames'])
+                if run and (live.stack_targets(n0 + len(good) - 1, n1) or time.monotonic() - run.last_picture >= live.INTERVAL
+                            or ci == len(chunks) - 1):
+                    def show_stack():                    # Stand am Stapelende: direkt aus dem Stack, Rendern im Hintergrund
+                        mean, cov, exp = live.stack_sample(state), live.stack_cov(state), meta['exposure']
+                        # Werte jetzt binden – bis der Hintergrund-Thread dran ist, kann schon der nächste Stapel fertig sein
+                        run.later(lambda mean=mean, cov=cov, exp=exp, n1=n1, band=band:
+                                  run.stack_frame(mean, n=n1, exposure=exp, band=band, cov=cov))
+                        run.last_picture = time.monotonic()
                     live.optional(show_stack)
             done += len(chunk)
             # Checkpoint: Frames gelten erst als gestackt, wenn der Zustand mit ihnen gespeichert ist

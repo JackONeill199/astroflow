@@ -3,6 +3,15 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.47.0 – 08.11.2026
+
+### Neu
+- **Das Bild entsteht aus dem Rauschen:** Während des Stackens zeigt die Live-Ansicht echte Zwischenstände des Stacks – am Anfang
+  nach fast jeder Aufnahme (1, 2, 3, 4, 5, 6, 8 …), später seltener – und blendet sie nacheinander weich über. Weil die Helligkeitskurve
+  über den ganzen Lauf gleich bleibt, sieht man das Rauschen tatsächlich sinken, Sterne und Nebel treten hervor. Unter dem Bild steht,
+  aus wie vielen Aufnahmen der Stand besteht und wie viel vom Rauschen der ersten Aufnahme noch übrig ist (z. B. „Rauschen 28 %“). Nichts davon wird
+  erfunden; das Stacken wird dadurch nicht spürbar langsamer.
+
 ## 0.46.2 – 08.11.2026
 
 ### Behoben

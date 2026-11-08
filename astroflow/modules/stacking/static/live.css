@@ -2,7 +2,7 @@
 .stack-live { min-width: 0; animation: sl-enter .45s ease both }
 .sl-picture { position: relative; width: 100%; aspect-ratio: 16/10; max-height: min(62vh, 40rem); overflow: hidden; border-radius: var(--r-sm); background: #080d19;
   background-image: none }
-.sl-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity .8s ease }
+.sl-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity var(--sl-fade, .8s) ease }
 .sl-image.on { opacity: 1 }
 .sl-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 1.125rem;
   color: #a9b1ce; font-size: 0.8125rem; transition: opacity .5s }
@@ -23,6 +23,7 @@
 .sl-details summary::-webkit-details-marker { display: none }
 .sl-pop { position: absolute; bottom: 2.5rem; right: 0; z-index: 8; width: min(26.25rem, 100%); padding: 1rem; background: var(--bg2);
   border: 1px solid var(--line); border-radius: var(--r-sm); box-shadow: 0 0.625rem 2.1875rem #0006 }
+.sl-details:not([open]) .sl-pop { display: none }   /* sonst hat das Popup im geschlossenen Zustand in Chrome einen Kasten */
 .sl-pop ol { list-style: none; padding: 0; margin: 0.75rem 0; max-height: 15rem; overflow-y: auto }
 .sl-pop li { display: flex; align-items: baseline; gap: 0.5625rem; margin: 0.5625rem 0; color: var(--mut) }
 .sl-pop li > div { min-width: 0; display: flex; flex-direction: column; overflow-wrap: anywhere }
