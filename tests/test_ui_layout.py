@@ -412,7 +412,7 @@ def test_live_frame_space_and_timeline(server, browser, size):
         page.route(f'**/api/stacking/projects/{pid}/stages', lambda route: route.fulfill(json={'stages': stages}))
         page.route(f'**/api/stacking/projects/{pid}/stages/*', picture)
         page.goto(f'{base}/#/p/{pid}/bild')
-        page.wait_for_selector('.sl-image.on')
+        page.wait_for_selector('.sl-image.on', state='attached')            # im 3D-Modus geladen, aber verborgen (Bild liegt auf der Stack-Ebene)
         page.wait_for_selector('.sl-chips button[data-k="|30"]')            # Zeitachse
         wide = page.evaluate("document.querySelector('.stack-live').clientWidth >= 768")
         three_d = wide and reduced == 'no-preference'

@@ -34,7 +34,9 @@ function createStackLive(host, pid) {
   }
   modeBtn.onclick = () => { mode = want3d() ? '2d' : '3d'; store.set('live.ansicht', mode); applyMode(); };
   function show(src, previous = false) {
-    if (!src || src === shown || src === wanted) return;
+    if (!src) return;
+    if (src === shown) { wanted = src; return; }        // zurück zum schon gezeigten Bild: ausstehenden Wechsel verwerfen
+    if (src === wanted) return;
     wanted = src;
     const next = images[1 - active];
     next.onload = () => {
@@ -250,7 +252,9 @@ function createFrameSpace(host, info, root, pid) {
   }
   function render() { if (renderer) loop(); }
   function setStack(src) {
-    if (!renderer || !src || src === stackSrc || src === wanted) return;
+    if (!renderer || !src) return;
+    if (src === stackSrc) { wanted = ''; return; }      // zurück zum schon gezeigten Bild: ausstehenden Wechsel verwerfen
+    if (src === wanted) return;
     wanted = src;
     loader.load(src, (tex) => {
       if (dead || wanted !== src) { tex.dispose(); return; }
