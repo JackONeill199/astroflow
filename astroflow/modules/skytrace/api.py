@@ -21,6 +21,7 @@ from fastapi.responses import FileResponse, Response
 
 from ...core import security
 from ...core.errors import user_message
+from .procguard import end_process, guard_process
 
 DEFAULT_SOURCE = str(Path.home())
 MODES = ("Bildfolge → Ereignisvideo", "Fotos", "Videos")
@@ -84,13 +85,18 @@ def scene_3d(mod, payload: dict) -> dict:
 
 
 def list_runs(results: Path, limit: int = 80) -> list[dict]:
-    paths = sorted(results.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True) if results.exists() else []
+    stamped = []
+    for p in (results.iterdir() if results.exists() else ()):
+        try:                                             # parallel gelöschter Lauf: überspringen statt 500
+            stamped.append((p.stat().st_mtime, p))
+        except OSError:
+            pass
     runs = []
-    for path in paths:
+    for mtime, path in sorted(stamped, key=lambda x: x[0], reverse=True):
         if not path.is_dir() or not (path / "bericht.html").exists():
             continue
         summaries = _read_json(path / "videos.json", []) or []
-        runs.append(dict(id=path.name, modified=path.stat().st_mtime, sessions=len(summaries),
+        runs.append(dict(id=path.name, modified=mtime, sessions=len(summaries),
                          frames=sum(s.get("frames", 0) for s in summaries),
                          excluded=sum(s.get("excluded", 0) or 0 for s in summaries),
                          candidates=sum(s.get("candidate_count", s.get("persistent_trails", 0)) for s in summaries),
@@ -124,6 +130,7 @@ class Controller:
         self.stopping = False
         self.failed = False
         self.started = self.finished = self.operation = None
+        self.outcomes: dict[str, dict] = {}      # Lauf → Ausgang (für die Auto-Analyse; nur die letzten paar)
 
     def latest_run(self):
         try:
@@ -239,9 +246,14 @@ class Controller:
                 if options.get("remember", True):        # automatische Läufe ändern die Formularvorgaben nicht
                     write_json(self.prefs, dict(source=str(parent), observation=observation, samples=samples, fps=fps, mode=mode,
                                                 solve=bool(options.get("solve", True))))
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
-                                    errors="replace", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                                    cwd=self.mod.home, env=self.mod.engine_env())
+            try:
+                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+                                        errors="replace", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                                        cwd=self.mod.home, env=self.mod.engine_env())
+            except Exception:
+                if not refresh:                          # Start gescheitert: keinen leeren Ergebnisordner hinterlassen
+                    shutil.rmtree(out, ignore_errors=True)
+                raise
             self.process, self.cancel, self.current = proc, cancel, out.name
             self.operation = "refresh" if refresh else "analysis"
             self.stopping = self.failed = False
@@ -279,6 +291,14 @@ class Controller:
                     self.status = "Zeitreihen und Katalogstatus sind aktualisiert."
                 else:
                     self.status = "Analyse abgeschlossen. Deine Ergebnisse sind bereit."
+                if self.current:
+                    self.outcomes[self.current] = dict(failed=self.failed, stopping=self.stopping, status=self.status)
+                    while len(self.outcomes) > 20:
+                        self.outcomes.pop(next(iter(self.outcomes)))
+
+    def outcome(self, run: str | None) -> dict | None:
+        with self.lock:
+            return dict(self.outcomes[run]) if run in self.outcomes else None
 
     def delete_run(self, name: str) -> dict:
         """Analyse-Lauf samt Videos, Ausschnitten und Bericht löschen. Originalaufnahmen liegen nie im Ergebnisordner
@@ -311,7 +331,18 @@ class Controller:
                 self.stopping = True
                 self.sequence += 1
                 self.status = "Wird angehalten · aktuelles Bild und Video werden gespeichert …"
+                guard_process(self.process)
             return self.snapshot()
+
+    def shutdown(self) -> None:
+        """Server-Ende: STOP-Datei und den Prozess nach kurzer Frist beenden – keine Waisen."""
+        with self.lock:
+            proc = self.process
+            if proc is not None:
+                self.cancel.touch()
+                self.stopping = True
+        if proc is not None:
+            end_process(proc, grace=5)
 
     # ---- Lauf lesen ---------------------------------------------------------
     def run_data(self, name: str) -> dict:
@@ -766,10 +797,18 @@ def build_router(mod) -> APIRouter:
         except Exception:
             traceback.print_exc()
             raise HTTPException(502, "Adresssuche nicht erreichbar.") from None
+        feats = data.get("features") if isinstance(data, dict) else None
+        if not isinstance(feats, list):
+            raise HTTPException(502, "Adresssuche lieferte keine brauchbare Antwort.")
         rows = []
-        for feature in data.get("features", []):
-            p = feature["properties"]
-            lon, lat = feature["geometry"]["coordinates"]
+        for feature in feats:                            # unvollständige Einträge überspringen
+            try:
+                p = feature.get("properties") or {}
+                lon, lat = (float(v) for v in feature["geometry"]["coordinates"][:2])
+            except (AttributeError, KeyError, TypeError, ValueError, IndexError):
+                continue
+            if not isinstance(p, dict):
+                continue
             label = ", ".join(str(p[k]) for k in ("name", "street", "housenumber", "postcode", "city", "country") if p.get(k))
             rows.append(dict(name=label, lat=lat, lon=lon, alt_m=0, source="Adresse via Photon/OpenStreetMap"))
         return rows

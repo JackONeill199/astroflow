@@ -13,6 +13,8 @@ import threading
 import time
 from pathlib import Path
 
+from .procguard import end_process, guard_process
+
 
 def sites_signature(section: dict | None) -> str:
     """Fingerabdruck der Ortsliste: nur, was die Auflösung beeinflusst (Koordinaten, Genauigkeit, Zeiträume, Standard)."""
@@ -243,7 +245,17 @@ class SiteJobs:
             if self.process is not None and self.stop_file:
                 self.stop_file.touch()
                 self.job["text"] = "Wird angehalten …"
+                guard_process(self.process)
             return self.snapshot()
+
+    def shutdown(self) -> None:
+        """Server-Ende: Neuabgleich anhalten und den Prozess nach kurzer Frist beenden."""
+        with self.lock:
+            proc = self.process
+            if proc is not None and self.stop_file:
+                self.stop_file.touch()
+        if proc is not None:
+            end_process(proc, grace=5)
 
     def _read(self, proc) -> None:
         result = error = None
