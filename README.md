@@ -290,7 +290,7 @@ installer/             Windows-Paket (portables ZIP, Inno-Setup-Installer)
 ```
 
 Jedes Modul bringt API (`/api/<modul>`), Oberfläche (`/m/<modul>/`), Einstellungen, Status und Aktivitäten selbst mit. Module sprechen über benannte Dienste
-miteinander, nicht per Import. Einstieg für Entwickler: `AGENTS.md`; Änderungen: `CHANGELOG.md`.
+miteinander, nicht per Import. Einstieg für Entwickler: `AGENTS.md` (Details in `docs/entwicklung/`); Änderungen: `CHANGELOG.md`.
 
 ```bash
 pip install -r requirements-dev.txt   # pytest, pytest-xdist, Playwright
