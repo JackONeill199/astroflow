@@ -21,6 +21,14 @@ class Module(BaseModule):
         from .api import Engine
         from .services import PictureSolver
         self.eng = Engine(ctx)
+        try:                                                      # Nachtdatum nach Ortszeit (Issue #39), nur bei Bedarf
+            from .nights import migrate
+            moved = migrate(self.eng.db, ctx.store, ctx.services.get("sites"))
+            if moved and moved["frames"]:
+                print(f"Nachtdatum nach Ortszeit: {moved['frames']} Aufnahmen in {len(moved['projects'])} Projekten angepasst.")
+        except Exception:
+            import traceback
+            traceback.print_exc()
         ctx.services["plate_solver"] = PictureSolver(self.eng.pl.solver_cfg, ctx.settings.work_dir)
         ctx.services["project_picture"] = self.project_picture
         ctx.services["project_solution"] = self.project_solution

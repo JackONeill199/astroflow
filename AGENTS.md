@@ -95,6 +95,8 @@ Schlüssel stehen im Klartext in `data/settings.json`. Tests: `tests/test_securi
 - **Netzabfragen** (Gaia, SIMBAD, JPL, Horizons …): gemeinsame Schichten und Caches nutzen (`photometry.gaia_stars/gaia_field`, `compare.small_bodies`,
   `comet.horizons`); **Standort verlässt den Rechner nie** (geozentrisch abfragen, Parallaxe lokal). Online-Plate-Solving (`nova`) nie automatisch.
 - **`core/sites.py`**: nur Standardbibliothek (die SkyTrace-Engine lädt die Datei über den Pfad).
+- **Nachtdatum nur über `core/sites.night_of`** (Mittag bis Mittag Ortszeit, Ort/Rechnerzeitzone automatisch; Engine: `observation_settings.night_key`,
+  Frontend: Nacht vom Server liefern) – nie selbst „Zeit − 12 h“ rechnen. Regel geändert → `stacking/nights.RULE` erhöhen (`standorte-himmel.md`).
 - **Lizenz** (Nutzerentscheidung 09.11.2026): eigener Code steht unter PolyForm Noncommercial 1.0.0 (`LICENSE`), Ausnahmen haben eine eigene
   Lizenzdatei (`NOTICE`). Neuer SkyTrace-Code nach Möglichkeit **außerhalb** von `skytrace/engine/` (AGPL-3.0-or-later) – dort nur, was
   ultralytics/die Erkennung selbst braucht. Engine-Dateien, die der Server importiert, brauchen den Doppellizenz-Kopf

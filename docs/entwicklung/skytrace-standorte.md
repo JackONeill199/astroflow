@@ -69,7 +69,7 @@
 
 ## Standorte aller Nächte (0.29.0, 05.11.2026, Ziel: Treffer finden, indem alle Standorte geprüft bzw. zurückgerechnet werden)
 - **Gruppen** (`SiteJobs.start_nights`, Server): `stats.collect` (je Beobachtung nur die neueste vollständige Analyse, Nacht = Datum im Ordnernamen
-  bzw. früheste Zeit − 12 h; `stats._run` liefert dafür neu `folder`) → `<SKYTRACE_HOME>/standortsuche-gruppen.json` `[{night, observations:[{run, folder, session}]}]`.
+  bzw. Nacht der frühesten Zeit nach `core/sites.night_of` (Ortszeit, `standorte-himmel.md`); `stats._run` liefert dafür neu `folder`) → `<SKYTRACE_HOME>/standortsuche-gruppen.json` `[{night, observations:[{run, folder, session}]}]`.
   Auftrag `kind='nights'` (sperrt keine Läufe, `busy_with`), Aktivität → `#/skytrace/standorte`.
 - **Engine** `rematch_sites.py nights <gruppen> <ausgabe> [--radius-km]` → `night()` je Gruppe, Ergebnis nach jeder Nacht in
   `standortsuche-naechte.json` (`state` running|done|stopped; Anhalten über `InterruptedError`/Stopp-Datei behält fertige Nächte):

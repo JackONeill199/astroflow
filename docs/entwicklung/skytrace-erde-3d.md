@@ -94,7 +94,7 @@ fehlt `sgp4` im Server, läuft `orbit3d.py` als Skript im Engine-Interpreter (JS
   `layerK`, `hook('draw'|'frame'|'resize'|'pick', fn)` → Abmelden, `cardEl` (eine Infokarte für Nächte und Lauf-Objekte), `setSun`, `onRunPick`.
 - **Ebenen** (`LAYERS`, localStorage `skytrace.erde.layers`; im Analysen-Kontext ist „Satellitenbahnen“ eingeschaltet): Orte der Liste, Ort je Nacht (Ring), Heatmap, Vorschläge
   (Punkt + 1σ-Ellipse; übernommene Nächte ohne), Satellitenbahnen und Teleskop, Grenzen/Küsten (ein `LineSegments`, ~190 000 Punkte), Tag/Nacht-Grenze. Deckkraft `k` je Ebene,
-  450 ms weich (`applyK`). Im Analysen-Kontext gelten Ort/Vorschlag/Heatmap der **Nacht des Laufs** (Anker − 12 h).
+  450 ms weich (`applyK`). Im Analysen-Kontext gelten Ort/Vorschlag/Heatmap der **Nacht des Laufs** (`run3d` liefert `night` nach `core/sites.night_of`; Rückfall Anker − 12 h).
 - **Heatmap:** je Nacht eine Kappe über dem belegten Ausschnitt mit Wert-Textur (r = Spuren/Höchstwert, 3 px je Zelle, ≤ 1024²), Farbe per Shader aus der Skala von `heatColor`;
   Zellen mit 1–2 Stimmen fast durchsichtig (Rauschen einzelner Spuren; die Streifen im ersten Screenshot waren Zufallswerte der Test-Fixture). Grob (20 km) immer, fein (1 km, ± 30 km)
   blendet zwischen 1,55 und 1,2 R ein. „Aufbau“: `reveal` 0 → 1 in 1,4 s, hellste Zellen zuerst. „Alle Nächte“ = alle Heatmaps, je Nacht relativ.

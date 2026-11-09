@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageOps
 
+from ...core import sites
 from . import objects
 
 PICTURE_EXT = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
@@ -43,7 +44,7 @@ def telescope_series(filename: str, exif) -> dict | None:
         stamp = dt.datetime.fromisoformat(str(exif.get(36867) or exif.get(306) or "").replace("/", "-").replace(" ", "T"))
     except ValueError:
         return None
-    return {"object": name, "instrument": model, "night": (stamp - dt.timedelta(hours=12)).date().isoformat(),
+    return {"object": name, "instrument": model, "night": sites.night_of(stamp),
             "sequence": int(match[1])}
 
 

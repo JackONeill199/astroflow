@@ -7,6 +7,8 @@ import shutil
 import numpy as np
 import pytest
 
+from astroflow.core import sites
+
 pytest.importorskip("sgp4")
 from test_skytrace_3d import T0, _run, _site, client  # noqa: E402,F401
 
@@ -41,6 +43,7 @@ def test_teleskopweg_und_treffer(client):
     p = r["pointing"]
     assert p["source"] == "wcs" and len(p["t"]) == len(rows) and r["frames"] == dict(accepted=30, excluded=3, excluded_times=r["frames"]["excluded_times"])
     assert r["anchor"] == pytest.approx(T0 - 310) and len(r["gaps"]) == 1 and r["gaps"][0][1] - r["gaps"][0][0] > 600
+    assert r["night"] == sites.night_of(T0 - 600)                      # Nacht des Laufs vom Server (Issue #39)
     # Az/Alt der Bildmitte gegen astropy (Belichtungsmitte der ersten Aufnahme)
     import astropy.units as u
     from astropy.coordinates import AltAz, EarthLocation, SkyCoord
