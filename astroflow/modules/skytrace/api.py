@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import threading
 import time
+import traceback
 from pathlib import Path
 from functools import lru_cache
 from urllib.parse import quote
@@ -19,6 +20,7 @@ from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 
 from ...core import security
+from ...core.errors import user_message
 
 DEFAULT_SOURCE = str(Path.home())
 MODES = ("Bildfolge → Ereignisvideo", "Fotos", "Videos")
@@ -473,12 +475,17 @@ class Controller:
         return history
 
 
+# Über /media ausgelieferte Dateien: Bilder, Videos und die eigenständigen HTML-Berichte (bericht.html, bewegungspruefung.html).
+# Lauf-Interna (eingang.json, frames.jsonl, Protokolle …) enthalten Originalpfade und bleiben auf dem Rechner.
+MEDIA_TYPES = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp4", ".webm", ".m4v", ".html"}
+
+
 def build_router(mod) -> APIRouter:
     r = APIRouter()
     ctl = mod.ctl
 
     def bad(e: Exception):
-        raise HTTPException(400, str(e)[:250])
+        raise HTTPException(400, user_message(e, "Aktion nicht möglich – Details im Server-Protokoll.")[:250])
 
     def settings():
         from observation_settings import load_settings
@@ -756,8 +763,9 @@ def build_router(mod) -> APIRouter:
         try:
             data = httpx.get("https://photon.komoot.io/api/", params={"q": q, "limit": 5, "lang": "de"}, timeout=15,
                              headers={"User-Agent": "AstroFlow-SkyTrace"}).json()
-        except Exception as e:
-            raise HTTPException(502, f"Adresssuche nicht erreichbar: {e}")
+        except Exception:
+            traceback.print_exc()
+            raise HTTPException(502, "Adresssuche nicht erreichbar.") from None
         rows = []
         for feature in data.get("features", []):
             p = feature["properties"]
@@ -807,6 +815,8 @@ def build_router(mod) -> APIRouter:
             p = within(ctl.results, path)
         except ValueError as e:
             bad(e)
+        if p.suffix.lower() not in MEDIA_TYPES:            # nur Vorschauen, Videos und Berichte – keine internen Lauf-Dateien
+            raise HTTPException(404, "Datei nicht verfügbar")
         if not p.is_file():
             raise HTTPException(404, "Datei noch nicht verfügbar")
         headers = {"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer"}

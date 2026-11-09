@@ -45,6 +45,16 @@ def key_for(url: str, key: str, *allowed: str | None) -> str:
     return key if key and any(same_url(url, a) for a in allowed) else ""
 
 
+def key_unbound(old_base: str | None, new_base: str | None, new_key) -> bool:
+    """Gespeicherten Schlüssel verwerfen? Ja, wenn sich die Anbieteradresse ändert und im selben Aufruf kein neuer Schlüssel
+    kommt – ein Schlüssel erreicht so nie eine Adresse, die erst nach dem Speichern des Schlüssels gesetzt wurde."""
+    if new_key:
+        return False
+    if not old_base and not new_base:
+        return False
+    return not same_url(old_base, new_base)
+
+
 def list_models(base_url: str, api_key: str = "", kind: str = "text", ttl: float = 300) -> list[dict]:
     """`kind`: text (Chat), vision (Chat mit Bildeingabe) oder speech (Sprachausgabe, OpenRouter).
     Ergebnis: [{id, name, info, voices}] – nach Name sortiert, 5 min zwischengespeichert."""

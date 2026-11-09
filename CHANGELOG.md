@@ -3,6 +3,14 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.51.2 – 09.11.2026
+
+### Behoben
+- Fehlermeldungen in Bilder, SkyTrace und Sage zeigen nur noch verständliche deutsche Texte; technische Details landen im Server-Protokoll.
+- Gespeicherte API-Schlüssel (Sage-Erzähl-KI, Vorlesen, KI-Prüfer/Tutor) gelten nur für die Anbieteradresse, für die sie eingegeben wurden. Wird die Adresse geändert, ist der Schlüssel neu einzugeben – die Oberfläche weist darauf hin.
+- Sage-Enzyklopädie: Quellenlinks und Beschriftungen werden strenger geprüft.
+- SkyTrace liefert aus Ergebnisordnern nur noch Bilder, Videos und Berichte aus.
+
 ## 0.51.1 – 09.11.2026
 
 ### Behoben

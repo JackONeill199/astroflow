@@ -129,7 +129,12 @@ class Module(BaseModule):
                 res = fn(t, lambda p, m: t.update(progress=p, message=m))
                 t.update(state="done", progress=1, finished=time.time(), message=t.get("done_msg") or "Fertig", result=res)
             except Exception as e:
-                t.update(state="error", error=str(e), message=str(e), finished=time.time())
+                from ...core.errors import user_message
+                from .agent import BudgetError
+                from .clients import ServiceError
+                from .sources import SourceError
+                msg = user_message(e, "Auftrag fehlgeschlagen – Details im Server-Protokoll.", allow=(ServiceError, SourceError, BudgetError))
+                t.update(state="error", error=msg, message=msg, finished=time.time())
         threading.Thread(target=go, daemon=True).start()
         return t
 
