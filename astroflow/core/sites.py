@@ -4,7 +4,7 @@ Gespeichert in `data/settings.json`, Abschnitt `sites`:
   {"list": [{id, name, lat, lon, alt_m, accuracy_m, note}], "default": id,
    "periods": [{id, site_id, from: "JJJJ-MM-TT", to: "JJJJ-MM-TT"|""}], "migrated": {quelle: Zeit}}
 Ein Zeitraum mit from == to ist eine einzelne Nacht („heute bin ich in …“, Nachtliste). Nacht-Datum wie im Projekt:
-Datum von DATE-OBS − 12 h (UTC). Überlappen Zeiträume, gewinnt der kürzeste (der genaueste).
+`night_of` (Mittag bis Mittag Ortszeit, nahe UTC wie bisher DATE-OBS − 12 h). Überlappen Zeiträume, gewinnt der kürzeste (der genaueste).
 
 Auflösung `site_for`: Override je Beobachtung → FITS-Kopf (OBSGEO/SITELAT …) → Zeitraum der Nacht → Standard-Ort.
 Rückgabe immer mit `accuracy_m` (Radius in Metern, ~1σ) und `source` – SkyTrace weitet damit die Satelliten-Toleranz aus.
@@ -39,24 +39,134 @@ def distance_m(a: dict, b: dict) -> float:
     return 2 * 6371008.8 * math.asin(min(1.0, math.sqrt(h)))
 
 
-def night_of(when) -> str | None:
-    """Nacht-Datum (JJJJ-MM-TT) aus Unix-Sekunden, datetime oder ISO-Text (UTC): Datum von Zeit − 12 h."""
-    if when is None or when == "":
+# ------------------------------------------------------------ Nachtdatum ---
+# Eine Beobachtungsnacht läuft von Mittag bis Mittag Ortszeit und trägt das Datum ihres Abends. Einzige Stelle, die das
+# Nachtdatum aus einer Zeit ableitet – alle Module rufen `night_of` (Pflichtregel in AGENTS.md, Issue #39).
+#
+# Ortszeit, automatisch und offline, in dieser Reihenfolge:
+#   1. Länge des Aufnahmeorts: ausdrücklich (`lon`), aus dem FITS-Kopf (`header`), aus der Ortsliste (Zeitraum der Nacht,
+#      sonst Standard-Ort) → mittlere Ortszeit lon/15 h. Orte haben keine Zeitzone; die Sonnenzeit kennt keine Sommerzeit,
+#      Mitternacht (Nachtmitte) liegt bis auf ±16 min (Zeitgleichung) genau in der Mitte – die robusteste Grenze.
+#   2. sonst Zeitzone (`tz`: tzinfo oder IANA-Name – Letzterer braucht Zeitzonendaten, unter Windows fehlen sie ohne
+#      Paket tzdata) bzw. die des Rechners (Betriebssystem, immer verfügbar) – bürgerliche Zeit mit Sommerzeit, je
+#      Aufnahme zum Aufnahmezeitpunkt; weicht von der Sonnenzeit höchstens wenige Stunden ab.
+#   3. ohne beides (Zeitzone nicht ermittelbar): UTC.
+# Verträglichkeit: Liegt die Ortszeit höchstens COMPAT_H Stunden neben UTC (Europa, Afrika, Atlantik), bleibt die Grenze
+# bei 12 Uhr UTC (alte Regel „UTC − 12 h“) – dort liegt sie zwischen 9 und 15 Uhr Ortszeit, also am Tag; gespeicherte
+# Nächte ändern sich nicht. Weiter östlich/westlich gilt Mittag Ortszeit (USA: Nacht nicht mehr um 4 Uhr geteilt,
+# Japan: der Abend landet nicht am Vortag).
+COMPAT_H = 3.0
+_NIGHT_BOOK = None               # SiteBook, dessen Ortsliste `night_of` ohne Ortsangabe nutzt (Server: create_app)
+
+
+def use_book(book) -> None:
+    """Ortsliste für die automatische Ortszeit festlegen (None = nur Rechnerzeitzone)."""
+    global _NIGHT_BOOK
+    _NIGHT_BOOK = book
+
+
+def _instant(when) -> dt.datetime | None:
+    """Zeitpunkt (UTC) aus Unix-Sekunden, datetime oder ISO-Text; ohne Zeitzone gilt UTC (FITS DATE-OBS)."""
+    if isinstance(when, bool):
         return None
     if isinstance(when, str):
-        if _DATE.match(when):
-            return when
         try:
-            when = dt.datetime.fromisoformat(when.replace("Z", "+00:00"))
+            when = dt.datetime.fromisoformat(when.strip().replace("Z", "+00:00"))
         except ValueError:
             return None
     if isinstance(when, (int, float)):
-        when = dt.datetime.fromtimestamp(float(when), dt.timezone.utc)
+        try:
+            return dt.datetime.fromtimestamp(float(when), dt.timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            return None
     if isinstance(when, dt.datetime):
-        if when.tzinfo is None:
-            when = when.replace(tzinfo=dt.timezone.utc)
-        return (when.astimezone(dt.timezone.utc) - dt.timedelta(hours=12)).strftime("%Y-%m-%d")
+        return (when.replace(tzinfo=dt.timezone.utc) if when.tzinfo is None else when).astimezone(dt.timezone.utc)
     return None
+
+
+def _tz_hours(t: dt.datetime, tz=None) -> float | None:
+    """Abstand Ortszeit − UTC in Stunden zum Zeitpunkt t (mit Sommerzeit): Zeitzone `tz`, sonst die des Rechners."""
+    try:
+        if isinstance(tz, str):
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo(tz)
+        off = t.astimezone(tz).utcoffset() if tz is not None else t.astimezone().utcoffset()
+        return off.total_seconds() / 3600 if off is not None else None
+    except Exception:                    # unbekannte Zone, fehlende tzdata, Zeit außerhalb des Systembereichs
+        return None
+
+
+def night_shift_h(offset_h: float | None) -> float:
+    """Verschiebung der Nachtgrenze gegenüber 12 Uhr UTC (Stunden); 0 innerhalb von ±COMPAT_H (alte Regel)."""
+    if offset_h is None or not math.isfinite(offset_h) or abs(offset_h) <= COMPAT_H:
+        return 0.0
+    return float(offset_h)
+
+
+def _date_at(t: dt.datetime, offset_h: float | None) -> str:
+    return (t + dt.timedelta(hours=night_shift_h(offset_h) - 12)).strftime("%Y-%m-%d")
+
+
+def _lon(v) -> float | None:
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return None
+    return v if math.isfinite(v) and -180 <= v <= 180 else None
+
+
+def night_in(data: dict | None, t: dt.datetime, tz=None) -> str:
+    """Nacht zum Zeitpunkt t (UTC) nach der Ortsliste `data`: vorläufig mit dem Standard-Ort (ohne Orte: Zeitzone `tz`
+    bzw. des Rechners). Gilt in dieser Nacht oder einer direkt daneben ein Zeitraum mit einem anderen Ort (Reise), zählt
+    dessen Ortszeit – aber nur, wenn derselbe Ort auch für die damit bestimmte Nacht gilt (kein Pingpong an Grenzen)."""
+    data = data or {}
+    by_id = {s.get("id"): s for s in data.get("list") or [] if isinstance(s, dict)}
+    home = by_id.get(data.get("default")) or (next(iter(by_id.values())) if by_id else None)
+    off = _lon(home.get("lon")) / 15 if home and _lon(home.get("lon")) is not None else _tz_hours(t, tz)
+    night = _date_at(t, off)
+    if not data.get("periods"):
+        return night
+    d0 = dt.date.fromisoformat(night)
+    for k in (0, -1, 1):              # Reise: vorläufige Nacht kann um einen Tag neben dem Zeitraum des Reiseorts liegen
+        p = period_for(data, (d0 + dt.timedelta(days=k)).isoformat())
+        site = by_id.get(p["site_id"]) if p else None
+        if not site or _lon(site.get("lon")) is None:
+            continue
+        other = _date_at(t, _lon(site["lon"]) / 15)
+        if other == night:
+            continue
+        q = period_for(data, other)
+        if q and q.get("site_id") == site.get("id"):          # nur wenn der Ort auch für die neue Nacht gilt
+            return other
+    return night
+
+
+def night_of(when, lon=None, tz=None, header=None, book=None) -> str | None:
+    """Nacht-Datum (JJJJ-MM-TT) einer Aufnahmezeit – Unix-Sekunden, datetime oder ISO-Text (ohne Zone = UTC);
+    ein fertiges Datum JJJJ-MM-TT kommt unverändert zurück. Ortszeit: `lon` (Grad Ost) → Ort im FITS-Kopf `header`
+    → `tz` → Ortsliste (`book`, sonst die per `use_book` gesetzte) → Rechnerzeitzone → UTC. Siehe Abschnittskopf."""
+    if when is None or when == "":
+        return None
+    if isinstance(when, str) and _DATE.match(when.strip()) and len(when.strip()) == 10:
+        return when.strip()
+    t = _instant(when)
+    if t is None:
+        return None
+    lon = _lon(lon)
+    if lon is None and header:
+        s = from_header(header)
+        lon = _lon(s.get("lon")) if s else None
+    if lon is not None:
+        return _date_at(t, lon / 15)
+    if tz is not None:
+        return _date_at(t, _tz_hours(t, tz))
+    book = book if book is not None else _NIGHT_BOOK
+    if book is not None:
+        try:
+            return night_in(book.cached_data(), t)
+        except Exception:                 # Ortsliste unlesbar: Nacht trotzdem bestimmen
+            pass
+    return _date_at(t, _tz_hours(t))
 
 
 def is_date(s) -> bool:
@@ -253,7 +363,9 @@ def resolve(data: dict, when=None, night: str | None = None, header=None, overri
             return _public({**s, "name": "Aufnahmestandort (FITS)", "accuracy_m": acc or HEADER_ACCURACY_M}, "fits", "aus den FITS-Metadaten")
         if night is None and when is None:
             when = header.get("DATE-OBS") or header.get("DATE")
-    night = night or night_of(when)
+    if not night:
+        t = None if isinstance(when, str) and _DATE.match(when.strip()) else _instant(when)
+        night = night_in(data, t) if t is not None else night_of(when)       # Ortszeit nach dieser Ortsliste
     by_id = {s["id"]: s for s in data.get("list") or []}
     p = period_for(data, night)
     if p and p["site_id"] in by_id:
@@ -269,8 +381,19 @@ def resolve(data: dict, when=None, night: str | None = None, header=None, overri
 class SiteBook:
     """Lesen/Schreiben des Abschnitts `sites`. Mit SettingsStore (Server) oder nur einem Dateipfad (Engine, nur lesend)."""
 
+    CACHE_S = 5.0                      # Nachtbestimmung je Aufnahme: Datei höchstens alle 5 s neu lesen
+
     def __init__(self, store=None, path: Path | str | None = None):
         self.store, self.path = store, Path(path) if path else None
+        self._cache: tuple[float, dict] | None = None
+
+    def cached_data(self) -> dict:
+        """`data()` mit kurzem Zwischenspeicher (für viele Aufrufe von `night_of` hintereinander)."""
+        now = time.monotonic()
+        c = self._cache
+        if c is None or now - c[0] > self.CACHE_S:
+            c = self._cache = (now, self.data())
+        return c[1]
 
     def data(self) -> dict:
         if self.store is not None:
@@ -286,6 +409,7 @@ class SiteBook:
     def save(self, data: dict) -> dict:
         clean = normalize(data)
         self.store.update(SECTION, clean)
+        self._cache = None
         return self.data()
 
     def site_for(self, when=None, night: str | None = None, header=None, override: dict | None = None) -> dict | None:

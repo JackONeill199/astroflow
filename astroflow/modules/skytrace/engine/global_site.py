@@ -503,7 +503,7 @@ def refine(sitefit, cluster, trails, groups, entries, settings, tick=None):
         lat, lon, clock = first['lat'], first['lon'], cluster['clock'] + first['clock_s']
         accuracy = max(300.0, float(first['accuracy_m']))
     base = trails[0]['base'] if trails else 0.0
-    nights = sorted({night_key(i['timestamp']) for _, i in entries if isinstance(i.get('timestamp'), (int, float))})
+    nights = sorted({night_key(i['timestamp'], settings) for _, i in entries if isinstance(i.get('timestamp'), (int, float))})
 
     def strict(lat, lon, clock, accuracy):
         s = dict(settings, clock_offsets=dict(settings.get('clock_offsets') or {}, **{n: base + clock for n in nights}))

@@ -3,6 +3,16 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.54.1 – 09.11.2026
+
+### Behoben
+- Analyse-Dashboard: „Himmel über die Zeit“ ist jetzt auf einen Blick verständlich – kurzer Text, Legende für gefüllte (ungestörte) und hohle (gestörte) Messungen, dezenter Hintergrund von dunklem Sternenhimmel bis Dämmerung, Dunst und Mond sowie Orientierungsmarken. Die Schärfe-Grafik zeigt die Sterngröße (FWHM) – kleiner = schärfer.
+
+## 0.54.0 – 09.11.2026
+
+### Geändert
+- Die Beobachtungsnacht wird jetzt nach **Ortszeit** bestimmt (Nachtgrenze Mittag), automatisch und ohne Netz: aus dem Standort der Aufnahme, sonst aus der Zeitzone des Rechners. Bisher galt überall UTC − 12 h, was nur in Europa stimmte – in Amerika zerfiel eine Nacht in zwei, in Ostasien landete der Abend am Vortag. Stacking, SkyTrace und Statistiken nutzen dieselbe Regel. Für Aufnahmen in Europa ändert sich kein Datum; bestehende Nachtzuordnungen werden beim Start einmalig angepasst.
+
 ## 0.53.0 – 09.11.2026
 
 ### Neu

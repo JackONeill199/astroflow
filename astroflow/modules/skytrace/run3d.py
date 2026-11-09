@@ -283,7 +283,9 @@ def _build(run_path, folder, session, focus, home, names, services):
     parallactic = np.degrees(np.arctan2((np.cross(pp, zp) * center).sum(-1), (pp * zp).sum(-1)))
     pa = _position_angle(np.array([s["center"] for s in samples], float), np.array([s["top"] for s in samples], float))
     observer = o.geodetic_to_ecef(site["lat"], site["lon"], site.get("alt_m", 0) or 0)
-    out = dict(base, ok=True, clock_offset_s=offset or None, clock_pending=False, anchor=anchor, earth_rate=o.EARTH_RATE, sun=o._r(o.sun_d(anchor), 5), observer=o._r(observer, 3), enu=enu,
+    from .stats import _night                   # Nacht wie in Statistik/Standortsuche (Ortszeit, core/sites.night_of)
+    night = _night(session or "", [r["timestamp"] for r in accepted + excluded if isinstance(r.get("timestamp"), (int, float))])
+    out = dict(base, ok=True, night=night, clock_offset_s=offset or None, clock_pending=False, anchor=anchor, earth_rate=o.EARTH_RATE, sun=o._r(o.sun_d(anchor), 5), observer=o._r(observer, 3), enu=enu,
                window=[times[0] - 60, times[-1] + exposure + 60], exposure=exposure, target=target,
                frames=dict(accepted=len(accepted), excluded=len(excluded),
                            excluded_times=[round(r["timestamp"] - shift, 1) for r in excluded][:1000]),

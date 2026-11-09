@@ -1,7 +1,6 @@
 """Ordner scannen, Frames klassifizieren, nach Objekt/Kamera/Nacht gruppieren."""
 from __future__ import annotations
 
-import datetime as dt
 import hashlib
 import os
 import re
@@ -9,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
+from ...core import sites
 from ...core.hidden import hidden_entry
 from . import comet, objects
 from .fits_io import FITS_EXT, FrameInfo, parse_date, read_info
@@ -82,10 +82,12 @@ def classify(info: FrameInfo, path: Path) -> str:
 
 
 def night_of(info: FrameInfo, path: Path) -> str:
+    """Beobachtungsnacht (core/sites.night_of): DATE-OBS (UTC), sonst Änderungszeit der Datei; Ortszeit nach dem Ort im
+    FITS-Kopf, sonst Ortsliste/Rechnerzeitzone."""
     d = parse_date(info.date_obs)
-    if d is None:
-        d = dt.datetime.fromtimestamp(path.stat().st_mtime)
-    return (d - dt.timedelta(hours=12)).date().isoformat()
+    when = d if d is not None else path.stat().st_mtime
+    lon = info.site[1] if isinstance(info.site, (list, tuple)) and len(info.site) >= 2 else None
+    return sites.night_of(when, lon=lon)
 
 
 # Ordner, die keine Rohaufnahmen enthalten (Ergebnisse anderer Software).
