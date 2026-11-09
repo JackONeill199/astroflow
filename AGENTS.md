@@ -95,6 +95,11 @@ Schlüssel stehen im Klartext in `data/settings.json`. Tests: `tests/test_securi
 - **Netzabfragen** (Gaia, SIMBAD, JPL, Horizons …): gemeinsame Schichten und Caches nutzen (`photometry.gaia_stars/gaia_field`, `compare.small_bodies`,
   `comet.horizons`); **Standort verlässt den Rechner nie** (geozentrisch abfragen, Parallaxe lokal). Online-Plate-Solving (`nova`) nie automatisch.
 - **`core/sites.py`**: nur Standardbibliothek (die SkyTrace-Engine lädt die Datei über den Pfad).
+- **Lizenz** (Nutzerentscheidung 09.11.2026): eigener Code steht unter PolyForm Noncommercial 1.0.0 (`LICENSE`), Ausnahmen haben eine eigene
+  Lizenzdatei (`NOTICE`). Neuer SkyTrace-Code nach Möglichkeit **außerhalb** von `skytrace/engine/` (AGPL-3.0-or-later) – dort nur, was
+  ultralytics/die Erkennung selbst braucht. Engine-Dateien, die der Server importiert, brauchen den Doppellizenz-Kopf
+  (`# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 OR AGPL-3.0-or-later`); neue solche Importe nur mit diesem Kopf.
+  Neue Fremdbibliotheken/-daten: Lizenz prüfen und in `NOTICE` eintragen (Windows-Paket: `THIRD-PARTY-LICENSES.txt` sammelt automatisch).
 - **Komponenten-Downloads**: feste SHA-256 und nur https (`_https_only`); neue ASTAP-Fassung → `ASTAP_SHA256` bewusst ergänzen.
   Nach Änderungen an `installer/`, Launcher, Setup oder Komponenten den manuellen Windows-Paket-Lauf vor einem Release anstoßen.
 - **Ordnerlisten/Scans**: versteckte Einträge über `core/hidden.py` → `hidden_entry` ausblenden.

@@ -74,6 +74,11 @@ Die Erkennung (Modell `models/night-detector/`, AGPL-3.0, und `ultralytics`, AGP
   Einstellungen: `catalog_settings.json`, Katalog-Cache `catalog_cache/` (Archive darunter `archives/`).
 
 ## Wenn du … änderst (Pflichtregeln)
+- **Lizenz** (Nutzerentscheidung 09.11.2026): eigener Code steht unter PolyForm Noncommercial 1.0.0 (`LICENSE`), Ausnahmen haben eine eigene
+  Lizenzdatei (`NOTICE`). Neuer SkyTrace-Code nach Möglichkeit **außerhalb** von `skytrace/engine/` (AGPL-3.0-or-later) – dort nur, was
+  ultralytics/die Erkennung selbst braucht. Engine-Dateien, die der Server importiert, brauchen den Doppellizenz-Kopf
+  (`# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 OR AGPL-3.0-or-later`); neue solche Importe nur mit diesem Kopf.
+  Neue Fremdbibliotheken/-daten: Lizenz prüfen und in `NOTICE` eintragen (Windows-Paket: `THIRD-PARTY-LICENSES.txt` sammelt automatisch).
 - **JSON/Bilder** atomar veröffentlichen (`json_store`, `image_store`; bei HTTP Content-Length und Inhalt aus demselben Dateihandle). Windows liefert bei parallelen
   Vorschauzugriffen kurz `PermissionError` → vorhandene Retry-Helfer nutzen; SQLite-Verbindungen ausdrücklich schließen.
 - **Detektion/Schwellen** (`line_detection`, `frame_quality`, `trail_validation`): Fehlalarme an den Vergleichsfällen prüfen (`skytrace-erkennung.md`); nie
