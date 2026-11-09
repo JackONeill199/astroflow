@@ -6,7 +6,9 @@ Quellen (beide CC-BY-SA 4.0), feste Fassungen siehe Konstanten unten:
   Als Wikitext per `https://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=<Titel>&rvprop=ids|timestamp|content&rvslots=main&format=json&formatversion=2`
   (Revision `oldid` fest) laden und den Wikitext als `Messier_object.wiki` bzw. `Caldwell_catalogue.wiki` in denselben Ordner legen.
 
-Aufruf: python tools/openngc_extract.py <ordner-mit-NGC.csv-addendum.csv-und-*.wiki> [--alt <alte deepsky.py>]
+Aufruf: python tools/openngc_extract.py <ordner-mit-NGC.csv-addendum.csv-und-*.wiki> [--artikel-holen] [--alt <alte deepsky.py>]
+`--artikel-holen` lädt (mit Netz) die Wikipedia-Einzelartikel der Caldwell-Objekte als `Caldwell_artikel.json` in den Ordner; die Datei wird
+zum Erzeugen zwingend gebraucht und beim ersten Lauf in einem frischen Ordner mit diesem Schalter angelegt.
 `--alt` vergleicht zusätzlich mit den alten Handtabellen (`git show 84892e8:astroflow/modules/stacking/deepsky.py > alt.py`).
 Immer ausgegeben: Abweichungen zwischen den Quellen (Helligkeit > 0,7 mag, Größe > 40 %, Position > 3′).
 
@@ -347,6 +349,9 @@ def main(argv: list[str]) -> int:
     if "--artikel-holen" in argv:
         artikel_holen(auszug(rows, wm, wc, []), ordner)
     import json
+    if not (ordner / ARTIKEL_DATEI).is_file():
+        print(f"{ARTIKEL_DATEI} fehlt im Ordner. Einmalig mit Netzzugriff erzeugen: python tools/openngc_extract.py {ordner} --artikel-holen")
+        return 1
     artikel = {int(k): v for k, v in json.loads((ordner / ARTIKEL_DATEI).read_text(encoding="utf-8")).items()}
     zeilen = auszug(rows, wm, wc, log, artikel)
     schreiben(zeilen)

@@ -16,4 +16,4 @@ Objektarten liegen in `deepsky.py`.
 Spalten `mag_src`/`size_src`: W = Wikipedia, O = OpenNGC, B = OpenNGC B-Helligkeit − 0,85 (Galaxien), H = von Hand (unverifiziert; nur C34, C88, C94 – Größe, Begründung im Skript).
 Vorrangregeln und die Prüfung der Quellen gegeneinander stehen in `tools/openngc_extract.py`.
 
-Neu erzeugen: Dateien in einen Ordner legen (siehe Skriptkopf) und `python tools/openngc_extract.py <ordner>` ausführen – nur beim Entwickeln, zur Laufzeit kein Netz.
+Neu erzeugen: `NGC.csv`, `addendum.csv`, `Messier_object.wiki`, `Caldwell_catalogue.wiki` in einen Ordner legen (siehe Skriptkopf), dann `python tools/openngc_extract.py <ordner> --artikel-holen` ausführen (lädt einmalig `Caldwell_artikel.json`; danach genügt ohne Schalter) – nur beim Entwickeln, zur Laufzeit kein Netz.

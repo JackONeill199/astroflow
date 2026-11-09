@@ -55,7 +55,7 @@
   Die CC-BY-SA-Datei bleibt getrennt vom MIT-Code; deutsche Namen, Objektart-Kürzel und die Caldwell-Zuordnung (Nummer → NGC/IC) sind eigene
   Tabellen in `deepsky.py` (`MESSIER`, `CALDWELL`).
 - Neu erzeugen: `python tools/openngc_extract.py <ordner> [--alt <alte deepsky.py>]` (nur beim Entwickeln, kein Netz zur Laufzeit; Ordner mit
-  `NGC.csv`, `addendum.csv`, `Messier_object.wiki`, `Caldwell_catalogue.wiki`, Bezug im Skriptkopf). Das Skript prüft beide Quellen gegeneinander
+  `NGC.csv`, `addendum.csv`, `Messier_object.wiki`, `Caldwell_catalogue.wiki`, Bezug im Skriptkopf; beim ersten Lauf `--artikel-holen`, das `Caldwell_artikel.json` mit den Wikipedia-Einzelartikeln anlegt). Das Skript prüft beide Quellen gegeneinander
   und gibt Abweichungen aus (Helligkeit > 0,7 mag, Größe > 40 %, Position > 3′). Vorrangregeln im Skriptkopf; Spalten `mag_src`/`size_src`.
 - Warum nicht OpenNGC allein: `V-Mag` ist bei Galaxien teils unbrauchbar (NGC 253: V 11,1 bei B 7,9), `MajAx` ist bei Haufen ein Kernmaß (M7 22′
   statt ~80′), bei Planetarischen Nebeln nur die helle Kernfigur (M57 1,27′ statt ~3,8′) – M57/M76 würden sonst am `MIN_SIZE`-Filter scheitern.
