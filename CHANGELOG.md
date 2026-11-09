@@ -1,7 +1,7 @@
 # Änderungen
 
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
-stehen in `AGENTS.md`, die Bedienung in `README.md`.
+stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
 ## 0.50.2 – 09.11.2026
 
