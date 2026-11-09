@@ -21,6 +21,11 @@ Folgende mitgelieferte Drittkomponenten stehen unter eigenen Lizenzen:
   astroflow/modules/skytrace/static/vendor/earth-2048.jpg
   gemeinfrei (siehe README.md im selben Ordner)
 
+- OpenNGC (Messier-/Caldwell-Daten: Position, Helligkeit, Größe)
+  astroflow/modules/stacking/katalogdaten/messier_caldwell.csv (Auszug aus NGC.csv und addendum.csv, Release v20260501)
+  Herkunft: https://github.com/mattiaverga/OpenNGC (Mattia Verga und Mitwirkende)
+  Lizenz: CC-BY-SA 4.0 (siehe astroflow/modules/stacking/katalogdaten/LICENSE-OpenNGC); Weitergabe nur unter gleichen Bedingungen.
+
 Optionale Programme wie ASTAP, GraXpert (GPL-3.0), StarNet und die
 SkyTrace-Engine (u. a. ultralytics, AGPL-3.0) werden nicht mitgeliefert,
 sondern erst auf Wunsch aus ihren Originalquellen installiert und

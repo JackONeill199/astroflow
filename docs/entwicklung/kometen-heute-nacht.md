@@ -47,3 +47,16 @@
 - **Nachtplan** `_night_plan`: nutzbare Nacht in 1–4 Abschnitte (≈ 3 h), Zuordnung der Ziele per Permutation (Summe der gewichteten Sichtbarkeit); Blöcke < 40 min entfallen.
 - **API** `GET /api/stacking/tonight?hide=M35,12`: ausgeblendete Kennungen (localStorage `af.tonight.hidden`). Optionaler Dienst `collection_progress` (Sage →
   `{"messier": [Nummern]}`, 2 min gecacht): „Wäre dein n. Messier-Objekt“, bereits entdeckte Messier-Nummern entfallen. Tests: `tests/test_tonight.py`.
+
+## Messier-/Caldwell-Daten (OpenNGC)
+- `deepsky.py` lädt Position, Helligkeit und Größe von Messier (110) und Caldwell (109) aus `stacking/katalogdaten/messier_caldwell.csv`
+  (Auszug aus **OpenNGC**, CC-BY-SA 4.0 – Quelle, Version und Lizenz in der Kopfzeile, `LICENSE-OpenNGC`, `NOTICE`). Vorher standen die
+  Werte ungeprüft im Code. Die CC-BY-SA-Datei bleibt getrennt vom MIT-Code; deutsche Namen, Objektart-Kürzel und die Caldwell-Zuordnung
+  (Nummer → NGC/IC) sind eigene Tabellen in `deepsky.py` (`MESSIER`, `CALDWELL`).
+- Neu erzeugen: `python tools/openngc_extract.py <ordner-mit-NGC.csv-und-addendum.csv> [--alt <alte deepsky.py>]` (nur beim Entwickeln, zur
+  Laufzeit kein Netz; `--alt` listet Abweichungen zu alten Werten). Helligkeit = V, ersatzweise B; Größe = Hauptachse. M102 = NGC 5866
+  (OpenNGC führt es als Dublette von M101). C50/C61 stehen in der Datei, sind aber keine eigenen Ziele (stecken in C49/C60).
+- Rückfälle von Hand (`FALLBACK_MAG`/`FALLBACK_SIZE`, `Target.fallback`), wo OpenNGC nichts hat: Gesamthelligkeit C14, C41, C82, C94, C102; Größe M40, M73, C99.
+  Emissionsnebel (Art `e`) bekommen bewusst keine Helligkeit (integrale Helligkeit sagt über die Sichtbarkeit nichts aus), auch wenn OpenNGC eine kennt.
+- Beachten: OpenNGC gibt für Planetarische Nebel nur die helle Kernfigur an (M57 1,27′, M76 1,12′) – sie fallen unter `MIN_SIZE` (2′) und
+  erscheinen nicht in „Heute Nacht“.
