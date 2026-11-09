@@ -3,6 +3,12 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.51.3 – 09.11.2026
+
+### Behoben
+- „Heute Nacht“: Die eingebauten Messier- und Caldwell-Daten (Position, Helligkeit, Größe) stammen jetzt aus belegten Quellen statt aus einer ungeprüften Handtabelle – Positionen und Kennungen aus OpenNGC, Helligkeit und sichtbare Größe aus Wikipedia (Listen und Objektartikel). Mehrere falsche Werte sind dadurch korrigiert (z. B. lag C36 rund 4,5° neben der richtigen Position, einige Helligkeiten und Größen waren deutlich daneben). Empfehlungen und Rangfolge können sich deshalb leicht ändern.
+- Die Katalogdaten liegen als eigene Datei unter CC-BY-SA 4.0 bei (Quellen und Versionen in `NOTICE`).
+
 ## 0.51.2 – 09.11.2026
 
 ### Behoben
