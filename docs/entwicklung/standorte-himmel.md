@@ -3,10 +3,35 @@
 > Ausgelagert aus `AGENTS.md` am 09.11.2026, Text unverändert übernommen. Regeln, die beim Ändern von Code gelten,
 > stehen zusätzlich in Kurzform in `AGENTS.md` → „Wenn du … änderst“. Neue Befunde hier ergänzen, nicht in `AGENTS.md`.
 
+## Nachtdatum nach Ortszeit (`core/sites.night_of`, Issue #39, Nutzerwunsch 09.11.2026 „die lokale Zeit soll automatisch geholt werden“)
+- **Einzige Stelle**, die aus einer Zeit das Nachtdatum macht: `sites.night_of(when, lon=None, tz=None, header=None, book=None)`. Nacht = Mittag bis
+  Mittag Ortszeit, Datum des Abends. Ein fertiges Datum `JJJJ-MM-TT` kommt unverändert zurück; Zeiten ohne Zone gelten als UTC (DATE-OBS).
+- **Ortszeit automatisch, offline:** `lon` (Grad Ost) → Ort im FITS-Kopf (`header`, `from_header`; Scanner: `FrameInfo.site`) → `tz` →
+  Ortsliste (`book` bzw. per `use_book` gesetzt – Server: `create_app`; Engine: `observation_settings.night_book` über `ASTROFLOW_SITES`) →
+  Zeitzone des Rechners (`datetime.astimezone()`, Betriebssystem, mit Sommerzeit) → UTC.
+  Ortsliste (`night_in`): vorläufig mit dem Standard-Ort; gilt in dieser Nacht oder direkt daneben ein Zeitraum mit anderem Ort (Reise), zählt dessen
+  Länge – nur wenn derselbe Ort auch für die damit bestimmte Nacht gilt. `SiteBook.cached_data` puffert die Liste 5 s (viele Aufrufe je Scan).
+- **Warum Länge statt IANA-Zone:** Orte haben keine Zeitzone, und Zone aus Koordinaten bräuchte ein großes Zusatzpaket; `zoneinfo` hat unter
+  Windows ohne Paket `tzdata` gar keine Zonen. Mittlere Ortszeit lon/15 h kennt keine Sommerzeit und legt die Grenze genau gegenüber der Nachtmitte –
+  robuster als bürgerliche Zeit. Die Rechnerzeitzone (bürgerlich, je Aufnahme zum Aufnahmezeitpunkt) ist nur Rückfall ohne Ort.
+- **Verträglichkeit (`COMPAT_H` = 3 h):** Weicht die Ortszeit höchstens 3 h von UTC ab (Europa, Afrika, Atlantik, Moskau), bleibt die Grenze bei
+  12 Uhr UTC wie bis 0.53 (liegt dort zwischen 9 und 15 Uhr Ortszeit, also am Tag) – in Europa ändert sich kein Nachtdatum (Test über ein Jahr).
+  Weiter weg gilt Mittag Ortszeit: USA-West nicht mehr um 4 Uhr geteilt, Japan-Abend nicht mehr am Vortag. Weil jede Grenze am Tag liegt, bleibt eine
+  Nacht auch über einen Sommerzeitwechsel eine Nacht.
+- **Gespeicherte Nächte:** `stacking/nights.migrate` beim Start des Bilder-Moduls bestimmt `frames.night` aus DATE-OBS (+ FITS-Ort) neu, nur wenn sich
+  die Grundlage geändert hat (Signatur aus Regel `RULE`, `COMPAT_H`, Rechnerzeitzone Jan/Jul, Ortslisten-Längen, Standard, Zeiträume →
+  `settings.json` → `nights`). Nur abweichende Zeilen; Aufnahmen ohne DATE-OBS behalten ihr Datum; Kometenprojekte (Nacht im Schlüssel `KOMET:…|<nacht>|…`)
+  bekommen den neuen Schlüssel, wenn alle Lights in einer Nacht liegen und er frei ist (nie zusammenlegen); für betroffene Projekte wird `sky_nights`
+  verworfen (Himmelsqualität „Fehlende berechnen“). Keine Rohdaten, keine Ergebnisversion. Nachtschlüssel in Einstellungen (Einzelnacht-Zeiträume,
+  SkyTrace-`clock_offsets`, Heatmaps) werden nicht umgeschrieben: außerhalb Europas stimmt das alte Datum mit dem neuen für den Hauptteil der Nacht
+  überein (USA: Abend bis 4 Uhr, Japan: ab 21 Uhr), nur der Rand wechselt.
+- **Nicht betroffen:** `planning_night` (Heute Nacht plant schon nach mittlerer Ortszeit, Grenze 6 Uhr), Stellina-Ordnerdatum in SkyTrace (`stats._night`).
+- Tests: `tests/test_nachtdatum.py` (Europa ein Jahr unverändert, USA-West eine Nacht, Japan-Abend, Sommerzeitwechsel, Rückfall, Reise, Migration).
+
 ## Standorte (`core/sites.py`, seit 0.23.0, Nutzerwunsch 04.11.2026 „Teleskop oft an verschiedenen Orten, Standorte nach Datum“)
 - **Ablage:** `data/settings.json` → Abschnitt `sites` = `{list: [{id, name, lat, lon, alt_m, accuracy_m, note}], default, periods: [{id, site_id,
-  from, to}], migrated: {quelle: zeit}}`. `to` leer = offen; `from == to` = einzelne Nacht („heute bin ich in …“, Nachtliste). Nacht-Datum wie im
-  Projekt (Zeit − 12 h, UTC). Überlappende Zeiträume: der kürzeste gewinnt. `accuracy_m` = Radius ~1σ (Standard 100 m, FITS 30 m).
+  from, to}], migrated: {quelle: zeit}}`. `to` leer = offen; `from == to` = einzelne Nacht („heute bin ich in …“, Nachtliste). Nacht-Datum über
+  `night_of` (siehe „Nachtdatum nach Ortszeit“). Überlappende Zeiträume: der kürzeste gewinnt. `accuracy_m` = Radius ~1σ (Standard 100 m, FITS 30 m).
 - **Auflösung** `site_for(when|night, header, override)`: Override → FITS-Kopf (OBSGEO-X/Y/Z, OBSGEO-B/L, SITELAT/SITELONG auch sexagesimal,
   LAT-OBS; 0/0 = kein GPS-Fix) → Zeitraum → Standard-Ort. Rückgabe mit `source` (override|fits|period|default) und `detail`.
 - **Nur Standardbibliothek**, weil die SkyTrace-Engine (eigener Interpreter ohne AstroFlow-Paket) die Datei über den Pfad lädt

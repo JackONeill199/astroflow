@@ -300,7 +300,7 @@ def _global(sitefit, out, entries, settings, sites, current, global_km, clock, t
                                confidence=res.get('confidence'), region_km=global_km, from_name='Unbekannter Ort',
                                nearest_name=out['global']['nearest_name'], nearest_km=out['global']['nearest_km'],
                                shift_from_current_km=round(_km(p, current), 1) if current else None)
-    nights = sorted({night_key(i['timestamp']) for _, i in entries if isinstance(i.get('timestamp'), (int, float))})
+    nights = sorted({night_key(i['timestamp'], settings) for _, i in entries if isinstance(i.get('timestamp'), (int, float))})
     old = (out.get('clock') or {}).get('proposal')
     if abs(p['clock_s']) >= clock_scan.MIN_SHIFT_S:
         out['clock'] = dict(source='global', proposal=dict(offset_s=round(base + p['clock_s'], 1), sigma_s=max(1.0, float(p.get('clock_sigma_s') or 1)),
@@ -317,12 +317,12 @@ def night(sitefit, group, entries, settings, radius_km, tick, clock=True, global
     """Eine Nacht: Vorschlag (bestehender Ort `list`, zurückgerechneter Ort `fit`, Ort ohne Vorwissen `global`) oder ehrlicher Grund.
     Mit `clock` zuerst – bei wenigen Treffern – der Uhrversatz (`clock_scan`); ein gefundener Versatz gilt für die Ortsprüfung danach.
     Mit `global_km` > 0 und ohne gut passenden Ort zuletzt die Suche ohne Vorwissen im Umkreis `global_km` um die Listenorte."""
-    from observation_settings import sites_module
+    from observation_settings import night_book
     plain = settings                                            # ohne Uhrkorrektur vom bisherigen Ort (die globale Suche hat ihre eigene)
     out = dict(night=group['night'], observations=group['observations'], tracks=len(entries), created=time.time(),
                before=sum(matched(i) for _, i in entries), proposal=None)
-    mod = sites_module()
-    out['assign'] = sorted({mod.night_of(i['timestamp']) for _, i in entries if mod and isinstance(i.get('timestamp'), (int, float))} - {None}) or [group['night']]
+    mod, book = night_book(settings)
+    out['assign'] = sorted({mod.night_of(i['timestamp'], book=book) for _, i in entries if mod and isinstance(i.get('timestamp'), (int, float))} - {None}) or [group['night']]
     if not entries:
         return dict(out, status='none', note='Keine Spuren mit Himmelskoordinaten und Zeit in dieser Nacht.')
     folder0, item0 = entries[0]

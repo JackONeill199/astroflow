@@ -12,11 +12,12 @@ Alles wird aus den gespeicherten Läufen gerechnet, ohne Neuanalyse und ohne Eng
 - **Rate**: Spuren je Stunde nutzbarer Belichtung (angenommene Aufnahmen × Belichtungszeit), nur bei Sonne unter −12°."""
 from __future__ import annotations
 
-import datetime as dt
 import math
 import re
 
 import numpy as np
+
+from ...core import sites
 
 SUN_NIGHT = -12.0            # Sonnenhöhe, unter der eine Aufnahme als Nachtzeit zählt (nautische Dämmerung)
 K_EXT = 0.20                 # Extinktion mag je Luftmasse (wie stacking.skyquality)
@@ -139,8 +140,8 @@ def _ym(night: str | None, times) -> tuple[int, int] | None:
     if m:
         return int(m[1]), int(m[2])
     if len(times):
-        d = dt.datetime.fromtimestamp(float(min(times)), dt.timezone.utc) - dt.timedelta(hours=12)
-        return d.year, d.month
+        n = sites.night_of(float(min(times)))
+        return (int(n[:4]), int(n[5:7])) if n else None
     return None
 
 

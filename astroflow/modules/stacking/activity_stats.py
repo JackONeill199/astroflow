@@ -5,6 +5,8 @@ import datetime as dt
 import json
 import math
 
+from ...core import sites
+
 
 def summarize(rows: list[dict], year: int | None = None) -> dict:
     records, years, missing = [], set(), 0
@@ -18,8 +20,10 @@ def summarize(rows: list[dict], year: int | None = None) -> dict:
         except (ValueError, TypeError, AttributeError):
             missing += 1
             continue
-        # Eine Beobachtungsnacht läuft von Mittag bis Mittag (wie beim Import).
-        night = (stamp - dt.timedelta(hours=12)).date()
+        # Eine Beobachtungsnacht läuft von Mittag bis Mittag Ortszeit (core/sites.night_of, wie beim Import).
+        site = info.get("site")                       # Ort im FITS-Kopf wie im Scanner (frames.night)
+        lon = site[1] if isinstance(site, (list, tuple)) and len(site) >= 2 else None
+        night = dt.date.fromisoformat(sites.night_of(stamp, lon=lon))
         years.add(night.year)
         if year is not None and night.year != year:
             continue

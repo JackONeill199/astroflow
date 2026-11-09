@@ -39,7 +39,8 @@ function sunLatLon(t) {
 }
 // Zeitpunkt einer Nacht ohne genauere Angabe: Mitternacht Ortszeit an der Länge der Region
 const nightTime = (night, lon = 0) => Date.parse(night + 'T00:00:00Z') / 1000 + (24 - lon / 15) * 3600;
-const nightOfTime = (t) => new Date((t - 43200) * 1000).toISOString().slice(0, 10);          // wie core/sites.night_of: UTC − 12 h
+// Rückfall für alte Antworten ohne `night`: UTC − 12 h. Sonst liefert der Server die Nacht (core/sites.night_of, Ortszeit).
+const nightOfTime = (t) => new Date((t - 43200) * 1000).toISOString().slice(0, 10);
 const fmtNight = (night, long = false) => new Date(night + 'T12:00:00Z').toLocaleDateString('de-DE', long ? { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' } : { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
 const helpers = () => window.SkyTraceHelpers;
 const HELP = 'Ziehen dreht · Mausrad/zwei Finger zoomen · nah heran = flache Karte · Antippen zeigt Details';          // aus skytrace.js (Heatmap-Zellen, Ortsmarken, Übernehmen, Texte, Läufe)
@@ -560,7 +561,7 @@ function globe(host, { THREE, OrbitControls }, ctx) {
     R.run = SkyTrace3D.runLayer(G, data, { interactive: true, focus, onCandidate, legendEl: $d('.st3d-legend'), noteEl: $d('.st3d-note') });
     host._st3d = { state: () => R.run?.state(), screen: () => R.run?.screen() || [], sel: () => R.run?.sel() };
     // Nacht des Laufs: deren Orte, Vorschlag und Heatmap gehören dazu (gemeinsame Ebenen)
-    S.night = nightOfTime(data.anchor);
+    S.night = data.night || nightOfTime(data.anchor);
     rebuildMarks(); for (const P of Object.values(patches)) setPatchK(P);
     if (S.on.heat && patches[S.night]) revealHeat([patches[S.night]]);
     M.sunTime = data.anchor;
