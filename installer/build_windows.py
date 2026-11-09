@@ -152,7 +152,8 @@ def collect_licenses(python_dir: Path, version: str = "") -> str:
     site = python_dir / "Lib" / "site-packages"
     sep = "=" * 78
     out = ["Lizenzen der im AstroFlow-Paket enthaltenen Drittkomponenten" + (f" (AstroFlow {version})" if version else ""),
-           "AstroFlow selbst steht unter der MIT-Lizenz (LICENSE.txt, Überblick in NOTICE.txt).", ""]
+           "AstroFlow selbst steht unter der PolyForm Noncommercial License 1.0.0 (LICENSE.txt, Überblick in NOTICE.txt);",
+           "SkyTrace-Engine: AGPL-3.0-or-later (einzelne Hilfsdateien doppelt lizenziert), Detektormodell: AGPL-3.0 (LICENSE im jeweiligen Ordner).", ""]
     pyl = python_dir / "LICENSE.txt"
     out += [sep, "Python (python-build-standalone, https://github.com/astral-sh/python-build-standalone) – PSF-Lizenz", sep]
     out += [pyl.read_text(encoding="utf-8", errors="replace")[:300_000] if pyl.is_file() else "(LICENSE.txt des Python-Ordners fehlt)", ""]

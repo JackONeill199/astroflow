@@ -26,11 +26,13 @@ Plan: erst die Hürden unten beseitigen, dann **offene Beta** veröffentlichen, 
 - [ ] Kurzer Sicherheitscheck der API (Pfadprüfungen bei Ordnerdialog/Upload/Dateiauslieferung, Herkunftsschutz).
 
 ### 3. Lizenzen sauber trennen
-- [ ] GitHub erkennt die Lizenz nur als „Other“: MIT für AstroFlow, AGPL-3.0 für das SkyTrace-Detektormodell
-      (abgeleitet von Ultralytics YOLO). Klären: Modell als getrennter, optionaler Download statt im Repo?
+- [x] Lizenz festgelegt (nach v0.51.3): PolyForm Noncommercial 1.0.0 für AstroFlow, AGPL-3.0-or-later für die SkyTrace-Engine (`engine/`), AGPL-3.0 für das
+      Detektormodell (abgeleitet von Ultralytics YOLO), CC-BY-SA 4.0 für die Katalogdaten. Stände bis v0.51.3 bleiben MIT.
+      GitHub zeigt die Lizenz als „Other“. Offen: Modell als getrennter, optionaler Download statt im Repo?
 - [ ] `LICENSE`/`NOTICE` mit allen Fremdbestandteilen (ASTAP-Datenbanken, GraXpert GPL-3, StarNet „all rights reserved“ –
       nie mitliefern, Gaia/Open-Meteo/JPL-Nutzungsbedingungen).
-- [ ] Vor jeder Entscheidung über Geld/Kommerzialisierung: Auswirkungen der AGPL klären.
+- [x] Abgrenzung der AGPL-Teile: Die vom Server geladenen Engine-Hilfsdateien stehen wahlweise unter PolyForm Noncommercial 1.0.0
+      oder AGPL-3.0-or-later (Doppellizenz, siehe `NOTICE` und `engine/LICENSE`).
 
 ### 4. Mehr Geräte testen
 - [ ] **Vespera** (Nutzer besitzt eine – echte Aufnahmen besorgen): Dateiformat, Ordnerstruktur, Header (Gerät, Belichtung,
@@ -54,4 +56,4 @@ Plan: erst die Hürden unten beseitigen, dann **offene Beta** veröffentlichen, 
 - Orte: Reddit (r/SmartTelescope, r/seestar, r/astrophotography), Cloudy Nights, Stargazers Lounge, deutsche Foren
   (Astrotreff), Astro-YouTuber (z. B. Astrobiscuit – dessen APP→GraXpert→StarNet-Workflow war Vorbild für GraXpert-Einbindung).
 - Inhalt: Vorher/Nachher – Fertigbild des Smart-Teleskops gegen AstroFlow, gleiche Rohdaten; kurze Videos zu SkyTrace/3D und Heute Nacht.
-- Offene Frage: kostenlos/Open Source bleiben oder bezahlte Variante – erst nach den Rückmeldungen entscheiden, Lizenzfrage (AGPL) vorher klären.
+- Lizenz: PolyForm Noncommercial 1.0.0 (Quellcode offen, private und nicht-kommerzielle Nutzung frei) – in Beiträgen nicht „Open Source“ nennen.

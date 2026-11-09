@@ -1,7 +1,24 @@
 AstroFlow
-Copyright (c) 2026 JackONeill199
+Copyright 2026 JackONeill199
 
-Der Quellcode von AstroFlow steht unter der MIT-Lizenz (siehe LICENSE).
+Lizenz: Der eigene Code von AstroFlow steht ab den Ständen nach v0.51.3 unter der PolyForm
+Noncommercial License 1.0.0 (siehe LICENSE): Quellcode offen, private und nicht-kommerzielle
+Nutzung frei, kommerzielle Nutzung nicht erlaubt.
+Required Notice: Copyright 2026 JackONeill199
+
+Frühere Stände: Alle Stände bis einschließlich v0.51.3 wurden unter der MIT-Lizenz
+veröffentlicht und bleiben für diese Stände unter MIT.
+
+Ausnahmen innerhalb des Repositorys:
+
+- SkyTrace-Engine
+  astroflow/modules/skytrace/engine/
+  Lizenz: AGPL-3.0-or-later (siehe LICENSE im selben Ordner), weil die Engine das AGPL-3.0-Paket
+  ultralytics nutzt. Sie läuft für die Erkennung als eigener Prozess.
+  Doppellizenz: Die Hilfsdateien, die auch der AstroFlow-Server lädt (json_store.py,
+  observation_settings.py, project_paths.py, motion_plausibility.py, satellite_overlay.py,
+  video_overlays.py), stehen wahlweise unter PolyForm Noncommercial 1.0.0 ODER AGPL-3.0-or-later.
+
 Folgende mitgelieferte Drittkomponenten stehen unter eigenen Lizenzen:
 
 - SkyTrace-Erkennungsmodell
@@ -11,7 +28,7 @@ Folgende mitgelieferte Drittkomponenten stehen unter eigenen Lizenzen:
   Modellkarte, Metadaten und Prüfsumme liegen im selben Ordner)
   Lizenz: AGPL-3.0 (siehe LICENSE im selben Ordner). Das Modell stammt von Ultralytics YOLO26
   ab (AGPL-3.0). Es wird als Datei von der SkyTrace-Engine geladen, die in einem eigenen
-  Prozess läuft; der übrige AstroFlow-Code bleibt unter der MIT-Lizenz.
+  Prozess läuft; der übrige AstroFlow-Code steht unter PolyForm Noncommercial 1.0.0.
 
 - three.js
   astroflow/static/vendor/three.module.min.js, OrbitControls.js
@@ -55,5 +72,6 @@ sondern erst auf Wunsch aus ihren Originalquellen installiert und
 behalten ihre eigenen Lizenzen.
 
 Hinweis zu SkyTrace: Die Erkennung von Lichtspuren (Modell und ultralytics) steht unter
-AGPL-3.0. Der Quellcode der Engine liegt offen in diesem Repository
-(astroflow/modules/skytrace/engine/). AstroFlow selbst bleibt unter der MIT-Lizenz.
+AGPL-3.0, die Engine selbst unter AGPL-3.0-or-later (Hilfsdateien doppelt lizenziert, s. o.). Ihr Quellcode liegt offen in diesem Repository
+(astroflow/modules/skytrace/engine/). Der übrige AstroFlow-Code steht unter der PolyForm
+Noncommercial License 1.0.0.

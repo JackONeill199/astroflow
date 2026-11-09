@@ -10,7 +10,7 @@
    Nebeln und Planetarischen Nebeln; benutzte Artikel und Revisionen: `quellen_artikel.csv`.
 
 Die Datei ist von AstroFlow ausgewählt, zusammengeführt und umgerechnet (RA in Grad, Größe in Bogenminuten); sie darf nur unter denselben
-Bedingungen (CC-BY-SA 4.0, mit Namensnennung) weitergegeben werden. Der übrige AstroFlow-Code (MIT) bleibt davon getrennt; deutsche Namen und
+Bedingungen (CC-BY-SA 4.0, mit Namensnennung) weitergegeben werden. Der übrige AstroFlow-Code (PolyForm Noncommercial 1.0.0) bleibt davon getrennt; deutsche Namen und
 Objektarten liegen in `deepsky.py`.
 
 Spalten `mag_src`/`size_src`: W = Wikipedia, O = OpenNGC, B = OpenNGC B-Helligkeit − 0,85 (Galaxien), H = von Hand (unverifiziert; nur C34, C88, C94 – Größe, Begründung im Skript).

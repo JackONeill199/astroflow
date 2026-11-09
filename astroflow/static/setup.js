@@ -209,7 +209,7 @@
         <button class="btn ghost sm" id="sysCheck">Jetzt prüfen</button>
         ${s.launched ? `<button class="btn ghost sm" id="sysRestart" data-local-only>Neu starten</button>` : ''}
         <button class="btn danger sm" id="sysQuit" data-local-only>AstroFlow beenden</button></div>
-      <p class="mut sm su-support" style="margin:0.875rem 0 0">AstroFlow ist kostenlos und quelloffen. Du möchtest die Entwicklung unterstützen? <a href="https://github.com/sponsors/JackONeill199" target="_blank" rel="noopener">GitHub Sponsors</a> · <a href="https://ko-fi.com/jackoneill199" target="_blank" rel="noopener">Ko-fi</a></p>`;
+      <p class="mut sm su-support" style="margin:0.875rem 0 0">AstroFlow ist für private Nutzung kostenlos, der Quellcode ist offen (PolyForm Noncommercial 1.0.0). Du möchtest die Entwicklung unterstützen? <a href="https://github.com/sponsors/JackONeill199" target="_blank" rel="noopener">GitHub Sponsors</a> · <a href="https://ko-fi.com/jackoneill199" target="_blank" rel="noopener">Ko-fi</a></p>`;
     el.append(p);
     const cp = document.createElement('div');
     cp.className = 'panel';

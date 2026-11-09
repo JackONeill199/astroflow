@@ -42,7 +42,7 @@ KOPF = f"""# Messier- und Caldwell-Katalog (Position J2000, Helligkeit, sichtbar
 #    (Revision {WIKI_CALDWELL[1]}, {WIKI_CALDWELL[2]}) sowie Infobox-Größen der Einzelartikel (Revisionen: README.md), Autoren siehe Versionsgeschichte, CC-BY-SA 4.0
 # Lizenz der Daten: Creative Commons Attribution-ShareAlike 4.0 (CC-BY-SA 4.0), siehe LICENSE-OpenNGC in diesem Ordner. Weitergabe (auch veränderter
 # Fassungen) nur unter denselben Bedingungen und mit dieser Namensnennung. Änderungen: Auswahl, Zusammenführung, Umrechnung (RA in Grad, Größe in Bogenminuten).
-# Der AstroFlow-Code steht unter MIT. mag_src/size_src: W = Wikipedia, O = OpenNGC V, B = OpenNGC B-Helligkeit minus 0,85 (Galaxien), H = von Hand (unverifiziert).
+# Der AstroFlow-Code steht unter PolyForm Noncommercial 1.0.0. mag_src/size_src: W = Wikipedia, O = OpenNGC V, B = OpenNGC B-Helligkeit minus 0,85 (Galaxien), H = von Hand (unverifiziert).
 # C46 (Hubbles veränderlicher Nebel) ist veränderlich (~9-10 mag). Vorrangregeln: tools/openngc_extract.py. Erzeugt mit diesem Skript – nicht von Hand ändern.
 """
 SPALTEN = ["cat", "num", "openngc", "ra_deg", "dec_deg", "typ", "mag", "mag_src", "size_arcmin", "size_src"]

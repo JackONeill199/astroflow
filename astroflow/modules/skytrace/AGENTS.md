@@ -12,7 +12,7 @@ Neben der Analyse: Lauf-Ansicht mit Video und Messgrafiken, Statistik und Erfolg
 **3D-Erde** (Nächte, Standorte, Heatmap, Satellitenbahnen) und automatische Analyse nach dem Stacken.
 
 ## Lizenz (AGPL-Teil)
-Die Erkennung (Modell `models/night-detector/`, AGPL-3.0, und `ultralytics`, AGPL-3.0, von `requirements-engine.txt` nachinstalliert) ist AGPL-3.0; die Engine importiert `ultralytics` und läuft deshalb nur als eigener Unterprozess (`engine/`, Quellcode offen im Repo). AstroFlow liefert `ultralytics` nie mit (auch nicht das Windows-Paket); der Server importiert es nie. AstroFlow selbst bleibt MIT. Bei Bezahl-/Closed-Source-Plänen zuerst `docs/RELEASE.md` und diesen Punkt klären. Texte: `NOTICE`, README → Lizenz, `core/components.py` (`license` von `skytrace`).
+Die Erkennung (Modell `models/night-detector/`, AGPL-3.0, und `ultralytics`, AGPL-3.0, von `requirements-engine.txt` nachinstalliert) ist AGPL-3.0; die Engine importiert `ultralytics`, steht deshalb selbst unter AGPL-3.0-or-later (`engine/LICENSE`) und läuft für die Erkennung als eigener Unterprozess (Quellcode offen im Repo). AstroFlow liefert `ultralytics` nie mit (auch nicht das Windows-Paket); der Server importiert es nie. Der übrige AstroFlow-Code steht unter PolyForm Noncommercial 1.0.0 (bis v0.51.3 MIT). **Doppellizenz** (Nutzerentscheidung 09.11.2026): Die Engine-Hilfsdateien, die der Server in den eigenen Prozess lädt (`json_store`, `observation_settings`, `project_paths`, `motion_plausibility`, `satellite_overlay`, `video_overlays`), stehen wahlweise unter PolyForm Noncommercial 1.0.0 oder AGPL-3.0-or-later (SPDX-Kopfzeile je Datei, Erklärung in `engine/LICENSE` und `NOTICE`). Importiert der Server künftig weitere `engine/`-Module, diese genauso kennzeichnen. Texte: `NOTICE`, README → Lizenz, `core/components.py` (`license` von `skytrace`).
 
 ## Feste Nutzerentscheidungen und wissenschaftliche Grenzen (verbindlich)
 - **Originale nur lesen.** Nie löschen, verschieben, umbenennen oder mit Sidecars/ASTAP-Ergebnissen beschreiben. „Entfernen“ unscharfer Aufnahmen
@@ -74,6 +74,11 @@ Die Erkennung (Modell `models/night-detector/`, AGPL-3.0, und `ultralytics`, AGP
   Einstellungen: `catalog_settings.json`, Katalog-Cache `catalog_cache/` (Archive darunter `archives/`).
 
 ## Wenn du … änderst (Pflichtregeln)
+- **Lizenz** (Nutzerentscheidung 09.11.2026): eigener Code steht unter PolyForm Noncommercial 1.0.0 (`LICENSE`), Ausnahmen haben eine eigene
+  Lizenzdatei (`NOTICE`). Neuer SkyTrace-Code nach Möglichkeit **außerhalb** von `skytrace/engine/` (AGPL-3.0-or-later) – dort nur, was
+  ultralytics/die Erkennung selbst braucht. Engine-Dateien, die der Server importiert, brauchen den Doppellizenz-Kopf
+  (`# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 OR AGPL-3.0-or-later`); neue solche Importe nur mit diesem Kopf.
+  Neue Fremdbibliotheken/-daten: Lizenz prüfen und in `NOTICE` eintragen (Windows-Paket: `THIRD-PARTY-LICENSES.txt` sammelt automatisch).
 - **JSON/Bilder** atomar veröffentlichen (`json_store`, `image_store`; bei HTTP Content-Length und Inhalt aus demselben Dateihandle). Windows liefert bei parallelen
   Vorschauzugriffen kurz `PermissionError` → vorhandene Retry-Helfer nutzen; SQLite-Verbindungen ausdrücklich schließen.
 - **Detektion/Schwellen** (`line_detection`, `frame_quality`, `trail_validation`): Fehlalarme an den Vergleichsfällen prüfen (`skytrace-erkennung.md`); nie
