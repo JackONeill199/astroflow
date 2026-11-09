@@ -48,15 +48,17 @@
 - **API** `GET /api/stacking/tonight?hide=M35,12`: ausgeblendete Kennungen (localStorage `af.tonight.hidden`). Optionaler Dienst `collection_progress` (Sage →
   `{"messier": [Nummern]}`, 2 min gecacht): „Wäre dein n. Messier-Objekt“, bereits entdeckte Messier-Nummern entfallen. Tests: `tests/test_tonight.py`.
 
-## Messier-/Caldwell-Daten (OpenNGC)
-- `deepsky.py` lädt Position, Helligkeit und Größe von Messier (110) und Caldwell (109) aus `stacking/katalogdaten/messier_caldwell.csv`
-  (Auszug aus **OpenNGC**, CC-BY-SA 4.0 – Quelle, Version und Lizenz in der Kopfzeile, `LICENSE-OpenNGC`, `NOTICE`). Vorher standen die
-  Werte ungeprüft im Code. Die CC-BY-SA-Datei bleibt getrennt vom MIT-Code; deutsche Namen, Objektart-Kürzel und die Caldwell-Zuordnung
-  (Nummer → NGC/IC) sind eigene Tabellen in `deepsky.py` (`MESSIER`, `CALDWELL`).
-- Neu erzeugen: `python tools/openngc_extract.py <ordner-mit-NGC.csv-und-addendum.csv> [--alt <alte deepsky.py>]` (nur beim Entwickeln, zur
-  Laufzeit kein Netz; `--alt` listet Abweichungen zu alten Werten). Helligkeit = V, ersatzweise B; Größe = Hauptachse. M102 = NGC 5866
-  (OpenNGC führt es als Dublette von M101). C50/C61 stehen in der Datei, sind aber keine eigenen Ziele (stecken in C49/C60).
-- Rückfälle von Hand (`FALLBACK_MAG`/`FALLBACK_SIZE`, `Target.fallback`), wo OpenNGC nichts hat: Gesamthelligkeit C14, C41, C82, C94, C102; Größe M40, M73, C99.
-  Emissionsnebel (Art `e`) bekommen bewusst keine Helligkeit (integrale Helligkeit sagt über die Sichtbarkeit nichts aus), auch wenn OpenNGC eine kennt.
-- Beachten: OpenNGC gibt für Planetarische Nebel nur die helle Kernfigur an (M57 1,27′, M76 1,12′) – sie fallen unter `MIN_SIZE` (2′) und
-  erscheinen nicht in „Heute Nacht“.
+## Messier-/Caldwell-Daten (OpenNGC + Wikipedia)
+- `deepsky.py` lädt Position, Helligkeit und Größe von Messier (110) und Caldwell (109) aus `stacking/katalogdaten/messier_caldwell.csv`.
+  Die Datei ist aus **OpenNGC** (Position, Kennungen, Galaxiengrößen) und den englischen **Wikipedia**-Listen (Helligkeit, sichtbare Größe; Werte
+  dort aus SEDS) zusammengestellt, beide CC-BY-SA 4.0 – Quellen, Revisionen und Lizenz in Kopfzeile, `README.md`, `LICENSE-OpenNGC`, `NOTICE`.
+  Die CC-BY-SA-Datei bleibt getrennt vom MIT-Code; deutsche Namen, Objektart-Kürzel und die Caldwell-Zuordnung (Nummer → NGC/IC) sind eigene
+  Tabellen in `deepsky.py` (`MESSIER`, `CALDWELL`).
+- Neu erzeugen: `python tools/openngc_extract.py <ordner> [--alt <alte deepsky.py>]` (nur beim Entwickeln, kein Netz zur Laufzeit; Ordner mit
+  `NGC.csv`, `addendum.csv`, `Messier_object.wiki`, `Caldwell_catalogue.wiki`, Bezug im Skriptkopf). Das Skript prüft beide Quellen gegeneinander
+  und gibt Abweichungen aus (Helligkeit > 0,7 mag, Größe > 40 %, Position > 3′). Vorrangregeln im Skriptkopf; Spalten `mag_src`/`size_src`.
+- Warum nicht OpenNGC allein: `V-Mag` ist bei Galaxien teils unbrauchbar (NGC 253: V 11,1 bei B 7,9), `MajAx` ist bei Haufen ein Kernmaß (M7 22′
+  statt ~80′), bei Planetarischen Nebeln nur die helle Kernfigur (M57 1,27′ statt ~3,8′) – M57/M76 würden sonst am `MIN_SIZE`-Filter scheitern.
+- Von Hand (unverifiziert, `Target.fallback`): sichtbare Größe von 13 Caldwell-Haufen (C10, C75, C78, C79, C82, C85, C86, C88, C91, C97, C102, C107)
+  und C99 (Kohlensack). M102 = NGC 5866 (OpenNGC: Dublette von M101). C50/C61 stehen in der Datei, sind aber keine eigenen Ziele (stecken in C49/C60).
+  Emissionsnebel (Art `e`) bekommen bewusst keine Helligkeit (integrale Helligkeit sagt über die Sichtbarkeit nichts aus).

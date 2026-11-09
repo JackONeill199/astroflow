@@ -141,11 +141,11 @@ def test_builtin_catalog_has_messier_and_caldwell_without_astap():
 
 def test_filters_follow_device_and_field():
     t = {x.id: x for x in deepsky.fixed()}
-    assert deepsky.usable(t["M27"], STELLINA, [1, .7])                  # 6,7′ von 42′: passt (OpenNGC: M57 nur 1,27′ → zu klein)
+    assert deepsky.usable(t["M57"], STELLINA, [1, .7])                  # 3,8′ von 42′: passt (OpenNGC allein gäbe nur die Kernfigur, 1,27′)
     assert not deepsky.usable(t["M31"], STELLINA, [1, .7])              # 178′ passt nicht ins Bild
     assert not deepsky.usable(t["C6"], STELLINA, [1, .7])               # Katzenauge 0,4′ = Pünktchen
     assert not deepsky.usable(t["C24"], STELLINA, [1, .7])              # 11,9 mag: über der Grenze
-    assert deepsky.usable(t["M98"], {"id": "stellina"}, None) and not deepsky.usable(t["M98"], {"id": "dwarf"}, None)   # 10,8 mag
+    assert deepsky.usable(t["M76"], {"id": "stellina"}, None) and not deepsky.usable(t["M76"], {"id": "dwarf"}, None)   # 10,1 mag
     assert deepsky.mag_limit({"id": "vespera"}) < deepsky.mag_limit({"id": "stellina"})
 
 
@@ -181,8 +181,7 @@ def test_mix_of_kinds_and_categories(tmp_path):
     poor = {**M31, "exposure": 1800}
     recs = tonight.plan([poor], SITE, tmp_path, EVENING, CAMERA)["recommendations"]
     kinds = [x["kind"] for x in recs]
-    new_kinds = [x["kind"] for x in recs if x["category"] == "new"]
-    assert all(new_kinds.count(k) <= 2 for k in set(new_kinds)) and len(set(kinds)) >= 3
+    assert all(kinds.count(k) <= 2 for k in set(kinds)) and len(set(kinds)) >= 3
     assert {x["category"] for x in recs} == {"more", "new"}
     assert [x["rank"] for x in recs] == sorted((x["rank"] for x in recs), reverse=True)
 
@@ -370,21 +369,27 @@ def test_next_clear_window_is_clipped_to_darkness(tmp_path, monkeypatch):
     assert nc is None or nc["end"] <= dark_end + 700          # nie über das Ende der Dunkelheit hinaus; < 2 h dunkel → kein Fenster
 
 
-def test_openngc_datendatei_vollstaendig_und_plausibel():
-    """data/messier_caldwell.csv (OpenNGC, CC-BY-SA 4.0): 110 Messier + 109 Caldwell, Werte im plausiblen Bereich, Lizenz liegt daneben."""
+def test_katalogdaten_vollstaendig_und_plausibel():
+    """katalogdaten/messier_caldwell.csv (OpenNGC + Wikipedia, CC-BY-SA 4.0): 110 Messier + 109 Caldwell, Werte plausibel, Lizenz daneben."""
     d = deepsky.DATA_FILE.parent
-    assert (d / "LICENSE-OpenNGC").is_file() and "OpenNGC" in deepsky.DATA_FILE.read_text(encoding="utf-8")[:400]
+    kopf = deepsky.DATA_FILE.read_text(encoding="utf-8")[:1500]
+    assert (d / "LICENSE-OpenNGC").is_file() and "OpenNGC" in kopf and "Wikipedia" in kopf and "CC-BY-SA" in kopf
     data = deepsky._data()
     assert sorted(n for c, n in data if c == "M") == list(range(1, 111))
     assert sorted(n for c, n in data if c == "C") == list(range(1, 110))
     for (c, n), v in data.items():
         assert 0 <= v["ra"] < 360 and -90 <= v["dec"] <= 90, (c, n)
-        assert v["mag"] is None or -2 < v["mag"] < 16, (c, n)
+        assert v["mag"] is None or -2 < v["mag"] < 14, (c, n)
         assert v["size"] is None or 0 < v["size"] < 500, (c, n)
+    # bekannte Werte (Literatur): Galaxien nicht schwächer als B−0,85-Regel zulässt, Haufen mit sichtbarer Ausdehnung, PN nicht nur die Kernfigur
     assert abs(data[("M", 31)]["ra"] - 10.68) < 0.1 and abs(data[("M", 31)]["dec"] - 41.27) < 0.1
-    # jede Tabellenzeile in deepsky.py hat Daten; Objekte ohne OpenNGC-Wert sind als Rückfall gekennzeichnet
+    assert data[("M", 31)]["mag"] < 4.5 and data[("C", 65)]["mag"] < 8.5 and data[("C", 83)]["mag"] < 10
+    assert data[("M", 7)]["size"] >= 60 and data[("M", 41)]["size"] >= 30 and data[("M", 45)]["size"] >= 100
+    assert data[("M", 57)]["size"] >= 3 and data[("M", 76)]["size"] >= 2
+    assert data[("C", 37)]["mag"] < 8                                      # nicht der OpenNGC-Wert 14,1 (falsche Messung)
     for prefix, rows in (("M", deepsky.MESSIER), ("C", deepsky.CALDWELL)):
         assert all((prefix, n) in data for n, *_ in rows)
     t = {x.id: x for x in deepsky.fixed()}
-    assert t["C14"].mag == 4.3 and t["C14"].fallback and not t["M31"].fallback
-    assert t["M8"].mag is None                                           # Emissionsnebel: Helligkeit bewusst unbekannt
+    assert t["C82"].fallback and not t["M31"].fallback                     # C82: Größe von Hand (Kernmaß in OpenNGC)
+    assert t["M8"].mag is None                                             # Emissionsnebel: Helligkeit bewusst unbekannt
+    assert "M57" in {x.id for x in deepsky.catalog() if deepsky.usable(x, STELLINA, [1, .7])}    # bleibt in den „Heute Nacht“-Kandidaten

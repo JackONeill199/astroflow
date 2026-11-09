@@ -1,4 +1,4 @@
-"""Zielkatalog für „Heute Nacht“: Messier (110) + Caldwell (109) mit Daten aus OpenNGC (katalogdaten/messier_caldwell.csv), dazu ASTAPs deep_sky.csv (falls vorhanden).
+"""Zielkatalog für „Heute Nacht“: Messier (110) + Caldwell (109) mit Daten aus OpenNGC und Wikipedia (katalogdaten/messier_caldwell.csv), dazu ASTAPs deep_sky.csv (falls vorhanden).
 
 Warum zwei Quellen: `objects.CATALOG` kennt nur ~60 Objekte (Profile, Aliasse). Für Empfehlungen braucht es eine
 vollständige Liste mit Helligkeit. ASTAPs deep_sky.csv hat **keine** Helligkeit (nur Ort, Typ, Größe) – deshalb sind Messier und
@@ -21,7 +21,7 @@ from . import objects
 _K = {"g": "galaxy", "e": "emission", "r": "reflection", "p": "planetary", "s": "snr", "k": "globular", "o": "open_cluster", "x": "other"}
 
 # Eigene Zuordnung (MIT-Code): Nummer → (NGC/IC-Kennung für Anzeige/Schlüssel, deutscher Name, Objektart-Kürzel).
-# Positionen, Helligkeit und Größe stehen NICHT hier, sondern in katalogdaten/messier_caldwell.csv (OpenNGC, CC-BY-SA 4.0).
+# Positionen, Helligkeit und Größe stehen NICHT hier, sondern in katalogdaten/messier_caldwell.csv (OpenNGC + Wikipedia, CC-BY-SA 4.0).
 # Caldwell: C50 (NGC 2244) steckt in C49, C61 (NGC 4039) in C60 – beide stehen in der Datendatei, sind aber keine eigenen Ziele.
 MESSIER = [
     (1, "NGC1952", "Krebsnebel", "s"), (2, "NGC7089", "", "k"), (3, "NGC5272", "", "k"), (4, "NGC6121", "", "k"),
@@ -91,10 +91,6 @@ CALDWELL = [
 ]
 
 MERGED = {("C", 50), ("C", 61)}
-# Rückfallwerte, wo OpenNGC keinen Wert hat (von Hand, aus bekannter Literatur; als Target.fallback gekennzeichnet).
-# Helligkeit: Doppelhaufen, Hyaden, NGC 6193, Juwelenkästchen, IC 2602 – OpenNGC führt für sie keine Gesamthelligkeit.
-FALLBACK_MAG = {("C", 14): 4.3, ("C", 41): 0.5, ("C", 82): 5.2, ("C", 94): 4.2, ("C", 102): 1.9}
-FALLBACK_SIZE = {("M", 40): 1.0, ("M", 73): 3.0, ("C", 99): 400.0}      # Winnecke 4, Vierersternchen, Kohlensack
 DATA_FILE = Path(__file__).parent / "katalogdaten" / "messier_caldwell.csv"     # erzeugt mit tools/openngc_extract.py
 # Zweitnamen, die zu einem Katalogeintrag gehören (zusammenführen statt doppelt vorschlagen)
 EXTRA_KEYS = {("C", 49): ("NGC2244", "C50", "ROSETTE"), ("C", 60): ("NGC4039", "C61"), ("C", 14): ("NGC884",),
@@ -124,7 +120,7 @@ class Target:
     source: str            # messier | caldwell | astap
     keys: frozenset = field(default_factory=frozenset)
     number: int | None = None
-    fallback: bool = False  # Helligkeit/Größe von Hand ergänzt, weil OpenNGC sie nicht kennt (FALLBACK_MAG/FALLBACK_SIZE)
+    fallback: bool = False  # Größe/Helligkeit von Hand (unverifiziert), weil keine Quelle sie kennt (Spalten size_src/mag_src = H)
 
 
 def norm(name: str) -> str:
@@ -149,13 +145,15 @@ _KEYS: dict[str, Target] = {}
 
 
 def _data() -> dict[tuple[str, int], dict]:
-    """Zeilen der OpenNGC-Auszugsdatei: („M“|„C“, Nummer) → {ra, dec, mag, size} (None = OpenNGC kennt keinen Wert)."""
+    """Zeilen der Auszugsdatei: („M“|„C“, Nummer) → {ra, dec, mag, size, hand}. None = keine Quelle kennt einen Wert;
+    hand = Wert (Helligkeit oder Größe) stammt von Hand und ist unverifiziert (Spalten mag_src/size_src = H)."""
     out = {}
     with open(DATA_FILE, encoding="utf-8", newline="") as fh:
         for r in csv.DictReader(line for line in fh if not line.startswith("#")):
             out[(r["cat"], int(r["num"]))] = {
                 "ra": float(r["ra_deg"]), "dec": float(r["dec_deg"]),
-                "mag": float(r["mag"]) if r["mag"] else None, "size": float(r["size_arcmin"]) if r["size_arcmin"] else None}
+                "mag": float(r["mag"]) if r["mag"] else None, "size": float(r["size_arcmin"]) if r["size_arcmin"] else None,
+                "hand": "H" in (r["mag_src"], r["size_src"])}
     return out
 
 
@@ -176,15 +174,9 @@ def fixed() -> list[Target]:
                 continue
             d = data[(prefix, n)]
             ra, dec = d["ra"], d["dec"]
-            fb = False
-            mag = d["mag"]
+            mag, size, fb = d["mag"], d["size"] or 0.0, d["hand"]
             if kind == "emission":                 # Emissionsnebel: integrale Helligkeit sagt über die Sichtbarkeit nichts aus → unbekannt
                 mag = None
-            elif mag is None and (prefix, n) in FALLBACK_MAG:
-                mag, fb = FALLBACK_MAG[(prefix, n)], True
-            size = d["size"]
-            if size is None:
-                size, fb = FALLBACK_SIZE.get((prefix, n), 0.0), True
             e = ext.get(f"M{n}" if prefix == "M" else "") or ext.get(norm(ngc))
             if e and objects.ang_sep(ra, dec, e.ra, e.dec) < 0.5:         # nur übernehmen, wenn es dasselbe Objekt ist
                 ra, dec = e.ra, e.dec
