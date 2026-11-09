@@ -23,7 +23,8 @@ from .picture_import import PICTURE_EXT, SOURCE_LIMIT, import_picture
 
 CALIB = re.compile(r"dark|flat|bias|offset", re.I)
 MAX_GROUPS = 2000
-SAMPLE = 4                      # Stichprobe je unbekanntem Beobachtungsordner (je 2 vom Anfang und Ende)
+BROKEN = "broken"              # Marke in library_index.fp: Datei ist keine gültige FITS-Datei
+SAMPLE = 4                     # Stichprobe je unbekanntem Beobachtungsordner (je 2 vom Anfang und Ende)
 
 
 def _walk(root: Path):
@@ -185,6 +186,7 @@ class Library:
             rows: dict[Path, dict | None] = {}          # Rohdaten: Datenbankzeile der bekannten Aufnahme
             prints: dict[Path, str | None] = {}         # Fingerabdruck bzw. SHA256 (Bilder)
             unknown: list[tuple[dict, list[Path]]] = []
+            broken: set[Path] = set()                   # keine gültige FITS-Datei (leer, abgebrochen, ohne Kopf)
             for g in groups:
                 unk = []
                 for f in g["files"]:
@@ -194,6 +196,13 @@ class Library:
                         rows[f] = r
                         continue
                     c = cache.get(str(f))
+                    if g["kind"] != "pictures":
+                        if size < scanner.FITS_BLOCK:                  # leer/abgebrochen: kostet keinen Lesezugriff
+                            broken.add(f)
+                            continue
+                        if c and c["size"] == size and c["mtime"] == mtime and c["fp"] == BROKEN:
+                            broken.add(f)
+                            continue
                     if c and c["size"] == size and c["mtime"] == mtime:
                         prints[f] = c["fp"]
                     else:
@@ -201,6 +210,32 @@ class Library:
                 if unk:
                     unknown.append((g, unk))
             n_read = [0]
+
+            # Kopf prüfen (nur die ersten Bytes) – nur Dateien, die sonst als neu gälten; kaputte werden nicht gelesen,
+            # nicht importiert und als „broken“ im Index gemerkt (gleiche Größe + Änderungszeit = nicht erneut prüfen)
+            check = [f for g, unk in unknown if g["kind"] != "pictures" for f in unk]
+            check += [f for g in groups if g["kind"] != "pictures" for f in g["files"]
+                      if f in prints and f not in rows and not fps.get(prints[f])]
+            if check:
+                self._set(message="Dateiköpfe prüfen …")
+                size_of = {f: g["stat"][f] for g in groups for f in g["files"]}
+
+                def head(f):
+                    try:
+                        return scanner.looks_like_fits(f, size_of[f][0])
+                    except OSError:
+                        return True                                   # nicht erreichbar ≠ kaputt
+                with ThreadPoolExecutor(max(2, self.eng.s.threads)) as ex:
+                    ok = list(ex.map(head, check))
+                bad = {f for f, good in zip(check, ok) if not good}
+                if bad:
+                    broken |= bad
+                    for f in bad:
+                        prints.pop(f, None)
+                    unknown = [(g, [f for f in unk if f not in bad]) for g, unk in unknown]
+                    unknown = [(g, unk) for g, unk in unknown if unk]
+                    self.db.many("INSERT OR REPLACE INTO library_index(path, size, mtime, fp) VALUES(?,?,?,?)",
+                                 [(str(f), *size_of[f], BROKEN) for f in bad])
 
             def read(items: list[tuple[dict, Path]], label: str):
                 total, done = len(items), [0]
@@ -262,7 +297,7 @@ class Library:
             plist = self.db.q("SELECT id, key, name, ra, dec, radius FROM projects")
             targets = {"keys": {p["key"]: p for p in plist},
                        "centers": {p["key"]: (p["ra"], p["dec"], p["radius"]) for p in plist if p["ra"] is not None}}
-            out = [self._describe(g, rows, prints, shas, names, root, n, targets) for n, g in enumerate(groups)]
+            out = [self._describe(g, rows, prints, shas, names, root, n, targets, broken) for n, g in enumerate(groups)]
             self.groups = out
             open_groups = sum(1 for g in out if g["state"] != "done")
             self._set(state="done", progress=1.0, finished=time.time(), read=n_read[0], skipped=skipped,
@@ -286,9 +321,10 @@ class Library:
         p = targets["keys"].get(a.key)
         return {"id": p["id"], "name": p["name"]} if p else None
 
-    def _describe(self, g, rows, prints, shas, names, root, n, targets=None) -> dict:
+    def _describe(self, g, rows, prints, shas, names, root, n, targets=None, broken=frozenset()) -> dict:
         d: Path = g["dir"]
-        files = g["files"]
+        bad = [f for f in g["files"] if f in broken]              # unlesbar: zählt weder als neu noch als bekannt
+        files = [f for f in g["files"] if f not in broken]
         size = sum(g["stat"][f][0] for f in files)
         todo, known, stacked, owners = [], 0, 0, {}
         for f in files:
@@ -310,7 +346,7 @@ class Library:
         rel = str(d.relative_to(root)) if d != root else d.name
         obj, camera, night, target = None, None, None, None
         project = max(owners, key=owners.get) if owners else None
-        if g["kind"] == "lights":
+        if g["kind"] == "lights" and files:
             try:
                 info = scanner.read_info(files[0])
                 obj = info.object or scanner.object_from_path(files[0])
@@ -336,6 +372,7 @@ class Library:
             label = m.group(1).replace("_", " ")
         return {"id": f"g{n}", "kind": g["kind"], "name": label, "rel": rel, "dir": d, "files": files,
                 "n_files": total, "exts": file_formats(files), "n_known": known, "n_done": stacked, "n_new": len(todo), "bytes": size,
+                "n_broken": len(bad), "broken": [f.relative_to(d).as_posix() for f in bad][:50],
                 "camera": camera, "night": night, "state": state,
                 "project": {"id": project, "name": names.get(project)} if project else None,
                 "target": target,

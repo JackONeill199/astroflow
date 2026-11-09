@@ -1092,7 +1092,7 @@ async function importView(el) {
 }
 
 // Hauptordner durchsuchen: Gruppen (Objekte) finden, Stand in AstroFlow anzeigen, Auswahl importieren
-const LIB_STATE = { new: ['neu', 'acc'], partial: ['teilweise vorhanden', 'warn'], unstacked: ['nicht gestackt', 'warn'], done: ['fertig', 'ok'] };
+const LIB_STATE = { new: ['neu', 'acc'], partial: ['teilweise importiert', 'warn'], unstacked: ['nicht gestackt', 'warn'], done: ['fertig', 'ok'] };
 const LIB_KIND = { lights: 'Aufnahmen', calibration: 'Kalibrierung', pictures: 'Fertige Bilder' };
 // Zustand als Reiter (eine Wahl; „Offen“ = es gibt etwas zu importieren), Art/Format als Mehrfachauswahl im Menü
 const LIB_TABS = [['open', 'Offen', g => g.n_new > 0], ['new', 'Neu', g => g.state === 'new'], ['partial', 'Teilweise', g => g.state === 'partial'],
@@ -1155,8 +1155,8 @@ async function libraryPanel(view) {
       <div class="lib-list">${list.map(g => {
         const [lab, cls] = LIB_STATE[g.state] || [g.state, ''], off = !g.n_new;
         return `<label class="lib-row ${off ? 'off' : ''}"><input type="checkbox" data-id="${g.id}" ${picked.has(g.id) ? 'checked' : ''} ${off ? 'disabled' : ''}>
-          <div class="lib-main"><div class="lib-title"><b>${esc(g.name)}</b><span class="chip ${cls}">${lab}</span><span class="chip">${LIB_KIND[g.kind] || g.kind}</span>${g.project?.name ? `<a class="chip acc" href="#/p/${g.project.id}">in AstroFlow: ${esc(g.project.name)}</a>` : g.target?.name ? `<a class="chip acc" href="#/p/${g.target.id}" title="Neue Beobachtung eines vorhandenen Objekts – wird beim Import dort ergänzt">ergänzt: ${esc(g.target.name)}</a>` : ''}</div>
-            <div class="lib-meta"><span class="chip">${g.n_files} Dateien · ${fmb(g.bytes)}</span>${g.n_known && g.n_new ? `<span class="chip">${g.n_new} davon neu</span>` : ''}${g.night ? `<span class="chip">${esc(g.night)}</span>` : ''}${g.camera ? `<span class="chip">${esc(g.camera)}</span>` : ''}</div>
+          <div class="lib-main"><div class="lib-title"><b>${esc(g.name)}</b><span class="chip ${cls}">${lab}</span><span class="chip">${LIB_KIND[g.kind] || g.kind}</span>${g.project?.name ? `<a class="chip acc" href="#/p/${g.project.id}" title="Ein Teil der Dateien ist schon in AstroFlow – zum Objekt">Objekt: ${esc(g.project.name)}</a>` : g.target?.name ? `<a class="chip acc" href="#/p/${g.target.id}" title="Neue Beobachtung eines vorhandenen Objekts – wird beim Import dort ergänzt">ergänzt: ${esc(g.target.name)}</a>` : ''}</div>
+            <div class="lib-meta"><span class="chip">${g.n_files} Dateien · ${fmb(g.bytes)}</span>${g.n_known && g.n_new ? `<span class="chip">${g.n_new} davon neu</span>` : ''}${g.n_broken ? `<span class="chip warn lib-broken" title="${esc(g.broken.join('\n') + (g.n_broken > g.broken.length ? `\n… und ${g.n_broken - g.broken.length} weitere` : '') + '\n\nKeine gültige FITS-Datei (leer, abgebrochen oder ohne Kopf) – wird nicht importiert.')}">${g.n_broken} unlesbar</span>` : ''}${g.night ? `<span class="chip">${esc(g.night)}</span>` : ''}${g.camera ? `<span class="chip">${esc(g.camera)}</span>` : ''}</div>
             <div class="lib-path">${esc(g.rel)}</div></div></label>`;
       }).join('')}</div>`;
     if (openMenu) { $(`.lib-dd[data-f="${openMenu}"]`, body)?.classList.add('open'); openMenu = null; }

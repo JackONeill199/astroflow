@@ -3,6 +3,14 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.50.2 – 09.11.2026
+
+### Behoben
+- **Hauptordner durchsuchen:** Leere, abgebrochene oder kopflose FITS-Dateien (z. B. von unterbrochenen Stellina-Schreibvorgängen)
+  werden nicht mehr bei jedem Suchlauf als „neu“ gemeldet. Sie erscheinen als Chip „n unlesbar“ (Tooltip mit den Dateinamen),
+  werden nicht importiert und halten die Gruppe nicht mehr auf „teilweise“. Der Zustand heißt jetzt „teilweise importiert“,
+  der Link zum Objekt „Objekt: …“.
+
 ## 0.50.1 – 09.11.2026
 
 ### Behoben
