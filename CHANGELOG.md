@@ -3,6 +3,14 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.51.4 – 09.11.2026
+
+### Behoben
+- Hochladen großer Rohbild-Mengen blockiert den Server nicht mehr; abgebrochene Uploads hinterlassen keine halben Dateien.
+- Volle Platte oder zu wenig Arbeitsspeicher während der Analyse markiert gesunde Aufnahmen nicht mehr als „Lesefehler“ – der Auftrag pausiert stattdessen.
+- Löschen eines Objekts kommt dem automatischen Neustart der Verarbeitung nicht mehr in die Quere.
+- Zwischenstände des Stackings werden unter Windows bei kurz gesperrten Dateien erneut gespeichert statt mit Fehler abzubrechen.
+
 ## 0.51.3 – 09.11.2026
 
 ### Behoben
