@@ -3,6 +3,13 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.51.6 – 09.11.2026
+
+### Behoben
+- SkyTrace: Eine automatische Analyse nach dem Stacken geht nicht mehr verloren, wenn die Engine fehlt, abstürzt oder der Server neu startet – sie wird nachgeholt.
+- SkyTrace: „Anhalten“ beendet hängende Analysen notfalls hart; beim Beenden von AstroFlow bleiben keine Analyseprozesse zurück.
+- SkyTrace: Kleinere Abstürze behoben (Adresssuche, Laufliste beim gleichzeitigen Löschen, leere Ergebnisordner, Statistik-Zwischenspeicher, Karte).
+
 ## 0.51.5 – 09.11.2026
 
 ### Behoben
