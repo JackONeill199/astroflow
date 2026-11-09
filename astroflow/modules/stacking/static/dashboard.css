@@ -151,7 +151,7 @@ a.ad-kpi[href]:active { transform: scale(.985) }
 .ad-sky-spark { fill: color-mix(in srgb, var(--fg) 65%, transparent) }
 .ad-sky-moon { fill: color-mix(in srgb, var(--warn) 45%, var(--fg)); opacity: .75 }
 .ad-sky-ref { stroke: color-mix(in srgb, var(--mut) 35%, transparent); stroke-width: 1; stroke-dasharray: 2 3 }
-.ad-chart .ad-sky-reft { fill: var(--dim); font-size: 8.5px }
+.ad-chart .ad-sky-reft { fill: var(--dim); font-size: 0.53125rem }
 .ad-see-c { stop-color: color-mix(in srgb, var(--fg) 70%, transparent) }
 .ad-see-e { stop-color: transparent }
 .ad-see-sharp { stroke: color-mix(in srgb, var(--fg) 55%, transparent); stroke-width: .8; stroke-linecap: round }
