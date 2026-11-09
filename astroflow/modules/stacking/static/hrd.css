@@ -50,3 +50,6 @@
   .an-sec.hrd-panel .depth-kpis span { white-space: normal }
   .hrd-legend { display: flex; flex-wrap: wrap; gap: 0.25rem 0.875rem }
 }
+/* Hintergrund: Sternfarbe entlang der x-Achse (hrdSvg) */
+.hrd-tint { opacity: .07; pointer-events: none }
+.hrd-band { opacity: .85; pointer-events: none }
