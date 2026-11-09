@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.55.0 – 09.11.2026
+
+### Neu
+- Grafiken für Grenzgröße, Himmelsqualität und HR-Diagramm bekommen dieselben dezenten Bildhintergründe und Legenden (gemeinsame Bausteine), damit man ohne viel Text versteht, was oben und unten bedeutet.
+
 ## 0.54.1 – 09.11.2026
 
 ### Behoben
