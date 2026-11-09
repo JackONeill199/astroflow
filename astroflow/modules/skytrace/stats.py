@@ -4,11 +4,12 @@ Geliefert werden Beobachtungen und schlanke Kandidaten (nur die Felder, die `evi
 die Einordnung und Zählung macht die Oberfläche, damit sie mit Kandidatenliste und Filter übereinstimmt."""
 from __future__ import annotations
 
-import datetime as dt
 import json
 import re
 import threading
 from pathlib import Path
+
+from ...core import sites
 
 _cache: dict[str, tuple[tuple, dict]] = {}
 _lock = threading.Lock()
@@ -39,12 +40,13 @@ def _candidate(c: dict, run: str) -> dict:
 
 
 def _night(session: str, stamps: list[float]) -> str | None:
-    """Beobachtungsnacht: Datum im Stellina-Ordnernamen, sonst früheste Kandidatenzeit − 12 h (wie beim Stacking)."""
+    """Beobachtungsnacht: Datum im Stellina-Ordnernamen, sonst Nacht der frühesten Kandidatenzeit (core/sites.night_of,
+    Ortszeit wie beim Stacking)."""
     m = re.match(r"^(\d{4}-\d\d-\d\d)_observation_", session or "") or re.search(r"_observation_(\d{4}-\d\d-\d\d)-p\d+-\d+$", session or "")
     if m:
         return m.group(1)
     if stamps:
-        return (dt.datetime.fromtimestamp(min(stamps), dt.timezone.utc) - dt.timedelta(hours=12)).date().isoformat()
+        return sites.night_of(min(stamps))
     return None
 
 

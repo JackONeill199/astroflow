@@ -37,6 +37,7 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
         import traceback
         traceback.print_exc()
     ctx.services["sites"] = book
+    sites_mod.use_book(book)                    # Nachtdatum (sites.night_of) nach Ortszeit der Ortsliste
     ctx.services["site_for"] = book.site_for
     ctx.services["night_sources"] = []          # Module hängen hier Funktionen an: () → [{night, label, module}]
     loaded = load_modules(ctx)

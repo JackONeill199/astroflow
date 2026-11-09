@@ -21,8 +21,13 @@ def load_settings():
     for old in ('opensky_user','auto_aircraft'): saved.pop(old,None)   # entfernte Einstellungen (OpenSky-Anbindung) still ignorieren
     return dict(copy.deepcopy(DEFAULTS),**saved)
 
-def night_key(stamp):
-    """Nacht einer Aufnahme wie in AstroFlow (UTC-Datum von Zeit − 12 h)."""
+def night_key(stamp,settings=None):
+    """Nacht einer Aufnahme wie in AstroFlow: core/sites.night_of (Mittag bis Mittag Ortszeit nach der gemeinsamen
+    Ortsliste, sonst Rechnerzeitzone). Ohne erreichbares Modul die alte Regel UTC − 12 h."""
+    module,book=night_book(settings)
+    if module is not None:
+        night=module.night_of(stamp,book=book)
+        if night: return night
     import datetime as dt
     return dt.datetime.fromtimestamp(float(stamp)-43200,dt.timezone.utc).date().isoformat()
 
@@ -31,7 +36,7 @@ def clock_offset_at(stamp,settings=None):
     Leichte Schicht: auch der Server (3D-Ansicht) liest ihn hierüber, ohne skyfield/OpenCV."""
     if not isinstance(stamp,(int,float)) or isinstance(stamp,bool): return 0.
     offsets=((settings if settings is not None else load_settings()) or {}).get('clock_offsets') or {}
-    entry=offsets.get(night_key(stamp)) if offsets else None
+    entry=offsets.get(night_key(stamp,settings)) if offsets else None
     value=entry.get('offset_s') if isinstance(entry,dict) else entry
     return float(value) if isinstance(value,(int,float)) and not isinstance(value,bool) else 0.
 
@@ -108,6 +113,19 @@ def sites_module():
         _SITES_MODULE=module
     return _SITES_MODULE
 
+_NIGHT_BOOKS={}
+
+def night_book(settings=None):
+    """(core/sites-Modul, SiteBook der gemeinsamen Ortsliste) für night_of. Im Server ohne Datei: (Modul, None) –
+    dort gilt die per use_book gesetzte Ortsliste. Ein SiteBook je Datei (es puffert die Ortsliste einige Sekunden)."""
+    module=sites_module()
+    if module is None: return None,None
+    shared=shared_sites_file(settings)
+    if not shared: return module,None
+    key=str(shared)
+    if key not in _NIGHT_BOOKS: _NIGHT_BOOKS[key]=module.SiteBook(path=shared)
+    return module,_NIGHT_BOOKS[key]
+
 def shared_sites_file(settings=None):
     import os
     value=(settings or {}).get('_sites_file') or SITES_FILE or os.environ.get('ASTROFLOW_SITES')
@@ -147,6 +165,6 @@ def resolve_site(path,session,settings=None,when=None):
         if found:
             text=ORIGIN_TEXT.get(found['source'],'Ortsliste')+(f" · {found['detail']}" if found['source']=='period' else '')
             return dict(lat=found['lat'],lon=found['lon'],alt_m=found.get('alt_m') or 0,name=found['name'],source=text,
-                        site_id=found.get('id'),accuracy_m=float(found['accuracy_m']),origin=found['source'],night=module.night_of(when))
+                        site_id=found.get('id'),accuracy_m=float(found['accuracy_m']),origin=found['source'],night=module.night_of(when,book=night_book(settings)[1]))
     site=validate_site(settings.get('site'))
     return _with_accuracy(site,'skytrace',100) if site else None

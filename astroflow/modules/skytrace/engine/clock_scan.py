@@ -163,7 +163,7 @@ def scan_night(sitefit, entries, site, settings, range_s=SCAN_RANGE_S, tick=None
     ok, reason = proposal_ok(ev, before_sure)
     if ok:
         # Fein: strenger Abgleich mit dem gefundenen Versatz (normale Uhrtoleranz), Rückrechnung für die letzten Sekunden
-        nights = sorted({night_key(i['timestamp']) for _, i in entries if isinstance(i.get('timestamp'), (int, float))})
+        nights = sorted({night_key(i['timestamp'], settings) for _, i in entries if isinstance(i.get('timestamp'), (int, float))})
         fine = dict(settings, clock_offsets=dict(settings.get('clock_offsets') or {}, **{n: ev['offset_s'] for n in nights}))
         strict = []
         for f, item in entries:
