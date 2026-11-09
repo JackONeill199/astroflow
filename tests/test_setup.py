@@ -119,7 +119,7 @@ def _wait_task(c, key, timeout=30):
 
 
 def test_astap_herunterladen(home, tmp_path, monkeypatch):
-    """Download-Attrappe statt SourceForge: Kommandozeile (= Kopie des Python-Interpreters, beantwortet -h), Katalog, D05."""
+    """Download-Attrappe statt SourceForge: Kommandozeile (Platzhalter-Bytes, Selbstprüfung ersetzt), Katalog, D05."""
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "lad"))
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "lad"))
     monkeypatch.setattr(setup_mod.platform, "system", lambda: "Windows")
@@ -131,7 +131,9 @@ def test_astap_herunterladen(home, tmp_path, monkeypatch):
             for n, d in files.items():
                 z.writestr(n, d)
         return b.getvalue()
-    exe = Path(sys.executable).read_bytes()
+    exe = b"MZ-platzhalter"              # keine echte EXE: Virenscanner werten kopierte/umbenannte Programme als Malware
+    selftests = []
+    monkeypatch.setattr(comp, "_astap_selftest", lambda cli: selftests.append(Path(cli).name))
     served = {"astap_command-line_version_win64.zip": zbytes({"astap_cli.exe": exe}),
               "astapwin32.zip": zbytes({"astap.exe": b"x", "deep_sky.csv": b"kopf\n1,2,M_31\n", "acknowledgement of databases.txt": b"ok"}),
               "d05_star_database.zip": zbytes({"d05_0101.1476": b"sterne", "d05_0102.1476": b"sterne"})}
@@ -160,6 +162,7 @@ def test_astap_herunterladen(home, tmp_path, monkeypatch):
     cli = CLI_NAME
     assert (dest / cli).is_file() and (dest / "deep_sky.csv").is_file() and (dest / "d05_0101.1476").is_file()
     assert not list(dest.glob(".*part"))
+    assert selftests == [CLI_NAME]
     assert all("sourceforge.net/projects/astap-program/" in u for u in urls)
     # zweiter Lauf: nichts mehr laden, vorhandene Dateien bleiben
     urls.clear()
