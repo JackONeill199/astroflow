@@ -25,6 +25,7 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md` (Details in `docs/entwicklung/
 | 17 | 05.11.2026 | Gerätediagnose: Nachführung, Fokusdrift, Sensorneigung | umgesetzt in 0.43.0 (ohne Rohbilder; Kippung aus Master-Stack) |
 | 18 | 05.11.2026 | SkyTrace: Satellitenhelligkeit und Satelliten pro Stunde | umgesetzt in 0.39.0 (Statistik; mag mit Nullpunkt aus den Bilder-Stacks, Rate je Belichtungsstunde) |
 | 19 | 05.11.2026 | Interaktive Bildführung: KI zeigt und erklärt im Bild | offen |
+| 20 | 10.11.2026 | Standort & Horizont: Objektwahl nach Gelände/Häusern, automatische Standortsuche | Konzept (`docs/konzepte/standort-horizont.md`) |
 
 ## 1. Bibliothek teilen (nur ansehen) – 03.11.2026
 
@@ -190,3 +191,16 @@ Sage liefert belegtes Wissen je Objekt – verlässlich, nichts erfunden.
   liefern andere Geräte keinen Wert. Ausleserauschen der Stellina mit Bias-Aufnahmen genauer bestimmen (größte Unsicherheit
   bei dunklem Himmel). Lichtrichtung braucht die neue Hintergrundebene je Aufnahme – ältere Nächte nur, wenn Rohbilder noch da sind.
 
+## 20. Standort & Horizont – 10.11.2026
+
+Wunsch (wörtlich): „Anhand von Geländedaten und den spezifischen Teleskopdaten (erstmal vaonis und seestar modelle) entweder anhand
+des selbst ausgewählten Ortes optimale Belichtungsobjekte wählen (wie jetzt auch bloß in berücksichtung von Sichtbarkeit anhand des
+geländes und umliegenden häußern etc.) sowie die automatische Suche perfekter Standorte anhand kriterien wie erreichbarkeit und
+entfernung, in einem neuen passenden Reiter“
+
+- **A:** Horizont je Standort aus Gelände (Copernicus DEM, offline als Regionalpaket) und Nahbereich (manuell, aus eigenen Aufnahmen
+  gelernt, später OSM-Gebäude/Baumhöhen); „Heute Nacht“ zählt nur Zeiten über diesem Horizont; Geräteprofile für Stellina, Vespera
+  (I/II/Pro), Seestar S50/S30 mit Bildfeld, Montierungsgrenzen, Aufbauhöhe.
+- **B:** Standortsuche im Umkreis nach Dunkelheit (Lichtatlas, geeicht mit eigenen Messungen), Horizontfreiheit, Erreichbarkeit
+  (OSM-Wege/Parkplätze, Offline-Routing) und Fahrzeit.
+- Konzept mit Datenquellen, Lizenzen, Datenschutz-Varianten, Ausbaustufen und Entscheidungsfragen: `docs/konzepte/standort-horizont.md`.
