@@ -54,8 +54,13 @@ class AsteroidError(Exception):
 
 
 def is_retry(data: dict | None) -> bool:
-    """Gespeichertes Ergebnis = vorübergehender JPL-Fehler? Auch alte Einträge ohne `retry` (Zeitlimit-Meldung vor 0.52.x)."""
-    return bool(data) and not data.get("ok") and (bool(data.get("retry")) or str(data.get("error") or "").startswith(RETRY_PREFIX))
+    """Gespeichertes Ergebnis = vorübergehender JPL-Fehler? Neue Einträge tragen `retry` immer ausdrücklich (auch False, z. B. HTTP 4xx);
+    nur alte Einträge ohne das Feld (vor 0.52.x nur Zeitlimit/Verbindung) werden am Meldungsanfang erkannt."""
+    if not data or data.get("ok"):
+        return False
+    if "retry" in data:
+        return bool(data["retry"])
+    return str(data.get("error") or "").startswith(RETRY_PREFIX)
 
 
 def _num(v):

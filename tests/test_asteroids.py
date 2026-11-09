@@ -392,6 +392,8 @@ def test_jpl_timeout_leaves_result_open(env, monkeypatch):
     assert saved["retry"] and not saved["ok"] and asteroids.is_retry(saved)
     assert asteroids.is_retry({"v": 0, "ok": False, "error": ei_retry.args[0]})            # alter Eintrag ohne retry
     assert not asteroids.is_retry({"v": 0, "ok": False, "error": "Kein Master-Stack vorhanden"})
+    assert not asteroids.is_retry({"v": 0, "ok": False, "retry": False,                     # neu, endgültig (HTTP 4xx)
+                                   "error": "Kleinkörper-Abfrage nicht möglich: JPL-Kleinkörperdienst lehnt die Anfrage ab (HTTP 400)."})
     assert not asteroids.is_retry({"v": 1, "ok": True})
     # Sammelauftrag: kein Fehler, sondern „später erneut“
     b = dashboard.Batch(SimpleNamespace(insights=ins, stop=threading.Event()), None)
