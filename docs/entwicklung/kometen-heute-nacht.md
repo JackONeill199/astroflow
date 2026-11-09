@@ -59,6 +59,8 @@
   und gibt Abweichungen aus (Helligkeit > 0,7 mag, Größe > 40 %, Position > 3′). Vorrangregeln im Skriptkopf; Spalten `mag_src`/`size_src`.
 - Warum nicht OpenNGC allein: `V-Mag` ist bei Galaxien teils unbrauchbar (NGC 253: V 11,1 bei B 7,9), `MajAx` ist bei Haufen ein Kernmaß (M7 22′
   statt ~80′), bei Planetarischen Nebeln nur die helle Kernfigur (M57 1,27′ statt ~3,8′) – M57/M76 würden sonst am `MIN_SIZE`-Filter scheitern.
-- Von Hand (unverifiziert, `Target.fallback`): sichtbare Größe von 13 Caldwell-Haufen (C10, C75, C78, C79, C82, C85, C86, C88, C91, C97, C102, C107)
-  und C99 (Kohlensack). M102 = NGC 5866 (OpenNGC: Dublette von M101). C50/C61 stehen in der Datei, sind aber keine eigenen Ziele (stecken in C49/C60).
+- Größen der Caldwell-Haufen, -Nebel und Planetarischen Nebel aus den Wikipedia-Einzelartikeln (Infobox, Revisionen in `quellen_artikel.csv`);
+  OpenNGC-`MajAx` ist bei Haufen ein Kernmaß, bei Nebeln teils der Gesamtkomplex (C34 210′), daher gilt dort der größere bzw. der Artikelwert.
+  Von Hand (unverifiziert, `Target.fallback`) bleiben nur die Größen von C34 (westlicher Schleier, ~70′), C88 und C94 (Artikel ohne Größe).
+  C46 ist veränderlich (~9–10 mag, Wert aus dem Artikel). M102 = NGC 5866 (OpenNGC: Dublette von M101). C50/C61 stehen in der Datei, sind aber keine eigenen Ziele (stecken in C49/C60).
   Emissionsnebel (Art `e`) bekommen bewusst keine Helligkeit (integrale Helligkeit sagt über die Sichtbarkeit nichts aus).

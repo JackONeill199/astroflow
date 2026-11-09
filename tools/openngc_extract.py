@@ -37,20 +37,19 @@ OUT = Path(__file__).resolve().parent.parent / "astroflow" / "modules" / "stacki
 KOPF = f"""# Messier- und Caldwell-Katalog (Position J2000, Helligkeit, sichtbare Größe) – zusammengestellt aus zwei Quellen
 # 1) OpenNGC {OPENNGC_VERSION} (https://github.com/mattiaverga/OpenNGC, Commit {OPENNGC_COMMIT}; NGC.csv, addendum.csv), Mattia Verga und Mitwirkende, CC-BY-SA 4.0
 # 2) Wikipedia (en): „{WIKI_MESSIER[0]}“ (Revision {WIKI_MESSIER[1]}, {WIKI_MESSIER[2]}; Werte dort aus SEDS/Sky Catalogue) und „{WIKI_CALDWELL[0]}“
-#    (Revision {WIKI_CALDWELL[1]}, {WIKI_CALDWELL[2]}), Autoren siehe Versionsgeschichte, CC-BY-SA 4.0
+#    (Revision {WIKI_CALDWELL[1]}, {WIKI_CALDWELL[2]}) sowie Infobox-Größen der Einzelartikel (Revisionen: README.md), Autoren siehe Versionsgeschichte, CC-BY-SA 4.0
 # Lizenz der Daten: Creative Commons Attribution-ShareAlike 4.0 (CC-BY-SA 4.0), siehe LICENSE-OpenNGC in diesem Ordner. Weitergabe (auch veränderter
 # Fassungen) nur unter denselben Bedingungen und mit dieser Namensnennung. Änderungen: Auswahl, Zusammenführung, Umrechnung (RA in Grad, Größe in Bogenminuten).
 # Der AstroFlow-Code steht unter MIT. mag_src/size_src: W = Wikipedia, O = OpenNGC V, B = OpenNGC B-Helligkeit minus 0,85 (Galaxien), H = von Hand (unverifiziert).
-# Vorrangregeln: tools/openngc_extract.py. Erzeugt mit diesem Skript – nicht von Hand ändern.
+# C46 (Hubbles veränderlicher Nebel) ist veränderlich (~9-10 mag). Vorrangregeln: tools/openngc_extract.py. Erzeugt mit diesem Skript – nicht von Hand ändern.
 """
 SPALTEN = ["cat", "num", "openngc", "ra_deg", "dec_deg", "typ", "mag", "mag_src", "size_arcmin", "size_src"]
 
 # Von Hand (unverifiziert, nur wo keine Quelle etwas liefert; Helligkeit braucht keinen Handwert mehr, Wikipedia kennt alle außer C46/C68/C99 → OpenNGC bzw. leer)
-HAND_SIZE = {("M", 40): 1.0, ("M", 73): 3.0, ("C", 99): 400.0}          # Winnecke 4, Vierersternchen, Kohlensack
-# Sichtbare Ausdehnung der Caldwell-Haufen (bisherige Handwerte; OpenNGC-MajAx ist dort ein Kernmaß)
-HAND_SIZE_C = {1: 17, 8: 7, 10: 16, 13: 13, 14: 60, 16: 21, 25: 4.6, 28: 50, 37: 7, 41: 330, 42: 3.6, 47: 7, 54: 12, 58: 13, 64: 8, 66: 4, 71: 27,
-               73: 11, 75: 29, 76: 15, 78: 13, 79: 18, 80: 36, 81: 7, 82: 15, 84: 9, 85: 50, 86: 26, 87: 7, 88: 10, 89: 12, 91: 55, 93: 20, 94: 10,
-               95: 12, 96: 30, 97: 12, 98: 5, 102: 100, 104: 13, 105: 14, 106: 50, 107: 11, 108: 19}
+HAND_SIZE = {("M", 40): 1.0, ("M", 73): 3.0, ("C", 34): 70.0, ("C", 94): 10.0, ("C", 88): 10.0}   # C99: Wikipedia-Artikel 7° × 5°
+# Begründung: C34 NGC 6960 – OpenNGC (210′) und Wikipedia (3°) meinen den ganzen Cirrus-Komplex, ~70′ für den westlichen Schleier ist Literaturwert;
+# C94 Juwelenkästchen, C88 NGC 5823 – Wikipedia-Artikel ohne Größe, OpenNGC-MajAx ist Kernmaß.
+VARIABEL = {46}            # C46 Hubbles veränderlicher Nebel: ~9–10 mag, schwankt mit R Mon
 CLUSTER = ("OCl", "GCl", "*Ass", "Cl+N")
 GALAXIE = ("G", "GPair", "GTrpl", "GGroup")       # nicht „GCl“ (Kugelhaufen)
 TOL_MAG, TOL_SIZE, TOL_POS = 0.7, 0.4, 3.0
@@ -140,7 +139,94 @@ def wiki_caldwell(text: str) -> dict[int, float | None]:
     return out
 
 
-def auszug(rows: list[dict], wm: dict, wc: dict, log: list[str]) -> list[dict]:
+# ---- Wikipedia-Einzelartikel der Caldwell-Objekte (Infobox: size_v = „Apparent dimensions“, app_mag_v) ----
+ARTIKEL_TITEL = {9: "Cave Nebula", 14: "Double Cluster", 33: "", 34: "",  # Schleiernebel-Artikel beschreibt nur den ganzen Komplex (3°) → Größe aus OpenNGC bzw. Handwert
+                 37: "NGC 6885", 41: "Hyades (star cluster)",
+                 49: "Rosette Nebula", 80: "Omega Centauri", 92: "Carina Nebula", 94: "Jewel Box (star cluster)", 99: "Coalsack Nebula",
+                 103: "Tarantula Nebula", 106: "47 Tucanae"}
+ARTIKEL_DATEI = "Caldwell_artikel.json"
+UNIT = r"(′|'|″|\"|°|arcmin\w*|arcsec\w*|arcminute|arcsecond|degrees?|prime|pprime)"
+
+
+def artikel_titel(n: int, name: str) -> str:
+    if n in ARTIKEL_TITEL:
+        return ARTIKEL_TITEL[n]
+    m = re.match(r"^(NGC|IC)0*(\d+)$", name)
+    return f"{m.group(1)} {m.group(2)}" if m else name
+
+
+def artikel_holen(zeilen: list[dict], ordner: Path) -> None:
+    """Lädt die Wikipedia-Artikel der Caldwell-Objekte (nur beim Entwickeln) und legt Revision, size_v und app_mag_v als JSON ab."""
+    import json
+    import urllib.parse
+    import urllib.request
+    titel = {z["num"]: artikel_titel(z["num"], z["openngc"]) for z in zeilen if z["cat"] == "C"}
+    titel = {n: t for n, t in titel.items() if t}
+    items = sorted(titel.items())
+    out = {}
+    for i in range(0, len(items), 25):
+        chunk = items[i:i + 25]
+        q = urllib.parse.urlencode({"action": "query", "redirects": 1, "prop": "revisions", "titles": "|".join(t for _, t in chunk),
+                                    "rvprop": "ids|content", "rvslots": "main", "format": "json", "formatversion": 2})
+        req = urllib.request.Request("https://en.wikipedia.org/w/api.php?" + q, headers={"User-Agent": "AstroFlow-dev/1.0 (Katalogdaten)"})
+        d = json.load(urllib.request.urlopen(req, timeout=60))
+        redir = {x["from"]: x["to"] for x in d["query"].get("redirects", [])}
+        norm = {x["from"]: x["to"] for x in d["query"].get("normalized", [])}
+        pages = {p["title"]: p for p in d["query"]["pages"]}
+        for n, t in chunk:
+            tt = redir.get(norm.get(t, t), norm.get(t, t))
+            p = pages.get(tt)
+            if not p or "revisions" not in p:
+                out[n] = {"title": t, "revid": None, "size_v": "", "app_mag_v": ""}
+                continue
+            c = p["revisions"][0]["slots"]["main"]["content"]
+
+            def feld(k: str) -> str:
+                return next((re.sub(r"\s+", " ", l.split("=", 1)[1].strip()) for l in c.split("\n") if re.match(rf"\s*\|\s*{k}\s*=", l)), "")
+            out[n] = {"title": tt, "revid": p["revisions"][0]["revid"], "size_v": feld("size_v"), "app_mag_v": feld("app_mag_v") or feld("appmag_v")}
+    (ordner / ARTIKEL_DATEI).write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"{len(out)} Artikel → {ordner / ARTIKEL_DATEI}")
+
+
+def artikel_groesse(s: str) -> float | None:
+    """Infobox-Feld size_v → größte Achse in Bogenminuten (Vorlagen {{prime}}, {{Val|…}}, „36′.3“, „1.3 °“, „arcmin“ usw.)."""
+    s = s.split("<ref")[0].split("<br")[0]                              # Quellenangaben (teils auf mehreren Zeilen) abschneiden
+    s = re.sub(r"\{\{(?:sfn|r)\|[^}]*\}\}", "", s)
+    s = re.sub(r"\[\[[^\]|]*\|([^\]]*)\]\]", r"\1", s)
+    s = re.sub(r"\[\[|\]\]", "", s)
+    s = re.sub(r"\{\{[Pp]rime\}\}", "′", s)
+    s = re.sub(r"\{\{[Pp]prime\}\}", "″", s)
+
+    def val(m: re.Match) -> str:
+        teile = m.group(1).split("|")
+        einheit = next((t.split("=", 1)[1] for t in teile if t.startswith(("u=", "ul="))), "")
+        e = "″" if "sec" in einheit else "°" if "deg" in einheit else "′"
+        return " × ".join(f"{t}{e}" for t in teile if re.match(r"^[\d.]+$", t))
+    s = re.sub(r"\{\{[Vv]al\|([^}]*)\}\}", val, s)
+    s = re.sub(r"\{\{nowrap\|([^}]*)\}\}", r"\1", s)
+    s = re.sub(r"(\d+)′\.(\d+)", r"\1.\2′", s)                        # „36′.3“ = 36,3′
+    werte = []
+    for m in re.finditer(rf"([\d.]+)\s*{UNIT}?", s):
+        zahl, einheit = m.group(1), m.group(2)
+        if not einheit:
+            rest = re.search(UNIT, s[m.end():])                        # „120 × 100 arcmin“: Einheit steht hinter der Zahlenfolge
+            einheit = rest.group(1) if rest else ""
+        try:
+            z = float(zahl.strip("."))
+        except ValueError:
+            continue
+        if einheit.startswith(("″", '"', "arcsec", "pprime")):
+            z /= 60
+        elif einheit.startswith(("°", "deg")):
+            z *= 60
+        elif not einheit:
+            continue
+        werte.append(z)
+    return max(werte) if werte else None
+
+
+def auszug(rows: list[dict], wm: dict, wc: dict, log: list[str], artikel: dict | None = None) -> list[dict]:
+    artikel = artikel or {}
     treffer = []                                                      # (cat, num, OpenNGC-Zeile)
     seen = set()
     for r in rows:
@@ -161,11 +247,15 @@ def auszug(rows: list[dict], wm: dict, wc: dict, log: list[str]) -> list[dict]:
         ra, dec = _hms(r["RA"], True), _hms(r["Dec"], False)
         typ = r["Type"]
         w = wm.get(n, {}) if cat == "M" else {"mag": wc.get(n)}
+        art = artikel.get(n, {}) if cat == "C" else {}
         om, oq = ongc_mag(r)
         if w.get("mag") is not None:                                  # Helligkeit
             mag, msrc = w["mag"], "W"
             if om is not None and abs(om - mag) > TOL_MAG:
                 log.append(f"  {lab}: Helligkeit Wikipedia {mag} ↔ OpenNGC {om} ({oq}) → Wikipedia" + ("  [UNSICHER: > 2 mag]" if abs(om - mag) > 2 else ""))
+        elif cat == "C" and n in VARIABEL and (am := re.match(r"^[~+]?([\d.]+)", art.get("app_mag_v", ""))):
+            mag, msrc = float(am.group(1)), "W"
+            log.append(f"  {lab}: veränderlich – Helligkeit aus Wikipedia-Artikel {mag:g} (OpenNGC {om})")
         elif om is not None:
             mag, msrc = om, oq
             log.append(f"  {lab}: Helligkeit nur OpenNGC {om} ({oq})")
@@ -186,17 +276,26 @@ def auszug(rows: list[dict], wm: dict, wc: dict, log: list[str]) -> list[dict]:
                 if dd > TOL_POS:
                     log.append(f"  {lab}: Position OpenNGC ↔ Wikipedia Δ{dd:.1f}′ → OpenNGC")
         else:
+            asz = artikel_groesse(art.get("size_v", "")) if art.get("size_v") else None
             size, ssrc = (osz, "O") if osz is not None else (None, "")
-            h = HAND_SIZE_C.get(n)
-            if typ in CLUSTER and h is not None and (osz is None or abs(osz - h) / h > TOL_SIZE):
-                size, ssrc = float(h), "H"
+            if typ in GALAXIE:
+                pass                                                  # D25 aus OpenNGC
+            elif typ in CLUSTER or typ == "PN":                       # OpenNGC-MajAx ist Kernmaß → größerer Wert, Artikel bevorzugt
+                if asz is not None and (osz is None or asz >= osz):
+                    size, ssrc = asz, "W"
+            elif asz is not None and (cat, n) not in HAND_SIZE:      # Nebel/SNR/Reflexion/Dunkelwolke: Artikel vor OpenNGC
+                size, ssrc = asz, "W"
+            if asz is not None and osz is not None and abs(asz - osz) / max(asz, osz) > TOL_SIZE:
+                log.append(f"  {lab}: Größe OpenNGC {osz:g}′ ↔ Wikipedia-Artikel {asz:g}′ → {ssrc} {size:g}′")
+            if (cat, n) in HAND_SIZE and (asz is None or n in (34,)):
+                size, ssrc = HAND_SIZE[(cat, n)], "H"
         if size is None and (cat, n) in HAND_SIZE:
             size, ssrc = HAND_SIZE[(cat, n)], "H"
         if size is None:
             log.append(f"  {lab}: keine Größe")
         out.append({"cat": cat, "num": n, "openngc": r["Name"], "ra_deg": f"{ra:.4f}", "dec_deg": f"{dec:.4f}", "typ": typ,
                     "mag": "" if mag is None else f"{mag:g}", "mag_src": msrc,
-                    "size_arcmin": "" if size is None else f"{size:g}", "size_src": ssrc})
+                    "size_arcmin": "" if size is None else f"{round(size, 2):g}", "size_src": ssrc})
     return out
 
 
@@ -244,8 +343,17 @@ def main(argv: list[str]) -> int:
     wm = wiki_messier((ordner / "Messier_object.wiki").read_text(encoding="utf-8"))
     wc = wiki_caldwell((ordner / "Caldwell_catalogue.wiki").read_text(encoding="utf-8"))
     log: list[str] = []
-    zeilen = auszug(lesen(ordner), wm, wc, log)
+    rows = lesen(ordner)
+    if "--artikel-holen" in argv:
+        artikel_holen(auszug(rows, wm, wc, []), ordner)
+    import json
+    artikel = {int(k): v for k, v in json.loads((ordner / ARTIKEL_DATEI).read_text(encoding="utf-8")).items()}
+    zeilen = auszug(rows, wm, wc, log, artikel)
     schreiben(zeilen)
+    with open(OUT.parent / "quellen_artikel.csv", "w", encoding="utf-8", newline="") as fh:       # Revisionen der benutzten Einzelartikel
+        w = csv.writer(fh, lineterminator="\n")
+        w.writerow(["caldwell", "wikipedia_artikel_en", "revision"])
+        w.writerows([n, a["title"], a["revid"]] for n, a in sorted(artikel.items()) if a.get("revid"))
     m = sum(z["cat"] == "M" for z in zeilen)
     print(f"{len(zeilen)} Zeilen ({m} Messier, {len(zeilen) - m} Caldwell) → {OUT}")
     print(f"Wikipedia: {len(wm)} Messier, {len(wc)} Caldwell gelesen")

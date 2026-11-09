@@ -386,10 +386,12 @@ def test_katalogdaten_vollstaendig_und_plausibel():
     assert data[("M", 31)]["mag"] < 4.5 and data[("C", 65)]["mag"] < 8.5 and data[("C", 83)]["mag"] < 10
     assert data[("M", 7)]["size"] >= 60 and data[("M", 41)]["size"] >= 30 and data[("M", 45)]["size"] >= 100
     assert data[("M", 57)]["size"] >= 3 and data[("M", 76)]["size"] >= 2
+    assert data[("C", 34)]["size"] < 100 and data[("C", 80)]["size"] >= 30 and data[("C", 103)]["size"] >= 30 and data[("C", 13)]["size"] >= 13   # Haufen/Nebel: sichtbare Ausdehnung
+    assert 8 < data[("C", 46)]["mag"] < 10.5                              # veränderlich, nicht der OpenNGC-Wert 11,85
     assert data[("C", 37)]["mag"] < 8                                      # nicht der OpenNGC-Wert 14,1 (falsche Messung)
     for prefix, rows in (("M", deepsky.MESSIER), ("C", deepsky.CALDWELL)):
         assert all((prefix, n) in data for n, *_ in rows)
     t = {x.id: x for x in deepsky.fixed()}
-    assert t["C82"].fallback and not t["M31"].fallback                     # C82: Größe von Hand (Kernmaß in OpenNGC)
+    assert t["C34"].fallback and not t["M31"].fallback                     # C34: Größe von Hand (Quellen meinen den ganzen Komplex)
     assert t["M8"].mag is None                                             # Emissionsnebel: Helligkeit bewusst unbekannt
     assert "M57" in {x.id for x in deepsky.catalog() if deepsky.usable(x, STELLINA, [1, .7])}    # bleibt in den „Heute Nacht“-Kandidaten
