@@ -55,7 +55,10 @@ astroflow/static/          Shell: index.html, app.js (Router, Navigation, Übers
   gekoppelte Geräte gewollt – `/api/folders[/search]` (Ordnerdialog) und `/api/skytrace/observations`; ebenso eine Analyse/Reanalyse aus
   einem gewählten Ordner starten. Dateien *ausliefern* nur unterhalb fester Wurzeln (`skytrace.within`, Ergebnis-/Ausgabeordner aus der DB).
   Programm- und Datenordnerpfade nur mit `require_local`. Keine neuen Endpunkte, die beliebige Pfade prüfen/lesen, ohne einen dieser Wege
-  (`/api/setup/folder` und `/api/skytrace/folders` waren ungenutzt und sind entfernt). Die verbleibenden Meldungen sind Fehlalarme (Begründung im PR).
+  (`/api/setup/folder` und `/api/skytrace/folders` waren ungenutzt und sind entfernt). **Entscheidung des Nutzers 09.11.2026:** gekoppelte
+  Geräte dürfen weiter Ordner auflisten und Analysen aus jedem Ordner starten – bewusst ohne `require_local`; die CodeQL-Meldungen
+  `py/path-injection` an diesen Stellen (`core/folders.py`, `/api/skytrace/observations`, `skytrace/reanalysis.py`) gelten deshalb als
+  Fehlalarm, ebenso die hinter `require_local` bzw. `within` (Begründung je Meldung in PR #17).
   (7) **Keine Ausnahmetexte an den Browser** (`py/stack-trace-exposure`): Antworten nennen feste deutsche Meldungen, Details per
   `traceback.print_exc()` ins Protokoll (Beispiele `picture_import.user_message`, `stacking/api.ki_error`). Regex auf Nutzer-/KI-Text
   ohne mehrdeutige Wiederholungen bzw. mit begrenzter Länge (`sage/store.plain`, `sage/kb.norm`); im Frontend alles über `esc()`.
