@@ -367,13 +367,13 @@ async function analysisView(el) {
   function drawTimes(d) {
     paint('adDepthT', d.depth_series, () => `<div class="panel-h"><div><h2>Grenzgröße über die Zeit</h2><p class="mut sm">Schwächste sicher erkannte Sterne (5σ) je Bild, nach Aufnahmenacht. Oben = tiefer.</p></div></div>
       ${scatter(d.depth_series, { key: 'm5', fmt: v => de(v, 1), unit: ' mag', href: p => `#/p/${p.id}/analyse`, label: p => `${p.name} · ${fday(p.night)} · ${de(p.hours, 1)} h` })}`);
-    paint('adSkyT', d.sky_series, () => `<div class="panel-h"><div><h2>Himmel über die Zeit</h2><p class="mut sm">Himmelshelligkeit je Nacht in mag/″² (Median der Objekte) – höher = dunkler.</p></div><a class="linkbtn sm" href="#/himmel">Standorte</a></div>
+    paint('adSkyT', d.sky_series, () => `<div class="panel-h"><div><h2>Himmel über die Zeit</h2><p class="mut sm" title="Himmelshelligkeit in mag/″², Median der Objekte je Nacht">Himmelshelligkeit je Nacht – oben = dunkler.</p></div><a class="linkbtn sm" href="#/himmel">Standorte</a></div>
       <ul class="ad-ptleg sm">
-        <li><svg viewBox="0 0 12 12" aria-hidden="true"><circle class="ad-pt" cx="6" cy="6" r="4.5"/></svg><span><b>Gefüllt:</b> ungestörte Messung – dunkel, kein Mond, Objekt über 30°. Die Linie verbindet sie.</span></li>
-        <li><svg viewBox="0 0 12 12" aria-hidden="true"><circle class="ad-pt off" cx="6" cy="6" r="3.5"/></svg><span><b>Hohl:</b> nur gestörte Aufnahmen – Mond, Dämmerung, Dunst oder tief am Himmel.</span></li>
+        <li title="Dunkel, kein Mond, Objekt über 30° – die Linie verbindet diese Nächte"><svg viewBox="0 0 12 12" aria-hidden="true"><circle class="ad-pt" cx="6" cy="6" r="4.5"/></svg>ungestört</li>
+        <li title="Nur Aufnahmen mit Mond, Dämmerung, Dunst oder tief am Himmel"><svg viewBox="0 0 12 12" aria-hidden="true"><circle class="ad-pt off" cx="6" cy="6" r="3.5"/></svg>gestört (Mond, Dunst, tief)</li>
       </ul>
       ${scatter(d.sky_series, { key: 'sqm', hollow: 'sqm_all', fmt: v => de(v, 1), unit: ' mag/″²', line: true, deco: 'sky', href: p => `#/p/${p.objects[0].id}/analyse`, label: p => `${fday(p.night)} · ${p.objects.map(o => o.name).join(', ')}` })}
-      ${d.sky_series.some(n => n.seeing != null) ? `<small class="mut ad-sub">Sterngröße im Bild (FWHM in ″) – kleiner = schärfer</small>${scatter(d.sky_series, { key: 'seeing', inv: false, fmt: v => de(v, 1), unit: '″', deco: 'seeing', cls: 'ad-chart-s', href: p => `#/p/${p.objects[0].id}/analyse`, label: p => fday(p.night), h: 105 })}` : ''}`);
+      ${d.sky_series.some(n => n.seeing != null) ? `<small class="mut ad-sub">Sternschärfe (FWHM) – unten = schärfer</small>${scatter(d.sky_series, { key: 'seeing', inv: false, fmt: v => de(v, 1), unit: '″', deco: 'seeing', cls: 'ad-chart-s', href: p => `#/p/${p.objects[0].id}/analyse`, label: p => fday(p.night), h: 105 })}` : ''}`);
   }
 
   function drawRank(d) {

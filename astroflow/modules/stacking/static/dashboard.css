@@ -135,10 +135,9 @@ a.ad-kpi[href]:active { transform: scale(.985) }
 .an-sec.in .ad-pt { animation: adPop 420ms var(--spring) both; animation-delay: calc(min(var(--i), 40) * 18ms + 150ms) }
 @keyframes adPop { from { transform: scale(0); opacity: 0 } }
 /* Legende mit echten Diagrammpunkten (Himmel über die Zeit) */
-.ad-ptleg { list-style: none; margin: 0 0 0.375rem; padding: 0; display: grid; gap: 0.1875rem; color: var(--mut); line-height: 1.35 }
-.ad-ptleg li { display: flex; gap: 0.4375rem; align-items: flex-start }
-.ad-ptleg svg { width: 0.75rem; height: 0.75rem; margin-top: 0.125rem; overflow: visible }
-.ad-ptleg b { color: var(--fg); font-weight: 600 }
+.ad-ptleg { list-style: none; margin: 0 0 0.375rem; padding: 0; display: flex; flex-wrap: wrap; gap: 0.125rem 0.875rem; color: var(--mut) }
+.ad-ptleg li { display: flex; gap: 0.375rem; align-items: center; cursor: help }
+.ad-ptleg svg { width: 0.75rem; height: 0.75rem; overflow: visible }
 .an-sec.in .ad-ptleg .ad-pt { animation: none }
 /* Stilisierter Hintergrund (scatter-Option deco): dezent, Punkte und Achsen bleiben vorn */
 .ad-deco { pointer-events: none }
