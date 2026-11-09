@@ -78,10 +78,24 @@ def write_story(cfg: dict, data: dict, timeout: float = 300) -> str:
             msg = r.text
         raise ServiceError(f"Erzähl-KI meldet HTTP {r.status_code}: {str(msg)[:300]}")
     text = r.json()["choices"][0]["message"].get("content") or ""
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.S).strip()     # Denkmodelle (Qwen3 u. a.)
+    text = strip_think(text)                                                 # Denkmodelle (Qwen3 u. a.)
     if not text:
         raise ServiceError("Die Erzähl-KI hat keinen Text geliefert.")
     return text
+
+
+def strip_think(text: str) -> str:
+    """<think>…</think>-Blöcke entfernen – per str.find (linear; die Regex lief bei vielen offenen <think> quadratisch).
+    Ein nicht geschlossener Block bleibt stehen."""
+    out, i = [], 0
+    while True:
+        a = text.find("<think>", i)
+        b = text.find("</think>", a + 7) if a >= 0 else -1
+        if b < 0:
+            out.append(text[i:])
+            return "".join(out).strip()
+        out.append(text[i:a])
+        i = b + 8
 
 
 def story_base(cfg: dict) -> str:

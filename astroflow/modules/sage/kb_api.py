@@ -513,14 +513,15 @@ def extend(r, mod, url):
                            "entity_names": {i: names.get(i, i) for i in x["entities"]}} for x in rows],
                 "report": kb.meta("proactive_report"), "last": kb.meta("proactive_last"),
                 "tasks": [{"id": k, "title": v[0], "description": v[1], "enabled": enabled(cfg, k)} for k, v in TASKS.items()],
-                "running": any(t["kind"] == "Hintergrundrecherche" and t["state"] == "running" for t in mod.tasks.values()),
+                "running": mod.proactive_running(),
                 "proactive": cfg.get("proactive", True), "hours": cfg.get("proactive_hours"), "observer_lat": cfg.get("observer_lat")}
 
     @r.post("/kb/insights/run")
     def run_insights(body: dict = Body(default={})):
-        if any(t["kind"] == "Hintergrundrecherche" and t["state"] == "running" for t in mod.tasks.values()):
+        t = mod.run_proactive(body.get("only"))
+        if t is None:
             raise HTTPException(409, "Die Suche läuft bereits.")
-        return task_view(mod.run_proactive(body.get("only")))
+        return task_view(t)
 
     @r.patch("/kb/insights/{iid}")
     def patch_insight(iid: int, body: dict = Body(...)):
