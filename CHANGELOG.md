@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.53.0 – 09.11.2026
+
+### Neu
+- Analyse-Dashboard: Die Bildqualität ist jetzt eine echte Note aus Tiefe, Rauschen, Schärfe und Sternform – mit Erklärung je Bild, woraus sie sich zusammensetzt. Die bisherige Bewertung heißt ehrlich „Bearbeitung ohne Restfehler“ (sie stand fast immer bei 10/10, weil die Bearbeitung so lange nachregelt, bis keine Fehler übrig sind).
+
 ## 0.52.1 – 09.11.2026
 
 ### Behoben
