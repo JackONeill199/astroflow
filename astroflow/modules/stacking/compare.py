@@ -899,11 +899,17 @@ def _simbad_near(ra: float, dec: float, radius_as: float, cache_dir: Path) -> li
     return out
 
 
-JPL_FAIL_PAUSE = 1800.0            # s: nach einem Zeitüberschreitungs-/Verbindungsfehler nicht sofort erneut fragen
+JPL_FAIL_PAUSE = 900.0             # s: nach einem Zeitüberschreitungs-/Verbindungsfehler nicht sofort erneut fragen
+JPL_TIMEOUT = 120.0                # s je SB-Ident-Abfrage (09.11.2026: erster Durchgang 19–40 s, an schlechten Tagen deutlich mehr)
 
 
 class SmallBodyError(RuntimeError):
-    """JPL SB-Ident nicht erreichbar oder zu langsam – mit ehrlicher Meldung für die Oberfläche."""
+    """JPL SB-Ident nicht erreichbar oder zu langsam – mit ehrlicher Meldung für die Oberfläche.
+    `retry`: vorübergehend (Zeitlimit, Verbindung, HTTP 5xx) – kein endgültiger Fehler, später erneut versuchen."""
+
+    def __init__(self, msg: str, retry: bool = True):
+        super().__init__(msg)
+        self.retry = retry
 
 
 def jpl_message(e: Exception) -> str:
@@ -913,10 +919,12 @@ def jpl_message(e: Exception) -> str:
     t = str(e)
     if "timed out" in t or "Timeout" in type(e).__name__:
         return "JPL-Kleinkörperdienst antwortet sehr langsam – Zeitlimit überschritten."
+    if "HTTPStatusError" in type(e).__name__:
+        return "JPL-Kleinkörperdienst ist gerade überlastet oder in Wartung."
     return f"JPL-Kleinkörperdienst nicht erreichbar ({t[:80]})."
 
 
-def small_bodies(when: str, ra: float, dec: float, hw_ra: float, hw_dec: float, cache_dir: Path, timeout: float = 60) -> list[dict]:
+def small_bodies(when: str, ra: float, dec: float, hw_ra: float, hw_dec: float, cache_dir: Path, timeout: float = JPL_TIMEOUT) -> list[dict]:
     """Bekannte Kleinplaneten/Kometen im Feld zur Zeit `when` (UTC) – JPL SB-Ident, **geozentrisch** (MPC-Code 500,
     der Standort verlässt den Rechner nie). Positionen sind daher bis ~10″ ungenau (Parallaxe naher Objekte).
 
@@ -956,7 +964,9 @@ def small_bodies(when: str, ra: float, dec: float, hw_ra: float, hw_dec: float, 
             r = httpx.get(JPL_SBIDENT, params={**params, **passes[kind], "sb-kind": kind}, timeout=timeout)
             r.raise_for_status()
             j = r.json()
-        except (httpx.TimeoutException, httpx.TransportError) as e:
+        except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as e:
+            if isinstance(e, httpx.HTTPStatusError) and e.response.status_code < 500:
+                raise SmallBodyError(f"JPL-Kleinkörperdienst lehnt die Anfrage ab (HTTP {e.response.status_code}).", retry=False) from e
             msg = jpl_message(e)
             cache_dir.mkdir(parents=True, exist_ok=True)
             fail.write_text(json.dumps({"t": time.time(), "msg": msg}), encoding="utf-8")
@@ -1025,7 +1035,7 @@ def _catalog_check(cands, wcs, shape, t_cur: list, t_ref: list, cache_dir: Path,
                 notes.append("Kleinplaneten-Abgleich nach Zeitlimit abgebrochen – nicht alle Nächte geprüft.")
                 break
             try:
-                bodies = small_bodies(when, ra0, dec0, hw_ra, hw_dec, cache_dir, timeout=min(60.0, left))
+                bodies = small_bodies(when, ra0, dec0, hw_ra, hw_dec, cache_dir, timeout=min(JPL_TIMEOUT, left))
             except Exception as e:
                 notes.append("Kleinplaneten-Abgleich nicht möglich: " + jpl_message(e))
                 break

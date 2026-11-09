@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.52.1 – 09.11.2026
+
+### Behoben
+- Asteroiden-Abgleich: Antwortet der JPL-Kleinkörperdienst zu langsam, gilt das nicht mehr als Fehler, sondern als „später erneut versuchen“; die Abfrage ist schlanker und wird beim nächsten Analyse-Lauf automatisch wiederholt. Bisherige Zeitlimit-Fehler werden dabei nachgeholt.
+
 ## 0.52.0 – 09.11.2026
 
 ### Geändert

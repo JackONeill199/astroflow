@@ -160,7 +160,7 @@ async function analysisView(el) {
     if (host.hidden) return;
     if (busy || ended) {
       const pk = Object.entries(j.per_kind || {});
-      const s = JSON.stringify([j.state, j.done, j.item, j.errors?.length, j.detail]);
+      const s = JSON.stringify([j.state, j.done, j.item, j.errors?.length, j.deferred, j.detail]);
       if (!force && host.dataset.sig === s) return;
       host.dataset.sig = s;
       const fin = !busy;
@@ -173,6 +173,7 @@ async function analysisView(el) {
         <div class="ad-kinds">${pk.map(([k, v]) => `<div><small>${esc(KL[k])}</small><div class="progress"><i style="width:${(v.done / Math.max(1, v.total) * 100).toFixed(0)}%"></i></div><small class="tnum mut">${v.done}/${v.total}</small></div>`).join('')}</div>
         ${Object.keys(j.skipped || {}).length ? `<p class="mut sm">Übersprungen (Voraussetzung fehlt): ${Object.entries(j.skipped).map(([c, n]) => `${n}× ${esc(BLOCK_TEXT[c] || c)}`).join(', ')}</p>` : ''}
         ${j.errors?.length ? `<details class="ad-errs"><summary class="sm">${j.errors.length} Auswertungen ohne Ergebnis</summary><ul class="sm">${j.errors.slice(0, 30).map(e => `<li><a href="#/p/${e.id}/analyse">${esc(e.name)}</a> · ${esc(e.label)}: <span class="mut">${esc(e.error)}</span></li>`).join('')}</ul></details>` : ''}
+        ${j.deferred ? `<p class="mut sm">${nf.format(j.deferred)}× Asteroiden noch offen: JPL antwortete zu langsam – der nächste Lauf versucht es erneut.</p>` : ''}
         <p class="dim sm">Online-Abfragen (Gaia, SIMBAD, DSS, JPL) laufen nacheinander mit kurzer Pause – nur Himmelskoordinaten verlassen den Rechner.</p>`;
       $('[data-pause]', host)?.addEventListener('click', async () => { await send('/stacking/analysis/pause', { paused: j.state !== 'paused' }).catch(e => toast(e.message, 'err')); refresh(); });
       $('[data-stop]', host)?.addEventListener('click', async () => { await send('/stacking/analysis/stop').catch(e => toast(e.message, 'err')); refresh(); });

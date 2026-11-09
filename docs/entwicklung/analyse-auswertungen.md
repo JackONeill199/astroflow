@@ -43,7 +43,12 @@ Kleinkörper-Abgleich im Vergleich). Endpunkte `GET|POST /results/{id}/asteroids
 - **Vorhersage:** Master-Stack (`pl._master`) + `wcs.json` (Schlüssel muss zur Stackgröße passen), je Nacht (≤ `MAX_NIGHTS` 3, die mit den
   meisten Aufnahmen) eine JPL-SB-Ident-Abfrage zur mittleren Aufnahmezeit über `compare.small_bodies` (geozentrisch, MPC 500, Cache
   `work/vergleich/jpl_*` – Schlüssel `sb3|…`, mit `rate_ra`/`rate_dec` („/h, RA-Rate = dRA·cos δ), `kind` a/c und `genau`).
-  `predict` rechnet Lage + Bewegung (px/s) im Stack-Raster; fehlt die Rate, zweite Abfrage eine Stunde später. Zeitbudget `JPL_BUDGET` 180 s.
+  `predict` rechnet Lage + Bewegung (px/s) im Stack-Raster; fehlt die Rate, zweite Abfrage eine Stunde später. Zeitbudget `JPL_BUDGET` 300 s, je Abfrage `compare.JPL_TIMEOUT` 120 s.
+  **JPL zu langsam = offen, kein Fehler (seit 09.11.2026):** vorübergehende Fehler (`SmallBodyError.retry`) werden zu
+  `AsteroidError(retry=True)`; `insights.worker` speichert `{"ok": false, "retry": true, "error": …}` und setzt den Zustand `retry`.
+  `asteroids.is_retry` (auch alte Einträge, deren Meldung mit `RETRY_PREFIX` beginnt – so standen 86 Ergebnisse auf „Fehler“) →
+  Dashboard-Status `none` („offen“), `Batch.plan("missing")` nimmt sie beim nächsten Lauf wieder mit, `Batch` zählt sie als
+  `deferred` („später erneut“) statt als Fehler; `GET …/asteroids` liefert `state: none, retry: true, message`.
   **Nachschärfen (seit 0.43.2):** Asteroiden kommen nur genähert (erster Durchgang, s. „Vergleich“ in `analyse-tiefe-vergleich.md`). Die Nachweis-Kandidaten (`todo`) rechnet
   `refine_all` einzeln über `comet.horizons(…, command=horizons_command(name))` nach (geozentrisch 500@399, Cache `work/komet/`), Budget
   `HZ_BUDGET` 90 s, je Abfrage `HZ_TIMEOUT` 20 s. **Namen:** SB-Ident schreibt vorläufige Bezeichnungen ohne Nummer in Klammern („(1927 LA)“ →

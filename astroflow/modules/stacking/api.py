@@ -938,9 +938,14 @@ def build_router(eng: Engine) -> APIRouter:
         solved = (eng.s.work_dir / f"p{x['project_id']}" / "wcs.json").exists()
         if st and st["state"] in ("queued", "running", "error"):
             return {"state": st["state"], "message": st["message"], "solved": solved}
+        if st and st["state"] == "retry" and not data:   # Speichern fehlgeschlagen: trotzdem als offen melden
+            return {"state": "none", "retry": True, "message": st["message"], "solved": solved}
         if data and data.get("ok") and data.get("v") == version:
             return {"state": "done", "solved": solved, **data}
         if data and not data.get("ok"):
+            from .asteroids import is_retry
+            if key == "asteroids" and is_retry(data):     # JPL vorübergehend zu langsam: offen, nächster Lauf versucht es erneut
+                return {"state": "none", "retry": True, "message": data.get("error"), "solved": solved}
             return {"state": "error", "message": data.get("error"), "solved": solved}
         return {"state": "old" if data else "none", "solved": solved}
 
