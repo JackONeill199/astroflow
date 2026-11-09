@@ -6,8 +6,12 @@ Folgende mitgelieferte Drittkomponenten stehen unter eigenen Lizenzen:
 
 - SkyTrace-Erkennungsmodell
   astroflow/modules/skytrace/models/night-detector/
-  Herkunft: OpenSkyCam (https://github.com/Deibler/openskycam)
-  Lizenz: AGPL-3.0 (siehe LICENSE im selben Ordner)
+  Herkunft: OpenSkyCam (https://github.com/Deibler/openskycam/tree/main/models/night-detector),
+  Version yolo26s-1920-2026-10-25 (Datei night-yolo26s-1920.pt, unverändert übernommen;
+  Modellkarte, Metadaten und Prüfsumme liegen im selben Ordner)
+  Lizenz: AGPL-3.0 (siehe LICENSE im selben Ordner). Das Modell stammt von Ultralytics YOLO26
+  ab (AGPL-3.0). Es wird als Datei von der SkyTrace-Engine geladen, die in einem eigenen
+  Prozess läuft; der übrige AstroFlow-Code bleibt unter der MIT-Lizenz.
 
 - three.js
   astroflow/static/vendor/three.module.min.js, OrbitControls.js
@@ -16,6 +20,10 @@ Folgende mitgelieferte Drittkomponenten stehen unter eigenen Lizenzen:
 - Leaflet
   astroflow/static/vendor/leaflet.js, leaflet.css
   Lizenz: BSD-2-Clause (siehe astroflow/static/vendor/LICENSE-leaflet.txt)
+
+- Weltumrisse (Natural Earth, „Admin 0 – Countries“ 1:10 Mio.)
+  astroflow/modules/skytrace/static/vendor/umrisse-welt.json
+  gemeinfrei (https://www.naturalearthdata.com), vereinfacht; siehe README.md im selben Ordner
 
 - Erdtextur (NASA Blue Marble)
   astroflow/modules/skytrace/static/vendor/earth-2048.jpg
@@ -27,7 +35,25 @@ Folgende mitgelieferte Drittkomponenten stehen unter eigenen Lizenzen:
   Herkunft: https://github.com/mattiaverga/OpenNGC (Mattia Verga und Mitwirkende); https://en.wikipedia.org (Autoren laut Versionsgeschichte)
   Lizenz: beide CC-BY-SA 4.0 (siehe astroflow/modules/stacking/katalogdaten/LICENSE-OpenNGC); Weitergabe nur unter gleichen Bedingungen.
 
+- pystray (Symbol im Infobereich unter Windows)
+  Lizenz: LGPL-3.0. Wird im Windows-Paket als Python-Paket (Quelltext in
+  python\Lib\site-packages) mitgeliefert und von AstroFlow nur importiert; es lässt sich durch
+  eine eigene Fassung ersetzen. Quelle: https://github.com/moses-palmer/pystray
+
+- Python und weitere Pakete im Windows-Paket (numpy, scipy, astropy, FastAPI …)
+  Jeweils eigene Lizenzen; die gesammelten Texte stehen im Paket in THIRD-PARTY-LICENSES.txt.
+
+- Kartenkacheln und Ortssuche (zur Laufzeit geladen, nicht mitgeliefert)
+  © OpenStreetMap-Mitwirkende (ODbL, https://www.openstreetmap.org/copyright),
+  OpenTopoMap (CC-BY-SA, https://opentopomap.org), Ortssuche über Photon (komoot).
+  Die Kartenansicht in SkyTrace zeigt die Quellenangabe an. Die Kachelserver erlauben nur
+  leichte Nutzung (https://operations.osmfoundation.org/policies/tiles/).
+
 Optionale Programme wie ASTAP, GraXpert (GPL-3.0), StarNet und die
-SkyTrace-Engine (u. a. ultralytics, AGPL-3.0) werden nicht mitgeliefert,
+SkyTrace-Engine (u. a. ultralytics, AGPL-3.0; PyTorch BSD-3-Clause, OpenCV Apache-2.0) werden nicht mitgeliefert,
 sondern erst auf Wunsch aus ihren Originalquellen installiert und
 behalten ihre eigenen Lizenzen.
+
+Hinweis zu SkyTrace: Die Erkennung von Lichtspuren (Modell und ultralytics) steht unter
+AGPL-3.0. Der Quellcode der Engine liegt offen in diesem Repository
+(astroflow/modules/skytrace/engine/). AstroFlow selbst bleibt unter der MIT-Lizenz.
