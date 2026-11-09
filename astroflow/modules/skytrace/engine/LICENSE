@@ -1,14 +1,24 @@
 Dieser Ordner (astroflow/modules/skytrace/engine/, die SkyTrace-Engine) steht unter der
-GNU Affero General Public License v3.0 (Volltext unten), weil die Engine das AGPL-3.0-Paket
-ultralytics nutzt (wie das Detektormodell unter astroflow/modules/skytrace/models/night-detector/).
+GNU Affero General Public License, Version 3 oder (nach deiner Wahl) jeder späteren Version
+(AGPL-3.0-or-later, Volltext unten), weil die Engine das AGPL-3.0-Paket ultralytics nutzt
+(wie das Detektormodell unter astroflow/modules/skytrace/models/night-detector/).
 Der übrige AstroFlow-Code steht unter der PolyForm Noncommercial License 1.0.0 (LICENSE im
 Hauptordner); Überblick in NOTICE.
 
+Doppellizenz: Die Hilfsdateien, die auch der AstroFlow-Server selbst lädt –
+json_store.py, observation_settings.py, project_paths.py, motion_plausibility.py,
+satellite_overlay.py, video_overlays.py –
+stehen wahlweise unter der PolyForm Noncommercial License 1.0.0 ODER der AGPL-3.0-or-later
+(SPDX: PolyForm-Noncommercial-1.0.0 OR AGPL-3.0-or-later, Kopfzeile in jeder Datei).
+
 Copyright 2026 JackONeill199
 
-This folder (the SkyTrace engine) is licensed under the GNU Affero General Public License v3.0,
-because it uses the AGPL-3.0 package ultralytics. The rest of AstroFlow is licensed under the
-PolyForm Noncommercial License 1.0.0 (see LICENSE in the repository root).
+This folder (the SkyTrace engine) is licensed under the GNU Affero General Public License,
+version 3 or (at your option) any later version, because it uses the AGPL-3.0 package
+ultralytics. The helper files listed above, which the AstroFlow server also loads, are
+dual-licensed: PolyForm Noncommercial 1.0.0 OR AGPL-3.0-or-later, at your choice. The rest of
+AstroFlow is licensed under the PolyForm Noncommercial License 1.0.0 (see LICENSE in the
+repository root).
 
 ================================================================================
 

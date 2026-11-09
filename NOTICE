@@ -13,8 +13,11 @@ Ausnahmen innerhalb des Repositorys:
 
 - SkyTrace-Engine
   astroflow/modules/skytrace/engine/
-  Lizenz: AGPL-3.0 (siehe LICENSE im selben Ordner), weil die Engine das AGPL-3.0-Paket
+  Lizenz: AGPL-3.0-or-later (siehe LICENSE im selben Ordner), weil die Engine das AGPL-3.0-Paket
   ultralytics nutzt. Sie läuft für die Erkennung als eigener Prozess.
+  Doppellizenz: Die Hilfsdateien, die auch der AstroFlow-Server lädt (json_store.py,
+  observation_settings.py, project_paths.py, motion_plausibility.py, satellite_overlay.py,
+  video_overlays.py), stehen wahlweise unter PolyForm Noncommercial 1.0.0 ODER AGPL-3.0-or-later.
 
 Folgende mitgelieferte Drittkomponenten stehen unter eigenen Lizenzen:
 
@@ -69,6 +72,6 @@ sondern erst auf Wunsch aus ihren Originalquellen installiert und
 behalten ihre eigenen Lizenzen.
 
 Hinweis zu SkyTrace: Die Erkennung von Lichtspuren (Modell und ultralytics) steht unter
-AGPL-3.0, ebenso die Engine selbst. Ihr Quellcode liegt offen in diesem Repository
+AGPL-3.0, die Engine selbst unter AGPL-3.0-or-later (Hilfsdateien doppelt lizenziert, s. o.). Ihr Quellcode liegt offen in diesem Repository
 (astroflow/modules/skytrace/engine/). Der übrige AstroFlow-Code steht unter der PolyForm
 Noncommercial License 1.0.0.

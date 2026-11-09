@@ -53,8 +53,8 @@ ohne Build-Schritt, Maße in `rem`.
 ## Lizenz
 
 AstroFlow steht unter der **PolyForm Noncommercial License 1.0.0** (`LICENSE`): Quellcode offen, private und nicht-kommerzielle
-Nutzung frei. Ausnahmen: SkyTrace-Engine (`astroflow/modules/skytrace/engine/`) und Detektormodell (`models/`) stehen unter
-AGPL-3.0, die Katalogdaten unter CC-BY-SA 4.0 (Überblick in `NOTICE`). Stände bis einschließlich v0.51.3 bleiben MIT.
+Nutzung frei. Ausnahmen: SkyTrace-Engine (`astroflow/modules/skytrace/engine/`, AGPL-3.0-or-later, einzelne Hilfsdateien doppelt lizenziert)
+und Detektormodell (`models/`, AGPL-3.0), die Katalogdaten unter CC-BY-SA 4.0 (Überblick in `NOTICE`). Stände bis einschließlich v0.51.3 bleiben MIT.
 
 **Rechte an deinem Beitrag:** Mit einem Pull Request bestätigst du, dass du den Beitrag selbst erstellt hast (oder ihn
 weitergeben darfst). Du räumst dem Autor von AstroFlow (JackONeill199) das einfache, zeitlich und räumlich unbeschränkte,
