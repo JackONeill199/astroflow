@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.52.0 – 09.11.2026
+
+### Geändert
+- **Lizenz geändert:** AstroFlow steht ab dieser Version unter der PolyForm Noncommercial License 1.0.0 – der Quellcode bleibt offen, private und nicht-kommerzielle Nutzung ist frei. Die SkyTrace-Engine steht unter AGPL-3.0-or-later. Stände bis einschließlich 0.51.x wurden unter MIT veröffentlicht und bleiben für diese Stände MIT. Details: `LICENSE`, `NOTICE`, README.
+
 ## 0.51.6 – 09.11.2026
 
 ### Behoben
