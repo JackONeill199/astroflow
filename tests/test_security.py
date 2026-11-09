@@ -203,6 +203,95 @@ def test_schluessel_nur_an_eigene_adresse(tmp_path, monkeypatch):
     assert clients.story_endpoint(cfg, base_url="https://anderer.example.org/v1")[1] == ""
 
 
+def test_schluessel_an_adresse_gebunden(tmp_path, monkeypatch):
+    """Neue Anbieteradresse ohne neuen Schlüssel → gespeicherter Schlüssel wird verworfen (auch einer aus der Umgebung)."""
+    from astroflow.core.models import key_unbound
+    assert not key_unbound("https://a.example.org/v1", "https://A.example.org/v1/", "")
+    assert key_unbound("https://a.example.org/v1", "https://b.example.org/v1", "")
+    assert not key_unbound("https://a.example.org/v1", "https://b.example.org/v1", "neu")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-aus-umgebung")
+    app = _app(tmp_path, monkeypatch, "stacking,sage")
+    with _local(app, headers={"Origin": "http://127.0.0.1:8766"}) as c:
+        # Sage, Erzähl-KI: Formular schickt alle Felder mit – gleiche Adresse behält den Schlüssel
+        r = c.post("/api/sage/config", json={"story_provider": "openai", "story_base_url": "", "story_api_key": ""}).json()
+        assert r["has_story_api_key"] and r["key_reset"] == []
+        r = c.post("/api/sage/config", json={"story_provider": "custom", "story_base_url": "https://boese.example.org/v1"}).json()
+        assert r["key_reset"] == ["story_api_key"] and not r["has_story_api_key"]
+        from astroflow.modules.sage import clients
+        cfg = app.state.modules["sage"].config()
+        assert clients.story_endpoint(cfg)[1] == "" and not cfg["story_api_key"]
+        # neue Adresse zusammen mit neuem Schlüssel: bleibt
+        r = c.post("/api/sage/config", json={"story_base_url": "https://mein-server.example.org/v1", "story_api_key": "k2"}).json()
+        assert r["has_story_api_key"] and r["key_reset"] == []
+        r = c.post("/api/sage/config", json={"story_model": "m", "story_base_url": "https://mein-server.example.org/v1/"}).json()
+        assert r["has_story_api_key"]
+        # Vorlesen (Qwen)
+        c.post("/api/sage/config", json={"qwen_api_key": "q"})
+        r = c.post("/api/sage/config", json={"qwen_base_url": "http://192.0.2.99:8880"}).json()
+        assert r["key_reset"] == ["qwen_api_key"] and not r["has_qwen_api_key"]
+        # KI-Prüfer (Bilder; der Tutor nutzt denselben Schlüssel)
+        c.post("/api/stacking/reviewer", json={"provider": "openrouter", "base_url": "", "api_key": "sk-or"})
+        r = c.post("/api/stacking/reviewer", json={"provider": "openrouter", "base_url": "", "model": "x", "api_key": ""}).json()
+        assert r["has_key"] and r["key_reset"] is False
+        r = c.post("/api/stacking/reviewer", json={"provider": "lmstudio", "base_url": "http://192.0.2.99:1234/v1", "api_key": ""}).json()
+        assert r["key_reset"] is True and not r["has_key"]
+        assert app.state.modules["stacking"].eng.review_cfg.api_key == ""
+
+
+def test_keine_pfade_in_fehlermeldungen(tmp_path, monkeypatch):
+    """Ein Ausnahmetext mit Pfad (OSError) erscheint nicht im Browser – weder direkt noch über gespeicherte Auftragsmeldungen."""
+    from astroflow.core.errors import UserError, user_message
+    geheim = str(tmp_path / "geheimer-ordner" / "datei.fits")
+    assert user_message(OSError(2, "No such file", geheim), log=False) == "Unerwarteter Fehler – Details im Server-Protokoll."
+    assert user_message(ValueError("Zu wenige Sterne."), log=False) == "Zu wenige Sterne."
+    assert "geheimer-ordner" not in user_message(ValueError(f"Datei {geheim} kaputt"), log=False)
+    assert user_message(UserError(r"Platte fehlt: E:\Astro"), log=False) == r"Platte fehlt: E:\Astro"
+
+    def boom(*a, **k):
+        raise OSError(13, "Permission denied", geheim)
+    home = tmp_path / "skytrace"
+    (home / "Ergebnisse").mkdir(parents=True)
+    from astroflow.core.store import SettingsStore
+    SettingsStore(tmp_path / "data" / "settings.json").update("skytrace", {"home": str(home)})
+    app = _app(tmp_path, monkeypatch, "stacking,skytrace,sage")
+    from astroflow.modules.sage import api as sage_api
+    from astroflow.modules.skytrace import api as sky_api
+    monkeypatch.setattr(sky_api, "_read_json", boom)
+    monkeypatch.setattr(sage_api, "make_preview", boom)
+    with _local(app, headers={"Origin": "http://127.0.0.1:8766"}) as c:
+        r = c.get("/api/skytrace/bootstrap")
+        assert r.status_code == 400 and "geheimer-ordner" not in r.text and "Permission" not in r.text
+        r = c.post("/api/sage/analyze", files={"file": ("bild.jpg", b"x", "image/jpeg")})
+        assert r.status_code == 400 and "geheimer-ordner" not in r.text and "Permission" not in r.text
+        eng = app.state.modules["stacking"].eng
+        pid = eng.db.x("INSERT INTO projects(name,key) VALUES('M1','m1')")
+        jid = eng.db.x("INSERT INTO jobs(project_id,state,created) VALUES(?,'running',0)", (pid,))
+        eng._failed(jid, OSError(13, "Permission denied", geheim))
+        msg = eng.db.one("SELECT message FROM jobs WHERE id=?", (jid,))["message"]
+        assert "geheimer-ordner" not in msg and "Protokoll" in msg
+        assert "geheimer-ordner" not in c.get("/api/activity").text
+
+
+def test_skytrace_medien_nur_freigegebene_dateien(tmp_path, monkeypatch):
+    """/media liefert Vorschauen, Videos und Berichte – interne Lauf-Dateien mit Originalpfaden nicht."""
+    run = tmp_path / "skytrace" / "Ergebnisse" / "2026-10-27_20-01-34-000001"
+    (run / "M103").mkdir(parents=True)
+    (run / "bericht.html").write_text("<html>Bericht</html>", encoding="utf-8")
+    (run / "M103" / "live.jpg").write_bytes(b"\xff\xd8bild")
+    for name in ("eingang.json", "M103/frames.jsonl", "protokoll.log"):
+        (run / name).write_text('{"path": "C:/Original/img.fits"}', encoding="utf-8")
+    from astroflow.core.store import SettingsStore
+    SettingsStore(tmp_path / "data" / "settings.json").update("skytrace", {"home": str(tmp_path / "skytrace")})
+    app = _app(tmp_path, monkeypatch, "stacking,skytrace")
+    with _local(app) as c:
+        base = f"/api/skytrace/media/{run.name}/"
+        assert c.get(base + "bericht.html").status_code == 200
+        assert c.get(base + "M103/live.jpg").content == b"\xff\xd8bild"
+        for name in ("eingang.json", "M103/frames.jsonl", "protokoll.log"):
+            r = c.get(base + name)
+            assert r.status_code == 404 and "Original" not in r.text
+
+
 def test_falsche_pruefsumme_bricht_ab(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "lad"))
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "lad"))

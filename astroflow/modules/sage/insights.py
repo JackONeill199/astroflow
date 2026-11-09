@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import math
 import time
-import traceback
 
+from ...core.errors import user_message
 from . import agent, memory, sources
 from .kb import norm
 from .research import Researcher, angular_sep, fmt_ly
@@ -41,9 +41,8 @@ def run_all(mod, only: list[str] | None = None, progress=lambda p, m: None) -> d
             n = globals()[f"task_{t}"](mod)
             report[t] = {"ok": True, "new": n, "seconds": round(time.time() - t0, 1)}
         except Exception as e:
-            if not isinstance(e, (SourceError, agent.BudgetError)):
-                traceback.print_exc()
-            report[t] = {"ok": False, "error": str(e), "seconds": round(time.time() - t0, 1)}
+            msg = user_message(e, "Aufgabe fehlgeschlagen – Details im Server-Protokoll.", allow=(SourceError, agent.BudgetError))
+            report[t] = {"ok": False, "error": msg, "seconds": round(time.time() - t0, 1)}
     mod.kb.set_meta("proactive_report", {"finished": time.time(), "tasks": report})
     mod.kb.set_meta("proactive_last", time.time())
     return report

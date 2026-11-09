@@ -17,6 +17,7 @@ from PIL import Image
 
 from . import calibration, channels, comet, develop, stackfix, gpu, graxpert, live, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner, stars, trails, tutor
 from ...core.config import Settings, free_ram_mb
+from ...core.errors import user_message
 from . import diskspace
 from .db import DB
 from .fits_io import FrameInfo, parse_date, read_data, to_channels, write_fits
@@ -596,7 +597,10 @@ class Pipeline:
             except calibration.SourceOffline as e:     # Kalibrierbilder auf abgesteckter Platte: kein Lesefehler
                 return r["id"], None, e
             except Exception as e:
-                return r["id"], None, str(e)
+                msg = user_message(e, "Datei nicht lesbar – Details im Server-Protokoll.", log=False)
+                if msg != str(e).strip():                  # Ausnahmetext (Pfad …) nur ins Protokoll
+                    print(f"Lesefehler {r['path']}: {e!r}", flush=True)
+                return r["id"], None, msg
 
         waiting = None
         with ThreadPoolExecutor(self.s.threads) as ex:
@@ -710,7 +714,7 @@ class Pipeline:
         except (InterruptedError, diskspace.DiskFull, calibration.SourceOffline, MemoryError):
             raise
         except Exception as e:
-            info["error"] = str(e)[:300]
+            info["error"] = user_message(e, "Kometenstack fehlgeschlagen – Details im Server-Protokoll.")[:300]
             for b in by_band:
                 shutil.rmtree(comet_dir(wd, b), ignore_errors=True)
         wd.mkdir(parents=True, exist_ok=True)
@@ -754,7 +758,7 @@ class Pipeline:
             # z. B. nur 1–3 neue Aufnahmen, ältere Einzelbilder gelöscht: bisherige Bahn weiterverwenden, Stack behalten
             track = otrack
             info = {k: v for k, v in prev.items() if k not in ("frames", "error", "note", "active")}
-            info["track_note"] = f"Bahn nicht neu bestimmbar ({str(e)[:120]}) – bisherige Bahn weiter genutzt"
+            info["track_note"] = f"Bahn nicht neu bestimmbar ({user_message(e, 'Details im Server-Protokoll')[:120]}) – bisherige Bahn weiter genutzt"
         track.info["designation"] = info.get("designation")
         fwhm = float(A.meta.get("ref_fwhm") or 3.0)
         tt = np.array(sorted(times.values()))
@@ -835,7 +839,7 @@ class Pipeline:
             except (InterruptedError, diskspace.DiskFull):
                 raise
             except Exception as e:
-                info["ephemeris_error"] = str(e)[:200]
+                info["ephemeris_error"] = user_message(e, "Bahnabfrage fehlgeschlagen – Details im Server-Protokoll.")[:200]
         elif desig:
             info["ephemeris_error"] = "JPL Horizons abgeschaltet"
         # Stichproben über die Zeit verteilt

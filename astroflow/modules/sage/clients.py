@@ -84,6 +84,16 @@ def write_story(cfg: dict, data: dict, timeout: float = 300) -> str:
     return text
 
 
+def story_base(cfg: dict) -> str:
+    """Gespeicherte Adresse der Erzähl-KI (eigene Adresse oder feste Adresse des Anbieters)."""
+    return (cfg.get("story_base_url") or PROVIDERS.get(cfg.get("story_provider") or "openai") or "").rstrip("/")
+
+
+# Schlüssel mit änderbarer Adresse → Adresse, an die er gebunden ist (andere Schlüssel gehen nur an feste Anbieter)
+KEY_ADDRESS = {"story_api_key": story_base,
+               "qwen_api_key": lambda c: (c.get("qwen_base_url") or "").rstrip("/")}
+
+
 def story_endpoint(cfg: dict, provider: str | None = None, base_url: str | None = None) -> tuple[str, str]:
     """Adresse + Schlüssel der Erzähl-KI (für die Modellliste auch mit noch nicht gespeicherter Auswahl)."""
     from ...core.models import key_for

@@ -11,6 +11,8 @@ const KIND_ICON = { galaxy: 'orbit', emission: 'sparkle', reflection: 'sparkle',
   open_cluster: 'star', star: 'star', dark: 'globe', concept: 'book', personal: 'camera' };
 const ORIGIN = { catalog: 'Fachkatalog', derived: 'berechnet', curated: 'Grundwissen', ai: 'KI-Vorschlag', 'ai+user': 'KI · von dir bestätigt',
   user: 'von dir', personal: 'deine Daten' };
+// Externe Links nur mit http(s) – Quellen-URLs stammen aus Fachdiensten bzw. KI-Antworten
+const extUrl = (u) => (/^https?:\/\//i.test(String(u || '')) ? String(u) : '');
 const SRC_KIND = { catalog: 'Katalog', paper: 'Fachartikel', preprint: 'Preprint', curated: 'Grundwissen', personal: 'Deine Daten' };
 const NOTE_KIND = { note: 'Notiz', plan: 'Geplante Beobachtung', observation: 'Beobachtung', interest: 'Interesse' };
 const INS_ICON = { research: 'book', field: 'search', region: 'globe', targets: 'target' };
@@ -70,11 +72,11 @@ document.addEventListener('click', (e) => {
   floatCard(s ? srcHtml(s) : '<div class="mut sm">Quelle nicht geladen.</div>', e, 'sw-srcpop');
 });
 const srcCache = {};
-const srcHtml = (s) => `<div class="row" style="gap:6px"><span class="chip ${s.kind === 'catalog' ? 'acc' : s.kind === 'preprint' ? 'warn' : ''}">${SRC_KIND[s.kind] || s.kind}</span>
-    ${s.year ? `<span class="chip">${s.year}</span>` : ''}<span class="grow"></span></div><b class="sw-srct">${esc(s.title)}</b>
+const srcHtml = (s) => `<div class="row" style="gap:6px"><span class="chip ${s.kind === 'catalog' ? 'acc' : s.kind === 'preprint' ? 'warn' : ''}">${esc(SRC_KIND[s.kind] || s.kind)}</span>
+    ${s.year ? `<span class="chip">${esc(s.year)}</span>` : ''}<span class="grow"></span></div><b class="sw-srct">${esc(s.title)}</b>
   ${s.authors ? `<div class="mut sm">${esc(s.authors)}</div>` : ''}${s.publisher ? `<div class="dim sm">${esc(s.publisher)}</div>` : ''}
   ${s.abstract ? `<p class="sm sw-abs">${esc(s.abstract.slice(0, 420))}${s.abstract.length > 420 ? '…' : ''}</p>` : ''}
-  <div class="row sm" style="margin-top:8px">${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">Quelle öffnen ${icon('arrow')}</a>` : ''}<span class="grow"></span>
+  <div class="row sm" style="margin-top:8px">${extUrl(s.url) ? `<a href="${esc(extUrl(s.url))}" target="_blank" rel="noopener">Quelle öffnen ${icon('arrow')}</a>` : ''}<span class="grow"></span>
     ${s.retrieved ? `<span class="dim">abgerufen ${ago(s.retrieved)}</span>` : ''}</div>`;
 
 // Kompakte Wissenskarte (Klick auf ein Objekt im Bild)
@@ -196,7 +198,7 @@ async function ask(q) {
 }
 
 // ---------------------------------------------------------------- Bausteine --- //
-const statusChip = (s) => `<span class="chip ${STATUS[s]?.[1] || ''}">${STATUS[s]?.[0] || s}</span>`;
+const statusChip = (s) => `<span class="chip ${STATUS[s]?.[1] || ''}">${esc(STATUS[s]?.[0] || s)}</span>`;
 const ph = (k) => `<div class="sw-ph k-${k || 'x'}">${icon(KIND_ICON[k] || 'star')}</div>`;
 const entCard = (c, i) => `<a class="sw-card" href="#/sage/o/${c.id}" style="--i:${i}"><div class="sw-thumb">${c.image ? `<img src="${c.image}" alt="" loading="lazy" onload="this.classList.add('ld')">` : ph(c.kind === 'concept' ? 'concept' : c.af_kind)}
     ${c.kind === 'concept' ? '<span class="chip">Grundbegriff</span>' : statusChip(c.status)}${c.observed ? `<span class="sw-mine">${icon('camera')}fotografiert</span>` : ''}</div>
@@ -545,7 +547,7 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
         ${facts.length ? `<section class="sw-sec"><h2>Schnellfakten</h2><dl class="sw-quick">${facts.map(([l, v]) => `<dt>${l}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
           <a class="linkbtn" href="#/sage/o/${id}/wissen" style="margin-top:8px;display:inline-flex">Alle Messwerte mit Quellen ${icon('arrow')}</a></section>` : ''}
         <section class="sw-sec"><div class="panel-h"><h2>Aktuelle Forschung${fresh.some(isNew) ? ' <span class="chip acc">Neu</span>' : ''}</h2><span class="grow"></span><button class="btn sm ghost" data-go="papers">${icon('refresh')}Neue Arbeiten suchen</button></div>
-          ${fresh.length ? `<ul class="sw-d-list readable">${fresh.map(p => `<li><a href="${esc(p.url || '#')}" target="_blank" rel="noopener">${esc(p.title)}</a><small class="dim">${p.year || ''}${p.kind === 'preprint' ? ' · arXiv' : ''}</small></li>`).join('')}</ul>`
+          ${fresh.length ? `<ul class="sw-d-list readable">${fresh.map(p => `<li><a href="${esc(extUrl(p.url) || '#')}" target="_blank" rel="noopener">${esc(p.title)}</a><small class="dim">${esc(p.year || '')}${p.kind === 'preprint' ? ' · arXiv' : ''}</small></li>`).join('')}</ul>`
             : '<p class="mut sm">Noch keine Preprints gesammelt.</p>'}</section>
       </div>
       <div class="sw-d-side">
@@ -654,7 +656,7 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
         <div class="panel"><h2 style="margin-bottom:10px">Quellen dieser Seite</h2><ol class="sw-srcs" id="swSrcList"></ol></div></div></div>`;
     $('#swRes3')?.addEventListener('click', () => research(true));
     bindSections(host);
-    $('#swSrcList').innerHTML = [...C.map].map(([sid, n]) => { const s = d.sources[sid]; return s ? `<li value="${n}"><a href="#" class="cite-l" data-s="${sid}">${esc(s.title)}</a> <span class="dim sm">${SRC_KIND[s.kind] || s.kind}${s.year ? ' · ' + s.year : ''}</span></li>` : ''; }).join('') || '<li class="mut sm">–</li>';
+    $('#swSrcList').innerHTML = [...C.map].map(([sid, n]) => { const s = d.sources[sid]; return s ? `<li value="${n}"><a href="#" class="cite-l" data-s="${sid}">${esc(s.title)}</a> <span class="dim sm">${esc(SRC_KIND[s.kind] || s.kind)}${s.year ? ' · ' + esc(s.year) : ''}</span></li>` : ''; }).join('') || '<li class="mut sm">–</li>';
     $$('.cite-l', host).forEach(a => { a.onclick = (ev) => { ev.preventDefault(); floatCard(srcHtml(d.sources[a.dataset.s]), ev, 'sw-srcpop'); }; });
   }
 
@@ -704,7 +706,7 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
   async function tabResearch(host) {
     const secs = d.sections.filter(s => ['research', 'open_questions'].includes(s.key));
     const paper = (p) => `<details class="sw-paper"><summary><span class="chip ${p.kind === 'preprint' ? 'warn' : ''}">${p.kind === 'preprint' ? 'arXiv' : 'Artikel'}</span><b>${esc(p.title)}</b><span class="dim sm">${p.year || ''}</span></summary>
-      ${p.authors ? `<div class="mut sm">${esc(p.authors)}</div>` : ''}${p.abstract ? `<p class="sm">${esc(p.abstract)}</p>` : '<p class="dim sm">Kein Abstract gespeichert.</p>'}${p.url ? `<a class="sm" href="${esc(p.url)}" target="_blank" rel="noopener">Öffnen ${icon('arrow')}</a>` : ''}</details>`;
+      ${p.authors ? `<div class="mut sm">${esc(p.authors)}</div>` : ''}${p.abstract ? `<p class="sm">${esc(p.abstract)}</p>` : '<p class="dim sm">Kein Abstract gespeichert.</p>'}${extUrl(p.url) ? `<a class="sm" href="${esc(extUrl(p.url))}" target="_blank" rel="noopener">Öffnen ${icon('arrow')}</a>` : ''}</details>`;
     host.innerHTML = `<div class="split"><div>${secs.map(sectionHtml).join('') || `<div class="notice">${icon('book')}<div><b>Noch keine Forschungszusammenfassung</b><div class="mut sm">Der Recherche-Agent fasst neue Arbeiten zusammen und benennt offene Fragen – mit Beleg je Aussage.</div></div>${d.llm ? '<span class="grow"></span><button class="btn sm" id="swRes4">Recherchieren</button>' : ''}</div>`}
         <div id="swIns"></div>
         <div class="panel"><div class="panel-h"><h2>Neueste Preprints</h2><span class="grow"></span><span class="mut sm">arXiv · noch nicht begutachtet</span></div>${d.preprints.map(paper).join('') || '<p class="mut sm" style="margin:0">Keine gefunden.</p>'}</div>
@@ -944,7 +946,7 @@ const insCard = (x, i = 0) => `<article class="panel sw-ins ${x.seen ? '' : 'new
   <div class="sw-body">${md(x.body)}</div>
   ${x.reason ? `<div class="sw-why">${icon('alert')}<span><b>Warum?</b> ${esc(x.reason)}</span></div>` : ''}
   <div class="row" style="margin-top:10px">${Object.entries(x.entity_names || {}).map(([eid, n]) => `<a class="chip acc" href="#/sage/o/${eid}">${esc(n)}</a>`).join('')}<span class="grow"></span>
-    ${x.sources.map(s => `<a class="chip" href="${esc(s.url || '#')}" target="_blank" rel="noopener" title="${esc(s.title)}">${esc(SRC_KIND[s.kind] || s.kind)}${s.year ? ' ' + s.year : ''}</a>`).join('')}</div></article>`;
+    ${x.sources.map(s => `<a class="chip" href="${esc(extUrl(s.url) || '#')}" target="_blank" rel="noopener" title="${esc(s.title)}">${esc(SRC_KIND[s.kind] || s.kind)}${s.year ? ' ' + esc(s.year) : ''}</a>`).join('')}</div></article>`;
 
 async function insightsView(el) {
   crumbs([['Sage', '#/sage/wiki'], ['Meine Entdeckungen']]);

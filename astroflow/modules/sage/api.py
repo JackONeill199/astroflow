@@ -12,6 +12,7 @@ from pathlib import Path
 from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 
+from ...core.errors import user_message
 from . import SECRETS, clients
 from .store import plain
 
@@ -73,14 +74,14 @@ def build_router(mod) -> APIRouter:
                 try:
                     sol = get(source["project"]) if get else None
                 except Exception as e:
-                    local_err = str(e)
+                    local_err = user_message(e, "Plate-Solving fehlgeschlagen (Details im Server-Protokoll)")
             if sol is None and solver:                         # WCS im FITS-Header braucht keinen eingerichteten Solver
                 hint = {"ra": source["ra"], "dec": source["dec"]} if source.get("ra") is not None else None
                 try:
                     sol = solver.solve(image, filename=source.get("filename") or source.get("name"), hint=hint)
                 except Exception as e:
                     if solver.available:
-                        local_err = str(e)
+                        local_err = user_message(e, "Plate-Solving fehlgeschlagen (Details im Server-Protokoll)")
             if sol is None and cfg.get("online_solve") and clients.configured_key(cfg.get("nova_key")):
                 step(0.25, "Bild wird an nova.astrometry.net übermittelt …", "solve")
                 sol = clients.nova_solve(cfg["nova_key"], image, step, lambda: task["cancel"])
@@ -107,7 +108,7 @@ def build_router(mod) -> APIRouter:
                 try:
                     story = clients.write_story(cfg, data)
                 except clients.ServiceError as e:
-                    story_err = str(e)
+                    story_err = user_message(e, allow=(clients.ServiceError,))
             else:
                 story_err = "Keine Erzähl-KI eingerichtet – Einstellungen → Sage."
             from .store import story_title
@@ -128,15 +129,14 @@ def build_router(mod) -> APIRouter:
                         message="Analyse abgeschlossen" + (" (ohne Geschichte)" if not story else ""), discovery=disc,
                         title=entry["title"])
         except Exception as e:
-            if not isinstance(e, clients.ServiceError):
-                traceback.print_exc()
+            msg = user_message(e, "Analyse fehlgeschlagen – Details im Server-Protokoll.", allow=(clients.ServiceError,))
             for rel in (rel_file, rel_preview):                      # fehlgeschlagen: Dateien nicht aufheben –
                 if rel:                                              # erst aufräumen, dann „Fehler“ melden (Polling!)
                     try:
                         (st.root / rel).unlink(missing_ok=True)
                     except OSError:                                  # z. B. gesperrte Datei: Auftrag trotzdem abschließen
                         traceback.print_exc()
-            task.update(state="error", error=str(e), message=str(e), finished=time.time())
+            task.update(state="error", error=msg, message=msg, finished=time.time())
 
     def start(title: str, image: Path, rel_preview: str, rel_file: str | None, size, source: dict) -> dict:
         task = mod.new_task(title)
@@ -158,9 +158,10 @@ def build_router(mod) -> APIRouter:
             shutil.copyfileobj(file.file, out)
         try:
             size = make_preview(st.root / rel_file, st.root / rel_prev)
-        except Exception as e:
+        except Exception:
+            traceback.print_exc()
             (st.root / rel_file).unlink(missing_ok=True)
-            raise HTTPException(400, f"Bild nicht lesbar: {e}")
+            raise HTTPException(400, "Bild nicht lesbar – Format nicht erkannt oder Datei beschädigt.") from None
         return task_view(start(re.sub(r"\.\w+$", "", name), st.root / rel_file, rel_prev, rel_file, size,
                                {"type": "upload", "filename": name}))
 
@@ -301,8 +302,18 @@ def build_router(mod) -> APIRouter:
         for k in SECRETS:                                 # ausdrücklich löschen: {"clear": ["nova_key"]}
             if k in (body.get("clear") or []):
                 vals[k] = None
+        # Schlüssel an ihre Adresse binden: neue Adresse ohne neuen Schlüssel → gespeicherten Schlüssel verwerfen
+        # ("" statt None, damit kein Schlüssel aus der Umgebung nachrückt)
+        from ...core.models import key_unbound
+        old = mod.config()
+        new = {**old, **{k: v for k, v in vals.items() if v is not None}}
+        reset = []
+        for secret, where in clients.KEY_ADDRESS.items():
+            if old.get(secret) and key_unbound(where(old), where(new), vals.get(secret)):
+                vals[secret] = ""
+                reset.append(secret)
         mod.ctx.store.update("sage", vals)
-        return mod.public_config()
+        return {**mod.public_config(), "key_reset": reset}
 
     # ---- Modelle (Auswahlfelder) --------------------------------------------------------
     @r.post("/models")
@@ -360,8 +371,9 @@ def build_router(mod) -> APIRouter:
             raise HTTPException(502, str(e))
         except HTTPException:
             raise
-        except Exception as e:
-            raise HTTPException(502, f"Stimmen nicht abrufbar: {e}")
+        except Exception:
+            traceback.print_exc()
+            raise HTTPException(502, "Stimmen nicht abrufbar – Details im Server-Protokoll.") from None
 
     SPEAK = {"elevenlabs": clients.eleven_speak, "openrouter": clients.openrouter_speak, "qwen": clients.qwen_speak}
 
