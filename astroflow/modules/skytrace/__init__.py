@@ -167,6 +167,8 @@ class Module(BaseModule):
                            "error": error}
         except Exception as e:
             self.health = {"checked": True, "python": self.python, "ok": False, "missing": [], "error": str(e)}
+        if self.health.get("ok"):
+            self.auto.retry_waiting()                   # Engine (wieder) bereit: liegengebliebene Nächte nachholen
 
     def router(self):
         from .api import build_router
@@ -180,7 +182,8 @@ class Module(BaseModule):
     def stop(self):
         self._stop.set()
         self.auto.stop()
-        self.ctl.stop()
+        self.ctl.shutdown()                    # STOP-Datei, nach kurzer Frist beenden – keine Waisen nach dem Server-Ende
+        self.sitejobs.shutdown()
 
     def status(self) -> dict:
         s = self.ctl.snapshot(logs=False)

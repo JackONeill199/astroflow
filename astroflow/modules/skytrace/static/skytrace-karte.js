@@ -278,10 +278,11 @@ function FlatMap(host, deps) {
     S.dirty = true; view();
     if (pxPerKm() < deps.leaveAt()) { const [la, lo] = [latOf(wy), lonOf(wx)]; deps.onLeave(latOf(V.cy), lonOf(V.cx), pxPerKm(), sx, sy, la, lo); }
   }
-  host.addEventListener('wheel', (e) => {                  // auch über Schildern/Legende der Bühne
+  const onWheel = (e) => {                                  // auch über Schildern/Legende der Bühne
     if (!S.on || e.target.closest('.ste-card,.ste-tools,.ste-tiles,.ste-side')) return;   // Seitenleiste scrollt selbst
     e.preventDefault(); const [sx, sy] = local(e); zoomAt(Math.exp(-clamp(e.deltaY, -300, 300) * .0022), sx, sy);
-  }, { passive: false });
+  };
+  host.addEventListener('wheel', onWheel, { passive: false });
   cv.addEventListener('pointerdown', (e) => {
     cv.setPointerCapture?.(e.pointerId); const p = local(e); pts.set(e.pointerId, p); moved = 0;
     if (pts.size === 1) drag = { w: toW(...p) };
@@ -320,7 +321,7 @@ function FlatMap(host, deps) {
   };
   cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
   cv.addEventListener('pointerleave', () => { deps.onHover?.(null); deps.onHoverHit?.(null); });
-  new ResizeObserver(resize).observe(host); resize();
+  const ro = new ResizeObserver(resize); ro.observe(host); resize();
 
   return {
     get active() { return S.on; },
@@ -351,7 +352,7 @@ function FlatMap(host, deps) {
     screenOf: (lat, lon) => llS(lat, lon),
     state: () => ({ on: S.on, fade: +S.fade.toFixed(3), center: [latOf(V.cy), lonOf(V.cx)].map(v => +v.toFixed(5)), pxPerKm: +pxPerKm().toFixed(4), frameMs: +S.frameMs.toFixed(2), tiles: S.tiles, tileZ: S.tileZ, tileWant: S.tileWant, tileReq: S.tileReq, Z: V.Z, dpr: V.dpr, earth: !!S.earth, targets: targets.length,
       sats: targets.filter(t => t.kind === 'sat').map(t => ({ id: t.ref.id, name: t.ref.name, x: +t.sx.toFixed(1), y: +t.sy.toFixed(1), on: !!t.ref.on })) }),
-    dispose() { cv.remove(); S.tileCache.clear(); },
+    dispose() { host.removeEventListener('wheel', onWheel); ro.disconnect(); cv.remove(); S.tileCache.clear(); },
   };
 }
 

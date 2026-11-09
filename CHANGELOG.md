@@ -3,6 +3,29 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.51.6 – 09.11.2026
+
+### Behoben
+- SkyTrace: Eine automatische Analyse nach dem Stacken geht nicht mehr verloren, wenn die Engine fehlt, abstürzt oder der Server neu startet – sie wird nachgeholt.
+- SkyTrace: „Anhalten“ beendet hängende Analysen notfalls hart; beim Beenden von AstroFlow bleiben keine Analyseprozesse zurück.
+- SkyTrace: Kleinere Abstürze behoben (Adresssuche, Laufliste beim gleichzeitigen Löschen, leere Ergebnisordner, Statistik-Zwischenspeicher, Karte).
+
+## 0.51.5 – 09.11.2026
+
+### Behoben
+- Sage-Chat: Als Beleg zählen nur Quellen, die tatsächlich abgerufen wurden; erfundene Quellenverweise werden entfernt.
+- Sage: Die Statusabfrage kann nicht mehr sporadisch mit einem Serverfehler scheitern; Hintergrundrecherchen laufen nicht mehr doppelt.
+- Sage-KI-Agent: Werkzeugaufrufe je Antwort sind begrenzt; Inhalte aus Katalogen und Fachartikeln gelten als Daten, nicht als Anweisungen.
+- Kleinere Korrekturen (Chatverlauf bei Fehlern, Auftragsstatus, robustere Antwortverarbeitung).
+
+## 0.51.4 – 09.11.2026
+
+### Behoben
+- Hochladen großer Rohbild-Mengen blockiert den Server nicht mehr; abgebrochene Uploads hinterlassen keine halben Dateien.
+- Volle Platte oder zu wenig Arbeitsspeicher während der Analyse markiert gesunde Aufnahmen nicht mehr als „Lesefehler“ – der Auftrag pausiert stattdessen.
+- Löschen eines Objekts kommt dem automatischen Neustart der Verarbeitung nicht mehr in die Quere.
+- Zwischenstände des Stackings werden unter Windows bei kurz gesperrten Dateien erneut gespeichert statt mit Fehler abzubrechen.
+
 ## 0.51.3 – 09.11.2026
 
 ### Behoben
