@@ -486,7 +486,7 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
   für heruntergeladene Pakete `build_windows.py --sandbox-only --out <Ordner>`): Paketordner schreibgeschützt, daneben `<Ordner>-sandbox-ergebnis`
   beschreibbar, Netz an, sonst nichts eingebunden; Logonbefehl prüft Installer (`pruefe_paket.py --setup`, nur in Sandbox/VM – installiert ins
   echte Profil) und ZIP, Protokolle + `fertig.txt` im Ergebnisordner. Start per Doppelklick oder `WindowsSandbox.exe <wsb>` (geht auch aus der Sitzung).
-  CI: `.github/workflows/windows-paket.yml` (PR mit Paketänderungen, manuell, Tag `v*` → Release-Entwurf) baut, prüft sauber und installiert still.
+  CI: `.github/workflows/windows-paket.yml` läuft **nur manuell** (seit 09.11.2026, Nutzerwunsch: kein Bau nach jedem Fix/Tag); auf einem Tag `v*` gestartet → Release-Entwurf. Baut, prüft sauber und installiert still. Nach Änderungen an `installer/`, Launcher, Setup oder Komponenten den Lauf vor einem Release selbst anstoßen.
   Rechte: Workflow `contents: read`; nur der Job `release` (Tags `v*`, lädt das Artefakt des Bau-Jobs) hat `contents: write`.
 - **Gemessen 06.11.2026** (`installer/pruefe_paket.py`, leeres Profil, PATH ohne Python, 16 Kerne): Paket 150 MB ZIP / 379 MB entpackt;
   entpacken 8 s, erster Start 21 s, ASTAP + D05 12 s (schnelle Leitung), Demo bis Bild 11 s, Beenden 4 s → **0,9 min bis zum ersten Bild**.
