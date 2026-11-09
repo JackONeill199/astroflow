@@ -155,3 +155,33 @@ def test_library_walk_skips_linked_dirs(tmp_path):
         assert len(groups) == 1 and len(groups[0]["files"]) == 2, [(str(g["dir"]), len(g["files"])) for g in groups]
     finally:
         os.rmdir(loop) if os.name == "nt" else loop.unlink()     # nur die Verknüpfung entfernen
+
+
+def test_library_predicts_target_of_new_observation(tmp_path):
+    """Zweite Beobachtung desselben Objekts: Gruppe ist „neu“, zeigt aber das vorhandene Objekt als Ziel."""
+    root = tmp_path / "Platte"
+    demo.generate(root / "2026-08-12_21-00-00_observation_M31", n_lights=4, n_darks=0, n_flats=0, seed=1)
+    demo.generate(root / "2026-08-14_21-00-00_observation_M31", n_lights=4, n_darks=0, n_flats=0, seed=2)
+    demo.generate_mono(root / "mono" / "nacht", bands=("L",), per_band=3)
+    s = load_settings(tmp_path / "d")
+    s.auto = False
+    with TestClient(create_app(s)) as c:
+        c.post("/api/stacking/library/scan", json={"root": str(root)})
+        st = _wait(c)
+        assert all(g["target"] is None for g in st["groups"])          # noch nichts in AstroFlow
+        first = next(g for g in st["groups"] if "08-12" in g["rel"])
+        c.post("/api/stacking/library/import", json={"ids": [first["id"]]})
+        _wait(c)
+        from astroflow.modules.stacking.db import DB
+        DB(s.db_path).x("UPDATE frames SET stacked=1 WHERE kind='light'")
+        pid = c.get("/api/stacking/projects").json()[0]["id"]
+        c.post("/api/stacking/library/scan", json={"root": str(root)})
+        st = _wait(c)
+        by = {g["rel"]: g for g in st["groups"]}
+        done = next(g for r, g in by.items() if "08-12" in r)
+        new = next(g for r, g in by.items() if "08-14" in r)
+        assert done["state"] == "done" and done["target"] is None and done["project"]["id"] == pid
+        assert new["state"] == "new" and new["project"] is None
+        assert new["target"]["id"] == pid and new["target"]["name"]
+        other = next(g for r, g in by.items() if "mono" in r)          # anderes Objekt/Kamera: kein Ziel
+        assert other["target"] is None

@@ -258,7 +258,11 @@ class Library:
             for f, fp in prints.items():
                 if f not in rows and fp:
                     rows[f] = fps.get(fp)
-            out = [self._describe(g, rows, prints, shas, names, root, n) for n, g in enumerate(groups)]
+            # Projekte einmal je Lauf laden (Zielvorhersage neuer Gruppen)
+            plist = self.db.q("SELECT id, key, name, ra, dec, radius FROM projects")
+            targets = {"keys": {p["key"]: p for p in plist},
+                       "centers": {p["key"]: (p["ra"], p["dec"], p["radius"]) for p in plist if p["ra"] is not None}}
+            out = [self._describe(g, rows, prints, shas, names, root, n, targets) for n, g in enumerate(groups)]
             self.groups = out
             open_groups = sum(1 for g in out if g["state"] != "done")
             self._set(state="done", progress=1.0, finished=time.time(), read=n_read[0], skipped=skipped,
@@ -269,7 +273,20 @@ class Library:
             traceback.print_exc()
             self._set(state="error", message=f"Suchlauf fehlgeschlagen: {e}")
 
-    def _describe(self, g, rows, prints, shas, names, root, n) -> dict:
+    @staticmethod
+    def _target(info, night, targets) -> dict | None:
+        """Voraussichtliches Zielobjekt einer Gruppe ohne bekannte Aufnahmen: dieselbe Zuordnung wie beim Scan
+        (scanner.assign_project), aber nur gegen vorhandene Projekte. Kometen (Schlüssel je Nacht), Felder ohne Namen
+        und unbekannte Objekte bekommen keins; Plate-Solving gibt es beim Durchsuchen nicht."""
+        if not targets:
+            return None
+        a = scanner.assign_project(info, targets["centers"], night)
+        if a.kind == "comet" or a.key.startswith(("UNBEKANNT|", "FELD")):
+            return None
+        p = targets["keys"].get(a.key)
+        return {"id": p["id"], "name": p["name"]} if p else None
+
+    def _describe(self, g, rows, prints, shas, names, root, n, targets=None) -> dict:
         d: Path = g["dir"]
         files = g["files"]
         size = sum(g["stat"][f][0] for f in files)
@@ -291,7 +308,8 @@ class Library:
         total = len(files)
         state = "done" if stacked == total else "new" if known == 0 else "partial" if known < total else "unstacked"
         rel = str(d.relative_to(root)) if d != root else d.name
-        obj, camera, night = None, None, None
+        obj, camera, night, target = None, None, None, None
+        project = max(owners, key=owners.get) if owners else None
         if g["kind"] == "lights":
             try:
                 info = scanner.read_info(files[0])
@@ -300,7 +318,18 @@ class Library:
                 night = scanner.night_of(info, files[0])
             except Exception:
                 pass
-        project = max(owners, key=owners.get) if owners else None
+            if not project and todo:
+                # erste echte Light-Aufnahme (Gruppenordner können Darks/Flats enthalten), höchstens 8 Köpfe lesen
+                for f in files[:8]:
+                    try:
+                        li = scanner.read_info(f)
+                        if scanner.classify(li, f) != "light":
+                            continue
+                        li.object = li.object or scanner.object_from_path(f)     # wie scan_dir
+                        target = self._target(li, scanner.night_of(li, f), targets)
+                    except Exception:
+                        pass
+                    break
         label = (obj or d.name) if g["kind"] == "lights" else d.name
         m = scanner.OBSERVATION.search(d.name)
         if g["kind"] == "lights" and not obj and m:
@@ -309,6 +338,7 @@ class Library:
                 "n_files": total, "exts": file_formats(files), "n_known": known, "n_done": stacked, "n_new": len(todo), "bytes": size,
                 "camera": camera, "night": night, "state": state,
                 "project": {"id": project, "name": names.get(project)} if project else None,
+                "target": target,
                 "to_import": todo, "import_bytes": sum(g["stat"][f][0] for f in todo)}
 
     # ---------------------------------------------------------------- Import #

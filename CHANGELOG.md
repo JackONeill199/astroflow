@@ -3,6 +3,13 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md`, die Bedienung in `README.md`.
 
+## 0.50.0 – 09.11.2026
+
+### Neu
+- **„Hauptordner durchsuchen“ zeigt das Zielobjekt neuer Beobachtungen:** Gehört eine noch ganz neue Gruppe zu einem Objekt,
+  das es in AstroFlow schon gibt (z. B. eine zweite Nacht desselben Nebels), steht dort der Chip „ergänzt: <Objekt>“ mit Link.
+  Vorhergesagt wird nach Objektname und Kamera wie beim Einlesen – ohne Plate-Solving, Kometen und Gruppen ohne Namen bekommen keins.
+
 ## 0.49.1 – 09.11.2026
 
 ### Behoben
