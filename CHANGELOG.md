@@ -3,7 +3,7 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
-## 0.50.2 – 09.11.2026
+## 0.51.0 – 09.11.2026
 
 ### Behoben
 - **Hauptordner durchsuchen:** Leere, abgebrochene oder kopflose FITS-Dateien (z. B. von unterbrochenen Stellina-Schreibvorgängen)
