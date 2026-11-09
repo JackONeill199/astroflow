@@ -262,6 +262,7 @@ def test_werkzeuglimit_und_think():
     text, steps = agent.run_agent(L(), "s", "u", [t])
     assert text == "fertig" and len(n) == agent.TOOL_LIMITS["research_object"]
     assert [s["ok"] for s in steps] == [True] * 3 + [False] * 2 and steps[0]["sources"] == [1]
+    assert agent.source_ids({"abschnitte": [{"text": "Alter 100 Mio. Jahre [S7]."}], "abstract": "[S9]"}) == {7}
 
 
 def test_notizen_karte_netz_entdeckungen(client):

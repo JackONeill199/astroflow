@@ -181,6 +181,9 @@ def run_agent(llm: LLM, system: str, user: str, tools: list[Tool], max_steps: in
     return msg.get("content") or "", steps
 
 
+CITING_TEXT = ("zusammenfassung", "text")          # Felder mit belegtem Enzyklopädie-Text (nicht Fremdtext wie Abstracts)
+
+
 def source_ids(res, depth: int = 0) -> set[int]:
     """Quellennummern (Feld `quelle`) in einem Werkzeugergebnis – nur diese darf eine Antwort als Beleg nennen."""
     out: set[int] = set()
@@ -190,6 +193,8 @@ def source_ids(res, depth: int = 0) -> set[int]:
         for k, v in res.items():
             if k == "quelle" and isinstance(v, int) and not isinstance(v, bool):
                 out.add(v)
+            elif k in CITING_TEXT and isinstance(v, str):  # Zusammenfassung/Abschnitte der Enzyklopädie belegen selbst mit [S…]
+                out |= {int(n) for n in re.findall(r"\[S(\d{1,9})\]", v)}
             else:
                 out |= source_ids(v, depth + 1)
     elif isinstance(res, (list, tuple)):
