@@ -20,7 +20,7 @@ from . import objects
 # Kurzcodes der Objektart → objects.KIND_LABEL
 _K = {"g": "galaxy", "e": "emission", "r": "reflection", "p": "planetary", "s": "snr", "k": "globular", "o": "open_cluster", "x": "other"}
 
-# Eigene Zuordnung (MIT-Code): Nummer → (NGC/IC-Kennung für Anzeige/Schlüssel, deutscher Name, Objektart-Kürzel).
+# Eigene Zuordnung (AstroFlow-Code, nicht CC-BY-SA): Nummer → (NGC/IC-Kennung für Anzeige/Schlüssel, deutscher Name, Objektart-Kürzel).
 # Positionen, Helligkeit und Größe stehen NICHT hier, sondern in katalogdaten/messier_caldwell.csv (OpenNGC + Wikipedia, CC-BY-SA 4.0).
 # Caldwell: C50 (NGC 2244) steckt in C49, C61 (NGC 4039) in C60 – beide stehen in der Datendatei, sind aber keine eigenen Ziele.
 MESSIER = [

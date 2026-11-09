@@ -52,7 +52,7 @@
 - `deepsky.py` lädt Position, Helligkeit und Größe von Messier (110) und Caldwell (109) aus `stacking/katalogdaten/messier_caldwell.csv`.
   Die Datei ist aus **OpenNGC** (Position, Kennungen, Galaxiengrößen) und den englischen **Wikipedia**-Listen (Helligkeit, sichtbare Größe; Werte
   dort aus SEDS) zusammengestellt, beide CC-BY-SA 4.0 – Quellen, Revisionen und Lizenz in Kopfzeile, `README.md`, `LICENSE-OpenNGC`, `NOTICE`.
-  Die CC-BY-SA-Datei bleibt getrennt vom MIT-Code; deutsche Namen, Objektart-Kürzel und die Caldwell-Zuordnung (Nummer → NGC/IC) sind eigene
+  Die CC-BY-SA-Datei bleibt getrennt vom übrigen AstroFlow-Code (PolyForm Noncommercial 1.0.0); deutsche Namen, Objektart-Kürzel und die Caldwell-Zuordnung (Nummer → NGC/IC) sind eigene
   Tabellen in `deepsky.py` (`MESSIER`, `CALDWELL`).
 - Neu erzeugen: `python tools/openngc_extract.py <ordner> [--alt <alte deepsky.py>]` (nur beim Entwickeln, kein Netz zur Laufzeit; Ordner mit
   `NGC.csv`, `addendum.csv`, `Messier_object.wiki`, `Caldwell_catalogue.wiki`, Bezug im Skriptkopf; beim ersten Lauf `--artikel-holen`, das `Caldwell_artikel.json` mit den Wikipedia-Einzelartikeln anlegt). Das Skript prüft beide Quellen gegeneinander

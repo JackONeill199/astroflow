@@ -5,7 +5,9 @@ anderen bewegten Objekten und erklärt dir, was du fotografiert hast – im Brow
 
 ![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Web--UI-009688?logo=fastapi&logoColor=white)
-![Lizenz MIT](https://img.shields.io/badge/Lizenz-MIT-green)
+![Lizenz PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/Lizenz-PolyForm%20Noncommercial%201.0.0-blue)
+
+> **Lizenz:** Quellcode offen, private und nicht-kommerzielle Nutzung frei ([PolyForm Noncommercial 1.0.0](LICENSE)). Stände bis einschließlich v0.51.3 wurden unter MIT veröffentlicht und bleiben für diese Stände MIT. Details unter [Lizenz](#lizenz).
 
 ![AstroFlow – Übersicht](docs/screenshots/uebersicht.webp)
 
@@ -312,12 +314,14 @@ die Oberflächentests laufen in einem echten Chromium.
 
 ## AstroFlow unterstützen
 
-AstroFlow ist kostenlos und quelloffen. Wenn du die Entwicklung unterstützen möchtest, kannst du über [GitHub Sponsors](https://github.com/sponsors/JackONeill199) oder [Ko-fi](https://ko-fi.com/jackoneill199) spenden. Genauso helfen Fehlermeldungen, Ideen und ein Stern auf GitHub.
+AstroFlow ist für private Nutzung kostenlos, der Quellcode ist offen. Wenn du die Entwicklung unterstützen möchtest, kannst du über [GitHub Sponsors](https://github.com/sponsors/JackONeill199) oder [Ko-fi](https://ko-fi.com/jackoneill199) spenden. Genauso helfen Fehlermeldungen, Ideen und ein Stern auf GitHub.
 
 ## Lizenz
 
-MIT, siehe `LICENSE`. Drittkomponenten (Überblick in `NOTICE`): three.js (`astroflow/static/vendor/`) steht unter MIT, die Erdtextur (`astroflow/modules/skytrace/static/vendor/`) ist NASA Blue Marble
+Der eigene Code von AstroFlow steht unter der **PolyForm Noncommercial License 1.0.0** (siehe `LICENSE`): Quellcode offen, private und nicht-kommerzielle Nutzung frei (auch Ändern und Weitergeben, mit Lizenztext und `Required Notice`); kommerzielle Nutzung, etwa der Weiterverkauf, ist ohne gesonderte Erlaubnis nicht gestattet. Alle Stände bis einschließlich **v0.51.3** wurden unter der MIT-Lizenz veröffentlicht und bleiben für diese Stände MIT.
+
+Drittkomponenten (Überblick in `NOTICE`): three.js (`astroflow/static/vendor/`) steht unter MIT, die Erdtextur (`astroflow/modules/skytrace/static/vendor/`) ist NASA Blue Marble
 (gemeinfrei), siehe die `README.md` in beiden Ordnern. Das SkyTrace-Erkennungsmodell (`astroflow/modules/skytrace/models/night-detector`) stammt aus OpenSkyCam und steht unter AGPL-3.0.
 Die Messier-/Caldwell-Daten für „Heute Nacht“ (`astroflow/modules/stacking/katalogdaten/`) stammen aus [OpenNGC](https://github.com/mattiaverga/OpenNGC) und den englischen Wikipedia-Listen „Messier object“ und „Caldwell catalogue“ (beide CC-BY-SA 4.0, Namensnennung und Weitergabe unter gleichen Bedingungen; Lizenztext dort im Ordner).
 
-**Hinweis zu SkyTrace:** Die Erkennung von Lichtspuren (Modell und das nachinstallierte `ultralytics`) steht unter AGPL-3.0; die Engine läuft in einem eigenen Prozess, ihr Quellcode liegt offen unter `astroflow/modules/skytrace/engine/`. AstroFlow selbst bleibt unter der MIT-Lizenz. Im Windows-Paket sammelt `THIRD-PARTY-LICENSES.txt` die Lizenzen der gebündelten Pakete (u. a. pystray, LGPL-3.0). Die Kartenansicht lädt Kacheln von OpenStreetMap bzw. OpenTopoMap (© OpenStreetMap-Mitwirkende; bitte nur leichte Nutzung).
+**Hinweis zu SkyTrace:** Die Erkennung von Lichtspuren (Modell und das nachinstallierte `ultralytics`) steht unter AGPL-3.0; die Engine läuft in einem eigenen Prozess, ihr Quellcode liegt offen unter `astroflow/modules/skytrace/engine/` und steht deshalb ebenfalls unter AGPL-3.0 (eigene `LICENSE` im Ordner). Der übrige AstroFlow-Code steht unter PolyForm Noncommercial 1.0.0. Im Windows-Paket sammelt `THIRD-PARTY-LICENSES.txt` die Lizenzen der gebündelten Pakete (u. a. pystray, LGPL-3.0). Die Kartenansicht lädt Kacheln von OpenStreetMap bzw. OpenTopoMap (© OpenStreetMap-Mitwirkende; bitte nur leichte Nutzung).

@@ -106,7 +106,7 @@ INFO = {
     "gpu": {"title": "GPU-Beschleunigung (pyopencl)", "license": "MIT", "source": "https://pypi.org/project/pyopencl/",
             "what": "Ausrichten und Stacking auf der Grafikkarte (OpenCL), etwa 3× schneller"},
     "skytrace": {"title": "SkyTrace-Analyse-Engine",
-                 "license": "PyTorch BSD-3 · OpenCV Apache-2.0 · Erkennung (ultralytics + Detektormodell) AGPL-3.0, AstroFlow selbst MIT · Microsoft Visual C++ Runtime (weitergebbar laut Microsoft)",
+                 "license": "PyTorch BSD-3 · OpenCV Apache-2.0 · Erkennung (ultralytics + Detektormodell) AGPL-3.0, übriges AstroFlow PolyForm Noncommercial 1.0.0 · Microsoft Visual C++ Runtime (weitergebbar laut Microsoft)",
                  "source": "https://pytorch.org", "what": "Lichtspuren in Bildfolgen finden (OpenCV, PyTorch CPU, YOLO)"},
     "starnet": {"title": "StarNet", "license": "Hersteller: „all rights reserved“ – kein automatischer Download",
                 "source": "https://www.starnetastro.com", "what": "Sterntrennung bei Nebeln (ZIP unter Einstellungen → Bilder → StarNet)"},

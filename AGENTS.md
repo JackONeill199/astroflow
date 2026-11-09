@@ -12,7 +12,7 @@ Module einfach wartbar und erweiterbar“):
 - **SkyTrace** (`modules/skytrace`, aus Repo `JackONeill199/SkyTrace`): Lichtspuren/bewegte Objekte in Bildfolgen, Katalogabgleich. Details: `astroflow/modules/skytrace/AGENTS.md` (+ `docs/entwicklung/skytrace-*.md`).
 - **Sage** (`modules/sage`, aus Repo `JackONeill199/starlight-sage`, Node → Python portiert): seit 2.0 lebende Astronomie-Enzyklopädie – Bilder bestimmen, Objekte aus Fachkatalogen + KI-Agent recherchieren (Belegpflicht), persönliches Beobachtungsgedächtnis, Wissensnetz, proaktive Entdeckungen, Chat, Geschichten/Audioführung. Details: `astroflow/modules/sage/AGENTS.md`, Architektur `docs/SAGE.md`.
 Zielgruppe: Smart-Teleskope (Seestar, Vespera, Stellina) und klassische Astrokameras. Lokal, ein Nutzer, keine Konten.
-Stack: Python 3.12+ · numpy/scipy/astropy · FastAPI + uvicorn · SQLite · Vanilla-JS-SPA ohne Build-Schritt. Lizenz MIT (Detektormodell in SkyTrace: AGPL-3.0, siehe `models/`). Version: `astroflow/__init__.py` (Regeln unter „Versionierung“).
+Stack: Python 3.12+ · numpy/scipy/astropy · FastAPI + uvicorn · SQLite · Vanilla-JS-SPA ohne Build-Schritt. Lizenz PolyForm Noncommercial 1.0.0 (Quellcode offen, private und nicht-kommerzielle Nutzung frei; Stände bis v0.51.3 MIT) – SkyTrace-Engine `engine/` und Detektormodell `models/`: AGPL-3.0, Katalogdaten CC-BY-SA 4.0 (siehe `NOTICE`). Version: `astroflow/__init__.py` (Regeln unter „Versionierung“).
 
 **Sprache:** UI, README, Kommentare und Fehlermeldungen auf **Deutsch**. Der Nutzer schreibt Deutsch.
 
