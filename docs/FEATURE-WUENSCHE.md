@@ -2,7 +2,7 @@
 
 Ideen und Wünsche für künftige Versionen. Neue Einträge unten anfügen (fortlaufende Nummer, Datum des Wunsches).
 Wird ein Wunsch umgesetzt: Status auf „umgesetzt“ setzen und Version/PR nennen, Eintrag nicht löschen.
-Laufende Arbeit und Grenzen stehen in `AGENTS.md`, Erledigtes im `CHANGELOG.md`.
+Laufende Arbeit und Grenzen stehen in `AGENTS.md` (Details in `docs/entwicklung/`), Erledigtes im `CHANGELOG.md`.
 
 | Nr. | Gewünscht am | Wunsch | Status |
 |---|---|---|---|

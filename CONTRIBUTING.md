@@ -1,7 +1,7 @@
 # Mitmachen
 
 Danke für dein Interesse! AstroFlow ist auf **Deutsch**: Oberfläche, Doku, Kommentare, Fehlermeldungen und Commit-Texte.
-Technische Einzelheiten zu Aufbau und Modulen stehen in [`AGENTS.md`](AGENTS.md).
+Technische Einzelheiten zu Aufbau und Modulen stehen in [`AGENTS.md`](AGENTS.md) (Einstieg und Regeln) und in [`docs/entwicklung/`](docs/entwicklung/) (Details je Thema).
 
 ## Ablauf
 
