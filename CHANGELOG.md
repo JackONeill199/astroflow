@@ -3,6 +3,14 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.51.5 – 09.11.2026
+
+### Behoben
+- Sage-Chat: Als Beleg zählen nur Quellen, die tatsächlich abgerufen wurden; erfundene Quellenverweise werden entfernt.
+- Sage: Die Statusabfrage kann nicht mehr sporadisch mit einem Serverfehler scheitern; Hintergrundrecherchen laufen nicht mehr doppelt.
+- Sage-KI-Agent: Werkzeugaufrufe je Antwort sind begrenzt; Inhalte aus Katalogen und Fachartikeln gelten als Daten, nicht als Anweisungen.
+- Kleinere Korrekturen (Chatverlauf bei Fehlern, Auftragsstatus, robustere Antwortverarbeitung).
+
 ## 0.51.4 – 09.11.2026
 
 ### Behoben
