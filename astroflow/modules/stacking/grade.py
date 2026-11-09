@@ -77,7 +77,9 @@ def of_result(stats: dict, ecc: float | None = None, depth_version: int | None =
     m5 = (d.get("grenze") or {}).get("m5") if depth_ok else None
     scale = (d.get("feld") or {}).get("skala") if depth_ok else None
     snr = ((stats.get("quality") or {}).get("measure") or {}).get("snr")
-    return grade(m5=m5, snr=snr, fwhm_px=stats.get("fwhm_px"), ecc=ecc, scale=scale)
+    # ohne gefundene Sterne speichert processing.process fwhm_px = 3,0 als Ersatzwert – das ist keine Messung
+    fwhm = stats.get("fwhm_px") if stats.get("stars") != 0 else None
+    return grade(m5=m5, snr=snr, fwhm_px=fwhm, ecc=ecc, scale=scale)
 
 
 def project_ecc(db, project_ids: list[int] | None = None) -> dict[int, float]:

@@ -359,7 +359,7 @@ async function analysisView(el) {
   }
 
   function drawScore(d) {
-    paint('adScore', d.score_hist, () => {
+    paint('adScore', [d.score_hist, d.score_ids, d.edit], () => {
       const H = d.score_hist, mx = Math.max(1, ...H), n = H.reduce((a, b) => a + b, 0), e = d.edit || {};
       const names = (i) => (d.score_ids?.[i] || []).map(id => d.rows.find(r => r.id === id)?.name).filter(Boolean);
       const tip = (v, i) => { const l = names(i); return `${v} ${v === 1 ? 'Bild' : 'Bilder'} mit ${i}/10${l.length ? ': ' + l.slice(0, 8).join(', ') + (l.length > 8 ? ' …' : '') : ''}`; };

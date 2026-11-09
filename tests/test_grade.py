@@ -54,6 +54,8 @@ def test_of_result_uses_current_depth_only():
     assert {p["key"] for p in grade.of_result(st, 0.55, depth_version=3)["parts"]} == {"depth", "noise", "sharp", "shape"}
     assert grade.of_result(st, 0.55, depth_version=4)["missing"] == ["depth"]  # veraltete Tiefe zählt nicht
     assert grade.of_result({"quality": {"score": 10}}) is None                 # nur Bearbeitungsprüfung: keine Note
+    # keine Sterne im Stack: fwhm_px ist nur der Ersatzwert 3,0 → Schärfe fehlt statt 10 Punkte
+    assert "sharp" in grade.of_result({**st, "fwhm_px": 3.0, "stars": 0}, 0.55, depth_version=3)["missing"]
 
 
 def test_project_ecc(tmp_path):
