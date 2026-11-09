@@ -4,6 +4,10 @@ Herkunft: Repo `JackONeill199/SkyTrace` (bleibt unverändert bestehen). Die Anal
 (flache Python-Module, unverändert bis auf Pfade), die Oberfläche ist in die AstroFlow-Shell portiert (`static/skytrace.js`),
 Messgrafiken/Zoomdialoge (`static/evidence.js/css`) sind unverändert und werden auch in den eigenständigen Bericht eingebettet.
 
+## Lizenz (AGPL-Teil)
+
+Die Erkennung (Modell `models/night-detector/`, AGPL-3.0, und `ultralytics`, AGPL-3.0, von `requirements-engine.txt` nachinstalliert) ist AGPL-3.0; die Engine importiert `ultralytics` und läuft deshalb nur als eigener Unterprozess (`engine/`, Quellcode offen im Repo). AstroFlow liefert `ultralytics` nie mit (auch nicht das Windows-Paket); der Server importiert es nie. AstroFlow selbst bleibt MIT. Bei Bezahl-/Closed-Source-Plänen zuerst `docs/RELEASE.md` und diesen Punkt klären. Texte: `NOTICE`, README → Lizenz, `core/components.py` (`license` von `skytrace`).
+
 ## Abweichungen gegenüber dem Original-Repo
 
 - **Pfade** (`engine/project_paths.py`): `CODE` = `engine/`, `ASSETS` = Modulordner (Modell unter `models/`, `static/evidence.*`),

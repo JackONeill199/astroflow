@@ -11,7 +11,7 @@ dynamic = ["version"]
 description = "Lokale Astro-Plattform: FITS-Rohbilder automatisch zum fertigen Astrofoto, Lichtspuren finden, Objekte erklären"
 readme = "README.md"
 license = "MIT"
-license-files = ["LICENSE", "NOTICE"]
+license-files = ["LICENSE", "NOTICE", "astroflow/modules/skytrace/models/night-detector/LICENSE"]
 requires-python = ">=3.12"
 authors = [{ name = "AstroFlow" }]
 keywords = ["astronomie", "astrofotografie", "stacking", "fits", "smart-teleskop", "seestar", "vespera", "stellina"]

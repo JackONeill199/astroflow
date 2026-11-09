@@ -17,4 +17,6 @@ GPU-Beschleunigung. GraXpert und StarNet bitte von den Herstellern laden.
 
 Anleitung und Quelltext: https://github.com/JackONeill199/astroflow
 Lizenz: MIT (siehe LICENSE.txt); Detektormodell in SkyTrace: AGPL-3.0;
-Python: PSF-Lizenz; weitere Pakete: jeweils eigene Lizenz in python\Lib\site-packages.
+Python: PSF-Lizenz; weitere Pakete: jeweils eigene Lizenz.
+Alle Lizenztexte der enthaltenen Pakete: THIRD-PARTY-LICENSES.txt (und NOTICE.txt).
+SkyTrace-Erkennung (Modell + ultralytics, nachinstalliert): AGPL-3.0; AstroFlow selbst bleibt MIT.
