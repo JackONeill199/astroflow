@@ -22,7 +22,7 @@ const EXPLAIN = `<details class="sq-help"><summary>Was bedeuten die Werte?</summ
 function curveSvg(pts, key = 'sqm', label = 'Himmelshelligkeit') {
   const P = pts.filter(p => p[key] != null);
   if (P.length < 2) return '';
-  const W = 640, H = 150, L = 38, R = 8, T = 10, B = 22;
+  const D = window.AFdeco, W = 640, H = 150, L = 38, R = D ? D.R : 8, T = 10, B = 22;
   const t0 = P[0].ts, t1 = P[P.length - 1].ts || t0 + 1;
   const vs = P.map(p => p[key]);
   let lo = Math.min(...vs), hi = Math.max(...vs);
@@ -30,7 +30,8 @@ function curveSvg(pts, key = 'sqm', label = 'Himmelshelligkeit') {
   const inv = key === 'sqm';                          // Himmel: dunkler (größer) nach oben; Seeing: schärfer (kleiner) nach oben
   const X = t => L + (t - t0) / Math.max(1, t1 - t0) * (W - L - R);
   const Y = v => T + (inv ? (hi - v) : (v - lo)) / (hi - lo) * (H - T - B);
-  let g = '';
+  // Hintergrund: Himmel (oben dunkel, unten Dunst/Mond) bzw. Schärfe (scharfer Stern oben)
+  let g = D ? D.draw(inv ? 'sky' : 'seeing', { L, T, W, R, PW: W - L - R, PH: H - T - B, Y, lo, hi, sharpTop: true }) : '';
   for (const v of [lo, (lo + hi) / 2, hi]) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" class="sq-grid"/><text x="${L - 5}" y="${Y(v) + 4}" text-anchor="end">${de(v, 1)}</text>`;
   const step = Math.max(1, Math.round((t1 - t0) / 3600 / 5));
   for (let t = Math.ceil(t0 / 3600) * 3600; t <= t1; t += 3600 * step)
@@ -196,18 +197,20 @@ async function skyView(el) {
   function nightsChart(nights) {
     const P = nights.map(n => ({ n, v: n.sqm ?? n.sqm_all, own: n.sqm != null })).filter(p => p.v != null);
     if (!P.length) return '';
-    const W = 760, H = 210, L = 38, R = 10, T = 10, B = 24;
+    const D = window.AFdeco, W = 760, H = 210, L = 38, R = D ? D.R : 10, T = 10, B = 24;
     const ts = P.map(p => Date.parse(p.n.night + 'T12:00:00Z') / 1000), t0 = Math.min(...ts), t1 = Math.max(...ts, t0 + 86400);
     let lo = Math.min(...P.map(p => p.v)), hi = Math.max(...P.map(p => p.v));
     if (hi - lo < 1) { const m = (hi + lo) / 2; lo = m - 0.5; hi = m + 0.5; }
     const X = t => L + (t - t0) / (t1 - t0) * (W - L - R), Y = v => T + (hi - v) / (hi - lo) * (H - T - B);
-    let g = '';
+    let g = D ? D.draw('sky', { L, T, W, R, PW: W - L - R, PH: H - T - B, Y, lo, hi }) : '';
     for (const v of [lo, (lo + hi) / 2, hi]) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" class="sq-grid"/><text x="${L - 5}" y="${Y(v) + 4}" text-anchor="end">${de(v, 1)}</text>`;
     const y0 = new Date(t0 * 1000).getUTCFullYear(), y1 = new Date(t1 * 1000).getUTCFullYear();
     for (let y = y0; y <= y1 + 1; y++) { const t = Date.UTC(y, 0, 1) / 1000; if (t > t0 && t < t1) g += `<line x1="${X(t)}" x2="${X(t)}" y1="${T}" y2="${H - B}" class="sq-grid"/>`; }
     g += `<text x="${L}" y="${H - 6}">${fday(P[0].n.night)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${fday(P[P.length - 1].n.night)}</text>`;
     g += P.map((p, i) => `<circle cx="${X(ts[i]).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="${p.own ? 4 : 3}" class="${p.own ? 'sq-pt' : 'sq-pt off'}"><title>${fday(p.n.night)} · ${de(p.v, 2)} mag/″²${p.own ? '' : ' (gestört)'}</title></circle>`).join('');
-    return `<svg class="sq-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Himmelshelligkeit je Nacht">${g}</svg><p class="mut sm">Je Nacht: volle Punkte = Ortswert, helle = gestörte Nacht (Median aller Aufnahmen). Oben ist dunkler.</p>`;
+    const leg = D ? D.legend([{ cls: 'sq-pt', r: 4, text: 'Ortswert', title: 'Ungestörte Nacht: dunkel, kein Mond, über 30°' },
+      { cls: 'sq-pt off', r: 3, text: 'gestört', title: 'Mond, Dämmerung oder Dunst – Median aller Aufnahmen, kein Ortswert' }]) : '';
+    return `<p class="mut sm sq-chart-h">Himmelshelligkeit je Nacht – oben = dunkler.</p>${leg}<svg class="sq-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Himmelshelligkeit je Nacht">${g}</svg>`;
   }
   await load();
   return { update: load, destroy: () => { ticket++; } };
@@ -288,7 +291,7 @@ async function analysis(host, pid) {
             <div class="stat"><small>Aufnahmen</small><b class="tnum" data-count>${n.good ?? 0} / ${n.frames ?? 0}</b><small class="dim">ungestört / gesamt</small></div></div>
           ${n.bortle ? bortleScale(n.bortle) + `<p class="mut sm">${esc(n.bortle.label)}</p>` : `<p class="mut sm">Keine Bortle-Klasse: ${esc(n.note || 'keine ungestörte Aufnahme (dunkel, ohne Mond, über 30°)')}.</p>`}
           ${i < 3 ? `<div class="sq-curves">${curveSvg(n.curve) ? `<div><small class="mut">Himmelshelligkeit (oben = dunkler)</small>${curveSvg(n.curve)}</div>` : ''}
-            ${curveSvg(n.curve, 'seeing', 'Bildschärfe') ? `<div><small class="mut">Bildschärfe in ″ (oben = schärfer)</small>${curveSvg(n.curve, 'seeing', 'Bildschärfe')}</div>` : ''}</div>` : ''}
+            ${curveSvg(n.curve, 'seeing', 'Bildschärfe') ? `<div><small class="mut">Sternschärfe (FWHM) – oben = schärfer</small>${curveSvg(n.curve, 'seeing', 'Bildschärfe')}</div>` : ''}</div>` : ''}
         </div>
         <div class="sq-alight"><h3>Lichtrichtung${site ? ` · ${esc(site.name)}` : ''}</h3>${light ? roseSvg(light) : ''}${lightText(light)}</div>
       </div></div>`;

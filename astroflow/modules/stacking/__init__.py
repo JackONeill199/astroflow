@@ -13,8 +13,8 @@ class Module(BaseModule):
     name = "Bilder"
     description = "Rohbilder automatisch kalibrieren, stacken und zum fertigen Astrofoto entwickeln."
     icon = "grid"
-    scripts = ("live.js", "stacking.js", "tonight.js", "depth.js", "hrd.js", "asteroids.js", "skyquality.js", "diagnose.js", "analysis.js", "dashboard.js")
-    styles = ("depth.css", "hrd.css", "asteroids.css", "analysis.css", "dashboard.css", "statistics.css", "housekeeping.css", "library.css", "stages.css", "tutor.css", "versions.css", "live.css", "tonight.css", "skyquality.css", "diagnose.css")
+    scripts = ("chartdeco.js", "live.js", "stacking.js", "tonight.js", "depth.js", "hrd.js", "asteroids.js", "skyquality.js", "diagnose.js", "analysis.js", "dashboard.js")
+    styles = ("chartdeco.css", "depth.css", "hrd.css", "asteroids.css", "analysis.css", "dashboard.css", "statistics.css", "housekeeping.css", "library.css", "stages.css", "tutor.css", "versions.css", "live.css", "tonight.css", "skyquality.css", "diagnose.css")
 
     def __init__(self, ctx):
         super().__init__(ctx)

@@ -130,6 +130,11 @@ function hrdSvg(d) {
       + `<text class="hl" transform="translate(${W - 8} ${(T + H - B) / 2}) rotate(90)">absolute Helligkeit M<tspan baseline-shift="sub" font-size="9">G</tspan></text>`;
   }
   const rgb = (c) => { const [r, g, b] = starColor(c); return `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`; };
+  // Hintergrund: Sternfarbe entlang der x-Achse (gleiche Umrechnung wie die Punkte) – zart über die Fläche, kräftig als Band unten
+  const stops = Array.from({ length: 9 }, (_, k) => `<stop offset="${k / 8}" stop-color="${rgb(x0 + (x1 - x0) * k / 8)}"/>`).join('');
+  const band = `<defs><linearGradient id="hrdBand" x1="0" x2="1" y1="0" y2="0">${stops}</linearGradient></defs>
+    <rect class="hrd-tint" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="url(#hrdBand)"/>
+    <rect class="hrd-band" x="${L}" y="${H - B - 4}" width="${W - L - R}" height="4" fill="url(#hrdBand)"/>`;
   const gaiaPts = gaia.filter(([c, g]) => inb(c, g)).map(([c, g]) => `<circle cx="${f2(X(c))}" cy="${f2(Y(g))}" r="1.6"/>`).join('');
   const fieldPts = field.filter(([c, g]) => inb(c, g)).map(([c, g]) => `<circle cx="${f2(X(c))}" cy="${f2(Y(g))}" r="1.5"/>`).join('');
   const ms = (d.hauptreihe || []).filter(([c, g]) => inb(c, g));
@@ -140,8 +145,8 @@ function hrdSvg(d) {
   const own = mem.map((m, i) => !inb(m.c, m.g) ? '' : `<circle class="hp" data-i="${i}" tabindex="-1" cx="${f2(X(m.c))}" cy="${f2(Y(m.g))}" r="2.8" fill="${rgb(m.c)}" style="--k:${(i % 40) * 12}ms"><title>${esc(m.id)}
 G ${de1(m.g, 2)} (Gaia ${de1(m.gg, 2)}) · BP−RP ${de1(m.c, 2)} ± ${de1(m.ce, 2)}${m.gc != null ? ` (Gaia ${de1(m.gc, 2)})` : ''}${m.x != null ? '\nKlick zeigt ihn im Bild' : ''}</title></circle>`).join('');
   return `<svg viewBox="0 0 ${W} ${H}" class="hrd-svg" role="img" aria-label="Farben-Helligkeits-Diagramm: ${mem.length} Haufensterne">
-    <g class="hrd-grid">${grid}${right}
-      <text class="hl" x="${(L + W - R) / 2}" y="${H - 6}">Farbe BP−RP (blau ← → rot)</text>
-      <text class="hl" transform="translate(12 ${(T + H - B) / 2}) rotate(-90)">Helligkeit G (mag)</text></g>
+    ${band}<g class="hrd-grid">${grid}${right}
+      <text class="hl" x="${(L + W - R) / 2}" y="${H - 6}">Farbe BP−RP (heiß ← → kühl)</text>
+      <text class="hl" transform="translate(12 ${(T + H - B) / 2}) rotate(-90)">Helligkeit G – oben heller</text></g>
     <g class="hrd-gaia">${gaiaPts}</g><g class="hrd-field">${fieldPts}</g>${msPath}<g class="hrd-own">${own}</g>${toMark}</svg>`;
 }
