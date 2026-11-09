@@ -98,10 +98,10 @@ def test_import_stopped_by_low_space_keeps_rest(tmp_path, monkeypatch):
     files = []
     for i in range(4):
         f = src / f"img-{i}.fits"
-        f.write_bytes(b"x" * 10)
+        f.write_bytes(b"SIMPLE  =".ljust(2880))        # minimal gültig: ein Block mit FITS-Kopfbeginn
         files.append(f)
     g = {"id": "g0", "kind": "lights", "dir": src, "files": files, "to_import": list(files), "n_files": 4,
-         "n_known": 0, "n_new": 4, "stat": {f: (10, 0) for f in files}, "import_bytes": 40, "state": "new"}
+         "n_known": 0, "n_new": 4, "stat": {f: (2880, 0) for f in files}, "import_bytes": 4 * 2880, "state": "new"}
     lib.groups = [g]
     left = iter([10e9, 10e9, 1e9])                   # nach zwei Dateien wird es knapp
     monkeypatch.setattr(diskspace, "free", lambda p: next(left, 1e9))
