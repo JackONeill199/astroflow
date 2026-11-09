@@ -220,6 +220,11 @@ def test_chat_mit_werkzeugen(client, monkeypatch):
     r = client.post("/api/sage/kb/chat", json={"question": "Wie weit weg?", "entity": "m45", "scope": "entity:m45"}).json()
     assert r["steps"][0]["tool"] == "get_entry" and r["sources"] and "(Deine Daten)" in r["answer"]
     assert len(client.get("/api/sage/kb/chat", params={"scope": "entity:m45"}).json()) == 2
+    # Rückfrage ohne Werkzeug: Beleg aus der früheren, schon geprüften Antwort bleibt
+    sid = r["sources"][0]["id"]
+    monkeypatch.setattr(agent.LLM, "chat", lambda self, m, t=None, **k: {"content": f"Also rund 443 Lj [S{sid}]."})
+    r2 = client.post("/api/sage/kb/chat", json={"question": "Nochmal?", "entity": "m45", "scope": "entity:m45"}).json()
+    assert f"[S{sid}]" in r2["answer"] and r2["sources"]
 
 
 def test_chat_belege_nur_aus_dem_lauf(client, monkeypatch):

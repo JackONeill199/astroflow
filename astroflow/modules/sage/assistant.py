@@ -7,6 +7,7 @@ from __future__ import annotations
 import ast
 import math
 import operator
+import json
 import re
 import time
 
@@ -153,7 +154,7 @@ def ask(mod, question: str, scope: str = "global", entity: str | None = None, im
         if h:
             ctx.append(f"Der Nutzer betrachtet sein Bild „{h.get('title')}“ (history_id {image}) mit den Objekten: "
                        + ", ".join(o["name"] for o in (h.get("objects") or [])[:15]))
-    hist = kb.q("SELECT role, content FROM chats WHERE scope=? ORDER BY id DESC LIMIT 8", (scope,))[::-1]
+    hist = kb.q("SELECT role, content, data FROM chats WHERE scope=? ORDER BY id DESC LIMIT 8", (scope,))[::-1]
     convo = "\n".join(f"{'Nutzer' if m['role'] == 'user' else 'Sage'}: {m['content'][:800]}" for m in hist)
     user = ("\n".join(ctx) + "\n\n" if ctx else "") + (f"Bisheriges Gespräch:\n{convo}\n\n" if convo else "") + f"Frage: {question}"
     run = kb.start_run("chat", entity, llm.model)
@@ -167,6 +168,15 @@ def ask(mod, question: str, scope: str = "global", entity: str | None = None, im
         raise
     # Belegpflicht: nur Quellen, die ein Werkzeug in diesem Lauf geliefert hat; erfundene Verweise fallen weg
     seen = {i for s in steps for i in s.get("sources") or ()}
+    for m in hist:                                   # bereits belegte frühere Antworten, die das Modell im Verlauf sah
+        d = m.get("data")
+        if isinstance(d, str):
+            try:
+                d = json.loads(d)
+            except ValueError:
+                d = None
+        if m["role"] == "assistant" and isinstance(d, dict):
+            seen |= {x["id"] for x in d.get("sources") or () if isinstance(x, dict) and isinstance(x.get("id"), int)}
     answer = re.sub(r"\s?\[S(\d{1,9})\]", lambda m: m.group(0) if int(m.group(1)) in seen else "", answer)
     cited = sorted({int(n) for n in re.findall(r"\[S(\d{1,9})\]", answer)})
     srcs = [{"id": s["id"], "title": s["title"], "kind": s["kind"], "url": s["url"], "year": s["year"]} for s in kb.sources(cited)]
