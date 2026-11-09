@@ -185,3 +185,78 @@ def test_library_predicts_target_of_new_observation(tmp_path):
         assert new["target"]["id"] == pid and new["target"]["name"]
         other = next(g for r, g in by.items() if "mono" in r)          # anderes Objekt/Kamera: kein Ziel
         assert other["target"] is None
+
+
+def test_library_broken_fits_not_new(tmp_path):
+    """Leere, abgeschnittene und kopflose FITS-Dateien zählen weder als neu noch als bekannt (n_broken), werden nicht
+    importiert und beim nächsten Lauf nicht erneut gelesen."""
+    from astroflow.modules.stacking import scanner
+    from astroflow.modules.stacking.db import DB
+    root = tmp_path / "Platte"
+    obs = root / "2026-08-12_21-00-00_observation_M31"
+    demo.generate(obs, n_lights=6, n_darks=0, n_flats=0)
+    good = sorted(obs.rglob("*.fit"))[0]
+    raw = good.read_bytes()
+    (obs / "img-0001.fits").write_bytes(b"")                                # 0 Byte
+    (obs / "img-0002.fits").write_bytes(raw[:2000])   # abgebrochen
+    (obs / "img-0003.fits").write_bytes(b"\x01\x02" * 6000)                  # volle Größe, kein Kopf
+    assert not scanner.looks_like_fits(obs / "img-0001.fits") and not scanner.looks_like_fits(obs / "img-0003.fits")
+    assert scanner.looks_like_fits(good)
+    s = load_settings(tmp_path / "d")
+    s.auto = False
+    with TestClient(create_app(s)) as c:
+        c.post("/api/stacking/library/scan", json={"root": str(root)})
+        g = _wait(c)["groups"][0]
+        assert g["state"] == "new" and g["n_broken"] == 3 and g["n_files"] == 6 and g["n_new"] == 6, g
+        assert sorted(g["broken"]) == ["img-0001.fits", "img-0002.fits", "img-0003.fits"]
+        assert c.post("/api/stacking/library/import", json={"ids": [g["id"]]}).status_code == 200
+        st = _wait(c)
+        assert st["imported"]["raw"] == 6 and not st["imported"]["errors"], st
+        DB(s.db_path).x("UPDATE frames SET stacked=1 WHERE kind='light'")
+        c.post("/api/stacking/library/scan", json={"root": str(root)})
+        g = _wait(c)["groups"][0]
+        assert g["state"] == "done" and g["n_new"] == 0 and g["n_broken"] == 3, g     # früher: „partial“, 3 neu
+        # weiterer Lauf ohne Änderung: keine Kopfprüfung mehr (steht in library_index) (Kopfprüfung steht in library_index)
+        opened = []
+        real_open_fn = scanner.looks_like_fits
+        scanner.looks_like_fits = lambda p, size=None: opened.append(str(p)) or real_open_fn(p, size)
+        try:
+            c.post("/api/stacking/library/scan", json={"root": str(root)})
+            g = _wait(c)["groups"][0]
+        finally:
+            scanner.looks_like_fits = real_open_fn
+        assert g["state"] == "done" and g["n_broken"] == 3
+        assert opened == [], opened
+
+
+def test_library_head_check_cached_for_unimported(tmp_path):
+    """Noch nicht importierte, unveränderte Dateien: erster Lauf prüft den Kopf, der zweite öffnet nichts mehr;
+    eine kopflose Datei in einem Beobachtungsordner mit Stichprobenpfad wird beim Import abgefangen."""
+    from astroflow.modules.stacking import scanner
+    root = tmp_path / "Platte"
+    obs = root / "2026-08-12_21-00-00_observation_M31"
+    other = root / "lights_ohne_namen"
+    demo.generate(obs, n_lights=8, n_darks=0, n_flats=0)
+    demo.generate(other, n_lights=3, n_darks=0, n_flats=0)
+    victim = sorted(obs.rglob("*.fit"))[3]
+    victim.write_bytes(b"\x01\x02" * (victim.stat().st_size // 2))        # volle Größe, kein Kopf; Stichprobenordner
+    s = load_settings(tmp_path / "d")
+    s.auto = False
+    opened = []
+    real_open_fn = scanner.looks_like_fits
+    with TestClient(create_app(s)) as c:
+        c.post("/api/stacking/library/scan", json={"root": str(root)})
+        _wait(c)
+        scanner.looks_like_fits = lambda p, size=None: opened.append(str(p)) or real_open_fn(p, size)
+        try:
+            c.post("/api/stacking/library/scan", json={"root": str(root)})
+            st = _wait(c)
+        finally:
+            scanner.looks_like_fits = real_open_fn
+        assert opened == [], opened
+        ids = [g["id"] for g in st["groups"]]
+        assert c.post("/api/stacking/library/import", json={"ids": ids}).status_code == 200
+        st = _wait(c)
+        assert st["imported"]["raw"] == 10 and not st["imported"]["errors"], st      # 8 + 3 − 1 kopflose
+        g = next(g for g in st["groups"] if g["rel"].endswith("M31"))
+        assert g["n_broken"] == 1 and g["n_new"] == 0 and g["n_files"] == 7, g

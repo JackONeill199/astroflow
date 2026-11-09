@@ -46,6 +46,22 @@ def fingerprint(path: str | Path, block: int = 65536) -> str:
     return h.hexdigest()[:20]
 
 
+FITS_BLOCK = 2880
+
+
+def looks_like_fits(path: str | Path, size: int | None = None) -> bool:
+    """Billige Vorprüfung: gültiges FITS ist mindestens ein 2880-Byte-Block groß und beginnt mit „SIMPLE  =“.
+    Leere, abgebrochene (zu kurze) oder kopflose Dateien fallen durch; gelesen werden höchstens die ersten 9 Byte.
+    size: schon bekannte Dateigröße (spart den stat-Aufruf). Lesefehler (OSError, z. B. Platte weg) werden nicht
+    verschluckt – eine nicht erreichbare Datei ist nicht „kaputt“."""
+    if size is None:
+        size = os.stat(path).st_size
+    if size < FITS_BLOCK:
+        return False
+    with open(path, "rb") as f:
+        return f.read(9) == b"SIMPLE  ="
+
+
 def classify(info: FrameInfo, path: Path) -> str:
     if info.processed:                               # fertiger Stack/Master anderer Software: nie stacken
         return "processed"

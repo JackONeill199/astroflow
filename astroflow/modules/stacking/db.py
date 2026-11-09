@@ -34,6 +34,7 @@ MIGRATIONS = [
     ("frames", "deleted", "INTEGER DEFAULT 0"),      # 1 = Rohdatei nach dem Stacking gelöscht (Speicher sparen)
     ("frames", "size", "INTEGER DEFAULT 0"),         # Dateigröße in Bytes (für die Speicheranzeige)
     ("frames", "stack_notified", "INTEGER DEFAULT 0"),  # Beobachtung nach gespeichertem Stack erfolgreich gemeldet
+    ("library_index", "hdr", "INTEGER DEFAULT 0"),   # FITS-Kopfprüfung beim Durchsuchen: 0 offen, 1 gültig, 2 unlesbar
 ]
 
 

@@ -23,7 +23,11 @@ from .picture_import import PICTURE_EXT, SOURCE_LIMIT, import_picture
 
 CALIB = re.compile(r"dark|flat|bias|offset", re.I)
 MAX_GROUPS = 2000
-SAMPLE = 4                      # Stichprobe je unbekanntem Beobachtungsordner (je 2 vom Anfang und Ende)
+HDR_OK, HDR_BAD = 1, 2        # library_index.hdr: Kopfprüfung gültig bzw. keine gültige FITS-Datei (zu Größe + mtime gemerkt)
+UPSERT_HDR = ("INSERT INTO library_index(path, size, mtime, fp, hdr) VALUES(?,?,?,NULL,?) ON CONFLICT(path) DO UPDATE SET "
+              "fp=CASE WHEN size=excluded.size AND mtime=excluded.mtime THEN fp ELSE NULL END, "
+              "size=excluded.size, mtime=excluded.mtime, hdr=excluded.hdr")
+SAMPLE = 4                     # Stichprobe je unbekanntem Beobachtungsordner (je 2 vom Anfang und Ende)
 
 
 def _walk(root: Path):
@@ -181,10 +185,12 @@ class Library:
             groups = find_groups(root)
             fps, by_name, shas, names = self._known()
             self._set(message="Abgleich mit AstroFlow …")
-            cache = {r["path"]: r for r in self.db.q("SELECT path, size, mtime, fp FROM library_index")}
+            cache = {r["path"]: r for r in self.db.q("SELECT path, size, mtime, fp, hdr FROM library_index")}
             rows: dict[Path, dict | None] = {}          # Rohdaten: Datenbankzeile der bekannten Aufnahme
             prints: dict[Path, str | None] = {}         # Fingerabdruck bzw. SHA256 (Bilder)
             unknown: list[tuple[dict, list[Path]]] = []
+            broken: set[Path] = set()                   # keine gültige FITS-Datei (leer, abgebrochen, ohne Kopf)
+            verified: set[Path] = set()                 # Kopf schon geprüft (library_index.hdr, gleiche Größe + mtime)
             for g in groups:
                 unk = []
                 for f in g["files"]:
@@ -194,13 +200,59 @@ class Library:
                         rows[f] = r
                         continue
                     c = cache.get(str(f))
-                    if c and c["size"] == size and c["mtime"] == mtime:
+                    hit = bool(c and c["size"] == size and c["mtime"] == mtime)
+                    if g["kind"] != "pictures":
+                        if size < scanner.FITS_BLOCK or (hit and c["hdr"] == HDR_BAD):   # leer/abgebrochen bzw. gemerkt
+                            broken.add(f)
+                            continue
+                        if hit and c["hdr"] == HDR_OK:
+                            verified.add(f)
+                    if hit and c["fp"]:
                         prints[f] = c["fp"]
                     else:
                         unk.append(f)
                 if unk:
                     unknown.append((g, unk))
             n_read = [0]
+
+            # Kopf prüfen (nur die ersten Bytes) – nur Dateien, die nach den Schnellpfaden als neu gälten und deren Kopf
+            # noch nicht zu Größe + mtime im Index steht (verified). In Beobachtungsordnern mit Stichprobenpfad nur Dateien
+            # mit auffälliger Größe (≠ häufigste Größe der Gruppe); den Rest fängt der Import ab (_import). Kaputte werden
+            # nicht gelesen, nicht importiert und als unlesbar gemerkt – gültige ebenfalls (nächster Lauf öffnet nichts).
+            size_of = {f: g["stat"][f] for g in groups for f in g["files"]}
+            check: list[Path] = []
+            for g, unk in unknown:
+                if g["kind"] == "pictures":
+                    continue
+                if name_key(unk[0]) and len(g["files"]) > SAMPLE:
+                    sizes = [size_of[f][0] for f in g["files"]]
+                    common = max(set(sizes), key=sizes.count)
+                    unk = [f for f in unk if size_of[f][0] != common]
+                check += unk
+            check += [f for g in groups if g["kind"] != "pictures" for f in g["files"]
+                      if f in prints and f not in rows and not fps.get(prints[f])]
+            check = [f for f in dict.fromkeys(check) if f not in verified]
+            if check:
+                self._set(message="Dateiköpfe prüfen …")
+
+                def head(f):
+                    try:
+                        return scanner.looks_like_fits(f, size_of[f][0])
+                    except OSError:
+                        return None                                   # nicht erreichbar ≠ kaputt, nichts merken
+                with ThreadPoolExecutor(max(2, self.eng.s.threads)) as ex:
+                    res = list(ex.map(head, check))
+                bad = {f for f, good in zip(check, res) if good is False}
+                if bad:
+                    broken |= bad
+                    for f in bad:
+                        prints.pop(f, None)
+                    unknown = [(g, [f for f in unk if f not in bad]) for g, unk in unknown]
+                    unknown = [(g, unk) for g, unk in unknown if unk]
+                self.db.many(UPSERT_HDR, [(str(f), *size_of[f], HDR_OK if good else HDR_BAD)
+                                          for f, good in zip(check, res) if good is not None])
+
+            bad_read: set[Path] = set()                 # beim Fingerabdruck als unlesbar erkannt
 
             def read(items: list[tuple[dict, Path]], label: str):
                 total, done = len(items), [0]
@@ -214,6 +266,9 @@ class Library:
                                 while b := fh.read(1 << 20):
                                     h.update(b)
                             return h.hexdigest()
+                        if not scanner.looks_like_fits(f, g["stat"][f][0]):      # Kopf gleich mit prüfen (nur 9 Byte)
+                            bad_read.add(f)
+                            return None
                         return scanner.fingerprint(f)
                     except OSError:
                         return None
@@ -231,8 +286,12 @@ class Library:
                 for (g, f), fp in zip(items, new):
                     prints[f] = fp
                     if fp:
-                        remember.append((str(f), *g["stat"][f], fp))
-                self.db.many("INSERT OR REPLACE INTO library_index(path, size, mtime, fp) VALUES(?,?,?,?)", remember)
+                        remember.append((str(f), *g["stat"][f], fp, HDR_OK if g["kind"] != "pictures" else 0))
+                self.db.many("INSERT OR REPLACE INTO library_index(path, size, mtime, fp, hdr) VALUES(?,?,?,?,?)", remember)
+                new_bad = [f for f in bad_read if f not in broken]
+                if new_bad:
+                    broken.update(new_bad)
+                    self.db.many(UPSERT_HDR, [(str(f), *size_of[f], HDR_BAD) for f in new_bad])
                 n_read[0] += total
 
             # Stichproben je Beobachtungsordner (Anfang und Ende), übrige Gruppen vollständig
@@ -262,7 +321,7 @@ class Library:
             plist = self.db.q("SELECT id, key, name, ra, dec, radius FROM projects")
             targets = {"keys": {p["key"]: p for p in plist},
                        "centers": {p["key"]: (p["ra"], p["dec"], p["radius"]) for p in plist if p["ra"] is not None}}
-            out = [self._describe(g, rows, prints, shas, names, root, n, targets) for n, g in enumerate(groups)]
+            out = [self._describe(g, rows, prints, shas, names, root, n, targets, broken) for n, g in enumerate(groups)]
             self.groups = out
             open_groups = sum(1 for g in out if g["state"] != "done")
             self._set(state="done", progress=1.0, finished=time.time(), read=n_read[0], skipped=skipped,
@@ -286,9 +345,10 @@ class Library:
         p = targets["keys"].get(a.key)
         return {"id": p["id"], "name": p["name"]} if p else None
 
-    def _describe(self, g, rows, prints, shas, names, root, n, targets=None) -> dict:
+    def _describe(self, g, rows, prints, shas, names, root, n, targets=None, broken=frozenset()) -> dict:
         d: Path = g["dir"]
-        files = g["files"]
+        bad = [f for f in g["files"] if f in broken]              # unlesbar: zählt weder als neu noch als bekannt
+        files = [f for f in g["files"] if f not in broken]
         size = sum(g["stat"][f][0] for f in files)
         todo, known, stacked, owners = [], 0, 0, {}
         for f in files:
@@ -310,7 +370,7 @@ class Library:
         rel = str(d.relative_to(root)) if d != root else d.name
         obj, camera, night, target = None, None, None, None
         project = max(owners, key=owners.get) if owners else None
-        if g["kind"] == "lights":
+        if g["kind"] == "lights" and files:
             try:
                 info = scanner.read_info(files[0])
                 obj = info.object or scanner.object_from_path(files[0])
@@ -336,6 +396,7 @@ class Library:
             label = m.group(1).replace("_", " ")
         return {"id": f"g{n}", "kind": g["kind"], "name": label, "rel": rel, "dir": d, "files": files,
                 "n_files": total, "exts": file_formats(files), "n_known": known, "n_done": stacked, "n_new": len(todo), "bytes": size,
+                "n_broken": len(bad), "broken": [f.relative_to(d).as_posix() for f in bad][:50],
                 "camera": camera, "night": night, "state": state,
                 "project": {"id": project, "name": names.get(project)} if project else None,
                 "target": target,
@@ -381,6 +442,7 @@ class Library:
         done, raw, pics, errors = 0, 0, 0, []
         in_place: list[Path] = []                                   # am Ort eingebunden (kein Hardlink möglich)
         base = eng.s.uploads_dir / "bibliothek"
+        bad_import: dict[str, list[Path]] = {}                     # beim Import als unlesbar erkannt (nie übernommen)
         taken: dict[str, set] = {g["id"]: set() for g in chosen}   # tatsächlich übernommene Dateien je Gruppe
         try:
             full = False
@@ -401,6 +463,12 @@ class Library:
                                 import_picture(eng, fh, f.name, True)
                             pics += 1
                         else:
+                            fst = f.stat()
+                            if not scanner.looks_like_fits(f, fst.st_size):      # in Stichprobenordnern nicht vorab geprüft
+                                bad_import.setdefault(g["id"], []).append(f)
+                                self.db.many(UPSERT_HDR, [(str(f), fst.st_size, fst.st_mtime_ns, HDR_BAD)])
+                                done += 1
+                                continue
                             if not self._put(f, base / tag / g["dir"].name / f.relative_to(g["dir"]), base.parent):
                                 in_place.append(f)
                             raw += 1
@@ -414,7 +482,12 @@ class Library:
             scan = eng.scan_and_queue(in_place) if raw else {"new_by_project": {}, "duplicates": 0}
             for g in chosen:                                     # übernommene Dateien sind nun bekannt, der Rest bleibt offen
                 got = taken[g["id"]]
-                g["to_import"] = [f for f in g["to_import"] if f not in got]
+                for f in bad_import.get(g["id"], []):
+                    g["broken"] = (g.get("broken") or []) + [f.relative_to(g["dir"]).as_posix()]
+                    g["n_broken"] = g.get("n_broken", 0) + 1
+                    g["n_files"] -= 1
+                gone = set(bad_import.get(g["id"], []))
+                g["to_import"] = [f for f in g["to_import"] if f not in got and f not in gone]
                 g["n_known"] += len(got)
                 g["n_new"] = len(g["to_import"])
                 g["import_bytes"] = sum(g["stat"][f][0] for f in g["to_import"]) if "stat" in g else 0
