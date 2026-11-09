@@ -9,7 +9,7 @@ Nutzerdoku: `README.md`, Änderungen: `CHANGELOG.md` (bei Nutzer-sichtbaren Änd
 AstroFlow: lokale Astro-Plattform im Browser aus drei Modulen (seit v0.6, 28.10.2026 – Nutzerwunsch: „ein Produkt, einheitliche UI,
 Module einfach wartbar und erweiterbar“):
 - **Bilder** (`modules/stacking`, Kernmodul): vollautomatische Pipeline FITS-Rohbilder → fertiges Astrofoto.
-- **SkyTrace** (`modules/skytrace`, aus Repo `JackONeill199/SkyTrace`): Lichtspuren/bewegte Objekte in Bildfolgen, Katalogabgleich. Details: `astroflow/modules/skytrace/AGENTS.md`.
+- **SkyTrace** (`modules/skytrace`, aus Repo `JackONeill199/SkyTrace`): Lichtspuren/bewegte Objekte in Bildfolgen, Katalogabgleich. Details: `astroflow/modules/skytrace/AGENTS.md` (+ `docs/entwicklung/skytrace-*.md`).
 - **Sage** (`modules/sage`, aus Repo `JackONeill199/starlight-sage`, Node → Python portiert): seit 2.0 lebende Astronomie-Enzyklopädie – Bilder bestimmen, Objekte aus Fachkatalogen + KI-Agent recherchieren (Belegpflicht), persönliches Beobachtungsgedächtnis, Wissensnetz, proaktive Entdeckungen, Chat, Geschichten/Audioführung. Details: `astroflow/modules/sage/AGENTS.md`, Architektur `docs/SAGE.md`.
 Zielgruppe: Smart-Teleskope (Seestar, Vespera, Stellina) und klassische Astrokameras. Lokal, ein Nutzer, keine Konten.
 Stack: Python 3.12+ · numpy/scipy/astropy · FastAPI + uvicorn · SQLite · Vanilla-JS-SPA ohne Build-Schritt. Lizenz MIT (Detektormodell in SkyTrace: AGPL-3.0, siehe `models/`). Version: `astroflow/__init__.py` (Regeln unter „Versionierung“).
@@ -29,7 +29,9 @@ Stack: Python 3.12+ · numpy/scipy/astropy · FastAPI + uvicorn · SQLite · Van
 | HR-Diagramm, Asteroiden, Gerätediagnose, Analyse-Dashboard | `docs/entwicklung/analyse-auswertungen.md` |
 | Web-UI: Routing, Designsystem, Look, Seitenwechsel, Viewer, 3D, Frontend-Helfer (`folderDialog`, `picker` …), Import fertiger Bilder | `docs/entwicklung/web-ui.md` |
 | Langfassung Architektur (Dienstliste), Sicherheit (CodeQL-Begründungen), Tests (Historie) | `docs/entwicklung/architektur-sicherheit-tests.md` |
-| SkyTrace / Sage | `astroflow/modules/skytrace/AGENTS.md`, `astroflow/modules/sage/AGENTS.md`, `docs/SAGE.md` |
+| SkyTrace (Überblick, feste Regeln, Architektur) | `astroflow/modules/skytrace/AGENTS.md` |
+| SkyTrace: Erkennung · Satelliten/Uhr · Standorte/Rückrechnung · 3D-Erde/Karten · Lauf-Ansicht/Video/Auto · Statistik/Erfolge | `docs/entwicklung/skytrace-erkennung.md`, `skytrace-satelliten-uhr.md`, `skytrace-standorte.md`, `skytrace-erde-3d.md`, `skytrace-lauf-ansicht.md`, `skytrace-statistik-erfolge.md` |
+| Sage | `astroflow/modules/sage/AGENTS.md`, `docs/SAGE.md` |
 | Ausbauplan (historisch), Bearbeitungs-Recherche, Release | `docs/PLAN.md`, `docs/BEARBEITUNG.md`, `docs/RELEASE.md`, `docs/PUBLIC-RELEASE.md` |
 
 ## Produkt-Architektur (Kern + Module)
