@@ -11,6 +11,9 @@ AstroFlow-Shell portiert). Englischer Untertitel: *Uncover what moves among the 
 Neben der Analyse: Lauf-Ansicht mit Video und Messgrafiken, Statistik und Erfolge, **Standort- und Uhrenprüfung** (Rückrechnung aus Satellitenspuren),
 **3D-Erde** (Nächte, Standorte, Heatmap, Satellitenbahnen) und automatische Analyse nach dem Stacken.
 
+## Lizenz (AGPL-Teil)
+Die Erkennung (Modell `models/night-detector/`, AGPL-3.0, und `ultralytics`, AGPL-3.0, von `requirements-engine.txt` nachinstalliert) ist AGPL-3.0; die Engine importiert `ultralytics` und läuft deshalb nur als eigener Unterprozess (`engine/`, Quellcode offen im Repo). AstroFlow liefert `ultralytics` nie mit (auch nicht das Windows-Paket); der Server importiert es nie. AstroFlow selbst bleibt MIT. Bei Bezahl-/Closed-Source-Plänen zuerst `docs/RELEASE.md` und diesen Punkt klären. Texte: `NOTICE`, README → Lizenz, `core/components.py` (`license` von `skytrace`).
+
 ## Feste Nutzerentscheidungen und wissenschaftliche Grenzen (verbindlich)
 - **Originale nur lesen.** Nie löschen, verschieben, umbenennen oder mit Sidecars/ASTAP-Ergebnissen beschreiben. „Entfernen“ unscharfer Aufnahmen
   heißt Ausschluss aus der Verarbeitung. Ausgaben nur unter `<SKYTRACE_HOME>/Ergebnisse/<Lauf>/`; bestehende Läufe erhalten, für geänderte

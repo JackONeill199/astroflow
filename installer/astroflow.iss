@@ -72,6 +72,7 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "AstroFlow.cmd,AstroFlow b
 [Icons]
 Name: "{group}\AstroFlow"; Filename: "{app}\python\pythonw.exe"; Parameters: "-I -m astroflow start"; WorkingDir: "{app}"; IconFilename: "{app}\astroflow.ico"; Comment: "AstroFlow starten und im Browser öffnen"
 Name: "{group}\AstroFlow beenden"; Filename: "{app}\python\pythonw.exe"; Parameters: "-I -m astroflow stop"; WorkingDir: "{app}"; IconFilename: "{app}\astroflow.ico"
+Name: "{group}\Lizenzen der Drittkomponenten"; Filename: "{app}\THIRD-PARTY-LICENSES.txt"
 Name: "{group}\AstroFlow deinstallieren"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\AstroFlow"; Filename: "{app}\python\pythonw.exe"; Parameters: "-I -m astroflow start"; WorkingDir: "{app}"; IconFilename: "{app}\astroflow.ico"; Tasks: desktopicon
 Name: "{userstartup}\AstroFlow"; Filename: "{app}\python\pythonw.exe"; Parameters: "-I -m astroflow start --no-browser"; WorkingDir: "{app}"; IconFilename: "{app}\astroflow.ico"; Tasks: autostart

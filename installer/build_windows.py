@@ -144,6 +144,39 @@ echo fertig > "RES\fertig.txt"
     return wsb
 
 
+def collect_licenses(python_dir: Path, version: str = "") -> str:
+    """Lizenztexte der gebündelten Pakete sammeln (`THIRD-PARTY-LICENSES.txt`): je `*.dist-info` in site-packages Name, Version,
+    Lizenzangabe aus METADATA und die Dateien LICENSE*/COPYING*/NOTICE* (auch unter `licenses/`), dazu `LICENSE.txt` des Python-Ordners.
+    Reihenfolge nach Paketname; einzelne Texte auf 300 KB begrenzt."""
+    from email.parser import Parser
+    site = python_dir / "Lib" / "site-packages"
+    sep = "=" * 78
+    out = ["Lizenzen der im AstroFlow-Paket enthaltenen Drittkomponenten" + (f" (AstroFlow {version})" if version else ""),
+           "AstroFlow selbst steht unter der MIT-Lizenz (LICENSE.txt, Überblick in NOTICE.txt).", ""]
+    pyl = python_dir / "LICENSE.txt"
+    out += [sep, "Python (python-build-standalone, https://github.com/astral-sh/python-build-standalone) – PSF-Lizenz", sep]
+    out += [pyl.read_text(encoding="utf-8", errors="replace")[:300_000] if pyl.is_file() else "(LICENSE.txt des Python-Ordners fehlt)", ""]
+    out += ["Hinweis: Die mitgelieferten C-Bibliotheken von Python (u. a. OpenSSL, zlib, bzip2, xz, expat, libffi, SQLite, Tcl/Tk,",
+            "mpdecimal) stehen unter eigenen, freizügigen Lizenzen. Ihre Texte stehen – soweit enthalten – in der obigen LICENSE.txt;",
+            "vollständig im Lizenzordner der python-build-standalone-Veröffentlichung (siehe Link oben).", ""]
+    for di in sorted(site.glob("*.dist-info"), key=lambda d: d.name.lower()):
+        meta = {}
+        mf = di / "METADATA"
+        if mf.is_file():
+            m = Parser().parsestr(mf.read_text(encoding="utf-8", errors="replace"), headersonly=True)
+            meta = {k: (m.get(k) or "").strip() for k in ("Name", "Version", "License-Expression", "License", "Home-page")}
+        name = meta.get("Name") or di.name.rsplit("-", 1)[0]
+        lic = meta.get("License-Expression") or meta.get("License") or ""
+        lic = lic.splitlines()[0][:120] if lic else "(siehe Lizenztext)"
+        files = sorted({f for f in di.rglob("*") if f.is_file() and re.match(r"(licen[cs]e|copying|notice)", f.name, re.I)}, key=lambda f: str(f))
+        out += [sep, f"{name} {meta.get('Version', '')} – {lic}" + (f" – {meta['Home-page']}" if meta.get("Home-page") else ""), sep]
+        for f in files:
+            out += [f"--- {f.relative_to(di).as_posix()} ---", f.read_text(encoding="utf-8", errors="replace")[:300_000].rstrip(), ""]
+        if not files:
+            out.append("(keine Lizenzdatei im Paket)")
+    return "\n".join(out) + "\n"
+
+
 def build(out: Path, installer: bool = True, cache: Path | None = None) -> dict:
     ver = version()
     cache = cache or ROOT / "build" / "cache"
@@ -188,6 +221,7 @@ def build(out: Path, installer: bool = True, cache: Path | None = None) -> dict:
     shutil.copy2(HERE / "LIESMICH.txt", stage / "LIESMICH.txt")
     shutil.copy2(ROOT / "LICENSE", stage / "LICENSE.txt")
     shutil.copy2(ROOT / "NOTICE", stage / "NOTICE.txt")
+    (stage / "THIRD-PARTY-LICENSES.txt").write_text(collect_licenses(stage / "python", ver), encoding="utf-8")
 
     # Selbsttest im Paket: Import + Version
     r = subprocess.run([str(py), "-I", "-c", "import astroflow, astroflow.server, astroflow.modules.stacking.pipeline, scipy.ndimage, scipy.optimize, "
