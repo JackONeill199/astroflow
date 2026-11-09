@@ -127,4 +127,21 @@ def test_halbe_kopie_nach_neustart_verworfen(tmp_path, monkeypatch):
     from astroflow.modules.skytrace.auto import AutoAnalysis, _is_upload
     neu = AutoAnalysis(auto.mod)
     assert not neu.state["queue"] and not neu.state["sent"] and not (auto.dir / "n_observation_X").exists()
+    # mit gemerkter Kopierliste: gesicherte Dateien bleiben, die Kopie wird fortgesetzt
+    ext = tmp_path / "nas"
+    ext.mkdir()
+    (ext / "b.fits").write_bytes(b"FITS")
+    d = auto.dir / "n_observation_Y"
+    d.mkdir()
+    (d / "00000_a.fits").write_bytes(b"FITS")                       # schon gesicherter Upload
+    auto.file.write_text(json.dumps({"sent": {"f1": d.name, "f2": d.name}, "done": [], "queue": [
+        {"folder": d.name, "state": "staging", "copies": [[str(ext / "b.fits"), str(d / "00001_b.fits")]], "ids": ["f1", "f2"]}]}),
+        encoding="utf-8")
+    neu = AutoAnalysis(auto.mod)
+    neu.start()
+    end = time.monotonic() + 10
+    while neu.state["queue"][0]["state"] == "staging" and time.monotonic() < end:
+        time.sleep(0.02)
+    neu.stop()
+    assert neu.state["queue"][0]["state"] == "queued" and sorted(x.name for x in d.iterdir()) == ["00000_a.fits", "00001_b.fits"]
     assert _is_upload(tmp_path / "data" / "input" / "uploads" / "a.fits") and not _is_upload(tmp_path / "nas" / "a.fits")

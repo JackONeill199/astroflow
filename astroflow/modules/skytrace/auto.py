@@ -43,8 +43,9 @@ class AutoAnalysis:
         self.state.setdefault("sent", {})          # Frame-ID → Ordnername
         self.state.setdefault("queue", [])         # wartende/laufende Ordner
         self.state.setdefault("done", [])          # erledigte (für die Aktivität)
-        # Server-Ende während einer Kopie: halbe Nacht verwerfen, die Aufnahmen gelten wieder als nicht übergeben
-        for q in [q for q in self.state["queue"] if q.get("state") == "staging"]:
+        # Server-Ende während einer Kopie: ohne gemerkte Kopierliste (alter Stand) die halbe Nacht verwerfen;
+        # mit Liste setzt `start` die Kopie fort – schon gesicherte Uploads bleiben so erhalten
+        for q in [q for q in self.state["queue"] if q.get("state") == "staging" and not q.get("copies")]:
             shutil.rmtree(self.dir / q["folder"], ignore_errors=True)
             self.state["queue"].remove(q)
             self.state["sent"] = {k: v for k, v in self.state["sent"].items() if v != q["folder"]}
@@ -102,15 +103,22 @@ class AutoAnalysis:
                     self.state["sent"][f["id"]] = folder.name
                 self.state["queue"].append(item)
                 if copies:
-                    threading.Thread(target=self._copy, args=(item, copies, [f["id"] for f in items]), daemon=True,
-                                     name="skytrace-auto-copy").start()
+                    item["copies"] = [[str(a), str(b)] for a, b in copies]     # für die Fortsetzung nach einem Neustart
+                    item["ids"] = [f["id"] for f in items]
+                    self._start_copy(item)
             self._save()
         self.wake.set()
+
+    def _start_copy(self, item: dict):
+        threading.Thread(target=self._copy, args=(item, [(Path(a), Path(b)) for a, b in item["copies"]], item.get("ids") or []),
+                         daemon=True, name="skytrace-auto-copy").start()
 
     def _copy(self, item: dict, copies: list, ids: list):
         """Kopien für Aufnahmen auf anderen Datenträgern; scheitert eine, wird die Nacht nicht übergeben."""
         try:
             for src, dst in copies:
+                if dst.exists() and (not src.exists() or dst.stat().st_size == src.stat().st_size):
+                    continue                       # schon vor einem Neustart kopiert
                 try:
                     shutil.copy2(src, dst)
                 except FileNotFoundError:          # inzwischen gelöscht: ohne diese Aufnahme weiter
@@ -125,6 +133,8 @@ class AutoAnalysis:
         with self.lock:
             if state:
                 item["state"] = state
+                item.pop("copies", None)
+                item.pop("ids", None)
             else:
                 self.state["queue"] = [q for q in self.state["queue"] if q is not item]
                 for fid in ids:
@@ -150,6 +160,10 @@ class AutoAnalysis:
 
     # ---- Warteschlange ------------------------------------------------------------
     def start(self):
+        with self.lock:
+            for q in self.state["queue"]:
+                if q.get("state") == "staging" and q.get("copies"):
+                    self._start_copy(q)                  # nach Neustart unterbrochene Kopie fortsetzen
         self.thread = threading.Thread(target=self.loop, daemon=True)
         self.thread.start()
 
