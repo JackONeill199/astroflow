@@ -684,10 +684,15 @@ def build_router(eng: Engine) -> APIRouter:
                 except FileExistsError:
                     n_try += 1
                     target = target.with_name(f"{Path(parts[-1]).stem}-{n_try}{Path(parts[-1]).suffix}")
+            # eigener Future statt to_thread: bei Abbruch erst das Ende des Kopier-Threads abwarten, dann die
+            # Teildatei löschen (sonst legt der noch laufende Thread sie neu an bzw. Windows sperrt das Löschen)
+            copy = asyncio.get_running_loop().run_in_executor(None, _copy_upload, f.file, part)
             try:
-                await asyncio.to_thread(_copy_upload, f.file, part)
+                await asyncio.shield(copy)
                 part.replace(target)
             except BaseException:
+                if not copy.done():
+                    await asyncio.wait({copy})
                 part.unlink(missing_ok=True)
                 raise
             n += 1
