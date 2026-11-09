@@ -20,6 +20,11 @@ from ...core import security
 from .db import DB
 from .pipeline import Pipeline
 
+
+def _copy_upload(src, path: Path):
+    with open(path, "wb") as out:
+        shutil.copyfileobj(src, out, 1 << 20)
+
 def ki_error(e: Exception) -> str:
     """Knappe Meldung für eine gescheiterte KI-Anfrage – ohne Ausnahmetext (Adressen, Pfade, Antwortinhalte)."""
     import httpx
@@ -94,6 +99,8 @@ class Engine:
     # ---- Jobs ----------------------------------------------------------------
     def enqueue(self, project_id: int, options: dict | None = None) -> int:
         with self._queue_lock:
+            if not self.db.one("SELECT id FROM projects WHERE id=?", (project_id,)):
+                return 0                                  # Objekt inzwischen gelöscht (Scan lief parallel zum Löschen)
             busy = self.db.one("SELECT id FROM jobs WHERE project_id=? AND state IN ('queued','running')", (project_id,))
             if busy:
                 return busy["id"]
@@ -556,10 +563,12 @@ def build_router(eng: Engine) -> APIRouter:
     def delete_project(pid: int):
         if not db.one("SELECT id FROM projects WHERE id=?", (pid,)):
             raise HTTPException(404)
-        if db.one("SELECT id FROM jobs WHERE project_id=? AND state IN ('queued','running')", (pid,)):
-            raise HTTPException(409, "Das Objekt wird gerade verarbeitet – bitte warten, bis der Durchlauf fertig ist.")
-        with eng.pl._scan_lock:                          # kein gleichzeitiger Scan, der Frames neu zuordnet
-            return eng.pl.delete_project(pid)
+        # Prüfung und Löschen unter der Warteschlangen-Sperre: kein Auftrag kann dazwischen entstehen (enqueue)
+        with eng._queue_lock:
+            if db.one("SELECT id FROM jobs WHERE project_id=? AND state IN ('queued','running')", (pid,)):
+                raise HTTPException(409, "Das Objekt wird gerade verarbeitet – bitte warten, bis der Durchlauf fertig ist.")
+            with eng.pl._scan_lock:                      # kein gleichzeitiger Scan, der Frames neu zuordnet
+                return eng.pl.delete_project(pid)
 
     @r.post("/develop-all")
     def develop_all():
@@ -664,14 +673,23 @@ def build_router(eng: Engine) -> APIRouter:
             target.parent.mkdir(parents=True, exist_ok=True)
             n_try = 0
             while True:                                   # nie überschreiben: bei Namensgleichheit eindeutig nummerieren
+                # erst als „.part“ schreiben (der Scan liest nur .fit/.fits/.fts) und im Thread kopieren – große
+                # Uploads blockieren so den Server nicht, ein Abbruch hinterlässt keine halbe Aufnahme
+                part = target.with_name(target.name + ".part")
                 try:
-                    out = open(target, "xb")
+                    if target.exists():
+                        raise FileExistsError
+                    open(part, "xb").close()
                     break
                 except FileExistsError:
                     n_try += 1
                     target = target.with_name(f"{Path(parts[-1]).stem}-{n_try}{Path(parts[-1]).suffix}")
-            with out:
-                shutil.copyfileobj(f.file, out)
+            try:
+                await asyncio.to_thread(_copy_upload, f.file, part)
+                part.replace(target)
+            except BaseException:
+                part.unlink(missing_ok=True)
+                raise
             n += 1
             raw += 1
         await asyncio.to_thread(attach_previews, eng)

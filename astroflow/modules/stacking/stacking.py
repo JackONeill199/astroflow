@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import time
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -66,6 +67,18 @@ def _clip(X, valid, kappa_lo, kappa_hi):
     return keep
 
 
+
+def _rename(src: Path, dst: Path, tries: int = 10) -> None:
+    """Windows: Virenscanner/Indexdienst halten frisch geschriebene Dateien kurz offen – dann kurz warten und wiederholen."""
+    for i in range(tries):
+        try:
+            src.rename(dst)
+            return
+        except PermissionError:
+            if i == tries - 1:
+                raise
+            time.sleep(0.05 * (i + 1))
+
 class StackState:
     def __init__(self, shape: tuple[int, int, int]):
         C, H, W = shape
@@ -93,8 +106,8 @@ class StackState:
         (tmp / "state.json").write_text(json.dumps(self.meta))
         shutil.rmtree(old, ignore_errors=True)
         if d.exists():
-            d.rename(old)
-        tmp.rename(d)
+            _rename(d, old)
+        _rename(tmp, d)                     # schlägt das fehl, findet load() den Zustand in <d>.old
         shutil.rmtree(old, ignore_errors=True)
 
     @classmethod

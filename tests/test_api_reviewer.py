@@ -69,17 +69,21 @@ def test_upload_keeps_folders_and_blocks_traversal(tmp_path):
     import io
     s = load_settings(tmp_path / "d")
     s.auto = False
-    buf = io.BytesIO()
     from astropy.io import fits
-    fits.PrimaryHDU(np.zeros((8, 8), np.uint16)).writeto(buf)
-    data = buf.getvalue()
+
+    def fits_bytes(v):
+        buf = io.BytesIO()
+        fits.PrimaryHDU(np.full((8, 8), v, np.uint16)).writeto(buf)
+        return buf.getvalue()
+    # verschiedene Inhalte: inhaltsgleiche Uploads räumt der Hintergrund-Scan als Duplikat weg (machte den Test wacklig)
     with TestClient(create_app(s)) as c:
-        r = c.post("/api/stacking/upload", files=[("files", ("2022-08-06_observation_M57/img-0001r.fits", data)),
-                                         ("files", ("../../evil.fits", data)), ("files", ("notes.txt", b"x"))])
+        r = c.post("/api/stacking/upload", files=[("files", ("2022-08-06_observation_M57/img-0001r.fits", fits_bytes(1))),
+                                         ("files", ("../../evil.fits", fits_bytes(2))), ("files", ("notes.txt", b"x"))])
         assert r.json()["saved"] == 2
     up = s.input_dir / "uploads"
     assert list(up.rglob("2022-08-06_observation_M57/img-0001r.fits"))
     assert not (s.data_dir / "evil.fits").exists() and list(up.rglob("evil.fits"))
+    assert not list(up.rglob("*.part"))                  # Teildateien werden nach dem Kopieren umbenannt
 
 
 def _reply(msg: dict, finish="stop"):

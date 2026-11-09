@@ -102,6 +102,13 @@ def slug(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "_", s).strip("_")[:60] or "projekt"
 
 
+
+def resource_error(e: BaseException) -> bool:
+    """Fehler, die nichts über die Aufnahme sagen (Abbruch, volle Platte, RAM, abgesteckte Quelle): weiterwerfen –
+    der Auftrag hält an bzw. wartet, statt gesunde Frames als „Lesefehler“ oder einen Teilschritt als gescheitert zu markieren."""
+    return (isinstance(e, (InterruptedError, diskspace.DiskFull, calibration.SourceOffline, MemoryError))
+            or diskspace.is_full(e))
+
 class Pipeline:
     def __init__(self, settings: Settings, db: DB, review_cfg: reviewer.ReviewerConfig | None = None,
                  solver_cfg: platesolve.SolverConfig | None = None):
@@ -597,6 +604,8 @@ class Pipeline:
             except calibration.SourceOffline as e:     # Kalibrierbilder auf abgesteckter Platte: kein Lesefehler
                 return r["id"], None, e
             except Exception as e:
+                if resource_error(e):                  # RAM/Platte knapp: Auftrag hält an, die Aufnahme bleibt heil
+                    raise
                 msg = user_message(e, "Datei nicht lesbar – Details im Server-Protokoll.", log=False)
                 if msg != str(e).strip():                  # Ausnahmetext (Pfad …) nur ins Protokoll
                     print(f"Lesefehler {r['path']}: {e!r}", flush=True)
@@ -711,9 +720,9 @@ class Pipeline:
                 raise ValueError("Kometenmodus nur für Farbkameras bzw. einen Filter – mehrere Filter werden auf die Sterne gestackt")
             (band, A), = states.items()
             info.update(self._comet_stack(proj, opt, band, A, by_band[band], lib, cache, scale, offline, progress))
-        except (InterruptedError, diskspace.DiskFull, calibration.SourceOffline, MemoryError):
-            raise
         except Exception as e:
+            if resource_error(e):
+                raise
             info["error"] = user_message(e, "Kometenstack fehlgeschlagen – Details im Server-Protokoll.")[:300]
             for b in by_band:
                 shutil.rmtree(comet_dir(wd, b), ignore_errors=True)
@@ -750,10 +759,8 @@ class Pipeline:
         progress(0.0, "Kometenbahn", "Kometenkern suchen")
         try:
             track, info = self._comet_track(proj, opt, A, in_a, times, lib, cache, scale, offline, progress)
-        except (InterruptedError, diskspace.DiskFull, calibration.SourceOffline):
-            raise
         except Exception as e:
-            if not (old and otrack):
+            if resource_error(e) or not (old and otrack):
                 raise
             # z. B. nur 1–3 neue Aufnahmen, ältere Einzelbilder gelöscht: bisherige Bahn weiterverwenden, Stack behalten
             track = otrack

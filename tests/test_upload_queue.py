@@ -98,3 +98,51 @@ def test_next_object_stacks_while_previous_develops(tmp_path):
     eng.worker()
     assert overlap == [True]
     assert [r["state"] for r in eng.db.q("SELECT state FROM jobs ORDER BY id")] == ["done", "done"]
+
+
+def test_enqueue_skips_deleted_project(tmp_path):
+    """Scan reiht ein, während das Objekt gelöscht wird: kein verwaister Auftrag (#24)."""
+    eng, pid = engine(tmp_path, auto=False)
+    eng.db.x("DELETE FROM projects WHERE id=?", (pid,))
+    assert eng.enqueue(pid) == 0
+    assert not eng.db.q("SELECT id FROM jobs")
+
+
+def test_memory_error_in_analysis_is_no_read_error(tmp_path):
+    """Knapper RAM bei der Analyse: Auftrag bricht ab, die Aufnahme gilt nicht als „Lesefehler“ (#23)."""
+    import pytest
+    eng, pid = engine(tmp_path, auto=False)
+    f = tmp_path / "a.fits"
+    f.write_bytes(b"x")
+    eng.db.x("INSERT INTO frames(id,project_id,kind,status,path,info) VALUES('a',?,'light','new',?,'{}')", (pid, str(f)))
+    eng.pl._sensor_maps = lambda *a, **k: (None, None)
+    eng.pl.offline = lambda rows: set()
+
+    def boom(*a, **k):
+        raise MemoryError()
+    eng.pl._load = boom
+    with pytest.raises(MemoryError):
+        eng.pl.stack(pid, {}, lambda *a, **k: None)
+    assert eng.db.one("SELECT status FROM frames WHERE id='a'")["status"] == "new"
+
+
+def test_stackstate_rename_retries(tmp_path, monkeypatch):
+    """Windows: kurz gesperrter Ordner beim Austauschen des Stack-Zustands (#26)."""
+    from pathlib import Path
+    import numpy as np
+    from astroflow.modules.stacking import stacking
+    st = stacking.StackState((1, 4, 4))
+    st.sw += 1
+    st.save(tmp_path / "s")
+    real, calls = Path.rename, []
+
+    def flaky(self, dst):
+        calls.append(self.name)
+        if len(calls) <= 2:
+            raise PermissionError("gesperrt")
+        return real(self, dst)
+    monkeypatch.setattr(Path, "rename", flaky)
+    st.sw += 1
+    st.save(tmp_path / "s")
+    monkeypatch.undo()
+    assert len(calls) >= 4 and float(stacking.StackState.load(tmp_path / "s").sw.max()) == 2
