@@ -239,7 +239,7 @@ def test_library_head_check_cached_for_unimported(tmp_path):
     demo.generate(obs, n_lights=8, n_darks=0, n_flats=0)
     demo.generate(other, n_lights=3, n_darks=0, n_flats=0)
     victim = sorted(obs.rglob("*.fit"))[3]
-    victim.write_bytes(b"" * (victim.stat().st_size // 2))        # volle Größe, kein Kopf; Stichprobenordner
+    victim.write_bytes(b"\x01\x02" * (victim.stat().st_size // 2))        # volle Größe, kein Kopf; Stichprobenordner
     s = load_settings(tmp_path / "d")
     s.auto = False
     opened = []
