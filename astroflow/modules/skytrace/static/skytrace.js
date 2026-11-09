@@ -31,7 +31,7 @@ function engineNotice(eng) {
   if (!eng?.checked || eng.ok) return '';
   return `<div class="notice">${icon('alert')}<div><b>Analyse-Engine unvollständig</b><div class="mut sm">Der Python-Interpreter <code>${esc(eng.python || '')}</code>
     ${eng.error ? `antwortet nicht: ${esc(eng.error)}` : `hat nicht alle Pakete: ${esc((eng.missing || []).join(', '))}`}. Unter Einstellungen → SkyTrace einen Interpreter mit den
-    SkyTrace-Paketen wählen (z. B. die <code>.venv</code> einer bestehenden SkyTrace-Installation) oder <code>pip install -r astroflow/modules/skytrace/requirements.txt</code>.</div></div>
+    SkyTrace-Paketen wählen (z. B. die <code>.venv</code> einer bestehenden SkyTrace-Installation) oder <code>pip install -r astroflow/modules/skytrace/requirements-engine.txt</code>.</div></div>
     <span class="grow"></span><a class="btn sm ghost" href="#/settings/skytrace">Einrichten</a></div>`;
 }
 

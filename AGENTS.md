@@ -92,7 +92,7 @@ astroflow                                             # installierte Version: Se
 ```
 Git-Repo: github.com/JackONeill199/astroflow (Branch main; `data/`, `data_real/`, `.venv`, `AGENTS.local.md` per .gitignore ausgeschlossen).
 Tests laden standardmäßig nur das Stacking-Modul (`tests/conftest.py`); Modultests: `test_modules.py`, `test_sage.py`, `test_skytrace.py`.
-SkyTrace-Engine-Pakete (OpenCV, PyTorch …) sind **nicht** in `requirements.txt` – siehe `astroflow/modules/skytrace/requirements.txt`. Kein Linter/Formatter konfiguriert – Stil des umliegenden Codes übernehmen (knapp, deutsche Kommentare).
+SkyTrace-Engine-Pakete (OpenCV, PyTorch …) sind **nicht** in `requirements.txt` – siehe `astroflow/modules/skytrace/requirements-engine.txt` (Docker: `--build-arg SKYTRACE=1`). Kein Linter/Formatter konfiguriert – Stil des umliegenden Codes übernehmen (knapp, deutsche Kommentare).
 
 ## Modul Bilder – Ablauf (`modules/stacking/pipeline.py`; alle Pipeline-Dateien liegen in `astroflow/modules/stacking/`)
 Zwei getrennte Engines: `Pipeline.stack()` (Schritte 1–6, Ergebnis = linearer Master-Stack in `work/p<id>/stack*`) und
@@ -277,13 +277,13 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    Quellen, Füllen per Öffnung + Versatzausgleich, nie heller als das Original, sternlos + Sterne = Original). Sternlos: `Stretch` =
    automatische GHS-Folge (3 Durchgänge, SP am Himmelshintergrund, D ≤ 25, Rest per MTF; Weißpunkt vom Bild **mit** Sternen).
    Sterne: `channel_curve(img) − channel_curve(sternlos)` (knackig, Kerne weiß), sättigen, × `star_brightness`, Screen-Mischung.
-   **Seit 01.11.2026 für Nebel (emission/reflection/snr) `starnet`** = nur echtes StarNet, ohne StarNet keine Trennung (`Pipeline.develop`
-   setzt dann `off`); NGC 7000 mit StarNet + GraXpert deutlich besser (Nebel ohne Sterne gestreckt, Sterne kleiner). Dazu **Endbearbeitung**
-   `processing.grade` (Profil `grade` 1,0 / `vibrance` 0,5, vor dem Einsetzen der Sterne): Wavelet-Ebenen 4–32 px ×(1+0,35…0,6) nur im Objekt
-   (Maske gegen 10-%-Perzentil der geglätteten Luminanz – Median/MAD versagte, wenn der Nebel das Bild füllt: 0,4 % Maske) und ohne helle
-   Sterne; Vibrance sättigt blasse Farben stärker. Galaxien/Haufen ohne beides. Früherer Stand: **Standard seit 2026-10-28: aus** (alle Profile `off`) – der Nutzer verglich NGC 7000 und fand die Trennung (eigenes Verfahren)
-   matschiger und kontrastärmer; gewählt: ohne Trennung + Gaia-Farbe. Je Objekt per Option `star_separation` (auto/intern) zuschaltbar.
-   Bei Sternhaufen brannte die Trennung den Kern aus (M3). Ohne Trennung: `channel_curve`.
+   **Heutiger Stand (Profile `objects.PROFILES`):** Nebel (emission/reflection/snr) `starnet` = nur echtes StarNet, ohne StarNet keine Trennung
+   (`Pipeline.develop` setzt dann `off`); alle übrigen Profile (Galaxie, Haufen, Planetarisch, Komet, generic) `off`. Anlass (NGC 7000, 01.11.2026): mit
+   StarNet + GraXpert deutlich besser (Nebel ohne Sterne gestreckt, Sterne kleiner), während die eigene Trennung (`intern`) matschiger und
+   kontrastärmer wirkte und bei Sternhaufen den Kern ausbrannte (M3) – `intern`/`auto` nur je Objekt per Option `star_separation` zuschaltbar.
+   Dazu **Endbearbeitung** `processing.grade` (Profil `grade` 1,0 / `vibrance` 0,5, vor dem Einsetzen der Sterne): Wavelet-Ebenen 4–32 px
+   ×(1+0,35…0,6) nur im Objekt (Maske gegen 10-%-Perzentil der geglätteten Luminanz – Median/MAD versagte, wenn der Nebel das Bild füllt:
+   0,4 % Maske) und ohne helle Sterne; Vibrance sättigt blasse Farben stärker. Galaxien/Haufen ohne beides. Ohne Trennung: `channel_curve`.
    `darken_background` mit weichem Fuß (hartes Abschneiden ließ dunkle Nebelpartien schwarz werden).
    **Fotometrische Farbkalibrierung** (`photometry.py`, `Pipeline._photometric`, Einstellung `gaia` / `ASTROFLOW_GAIA`): Master-Stack mit
    `platesolve.solve_image` lösen (WCS auf vollem Pixelraster, Cache `work/p<id>/wcs.json` je Referenzbild), Gaia-DR3-Farben BP−RP
@@ -446,7 +446,7 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
     `_prune_duplicates` entfernt, was pip --target an Abhängigkeiten doppelt ablegt (numpy, pillow … – gleiche Version per Constraints).
     Deinstallation löscht den Paketordner. Ohne Haken (Entwickler-venv, macOS/Linux) `packages_dir()` = None → pip wie gewohnt.
     Paketquellen: erst `torch torchvision` aus dem PyTorch-CPU-Index, dann `modules/skytrace/requirements-engine.txt`
-    (plattformneutral; das alte `requirements.txt` dort ist ein Windows-Lockfile). Immer mit `-c <Werkzeuge>/constraints.txt` = Versionen
+    (plattformneutral; das frühere Windows-Lockfile `requirements.txt` ist seit 0.49.1 entfernt). Immer mit `-c <Werkzeuge>/constraints.txt` = Versionen
     der vom Server geladenen Pakete (numpy, scipy, astropy …) – sonst will pip sie ersetzen, unter Windows sind geladene .pyd gesperrt.
     Nur CPU-PyTorch (GPU-Variante nicht verlässlich ohne Hardwareprüfung). Danach `skytrace.Module.check_engine()`; `gpu._TRIED` zurück.
   - **Prüfsummen** (seit 0.46.0): ASTAP-CLI je System, `astapwin32.zip` (deep_sky.csv), D05/D50 nur mit SHA-256 aus `ASTAP_SHA256`
@@ -865,6 +865,7 @@ Ordnerdialog/Suche und Upload (Server + `droppedFiles`/`upload` im Browser) weg;
 UI-Filter (seit 0.21.0, eine Leiste über der Liste): Zustand als Reiter (`LIB_TABS`, Standard „Offen“ = `n_new > 0`), Art/Format als `.menu`-Mehrfachauswahl,
 localStorage `af.library.filter` (`{tab, kind, ext}`); Formate je Gruppe aus `library.file_formats` → `groups[].exts` (`{"fits": 141}`);
 „Alle neuen“ (Dreifach-Kästchen) und Import wirken nur auf sichtbare Gruppen. Beim ersten Laden sind Gruppen mit Neuem vorgewählt (wie vor 0.21.0).
+**Ziel neuer Gruppen** (`Library._target`): Lights-Gruppen ohne bekannte Aufnahmen bekommen `target {id, name}` = Projekt, dem der Scan sie zuordnen würde (`scanner.assign_project` mit den einmal je Lauf geladenen Projekten, erste Light-Datei, ohne Plate-Solving; Kometen/Felder/Unbekannt kein Ziel); UI-Chip „ergänzt: …“ (`project` bleibt „Dateien schon drin“). Test `test_library_predicts_target_of_new_observation`.
 Bilder gehen über `import_picture` (Kopie in die Ausgabe). Quelldateien bleiben unberührt. API: `GET /library`, `POST /library/scan {root}`, `POST /library/import {ids}` (Ids stammen
 aus dem letzten Suchlauf im Speicher). Zuletzt genutzter Pfad: `data/settings.json` → `library.root`. Test: `tests/test_library.py`.
 
@@ -910,8 +911,8 @@ Kern: `/api/app` (Module, Build), `/api/folders?path=` (Ordnerdialog), `/api/sit
 Hash-Routing: `#/` Übersicht, `#/nacht`, `#/himmel` (Himmelsqualität), `#/analyse` (Analyse-Dashboard), `#/bilder` (Sessions), `#/galerie` (fertige Bilder), `#/p/<id>/<bild|analyse|aufnahmen|versionen|optionen>`, `#/import`,
 `#/skytrace[/neu|/3d (= 3D-Erde, Analysen)|/erde[/<Nacht>]|/statistik|/<lauf>/<vorschau|kandidaten|beobachtungen|protokoll|3d>]`, `#/sage[/wiki|/entdeckungen|/sammlung|/<eintrag>]`, `#/activity` (Aufträge), `#/settings/<modul|standorte|module>`.
 **Designsystem (seit 0.21.0, Nutzerauftrag „professionelles, konsistentes Designsystem wie eine native Desktop-App“):** Tokens in `:root` von `style.css`
-(`--bg/--sidebar/--surface/--surface-2/--border/--fg/--mut/--dim/--acc/--ok/--warn/--bad`, Maße, `--t` 160 ms); alte Namen (`--panel`, `--grad`, `--acc2/3` …)
-sind Aliase. **Inhaltsbreiten:** der Router gibt jedem Ansichtsbehälter die Klasse `page` (zentriert, `--page-max` 80rem), `page wide`
+(`--bg/--sidebar/--surface/--surface-2/--border/--fg/--mut/--dim/--acc/--ok/--warn/--bad`, Maße, `--t` 160 ms); Datenfarben `--data-2/--data-3`, Rahmen `--border-soft`;
+die alten Aliase (`--panel`, `--line`, `--grad`, `--acc2/3` …) sind seit 0.49.1 entfernt – neue Stile nutzen nur die Tokens. **Inhaltsbreiten:** der Router gibt jedem Ansichtsbehälter die Klasse `page` (zentriert, `--page-max` 80rem), `page wide`
 (Arbeitsflächen: `PAGE_WIDE` in `app.js` – Galerie-Betrachter, SkyTrace-Lauf und 3D; die Objektseite `#/p/…` ist eine normale Seite) bzw. `page narrow` (`--page-narrow` 60rem, nur Willkommen-Assistent; Einstellungen seit 0.45.5 normale `page`, Abschnitte `#sbody .split` ab 60rem Containerbreite zweispaltig; Ein/Aus-Optionen immer als `label.modrow` mit `input[type=checkbox]` + `span.switch`, nie nacktes Kästchen);
 Lesetext mit `.readable` / `--read` 42rem. Keine Karte in der Karte (`.panel .panel` ohne Fläche). Kontextpanel startet geschlossen
 (`AF.ctx.shown`, je Ansicht neu, nicht gespeichert), Knöpfe mit `data-ctx-toggle` öffnen es. Objektseite, Reiter Bild: Details als
@@ -1008,5 +1009,7 @@ Tests und Beispiele nutzen erfundene Orte/Pfade; Screenshots nur mit maskierten 
 
 ## Grenzen / mögliche nächste Schritte
 Keine Mosaike (Stackfläche = Referenzbild), kein echtes Drizzle (2× interpoliert), keine Planeten-/Mond-Modi (Kometenmodus seit 0.22.0, nur ein Band), kleiner eingebauter Katalog
-(großer nur mit ASTAP-`deep_sky.csv`), Dockerfile (ASTAP-Download) noch nicht real gebaut/getestet, kurze Spuren (< ~120 px) nur per Clipping,
-GraXpert/StarNet nicht im Docker-Image, Verzerrungskorrektur nur Polynom 2. Ordnung, keine GPU, waagerechte Hintergrundstreifen bei NGC 1579 (Stack).
+(großer nur mit ASTAP-`deep_sky.csv`), Dockerfile (ASTAP-Download, SkyTrace-Engine per `SKYTRACE=1`) noch nicht real gebaut/getestet, kurze Spuren (< ~120 px) nur per Clipping,
+GraXpert/StarNet nicht im Docker-Image, Verzerrungskorrektur nur Polynom 2. Ordnung (Messung an echten Stellina-Daten
+offen), GPU nur optional per OpenCL für Registrierung/Stacking (`gpu.py`; Entwicklung, Docker und die SkyTrace-Engine rechnen auf der CPU),
+waagerechte Hintergrundstreifen bei NGC 1579 (Stack).

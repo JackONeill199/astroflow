@@ -1,7 +1,7 @@
 'use strict';
 /* Grundlage: Nachtgrafik aus dem pausierten UI-Umbau; Empfehlungen jetzt auch auf der Übersicht. */
 (() => {
-const COLORS = ['var(--acc)', 'var(--acc3)', 'var(--acc2)', 'var(--tn-orange)', 'var(--tn-pink)', 'var(--tn-blue)'];
+const COLORS = ['var(--acc)', 'var(--data-3)', 'var(--data-2)', 'var(--tn-orange)', 'var(--tn-pink)', 'var(--tn-blue)'];
 const hm = t => t == null ? '–' : new Date(t * 1000).toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
 const period = s => s ? `${hm(s[0])} – ${hm(s[1])}` : '–';
 const targetLink = o => `href="${esc(o.href)}"${o.category === 'new' && AF.on('sage') ? ` data-night-catalog="${esc(o.id)}"` : ''}`;
@@ -31,7 +31,7 @@ function chart(d, W, H, selected, hidden) {
   const path = a => a.map((v, i) => `${i ? 'L' : 'M'}${X(d.times[i]).toFixed(1)} ${Y(v).toFixed(1)}`).join('');
   let g = '';
   d.times.slice(0, -1).forEach((t, i) => {
-    const a = d.sun[i], fill = a <= -18 ? 'var(--bg)' : a <= -12 ? 'var(--panel2)' : 'var(--line2)';
+    const a = d.sun[i], fill = a <= -18 ? 'var(--bg)' : a <= -12 ? 'var(--surface-2)' : 'var(--border)';
     g += `<rect x="${X(t)}" y="${T}" width="${X(d.times[i + 1]) - X(t) + .2}" height="${H - T - B}" fill="${fill}"/>`;
   });
   for (const a of [0, 30, 60, 90]) {
@@ -120,7 +120,7 @@ customElements.define('af-tonight-chart', class extends HTMLElement {
     let dots = `<line x1="${x}" x2="${x}" y1="18" y2="${H - 30}" stroke="var(--fg)" stroke-opacity=".7"/>`;
     const rows = d.recommendations.map((o, k) => {
       if (this.hiddenTargets.has(k)) return '';
-      if (o.alt[i] >= 0) dots += `<circle cx="${x}" cy="${y(o.alt[i])}" r="4" fill="${COLORS[k]}" stroke="var(--panel-s)"/>`;
+      if (o.alt[i] >= 0) dots += `<circle cx="${x}" cy="${y(o.alt[i])}" r="4" fill="${COLORS[k]}" stroke="var(--surface)"/>`;
       return `<span style="--target:${COLORS[k]}">${esc(o.name)}<b>${Math.round(o.alt[i])}°</b></span>`;
     }).join('');
     this.querySelector('.tn-cursor').innerHTML = dots;
