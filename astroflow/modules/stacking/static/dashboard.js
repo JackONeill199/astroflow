@@ -31,16 +31,48 @@ function axisTime(P, W, L, R) {
   return { ts, X: t => L + (t - t0 + pad) / (t1 - t0 + 2 * pad) * (W - L - R), t0, t1 };
 }
 
-function scatter(P, { key, inv = false, fmt = (v) => de(v, 1), unit = '', href, hollow, label, line = false, h = 150 }) {
+// Stilisierter Hintergrund (nur per Option `deco`): „sky“ = oben dunkler Himmel mit Sternen, unten Dunst/Dämmerung und Mond,
+// dazu Orientierungsmarken, wenn sie in die Skala fallen; „seeing“ = oben aufgeblähter, unten scharfer Stern. Die Randsymbole
+// stehen in einem eigenen Streifen rechts, damit sie keine Punkte verdecken. Farben nur über CSS-Klassen (Tokens).
+const SKY_REF = [[21.5, 'Landhimmel'], [20, 'Vorstadt'], [18, 'Stadt']];   // grobe Richtwerte in mag/″² (Bortle ~3 / ~5 / ~8)
+function chartDeco(kind, { L, T, W, R, PW, PH, Y, lo, hi }) {
+  const xs = W - R / 2, x2 = L + PW;
+  if (kind === 'seeing') {
+    return `<g class="ad-deco" aria-hidden="true"><defs><radialGradient id="adSeeBlur"><stop offset="0" class="ad-see-c"/><stop offset="1" class="ad-see-e"/></radialGradient></defs>
+      <circle cx="${xs}" cy="${T + 9}" r="8" fill="url(#adSeeBlur)"/>
+      <path class="ad-see-sharp" d="M${xs} ${T + PH - 13}v10M${xs - 5} ${T + PH - 8}h10"/><circle class="ad-see-dot" cx="${xs}" cy="${T + PH - 8}" r="1.6"/></g>`;
+  }
+  // Sterne: feste Lagen im oberen Drittel (Anteile der Fläche), wenige und klein
+  const stars = [[.06, .1, .8], [.17, .28, .55], [.29, .08, .6], [.41, .2, .9], [.53, .06, .5], [.64, .26, .65], [.76, .12, .8], [.88, .3, .5], [.95, .07, .6], [.23, .42, .45], [.71, .4, .45]]
+    .map(([fx, fy, r]) => `<circle cx="${(L + fx * PW).toFixed(1)}" cy="${(T + fy * PH).toFixed(1)}" r="${r}"/>`).join('');
+  const refs = SKY_REF.filter(([v]) => v > lo + (hi - lo) * 0.06 && v < hi - (hi - lo) * 0.06)
+    .map(([v, t]) => `<line class="ad-sky-ref" x1="${L}" x2="${x2}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/><text class="ad-sky-reft" x="${x2 - 3}" y="${(Y(v) - 3).toFixed(1)}" text-anchor="end">${t} ~${de(v, 1)}</text>`).join('');
+  const my = T + PH - 10;
+  return `<g class="ad-deco" aria-hidden="true"><defs>
+      <linearGradient id="adSkyG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ad-sky-s0"/><stop offset=".5" class="ad-sky-s1"/><stop offset="1" class="ad-sky-s2"/></linearGradient>
+      <radialGradient id="adSkyH" cx=".5" cy=".5" r=".5"><stop offset="0" class="ad-sky-h0"/><stop offset="1" class="ad-sky-h1"/></radialGradient>
+      <clipPath id="adSkyC"><rect x="${L}" y="${T}" width="${PW}" height="${PH}" rx="4"/></clipPath>
+      <mask id="adSkyM"><rect x="${xs - 9}" y="${my - 9}" width="18" height="18" fill="#fff"/><circle cx="${xs + 3}" cy="${my - 2}" r="5.5" fill="#000"/></mask></defs>
+    <g clip-path="url(#adSkyC)"><rect x="${L}" y="${T}" width="${PW}" height="${PH}" fill="url(#adSkyG)"/>
+      <ellipse cx="${L + PW * .25}" cy="${T + PH}" rx="${PW * .4}" ry="${PH * .32}" fill="url(#adSkyH)"/>
+      <ellipse cx="${L + PW * .72}" cy="${T + PH * 1.02}" rx="${PW * .45}" ry="${PH * .26}" fill="url(#adSkyH)"/>
+      <path class="ad-sky-band" d="M${L} ${T + PH * .78}q${PW * .25} ${-PH * .07} ${PW * .5} 0t${PW * .5} 0"/>
+      <path class="ad-sky-band" d="M${L} ${T + PH * .9}q${PW * .25} ${PH * .06} ${PW * .5} 0t${PW * .5} 0"/>
+      <g class="ad-sky-star">${stars}</g></g>${refs}
+    <path class="ad-sky-spark" d="M${xs} ${T + 3}l1.4 4.2 4.2 1.4-4.2 1.4-1.4 4.2-1.4-4.2-4.2-1.4 4.2-1.4z"/>
+    <circle class="ad-sky-moon" cx="${xs}" cy="${my}" r="6.5" mask="url(#adSkyM)"/></g>`;
+}
+
+function scatter(P, { key, inv = false, fmt = (v) => de(v, 1), unit = '', href, hollow, label, line = false, h = 150, deco, cls = '' }) {
   P = P.filter(p => p[key] != null || (hollow && p[hollow] != null));
   if (!P.length) return '<p class="mut sm">Noch keine Messwerte.</p>';
-  const W = 400, H = h, L = 40, R = 10, T = 10, B = 22;   // Spaltenbreite ~ 22–28rem: Schrift wird kaum verkleinert
+  const W = 400, H = h, L = 40, R = deco ? 24 : 10, T = 10, B = 22;   // Spaltenbreite ~ 22–28rem: Schrift wird kaum verkleinert
   const val = p => p[key] ?? p[hollow];
   const { ts, X } = axisTime(P, W, L, R);
   let lo = Math.min(...P.map(val)), hi = Math.max(...P.map(val));
   if (hi - lo < 1) { const m = (hi + lo) / 2; lo = m - 0.5; hi = m + 0.5; }
   const Y = v => T + (inv ? (v - lo) : (hi - v)) / (hi - lo) * (H - T - B);
-  let g = '';
+  let g = deco ? chartDeco(deco, { L, T, W, R, PW: W - L - R, PH: H - T - B, Y, lo, hi }) : '';
   for (const v of [lo, (lo + hi) / 2, hi]) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" class="ad-grid"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${fmt(v)}</text>`;
   g += `<text x="${L}" y="${H - 6}">${fday(P[0].night)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${fday(P.at(-1).night)}</text>`;
   if (line) {
@@ -52,7 +84,7 @@ function scatter(P, { key, inv = false, fmt = (v) => de(v, 1), unit = '', href, 
     const c = `<circle cx="${X(ts[i]).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${own ? 4.5 : 3.5}" class="ad-pt${own ? '' : ' off'}" style="--i:${i}"><title>${esc(label(p))}: ${fmt(v)}${unit}${own ? '' : ' (gestört)'}</title></circle>`;
     return href ? `<a href="${href(p)}">${c}</a>` : c;
   }).join('');
-  return `<svg class="ad-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(key)} im Verlauf">${g}</svg>`;
+  return `<svg class="ad-chart${cls ? ' ' + cls : ''}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(key)} im Verlauf">${g}</svg>`;
 }
 
 // Gestapelter Balken je Art (ersetzt seit 0.38.3 die Ringe – gleiche Farben, wächst beim Einblenden von links)
@@ -335,9 +367,13 @@ async function analysisView(el) {
   function drawTimes(d) {
     paint('adDepthT', d.depth_series, () => `<div class="panel-h"><div><h2>Grenzgröße über die Zeit</h2><p class="mut sm">Schwächste sicher erkannte Sterne (5σ) je Bild, nach Aufnahmenacht. Oben = tiefer.</p></div></div>
       ${scatter(d.depth_series, { key: 'm5', fmt: v => de(v, 1), unit: ' mag', href: p => `#/p/${p.id}/analyse`, label: p => `${p.name} · ${fday(p.night)} · ${de(p.hours, 1)} h` })}`);
-    paint('adSkyT', d.sky_series, () => `<div class="panel-h"><div><h2>Himmel über die Zeit</h2><p class="mut sm">Himmelshelligkeit je Nacht (Median der Objekte). Oben = dunkler; helle Punkte = Mond, Dämmerung oder Dunst.</p></div><a class="linkbtn sm" href="#/himmel">Standorte</a></div>
-      ${scatter(d.sky_series, { key: 'sqm', hollow: 'sqm_all', fmt: v => de(v, 1), unit: ' mag/″²', line: true, href: p => `#/p/${p.objects[0].id}/analyse`, label: p => `${fday(p.night)} · ${p.objects.map(o => o.name).join(', ')}` })}
-      ${d.sky_series.some(n => n.seeing != null) ? `<small class="mut ad-sub">Bildschärfe (FWHM) – unten = schärfer</small>${scatter(d.sky_series, { key: 'seeing', inv: false, fmt: v => de(v, 1), unit: '″', href: p => `#/p/${p.objects[0].id}/analyse`, label: p => fday(p.night), h: 105 }).replace('class="ad-chart"', 'class="ad-chart ad-chart-s"')}` : ''}`);
+    paint('adSkyT', d.sky_series, () => `<div class="panel-h"><div><h2>Himmel über die Zeit</h2><p class="mut sm" title="Himmelshelligkeit in mag/″², Median der Objekte je Nacht">Himmelshelligkeit je Nacht – oben = dunkler.</p></div><a class="linkbtn sm" href="#/himmel">Standorte</a></div>
+      <ul class="ad-ptleg sm">
+        <li title="Dunkel, kein Mond, Objekt über 30° – die Linie verbindet diese Nächte"><svg viewBox="0 0 12 12" aria-hidden="true"><circle class="ad-pt" cx="6" cy="6" r="4.5"/></svg>ungestört</li>
+        <li title="Nur Aufnahmen mit Mond, Dämmerung, Dunst oder tief am Himmel"><svg viewBox="0 0 12 12" aria-hidden="true"><circle class="ad-pt off" cx="6" cy="6" r="3.5"/></svg>gestört (Mond, Dunst, tief)</li>
+      </ul>
+      ${scatter(d.sky_series, { key: 'sqm', hollow: 'sqm_all', fmt: v => de(v, 1), unit: ' mag/″²', line: true, deco: 'sky', href: p => `#/p/${p.objects[0].id}/analyse`, label: p => `${fday(p.night)} · ${p.objects.map(o => o.name).join(', ')}` })}
+      ${d.sky_series.some(n => n.seeing != null) ? `<small class="mut ad-sub">Sternschärfe (FWHM) – unten = schärfer</small>${scatter(d.sky_series, { key: 'seeing', inv: false, fmt: v => de(v, 1), unit: '″', deco: 'seeing', cls: 'ad-chart-s', href: p => `#/p/${p.objects[0].id}/analyse`, label: p => fday(p.night), h: 105 })}` : ''}`);
   }
 
   function drawRank(d) {
