@@ -127,7 +127,8 @@ class Module(BaseModule):
         def go():
             try:
                 res = fn(t, lambda p, m: t.update(progress=p, message=m))
-                t.update(state="done", progress=1, finished=time.time(), message=t.get("done_msg") or "Fertig", result=res)
+                t.update(result=res, progress=1, finished=time.time(), message=t.get("done_msg") or "Fertig")
+                t["state"] = "done"                         # zuletzt: Leser sehen „done“ nie ohne Ergebnis
             except Exception as e:
                 from ...core.errors import user_message
                 from .agent import BudgetError
@@ -150,18 +151,22 @@ class Module(BaseModule):
             return e["id"]
         return self.run_task(f"Recherche: {name}", "Enzyklopädie-Recherche", fn)
 
-    def run_proactive(self, only: list[str] | None = None) -> dict:
+    def proactive_running(self) -> bool:
+        return any(t["kind"] == "Hintergrundrecherche" and t["state"] == "running" for t in self.tasks_snapshot())
+
+    def run_proactive(self, only: list[str] | None = None) -> dict | None:
+        """Hintergrundrecherche starten; None, wenn schon eine läuft (Prüfen und Anlegen unter einer Sperre –
+        Scheduler und „Jetzt suchen“ können sich so nicht überholen)."""
         def fn(t, progress):
             from .insights import run_all
-            self.scheduler.busy = True
-            try:
-                rep = run_all(self, only, progress)
-            finally:
-                self.scheduler.busy = False
+            rep = run_all(self, only, progress)
             n = sum(r.get("new") or 0 for r in rep.values())
             t["done_msg"] = f"{n} neue Entdeckung{'' if n == 1 else 'en'}" if n else "Keine neuen Entdeckungen"
             return rep
-        return self.run_task("Sage sucht nach Entdeckungen", "Hintergrundrecherche", fn, "#/sage/entdeckungen")
+        with self.lock:
+            if self.proactive_running():
+                return None
+            return self.run_task("Sage sucht nach Entdeckungen", "Hintergrundrecherche", fn, "#/sage/entdeckungen")
 
     def link_entry(self, entry: dict):
         """Objekte einer Bildbestimmung mit der Enzyklopädie verknüpfen; fehlende im Hintergrund aus SIMBAD ergänzen."""
@@ -219,12 +224,17 @@ class Module(BaseModule):
                 del self.tasks[k]
         return t
 
+    def tasks_snapshot(self) -> list[dict]:
+        """Kopie der Auftragsliste – `new_task` räumt alte Aufträge unter der Sperre ab, Iterieren ohne Kopie wirft sonst."""
+        with self.lock:
+            return list(self.tasks.values())
+
     def router(self):
         from .api import build_router
         return build_router(self)
 
     def status(self) -> dict:
-        running = [t for t in self.tasks.values() if t["state"] == "running"]
+        running = [t for t in self.tasks_snapshot() if t["state"] == "running"]
         ov = self.store.stats()
         cel = [{**c, "image": f"/api/sage/files/{c['image']}" if c.get("image") else None} for c in self.store.celebrations()]
         unseen = self.kb.one("SELECT COUNT(*) AS n FROM insights WHERE seen=0 AND dismissed=0")["n"]
@@ -240,7 +250,7 @@ class Module(BaseModule):
         out = [{"key": f"sage:{t['id']}", "title": t["title"], "kind": t.get("kind") or "Bildbestimmung & Geschichte",
                 "detail": t["error"] or t["message"], "state": t["state"], "progress": t["progress"], "started": t["started"],
                 "finished": t["finished"], "href": f"#/sage/{t['entry']}" if t["entry"] else t.get("href") or "#/sage"}
-               for t in self.tasks.values()]
+               for t in self.tasks_snapshot()]
         known = {a["href"] for a in out}
         for e in self.store.entries()[:limit]:
             href = f"#/sage/{e['id']}"

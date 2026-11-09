@@ -83,8 +83,10 @@ def client(tmp_path, monkeypatch):
         yield c
 
 
-def wait(c, tid):
-    for _ in range(200):
+def wait(c, tid, timeout=30):
+    # großzügig nach Uhrzeit: auf ausgelasteten CI-Rechnern (xdist) laufen Start-Verknüpfung und Recherchen parallel
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
         t = c.get(f"/api/sage/kb/tasks/{tid}").json()
         if t["state"] != "running":
             return t
@@ -202,6 +204,7 @@ def test_budget_stoppt_ki(client, monkeypatch):
 
 
 def test_chat_mit_werkzeugen(client, monkeypatch):
+    client.app_mod.backfill_thread.join(30)          # Start-Verknüpfung fertig – sie konkurriert sonst um die Datenbank
     wait(client, client.post("/api/sage/kb/research", json={"name": "M45", "deep": False}).json()["id"])
     client.post("/api/sage/config", json={"story_provider": "lmstudio"})
     seen = {}
@@ -217,6 +220,48 @@ def test_chat_mit_werkzeugen(client, monkeypatch):
     r = client.post("/api/sage/kb/chat", json={"question": "Wie weit weg?", "entity": "m45", "scope": "entity:m45"}).json()
     assert r["steps"][0]["tool"] == "get_entry" and r["sources"] and "(Deine Daten)" in r["answer"]
     assert len(client.get("/api/sage/kb/chat", params={"scope": "entity:m45"}).json()) == 2
+
+
+def test_chat_belege_nur_aus_dem_lauf(client, monkeypatch):
+    """Erfundene Quellenverweise zählen nicht als Beleg; fehlgeschlagene Frage bleibt nicht im Verlauf (#30, #33)."""
+    client.post("/api/sage/config", json={"story_provider": "lmstudio"})
+    other = client.app_mod.kb.add_source("test:x", "catalog", "Fremde Quelle")
+
+    def chat(self, messages, tools=None, **kw):
+        if messages[-1]["role"] == "tool":
+            return {"content": f"Erfunden [S{other}]. Rechnung (Interpretation)."}
+        return {"content": "", "tool_calls": [{"id": "a", "function": {"name": "calculate", "arguments": '"1+1"'}}]}
+    monkeypatch.setattr(agent.LLM, "chat", chat)
+    r = client.post("/api/sage/kb/chat", json={"question": "Wie viel?", "scope": "t"}).json()
+    assert not r["sources"] and f"[S{other}]" not in r["answer"]
+    assert r["steps"][0]["args"] == {}                # Argumente kein Objekt → leer statt AttributeError
+
+    def kaputt(self, messages, tools=None, **kw):
+        raise agent.clients.ServiceError("weg")
+    monkeypatch.setattr(agent.LLM, "chat", kaputt)
+    client.post("/api/sage/kb/chat", json={"question": "Noch mal?", "scope": "t"})
+    assert [m["content"] for m in client.get("/api/sage/kb/chat", params={"scope": "t"}).json() if m["role"] == "user"] == ["Wie viel?"]
+
+
+def test_werkzeuglimit_und_think():
+    from astroflow.modules.sage.clients import strip_think
+    assert strip_think("<think>a</think>Hallo<think>b</think> Welt") == "Hallo Welt"
+    assert strip_think("<think>" * 20000 + "x").endswith("x")
+    n = []
+
+    class L:
+        def __init__(self):
+            self.i = 0
+
+        def chat(self, msgs, tools, **kw):
+            self.i += 1
+            if self.i == 1:
+                return {"tool_calls": [{"id": str(k), "function": {"name": "research_object", "arguments": '{"name": "M1"}'}} for k in range(5)]}
+            return {"content": "fertig"}
+    t = agent.tool("research_object", "x", lambda name: n.append(name) or {"quelle": 1}, name=("string", "x"))
+    text, steps = agent.run_agent(L(), "s", "u", [t])
+    assert text == "fertig" and len(n) == agent.TOOL_LIMITS["research_object"]
+    assert [s["ok"] for s in steps] == [True] * 3 + [False] * 2 and steps[0]["sources"] == [1]
 
 
 def test_notizen_karte_netz_entdeckungen(client):

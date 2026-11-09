@@ -114,14 +114,23 @@ class LLM:
         self.kb.log_usage(self.model, tin, tout, float(cost), est, self.run_id, self.purpose)
         msg = d["choices"][0]["message"]
         if msg.get("content"):
-            msg["content"] = re.sub(r"<think>.*?</think>", "", msg["content"], flags=re.S).strip()
+            msg["content"] = clients.strip_think(msg["content"])
         return msg
 
 
+MAX_CALLS = 24                                       # Werkzeugaufrufe je Lauf (gesamt)
+TOOL_LIMITS = {"research_object": 3}                 # schreibende/teure Werkzeuge je Lauf
+
+
 def run_agent(llm: LLM, system: str, user: str, tools: list[Tool], max_steps: int = 6, on_step=None,
-              final_hint: str = "", max_tokens: int = 3000, json_mode: bool = False) -> tuple[str, list[dict]]:
+              final_hint: str = "", max_tokens: int = 3000, json_mode: bool = False, max_calls: int = MAX_CALLS,
+              limits: dict | None = None) -> tuple[str, list[dict]]:
     """Werkzeugschleife: Modell ruft Werkzeuge, bis es antwortet oder Schritte/Budget erschöpft sind.
-    Liefert (Antworttext, Protokoll)."""
+    `max_calls` begrenzt die Werkzeugaufrufe je Lauf, `limits` einzelne Werkzeuge (Standard: schreibende wie
+    `research_object`); überzählige Aufrufe lehnt die Schleife mit einer Meldung an das Modell ab.
+    Liefert (Antworttext, Protokoll); Werkzeugschritte tragen `sources` (gelieferte Quellennummern)."""
+    limits = TOOL_LIMITS if limits is None else limits
+    used: dict[str, int] = {}
     msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     steps: list[dict] = []
     by_name = {t.name: t for t in tools}
@@ -142,17 +151,25 @@ def run_agent(llm: LLM, system: str, user: str, tools: list[Tool], max_steps: in
                 args = json.loads(fn.get("arguments") or "{}")
             except ValueError:
                 args = {}
+            if not isinstance(args, dict):               # gültiges JSON, aber kein Objekt („m45“, [])
+                args = {}
             t0 = time.time()
+            used[name] = used.get(name, 0) + 1
+            total = sum(used.values())
             try:
                 if name not in by_name:
                     raise ValueError(f"unbekanntes Werkzeug {name}")
+                if total > max_calls:
+                    raise ValueError(f"Werkzeuglimit erreicht ({max_calls} Aufrufe je Lauf) – antworte mit den vorhandenen Ergebnissen")
+                if name in limits and used[name] > limits[name]:
+                    raise ValueError(f"{name} höchstens {limits[name]}× je Lauf")
                 res = by_name[name].fn(**{k: v for k, v in args.items() if k in by_name[name].parameters["properties"]})
                 ok = True
             except Exception as e:                       # Fehler gehen als Ergebnis an das Modell zurück
                 res, ok = {"fehler": str(e)}, False
             text = json.dumps(res, ensure_ascii=False, default=str)[:6000]
             step = {"type": "tool", "tool": name, "args": args, "ok": ok, "summary": _summary(res), "ms": round((time.time() - t0) * 1000),
-                    "t": time.time()}
+                    "t": time.time(), "sources": sorted(source_ids(res)) if ok else []}
             steps.append(step)
             if on_step:
                 on_step(step)
@@ -162,6 +179,23 @@ def run_agent(llm: LLM, system: str, user: str, tools: list[Tool], max_steps: in
     msg = llm.chat(msgs, None, max_tokens=max_tokens, json_mode=json_mode)
     steps.append({"type": "limit", "text": f"Schrittlimit ({max_steps}) erreicht", "t": time.time()})
     return msg.get("content") or "", steps
+
+
+def source_ids(res, depth: int = 0) -> set[int]:
+    """Quellennummern (Feld `quelle`) in einem Werkzeugergebnis – nur diese darf eine Antwort als Beleg nennen."""
+    out: set[int] = set()
+    if depth > 6:
+        return out
+    if isinstance(res, dict):
+        for k, v in res.items():
+            if k == "quelle" and isinstance(v, int) and not isinstance(v, bool):
+                out.add(v)
+            else:
+                out |= source_ids(v, depth + 1)
+    elif isinstance(res, (list, tuple)):
+        for v in res:
+            out |= source_ids(v, depth + 1)
+    return out
 
 
 def _summary(res) -> str:

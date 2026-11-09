@@ -194,7 +194,7 @@ def build_router(mod) -> APIRouter:
     @r.get("/tasks")
     def tasks():
         """Laufende und kürzlich beendete Aufträge (auch aus anderen Ansichten gestartete)."""
-        return [task_view(t) for t in mod.tasks.values() if t["state"] == "running" or time.time() - (t["finished"] or 0) < 600]
+        return [task_view(t) for t in mod.tasks_snapshot() if t["state"] == "running" or time.time() - (t["finished"] or 0) < 600]
 
     @r.get("/tasks/{tid}")
     def task(tid: str):

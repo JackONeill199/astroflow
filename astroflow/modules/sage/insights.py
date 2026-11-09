@@ -279,7 +279,6 @@ class Scheduler:
     def __init__(self, mod):
         self.mod = mod
         self.stop = False
-        self.busy = False
 
     def due(self) -> bool:
         cfg = self.mod.config()
@@ -291,8 +290,8 @@ class Scheduler:
     def loop(self):
         time.sleep(90)                                   # Start nicht ausbremsen
         while not self.stop:
-            if self.due() and not self.busy:
-                self.mod.run_proactive()
+            if self.due():
+                self.mod.run_proactive()                 # läuft schon eine Suche, startet sie nicht doppelt
             for _ in range(60):
                 if self.stop:
                     return
