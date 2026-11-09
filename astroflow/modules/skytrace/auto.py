@@ -21,6 +21,12 @@ from pathlib import Path
 from ...core.errors import user_message
 
 
+def _is_upload(path: Path) -> bool:
+    """Hochgeladene Rohbilder (`input/uploads/…`) – die löscht das Bilder-Modul direkt nach `stacking.stacked`."""
+    parts = [p.lower() for p in Path(path).parts]
+    return any(a == "input" and b == "uploads" for a, b in zip(parts, parts[1:]))
+
+
 class AutoAnalysis:
     def __init__(self, mod):
         self.mod = mod
@@ -37,6 +43,11 @@ class AutoAnalysis:
         self.state.setdefault("sent", {})          # Frame-ID → Ordnername
         self.state.setdefault("queue", [])         # wartende/laufende Ordner
         self.state.setdefault("done", [])          # erledigte (für die Aktivität)
+        # Server-Ende während einer Kopie: halbe Nacht verwerfen, die Aufnahmen gelten wieder als nicht übergeben
+        for q in [q for q in self.state["queue"] if q.get("state") == "staging"]:
+            shutil.rmtree(self.dir / q["folder"], ignore_errors=True)
+            self.state["queue"].remove(q)
+            self.state["sent"] = {k: v for k, v in self.state["sent"].items() if v != q["folder"]}
 
     @property
     def enabled(self) -> bool:
@@ -77,7 +88,10 @@ class AutoAnalysis:
                         try:
                             os.link(src, dst)     # gleicher Datenträger: kein Platzbedarf, überlebt das Löschen des Uploads
                         except OSError:
-                            copies.append((src, dst))     # anderer Datenträger (eingebundener Ordner)
+                            if _is_upload(src):           # Upload löscht das Bilder-Modul gleich nach dem Ereignis: sofort kopieren
+                                shutil.copy2(src, dst)
+                            else:
+                                copies.append((src, dst))     # anderer Datenträger (eingebundener Ordner): im Thread
                 except OSError:
                     traceback.print_exc()
                     shutil.rmtree(folder, ignore_errors=True)
@@ -97,8 +111,13 @@ class AutoAnalysis:
         """Kopien für Aufnahmen auf anderen Datenträgern; scheitert eine, wird die Nacht nicht übergeben."""
         try:
             for src, dst in copies:
-                shutil.copy2(src, dst)
-            state = "queued"
+                try:
+                    shutil.copy2(src, dst)
+                except FileNotFoundError:          # inzwischen gelöscht: ohne diese Aufnahme weiter
+                    pass
+            state = "queued" if sum(1 for _ in (self.dir / item["folder"]).iterdir()) >= 2 else None
+            if not state:
+                shutil.rmtree(self.dir / item["folder"], ignore_errors=True)
         except OSError:
             traceback.print_exc()
             shutil.rmtree(self.dir / item["folder"], ignore_errors=True)

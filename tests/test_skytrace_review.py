@@ -114,3 +114,17 @@ def test_adresssuche_unerwartete_antwort(tmp_path, monkeypatch, antwort):
     with TestClient(create_app(load_settings(tmp_path / "d"))) as c:
         r = c.get("/api/skytrace/geocode", params={"q": "Irgendwo"})
         assert (r.status_code, r.json()) == (200, []) if isinstance(antwort, dict) and isinstance(antwort["features"], list) else r.status_code == 502
+
+
+def test_halbe_kopie_nach_neustart_verworfen(tmp_path, monkeypatch):
+    """Server-Ende während einer Kopie: Eintrag „staging“ wird beim Start verworfen, Aufnahmen wieder frei."""
+    import json
+    app = _app(tmp_path, monkeypatch, [])
+    auto = app.state.modules["skytrace"].auto
+    (auto.dir / "n_observation_X").mkdir(parents=True)
+    auto.file.write_text(json.dumps({"sent": {"f1": "n_observation_X"}, "done": [],
+                                     "queue": [{"folder": "n_observation_X", "state": "staging"}]}), encoding="utf-8")
+    from astroflow.modules.skytrace.auto import AutoAnalysis, _is_upload
+    neu = AutoAnalysis(auto.mod)
+    assert not neu.state["queue"] and not neu.state["sent"] and not (auto.dir / "n_observation_X").exists()
+    assert _is_upload(tmp_path / "data" / "input" / "uploads" / "a.fits") and not _is_upload(tmp_path / "nas" / "a.fits")
