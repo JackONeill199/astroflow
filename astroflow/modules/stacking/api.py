@@ -857,6 +857,18 @@ def build_router(eng: Engine) -> APIRouter:
         except KeyError:
             raise HTTPException(404)
 
+    @r.get("/results/{rid}/grade")
+    def result_grade(rid: int):
+        """Bildqualität der Aufnahme (grade.py) mit Herleitung – eigener Endpunkt, nicht in der gepollten Projektansicht."""
+        from . import grade
+        from .depth import DEPTH_VERSION
+        x = db.one("SELECT project_id, stats FROM results WHERE id=?", (rid,))
+        if not x:
+            raise HTTPException(404)
+        st = json.loads(x["stats"] or "{}")
+        g = grade.of_result(st, grade.project_ecc(db, [x["project_id"]]).get(x["project_id"]), DEPTH_VERSION)
+        return {"grade": g, "edit_score": (st.get("quality") or {}).get("score")}
+
     @r.post("/results/{rid}/tutor/ki")
     def result_tutor_ki(rid: int):
         try:

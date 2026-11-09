@@ -108,7 +108,9 @@ def seed(db, work_dir, files: dict | None = None, device="Vaonis Stellina") -> l
                  (f"seed{pid}_{k}", pid, f"seed/{pid}/{k}.fits", "light", night, json.dumps(info), json.dumps(met), "stacked"))
         score = round(float(np.clip(9.4 - 0.6 * i + (1.2 if i == 2 else 0), 3, 10)), 1)
         issues = [{"code": "color_cast", "text": "leichter Farbstich"}] if i % 3 == 0 else []
-        stats = {"quality": {"score": score, "issues": issues, "hints": []}, "nights": [night]}
+        # Bildqualität (grade.py): Rauschen und Schärfe je Objekt verschieden, Bearbeitung (score) davon unabhängig
+        stats = {"quality": {"score": score, "issues": issues, "hints": [], "measure": {"snr": round(6 + 4 * hours, 1)}},
+                 "fwhm_px": round(4.0 + 0.3 * i, 2), "nights": [night]}
         if state == "ok":
             stats["depth"] = _depth(rng, name, ra, dec, m5, hours)
             stats["compare"] = _compare(rng, i)

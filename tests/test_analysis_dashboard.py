@@ -66,6 +66,17 @@ def test_summary_aggregates(app):
     assert len(d["depth_series"]) == sum(1 for o in OBJECTS if o[7])
     assert d["ranking"] == sorted(d["ranking"], key=lambda x: -x["m5_1h"])
     assert sum(d["score_hist"]) == len(OBJECTS)
+    # Bildqualität = Note der Aufnahme (grade.py), nicht die Bearbeitungsprüfung; Herleitung je Zeile
+    assert all(r["score"] == r["grade"]["score"] for r in d["rows"])
+    assert len({r["score"] for r in d["rows"]}) >= 5                         # echte Unterschiede statt „alle 10“
+    assert {p["key"] for p in row[ids[0]]["grade"]["parts"]} == {"depth", "noise", "sharp", "shape"}
+    assert row[ids[6]]["grade"]["missing"] == ["depth"]                       # ungelöst: ohne Tiefe, Rest hochgerechnet
+    assert row[ids[0]]["edit_score"] == 9.4 and d["edit"]["n"] == len(OBJECTS)
+    assert d["records"]["score"]["value"] == max(r["score"] for r in d["rows"])
+    assert [sorted(x) for x in d["score_ids"]] == [sorted(r["id"] for r in d["rows"] if round(r["score"]) == i) for i in range(11)]
+    g = c.get(f"/api/stacking/results/{row[ids[0]]['rid']}/grade").json()
+    assert g["grade"]["score"] == row[ids[0]]["score"] and g["edit_score"] == 9.4
+    assert c.get("/api/stacking/results/999999/grade").status_code == 404
     assert d["changes"] and all(ch["id"] in ids for ch in d["changes"])
     assert d["changes"][0].get("katalog") or d["changes"][0].get("kleinkoerper")   # erkannte Quellen zuerst
     # Asteroiden: verschiedene nachgewiesene (Ganymed in zwei Bildern zählt einmal), schwächster als Rekord
