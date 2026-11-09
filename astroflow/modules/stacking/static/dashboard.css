@@ -175,6 +175,10 @@ a.ad-kpi[href]:active { transform: scale(.985) }
 .ad-hist i { align-self: end; height: var(--h); min-height: 2px; border-radius: 0.25rem 0.25rem 0 0; background: var(--acc); transform-origin: bottom }
 .ad-hist i.ok { background: var(--ok) } .ad-hist i.mid { background: var(--warn) } .ad-hist i.low { background: var(--bad) }
 .ad-hist small { color: var(--dim); font-size: 0.6875rem }
+.ad-grade { margin-top: 0.625rem }
+.ad-grade summary { cursor: pointer }
+.ad-grade ul { margin: 0.375rem 0 0.25rem; padding-left: 1.125rem; display: grid; gap: 0.125rem }
+.ad-grade p, .ad-edit { margin: 0.375rem 0 0 }
 .an-sec.in .ad-hist i { animation: anGrow 700ms var(--ease) both; animation-delay: calc(var(--i) * 40ms + 150ms) }
 
 /* Veränderungen, Tabellen */

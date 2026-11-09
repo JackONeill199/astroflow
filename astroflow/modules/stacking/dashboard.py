@@ -114,7 +114,7 @@ def _cloud(pid: int, d: dict) -> list[dict]:
 
 def collect(eng) -> dict:
     """Je Objekt die neueste Version mit Status und Kennzahlen der Auswertungen (ohne Live-Zustand der Warteschlangen)."""
-    from . import deepsky, objects, skyquality, tutor
+    from . import deepsky, grade, objects, skyquality, tutor
     from .asteroids import ASTEROID_VERSION
     from .compare import COMPARE_VERSION
     from .depth import DEPTH_VERSION
@@ -147,6 +147,7 @@ def collect(eng) -> dict:
         sky_rows.setdefault(n["project_id"], []).append(n)
     sky_ver = {x["project_id"]: x["v"] for x in db.q("SELECT project_id, MIN(version) v FROM sky_nights GROUP BY project_id")}
     fixed = deepsky.fixed()
+    ecc = grade.project_ecc(db)
     rows, cloud, imported, devices = [], [], 0, {}
     for r in newest:
         p = projs.get(r["project_id"])
@@ -169,6 +170,7 @@ def collect(eng) -> dict:
         nights = sorted(st.get("nights") or fr["nights"])
         solved = (wd / f"p{pid}" / "wcs.json").exists()
         quality = st.get("quality") or {}
+        g = grade.of_result(st, ecc.get(pid), DEPTH_VERSION)
         # Status je Art
         status = {"depth": _status(st.get("depth"), DEPTH_VERSION), "compare": _status(st.get("compare"), COMPARE_VERSION),
                   "diagnose": _status(st.get("diagnose"), DIAG_VERSION),
@@ -192,9 +194,11 @@ def collect(eng) -> dict:
             blocked["tutor"] = "noquality"
         row = {"id": pid, "rid": r["rid"], "name": p["name"], "kind": p["kind"], "kind_label": objects.KIND_LABEL.get(p["kind"] or "generic"),
                "created": r["created"], "exposure": r["exposure"] or 0, "n_frames": r["n_frames"] or 0, "nights": nights,
-               "device": dev["name"], "score": quality.get("score"), "solved": solved, "status": status, "blocked": blocked,
+               "device": dev["name"], "solved": solved, "status": status, "blocked": blocked,
                "catalog": cat, "depth": None, "compare": None, "sky": None, "hrd": None, "asteroids": None, "findings": [],
                "diag": _diag_info(st.get("diagnose")),
+               # Bildqualität der Aufnahme (grade.py) – getrennt von der Bearbeitungsprüfung develop.assess („edit_score“)
+               "score": g and g["score"], "grade": g, "edit_score": quality.get("score"),
                "can_develop": any((wd / f"p{pid}").glob("stack*/state.json"))}
         if status["depth"] in ("done", "old") and st["depth"].get("ok"):
             row["depth"] = _depth_info(st["depth"], r["exposure"])
@@ -291,7 +295,7 @@ def summarize(base: dict, f: dict | None = None) -> dict:
     if x := best(H, lambda r: r["hrd"]["age"]):                # grobe Schätzung aus dem Abknickpunkt (HR-Diagramm)
         rec["oldest_cluster"] = ref(x, value=x["hrd"]["age"], lo=x["hrd"]["age_lo"], hi=x["hrd"]["age_hi"], members=x["hrd"]["members"])
     if x := best(rows, lambda r: r["score"]):
-        rec["score"] = ref(x, value=x["score"])
+        rec["score"] = ref(x, value=x["score"], parts=x["grade"]["parts"])
     if x := best(rows, lambda r: r["exposure"] or None):
         rec["exposure"] = ref(x, value=x["exposure"])
     # Asteroiden: verschiedene nachgewiesene Kleinkörper, schwächster als Rekord
@@ -334,10 +338,14 @@ def summarize(base: dict, f: dict | None = None) -> dict:
                      "hours": round(r["exposure"] / 3600, 2)} for r in D if r["depth"]["m5"] is not None and r["nights"]]
     ranking = sorted([x for x in depth_series if x["m5_1h"] is not None], key=lambda x: -x["m5_1h"])[:10]
 
-    hist = [0] * 11
+    hist, hist_ids = [0] * 11, [[] for _ in range(11)]
     for r in rows:
         if r["score"] is not None:
-            hist[max(0, min(10, int(round(r["score"]))))] += 1
+            b = max(0, min(10, int(round(r["score"]))))
+            hist[b] += 1
+            hist_ids[b].append(r["id"])
+    edits = [r["edit_score"] for r in rows if r.get("edit_score") is not None]
+    edit = {"n": len(edits), "clean": sum(1 for e in edits if e >= 10)}   # Bearbeitung ohne Restfehler (keine Befunde)
     fc: dict[str, dict] = {}
     for r in rows:
         for x in r["findings"]:
@@ -374,7 +382,7 @@ def summarize(base: dict, f: dict | None = None) -> dict:
     years = sorted({n[:4] for r in all_rows for n in r["nights"]}, reverse=True)
     return {"totals": totals, "records": rec, "coverage": {k: dict(v) for k, v in cov.items()}, "blocked": list(blocked.values()),
             "sky_series": sky_series, "best_nights": best_nights, "depth_series": depth_series, "ranking": ranking,
-            "score_hist": hist, "findings": findings, "catalogs": catalogs, "changes": changes[:40], "change_counts": dict(counts),
+            "score_hist": hist, "score_ids": hist_ids, "edit": edit, "findings": findings, "catalogs": catalogs, "changes": changes[:40], "change_counts": dict(counts),
             "asteroids": ast_unique[:40],
             "rows": [{k: v for k, v in r.items() if k not in ("compare", "asteroids")}
                      | {"compare": {k: v for k, v in (r["compare"] or {}).items() if k != "items"} or None,

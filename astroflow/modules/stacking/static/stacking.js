@@ -36,6 +36,9 @@ function qscoreHead(q, title, sub) {
   return `<div class="panel-h" style="margin-bottom:12px"><span class="qscore ${cls}" style="--p:${q.score * 10}" title="${q.score.toFixed(1)} von 10"><b class="tnum">${q.score.toFixed(1)}</b></span>
       <div><h2>${title}</h2><div class="mut sm">${sub}</div></div></div>`;
 }
+// Bildqualität der Aufnahme (grade.py): Herleitung als Text für Tooltips – „Tiefe 7,9/10 – Grenzgröße 17,9 mag, Anteil 35 % · …“
+const gradeTip = (g) => g ? `Bildqualität ${String(g.score).replace('.', ',')}/10 aus ` + g.parts.map(p => `${p.label} ${String(p.points).replace('.', ',')}/10 – ${p.text}, Anteil ${Math.round(p.share * 100)} %`).join(' · ')
+  + (g.missing?.length ? ` – ohne ${g.missing.map(k => ({ depth: 'Tiefe (keine Grenzgrößenmessung)', noise: 'Rauschen', sharp: 'Schärfe', shape: 'Sternform' })[k]).join(', ')}` : '') : '';
 const qlabel = (q) => q.score >= 8.5 ? 'Messwerte weitgehend im Zielbereich' : q.score >= 6.5 ? 'Einige Messwerte auffällig' : 'Mehrere Messwerte auffällig';
 
 function qcDetails(s, q) {
@@ -97,7 +100,7 @@ function tutorHtml(t, s) {
       <div class="tchips">${nightChips(n, dev)}</div></div>`).join('');
   const ki = t.ki;
   const good = q.score >= 8.5, warnImg = imgF.some(f => f.level === 'warn' || f.level === 'bad');
-  return `<div class="panel">${qscoreHead(q, 'Bildqualität', `${qlabel(q)}${snr != null ? ` · Objekt-SNR ${Math.round(snr)}` : ''}`)}
+  return `<div class="panel">${qscoreHead(q, 'Bearbeitung ohne Restfehler', `${qlabel(q)}${snr != null ? ` · Objekt-SNR ${Math.round(snr)}` : ''}`)}
     <p class="mut sm tutor-intro">Die Zahl bewertet nur Messwerte am fertigen Bild (Himmel, Farbe, Rauschen, Verläufe, Clipping).${good && warnImg ? ' Sie ist gut – die Punkte darunter lassen sich trotzdem verbessern.' : ''}${condF.length ? ' Hinweise zur Aufnahmenacht stehen getrennt darunter und senken die Zahl nicht.' : ''}</p>
     ${imgF.length ? `<div class="tfinds">${imgF.map(find).join('')}</div>` : '<p class="ok sm">Keine messbaren Probleme am Bild.</p>'}
     ${condF.length || t.nights.length ? `<h3 class="tsec-h">Aufnahmebedingungen${dev.name ? ` <span class="mut sm">· ${esc(dev.name)}${dev.guessed ? ' (am Bildformat erkannt)' : ''}</span>` : ''}</h3>

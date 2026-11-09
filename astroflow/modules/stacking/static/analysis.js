@@ -45,12 +45,15 @@ function anReveal(sec) {
 async function analysisSummary(host, r, pid) {
   if (!host) return;
   const q = r.stats?.quality;
-  const tile = (k, label, v, sub = '') => `<a class="stat an-kpi" href="#/p/${pid}/analyse" data-k="${k}"><small>${label}</small><b class="tnum">${v}</b><small class="dim">${sub}</small></a>`;
+  const tile = (k, label, v, sub = '', tip = '') => `<a class="stat an-kpi" href="#/p/${pid}/analyse" data-k="${k}"${tip ? ` title="${esc(tip)}"` : ''}><small>${label}</small><b class="tnum">${v}</b><small class="dim">${sub}</small></a>`;
+  let grade = null;
   const draw = (depth, night) => {
     if (!host.isConnected) return;
+    const gq = grade?.grade;
     const g = depth?.state === 'done' ? depth.grenze : null;
     host.innerHTML = `<div class="stats an-sum">
-        ${q ? tile('q', 'Bildqualität', `${String(q.score).replace('.', ',')}<span class="dim">/10</span>`, esc(qlabel(q))) : ''}
+        ${gq ? tile('q', 'Bildqualität', `${String(gq.score).replace('.', ',')}<span class="dim">/10</span>`, esc(gq.parts.map(p => p.label).join(' · ')), gradeTip(gq))
+          : q ? tile('q', 'Bearbeitung', `${String(q.score).replace('.', ',')}<span class="dim">/10</span>`, esc(qlabel(q))) : ''}
         ${tile('depth', 'Grenzgröße', g?.m5 != null ? `${String(g.m5.toFixed(1)).replace('.', ',')} mag` : '–', g ? '5σ, Gaia' : depth?.solved === false ? 'nicht gelöst' : 'noch nicht gemessen')}
         ${tile('sky', 'Bortle', night?.bortle ? esc(night.bortle.text.replace('Bortle ', '')) : '–', night?.bortle ? esc(night.bortle.label) : night ? 'kein Ortswert' : 'noch nicht berechnet')}
         ${tile('seeing', 'Seeing', night?.seeing != null ? `${String(night.seeing.toFixed(1)).replace('.', ',')}″` : '–', night?.seeing != null ? 'FWHM, Median' : '')}
@@ -58,9 +61,10 @@ async function analysisSummary(host, r, pid) {
       <a class="an-more" href="#/p/${pid}/analyse">Mehr in der Analyse ${icon('arrow')}</a>`;
   };
   draw(null, null);
-  const [depth, sky] = await Promise.all([
+  const [depth, sky, gr] = await Promise.all([
     typeof insightLoad === 'function' ? insightLoad('depth', r.id).catch(() => null) : null,
-    api(`/stacking/projects/${pid}/sky`).catch(() => null)]);
+    api(`/stacking/projects/${pid}/sky`).catch(() => null), api(`/stacking/results/${r.id}/grade`).catch(() => null)]);
+  grade = gr;
   const ns = sky?.nights || [];
   draw(depth, ns.find(n => n.bortle) || ns.at(-1) || null);
 }

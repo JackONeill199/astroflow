@@ -147,5 +147,13 @@ Nutzerwunsch „eigene Seite, wo man alle gleichzeitig analysieren kann, mit Sta
   `#adAst` als schmale Tabelle über die volle Breite vor „Alle Objekte“, ebenfalls erst `CHG_ROWS` Zeilen (`.ad-asts:not(.all)`).
   Animationen über `.an-sec.in` (`anReveal`/`anCountUp` aus `analysis.js`), aus bei `prefers-reduced-motion`. Sprung zur Bildstelle: `sessionStorage af.an.focus`
   `{rid, x, y, w}` → `analysisTab` zoomt nach dem Laden des Fotos. localStorage `af.analysis.filter|kinds|sort`.
-- Tests: `tests/test_analysis_dashboard.py` (synthetische Bibliothek `tests/analysis_seed.py`, Attrappen statt Netz; prüft u. a. höchstens eine
+- **Bildqualität** (`modules/stacking/grade.py`, Nutzerbefund 09.11.2026 „Bildqualität immer 10 von 10?“): `stats.quality.score` aus
+  `develop.assess` misst Restfehler der *Bearbeitung* und wird von der Korrekturschleife fast immer auf 10 geregelt → heißt in der UI
+  „Bearbeitung ohne Restfehler“ (Zeile `edit_score`, Zähler `edit`). Die Note `score` der Zeile (Histogramm, Rekord, Tabelle, Kachel im Reiter Bild)
+  bewertet die *Aufnahme* aus gespeicherten Werten: Tiefe `depth.grenze.m5` (14→0, 19→10 mag, 35 %, nur aktuelle `DEPTH_VERSION`), Rauschen
+  `quality.measure.snr` (3→0, 60→10 logarithmisch, 25 %), Schärfe `fwhm_px` (8→0, 3→10 px, 25 %), Sternform = mittlere `ecc` der nicht
+  aussortierten Einzelbilder (`grade.project_ecc`, 0,85→0, 0,35→10, 15 %). Feste Anker (Note bleibt beim Hinzufügen gleich), fehlende Teile
+  fallen weg und die übrigen werden hochgerechnet, unter zwei Teilen keine Note. Herleitung je Bild in `grade.parts` (Tooltip `gradeTip` in
+  `stacking.js`); Projektansicht holt sie über `GET /results/{rid}/grade` (nicht in `_slim`).
+- Tests: `tests/test_grade.py`, `tests/test_analysis_dashboard.py` (synthetische Bibliothek `tests/analysis_seed.py`, Attrappen statt Netz; prüft u. a. höchstens eine
   Netzauswertung gleichzeitig und Anhalten), Route `#/analyse` in `test_ui_layout.py`.

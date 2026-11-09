@@ -278,7 +278,7 @@ async function analysisView(el) {
           r.oldest_cluster && `${esc(r.oldest_cluster.name)} · HR-Diagramm, grob geschätzt`, r.oldest_cluster),
         item('globe', 'Dunkelster Himmel', r.darkest && `${de(r.darkest.value, 2)} mag/″²`, r.darkest && `${fday(r.darkest.night)} · ${esc(r.darkest.name)}`, r.darkest),
         item('sparkle', 'Schärfste Nacht', r.seeing && `${de(r.seeing.value, 1)}″`, r.seeing && `${fday(r.seeing.night)} · ${esc(r.seeing.name)}`, r.seeing),
-        item('medal', 'Beste Bildqualität', r.score && `${de(r.score.value, 1)}/10`, r.score && esc(r.score.name), r.score),
+        item('medal', 'Beste Bildqualität', r.score && `${de(r.score.value, 1)}/10`, r.score && `${esc(r.score.name)} · ${r.score.parts.map(p => esc(p.label)).join(', ')}`, r.score),
         item('orbit', 'Schwächster Asteroid', r.faint_asteroid && `${de(r.faint_asteroid.value, 1)} mag`, r.faint_asteroid && `${esc(r.faint_asteroid.body)} in ${esc(r.faint_asteroid.name)}`,
           r.faint_asteroid && { ...r.faint_asteroid, pos: r.faint_asteroid.bild && r.faint_asteroid.x != null ? { x: r.faint_asteroid.x, y: r.faint_asteroid.y, w: r.faint_asteroid.bild.w } : null }),
         item('camera', 'Längste Belichtung', r.exposure && hrs(r.exposure.value), r.exposure && esc(r.exposure.name), r.exposure),
@@ -360,9 +360,16 @@ async function analysisView(el) {
 
   function drawScore(d) {
     paint('adScore', d.score_hist, () => {
-      const H = d.score_hist, mx = Math.max(1, ...H), n = H.reduce((a, b) => a + b, 0);
-      return `<div class="panel-h"><div><h2>Bildqualität</h2><p class="mut sm">Bewertung der automatischen Bildprüfung (0–10) über ${nf.format(n)} Bilder.</p></div></div>
-        ${n ? `<div class="ad-hist">${H.map((v, i) => `<div title="${v} Bilder mit ${i}/10"><i style="--h:${(v / mx * 100).toFixed(1)}%;--i:${i}" class="${i >= 8 ? 'ok' : i >= 5 ? 'mid' : 'low'}"></i><small>${i}</small></div>`).join('')}</div>` : '<p class="mut">Keine Bildprüfungen gespeichert.</p>'}`;
+      const H = d.score_hist, mx = Math.max(1, ...H), n = H.reduce((a, b) => a + b, 0), e = d.edit || {};
+      const names = (i) => (d.score_ids?.[i] || []).map(id => d.rows.find(r => r.id === id)?.name).filter(Boolean);
+      const tip = (v, i) => { const l = names(i); return `${v} ${v === 1 ? 'Bild' : 'Bilder'} mit ${i}/10${l.length ? ': ' + l.slice(0, 8).join(', ') + (l.length > 8 ? ' …' : '') : ''}`; };
+      return `<div class="panel-h"><div><h2>Bildqualität</h2><p class="mut sm">Qualität der Aufnahmen (0–10) über ${nf.format(n)} Bilder – aus Tiefe, Rauschen, Schärfe und Sternform.</p></div></div>
+        ${n ? `<div class="ad-hist">${H.map((v, i) => `<div title="${esc(tip(v, i))}"><i style="--h:${(v / mx * 100).toFixed(1)}%;--i:${i}" class="${i >= 8 ? 'ok' : i >= 5 ? 'mid' : 'low'}"></i><small>${i}</small></div>`).join('')}</div>` : '<p class="mut">Noch keine Messwerte für eine Note.</p>'}
+        <details class="ad-grade sm"><summary class="mut">Woraus sich die Note zusammensetzt</summary>
+          <ul class="mut"><li><b>Tiefe</b> 35 % – Grenzgröße 5σ: 14 mag = 0, 19 mag = 10 (braucht „Tiefe“)</li><li><b>Rauschen</b> 25 % – Objekt-SNR des Stacks: 3 = 0, 60 = 10 (logarithmisch)</li>
+            <li><b>Schärfe</b> 25 % – Sternbreite (FWHM) im Stack: 8 px = 0, 3 px = 10</li><li><b>Sternform</b> 15 % – Exzentrizität der Einzelbilder: 0,85 = 0, 0,35 = 10</li></ul>
+          <p class="mut">Fehlt ein Teil, zählen die übrigen anteilig. Feste Maßstäbe: die Note ändert sich nicht, wenn neue Bilder dazukommen. Die Herleitung je Bild steht beim Überfahren der Note in der Tabelle.</p></details>
+        ${e.n ? `<p class="mut sm ad-edit">Bearbeitung ohne Restfehler: <b class="tnum">${nf.format(e.clean)}</b> von ${nf.format(e.n)} Bildern (automatische Bildprüfung nach dem Entwickeln – sagt nichts über die Aufnahme).</p>` : ''}`;
     });
   }
 
@@ -463,7 +470,7 @@ async function analysisView(el) {
       <div class="ad-scroll"><table class="ad-tab ad-all"><thead><tr>${th('name', 'Objekt')}${th('night', 'Letzte Nacht')}${th('exposure', 'Belichtung')}${th('score', 'Qualität')}${th('m5', 'Grenzgröße')}${th('gal', 'Fernste Galaxie')}${th('sqm', 'Himmel')}<th>Tiefe · Vergl. · HR · Asteroiden · Himmel · Tutor · Gerät</th></tr></thead><tbody>
         ${rows.map(r => `<tr data-href="#/p/${r.id}/analyse" tabindex="0"><td class="ad-name"><a href="#/p/${r.id}/analyse">${esc(r.name)}</a> <small class="mut">${esc(r.device || '')}</small></td>
           <td>${fday(r.nights.at(-1))}${r.nights.length > 1 ? ` <small class="mut">+${r.nights.length - 1}</small>` : ''}</td><td class="tnum">${hrs(r.exposure)}</td>
-          <td class="tnum">${r.score != null ? de(r.score, 1) : '–'}</td><td class="tnum">${r.depth?.m5 != null ? de(r.depth.m5, 1) + ' mag' : '–'}</td>
+          <td class="tnum"${r.grade ? ` title="${esc(gradeTip(r.grade))}${r.edit_score != null ? ` · Bearbeitung ${de(r.edit_score, 1)}/10` : ''}"` : ''}>${r.score != null ? de(r.score, 1) : '–'}</td><td class="tnum">${r.depth?.m5 != null ? de(r.depth.m5, 1) + ' mag' : '–'}</td>
           <td class="tnum">${r.depth?.far_gal ? lyT(r.depth.far_gal.ly) : '–'}</td><td class="tnum">${r.sky?.sqm != null ? de(r.sky.sqm, 2) : '–'}</td>
           <td class="ad-dots">${KINDS.map(([k]) => dot(r, k)).join('')}</td></tr>`).join('')}
       </tbody></table></div>`);
