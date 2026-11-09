@@ -47,3 +47,20 @@
 - **Nachtplan** `_night_plan`: nutzbare Nacht in 1–4 Abschnitte (≈ 3 h), Zuordnung der Ziele per Permutation (Summe der gewichteten Sichtbarkeit); Blöcke < 40 min entfallen.
 - **API** `GET /api/stacking/tonight?hide=M35,12`: ausgeblendete Kennungen (localStorage `af.tonight.hidden`). Optionaler Dienst `collection_progress` (Sage →
   `{"messier": [Nummern]}`, 2 min gecacht): „Wäre dein n. Messier-Objekt“, bereits entdeckte Messier-Nummern entfallen. Tests: `tests/test_tonight.py`.
+
+## Messier-/Caldwell-Daten (OpenNGC + Wikipedia)
+- `deepsky.py` lädt Position, Helligkeit und Größe von Messier (110) und Caldwell (109) aus `stacking/katalogdaten/messier_caldwell.csv`.
+  Die Datei ist aus **OpenNGC** (Position, Kennungen, Galaxiengrößen) und den englischen **Wikipedia**-Listen (Helligkeit, sichtbare Größe; Werte
+  dort aus SEDS) zusammengestellt, beide CC-BY-SA 4.0 – Quellen, Revisionen und Lizenz in Kopfzeile, `README.md`, `LICENSE-OpenNGC`, `NOTICE`.
+  Die CC-BY-SA-Datei bleibt getrennt vom MIT-Code; deutsche Namen, Objektart-Kürzel und die Caldwell-Zuordnung (Nummer → NGC/IC) sind eigene
+  Tabellen in `deepsky.py` (`MESSIER`, `CALDWELL`).
+- Neu erzeugen: `python tools/openngc_extract.py <ordner> [--alt <alte deepsky.py>]` (nur beim Entwickeln, kein Netz zur Laufzeit; Ordner mit
+  `NGC.csv`, `addendum.csv`, `Messier_object.wiki`, `Caldwell_catalogue.wiki`, Bezug im Skriptkopf; beim ersten Lauf `--artikel-holen`, das `Caldwell_artikel.json` mit den Wikipedia-Einzelartikeln anlegt). Das Skript prüft beide Quellen gegeneinander
+  und gibt Abweichungen aus (Helligkeit > 0,7 mag, Größe > 40 %, Position > 3′). Vorrangregeln im Skriptkopf; Spalten `mag_src`/`size_src`.
+- Warum nicht OpenNGC allein: `V-Mag` ist bei Galaxien teils unbrauchbar (NGC 253: V 11,1 bei B 7,9), `MajAx` ist bei Haufen ein Kernmaß (M7 22′
+  statt ~80′), bei Planetarischen Nebeln nur die helle Kernfigur (M57 1,27′ statt ~3,8′) – M57/M76 würden sonst am `MIN_SIZE`-Filter scheitern.
+- Größen der Caldwell-Haufen, -Nebel und Planetarischen Nebel aus den Wikipedia-Einzelartikeln (Infobox, Revisionen in `quellen_artikel.csv`);
+  OpenNGC-`MajAx` ist bei Haufen ein Kernmaß, bei Nebeln teils der Gesamtkomplex (C34 210′), daher gilt dort der größere bzw. der Artikelwert.
+  Von Hand (unverifiziert, `Target.fallback`) bleiben nur die Größen von C34 (westlicher Schleier, ~70′), C88 und C94 (Artikel ohne Größe).
+  C46 ist veränderlich (~9–10 mag, Wert aus dem Artikel). M102 = NGC 5866 (OpenNGC: Dublette von M101). C50/C61 stehen in der Datei, sind aber keine eigenen Ziele (stecken in C49/C60).
+  Emissionsnebel (Art `e`) bekommen bewusst keine Helligkeit (integrale Helligkeit sagt über die Sichtbarkeit nichts aus).

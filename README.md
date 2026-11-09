@@ -318,5 +318,6 @@ AstroFlow ist kostenlos und quelloffen. Wenn du die Entwicklung unterstützen m�
 
 MIT, siehe `LICENSE`. Drittkomponenten (Überblick in `NOTICE`): three.js (`astroflow/static/vendor/`) steht unter MIT, die Erdtextur (`astroflow/modules/skytrace/static/vendor/`) ist NASA Blue Marble
 (gemeinfrei), siehe die `README.md` in beiden Ordnern. Das SkyTrace-Erkennungsmodell (`astroflow/modules/skytrace/models/night-detector`) stammt aus OpenSkyCam und steht unter AGPL-3.0.
+Die Messier-/Caldwell-Daten für „Heute Nacht“ (`astroflow/modules/stacking/katalogdaten/`) stammen aus [OpenNGC](https://github.com/mattiaverga/OpenNGC) und den englischen Wikipedia-Listen „Messier object“ und „Caldwell catalogue“ (beide CC-BY-SA 4.0, Namensnennung und Weitergabe unter gleichen Bedingungen; Lizenztext dort im Ordner).
 
 **Hinweis zu SkyTrace:** Die Erkennung von Lichtspuren (Modell und das nachinstallierte `ultralytics`) steht unter AGPL-3.0; die Engine läuft in einem eigenen Prozess, ihr Quellcode liegt offen unter `astroflow/modules/skytrace/engine/`. AstroFlow selbst bleibt unter der MIT-Lizenz. Im Windows-Paket sammelt `THIRD-PARTY-LICENSES.txt` die Lizenzen der gebündelten Pakete (u. a. pystray, LGPL-3.0). Die Kartenansicht lädt Kacheln von OpenStreetMap bzw. OpenTopoMap (© OpenStreetMap-Mitwirkende; bitte nur leichte Nutzung).
