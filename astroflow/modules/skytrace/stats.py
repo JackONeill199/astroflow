@@ -115,7 +115,10 @@ def _run(path: Path) -> dict:
     """Beobachtungen eines Laufs samt Kandidaten (gecacht nach Dateizeiten)."""
     summaries = _read(path / "videos.json", []) or []
     files = [path / s["candidates_file"] for s in summaries if isinstance(s, dict) and s.get("candidates_file")]
-    stamp = tuple(f.stat().st_mtime_ns if f.exists() else 0 for f in [path / "videos.json", *files])
+    # auch frames.jsonl/ausgeschlossen.jsonl (erste Aufnahme, Bildinfos) – sonst bliebe die Statistik nach Änderungen alt
+    folders = {path / Path(s["video"]).parent for s in summaries if isinstance(s, dict) and s.get("video")}
+    extra = [d / n for d in sorted(folders) for n in ("frames.jsonl", "ausgeschlossen.jsonl")]
+    stamp = tuple(f.stat().st_mtime_ns if f.exists() else 0 for f in [path / "videos.json", *files, *extra])
     with _lock:
         hit = _cache.get(str(path))
         if hit and hit[0] == stamp:
@@ -143,6 +146,10 @@ def collect(results: Path, skip: str | None = None) -> dict:
     zählen. `skip` = gerade laufende Analyse (Dateien noch unvollständig)."""
     runs = sorted((p for p in results.iterdir() if p.is_dir() and (p / "videos.json").exists() and p.name != skip),
                   key=lambda p: p.name, reverse=True) if results.exists() else []
+    with _lock:                                         # Einträge gelöschter Läufe nicht ewig behalten
+        alive = {str(p) for p in runs} | ({str(results / skip)} if skip else set())
+        for k in [k for k in _cache if Path(k).parent == results and k not in alive]:
+            del _cache[k]
     best: dict[tuple, dict] = {}
     total = 0
     for path in runs:                                   # Lauf-IDs sind Startzeiten → neueste zuerst

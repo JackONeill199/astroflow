@@ -21,6 +21,12 @@ from pathlib import Path
 from ...core.errors import user_message
 
 
+def _is_upload(path: Path) -> bool:
+    """Hochgeladene Rohbilder (`input/uploads/…`) – die löscht das Bilder-Modul direkt nach `stacking.stacked`."""
+    parts = [p.lower() for p in Path(path).parts]
+    return any(a == "input" and b == "uploads" for a, b in zip(parts, parts[1:]))
+
+
 class AutoAnalysis:
     def __init__(self, mod):
         self.mod = mod
@@ -37,6 +43,12 @@ class AutoAnalysis:
         self.state.setdefault("sent", {})          # Frame-ID → Ordnername
         self.state.setdefault("queue", [])         # wartende/laufende Ordner
         self.state.setdefault("done", [])          # erledigte (für die Aktivität)
+        # Server-Ende während einer Kopie: ohne gemerkte Kopierliste (alter Stand) die halbe Nacht verwerfen;
+        # mit Liste setzt `start` die Kopie fort – schon gesicherte Uploads bleiben so erhalten
+        for q in [q for q in self.state["queue"] if q.get("state") == "staging" and not q.get("copies")]:
+            shutil.rmtree(self.dir / q["folder"], ignore_errors=True)
+            self.state["queue"].remove(q)
+            self.state["sent"] = {k: v for k, v in self.state["sent"].items() if v != q["folder"]}
 
     @property
     def enabled(self) -> bool:
@@ -66,22 +78,92 @@ class AutoAnalysis:
                 n = 2
                 while folder.exists():
                     folder = self.dir / f"{night}_observation_{safe}_{n}"; n += 1
-                folder.mkdir(parents=True)
-                for i, f in enumerate(items):
-                    src = Path(f["path"])
-                    dst = folder / f"{i:05d}_{src.name}"
-                    try:
-                        os.link(src, dst)         # gleicher Datenträger: kein Platzbedarf, überlebt das Löschen des Uploads
-                    except OSError:
-                        shutil.copy2(src, dst)    # anderer Datenträger (eingebundener Ordner)
+                # Synchron nur Hardlinks (schnell, Pipeline wartet); Kopien über Datenträger hinweg im eigenen Thread.
+                # Fehler: halben Ordner wieder entfernen, die Aufnahmen gelten nicht als übergeben.
+                copies = []
+                try:
+                    folder.mkdir(parents=True)
+                    for i, f in enumerate(items):
+                        src = Path(f["path"])
+                        dst = folder / f"{i:05d}_{src.name}"
+                        try:
+                            os.link(src, dst)     # gleicher Datenträger: kein Platzbedarf, überlebt das Löschen des Uploads
+                        except OSError:
+                            if _is_upload(src):           # Upload löscht das Bilder-Modul gleich nach dem Ereignis: sofort kopieren
+                                shutil.copy2(src, dst)
+                            else:
+                                copies.append((src, dst))     # anderer Datenträger (eingebundener Ordner): im Thread
+                except OSError:
+                    traceback.print_exc()
+                    shutil.rmtree(folder, ignore_errors=True)
+                    continue
+                item = {"folder": folder.name, "project": project_id, "name": name, "night": night, "frames": len(items),
+                        "queued": time.time(), "state": "staging" if copies else "queued", "run": None}
+                for f in items:
                     self.state["sent"][f["id"]] = folder.name
-                self.state["queue"].append({"folder": folder.name, "project": project_id, "name": name, "night": night,
-                                            "frames": len(items), "queued": time.time(), "state": "queued", "run": None})
+                self.state["queue"].append(item)
+                if copies:
+                    item["copies"] = [[str(a), str(b)] for a, b in copies]     # für die Fortsetzung nach einem Neustart
+                    item["ids"] = [f["id"] for f in items]
+                    self._start_copy(item)
             self._save()
         self.wake.set()
 
+    def _start_copy(self, item: dict):
+        threading.Thread(target=self._copy, args=(item, [(Path(a), Path(b)) for a, b in item["copies"]], item.get("ids") or []),
+                         daemon=True, name="skytrace-auto-copy").start()
+
+    def _copy(self, item: dict, copies: list, ids: list):
+        """Kopien für Aufnahmen auf anderen Datenträgern; scheitert eine, wird die Nacht nicht übergeben."""
+        try:
+            for src, dst in copies:
+                if dst.exists() and (not src.exists() or dst.stat().st_size == src.stat().st_size):
+                    continue                       # schon vor einem Neustart kopiert
+                try:
+                    shutil.copy2(src, dst)
+                except FileNotFoundError:          # inzwischen gelöscht: ohne diese Aufnahme weiter
+                    pass
+            state = "queued" if sum(1 for _ in (self.dir / item["folder"]).iterdir()) >= 2 else None
+            if not state:
+                shutil.rmtree(self.dir / item["folder"], ignore_errors=True)
+        except OSError:
+            traceback.print_exc()
+            shutil.rmtree(self.dir / item["folder"], ignore_errors=True)
+            state = None
+        with self.lock:
+            if state:
+                item["state"] = state
+                item.pop("copies", None)
+                item.pop("ids", None)
+            else:
+                self.state["queue"] = [q for q in self.state["queue"] if q is not item]
+                for fid in ids:
+                    if self.state["sent"].get(fid) == item["folder"]:
+                        del self.state["sent"][fid]
+            self._save()
+        self.wake.set()
+
+    def retry_waiting(self) -> int:
+        """Übersprungene/fehlgeschlagene Nächte, deren Aufnahmen noch bereitliegen, erneut einreihen (z. B. nach dem
+        Einrichten der Engine)."""
+        with self.lock:
+            again = [d for d in self.state["done"] if d.get("state") in ("skipped", "error") and (self.dir / d["folder"]).is_dir()]
+            for d in again:
+                d.update(state="queued", run=None, message=None, finished=None, queued=time.time())
+            self.state["done"] = [d for d in self.state["done"] if d not in again]
+            self.state["queue"] += again
+            if again:
+                self._save()
+        if again:
+            self.wake.set()
+        return len(again)
+
     # ---- Warteschlange ------------------------------------------------------------
     def start(self):
+        with self.lock:
+            for q in self.state["queue"]:
+                if q.get("state") == "staging" and q.get("copies"):
+                    self._start_copy(q)                  # nach Neustart unterbrochene Kopie fortsetzen
         self.thread = threading.Thread(target=self.loop, daemon=True)
         self.thread.start()
 
@@ -130,8 +212,11 @@ class AutoAnalysis:
                 self.stopped.wait(5)
             if self.stopped.is_set():
                 return
-            snap = ctl.snapshot(logs=False)
-            self._finish(item, "error" if snap.get("failed") else "stopped" if snap.get("stopping") else "done", snap.get("status"))
+            out = ctl.outcome(item["run"])           # Ergebnis genau dieses Laufs (nicht eines inzwischen manuell gestarteten)
+            if out is None:
+                self._finish(item, "error", "Ausgang des Laufs unbekannt")
+            else:
+                self._finish(item, "error" if out["failed"] else "stopped" if out["stopping"] else "done", out["status"])
 
     def _keep_frames(self, item: dict):
         """Aufnahmen, die der Bericht braucht (erstes Bild, je zwei vor/nach jedem Treffer), in den Ergebnisordner
@@ -196,11 +281,18 @@ class AutoAnalysis:
                 self._keep_frames(item)
             except Exception:
                 traceback.print_exc()
-        shutil.rmtree(self.dir / item["folder"], ignore_errors=True)
+        if state in ("done", "stopped"):
+            shutil.rmtree(self.dir / item["folder"], ignore_errors=True)
+        # bei Fehler/fehlender Engine bleiben die Aufnahmen liegen – `retry_waiting` reiht sie später erneut ein
+        # (sonst wäre die Nacht verloren, wenn das Bilder-Modul die hochgeladenen Rohbilder schon gelöscht hat)
         with self.lock:
             item.update(state=state, message=message, finished=time.time())
             self.state["queue"] = [q for q in self.state["queue"] if q is not item]
-            self.state["done"] = (self.state["done"] + [item])[-30:]
+            done = self.state["done"] + [item]
+            for old in done[:-30]:                  # aus der Liste gefallen: liegengebliebene Aufnahmen nicht ewig behalten
+                if old.get("state") in ("skipped", "error"):
+                    shutil.rmtree(self.dir / old["folder"], ignore_errors=True)
+            self.state["done"] = done[-30:]
             self._save()
 
     def activity(self) -> list[dict]:
