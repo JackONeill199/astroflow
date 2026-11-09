@@ -11,7 +11,7 @@
 .cd-spark { fill: color-mix(in srgb, var(--fg) 65%, transparent) }
 .cd-moon { fill: color-mix(in srgb, var(--warn) 45%, var(--fg)); opacity: .75 }
 .cd-ref { stroke: color-mix(in srgb, var(--mut) 35%, transparent); stroke-width: 1; stroke-dasharray: 2 3 }
-svg .cd-reft { fill: var(--dim); font-size: 8.5px }
+svg .cd-reft { fill: var(--dim); font-size: 0.53125rem }
 /* Schärfe: aufgeblähter und scharfer Stern */
 .cd-blur0 { stop-color: color-mix(in srgb, var(--fg) 70%, transparent) }
 .cd-sharp { stroke: color-mix(in srgb, var(--fg) 55%, transparent); stroke-width: .8; stroke-linecap: round }
