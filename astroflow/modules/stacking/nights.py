@@ -4,8 +4,8 @@ Bis 0.53 galt überall „UTC − 12 h“. Seitdem gilt Mittag bis Mittag Ortsze
 bleibt die Grenze bei 12 Uhr UTC – dort ändert sich nichts. Beim Start werden die Nächte aus `DATE-OBS` (+ Ort im FITS-Kopf)
 neu bestimmt, aber nur, wenn sich die Grundlage geändert hat (Regel, Ortsliste, Rechnerzeitzone; Signatur in
 settings.json → `nights`). Idempotent; Rohdaten und Ergebnisse bleiben unberührt. Aufnahmen ohne DATE-OBS (Nacht aus der
-Dateizeit) behalten ihr Datum. Für Projekte mit geänderten Nächten wird die Himmelsqualität je Nacht verworfen
-(sie trug das alte Datum; „Fehlende berechnen“ holt sie nach).
+Dateizeit) behalten ihr Datum. Kometenprojekte (Nacht im Schlüssel) bekommen den Schlüssel der neuen Nacht. Für Projekte
+mit geänderten Nächten wird die Himmelsqualität je Nacht verworfen (sie trug das alte Datum; „Fehlende berechnen“ holt sie nach).
 """
 from __future__ import annotations
 
@@ -56,12 +56,33 @@ def renight(db, book=None) -> dict:
                 projects.add(int(r["project_id"]))
     if changes:
         db.many("UPDATE frames SET night=? WHERE id=?", changes)
+        _comet_keys(db, projects)
     if projects:
         try:                                     # Tabelle entsteht erst mit der Himmelsqualität
             db.many("DELETE FROM sky_nights WHERE project_id=?", [(p,) for p in sorted(projects)])
         except Exception:
             pass
     return {"frames": len(changes), "projects": sorted(projects)}
+
+
+def _comet_keys(db, projects: set[int]) -> None:
+    """Kometenprojekte tragen die Nacht im Schlüssel (`scanner.assign_project`: KOMET:<name>|<nacht>|<kamera>), neue
+    Aufnahmen werden nur über ihn zugeordnet. Liegen alle Lights eines Projekts jetzt in einer anderen Nacht, Schlüssel
+    nachziehen – außer ein anderes Projekt hat den neuen Schlüssel schon (dann bleibt alles, wie es ist; nichts wird
+    zusammengelegt)."""
+    from .scanner import COMET_KEY
+    for pid in sorted(projects):
+        p = db.one("SELECT key FROM projects WHERE id=?", (pid,))
+        parts = (p["key"] or "").split("|") if p else []
+        if len(parts) != 3 or not parts[0].startswith(COMET_KEY):
+            continue
+        nights = {r["night"] for r in db.q("SELECT DISTINCT night FROM frames WHERE project_id=? AND kind='light'", (pid,))}
+        if len(nights) != 1:
+            continue
+        night = next(iter(nights))
+        key = f"{parts[0]}|{night}|{parts[2]}"
+        if night and key != p["key"] and not db.one("SELECT id FROM projects WHERE key=?", (key,)):
+            db.x("UPDATE projects SET key=? WHERE id=?", (key, pid))
 
 
 def migrate(db, store, book) -> dict | None:

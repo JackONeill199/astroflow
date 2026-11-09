@@ -181,3 +181,24 @@ def test_migration_europa_unveraendert_usa_angepasst(tmp_path):
     assert got["ohne"] == "2026-01-01"                                 # ohne DATE-OBS unverändert
     assert nights.migrate(db, store, book) is None
     assert nights.renight(db, book)["frames"] == 0                     # idempotent
+
+
+def test_migration_kometenschluessel(tmp_path):
+    from astroflow.modules.stacking import nights
+    from astroflow.modules.stacking.db import DB
+
+    db = DB(tmp_path / "a.db")
+    abend = dt.datetime(2026, 5, 10, 10, tzinfo=UTC)                 # 19 Uhr am Ort in Japan, alt: 9. Mai
+    db.x("INSERT INTO projects(id,key,name) VALUES(1,?,?)", ("KOMET:c2026a1|2026-05-09|cam", "C/2026 A1"))
+    info = {"date_obs": abend.strftime("%Y-%m-%dT%H:%M:%S"), "site": [35.0, JAPAN]}
+    db.x("INSERT INTO frames(id,project_id,path,kind,night,info) VALUES('k',1,'/x/k.fits','light','2026-05-09',?)", (json.dumps(info),))
+    assert nights.renight(db, Book({}))["frames"] == 1
+    assert db.one("SELECT key FROM projects WHERE id=1")["key"] == "KOMET:c2026a1|2026-05-10|cam"
+
+
+def test_aktivitaet_mit_fits_ort(monkeypatch):
+    from astroflow.modules.stacking.activity_stats import summarize
+    monkeypatch.setattr(sites, "_tz_hours", lambda t, tz=None: 0.0)  # Rechner auf UTC
+    info = {"date_obs": "2026-05-10T10:00:00", "site": [35.0, JAPAN], "exptime": 10}
+    out = summarize([{"kind": "light", "info": json.dumps(info), "project_id": 1}])
+    assert "2026-05-10" in json.dumps(out) and "2026-05-09" not in json.dumps(out)

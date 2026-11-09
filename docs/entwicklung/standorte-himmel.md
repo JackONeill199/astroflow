@@ -20,7 +20,8 @@
   Nacht auch über einen Sommerzeitwechsel eine Nacht.
 - **Gespeicherte Nächte:** `stacking/nights.migrate` beim Start des Bilder-Moduls bestimmt `frames.night` aus DATE-OBS (+ FITS-Ort) neu, nur wenn sich
   die Grundlage geändert hat (Signatur aus Regel `RULE`, `COMPAT_H`, Rechnerzeitzone Jan/Jul, Ortslisten-Längen, Standard, Zeiträume →
-  `settings.json` → `nights`). Nur abweichende Zeilen; Aufnahmen ohne DATE-OBS behalten ihr Datum; für betroffene Projekte wird `sky_nights`
+  `settings.json` → `nights`). Nur abweichende Zeilen; Aufnahmen ohne DATE-OBS behalten ihr Datum; Kometenprojekte (Nacht im Schlüssel `KOMET:…|<nacht>|…`)
+  bekommen den neuen Schlüssel, wenn alle Lights in einer Nacht liegen und er frei ist (nie zusammenlegen); für betroffene Projekte wird `sky_nights`
   verworfen (Himmelsqualität „Fehlende berechnen“). Keine Rohdaten, keine Ergebnisversion. Nachtschlüssel in Einstellungen (Einzelnacht-Zeiträume,
   SkyTrace-`clock_offsets`, Heatmaps) werden nicht umgeschrieben: außerhalb Europas stimmt das alte Datum mit dem neuen für den Hauptteil der Nacht
   überein (USA: Abend bis 4 Uhr, Japan: ab 21 Uhr), nur der Rand wechselt.

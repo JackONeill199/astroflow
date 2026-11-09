@@ -21,7 +21,9 @@ def summarize(rows: list[dict], year: int | None = None) -> dict:
             missing += 1
             continue
         # Eine Beobachtungsnacht läuft von Mittag bis Mittag Ortszeit (core/sites.night_of, wie beim Import).
-        night = dt.date.fromisoformat(sites.night_of(stamp))
+        site = info.get("site")                       # Ort im FITS-Kopf wie im Scanner (frames.night)
+        lon = site[1] if isinstance(site, (list, tuple)) and len(site) >= 2 else None
+        night = dt.date.fromisoformat(sites.night_of(stamp, lon=lon))
         years.add(night.year)
         if year is not None and night.year != year:
             continue
