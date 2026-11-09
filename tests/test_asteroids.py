@@ -223,6 +223,16 @@ def test_api_dashboard_and_sage(env, tmp_path, monkeypatch):
             time.sleep(0.1)
         assert ach, (resp.status_code, resp.text[:300])
         assert ach["asteroid_first"]["unlocked"] and not ach["asteroids_10"]["unlocked"]
+        # alter Zeitlimit-Fehler (vor dem Fix gespeichert, ohne `retry`): „offen“ statt „Fehler“, ein Lauf „fehlende“ erfasst ihn
+        old = {"v": 0, "ok": False, "erstellt": 1.0,
+               "error": "Kleinkörper-Abfrage nicht möglich: JPL-Kleinkörperdienst antwortet sehr langsam – Zeitlimit überschritten."}
+        db2.x("UPDATE results SET stats=json_set(stats,'$.asteroids',json(?)) WHERE id=?", (json.dumps(old), rid))
+        g = c.get(f"/api/stacking/results/{rid}/asteroids").json()
+        assert g["state"] == "none" and g["retry"] and "Zeitlimit" in g["message"]
+        d = c.get("/api/stacking/analysis").json()
+        assert d["coverage"]["asteroids"].get("none") == 1 and not d["coverage"]["asteroids"].get("error")
+        plan = c.post("/api/stacking/analysis/plan", json={"kinds": ["asteroids"], "scope": "missing"}).json()
+        assert plan["total"] == 1, plan
         # ausgeschaltet → klare Meldung
         c.post("/api/stacking/insights", json={"small_bodies": False})
         assert c.post(f"/api/stacking/results/{rid}/asteroids").status_code == 400
@@ -306,6 +316,88 @@ def test_small_bodies_fast_first_pass_and_failure_pause(tmp_path, monkeypatch):
         compare.small_bodies("2025-04-12T22:00:00", 151.0, 20.0, 0.5, 0.35, tmp_path)
     assert len(seen) == n
     assert "sehr langsam" in compare.jpl_message(TimeoutError("timed out"))
+
+
+def test_small_bodies_timeout_and_http_status(tmp_path, monkeypatch):
+    """Fehlerbericht 09.11.2026 (86 Asteroiden-Fehler „Zeitlimit überschritten“): Zeitlimit je Abfrage `JPL_TIMEOUT` (120 s,
+    erster Durchgang brauchte 19–25 s), Zeitlimit/5xx = vorübergehend (`retry`), 4xx = endgültig."""
+    import httpx
+
+    from astroflow.modules.stacking import compare
+    seen = []
+
+    def get(url, params=None, timeout=None):
+        seen.append(timeout)
+        return _Resp(_sb_answer(False, []))
+    monkeypatch.setattr(httpx, "get", get)
+    compare.small_bodies("2025-04-10T22:00:00", 150.0, 20.0, 0.5, 0.5, tmp_path)
+    assert seen and all(t == compare.JPL_TIMEOUT >= 120 for t in seen)
+
+    def status(code):
+        def get(url, params=None, timeout=None):
+            req = httpx.Request("GET", url)
+            raise httpx.HTTPStatusError("x", request=req, response=httpx.Response(code, request=req))
+        return get
+    monkeypatch.setattr(httpx, "get", status(400))
+    with pytest.raises(compare.SmallBodyError) as ei:
+        compare.small_bodies("2025-04-11T22:00:00", 150.0, 20.0, 0.5, 0.5, tmp_path)
+    assert not ei.value.retry and not (tmp_path / "jpl_fehler.json").exists()
+    monkeypatch.setattr(httpx, "get", status(503))
+    with pytest.raises(compare.SmallBodyError, match="überlastet") as ei:
+        compare.small_bodies("2025-04-12T22:00:00", 150.0, 20.0, 0.5, 0.5, tmp_path)
+    assert ei.value.retry
+    with pytest.raises(compare.SmallBodyError, match="Nächster Versuch") as ei:     # Pause gilt dienstweit, ebenfalls vorübergehend
+        compare.small_bodies("2025-04-13T22:00:00", 151.0, 20.0, 0.5, 0.5, tmp_path)
+    assert ei.value.retry
+
+
+def test_jpl_timeout_leaves_result_open(env, monkeypatch):
+    """Zeitlimit ist kein endgültiger Fehler: `compute` meldet `retry`, der Worker speichert „offen“ (Status `retry`),
+    Dashboard und Sammelauftrag zählen es nicht als Fehler; alte gespeicherte Zeitlimit-Fehler gelten ebenfalls als offen."""
+    import threading
+    import time
+    from types import SimpleNamespace
+
+    from astroflow.modules.stacking import compare, dashboard, insights
+    s, db, pl, p, rid, st, truth = env
+
+    def slow(*a, **k):
+        raise compare.SmallBodyError(compare.jpl_message(TimeoutError("timed out")))
+    with pytest.raises(asteroids.AsteroidError, match="Zeitlimit") as ei:
+        asteroids.compute(pl, rid, small_bodies=slow, gaia=False)
+    assert ei.value.retry
+    with pytest.raises(asteroids.AsteroidError) as ei:                  # Programmfehler bleibt ein Fehler
+        asteroids.compute(pl, rid, small_bodies=lambda *a, **k: (_ for _ in ()).throw(ValueError("kaputt")), gaia=False)
+    assert not ei.value.retry
+    # Worker: vorübergehend → Zustand „retry“ und gespeichert mit retry=True
+    eng = SimpleNamespace(stop=threading.Event())
+    ins = insights.Insights(eng)
+    stored = {}
+    ins._store = lambda r, key, value: stored.update({(key, r): value})
+    ins.asteroids = lambda r, log, **_: (_ for _ in ()).throw(ei_retry)
+    ei_retry = asteroids.AsteroidError("Kleinkörper-Abfrage nicht möglich: " + compare.jpl_message(TimeoutError("timed out")), retry=True)
+    th = threading.Thread(target=ins.worker, daemon=True)
+    th.start()
+    try:
+        ins.submit("asteroids", 7)
+        for _ in range(100):
+            if (ins.status("asteroids", 7) or {}).get("state") not in ("queued", "running"):
+                break
+            time.sleep(0.05)
+    finally:
+        eng.stop.set()
+        th.join(5)
+    assert ins.status("asteroids", 7)["state"] == "retry"
+    saved = stored[("asteroids", 7)]
+    assert saved["retry"] and not saved["ok"] and asteroids.is_retry(saved)
+    assert asteroids.is_retry({"v": 0, "ok": False, "error": ei_retry.args[0]})            # alter Eintrag ohne retry
+    assert not asteroids.is_retry({"v": 0, "ok": False, "error": "Kein Master-Stack vorhanden"})
+    assert not asteroids.is_retry({"v": 1, "ok": True})
+    # Sammelauftrag: kein Fehler, sondern „später erneut“
+    b = dashboard.Batch(SimpleNamespace(insights=ins, stop=threading.Event()), None)
+    b.state = {"state": "running", "errors": []}
+    ins.submit = lambda k, r: None
+    assert b._one("asteroids", 1, 7) is None and b.state["deferred"] == 1
 
 
 def test_horizons_command_and_refine(monkeypatch, tmp_path):

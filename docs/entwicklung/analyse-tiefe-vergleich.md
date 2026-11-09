@@ -32,8 +32,13 @@
   Katalog: SIMBAD-Kegel 8″ je Stelle (Veränderlichen-Typen), JPL SB-Ident **geozentrisch** (`mpc-code=500`) je Nacht (≤ 2), Kometen
   und Asteroiden getrennt. **Seit 0.43.2:** Kometen mit zweitem Durchgang (genau, ~4 s), Asteroiden **nur erster Durchgang**
   (Zweikörper-Näherung, ~20 s; Einträge `genau: false`) – der zweite brauchte am 07.11.2026 für ein 1°-Feld 127 s und scheiterte am
-  Zeitlimit immer. Cache-Schlüssel `sb3|…`. Zeitüberschreitung/Verbindungsfehler → `SmallBodyError`, Marke `work/vergleich/jpl_fehler.json`,
-  `JPL_FAIL_PAUSE` 30 min keine neue Abfrage (dienstweit); Meldungen über `compare.jpl_message` („sehr langsam“ / „nicht erreichbar“).
+  Zeitlimit immer. Cache-Schlüssel `sb3|…`. Zeitlimit je Abfrage `JPL_TIMEOUT` 120 s (vorher 60 s). Zeitüberschreitung/Verbindungsfehler/
+  HTTP 5xx → `SmallBodyError(retry=True)` (4xx: `retry=False`), Marke `work/vergleich/jpl_fehler.json`, `JPL_FAIL_PAUSE` 15 min keine neue
+  Abfrage (dienstweit); Meldungen über `compare.jpl_message` („sehr langsam“ / „überlastet“ / „nicht erreichbar“).
+  **Messung 09.11.2026** (geozentrisch, Ekliptikfeld 3h/+17°): erster Durchgang Asteroiden 19 s – unabhängig von der Feldgröße
+  (0,25°/0,5°/1°/2° Halbbreite: 18,9/19,4/19,2/19,3 s), `req-elem=false` 19,0 s, `vmag-lim=20` 22,2 s; Kometen zweiter Durchgang 4 s;
+  Asteroiden zweiter Durchgang mit `vmag-lim=18` 25 s. Kacheln oder schlankere Parameter bringen also nichts – die Zeit ist ein
+  fester Grundaufwand bei JPL, Ausreißer kommen vom Dienst.
   Ausgabe: `work/p<id>/vergleich/r<rid>/` Blinkbilder (gleiche Streckung, Raster des Stacks) + Ausschnitte; Caches `work/vergleich/`.
 - **Hotpixel-Reste** (seit 0.38.2, `stackfix.spots`): Ältere Stacks ohne `hotfix` enthalten Hotpixel-Paare (ein Kanal, R/G). Im
   Kanalmittel und nach dem Falten der schärferen Aufnahme wurden sie sternförmig und passierten Form-/Einzelpixelprüfung (Arbeitsinstanz:

@@ -40,11 +40,22 @@ MAX_ELONG = 2.0             # Achsenverhältnis des Funds (eine mitgeschleppte S
 MIN_MOTION_FWHM = 2.0       # langsamer: im Stack ein Stern, Differenz zum Stack zeigt nichts
 MAG_MARGIN = 1.0            # Vorhersage bis Grenzgröße (5σ) + MAG_MARGIN versuchen
 MAG_DEFAULT = 20.5          # ohne gemessene Grenzgröße
-JPL_BUDGET = 180.0          # s für alle JPL-Abfragen eines Bildes (erster Durchgang ~20 s je Nacht)
+JPL_BUDGET = 300.0          # s für alle JPL-Abfragen eines Bildes (erster Durchgang ~20 s je Nacht, Zeitlimit je Abfrage 120 s)
+RETRY_PREFIX = "Kleinkörper-Abfrage nicht möglich: JPL-Kleinkörperdienst"   # so beginnen auch ältere gespeicherte Zeitlimit-Fehler
 
 
 class AsteroidError(Exception):
-    """Verständliche Meldung für die Oberfläche."""
+    """Verständliche Meldung für die Oberfläche. `retry`: JPL nur vorübergehend nicht erreichbar/zu langsam – das Ergebnis
+    gilt als „offen“ (nicht „Fehler“) und wird beim nächsten Analyse-Lauf erneut versucht."""
+
+    def __init__(self, msg: str, retry: bool = False):
+        super().__init__(msg)
+        self.retry = retry
+
+
+def is_retry(data: dict | None) -> bool:
+    """Gespeichertes Ergebnis = vorübergehender JPL-Fehler? Auch alte Einträge ohne `retry` (Zeitlimit-Meldung vor 0.52.x)."""
+    return bool(data) and not data.get("ok") and (bool(data.get("retry")) or str(data.get("error") or "").startswith(RETRY_PREFIX))
 
 
 def _num(v):
@@ -365,11 +376,13 @@ def compute(pl, rid: int, *, small_bodies=None, gaia: bool = True, m5: float | N
             break
         log(f"Kleinkörper im Feld abfragen ({night})")
         try:
-            bodies = small_bodies(_iso(t_mid), ra0, dec0, hw, hw, cache, timeout=min(60.0, left))
+            bodies = small_bodies(_iso(t_mid), ra0, dec0, hw, hw, cache, timeout=min(compare.JPL_TIMEOUT, left))
         except Exception as e:
-            raise AsteroidError("Kleinkörper-Abfrage nicht möglich: " + compare.jpl_message(e))
+            raise AsteroidError("Kleinkörper-Abfrage nicht möglich: " + compare.jpl_message(e),
+                                retry=getattr(e, "retry", not isinstance(e, (ValueError, TypeError, KeyError)))) from e
         pred = predict(bodies, wcs, (H, W), cov, t_mid, t0, t1,
-                       fetch_later=lambda: small_bodies(_iso(t_mid + 3600), ra0, dec0, hw, hw, cache, timeout=min(60.0, left)))
+                       fetch_later=lambda: small_bodies(_iso(t_mid + 3600), ra0, dec0, hw, hw, cache,
+                                                         timeout=min(compare.JPL_TIMEOUT, max(15.0, JPL_BUDGET - (time.time() - t_start)))))
         avail = [f for f in fr if not f["deleted"] and f["path"] and Path(f["path"]).exists() and f["id"] in links]
         ni = {"night": night, "zeit": _iso(t_mid), "aufnahmen": len(fr), "rohbilder": len(avail), "im_feld": 0,
               "dauer_min": round((t1 - t0) / 60, 1)}

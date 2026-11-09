@@ -115,7 +115,7 @@ def _cloud(pid: int, d: dict) -> list[dict]:
 def collect(eng) -> dict:
     """Je Objekt die neueste Version mit Status und Kennzahlen der Auswertungen (ohne Live-Zustand der Warteschlangen)."""
     from . import deepsky, objects, skyquality, tutor
-    from .asteroids import ASTEROID_VERSION
+    from .asteroids import ASTEROID_VERSION, is_retry
     from .compare import COMPARE_VERSION
     from .depth import DEPTH_VERSION
     from .diagnose import DIAG_VERSION
@@ -172,7 +172,7 @@ def collect(eng) -> dict:
         # Status je Art
         status = {"depth": _status(st.get("depth"), DEPTH_VERSION), "compare": _status(st.get("compare"), COMPARE_VERSION),
                   "diagnose": _status(st.get("diagnose"), DIAG_VERSION),
-                  "asteroids": _status(st.get("asteroids"), ASTEROID_VERSION)}
+                  "asteroids": "none" if is_retry(st.get("asteroids")) else _status(st.get("asteroids"), ASTEROID_VERSION)}
         tc = st.get("tutor") or {}
         status["tutor"] = "done" if str(tc.get("key", "")).startswith(f"{tutor.TUTOR_VERSION}|") else "old" if tc else "none"
         status["sky"] = "none" if pid not in sky_ver else "done" if sky_ver[pid] >= skyquality.SKY_VERSION else "old"
@@ -561,6 +561,8 @@ class Batch:
             while not self._stop.is_set() and not eng.stop.is_set():
                 st = eng.insights.status(k, rid)
                 if not st or st.get("state") not in ("queued", "running"):
+                    if st and st.get("state") == "retry":       # JPL vorübergehend zu langsam: offen lassen, kein Fehler
+                        self.state["deferred"] = self.state.get("deferred", 0) + 1
                     return st.get("message") if st and st.get("state") == "error" else None
                 self.state["detail"] = st.get("message") or ""
                 time.sleep(0.3)
@@ -590,7 +592,7 @@ class Batch:
         it = s.get("item")
         run = s["state"] in ("running", "paused")
         det = (f"{s['done']}/{s['total']}" + (f" · {LABEL[it[0]]} · {it[3]}" if it else "") + (" · angehalten" if s["state"] == "paused" else "")) if run \
-            else f"{s['done']} Auswertungen" + (f", {len(s['errors'])} Fehler" if s.get("errors") else "") + (" · abgebrochen" if s["state"] == "stopped" else "")
+            else f"{s['done']} Auswertungen" + (f", {len(s['errors'])} Fehler" if s.get("errors") else "") + (f", {s['deferred']} später erneut" if s.get("deferred") else "") + (" · abgebrochen" if s["state"] == "stopped" else "")
         return [{"key": s["key"], "title": "Analyse aller Objekte", "kind": "Analyse", "detail": det,
                  "state": "running" if run else "error" if s.get("errors") and not s["done"] else "done",
                  "progress": s["done"] / max(1, s["total"]), "started": s.get("started"), "finished": s.get("finished"), "href": "#/analyse"}]

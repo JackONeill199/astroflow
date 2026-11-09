@@ -81,10 +81,11 @@ class Insights:
                 from .hrd import HrdError
                 if not isinstance(e, (DepthError, CompareError, HrdError, AsteroidError)):
                     traceback.print_exc()
+                retry = bool(getattr(e, "retry", False))   # vorübergehend (JPL zu langsam): „offen“, beim nächsten Lauf erneut
                 try:                                     # erst speichern, dann melden (Abfragen dazwischen sähen sonst nichts)
-                    self._store(rid, kind, {"v": 0, "ok": False, "error": str(e)[:300], "erstellt": time.time()})
+                    self._store(rid, kind, {"v": 0, "ok": False, "error": str(e)[:300], "erstellt": time.time(), **({"retry": True} if retry else {})})
                 finally:
-                    st.update(state="error", message=str(e)[:300], t=time.time())
+                    st.update(state="retry" if retry else "error", message=str(e)[:300], t=time.time())
 
     def _store(self, rid: int, key: str, value: dict):
         self.eng.db.x(f"UPDATE results SET stats=json_set(COALESCE(stats,'{{}}'),'$.{key}',json(?)) WHERE id=?",

@@ -45,6 +45,7 @@ function asteroidPanel(host, r, viewer, opts = {}) {
       const why = !d.solved ? 'Dieses Bild ist nicht per Plate-Solving gelöst – ohne Himmelskoordinaten lässt sich nicht vorhersagen, welche Asteroiden im Feld lagen.'
         : !d.enabled ? 'Der Abgleich mit Kleinkörpern (JPL) ist ausgeschaltet – siehe Einstellungen → Bilder.'
         : d.state === 'error' ? esc(d.message || 'Suche fehlgeschlagen')
+        : d.retry ? `${esc(d.message || 'JPL war nicht erreichbar.')} Noch offen – der nächste Analyse-Lauf versucht es erneut.`
         : d.state === 'old' ? 'Die gespeicherte Suche stammt von einer älteren Version der Auswertung.'
         : 'Welche Asteroiden lagen in deinem Bildfeld, und welche hast du wirklich erwischt? Die Bahnen kommen von JPL (gesendet werden nur Himmelskoordinaten und Zeit, nie dein Standort), der Nachweis aus deinen Einzelbildern.';
       host.innerHTML = head() + `<p class="mut sm">${why}</p>${d.solved && d.enabled ? `<div class="row depth-empty-acts"><button class="btn sm" data-ast-run>${icon('orbit')}${d.state === 'none' ? 'Asteroiden suchen' : 'Neu suchen'}</button></div>` : ''}`;
