@@ -107,8 +107,11 @@ function runVariants(all) {
   const groups = new Map();
   for (const r of all) { const k = shortName(r.title); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); }
   for (const g of groups.values()) g.sort((a, b) => a.id < b.id ? -1 : 1);
-  return (r) => { const g = groups.get(shortName(r.title)); if (!g || g.length < 2) return '';
-    const i = g.indexOf(r) + 1; return ` <span class="chip ${i === g.length ? 'acc' : ''}" title="${g.length} Analysen derselben Beobachtung">${i === g.length ? 'aktuell · ' : ''}Variante ${i} von ${g.length}</span>`; };
+  // asText: nur der Wortlaut (z. B. „aktuell · Variante 2 von 2“) für Stellen, die selbst escapen
+  return (r, asText = false) => { const g = groups.get(shortName(r.title)); if (!g || g.length < 2) return '';
+    const i = g.indexOf(r) + 1;
+    if (asText) return `${i === g.length ? 'aktuell · ' : ''}Variante ${i} von ${g.length}`;
+    return ` <span class="chip ${i === g.length ? 'acc' : ''}" title="${g.length} Analysen derselben Beobachtung">${i === g.length ? 'aktuell · ' : ''}Variante ${i} von ${g.length}</span>`; };
 }
 async function runsView(el) {
   crumbs([['SkyTrace']]);

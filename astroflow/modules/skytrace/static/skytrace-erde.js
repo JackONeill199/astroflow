@@ -186,7 +186,7 @@ async function component(host, el, opts) {
     const shown = runs.filter(r => (!S.onlyHits || r.candidates || r.id === S.runId) && words.every(w => (H.shortName(r.title) + ' ' + (H.runDate(r.id) || '')).toLowerCase().includes(w)));
     $('.st3d-rl', runsBox).innerHTML = shown.map(r => `<button role="option" data-run="${esc(r.id)}" class="${r.id === S.runId ? 'on' : ''}" aria-selected="${r.id === S.runId}">
         <span class="st3d-rt">${r.preview ? `<img src="${H.media(r.preview)}" alt="" loading="lazy">` : icon('orbit')}</span>
-        <span class="st3d-rn"><b>${esc(H.shortName(r.title))}</b><small>${esc(H.runDate(r.id) || ago(r.modified))}${variant(r).replace(/<[^>]+>/g, '').replace(/^ /, ' · ')}</small></span>
+        <span class="st3d-rn"><b>${esc(H.shortName(r.title))}</b><small>${esc(H.runDate(r.id) || ago(r.modified))}${variant(r, true) ? ' · ' + esc(variant(r, true)) : ''}</small></span>
         ${r.candidates ? `<span class="chip acc">${r.candidates}</span>` : ''}</button>`).join('') || (runs.length ? '<p class="mut sm">Keine Analyse passt.</p>' : `<p class="mut sm">Noch keine Analysen. <a href="#/skytrace/neu">Neue Analyse</a></p>`);
     const open = $d('.ste-runopen'); if (open) { open.hidden = !S.runId; open.href = `#/skytrace/${encodeURIComponent(S.runId || '')}/kandidaten`; }
     const on = $('.st3d-rl .on', runsBox), rl = $('.st3d-rl', runsBox);

@@ -51,6 +51,17 @@ astroflow/static/          Shell: index.html, app.js (Router, Navigation, Übers
   UI: `data-local-only` an Knöpfen/Feldern/Formularen – `app.js` (`markLocalOnly`, MutationObserver) graut sie aus, wenn
   `/api/app` → `local: false`. (5) **GET ohne Seiteneffekte mit Geheimnissen:** Modelllisten (`/stacking/reviewer/models`,
   `/sage/models`) sind POST; gespeicherte Schlüssel nur an die gespeicherte bzw. feste Anbieteradresse (`core/models.key_for`).
+  (6) **Pfade vom Client** (CodeQL `py/path-injection`, abgearbeitet 09.11.2026): Ordner *auflisten* (nur Namen + Bildzählung) ist für
+  gekoppelte Geräte gewollt – `/api/folders[/search]` (Ordnerdialog) und `/api/skytrace/observations`; ebenso eine Analyse/Reanalyse aus
+  einem gewählten Ordner starten. Dateien *ausliefern* nur unterhalb fester Wurzeln (`skytrace.within`, Ergebnis-/Ausgabeordner aus der DB).
+  Programm- und Datenordnerpfade nur mit `require_local`. Keine neuen Endpunkte, die beliebige Pfade prüfen/lesen, ohne einen dieser Wege
+  (`/api/setup/folder` und `/api/skytrace/folders` waren ungenutzt und sind entfernt). **Entscheidung des Nutzers 09.11.2026:** gekoppelte
+  Geräte dürfen weiter Ordner auflisten und Analysen aus jedem Ordner starten – bewusst ohne `require_local`; die CodeQL-Meldungen
+  `py/path-injection` an diesen Stellen (`core/folders.py`, `/api/skytrace/observations`, `skytrace/reanalysis.py`) gelten deshalb als
+  Fehlalarm, ebenso die hinter `require_local` bzw. `within` (Begründung je Meldung in PR #17).
+  (7) **Keine Ausnahmetexte an den Browser** (`py/stack-trace-exposure`): Antworten nennen feste deutsche Meldungen, Details per
+  `traceback.print_exc()` ins Protokoll (Beispiele `picture_import.user_message`, `stacking/api.ki_error`). Regex auf Nutzer-/KI-Text
+  ohne mehrdeutige Wiederholungen bzw. mit begrenzter Länge (`sage/store.plain`, `sage/kb.norm`); im Frontend alles über `esc()`.
   Tests: `tests/test_security.py`; `conftest.py` lässt den TestClient standardmäßig als 127.0.0.1 mit eigener `Origin` laufen.
   Antworten ab 2 KB werden per `core/gzip.py` komprimiert (seit 0.31.1, Handy im Heimnetz; eigene Middleware statt Starlettes `GZipMiddleware`, deren Ausschlussliste ältere erlaubte Versionen nicht kennen). Nur Text/JSON/JS/SVG mit Status 200, nie Downloads, Medien oder 206. Große JSON-Antworten trotzdem klein halten, siehe SkyTrace „Laufdaten fürs Handy“. Schlüssel stehen im Klartext in `data/settings.json`.
 - **Neues Modul:** Unterpaket mit `Module(BaseModule)` anlegen, in `AVAILABLE` eintragen, `static/<id>.js` mit `AF.register`, Tests in `tests/`.

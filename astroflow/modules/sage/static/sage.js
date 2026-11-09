@@ -183,7 +183,7 @@ async function entryView(el, id) {
       const cur = tts?.[p]?.model ? `${tts[p].model}${tts[p].voice ? ' · ' + tts[p].voice : ''}` : '';
       const stale = have && cur && p === 'openrouter' && e.audio_variant?.[p] && e.audio_variant[p] !== `${tts[p].model}|${tts[p].voice}`;
       body.innerHTML = have ? `<audio controls src="${have}" preload="none"></audio>
-          <div class="row sm" style="margin-top:6px"><span class="mut">${esc((e.audio_variant?.[p] || '').replace('|', ' · '))}</span><span class="grow"></span>
+          <div class="row sm" style="margin-top:6px"><span class="mut">${esc((e.audio_variant?.[p] || '').replaceAll('|', ' · '))}</span><span class="grow"></span>
           <button class="linkbtn" id="redo">${stale ? 'Mit neuer Stimme vertonen' : 'Neu vertonen'}</button></div>`
         : `<button class="btn" id="speak">${icon('play')}Vorlesen lassen</button><span class="mut sm" style="margin-left:8px">${p === 'qwen' ? 'lokal, ohne Upload'
           : p === 'openrouter' ? 'über OpenRouter' + (cur ? ' · ' + esc(cur) : '') : 'Text wird an ElevenLabs gesendet'}</span>`;

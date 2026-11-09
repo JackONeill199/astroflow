@@ -20,6 +20,22 @@ from ...core import security
 from .db import DB
 from .pipeline import Pipeline
 
+def ki_error(e: Exception) -> str:
+    """Knappe Meldung für eine gescheiterte KI-Anfrage – ohne Ausnahmetext (Adressen, Pfade, Antwortinhalte)."""
+    import httpx
+    if isinstance(e, httpx.TimeoutException):
+        return "KI nicht erreichbar: Zeitüberschreitung."
+    if isinstance(e, httpx.HTTPStatusError):
+        code = e.response.status_code
+        return ("KI lehnt die Anfrage ab: Schlüssel prüfen." if code in (401, 403) else
+                "KI nicht erreichbar: Modell oder Adresse nicht gefunden." if code == 404 else
+                "KI nicht erreichbar: zu viele Anfragen, später erneut versuchen." if code == 429 else
+                "KI nicht erreichbar: Fehlerantwort des Anbieters.")
+    if isinstance(e, httpx.TransportError):
+        return "KI nicht erreichbar: keine Verbindung."
+    return "KI nicht erreichbar – Details im Server-Protokoll."
+
+
 # In der Web-App geänderte Einstellungen überleben einen Neustart (Vorrang vor Umgebungsvariablen)
 PERSIST = {"reviewer": ("provider", "base_url", "model", "api_key", "max_rounds"),
            "solver": ("backend", "astap", "astap_db", "nova_key", "timeout"),
@@ -608,7 +624,7 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.post("/upload")
     async def upload(files: list[UploadFile] = File(...), upload_id: str = Form("")):
-        from .picture_import import PICTURE_EXT, attach_previews, import_picture, skipped_pictures
+        from .picture_import import PICTURE_EXT, attach_previews, import_picture, skipped_pictures, user_message
         # Je Upload-Vorgang ein eigener Ordner: gleichnamige Dateien (Stellina img-0001r.fits in jeder Beobachtung)
         # überschreiben sich so nie. Die Kennung kommt vom Client (alle Teilanfragen eines Vorgangs teilen sie).
         token = upload_id if re.fullmatch(r"[A-Za-z0-9]{6,32}", upload_id or "") else time.strftime("%H%M%S") + secrets.token_hex(3)
@@ -635,8 +651,10 @@ def build_router(eng: Engine) -> APIRouter:
                 try:
                     pictures.append(await asyncio.to_thread(import_picture, eng, f.file, parts[-1], False))
                     n += 1
-                except Exception as e:
-                    errors.append(f"{parts[-1]}: Bild nicht importiert: {e}")
+                except Exception as e:                    # nur bekannte Meldungen an den Browser, Details ins Protokoll
+                    if not isinstance(e, ValueError):
+                        traceback.print_exc()
+                    errors.append(f"{parts[-1]}: Bild nicht importiert: {user_message(e)}")
                 continue
             if not parts[-1].lower().endswith((".fit", ".fits", ".fts")):
                 continue
@@ -823,8 +841,9 @@ def build_router(eng: Engine) -> APIRouter:
             raise HTTPException(404)
         except ValueError as e:
             raise HTTPException(400, str(e))
-        except Exception as e:                       # Netz, Modell, Zeitlimit
-            raise HTTPException(502, f"KI nicht erreichbar: {str(e)[:200]}")
+        except Exception as e:                       # Netz, Modell, Zeitlimit – Details nur ins Protokoll
+            traceback.print_exc()
+            raise HTTPException(502, ki_error(e))
 
     @r.delete("/results/{rid}")
     def delete_result(rid: int):
@@ -861,8 +880,9 @@ def build_router(eng: Engine) -> APIRouter:
         from .services import project_solution
         try:
             sol = project_solution(eng.s.work_dir, pid, files)
-        except Exception as e:                           # beschädigte Lösung/Datei: einfach ohne Namen
-            return {"objects": [], "reason": f"Lösung nicht lesbar: {e}"}
+        except Exception:                                # beschädigte Lösung/Datei: einfach ohne Namen
+            traceback.print_exc()
+            return {"objects": [], "reason": "Lösung nicht lesbar"}
         out = ({"width": sol["width"], "height": sol["height"], "objects": [o for o in sol["objects"] if o.get("x") is not None]}
                if sol else {"objects": [], "reason": "kein Master-Stack"})
         try:

@@ -82,11 +82,12 @@ def story_title(story: str | None) -> str:
 
 
 def plain(text: str) -> str:
-    """Markdown entfernen (für Vorschau und Vorlesen)."""
+    """Markdown entfernen (für Vorschau und Vorlesen). Hervorhebungen und Links nur innerhalb einer Zeile und mit
+    begrenzter Länge – offene Muster brauchten bei vielen „[“/„*“ ohne Abschluss quadratische Zeit (CodeQL)."""
     t = re.sub(r"^#{1,6}\s+", "", text or "", flags=re.M)
-    t = re.sub(r"\*\*(.+?)\*\*|__(.+?)__", lambda m: m.group(1) or m.group(2), t)
-    t = re.sub(r"\*(.+?)\*|_(.+?)_", lambda m: m.group(1) or m.group(2), t)
-    t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", t)
+    t = re.sub(r"\*\*([^\n]{1,500}?)\*\*|__([^\n]{1,500}?)__", lambda m: m.group(1) or m.group(2), t)
+    t = re.sub(r"\*([^\n]{1,500}?)\*|_([^\n]{1,500}?)_", lambda m: m.group(1) or m.group(2), t)
+    t = re.sub(r"\[([^\]\n]{1,500})\]\([^)\n]{1,2000}\)", r"\1", t)
     return re.sub(r"\n{3,}", "\n\n", t).strip()
 
 
