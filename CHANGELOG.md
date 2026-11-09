@@ -3,6 +3,13 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.51.1 – 09.11.2026
+
+### Behoben
+- Lizenzhinweise vervollständigt: `NOTICE` nennt jetzt auch Natural Earth (Weltumrisse), pystray (LGPL-3.0), die zur Laufzeit geladenen Kartenkacheln und Adresssuche sowie Erkennungsmodell und `ultralytics` (AGPL-3.0) samt Quellen.
+- Das Windows-Paket enthält eine gesammelte `THIRD-PARTY-LICENSES.txt` mit den Lizenztexten aller mitgelieferten Python-Pakete; Installer und LIESMICH verweisen darauf.
+- README und Komponentenliste sagen klar: Die SkyTrace-Erkennung steht unter AGPL-3.0, AstroFlow selbst bleibt MIT.
+
 ## 0.51.0 – 09.11.2026
 
 ### Behoben

@@ -17,7 +17,7 @@
   SkyTrace = Datum im Beobachtungsnamen), `POST /api/sites` (ganzer Abschnitt, geprüft), `POST /api/sites/night {night, site_id|null}`,
   `GET /api/sites/resolve`, `GET /api/sites/geocode?q=` (Photon/komoot, nur Suchtext), `GET /api/sites/elevation` (Open-Meteo, nur auf Knopfdruck).
 - **Nutzer:** `tutor.pick_site` (FITS → `site_for(night=häufigste Nacht)` → alte `tutor.lat/lon`), `GET /stacking/tonight` (Ort für jetzt,
-  `site_info`), SkyTrace `resolve_site` (s. `modules/skytrace/AGENTS.md`). UI: `static/sites.js|css` (Einstellungen → Standorte, Abschnitt des Kerns
+  `site_info`), SkyTrace `resolve_site` (s. `docs/entwicklung/skytrace-standorte.md`). UI: `static/sites.js|css` (Einstellungen → Standorte, Abschnitt des Kerns
   in `settingsView`), `tonight.js` „Heute bin ich in …“, die Tutor-Einstellung verweist nur noch auf die Liste.
 - **Datenschutz:** Orte sind privat – Tests nur mit erfundenen Orten (`tests/test_sites.py`, UI-Fixture in `conftest.py`), Screenshots maskiert.
 
