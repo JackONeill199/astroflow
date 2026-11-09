@@ -1543,7 +1543,13 @@ async function stackingSettings(el) {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target));
     f.max_rounds = +f.max_rounds;
-    try { await send('/stacking/reviewer', f); toast('KI-Prüfer gespeichert.', 'ok'); } catch (err) { toast('Fehler: ' + err.message, 'err'); }
+    try {
+      const r = await send('/stacking/reviewer', f);
+      if (r.key_reset) {
+        const k = e.target.elements.api_key; if (k) { k.value = ''; k.placeholder = 'Adresse geändert – Schlüssel neu eingeben'; }
+        toast('KI-Prüfer gespeichert. Die Server-Adresse hat sich geändert – den API-Schlüssel bitte neu eingeben.', 'err');
+      } else toast('KI-Prüfer gespeichert.', 'ok');
+    } catch (err) { toast('Fehler: ' + err.message, 'err'); }
   };
 }
 

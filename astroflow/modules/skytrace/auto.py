@@ -18,6 +18,8 @@ import time
 import traceback
 from pathlib import Path
 
+from ...core.errors import user_message
+
 
 class AutoAnalysis:
     def __init__(self, mod):
@@ -119,7 +121,7 @@ class AutoAnalysis:
                 if ctl.process is not None:          # gerade jemand anderes gestartet → später erneut
                     self.stopped.wait(10)
                     continue
-                self._finish(item, "error", str(e))
+                self._finish(item, "error", user_message(e, "Analyse nicht startbar – Details im Server-Protokoll."))
                 continue
             with self.lock:
                 item.update(state="running", run=snap["run"], started=time.time())

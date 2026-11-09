@@ -337,9 +337,12 @@ async function settings(el) {
   const save = async (form, quiet) => {
     const body = {};
     for (const x of form.elements) if (x.name) body[x.name] = x.type === 'checkbox' ? x.checked : x.value;
-    await send(G + '/config', body);
+    const r = await send(G + '/config', body);
     for (const x of form.elements) if (x.type === 'password' && x.value) { x.value = ''; x.placeholder = '•••••• (gesetzt – leer lassen zum Behalten)'; }
-    if (!quiet) toast('Gespeichert.', 'ok');
+    const reset = (r && r.key_reset) || [];
+    for (const k of reset) { const x = document.querySelector(`input[type=password][name="${k}"]`); if (x) x.placeholder = 'Adresse geändert – Schlüssel neu eingeben'; }
+    if (reset.length) toast('Gespeichert. Die Server-Adresse hat sich geändert – den API-Schlüssel bitte neu eingeben.', 'err');
+    else if (!quiet) toast('Gespeichert.', 'ok');
   };
   $('#sgAuto').onchange = async (e) => {
     try { await send(G + '/config', { [e.target.name]: e.target.checked }); toast('Gespeichert.', 'ok'); }

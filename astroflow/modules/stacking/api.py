@@ -266,7 +266,9 @@ class Engine:
                       (json.dumps(e.dirs), jid))
         else:
             traceback.print_exc()
-        self.db.x("UPDATE jobs SET state='error', message=?, finished=? WHERE id=?", (str(e), time.time(), jid))
+        from ...core.errors import user_message
+        self.db.x("UPDATE jobs SET state='error', message=?, finished=? WHERE id=?",
+                  (user_message(e, allow=(calibration.SourceOffline,), log=False), time.time(), jid))
 
     def watcher(self):
         while not self.stop.is_set():
@@ -1209,13 +1211,20 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.post("/reviewer")
     def set_reviewer(body: dict = Body(...)):
+        from ...core.models import key_unbound
         c = eng.review_cfg
+        bound = lambda: c.resolved().base_url or "https://openrouter.ai/api/v1"     # ausgeschaltet: Schlüssel gilt OpenRouter
+        old_base = bound()
         for k in ("provider", "base_url", "model", "api_key"):
             if k in body and (k != "api_key" or body[k]):
                 setattr(c, k, str(body[k]))
         if "max_rounds" in body:
             c.max_rounds = max(1, min(6, int(body["max_rounds"])))
+        # Schlüssel an die Adresse binden: neue Adresse ohne neuen Schlüssel → gespeicherten Schlüssel verwerfen
+        reset = bool(c.api_key) and key_unbound(old_base, bound(), body.get("api_key"))
+        if reset:
+            c.api_key = ""
         eng.save_settings()
-        return get_reviewer()
+        return {**get_reviewer(), "key_reset": reset}
 
     return r
