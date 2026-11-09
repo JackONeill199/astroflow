@@ -50,11 +50,13 @@ Test: `tests/test_import_in_place.py`.
 „Fertige Bilder · neu“) und unter Windows Attribut „versteckt“ (bei Dateien auch „System“) fallen in `library._walk`, `scanner.list_fits`,
 Ordnerdialog/Suche und Upload (Server + `droppedFiles`/`upload` im Browser) weg; ein bewusst gewählter Startordner selbst wird gelesen. Test `test_versteckt.py`.
 **Unlesbare FITS-Dateien** (`scanner.looks_like_fits(path, size)`: ≥ 2880 Byte und erste 9 Byte `SIMPLE  =`; Anlass echte Stellina-Platte: 0-Byte-,
-abgebrochene und kopflose Dateien blieben ewig „neu“, Gruppe dauerhaft „teilweise“): Der Suchlauf prüft nur Dateien ohne Namens-/Index-Treffer, die sonst als neu
-gälten – Größe < 2880 ohne Lesezugriff, sonst die ersten Bytes (Thread-Pool, vor dem Fingerabdruck). Kaputte Dateien bekommen in `library_index.fp` die Marke
-`library.BROKEN` (gleiche Größe + mtime = nicht erneut prüfen; gültige werden je Lauf nur kurz neu angeschaut, Lesefehler gelten nicht als kaputt) und zählen in
-`_describe` weder als neu noch als bekannt: Gruppe bekommt `n_broken` + `broken` (relative Pfade, ≤ 50), `n_files`/`n_new`/Zustand rechnen ohne sie (alle übrigen
-fertig → `done`); nie in `to_import`. UI: Chip „n unlesbar“ (warn, Tooltip mit Dateinamen), Zustand `partial` heißt „teilweise importiert“, Link „Objekt: X“.
+abgebrochene und kopflose Dateien blieben ewig „neu“, Gruppe dauerhaft „teilweise“): Der Suchlauf prüft nur Dateien, die nach den Schnellpfaden als neu gälten
+– Größe < 2880 ohne Lesezugriff, sonst die ersten Bytes (Thread-Pool, in `fp_of` gleich vor dem Fingerabdruck). Ergebnis je Pfad + Größe + mtime in
+`library_index.hdr` (1 gültig, 2 unlesbar; Migration in `db.MIGRATIONS`) → unveränderte Dateien öffnet ein weiterer Lauf nicht mehr. In Beobachtungsordnern mit
+Stichprobenpfad werden nur Dateien mit auffälliger Größe (≠ häufigste der Gruppe) vorab geprüft; den Rest fängt `_import` ab (Kopf je Datei, unlesbare nie übernommen,
+Gruppe bekommt dann `n_broken`). Unlesbare zählen in `_describe` weder als neu noch als bekannt: Gruppe bekommt `n_broken` + `broken` (relative Pfade, ≤ 50),
+`n_files`/`n_new`/Zustand rechnen ohne sie (alle übrigen fertig → `done`); nie in `to_import`; Lesefehler (OSError) gelten nicht als kaputt. UI: Chip „n unlesbar“
+(warn, Tooltip mit Dateinamen), Zustand `partial` heißt „teilweise importiert“, Link „Objekt: X“.
 UI-Filter (seit 0.21.0, eine Leiste über der Liste): Zustand als Reiter (`LIB_TABS`, Standard „Offen“ = `n_new > 0`), Art/Format als `.menu`-Mehrfachauswahl,
 localStorage `af.library.filter` (`{tab, kind, ext}`); Formate je Gruppe aus `library.file_formats` → `groups[].exts` (`{"fits": 141}`);
 „Alle neuen“ (Dreifach-Kästchen) und Import wirken nur auf sichtbare Gruppen. Beim ersten Laden sind Gruppen mit Neuem vorgewählt (wie vor 0.21.0).
