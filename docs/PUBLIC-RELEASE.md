@@ -11,7 +11,7 @@ dem Umschalten auf „öffentlich“.
 | `.github/workflows/tests.yml` | Volle Testsuite auf Ubuntu + Windows (Python 3.12, Playwright-Chromium), bei jedem PR und Push auf `main`. Statusprüfungen `pytest (ubuntu-latest)` und `pytest (windows-latest)` |
 | `.github/workflows/codeql.yml` | CodeQL für Python und JavaScript; läuft nur im öffentlichen Repo |
 | `.github/workflows/pages.yml` | Projektseite aus `docs/site/` + `docs/media/`; läuft nur im öffentlichen Repo |
-| `.github/workflows/windows-paket.yml` | Bei Tag `v*`: Release-Entwurf mit dem passenden Abschnitt aus `CHANGELOG.md` (`installer/release_notes.py`) |
+| `.github/workflows/windows-paket.yml` | Nur manuell; auf einem Tag `v*` gestartet: Release-Entwurf mit dem passenden Abschnitt aus `CHANGELOG.md` (`installer/release_notes.py`) |
 | `.github/ISSUE_TEMPLATE/` | Formulare „Fehler melden“, „Wunsch äußern“, Verweis auf Discussions und vertrauliche Sicherheitsmeldung |
 | `.github/rulesets/main-schutz.json` | Regeln für `main` zum Einspielen per API (s. u.) |
 | `SECURITY.md`, `CONTRIBUTING.md` | Meldeweg für Lücken, Regeln für Beiträge |

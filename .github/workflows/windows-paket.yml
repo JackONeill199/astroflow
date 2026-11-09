@@ -1,13 +1,10 @@
 # Windows-Paket (portables ZIP + Installer) bauen und in sauberer Umgebung prüfen.
-# Manuell startbar (Actions → „Windows-Paket“ → Run workflow), in PRs mit Änderungen am Paket; bei einem Versions-Tag v* zusätzlich als Release-Entwurf mit beiden Dateien.
+# Nur manuell (Actions → „Windows-Paket“ → Run workflow), Nutzerwunsch 09.11.2026: kein automatischer Bau nach jedem Fix/Tag.
+# Wird der Lauf auf einem Versions-Tag v* gestartet („Use workflow from“ → Tag), entsteht zusätzlich ein Release-Entwurf mit beiden Dateien.
 name: Windows-Paket
 
 on:
   workflow_dispatch:
-  push:
-    tags: ["v*"]
-  pull_request:
-    paths: ["installer/**", "pyproject.toml", "requirements.txt", "astroflow/core/launcher.py", "astroflow/core/setup.py", "astroflow/core/components.py", ".github/workflows/windows-paket.yml"]
 
 permissions:
   contents: read          # Bauen und Prüfen (auch in PRs) nur lesend; Schreibrecht nur im Job „release“ bei Tags
