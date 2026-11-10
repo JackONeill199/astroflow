@@ -130,7 +130,12 @@ def test_no_gpu_skips_ai_denoise(tmp_path, monkeypatch):
     assert graxpert.uses_gpu("keine Angabe") is None
 
 
-def test_cpu_denoise_setting_persists(tmp_path):
-    """`graxpert.cpu_denoise` aus settings.json wird geladen und gespeichert (Lade-/Speicherliste PERSIST)."""
+def test_cpu_denoise_setting_persists():
+    """`graxpert.cpu_denoise: true` aus settings.json kommt bei der GraXpert-Konfiguration an (Engine._apply_saved)."""
+    from types import SimpleNamespace
     from astroflow.modules.stacking import api
-    assert "cpu_denoise" in api.PERSIST["graxpert"]
+    cfg = graxpert.GraxpertConfig()
+    stub = SimpleNamespace(_targets=lambda: {"graxpert": cfg},
+                           ctx=SimpleNamespace(store=SimpleNamespace(get=lambda sec: {"cpu_denoise": True, "unbekannt": 1})))
+    api.Engine._apply_saved(stub)
+    assert cfg.cpu_denoise is True and not hasattr(cfg, "unbekannt")
