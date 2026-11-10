@@ -123,6 +123,13 @@ def test_api_and_tonight(tmp_path, monkeypatch):
         assert r["today_site"]["id"] == other
         t = c.get("/api/stacking/tonight").json()
         assert t["site_info"]["id"] == other and t["site"][0] == pytest.approx(45)
+        # spätere Nacht: eigenes Datum und eigener Ort aus der Ortsliste
+        import datetime as dt
+        later = (dt.date.fromisoformat(t["night"]) + dt.timedelta(days=2)).isoformat()
+        c.post("/api/sites/night", json={"night": later, "site_id": sid})
+        t2 = c.get("/api/stacking/tonight", params={"night": 2}).json()
+        assert t2["night"] == later and t2["night_index"] == 2 and t2["site_info"]["id"] == sid and t2["site"][0] == pytest.approx(47.5)
+        assert t2["nights"][2]["date"] == later
         assert c.post("/api/sites/night", json={"night": "gestern"}).status_code == 400
         assert c.get("/api/sites/resolve", params={"night": "2001-01-01"}).json()["site"]["id"] == sid
 

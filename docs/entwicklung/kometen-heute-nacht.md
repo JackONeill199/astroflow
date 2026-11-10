@@ -45,6 +45,21 @@
   Kategorien vertreten. Saison: Nächte heute + 0…196 Tage (14-Tage-Schritte, stündlich) → `_season` (`last`/`soon`).
 - **Mehr Zeit** `_gain`: Rauschen × √(t/(t+Zusatz)), Zusatz = nutzbare Stunden (auf 0,5 h, max. 8); unter 10 % Gewinn entfällt das Ziel.
 - **Nachtplan** `_night_plan`: nutzbare Nacht in 1–4 Abschnitte (≈ 3 h), Zuordnung der Ziele per Permutation (Summe der gewichteten Sichtbarkeit); Blöcke < 40 min entfallen.
+- **Mehrere Nächte** (Nutzerwunsch 10.11.2026 „mehrere Nächte in die Zukunft … per Pfeiltaste“): `plan(..., night=k)` mit k = 0 … `NIGHTS`−1 (14)
+  verschiebt das Fenster um ganze Tage; „ab jetzt“ gilt nur in Nacht 0 (`ref = max(now, t0)`), Texte sagen dann „In dieser Nacht“ statt „Heute“.
+  API `?night=k`: Datum = `core.sites.planning_night` + k Tage, Ort je Nacht aus der Ortsliste (`site_for(night=…)`), Antwort `night` = dieses Datum.
+  `nights` (Nachtleiste, `_nights`, eigener Cache): je Nacht Datum, dunkle Stunden, Mond (Beleuchtung, zunehmend, Stunden über dem Horizont im Dunkeln),
+  mittlere Bewölkung im Dunkeln (nur soweit die Vorhersage reicht, sonst `None`), `uncertain` ab Nacht `UNCERTAIN_FROM` (2 = dritte Nacht).
+- **Vorhersage** (`_forecast`): weiterhin nur Open-Meteo, Ort auf 0,1° gerundet, höchstens eine Abfrage je Stunde und Ort (Cache
+  `work/tutor/vorhersage8_<lat>_<lon>.json`); jetzt `FORECAST_DAYS` = 8 Tage und zusätzlich `cloud_cover_low/mid/high`, `wind_speed_10m`.
+  `plan` fragt einmal über alle Nächte ab und schneidet die gewählte heraus (Tests patchen `_forecast` weiter mit `hours`/`later`).
+  Antwort: `cloud` (gesamt), `clouds.{low,mid,high}`, `wind` je Zeitschritt, `forecast {covered, uncertain}`.
+- **Diagramm** (`tonight.js`, `chart`/`geom`): Himmel immer dunkel; Dämmerung als weiche horizontale Verläufe aus der Sonnenhöhe je Schritt
+  (bürgerlich/nautisch/astronomisch, Horizontglühen), Sterne nur über astronomisch dunklen Spannen (`AFdeco.draw('stars', {spans})`),
+  Wolkenband oben (hohe/mittlere/tiefe Wolken übereinander, darunter Wind), Gesamtbewölkung als Schleier, Mondbahn mit Fläche (heller je voller)
+  und Phasensymbol am Höchststand. Zielkurven in Kachelfarbe (`COLORS`), über der Mindesthöhe kräftig (`clipPath`), darunter blass; die gewählte
+  leuchtet und trägt ihren Namen am Höchststand. Legende = Symbole mit Erklärung im Tooltip. Blättern: `‹ ›`, Nachtleiste, Tastatur ←/→ (nicht in
+  Eingabefeldern/Zeitregler); `nightIx` bleibt beim Neuzeichnen, beim Verlassen von `#/nacht` wieder 0. Die Übersicht zeigt immer Nacht 0.
 - **API** `GET /api/stacking/tonight?hide=M35,12`: ausgeblendete Kennungen (localStorage `af.tonight.hidden`). Optionaler Dienst `collection_progress` (Sage →
   `{"messier": [Nummern]}`, 2 min gecacht): „Wäre dein n. Messier-Objekt“, bereits entdeckte Messier-Nummern entfallen. Tests: `tests/test_tonight.py`.
 

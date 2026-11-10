@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import json
 import queue
 import re
@@ -779,8 +780,10 @@ def build_router(eng: Engine) -> APIRouter:
 
     # ---- Nachtplanung: Standort und optionale Wetterfreigabe aus dem Bild-Tutor ------------
     @r.get("/tonight")
-    def get_tonight(hide: str = ""):
-        """hide: Kennungen, die der Nutzer ausgeblendet hat (kommagetrennt, lokal im Browser gemerkt)."""
+    def get_tonight(hide: str = "", night: int = 0):
+        """hide: Kennungen, die der Nutzer ausgeblendet hat (kommagetrennt, lokal im Browser gemerkt).
+        night: 0 = die gerade geplante Nacht, 1 … tonight.NIGHTS-1 = so viele Nächte später (Ort je Nacht aus der Ortsliste)."""
+        night_ix = max(0, min(tonight.NIGHTS - 1, night))
         projects, device = tonight.library(db)
         hidden = {h.strip() for h in hide.split(",") if h.strip()}
         coll = None
@@ -794,22 +797,23 @@ def build_router(eng: Engine) -> APIRouter:
                     _coll_cache.update(t=now, v=None)
             coll = _coll_cache.get("v")
         cfg, here, night = tutor.settings(eng.ctx.store), None, None
+        later = lambda n: (dt.date.fromisoformat(n) + dt.timedelta(days=night_ix)).isoformat()
         site_for = eng.ctx.services.get("site_for")                  # gemeinsame Ortsliste: Ort der geplanten Nacht
         if site_for:
             from ...core.sites import planning_night
             now = time.time()
             try:
                 # Nacht wie tonight._window (vormittags schon die kommende); Länge erst vom Standard-, dann vom Nachtort
-                night = planning_night(now, (site_for(night="1900-01-01") or {}).get("lon") or 0)
+                night = later(planning_night(now, (site_for(night="1900-01-01") or {}).get("lon") or 0))
                 here = site_for(night=night)
-                if here and planning_night(now, here["lon"]) != night:
-                    night = planning_night(now, here["lon"])
+                if here and later(planning_night(now, here["lon"])) != night:
+                    night = later(planning_night(now, here["lon"]))
                     here = site_for(night=night)
             except Exception:
                 here = None
             if here:
                 cfg = {**cfg, "lat": here["lat"], "lon": here["lon"]}
-        out = tonight.plan(projects, cfg, eng.s.work_dir / "tutor", device=device, hidden=hidden, collection=coll)
+        out = tonight.plan(projects, cfg, eng.s.work_dir / "tutor", device=device, hidden=hidden, collection=coll, night=night_ix)
         sky = None
         if here:
             try:
