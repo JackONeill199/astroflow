@@ -37,9 +37,24 @@ class GraxpertConfig:
     path: str = ""                   # vom Nutzer gesetzt (Einstellungen)
     mode: str = "all"                # Standard für alle Objekte, sofern GraXpert gefunden wird
     gpu: bool = True                 # GraXpert nutzt sonst die CPU (DirectML/CUDA, falls vorhanden)
+    # KI-Entrauschen auch ohne Grafikkarte? Auf der CPU dauert es ~5 min je 6 MP (gemessen 10.11.2026: 306 s gegen 21 s mit GPU)
+    # – Nutzerentscheidung: zu lang. Standard: ohne GPU nur der KI-Hintergrund (~4 s), entrauscht wird dann auf der CPU
+    # mit processing.denoise_multiscale (~6 s).
+    cpu_denoise: bool = False
 
 
 GRAXPERT = GraxpertConfig()
+LAST_LOG = ""                        # Ausgabe des letzten GraXpert-Aufrufs (zeigt die genutzten Rechenwerke)
+
+
+def uses_gpu(log: str) -> bool | None:
+    """Hat GraXpert eine Grafikkarte benutzt? Aus der Zeile „Used inference providers : [...]“ (onnxruntime: Dml/CUDA/ROCm/
+    CoreML = GPU). None, wenn die Zeile fehlt (ältere Fassungen, Attrappen)."""
+    import re
+    m = re.search(r"Used inference providers\s*:\s*\[([^\]]*)\]", log or "")
+    if not m:
+        return None
+    return any(p.strip(" '\"") != "CPUExecutionProvider" for p in m.group(1).split(",") if p.strip())
 
 
 def _search_dirs() -> list[Path]:
@@ -102,6 +117,8 @@ def _run(exe: str, img: np.ndarray, cmd: str, args: list[str], timeout: int = TI
         prefix = [sys.executable, exe] if exe.endswith(".py") else [exe]          # .py: Attrappe in den Tests
         r = subprocess.run([*prefix, str(src), "-cli", "-cmd", cmd, "-output", "out", *args],
                            cwd=td, timeout=timeout, capture_output=True, text=True, errors="replace")
+        global LAST_LOG
+        LAST_LOG = (r.stdout or "") + (r.stderr or "")
         out = Path(td) / "out.fits"
         if not out.exists():
             tail = (r.stderr or r.stdout or "").strip().splitlines()[-3:]
@@ -144,7 +161,7 @@ def apply(mean: np.ndarray, cov: np.ndarray, mode: str, strength: float = 0.5, c
         return mean, {}
     gpu = bool(GRAXPERT.gpu)
     smoothing = float(np.clip(smoothing, 0.0, 1.0))
-    key = _cache_key(mean, mode, strength, gpu, tag, smoothing)
+    key = _cache_key(mean, mode, strength, gpu, tag + ("|cpu_denoise" if GRAXPERT.cpu_denoise else ""), smoothing)
     if cache_dir is not None:
         f = cache_dir / f"{key}.npy"
         meta = cache_dir / f"{key}.json"
@@ -172,7 +189,11 @@ def apply(mean: np.ndarray, cov: np.ndarray, mode: str, strength: float = 0.5, c
             if preview:
                 from .live import optional, sample
                 optional(preview, sample(x) * scale + lo)
-        if mode in ("denoise", "all") and strength > 0:
+        if mode == "all" and strength > 0 and not GRAXPERT.cpu_denoise and (not gpu or uses_gpu(LAST_LOG) is False):
+            # ohne Grafikkarte: KI-Entrauschen überspringen (Minuten statt Sekunden), processing entrauscht auf der CPU
+            log("GraXpert ohne Grafikkarte – Entrauschen auf der CPU")
+            info["denoise_skipped"] = "ohne GPU"
+        elif mode in ("denoise", "all") and strength > 0:
             log("Entrauschen (GraXpert-KI)")
             x = _run(exe, x, "denoising", ["-strength", f"{strength:.2f}", "-batch_size", "4", *gpu_arg])
             info["denoise"] = round(strength, 2)

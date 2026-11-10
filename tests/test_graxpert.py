@@ -110,3 +110,21 @@ def test_pipeline_uses_graxpert_once_and_skips_polynomial(tmp_path, monkeypatch)
     st = json.loads(db.one("SELECT stats FROM results WHERE id=?", (rid,))["stats"])
     assert "graxpert" not in st and len(calls) == 1
     assert "fits_graxpert" not in json.loads(db.one("SELECT files FROM results WHERE id=?", (rid,))["files"])
+
+
+def test_no_gpu_skips_ai_denoise(tmp_path, monkeypatch):
+    """Ohne Grafikkarte dauert das KI-Entrauschen Minuten (Nutzerentscheidung: zu lang) – nur Hintergrund, Entrauschen dann
+    auf der CPU (processing). Mit `cpu_denoise` bleibt es beim KI-Entrauschen."""
+    exe = _fake(tmp_path)
+    mean = np.full((3, 40, 50), 1000, np.float32) + np.random.default_rng(3).normal(0, 5, (3, 40, 50)).astype(np.float32)
+    cov = np.ones((40, 50), np.float32)
+    monkeypatch.setattr(graxpert, "GRAXPERT", graxpert.GraxpertConfig(gpu=False))
+    _, info = graxpert.apply(mean, cov, "all", exe=exe)
+    assert info["bge"] and "denoise" not in info and info["denoise_skipped"] == "ohne GPU"
+    monkeypatch.setattr(graxpert, "GRAXPERT", graxpert.GraxpertConfig(gpu=False, cpu_denoise=True))
+    _, info = graxpert.apply(mean, cov, "all", exe=exe)
+    assert info["denoise"] == 0.5
+    # GPU eingeschaltet, GraXpert meldet aber nur die CPU
+    assert graxpert.uses_gpu("… Used inference providers : ['CPUExecutionProvider']") is False
+    assert graxpert.uses_gpu("Used inference providers : ['DmlExecutionProvider', 'CPUExecutionProvider']") is True
+    assert graxpert.uses_gpu("keine Angabe") is None
