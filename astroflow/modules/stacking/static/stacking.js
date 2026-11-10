@@ -476,7 +476,7 @@ async function picturesView(el) {
 async function projectView(el, id, tab = 'bild') {
   id = +id;
   let p = await api('/stacking/projects/' + id), frames = null, sel = null, cmp = null, viewer = null, sig = '', before = false, stage = null, cview = 'jpg', blink = null;
-  let fFilter = 'all', fBand = 'all', fSort = ['date', 1];
+  let fFilter = 'all', fBand = 'all', fSort = ['date', 1], fShown = 0;
   let liveView = null, livePoster = null, viz = null, vizKind = '', anView = null;
   function updateJob() {
     const jobHost = $('#job', el);
@@ -740,7 +740,7 @@ async function projectView(el, id, tab = 'bild') {
         <div class="seg" id="ff">${[['all', 'Alle', frames.length], ['stacked', 'Gestackt', n(f => f.stacked)], ['selected', 'Ausgewählt', n(f => f.status === 'selected' && !f.stacked)], ['rejected', 'Verworfen', n(f => f.status === 'rejected')]]
           .filter(([k, , c]) => k === 'all' || c).map(([k, l, c]) => `<button data-v="${k}" class="${fFilter === k ? 'on' : ''}">${l} <span class="dim">${c}</span></button>`).join('')}</div>
         ${bands.length > 1 ? `<div class="seg" id="fb">${['all', ...bands].map(b => `<button data-v="${b}" class="${fBand === b ? 'on' : ''}">${b === 'all' ? 'Alle Filter' : esc(b)}</button>`).join('')}</div>` : ''}
-        <span class="grow"></span><span class="mut sm">Klick auf „ausschließen“ entfernt eine Aufnahme dauerhaft</span></div>
+        <span class="grow"></span>${frames.some(f => !f.deleted && (f.status === 'selected' || f.status === 'rejected')) ? '<span class="mut sm">Klick auf „ausschließen“ entfernt eine Aufnahme dauerhaft</span>' : ''}</div>
         <div class="tablewrap" id="ftable"></div></div>`;
     // Diagramm in echter Breite zeichnen (Schrift unverzerrt), bei deutlich anderer Breite neu; Klick auf eine Aufnahme → Popup
     const fc = $('#fchart'), d = frames.filter(f => f.n_stars != null);
@@ -754,20 +754,35 @@ async function projectView(el, id, tab = 'bild') {
     $('#fb') && ($('#fb').onclick = (e) => { const b = e.target.closest('button'); if (b) { fBand = b.dataset.v; tabFrames(t); } });
     drawTable();
   }
-  function drawTable() {
+  // Tabelle schrittweise: erst FROWS Zeilen, weitere beim Herunterscrollen (1500 Zeilen auf einmal kosteten ~0,5–0,8 s Aufbau)
+  const FROWS = 150;
+  function drawTable(keep = false) {
+    fShown = keep ? Math.max(fShown, FROWS) : FROWS;
     const cols = [['name', 'Datei'], ['band', 'Filter'], ['night', 'Nacht'], ['n_stars', 'Sterne'], ['fwhm', 'FWHM'], ['ecc', 'Exzentr.'], ['score', 'Score'], ['status', 'Status']];
     let list = frames.filter(f => (fFilter === 'all' || (fFilter === 'stacked' ? f.stacked : fFilter === 'selected' ? f.status === 'selected' && !f.stacked : f.status === fFilter))
       && (fBand === 'all' || (f.band || 'RGB') === fBand));
     const [k, dir] = fSort;
     if (k !== 'date') list.sort((a, b) => ((a[k] ?? -1e9) < (b[k] ?? -1e9) ? -1 : (a[k] ?? -1e9) > (b[k] ?? -1e9) ? 1 : 0) * dir);
     const stat = (f) => f.stacked ? ['stacked', 'gestackt'] : f.status === 'selected' ? ['selected', 'ausgewählt'] : f.status === 'rejected' ? ['rejected', 'verworfen'] : f.status === 'failed' ? ['failed', 'Fehler'] : ['new', 'neu'];
-    $('#ftable').innerHTML = `<table><thead><tr>${cols.map(([c, l]) => `<th data-k="${c}" class="${k === c ? 'sorted' + (dir > 0 ? ' asc' : '') : ''}">${l}</th>`).join('')}<th></th></tr></thead><tbody>
-      ${list.map(f => { const [sc, sl] = stat(f); return `<tr data-id="${f.id}"><td class="name" title="${esc(f.name)}">${esc(f.name)}</td>
+    const row = (f) => { const [sc, sl] = stat(f); return `<tr data-id="${f.id}"><td class="name" title="${esc(f.name)}">${esc(f.name)}</td>
         <td>${f.band ? `<span class="chip"><i style="background:${BAND_COLOR[f.band] || '#999'}"></i>${esc(f.band)}</span>` : '<span class="dim">Farbe</span>'}</td>
         <td>${fnight(f.night)}</td><td class="tnum">${f.n_stars != null && f.star_cap && f.n_stars >= f.star_cap ? `<span title="Höchstzahl der Sternerkennung – im Bild sind mehr Sterne">${f.n_stars}+</span>` : f.n_stars ?? ''}</td><td class="tnum">${f.fwhm ?? ''}</td><td class="tnum">${f.ecc ?? ''}</td><td class="tnum">${f.score ? f.score.toFixed(2) : ''}</td>
         <td><div class="fstat"><div><span class="status s-${sc}">${sl}${f.manual ? ' (manuell)' : ''}${f.deleted ? ' · Datei gelöscht' : f.offline ? ' · <span title="Ordner gerade nicht erreichbar (z. B. Platte abgesteckt) – wird verarbeitet, sobald er wieder da ist">nicht erreichbar</span>' : ''}</span>${f.status === 'rejected' && f.reason ? `<div class="why">${esc(f.reason)}</div>` : ''}</div>${frameThumb(f)}</div></td>
-        <td>${f.deleted ? '' : f.status === 'rejected' ? `<button class="linkbtn" data-f="${f.id}" data-m="1">einschließen</button>` : f.status === 'selected' ? `<button class="linkbtn" data-f="${f.id}" data-m="-1">ausschließen</button>` : ''}</td></tr>`; }).join('')}
-      </tbody></table>${list.length ? '' : '<div class="empty" style="border:0">Keine Aufnahmen in dieser Auswahl.</div>'}`;
+        <td>${f.deleted ? '' : f.status === 'rejected' ? `<button class="linkbtn" data-f="${f.id}" data-m="1">einschließen</button>` : f.status === 'selected' ? `<button class="linkbtn" data-f="${f.id}" data-m="-1">ausschließen</button>` : ''}</td></tr>`; };
+    $('#ftable').innerHTML = `<table><thead><tr>${cols.map(([c, l]) => `<th data-k="${c}" class="${k === c ? 'sorted' + (dir > 0 ? ' asc' : '') : ''}">${l}</th>`).join('')}<th></th></tr></thead><tbody>
+      ${list.slice(0, fShown).map(row).join('')}</tbody></table>${list.length ? '' : '<div class="empty" style="border:0">Keine Aufnahmen in dieser Auswahl.</div>'}
+      ${list.length > fShown ? `<button class="btn ghost sm fmore" id="fmore">Weitere anzeigen <span class="dim">${list.length - fShown}</span></button>` : ''}`;
+    const more = $('#fmore');
+    if (more) {                                 // nachladen, sobald der Knopf ins Bild kommt (oder per Klick)
+      const add = () => {
+        const n = fShown; fShown = Math.min(list.length, fShown + FROWS * 2);
+        $('#ftable tbody').insertAdjacentHTML('beforeend', list.slice(n, fShown).map(row).join(''));
+        if (fShown >= list.length) { io.disconnect(); more.remove(); } else more.querySelector('span').textContent = list.length - fShown;
+      };
+      const io = new IntersectionObserver((es) => { if (!more.isConnected) io.disconnect(); else if (es.some(e => e.isIntersecting)) add(); });
+      io.observe(more);
+      more.onclick = add;
+    }
     $('#ftable thead').onclick = (e) => { const th = e.target.closest('th[data-k]'); if (!th) return; const c = th.dataset.k; fSort = [c, fSort[0] === c ? -fSort[1] : (c === 'name' || c === 'night' ? 1 : -1)]; drawTable(); };
     // kaputte/fehlende Vorschau (Rohdatei inzwischen weg) → Platzhalter statt Bruch-Symbol
     $('#ftable tbody').addEventListener('error', (e) => { const b = e.target.closest?.('.fthumb'); if (b && e.target.tagName === 'IMG') { b.classList.add('none'); b.innerHTML = icon('image'); } }, true);
@@ -778,7 +793,7 @@ async function projectView(el, id, tab = 'bild') {
       const f = frames.find(x => x.id === b.dataset.f), m = +b.dataset.m, prev = { manual: f.manual, status: f.status, reason: f.reason };
       let r;
       try { r = await send('/stacking/frames/' + f.id, { manual: m }, 'PATCH'); } catch (err) { toast(err.message, 'err'); return; }
-      const apply = (v) => { Object.assign(f, v); drawTable(); $(`#ftable tr[data-id="${f.id}"]`)?.classList.add('flash'); };
+      const apply = (v) => { Object.assign(f, v); drawTable(true); $(`#ftable tr[data-id="${f.id}"]`)?.classList.add('flash'); };
       apply(m > 0 ? { manual: m, status: 'selected' } : { manual: m, status: 'rejected', reason: 'manuell ausgeschlossen' });
       // Rückgängig nur, wenn dadurch kein Neu-Stacken ausgelöst wurde
       const undo = r.restack_needed ? null : { label: 'Rückgängig', fn: async () => { await send('/stacking/frames/' + f.id, { manual: prev.manual || 0 }, 'PATCH'); apply(prev); } };
@@ -813,7 +828,8 @@ async function projectView(el, id, tab = 'bild') {
     d.forEach((f, i) => { const g = nights[nights.length - 1]; if (g && g.night === f.night) { g.b = i; g.n++; g.rej += f.status === 'rejected'; } else nights.push({ night: f.night, a: i, b: i, n: 1, rej: +(f.status === 'rejected') }); });
     const xa = (i) => L + i * PW / n;
     let g = '', lastEnd = -1e9;
-    const short = (nt) => nt ? new Date(nt + 'T12:00').toLocaleDateString('de-DE', { day: 'numeric', month: 'short' }) : '–';
+    const sfmt = new Intl.DateTimeFormat('de-DE', { day: 'numeric', month: 'short' }), sc = new Map();     // je Nacht einmal formatieren
+    const short = (nt) => { if (!nt) return '–'; let v = sc.get(nt); if (v == null) sc.set(nt, v = sfmt.format(new Date(nt + 'T12:00'))); return v; };
     nights.forEach((nt, k) => {
       const x1 = xa(nt.a), x2 = xa(nt.b + 1), lbl = short(nt.night), lw = lbl.length * 5.6, cx = Math.min(Math.max((x1 + x2) / 2, L + lw / 2), L + PW - lw / 2);
       if (k % 2) g += `<rect class="fq-night" x="${x1.toFixed(1)}" y="${T0}" width="${(x2 - x1).toFixed(1)}" height="${2 * TH + GAP}"/>`;

@@ -53,3 +53,5 @@
 /* Stand der Nacht: Dämmerung leicht bläulich-hell, tiefe Nacht ohne Tönung – so schwach, dass die Linien vorne bleiben */
 .fq-dusk { opacity: .3; pointer-events: none }
 .fq-dusk-s { stop-color: var(--data-2) }
+/* Tabelle schrittweise (drawTable): Nachlade-Knopf unter der Tabelle, lädt beim Hineinscrollen automatisch */
+.fmore { display: flex; margin: 0.75rem auto 0.25rem }
