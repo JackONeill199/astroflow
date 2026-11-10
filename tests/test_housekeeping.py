@@ -60,7 +60,7 @@ def test_scan_and_cleanup(tmp_path):
     assert all(Path(f).exists() for x in left for f in json.loads(x["files"]).values())
     assert (s.work_dir / f"p{pid}").exists()                                         # Master-Stack bleibt
     assert len(list((s.uploads_dir / "nacht1" / "lights").glob("*.fit"))) == 10      # Rohdaten bleiben
-    assert {i["key"] for i in housekeeping.scan(s, db, keep=2)} <= {"db_compact", "empty_dirs"}
+    assert {i["key"] for i in housekeeping.scan(s, db, keep=2)} <= {"db_compact", "empty_dirs", "frame_previews"}   # Vorschauen nur auf Wunsch
 
 
 def test_cleanup_api_refuses_while_job_runs(tmp_path):

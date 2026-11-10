@@ -50,7 +50,8 @@ def _results(db) -> list[dict]:
 
 def usage(s, db) -> dict:
     """Belegung je Bereich (Bytes) und die größten Objekte (Ausgabe + Master-Stack)."""
-    work_named = {"calibration", "glow", "gaia"}
+    from .frame_preview import DIR_NAME as previews
+    work_named = {"calibration", "glow", "gaia", previews}
     cats = []
 
     def add(key, label, paths, detail=""):
@@ -61,7 +62,8 @@ def usage(s, db) -> dict:
     stacks = [p for p in s.work_dir.glob("p*") if p.name[1:].isdigit()]
     add("stacks", "Master-Stacks", stacks, "nötig zum Nachstacken und Neu-Entwickeln")
     add("uploads", "Hochgeladene Rohdaten", [s.uploads_dir], "noch nicht gestackt oder Löschen aus")
-    add("caches", "Kalibrierung & Kataloge", [s.work_dir / n for n in work_named], "Master-Darks/Flats, Sensorglühen, Gaia")
+    add("caches", "Kalibrierung & Kataloge", [s.work_dir / n for n in work_named - {previews}], "Master-Darks/Flats, Sensorglühen, Gaia")
+    add("frame_previews", "Vorschaubilder der Aufnahmen", [s.work_dir / previews], "kleine JPEGs je Einzelaufnahme (Reiter „Aufnahmen“)")
     add("temp", "Temporäre Dateien", [p for p in s.work_dir.iterdir() if p.is_dir() and p not in stacks and p.name not in work_named]
         if s.work_dir.exists() else [], "Plate-Solving, Bildimport")
     add("db", "Datenbank", [s.db_path, Path(str(s.db_path) + "-wal"), Path(str(s.db_path) + "-shm")])
@@ -129,6 +131,19 @@ def _old_versions(db, keep: int) -> list[dict]:
     return old
 
 
+def _previews(s, db, orphans: bool) -> list[Path]:
+    """Vorschaubilder der Aufnahmen – alle oder nur die, deren Aufnahme es nicht mehr gibt."""
+    from .frame_preview import folder
+    d = folder(s.work_dir)
+    if not d.exists():
+        return []
+    files = [p for p in d.iterdir() if p.is_file() and p.suffix == ".jpg"]
+    if not orphans:
+        return files
+    ids = {r["id"] for r in db.q("SELECT id FROM frames")}
+    return [p for p in files if p.stem not in ids]
+
+
 def _empty_dirs(s) -> list[Path]:
     """Ordner ohne Dateien (auch verschachtelt) – tiefste zuerst, damit das Löschen der Reihe nach klappt."""
     found, empty, old = [], set(), time.time() - TEMP_AGE_S
@@ -159,6 +174,9 @@ def scan(s, db, keep: int = KEEP_VERSIONS) -> list[dict]:
     f = _temp(s)
     items.append({"key": "temp", "label": "Temporäre Dateien", "count": len(f), "bytes": sum(_size(p) for p in f),
                   "detail": "Reste von Plate-Solving und Bildimport (älter als 1 Stunde)", "default": True})
+    f = _previews(s, db, orphans=True)
+    items.append({"key": "orphan_previews", "label": "Vorschaubilder gelöschter Aufnahmen", "count": len(f), "bytes": sum(_size(p) for p in f),
+                  "detail": "Aufnahmen bzw. Objekte, die es nicht mehr gibt", "default": True})
     f = _empty_dirs(s)
     items.append({"key": "empty_dirs", "label": "Leere Ordner", "count": len(f), "bytes": 0,
                   "detail": "in Uploads und Ausgabe", "default": True})
@@ -168,6 +186,9 @@ def scan(s, db, keep: int = KEEP_VERSIONS) -> list[dict]:
     items.append({"key": "old_versions", "label": f"Ältere Versionen (neueste {keep} je Objekt bleiben)", "count": len(old),
                   "bytes": sum(_size(Path(p)) for r in old for p in set(r["files"].values())),
                   "detail": "Frühere Entwicklungen samt Dateien – nicht wiederherstellbar", "default": False, "keep": keep})
+    f = _previews(s, db, orphans=False)
+    items.append({"key": "frame_previews", "label": "Vorschaubilder der Aufnahmen", "count": len(f), "bytes": sum(_size(p) for p in f),
+                  "detail": "Kleine Bilder je Einzelaufnahme – bei gelöschten Rohdateien nicht wiederherstellbar", "default": False})
     b = [s.data_dir / "backups", *s.data_dir.glob("*.vor-*")]
     items.append({"key": "backups", "label": "Sicherungen", "count": sum(1 for p in b if p.exists()), "bytes": sum(_size(p) for p in b),
                   "detail": "Datenbank-Sicherungen von Umzügen und Umbauten", "default": False})
@@ -231,6 +252,11 @@ def cleanup(s, db, keys: list[str], keep: int = KEEP_VERSIONS) -> dict:
         f = _temp(s)
         freed += sum(_rm(p, s.work_dir) for p in f)
         removed["temp"] = len(f)
+    for key in ("frame_previews", "orphan_previews"):
+        if key in keys:
+            f = _previews(s, db, orphans=key == "orphan_previews")
+            freed += sum(_rm(p, s.work_dir) for p in f)
+            removed[key] = len(f)
     if "backups" in keys:
         f = [p for p in [s.data_dir / "backups", *s.data_dir.glob("*.vor-*")] if p.exists()]   # nur Vorhandenes zählt
         freed += sum(_rm(p, s.data_dir) for p in f)

@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.57.0 – 10.11.2026
+
+### Neu
+- Aufnahmen: Jede Einzelaufnahme bekommt ein kleines Vorschaubild in der Liste; ein Klick öffnet es groß mit der Begründung, warum sie gestackt oder verworfen wurde. Die Vorschauen werden bei der Analyse platzsparend gespeichert und lassen sich unter Einstellungen → Speicher löschen.
+
 ## 0.56.1 – 10.11.2026
 
 ### Behoben
