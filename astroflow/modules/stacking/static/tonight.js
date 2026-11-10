@@ -210,7 +210,7 @@ customElements.define('af-tonight-chart', class extends HTMLElement {
       if (o.alt[i] >= 0) dots += `<circle cx="${x}" cy="${y(o.alt[i])}" r="${k === this.selected ? 5 : 4}" fill="${COLORS[k]}" stroke="var(--surface)"/>`;
       return `<span style="--target:${COLORS[k]}"${o.alt[i] < d.min_alt ? ' class="low"' : ''}>${esc(o.name)}<b>${Math.round(o.alt[i])}°</b></span>`;
     }).join('');
-    const sky = [d.cloud?.[i] != null ? `☁ ${d.cloud[i]} %` : '', d.wind?.[i] != null ? `Wind ${d.wind[i]} km/h` : ''].filter(Boolean).join(' · ');
+    const sky = [d.cloud?.[i] != null ? `☁ ${Math.round(+d.cloud[i])} %` : "", d.wind?.[i] != null ? `Wind ${Math.round(+d.wind[i])} km/h` : ""].filter(Boolean).join(' · ');
     this.querySelector('.tn-cursor').innerHTML = dots;
     const tip = this.querySelector('.tn-tooltip');
     tip.hidden = false;
