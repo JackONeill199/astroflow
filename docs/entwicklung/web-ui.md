@@ -91,5 +91,5 @@ Legende mit echten Diagrammpunkten, Erklärung im Tooltip. Je Grafik höchstens 
 Heute Nacht (zeigt Dämmerung und Mond schon), Gerätediagnose, Balken und Listen.
 **Aufnahmen-Diagramm** „Qualität je Aufnahme“ (`stacking.js` → `chart(frames, breite)`, Stil `frames.css` `.fq*`): zwei Spuren übereinander, beide
 oben = besser (Himmel bzw. Sterne, Schärfe), in echter Pixelbreite gezeichnet (ResizeObserver, kein `preserveAspectRatio="none"`). Linie nur durch
-verwendete Aufnahmen (ab ~720 als gleitender Median, Einzelwerte blass), verworfene als rote Punkte, Skala 1.–99. Perzentil der verwendeten mit
+verwendete Aufnahmen (ab ~720 als gleitender Median, Einzelwerte blass), verworfene als rote Striche unter der unteren Spur (Nutzerwunsch: keine Punkte), Skala 1.–99. Perzentil der verwendeten mit
 Mindestspanne 30 % des Medians; Nächte als abwechselnde Bänder, Datum ausgedünnt (Tooltip mit Anzahl); Klick auf eine Aufnahme → `framePopup`.
