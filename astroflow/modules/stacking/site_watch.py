@@ -68,7 +68,10 @@ def stale_diagnose(db, site_for) -> list[int]:
             cur = get(n["night"])
             if "site" in n:
                 now = [round(float(cur["lat"]), 3), round(float(cur["lon"]), 3)] if cur else None
-                stale = n["site"] != now if n.get("site_source") in ("sites", None) else False
+                if n.get("site_source") == "settings":          # alter Tutor-Ort: sobald die Ortsliste einen Ort hat, gilt dieser
+                    stale = now is not None
+                else:
+                    stale = n["site"] != now
             else:
                 stale = bool((cur or {}).get("by"))
             if stale:

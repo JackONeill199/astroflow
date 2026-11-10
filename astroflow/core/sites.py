@@ -304,8 +304,8 @@ def normalize(data: dict) -> dict:
         raise ValueError("Doppelte Standort-Kennung.")
     periods = [_clean_period(p, set(ids)) for p in (data.get("periods") or [])]
     default = data.get("default")
-    if default not in ids:
-        default = ids[0] if ids else None
+    if default not in ids:                  # automatisch angelegte Orte (`src`) nie stillschweigend zum Standard machen
+        default = next((s["id"] for s in sites if not s.get("src")), None)
     return {"list": sites, "default": default, "periods": periods}
 
 
@@ -386,7 +386,7 @@ def resolve(data: dict, when=None, night: str | None = None, header=None, overri
         span = "diese Nacht" if p["from"] == p["to"] else (f"ab {p['from']}" if not p["to"] else f"{p['from']} bis {p['to']}")
         detail = f"Zeitraum {span}" + (f" · {p['why']}" if p.get("why") else "")
         return _public(by_id[p["site_id"]], "period", detail, p.get("src"))
-    d = by_id.get(data.get("default")) or (next(iter(by_id.values())) if by_id else None)
+    d = by_id.get(data.get("default")) or next((s for s in by_id.values() if not s.get("src")), None)
     if d:
         return _public(d, "default", "Standard-Ort")
     return None

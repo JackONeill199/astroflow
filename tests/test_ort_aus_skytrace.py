@@ -57,6 +57,15 @@ def test_sync_nights_legt_an_stellt_um_und_entfernt(tmp_path):
     assert b.sync_nights("skytrace", {})["removed"] == 0
 
 
+def test_sync_nights_macht_keinen_standard_ort(tmp_path):
+    b = sites.SiteBook(SettingsStore(tmp_path / "settings.json"))
+    b.sync_nights("skytrace", {"2024-07-05": FERN})
+    assert b.site_for(night="2024-07-05")["name"] == "Fernwiese"
+    assert b.data()["default"] is None and b.site_for(night="2024-07-06") is None     # gilt nur für diese Nacht
+    b.sync_nights("skytrace", {})
+    assert b.data()["list"] == [] and b.site_for(night="2024-07-05") is None
+
+
 def test_sync_nights_uebernimmt_alte_migration_einmal(tmp_path):
     b = book(tmp_path)
     sites.migrate_skytrace(b, {"sites": {"2024-07-05_observation_M31": FERN}}, key="skytrace:x")   # Einzelnacht ohne Marke
@@ -178,7 +187,10 @@ def test_bilder_rechnet_naechte_mit_neuem_ort_neu(tmp_path, monkeypatch):
                  sq.SKY_VERSION, json.dumps({})))                                             # älter, ohne Fingerabdruck
         diag = {"v": DIAG_VERSION, "ok": True, "nights": [{"night": "2024-07-05", "site_source": "sites", "site": [47.5, 10.25]}]}
         rid = eng.db.x("INSERT INTO results(project_id, created, stats) VALUES(?, 0, ?)", (a, json.dumps({"diagnose": diag})))
-        assert site_watch.stale_sky(eng.db, sf) == [] and site_watch.stale_diagnose(eng.db, sf) == []
+        tut = {**diag, "nights": [{"night": "2024-07-05", "site_source": "settings", "site": [47.5, 10.25]}]}  # alter Tutor-Ort
+        rid2 = eng.db.x("INSERT INTO results(project_id, created, stats) VALUES(?, 0, ?)", (b, json.dumps({"diagnose": tut})))
+        assert site_watch.stale_sky(eng.db, sf) == [] and site_watch.stale_diagnose(eng.db, sf) == [rid2]
+        eng.db.x("DELETE FROM results WHERE id=?", (rid2,))
         queued, submitted = [], []
         monkeypatch.setattr(eng.sky, "queue", queued.append)
         monkeypatch.setattr(eng.insights, "submit", lambda kind, r, **_: submitted.append((kind, r)))
