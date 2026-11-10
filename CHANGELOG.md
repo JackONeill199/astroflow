@@ -3,6 +3,12 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.59.0 – 10.11.2026
+
+### Neu
+- „Heute Nacht“: Mit ‹ › bzw. den Pfeiltasten durch die nächsten 14 Nächte blättern – Empfehlungen und Bewertung gelten für die gewählte Nacht, jede Nacht am eingetragenen Ort; ab dem dritten Tag Hinweis „Vorhersage unsicher“, danach nur Astronomie.
+- Das Diagramm zeigt Bewölkung als Wolkenband, Mondbahn und Dämmerung als weichen Verlauf; Zielkurven sind farblich klar unterscheidbar, Tooltip mit Höhe, Uhrzeit und Wetter, Legende als Symbole.
+
 ## 0.58.0 – 10.11.2026
 
 ### Neu
