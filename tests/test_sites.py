@@ -32,6 +32,19 @@ def test_night_of():
     assert sites.night_of(None) is None and sites.night_of("kaputt") is None
 
 
+
+def test_clock_of():
+    """Uhrzeit fürs Aufnahmen-Diagramm: Rechnerzeitzone, solange der Ort passt; Ort in anderer Zeitzone → ganze Stunde der Länge."""
+    import datetime as dt
+    t = dt.datetime(2022, 5, 21, 13, 30, tzinfo=dt.timezone.utc)
+    here = t.astimezone()
+    lon_here = here.utcoffset().total_seconds() / 3600 * 15
+    assert sites.clock_of(t, lon=lon_here, book=sites.SiteBook(path="/gibtsnicht.json")) == here.strftime("%H:%M")
+    far = 135.0 if abs(lon_here - 135) > 40 else -75.0                     # sicher > 2,5 h neben der Rechnerzeitzone
+    assert sites.clock_of("2022-05-21T13:30:00", lon=far) == (t + dt.timedelta(hours=round(far / 15))).strftime("%H:%M")
+    assert sites.clock_of(None) is None and sites.clock_of("kaputt") is None
+
+
 def test_resolution_order(tmp_path):
     b = book(tmp_path, periods=[{"site_id": "trip", "from": "2024-07-01", "to": "2024-07-14"}])
     assert b.site_for(night="2024-06-30")["id"] == "home"

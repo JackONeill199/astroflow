@@ -16,7 +16,7 @@ from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadF
 from fastapi.responses import FileResponse
 
 from . import calibration, channels, comet, diskspace, frame_preview, gpu, graxpert, objects, platesolve, quality, registration, reviewer, skyquality, stars, tonight, tutor
-from ...core import security
+from ...core import security, sites
 from .db import DB
 from .pipeline import Pipeline
 
@@ -601,6 +601,10 @@ def build_router(eng: Engine) -> APIRouter:
             db.x("UPDATE projects SET restack=1 WHERE id=?", (pid,))
         return {"job": eng.enqueue(pid, {k: v for k, v in body.items() if k != "restack"})}
 
+    def _site_lon(i: dict):
+        st = i.get("site")
+        return st[1] if isinstance(st, (list, tuple)) and len(st) >= 2 else None
+
     @r.get("/projects/{pid}/frames")
     def frames(pid: int):
         out = []
@@ -612,6 +616,8 @@ def build_router(eng: Engine) -> APIRouter:
             out.append({"id": x["id"], "name": Path(x["path"]).name, "night": x["night"], "status": x["status"], "reason": x["reason"],
                         "band": channels.band_of(i.get("filter"), channels.is_color(i)), "filter": i.get("filter"),
                         "exptime": i.get("exptime"), "date": i.get("date_obs"),
+                        # Ortszeit „HH:MM“ vom Server (core/sites.clock_of) – das Diagramm setzt daraus Stundenmarken
+                        "clock": sites.clock_of(i.get("date_obs"), lon=_site_lon(i)) if i.get("date_obs") else None,
                         "score": round(x["score"] or 0, 3), "manual": x["manual"], "stacked": x["stacked"], "deleted": x["deleted"],
                         "offline": offline,
                         # Vorschaubild vorhanden oder aus der Rohdatei nachholbar (/frames/{id}/preview)

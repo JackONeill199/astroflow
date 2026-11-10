@@ -92,4 +92,5 @@ Heute Nacht (zeigt Dämmerung und Mond schon), Gerätediagnose, Balken und Liste
 **Aufnahmen-Diagramm** „Qualität je Aufnahme“ (`stacking.js` → `chart(frames, breite)`, Stil `frames.css` `.fq*`): zwei Spuren übereinander, beide
 oben = besser (Himmel bzw. Sterne, Schärfe), in echter Pixelbreite gezeichnet (ResizeObserver, kein `preserveAspectRatio="none"`). Linie nur durch
 verwendete Aufnahmen (ab ~720 als gleitender Median, Einzelwerte blass), verworfene als rote Striche unter der unteren Spur (Nutzerwunsch: keine Punkte), Skala 1.–99. Perzentil der verwendeten mit
-Mindestspanne 30 % des Medians; Nächte als abwechselnde Bänder, Datum ausgedünnt (Tooltip mit Anzahl); Klick auf eine Aufnahme → `framePopup`.
+Mindestspanne 30 % des Medians; Nächte als abwechselnde Bänder, Datum ausgedünnt (Tooltip mit Anzahl); Stundenmarken an der ersten Aufnahme
+jeder neuen vollen Stunde (Ortszeit `clock` vom Server, `sites.clock_of`), beschriftet nur mit Platz; Klick auf eine Aufnahme → `framePopup`.

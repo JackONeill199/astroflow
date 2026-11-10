@@ -170,6 +170,27 @@ def night_of(when, lon=None, tz=None, header=None, book=None) -> str | None:
     return _date_at(t, _tz_hours(t))
 
 
+def clock_of(when, lon=None, book=None) -> str | None:
+    """Uhrzeit „HH:MM“ (Ortszeit) einer Aufnahme für die Anzeige – gleiche Quellen wie `night_of`, aber Uhrzeit statt
+    Sonnenzeit: Rechnerzeitzone mit Sommerzeit, solange der Aufnahmeort (`lon`, sonst Ortsliste) dazu passt; liegt er
+    über 2,5 h daneben (Reise in eine andere Zeitzone), die zur Länge gehörige ganze Stunde. Ohne alles: UTC."""
+    t = _instant(when)
+    if t is None:
+        return None
+    lon = _lon(lon)
+    book = book if book is not None else _NIGHT_BOOK
+    if lon is None and book is not None:
+        try:
+            s = resolve(book.cached_data(), when=t)
+            lon = _lon(s.get("lon")) if s else None
+        except Exception:                 # Ortsliste unlesbar: Rechnerzeitzone
+            pass
+    off = _tz_hours(t)
+    if lon is not None and (off is None or abs(lon / 15 - off) > 2.5):
+        off = float(round(lon / 15))
+    return (t + dt.timedelta(hours=off or 0)).strftime("%H:%M")
+
+
 def is_date(s) -> bool:
     """JJJJ-MM-TT und ein echtes Kalenderdatum (kein 30. Februar)."""
     if not isinstance(s, str) or not _DATE.match(s):

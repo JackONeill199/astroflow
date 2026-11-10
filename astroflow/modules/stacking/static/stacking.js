@@ -795,7 +795,7 @@ async function projectView(el, id, tab = 'bild') {
     const d = fr.filter(f => f.n_stars != null);
     if (d.length < 2) return '<div class="mut sm">Noch nicht analysiert.</div>';
     const D = window.AFdeco, W = Math.max(280, Math.round(width || 800)), L = 50, R = D ? D.R : 8, T0 = 18, TH = W < 560 ? 60 : 76, GAP = 12;
-    const RB = T0 + 2 * TH + GAP + 4, H = RB + 9,              // RB: Leiste der verworfenen unter der unteren Spur
+    const RB = T0 + 2 * TH + GAP + 4, HB = RB + 19, H = HB + 2, // RB: Leiste der verworfenen unter der unteren Spur, HB: Grundlinie der Uhrzeiten
     PW = W - L - R, n = d.length, x = (i) => L + (i + .5) * PW / n, de = (v, k = 1) => (+v).toLocaleString('de-DE', { maximumFractionDigits: k });
     const q = (arr, p) => { const s = arr.filter(v => v != null && isFinite(v)).sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(p * s.length))] : 0; };
     // Mindestspanne 30 % des Medians: sonst bläht die enge Skala reines Messrauschen (3,1 ↔ 3,4 px) zu Zacken über die ganze Höhe auf
@@ -819,6 +819,22 @@ async function projectView(el, id, tab = 'bild') {
       if (cx - lw / 2 < lastEnd + 6) return;                       // Datum ausdünnen, Band bleibt
       lastEnd = cx + lw / 2;
       g += `<text class="fq-date" x="${cx.toFixed(1)}" y="${T0 - 6}" text-anchor="middle">${esc(lbl)}<title>${esc(fnight(nt.night))} · ${nt.n} Aufnahmen${nt.rej ? ` · ${nt.rej} verworfen` : ''}</title></text>`;
+    });
+    // Uhrzeit (Ortszeit vom Server, f.clock „HH:MM“): Marke an der ersten Aufnahme jeder neuen vollen Stunde – die x-Achse zählt
+    // Aufnahmen, nicht Zeit. Marken nur mit Abstand, Beschriftung nur, wenn Platz ist
+    let lastTick = -1e9, lastLbl = -1e9, hours = '';             // erst nach den Motiven einfügen (sonst verdeckt)
+    nights.forEach(nt => {
+      for (let i = nt.a + 1; i <= nt.b; i++) {
+        const h = d[i].clock ? +d[i].clock.slice(0, 2) : NaN, h0 = d[i - 1].clock ? +d[i - 1].clock.slice(0, 2) : NaN;
+        if (!(h >= 0) || !(h0 >= 0) || h === h0) continue;
+        const xt = xa(i);
+        if (xt - lastTick < 7) continue;
+        lastTick = xt;
+        hours += `<line class="fq-hour" x1="${xt.toFixed(1)}" x2="${xt.toFixed(1)}" y1="${T0}" y2="${RB + 8}"/>`;
+        if (xt - lastLbl < 30 || xt > L + PW - 8) continue;
+        lastLbl = xt;
+        hours += `<text class="fq-hl" x="${xt.toFixed(1)}" y="${HB}" text-anchor="middle">${h} h</text>`;
+      }
     });
     tracks.forEach((tr, k) => {
       const T = T0 + k * (TH + GAP), ok = d.filter(f => !rej(f)), [lo, hi] = range((ok.length > 1 ? ok : d).map(tr.val), tr.lo0);
@@ -844,9 +860,10 @@ async function projectView(el, id, tab = 'bild') {
       });
       g += `${raw ? `<path class="fq-raw" d="${raw}"/>` : ''}<path class="fq-line" d="${p}"/>${one}<text class="fq-t" x="${L - 5}" y="${T + 9}" text-anchor="end">${tr.name}<title>${esc(tr.tip)}</title></text>`;
     });
+    g += hours;
     // Treffer je Aufnahme (Tooltip, Klick → Popup), darunter je verworfene Aufnahme ein roter Strich (Nutzerwunsch: keine Punkte auf der Linie)
     const bw = PW / n;
-    g += d.map((f, i) => `<rect class="fq-hit" data-fid="${f.id}" x="${xa(i).toFixed(1)}" y="${T0}" width="${bw.toFixed(2)}" height="${RB + 8 - T0}"><title>${esc(f.name)} · ${esc(short(f.night))}
+    g += d.map((f, i) => `<rect class="fq-hit" data-fid="${f.id}" x="${xa(i).toFixed(1)}" y="${T0}" width="${bw.toFixed(2)}" height="${RB + 8 - T0}"><title>${esc(f.name)} · ${esc(short(f.night))}${f.clock ? ` · ${f.clock}` : ''}
 ${capped ? `Hintergrund ${f.bg}` : `${f.n_stars} Sterne`} · FWHM ${f.fwhm ?? '–'} px${f.status === 'rejected' ? `\nverworfen: ${esc(f.reason || '')}` : ''}</title></rect>`).join('');
     g += d.map((f, i) => rej(f) ? `<rect class="fq-rej" x="${(x(i) - Math.max(1, bw / 2)).toFixed(1)}" y="${RB}" width="${Math.max(2, bw).toFixed(1)}" height="8" rx="1"/>` : '').join('');
     return `<svg class="fq" viewBox="0 0 ${W} ${H}" role="img" aria-label="Qualität je Aufnahme">${g}</svg>`;
