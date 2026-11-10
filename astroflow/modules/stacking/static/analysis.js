@@ -50,7 +50,7 @@ async function analysisSummary(host, r, pid) {
   const de1 = (v) => String(v).replace('.', ',');
   const lvl = (pt) => pt >= 6.5 ? 'ok' : pt >= 4 ? 'warn' : 'bad';
   // Kachel Bildqualität farbig nach Note (Nutzerwunsch „bisschen mehr Farbe dran“), darin die Bestandteile als kleine Balken;
-  // unter den Kacheln der wichtigste Tutor-Hinweis in einer Zeile. Neue Tutor-Felder (`headline`, je Hinweis `short`) erscheinen ohne Umbau.
+  // unter den Kacheln der wichtigste Tutor-Hinweis in einer Zeile. Tutor-Felder `recommendation` (#60), `headline` und je Hinweis `short` werden genutzt, sobald der Server sie liefert.
   // Die Bearbeitungsnote erscheint hier bewusst nicht: „10/10“ las sich wie „Bild perfekt“, bewertet aber nur Restfehler der Bearbeitung.
   const qTile = (gq) => {
     if (!gq) return tile('q', 'Bildqualität', '–', 'noch nicht bewertet');
@@ -59,7 +59,13 @@ async function analysisSummary(host, r, pid) {
       <span><small>Bildqualität</small><b class="tnum">${de1(gq.score)}<span class="dim">/10</span></b></span>
       ${parts.length ? `<span class="an-qbars">${parts.map(p => `<span class="lvl-${lvl(p.points)}"><small>${esc(p.label)}</small><i style="--w:${Math.max(4, p.points * 10)}%"></i></span>`).join('')}</span>` : ''}</a>`;
   };
+  // Vorrang: Belichtungsempfehlung des Tutors (`recommendation`, Zielzeit aus dem Objekt-SNR) – sonst der wichtigste Befund
   const tip = () => {
+    const rec = tut?.recommendation;
+    if (rec && (rec.title || rec.target_s)) {
+      const head = rec.exposure_s && rec.target_s ? `Mehr Belichtung: ${dur(rec.exposure_s)} → etwa ${dur(rec.target_s)}` : rec.title;
+      return `<a class="an-tip lvl-warn" href="#/p/${pid}/analyse" title="${esc(rec.text || rec.title || '')}"><i aria-hidden="true"></i><span>${esc(head)}</span>${icon('arrow')}</a>`;
+    }
     const f = (tut?.findings || []).find(x => x.code !== 'good' && x.level !== 'ok');
     const head = tut?.headline || (f && (f.short || f.title));
     return head ? `<a class="an-tip lvl-${f?.level || 'info'}" href="#/p/${pid}/analyse" title="${esc(f?.text || '')}"><i aria-hidden="true"></i><span>${esc(head)}</span>${icon('arrow')}</a>` : '';
