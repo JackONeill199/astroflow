@@ -665,6 +665,7 @@ async function projectView(el, id, tab = 'bild') {
           <dt>Sterne erkannt</dt><dd class="tnum">${s.stars ?? '–'}</dd>
           ${s.graxpert ? `<dt>GraXpert-KI</dt><dd>${[s.graxpert.bge && 'Hintergrund', s.graxpert.denoise && `Entrauschen ${s.graxpert.denoise}`].filter(Boolean).join(' · ') || 'nicht angewendet'}${s.graxpert.error ? `<div class="dim sm">${esc(s.graxpert.error)}</div>` : ''}</dd>` : ''}
           ${s.distortion ? `<dt>Verzerrungskorrektur</dt><dd>${s.distortion.poly} von ${s.distortion.frames} Aufnahmen korrigiert${s.distortion.poly && s.distortion.rms_before != null && s.distortion.rms_after != null ? `<div class="dim sm tnum">Restfehler ${String(s.distortion.rms_before).replace('.', ',')} → ${String(s.distortion.rms_after).replace('.', ',')} px · ${Math.round(s.distortion.pairs)} Sterne je Aufnahme</div>` : ''}</dd>` : ''}
+          ${s.mosaic ? `<dt>Mosaik</dt><dd>${s.mosaic.canvas ? `${s.mosaic.canvas[1]} × ${s.mosaic.canvas[0]} px gestackt` : 'Fläche aller Aufnahmen'}${s.mosaic.area ? ` (${String(s.mosaic.area).replace('.', ',')}× ein Einzelbild)` : ''}<div class="dim sm">${s.mosaic.crop === 'compact' ? 'Ausschnitt kompakt (volle Tiefe)' : `Ausschnitt groß: Ränder ab ${Math.round(100 * s.mosaic.min_depth)} % der größten Tiefe`}</div></dd>` : ''}
           <dt>Sterne</dt><dd>${s.star_separation ? `getrennt bearbeitet (${s.star_separation === 'starnet' ? 'StarNet' : 'eigene Trennung'})` : 'mit dem Bild bearbeitet'}</dd>
           ${s.wb_gains ? `<dt>Weißabgleich (R/G/B)</dt><dd class="tnum">${s.wb_gains.join(' / ')}</dd>` : ''}
           ${s.color_cal ? `<dt>Farbkalibrierung</dt><dd>${s.color_cal.verfahren === 'gaia' ? `fotometrisch (Gaia, ${s.color_cal.sterne} Sterne)`
@@ -867,6 +868,10 @@ ${f.n_stars}${capped ? '+' : ''} Sterne · FWHM ${f.fwhm} px${capped ? ` · ${aL
     const distGlobal = p.distortion?.global || 'auto';
     const distOn = (v) => (['auto', 'off'].includes(v) ? v : distGlobal) === 'auto';      // wirksamer Modus (Objekt vor global)
     const distStale = p.distortion?.stack != null && p.distortion.stack !== distOn(o.distortion) && p.deleted?.can_restack !== false;
+    // Mosaik: „Ein“ bei gewöhnlichem Stack bzw. „Aus“ bei Mosaik-Stack wirkt erst nach dem Neu-Stacken
+    // Neu stacken nötig? „Ein“/„Aus“: wenn der Stack anders gebaut ist; „Automatisch“: bei jeder Änderung (Erkennung entscheidet)
+    const mosRestack = (nv, ov) => p.mosaic != null && (nv === 'on' ? !p.mosaic : nv === 'off' ? !!p.mosaic : (nv || 'auto') !== (ov || 'auto'));
+    const mosStale = p.mosaic != null && ((o.mosaic === 'on' && !p.mosaic) || (o.mosaic === 'off' && !!p.mosaic)) && p.deleted?.can_restack !== false;
     const opt = (list, val, lbl) => list.map(v => `<option value="${esc(v)}" ${String(val) === String(v) ? 'selected' : ''}>${esc(lbl ? lbl(v) : v)}</option>`).join('');
     t.innerHTML = `<div class="split"><form class="panel" id="optf">
         <label class="field"><span>Bearbeitungsprofil</span><select name="profile">${opt(['auto', ...p.profiles], o.profile || 'auto', v => PROFILE_LABEL[v] || v)}</select>
@@ -878,6 +883,11 @@ ${f.n_stars}${capped ? '+' : ''} Sterne · FWHM ${f.fwhm} px${capped ? ` · ${aL
         <label class="field"><span>Verzerrungskorrektur</span><select name="distortion">${opt(['global', 'auto', 'off'], ['auto', 'off'].includes(o.distortion) ? o.distortion : 'global', v => ({ global: `Wie global (${distGlobal === 'off' ? 'aus' : 'an'})`, auto: 'An – Polynom 2. Ordnung, wenn es die Sterne genauer trifft', off: 'Aus – nur verschieben und drehen' }[v]))}</select>
           <small>Gleicht die Verzeichnung der Optik aus, wenn das Feld zwischen den Aufnahmen wandert (Nachzentrieren). Global unter Einstellungen → Bilder.
           ${distStale ? `<br><span class="warn">Der Stack wurde ${p.distortion.stack ? 'mit' : 'ohne'} Verzerrungskorrektur gerechnet – für alle Aufnahmen „Komplett neu stacken“ (Menü „Mehr“).</span>` : 'Wirkt auf neu gestackte Aufnahmen – für alle: „Komplett neu stacken“.'}</small></label>
+        <label class="field"><span>Mosaik</span><select name="mosaic" ${p.deleted?.can_restack === false ? 'disabled' : ''}>${opt(['auto', 'on', 'off'], ['on', 'off'].includes(o.mosaic) ? o.mosaic : 'auto', v => ({ auto: `Automatisch (bei stark versetzten Aufnahmen${p.mosaic ? ' – erkannt' : ''})`, on: 'Ein – Fläche aller Aufnahmen stacken', off: 'Aus – nur die Fläche des Referenzbilds' }[v]))}</select>
+          <small>Hat das Teleskop ein Raster abgefahren (z. B. Mosaikmodus der Stellina), wird die ganze abgefahrene Fläche gestackt statt nur das Referenzbild.
+          ${mosStale ? '<br><span class="warn">Wirkt erst nach „Komplett neu stacken“ (Menü „Mehr“).</span>' : ''}</small></label>
+        <label class="field" ${p.mosaic || o.mosaic === 'on' ? '' : 'hidden'}><span>Mosaik-Ausschnitt</span><select name="mosaic_crop">${opt(['wide', 'compact'], o.mosaic_crop === 'compact' ? 'compact' : 'wide', v => ({ wide: 'Groß – Fläche gegen Tiefe abwägen', compact: 'Kompakt – nur voll belichtete Mitte' }[v]))}</select>
+          <small>Die Ränder eines Mosaiks sind weniger tief belichtet (mehr Rauschen). Wirkt beim Entwickeln, ohne neu zu stacken.</small></label>
         ${p.deleted?.can_restack === false ? '<p class="mut sm" style="margin:-6px 0 14px">Auswahl und Auflösung sind fest: die Einzelbilder wurden nach dem Stacking gelöscht.</p>' : ''}
         <label class="field"><span>Schmalband-Behandlung</span><select name="narrowband">${opt(['', 'true', 'false'], o.narrowband == null ? '' : String(o.narrowband), v => ({ '': 'Automatisch (nach Filter)', true: 'Ja – keine Sternfarben-Kalibrierung', false: 'Nein' }[v]))}</select></label>
         <label class="field"><span>Sterne getrennt bearbeiten</span><select name="star_separation">${opt(['', 'starnet', 'auto', 'intern', 'off'], o.star_separation || '', v => ({ '': 'Wie Profil (Nebel: StarNet, sonst nein)', starnet: 'Ja – nur mit StarNet', auto: 'Ja – StarNet, falls installiert, sonst eigene Trennung', intern: 'Ja – eigene Trennung', off: 'Nein' }[v]))}</select>
@@ -900,14 +910,16 @@ ${f.n_stars}${capped ? '+' : ''} Sterne · FWHM ${f.fwhm} px${capped ? ` · ${aL
     const v = (k) => form.elements[k].value;
     const read = () => ({ profile: v('profile'), palette: v('palette'), keep_percent: v('keep_percent') ? +v('keep_percent') : null,
       resolution_scale: +v('resolution_scale'), narrowband: v('narrowband') === '' ? null : v('narrowband') === 'true', review: v('review') === 'true', star_separation: v('star_separation') || null, graxpert: v('graxpert') || null,
-      comet_mode: v('comet_mode'), comet_name: v('comet_name').trim() || null, distortion: v('distortion') });
+      comet_mode: v('comet_mode'), comet_name: v('comet_name').trim() || null, distortion: v('distortion'),
+      mosaic: v('mosaic'), mosaic_crop: v('mosaic_crop') });
     const init = Object.fromEntries($$('select,input', form).filter(x => x.name).map(x => [x.name, x.value]));
     let o2, needRestack, needStack, dirty;
     // Erkennt Änderungen und beschriftet die Hauptaktion passend: neu entwickeln (schnell) oder neu stacken
     const check = () => {
       o2 = read();
       needRestack = (o2.keep_percent ?? null) !== (o.keep_percent ?? null) || o2.resolution_scale !== (o.resolution_scale || 1)
-        || (distOn(o2.distortion) !== distOn(o.distortion) && p.deleted?.can_restack !== false);
+        || (distOn(o2.distortion) !== distOn(o.distortion) && p.deleted?.can_restack !== false)
+        || (mosRestack(o2.mosaic, o.mosaic) && p.deleted?.can_restack !== false);
       // Kometenmodus/-Bezeichnung: Kometen-Stack (nach)bauen – ein normaler Lauf, kein komplettes Neu-Stacken
       needStack = o2.comet_mode !== (o.comet_mode || 'auto') || (o2.comet_name || null) !== (o.comet_name || null);
       const changed = $$('select,input', form).filter(x => x.name && String(init[x.name] ?? '') !== x.value);

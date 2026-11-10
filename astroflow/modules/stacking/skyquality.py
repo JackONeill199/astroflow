@@ -224,9 +224,13 @@ def zero_point(mean: np.ndarray, cov: np.ndarray, hdr: dict, cat: np.ndarray, ex
 
 
 def frame_links(meta: dict, frames: list[dict]) -> dict:
-    """Je Aufnahme (Flussverhältnis kr zum Referenzbild, Matrix Frame→Referenz) aus den gespeicherten Sternlisten –
-    dieselbe Zuordnung wie beim Stacken (Pipeline._stack)."""
+    """Je Aufnahme (Flussverhältnis kr zum Referenzbild, Matrix Frame→Stack-Raster in nativen Pixeln) aus den gespeicherten
+    Sternlisten – dieselbe Zuordnung wie beim Stacken (Pipeline._stack). Bei einem Mosaik liegt die Leinwandecke nicht
+    im Ursprung des Referenzbilds (mosaic.origin), die Matrix enthält die Verschiebung schon."""
+    from .mosaic import origin, shift
     from .registration import find_transform
+
+    S = shift(*origin(meta))
 
     ref_xy = np.array([[s[0], s[1]] for s in meta.get("ref_stars") or []], float)
     ref_flux = np.array([s[2] for s in meta.get("ref_stars") or []], float)
@@ -236,7 +240,7 @@ def frame_links(meta: dict, frames: list[dict]) -> dict:
     for f in frames:
         stars = f["metrics"].get("stars") or []
         if f["id"] == meta.get("ref_fid"):
-            out[f["id"]] = (1.0, np.eye(3))
+            out[f["id"]] = (1.0, S.copy())
             continue
         if len(stars) < 8:
             continue
@@ -251,7 +255,7 @@ def frame_links(meta: dict, frames: list[dict]) -> dict:
         M, pairs, _ = res
         ratio = ref_flux[pairs[:, 1]] / np.maximum(tf[pairs[:, 0]], 1e-6)
         if len(ratio) >= 5:
-            out[f["id"]] = (float(np.median(ratio)), M)
+            out[f["id"]] = (float(np.median(ratio)), S @ M)
     return out
 
 
@@ -627,6 +631,7 @@ def _site_of(rows: list[dict], night: str, site_for) -> dict | None:
 def compute_project(pl, pid: int, site_for=None, log=lambda m: None, backfill: bool = True) -> dict:
     """Himmelsqualität eines Objekts berechnen und je Nacht speichern. pl: Pipeline (Master-Stack, WCS, Gaia-Einstellung)."""
     from . import photometry, tutor
+    from .mosaic import origin
     db = pl.db
     ensure_table(db)
     proj = db.one("SELECT * FROM projects WHERE id=?", (pid,))
@@ -640,6 +645,7 @@ def compute_project(pl, pid: int, site_for=None, log=lambda m: None, backfill: b
     st = states.get(None) or (next(iter(states.values())) if states else None)
     info: dict = {"device": device["id"]}
     zp_stack, wcs, hdr, excess, scale, shape = None, None, None, 0.0, None, None
+    ox = oy = 0.0
     flux_k0 = 1.0
     links: dict = {}
     sc = 1.0                                            # resolution_scale: Stack-Pixel = native Pixel / sc
@@ -648,6 +654,7 @@ def compute_project(pl, pid: int, site_for=None, log=lambda m: None, backfill: b
         flux_k0 = float(st.meta.get("flux_k0") or 1.0)
         sc = float(st.meta.get("scale") or 1)
         shape = tuple(st.meta["shape"][1:])
+        ox, oy = origin(st.meta)                    # Mosaik: Mitte des Referenzbilds liegt nicht in der Stack-Mitte
         excess = stack_excess(luma(mean), cov)
         try:
             f = pl.s.work_dir / f"p{pid}" / "wcs.json"
@@ -685,7 +692,8 @@ def compute_project(pl, pid: int, site_for=None, log=lambda m: None, backfill: b
         _backfill(pl, rows, log)
     dzp = device_zp(db).get(device_key(rows[0]["instrument"], rows[0]["gain"]))
     neutral = tutor.neutral_sky(proj["ra"], proj["dec"], proj["kind"])
-    ra, dec = (float(v) for v in wcs.pixel_to_world_values((shape[1] * sc - 1) / 2, (shape[0] * sc - 1) / 2)) if wcs is not None and shape \
+    ra, dec = (float(v) for v in wcs.pixel_to_world_values(((shape[1] - 1) / 2 - ox + 0.5) * sc - 0.5,
+                                                           ((shape[0] - 1) / 2 - oy + 0.5) * sc - 0.5)) if wcs is not None and shape \
         else (proj["ra"], proj["dec"])
     if ra is None or dec is None:
         return {"project": pid, "nights": 0, "reason": "Himmelsposition unbekannt"}

@@ -656,7 +656,8 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
     if not ai.get("bge"):
         log("Hintergrundgradient entfernen")
         img = remove_gradient(img, int(p["gradient_degree"]), edge_exclude=EDGE_EXCLUDE)
-        img = remove_edge_glow(img)                  # steiles Randglühen, das das Polynom nicht erfasst
+        if not p.get("_mosaic"):                     # Mosaik: Bildränder sind keine Sensorränder (Glühen je Aufnahme abgezogen)
+            img = remove_edge_glow(img)              # steiles Randglühen, das das Polynom nicht erfasst
         img = remove_gradient(img, 2)                # Restneigung nach der Randkorrektur
     img, trimmed = (img, [0, 0, 0, 0]) if crop else trim_bad_edges(img)
     stats["crop"] = [y0 + trimmed[0], y1 - trimmed[1], x0 + trimmed[2], x1 - trimmed[3]]

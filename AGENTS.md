@@ -19,7 +19,7 @@ Stack: Python 3.12+ · numpy/scipy/astropy · FastAPI + uvicorn · SQLite · Van
 ## Wegweiser (Thema → Datei)
 | Thema | Datei |
 |---|---|
-| Bilder: Scan, Analyse, Auswahl, Kalibrierung, Sensorfehler, Stack-Reparatur (`stackfix`), Stacking, Performance/GPU, Satellitenspuren, Verzerrungskorrektur, Kanäle, Sensorglühen, Stacking-Stufen, Live-Ansicht | `docs/entwicklung/bilder-stacken.md` |
+| Bilder: Scan, Analyse, Auswahl, Kalibrierung, Sensorfehler, Stack-Reparatur (`stackfix`), Stacking, Performance/GPU, Satellitenspuren, Verzerrungskorrektur, Kanäle, Sensorglühen, Stacking-Stufen, Live-Ansicht, Mosaike | `docs/entwicklung/bilder-stacken.md` |
 | Bilder: Develop Engine, Bearbeitung (`processing`), Sternentrennung/GHS, Gaia-Farbkalibrierung, StarNet, GraXpert, Stellina-/M57-Vergleiche, Farbverlauf, Tutor, KI-Prüfer, Ausgabe | `docs/entwicklung/bilder-entwickeln.md` |
 | Speicher/Upload-Löschen, volles Laufwerk, Aufräumen, Hauptordner-Import, Plate-Solving, Daten & Konfiguration (Env), Server/Engine/REST, gzip | `docs/entwicklung/daten-server.md` |
 | Installation, Starter, Assistent, Komponenten (ASTAP, GraXpert, GPU, SkyTrace-Engine), Prüfsummen, Infobereich, Paket/Inno/Sandbox, Messwerte | `docs/entwicklung/installation.md` |
@@ -180,7 +180,7 @@ Tests und Beispiele nutzen erfundene Orte/Pfade; Screenshots nur mit maskierten 
   Frame-IDs hängen am Pfad relativ zum Eingangsordner – bleibt die Struktur unter `input/` gleich, werden Dateien nicht neu eingelesen.
 
 ## Grenzen / mögliche nächste Schritte
-Keine Mosaike (Stackfläche = Referenzbild), kein echtes Drizzle (2× interpoliert), keine Planeten-/Mond-Modi (Kometenmodus seit 0.22.0, nur ein Band), kleiner eingebauter Katalog
+Mosaike nur aus Aufnahmen mit gemeinsamen Sternen zur Referenz und mit fester Leinwand nach dem ersten Stack (`mosaic.py`, `bilder-stacken.md`), kein echtes Drizzle (2× interpoliert), keine Planeten-/Mond-Modi (Kometenmodus seit 0.22.0, nur ein Band), kleiner eingebauter Katalog
 (großer nur mit ASTAP-`deep_sky.csv`), Dockerfile (ASTAP-Download, SkyTrace-Engine per `SKYTRACE=1`) noch nicht real gebaut/getestet, kurze Spuren (< ~120 px) nur per Clipping,
 GraXpert/StarNet nicht im Docker-Image, Verzerrungskorrektur nur Polynom 2. Ordnung (Messung an echten Stellina-Daten
 offen), GPU nur optional per OpenCL für Registrierung/Stacking (`gpu.py`; Entwicklung, Docker und die SkyTrace-Engine rechnen auf der CPU),

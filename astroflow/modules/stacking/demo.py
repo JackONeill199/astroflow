@@ -336,3 +336,38 @@ def generate_distortion(out: Path, n_lights=24, per_seg=4, size=(1024, 1536), k=
                         RA=250.423, DEC=36.461, **{"DATE-OBS": (t0 + dt.timedelta(seconds=30 * i)).isoformat()}))
         truth["shift"].append(shift.tolist())
     return out, truth
+
+
+def generate_mosaic(out: Path, grid=(2, 2), step=(0.5, 0.5), per_tile=5, seed=13, jitter=3.0, exptime=10.0,
+                    obj="NGC 2244") -> Path:
+    """Mosaik wie der Stellina-Mosaikmodus: Raster aus grid = (Spalten, Zeilen) Kacheln im Abstand step (Anteil von
+    Bildbreite/-höhe), je Kachel `per_tile` Aufnahmen (abwechselnd, wie das Teleskop die Positionen wiederholt), dazu
+    kleines Zittern. Ein Nebel liegt außermittig (Kacheln mit viel/wenig Nebel: der Median-Hintergrund unterscheidet
+    sich), der Himmelshintergrund schwankt je Aufnahme und hat einen Verlauf im Bildfeld. Nebel und Sterne sind
+    Bayer-RGGB wie bei generate()."""
+    rng = np.random.default_rng(seed)
+    out = Path(out)
+    d = out / "lights"
+    d.mkdir(parents=True, exist_ok=True)
+    nx, ny = grid
+    sx, sy = step[0] * W, step[1] * H
+    size = (int(H + sy * (ny - 1) + 160), int(W + sx * (nx - 1) + 160))
+    sh, sw = size
+    n = int(450 * sh * sw / (620 * 800))
+    stars = np.column_stack([rng.uniform(0, sw, n), rng.uniform(0, sh, n), 10 ** rng.uniform(2.9, 4.6, n), rng.uniform(0, 1, n)])
+    yy, xx = np.mgrid[0:sh, 0:sw].astype(np.float32)
+    neb = 120 * np.exp(-(((xx - 0.7 * sw) / (0.22 * sw)) ** 2 + ((yy - 0.35 * sh) / (0.25 * sh)) ** 2))
+    neb = neb * (0.7 + 0.3 * ndi.gaussian_filter(rng.normal(size=size), 8) / 0.05).clip(0.3, 1.6)
+    ext = np.stack([neb * 1.3, neb * 0.6, neb * 0.5]).astype(np.float32)
+    # Kachelmitten relativ zur Himmelsmitte
+    offs = [((i - (nx - 1) / 2) * sx, (j - (ny - 1) / 2) * sy) for j in range(ny) for i in range(nx)]
+    hdr = dict(INSTRUME="DemoScope", BAYERPAT="RGGB", EXPTIME=exptime, GAIN=80.0, OBJECT=obj, RA=97.98, DEC=4.94)
+    t0 = dt.datetime(2026, 12, 27, 21, 0, 0)
+    for i in range(per_tile * len(offs)):
+        o = np.array(offs[i % len(offs)]) + rng.normal(0, jitter, 2)
+        img = _frame(rng, stars, ext, 0.0, o, rng.normal(3.4, 0.15))
+        sky = rng.uniform(150, 260) + 40 * (xx[:H, :W] / W)               # Himmel je Aufnahme anders, Verlauf im Bildfeld
+        raw = _mosaic(img) + sky + rng.normal(0, 12, (H, W))
+        write_fits(d / f"Light_{obj.replace(' ', '')}_{i:03d}.fit", np.clip(raw, 0, 65535).astype(np.uint16),
+                   dict(hdr, IMAGETYP="Light", **{"DATE-OBS": (t0 + dt.timedelta(seconds=30 * i)).isoformat()}))
+    return out
