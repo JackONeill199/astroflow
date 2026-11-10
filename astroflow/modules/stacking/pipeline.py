@@ -1095,7 +1095,9 @@ class Pipeline:
             mean, gx = graxpert.apply(mean, cov, gmode, float(params.get("ai_denoise", graxpert.DEFAULT_STRENGTH)),
                                       self.s.work_dir / f"p{project_id}" / "graxpert", exe,
                                       log=lambda m: prog(0.05, "Bearbeitung", m), preview=view,
-                                      tag=f"hotfix:{hotfix['key']}" if hotfix and hotfix.get("n") else "")
+                                      tag=" ".join(t for t in (f"hotfix:{hotfix['key']}" if hotfix and hotfix.get("n") else "",
+                                                               # Mosaik: Abdeckung (Lückenfüllung cov ≤ 0,5) hängt an der Mindesttiefe
+                                                               f"mosaic:{mos_info['min_depth']}" if mos_info else "") if t))
             params["_ai"] = {k: v for k, v in gx.items() if k in ("bge", "denoise")}
         if mean.shape[0] == 3 and not narrow and params.get("color_calibration", True) and "wb_gains" not in user:
             pcc = self._photometric(proj, states, mean, cov, lambda m: prog(0.1, "Farbkalibrierung", m))

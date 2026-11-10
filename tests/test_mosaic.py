@@ -215,3 +215,21 @@ def test_ordinary_stack_unchanged_by_auto(tmp_path_factory):
         assert "mosaic" not in st.meta
         out[m] = st.result()[0]
     assert np.array_equal(out["auto"], out["off"])
+
+
+def test_graxpert_cache_follows_mosaic_crop(tmp_path, grid, monkeypatch):
+    """GraXpert füllt Abdeckung ≤ 0,5 vorher mit Himmel – der Cache muss den Mosaik-Ausschnitt kennen (Review PR #64)."""
+    from astroflow.modules.stacking import graxpert
+    s, db, pl, pid = _pipeline(tmp_path, grid)
+    pl.stack(pid)
+    tags = []
+
+    def fake(mean, cov, mode, strength, cache_dir, exe, log=None, preview=None, tag="", **kw):
+        tags.append(tag)
+        return mean, {"bge": True}
+    monkeypatch.setattr(graxpert, "graxpert_path", lambda: "graxpert-attrappe")
+    monkeypatch.setattr(graxpert, "mode_for", lambda v: "bge")
+    monkeypatch.setattr(graxpert, "apply", fake)
+    pl.develop(pid)
+    pl.develop(pid, extra={"mosaic_crop": "compact"})
+    assert len(tags) == 2 and tags[0] != tags[1] and all("mosaic:" in t for t in tags)
