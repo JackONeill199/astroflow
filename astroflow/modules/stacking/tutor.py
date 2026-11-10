@@ -20,7 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
-TUTOR_VERSION = 2
+TUTOR_VERSION = 3                  # 3 (11.11.2026): Belichtungsempfehlung exposure_more + recommendation
 MODES = ("einsteiger", "experte")
 WEATHER_URL = "https://archive-api.open-meteo.com/v1/archive"
 WEATHER_VARS = ("temperature_2m", "relative_humidity_2m", "dew_point_2m", "cloud_cover", "wind_speed_10m", "wind_gusts_10m")
