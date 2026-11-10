@@ -110,3 +110,17 @@ def test_black_clip_widens_toe_instead_of_lifting_sky():
     soft = processing.darken_background(img, 0.03, toe=2.5)
     assert (soft < 0.004).mean() < (hard < 0.004).mean()
     assert abs(np.median(soft) - np.median(hard)) < 0.01
+
+
+def test_graxpert_preferred_cpu_denoise_only_as_fallback():
+    """Reihenfolge (Nutzerentscheidung 10.11.2026): Lief das KI-Entrauschen von GraXpert, kein Wavelet-Entrauschen dazu;
+    ohne GraXpert (oder wenn nur der Hintergrund lief bzw. das Entrauschen scheiterte) greift der CPU-Weg."""
+    from astroflow.modules.stacking import objects
+    img, _, _ = _field(seed=4, H=240, W=360)
+    cov = np.ones(img.shape[1:], np.float32)
+    p = {**objects.profile_for("galaxy"), "star_separation": "off"}
+    _, st_gx = processing.process(img, cov, {**p, "_ai": {"bge": True, "denoise": 0.5}})
+    _, st_bge = processing.process(img, cov, {**p, "_ai": {"bge": True}})
+    _, st_cpu = processing.process(img, cov, p)
+    assert "denoise_cpu" not in st_gx
+    assert st_bge.get("denoise_cpu") == 0.5 and st_cpu.get("denoise_cpu") == 0.5

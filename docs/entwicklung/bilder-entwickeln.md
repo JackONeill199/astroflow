@@ -98,6 +98,9 @@ Schritte 11–13 (Speicher, volles Laufwerk, Aufräumen): `daten-server.md`.
      Aufnahmen abdeckt, haben einen anderen Himmelswert – die „Rahmen“-Stufe bei Stellina; Randbänder (15 %) mit symmetrischer Auswahl
      (dort ist ein Anstieg Randglühen). Danach `remove_edge_glow` und ein zweiter Durchgang Grad 2. Grenze: gerade
      Stufen mitten im Bild von Nächten mit anderem Ausschnitt (NGC 7023 links) bleiben – das wäre ein Stacking-Thema (Himmel je Nacht angleichen).
+   - **Reihenfolge (Nutzerentscheidung 10.11.2026): GraXpert bevorzugt, CPU-Weg als Rückfall.** Ist GraXpert installiert und läuft
+     (auch ohne GPU), bleibt es bei Hintergrund + KI-Entrauschen wie bisher; `denoise_multiscale` greift nur, wenn kein KI-Entrauschen
+     lief (nicht installiert, abgeschaltet, Fehler, Modus nur „bge“). Kein eigener „ohne GPU → CPU“-Zweig.
    - Entrauschen `processing.denoise_multiscale` (statt `denoise_linear`, Stärke `cpu_denoise`, Standard = `ai_denoise` bzw. 0,5):
      à-trous 5 Ebenen auf L, Farbe getrennt bis 32 px mit höheren Schwellen; Rauschen je Ebene am echten Himmel gemessen
      (`dark_sky_mask`), örtlich nur über die Abdeckung skaliert (eine Anhebung mit der Helligkeit machte Galaxienarme weich – M66);
