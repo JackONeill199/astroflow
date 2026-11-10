@@ -1051,6 +1051,7 @@ class Pipeline:
                                                      lambda m: prog(0.02, "Kometenmodus", m))
         if view:
             view(mean)
+        raw_mean = mean                                 # unbearbeiteter Stack für die lineare FITS (vor GraXpert)
         gmode = graxpert.mode_for(opt.get("graxpert"))
         if is_comet:                                    # KI-Hintergrund könnte den schwachen Schweif abtragen
             gmode = {"bge": "off", "all": "denoise"}.get(gmode, gmode)
@@ -1060,8 +1061,9 @@ class Pipeline:
             mean, gx = graxpert.apply(mean, cov, gmode, float(params.get("ai_denoise", graxpert.DEFAULT_STRENGTH)),
                                       self.s.work_dir / f"p{project_id}" / "graxpert", exe,
                                       log=lambda m: prog(0.05, "Bearbeitung", m), preview=view,
-                                      tag=f"hotfix:{hotfix['key']}" if hotfix and hotfix.get("n") else "")
-            params["_ai"] = {k: v for k, v in gx.items() if k in ("bge", "denoise")}
+                                      tag=f"hotfix:{hotfix['key']}" if hotfix and hotfix.get("n") else "",
+                                      smoothing=float(params.get("bge_smoothing", graxpert.DEFAULT_SMOOTHING)))
+            params["_ai"] = {k: v for k, v in gx.items() if k in ("bge", "denoise", "smoothing")}
         if mean.shape[0] == 3 and not narrow and params.get("color_calibration", True) and "wb_gains" not in user:
             pcc = self._photometric(proj, states, mean, cov, lambda m: prog(0.1, "Farbkalibrierung", m))
             if pcc:
@@ -1111,7 +1113,8 @@ class Pipeline:
         prog(0.85, "Speichern")
         if run:
             live.optional(run.picture, rgb, linear=False, force=True)
-        rid = self._save(proj, rgb, mean, cov, stats, review_hist, len(stacked), exposure, params)
+        rid = self._save(proj, rgb, raw_mean, cov, stats, review_hist, len(stacked), exposure, params,
+                         ai_mean=mean if (gx.get("bge") or gx.get("denoise")) else None)
         if singles:
             try:
                 self._save_singles(rid, singles, params, stats, narrow, palette, lambda m: prog(0.86, "Speichern", m))
@@ -1478,7 +1481,9 @@ class Pipeline:
         return out
 
     # ----------------------------------------------------------------- save #
-    def _save(self, proj, rgb, mean, cov, stats, review, n, exposure, params) -> int:
+    def _save(self, proj, rgb, mean, cov, stats, review, n, exposure, params, ai_mean=None) -> int:
+        """mean: unbearbeiteter linearer Stack (`_linear.fits`, für Siril/PixInsight); ai_mean: GraXpert-Ergebnis
+        zusätzlich als `_linear_graxpert.fits` (bis 0.55 stand nur dieses unter `_linear.fits`)."""
         out = self.s.output_dir / slug(proj["name"])
         out.mkdir(parents=True, exist_ok=True)
         base = f"{datetime.now():%Y%m%d-%H%M%S}_{n}f"
@@ -1505,6 +1510,10 @@ class Pipeline:
         files["thumb"] = str(out / f"{base}_thumb.jpg")
         write_fits(out / f"{base}_linear.fits", mean, {"OBJECT": proj["name"][:60], "NFRAMES": n, "EXPTOTAL": exposure})
         files["fits"] = str(out / f"{base}_linear.fits")
+        if ai_mean is not None:
+            write_fits(out / f"{base}_linear_graxpert.fits", ai_mean,
+                       {"OBJECT": proj["name"][:60], "NFRAMES": n, "EXPTOTAL": exposure, "COMMENT": "AstroFlow: GraXpert-bearbeitet"})
+            files["fits_graxpert"] = str(out / f"{base}_linear_graxpert.fits")
         stats["params"] = {k: (round(v, 3) if isinstance(v, float) else v) for k, v in params.items()}
         return self.db.x("INSERT INTO results(project_id,created,n_frames,exposure,files,stats,review) VALUES(?,?,?,?,?,?,?)",
                          (proj["id"], time.time(), n, exposure, json.dumps(files), json.dumps(stats), json.dumps(review)))

@@ -22,7 +22,10 @@ from .processing import crop_to_coverage, luminance
 from .quality import noise_sigma
 
 QC_ROUNDS = 3
-QC_VERSION = 2                 # Stand von assess(); ältere Bewertungen prüft der Tutor am gespeicherten Bild nach
+QC_VERSION = 3                 # Stand von assess(); ältere Bewertungen prüft der Tutor am gespeicherten Bild nach
+# 3 (10.11.2026): Himmel = dunkelste SKY_PCT % (geglättet, ohne Sterne) statt dunkle Bildhälfte – in Staub-/Nebelfeldern
+#   war die dunkle Hälfte Staub; sichtbarer Staub senkte den Score (NGC 7023: 10 → 8) und die Korrekturen drehten ihn zurück
+SKY_PCT = 15
 PREVIEW_SIDE = 1400
 
 # Zielbereiche der Qualitätskontrolle (Anzeigewerte 0..1 nach der Entwicklung)
@@ -189,7 +192,10 @@ def assess(rgb: np.ndarray, mono: bool = False, neutral_sky: bool = True) -> dic
     f = max(1, int(np.ceil(max(rgb.shape[1:]) / 1200)))
     img = _bin(rgb.astype(np.float32), f)
     L = luminance(img)
-    sky = L <= np.percentile(L, 50)
+    half = L <= np.percentile(L, 50)                  # Kachelverläufe brauchen Himmel in vielen Kacheln
+    sky = processing.dark_sky_mask(L, SKY_PCT, smooth=4.0)
+    if sky.sum() < 500:
+        sky = L <= np.percentile(L, SKY_PCT)
     bg = float(np.median(L[sky]))
     # sichtbares Rauschen: feine + fleckige Struktur (Hochpass bis ~6 px) nur auf Himmelspixeln
     hp = L - ndi.gaussian_filter(L, 3.0)
@@ -209,11 +215,11 @@ def assess(rgb: np.ndarray, mono: bool = False, neutral_sky: bool = True) -> dic
     for i in range(6):
         for j in range(6):
             t = L[i * h // 6 : (i + 1) * h // 6, j * w // 6 : (j + 1) * w // 6]
-            s = sky[i * h // 6 : (i + 1) * h // 6, j * w // 6 : (j + 1) * w // 6]
+            s = half[i * h // 6 : (i + 1) * h // 6, j * w // 6 : (j + 1) * w // 6]
             if s.mean() > 0.2:
                 tiles.append(np.median(t[s]))
     gradient = float(np.percentile(tiles, 95) - np.percentile(tiles, 5)) if len(tiles) >= 6 else 0.0
-    cg = color_gradient(img, L, sky) if not mono else None
+    cg = color_gradient(img, L, half) if not mono else None
     black = float((L < 0.004).mean())
     white = float((rgb.max(0) >= 0.999).mean())
     core = burnt_core(L)

@@ -27,6 +27,9 @@ EXE_NAMES = ("GraXpert.exe", "GraXpert-win64.exe", "graxpert.exe", "GraXpert", "
 TIMEOUT = 1800                       # Entrauschen ohne GPU dauert bei 6 MP einige Minuten
 MODES = ("off", "bge", "denoise", "all")
 DEFAULT_STRENGTH = 0.5               # Entrauschstärke, falls das Profil keinen Wert `ai_denoise` setzt
+# Glättung des KI-Hintergrunds, falls das Profil keinen Wert `bge_smoothing` setzt. 0,1 folgt auch 100–500 px großen
+# Strukturen – bei Staub-/Reflexionsnebeln trug das die Hälfte des echten Staubs ab (NGC 7023, Messung 10.11.2026).
+DEFAULT_SMOOTHING = 0.1
 
 
 @dataclass
@@ -117,9 +120,11 @@ def _run(exe: str, img: np.ndarray, cmd: str, args: list[str], timeout: int = TI
     return y
 
 
-def _cache_key(mean: np.ndarray, mode: str, strength: float, gpu: bool, tag: str = "") -> str:
+def _cache_key(mean: np.ndarray, mode: str, strength: float, gpu: bool, tag: str = "", smoothing: float = DEFAULT_SMOOTHING) -> str:
     h = hashlib.sha1(np.ascontiguousarray(mean[:, ::7, ::7]).tobytes())
     h.update(json.dumps([list(mean.shape), mode, round(strength, 3), gpu, GRAXPERT_VERSION]).encode())
+    if round(smoothing, 3) != DEFAULT_SMOOTHING:     # alter Schlüssel bleibt für den Standard gültig (Cache bleibt)
+        h.update(f"smoothing:{smoothing:.3f}".encode())
     if tag:                                          # Vorbearbeitung, die das ausgedünnte Raster verfehlen kann (stackfix)
         h.update(tag.encode())
     return h.hexdigest()[:16]
@@ -129,7 +134,8 @@ GRAXPERT_VERSION = 1                 # erhöhen, wenn sich die Vor-/Nachbereitun
 
 
 def apply(mean: np.ndarray, cov: np.ndarray, mode: str, strength: float = 0.5, cache_dir: Path | None = None,
-          exe: str | None = None, log=lambda m: None, preview=None, tag: str = "") -> tuple[np.ndarray, dict]:
+          exe: str | None = None, log=lambda m: None, preview=None, tag: str = "",
+          smoothing: float = DEFAULT_SMOOTHING) -> tuple[np.ndarray, dict]:
     """Linearen Stack (C,H,W) mit GraXpert bearbeiten. Gibt (Stack, Info). Info leer = nichts gemacht.
     Nicht abgedeckte Ränder (cov ≤ 0,5) werden vorher mit dem Himmelswert gefüllt, damit die KI keine
     harten Kanten als Hintergrund deutet, und nachher wieder eingesetzt."""
@@ -137,7 +143,8 @@ def apply(mean: np.ndarray, cov: np.ndarray, mode: str, strength: float = 0.5, c
     if mode == "off" or not exe:
         return mean, {}
     gpu = bool(GRAXPERT.gpu)
-    key = _cache_key(mean, mode, strength, gpu, tag)
+    smoothing = float(np.clip(smoothing, 0.0, 1.0))
+    key = _cache_key(mean, mode, strength, gpu, tag, smoothing)
     if cache_dir is not None:
         f = cache_dir / f"{key}.npy"
         meta = cache_dir / f"{key}.json"
@@ -159,8 +166,9 @@ def apply(mean: np.ndarray, cov: np.ndarray, mode: str, strength: float = 0.5, c
     try:
         if mode in ("bge", "all"):
             log("Hintergrund entfernen (GraXpert-KI)")
-            x = _run(exe, x, "background-extraction", ["-correction", "Subtraction", "-smoothing", "0.1", *gpu_arg])
+            x = _run(exe, x, "background-extraction", ["-correction", "Subtraction", "-smoothing", f"{smoothing:g}", *gpu_arg])
             info["bge"] = True
+            info["smoothing"] = round(smoothing, 2)
             if preview:
                 from .live import optional, sample
                 optional(preview, sample(x) * scale + lo)

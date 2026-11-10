@@ -1125,7 +1125,7 @@ def build_router(eng: Engine) -> APIRouter:
         files = json.loads(x["files"]) if x else {}
         if kind not in files or not Path(files[kind]).exists():
             raise HTTPException(404)
-        return FileResponse(files[kind], filename=Path(files[kind]).name if kind in ("tif", "fits", "png", "original") else None)
+        return FileResponse(files[kind], filename=Path(files[kind]).name if kind in ("tif", "fits", "fits_graxpert", "png", "original") else None)
 
     @r.get("/starnet")
     def get_starnet():

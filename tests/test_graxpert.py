@@ -21,7 +21,10 @@ if a == ["-v"]:
 src = Path(a[0])
 cmd = a[a.index("-cmd") + 1]; out = a[a.index("-output") + 1]
 with open(src.with_name("calls.txt"), "a") as f: f.write(cmd + "\n")
-d = fits.getdata(src).astype(np.float32)
+import os
+if "-smoothing" in a and os.environ.get("GX_FAKE_LOG"):
+    with open(os.environ["GX_FAKE_LOG"], "a") as f: f.write(a[a.index("-smoothing") + 1] + "\n")
+d =fits.getdata(src).astype(np.float32)
 if cmd == "background-extraction":
     hw = d.shape[-2:]
     yy, xx = np.mgrid[0:hw[0], 0:hw[1]]
@@ -49,12 +52,26 @@ def test_apply_removes_gradient_keeps_holes_and_caches(tmp_path):
     cov[:, :5] = 0                                           # nicht abgedeckter Rand
     mean[:, :, :5] = 0
     out, info = graxpert.apply(mean, cov, "bge", cache_dir=tmp_path / "c", exe=exe)
-    assert info == {"mode": "bge", "bge": True}
+    assert info == {"mode": "bge", "bge": True, "smoothing": 0.1}
     assert out.shape == mean.shape
     assert np.allclose(out[:, :, :5], 0)                     # Rand unverändert zurückgesetzt
     assert np.ptp(out[0, 10, 10:]) < 0.5 * np.ptp(mean[0, 10, 10:])   # Verlauf großteils weg
     out2, info2 = graxpert.apply(mean, cov, "bge", cache_dir=tmp_path / "c", exe=exe)
     assert info2.get("cache") and np.array_equal(out, out2)
+
+
+def test_smoothing_reaches_graxpert_and_cache_key(tmp_path, monkeypatch):
+    """Glättung je Profil (Staubnebel 1,0) wird an GraXpert übergeben und trennt den Cache; der Standard 0,1 behält den alten Schlüssel."""
+    exe = _fake(tmp_path)
+    monkeypatch.setenv("GX_FAKE_LOG", str(tmp_path / "smoothing.txt"))
+    mean = np.full((3, 40, 50), 1000, np.float32) + np.random.default_rng(1).normal(0, 5, (3, 40, 50)).astype(np.float32)
+    cov = np.ones((40, 50), np.float32)
+    _, i1 = graxpert.apply(mean, cov, "bge", cache_dir=tmp_path / "c", exe=exe, smoothing=1.0)
+    _, i2 = graxpert.apply(mean, cov, "bge", cache_dir=tmp_path / "c", exe=exe)
+    assert i1["smoothing"] == 1.0 and i2["smoothing"] == 0.1 and not i2.get("cache")
+    assert (tmp_path / "smoothing.txt").read_text().split() == ["1", "0.1"]
+    assert graxpert._cache_key(mean, "bge", 0.5, True) == graxpert._cache_key(mean, "bge", 0.5, True, smoothing=0.1)
+    assert graxpert._cache_key(mean, "bge", 0.5, True) != graxpert._cache_key(mean, "bge", 0.5, True, smoothing=1.0)
 
 
 def test_apply_failure_falls_back(tmp_path):
@@ -84,6 +101,12 @@ def test_pipeline_uses_graxpert_once_and_skips_polynomial(tmp_path, monkeypatch)
     assert st["graxpert"]["bge"] and "denoise" not in st["graxpert"]
     assert [c for c, _ in calls] == ["background-extraction"]        # einmal, nicht je QC-Runde
     assert ["-gpu", "false"] == calls[0][1][-2:]
+    # lineare FITS = unbearbeiteter Stack (für Siril/PixInsight), GraXpert-Ergebnis zusätzlich
+    from astropy.io import fits
+    files = json.loads(db.one("SELECT files FROM results WHERE id=?", (rid,))["files"])
+    raw, gx = fits.getdata(files["fits"]).astype(np.float32), fits.getdata(files["fits_graxpert"]).astype(np.float32)
+    assert raw.shape == gx.shape and not np.allclose(raw, gx)
     rid = pl.process(pid, {"mode": "develop", "graxpert": "off"})
     st = json.loads(db.one("SELECT stats FROM results WHERE id=?", (rid,))["stats"])
     assert "graxpert" not in st and len(calls) == 1
+    assert "fits_graxpert" not in json.loads(db.one("SELECT files FROM results WHERE id=?", (rid,))["files"])

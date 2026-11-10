@@ -233,6 +233,12 @@ def nearest_extended(ra: float, dec: float, radius_deg: float = 0.3, min_size: f
 # white_pct       : Weißpunkt als Perzentil (Standard 99,9; die Kontrolle hebt ihn bei ausgebranntem Kern)
 # ai_denoise : Stärke des GraXpert-Entrauschens 0..1 (Standard graxpert.DEFAULT_STRENGTH 0,5; nur wenn installiert)
 # linear_denoise_max: Obergrenze für das automatische lineare Entrauschen (Standard 1,0)
+# bge_smoothing : Glättung des GraXpert-KI-Hintergrunds 0..1 (Standard graxpert.DEFAULT_SMOOTHING 0,1). Reflexions-/Staubnebel 1,0:
+#                 mit 0,1 nahm GraXpert bei NGC 7023 die Hälfte des echten Staubs mit (Dunkelwolken = sternarme Zonen), 1,0 lässt
+#                 ihn stehen; danach läuft remove_edge_glow (processing.process ab Glättung 0,5)
+# background    : Hintergrund ohne GraXpert: „sky“ (Standard, processing.sky_background) oder „poly“ (Verfahren bis 0.55)
+# cpu_denoise   : lineares Wavelet-Entrauschen ohne GraXpert (processing.denoise_multiscale), Standard = ai_denoise bzw. 0,5
+# grade_large   : zusätzlicher Lokalkontrast der Ebenen 64/128 px in processing.grade (Staub, Dunkelwolken), Standard 0
 PROFILES: dict[str, dict] = {
     # denoise/chroma_denoise seit 2026-10-30 etwa halbiert (vorher 0,4–0,6 / 1,5–2,5): gleiche Objekthelligkeit, 15–35 % mehr
     # schwache Sterne, feines Korn statt glattem Himmel (wie Stellina) – gemessen an 10 Projekten, keines wurde dunkler
@@ -242,7 +248,9 @@ PROFILES: dict[str, dict] = {
     "generic":      dict(gradient_degree=3, target_bg=0.08, asinh=30, denoise=0.3, chroma_denoise=1.5, saturation=1.35, contrast=0.25, sharpen=0.3, deconv=0, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=0.85),
     "galaxy":       dict(gradient_degree=2, target_bg=0.07, asinh=120, denoise=0.3, chroma_denoise=1.5, saturation=1.30, contrast=0.35, sharpen=0.4, deconv=8, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=0.85),
     "emission":     dict(gradient_degree=3, target_bg=0.08, asinh=40, denoise=0.3, chroma_denoise=1.5, saturation=1.50, contrast=0.35, sharpen=0.3, deconv=0, star_reduction=0.35, scnr=0.4, bg_dark=0.03, star_separation="starnet", star_brightness=0.85, linear_denoise_max=0.3, grade=1.0, vibrance=0.5),
-    "reflection":   dict(gradient_degree=3, target_bg=0.08, asinh=30, denoise=0.3, chroma_denoise=1.5, saturation=1.40, contrast=0.3, sharpen=0.25, deconv=0, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="starnet", star_brightness=0.85, grade=1.0, vibrance=0.5),
+    # reflection (seit 10.11.2026, Profi-Recherche NGC 7023): Staub liegt knapp über dem Himmel – heller Hintergrund
+    # (target_bg 0,10, Schwarzpunkt 0,045 statt 0,03) und großskaliger Lokalkontrast 64/128 px (grade_large), GraXpert-Glättung 1,0
+    "reflection":   dict(bge_smoothing=1.0, gradient_degree=3, target_bg=0.10, asinh=30, denoise=0.3, chroma_denoise=1.5, saturation=1.40, contrast=0.3, sharpen=0.25, deconv=0, star_reduction=0.0, scnr=0.5, bg_dark=0.045, star_separation="starnet", star_brightness=0.85, grade=1.0, vibrance=0.5, grade_large=1.0),
     "snr":          dict(gradient_degree=3, target_bg=0.08, asinh=40, denoise=0.3, chroma_denoise=1.5, saturation=1.50, contrast=0.35, sharpen=0.3, deconv=0, star_reduction=0.3, scnr=0.4, bg_dark=0.03, star_separation="starnet", star_brightness=0.85, grade=1.0, vibrance=0.5),
     # planetary: kleines, helles Objekt im Sternfeld – Weißpunkt höher und kein lineares Entrauschen (Ring brennt sonst
     # aus, Sterne blähen auf), wenig glätten und höheres target_bg: Korn und schwache Sterne bleiben (M57 gegen Stellina, 2026-10-30)
