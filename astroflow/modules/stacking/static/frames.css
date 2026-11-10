@@ -45,6 +45,7 @@
 .fq-raw { fill: none; stroke: var(--acc); stroke-width: 1; opacity: .28; animation: chart-reveal 1s var(--ease) both }
 .fq-line { fill: none; stroke: var(--acc); stroke-width: 1.75; stroke-linejoin: round; animation: chart-reveal 1s var(--ease) both }
 .fq-rej { fill: var(--bad); stroke: var(--surface); stroke-width: 0.75; pointer-events: none }
+.fq-one { fill: var(--acc); pointer-events: none }
 .fq-hit { fill: transparent }
 .fq-hit:hover { fill: color-mix(in srgb, var(--fg) 10%, transparent) }
 #fchart { min-height: 9rem }

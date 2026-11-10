@@ -832,7 +832,7 @@ async function projectView(el, id, tab = 'bild') {
       }
       // je Nacht eine Teillinie; bei vielen Aufnahmen gleitender Median als Linie, Einzelwerte blass dahinter
       const w = Math.floor(n / 240) * 2 + 1, half = w >> 1;
-      let p = '', raw = '';
+      let p = '', raw = '', one = '';
       nights.forEach(nt => {
         const pts = [];
         for (let i = nt.a; i <= nt.b; i++) { const v = tr.val(d[i]); if (v != null && !rej(d[i])) pts.push([x(i), v]); }
@@ -841,8 +841,9 @@ async function projectView(el, id, tab = 'bild') {
           p += `${j ? 'L' : 'M'}${xi.toFixed(1)},${Y(med).toFixed(1)}`;
           if (w >= 3) raw += `${j ? 'L' : 'M'}${xi.toFixed(1)},${Y(v).toFixed(1)}`;
         });
+        if (pts.length === 1) one += `<circle class="fq-one" cx="${pts[0][0].toFixed(1)}" cy="${Y(pts[0][1]).toFixed(1)}" r="2.2"/>`;   // ein Wert allein ergäbe keinen Strich
       });
-      g += `${raw ? `<path class="fq-raw" d="${raw}"/>` : ''}<path class="fq-line" d="${p}"/><text class="fq-t" x="${L - 5}" y="${T + 9}" text-anchor="end">${tr.name}<title>${esc(tr.tip)}</title></text>`;
+      g += `${raw ? `<path class="fq-raw" d="${raw}"/>` : ''}<path class="fq-line" d="${p}"/>${one}<text class="fq-t" x="${L - 5}" y="${T + 9}" text-anchor="end">${tr.name}<title>${esc(tr.tip)}</title></text>`;
     });
     // Treffer je Aufnahme (Tooltip, Klick → Popup), darüber die verworfenen als Punkte
     const bw = PW / n;
