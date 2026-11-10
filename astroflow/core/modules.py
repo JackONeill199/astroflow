@@ -9,6 +9,7 @@ und über Ereignisse (`ctx.on` / `ctx.emit`):
                                                   (hochgeladene werden direkt danach gelöscht).
   stacking.imported(project_id, result_id, name) – fertiges JPG/PNG/TIFF in die Galerie importiert (Sage, kein SkyTrace).
   stacking.asteroids(project_id, result_id, count) – Asteroiden in einem Bild nachgewiesen (Sage: Erfolge prüfen).
+  sites.changed() – gemeinsame Ortsliste geändert (Kern: SiteBook.on_change; Bilder rechnet Nächte mit anderem Ort neu).
 """
 from __future__ import annotations
 

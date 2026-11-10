@@ -45,6 +45,18 @@
   `site_info`), SkyTrace `resolve_site` (s. `docs/entwicklung/skytrace-standorte.md`). UI: `static/sites.js|css` (Einstellungen → Standorte, Abschnitt des Kerns
   in `settingsView`), `tonight.js` „Heute bin ich in …“, die Tutor-Einstellung verweist nur noch auf die Liste.
 - **Datenschutz:** Orte sind privat – Tests nur mit erfundenen Orten (`tests/test_sites.py`, UI-Fixture in `conftest.py`), Screenshots maskiert.
+- **Automatisch gepflegte Einzelnächte** (10.11.2026, Nutzerwunsch „in SkyTrace zugewiesener Ort soll für die Nacht auch in Bilder gelten“):
+  `SiteBook.sync_nights(src, {Nacht: Ort}, claim)` legt Einzelnächte mit Marke `src` (+ Kurztext `why`) an, stellt sie um oder entfernt sie;
+  Einzelnächte **ohne** `src` gehören dem Nutzer und bleiben (auch beim Umstellen in der Nachtliste verliert eine Nacht ihre Marke → gehört
+  dann dem Nutzer). Orte ≤ `MERGE_M` werden wiederverwendet, neue Orte tragen `src` und verschwinden, wenn sie nirgends mehr gelten.
+  `claim` (einmal, Marke in `migrated`) übernimmt frühere Einzelnächte ohne Marke mit gleichem Ort. `resolve` liefert dann `by` (= `src`) und
+  `why` im `detail`; `/api/sites` → `nights[].fixed_by`, Einzelnächte ohne Aufnahmen erscheinen trotzdem in der Nachtliste („Ort aus SkyTrace“).
+  Quelle SkyTrace: `modules/skytrace/site_sync.py` (`docs/entwicklung/skytrace-standorte.md`).
+- **Ereignis `sites.changed`** (`SiteBook.on_change`, gesetzt in `create_app`; bei `save`, `set_night`, `absorb`, `sync_nights` mit Änderung):
+  Bilder (`stacking/site_watch.py`, 2 s gebündelt) rechnet Nächte mit anderem Ort neu – Himmelsqualität über `sky_nights.data.site_key`
+  (ID + Koordinaten + Höhe; ältere Zeilen: Orts-ID) → `SkyRunner.queue`, Gerätediagnose über `nights[].site` (ältere ohne Ort nur bei
+  automatisch gepflegter Einzelnacht) → `insights.submit("diagnose")`. Tutor: Ort steht schon im Cacheschlüssel. Keine Versionserhöhung nötig.
+  `ASTROFLOW_SKY=0`/`ASTROFLOW_DIAG=0` schalten das ab (Tests). Tests: `tests/test_ort_aus_skytrace.py`.
 
 ## Himmelsqualität (`modules/stacking/skyquality.py`, seit 0.26.0 – Wünsche 14–16 „Himmel und Standort“)
 - **Messung ohne Rohbilder** aus gespeicherten Daten: Master-Stack + `wcs.json` (bzw. `Pipeline._stack_wcs`) + Gaia mit G

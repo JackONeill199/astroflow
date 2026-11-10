@@ -2,8 +2,9 @@
 
 Gespeichert in `data/settings.json`, Abschnitt `sites`:
   {"list": [{id, name, lat, lon, alt_m, accuracy_m, note}], "default": id,
-   "periods": [{id, site_id, from: "JJJJ-MM-TT", to: "JJJJ-MM-TT"|""}], "migrated": {quelle: Zeit}}
-Ein Zeitraum mit from == to ist eine einzelne Nacht („heute bin ich in …“, Nachtliste). Nacht-Datum wie im Projekt:
+   "periods": [{id, site_id, from: "JJJJ-MM-TT", to: "JJJJ-MM-TT"|"", src?, why?}], "migrated": {quelle: Zeit}}
+Ein Zeitraum mit from == to ist eine einzelne Nacht („heute bin ich in …“, Nachtliste). `src` markiert Einzelnächte (und Orte), die ein
+Modul automatisch pflegt (`sync_nights`, z. B. SkyTrace-Ausnahmen je Beobachtung) – ohne `src` hat sie der Nutzer angelegt, sie bleiben unberührt. Nacht-Datum wie im Projekt:
 `night_of` (Mittag bis Mittag Ortszeit, nahe UTC wie bisher DATE-OBS − 12 h). Überlappen Zeiträume, gewinnt der kürzeste (der genaueste).
 
 Auflösung `site_for`: Override je Beobachtung → FITS-Kopf (OBSGEO/SITELAT …) → Zeitraum der Nacht → Standard-Ort.
@@ -264,9 +265,19 @@ def valid(site: dict | None) -> dict | None:
 def _clean_site(s: dict, sid: str | None = None) -> dict:
     s = valid(s)
     name = str(s.get("name") or "").strip()[:80] or "Standort"
-    return {"id": str(sid or s.get("id") or _new_id()), "name": name, "lat": round(s["lat"], 6), "lon": round(s["lon"], 6),
-            "alt_m": round(s["alt_m"], 1), "accuracy_m": round(s.get("accuracy_m") or DEFAULT_ACCURACY_M, 1),
-            "note": str(s.get("note") or "").strip()[:300]}
+    out = {"id": str(sid or s.get("id") or _new_id()), "name": name, "lat": round(s["lat"], 6), "lon": round(s["lon"], 6),
+           "alt_m": round(s["alt_m"], 1), "accuracy_m": round(s.get("accuracy_m") or DEFAULT_ACCURACY_M, 1),
+           "note": str(s.get("note") or "").strip()[:300]}
+    return _with_src(out, s)
+
+
+def _with_src(out: dict, raw: dict) -> dict:
+    """Herkunftsmarke automatisch gepflegter Einträge (`src`, Kurztext `why`) übernehmen."""
+    for k, n in (("src", 40), ("why", 160)):
+        v = str(raw.get(k) or "").strip()[:n]
+        if v:
+            out[k] = v
+    return out
 
 
 def _new_id() -> str:
@@ -282,7 +293,7 @@ def _clean_period(p: dict, ids: set) -> dict:
         raise ValueError("Zeitraum als gültiges Datum JJJJ-MM-TT angeben (bis darf leer sein = offen).")
     if b and b < a:
         raise ValueError("Das Ende des Zeitraums liegt vor dem Anfang.")
-    return {"id": str(p.get("id") or _new_id()), "site_id": sid, "from": a, "to": b}
+    return _with_src({"id": str(p.get("id") or _new_id()), "site_id": sid, "from": a, "to": b}, p)
 
 
 def normalize(data: dict) -> dict:
@@ -299,9 +310,12 @@ def normalize(data: dict) -> dict:
 
 
 # ---------------------------------------------------------------- Auflösung ---
-def _public(s: dict, source: str, detail: str) -> dict:
-    return {"id": s.get("id"), "name": s.get("name") or "Standort", "lat": s["lat"], "lon": s["lon"], "alt_m": s.get("alt_m", 0),
-            "accuracy_m": s.get("accuracy_m") or DEFAULT_ACCURACY_M, "source": source, "detail": detail}
+def _public(s: dict, source: str, detail: str, by: str | None = None) -> dict:
+    out = {"id": s.get("id"), "name": s.get("name") or "Standort", "lat": s["lat"], "lon": s["lon"], "alt_m": s.get("alt_m", 0),
+           "accuracy_m": s.get("accuracy_m") or DEFAULT_ACCURACY_M, "source": source, "detail": detail}
+    if by:
+        out["by"] = by                              # automatisch gepflegte Einzelnacht (z. B. "skytrace")
+    return out
 
 
 def period_for(data: dict, night: str | None) -> dict | None:
@@ -370,7 +384,8 @@ def resolve(data: dict, when=None, night: str | None = None, header=None, overri
     p = period_for(data, night)
     if p and p["site_id"] in by_id:
         span = "diese Nacht" if p["from"] == p["to"] else (f"ab {p['from']}" if not p["to"] else f"{p['from']} bis {p['to']}")
-        return _public(by_id[p["site_id"]], "period", f"Zeitraum {span}")
+        detail = f"Zeitraum {span}" + (f" · {p['why']}" if p.get("why") else "")
+        return _public(by_id[p["site_id"]], "period", detail, p.get("src"))
     d = by_id.get(data.get("default")) or (next(iter(by_id.values())) if by_id else None)
     if d:
         return _public(d, "default", "Standard-Ort")
@@ -386,6 +401,16 @@ class SiteBook:
     def __init__(self, store=None, path: Path | str | None = None):
         self.store, self.path = store, Path(path) if path else None
         self._cache: tuple[float, dict] | None = None
+        self.on_change = None          # Server: () → Ereignis `sites.changed` (Bilder rechnet betroffene Nächte neu)
+
+    def _changed(self) -> None:
+        self._cache = None
+        if self.on_change:
+            try:
+                self.on_change()
+            except Exception:
+                import traceback
+                traceback.print_exc()
 
     def cached_data(self) -> dict:
         """`data()` mit kurzem Zwischenspeicher (für viele Aufrufe von `night_of` hintereinander)."""
@@ -409,7 +434,7 @@ class SiteBook:
     def save(self, data: dict) -> dict:
         clean = normalize(data)
         self.store.update(SECTION, clean)
-        self._cache = None
+        self._changed()
         return self.data()
 
     def site_for(self, when=None, night: str | None = None, header=None, override: dict | None = None) -> dict | None:
@@ -454,7 +479,84 @@ class SiteBook:
                 d["default"] = same["id"]
         clean = normalize(d) if d["list"] else {"list": [], "default": None, "periods": []}
         self.store.update(SECTION, {**clean, "migrated": {**d["migrated"], source: int(time.time())}})
+        if added or clean.get("periods"):
+            self._changed()
         return added
+
+    # ---- automatisch gepflegte Einzelnächte ------------------------------------
+    def sync_nights(self, src: str, wanted: dict[str, dict], claim: str | None = None) -> dict:
+        """Einzelnächte eines Moduls abgleichen (z. B. SkyTrace-Ausnahmen je Beobachtung → Nacht in Bilder).
+        wanted: {Nacht: {name, lat, lon, alt_m?, accuracy_m?, note?, why?}}. Einzelnächte mit `src` werden angelegt, umgestellt
+        oder entfernt; Einzelnächte des Nutzers (ohne `src`) bleiben – außer beim einmaligen `claim` (Marke in `migrated`), der
+        frühere Übernahmen ohne Marke mit gleichem Ort (≤ MERGE_M) als eigene kennzeichnet. Orte ≤ MERGE_M werden
+        wiederverwendet, neue Orte bekommen `src` und verschwinden wieder, sobald sie nirgends mehr gelten.
+        Rückgabe {added, updated, removed, user: [Nächte des Nutzers, die Vorrang behalten]}."""
+        d = self.data()
+        do_claim = bool(claim) and claim not in d["migrated"]
+        by_id = {s["id"]: s for s in d["list"]}
+        n_sites = len(d["list"])
+        out = {"added": 0, "updated": 0, "removed": 0, "user": []}
+
+        def site_id(e: dict) -> str | None:
+            try:
+                s = valid(e)
+            except (TypeError, ValueError, KeyError):
+                return None
+            if not s:
+                return None
+            same = next((x for x in d["list"] if distance_m(x, s) <= MERGE_M), None)
+            if same is None:
+                if len(d["list"]) >= MAX_SITES:
+                    return None
+                same = _clean_site({**s, "src": src, "note": e.get("note") or "automatisch angelegt"})
+                d["list"].append(same)
+                by_id[same["id"]] = same
+            return same["id"]
+
+        keep, seen = [], set()
+        for p in d["periods"]:
+            night = p.get("from")
+            if not (night and night == p.get("to")):
+                keep.append(p)
+                continue
+            seen.add(night)
+            mine = p.get("src") == src
+            if not mine and do_claim and night in wanted and p.get("site_id") in by_id \
+                    and distance_m(by_id[p["site_id"]], wanted[night]) <= MERGE_M:
+                p, mine = {**p, "src": src}, True
+            if not mine:
+                keep.append(p)
+                if night in wanted:
+                    out["user"].append(night)
+                continue
+            sid = site_id(wanted[night]) if night in wanted else None
+            if sid is None:
+                out["removed"] += 1
+                continue
+            why = str(wanted[night].get("why") or "")[:160]
+            if sid != p.get("site_id") or why != (p.get("why") or ""):
+                out["updated"] += 1
+            keep.append({**p, "site_id": sid, "src": src, "why": why})
+        for night, e in sorted(wanted.items()):
+            if night in seen or not is_date(night):
+                continue
+            sid = site_id(e)
+            if sid:
+                keep.append({"site_id": sid, "from": night, "to": night, "src": src, "why": str(e.get("why") or "")[:160]})
+                out["added"] += 1
+        d["periods"] = keep
+        used = {p.get("site_id") for p in keep} | {d.get("default")}
+        d["list"] = [s for s in d["list"] if s.get("src") != src or s["id"] in used]
+        changed = bool(out["added"] or out["updated"] or out["removed"] or len(d["list"]) != n_sites)
+        if changed or do_claim:
+            clean = normalize(d) if d["list"] else {"list": [], "default": None, "periods": []}
+            migrated = {**d["migrated"], **({claim: int(time.time())} if do_claim else {})}
+            self.store.update(SECTION, {**clean, "migrated": migrated})
+            if changed:
+                self._changed()
+            else:
+                self._cache = None
+        return out
 
 
 def night_from_name(name: str) -> str | None:

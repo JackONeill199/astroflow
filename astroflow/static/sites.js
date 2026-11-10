@@ -9,6 +9,7 @@ const fmtDay = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}` 
 const deg = (v, pos, neg) => `${Math.abs(v).toFixed(4).replace('.', ',')}° ${v >= 0 ? pos : neg}`;
 const coords = (s) => `${deg(s.lat, 'N', 'S')} · ${deg(s.lon, 'O', 'W')}${s.alt_m ? ` · ${Math.round(s.alt_m)} m` : ''}`;
 const srcText = { override: 'Ausnahme', fits: 'aus FITS', period: 'Zeitraum', default: 'Standard' };
+const fixedBy = { skytrace: 'SkyTrace' };     // automatisch gepflegte Einzelnächte (`src`); Umstellen hier macht sie zur eigenen
 // Genauigkeit für SkyTrace einordnen: Satelliten brauchen ~200–500 m, Nachtplanung/Wetter nicht
 const accHint = (m) => m <= 300 ? ['ok', 'genau genug für Satelliten'] : m <= 1000 ? ['warn', 'Satelliten: Toleranz wird erweitert'] : ['bad', 'zu ungenau für sichere Satelliten-Zuordnung'];
 
@@ -105,7 +106,7 @@ async function sitesSettings(el) {
     if (!ns.length) return '<p class="mut sm">Noch keine Aufnahmenächte in Bildern oder SkyTrace.</p>';
     return `<div class="site-nights-filter row"><input id="nightQ" type="search" placeholder="Nacht oder Objekt suchen" aria-label="Nächte filtern" style="flex:1;min-width:0"></div>
       <ul class="site-nights">${ns.map(n => `<li data-night="${esc(n.night)}" data-text="${esc((n.night + ' ' + n.labels.join(' ')).toLowerCase())}">
-      <div class="site-night-d"><b>${fmtDay(n.night)}</b><div class="mut sm site-night-l">${esc(n.labels.slice(0, 3).join(' · '))}${n.labels.length > 3 ? ` · +${n.labels.length - 3}` : ''}</div></div>
+      <div class="site-night-d"><b>${fmtDay(n.night)}</b><div class="mut sm site-night-l">${n.fixed_by ? `<b>Ort aus ${esc(fixedBy[n.fixed_by] || n.fixed_by)}</b> · ` : ''}${esc(n.labels.slice(0, 3).join(' · '))}${n.labels.length > 3 ? ` · +${n.labels.length - 3}` : ''}</div></div>
       <div class="site-night-s"><select data-night-site aria-label="Ort der Nacht ${fmtDay(n.night)}">
         <option value="">${n.site ? `Auto: ${esc(n.site.name)} (${srcText[n.site.source] || n.site.source})` : 'Automatisch: kein Ort'}</option>
         ${d.list.map(s => `<option value="${esc(s.id)}" ${n.fixed === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>
