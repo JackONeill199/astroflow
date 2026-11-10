@@ -543,7 +543,7 @@ def compute(pl, pid: int, nights: set | None = None, site_for=None, cfg: dict | 
         n = {"night": night, "frames": len(rows), "exptime": exptime,
              "tracking": tracking(rows, links, exptime, scale, rows[0].get("shape")) if links else None,
              "events": {k: v for k, v in ev.items() if k != "bad_idx"},
-             "focus": focus(rows, alt, scale, set(ev.get("bad_idx", []))), "site_source": site_src,
+             "focus": focus(rows, alt, scale, set(ev.get("bad_idx", []))), "site_source": site_src, "site": site,
              "field_frames": field_frames(rows),                 # Kippung dieser Nacht (neuere Analysen) – für den Gerätetrend
              "start": rows[0]["t"].isoformat(), "end": rows[-1]["t"].isoformat()}
         out_n.append(n)

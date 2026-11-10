@@ -39,6 +39,7 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
     ctx.services["sites"] = book
     sites_mod.use_book(book)                    # Nachtdatum (sites.night_of) nach Ortszeit der Ortsliste
     ctx.services["site_for"] = book.site_for
+    book.on_change = lambda: ctx.emit("sites.changed")    # Bilder rechnet Himmelsqualität/Gerätediagnose betroffener Nächte neu
     ctx.services["night_sources"] = []          # Module hängen hier Funktionen an: () → [{night, label, module}]
     loaded = load_modules(ctx)
     if only is not None:
@@ -193,6 +194,9 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
             except Exception:
                 import traceback
                 traceback.print_exc()
+        for p in book.cached_data()["periods"]:           # Einzelnächte ohne Aufnahmen (z. B. aus SkyTrace) trotzdem zeigen
+            if p.get("from") and p.get("from") == p.get("to") and p["from"] not in out:
+                out[p["from"]] = {"night": p["from"], "labels": [p.get("why") or "Einzelnacht"], "modules": []}
         return sorted(out.values(), key=lambda n: n["night"], reverse=True)
 
     def _sites_view(nights: bool = True) -> dict:
@@ -207,8 +211,9 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
             except Exception:
                 view["sky"] = {}
         if nights:
-            single = {p["from"]: p["site_id"] for p in d["periods"] if p.get("from") == p.get("to")}
-            view["nights"] = [{**n, "site": book.site_for(night=n["night"]), "fixed": single.get(n["night"])} for n in _nights()[:400]]
+            single = {p["from"]: p for p in d["periods"] if p.get("from") == p.get("to")}
+            view["nights"] = [{**n, "site": book.site_for(night=n["night"]), "fixed": (single.get(n["night"]) or {}).get("site_id"),
+                               "fixed_by": (single.get(n["night"]) or {}).get("src")} for n in _nights()[:400]]
         return view
 
     @app.get("/api/sites")

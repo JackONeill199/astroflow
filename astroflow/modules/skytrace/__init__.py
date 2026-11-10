@@ -65,6 +65,8 @@ class Module(BaseModule):
         except Exception:
             import traceback
             traceback.print_exc()
+        from .site_sync import sync_quiet                       # Ausnahmen je Beobachtung → Einzelnächte (liest alle Läufe)
+        threading.Thread(target=sync_quiet, args=(self,), daemon=True, name="skytrace-orte").start()
         if isinstance(self.ctx.services.get("night_sources"), list):
             self.ctx.services["night_sources"].append(self.nights)
 
@@ -116,6 +118,8 @@ class Module(BaseModule):
         """Endet eine Analyse, werden die Erfolge im Hintergrund neu geprüft (Hinweis erscheint über `status`)."""
         if self._was_running and not running:
             threading.Thread(target=self._refresh_achievements, daemon=True).start()
+            from .site_sync import sync_quiet                   # neue Beobachtung mit Ausnahme: Nacht erst jetzt bekannt
+            threading.Thread(target=sync_quiet, args=(self,), daemon=True, name="skytrace-orte").start()
         self._was_running = running
 
     def _achievements_loop(self) -> None:

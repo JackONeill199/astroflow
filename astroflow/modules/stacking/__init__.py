@@ -37,6 +37,9 @@ class Module(BaseModule):
         ctx.services["catalog_resolve"] = catalog_resolve
         ctx.services["catalog_objects"] = catalog_objects
         self.eng.pl.on_stacked = self._stacked
+        from .site_watch import SiteWatch                        # Ortsliste geändert → betroffene Nächte neu rechnen
+        self.site_watch = SiteWatch(self.eng)
+        ctx.on("sites.changed", self.site_watch.changed)
         ctx.services["asteroid_tally"] = self.asteroid_tally       # Sage-Erfolge: nachgewiesene Asteroiden
         ctx.services["site_sky"] = self.site_sky                  # Ortsliste: Himmelsqualität je Standort
         ctx.services["night_zero_points"] = self.night_zero_points  # Nullpunkte je Nacht/Gerät (SkyTrace: Satellitenhelligkeit)
