@@ -564,6 +564,68 @@ def test_folder_dialog_search(server, browser, size, tmp_path):
     page.close()
     assert not errors, errors
 
+@pytest.mark.parametrize('size', ['handy', 'schmal', 'desktop'])
+def test_tonight_browse_nights(server, browser, size, tmp_path, monkeypatch):
+    """Nächte blättern: Pfeile, Nachtleiste und ←/→; Wolkenband, Legende aus Symbolen, kein Überlauf."""
+    from pathlib import Path
+    from astroflow.modules.stacking import tonight
+    from tests.test_tonight import SITE, EVENING, M31
+    t0 = tonight._window(EVENING, SITE['lon'])[0]
+    hours = [{'t': t0 + 3600 * i, 'cloud': (i * 37) % 100, 'low': (i * 13) % 100, 'mid': (i * 29) % 100, 'high': (i * 7) % 100, 'wind': 5 + i % 30}
+             for i in range(3 * 24)]
+    monkeypatch.setattr(tonight, '_forecast', lambda *a, **k: {'hours': hours, 'later': [], 'source': 'Test'})
+    tonight._cache.clear()
+    dev = {'name': 'Testgerät', 'fov': [1, .7], 'source': 'Testmessung'}
+    plans = {k: tonight.plan([{**M31, 'exposure': 1800}], {**SITE, 'weather': True}, Path(tmp_path), EVENING, dev, night=k) for k in (0, 1, 2, 9)}
+    plans[1]['clouds'] = {**plans[1]['clouds'], 'mid': None, 'high': None}       # Vorhersage nur mit einer Schicht
+    asked = []
+
+    def answer(route):
+        import urllib.parse as up
+        k = int(up.parse_qs(up.urlparse(route.request.url).query).get('night', ['0'])[0])
+        asked.append(k)
+        route.fulfill(json=plans[k])
+    base, _ = server
+    w, h = SIZES[size]
+    page = browser.new_page(viewport={'width': w, 'height': h}, has_touch=size == 'handy')
+    errors = []
+    page.on('pageerror', lambda e: errors.append(str(e)))
+    page.route('**/api/stacking/tonight*', answer)
+    page.goto(base + '/#/nacht')
+    page.wait_for_selector('af-tonight-chart svg')
+    assert page.locator('.tn-strip [role=tab]').count() == tonight.NIGHTS
+    assert page.locator('.tn-nav-name').inner_text().startswith('Heute Nacht')
+    assert page.locator('.tn-step.prev').is_disabled()
+    assert page.locator('.tn-chart linearGradient[id$="bhigh"]').count() == 1           # Wolkenband nach Höhe gestaffelt
+    assert page.locator('.tn-series .tn-high').count() == len(plans[0]['recommendations'])
+    assert page.locator('.tn-legend li').count() >= 5 and len(page.locator('.tn-legend').inner_text()) < 80
+    assert not page.evaluate(FIND_OVERFLOW)
+    page.locator('.tn-step.next').click()
+    page.wait_for_selector('.tn-strip [data-tn-night="1"][aria-selected=true]')
+    assert page.locator('.tn-nav-name').inner_text().startswith('Morgen Nacht') and asked[-1] == 1
+    page.locator('.tn-nav-name').click()                                      # Fokus aus dem Eingabefeld
+    page.keyboard.press('ArrowRight')
+    page.wait_for_selector('.tn-strip [data-tn-night="2"][aria-selected=true]')
+    assert page.locator('.tn-unsure').inner_text() == 'Vorhersage unsicher'
+    page.keyboard.press('ArrowLeft')
+    page.wait_for_selector('.tn-strip [data-tn-night="1"][aria-selected=true]')
+    page.locator('.tn-strip [data-tn-night="9"]').click()
+    page.wait_for_selector('.tn-strip [data-tn-night="9"][aria-selected=true]')
+    assert page.locator('.tn-unsure').inner_text() == 'ohne Wetter'
+    assert page.locator('.tn-chart linearGradient[id$="bhigh"]').count() == 0          # jenseits der Vorhersage nur Astronomie
+    page.locator('.tn-time').focus()
+    page.keyboard.press('ArrowRight')                                         # im Zeitregler: Uhrzeit, keine andere Nacht
+    assert page.locator('.tn-strip [data-tn-night="9"]').get_attribute('aria-selected') == 'true'
+    assert not page.evaluate(FIND_OVERFLOW)
+    page.screenshot(path=str(tmp_path / 'naechte.png'), full_page=True)
+    page.goto(base + '/#/')                                                   # Übersicht verlassen → wieder heute
+    page.goto(base + '/#/nacht')
+    page.wait_for_selector('af-tonight-chart svg')
+    assert page.locator('.tn-nav-name').inner_text().startswith('Heute Nacht')
+    page.close()
+    assert not errors, errors
+
+
 @pytest.mark.parametrize('size', ['handy', 'desktop', 'gross'])
 def test_tonight_recommendations_chart_and_links(server, browser, size, tmp_path):
     """Echte Nachtkurven mit festem Datum: Übersicht, responsive Grafik, lokale Katalogkarte und Sage-Klick."""

@@ -7,6 +7,7 @@
      'sky'     oben dunkler Himmel mit Sternen, unten Dunst/Dämmerung; Stern- und Mondsymbol; Orientierungsmarken, wenn sie in die Skala fallen
      'seeing'  aufgeblähter und scharfer Stern am Rand (f.sharpTop: scharf oben, sonst unten)
      'depth'   oben viele schwache, unten wenige helle Sterne (Grenzgröße: oben = tiefer)
+     'stars'   Sternfeld nur über den Zeitspannen f.spans = [[x0, x1], …] (z. B. astronomisch dunkel), ohne Randsymbole
    AFdeco.legend([{ cls, r, text, title }]) – einzeilige Legende mit echten Diagrammpunkten (Kreis mit der Klasse des Diagramms).
    Farben nur über CSS-Klassen (chartdeco.css, Tokens aus :root); keine Animation, pointer-events aus. */
 (() => {
@@ -63,7 +64,18 @@ function depth(f) {
     <path class="cd-bright" d="M${xs} ${by - 7}l1.8 5.2 5.2 1.8-5.2 1.8-1.8 5.2-1.8-5.2-5.2-1.8 5.2-1.8z"/></g>`;
 }
 
-const MOTIFS = { sky, seeing, depth };
+// Sternfeld nur über bestimmten Spannen der x-Achse (Nachtdiagramm: dort, wo es dunkel ist); oben dichter als unten
+function stars(f, id) {
+  const { L, T, PW, PH, spans = [] } = f;
+  if (!spans.length) return '';
+  const clip = spans.map(([a, b]) => `<rect x="${f1(a)}" y="${T}" width="${f1(Math.max(0, b - a))}" height="${PH}"/>`).join('');
+  const field = FIELD.map(([fx, fy]) => `<circle cx="${f1(L + fx * PW)}" cy="${f1(T + fy * PH * .8)}" r=".6"/>`).join('');
+  const big = STARS.map(([fx, fy, r]) => `<circle cx="${f1(L + ((fx + .37) % 1) * PW)}" cy="${f1(T + fy * PH * .9)}" r="${r}"/>`).join('');
+  return `<g class="cd" aria-hidden="true"><defs><clipPath id="${id}s">${clip}</clipPath></defs>
+    <g clip-path="url(#${id}s)"><g class="cd-field">${field}</g><g class="cd-star">${big}</g></g></g>`;
+}
+
+const MOTIFS = { sky, seeing, depth, stars };
 window.AFdeco = {
   R: 24,
   draw(motif, f) { const fn = MOTIFS[motif]; return fn ? fn(f, `cd${++seq}`) : ''; },

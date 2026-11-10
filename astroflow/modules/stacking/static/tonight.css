@@ -1,6 +1,5 @@
 /* Empfehlungen und Nachtgrafik, gemeinsam für Übersicht und Detailseite. */
-:root { --tn-orange: #e7ac66; --tn-pink: #db7ba6; --tn-blue: #80b9e8 }
-@media (prefers-color-scheme: light) { :root { --tn-orange: #a85b0d; --tn-pink: #b73872; --tn-blue: #2777ad } }
+:root { --tn-orange: #e7ac66; --tn-pink: #db7ba6; --tn-blue: #80b9e8; --tn-violet: #b39cf5; --tn-lime: #b9d46a }
 .hcard.featured { min-width: 0 }
 .tn-home .hhead { flex-wrap: wrap; gap: 0.5rem }
 .tn-home .hhead > div { min-width: 0; flex: 1 1 13.75rem }
@@ -39,7 +38,6 @@ af-tonight-chart { display: block; width: 100%; min-width: 0; margin-top: 0.625r
 .tn-target { flex: 1 0 100%; min-width: 0 }
 .tn-target summary, .tn-notes summary { cursor: pointer; color: var(--mut); font-size: 0.75rem }
 .tn-target p { margin: 0.375rem 0; overflow-wrap: anywhere }
-.tn-legend { margin: 0.625rem 0 0.375rem; font-size: 0.6875rem }
 .tn-notes { font-size: 0.75rem }
 .tn-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.125rem }
 .tn-weather { display: flex; flex-wrap: wrap; gap: 0.875rem; font-size: 0.8125rem }
@@ -61,3 +59,66 @@ af-tonight-chart { display: block; width: 100%; min-width: 0; margin-top: 0.625r
 /* „Heute bin ich in …“ (gemeinsame Ortsliste) */
 .tn-site { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; max-width: 100% }
 .tn-site select { min-width: 12rem; max-width: 100% }
+/* Nachtdiagramm (seit dem Umbau „mehrere Nächte“): Himmel immer dunkel, Dämmerung als weicher Verlauf, Wolkenband oben */
+:root { --tn-sky: color-mix(in srgb, var(--bg) 70%, #000); --tn-twi: #41639a; --tn-day: #8fb3dc; --tn-glow: #e7ac66; --tn-cloud: #c3ccd8; --tn-veil: #c9d3df; --tn-moon: #efe2b4 }
+.tn-night { fill: var(--tn-sky) }
+.tn-st-twi { stop-color: var(--tn-twi) }
+.tn-st-day { stop-color: var(--tn-day) }
+.tn-st-glow { stop-color: var(--tn-glow) }
+.tn-st-cloud { stop-color: var(--tn-cloud) }
+.tn-st-veil { stop-color: var(--tn-veil) }
+.tn-st-moon { stop-color: var(--tn-moon) }
+.tn-st-wind { stop-color: var(--warn) }
+.tn-below { fill: #000; opacity: .25 }
+.tn-grid { stroke: var(--mut); stroke-opacity: .16 }
+.tn-minalt { fill: none; stroke: var(--fg); stroke-opacity: .45; stroke-dasharray: 3 4 }
+svg .tn-axis { fill: var(--mut) }
+.tn-moon-line { fill: none; stroke: var(--tn-moon); stroke-width: 1.5; stroke-dasharray: 1 4; stroke-linecap: round; opacity: .75 }
+.tn-moon-disc { fill: color-mix(in srgb, var(--tn-moon) 14%, transparent); stroke: color-mix(in srgb, var(--tn-moon) 45%, transparent); stroke-width: .75 }
+.tn-moon-lit { fill: var(--tn-moon) }
+.tn-series path { fill: none; stroke: var(--target); stroke-linecap: round; stroke-linejoin: round }
+.tn-series .tn-low { stroke-width: 1.5; opacity: .3 }
+.tn-series .tn-high { stroke-width: 2.25; opacity: .85 }
+.tn-series.blocked .tn-high { opacity: .55 }
+.tn-series.sel .tn-low { stroke-width: 2; opacity: .45 }
+.tn-series.sel .tn-high { stroke-width: 3.5; opacity: 1; filter: drop-shadow(0 0 0.25rem var(--target)) }
+svg .tn-peak { fill: var(--target); font-size: 0.6875rem; font-weight: 600; paint-order: stroke; stroke: var(--tn-sky); stroke-width: 3px; stroke-linejoin: round }
+.tn-now { stroke: var(--fg); stroke-opacity: .6; stroke-dasharray: 4 4 }
+.tn-band-bg { fill: var(--tn-sky) }
+.tn-band-ico { fill: none; stroke: var(--mut); stroke-width: 1.6; stroke-linejoin: round }
+.tn-wind-ico { fill: none; stroke: var(--mut); stroke-width: 1.2; stroke-linecap: round }
+.tn-legend { list-style: none; margin: 0.25rem 0 0.5rem; padding: 0; display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; font-size: 0.6875rem; color: var(--mut) }
+.tn-legend li { display: flex; align-items: center; gap: 0.375rem; cursor: help }
+.tn-legend svg { width: 1.125rem; height: 0.75rem; flex: none; overflow: visible }
+.tn-lg-twi { display: block; width: 1.125rem; height: 0.75rem; border-radius: 2px; background: linear-gradient(90deg, var(--tn-day), var(--tn-twi) 45%, var(--tn-sky)) }
+.tn-lg-star { fill: var(--fg) }
+.tn-lg-cloud { fill: var(--tn-cloud) }
+.tn-tooltip > b small { font-weight: 400; color: var(--mut); margin-left: 0.25rem }
+.tn-tooltip span.low { opacity: .6 }
+.tn-tooltip span.moon { color: var(--mut) }
+.tn-tip-sky { display: block; margin-top: 0.25rem; color: var(--mut) }
+/* Nächte blättern */
+.tn-nav { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem }
+.tn-nav-name { font-size: 1rem; min-width: 0 }
+.tn-nav-name small { color: var(--mut); font-weight: 400; font-size: 0.75rem }
+.tn-step { width: 2rem; height: 2rem; display: inline-grid; place-items: center; flex: none; padding: 0; border: 1px solid var(--border); border-radius: var(--r-sm); background-color: var(--surface-2); color: var(--fg); cursor: pointer }
+.tn-step svg { width: 1rem; height: 1rem }
+.tn-step.prev svg { transform: rotate(90deg) }
+.tn-step.next svg { transform: rotate(-90deg) }
+.tn-step:disabled { opacity: .35; cursor: default }
+.tn-step:not(:disabled):hover { border-color: var(--acc) }
+.tn-unsure { font-size: 0.6875rem; color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); border-radius: 1rem; padding: 0.0625rem 0.5rem; cursor: help }
+.tn-unsure.off { color: var(--mut); border-color: var(--border) }
+.tn-strip { display: flex; gap: 0.25rem; overflow-x: auto; padding-bottom: 0.25rem; margin-bottom: 0.25rem; scrollbar-width: thin }
+.tn-strip button { flex: 1 0 2.75rem; display: flex; flex-direction: column; align-items: center; gap: 0.125rem; padding: 0.3125rem 0.125rem 0.4375rem; border: 1px solid var(--border-soft); border-radius: var(--r-sm); background-color: transparent; color: var(--fg); font: inherit; cursor: pointer }
+.tn-strip button:hover { border-color: var(--border) }
+.tn-strip button[aria-selected=true] { border-color: var(--acc); background-color: var(--acc-soft) }
+.tn-strip small { font-size: 0.625rem; color: var(--mut); line-height: 1 }
+.tn-d { font-size: 0.8125rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1 }
+.tn-strip svg { width: 1rem; height: 1rem }
+.tn-cl { display: block; width: 1.5rem; height: 0.25rem; border-radius: 1rem; background-color: color-mix(in srgb, var(--tn-cloud) calc(var(--c) * 1%), var(--ok)) }
+.tn-cl.none { background-color: var(--border) }
+.tn-cl.unsure { opacity: .55 }
+.tn-main { transition: opacity var(--t) }
+.tn-loading { opacity: .55 }
+@media (prefers-reduced-motion: reduce) { .tn-main { transition: none } }

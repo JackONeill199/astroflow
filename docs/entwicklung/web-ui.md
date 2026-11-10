@@ -84,7 +84,7 @@ Befehlspalette Strg+K: Einträge aller Module (`palette()`) + Aktionen der aktue
 Tastenkürzel: `/` Suche in Listen, `1–4` Tabs (Objekt, SkyTrace-Lauf), `F` Vollbild, `B` Vorher/Nachher. Server schickt `Cache-Control: no-cache` für `/`.
 **Nach Änderungen an `index.html`/`app.js`/`style.css` `?v=` in `index.html` hochzählen**; Modul-Dateien bekommen die Build-Kennung automatisch.
 **Diagramm-Motive** (`modules/stacking/static/chartdeco.js` + `chartdeco.css`, Nutzerwunsch 09.11.2026 „visuell gleich verstehen, nicht zu viel Text“):
-`AFdeco.draw('sky'|'seeing'|'depth', {L,T,PW,PH,W,R,Y,lo,hi,sharpTop})` zeichnet einen dezenten stilisierten Hintergrund (Himmel dunkel→Dunst/Mond,
+`AFdeco.draw('sky'|'seeing'|'depth'|'stars', {L,T,PW,PH,W,R,Y,lo,hi,sharpTop,spans})` ('stars' = Sternfeld nur über `spans` [[x0,x1]…], Heute-Nacht-Diagramm) zeichnet einen dezenten stilisierten Hintergrund (Himmel dunkel→Dunst/Mond,
 scharfer/aufgeblähter Stern, schwache/helle Sterne) mit Randsymbolen im rechten Rand (`AFdeco.R`); `AFdeco.legend([{cls,r,text,title}])` = einzeilige
 Legende mit echten Diagrammpunkten, Erklärung im Tooltip. Je Grafik höchstens ein kurzer Satz (was oben/unten bedeutet). Genutzt von Dashboard
 (`scatter(…, {deco})`), Himmelsqualität (`nightsChart`, `curveSvg`), Aufnahmen-Diagramm (`chart` in `stacking.js`); HR-Diagramm hat ein eigenes Farbband aus `starColor`. Bewusst ohne Motiv:

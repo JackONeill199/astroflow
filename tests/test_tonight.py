@@ -395,3 +395,73 @@ def test_katalogdaten_vollstaendig_und_plausibel():
     assert t["C34"].fallback and not t["M31"].fallback                     # C34: Größe von Hand (Quellen meinen den ganzen Komplex)
     assert t["M8"].mag is None                                             # Emissionsnebel: Helligkeit bewusst unbekannt
     assert "M57" in {x.id for x in deepsky.catalog() if deepsky.usable(x, STELLINA, [1, .7])}    # bleibt in den „Heute Nacht“-Kandidaten
+
+
+# ---------------------------------------------------------------- Mehrere Nächte: blättern, Nachtleiste, längere Vorhersage #
+def test_later_night_is_shifted_by_whole_days_and_counts_completely(tmp_path):
+    d0 = tonight.plan([M31], SITE, tmp_path, EVENING, STELLINA)
+    late = EVENING + 6 * 3600                                                 # mitten in der Nacht: heute zählt nur der Rest
+    d3 = tonight.plan([M31], SITE, tmp_path, late, STELLINA, night=3)
+    assert d3["night_index"] == 3 and abs(d3["start"] - (d0["start"] + 3 * 86400)) < 3600
+    assert abs(d3["twilight"]["dark_start"] - (d0["twilight"]["dark_start"] + 3 * 86400)) < 15 * 60
+    assert d3["status"]["code"] == "ok" and d3["recommendations"]               # „vorbei“ gibt es in späteren Nächten nicht
+    assert d3["dark_hours"] >= d0["dark_hours"] - 0.3
+    assert all(not any(r.startswith("Heute") for r in x["reasons"]) for x in d3["recommendations"])
+    assert tonight.plan([M31], SITE, tmp_path, EVENING, STELLINA, night=99)["night_index"] == tonight.NIGHTS - 1
+
+
+def test_night_strip_dates_moon_and_clouds(tmp_path, monkeypatch):
+    t0 = tonight._window(EVENING, SITE["lon"])[0]
+    hours = [{"t": t0 + 3600 * i, "cloud": 100 if i < 24 else 0, "low": 90, "mid": 20, "high": 5, "wind": 12} for i in range(3 * 24)]
+    monkeypatch.setattr(tonight, "_forecast", lambda *a, **k: {"hours": hours, "later": [], "source": "Test"})
+    tonight._cache.clear()
+    d = tonight.plan([], {**SITE, "weather": True}, tmp_path, EVENING, STELLINA)
+    ns = d["nights"]
+    assert len(ns) == tonight.NIGHTS and [n["index"] for n in ns] == list(range(tonight.NIGHTS))
+    assert ns[0]["date"] == "2026-11-02" and ns[6]["date"] == "2026-11-08"       # Datum wie core.sites.planning_night
+    assert ns[0]["cloud"] == 100 and ns[1]["cloud"] == 0 and ns[5]["cloud"] is None    # jenseits der Vorhersage: keine Wolken
+    assert not ns[1]["uncertain"] and ns[2]["uncertain"]
+    assert all(0 <= n["moon"] <= 100 and 0 <= n["moon_dark_hours"] <= n["dark_hours"] for n in ns)
+    full = dt.datetime(2026, 11, 24, 19, tzinfo=dt.timezone.utc).timestamp()           # Vollmond am 24.11.2026
+    assert tonight.plan([], SITE, tmp_path, full - 7 * 86400, STELLINA)["nights"][7]["moon"] >= 95
+    # Wolkenschichten und Wind liegen auf der Zeitachse; Nacht 1 bekommt ihre eigene (klare) Vorhersage
+    assert d["clouds"]["low"] and set(v for v in d["clouds"]["low"] if v is not None) == {90} and d["wind"][5] == 12
+    d1 = tonight.plan([], {**SITE, "weather": True}, tmp_path, EVENING, STELLINA, night=1)
+    assert d1["sky"]["state"] == "clear" and not any(r["weather_blocked"] for r in d1["recommendations"])
+    assert d1["forecast"] == {"covered": True, "uncertain": False}
+    d4 = tonight.plan([], {**SITE, "weather": True}, tmp_path, EVENING, STELLINA, night=4)
+    assert d4["cloud"] is None and d4["forecast"]["covered"] is False and d4["forecast"]["uncertain"]
+
+
+def test_night_strip_uses_each_nights_site(tmp_path):
+    """Reise ab Nacht 3: die Leiste rechnet diese Nächte am Reiseort (hier hoher Norden: kaum Dunkelheit im Juni)."""
+    june = dt.datetime(2026, 6, 10, 19, tzinfo=dt.timezone.utc).timestamp()
+    home = {**SITE, "lat": 40.0}                                              # 50° N wäre im Juni ohne astronomische Nacht
+    sites = [[40.0, 10.0]] * 3 + [[69.0, 19.0]] * (tonight.NIGHTS - 3)
+    d = tonight.plan([], home, tmp_path, june, STELLINA, night_sites=sites)
+    ns = d["nights"]
+    assert ns[0]["dark_hours"] > 1 and ns[3]["dark_hours"] == 0 and ns[3]["date"] == "2026-06-13"
+    assert tonight.plan([], home, tmp_path, june, STELLINA)["nights"][3]["dark_hours"] > 1     # ohne Ortsliste: überall derselbe Ort
+
+
+def test_forecast_asks_same_service_with_rounded_site(tmp_path, monkeypatch):
+    """Mehr Tage, aber derselbe Dienst und dieselbe Ortsrundung (0,1°); eine Abfrage deckt alle Nächte, danach Cache."""
+    import httpx
+    calls = []
+
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            start = dt.datetime(2026, 11, 2, tzinfo=dt.timezone.utc)
+            times = [(start + dt.timedelta(hours=i)).strftime("%Y-%m-%dT%H:%M") for i in range(tonight.FORECAST_DAYS * 24)]
+            return {"hourly": {"time": times, "cloud_cover": [50] * len(times), "cloud_cover_low": [10] * len(times), "wind_speed_10m": [7] * len(times)}}
+
+    monkeypatch.setattr(httpx, "get", lambda url, params, timeout: calls.append((url, params)) or Resp())
+    w = tonight._forecast([50.123, 10.987], tmp_path, EVENING, EVENING + 86400 * 5)
+    assert len(calls) == 1 and calls[0][0] == tonight.FORECAST_URL
+    assert calls[0][1]["latitude"] == 50.1 and calls[0][1]["longitude"] == 11.0 and calls[0][1]["forecast_days"] == tonight.FORECAST_DAYS
+    assert w["hours"][0]["low"] == 10 and w["hours"][0]["wind"] == 7 and w["hours"][0]["mid"] is None
+    tonight._forecast([50.123, 10.987], tmp_path, EVENING, EVENING + 86400)
+    assert len(calls) == 1                                                      # aus dem Cache
