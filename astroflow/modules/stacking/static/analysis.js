@@ -49,29 +49,31 @@ async function analysisSummary(host, r, pid) {
   let grade = null, tut = typeof tutorCache !== 'undefined' ? tutorCache.get(r.id) : null;
   const de1 = (v) => String(v).replace('.', ',');
   const lvl = (pt) => pt >= 6.5 ? 'ok' : pt >= 4 ? 'warn' : 'bad';
-  // Bestandteile der Bildqualität als kleine Balken (Nutzerwunsch „wie ein Ladebalken, ohne viel Text“), darunter der wichtigste
-  // Tutor-Hinweis in einer Zeile. Neue Felder des Tutors (`short`/`headline`) erscheinen ohne Umbau, sobald der Server sie liefert.
-  const extra = (gq) => {
-    const parts = gq?.parts || [];
+  // Kachel Bildqualität farbig nach Note (Nutzerwunsch „bisschen mehr Farbe dran“), darin die Bestandteile als kleine Balken;
+  // unter den Kacheln der wichtigste Tutor-Hinweis in einer Zeile. Neue Tutor-Felder (`headline`, je Hinweis `short`) erscheinen ohne Umbau.
+  // Die Bearbeitungsnote erscheint hier bewusst nicht: „10/10“ las sich wie „Bild perfekt“, bewertet aber nur Restfehler der Bearbeitung.
+  const qTile = (gq) => {
+    if (!gq) return tile('q', 'Bildqualität', '–', 'noch nicht bewertet');
+    const parts = gq.parts || [];
+    return `<a class="stat an-kpi an-q lvl-${lvl(gq.score)}" href="#/p/${pid}/analyse" data-k="q" title="${esc(gradeTip(gq))}">
+      <span><small>Bildqualität</small><b class="tnum">${de1(gq.score)}<span class="dim">/10</span></b></span>
+      ${parts.length ? `<span class="an-qbars">${parts.map(p => `<span class="lvl-${lvl(p.points)}"><small>${esc(p.label)}</small><i style="--w:${Math.max(4, p.points * 10)}%"></i></span>`).join('')}</span>` : ''}</a>`;
+  };
+  const tip = () => {
     const f = (tut?.findings || []).find(x => x.code !== 'good' && x.level !== 'ok');
     const head = tut?.headline || (f && (f.short || f.title));
-    // Bearbeitungsnote nur als Satz: „10/10“ las sich wie „Bild perfekt“, bewertet aber nur Restfehler der Bearbeitung
-    const edit = q ? (q.score >= 9.5 ? 'Bearbeitung ohne Restfehler' : `Bearbeitung: ${qlabel(q)}`) : '';
-    return `${parts.length ? `<div class="bands an-qbars" title="${esc(gradeTip(gq))}">${parts.map(p => `<div class="band"><span class="sm">${esc(p.label)}</span>
-        <div class="progress"><i class="lvl-${lvl(p.points)}" style="width:${Math.max(4, p.points * 10)}%"></i></div><span class="mut sm tnum">${de1(p.points)}</span></div>`).join('')}</div>` : ''}
-      ${head ? `<a class="an-tip lvl-${f?.level || 'info'}" href="#/p/${pid}/analyse" title="${esc(f?.text || '')}"><i aria-hidden="true"></i><span>${esc(head)}</span>${icon('arrow')}</a>` : ''}
-      ${edit ? `<p class="dim sm an-edit">${esc(edit)}</p>` : ''}`;
+    return head ? `<a class="an-tip lvl-${f?.level || 'info'}" href="#/p/${pid}/analyse" title="${esc(f?.text || '')}"><i aria-hidden="true"></i><span>${esc(head)}</span>${icon('arrow')}</a>` : '';
   };
   const draw = (depth, night) => {
     if (!host.isConnected) return;
     const gq = grade?.grade;
     const g = depth?.state === 'done' ? depth.grenze : null;
     host.innerHTML = `<div class="stats an-sum">
-        ${tile('q', 'Bildqualität', gq ? `${de1(gq.score)}<span class="dim">/10</span>` : '–', gq ? '' : 'noch nicht bewertet', gq ? gradeTip(gq) : '')}
+        ${qTile(gq)}
         ${tile('depth', 'Grenzgröße', g?.m5 != null ? `${String(g.m5.toFixed(1)).replace('.', ',')} mag` : '–', g ? '5σ, Gaia' : depth?.solved === false ? 'nicht gelöst' : 'noch nicht gemessen')}
         ${tile('sky', 'Bortle', night?.bortle ? esc(night.bortle.text.replace('Bortle ', '')) : '–', night?.bortle ? esc(night.bortle.label) : night ? 'kein Ortswert' : 'noch nicht berechnet')}
         ${tile('seeing', 'Seeing', night?.seeing != null ? `${String(night.seeing.toFixed(1)).replace('.', ',')}″` : '–', night?.seeing != null ? 'FWHM, Median' : '')}
-      </div>${extra(gq)}
+      </div>${tip()}
       <a class="an-more" href="#/p/${pid}/analyse">Mehr in der Analyse ${icon('arrow')}</a>`;
   };
   draw(null, null);
