@@ -481,16 +481,19 @@ async function projectView(el, id, tab = 'bild') {
   function updateJob() {
     const jobHost = $('#job', el);
     if (jobHost) { setJobLine(jobHost, p.job); jobHost.hidden = tab === 'bild' && !!liveView; }
-    liveView?.update(p);
+    // schematische Darstellung des aktiven Schritts (nur während ein Auftrag wirklich läuft): im Reiter Bild in der Bildfläche der
+    // Live-Ansicht (bis ein echtes Bild da ist), in „Aufnahmen“ gar nicht (Nutzerwunsch), sonst über dem Inhalt
+    const step = pipeStep(p), stepKind = step >= 0 && typeof vizProcess === 'function' ? STEP_VIZ[step] : '';
+    const vdata = stepKind ? { kind: stepKind, progress: p.job?.progress, label: p.job?.message || undefined, ...(stepKind === 'stack' ? stackCount(p.job) : {}) } : null;
+    liveView?.update(p, vdata);
     if (p.live?.preview) livePoster = `/api/stacking/projects/${id}/live/${encodeURIComponent(p.live.preview)}`;
     if ($('#ctxTitle')?.textContent === 'Session' && el.isConnected) sessionCtx();
     const pipe = $('#pipe', el);
     if (pipe) { const tmp = document.createElement('div'); tmp.innerHTML = pipeHtml(p); if (pipe.innerHTML !== tmp.firstChild.innerHTML) pipe.innerHTML = tmp.firstChild.innerHTML; pipe.hidden = !showPipe(p); }
-    // schematische Darstellung des aktiven Schritts (nur während ein Auftrag wirklich läuft)
-    const host = $('#pipeViz', el), step = pipeStep(p), kind = step >= 0 && tab !== 'bild' && typeof vizProcess === 'function' ? STEP_VIZ[step] : '';
+    const host = $('#pipeViz', el), kind = tab === 'bild' || tab === 'aufnahmen' ? '' : stepKind;
     if (!host) return;
     if (kind !== vizKind) { viz?.destroy(); viz = null; vizKind = kind; host.hidden = !kind; if (kind) viz = vizProcess(host, { kind }); }
-    viz?.update({ kind, progress: p.job?.progress, label: p.job?.message || undefined, ...(kind === 'stack' ? stackCount(p.job) : {}) });
+    viz?.update(vdata);
   }
   const tabs = () => [...TABS.filter(([k]) => !p.imported || k === 'bild' || (k === 'versionen' && p.results.length > 1)),
     ...((p.companions ?? p.options?.companion_ids?.length ?? 0) ? [['teleskopbilder', 'Teleskopbilder']] : [])];
