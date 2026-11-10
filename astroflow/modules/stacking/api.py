@@ -15,7 +15,7 @@ from pathlib import Path
 from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
-from . import calibration, channels, comet, diskspace, gpu, graxpert, objects, platesolve, registration, reviewer, skyquality, stars, tonight, tutor
+from . import calibration, channels, comet, diskspace, gpu, graxpert, objects, platesolve, quality, registration, reviewer, skyquality, stars, tonight, tutor
 from ...core import security
 from .db import DB
 from .pipeline import Pipeline
@@ -612,7 +612,7 @@ def build_router(eng: Engine) -> APIRouter:
                         "exptime": i.get("exptime"), "date": i.get("date_obs"),
                         "score": round(x["score"] or 0, 3), "manual": x["manual"], "stacked": x["stacked"], "deleted": x["deleted"],
                         "offline": bool(not x["deleted"] and x["path"] and not Path(x["path"]).exists()),
-                        "n_stars": m.get("n_stars"), "fwhm": m.get("fwhm") and round(m["fwhm"], 2),
+                        "n_stars": m.get("n_stars"), "star_cap": quality.MAX_STARS, "fwhm": m.get("fwhm") and round(m["fwhm"], 2),
                         "ecc": m.get("ecc") and round(m["ecc"], 2), "bg": m.get("bg") and round(m["bg"], 1)})
         return out
 

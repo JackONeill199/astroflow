@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.56.1 – 10.11.2026
+
+### Behoben
+- Aufnahmen-Diagramm: Die obere Linie reicht wieder bis zum rechten Rand; statt der bei 150 gedeckelten (und damit flachen) Sternzahl zeigt sie den Himmelshintergrund. Datumsbeschriftungen eng beieinanderliegender Nächte überlappen nicht mehr.
+
 ## 0.56.0 – 10.11.2026
 
 ### Neu
