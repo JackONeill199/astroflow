@@ -45,6 +45,14 @@ def test_clock_of():
     assert sites.clock_of(None) is None and sites.clock_of("kaputt") is None
 
 
+def test_sun_alt():
+    """Sonnenhöhe für die Färbung „Stand der Nacht“: Sommersonnenwende 45° N, 0° O – Mittag ~68,4°, Mitternacht ~−21,6°."""
+    assert abs(sites.sun_alt("2022-06-21T12:00:00", 45, 0) - 68.4) < 1
+    assert abs(sites.sun_alt("2022-06-21T00:00:00", 45, 0) + 21.6) < 1
+    assert -90 <= sites.sun_alt("2022-06-21T00:00:00") <= 90          # ohne Ort: Näherung aus der Rechnerzeitzone
+    assert sites.sun_alt(None) is None
+
+
 def test_resolution_order(tmp_path):
     b = book(tmp_path, periods=[{"site_id": "trip", "from": "2024-07-01", "to": "2024-07-14"}])
     assert b.site_for(night="2024-06-30")["id"] == "home"

@@ -21,6 +21,8 @@
 - **Uhrzeit zur Anzeige:** `sites.clock_of(when, lon=None, book=None)` → „HH:MM“ (Aufnahmen-Diagramm, `/frames` → `clock`). Bürgerliche
   Rechnerzeit mit Sommerzeit, solange der Ort (`lon` bzw. Ortsliste) höchstens 2,5 h daneben liegt, sonst die ganze Stunde von lon/15 – nicht die
   Sonnenzeit wie bei `night_of` (die läge bis ~2 h neben der Uhr). Das Frontend rechnet keine Zeiten um.
+- **Sonnenhöhe zur Anzeige:** `sites.sun_alt(when, lat, lon)` (~1°, nur `math`) für die Dämmerungsfärbung im Aufnahmen-Diagramm (`/frames` → `sun`);
+  Ort aus dem FITS-Kopf bzw. Ort der Nacht, ohne Ort Näherung 45° N und Zonenmeridian der Rechnerzeitzone (ohne Sommerzeit).
 - **Gespeicherte Nächte:** `stacking/nights.migrate` beim Start des Bilder-Moduls bestimmt `frames.night` aus DATE-OBS (+ FITS-Ort) neu, nur wenn sich
   die Grundlage geändert hat (Signatur aus Regel `RULE`, `COMPAT_H`, Rechnerzeitzone Jan/Jul, Ortslisten-Längen, Standard, Zeiträume →
   `settings.json` → `nights`). Nur abweichende Zeilen; Aufnahmen ohne DATE-OBS behalten ihr Datum; Kometenprojekte (Nacht im Schlüssel `KOMET:…|<nacht>|…`)
