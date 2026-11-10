@@ -26,7 +26,13 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    Rauscheinheiten), `trails`/`trail_lines` (Satellitenspuren, s. „Satellitenspuren“ unten) → `frames.metrics`. `snr`/`grad` fließen in den Score, wenn alle Frames sie haben (ältere Analysen nicht).
    Spuren werden **vor** der Sternerkennung durch den Hintergrund ersetzt (sonst Spurpunkte als Sterne → FWHM hoch → Aufnahme verworfen). Nur neue Frames – oder solche
    mit `metrics.mv < quality.METRICS_VERSION` (dann auch automatisch Neu-Stacken). **Bei jeder Änderung an Analyse/Kosmetik `METRICS_VERSION` erhöhen.**
-   Sternerkennung verwirft Einzelpixel-Spitzen (Nachbarn < 12 % des Peaks).
+   Sternerkennung verwirft Einzelpixel-Spitzen (Nachbarn < 12 % des Peaks). `n_stars` ist bei `quality.MAX_STARS` (150) gedeckelt – das
+   Diagramm „Qualität je Aufnahme“ zeigt dann den Himmelshintergrund, die Tabelle „150+“ (`/frames` liefert `star_cap`).
+   **Vorschaubild je Aufnahme** (`frame_preview.py`, seit 10.11.2026): in derselben Analyse aus dem kalibrierten Rohbild (vor dem Löschen der Uploads),
+   Bayer als Superpixel, Blockmittel auf ≤ `MAX_EDGE` 480 px, Hintergrund neutral, `auto_stretch`, JPEG q65 (~5–40 KB) unter
+   `work/frame_previews/<frame-id>.jpg`. `GET /frames/{id}/preview` holt fehlende aus der noch vorhandenen Rohdatei nach (ohne Kalibrierung,
+   ohne Neu-Analyse), sonst 404 → Platzhalter. `GET /frames/{id}` = Popup-Daten (Messwerte, Grund, 100 hellste Sterne, `shape`).
+   Aus mit `ASTROFLOW_FRAME_PREVIEWS=0`. Frontend: `frameThumb`/`framePopup` in `stacking.js`, Stile `frames.css`. Test `test_frame_preview.py`.
 3. **Auswahl**: Ausreißer je **Filter-Band** verwerfen (Wolken, Unschärfe, Nachführfehler); manuelle Ein-/Ausschlüsse (`frames.manual` ±1) gewinnen.
    Verzogene Sterne zusätzlich absolut (`quality.ECC_MAX` 0,8 ≈ 1,7:1), aber höchstens `ECC_MAX_REJECT` = ⅓ der Frames – rein relativ
    ließ M57 (Wind/Nachführung, 89 von 133 Frames ≥ 1,5:1) alles durch; jetzt 91 Frames, Stack 1,50 → 1,39:1 (Stellina 1,36).

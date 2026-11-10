@@ -757,11 +757,15 @@ async function projectView(el, id, tab = 'bild') {
       ${list.map(f => { const [sc, sl] = stat(f); return `<tr data-id="${f.id}"><td class="name" title="${esc(f.name)}">${esc(f.name)}</td>
         <td>${f.band ? `<span class="chip"><i style="background:${BAND_COLOR[f.band] || '#999'}"></i>${esc(f.band)}</span>` : '<span class="dim">Farbe</span>'}</td>
         <td>${fnight(f.night)}</td><td class="tnum">${f.n_stars != null && f.star_cap && f.n_stars >= f.star_cap ? `<span title="Höchstzahl der Sternerkennung – im Bild sind mehr Sterne">${f.n_stars}+</span>` : f.n_stars ?? ''}</td><td class="tnum">${f.fwhm ?? ''}</td><td class="tnum">${f.ecc ?? ''}</td><td class="tnum">${f.score ? f.score.toFixed(2) : ''}</td>
-        <td><span class="status s-${sc}">${sl}${f.manual ? ' (manuell)' : ''}${f.deleted ? ' · Datei gelöscht' : f.offline ? ' · <span title="Ordner gerade nicht erreichbar (z. B. Platte abgesteckt) – wird verarbeitet, sobald er wieder da ist">nicht erreichbar</span>' : ''}</span>${f.status === 'rejected' && f.reason ? `<div class="why">${esc(f.reason)}</div>` : ''}</td>
+        <td><div class="fstat"><div><span class="status s-${sc}">${sl}${f.manual ? ' (manuell)' : ''}${f.deleted ? ' · Datei gelöscht' : f.offline ? ' · <span title="Ordner gerade nicht erreichbar (z. B. Platte abgesteckt) – wird verarbeitet, sobald er wieder da ist">nicht erreichbar</span>' : ''}</span>${f.status === 'rejected' && f.reason ? `<div class="why">${esc(f.reason)}</div>` : ''}</div>${frameThumb(f)}</div></td>
         <td>${f.deleted ? '' : f.status === 'rejected' ? `<button class="linkbtn" data-f="${f.id}" data-m="1">einschließen</button>` : f.status === 'selected' ? `<button class="linkbtn" data-f="${f.id}" data-m="-1">ausschließen</button>` : ''}</td></tr>`; }).join('')}
       </tbody></table>${list.length ? '' : '<div class="empty" style="border:0">Keine Aufnahmen in dieser Auswahl.</div>'}`;
     $('#ftable thead').onclick = (e) => { const th = e.target.closest('th[data-k]'); if (!th) return; const c = th.dataset.k; fSort = [c, fSort[0] === c ? -fSort[1] : (c === 'name' || c === 'night' ? 1 : -1)]; drawTable(); };
+    // kaputte/fehlende Vorschau (Rohdatei inzwischen weg) → Platzhalter statt Bruch-Symbol
+    $('#ftable tbody').addEventListener('error', (e) => { const b = e.target.closest?.('.fthumb'); if (b && e.target.tagName === 'IMG') { b.classList.add('none'); b.innerHTML = icon('image'); } }, true);
     $('#ftable tbody').onclick = async (e) => {
+      const pv = e.target.closest('[data-pv]');
+      if (pv) { framePopup(pv.dataset.pv, frames, list); return; }
       const b = e.target.closest('button[data-f]'); if (!b) return;
       const f = frames.find(x => x.id === b.dataset.f), m = +b.dataset.m, prev = { manual: f.manual, status: f.status, reason: f.reason };
       let r;
@@ -1285,6 +1289,92 @@ function upload(files) {
 
 // ------------------------------------------------------------ Speicherbelegung --- //
 const HK_COLORS = ['var(--acc)', 'var(--data-2)', 'var(--data-3)', 'var(--warn)', 'var(--ok)', 'var(--bad)', '#f0abfc', '#93c5fd', 'var(--dim)'];
+// ---- Aufnahmen: Vorschaubild je Einzelaufnahme (frame_preview.py) + Popup mit Begründung ----
+function frameThumb(f) {
+  return f.preview
+    ? `<button class="fthumb" data-pv="${f.id}" title="Vorschau und Begründung" aria-label="Vorschau von ${esc(f.name)}"><img src="/api/stacking/frames/${f.id}/preview" alt="" loading="lazy" decoding="async"></button>`
+    : `<button class="fthumb none" data-pv="${f.id}" title="Begründung anzeigen – kein Vorschaubild (Rohdatei gelöscht)" aria-label="Details zu ${esc(f.name)}">${icon('image')}</button>`;
+}
+// Grund der Auswahl (quality.select_frames) → entscheidende Messgröße und Erklärung
+const FRAME_WHY = {
+  'Himmelshintergrund zu hell': ['bg', 'Der Himmel war deutlich heller als bei den übrigen Aufnahmen – typisch für Mond, Dämmerung oder Streulicht an Wolken. Das hebt Hintergrund und Rauschen im fertigen Bild.'],
+  'unscharf (Seeing/Fokus)': ['fwhm', 'Die Sterne sind deutlich breiter als im Durchschnitt der Serie – unruhige Luft, Wind oder Fokus. Sie würden das Ergebnis weicher machen.'],
+  'Sterne verzogen (Nachführfehler/Wind)': ['ecc', 'Die Sterne sind länglich statt rund – Nachführfehler, Wind oder eine Erschütterung.'],
+  'wenige Sterne (Wolken/Dunst)': ['n_stars', 'Es sind viel weniger Sterne zu sehen als sonst – Wolken, Dunst oder Tau auf der Optik.'],
+  'zu wenige Sterne (Wolken/Fehlbelichtung)': ['n_stars', 'Kaum Sterne erkannt – Wolken, Fehlbelichtung oder ein Bild ohne Himmel.'],
+  'manuell ausgeschlossen': [null, 'Von dir ausgeschlossen.'],
+  'manuell eingeschlossen': [null, 'Von dir eingeschlossen.'],
+  'bereits gestackt': [null, 'Steckt schon im Stack – nachträglich wird eine Aufnahme nur von Hand wieder entfernt.'],
+};
+async function framePopup(fid, all, order) {
+  const d = $('#dlg');
+  let f = all.find(x => x.id === fid), seq = 0;
+  if (!f) return;
+  const band = (x) => x.band || 'RGB';
+  const med = (k) => {
+    const v = all.filter(x => band(x) === band(f) && x[k] != null).map(x => x[k]).sort((a, b) => a - b);
+    return v.length ? v[v.length >> 1] : null;
+  };
+  const num = (v, n = 2) => v == null ? '–' : (+v).toLocaleString('de-DE', { maximumFractionDigits: n });
+  const draw = (x) => {
+    const capped = x.n_stars != null && x.star_cap && x.n_stars >= x.star_cap;
+    const [key, text] = FRAME_WHY[x.reason] || [null, ''];
+    const [cls, head, body] = x.stacked ? ['ok', 'Gestackt', x.reason && x.reason !== 'bereits gestackt' ? text : 'Die Messwerte liegen im üblichen Bereich dieser Serie.']
+      : x.status === 'selected' ? ['ok', 'Ausgewählt', text || 'Wird beim nächsten Durchlauf mitgestackt.']
+      : x.status === 'rejected' ? ['bad', 'Verworfen' + (x.reason ? ': ' + x.reason : ''), text || (String(x.reason || '').startsWith('nicht unter den besten')
+        ? 'Die Auswahl behält nur die besten Aufnahmen (Einstellung „Beste behalten“) – diese lag darunter.' : '')]
+      : x.status === 'failed' ? ['bad', 'Fehler', x.reason || ''] : ['', 'Noch nicht analysiert', ''];
+    const rows = [['n_stars', 'Sterne', capped ? `${x.n_stars}+` : num(x.n_stars, 0), capped ? 'Höchstzahl der Erkennung – im Bild sind mehr' : 'erkannte Sterne'],
+      ['fwhm', 'FWHM (Unschärfe)', x.fwhm == null ? '–' : num(x.fwhm) + ' px', 'kleiner = schärfer'],
+      ['ecc', 'Exzentrizität', num(x.ecc), '0 = rund, ab 0,8 deutlich länglich'],
+      ['bg', 'Himmelshintergrund', num(x.bg, 1), 'Helligkeit des Himmels (Rohwert)'],
+      ['score', 'Score', num(x.score), 'Gesamtnote aus Sternen, Schärfe, Form und Signal']];
+    const [W, H] = (x.shape || []).slice(-2).reverse();
+    const stars = W && x.stars?.length ? x.stars.map(s => `<circle cx="${s[0]}" cy="${s[1]}" r="${(Math.max(W, H) / 110).toFixed(1)}"/>`).join('') : '';
+    const on = !!store.get('stacking.fpvStars', false);
+    const pos = order.findIndex(o => o.id === x.id);
+    d.innerHTML = `<div class="fpv">
+      <div class="fpv-h"><h2 title="${esc(x.name)}">${esc(x.name)}</h2>
+        <button class="btn ghost sm" data-step="-1" ${pos > 0 ? '' : 'disabled'} title="Vorherige Aufnahme (←)" aria-label="Vorherige Aufnahme">‹</button>
+        <button class="btn ghost sm" data-step="1" ${pos >= 0 && pos < order.length - 1 ? '' : 'disabled'} title="Nächste Aufnahme (→)" aria-label="Nächste Aufnahme">›</button>
+        <button class="btn ghost sm" data-close title="Schließen" aria-label="Schließen">${icon('x')}</button></div>
+      <div class="fpv-body"><div class="fpv-main"><div class="fpv-img">${x.preview
+        ? `<div class="fpv-pic"><img src="/api/stacking/frames/${x.id}/preview" alt="Vorschau ${esc(x.name)}">${stars ? `<svg class="fpv-stars" viewBox="0 0 ${W} ${H}" aria-hidden="true"${on ? '' : ' hidden'}>${stars}</svg>` : ''}</div>`
+        : `<div class="fpv-none">${icon('image')}<span>Kein Vorschaubild – die Rohdatei wurde gelöscht, bevor es Vorschauen gab. Die Messwerte sind erhalten.</span></div>`}</div>
+      ${x.preview && stars ? `<label class="modrow"><input type="checkbox" id="fpvStars" ${on ? 'checked' : ''}><span class="switch"></span><span>Erkannte Sterne markieren <span class="dim">(hellste ${x.stars.length})</span></span></label>` : ''}</div>
+      <div class="fpv-side"><div class="fpv-verdict ${cls}"><b>${esc(head)}</b>${body ? `<p>${esc(body)}</p>` : ''}</div>
+      <table class="fpv-facts"><thead><tr><th>Messwert</th><th class="tnum">Aufnahme</th><th class="tnum">Median</th></tr></thead><tbody>
+        ${rows.map(([k, l, v, hint]) => { const m = med(k); return `<tr class="${k === key ? 'hit' : ''}"><td title="${esc(hint)}">${l}</td><td class="tnum">${v}</td><td class="tnum dim">${k === 'n_stars' && m != null && x.star_cap && m >= x.star_cap ? m + '+' : num(m, k === 'bg' ? 1 : k === 'n_stars' ? 0 : 2)}</td></tr>`; }).join('')}
+      </tbody></table>
+      <p class="mut sm">${[fnight(x.night), x.date ? new Date(x.date).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr' : '', x.exptime ? num(x.exptime, 1) + ' s belichtet' : '',
+        x.snr ? 'Signal/Rauschen ' + num(x.snr, 0) : '', x.trails ? `${x.trails} Spur${x.trails > 1 ? 'en' : ''} maskiert` : ''].filter(Boolean).map(esc).join(' · ')}</p></div></div></div>`;
+  };
+  const show = async (id) => {
+    const mine = ++seq;
+    f = all.find(x => x.id === id) || f;
+    draw(f);
+    try {
+      const det = await api('/stacking/frames/' + id);
+      if (mine === seq && d.open && d.querySelector('.fpv')) draw({ ...f, ...det, preview: f.preview });
+    } catch (e) { /* Listenwerte reichen für die Anzeige */ }
+  };
+  const step = (n) => { const i = order.findIndex(o => o.id === f.id) + n; if (order[i]) show(order[i].id); };
+  d.onclick = (e) => {
+    if (e.target === d || e.target.closest('[data-close]')) { d.close(); return; }
+    const b = e.target.closest('[data-step]');
+    if (b) step(+b.dataset.step);
+  };
+  d.onchange = (e) => {
+    if (e.target.id !== 'fpvStars') return;
+    store.set('stacking.fpvStars', e.target.checked);
+    $('.fpv-stars', d)?.toggleAttribute('hidden', !e.target.checked);
+  };
+  d.onkeydown = (e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); step(e.key === 'ArrowLeft' ? -1 : 1); } };
+  d.onclose = () => { d.onkeydown = d.onchange = null; };
+  d.showModal();
+  await show(fid);
+}
+
 async function housekeeping(panel) {
   const body = $('#hkBody', panel), keepOf = () => +($('#hkKeep', panel)?.value || 2);
   let seq = 0;      // nur die Antwort der jüngsten Abfrage zeichnet (sonst ersetzt eine späte ältere das schon bedienbare Formular)

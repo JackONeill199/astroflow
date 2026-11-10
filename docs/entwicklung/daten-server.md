@@ -22,8 +22,9 @@
    Test: `test_diskspace.py`.
 13. **Speicherbelegung & Aufräumen** (`housekeeping.py`, API `GET /housekeeping?keep=`, `POST /housekeeping/cleanup {keys, keep}`,
    UI: Einstellungen → Bilder → „Speicherbelegung“, seit 31.10.2026): Belegung je Bereich + größte Objekte; Aufräumbares: verwaiste
-   Ausgabedateien, Stacks gelöschter Objekte, Temp (> 1 h), leere Ordner (> 1 h), DB verdichten (VACUUM) – vorausgewählt; ältere Versionen
-   (neueste `keep` je Objekt bleiben, nicht bei importierten Bildern) und Sicherungen – nur auf Wunsch. Client schickt nur Schlüssel, der Server
+   Ausgabedateien, Stacks gelöschter Objekte, Temp (> 1 h), leere Ordner (> 1 h), Vorschaubilder gelöschter Aufnahmen, DB verdichten (VACUUM) – vorausgewählt; ältere Versionen
+   (neueste `keep` je Objekt bleiben, nicht bei importierten Bildern), alle „Vorschaubilder der Aufnahmen“ (`work/frame_previews`, eigener
+   Belegungsbereich) und Sicherungen – nur auf Wunsch. Client schickt nur Schlüssel, der Server
    ermittelt die Pfade neu und löscht nur innerhalb des Datenordners; 409 während eines Jobs. Rohdaten und Stacks bestehender Objekte nie.
 
 ## Hauptordner durchsuchen (`modules/stacking/library.py`, seit 31.10.2026)

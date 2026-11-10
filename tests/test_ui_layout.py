@@ -726,3 +726,31 @@ def test_einstellungen_schalter_und_breite(server, browser):
     page.keyboard.press("Space")
     assert box.is_checked() == before
     page.close()
+
+
+@pytest.mark.parametrize("size", list(SIZES))
+def test_aufnahme_popup(server, browser, size):
+    """Reiter „Aufnahmen“: Vorschaubild in der Statusspalte öffnet das Popup mit Begründung und Messwerten – passt in jede Breite,
+    Pfeiltaste blättert, Sternmarken lassen sich zuschalten."""
+    base, pid = server
+    w, h = SIZES[size]
+    page = browser.new_page(viewport={"width": w, "height": h})
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{base}/#/p/{pid}/aufnahmen")
+    thumb = page.locator("#ftable .fthumb").first
+    thumb.scroll_into_view_if_needed()
+    thumb.click()
+    dlg = page.locator("#dlg .fpv")
+    dlg.locator(".fpv-facts").wait_for()
+    first = dlg.locator("h2").inner_text()
+    assert dlg.locator(".fpv-verdict b").inner_text()
+    assert page.evaluate("(() => { const d = document.querySelector('#dlg'); return d.scrollWidth <= d.clientWidth + 1 })()")
+    if dlg.locator("#fpvStars").count():
+        dlg.locator("label.modrow").click()
+        assert page.locator(".fpv-stars").is_visible()
+    page.keyboard.press("ArrowRight")
+    page.wait_for_function("(n) => document.querySelector('#dlg h2')?.textContent !== n", arg=first)
+    page.keyboard.press("Escape")
+    page.close()
+    assert not errors, errors

@@ -15,7 +15,7 @@ from pathlib import Path
 from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
-from . import calibration, channels, comet, diskspace, gpu, graxpert, objects, platesolve, quality, registration, reviewer, skyquality, stars, tonight, tutor
+from . import calibration, channels, comet, diskspace, frame_preview, gpu, graxpert, objects, platesolve, quality, registration, reviewer, skyquality, stars, tonight, tutor
 from ...core import security
 from .db import DB
 from .pipeline import Pipeline
@@ -604,17 +604,53 @@ def build_router(eng: Engine) -> APIRouter:
     @r.get("/projects/{pid}/frames")
     def frames(pid: int):
         out = []
+        have = frame_preview.existing(eng.s.work_dir)
         for x in db.q("SELECT * FROM frames WHERE project_id=? AND kind='light' ORDER BY json_extract(info,'$.date_obs'), path", (pid,)):
             m = json.loads(x["metrics"]) if x["metrics"] else {}
             i = json.loads(x["info"])
+            offline = bool(not x["deleted"] and x["path"] and not Path(x["path"]).exists())
             out.append({"id": x["id"], "name": Path(x["path"]).name, "night": x["night"], "status": x["status"], "reason": x["reason"],
                         "band": channels.band_of(i.get("filter"), channels.is_color(i)), "filter": i.get("filter"),
                         "exptime": i.get("exptime"), "date": i.get("date_obs"),
                         "score": round(x["score"] or 0, 3), "manual": x["manual"], "stacked": x["stacked"], "deleted": x["deleted"],
-                        "offline": bool(not x["deleted"] and x["path"] and not Path(x["path"]).exists()),
+                        "offline": offline,
+                        # Vorschaubild vorhanden oder aus der Rohdatei nachholbar (/frames/{id}/preview)
+                        "preview": x["id"] in have or (not x["deleted"] and not offline and frame_preview.enabled()),
                         "n_stars": m.get("n_stars"), "star_cap": quality.MAX_STARS, "fwhm": m.get("fwhm") and round(m["fwhm"], 2),
                         "ecc": m.get("ecc") and round(m["ecc"], 2), "bg": m.get("bg") and round(m["bg"], 1)})
         return out
+
+    @r.get("/frames/{fid}")
+    def frame_detail(fid: str):
+        """Einzelne Aufnahme fürs Popup: Messwerte, Grund, Sternpositionen (Vollauflösung) und Bildgröße."""
+        x = db.one("SELECT * FROM frames WHERE id=? AND kind='light'", (fid,))
+        if not x:
+            raise HTTPException(404)
+        m = json.loads(x["metrics"]) if x["metrics"] else {}
+        i = json.loads(x["info"])
+        r2 = lambda v, n=2: round(v, n) if isinstance(v, (int, float)) else None
+        return {"id": x["id"], "name": Path(x["path"]).name, "night": x["night"], "status": x["status"], "reason": x["reason"],
+                "manual": x["manual"], "stacked": x["stacked"], "deleted": x["deleted"], "score": r2(x["score"] or 0, 3),
+                "date": i.get("date_obs"), "exptime": i.get("exptime"), "filter": i.get("filter"), "shape": i.get("shape"),
+                "n_stars": m.get("n_stars"), "star_cap": quality.MAX_STARS, "fwhm": r2(m.get("fwhm")), "ecc": r2(m.get("ecc")),
+                "bg": r2(m.get("bg"), 1), "sky": r2(m.get("sky")), "snr": m.get("snr"), "grad": m.get("grad"), "trails": m.get("trails"),
+                "stars": m.get("stars") or []}
+
+    @r.get("/frames/{fid}/preview")
+    def frame_preview_img(fid: str):
+        """Vorschaubild einer Aufnahme; fehlt es, wird es aus der noch vorhandenen Rohdatei erzeugt (ohne Neu-Analyse)."""
+        x = db.one("SELECT id, path, info, deleted FROM frames WHERE id=? AND kind='light'", (fid,))
+        if not x:
+            raise HTTPException(404)
+        try:
+            info = json.loads(x["info"])
+            p = frame_preview.ensure(eng.s.work_dir, x["id"], None if x["deleted"] else x["path"], info.get("bayerpat"))
+        except Exception:
+            traceback.print_exc()
+            raise HTTPException(500, "Vorschau ließ sich nicht erzeugen – Details im Server-Protokoll.")
+        if not p:
+            raise HTTPException(404, "Keine Vorschau – die Rohdatei ist gelöscht.")
+        return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
 
     @r.patch("/frames/{fid}")
     def patch_frame(fid: str, body: dict = Body(...)):
