@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import io
 import os
+import sys
+import tempfile
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -82,10 +85,31 @@ def save(work_dir: Path, fid: str, raw: np.ndarray, bayerpat: str | None = None)
     p = path_for(work_dir, fid)
     data = render(raw, bayerpat)
     p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".tmp")
-    tmp.write_bytes(data)
-    os.replace(tmp, p)
+    # eigene Temp-Datei je Schreibvorgang: zwei gleichzeitige Nachholungen derselben Aufnahme (zwei Geräte, Analyse + Abruf)
+    # teilten sich sonst „<id>.tmp“ – der zweite os.replace fand sie nicht mehr
+    fd, tmp = tempfile.mkstemp(prefix=f"{fid}.", suffix=".tmp", dir=p.parent)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        with _lock(fid):                      # Windows: os.replace auf eine gerade ersetzte Datei → PermissionError
+            os.replace(tmp, p)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        if isinstance(sys.exc_info()[1], PermissionError) and p.exists():   # anderer Prozess schrieb dieselbe Vorschau
+            return len(data)
+        raise
     return len(data)
+
+
+_LOCKS: dict[str, threading.Lock] = {}
+_LOCKS_GUARD = threading.Lock()
+
+
+def _lock(fid: str) -> threading.Lock:
+    with _LOCKS_GUARD:
+        if len(_LOCKS) > 4096:
+            _LOCKS.clear()
+        return _LOCKS.setdefault(fid, threading.Lock())
 
 
 def ensure(work_dir: Path, fid: str, path: str | None, bayerpat: str | None) -> Path | None:

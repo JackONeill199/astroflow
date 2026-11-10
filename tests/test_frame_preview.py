@@ -93,3 +93,13 @@ def test_nachholen_ohne_neuanalyse_und_aufraeumen(tmp_path, monkeypatch):
     assert not ghost.exists() and len(frame_preview.existing(s.work_dir)) == 6
     r = housekeeping.cleanup(s, db, ["frame_previews"])
     assert r["removed"]["frame_previews"] == 6 and r["freed"] > 0 and not frame_preview.existing(s.work_dir)
+
+
+def test_gleichzeitig_dieselbe_vorschau(tmp_path):
+    """Zwei Nachholungen derselben Aufnahme zugleich: keine geteilte Temp-Datei, kein Fehler, keine Reste."""
+    from concurrent.futures import ThreadPoolExecutor
+    raw = np.random.default_rng(2).normal(1000, 20, (600, 800)).astype(np.float32)
+    with ThreadPoolExecutor(8) as ex:
+        sizes = list(ex.map(lambda _: frame_preview.save(tmp_path, "abc123", raw, "RGGB"), range(16)))
+    assert all(sizes) and frame_preview.existing(tmp_path) == {"abc123"}
+    assert not list(frame_preview.folder(tmp_path).glob("*.tmp"))
