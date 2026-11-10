@@ -735,7 +735,7 @@ async function projectView(el, id, tab = 'bild') {
     const n = (fn) => frames.filter(fn).length;
     t.innerHTML = `<div class="panel"><div class="panel-h"><h2>Qualität je Aufnahme</h2><span class="grow"></span>
         <span class="mut sm">${n(f => f.stacked)} gestackt · ${n(f => f.status === 'rejected')} verworfen</span></div>
-        ${chart(frames)}<div class="legend"><span><i style="background:var(--acc)"></i>Sternzahl</span><span><i style="background:#fb923c"></i>FWHM (Unschärfe)</span><span><i style="background:var(--bad);height:8px;width:3px"></i>verworfen</span></div></div>
+        ${chart(frames)}<div class="legend"><span><i style="background:var(--acc)"></i>${starsCapped(frames) ? '<span title="Die Sternerkennung zählt höchstens ' + frames[0].star_cap + ' Sterne je Aufnahme – fast alle Aufnahmen stehen an dieser Grenze, daher zeigt die Linie den Himmelshintergrund">Himmelshintergrund</span>' : 'Sternzahl'}</span><span><i style="background:#fb923c"></i>FWHM (Unschärfe)</span><span><i style="background:var(--bad);height:8px;width:3px"></i>verworfen</span></div></div>
       <div class="panel"><div class="toolbar" style="margin-bottom:12px">
         <div class="seg" id="ff">${[['all', 'Alle', frames.length], ['stacked', 'Gestackt', n(f => f.stacked)], ['selected', 'Ausgewählt', n(f => f.status === 'selected' && !f.stacked)], ['rejected', 'Verworfen', n(f => f.status === 'rejected')]]
           .filter(([k, , c]) => k === 'all' || c).map(([k, l, c]) => `<button data-v="${k}" class="${fFilter === k ? 'on' : ''}">${l} <span class="dim">${c}</span></button>`).join('')}</div>
@@ -756,7 +756,7 @@ async function projectView(el, id, tab = 'bild') {
     $('#ftable').innerHTML = `<table><thead><tr>${cols.map(([c, l]) => `<th data-k="${c}" class="${k === c ? 'sorted' + (dir > 0 ? ' asc' : '') : ''}">${l}</th>`).join('')}<th></th></tr></thead><tbody>
       ${list.map(f => { const [sc, sl] = stat(f); return `<tr data-id="${f.id}"><td class="name" title="${esc(f.name)}">${esc(f.name)}</td>
         <td>${f.band ? `<span class="chip"><i style="background:${BAND_COLOR[f.band] || '#999'}"></i>${esc(f.band)}</span>` : '<span class="dim">Farbe</span>'}</td>
-        <td>${fnight(f.night)}</td><td class="tnum">${f.n_stars ?? ''}</td><td class="tnum">${f.fwhm ?? ''}</td><td class="tnum">${f.ecc ?? ''}</td><td class="tnum">${f.score ? f.score.toFixed(2) : ''}</td>
+        <td>${fnight(f.night)}</td><td class="tnum">${f.n_stars != null && f.star_cap && f.n_stars >= f.star_cap ? `<span title="Höchstzahl der Sternerkennung – im Bild sind mehr Sterne">${f.n_stars}+</span>` : f.n_stars ?? ''}</td><td class="tnum">${f.fwhm ?? ''}</td><td class="tnum">${f.ecc ?? ''}</td><td class="tnum">${f.score ? f.score.toFixed(2) : ''}</td>
         <td><span class="status s-${sc}">${sl}${f.manual ? ' (manuell)' : ''}${f.deleted ? ' · Datei gelöscht' : f.offline ? ' · <span title="Ordner gerade nicht erreichbar (z. B. Platte abgesteckt) – wird verarbeitet, sobald er wieder da ist">nicht erreichbar</span>' : ''}</span>${f.status === 'rejected' && f.reason ? `<div class="why">${esc(f.reason)}</div>` : ''}</td>
         <td>${f.deleted ? '' : f.status === 'rejected' ? `<button class="linkbtn" data-f="${f.id}" data-m="1">einschließen</button>` : f.status === 'selected' ? `<button class="linkbtn" data-f="${f.id}" data-m="-1">ausschließen</button>` : ''}</td></tr>`; }).join('')}
       </tbody></table>${list.length ? '' : '<div class="empty" style="border:0">Keine Aufnahmen in dieser Auswahl.</div>'}`;
@@ -773,21 +773,36 @@ async function projectView(el, id, tab = 'bild') {
       toast(r.restack_needed ? 'Ausgeschlossen. Die Aufnahme steckt schon im Stack – beim nächsten Durchlauf wird neu gestackt.' : m > 0 ? 'Wird beim nächsten Durchlauf mitgestackt.' : 'Aufnahme ausgeschlossen.', '', undo);
     };
   }
+  // Sternzahl am Deckel der Erkennung (quality.MAX_STARS) sagt nichts – dann zeigt die erste Linie den Himmelshintergrund
+  const starsCapped = (fr) => { const d = fr.filter(f => f.n_stars != null && f.star_cap); return d.length > 1 && d.filter(f => f.n_stars >= f.star_cap).length >= 0.8 * d.length && d.every(f => f.bg != null); };
   function chart(fr) {
     const d = fr.filter(f => f.n_stars != null);
     if (d.length < 2) return '<div class="mut sm">Noch nicht analysiert.</div>';
     const W = 1000, H = 190, P = 26;
-    const mxN = Math.max(...d.map(f => f.n_stars), 1), fw = d.map(f => f.fwhm || 0), mxF = Math.max(...fw, 1);
-    const x = (i) => P + i * (W - 2 * P) / (d.length - 1), yN = (v) => H - P - v / mxN * (H - 2 * P), yF = (v) => H - P - v / mxF * (H - 2 * P);
+    const capped = starsCapped(d), a = capped ? (f => f.bg) : (f => f.n_stars), aLbl = capped ? 'Hintergrund' : 'Sterne';
+    const av = d.map(a), mnA = capped ? Math.min(...av) : 0, mxA = Math.max(...av, mnA + 1), fw = d.map(f => f.fwhm || 0), mxF = Math.max(...fw, 1);
+    const x = (i) => P + i * (W - 2 * P) / (d.length - 1), yA = (v) => H - P - (v - mnA) / (mxA - mnA) * (H - 2 * P), yF = (v) => H - P - v / mxF * (H - 2 * P);
     const path = (fn) => d.map((f, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${fn(f).toFixed(1)}`).join('');
-    let nightMarks = '';
-    d.forEach((f, i) => { if (i && f.night !== d[i - 1].night) nightMarks += `<line x1="${x(i - .5)}" x2="${x(i - .5)}" y1="${P / 2}" y2="${H - P}" stroke="var(--border)" stroke-dasharray="3 4"/><text x="${x(i - .5) + 4}" y="${P / 2 + 8}">${fnight(f.night)}</text>`; });
+    // Nachtwechsel: Linie immer, Datum nur, wenn es die vorige Beschriftung nicht überdeckt (eng liegende Nächte)
+    let nightMarks = '', lastEnd = -1e9;
+    const LBL = 72;                       // Breite einer Beschriftung „14. Sep 2022“ in viewBox-Einheiten (Schrift 10 px)
+    d.forEach((f, i) => {
+      if (!i || f.night === d[i - 1].night) return;
+      const xm = x(i - .5);
+      nightMarks += `<line x1="${xm}" x2="${xm}" y1="${P / 2}" y2="${H - P}" stroke="var(--border)" stroke-dasharray="3 4"><title>${esc(fnight(f.night))}</title></line>`;
+      const end = xm + 4 + LBL > W ? xm - 4 : xm + 4;          // am rechten Rand nach links schreiben
+      const from = end < xm ? end - LBL : end;
+      if (from < lastEnd + 8) return;
+      lastEnd = from + LBL;
+      nightMarks += `<text x="${end}" y="${P / 2 + 8}"${end < xm ? ' text-anchor="end"' : ''}>${esc(fnight(f.night))}</text>`;
+    });
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
       <line x1="${P}" x2="${W - P}" y1="${H - P}" y2="${H - P}" stroke="var(--border-soft)"/>${nightMarks}
-      <path class="line" pathLength="1" d="${path(f => yN(f.n_stars))}" fill="none" stroke="var(--acc)" stroke-width="2" vector-effect="non-scaling-stroke"/>
-      <path class="line" pathLength="1" d="${path(f => yF(f.fwhm || 0))}" fill="none" stroke="#fb923c" stroke-width="2" vector-effect="non-scaling-stroke"/>
+      <path class="line" d="${path(f => yA(a(f)))}" fill="none" stroke="var(--acc)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+      <path class="line" d="${path(f => yF(f.fwhm || 0))}" fill="none" stroke="#fb923c" stroke-width="2" vector-effect="non-scaling-stroke"/>
       ${d.map((f, i) => f.status === 'rejected' ? `<rect x="${x(i) - 2}" y="${H - P + 4}" width="4" height="10" rx="1" fill="var(--bad)"><title>${esc(f.name)}: ${esc(f.reason)}</title></rect>` : '').join('')}
-      ${d.map((f, i) => `<rect x="${x(i) - (W - 2 * P) / d.length / 2}" y="0" width="${(W - 2 * P) / d.length}" height="${H}" fill="transparent"><title>${esc(f.name)}\n${f.n_stars} Sterne · FWHM ${f.fwhm} px${f.band ? ' · ' + f.band : ''}</title></rect>`).join('')}
+      ${d.map((f, i) => `<rect x="${x(i) - (W - 2 * P) / d.length / 2}" y="0" width="${(W - 2 * P) / d.length}" height="${H}" fill="transparent"><title>${esc(f.name)}
+${f.n_stars}${capped ? '+' : ''} Sterne · FWHM ${f.fwhm} px${capped ? ` · ${aLbl} ${f.bg}` : ''}${f.band ? ' · ' + f.band : ''}</title></rect>`).join('')}
     </svg>`;
   }
 

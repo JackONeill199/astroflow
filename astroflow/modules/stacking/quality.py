@@ -11,6 +11,9 @@ METRICS_VERSION = 2      # erhöhen, wenn sich die Analyse ändert -> bestehende
 # Höchstens dieser Anteil der Frames fällt deswegen heraus – sonst verlöre z. B. NGC 7000 zwei Drittel seiner Daten
 ECC_MAX = 0.8
 ECC_MAX_REJECT = 1 / 3
+# Obergrenze der Sternerkennung je Aufnahme: bei sternreichen Feldern steht `n_stars` fast immer genau hier
+# (Diagramm „Qualität je Aufnahme“ zeigt dann statt der Sternzahl den Himmelshintergrund)
+MAX_STARS = 150
 
 
 @dataclass
@@ -52,7 +55,7 @@ def background_map(img: np.ndarray, box: int = 48) -> np.ndarray:
     return bg[:h, :w] if bg.shape == (h, w) else np.pad(bg, ((0, h - bg.shape[0]), (0, w - bg.shape[1])), mode="edge")[:h, :w]
 
 
-def detect_stars(img: np.ndarray, max_stars: int = 150, thresh: float = 5.0, min_fwhm: float = 0.8, max_fwhm: float = 20.0) -> Stars:
+def detect_stars(img: np.ndarray, max_stars: int = MAX_STARS, thresh: float = 5.0, min_fwhm: float = 0.8, max_fwhm: float = 20.0) -> Stars:
     res = img - background_map(img)
     sm = ndi.gaussian_filter(res, 1.2)
     sig = 1.4826 * np.median(np.abs(sm - np.median(sm))) + 1e-9
