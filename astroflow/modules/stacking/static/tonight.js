@@ -88,7 +88,7 @@ function chart(d, W, H, selected, hidden) {
   // unter der Mindesthöhe: leicht abgedunkelt
   out += `<rect class="tn-below" x="${L}" y="${Y(d.min_alt)}" width="${PW}" height="${Y(0) - Y(d.min_alt)}"/>`;
   // Mond: Fläche unter der Bahn, umso heller je voller
-  const ma = d.moon.alt, mi = d.moon.illum;
+  const ma = d.moon.alt, mi = Math.round(+d.moon.illum) || 0;
   if (ma.some(v => v > 0)) {
     out += `<path class="tn-moon-area" d="${path(ma)}L${X(d.times[d.times.length - 1])} ${Y(0)}L${L} ${Y(0)}Z" fill="url(#${id}mv)" opacity="${(.06 + .34 * mi / 100).toFixed(2)}"/>
       <path class="tn-moon-line" d="${path(ma)}"><title>Mond (${mi} % beleuchtet)</title></path>`;
@@ -193,7 +193,7 @@ customElements.define('af-tonight-chart', class extends HTMLElement {
     const d = this.plan, o = d.recommendations[this.selected];
     const open = this.querySelector('.tn-target')?.open;
     this.innerHTML = `<div class="tn-stage">${chart(d, this.width, this.height, this.selected, this.hiddenTargets)}<div class="tn-tooltip" hidden></div></div>${legend(d)}
-      <div class="tn-scrub"><output class="tn-clock">${hm(d.times[this.index])}</output><input class="tn-time" type="range" min="0" max="${d.times.length - 1}" value="${this.index}" aria-label="Uhrzeit im Höhenverlauf" aria-valuetext="${hm(d.times[this.index])}"><span class="mut sm">${Math.round(d.moon.illum)} % Mond</span></div>
+      <div class="tn-scrub"><output class="tn-clock">${hm(d.times[this.index])}</output><input class="tn-time" type="range" min="0" max="${d.times.length - 1}" value="${this.index}" aria-label="Uhrzeit im Höhenverlauf" aria-valuetext="${hm(d.times[this.index])}"><span class="mut sm">${Math.round(+d.moon.illum)} % Mond</span></div>
       <div class="tn-choices">${d.recommendations.map((x, k) => `<div class="tn-choice" style="--target:${COLORS[k]}"><input type="checkbox" data-visible="${k}" ${this.hiddenTargets.has(k) ? '' : 'checked'} aria-label="Kurve ${esc(x.name)} anzeigen"><button type="button" data-select="${k}" aria-pressed="${this.selected === k}">${esc(x.name)}<small>${x.category === 'more' ? 'Mehr Zeit' : 'Neu'}${x.weather_blocked ? ' · bei klarem Himmel' : ''}${x.season?.kind === 'last' ? ' · letzte Chance' : ''}</small></button></div>`).join('')}</div>
       ${o ? `<div class="tn-selection"><a ${targetLink(o)}>Objekt öffnen ${icon('arrow')}</a><span class="mut sm">${o.good.map(period).join(', ')} · max. ${Math.round(o.max_alt)}°${o.exposure ? ' · bisher ' + dur(o.exposure) : ''}</span>
         <button type="button" class="tn-hide" data-tn-hide="${esc(o.id)}" title="Dieses Ziel nicht mehr vorschlagen">Nicht interessiert</button>
@@ -244,11 +244,12 @@ function nightNav(d) {
   const tag = !d.weather_on ? '' : d.forecast?.covered ? (d.forecast.uncertain ? '<span class="tn-unsure" title="Wolkenvorhersagen über mehr als zwei Tage treffen oft nicht zu">Vorhersage unsicher</span>' : '')
     : k ? '<span class="tn-unsure off" title="So weit reicht die Vorhersage nicht – nur Dunkelheit, Mond und Ziele">ohne Wetter</span>' : '';
   const cell = n => {
-    const cloud = n.cloud == null ? '' : ` · ${n.cloud} % Wolken${n.uncertain ? ' (unsicher)' : ''}`;
-    return `<button type="button" role="tab" aria-selected="${n.index === k}" data-tn-night="${n.index}" title="${esc(nightName(n, n.index))}: ${num(n.dark_hours)} h dunkel · Mond ${n.moon} %${cloud}">
+    const cl = n.cloud == null ? null : Math.round(+n.cloud), moon = Math.round(+n.moon) || 0;
+    const cloud = cl == null ? "" : ` · ${cl} % Wolken${n.uncertain ? " (unsicher)" : ""}`;
+    return `<button type="button" role="tab" aria-selected="${n.index === k}" data-tn-night="${+n.index}" title="${esc(nightName(n, n.index))}: ${num(+n.dark_hours)} h dunkel · Mond ${moon} %${cloud}">
       <small>${n.index === 0 ? 'Heute' : esc(shortDay(n))}</small><span class="tn-d">${esc(dateDM(n).slice(0, 2))}</span>
-      <svg viewBox="0 0 16 16" aria-hidden="true">${moonIcon(8, 8, 6, n.moon, n.waxing, south)}</svg>
-      <i class="tn-cl${n.cloud == null ? ' none' : ''}${n.uncertain ? ' unsure' : ''}" style="--c:${n.cloud ?? 0}"></i></button>`;
+      <svg viewBox="0 0 16 16" aria-hidden="true">${moonIcon(8, 8, 6, moon, n.waxing, south)}</svg>
+      <i class="tn-cl${cl == null ? " none" : ""}${n.uncertain ? " unsure" : ""}" style="--c:${cl ?? 0}"></i></button>`;
   };
   return `<div class="tn-nav"><button type="button" class="tn-step prev" data-tn-night="${k - 1}" ${k ? '' : 'disabled'} aria-label="Vorige Nacht">${icon('chev')}</button>
     <b class="tn-nav-name">${esc(nightName(ns[k], k))}${k < 2 ? ` <small>${esc(shortDay(ns[k]))} ${esc(dateDM(ns[k]))}</small>` : ''}</b>
