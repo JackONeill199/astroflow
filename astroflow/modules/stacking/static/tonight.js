@@ -120,7 +120,7 @@ function chart(d, W, H, selected, hidden) {
     const rows = g.layers ? [['high', 'Hohe Wolken'], ['mid', 'Mittelhohe Wolken'], ['low', 'Tiefe Wolken']] : [['all', 'Bewölkung']];
     let y = 6;
     rows.forEach(([k, label]) => {
-      const vals = k === 'all' ? d.cloud : d.clouds[k], h = g.layers ? 6 : 11;
+      const vals = (k === 'all' ? d.cloud : d.clouds[k]) || [], h = g.layers ? 6 : 11;      // fehlende Schicht = unbekannt
       defs += ramp(`${id}b${k}`, d, g, 'tn-st-cloud', i => vals[i] == null ? 0 : vals[i] / 100 * .95);
       out += `<rect class="tn-band-bg" x="${L}" y="${y}" width="${PW}" height="${h}" rx="2"/><rect x="${L}" y="${y}" width="${PW}" height="${h}" rx="2" fill="url(#${id}b${k})"><title>${label}</title></rect>`;
       y += h + 1;

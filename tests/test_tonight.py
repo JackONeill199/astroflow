@@ -433,6 +433,17 @@ def test_night_strip_dates_moon_and_clouds(tmp_path, monkeypatch):
     assert d4["cloud"] is None and d4["forecast"]["covered"] is False and d4["forecast"]["uncertain"]
 
 
+def test_night_strip_uses_each_nights_site(tmp_path):
+    """Reise ab Nacht 3: die Leiste rechnet diese Nächte am Reiseort (hier hoher Norden: kaum Dunkelheit im Juni)."""
+    june = dt.datetime(2026, 6, 10, 19, tzinfo=dt.timezone.utc).timestamp()
+    home = {**SITE, "lat": 40.0}                                              # 50° N wäre im Juni ohne astronomische Nacht
+    sites = [[40.0, 10.0]] * 3 + [[69.0, 19.0]] * (tonight.NIGHTS - 3)
+    d = tonight.plan([], home, tmp_path, june, STELLINA, night_sites=sites)
+    ns = d["nights"]
+    assert ns[0]["dark_hours"] > 1 and ns[3]["dark_hours"] == 0 and ns[3]["date"] == "2026-06-13"
+    assert tonight.plan([], home, tmp_path, june, STELLINA)["nights"][3]["dark_hours"] > 1     # ohne Ortsliste: überall derselbe Ort
+
+
 def test_forecast_asks_same_service_with_rounded_site(tmp_path, monkeypatch):
     """Mehr Tage, aber derselbe Dienst und dieselbe Ortsrundung (0,1°); eine Abfrage deckt alle Nächte, danach Cache."""
     import httpx

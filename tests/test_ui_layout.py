@@ -577,6 +577,7 @@ def test_tonight_browse_nights(server, browser, size, tmp_path, monkeypatch):
     tonight._cache.clear()
     dev = {'name': 'Testgerät', 'fov': [1, .7], 'source': 'Testmessung'}
     plans = {k: tonight.plan([{**M31, 'exposure': 1800}], {**SITE, 'weather': True}, Path(tmp_path), EVENING, dev, night=k) for k in (0, 1, 2, 9)}
+    plans[1]['clouds'] = {**plans[1]['clouds'], 'mid': None, 'high': None}       # Vorhersage nur mit einer Schicht
     asked = []
 
     def answer(route):

@@ -48,7 +48,7 @@
 - **Mehrere Nächte** (Nutzerwunsch 10.11.2026 „mehrere Nächte in die Zukunft … per Pfeiltaste“): `plan(..., night=k)` mit k = 0 … `NIGHTS`−1 (14)
   verschiebt das Fenster um ganze Tage; „ab jetzt“ gilt nur in Nacht 0 (`ref = max(now, t0)`), Texte sagen dann „In dieser Nacht“ statt „Heute“.
   API `?night=k`: Datum = `core.sites.planning_night` + k Tage, Ort je Nacht aus der Ortsliste (`site_for(night=…)`), Antwort `night` = dieses Datum.
-  `nights` (Nachtleiste, `_nights`, eigener Cache): je Nacht Datum, dunkle Stunden, Mond (Beleuchtung, zunehmend, Stunden über dem Horizont im Dunkeln),
+  `nights` (Nachtleiste, `_strip`/`_nights`, eigener Cache; API gibt je Nacht den Ort aus der Ortsliste als `night_sites` mit, eigene Orte bekommen eigene Vorhersage): je Nacht Datum, dunkle Stunden, Mond (Beleuchtung, zunehmend, Stunden über dem Horizont im Dunkeln),
   mittlere Bewölkung im Dunkeln (nur soweit die Vorhersage reicht, sonst `None`), `uncertain` ab Nacht `UNCERTAIN_FROM` (2 = dritte Nacht).
 - **Vorhersage** (`_forecast`): weiterhin nur Open-Meteo, Ort auf 0,1° gerundet, höchstens eine Abfrage je Stunde und Ort (Cache
   `work/tutor/vorhersage8_<lat>_<lon>.json`); jetzt `FORECAST_DAYS` = 8 Tage und zusätzlich `cloud_cover_low/mid/high`, `wind_speed_10m`.

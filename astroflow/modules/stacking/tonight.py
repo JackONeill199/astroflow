@@ -247,11 +247,13 @@ def _season(h: np.ndarray, t0: float, lat: float) -> dict | None:
 
 
 def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None, device: dict | None = None,
-         hidden: set | frozenset | None = None, collection: dict | None = None, night: int = 0) -> dict:
+         hidden: set | frozenset | None = None, collection: dict | None = None, night: int = 0,
+         night_sites: list | None = None) -> dict:
     """projects: Objektzeilen mit exposure (Sekunden des neuesten Ergebnisses) und optional gespeicherten Befunden.
     hidden: Kennungen (Katalog-ID bzw. Projekt-ID als Text), die der Nutzer ausgeblendet hat.
     collection: optionaler Dienst „collection_progress“ (Sage): {"messier": [Nummern bereits entdeckter Messier-Objekte]}.
-    night: 0 = die Nacht, die gerade geplant wird (wie bisher), 1 … NIGHTS-1 = so viele Nächte später."""
+    night: 0 = die Nacht, die gerade geplant wird (wie bisher), 1 … NIGHTS-1 = so viele Nächte später.
+    night_sites: optional je Nacht [lat, lon] aus der Ortsliste (Nachtleiste rechnet jede Nacht an ihrem Ort); fehlt = überall `site`."""
     if cfg.get("lat") is None or cfg.get("lon") is None:
         return {"site": None}
     now = time.time() if now is None else now
@@ -263,7 +265,9 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
     base0, _ = _window(now, site[1])
     t0, t1 = base0 + night * 86400, base0 + (night + 1) * 86400
     ref = max(now, t0)                                   # „ab jetzt“ – in späteren Nächten zählt die ganze Nacht
-    key = (str(cache.resolve()), tuple(site), int(now // 600), night, json.dumps(projects, sort_keys=True), json.dumps(device, sort_keys=True),
+    night_sites = [[float(v) for v in s] if s else site for s in (night_sites or [])][:NIGHTS]
+    night_sites += [site] * (NIGHTS - len(night_sites))
+    key = (str(cache.resolve()), tuple(site), int(now // 600), night, json.dumps(night_sites), json.dumps(projects, sort_keys=True), json.dumps(device, sort_keys=True),
            bool(cfg.get("weather")), tuple(sorted(hidden)), json.dumps(collection, sort_keys=True), deepsky.signature())
     hit = _cache.get(key)
     if hit and time.time() - hit[0] < 600:
@@ -445,7 +449,7 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
            "sun": [round(float(v), 1) for v in sun[sel]], "cloud": _rounded(cloud, sel),
            "clouds": {k: _rounded(_series(ts, weather["hours"], k), sel) for k in ("low", "mid", "high")} if weather else None,
            "wind": _rounded(_series(ts, weather["hours"], "wind"), sel) if weather else None,
-           "night_index": night, "nights": _nights(site, base0, all_hours, now),
+           "night_index": night, "nights": _strip(night_sites, site, base0, all_hours, now, cache, bool(cfg.get("weather"))),
            "forecast": {"covered": cloud is not None and bool(np.isfinite(cloud[sel]).any()), "uncertain": night >= UNCERTAIN_FROM},
            "weather": weather, "weather_error": weather_error, "weather_on": bool(cfg.get("weather")), "min_alt": MIN_ALT,
            "catalog": {"candidates": len(cands), "messier": sum(c.source == "messier" for c in cands), "astap": sum(c.source == "astap" for c in cands),
@@ -455,6 +459,29 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
         _cache.pop(next(iter(_cache)))
     _cache[key] = (time.time(), out)
     return {**out, "now": now}
+
+
+def _strip(night_sites, site, base0, hours, now, cache, weather) -> list[dict]:
+    """Nachtleiste mit dem Ort jeder Nacht: je eigenem Ort eigene Rechnung und Vorhersage (gleicher Dienst, gleiche Rundung)."""
+    out = [None] * NIGHTS
+    for s in {tuple(x) for x in night_sites}:
+        s = list(s)
+        if s == site:
+            b0, hh = base0, hours
+        else:
+            b0, hh = _window(now, s[1])[0], []
+            if weather:
+                try:
+                    w = _forecast(s, cache, b0, b0 + NIGHTS * 86400) or {}
+                    last = max([h["t"] for h in w.get("hours", [])] or [0])
+                    hh = sorted([*w.get("hours", []), *(h for h in w.get("later", []) if h["t"] > last)], key=lambda h: h["t"])
+                except Exception:                      # Netz weg: diese Nächte ohne Wolken
+                    hh = []
+        rows = _nights(s, b0, hh, now)
+        for k in range(NIGHTS):
+            if night_sites[k] == s:
+                out[k] = rows[k]
+    return out
 
 
 def _nights(site: list[float], base0: float, hours: list[dict], now: float) -> list[dict]:

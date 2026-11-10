@@ -796,7 +796,7 @@ def build_router(eng: Engine) -> APIRouter:
                 except Exception:
                     _coll_cache.update(t=now, v=None)
             coll = _coll_cache.get("v")
-        cfg, here, night = tutor.settings(eng.ctx.store), None, None
+        cfg, here, night, night_sites = tutor.settings(eng.ctx.store), None, None, None
         later = lambda n: (dt.date.fromisoformat(n) + dt.timedelta(days=night_ix)).isoformat()
         site_for = eng.ctx.services.get("site_for")                  # gemeinsame Ortsliste: Ort der geplanten Nacht
         if site_for:
@@ -811,9 +811,16 @@ def build_router(eng: Engine) -> APIRouter:
                     here = site_for(night=night)
             except Exception:
                 here = None
+            try:                                                    # Nachtleiste: Ort jeder Nacht aus der Ortsliste
+                first = dt.date.fromisoformat(night) - dt.timedelta(days=night_ix)
+                night_sites = [[s["lat"], s["lon"]] if (s := site_for(night=(first + dt.timedelta(days=k)).isoformat())) else None
+                               for k in range(tonight.NIGHTS)] if here else None
+            except Exception:
+                night_sites = None
             if here:
                 cfg = {**cfg, "lat": here["lat"], "lon": here["lon"]}
-        out = tonight.plan(projects, cfg, eng.s.work_dir / "tutor", device=device, hidden=hidden, collection=coll, night=night_ix)
+        out = tonight.plan(projects, cfg, eng.s.work_dir / "tutor", device=device, hidden=hidden, collection=coll, night=night_ix,
+                           night_sites=night_sites)
         sky = None
         if here:
             try:
