@@ -735,13 +735,21 @@ async function projectView(el, id, tab = 'bild') {
     const n = (fn) => frames.filter(fn).length;
     t.innerHTML = `<div class="panel"><div class="panel-h"><h2>Qualität je Aufnahme</h2><span class="grow"></span>
         <span class="mut sm">${n(f => f.stacked)} gestackt · ${n(f => f.status === 'rejected')} verworfen</span></div>
-        ${chart(frames)}<div class="legend"><span><i style="background:var(--acc)"></i>${starsCapped(frames) ? '<span title="Die Sternerkennung zählt höchstens ' + frames[0].star_cap + ' Sterne je Aufnahme – fast alle Aufnahmen stehen an dieser Grenze, daher zeigt die Linie den Himmelshintergrund">Himmelshintergrund</span>' : 'Sternzahl'}</span><span><i style="background:#fb923c"></i>FWHM (Unschärfe)</span><span><i style="background:var(--bad);height:8px;width:3px"></i>verworfen</span></div></div>
+        <div id="fchart"></div><ul class="cd-leg sm fq-leg"><li><svg viewBox="0 0 12 12" aria-hidden="true"><circle class="fq-rej" cx="6" cy="6" r="3.5"/></svg>verworfen</li><li title="Beide Spuren: oben ist die bessere Aufnahme">↑ besser</li></ul></div>
       <div class="panel"><div class="toolbar" style="margin-bottom:12px">
         <div class="seg" id="ff">${[['all', 'Alle', frames.length], ['stacked', 'Gestackt', n(f => f.stacked)], ['selected', 'Ausgewählt', n(f => f.status === 'selected' && !f.stacked)], ['rejected', 'Verworfen', n(f => f.status === 'rejected')]]
           .filter(([k, , c]) => k === 'all' || c).map(([k, l, c]) => `<button data-v="${k}" class="${fFilter === k ? 'on' : ''}">${l} <span class="dim">${c}</span></button>`).join('')}</div>
         ${bands.length > 1 ? `<div class="seg" id="fb">${['all', ...bands].map(b => `<button data-v="${b}" class="${fBand === b ? 'on' : ''}">${b === 'all' ? 'Alle Filter' : esc(b)}</button>`).join('')}</div>` : ''}
         <span class="grow"></span><span class="mut sm">Klick auf „ausschließen“ entfernt eine Aufnahme dauerhaft</span></div>
         <div class="tablewrap" id="ftable"></div></div>`;
+    // Diagramm in echter Breite zeichnen (Schrift unverzerrt), bei deutlich anderer Breite neu; Klick auf eine Aufnahme → Popup
+    const fc = $('#fchart'), d = frames.filter(f => f.n_stars != null);
+    let cw = 0;
+    const draw = () => { const w = fc.clientWidth; if (w && Math.abs(w - cw) > 24) { cw = w; fc.innerHTML = chart(frames, w); } };
+    draw();
+    const ro = new ResizeObserver(() => fc.isConnected ? draw() : ro.disconnect());
+    ro.observe(fc);
+    fc.onclick = (e) => { const r = e.target.closest('[data-fid]'); if (r) framePopup(r.dataset.fid, frames, d); };
     $('#ff').onclick = (e) => { const b = e.target.closest('button'); if (b) { fFilter = b.dataset.v; tabFrames(t); } };
     $('#fb') && ($('#fb').onclick = (e) => { const b = e.target.closest('button'); if (b) { fBand = b.dataset.v; tabFrames(t); } });
     drawTable();
@@ -777,37 +785,71 @@ async function projectView(el, id, tab = 'bild') {
       toast(r.restack_needed ? 'Ausgeschlossen. Die Aufnahme steckt schon im Stack – beim nächsten Durchlauf wird neu gestackt.' : m > 0 ? 'Wird beim nächsten Durchlauf mitgestackt.' : 'Aufnahme ausgeschlossen.', '', undo);
     };
   }
-  // Sternzahl am Deckel der Erkennung (quality.MAX_STARS) sagt nichts – dann zeigt die erste Linie den Himmelshintergrund
+  // Sternzahl am Deckel der Erkennung (quality.MAX_STARS) sagt nichts – dann zeigt die erste Spur den Himmelshintergrund
   const starsCapped = (fr) => { const d = fr.filter(f => f.n_stars != null && f.star_cap); return d.length > 1 && d.filter(f => f.n_stars >= f.star_cap).length >= 0.8 * d.length && d.every(f => f.bg != null); };
-  function chart(fr) {
+  // Qualität je Aufnahme: zwei schmale Spuren übereinander, beide „oben = besser“ (Motive aus chartdeco.js zeigen das ohne Text),
+  // Nächte als abwechselnd hinterlegte Bänder. Die Linie verbindet nur verwendete Aufnahmen, verworfene sind Punkte – sonst wären
+  // deren Ausreißer (Dämmerung, Windböe) das Auffälligste. Skala aus den verwendeten (1.–99. Perzentil), Punkte außerhalb stehen am Rand.
+  // Breite = echte Pixelbreite (Schrift unverzerrt).
+  function chart(fr, width) {
     const d = fr.filter(f => f.n_stars != null);
     if (d.length < 2) return '<div class="mut sm">Noch nicht analysiert.</div>';
-    const W = 1000, H = 190, P = 26;
-    const capped = starsCapped(d), a = capped ? (f => f.bg) : (f => f.n_stars), aLbl = capped ? 'Hintergrund' : 'Sterne';
-    const av = d.map(a), mnA = capped ? Math.min(...av) : 0, mxA = Math.max(...av, mnA + 1), fw = d.map(f => f.fwhm || 0), mxF = Math.max(...fw, 1);
-    const x = (i) => P + i * (W - 2 * P) / (d.length - 1), yA = (v) => H - P - (v - mnA) / (mxA - mnA) * (H - 2 * P), yF = (v) => H - P - v / mxF * (H - 2 * P);
-    const path = (fn) => d.map((f, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${fn(f).toFixed(1)}`).join('');
-    // Nachtwechsel: Linie immer, Datum nur, wenn es die vorige Beschriftung nicht überdeckt (eng liegende Nächte)
-    let nightMarks = '', lastEnd = -1e9;
-    const LBL = 72;                       // Breite einer Beschriftung „14. Sep 2022“ in viewBox-Einheiten (Schrift 10 px)
-    d.forEach((f, i) => {
-      if (!i || f.night === d[i - 1].night) return;
-      const xm = x(i - .5);
-      nightMarks += `<line x1="${xm}" x2="${xm}" y1="${P / 2}" y2="${H - P}" stroke="var(--border)" stroke-dasharray="3 4"><title>${esc(fnight(f.night))}</title></line>`;
-      const end = xm + 4 + LBL > W ? xm - 4 : xm + 4;          // am rechten Rand nach links schreiben
-      const from = end < xm ? end - LBL : end;
-      if (from < lastEnd + 8) return;
-      lastEnd = from + LBL;
-      nightMarks += `<text x="${end}" y="${P / 2 + 8}"${end < xm ? ' text-anchor="end"' : ''}>${esc(fnight(f.night))}</text>`;
+    const D = window.AFdeco, W = Math.max(280, Math.round(width || 800)), L = 50, R = D ? D.R : 8, T0 = 18, TH = W < 560 ? 60 : 76, GAP = 12;
+    const H = T0 + 2 * TH + GAP + 2, PW = W - L - R, n = d.length, x = (i) => L + (i + .5) * PW / n, de = (v, k = 1) => (+v).toLocaleString('de-DE', { maximumFractionDigits: k });
+    const q = (arr, p) => { const s = arr.filter(v => v != null && isFinite(v)).sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(p * s.length))] : 0; };
+    // Mindestspanne 30 % des Medians: sonst bläht die enge Skala reines Messrauschen (3,1 ↔ 3,4 px) zu Zacken über die ganze Höhe auf
+    const range = (vals, lo0) => { const lo = lo0 ?? q(vals, .01), hi = q(vals, .99), pad = Math.max((Math.max(hi - lo, Math.abs(q(vals, .5)) * .3) - (hi - lo)) / 2, (hi - lo) * .08, 1e-6); return [lo0 ?? lo - pad, hi + pad]; };
+    const capped = starsCapped(d), rej = (f) => f.status === 'rejected';
+    // Spur oben: Himmelshintergrund (niedrig = dunkel = gut) bzw. Sternzahl (hoch = gut); unten: FWHM (klein = scharf = gut)
+    const tracks = [
+      capped ? { val: f => f.bg, up: false, motif: 'sky', name: 'Himmel', tip: `Himmelshintergrund – oben dunkel, unten hell (Mond, Dämmerung, Dunst). Statt der Sternzahl, weil die Erkennung höchstens ${d[0].star_cap} Sterne zählt.` }
+        : { val: f => f.n_stars, up: true, motif: 'depth', name: 'Sterne', tip: 'Erkannte Sterne – oben viele', ticks: true, lo0: 0, dig: 0 },
+      { val: f => f.fwhm, up: false, motif: 'seeing', name: 'Schärfe', tip: 'FWHM in Pixeln – oben scharf, unten unscharf (Seeing, Wind, Fokus)', ticks: true, unit: ' px' },
+    ];
+    // Nächte: zusammenhängende Gruppen (Reihenfolge der Liste = Aufnahmezeit)
+    const nights = [];
+    d.forEach((f, i) => { const g = nights[nights.length - 1]; if (g && g.night === f.night) { g.b = i; g.n++; g.rej += f.status === 'rejected'; } else nights.push({ night: f.night, a: i, b: i, n: 1, rej: +(f.status === 'rejected') }); });
+    const xa = (i) => L + i * PW / n;
+    let g = '', lastEnd = -1e9;
+    const short = (nt) => nt ? new Date(nt + 'T12:00').toLocaleDateString('de-DE', { day: 'numeric', month: 'short' }) : '–';
+    nights.forEach((nt, k) => {
+      const x1 = xa(nt.a), x2 = xa(nt.b + 1), lbl = short(nt.night), lw = lbl.length * 5.6, cx = Math.min(Math.max((x1 + x2) / 2, L + lw / 2), L + PW - lw / 2);
+      if (k % 2) g += `<rect class="fq-night" x="${x1.toFixed(1)}" y="${T0}" width="${(x2 - x1).toFixed(1)}" height="${2 * TH + GAP}"/>`;
+      if (cx - lw / 2 < lastEnd + 6) return;                       // Datum ausdünnen, Band bleibt
+      lastEnd = cx + lw / 2;
+      g += `<text class="fq-date" x="${cx.toFixed(1)}" y="${T0 - 6}" text-anchor="middle">${esc(lbl)}<title>${esc(fnight(nt.night))} · ${nt.n} Aufnahmen${nt.rej ? ` · ${nt.rej} verworfen` : ''}</title></text>`;
     });
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-      <line x1="${P}" x2="${W - P}" y1="${H - P}" y2="${H - P}" stroke="var(--border-soft)"/>${nightMarks}
-      <path class="line" d="${path(f => yA(a(f)))}" fill="none" stroke="var(--acc)" stroke-width="2" vector-effect="non-scaling-stroke"/>
-      <path class="line" d="${path(f => yF(f.fwhm || 0))}" fill="none" stroke="#fb923c" stroke-width="2" vector-effect="non-scaling-stroke"/>
-      ${d.map((f, i) => f.status === 'rejected' ? `<rect x="${x(i) - 2}" y="${H - P + 4}" width="4" height="10" rx="1" fill="var(--bad)"><title>${esc(f.name)}: ${esc(f.reason)}</title></rect>` : '').join('')}
-      ${d.map((f, i) => `<rect x="${x(i) - (W - 2 * P) / d.length / 2}" y="0" width="${(W - 2 * P) / d.length}" height="${H}" fill="transparent"><title>${esc(f.name)}
-${f.n_stars}${capped ? '+' : ''} Sterne · FWHM ${f.fwhm} px${capped ? ` · ${aLbl} ${f.bg}` : ''}${f.band ? ' · ' + f.band : ''}</title></rect>`).join('')}
-    </svg>`;
+    const ys = [];
+    tracks.forEach((tr, k) => {
+      const T = T0 + k * (TH + GAP), ok = d.filter(f => !rej(f)), [lo, hi] = range((ok.length > 1 ? ok : d).map(tr.val), tr.lo0);
+      const Y = (v) => { const r = Math.min(1, Math.max(0, (v - lo) / (hi - lo))); return T + (tr.up ? 1 - r : r) * TH; };
+      ys.push(Y);
+      if (D) g += D.draw(tr.motif, { L, T, PW, PH: TH, W, R, Y, lo: 0, hi: 0, sharpTop: true });   // lo=hi=0: keine mag-Richtwerte beim Himmel
+      g += `<rect class="fq-frame" x="${L}" y="${T}" width="${PW}" height="${TH}" rx="4"/>`;
+      if (tr.ticks) {                                              // kleine Achse links: Wert oben und unten
+        const top = tr.up ? hi : lo, bot = tr.up ? lo : hi;
+        g += `<text class="fq-tick" x="${L - 5}" y="${T + 21}" text-anchor="end">${de(top, tr.dig ?? 1)}${tr.unit || ''}</text><text class="fq-tick" x="${L - 5}" y="${T + TH}" text-anchor="end">${de(bot, tr.dig ?? 1)}${tr.unit || ''}</text>`;
+      }
+      // je Nacht eine Teillinie; bei vielen Aufnahmen gleitender Median als Linie, Einzelwerte blass dahinter
+      const w = Math.floor(n / 240) * 2 + 1, half = w >> 1;
+      let p = '', raw = '';
+      nights.forEach(nt => {
+        const pts = [];
+        for (let i = nt.a; i <= nt.b; i++) { const v = tr.val(d[i]); if (v != null && !rej(d[i])) pts.push([x(i), v]); }
+        pts.forEach(([xi, v], j) => {
+          const m = w < 3 ? v : pts.slice(Math.max(0, j - half), j + half + 1).map(e => e[1]).sort((a, b) => a - b), med = w < 3 ? v : m[m.length >> 1];
+          p += `${j ? 'L' : 'M'}${xi.toFixed(1)},${Y(med).toFixed(1)}`;
+          if (w >= 3) raw += `${j ? 'L' : 'M'}${xi.toFixed(1)},${Y(v).toFixed(1)}`;
+        });
+      });
+      g += `${raw ? `<path class="fq-raw" d="${raw}"/>` : ''}<path class="fq-line" d="${p}"/><text class="fq-t" x="${L - 5}" y="${T + 9}" text-anchor="end">${tr.name}<title>${esc(tr.tip)}</title></text>`;
+    });
+    // Treffer je Aufnahme (Tooltip, Klick → Popup), darüber die verworfenen als Punkte
+    const bw = PW / n;
+    g += d.map((f, i) => `<rect class="fq-hit" data-fid="${f.id}" x="${xa(i).toFixed(1)}" y="${T0}" width="${bw.toFixed(2)}" height="${2 * TH + GAP}"><title>${esc(f.name)} · ${esc(short(f.night))}
+${capped ? `Hintergrund ${f.bg}` : `${f.n_stars} Sterne`} · FWHM ${f.fwhm ?? '–'} px${f.status === 'rejected' ? `\nverworfen: ${esc(f.reason || '')}` : ''}</title></rect>`).join('');
+    g += d.map((f, i) => !rej(f) ? '' : tracks.map((tr, k) => tr.val(f) == null ? '' : `<circle class="fq-rej" cx="${x(i).toFixed(1)}" cy="${ys[k](tr.val(f)).toFixed(1)}" r="${W < 560 ? 1.8 : 2.4}"/>`).join('')).join('');
+    return `<svg class="fq" viewBox="0 0 ${W} ${H}" role="img" aria-label="Qualität je Aufnahme">${g}</svg>`;
   }
 
   // ---- Tab: Versionen ----
