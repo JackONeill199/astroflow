@@ -149,7 +149,8 @@ def test_exposure_recommendation_prominent():
     r = tutor.exposure_recommendation(43 * 60, 13.0, "galaxy", {"score": 4.5})
     assert r and 3 * 3600 <= r["target_s"] <= 5 * 3600 and "Mehr Belichtungszeit" in r["title"]
     assert tutor.exposure_recommendation(50 * 60, 64.0, "emission") is None          # genug Signal
-    assert tutor.exposure_recommendation(10 * 3600, 2.0, "galaxy")["target_s"] == 12 * 3600   # gedeckelt
+    assert tutor.exposure_recommendation(7 * 3600, 2.0, "galaxy")["target_s"] == 12 * 3600    # gedeckelt
+    assert tutor.exposure_recommendation(20 * 3600, 10.0, "galaxy") is None           # nie Ziel ≤ vorhandene Zeit
     q = {"score": 10.0, "issues": [], "measure": {"snr": 13.0}}
     f = tutor.findings(q, [], tutor.detect_device(["Stellina"]), {"exposure_s": 43 * 60, "kind": "galaxy", "grade": {"score": 4.5}})
     assert f[0]["code"] == "exposure_more" and f[0]["level"] == "warn" and f[0]["evidence"]["target_s"] == r["target_s"]

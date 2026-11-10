@@ -479,6 +479,9 @@ def exposure_recommendation(exposure_s: float, snr: float | None, kind: str | No
         return None
     target = float(np.clip(need, 1.5 * exposure_s, 12 * 3600))
     target = round(target / 1800) * 1800 or 1800                    # auf halbe Stunden
+    if target < 1.25 * exposure_s:
+        # Obergrenze schon erreicht (viele Nächte zusammen): keine Zielzeit, die kleiner oder gleich der vorhandenen ist
+        return None
     factor = target / exposure_s
     what = {"galaxy": "Spiralarme und Staubbänder", "emission": "schwache Nebelausläufer", "reflection": "Staub und Ausläufer",
             "snr": "schwache Filamente", "planetary": "die schwache Hülle"}.get(kind or "", "schwache Strukturen")

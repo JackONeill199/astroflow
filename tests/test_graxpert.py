@@ -128,3 +128,9 @@ def test_no_gpu_skips_ai_denoise(tmp_path, monkeypatch):
     assert graxpert.uses_gpu("… Used inference providers : ['CPUExecutionProvider']") is False
     assert graxpert.uses_gpu("Used inference providers : ['DmlExecutionProvider', 'CPUExecutionProvider']") is True
     assert graxpert.uses_gpu("keine Angabe") is None
+
+
+def test_cpu_denoise_setting_persists(tmp_path):
+    """`graxpert.cpu_denoise` aus settings.json wird geladen und gespeichert (Lade-/Speicherliste PERSIST)."""
+    from astroflow.modules.stacking import api
+    assert "cpu_denoise" in api.PERSIST["graxpert"]
