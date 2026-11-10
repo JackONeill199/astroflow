@@ -170,6 +170,51 @@ def night_of(when, lon=None, tz=None, header=None, book=None) -> str | None:
     return _date_at(t, _tz_hours(t))
 
 
+def clock_of(when, lon=None, book=None) -> str | None:
+    """Uhrzeit „HH:MM“ (Ortszeit) einer Aufnahme für die Anzeige – gleiche Quellen wie `night_of`, aber Uhrzeit statt
+    Sonnenzeit: Rechnerzeitzone mit Sommerzeit, solange der Aufnahmeort (`lon`, sonst Ortsliste) dazu passt; liegt er
+    über 2,5 h daneben (Reise in eine andere Zeitzone), die zur Länge gehörige ganze Stunde. Ohne alles: UTC."""
+    t = _instant(when)
+    if t is None:
+        return None
+    lon = _lon(lon)
+    book = book if book is not None else _NIGHT_BOOK
+    if lon is None and book is not None:
+        try:
+            s = resolve(book.cached_data(), when=t)
+            lon = _lon(s.get("lon")) if s else None
+        except Exception:                 # Ortsliste unlesbar: Rechnerzeitzone
+            pass
+    off = _tz_hours(t)
+    if lon is not None and (off is None or abs(lon / 15 - off) > 2.5):
+        off = float(round(lon / 15))
+    return (t + dt.timedelta(hours=off or 0)).strftime("%H:%M")
+
+
+def sun_alt(when, lat=None, lon=None) -> float | None:
+    """Sonnenhöhe in Grad zum Aufnahmezeitpunkt (Genauigkeit ~1°, reicht für Dämmerung/Nacht). Ohne Ort: Näherung mit
+    45° Breite und der Länge aus der Rechnerzeitzone – nur für die Darstellung „Stand der Nacht“ (Aufnahmen-Diagramm)."""
+    t = _instant(when)
+    if t is None:
+        return None
+    lat, lon = _lon(lat), _lon(lon)
+    if lat is None or lon is None or abs(lat) > 90:
+        off = _tz_hours(t) or 0.0
+        try:                                  # Normalzeit ohne Sommerzeit ≈ Zonenmeridian
+            off -= (t.astimezone().dst() or dt.timedelta()).total_seconds() / 3600
+        except (OverflowError, OSError, ValueError):
+            pass
+        lat, lon = 45.0, off * 15
+    d = (t - dt.datetime(2000, 1, 1, 12, tzinfo=dt.timezone.utc)).total_seconds() / 86400
+    g = math.radians((357.528 + 0.9856003 * d) % 360)
+    lam = math.radians((280.460 + 0.9856474 * d) % 360 + 1.915 * math.sin(g) + 0.020 * math.sin(2 * g))
+    eps = math.radians(23.439)
+    ra, dec = math.atan2(math.cos(eps) * math.sin(lam), math.cos(lam)), math.asin(math.sin(eps) * math.sin(lam))
+    lst = math.radians((280.46061837 + 360.98564736629 * d + lon) % 360)
+    p = math.radians(lat)
+    return math.degrees(math.asin(math.sin(p) * math.sin(dec) + math.cos(p) * math.cos(dec) * math.cos(lst - ra)))
+
+
 def is_date(s) -> bool:
     """JJJJ-MM-TT und ein echtes Kalenderdatum (kein 30. Februar)."""
     if not isinstance(s, str) or not _DATE.match(s):

@@ -87,5 +87,10 @@ Tastenkürzel: `/` Suche in Listen, `1–4` Tabs (Objekt, SkyTrace-Lauf), `F` Vo
 `AFdeco.draw('sky'|'seeing'|'depth', {L,T,PW,PH,W,R,Y,lo,hi,sharpTop})` zeichnet einen dezenten stilisierten Hintergrund (Himmel dunkel→Dunst/Mond,
 scharfer/aufgeblähter Stern, schwache/helle Sterne) mit Randsymbolen im rechten Rand (`AFdeco.R`); `AFdeco.legend([{cls,r,text,title}])` = einzeilige
 Legende mit echten Diagrammpunkten, Erklärung im Tooltip. Je Grafik höchstens ein kurzer Satz (was oben/unten bedeutet). Genutzt von Dashboard
-(`scatter(…, {deco})`), Himmelsqualität (`nightsChart`, `curveSvg`); HR-Diagramm hat ein eigenes Farbband aus `starColor`. Bewusst ohne Motiv:
-Heute Nacht (zeigt Dämmerung und Mond schon), Gerätediagnose, Aufnahmen-Diagramm (`preserveAspectRatio="none"`), Balken und Listen.
+(`scatter(…, {deco})`), Himmelsqualität (`nightsChart`, `curveSvg`), Aufnahmen-Diagramm (`chart` in `stacking.js`); HR-Diagramm hat ein eigenes Farbband aus `starColor`. Bewusst ohne Motiv:
+Heute Nacht (zeigt Dämmerung und Mond schon), Gerätediagnose, Balken und Listen.
+**Aufnahmen-Diagramm** „Qualität je Aufnahme“ (`stacking.js` → `chart(frames, breite)`, Stil `frames.css` `.fq*`): zwei Spuren übereinander, beide
+oben = besser (Himmel bzw. Sterne, Schärfe), in echter Pixelbreite gezeichnet (ResizeObserver, kein `preserveAspectRatio="none"`). Linie nur durch
+verwendete Aufnahmen (ab ~720 als gleitender Median, Einzelwerte blass), verworfene als rote Striche unter der unteren Spur (Nutzerwunsch: keine Punkte), Skala 1.–99. Perzentil der verwendeten mit
+Mindestspanne 30 % des Medians; Nächte als abwechselnde Bänder, Datum ausgedünnt (Tooltip mit Anzahl); Stand der Nacht ohne Beschriftung
+als Verlauf je Nachtband nach Sonnenhöhe (`sun` vom Server, `sites.sun_alt`; Dämmerung hell-bläulich `--data-2`, Nacht ohne Tönung), Uhrzeit nur im Tooltip; Klick auf eine Aufnahme → `framePopup`.

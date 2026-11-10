@@ -16,7 +16,7 @@ from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadF
 from fastapi.responses import FileResponse
 
 from . import calibration, channels, comet, diskspace, frame_preview, gpu, graxpert, objects, platesolve, quality, registration, reviewer, skyquality, stars, tonight, tutor
-from ...core import security
+from ...core import security, sites
 from .db import DB
 from .pipeline import Pipeline
 
@@ -601,17 +601,34 @@ def build_router(eng: Engine) -> APIRouter:
             db.x("UPDATE projects SET restack=1 WHERE id=?", (pid,))
         return {"job": eng.enqueue(pid, {k: v for k, v in body.items() if k != "restack"})}
 
+    def _site_of(i: dict, night, cache: dict):
+        """[Breite, Länge] einer Aufnahme: FITS-Kopf, sonst Ort der Nacht (gemeinsame Ortsliste, je Nacht einmal)."""
+        st = i.get("site")
+        if isinstance(st, (list, tuple)) and len(st) >= 2:
+            return st
+        if night not in cache:
+            try:
+                cache[night] = eng._site(night)
+            except Exception:
+                cache[night] = None
+        return cache[night]
+
     @r.get("/projects/{pid}/frames")
     def frames(pid: int):
-        out = []
+        out, here = [], {}
         have = frame_preview.existing(eng.s.work_dir)
         for x in db.q("SELECT * FROM frames WHERE project_id=? AND kind='light' ORDER BY json_extract(info,'$.date_obs'), path", (pid,)):
             m = json.loads(x["metrics"]) if x["metrics"] else {}
             i = json.loads(x["info"])
             offline = bool(not x["deleted"] and x["path"] and not Path(x["path"]).exists())
+            st = _site_of(i, x["night"], here) if i.get("date_obs") else None
+            sun = sites.sun_alt(i.get("date_obs"), *(st or (None, None))) if i.get("date_obs") else None
             out.append({"id": x["id"], "name": Path(x["path"]).name, "night": x["night"], "status": x["status"], "reason": x["reason"],
                         "band": channels.band_of(i.get("filter"), channels.is_color(i)), "filter": i.get("filter"),
                         "exptime": i.get("exptime"), "date": i.get("date_obs"),
+                        # Ortszeit „HH:MM“ (Tooltip) und Sonnenhöhe (Färbung „Stand der Nacht“) vom Server – core/sites
+                        "clock": sites.clock_of(i.get("date_obs"), lon=st[1] if st else None) if i.get("date_obs") else None,
+                        "sun": None if sun is None else round(sun, 1),
                         "score": round(x["score"] or 0, 3), "manual": x["manual"], "stacked": x["stacked"], "deleted": x["deleted"],
                         "offline": offline,
                         # Vorschaubild vorhanden oder aus der Rohdatei nachholbar (/frames/{id}/preview)

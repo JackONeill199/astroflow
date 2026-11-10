@@ -3,6 +3,15 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.58.0 – 10.11.2026
+
+### Neu
+- Aufnahmen-Diagramm verständlicher: zwei getrennte Spuren (Himmelshintergrund und Schärfe, jeweils oben = besser), Nächte als hinterlegte Bänder mit Datum, dezenter Dämmerungsverlauf je Nacht zeigt den Stand der Nacht nach Sonnenhöhe (genaue Uhrzeit im Tooltip), verworfene Aufnahmen als rote Striche unter der Grundlinie.
+- Reiter „Bild“: Solange die Aufnahmen vermessen werden, zeigt die Bildfläche die schematische Animation (statt im Reiter „Aufnahmen“).
+- Die Kachel „Bildqualität“ ist farbig nach Note und zeigt Rauschen, Schärfe und Sternform als kleine Balken; darunter ein kurzer Tutor-Hinweis, bei zu kurzer Belichtung mit Zielzeit. Im Kasten führt nur noch „Mehr in der Analyse“ zur Analyse.
+### Behoben
+- Reiter „Aufnahmen“ öffnet bei großen Projekten deutlich schneller: die Liste zeigt erst 150 Zeilen und lädt beim Scrollen nach. Der Hinweis „ausschließen“ erscheint nur noch, wenn es den Knopf gibt.
+
 ## 0.57.0 – 10.11.2026
 
 ### Neu
