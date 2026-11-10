@@ -122,7 +122,7 @@ def _poly_basis(y, x, degree):
 
 
 def sky_background(img: np.ndarray, max_degree: int = 3, grid: int = 24, tol: float = 1.0,
-                   edge_exclude: float = 0.0, cov: np.ndarray | None = None) -> tuple[np.ndarray, dict]:
+                   edge_exclude: float = 0.0, cov: np.ndarray | None = None, edge_band: float = 0.15) -> tuple[np.ndarray, dict]:
     """Hintergrundmodell ohne KI, nach dem Vorbild von DBE (PixInsight): Stützpunkte nur auf echtem Himmel, glattes Modell.
     - Kacheln mit robustem Median (Sterne vorher ausgeblendet), je Kanal.
     - Auswahl asymmetrisch: Nebel, Staub und Galaxien *addieren* Licht – Kacheln deutlich **über** dem Modell sind Objekt
@@ -150,7 +150,7 @@ def sky_background(img: np.ndarray, max_degree: int = 3, grid: int = 24, tol: fl
     gw = grid
     gh = max(6, int(round(grid * h / w)))
     ys, xs = np.linspace(0, h, gh + 1).astype(int), np.linspace(0, w, gw + 1).astype(int)
-    pts, vals, rough, cvt = [], [], [], []
+    pts, vals, rough, cvt, edge = [], [], [], [], []
     for i in range(gh):
         for j in range(gw):
             ok = ~stars[ys[i]: ys[i + 1], xs[j]: xs[j + 1]]
@@ -161,11 +161,12 @@ def sky_background(img: np.ndarray, max_degree: int = 3, grid: int = 24, tol: fl
                 continue
             blk = sm[:, ys[i]: ys[i + 1], xs[j]: xs[j + 1]][:, ok]
             pts.append((cy * 2 - 1, cx * 2 - 1))
+            edge.append(min(cy, 1 - cy, cx, 1 - cx) < edge_band)
             vals.append(np.median(blk, axis=1))
             cvt.append(float(np.median(cv[ys[i]: ys[i + 1], xs[j]: xs[j + 1]])) if cv is not None else 0.0)
             lb = blk.mean(0)
             rough.append(1.4826 * float(np.median(np.abs(lb - np.median(lb)))))
-    pts, vals, rough, cvt = np.array(pts), np.array(vals), np.array(rough), np.array(cvt)
+    pts, vals, rough, cvt, edge = np.array(pts), np.array(vals), np.array(rough), np.array(cvt), np.array(edge, bool)
     use_cov = cv is not None and (cvt > 0.03).sum() >= 4
     if len(pts) < 16:
         return np.broadcast_to(np.median(img.reshape(C, -1), axis=1)[:, None, None], img.shape).astype(np.float32), {"degree": 0}
@@ -173,7 +174,7 @@ def sky_background(img: np.ndarray, max_degree: int = 3, grid: int = 24, tol: fl
     # unruhige Kacheln (Nebelkanten, Sternhaufen) sind schlechte Stützpunkte
     use = rough <= np.median(rough) * 2.5
     # Start: untere Hälfte der Kacheln – Objektkacheln gar nicht erst mitnehmen
-    use &= t <= np.percentile(t[use], 60)
+    use &= (t <= np.percentile(t[use], 60)) | edge
     deg, coef = 0, None
     best = None
     for d in range(1, max_degree + 1):
@@ -189,7 +190,10 @@ def sky_background(img: np.ndarray, max_degree: int = 3, grid: int = 24, tol: fl
             cf = np.linalg.lstsq(A[u], vals[u], rcond=None)[0]
             r = t - (A @ cf).mean(1)
             s = 1.4826 * float(np.median(np.abs(r[u] - np.median(r[u])))) + 1e-12
-            new = use & (r < np.median(r[u]) + tol * s) & (r > np.median(r[u]) - 4 * s)
+            # Randbänder symmetrisch: dort ist ein Anstieg meist Randglühen (Stellina ohne Darks), kein Objekt – das Modell
+            # soll seinen breiten Anteil mitnehmen, den steilen Rest erledigt remove_edge_glow
+            hi = np.where(edge, 2.5, tol)
+            new = use & (r < np.median(r[u]) + hi * s) & (r > np.median(r[u]) - 4 * s)
             if (new == u).all():
                 break
             u = new
@@ -845,13 +849,18 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
     ai = p.get("_ai") or {}                          # GraXpert lief schon auf dem linearen Stack (pipeline.develop)
     if not ai.get("bge"):
         log("Hintergrundgradient entfernen")
-        if p.get("background", "sky") == "poly":     # altes Verfahren (bis 0.55)
+        if p.get("background", "poly") != "sky":
+            # Standard: Polynom ohne Ränder → Randglühen → Grad 2. Am ebensten bei Galaxien/Haufen (Messung 10.11.2026,
+            # 11 Fälle); sky_background war bei M17/M45 besser, bei NGC 6888/M3/M101 schlechter (Randbänder) → nur Option
             img = remove_gradient(img, int(p["gradient_degree"]), edge_exclude=EDGE_EXCLUDE)
             img = remove_edge_glow(img)              # steiles Randglühen, das das Polynom nicht erfasst
             img = remove_gradient(img, 2)            # Restneigung nach der Randkorrektur
-        else:                                        # Himmels-Stützpunkte + Abdeckungsstufe, schützt Nebel/Staub
-            model, binfo = sky_background(img, min(3, int(p["gradient_degree"])), cov=cov[y0:y1, x0:x1])
+        else:                                        # Option: Himmels-Stützpunkte + Abdeckungsstufe (Staub-/Nebelfelder)
+            cv = cov[y0:y1, x0:x1]
+            model, binfo = sky_background(img, min(3, int(p["gradient_degree"])), cov=cv)
             img = remove_edge_glow(img - model)
+            model, _ = sky_background(img, 2, cov=cv)              # Restneigung nach der Randkorrektur (wie früher Grad 2)
+            img = img - model
             stats["background"] = binfo
             del model
     elif float(ai.get("smoothing", 0.1)) >= 0.5:
@@ -904,8 +913,9 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
         if cpu > 0:
             log("Rauschreduzierung (linear, Wavelets)")
             cv = cov[y0:y1, x0:x1][trimmed[0]: y1 - y0 - trimmed[1], trimmed[2]: x1 - x0 - trimmed[3]]
-            img = denoise_multiscale(img, max(cpu, float(p.get("linear_denoise", 0))), cov=cv)
-            stats["denoise_cpu"] = round(max(cpu, float(p.get("linear_denoise", 0))), 2)
+            # feste Stärke wie beim KI-Entrauschen (das automatische linear_denoise bis 1,0 glättete M51 zu grauem Brei)
+            img = denoise_multiscale(img, cpu, cov=cv)
+            stats["denoise_cpu"] = round(cpu, 2)
         elif p.get("linear_denoise", 0) > 0:
             log("Rauschreduzierung (linear)")
             img = denoise_linear(img, float(p["linear_denoise"]))

@@ -29,10 +29,12 @@ SKY_PCT = 15
 PREVIEW_SIDE = 1400
 
 # Zielbereiche der Qualitätskontrolle (Anzeigewerte 0..1 nach der Entwicklung)
-BG_RANGE = (0.02, 0.10)        # Himmelshintergrund: dunkel wie bei Stellina (~0,03), aber nicht abgeschnitten
-NOISE_MAX = 0.016              # sichtbares Hintergrundrauschen (σ)
+# QC_VERSION 3: Schwellen auf den neuen Himmel (dunkelste 15 %) umgerechnet – an 48 Bildern (11 Objekte) gemessen ergab die neue
+# Messung im Median 0,77 × Himmelshelligkeit, 1,17 × Rauschen, 0,89 × Farbrauschen gegenüber der dunklen Bildhälfte
+BG_RANGE = (0.015, 0.08)       # Himmelshintergrund: dunkel wie bei Stellina, aber nicht abgeschnitten (bis v2: 0,02–0,10)
+NOISE_MAX = 0.018              # sichtbares Hintergrundrauschen (σ; bis v2: 0,016)
 CAST_MAX = 0.012               # Farbstich des Hintergrunds
-CHROMA_NOISE_MAX = 0.007       # Farbrauschen (Flecken) im Hintergrund
+CHROMA_NOISE_MAX = 0.0062      # Farbrauschen (Flecken) im Hintergrund (bis v2: 0,007)
 GRADIENT_MAX = 0.03            # Helligkeitsunterschied im Hintergrund (Kacheln)
 BLACK_CLIP_MAX = 0.005         # Anteil abgeschnittener Schwarzwerte
 WHITE_CLIP_MAX = 0.003         # Anteil ausgebrannter Pixel

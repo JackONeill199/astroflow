@@ -89,10 +89,14 @@ Schritte 11–13 (Speicher, volles Laufwerk, Aufräumen): `daten-server.md`.
    `assess` liefert `v` = `QC_VERSION` – **bei Änderungen an `assess` erhöhen**, der Tutor prüft ältere Ergebnisse dann am gespeicherten PNG nach.
    **Ohne GraXpert/GPU (seit 10.11.2026, Nutzerwunsch „so gut wie die Smart-Teleskope selbst, ohne GraXpert“; Grundlage: private
    Profi-Workflow-Recherche, Messung an 11 Fällen gegen Stellina-Nativbilder derselben Nacht):**
-   - Hintergrund `processing.sky_background` (Profil `background`, Standard „sky“; „poly“ = Verfahren bis 0.55): DBE-artige Stützpunkte –
+   - Hintergrund: Standard bleibt die Polynomkette (`background` „poly“). **Option** `processing.sky_background` (`background` „sky“,
+     je Objekt): Ebenheit des Himmels (Kachel-Mediane ohne Objekt, p95−p5 in σ) gemessen an 11 Fällen – Galaxien/Haufen mit Polynom
+     ebener (M3 0,5 gegen 1,1, M101 0,5 gegen 1,0), Nebel teils besser (M17 3,0 → 2,2, M45 2,6 → 1,6), NGC 6888 schlechter (violette
+     Randbänder). Das Verfahren: DBE-artige Stützpunkte –
      Kachel-Mediane ohne Sterne, unruhige Kacheln raus, Auswahl **asymmetrisch** (Kacheln über dem Modell = Nebel/Staub/Galaxie fallen
      heraus), Polynomgrad 1→3 nur bei deutlich besserem Fit (strenges BIC), dazu ein Term (1 − Abdeckung): Bereiche, die nur ein Teil der
-     Aufnahmen abdeckt, haben einen anderen Himmelswert – die „Rahmen“-Stufe bei Stellina. Danach `remove_edge_glow`. Grenze: gerade
+     Aufnahmen abdeckt, haben einen anderen Himmelswert – die „Rahmen“-Stufe bei Stellina; Randbänder (15 %) mit symmetrischer Auswahl
+     (dort ist ein Anstieg Randglühen). Danach `remove_edge_glow` und ein zweiter Durchgang Grad 2. Grenze: gerade
      Stufen mitten im Bild von Nächten mit anderem Ausschnitt (NGC 7023 links) bleiben – das wäre ein Stacking-Thema (Himmel je Nacht angleichen).
    - Entrauschen `processing.denoise_multiscale` (statt `denoise_linear`, Stärke `cpu_denoise`, Standard = `ai_denoise` bzw. 0,5):
      à-trous 5 Ebenen auf L, Farbe getrennt bis 32 px mit höheren Schwellen; Rauschen je Ebene am echten Himmel gemessen
