@@ -97,3 +97,16 @@ def test_assess_dust_does_not_count_as_sky():
     assert m["bg"] < 0.036                                      # Himmel, nicht Staub
     assert m["cast"] < 0.006                                    # Staubfarbe ist kein Farbstich
     assert develop.QC_VERSION >= 3
+
+
+def test_black_clip_widens_toe_instead_of_lifting_sky():
+    """Abgeschnittene Schwarzwerte bei sonst dunklem Himmel: Fuß verbreitern (bg_toe), nicht den ganzen Himmel anheben."""
+    qc = {"issues": [{"code": "black_clip", "text": ""}], "metrics": {"bg": 0.03}}
+    adj = develop.corrections(qc, {"bg_dark": 0.03, "target_bg": 0.07, "denoise": 0.3, "chroma_denoise": 1.5, "saturation": 1.3, "asinh": 30})
+    assert adj.get("bg_toe") == 1.75 and "bg_dark" not in adj
+    rng = np.random.default_rng(2)
+    img = np.clip(0.06 + rng.normal(0, 0.01, (3, 100, 100)), 0, 1).astype(np.float32)
+    hard = processing.darken_background(img, 0.03)
+    soft = processing.darken_background(img, 0.03, toe=2.5)
+    assert (soft < 0.004).mean() < (hard < 0.004).mean()
+    assert abs(np.median(soft) - np.median(hard)) < 0.01

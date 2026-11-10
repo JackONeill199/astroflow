@@ -100,8 +100,15 @@ Schritte 11–13 (Speicher, volles Laufwerk, Aufräumen): `daten-server.md`.
      Stufen mitten im Bild von Nächten mit anderem Ausschnitt (NGC 7023 links) bleiben – das wäre ein Stacking-Thema (Himmel je Nacht angleichen).
    - Entrauschen `processing.denoise_multiscale` (statt `denoise_linear`, Stärke `cpu_denoise`, Standard = `ai_denoise` bzw. 0,5):
      à-trous 5 Ebenen auf L, Farbe getrennt bis 32 px mit höheren Schwellen; Rauschen je Ebene am echten Himmel gemessen
-     (`dark_sky_mask`), örtlich über Abdeckung und Helligkeit skaliert; Garrote-Schwelle + Mehrskalen-Träger um Sterne (ohne Träger
-     gewannen Sterne ~7 % Fluss, weil die negativen Ränder grober Ebenen wegfielen). ~5 s für 6 MP.
+     (`dark_sky_mask`), örtlich nur über die Abdeckung skaliert (eine Anhebung mit der Helligkeit machte Galaxienarme weich – M66);
+     Garrote-Schwelle + Mehrskalen-Träger um *positive* Koeffizienten (ohne Träger gewannen Sterne ~7 % Fluss; Träger auch um negative
+     ließ kalte Pixel als dunkle Pünktchen stehen). Farbe bis 64 px mit hohen Schwellen in den groben Ebenen gegen großflächigen
+     „RGB-Brei“; Objekt- und Sternfarbe schützt eine Luminanzmaske. ~6 s für 6 MP.
+   - QC: „Schwarzwerte abgeschnitten“ bei sonst passendem Himmel verbreitert den weichen Fuß (`bg_toe`, `darken_background(toe=)`)
+     statt `bg_dark` anzuheben – auf dem CPU-Weg hob die Kontrolle den Himmel bei Galaxien sonst auf 0,06 (grau, Farbrauschen sichtbar).
+   - Tutor: `exposure_recommendation` (SNR wächst mit √t → Zielzeit t·(30/SNR)², halbe Stunden, max. 12 h) als Befund `exposure_more`
+     (Stufe warn, steht oben) und als `recommendation` im Bericht, sobald deutlich mehr Belichtung nötig ist oder eine Galaxie
+     Bildqualität (`grade.py`) unter 6 hat. Anlass M66: „Bearbeitung 10,0“ neben „Bildqualität 4,5“, Belichtungshinweis zugeklappt.
    - „Himmel“ überall = dunkelste Teile statt dunkle Bildhälfte (`dark_sky_mask`): `neutralize_background`/`neutral_display_background`
      10 %, `assess` 15 % (`QC_VERSION` 3; Kachelverlauf und Farbverlauf weiter über die dunkle Hälfte, sie brauchen Himmel in vielen Kacheln).
    - GraXpert: Glättung je Profil (`bge_smoothing`, reflection 1,0, sonst 0,1 – 0,1 trug bei NGC 7023 die Hälfte des Staubs ab), ab 0,5

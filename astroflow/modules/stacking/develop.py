@@ -276,7 +276,11 @@ def corrections(qc: dict, p: dict) -> dict:
     m = qc["metrics"]
     adj: dict = {}
     # Hintergrundhelligkeit: über den Schwarzpunkt (bg_dark), falls aktiv – so bleibt das Signal unverändert hell
-    if "bg_dark" in codes or "black_clip" in codes:
+    if "black_clip" in codes and "bg_dark" not in codes and p.get("bg_dark") is not None and p.get("bg_toe", 1.0) < 2.5:
+        # Himmel hell genug, nur einzelne dunkle Flecken laufen ins Schwarz: Fuß verbreitern statt den ganzen Himmel
+        # anzuheben (CPU-Weg M66: bg_dark 0,03 → 0,06 machte den Himmel grau und Farbrauschen sichtbar)
+        adj["bg_toe"] = round(p.get("bg_toe", 1.0) + 0.75, 2)
+    elif "bg_dark" in codes or "black_clip" in codes:
         if p.get("bg_dark") is not None:
             adj["bg_dark"] = min(0.08, p["bg_dark"] + 0.015)
         else:

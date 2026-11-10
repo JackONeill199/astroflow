@@ -425,7 +425,13 @@ def findings(quality: dict, nights: list[dict], device: dict, ctx: dict) -> list
         out.append(_f(code, "warn", text, f"{what} {why}".strip(), tips))
     # --- Belichtungszeit ----------------------------------------------------------
     exp = ctx.get("exposure_s") or 0
-    if exp and exp < 3 * 3600 and not issues.keys() & {"noisy", "faint"}:
+    rec = exposure_recommendation(exp, (quality.get("measure") or {}).get("snr"), kind, ctx.get("grade"))
+    if rec:
+        # klare Empfehlung (Rückmeldung 10.11.2026: M66, 43 min, „Bearbeitung 10,0“ neben „Bildqualität 4,5“ – der Hinweis auf
+        # mehr Belichtung war zugeklappt): Stufe „warn“, damit er oben steht; eigener Code für die Bildseite
+        out.append(_f("exposure_more", "warn", rec["title"], rec["text"], rec["tips"],
+                      evidence={k: rec[k] for k in ("exposure_s", "target_s", "snr", "snr_goal")}))
+    elif exp and exp < 3 * 3600 and not issues.keys() & {"noisy", "faint"}:
         nightly = exp / max(1, len(nights))
         out.append(_f("exposure", "info", f"Bisher {_dur(exp)} Belichtung",
                       "Je mehr Belichtungszeit, desto weniger Rauschen und desto mehr schwache Ausläufer werden sichtbar – doppelte Zeit "
@@ -455,6 +461,36 @@ def findings(quality: dict, nights: list[dict], device: dict, ctx: dict) -> list
         out.append(_f("good", "ok", "Gute Bedingungen, sauberes Bild", "Weder die Bildprüfung noch die Nachtdaten zeigen Auffälligkeiten.", []))
     order = {"bad": 0, "warn": 1, "info": 2, "ok": 3}
     return sorted(out, key=lambda f: order[f["level"]])
+
+
+SNR_GOAL = 30            # Objekt-SNR des linearen Stacks, ab dem das Bild ruhig wirkt (Note „Rauschen“ ~8 von 10, grade.py)
+GRADE_LOW = 6.0          # Bildqualität (grade.py) darunter: Belichtung ausdrücklich empfehlen
+
+
+def exposure_recommendation(exposure_s: float, snr: float | None, kind: str | None, grade: dict | None = None) -> dict | None:
+    """Empfehlung „mehr Belichtungszeit“ aus dem gemessenen Objekt-SNR: SNR wächst mit √t, also braucht SNR_GOAL etwa
+    t · (SNR_GOAL/SNR)². Nur wenn das deutlich (≥ 1,5×) mehr ist als vorhanden – dann ist Belichtung der wirksamste Hebel,
+    nicht die Bearbeitung. Gibt None, wenn keine Empfehlung nötig ist."""
+    if not exposure_s or not snr or snr <= 0:
+        return None
+    score = (grade or {}).get("score")
+    need = exposure_s * (SNR_GOAL / snr) ** 2
+    if need < 1.5 * exposure_s and not (score is not None and score < GRADE_LOW and kind == "galaxy"):
+        return None
+    target = float(np.clip(need, 1.5 * exposure_s, 12 * 3600))
+    target = round(target / 1800) * 1800 or 1800                    # auf halbe Stunden
+    factor = target / exposure_s
+    what = {"galaxy": "Spiralarme und Staubbänder", "emission": "schwache Nebelausläufer", "reflection": "Staub und Ausläufer",
+            "snr": "schwache Filamente", "planetary": "die schwache Hülle"}.get(kind or "", "schwache Strukturen")
+    text = (f"Das Objekt-Signal ist mit SNR {snr:.0f} noch schwach – die Bearbeitung kann Rauschen nur glätten, nicht ersetzen. "
+            f"Mit etwa {_dur(target)} Gesamtbelichtung (≈{factor:.1f}× so viel) sinkt das Rauschen auf rund "
+            f"{100 / np.sqrt(factor):.0f} % und {what} werden deutlich sichtbar.")
+    if score is not None:
+        text += f" Bildqualität der Aufnahme bisher {score:.1f} von 10."
+    tips = ["Dasselbe Objekt in weiteren Nächten aufnehmen – AstroFlow stackt neue Nächte automatisch dazu.",
+            "Mondlose Nächte und hohen Objektstand wählen: das bringt bei gleicher Zeit mehr als jede Bearbeitung."]
+    return {"title": f"Mehr Belichtungszeit empfohlen: bisher {_dur(exposure_s)}, Ziel etwa {_dur(target)}", "text": text,
+            "tips": tips, "exposure_s": round(exposure_s), "target_s": int(target), "snr": round(float(snr), 1), "snr_goal": SNR_GOAL}
 
 
 def _d(night: str) -> str:
@@ -619,12 +655,20 @@ def build_report(db, rid: int, cfg: dict, work_dir: Path, refresh: bool = False,
         stats["tutor"], changed = cached, True
     if changed:
         db.x("UPDATE results SET stats=? WHERE id=?", (json.dumps(stats), rid))
-    ctx = {"exposure_s": r["exposure"], "kind": r["kind"], "latitude": site and site[0],
+    from . import grade as _grade
+    from .depth import DEPTH_VERSION
+    try:
+        g = _grade.of_result(stats, _grade.project_ecc(db, [r["pid"]]).get(r["pid"]), DEPTH_VERSION)
+    except Exception:                                 # Note ist Beiwerk
+        g = None
+    ctx = {"exposure_s": r["exposure"], "kind": r["kind"], "latitude": site and site[0], "grade": g,
            "auto_fixed": bool(stats.get("color_gradient") or (stats.get("params") or {}).get("color_gradient")),
            "comet": stats.get("comet"), "diag": diag_of(stats)}
     return {**base, "available": True, "quality": stats["quality"], "device": cached["device"], "nights": cached["nights"],
             "site": site_src, "site_name": site_name, "weather_error": cached.get("weather_error"), "neutral_sky": sky,
-            "findings": findings(stats["quality"], cached["nights"], cached["device"], ctx), "ki": stats.get("tutor_ki")}
+            "findings": findings(stats["quality"], cached["nights"], cached["device"], ctx), "ki": stats.get("tutor_ki"),
+            # für die Bildseite: Empfehlung oben anzeigen (None = keine nötig)
+            "recommendation": exposure_recommendation(r["exposure"], ((stats["quality"].get("measure") or {}).get("snr")), r["kind"], g)}
 
 
 def diag_of(stats: dict) -> dict | None:

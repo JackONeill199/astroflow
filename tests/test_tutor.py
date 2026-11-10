@@ -110,7 +110,7 @@ def test_tutor_api(tmp_path, monkeypatch):
         rep = c.get(f"/api/stacking/results/{rid}/tutor").json()
         assert rep["available"] and rep["mode"] == "experte" and rep["site"] == "settings" and rep["nights"]
         assert rep["findings"] and all({"code", "level", "title", "text", "tips"} <= set(f) for f in rep["findings"])
-        assert "sun" in rep["nights"][0]
+        assert "sun" in rep["nights"][0] and "recommendation" in rep
         assert c.post(f"/api/stacking/results/{rid}/tutor/ki").status_code == 400          # kein KI-Anbieter
         # KI mit Attrappe
         from astroflow.modules.stacking import reviewer
@@ -142,3 +142,15 @@ def test_llm_config_keeps_custom_server_when_reviewer_off():
     assert tutor.llm_config(cfg, off).base_url == "http://pc:1234/v1"
     other = ReviewerConfig(provider="openrouter", base_url="https://openrouter.ai/api/v1", model="x", api_key="k")
     assert tutor.llm_config(cfg, other).base_url == ""          # LM-Studio-Standard statt OpenRouter-URL
+
+
+def test_exposure_recommendation_prominent():
+    """Kurz belichtete Galaxie (M66: 43 min, SNR 13): Empfehlung mit Zielzeit als Warnung ganz oben, nicht als zugeklappte Info."""
+    r = tutor.exposure_recommendation(43 * 60, 13.0, "galaxy", {"score": 4.5})
+    assert r and 3 * 3600 <= r["target_s"] <= 5 * 3600 and "Mehr Belichtungszeit" in r["title"]
+    assert tutor.exposure_recommendation(50 * 60, 64.0, "emission") is None          # genug Signal
+    assert tutor.exposure_recommendation(10 * 3600, 2.0, "galaxy")["target_s"] == 12 * 3600   # gedeckelt
+    q = {"score": 10.0, "issues": [], "measure": {"snr": 13.0}}
+    f = tutor.findings(q, [], tutor.detect_device(["Stellina"]), {"exposure_s": 43 * 60, "kind": "galaxy", "grade": {"score": 4.5}})
+    assert f[0]["code"] == "exposure_more" and f[0]["level"] == "warn" and f[0]["evidence"]["target_s"] == r["target_s"]
+    assert "exposure" not in [x["code"] for x in f]                                   # kein doppelter Info-Hinweis
