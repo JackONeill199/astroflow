@@ -863,8 +863,14 @@ async function settings(el) {
     if (!E.scope.value) { toast('Erst eine Beobachtung wählen – allgemeine Orte unter Einstellungen → Standorte.', 'err'); return; }
     if ((E.lat.value === '') !== (E.lon.value === '')) { toast('Bitte Breiten- und Längengrad zusammen eingeben.', 'err'); return; }
     try {
-      Object.assign(cfg, await send(T + '/settings', { session: E.scope.value || null, site: E.lat.value !== '' ? { name: E.name.value, lat: +E.lat.value, lon: +E.lon.value, alt_m: +(E.alt.value || 0), source: 'Web-Einstellung' } : null }));
-      toast(E.lat.value !== '' ? 'Standort für diese Beobachtung gespeichert.' : 'Ausnahme entfernt – es gilt die Ortsliste.', 'ok');
+      const r = await send(T + '/settings', { session: E.scope.value || null, site: E.lat.value !== '' ? { name: E.name.value, lat: +E.lat.value, lon: +E.lon.value, alt_m: +(E.alt.value || 0), source: 'Web-Einstellung' } : null });
+      const sync = r.site_sync || {}; delete r.site_sync; Object.assign(cfg, r);
+      // Ausnahme gilt auch als Ort der Nacht (Ortsliste → Bilder), außer bei eigener Zuordnung der Nacht oder abweichenden Ausnahmen derselben Nacht
+      const clash = Object.entries(sync.conflicts || {}), own = sync.user || [];
+      toast(E.lat.value === '' ? 'Ausnahme entfernt – es gilt die Ortsliste.'
+        : clash.length ? `Gespeichert. Nacht ${clash.map(([n]) => n).join(', ')}: Beobachtungen an verschiedenen Orten – die Nacht bekommt in der Ortsliste keinen Ort.`
+        : own.length ? `Gespeichert. Für die Nacht ${own.join(', ')} gilt in der Ortsliste weiter deine eigene Zuordnung.`
+        : 'Standort gespeichert – gilt auch für diese Nacht in Bilder (Einstellungen → Standorte).', clash.length || own.length ? '' : 'ok');
     } catch (err) { toast(err.message, 'err'); }
   };
   $('#catf').onsubmit = async (e) => {

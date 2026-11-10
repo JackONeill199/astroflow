@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.56.0 – 10.11.2026
+
+### Neu
+- Ein in SkyTrace zugewiesener Standort einer Beobachtung gilt jetzt auch für diese Nacht in Bilder: Er landet als Einzelnacht in der gemeinsamen Ortsliste (Einstellungen → Standorte), sodass Himmelsqualität, Gerätediagnose und Tutor mit dem richtigen Ort rechnen. Selbst eingetragene Zeiträume und Nächte bleiben unangetastet.
+
 ## 0.55.0 – 09.11.2026
 
 ### Neu

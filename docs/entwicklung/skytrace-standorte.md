@@ -29,6 +29,17 @@
 - Tests: `tests/test_sites.py` (Auflösung, Engine-Laden ohne Paket, Toleranz – nur mit skyfield –, Rückrechnung an synthetischen LEO-Bahnen:
   Ort auf < 50 m, Uhr auf < 0,1 s).
 
+## Ausnahme je Beobachtung gilt für die Nacht (10.11.2026, Nutzerwunsch: Ort aus SkyTrace auch für Bilder)
+- **Ablage der Orte in SkyTrace:** Ausnahmen je Beobachtung in `catalog_settings.json` → `sites[<Beobachtung>]` (nur dort fehlte der Weg zu Bilder);
+  „Übernehmen“ aus Rückrechnung/Standortsuche/Nachtsuche schreibt schon immer über `/api/sites` + `/api/sites/night` in die Ortsliste.
+- **Abgleich** `site_sync.py` (Server, außerhalb `engine/`): Nacht je Beobachtung wie die Statistik (`stats._night`: Datum im Stellina-Namen,
+  sonst `night_of` der frühesten Kandidatenzeit; ohne Lauf Datum im Namen) → `SiteBook.sync_nights("skytrace", …, claim="skytrace:nachtabgleich")`.
+  Mehrere Beobachtungen einer Nacht: ohne Ausnahme zählen sie nicht; Ausnahmen > `MERGE_M` auseinander → keine Einzelnacht (`conflicts`).
+  Läuft beim Start (Thread, liest alle Läufe), nach `POST /settings {session, site}` (Antwort `site_sync`: `added/updated/removed`, `user` =
+  Nächte mit eigener Zuordnung des Nutzers, `conflicts`; Toast in den SkyTrace-Einstellungen) und nach dem Ende einer Analyse.
+  Ohne Dienst `sites` passiert nichts. Folge: Der Ort gilt über die Ortsliste auch für andere Beobachtungen derselben Nacht ohne Ausnahme
+  (geänderte Signatur → „neu abgleichen“ wird wie bei jeder Ortsänderung angeboten). Tests: `tests/test_ort_aus_skytrace.py`.
+
 ## Neu abgleichen und Standortsuche (0.28.0, 05.11.2026, Befund: Analysen waren nach einer Standortänderung nicht erneut prüfbar)
 - **Engine** `engine/rematch_sites.py` (JSON-Zeilen `progress`/`status`/`result`, Stopp-Datei):
   `rematch <Lauf>… [--force]` löst den Ort je Kandidat neu auf (`resolve_site(source_file, session, when=timestamp)`, Rohbild weg →

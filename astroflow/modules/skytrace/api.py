@@ -733,9 +733,16 @@ def build_router(mod) -> APIRouter:
     def set_settings(body: dict = Body(...)):
         from observation_settings import update_settings
         try:
-            return update_settings(body)
+            out = update_settings(body)
         except (ValueError, TypeError, KeyError) as e:
             bad(e)
+        if "site" in body and body.get("session"):              # Ausnahme je Beobachtung → Einzelnacht der Ortsliste (Bilder)
+            from .site_sync import sync
+            try:
+                out = {**out, "site_sync": sync(mod, out)}
+            except Exception:
+                traceback.print_exc()
+        return out
 
     @r.get("/engine")
     def engine():

@@ -601,6 +601,16 @@ def device_zp(db) -> dict:
     return {k: float(np.median(v)) for k, v in vals.items() if len(v) >= 2}
 
 
+def site_key(site: dict | None) -> str:
+    """Fingerabdruck des Orts einer Nacht (ID + Koordinaten + Höhe) – ändert er sich, rechnet `site_watch` die Nacht neu."""
+    if not site:
+        return ""
+    try:
+        return f"{site.get('id') or ''}|{float(site['lat']):.4f}|{float(site['lon']):.4f}|{float(site.get('alt_m') or 0):.0f}"
+    except (KeyError, TypeError, ValueError):
+        return ""
+
+
 def _site_of(rows: list[dict], night: str, site_for) -> dict | None:
     hdr = [tuple(r["site"]) for r in rows if r["night"] == night and r.get("site")]
     if hdr:
@@ -695,7 +705,7 @@ def compute_project(pl, pid: int, site_for=None, log=lambda m: None, backfill: b
         for nk, n in res.items():
             n.update(scale=round(scale, 3), neutral=neutral, device=device["name"], object=proj["name"],
                      zp_fit=info.get("zp_fit"), zp_error=info.get("zp_error"), wcs_error=info.get("wcs_error"),
-                     site_name=(site or {}).get("name"), site_source=(site or {}).get("source"))
+                     site_name=(site or {}).get("name"), site_source=(site or {}).get("source"), site_key=site_key(site))
             db.x("INSERT OR REPLACE INTO sky_nights(project_id, night, site_id, site_name, device, updated, version, data) "
                  "VALUES(?,?,?,?,?,?,?,?)", (pid, nk, (site or {}).get("id"), (site or {}).get("name"),
                                               device_key(rows[0]["instrument"], rows[0]["gain"]), now, SKY_VERSION, json.dumps(n)))
