@@ -41,30 +41,55 @@ function anReveal(sec) {
   new MutationObserver(() => { if (sec.classList.contains('in')) anCountUp(sec); }).observe(sec, { childList: true, subtree: true });
 }
 
-// Detailspalte im Reiter Bild: 3–4 Kernzahlen + Verweis auf den Reiter
+// Detailspalte im Reiter Bild: 3–4 Kernzahlen + Verweis auf den Reiter. Nur „Mehr in der Analyse“ ist ein Link –
+// Kacheln und Tutor-Zeile sind reine Anzeige (Nutzerwunsch: nicht drei Klicks auf dasselbe Ziel)
 async function analysisSummary(host, r, pid) {
   if (!host) return;
   const q = r.stats?.quality;
-  const tile = (k, label, v, sub = '', tip = '') => `<a class="stat an-kpi" href="#/p/${pid}/analyse" data-k="${k}"${tip ? ` title="${esc(tip)}"` : ''}><small>${label}</small><b class="tnum">${v}</b><small class="dim">${sub}</small></a>`;
-  let grade = null;
+  const tile = (k, label, v, sub = '', tip = '') => `<div class="stat an-kpi" data-k="${k}"${tip ? ` title="${esc(tip)}"` : ''}><small>${label}</small><b class="tnum">${v}</b><small class="dim">${sub}</small></div>`;
+  let grade = null, tut = typeof tutorCache !== 'undefined' ? tutorCache.get(r.id) : null;
+  const de1 = (v) => String(v).replace('.', ',');
+  const lvl = (pt) => pt >= 6.5 ? 'ok' : pt >= 4 ? 'warn' : 'bad';
+  // Kachel Bildqualität farbig nach Note (Nutzerwunsch „bisschen mehr Farbe dran“), darin die Bestandteile als kleine Balken;
+  // unter den Kacheln der wichtigste Tutor-Hinweis in einer Zeile. Tutor-Felder `recommendation` (#60), `headline` und je Hinweis `short` werden genutzt, sobald der Server sie liefert.
+  // Die Bearbeitungsnote erscheint hier bewusst nicht: „10/10“ las sich wie „Bild perfekt“, bewertet aber nur Restfehler der Bearbeitung.
+  const qTile = (gq) => {
+    if (!gq) return tile('q', 'Bildqualität', '–', 'noch nicht bewertet');
+    const parts = gq.parts || [];
+    return `<div class="stat an-kpi an-q lvl-${lvl(gq.score)}" data-k="q" title="${esc(gradeTip(gq))}">
+      <span><small>Bildqualität</small><b class="tnum">${de1(gq.score)}<span class="dim">/10</span></b></span>
+      ${parts.length ? `<span class="an-qbars">${parts.map(p => `<span class="lvl-${lvl(p.points)}"><small>${esc(p.label)}</small><i style="--w:${Math.max(4, p.points * 10)}%"></i></span>`).join('')}</span>` : ''}</div>`;
+  };
+  // Vorrang: Belichtungsempfehlung des Tutors (`recommendation`, Zielzeit aus dem Objekt-SNR) – sonst der wichtigste Befund
+  const tip = () => {
+    const rec = tut?.recommendation;
+    if (rec && (rec.title || rec.target_s)) {
+      const head = rec.exposure_s && rec.target_s ? `Mehr Belichtung: bisher ${dur(rec.exposure_s)}, Ziel etwa ${dur(rec.target_s)}` : rec.title;
+      return `<p class="an-tip lvl-warn" title="${esc(rec.text || rec.title || '')}"><i aria-hidden="true"></i><span>${esc(head)}</span></p>`;
+    }
+    const f = (tut?.findings || []).find(x => x.code !== 'good' && x.level !== 'ok');
+    const head = tut?.headline || (f && (f.short || f.title));
+    return head ? `<p class="an-tip lvl-${f?.level || 'info'}" title="${esc(f?.text || '')}"><i aria-hidden="true"></i><span>${esc(head)}</span></p>` : '';
+  };
   const draw = (depth, night) => {
     if (!host.isConnected) return;
     const gq = grade?.grade;
     const g = depth?.state === 'done' ? depth.grenze : null;
     host.innerHTML = `<div class="stats an-sum">
-        ${gq ? tile('q', 'Bildqualität', `${String(gq.score).replace('.', ',')}<span class="dim">/10</span>`, esc(gq.parts.map(p => p.label).join(' · ')), gradeTip(gq))
-          : q ? tile('q', 'Bearbeitung', `${String(q.score).replace('.', ',')}<span class="dim">/10</span>`, esc(qlabel(q))) : ''}
+        ${qTile(gq)}
         ${tile('depth', 'Grenzgröße', g?.m5 != null ? `${String(g.m5.toFixed(1)).replace('.', ',')} mag` : '–', g ? '5σ, Gaia' : depth?.solved === false ? 'nicht gelöst' : 'noch nicht gemessen')}
         ${tile('sky', 'Bortle', night?.bortle ? esc(night.bortle.text.replace('Bortle ', '')) : '–', night?.bortle ? esc(night.bortle.label) : night ? 'kein Ortswert' : 'noch nicht berechnet')}
         ${tile('seeing', 'Seeing', night?.seeing != null ? `${String(night.seeing.toFixed(1)).replace('.', ',')}″` : '–', night?.seeing != null ? 'FWHM, Median' : '')}
-      </div>
+      </div>${tip()}
       <a class="an-more" href="#/p/${pid}/analyse">Mehr in der Analyse ${icon('arrow')}</a>`;
   };
   draw(null, null);
-  const [depth, sky, gr] = await Promise.all([
+  const [depth, sky, gr, tu] = await Promise.all([
     typeof insightLoad === 'function' ? insightLoad('depth', r.id).catch(() => null) : null,
-    api(`/stacking/projects/${pid}/sky`).catch(() => null), api(`/stacking/results/${r.id}/grade`).catch(() => null)]);
+    api(`/stacking/projects/${pid}/sky`).catch(() => null), api(`/stacking/results/${r.id}/grade`).catch(() => null),
+    tut ? tut : api(`/stacking/results/${r.id}/tutor`).catch(() => null)]);
   grade = gr;
+  if (tu?.available) { tut = tu; if (typeof tutorCache !== 'undefined') tutorCache.set(r.id, tu); }
   const ns = sky?.nights || [];
   draw(depth, ns.find(n => n.bortle) || ns.at(-1) || null);
 }

@@ -50,6 +50,7 @@ def test_entsteht_bei_analyse_vor_dem_loeschen(tmp_path):
     with TestClient(create_app(s)) as c:
         fr = c.get(f"/api/stacking/projects/{pid}/frames").json()
         assert all(f["preview"] and f["star_cap"] for f in fr)
+        assert all(len(f["clock"]) == 5 and f["clock"][2] == ":" and -90 <= f["sun"] <= 90 for f in fr)   # Ortszeit/Sonnenhöhe vom Server
         r = c.get(f"/api/stacking/frames/{fr[0]['id']}/preview")
         assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
         d = c.get(f"/api/stacking/frames/{fr[0]['id']}").json()
