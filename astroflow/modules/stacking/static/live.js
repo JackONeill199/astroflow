@@ -6,7 +6,7 @@ const LIVE_POLL = 2500;
 function createStackLive(host, pid) {
   host.innerHTML = `<section class="stack-live" aria-label="Live-Verarbeitung">
     <div class="sl-picture"><img class="sl-image" alt="Live-Vorschau des Astrofotos"><img class="sl-image" alt="" aria-hidden="true">
-      <div class="sl-wait"><span class="sl-orbit" aria-hidden="true"></span><span>Noch keine Bildvorschau</span></div>
+      <div class="sl-wait"><span class="sl-orbit" aria-hidden="true"></span><span>Noch keine Bildvorschau</span></div><div class="sl-viz" hidden></div>
       <span class="sl-badge">LIVE-VORSCHAU</span><div class="sl-caption"><span></span><span></span></div></div>
     <div class="sl-status"><span class="sl-pulse" aria-hidden="true"></span><span class="sl-label" aria-live="polite"></span>
       <span class="sl-percent tnum"></span><details class="sl-details"><summary>Details</summary>
@@ -16,6 +16,7 @@ function createStackLive(host, pid) {
   const find = s => root.querySelector(s);
   const fmt = (v) => Number(v).toLocaleString('de-DE');
   let active = 0, wanted = '', shown = '', destroyed = false, stepSig = '', fallback = false;
+  let viz = null, vizKind = '';                          // Schema des laufenden Schritts (vizProcess), solange noch kein Bild da ist
   /* Zustand der Zwischenstand-Folge (ein Lauf = live.run):
      seen    höchste laufende Nummer, die je eingereiht wurde – alles darunter wird nie mehr nachgeholt (Folge läuft nur vorwärts)
      queue   eingereihte, noch nicht angeforderte Stände (über das Abrufintervall verteilt, höchstens 8)
@@ -78,8 +79,18 @@ function createStackLive(host, pid) {
     if (!timer) step();
   }
   return {
-    update(p) {
+    // v = { kind, progress, label, … } aus der Objektseite (STEP_VIZ des laufenden Schritts) – füllt die Bildfläche, bis ein echtes
+    // Bild da ist (Nutzerwunsch: beim Vermessen die Animation statt „Noch keine Bildvorschau“)
+    update(p, v = null) {
       if (destroyed) return;
+      const kind = v?.kind && !shown && !wanted && typeof vizProcess === 'function' ? v.kind : '';
+      if (kind !== vizKind) {
+        viz?.destroy(); viz = null; vizKind = kind;
+        const host = find('.sl-viz');
+        host.hidden = !kind; root.classList.toggle('sl-schema', !!kind);
+        if (kind) viz = vizProcess(host, { kind });
+      }
+      viz?.update(v);
       const j = p.job || {}, live = p.live || {}, queued = j.state === 'queued';
       lastLive = live;
       root.classList.toggle('sl-queued', queued);
@@ -109,6 +120,6 @@ function createStackLive(host, pid) {
         find('.sl-pop ol').innerHTML = steps.map(s => `<li class="${s.done ? 'done' : 'current'}"><span aria-hidden="true">${s.done ? '✓' : '·'}</span><div><small>${esc(s.stage)}</small><span>${esc(s.label)}</span></div></li>`).join('');
       }
     },
-    destroy() { destroyed = true; clearTimeout(timer); images.forEach(img => { img.onload = img.onerror = null; }); },
+    destroy() { destroyed = true; clearTimeout(timer); viz?.destroy(); images.forEach(img => { img.onload = img.onerror = null; }); },
   };
 }
