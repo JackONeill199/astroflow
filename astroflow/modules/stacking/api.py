@@ -259,7 +259,34 @@ class Engine:
         except Exception as e:
             self._failed(jid, e)
 
+    MEM_RETRY_S = 120          # Speichermangel: so lange warten, bis ein Auftrag erneut startet
+    MEM_RETRIES = 3            # danach endgültiger Fehler mit klarer Meldung
+
+    def _memory_retry(self, jid: int) -> bool:
+        """Zu wenig Arbeitsspeicher (oft nur vorübergehend – andere Programme, parallele Läufe): Auftrag wartet und
+        startet nach `MEM_RETRY_S` erneut am letzten Checkpoint. False, wenn die Versuche aufgebraucht sind."""
+        job = self.db.one("SELECT options FROM jobs WHERE id=?", (jid,))
+        n = int(json.loads((job or {}).get("options") or "{}").get("mem_retry", 0)) + 1
+        if not job or n > self.MEM_RETRIES:
+            return False
+        self.db.x("UPDATE jobs SET state='queued', progress=0, message=?, "
+                  "options=json_set(COALESCE(options,'{}'),'$.mem_retry',?) WHERE id=?",
+                  (f"wartet – zu wenig Arbeitsspeicher, neuer Versuch in {self.MEM_RETRY_S // 60 or 1} min", n, jid))
+
+        def later():
+            if not self.stop.wait(self.MEM_RETRY_S):
+                self.q.put(jid)
+        threading.Thread(target=later, daemon=True, name="stacking-mem-retry").start()
+        return True
+
     def _failed(self, jid: int, e: Exception):
+        if isinstance(e, MemoryError):
+            traceback.print_exc()
+            if self._memory_retry(jid):
+                return
+            self.db.x("UPDATE jobs SET state='error', message=?, finished=? WHERE id=?",
+                      ("Zu wenig Arbeitsspeicher – andere Programme schließen und erneut verarbeiten.", time.time(), jid))
+            return
         if isinstance(e, InterruptedError) or isinstance(e, diskspace.DiskFull) or diskspace.is_full(e):
             # nichts verloren: Stacking setzt am letzten Checkpoint fort – Auftrag wartet wieder
             if not isinstance(e, InterruptedError):
