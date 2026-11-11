@@ -156,14 +156,21 @@ def _heat_fixture(lat, lon):
 # Fixtures `server` und `browser` (je Worker einmal) stehen in conftest.py
 
 
-ROUTES = ["#/", "#/nacht", "#/bilder", "#/analyse", "#/galerie", "#/galerie/{pid}", "#/p/{pid}/bild", "#/p/{pid}/analyse", "#/p/{pid}/aufnahmen", "#/p/{pid}/versionen", "#/p/{pid}/optionen",
+ROUTES = ["#/", "#/nacht", "#/bilder", "#/analyse", "#/galerie", "#/galerie/{pid}", "#/p/{pid}/bild", "#/p/{pid}/analyse", "#/p/{ipid}/analyse", "#/p/{pid}/aufnahmen", "#/p/{pid}/versionen", "#/p/{pid}/optionen",
           "#/import", "#/activity", "#/himmel", "#/skytrace", "#/skytrace/neu", "#/skytrace/statistik", "#/skytrace/2026-10-28_10-00-00-000001/beobachtungen", "#/skytrace/standorte", "#/skytrace/erfolge", "#/skytrace/3d", "#/skytrace/erde", "#/skytrace/erde/2022-08-01", "#/sage", "#/sage/wiki", "#/sage/entdeckungen", "#/sage/sammlung",
           "#/settings/stacking", "#/settings/skytrace", "#/settings/sage", "#/settings/standorte", "#/settings/heimnetz", "#/settings/module", "#/willkommen"]
+
+
+def _imported_pid(base: str) -> int:
+    """Das im Server-Fixture importierte, gelöste fertige Bild (Reiter „Analyse“ für fertige Bilder)."""
+    import httpx
+    return next(p["id"] for p in httpx.get(f"{base}/api/stacking/projects").json() if p.get("imported"))
 
 
 @pytest.mark.parametrize("size", list(SIZES))
 def test_nothing_overflows(server, browser, size):
     base, pid = server
+    ipid = _imported_pid(base)
     w, h = SIZES[size]
     page = browser.new_page(viewport={"width": w, "height": h})
     errors, cur = [], [""]
@@ -171,7 +178,7 @@ def test_nothing_overflows(server, browser, size):
     problems = {}
     for route in ROUTES:
         cur[0] = route
-        page.goto(f"{base}/{route.format(pid=pid)}")
+        page.goto(f"{base}/{route.format(pid=pid, ipid=ipid)}")
         page.wait_for_load_state("networkidle")
         page.wait_for_timeout(600)                           # Einblend-Animationen, nachgeladene Abschnitte
         found = page.evaluate(FIND_OVERFLOW)
@@ -186,6 +193,7 @@ def test_fast_navigation(server, browser):
     """Schnell weiterklicken, bevor eine Ansicht fertig geladen ist: keine JS-Fehler, die zuletzt gewählte Ansicht bleibt stehen.
     (Verworfene Ansichten schrieben früher nach dem Laden über die aktuelle bzw. griffen auf schon entfernte Elemente zu.)"""
     base, pid = server
+    ipid = _imported_pid(base)
     page = browser.new_page(viewport={"width": 1440, "height": 900})
     errors, cur = [], [""]
     page.on("pageerror", lambda e: errors.append(f"{cur[0]}: {e.stack or e}"))
@@ -193,7 +201,7 @@ def test_fast_navigation(server, browser):
     for wait in (0, 60, 200):
         for route in ROUTES:
             cur[0] = route
-            page.goto(f"{base}/{route.format(pid=pid)}")
+            page.goto(f"{base}/{route.format(pid=pid, ipid=ipid)}")
             page.wait_for_timeout(wait)
     page.goto(f"{base}/#/settings/stacking")
     page.wait_for_selector("#hkForm")
