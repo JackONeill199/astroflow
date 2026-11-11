@@ -150,7 +150,7 @@ Kein Linter/Formatter konfiguriert – Stil des umliegenden Codes übernehmen (k
 
 ## Tests (`tests/`)
 - **CI** (`.github/workflows/tests.yml`): volle Suite bei jedem PR/Push auf `main`, Ubuntu + Windows, Python 3.12, Playwright-Chromium (SkyTrace-Tests
-  ohne PyTorch). Pflichtprüfungen für `main`: `pytest (ubuntu-latest)`, `pytest (windows-latest)`. **Neue Tests müssen auch unter Linux laufen oder sauber überspringen.**
+  ohne PyTorch). Pflichtprüfungen für `main`: `pytest (ubuntu-latest)`, `pytest (windows-latest)` – das sind Sammeljobs, die von den parallelen Teiljobs „Tests ohne Browser (os)“ (`-m "not ui"`) und „Browser-Tests (os)“ (`-m ui`) abhängen und je Betriebssystem deren Ergebnis prüfen; Namen der Sammeljobs nicht ändern. **Neue Tests müssen auch unter Linux laufen oder sauber überspringen.**
 - **Parallel:** `pytest.ini` setzt `-n auto --maxprocesses=8 --dist load` (pytest-xdist, `requirements-dev.txt` – dort auch Playwright). `conftest.py`
   begrenzt unter xdist BLAS-/Pipeline-Threads auf 2 je Worker. Browser-Fixtures `server`/`browser` in `conftest.py`; Browser-Tests tragen automatisch
   den Marker `ui`. Beim Entwickeln `-m "not ui"` bzw. nur die betroffene Datei, vor dem PR der volle Lauf.

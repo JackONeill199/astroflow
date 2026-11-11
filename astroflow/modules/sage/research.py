@@ -298,13 +298,14 @@ class Researcher:
             kb.set_fact(eid, "diameter", f"≈ {dly:,.0f} Lichtjahre".replace(",", ".") if dly >= 10 else f"≈ {dly:.1f} Lichtjahre".replace(".", ","),
                         num=dly, unit="ly", origin="derived", source_id=sid, note="aus Winkelgröße und Entfernung berechnet")
         # Beziehungen: Typ-Konzept, AstroFlow-Art, Hierarchie aus SIMBAD (die vorläufige Typ-Kante des Grundeintrags ersetzen)
-        kb.x("DELETE FROM edges WHERE src=? AND rel='ist ein' AND note='laut AstroFlow-Katalog'", (eid,))
-        kb.x("DELETE FROM edges WHERE src=? AND rel IN ('ist ein', 'zeigt') AND origin='catalog'", (eid,))
-        if kind in KIND_CONCEPT:                         # endgültige Objektart (bei unspezifischem SIMBAD-Typ die des AstroFlow-Katalogs)
-            kb.add_edge(eid, KIND_CONCEPT[kind], "ist ein", source_id=sid if kind == o["af_kind"] else None,
-                        note="" if kind == o["af_kind"] else "laut AstroFlow-Katalog")
-        if local and local.get("kind") in KIND_CONCEPT and local["kind"] != kind:
-            kb.add_edge(eid, KIND_CONCEPT[local["kind"]], "zeigt", origin="catalog", note="laut AstroFlow-Katalog")
+        with kb._lock:                                   # Löschen + Neusetzen unteilbar: Leser (und parallele Recherchen) sehen nie die Lücke dazwischen
+            kb.x("DELETE FROM edges WHERE src=? AND rel='ist ein' AND note='laut AstroFlow-Katalog'", (eid,))
+            kb.x("DELETE FROM edges WHERE src=? AND rel IN ('ist ein', 'zeigt') AND origin='catalog'", (eid,))
+            if kind in KIND_CONCEPT:                     # endgültige Objektart (bei unspezifischem SIMBAD-Typ die des AstroFlow-Katalogs)
+                kb.add_edge(eid, KIND_CONCEPT[kind], "ist ein", source_id=sid if kind == o["af_kind"] else None,
+                            note="" if kind == o["af_kind"] else "laut AstroFlow-Katalog")
+            if local and local.get("kind") in KIND_CONCEPT and local["kind"] != kind:
+                kb.add_edge(eid, KIND_CONCEPT[local["kind"]], "zeigt", origin="catalog", note="laut AstroFlow-Katalog")
         try:
             h = self.simbad.hierarchy(o["oid"])
         except SourceError as x:

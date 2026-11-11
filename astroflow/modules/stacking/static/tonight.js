@@ -352,7 +352,8 @@ document.addEventListener('keydown', e => {
   e.preventDefault();
   goNight(nightIx + (e.key === 'ArrowRight' ? 1 : -1), e.target.closest?.('.tn-strip') ? '.tn-strip [aria-selected="true"]' : null);
 });
-addEventListener('hashchange', () => { if (!/^#\/nacht/.test(location.hash)) nightIx = 0; });
+// Ziel des Ereignisses (newURL), nicht location.hash: bei schnellen Seitenwechseln steht die Adresse beim Eintreffen schon weiter
+addEventListener('hashchange', e => { if (!/#\/nacht/.test(e.newURL || location.href)) nightIx = 0; });
 document.addEventListener('click', e => {
   const hide = e.target.closest('[data-tn-hide]'), reset = e.target.closest('[data-tn-reset]');
   if (!hide && !reset) return;
