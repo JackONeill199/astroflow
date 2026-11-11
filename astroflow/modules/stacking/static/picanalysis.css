@@ -19,5 +19,7 @@
 .pa-thumb span { display: grid; min-width: 0 }
 .pa-thumb b { font-size: 0.8125rem; overflow-wrap: anywhere }
 .pa-self img { border-color: var(--acc) }
-.viewer.hover-labels.marks-on.ready .vov { opacity: 1 }
+.viewer.pa-viewer.ready .vov, .viewer.pa-viewer.ready:hover .vov { opacity: 0 }
+.viewer.pa-viewer.marks-on.ready .vov, .viewer.pa-viewer.marks-on.ready:hover .vov { opacity: 1 }
+@media (hover: none) { .viewer.pa-viewer.ready .vov { opacity: 0 } .viewer.pa-viewer.marks-on.ready .vov { opacity: 1 } }
 @media (max-width: 900px) { .pa .an-top { grid-template-columns: minmax(0, 1fr) } }
