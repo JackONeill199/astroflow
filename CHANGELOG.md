@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.63.0 – 11.11.2026
+
+### Neu
+- Aufnahmen mit rundem Sternkern und schwachem, gleichgerichtetem Schweif (Ruck der Montierung während der Belichtung) werden erkannt: Bilder verwirft sie mit dem Grund „Sternschweif (Ruck der Montierung)“, SkyTrace lässt sie als verwackelt aus. Gilt für neu analysierte Aufnahmen; bestehende Projekte bleiben unverändert.
+
 ## 0.62.0 – 11.11.2026
 
 ### Neu

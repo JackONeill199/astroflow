@@ -10,6 +10,7 @@ json_store.py, observation_settings.py, project_paths.py, motion_plausibility.py
 satellite_overlay.py, video_overlays.py –
 stehen wahlweise unter der PolyForm Noncommercial License 1.0.0 ODER der AGPL-3.0-or-later
 (SPDX: PolyForm-Noncommercial-1.0.0 OR AGPL-3.0-or-later, Kopfzeile in jeder Datei).
+Ebenso doppelt lizenziert ist astroflow/core/star_tails.py, das die Engine über den Pfad lädt.
 
 Copyright 2026 JackONeill199
 

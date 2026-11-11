@@ -2,6 +2,26 @@
 import numpy as np
 from scipy.ndimage import gaussian_filter,maximum_filter,label,map_coordinates
 
+_STAR_TAILS=None
+
+
+def star_tails_module():
+    """astroflow/core/star_tails.py (doppelt lizenziert) – im Server per Import, im Engine-Interpreter über den Pfad.
+    Fehlt die Datei (Engine allein), entfällt nur diese Prüfung."""
+    global _STAR_TAILS
+    if _STAR_TAILS is None:
+        try:
+            from astroflow.core import star_tails as module
+        except Exception:
+            import importlib.util
+            from pathlib import Path
+            path=Path(__file__).resolve().parents[3]/'core'/'star_tails.py'
+            if not path.is_file(): _STAR_TAILS=False; return None
+            spec=importlib.util.spec_from_file_location('astroflow_core_star_tails',path)
+            module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        _STAR_TAILS=module
+    return _STAR_TAILS or None
+
 
 def ensemble_star_tails(smooth,noise,centers):
     """Schwache, auch unterbrochene lange Schweife als gemeinsames Sternprofil prüfen.
@@ -136,7 +156,9 @@ def measure_quality(data):
     coherence=float(abs(np.mean(np.exp(2j*angles)))) if len(angles) else 0.
     doubles=[row[3] for row in measurements if row[3] is not None]
     double_coherence=float(abs(np.mean(np.exp(2j*np.asarray(doubles))))) if doubles else 0.
-    return dict(stars=len(measurements),measurable=True,axis_ratio=round(float(np.median(metrics[:,0])),3),elongated_fraction=round(float(elongated.mean()),3),direction_coherence=round(coherence,3),fwhm=round(float(np.median(metrics[:,1])),3),double_fraction=round(len(doubles)/len(measurements),3),double_coherence=round(double_coherence,3),**extended_star_tails(smooth,noise,used),**ensemble_star_tails(smooth,noise,list(zip(xs[order],ys[order]))))
+    tails=star_tails_module()
+    profile=tails.tail_profile(data) if tails else {}
+    return dict(stars=len(measurements),measurable=True,axis_ratio=round(float(np.median(metrics[:,0])),3),elongated_fraction=round(float(elongated.mean()),3),direction_coherence=round(coherence,3),fwhm=round(float(np.median(metrics[:,1])),3),double_fraction=round(len(doubles)/len(measurements),3),double_coherence=round(double_coherence,3),**extended_star_tails(smooth,noise,used),**ensemble_star_tails(smooth,noise,list(zip(xs[order],ys[order]))),**profile)
 
 
 def baseline_from_metrics(metrics):
@@ -157,10 +179,15 @@ def assess_quality(metrics,baseline=None):
     broadened=baseline is not None and metrics['fwhm']>max(baseline['fwhm']*1.6,baseline['fwhm']+1.5)
     field_tails=(metrics.get('tail_reference_stars',0)>=20 and metrics.get('tail_stars',0)>=10 and
                  metrics.get('tail_fraction',0)>=.2 and metrics.get('tail_direction_coherence',0)>=.75 and metrics.get('tail_quadrants',0)>=3)
+    tails=star_tails_module()
+    # Runder Kern + schwacher gleichgerichteter Schweif (Ruck der Montierung): im mittleren Sternprofil vieler Sterne
+    profile_tail=bool(tails and tails.has_tail(metrics))
     if metrics.get('ensemble_motion'):
         result.update(excluded=True,reason='Verwackelt: übereinstimmende lange Sternschweife im gesamten Bildfeld (Teleskopbewegung)',field_motion_evidence='ensemble_star_tails')
     elif field_tails:
         result.update(excluded=True,reason='Verwackelt: gleichgerichtete schwache Sternschweife über das gesamte Bildfeld',field_motion_evidence='extended_star_tails')
+    elif profile_tail:
+        result.update(excluded=True,reason='Verwackelt: runde Sternkerne mit gleichgerichtetem schwachem Schweif (Ruck der Montierung)',field_motion_evidence='mean_star_profile')
     elif common_shake or severely_distorted or doubled:
         result.update(excluded=True,reason='Verwackelt: viele Sterne sind gleichgerichtet länglich oder doppelt')
     elif broadened:

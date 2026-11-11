@@ -18,6 +18,8 @@ Ausnahmen innerhalb des Repositorys:
   Doppellizenz: Die Hilfsdateien, die auch der AstroFlow-Server lädt (json_store.py,
   observation_settings.py, project_paths.py, motion_plausibility.py, satellite_overlay.py,
   video_overlays.py), stehen wahlweise unter PolyForm Noncommercial 1.0.0 ODER AGPL-3.0-or-later.
+  Umgekehrt lädt die Engine astroflow/core/star_tails.py (Sternschweif-Prüfung, gemeinsam mit dem
+  Bilder-Modul); diese Datei steht ebenfalls wahlweise unter PolyForm Noncommercial 1.0.0 ODER AGPL-3.0-or-later.
 
 Folgende mitgelieferte Drittkomponenten stehen unter eigenen Lizenzen:
 
