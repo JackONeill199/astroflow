@@ -32,6 +32,16 @@ insights/runs/usage/stories/chats/http_cache. Regeln: **Messwerte nur aus Fachqu
   Export als Markdown mit Quellen: `/kb/entities/<id>/export.md`.
   Raster „Alle“ (`/kb/entities` ohne `q`) blendet Grundeinträge ohne eigenes Bild aus (`stats.hidden_stubs`; meist SIMBAD-Gruppen aus
   `_related_stub`, beim Nutzer 67 von 90 – Nutzerwunsch 31.10.2026); Suche, Wissensnetz und „Verwandte“ zeigen sie weiter. SIMBAD `h_link` liefert eine Zeile je Beleg → nach `main_id` deduplizieren.
+- **Wissensnetz** (überarbeitet 11.11.2026, Befund: Ring aus losen Dreiergruppen + Klumpen, Text unlesbar, Seite sekundenlang leer):
+  Zeichnen in `static/sage-netz.js` (`SageNetz.draw(host, graph, {center, mode, onChange})`), **ohne Kräftesimulation** – Überblick =
+  Gruppen nach Objektart bzw. Sternbild als Sonnenblumen-Spiralen, gierig gepackt; Fokus (`center`) = Ringe nach Breitensuche (Winkel nach
+  Nachfahren). Beides O(n). Gezeichnet in Bildschirmkoordinaten: Beschriftungen gleich groß, nach Wichtigkeit ohne Überlappung gesetzt.
+  Begriffe sitzen mitten in der Gruppe, zu der sie überwiegend gehören (sonst Linienfächer); nach Sternbild ohne Begriffe, Katalog-Gruppen
+  ohne Sternbild beim Sternbild ihrer Nachbarn. Tippen = Infokarte (Verbindungen, KI-Vorschläge bestätigen/verwerfen per `PATCH /kb/edges/<id>`).
+  `/kb/graph` ohne `center`: eigene Objekte mit `nights/hours/images/constellation/image` am Knoten (keine Aufnahme-/Bearbeitungsknoten
+  mehr) + Begriffe + Katalogobjekte, die ≥ 2 eigene verbinden; mit `center`: Begriffe fächern nur zu Begriffen auf. Kanten tragen `id`.
+  Leere Seite kam vom ersten `observation_log` (json.loads aller Frame-Metriken + je Projekt zwei Verbindungen, beim Nutzer 2–5 s) →
+  `json_extract` in SQL, eine Abfrage für alle Frames (~0,6 s); die Ansicht zeigt sofort ein Gerüst und füllt das Netz nach.
 - Tests: `tests/test_sage_kb.py` (SIMBAD/arXiv/KI als Attrappen). `ASTROFLOW_SAGE_OFFLINE=1` (conftest) schaltet Fachdienste ab – `sources.Net.fetch` prüft sie bei jedem Abruf (seit 0.45.4; Hintergrundthreads überleben ihren Test).
 
 Herkunft: Repo `JackONeill199/starlight-sage` („Astronomy Buddy“, Node/Express – bleibt unverändert bestehen), hier nach Python portiert.
