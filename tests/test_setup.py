@@ -227,7 +227,7 @@ def test_warteschlange_und_abschliessen(home, monkeypatch):
     """Vorgemerkte Komponenten zeigen Platz und laufende Komponente; Abschließen bricht nichts ab; Klick startet nichts doppelt."""
     import threading
     home.mkdir(parents=True, exist_ok=True)
-    comp.order_path().write_text("astap:d05\ngraxpert\ngpu\n", encoding="utf-8")
+    comp.order_path().write_text("astap:d05\ngpu\nskytrace\n", encoding="utf-8")
     c = client(home / "Daten", True, monkeypatch)
     setup = c.app.state.setup
     gate, started = threading.Event(), []
