@@ -620,7 +620,8 @@ def test_tonight_browse_nights(server, browser, size, tmp_path, monkeypatch):
     page.screenshot(path=str(tmp_path / 'naechte.png'), full_page=True)
     page.goto(base + '/#/')                                                   # Übersicht verlassen → wieder heute
     page.goto(base + '/#/nacht')
-    page.wait_for_selector('af-tonight-chart svg')
+    # Nicht nur auf das (noch alte) Diagramm warten: die Ansicht wird nach dem Seitenwechsel asynchron neu aufgebaut
+    page.wait_for_function("document.querySelector('.tn-nav-name')?.textContent.startsWith('Heute Nacht')")
     assert page.locator('.tn-nav-name').inner_text().startswith('Heute Nacht')
     page.close()
     assert not errors, errors

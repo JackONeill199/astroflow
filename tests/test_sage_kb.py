@@ -160,6 +160,25 @@ def test_recherche_katalog_und_seite(client):
     assert md.status_code == 200 and md.text.startswith("# M45 Plejaden") and "## Quellen" in md.text and "SIMBAD" in md.text
 
 
+def test_zweite_recherche_laesst_beziehungen_nie_luecke(client, monkeypatch):
+    """Eine erneute Recherche (Hintergrund-Verknüpfung) ersetzt die Katalogkanten unteilbar – Leser sehen nie die Lücke dazwischen
+    (war die Ursache eines sporadisch fehlenden „zeigt → k-reflexionsnebel“ auf langsamen CI-Rechnern)."""
+    wait(client, client.post("/api/sage/kb/research", json={"name": "M45", "deep": False}).json()["id"])
+    orig = KB.add_edge
+
+    def slow(self, src, dst, rel, *a, **k):
+        if rel == "zeigt":
+            time.sleep(.4)                                   # künstlich langsam: macht das Zeitfenster zwischen Löschen und Setzen sichtbar
+        return orig(self, src, dst, rel, *a, **k)
+    monkeypatch.setattr(KB, "add_edge", slow)
+    tid = client.post("/api/sage/kb/research", json={"name": "M45", "deep": False}).json()["id"]
+    seen = []
+    while client.get(f"/api/sage/kb/tasks/{tid}").json()["state"] == "running":
+        seen.append(("zeigt", "k-reflexionsnebel") in {(x["rel"], x["other"]["id"]) for x in client.get("/api/sage/kb/entities/m45").json()["edges"]})
+        time.sleep(.02)
+    assert seen and all(seen), f"Kante fehlte in {seen.count(False)} von {len(seen)} Lesungen"
+
+
 def test_tiefe_recherche_mit_agent(client, monkeypatch):
     client.post("/api/sage/config", json={"story_provider": "lmstudio", "budget_month_usd": 5})
     calls = []
