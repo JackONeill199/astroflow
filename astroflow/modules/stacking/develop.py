@@ -22,14 +22,19 @@ from .processing import crop_to_coverage, luminance
 from .quality import noise_sigma
 
 QC_ROUNDS = 3
-QC_VERSION = 2                 # Stand von assess(); ältere Bewertungen prüft der Tutor am gespeicherten Bild nach
+QC_VERSION = 3                 # Stand von assess(); ältere Bewertungen prüft der Tutor am gespeicherten Bild nach
+# 3 (10.11.2026): Himmel = dunkelste SKY_PCT % (geglättet, ohne Sterne) statt dunkle Bildhälfte – in Staub-/Nebelfeldern
+#   war die dunkle Hälfte Staub; sichtbarer Staub senkte den Score (NGC 7023: 10 → 8) und die Korrekturen drehten ihn zurück
+SKY_PCT = 15
 PREVIEW_SIDE = 1400
 
 # Zielbereiche der Qualitätskontrolle (Anzeigewerte 0..1 nach der Entwicklung)
-BG_RANGE = (0.02, 0.10)        # Himmelshintergrund: dunkel wie bei Stellina (~0,03), aber nicht abgeschnitten
-NOISE_MAX = 0.016              # sichtbares Hintergrundrauschen (σ)
+# QC_VERSION 3: Schwellen auf den neuen Himmel (dunkelste 15 %) umgerechnet – an 48 Bildern (11 Objekte) gemessen ergab die neue
+# Messung im Median 0,77 × Himmelshelligkeit, 1,17 × Rauschen, 0,89 × Farbrauschen gegenüber der dunklen Bildhälfte
+BG_RANGE = (0.015, 0.08)       # Himmelshintergrund: dunkel wie bei Stellina, aber nicht abgeschnitten (bis v2: 0,02–0,10)
+NOISE_MAX = 0.018              # sichtbares Hintergrundrauschen (σ; bis v2: 0,016)
 CAST_MAX = 0.012               # Farbstich des Hintergrunds
-CHROMA_NOISE_MAX = 0.007       # Farbrauschen (Flecken) im Hintergrund
+CHROMA_NOISE_MAX = 0.0062      # Farbrauschen (Flecken) im Hintergrund (bis v2: 0,007)
 GRADIENT_MAX = 0.03            # Helligkeitsunterschied im Hintergrund (Kacheln)
 BLACK_CLIP_MAX = 0.005         # Anteil abgeschnittener Schwarzwerte
 WHITE_CLIP_MAX = 0.003         # Anteil ausgebrannter Pixel
@@ -189,7 +194,10 @@ def assess(rgb: np.ndarray, mono: bool = False, neutral_sky: bool = True) -> dic
     f = max(1, int(np.ceil(max(rgb.shape[1:]) / 1200)))
     img = _bin(rgb.astype(np.float32), f)
     L = luminance(img)
-    sky = L <= np.percentile(L, 50)
+    half = L <= np.percentile(L, 50)                  # Kachelverläufe brauchen Himmel in vielen Kacheln
+    sky = processing.dark_sky_mask(L, SKY_PCT, smooth=4.0)
+    if sky.sum() < 500:
+        sky = L <= np.percentile(L, SKY_PCT)
     bg = float(np.median(L[sky]))
     # sichtbares Rauschen: feine + fleckige Struktur (Hochpass bis ~6 px) nur auf Himmelspixeln
     hp = L - ndi.gaussian_filter(L, 3.0)
@@ -209,11 +217,11 @@ def assess(rgb: np.ndarray, mono: bool = False, neutral_sky: bool = True) -> dic
     for i in range(6):
         for j in range(6):
             t = L[i * h // 6 : (i + 1) * h // 6, j * w // 6 : (j + 1) * w // 6]
-            s = sky[i * h // 6 : (i + 1) * h // 6, j * w // 6 : (j + 1) * w // 6]
+            s = half[i * h // 6 : (i + 1) * h // 6, j * w // 6 : (j + 1) * w // 6]
             if s.mean() > 0.2:
                 tiles.append(np.median(t[s]))
     gradient = float(np.percentile(tiles, 95) - np.percentile(tiles, 5)) if len(tiles) >= 6 else 0.0
-    cg = color_gradient(img, L, sky) if not mono else None
+    cg = color_gradient(img, L, half) if not mono else None
     black = float((L < 0.004).mean())
     white = float((rgb.max(0) >= 0.999).mean())
     core = burnt_core(L)
@@ -268,7 +276,11 @@ def corrections(qc: dict, p: dict) -> dict:
     m = qc["metrics"]
     adj: dict = {}
     # Hintergrundhelligkeit: über den Schwarzpunkt (bg_dark), falls aktiv – so bleibt das Signal unverändert hell
-    if "bg_dark" in codes or "black_clip" in codes:
+    if "black_clip" in codes and "bg_dark" not in codes and p.get("bg_dark") is not None and p.get("bg_toe", 1.0) < 2.5:
+        # Himmel hell genug, nur einzelne dunkle Flecken laufen ins Schwarz: Fuß verbreitern statt den ganzen Himmel
+        # anzuheben (CPU-Weg M66: bg_dark 0,03 → 0,06 machte den Himmel grau und Farbrauschen sichtbar)
+        adj["bg_toe"] = round(p.get("bg_toe", 1.0) + 0.75, 2)
+    elif "bg_dark" in codes or "black_clip" in codes:
         if p.get("bg_dark") is not None:
             adj["bg_dark"] = min(0.08, p["bg_dark"] + 0.015)
         else:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import json
 import queue
 import re
@@ -16,7 +17,7 @@ from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadF
 from fastapi.responses import FileResponse
 
 from . import calibration, channels, comet, diskspace, frame_preview, gpu, graxpert, objects, platesolve, quality, registration, reviewer, skyquality, stars, tonight, tutor
-from ...core import security
+from ...core import security, sites
 from .db import DB
 from .pipeline import Pipeline
 
@@ -46,7 +47,7 @@ PERSIST = {"reviewer": ("provider", "base_url", "model", "api_key", "max_rounds"
            "solver": ("backend", "astap", "astap_db", "nova_key", "timeout"),
            "storage": ("delete_uploads", "gaia"),
            "starnet": ("path",),
-           "graxpert": ("path", "mode", "gpu"),
+           "graxpert": ("path", "mode", "gpu", "cpu_denoise"),
            "gpu": ("mode",),
            "distortion": ("mode",)}
 
@@ -259,7 +260,34 @@ class Engine:
         except Exception as e:
             self._failed(jid, e)
 
+    MEM_RETRY_S = 120          # Speichermangel: so lange warten, bis ein Auftrag erneut startet
+    MEM_RETRIES = 3            # danach endgültiger Fehler mit klarer Meldung
+
+    def _memory_retry(self, jid: int) -> bool:
+        """Zu wenig Arbeitsspeicher (oft nur vorübergehend – andere Programme, parallele Läufe): Auftrag wartet und
+        startet nach `MEM_RETRY_S` erneut am letzten Checkpoint. False, wenn die Versuche aufgebraucht sind."""
+        job = self.db.one("SELECT options FROM jobs WHERE id=?", (jid,))
+        n = int(json.loads((job or {}).get("options") or "{}").get("mem_retry", 0)) + 1
+        if not job or n > self.MEM_RETRIES:
+            return False
+        self.db.x("UPDATE jobs SET state='queued', progress=0, message=?, "
+                  "options=json_set(COALESCE(options,'{}'),'$.mem_retry',?) WHERE id=?",
+                  (f"wartet – zu wenig Arbeitsspeicher, neuer Versuch in {self.MEM_RETRY_S // 60 or 1} min", n, jid))
+
+        def later():
+            if not self.stop.wait(self.MEM_RETRY_S):
+                self.q.put(jid)
+        threading.Thread(target=later, daemon=True, name="stacking-mem-retry").start()
+        return True
+
     def _failed(self, jid: int, e: Exception):
+        if isinstance(e, MemoryError):
+            traceback.print_exc()
+            if self._memory_retry(jid):
+                return
+            self.db.x("UPDATE jobs SET state='error', message=?, finished=? WHERE id=?",
+                      ("Zu wenig Arbeitsspeicher – andere Programme schließen und erneut verarbeiten.", time.time(), jid))
+            return
         if isinstance(e, InterruptedError) or isinstance(e, diskspace.DiskFull) or diskspace.is_full(e):
             # nichts verloren: Stacking setzt am letzten Checkpoint fort – Auftrag wartet wieder
             if not isinstance(e, InterruptedError):
@@ -602,17 +630,34 @@ def build_router(eng: Engine) -> APIRouter:
             db.x("UPDATE projects SET restack=1 WHERE id=?", (pid,))
         return {"job": eng.enqueue(pid, {k: v for k, v in body.items() if k != "restack"})}
 
+    def _site_of(i: dict, night, cache: dict):
+        """[Breite, Länge] einer Aufnahme: FITS-Kopf, sonst Ort der Nacht (gemeinsame Ortsliste, je Nacht einmal)."""
+        st = i.get("site")
+        if isinstance(st, (list, tuple)) and len(st) >= 2:
+            return st
+        if night not in cache:
+            try:
+                cache[night] = eng._site(night)
+            except Exception:
+                cache[night] = None
+        return cache[night]
+
     @r.get("/projects/{pid}/frames")
     def frames(pid: int):
-        out = []
+        out, here = [], {}
         have = frame_preview.existing(eng.s.work_dir)
         for x in db.q("SELECT * FROM frames WHERE project_id=? AND kind='light' ORDER BY json_extract(info,'$.date_obs'), path", (pid,)):
             m = json.loads(x["metrics"]) if x["metrics"] else {}
             i = json.loads(x["info"])
             offline = bool(not x["deleted"] and x["path"] and not Path(x["path"]).exists())
+            st = _site_of(i, x["night"], here) if i.get("date_obs") else None
+            sun = sites.sun_alt(i.get("date_obs"), *(st or (None, None))) if i.get("date_obs") else None
             out.append({"id": x["id"], "name": Path(x["path"]).name, "night": x["night"], "status": x["status"], "reason": x["reason"],
                         "band": channels.band_of(i.get("filter"), channels.is_color(i)), "filter": i.get("filter"),
                         "exptime": i.get("exptime"), "date": i.get("date_obs"),
+                        # Ortszeit „HH:MM“ (Tooltip) und Sonnenhöhe (Färbung „Stand der Nacht“) vom Server – core/sites
+                        "clock": sites.clock_of(i.get("date_obs"), lon=st[1] if st else None) if i.get("date_obs") else None,
+                        "sun": None if sun is None else round(sun, 1),
                         "score": round(x["score"] or 0, 3), "manual": x["manual"], "stacked": x["stacked"], "deleted": x["deleted"],
                         "offline": offline,
                         # Vorschaubild vorhanden oder aus der Rohdatei nachholbar (/frames/{id}/preview)
@@ -780,8 +825,10 @@ def build_router(eng: Engine) -> APIRouter:
 
     # ---- Nachtplanung: Standort und optionale Wetterfreigabe aus dem Bild-Tutor ------------
     @r.get("/tonight")
-    def get_tonight(hide: str = ""):
-        """hide: Kennungen, die der Nutzer ausgeblendet hat (kommagetrennt, lokal im Browser gemerkt)."""
+    def get_tonight(hide: str = "", night: int = 0):
+        """hide: Kennungen, die der Nutzer ausgeblendet hat (kommagetrennt, lokal im Browser gemerkt).
+        night: 0 = die gerade geplante Nacht, 1 … tonight.NIGHTS-1 = so viele Nächte später (Ort je Nacht aus der Ortsliste)."""
+        night_ix = max(0, min(tonight.NIGHTS - 1, night))
         projects, device = tonight.library(db)
         hidden = {h.strip() for h in hide.split(",") if h.strip()}
         coll = None
@@ -794,23 +841,31 @@ def build_router(eng: Engine) -> APIRouter:
                 except Exception:
                     _coll_cache.update(t=now, v=None)
             coll = _coll_cache.get("v")
-        cfg, here, night = tutor.settings(eng.ctx.store), None, None
+        cfg, here, night, night_sites = tutor.settings(eng.ctx.store), None, None, None
+        later = lambda n: (dt.date.fromisoformat(n) + dt.timedelta(days=night_ix)).isoformat()
         site_for = eng.ctx.services.get("site_for")                  # gemeinsame Ortsliste: Ort der geplanten Nacht
         if site_for:
             from ...core.sites import planning_night
             now = time.time()
             try:
                 # Nacht wie tonight._window (vormittags schon die kommende); Länge erst vom Standard-, dann vom Nachtort
-                night = planning_night(now, (site_for(night="1900-01-01") or {}).get("lon") or 0)
+                night = later(planning_night(now, (site_for(night="1900-01-01") or {}).get("lon") or 0))
                 here = site_for(night=night)
-                if here and planning_night(now, here["lon"]) != night:
-                    night = planning_night(now, here["lon"])
+                if here and later(planning_night(now, here["lon"])) != night:
+                    night = later(planning_night(now, here["lon"]))
                     here = site_for(night=night)
             except Exception:
                 here = None
+            try:                                                    # Nachtleiste: Ort jeder Nacht aus der Ortsliste
+                first = dt.date.fromisoformat(night) - dt.timedelta(days=night_ix)
+                night_sites = [[s["lat"], s["lon"]] if (s := site_for(night=(first + dt.timedelta(days=k)).isoformat())) else None
+                               for k in range(tonight.NIGHTS)] if here else None
+            except Exception:
+                night_sites = None
             if here:
                 cfg = {**cfg, "lat": here["lat"], "lon": here["lon"]}
-        out = tonight.plan(projects, cfg, eng.s.work_dir / "tutor", device=device, hidden=hidden, collection=coll)
+        out = tonight.plan(projects, cfg, eng.s.work_dir / "tutor", device=device, hidden=hidden, collection=coll, night=night_ix,
+                           night_sites=night_sites)
         sky = None
         if here:
             try:
@@ -1162,7 +1217,7 @@ def build_router(eng: Engine) -> APIRouter:
         files = json.loads(x["files"]) if x else {}
         if kind not in files or not Path(files[kind]).exists():
             raise HTTPException(404)
-        return FileResponse(files[kind], filename=Path(files[kind]).name if kind in ("tif", "fits", "png", "original") else None)
+        return FileResponse(files[kind], filename=Path(files[kind]).name if kind in ("tif", "fits", "fits_graxpert", "png", "original") else None)
 
     @r.get("/starnet")
     def get_starnet():
@@ -1211,7 +1266,8 @@ def build_router(eng: Engine) -> APIRouter:
     def get_graxpert():
         exe = graxpert.graxpert_path()
         g = graxpert.GRAXPERT
-        return {"path": exe, "found": bool(exe), "custom": g.path, "mode": g.mode, "gpu": g.gpu, "page": graxpert.PAGE}
+        return {"path": exe, "found": bool(exe), "custom": g.path, "mode": g.mode, "gpu": g.gpu, "cpu_denoise": g.cpu_denoise,
+                "page": graxpert.PAGE}
 
     @r.post("/graxpert")
     async def set_graxpert(request: Request, body: dict = Body(...)):
@@ -1233,6 +1289,8 @@ def build_router(eng: Engine) -> APIRouter:
             g.mode = body["mode"]
         if "gpu" in body:
             g.gpu = bool(body["gpu"])
+        if "cpu_denoise" in body:                       # KI-Entrauschen auch ohne Grafikkarte (langsam)
+            g.cpu_denoise = bool(body["cpu_denoise"])
         eng.save_settings()
         return get_graxpert()
 

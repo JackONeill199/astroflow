@@ -3,6 +3,38 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.60.0 – 11.11.2026
+
+### Neu
+- Bessere Bilder ohne GraXpert und ohne GPU: neues Mehrskalen-Entrauschen auf der CPU (weniger Farbrauschen, Sterne bleiben erhalten), gemessen an elf eigenen Stacks mindestens auf dem Niveau der Stellina-eigenen Bilder.
+- GraXpert bleibt bevorzugt: Mit Grafikkarte entfernt es wie bisher Hintergrund und Rauschen. Ohne Grafikkarte nutzt AstroFlow nur den GraXpert-Hintergrund und entrauscht mit dem neuen CPU-Verfahren (Sekunden statt Minuten). Ohne GraXpert greift der komplette CPU-Weg.
+- Wer ältere Bilder ohne Grafikkarte entwickelt, sieht mehr Tiefe und weniger Farbrauschen; die Bildqualität im Tutor schlägt bei zu kurzer Gesamtbelichtung eine Zielzeit vor.
+- Als „Himmel“ gelten jetzt die dunkelsten Bildteile statt der dunklen Bildhälfte – Staub und Nebel werden nicht mehr grau gezogen (Bewertungsstand 3; ältere Ergebnisse werden einmal neu bewertet, die Bilder bleiben unverändert).
+- GraXpert glättet beim Profil „Reflexionsnebel“ stärker und trägt so den Staub nicht mehr ab; das Profil betont großflächige Strukturen.
+- Neue Option Hintergrund „Himmel“ (DBE-artig) für Bilder mit schwierigem Verlauf.
+### Geändert
+- `_linear.fits` ist jetzt der unbearbeitete Stack für Siril/PixInsight; das GraXpert-Ergebnis liegt zusätzlich als `_linear_graxpert.fits` bei.
+
+## 0.59.1 – 10.11.2026
+
+### Behoben
+- Geht beim Stacken der Arbeitsspeicher aus, scheitert der Auftrag nicht mehr mit „Unerwarteter Fehler“: Er wartet zwei Minuten und setzt am letzten Zwischenstand fort (höchstens dreimal), danach erscheint eine klare Meldung.
+
+## 0.59.0 – 10.11.2026
+
+### Neu
+- „Heute Nacht“: Mit ‹ › bzw. den Pfeiltasten durch die nächsten 14 Nächte blättern – Empfehlungen und Bewertung gelten für die gewählte Nacht, jede Nacht am eingetragenen Ort; ab dem dritten Tag Hinweis „Vorhersage unsicher“, danach nur Astronomie.
+- Das Diagramm zeigt Bewölkung als Wolkenband, Mondbahn und Dämmerung als weichen Verlauf; Zielkurven sind farblich klar unterscheidbar, Tooltip mit Höhe, Uhrzeit und Wetter, Legende als Symbole.
+
+## 0.58.0 – 10.11.2026
+
+### Neu
+- Aufnahmen-Diagramm verständlicher: zwei getrennte Spuren (Himmelshintergrund und Schärfe, jeweils oben = besser), Nächte als hinterlegte Bänder mit Datum, dezenter Dämmerungsverlauf je Nacht zeigt den Stand der Nacht nach Sonnenhöhe (genaue Uhrzeit im Tooltip), verworfene Aufnahmen als rote Striche unter der Grundlinie.
+- Reiter „Bild“: Solange die Aufnahmen vermessen werden, zeigt die Bildfläche die schematische Animation (statt im Reiter „Aufnahmen“).
+- Die Kachel „Bildqualität“ ist farbig nach Note und zeigt Rauschen, Schärfe und Sternform als kleine Balken; darunter ein kurzer Tutor-Hinweis, bei zu kurzer Belichtung mit Zielzeit. Im Kasten führt nur noch „Mehr in der Analyse“ zur Analyse.
+### Behoben
+- Reiter „Aufnahmen“ öffnet bei großen Projekten deutlich schneller: die Liste zeigt erst 150 Zeilen und lädt beim Scrollen nach. Der Hinweis „ausschließen“ erscheint nur noch, wenn es den Knopf gibt.
+
 ## 0.57.0 – 10.11.2026
 
 ### Neu

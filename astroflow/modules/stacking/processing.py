@@ -117,6 +117,111 @@ def remove_gradient(img: np.ndarray, degree: int = 3, grid: int = 16, edge_exclu
     return out
 
 
+def _poly_basis(y, x, degree):
+    return np.stack([y**a * x**b for a in range(degree + 1) for b in range(degree + 1 - a)], axis=-1)
+
+
+def sky_background(img: np.ndarray, max_degree: int = 3, grid: int = 24, tol: float = 1.0,
+                   edge_exclude: float = 0.0, cov: np.ndarray | None = None, edge_band: float = 0.15) -> tuple[np.ndarray, dict]:
+    """Hintergrundmodell ohne KI, nach dem Vorbild von DBE (PixInsight): Stützpunkte nur auf echtem Himmel, glattes Modell.
+    - Kacheln mit robustem Median (Sterne vorher ausgeblendet), je Kanal.
+    - Auswahl asymmetrisch: Nebel, Staub und Galaxien *addieren* Licht – Kacheln deutlich **über** dem Modell sind Objekt
+      und fallen heraus, Kacheln darunter bleiben (das alte Verfahren verwarf nach |Abweichung| und ließ schwachen,
+      großflächigen Nebel als „Himmel“ stehen, der dann abgezogen wurde).
+    - Polynomgrad wächst nur, solange der Fit dadurch deutlich besser wird (1 → 2 → 3) – ein steifes Modell kann
+      100–500 px große Staubwolken nicht nachbilden und also nicht abziehen.
+    - Abdeckung (`cov`, optional): Wo nur ein Teil der Aufnahmen beiträgt (Feldrotation, Nächte mit anderem Ausschnitt),
+      hat der Stack einen anderen Himmelswert – eine Stufe entlang der Abdeckungsgrenze („Rahmen“ bei Stellina). Dafür ein
+      zusätzlicher Term (1 − Abdeckung) im Fit.
+    Gibt (Modell (C,H,W), Info) zurück; Info: Grad, Zahl der Stützpunkte, Anteil verworfener Kacheln."""
+    C, H, W = img.shape
+    f = max(1, int(max(H, W) // 600))
+    sm = img[:, : H // f * f, : W // f * f].reshape(C, H // f, f, W // f, f).mean((2, 4)) if f > 1 else img
+    h, w = sm.shape[1:]
+    L = sm.mean(0)
+    opened = ndi.grey_opening(L, size=5)
+    resid = L - opened
+    s0 = 1.4826 * float(np.median(np.abs(resid - np.median(resid)))) + 1e-12
+    stars = ndi.binary_dilation(resid > 4 * s0, iterations=2)
+    cv = None
+    if cov is not None and cov.shape == (H, W) and float(np.percentile(cov, 10)) < 0.97:
+        cv = cov[: H // f * f, : W // f * f].reshape(h, f, w, f).mean((1, 3)) if f > 1 else cov
+        cv = 1.0 - np.clip(cv, 0, 1)
+    gw = grid
+    gh = max(6, int(round(grid * h / w)))
+    ys, xs = np.linspace(0, h, gh + 1).astype(int), np.linspace(0, w, gw + 1).astype(int)
+    pts, vals, rough, cvt, edge = [], [], [], [], []
+    for i in range(gh):
+        for j in range(gw):
+            ok = ~stars[ys[i]: ys[i + 1], xs[j]: xs[j + 1]]
+            if ok.mean() < 0.4:
+                continue
+            cy, cx = (ys[i] + ys[i + 1]) / 2 / h, (xs[j] + xs[j + 1]) / 2 / w
+            if edge_exclude and min(cy, 1 - cy, cx, 1 - cx) < edge_exclude:
+                continue
+            blk = sm[:, ys[i]: ys[i + 1], xs[j]: xs[j + 1]][:, ok]
+            pts.append((cy * 2 - 1, cx * 2 - 1))
+            edge.append(min(cy, 1 - cy, cx, 1 - cx) < edge_band)
+            vals.append(np.median(blk, axis=1))
+            cvt.append(float(np.median(cv[ys[i]: ys[i + 1], xs[j]: xs[j + 1]])) if cv is not None else 0.0)
+            lb = blk.mean(0)
+            rough.append(1.4826 * float(np.median(np.abs(lb - np.median(lb)))))
+    pts, vals, rough, cvt, edge = np.array(pts), np.array(vals), np.array(rough), np.array(cvt), np.array(edge, bool)
+    use_cov = cv is not None and (cvt > 0.03).sum() >= 4
+    if len(pts) < 16:
+        return np.broadcast_to(np.median(img.reshape(C, -1), axis=1)[:, None, None], img.shape).astype(np.float32), {"degree": 0}
+    t = vals.mean(1)
+    # unruhige Kacheln (Nebelkanten, Sternhaufen) sind schlechte Stützpunkte
+    use = rough <= np.median(rough) * 2.5
+    # Start: untere Hälfte der Kacheln – Objektkacheln gar nicht erst mitnehmen
+    use &= (t <= np.percentile(t[use], 60)) | edge
+    deg, coef = 0, None
+    best = None
+    for d in range(1, max_degree + 1):
+        nterm = (d + 1) * (d + 2) // 2
+        A = _poly_basis(pts[:, 0], pts[:, 1], d)
+        if use_cov:
+            A = np.c_[A, cvt]
+            nterm += 1
+        u = use.copy()
+        for _ in range(8):
+            if u.sum() < nterm + 6:
+                break
+            cf = np.linalg.lstsq(A[u], vals[u], rcond=None)[0]
+            r = t - (A @ cf).mean(1)
+            s = 1.4826 * float(np.median(np.abs(r[u] - np.median(r[u])))) + 1e-12
+            # Randbänder symmetrisch: dort ist ein Anstieg meist Randglühen (Stellina ohne Darks), kein Objekt – das Modell
+            # soll seinen breiten Anteil mitnehmen, den steilen Rest erledigt remove_edge_glow
+            hi = np.where(edge, 2.5, tol)
+            new = use & (r < np.median(r[u]) + hi * s) & (r > np.median(r[u]) - 4 * s)
+            if (new == u).all():
+                break
+            u = new
+        if u.sum() < nterm + 6:
+            break
+        cf = np.linalg.lstsq(A[u], vals[u], rcond=None)[0]
+        r = t[u] - (A[u] @ cf).mean(1)
+        rss = float(np.mean(r ** 2)) + 1e-30
+        bic = u.sum() * np.log(rss) + nterm * np.log(u.sum()) * 2.0     # strenger als BIC: lieber steif
+        if best is None or bic < best[0]:
+            best = (bic, d, cf, u)
+    if best is None:
+        return np.broadcast_to(np.median(img.reshape(C, -1), axis=1)[:, None, None], img.shape).astype(np.float32), {"degree": 0}
+    _, deg, coef, u = best
+    gy, gx = max(8, H // 8), max(8, W // 8)
+    yy, xx = np.meshgrid(np.linspace(-1, 1, gy), np.linspace(-1, 1, gx), indexing="ij")
+    nb = (deg + 1) * (deg + 2) // 2
+    low = _poly_basis(yy, xx, deg) @ coef[:nb]
+    model = np.empty_like(img, dtype=np.float32)
+    for c in range(C):
+        bgm = ndi.zoom(low[..., c], (H / gy, W / gx), order=1, mode="nearest")
+        model[c] = np.pad(bgm, ((0, max(0, H - bgm.shape[0])), (0, max(0, W - bgm.shape[1]))), mode="edge")[:H, :W]
+        if use_cov:                                   # Stufe an der Abdeckungsgrenze in voller Auflösung (geglättet)
+            model[c] += float(coef[nb, c]) * ndi.gaussian_filter(1.0 - np.clip(cov, 0, 1), 2.0).astype(np.float32)
+    return model, {"degree": int(deg), "samples": int(u.sum()), "tiles": int(len(pts)),
+                   "rejected": round(1 - float(u.sum()) / len(pts), 3), "coverage_term": bool(use_cov)}
+
+
 def remove_edge_glow(img: np.ndarray, band: float = 0.15) -> np.ndarray:
     """Steile Aufhellungen an den Bildrändern (Sensor-/Verstärkerglühen ohne Darks), die ein globales Polynom
     nicht erfasst: je Kanal Zeilen-/Spaltenprofil des sternfreien Hintergrunds (30-%-Perzentil, robust gegen
@@ -272,10 +377,17 @@ def color_calibrate(img: np.ndarray, fwhm: float) -> tuple[np.ndarray, list[floa
     return img * gains[:, None, None].astype(np.float32), [float(g) for g in gains]
 
 
+NEUTRAL_PCT = 10          # Hintergrund-Neutralisierung: dunkelste 10 % (Staubfarbe NGC 7023 R−B ×1,8 gegenüber „dunkle Hälfte“)
+
+
 def neutralize_background(img: np.ndarray) -> np.ndarray:
+    """Farbstich des Himmels ausgleichen – gemessen am echten Himmel (dunkelste Teile), nicht an allem unter
+    Median + σ: in Staub-/Nebelfeldern wäre das die braune bzw. rote Objektfarbe, die dabei grau würde."""
     L = luminance(img)
-    sig = 1.4826 * np.median(np.abs(L - np.median(L)))
-    low = L < np.median(L) + sig
+    low = dark_sky_mask(L, NEUTRAL_PCT)
+    if low.sum() < 500:
+        sig = 1.4826 * np.median(np.abs(L - np.median(L)))
+        low = L < np.median(L) + sig
     bg = np.array([np.median(img[c][low]) if low.any() else np.median(img[c]) for c in range(img.shape[0])])
     return img - (bg - bg.mean())[:, None, None]
 
@@ -467,6 +579,85 @@ def denoise_linear(img: np.ndarray, strength: float) -> np.ndarray:
     return (out + chroma).astype(np.float32)
 
 
+def dark_sky_mask(L: np.ndarray, pct: float = 12.0, smooth: float = 8.0) -> np.ndarray:
+    """Echter Himmel: dunkelste `pct` % der geglätteten, sternfreien Luminanz. Die dunkle Bildhälfte taugt dafür nicht –
+    in Nebel- und Staubfeldern ist sie Staub/Nebel (NGC 7023: brauner Staub wurde als „Himmel“ grau gezogen)."""
+    f = max(1, int(max(L.shape) // 700))                       # verkleinert rechnen (schnell), Ergebnis in voller Größe
+    Ls = L[: L.shape[0] // f * f, : L.shape[1] // f * f].reshape(L.shape[0] // f, f, L.shape[1] // f, f).mean((1, 3)) if f > 1 else L
+    Ls = ndi.gaussian_filter(ndi.grey_opening(Ls, size=5), smooth / f)
+    m = Ls <= np.percentile(Ls, pct)
+    if f > 1:
+        m = np.repeat(np.repeat(m, f, 0), f, 1)
+        m = np.pad(m, ((0, L.shape[0] - m.shape[0]), (0, L.shape[1] - m.shape[1])), mode="edge")
+    return m & ~_star_mask(L, grow=2)
+
+
+def denoise_multiscale(img: np.ndarray, strength: float, chroma: float = 1.0, cov: np.ndarray | None = None,
+                       scales: int = 5) -> np.ndarray:
+    """Lineares Entrauschen auf der CPU (Ersatz für KI-Entrauschen): à-trous-Wavelets auf Luminanz und Farbe getrennt.
+    - Rauschen je Skala am echten Himmel gemessen (dunkelste Bildteile ohne Sterne) – nicht über das ganze Bild, wo
+      Nebel/Galaxie die Schwelle hochtreiben, und nicht aus Nachbardifferenzen (Interpolation beim Registrieren macht das
+      Rauschen korreliert, die feinste Skala wird sonst überschätzt).
+    - Rauschen örtlich über die Abdeckung skaliert (σ ∝ 1/√Abdeckung, Stackränder). Keine Anhebung mit der Helligkeit:
+      sie verdreifachte die Schwelle in Galaxien und machte die Arme weich (M66, Rückmeldung 10.11.2026).
+    - Garrote-Schwelle statt weicher Schwelle: starke Koeffizienten (Sterne, Nebelkanten) bleiben fast unverändert,
+      Sterne werden nicht kleiner/dunkler. Träger nur um *positive* signifikante Koeffizienten (Sterne, Kerne) – um
+      negative (kalte Pixel) geschützt blieben sie als dunkle Pünktchen im glatten Himmel stehen.
+    - Farbe (Kanal − Luminanz) bis 64 px mit hohen Schwellen in den groben Ebenen: Farbrauschen kurzer Belichtungen
+      erscheint als großflächiger „RGB-Brei“. Galaxien-/Nebelfarbe schützt der Träger der Luminanz.
+    Additiv, Mittelwert jeder Region bleibt erhalten (Residuum unverändert)."""
+    if strength <= 0:
+        return img
+    C = img.shape[0]
+    L = luminance(img)
+    sky = dark_sky_mask(L, 25.0)
+    if sky.sum() < 1000:
+        sky = L <= np.percentile(L, 25)
+    bg = float(np.median(L[sky]))
+    sig_sky = 1.4826 * float(np.median(np.abs(L[sky] - bg))) + 1e-12
+    # örtlicher Rauschfaktor: Abdeckung (weniger Bilder am Rand) und Photonenrauschen heller Flächen (σ² ∝ Himmel + Signal;
+    # Himmel ≈ Rauschgrenze, daher grob: Faktor sqrt(1 + Signal/(Himmel-Abstand)) begrenzt)
+    loc = np.ones(L.shape, np.float32)
+    if cov is not None and cov.shape == L.shape:
+        c = np.clip(cov / max(float(np.median(cov[sky])) if sky.any() else 1.0, 1e-3), 0.05, 1.0)
+        loc *= (1.0 / np.sqrt(c)).astype(np.float32)
+
+    def garrote(d, thr):
+        return np.where(d * d > thr * thr, d - thr * thr / np.where(d == 0, 1, d), 0.0).astype(np.float32)
+
+    ks = (3.0, 2.4, 1.8, 1.3, 1.0, 0.8)
+    details, resid = _atrous(L, scales)
+    out = resid.copy()
+    sups = []
+    for j, d in enumerate(details):
+        s = 1.4826 * float(np.median(np.abs(d[sky] - np.median(d[sky])))) + 1e-12
+        thr = ks[j] * strength * s * loc
+        # Mehrskalen-Träger: um signifikante Sterne/Kerne bleibt die Ebene unverändert – sonst fielen die negativen
+        # Ränder grober Ebenen weg und Sterne bekämen Fluss/Halo dazu
+        sup = ndi.binary_dilation(d > 2.5 * thr, iterations=2 ** (j + 1) + 1)
+        sups.append(sup)
+        out += np.where(sup, d, garrote(d, thr))
+    if C == 1 or chroma <= 0:
+        return np.repeat(out[None], C, 0).astype(np.float32) if C > 1 else out[None].astype(np.float32)
+    res = []
+    kc = (3.5, 3.0, 2.8, 3.0, 3.2, 3.2, 3.2)               # Skalen 1…64 px; grobe Ebenen kräftig (Farbflecken)
+    # Objektmaske für die Farbe: wo die Luminanz deutlich über dem Himmel liegt (Galaxie, Nebel, Sterne), bleibt Farbe
+    obj = smoothstep(ndi.gaussian_filter(L, 3.0) - bg, 3 * sig_sky, 12 * sig_sky)
+    for c in range(C):
+        ch = img[c] - L
+        dets, r = _atrous(ch, 7)
+        o = r.copy()
+        for j, d in enumerate(dets):
+            s = 1.4826 * float(np.median(np.abs(d[sky] - np.median(d[sky])))) + 1e-12
+            dn = garrote(d, kc[j] * chroma * strength * s * loc)
+            keep = np.maximum(obj, sups[min(j, len(sups) - 1)])
+            o += d * keep + dn * (1 - keep)
+        res.append(o)
+    chroma_out = np.stack(res)
+    chroma_out -= chroma_out.mean(0, keepdims=True)        # Summe der Farbanteile bleibt 0 (Luminanz unverändert)
+    return (out[None] + chroma_out).astype(np.float32)
+
+
 def shrink_stars(stars: np.ndarray, amount: float) -> np.ndarray:
     """Sternebene verkleinern: Grauwert-Erosion (Ränder nach innen) und etwas dunkler – wirkt nur auf Sterne."""
     er = np.stack([ndi.grey_erosion(c, size=(3, 3)) for c in stars])
@@ -544,14 +735,17 @@ def tame_star_color(img: np.ndarray, fwhm: float, amount: float = 0.75, sat: np.
 
 
 def neutral_display_background(img: np.ndarray) -> np.ndarray:
-    """Restfarbstich des Himmels nach dem Stretch angleichen (Kanal-Mediane der dunkelsten Hälfte)."""
+    """Restfarbstich des Himmels nach dem Stretch angleichen (Kanal-Mediane der dunkelsten Bildteile, siehe
+    neutralize_background)."""
     L = luminance(img)
-    sky = L <= np.median(L)
+    sky = dark_sky_mask(L, NEUTRAL_PCT)
+    if sky.sum() < 500:
+        sky = L <= np.median(L)
     bg = np.array([np.median(c[sky]) for c in img])
     return np.clip(img - (bg - bg.mean())[:, None, None], 0, 1).astype(np.float32)
 
 
-def darken_background(img: np.ndarray, level: float) -> np.ndarray:
+def darken_background(img: np.ndarray, level: float, toe: float = 1.0) -> np.ndarray:
     """Schwarzpunkt anheben, bis der Himmel bei `level` liegt (Stellina ~0,03). Anders als ein niedrigeres target_bg
     bleiben Nebel und Sterne hell – nur der Hintergrund (und mit ihm Restgradienten, Rauschen, Artefakte) wird dunkel."""
     L = luminance(img)
@@ -561,16 +755,20 @@ def darken_background(img: np.ndarray, level: float) -> np.ndarray:
     b = (bg - level) / (1 - level)
     # weicher Fuß statt hartem Abschneiden: Werte knapp über/unter dem Schwarzpunkt laufen sanft gegen 0, dunkle
     # Nebelbereiche behalten Struktur (Stellina: ~0,1 % Schwarz; hart abgeschnitten wären es mehrere Prozent)
-    w = 0.8 * min(b, level)
+    # toe > 1 (Qualitätskontrolle bei abgeschnittenen Schwarzwerten): breiterer Fuß – dunklere Himmelsflecken laufen sanft
+    # aus, statt dass der ganze Himmel angehoben wird
+    w = 0.8 * min(b, level) * max(1.0, toe)
     t = img - b
     y = np.where(t > w, t, np.where(t > -w, (t + w) ** 2 / (4 * w), 0.0))
     return np.clip(y / (1 - b), 0, 1).astype(np.float32)
 
 
-def grade(img: np.ndarray, amount: float, vibrance: float = 0.0) -> np.ndarray:
+def grade(img: np.ndarray, amount: float, vibrance: float = 0.0, large: float = 0.0) -> np.ndarray:
     """Endbearbeitung wie in Affinity/Photoshop nach GraXpert+StarNet: Strukturen von 4–64 px (Staubbänder,
     Spiralarme, Nebelfilamente) über Wavelet-Ebenen anheben – nur im Objekt, nicht im Himmel (Rauschen) und nicht in
-    Sternen –, dazu Vibrance: blasse Farben stärker sättigen als bereits kräftige."""
+    Sternen –, dazu Vibrance: blasse Farben stärker sättigen als bereits kräftige.
+    large: zusätzlich Ebenen 64/128 px (Profis: LocalHistogramEqualization mit Skala ~150 px) für flächigen Staub und
+    Dunkelwolken (NGC 7023: Staubkontrast ×1,5); im ganzen Bild außer hellen Sternen, weil Staub auch „Himmel“ ist."""
     L = luminance(img)
     # Objektmaske gegen den dunkelsten Himmel (10-%-Perzentil der geglätteten Luminanz): Median/Streuung taugen nicht,
     # wenn der Nebel das ganze Bild füllt (NGC 7000: Maske sonst 0,4 % des Bildes)
@@ -579,9 +777,12 @@ def grade(img: np.ndarray, amount: float, vibrance: float = 0.0) -> np.ndarray:
     obj = smoothstep(Ls, sky + 0.012, sky + 0.10)
     stars = ndi.grey_dilation(L, size=5) > 0.75                       # helle Sternkerne + Rand
     obj = obj * (1 - ndi.gaussian_filter(stars.astype(np.float32), 2.0).clip(0, 1) * 0.8)
-    details, _ = _atrous(L, 6)
+    details, _ = _atrous(L, 8 if large > 0 else 6)
     gains = (0.0, 0.0, 0.35, 0.6, 0.6, 0.4)                          # Skalen 1,2,4,8,16,32 px
     Ln = L + amount * sum(g * d for g, d in zip(gains, details) if g) * obj
+    if large > 0:                                                    # 64 und 128 px
+        nostar = 1 - ndi.gaussian_filter(stars.astype(np.float32), 2.0).clip(0, 1) * 0.8
+        Ln = Ln + large * (0.35 * details[6] + 0.25 * details[7]) * nostar
     ratio = np.clip(np.maximum(Ln, 1e-4) / np.maximum(L, 1e-4), 0.6, 1.8)
     out = np.clip(img * ratio, 0, 1)
     if vibrance > 0:
@@ -653,12 +854,28 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
         if shifts:
             stats["channel_shift"] = shifts
     ai = p.get("_ai") or {}                          # GraXpert lief schon auf dem linearen Stack (pipeline.develop)
+    # Mosaik: Bildränder sind keine Sensorränder (Glühen je Aufnahme schon abgezogen) – sonst helle Bänder im Randband
+    edge_glow = (lambda a: a) if p.get("_mosaic") else remove_edge_glow
     if not ai.get("bge"):
         log("Hintergrundgradient entfernen")
-        img = remove_gradient(img, int(p["gradient_degree"]), edge_exclude=EDGE_EXCLUDE)
-        if not p.get("_mosaic"):                     # Mosaik: Bildränder sind keine Sensorränder (Glühen je Aufnahme abgezogen)
-            img = remove_edge_glow(img)              # steiles Randglühen, das das Polynom nicht erfasst
-        img = remove_gradient(img, 2)                # Restneigung nach der Randkorrektur
+        if p.get("background", "poly") != "sky":
+            # Standard: Polynom ohne Ränder → Randglühen → Grad 2. Am ebensten bei Galaxien/Haufen (Messung 10.11.2026,
+            # 11 Fälle); sky_background war bei M17/M45 besser, bei NGC 6888/M3/M101 schlechter (Randbänder) → nur Option
+            img = remove_gradient(img, int(p["gradient_degree"]), edge_exclude=EDGE_EXCLUDE)
+            img = edge_glow(img)                     # steiles Randglühen, das das Polynom nicht erfasst
+            img = remove_gradient(img, 2)            # Restneigung nach der Randkorrektur
+        else:                                        # Option: Himmels-Stützpunkte + Abdeckungsstufe (Staub-/Nebelfelder)
+            cv = cov[y0:y1, x0:x1]
+            model, binfo = sky_background(img, min(3, int(p["gradient_degree"])), cov=cv)
+            img = edge_glow(img - model)
+            model, _ = sky_background(img, 2, cov=cv)              # Restneigung nach der Randkorrektur (wie früher Grad 2)
+            img = img - model
+            stats["background"] = binfo
+            del model
+    elif float(ai.get("smoothing", 0.1)) >= 0.5:
+        # GraXpert mit hoher Glättung (Staubprofile) lässt steiles Randglühen (Stellina ohne Darks) stehen
+        log("Randglühen entfernen")
+        img = edge_glow(img)
     img, trimmed = (img, [0, 0, 0, 0]) if crop else trim_bad_edges(img)
     stats["crop"] = [y0 + trimmed[0], y1 - trimmed[1], x0 + trimmed[2], x1 - trimmed[3]]
     if sat is not None:
@@ -699,9 +916,21 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
         Lnew = L + (Ld - L) * blend
         img = img + (Lnew - L)[None]          # additiv, farbneutral
 
-    if p.get("linear_denoise", 0) > 0 and not ai.get("denoise"):
-        log("Rauschreduzierung (linear)")
-        img = denoise_linear(img, float(p["linear_denoise"]))
+    if not ai.get("denoise"):
+        # Ersatz für das KI-Entrauschen (Mehrskalen-Wavelets), gleiche Stärke wie dort (Profil ai_denoise, sonst 0,5)
+        cpu = float(p.get("cpu_denoise", p.get("ai_denoise", 0.5)))
+        # Profilgrenze des linearen Entrauschens gilt auch hier (planetary 0: Ring/Sterne wurden weich, M57 Detail −23 %;
+        # emission 0,3)
+        cpu = min(cpu, float(p.get("linear_denoise_max", 1.0)))
+        if cpu > 0:
+            log("Rauschreduzierung (linear, Wavelets)")
+            cv = cov[y0:y1, x0:x1][trimmed[0]: y1 - y0 - trimmed[1], trimmed[2]: x1 - x0 - trimmed[3]]
+            # feste Stärke wie beim KI-Entrauschen (das automatische linear_denoise bis 1,0 glättete M51 zu grauem Brei)
+            img = denoise_multiscale(img, cpu, cov=cv)
+            stats["denoise_cpu"] = round(cpu, 2)
+        elif p.get("linear_denoise", 0) > 0:
+            log("Rauschreduzierung (linear)")
+            img = denoise_linear(img, float(p["linear_denoise"]))
     # Sterne trennen (wie StarNet in Siril/PixInsight): Nebel/Galaxie werden ohne Sterne gestreckt und bearbeitet,
     # die Sterne kommen am Ende mit eigener Helligkeit zurück. Ohne Trennung: GHS auf das ganze Bild.
     sep = p.get("star_separation", "auto") not in ("off", None, False)
@@ -739,7 +968,7 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
     img = saturate(img, float(p["saturation"]) if not mono else 1.0)
     if p.get("grade", 0) > 0:
         log("Endbearbeitung")
-        img = grade(img, float(p["grade"]), float(p.get("vibrance", 0.0)) if not mono else 0.0)
+        img = grade(img, float(p["grade"]), float(p.get("vibrance", 0.0)) if not mono else 0.0, float(p.get("grade_large", 0.0)))
     show(img, linear=False)
     if stars_s is not None:
         log("Sterne einsetzen")
@@ -754,7 +983,7 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
     if not mono:
         img = neutral_display_background(img)
     if p.get("bg_dark") is not None:
-        img = darken_background(img, float(p["bg_dark"]))
+        img = darken_background(img, float(p["bg_dark"]), float(p.get("bg_toe", 1.0)))
     show(img, linear=False)
     L = luminance(img)
     stats["median"] = round(float(np.median(L)), 4)

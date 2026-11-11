@@ -87,6 +87,42 @@ Schritte 11–13 (Speicher, volles Laufwerk, Aufräumen): `daten-server.md`.
    `tutor.neutral_sky` (|b| ≥ 15° bzw. Galaxie/Kugelhaufen ab 8°). Korrektur `processing.remove_color_gradient` (Polynom über
    Kanal − Luminanz, Helligkeit bleibt) per Parameter `color_gradient` = Grad; QC setzt erst 2, dann 3 (Ebene überkorrigierte NGC 891).
    `assess` liefert `v` = `QC_VERSION` – **bei Änderungen an `assess` erhöhen**, der Tutor prüft ältere Ergebnisse dann am gespeicherten PNG nach.
+   **Ohne GraXpert/GPU (seit 10.11.2026, Nutzerwunsch „so gut wie die Smart-Teleskope selbst, ohne GraXpert“; Grundlage: private
+   Profi-Workflow-Recherche, Messung an 11 Fällen gegen Stellina-Nativbilder derselben Nacht):**
+   - Hintergrund: Standard bleibt die Polynomkette (`background` „poly“). **Option** `processing.sky_background` (`background` „sky“,
+     je Objekt): Ebenheit des Himmels (Kachel-Mediane ohne Objekt, p95−p5 in σ) gemessen an 11 Fällen – Galaxien/Haufen mit Polynom
+     ebener (M3 0,5 gegen 1,1, M101 0,5 gegen 1,0), Nebel teils besser (M17 3,0 → 2,2, M45 2,6 → 1,6), NGC 6888 schlechter (violette
+     Randbänder). Das Verfahren: DBE-artige Stützpunkte –
+     Kachel-Mediane ohne Sterne, unruhige Kacheln raus, Auswahl **asymmetrisch** (Kacheln über dem Modell = Nebel/Staub/Galaxie fallen
+     heraus), Polynomgrad 1→3 nur bei deutlich besserem Fit (strenges BIC), dazu ein Term (1 − Abdeckung): Bereiche, die nur ein Teil der
+     Aufnahmen abdeckt, haben einen anderen Himmelswert – die „Rahmen“-Stufe bei Stellina; Randbänder (15 %) mit symmetrischer Auswahl
+     (dort ist ein Anstieg Randglühen). Danach `remove_edge_glow` und ein zweiter Durchgang Grad 2. Grenze: gerade
+     Stufen mitten im Bild von Nächten mit anderem Ausschnitt (NGC 7023 links) bleiben – das wäre ein Stacking-Thema (Himmel je Nacht angleichen).
+   - **Reihenfolge (Nutzerentscheidung 10.11.2026): GraXpert bevorzugt, CPU-Weg als Rückfall.** Ist GraXpert installiert und läuft
+     (auch ohne GPU), bleibt es bei Hintergrund + KI-Entrauschen wie bisher; `denoise_multiscale` greift nur, wenn kein KI-Entrauschen
+     lief (nicht installiert, abgeschaltet, Fehler, Modus nur „bge“). **Ohne Grafikkarte** (Einstellung `graxpert.gpu` aus oder GraXpert
+     meldet nur `CPUExecutionProvider` in „Used inference providers“, `graxpert.uses_gpu`) läuft im Modus „all“ nur der KI-Hintergrund
+     (~4 s), entrauscht wird auf der CPU (`stats.graxpert.denoise_skipped`): GraXpert-Entrauschen dauerte auf der CPU 306 s statt 21 s
+     (M66, 6 MP) – Nutzerentscheidung „zu lang“. `settings.json` → `graxpert.cpu_denoise: true` erzwingt es trotzdem.
+   - Entrauschen `processing.denoise_multiscale` (statt `denoise_linear`, Stärke `cpu_denoise`, Standard = `ai_denoise` bzw. 0,5):
+     à-trous 5 Ebenen auf L, Farbe getrennt bis 32 px mit höheren Schwellen; Rauschen je Ebene am echten Himmel gemessen
+     (`dark_sky_mask`), örtlich nur über die Abdeckung skaliert (eine Anhebung mit der Helligkeit machte Galaxienarme weich – M66);
+     Garrote-Schwelle + Mehrskalen-Träger um *positive* Koeffizienten (ohne Träger gewannen Sterne ~7 % Fluss; Träger auch um negative
+     ließ kalte Pixel als dunkle Pünktchen stehen). Farbe bis 64 px mit hohen Schwellen in den groben Ebenen gegen großflächigen
+     „RGB-Brei“; Objekt- und Sternfarbe schützt eine Luminanzmaske. ~6 s für 6 MP.
+   - QC: „Schwarzwerte abgeschnitten“ bei sonst passendem Himmel verbreitert den weichen Fuß (`bg_toe`, `darken_background(toe=)`)
+     statt `bg_dark` anzuheben – auf dem CPU-Weg hob die Kontrolle den Himmel bei Galaxien sonst auf 0,06 (grau, Farbrauschen sichtbar).
+   - Tutor: `exposure_recommendation` (SNR wächst mit √t → Zielzeit t·(30/SNR)², halbe Stunden, max. 12 h) als Befund `exposure_more`
+     (Stufe warn, steht oben) und als `recommendation` im Bericht, sobald deutlich mehr Belichtung nötig ist oder eine Galaxie
+     Bildqualität (`grade.py`) unter 6 hat. Anlass M66: „Bearbeitung 10,0“ neben „Bildqualität 4,5“, Belichtungshinweis zugeklappt.
+   - „Himmel“ überall = dunkelste Teile statt dunkle Bildhälfte (`dark_sky_mask`): `neutralize_background`/`neutral_display_background`
+     10 %, `assess` 15 % (`QC_VERSION` 3; Kachelverlauf und Farbverlauf weiter über die dunkle Hälfte, sie brauchen Himmel in vielen Kacheln).
+   - GraXpert: Glättung je Profil (`bge_smoothing`, reflection 1,0, sonst 0,1 – 0,1 trug bei NGC 7023 die Hälfte des Staubs ab), ab 0,5
+     danach `remove_edge_glow`; Cache-Schlüssel nur bei abweichender Glättung neu. Profil reflection: `target_bg` 0,10, `bg_dark` 0,045,
+     `grade_large` 1,0 (zusätzlicher Lokalkontrast 64/128 px in `grade`, Profi-Äquivalent LHE ~150 px).
+   - Ausgabe: `_linear.fits` = unbearbeiteter Stack (bis 0.55 stand dort das GraXpert-Ergebnis), mit GraXpert zusätzlich `_linear_graxpert.fits`
+     (`files.fits_graxpert`, Export-Menü).
+   - Messwerkzeug: Skripte im privaten Recherche-Ordner bzw. PR-Beschreibung (Kennzahlen am fertigen Bild, Himmel = dunkelste 12 %).
 8. **Bild-Tutor** (`tutor.py`, seit 01.11.2026, Nutzerwunsch „Tutor für Anfänger, Hinweise passend zum Instrument, Mond/Wetter der Nacht“):
    `build_report` (API `GET /results/{id}/tutor`, Cache in `results.stats.tutor` mit `TUTOR_VERSION`) = Gerät (`detect_device`:
    INSTRUME/TELESCOP, Rückfall Bildformat; `DEVICES` mit vorsichtigen Tipps – nur Gesichertes; Stellina hat eine Tauheizung →

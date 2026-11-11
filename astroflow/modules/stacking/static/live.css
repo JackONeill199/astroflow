@@ -40,3 +40,11 @@
 @media (max-width: 480px) { .sl-status { gap: 0.4375rem; font-size: 0.6875rem } .sl-caption { padding-inline: 0.75rem; font-size: 0.6875rem } }
 @media (pointer: coarse) { .sl-details summary { min-height: 2.75rem; display: flex; align-items: center } }
 @media (prefers-reduced-motion: reduce) { .stack-live, .stack-live * { animation: none !important; transition: none !important } }
+/* Schema des laufenden Schritts (vizProcess) füllt die Bildfläche, solange noch kein echtes Bild da ist (z. B. „Aufnahmen vermessen“) */
+.sl-viz { position: absolute; inset: 0; z-index: 1 }
+.sl-viz .viz { height: 100%; display: flex; flex-direction: column; border: 0; border-radius: 0; background-color: transparent }
+.sl-viz .viz canvas { flex: 1; height: auto; min-height: 0 }
+.sl-viz .viz figcaption { background-color: #0b1120e6; border-top-color: #ffffff14 }
+.sl-schema .sl-wait, .sl-schema .sl-badge, .sl-viz .viz-n { display: none }   /* Prozent steht schon in der Statuszeile darunter */
+.has-picture .sl-viz { display: none }
+@media (max-width: 480px) { .sl-viz .viz-d { display: none } }
