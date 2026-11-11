@@ -192,7 +192,7 @@ astroflow                                          # startet den Server und öff
 ```
 
 Ohne Installation des Pakets (nur `pip install -r requirements.txt`) startest du mit `python -m astroflow serve` (Web-UI auf Port 8080, Daten in `./data`) und `python -m astroflow demo` für synthetische
-Testdaten. `Start.bat` / `Stop.bat` starten und beenden den Server unter Windows im Hintergrund (Port 8766). Beide sind standardmäßig
+Testdaten. `scripts/windows/Start.bat` / `Stop.bat` starten und beenden den Server unter Windows im Hintergrund (Port 8766). Beide sind standardmäßig
 nur auf diesem Rechner erreichbar (`127.0.0.1`); fürs Heimnetz siehe unten (`serve --lan` bzw. Einstellungen → Heimnetz).
 
 ### Docker
@@ -209,7 +209,7 @@ Der **Einrichtungsassistent** erscheint beim ersten Start (und später unter Ein
 
 Die Oberfläche ist eine Web-App für Desktop und Smartphone. Standardmäßig ist AstroFlow nur auf dem eigenen Rechner erreichbar.
 Unter **Einstellungen → Heimnetz** (bzw. im Assistenten, mit `serve --lan` oder `ASTROFLOW_LAN=1` für `Start.bat`) wird es im
-Heimnetz erreichbar – nicht ins Internet weiterleiten. Unter Windows gibt die Firewall-Regel (Knopf dort oder `Netzwerk-freigeben.bat`)
+Heimnetz erreichbar – nicht ins Internet weiterleiten. Unter Windows gibt die Firewall-Regel (Knopf dort oder `scripts/windows/Netzwerk-freigeben.bat`)
 nur das private Netzwerkprofil und das eigene Subnetz frei.
 
 Jedes Gerät wird **einmal gekoppelt**: am Rechner unter Einstellungen → Heimnetz den QR-Code mit dem Handy scannen. Das Handy bleibt
