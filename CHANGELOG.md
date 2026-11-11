@@ -3,6 +3,13 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.65.0 – 11.11.2026
+
+### Neu
+- Sage-Wissensnetz neu gestaltet: Der Überblick gruppiert deine Objekte nach Objektart oder Sternbild (wichtige innen, Größe nach Belichtungsstunden), der Fokus auf ein Objekt zeigt Nachbarn in Ringen. Beschriftungen bleiben lesbar, Zoomen und Ziehen auch per Touch, eine Infokarte zeigt Verbindungen, KI-Vorschläge lassen sich dort bestätigen oder verwerfen.
+### Behoben
+- Das Wissensnetz erscheint sofort statt nach mehreren Sekunden; das Aufnahmeprotokoll für Sage wird deutlich schneller gelesen.
+
 ## 0.64.0 – 11.11.2026
 
 ### Neu

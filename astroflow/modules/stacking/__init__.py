@@ -134,26 +134,34 @@ class Module(BaseModule):
         Filter, Bildqualität; dazu die entwickelten Versionen mit gemessenem Objekt-SNR. Gilt auch für gelöschte Rohbilder."""
         db = self.eng.db
         out = []
+        # je eine Abfrage für alle Frames und Ergebnisse (db.q öffnet je Aufruf eine Verbindung) und nur die benötigten Felder
+        # per json_extract – json.loads aller Frame-Metriken (einige kB je Frame) ließ das Sage-Wissensnetz beim Nutzer ~4 s leer
+        frames: dict[int, list] = {}
+        for f in db.q(_LOG_SQL):
+            frames.setdefault(f["project_id"], []).append(f)
+        res: dict[int, list] = {}
+        for r in db.q("SELECT id, project_id, created, n_frames, exposure, stats FROM results ORDER BY id"):
+            res.setdefault(r["project_id"], []).append(r)
         for p in db.q("SELECT id, name, obj_id, kind, ra, dec, created FROM projects WHERE json_extract(options,'$.gallery_parent') IS NULL ORDER BY id"):
             nights: dict[str, dict] = {}
-            for f in db.q("SELECT night, info, metrics, status, stacked FROM frames WHERE project_id=? AND kind='light'", (p["id"],)):
-                info, met = json.loads(f["info"] or "{}"), json.loads(f["metrics"] or "{}")
+            for f in frames.get(p["id"], []):
                 n = nights.setdefault(f["night"] or "?", {"night": f["night"], "frames": 0, "used": 0, "exposure_s": 0.0, "used_s": 0.0,
                                                           "instruments": set(), "filters": set(), "fwhm": [], "first": None, "last": None, "owl": False})
-                exp = float(info.get("exptime") or 0)
+                exp = float(f["exp"] or 0)
                 n["frames"] += 1
                 n["exposure_s"] += exp
                 if f["stacked"] or f["status"] == "accepted":
                     n["used"] += 1
                     n["used_s"] += exp
-                if info.get("instrument"):
-                    n["instruments"].add(info["instrument"])
-                if info.get("filter"):
-                    n["filters"].add(info["filter"])
-                if met.get("fwhm"):
-                    n["fwhm"].append(float(met["fwhm"]))
-                d = info.get("date_obs")
+                if f["ins"]:
+                    n["instruments"].add(str(f["ins"]))
+                if f["flt"]:
+                    n["filters"].add(str(f["flt"]))
+                if f["fwhm"]:
+                    n["fwhm"].append(float(f["fwhm"]))
+                d = f["d"]
                 if d:
+                    d = str(d)
                     n["first"] = min(n["first"] or d, d)
                     n["last"] = max(n["last"] or d, d)
                     n["owl"] = n["owl"] or _after_two(d)
@@ -163,7 +171,7 @@ class Module(BaseModule):
                 sessions.append({**n, "instruments": sorted(n["instruments"]), "filters": sorted(n["filters"]),
                                  "fwhm_px": round(fw[len(fw) // 2], 2) if fw else None})
             results = []
-            for r in db.q("SELECT id, created, n_frames, exposure, stats FROM results WHERE project_id=? ORDER BY id", (p["id"],)):
+            for r in res.get(p["id"], []):
                 st = json.loads(r["stats"] or "{}")
                 q = st.get("quality") or {}
                 results.append({"id": r["id"], "created": r["created"], "n_frames": r["n_frames"], "exposure_s": r["exposure"],
@@ -180,6 +188,14 @@ class Module(BaseModule):
             from .picture_solve import stored_solution
             return stored_solution(self.ctx.settings.work_dir, pid)
         return pic and project_solution(self.ctx.settings.work_dir, pid, pic["files"])
+
+
+def _jx(col: str, key: str) -> str:
+    return f"CASE WHEN json_valid({col}) THEN json_extract({col}, '$.{key}') END"
+
+
+_LOG_SQL = (f"SELECT project_id, night, status, stacked, {_jx('info', 'exptime')} AS exp, {_jx('info', 'instrument')} AS ins,"
+            f" {_jx('info', 'filter')} AS flt, {_jx('info', 'date_obs')} AS d, {_jx('metrics', 'fwhm')} AS fwhm FROM frames WHERE kind='light'")
 
 
 def _after_two(date_obs: str) -> bool:

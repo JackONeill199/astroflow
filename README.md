@@ -41,7 +41,7 @@ Der **Stacking-Verlauf** zeigt, was 1, 3, 10, 30, 100 … Aufnahmen ausmachen, u
 |---|---|
 | ![Stacking-Verlauf](docs/media/stacking-stufen.webp) | ![Vorher/Nachher](docs/media/vorher-nachher.webp) |
 
-*(Die Animationen zeigen M17 Omeganebel aus echten Rohaufnahmen eines Smart-Teleskops.)*
+*(Stacking-Verlauf: M16, Vorher/Nachher: M17 – echte Aufnahmen eines Smart-Teleskops. Die Live-Ansicht zeigt synthetische Demodaten.)*
 
 ### Ergebnisse
 
@@ -49,31 +49,62 @@ Fertige Bilder aus AstroFlow, vollautomatisch aus Rohaufnahmen eines Smart-Teles
 
 | | | |
 |---|---|---|
-| ![NGC 7000](docs/screenshots/ergebnis-ngc7000.webp) | ![NGC 6888](docs/screenshots/ergebnis-ngc6888.webp) | ![Plejaden](docs/screenshots/ergebnis-m45.webp) |
-| NGC 7000, 58 min | NGC 6888, 45 min | M45 Plejaden, 91 min |
-| ![M101](docs/screenshots/ergebnis-m101.webp) | ![NGC 7023](docs/screenshots/ergebnis-ngc7023.webp) | ![IC 1396](docs/screenshots/ergebnis-ic1396.webp) |
-| M101, 115 min | NGC 7023, 3 h 58 min | IC 1396, 60 min |
+| ![NGC 7000](docs/screenshots/ergebnis-ngc7000.webp) | ![NGC 6888](docs/screenshots/ergebnis-ngc6888.webp) | ![M16](docs/screenshots/ergebnis-m16.webp) |
+| NGC 7000, 58 min | NGC 6888, 45 min | M16 Adlernebel, 1 h 05 min |
+| ![M17](docs/screenshots/ergebnis-m17.webp) | ![NGC 7023](docs/screenshots/ergebnis-ngc7023.webp) | ![IC 1396](docs/screenshots/ergebnis-ic1396.webp) |
+| M17 Omeganebel, 50 min | NGC 7023, 3 h 58 min | IC 1396, 60 min |
+
+Die **Galerie** zeigt alle fertigen Bilder, die **Übersicht** das Zuletzt-Bearbeitete – am Handy genauso wie am großen Bildschirm.
 
 ![Galerie](docs/screenshots/galerie.webp)
+
+### Das einzelne Objekt: Bild, Qualität, Aufnahmen
+
+Die Objektseite zeigt das Ergebnis im Zoom-Betrachter, den **Stacking-Verlauf** und eine **Bildqualität als Note** (Tiefe, Rauschen, Schärfe und Sternform
+einzeln als Balken, dazu Grenzgröße, Bortle und Seeing). Ein kurzer Tutor-Hinweis nennt, was bei dieser Aufnahme störte (Dämmerung, Mond, Wolken).
+
+![Objektseite mit Bildqualität](docs/screenshots/objekt.webp)
+
+Im Reiter **Aufnahmen** steht jede Einzelaufnahme mit Vorschaubild und der Begründung, warum sie gestackt oder verworfen wurde. Das Diagramm darüber zeigt
+Himmelshelligkeit und Schärfe über die Zeit, die Nächte als Bänder mit Dämmerung und Mond sowie die verworfenen Aufnahmen.
+
+![Aufnahmen-Diagramm](docs/screenshots/aufnahmen.webp)
+
+Verschiebt das Teleskop das Bildfeld deutlich (Mosaikmodus der Stellina, Nachführsprünge), setzt AstroFlow die Felder zu einem größeren Bild zusammen
+(Optionen: Mosaik automatisch/ein/aus, Zuschnitt groß oder kompakt).
+
+![Mosaik aus verschobenen Bildfeldern](docs/screenshots/mosaik.webp)
 
 ### Analyse: Was dein Bild zeigt
 
 Im Reiter **Analyse** jedes Objekts misst AstroFlow aus dem plate-gelösten Bild die **Grenzgröße**, die erfassten Sterne, den nächsten und fernsten Stern
 (Gaia-Parallaxen) und die fernsten sichtbaren Galaxien und Quasare (Rotverschiebung, Lichtlaufzeit) – als Kennzahlen, Markierungen und **in 3D**.
 
+![Analyse: Wie tief schaust du?](docs/screenshots/analyse-tiefe.webp)
+
 ![Tiefe in 3D](docs/media/tiefe-3d.webp)
 
 Der **Blinkvergleich** stellt das Bild gegen eine frühere eigene Aufnahme oder die DSS2-Durchmusterung. Neue oder verschwundene Lichtquellen werden nur gemeldet,
 wenn sie über der Grenzgröße beider Bilder liegen, und mit SIMBAD und JPL-Kleinkörpern abgeglichen – als Hinweis, nicht als Entdeckung.
 
+![Veränderungen im Bild](docs/screenshots/analyse-vergleich.webp)
+
 ![Blinkvergleich](docs/media/blinkvergleich.webp)
 
 Weitere Auswertungen je Objekt, alle aus gespeicherten Daten:
 
-- **Himmel der Aufnahmenacht** (Bortle-Schätzung, Seeing, Lichtrichtung) und **Dein Gerät** (Nachführung, Fokus, Bildfeld-Schärfe)
-- **Asteroiden:** welche bekannten Kleinplaneten im Feld lagen und welche du wirklich erwischt hast
-- **HR-Diagramm** bei Sternhaufen: Farben-Helligkeits-Diagramm aus deinem Bild mit Entfernung, Rötung und grobem Alter
-- **Bild-Tutor:** Befunde mit Tipps passend zum Gerät, Bedingungen der Nacht (Mond, Dämmerung, Wolken)
+- **HR-Diagramm** bei Sternhaufen: Farben-Helligkeits-Diagramm aus deinem eigenen Bild mit Abknickpunkt, Entfernung, Rötung und grobem Alter – mit Gegenprobe gegen Gaia.
+- **Asteroiden:** welche bekannten Kleinplaneten im Feld lagen und welche du in den Einzelbildern wirklich erwischt hast, mit gemessener Helligkeit.
+- **Dein Gerät:** Nachführung (Drift, Verschmieren), Fokus über die Nacht, Schärfekarte des Bildfelds und der Verlauf über alle Nächte des Geräts.
+- **Himmel der Aufnahmenacht** (Bortle-Schätzung, Seeing, Lichtrichtung) und **Bild-Tutor** mit Tipps passend zum Gerät.
+
+![HR-Diagramm eines Sternhaufens](docs/screenshots/analyse-hrd.webp)
+
+| | |
+|---|---|
+| ![Asteroiden im Bild](docs/screenshots/analyse-asteroiden.webp) | ![Gerätediagnose](docs/screenshots/analyse-geraet.webp) |
+
+*(Das Asteroiden-Beispiel stammt aus synthetischen Demodaten mit einer JPL-Attrappe.)*
 
 Das **Analyse-Dashboard** (Bilder → Analyse) fasst die ganze Bibliothek zusammen: Kennzahlen, Rekorde, „Dein Universum“ als 3D-Wolke, Verläufe und die Frage,
 was am meisten gebracht hat; „Alles analysieren“ rechnet fehlende Auswertungen im Hintergrund nach.
@@ -85,7 +116,7 @@ was am meisten gebracht hat; „Alles analysieren“ rechnet fehlende Auswertung
 | | |
 |---|---|
 | ![Heute Nacht](docs/screenshots/heute-nacht.webp) | ![Himmelsqualität](docs/screenshots/himmel.webp) |
-| **Heute Nacht:** gut sichtbare Ziele (neue Objekte aus Messier und Caldwell, eigene Aufnahmen mit Bedarf an mehr Belichtung), Höhenverläufe, Mond, Nachtplan, optional Wetter. | **Himmelsqualität:** aus deinen Aufnahmen gemessen, an Gaia-Sternen geeicht – mag/″², Bortle mit Spanne, Seeing, Lichtrichtung, dazu die **sauberen Nächte** mit Ranglisten. |
+| **Heute Nacht:** gut sichtbare Ziele für die gewählte Nacht (mit ‹ › durch die nächsten 14 Nächte blättern), Höhenverläufe mit Dämmerung und Mond, Nachtplan, optional Wetter. | **Himmelsqualität:** aus deinen Aufnahmen gemessen, an Gaia-Sternen geeicht – mag/″², Bortle mit Spanne, Seeing, Lichtrichtung, dazu die **sauberen Nächte** mit Ranglisten. |
 
 *(Demodaten mit erfundenem Ort.)*
 
@@ -113,13 +144,11 @@ zeigt Name, Kennung, Start, Bahn, gemessene Helligkeit, wie sicher die Zuordnung
 
 ![3D-Erde](docs/media/erde-3d.webp)
 
-*(Die Animationen zeigen Demodaten mit erfundenem Ort.)*
+*(Die Spuren-Animation zeigt eine echte Bildfolge ohne Ortsangaben, die 3D-Erde Demodaten mit erfundenem Ort.)*
 
 Weitere Funktionen: **Standort suchen** (aus Satellitenspuren zurückgerechnet, auch ohne Vorwissen), **Uhrversatz suchen**, **Satelliten neu abgleichen**,
 **Erneut analysieren**, Statistik mit **Satellitenhelligkeit** und „Satelliten am Himmel“ sowie **Erfolge**. Vorschläge für Orte und Uhrkorrekturen werden nie
 automatisch übernommen.
-
-![SkyTrace-Erfolge](docs/screenshots/skytrace-erfolge.webp)
 
 ### Sage – die lebende Enzyklopädie
 
@@ -171,6 +200,10 @@ nur auf diesem Rechner erreichbar (`127.0.0.1`); fürs Heimnetz siehe unten (`se
 In `docker-compose.yml` den Pfad zu deinen FITS-Dateien eintragen, dann `docker compose up -d --build` und <http://localhost:8080> öffnen
 (nur von diesem Rechner aus; fürs Heimnetz unter Linux `network_mode: host` statt `ports`, siehe Hinweise in `docker-compose.yml`). Das Image enthält ASTAP
 mit Sterndatenbank D05 (`--build-arg ASTAP_DB=d50` für kleine Bildfelder) und optional die SkyTrace-Engine (`--build-arg SKYTRACE=1`).
+
+Der **Einrichtungsassistent** erscheint beim ersten Start (und später unter Einstellungen → Module & System):
+
+![Einrichtungsassistent](docs/screenshots/einrichtung.webp)
 
 ### Heimnetz und Handy
 
