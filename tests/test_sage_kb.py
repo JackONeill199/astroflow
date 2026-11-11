@@ -303,6 +303,18 @@ def test_notizen_karte_netz_entdeckungen(client):
     ids = {x["id"] for x in g["nodes"]}
     assert {"proj:16", "ver:16", "eq:stellina-a1b2c3", "k-offener-haufen", "k-staub"} <= ids
     assert any(lk["rel"] == "Beobachtungssession" for lk in g["links"])
+    assert g["center"] == "m45" and client.get("/api/sage/kb/graph", params={"center": "M45"}).json()["center"] == "m45"
+    # Begriffe fächern im Fokus nur zu Begriffen auf (sonst alle Objekte derselben Art als Nachbarn 2. Grades)
+    by = {x["id"]: x for x in g["nodes"]}
+    for x in (x for x in g["nodes"] if x["level"] == 2 and x["kind"] == "object"):
+        nb = [by[lk["target"] if lk["source"] == x["id"] else lk["source"]] for lk in g["links"] if x["id"] in (lk["source"], lk["target"])]
+        assert any(n["level"] == 1 and n["kind"] != "concept" for n in nb), x["id"]
+    # Überblick: Nächte/Stunden am Objektknoten statt eigener Aufnahme-/Bearbeitungsknoten; Kanten tragen ihre ID (Bestätigen/Verwerfen)
+    o = client.get("/api/sage/kb/graph").json()
+    m45 = next(x for x in o["nodes"] if x["id"] == "m45")
+    assert m45["observed"] and m45["nights"] >= 1 and m45["hours"] > 0 and "constellation" in m45 and "image" in m45
+    assert not any(x["kind"] in ("observation", "processing", "session", "equipment") for x in o["nodes"])
+    assert all(lk["id"] for lk in o["links"] if lk["origin"] != "personal")
     assert client.delete(f"/api/sage/kb/notes/{n['id']}").json()["ok"]
 
 

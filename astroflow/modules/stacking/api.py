@@ -380,6 +380,7 @@ def _slim(stats: str | None) -> dict:
 
 def build_router(eng: Engine) -> APIRouter:
     r = APIRouter()
+    picture_lock = threading.Lock()                  # eine Bildanalyse gleichzeitig (rechnet beim ersten Abruf)
     db = eng.db
 
     def project_views(rows: list[dict]) -> list[dict]:
@@ -526,13 +527,15 @@ def build_router(eng: Engine) -> APIRouter:
         return get_solver()
 
     @r.post("/projects/{pid}/solve")
-    def solve(pid: int):
+    def solve(pid: int, body: dict = Body(default={})):
         p = db.one("SELECT options, obj_id FROM projects WHERE id=?", (pid,))
         if not p:
             raise HTTPException(404)
         picture = json.loads(p["options"] or "{}").get("input_type") == "picture"
         if picture and p["obj_id"]:
-            raise HTTPException(409, "Das Objekt dieses Bildes ist schon bekannt – bei Bedarf über „Namen setzen“ ändern.")
+            from .picture_solve import stored_solution
+            if not body.get("force") or stored_solution(eng.s.work_dir, pid):     # `force`: Objekt von Hand gesetzt, Lösung fehlt noch (Reiter Analyse)
+                raise HTTPException(409, "Das Objekt dieses Bildes ist schon bekannt – bei Bedarf über „Namen setzen“ ändern.")
         if not eng.pl.solver_cfg.enabled:
             raise HTTPException(400, "Kein Plate-Solver eingerichtet – siehe Einstellungen.")
         if picture:
@@ -1019,12 +1022,16 @@ def build_router(eng: Engine) -> APIRouter:
     def result_objects(rid: int):
         """Katalogobjekte im fertigen Bild (Pixel des JPGs) aus der Plate-Solving-Lösung des Master-Stacks – für die
         Objektnamen beim Überfahren des Bildes. Ohne Lösung leer. Je Version zwischengespeichert (neu, wenn wcs.json jünger ist)."""
-        x = db.one("SELECT project_id, files FROM results WHERE id=?", (rid,))
+        x = db.one("SELECT project_id, files, stats FROM results WHERE id=?", (rid,))
         if not x:
             raise HTTPException(404)
         pid, files = x["project_id"], json.loads(x["files"] or "{}")
         wcs = eng.s.work_dir / f"p{pid}" / "wcs.json"
         if not wcs.exists():
+            from .picture_solve import stored_solution
+            sol = stored_solution(eng.s.work_dir, pid)         # fertig importiertes Bild: Lösung der Anzeigeversion
+            if sol and sol.get("width") and (json.loads(x.get("stats") or "{}").get("shape") or [0, 0])[::-1] == [sol["width"], sol["height"]]:
+                return {"width": sol["width"], "height": sol["height"], "objects": [o for o in sol["objects"] if o.get("x") is not None]}
             return {"objects": [], "reason": "nicht per Plate-Solving gelöst"}
         cache = eng.s.work_dir / f"p{pid}" / f"objekte_r{rid}.json"
         if cache.exists() and cache.stat().st_mtime >= wcs.stat().st_mtime:
@@ -1066,6 +1073,19 @@ def build_router(eng: Engine) -> APIRouter:
                 return {"state": "none", "retry": True, "message": data.get("error"), "solved": solved}
             return {"state": "error", "message": data.get("error"), "solved": solved}
         return {"state": "old" if data else "none", "solved": solved}
+
+    @r.get("/results/{rid}/picture-analysis")
+    def picture_analysis(rid: int):
+        """Grobe Analyse eines fertig importierten Bildes (Bildfeld, Maßstab, Schärfe, Rauschen, Farbstich, eigene Aufnahmen
+        desselben Objekts). Eigener Endpunkt, nicht in der gepollten Projektansicht; gecacht (`PICTURE_ANALYSIS_VERSION`)."""
+        from .picture_analysis import analyse
+        x = db.one("SELECT p.options FROM results r JOIN projects p ON p.id=r.project_id WHERE r.id=?", (rid,))
+        if not x:
+            raise HTTPException(404)
+        if json.loads(x["options"] or "{}").get("input_type") != "picture":
+            raise HTTPException(409, "Nur für fertig importierte Bilder.")
+        with picture_lock:
+            return analyse(eng, rid)
 
     @r.get("/results/{rid}/depth")
     def get_depth(rid: int):
