@@ -323,85 +323,8 @@ async function wikiView(el) {
   return { actions: () => [['search', 'Objekt recherchieren', 'Fachkataloge + KI', () => $('#swQ').focus()], ['sparkle', 'Frag Sage', 'Assistent', () => chat({ scope: 'global' })]] };
 }
 
-// Himmelskarte: Rektaszension nach links wachsend (Blick nach Süden), Gitter, helle Katalogobjekte, eigene hervorgehoben.
-// Mausrad/Pinch zoomt, Ziehen verschiebt, Doppelklick zentriert neu; ⤢ öffnet die große Ansicht.
-const mapData = new Map();
-async function skyMap(host, id, big = false) {
-  const m = mapData.get(id) || await api(`${K}/skymap/${id}?radius=75`).catch(() => null);
-  if (!m?.center || !host.isConnected) return;
-  mapData.set(id, m);
-  let W = 960, H = 600;
-  let cra = m.center.ra, cdec = m.center.dec, R = big ? 30 : 18;          // R = halbe Kartenhöhe in Grad
-  const draw = () => {
-    if (!big) { W = Math.max(240, Math.round((host.clientWidth || 240) / 1.4)); H = Math.round(W * 0.625); }   // Schrift bleibt bei breiter Karte gleich groß
-    const k = H / (2 * R), cosd = Math.cos(cdec * Math.PI / 180);
-    const pos = (ra, dec) => { const dra = ((ra - cra + 540) % 360) - 180; return [W / 2 - dra * Math.cos(dec * Math.PI / 180) * k, H / 2 - (dec - cdec) * k]; };
-    const step = R > 25 ? 15 : R > 8 ? 5 : 1, grid = [];
-    let lastY = -1e9, lastX = -1e9;
-    for (let dec = Math.ceil((cdec - R) / step) * step; dec <= Math.min(90, cdec + R); dec += step) {
-      const y = H / 2 - (dec - cdec) * k, lbl = Math.abs(y - lastY) > 16 && y < H - 16 && y > 12;
-      if (lbl) lastY = y;
-      grid.push(`<line x1="0" x2="${W}" y1="${y}" y2="${y}"/>${lbl ? `<text x="3" y="${y - 2}">${dec}°</text>` : ''}`); }
-    const rs = R > 25 ? 30 : R > 8 ? 15 : 3, span = W / (2 * k * Math.max(cosd, 0.2));
-    for (let ra = Math.ceil((cra - span) / rs) * rs; ra <= cra + span; ra += rs) {
-      const [x] = pos(ra, cdec); if (!(x > 0 && x < W)) continue;
-      const lbl = Math.abs(x - lastX) > 40 && x > 34 && x < W - 26; if (lbl) lastX = x;
-      grid.push(`<line y1="0" y2="${H}" x1="${x}" x2="${x}"/>${lbl ? `<text x="${x + 2}" y="${H - 3}">${(((ra % 360) + 360) % 360 / 15).toFixed(rs < 15 ? 1 : 0).replace('.', ',')}h</text>` : ''}`); }
-    const named = R < (big ? 40 : 10);
-    const pts = m.objects.map(o => { const [x, y] = pos(o.ra, o.dec), me = o.id === m.center.id;
-      if (x < -5 || x > W + 5 || y < -5 || y > H + 5) return '';
-      return `<g class="${me ? 'me' : o.mine ? 'mine' : ''}"${o.id && !me ? ` data-id="${o.id}"` : ''}><circle cx="${x}" cy="${y}" r="${(me ? 4 : o.mine ? 3 : 1.8) * (big ? 1.6 : 1)}"/>${me || o.mine || named ? `<text x="${x + 6}" y="${y - 5}">${esc(shortName(o.name))}</text>` : ''}<title>${esc(o.name)}</title></g>`; }).join('');
-    host.innerHTML = `<svg class="sw-map ${big ? 'big' : ''}" viewBox="0 0 ${W} ${H}"><g class="grid">${grid.join('')}</g>${pts}
-        ${m.constellation ? `<text class="con" x="${W - 8}" y="${big ? 24 : 14}" text-anchor="end">${esc(m.constellation)}</text>` : ''}</svg>
-      <div class="sw-map-bar"><button data-z="in" title="Vergrößern">+</button><button data-z="out" title="Verkleinern">−</button><button data-z="home" title="Auf Objekt zentrieren">◎</button>
-        ${big ? '' : '<button data-z="big" title="Große Karte">⤢</button>'}</div>`;
-  };
-  const zoom = (f) => { R = Math.min(75, Math.max(1.5, R * f)); draw(); };
-  host.classList.add('sw-maphost');
-  host.onwheel = (ev) => { ev.preventDefault(); zoom(Math.exp(ev.deltaY * 0.0015)); };
-  let drag = null, moved = false, pinch = null;
-  const ptrs = new Map();
-  host.onpointerdown = (ev) => { if (ev.target.closest('.sw-map-bar')) return; host.setPointerCapture(ev.pointerId); ptrs.set(ev.pointerId, [ev.clientX, ev.clientY]);
-    drag = { x: ev.clientX, y: ev.clientY, ra: cra, dec: cdec }; moved = false; if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = Math.hypot(a[0] - b[0], a[1] - b[1]); } };
-  host.onpointermove = (ev) => {
-    if (!drag) return;
-    ptrs.set(ev.pointerId, [ev.clientX, ev.clientY]);
-    if (ptrs.size === 2 && pinch) { const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); zoom(pinch / d); pinch = d; return; }
-    const r = host.querySelector('svg').getBoundingClientRect(), k = H / (2 * R) * r.height / H;
-    const dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
-    if (Math.hypot(dx, dy) > 3) moved = true;
-    cdec = Math.max(-89, Math.min(89, drag.dec + dy / k));
-    cra = drag.ra + dx / k / Math.max(Math.cos(cdec * Math.PI / 180), 0.2);
-    draw();
-  };
-  const end = (ev) => { ptrs.delete(ev.pointerId); if (ptrs.size < 2) pinch = null; if (!ptrs.size) drag = null; };
-  host.onpointerup = (ev) => {
-    if (!moved) { const g = ev.target.closest?.('[data-id]'); if (g) location.hash = `#/sage/o/${g.dataset.id}`; }
-    end(ev);
-  };
-  host.onpointercancel = end;
-  host.onclick = (ev) => {
-    const z = ev.target.closest('[data-z]')?.dataset.z; if (!z) return;
-    if (z === 'in') zoom(1 / 1.5); else if (z === 'out') zoom(1.5);
-    else if (z === 'home') { cra = m.center.ra; cdec = m.center.dec; R = big ? 30 : 18; draw(); }
-    else if (z === 'big') mapDialog(id);
-  };
-  draw();
-  if (!big) { let lw = host.clientWidth; new ResizeObserver(() => { if (host.clientWidth !== lw) { lw = host.clientWidth; draw(); } }).observe(host); }
-}
-function mapDialog(id) {
-  let dl = $('#swMapDlg');
-  if (!dl) {
-    dl = document.createElement('dialog'); dl.id = 'swMapDlg'; dl.className = 'sw-mapdlg';
-    dl.innerHTML = `<div class="row"><b>Position am Himmel</b><span class="mut sm">Mausrad zoomt · Ziehen verschiebt · Klick auf ein Objekt öffnet es</span><span class="grow"></span><button class="sw-x" aria-label="Schließen">×</button></div><div id="swMapBig"></div>`;
-    document.body.append(dl);
-    dl.querySelector('.sw-x').onclick = () => dl.close();
-    dl.addEventListener('click', (e) => { if (e.target === dl) dl.close(); });
-    addEventListener('hashchange', () => dl.open && dl.close());
-  }
-  dl.showModal();
-  skyMap($('#swMapBig', dl), id, true);
-}
+// Einstieg ins Observatorium (Bilder-Modul, nur Link – kein Import), auf das Objekt zentriert; Feld ≈ 6× Objektgröße
+const obsHref = (e) => `#/observatorium?ra=${(+e.ra).toFixed(4)}&dec=${(+e.dec).toFixed(4)}&fov=${Math.max(3, Math.min(60, (e.size || 20) / 60 * 6)).toFixed(2)}&name=${encodeURIComponent(shortName(e.name))}`;
 // Himmelsansicht: DSS2-Aufnahme des Feldes (NASA SkyView) im Bildbetrachter – zum Vergleich mit der eigenen Aufnahme
 function skyDialog(id, name, size) {
   let dl = $('#swSkyDlg');
@@ -551,9 +474,10 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
             : '<p class="mut sm">Noch keine Preprints gesammelt.</p>'}</section>
       </div>
       <div class="sw-d-side">
-        ${e.ra != null ? `<div class="panel sw-dh-sky"><h2>Position am Himmel</h2><div id="swMap"></div>
+        ${e.ra != null ? `<div class="panel sw-dh-sky"><h2>Position am Himmel</h2>
           <dl><dt>Rektaszension</dt><dd>${sexa(e.ra, true).replace(/\.\d+s$/, 's')}</dd><dt>Deklination</dt><dd>${sexa(e.dec, false)}</dd></dl>
-          <button class="btn sm ghost" id="swSkyBtn">${icon('globe')}Himmelsansicht</button></div>` : ''}
+          ${AF.on('stacking') ? `<a class="btn sm" href="${obsHref(e)}">${icon('dome')}Im Observatorium zeigen</a>` : ''}
+          <button class="btn sm ghost" id="swSkyBtn">${icon('globe')}DSS2-Himmelsbild</button></div>` : ''}
         <div class="panel"><div class="panel-h"><h2>${icon('camera')}Meine Aufnahmen</h2><span class="grow"></span>${d.gallery.length ? `<a class="linkbtn" href="#/sage/o/${id}/bilder">Alle ${d.gallery.length}</a>` : ''}</div>
           ${d.gallery.length ? `<div class="sw-shots">${d.gallery.slice(0, 3).map(g => `<a href="${g.href}"><img src="${g.thumb}" alt="" loading="lazy"><small>${shotDate(g)}</small>${g.minutes ? `<small class="dim">${g.minutes} min</small>` : ''}</a>`).join('')}</div>`
             : `<p class="mut sm" style="margin:0">Noch nicht fotografiert${ss ? ` – gute Zeit: ${ss.from} bis ${ss.to}` : ''}.</p>`}
@@ -571,7 +495,6 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
             : '<p class="mut sm" style="margin:0">Bedingungen, Ideen, Ziele – alles bleibt lokal.</p>'}
           ${d.mine.notes.length > 4 ? `<a class="linkbtn" href="#/sage/o/${id}/beobachtungen">Alle ${d.mine.notes.length} Notizen</a>` : ''}</div>
       </div></div>`;
-    if ($('#swMap', host)) skyMap($('#swMap', host), id);
     $('#swSkyBtn', host)?.addEventListener('click', () => skyDialog(id, shortName(e.name), e.size));
     host.querySelectorAll('[data-go=deep]').forEach(b => { b.onclick = () => research(true); });
     host.querySelector('[data-go=papers]').onclick = async (ev) => {

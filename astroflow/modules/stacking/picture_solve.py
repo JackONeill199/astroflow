@@ -78,6 +78,7 @@ def solve_picture(cfg: platesolve.SolverConfig, image: Path, info: dict, work: P
     """Lösung (`services.describe`) des angezeigten Bildes oder None. Wirft nur bei fehlendem Solver."""
     from astropy.wcs import WCS
 
+    from .observatory import wcs_subset
     from .services import describe, load_fits_oriented
     if not cfg.enabled:
         raise platesolve.SolveError(MSG_NO_SOLVER)
@@ -101,6 +102,7 @@ def solve_picture(cfg: platesolve.SolverConfig, image: Path, info: dict, work: P
                 continue
             sol = describe(WCS({**hdr, "NAXIS": 2, "NAXIS1": w, "NAXIS2": h}, naxis=2), w, h, cfg.chain()[0])
             sol["seconds"] = round(time.time() - t0, 1)
+            sol["wcs"] = wcs_subset(hdr)                 # genaue Bildlage für den Himmelsatlas (Drehung + Spiegelung)
             return sol
         return None
     finally:

@@ -3,6 +3,13 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.67.0 – 11.11.2026
+
+### Neu
+- **Observatorium** (neuer Hauptpunkt neben „Heute Nacht“): zoombarer Himmelsatlas mit deinen eigenen Fotos an ihrer echten Position, Größe und Drehung, dazu Katalogobjekte, helle Sterne und Sternbilder mit deutschen Namen. Klick auf ein Foto führt zum Projekt bzw. zu Sage. Horizont und Planung über mehrere Nächte folgen.
+- Sage-Objektseiten: „Im Observatorium zeigen“ ersetzt die kleine Karte „Position am Himmel“.
+- Sterndaten: Yale Bright Star Catalogue (gemeinfrei), Sternbildlinien aus d3-celestial (BSD-3-Clause), siehe `NOTICE`.
+
 ## 0.66.1 – 11.11.2026
 
 ### Behoben

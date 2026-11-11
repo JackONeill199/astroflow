@@ -20,7 +20,7 @@ unter einer Oberfläche (einzeln abschaltbar unter Einstellungen → Module & Sy
 
 | Modul | Was es tut |
 |---|---|
-| **Bilder** | FITS-Aufnahmen automatisch sortieren, kalibrieren, stacken und entwickeln; neue Nächte werden nachgestackt. Dazu Analysen (Tiefe, Vergleich, Himmelsqualität, Gerätediagnose, Asteroiden, HR-Diagramm), Bild-Tutor, „Heute Nacht“, Kometenmodus |
+| **Bilder** | FITS-Aufnahmen automatisch sortieren, kalibrieren, stacken und entwickeln; neue Nächte werden nachgestackt. Dazu Analysen (Tiefe, Vergleich, Himmelsqualität, Gerätediagnose, Asteroiden, HR-Diagramm), Bild-Tutor, „Heute Nacht“, **Observatorium** (Himmelsatlas mit deinen Fotos), Kometenmodus |
 | **SkyTrace** | Bildfolgen auf Lichtspuren und bewegte Objekte untersuchen; Abgleich mit Satelliten (historische Bahndaten), Meteoren und Flugzeugen zur Aufnahmezeit, 3D-Erde, Standort- und Uhrsuche, Statistik, Erfolge |
 | **Sage** | Lebende Astronomie-Enzyklopädie: Objekte im Bild bestimmen, aus Fachkatalogen recherchieren (mit Quellen), Geschichten erzählen und vorlesen, Entdeckungen, Wissensnetz, Sammlung mit Erfolgen |
 
@@ -119,6 +119,9 @@ was am meisten gebracht hat; „Alles analysieren“ rechnet fehlende Auswertung
 | **Heute Nacht:** gut sichtbare Ziele für die gewählte Nacht (mit ‹ › durch die nächsten 14 Nächte blättern), Höhenverläufe mit Dämmerung und Mond, Nachtplan, optional Wetter. | **Himmelsqualität:** aus deinen Aufnahmen gemessen, an Gaia-Sternen geeicht – mag/″², Bortle mit Spanne, Seeing, Lichtrichtung, dazu die **sauberen Nächte** mit Ranglisten. |
 
 *(Demodaten mit erfundenem Ort.)*
+
+**Observatorium:** ein zoombarer Himmelsatlas des ganzen Himmels – Sterne, Sternbilder, Messier-/Caldwell-Objekte und **deine eigenen Fotos an ihrer echten Position,
+in echter Größe und Drehung** (aus dem Plate-Solving). Klick auf ein Foto öffnet das Projekt, auf ein Katalogobjekt die Sage-Seite; Sage springt von jeder Objektseite hierher.
 
 Orte legst du unter Einstellungen → Standorte **nach Datum** an (Zeiträume, einzelne Nächte, Standard-Ort); „Heute bin ich in …“ wechselt den Ort für die
 aktuelle Nacht. Der Ort einer Aufnahme ergibt sich aus FITS-Kopf → Zeitraum → Standard.
@@ -365,5 +368,6 @@ Der eigene Code von AstroFlow steht unter der **PolyForm Noncommercial License 1
 Drittkomponenten (Überblick in `NOTICE`): three.js (`astroflow/static/vendor/`) steht unter MIT, die Erdtextur (`astroflow/modules/skytrace/static/vendor/`) ist NASA Blue Marble
 (gemeinfrei), siehe die `README.md` in beiden Ordnern. Das SkyTrace-Erkennungsmodell (`astroflow/modules/skytrace/models/night-detector`) stammt aus OpenSkyCam und steht unter AGPL-3.0.
 Die Messier-/Caldwell-Daten für „Heute Nacht“ (`astroflow/modules/stacking/katalogdaten/`) stammen aus [OpenNGC](https://github.com/mattiaverga/OpenNGC) und den englischen Wikipedia-Listen „Messier object“ und „Caldwell catalogue“ (beide CC-BY-SA 4.0, Namensnennung und Weitergabe unter gleichen Bedingungen; Lizenztext dort im Ordner).
+Der Himmelsatlas des Observatoriums nutzt den Yale Bright Star Catalogue (5. Ausgabe, gemeinfrei) und Sternbildlinien aus [d3-celestial](https://github.com/ofrohn/d3-celestial) (BSD-3-Clause, Lizenztext in `astroflow/modules/stacking/static/himmel/`).
 
 **Hinweis zu SkyTrace:** Die Erkennung von Lichtspuren (Modell und das nachinstallierte `ultralytics`) steht unter AGPL-3.0; die Engine läuft in einem eigenen Prozess, ihr Quellcode liegt offen unter `astroflow/modules/skytrace/engine/` und steht deshalb unter AGPL-3.0-or-later (eigene `LICENSE` im Ordner); die Hilfsdateien, die auch der Server lädt, stehen wahlweise unter PolyForm Noncommercial 1.0.0 oder AGPL-3.0-or-later. Der übrige AstroFlow-Code steht unter PolyForm Noncommercial 1.0.0. Im Windows-Paket sammelt `THIRD-PARTY-LICENSES.txt` die Lizenzen der gebündelten Pakete (u. a. pystray, LGPL-3.0). Die Kartenansicht lädt Kacheln von OpenStreetMap bzw. OpenTopoMap (© OpenStreetMap-Mitwirkende; bitte nur leichte Nutzung).
