@@ -3,6 +3,18 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.62.0 – 11.11.2026
+
+### Neu
+- Einrichtung: Mehrere Teleskope lassen sich gleichzeitig auswählen; die Empfehlung für die Sterndatenbank richtet sich nach allen gewählten Geräten.
+- Im Installer gewählte Extras zeigen im Assistenten „wartet – wird automatisch installiert“ mit ihrem Platz in der Warteschlange statt „fehlt“; der laufende Download zeigt Fortschritt, Fehlgeschlagenes lässt sich erneut versuchen.
+- Beim Abschließen der Einrichtung während laufender Downloads erscheint der Hinweis, dass sie im Hintergrund weiterlaufen (Fortschritt unter Aufträge).
+
+## 0.61.1 – 11.11.2026
+
+### Behoben
+- Windows-Installer: Die Lizenzseite zeigt oben eine deutsche Kurzfassung (was erlaubt ist, was nicht) und darunter den englischen Originaltext sauber lesbar statt mit rohen Formatierungszeichen.
+
 ## 0.61.0 – 11.11.2026
 
 ### Neu

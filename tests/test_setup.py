@@ -104,7 +104,7 @@ def test_datenordner_wechsel_startet_neu(home, tmp_path, monkeypatch):
     assert r["restart"] and calls == [neu.resolve()]
     assert launcher.read_config()["data_dir"] == str(neu.resolve())
     # Einrichtung läuft im neuen Ordner weiter, Teleskopwahl bleibt
-    assert json.loads((neu / "settings.json").read_text(encoding="utf-8"))["setup"] == {"telescope": "vespera", "done": False}
+    assert json.loads((neu / "settings.json").read_text(encoding="utf-8"))["setup"] == {"telescope": "vespera", "telescopes": ["vespera"], "done": False}
     assert c.post("/api/setup", json={"data_dir": "relativ/pfad"}).status_code == 400
 
 
@@ -207,6 +207,57 @@ def test_installer_auftrag(home, tmp_path, monkeypatch):
     assert not comp.order_path().exists()
     assert launcher.read_config()["components_pending"] == ["graxpert"]          # wird später erneut angeboten
     assert c.get("/api/components").json()["pending"] == ["graxpert"]
+
+
+def test_mehrere_teleskope(home, monkeypatch):
+    c = client(home / "Daten", True, monkeypatch)
+    s = c.post("/api/setup", json={"telescopes": ["stellina", "vespera", "unsinn", "stellina"]}).json()
+    assert s["telescopes"] == ["stellina", "vespera"] and s["telescope"] == "stellina"
+    assert c.get("/api/components").json()["telescope_db"] == "d05"
+    s = c.post("/api/setup", json={"telescopes": ["seestar", "andere"]}).json()
+    assert s["telescopes"] == ["seestar", "andere"] and c.get("/api/components").json()["telescope_db"] == "d50"
+    assert c.post("/api/setup", json={"telescopes": []}).json()["telescopes"] == []
+    # Einzelwert aus älteren Ständen (nur `telescope`) wird zur Liste
+    c.app.state.setup.ctx.store.update("setup", {"telescopes": None, "telescope": "andere"})
+    assert c.get("/api/setup").json()["telescopes"] == ["andere"]
+    assert c.post("/api/setup", json={"telescope": "dwarf"}).json()["telescopes"] == ["dwarf"]
+
+
+def test_warteschlange_und_abschliessen(home, monkeypatch):
+    """Vorgemerkte Komponenten zeigen Platz und laufende Komponente; Abschließen bricht nichts ab; Klick startet nichts doppelt."""
+    import threading
+    home.mkdir(parents=True, exist_ok=True)
+    comp.order_path().write_text("astap:d05\ngpu\nskytrace\n", encoding="utf-8")
+    c = client(home / "Daten", True, monkeypatch)
+    setup = c.app.state.setup
+    gate, started = threading.Event(), []
+    real_status = comp.status
+    monkeypatch.setattr(comp, "status", lambda *a, **k: [{**i, "state": "missing"} for i in real_status(*a, **k)])   # unabhängig vom Rechner
+
+    def fake_job(self, prog, name, option, force):
+        started.append(name)
+        gate.wait(10)
+        return "ok"
+    monkeypatch.setattr(setup_mod.Setup, "_component_job", fake_job)
+    t = threading.Thread(target=setup.run_order, daemon=True)
+    t.start()
+    t0 = time.time()
+    while "astap" not in started and time.time() - t0 < 10:
+        time.sleep(0.05)
+    d = c.get("/api/components").json()
+    pos = {i["id"]: i["queue_pos"] for i in d["items"]}
+    assert d["queue_active"] and d["queue_running"] == "astap"
+    assert pos["astap"] == 0 and pos["gpu"] == 1 and pos["skytrace"] == 2          # astap läuft, dann Reihenfolge
+    # Abschließen während des Downloads: nichts bricht ab
+    assert c.post("/api/setup", json={"done": True}).status_code == 200
+    assert c.get("/api/setup").json()["tasks"]["astap"]["state"] == "running"
+    # Klick auf eine wartende Komponente: läuft sie schon, ist es ein 409; die Schlange startet sie nicht noch einmal
+    assert c.post("/api/components/install", json={"id": "astap", "option": "d05"}).status_code == 409
+    gate.set()
+    t.join(10)
+    assert started == ["astap", "gpu", "skytrace"] and not setup.order_active
+    assert not launcher.read_config().get("components_pending")
+    assert c.get("/api/components").json()["queue_active"] is False
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="GraXpert-Installation nur unter Windows")
@@ -479,3 +530,13 @@ def test_engine_ein_pip_lauf_mit_cpu_index(home, monkeypatch):
     assert len(calls) == 1
     args = calls[0]
     assert args[args.index("--index-url") + 1] == comp.TORCH_CPU_INDEX and "--extra-index-url" in args and "-r" in args
+
+
+def test_manuelle_installation_streicht_nur_passende_option(home, monkeypatch):
+    home.mkdir(parents=True, exist_ok=True)
+    comp.order_path().write_text("astap:d05\nastap:d50\n", encoding="utf-8")
+    c = client(home / "Daten", True, monkeypatch)
+    setup = c.app.state.setup
+    monkeypatch.setattr(comp, "install", lambda *a, **k: "ok")
+    setup._component_job(lambda f, d: None, "astap", "d05", False)
+    assert launcher.read_config()["components_pending"] == ["astap:d50"]
