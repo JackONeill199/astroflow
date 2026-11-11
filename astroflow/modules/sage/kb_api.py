@@ -403,19 +403,26 @@ def extend(r, mod, url):
     # ---- Wissensnetz -------------------------------------------------------------------------
     @r.get("/kb/graph")
     def graph(center: str | None = None, depth: int = 2, personal: bool = True, limit: int = 90):
+        """Wissensnetz. Mit `center`: Nachbarschaft bis `depth` samt persönlicher Kette (Aufnahme → Session → Gerät).
+        Ohne: Überblick über die eigenen Objekte (Nächte/Stunden am Knoten statt eigener Aufnahme-Knoten), dazu Begriffe und
+        Katalogobjekte, die mindestens zwei eigene Objekte verbinden (z. B. Galaxiengruppen)."""
         nodes, links = {}, {}
+        prof = {o["entity"]: o for o in memory.profile(mod)["objects"] if o["entity"]}
 
         def node(e: dict, level: int):
             if e["id"] not in nodes:
+                o = prof.get(e["id"]) or {}
                 nodes[e["id"]] = {"id": e["id"], "label": e["name"], "kind": e["kind"], "group": (e["data"] or {}).get("af_kind") or e["kind"],
-                                  "status": e["status"], "level": level}
+                                  "status": e["status"], "level": level, "type": e["otype_label"],
+                                  "constellation": (kb.fact(e["id"], "constellation") or {}).get("value"),
+                                  "nights": o.get("nights") or 0, "hours": round(o.get("hours") or 0, 2), "images": o.get("images") or 0}
 
-        def link(a, b, rel, origin, status="verified", note=""):
+        def link(a, b, rel, origin, status="verified", note="", xid=None):
             k = (a, b, rel)
             if a in nodes and b in nodes and k not in links:
-                links[k] = {"source": a, "target": b, "rel": rel, "origin": origin, "status": status, "note": note}
+                links[k] = {"source": a, "target": b, "rel": rel, "origin": origin, "status": status, "note": note, "id": xid}
 
-        mine = observed_ids()
+        mine = set(prof)
         if center:
             c = need(center)
             node(c, 0)
@@ -423,30 +430,40 @@ def extend(r, mod, url):
             for lvl in range(1, max(1, min(depth, 3)) + 1):
                 nxt = []
                 for nid in frontier:
+                    # von einem Begriff aus nur zu weiteren Begriffen („ist eine Galaxie“ holte sonst alle Galaxien als Nachbarn
+                    # 2. Grades); ist das Zentrum selbst ein Begriff, gilt das nicht
+                    only_concepts = nid != c["id"] and nodes[nid]["kind"] == "concept" and c["kind"] != "concept"
                     for x in kb.edges(nid):
                         o = x["dst"] if x["src"] == nid else x["src"]
                         oe = kb.entity(o)
-                        if oe and len(nodes) < limit:
+                        if oe and len(nodes) < limit and not (only_concepts and oe["kind"] != "concept" and o not in nodes):
                             new = o not in nodes
                             node(oe, lvl)
                             if new:
                                 nxt.append(o)
                 frontier = nxt
-        else:                                              # Überblick: eigene Objekte und ihre Konzepte
+        else:                                              # Überblick: eigene Objekte, ihre Begriffe und verbindende Katalogobjekte
             for eid in mine:
                 e = kb.entity(eid)
                 if e:
                     node(e, 0)
+            cap, touch = len(nodes) + max(limit, 150), {}
             for eid in list(nodes):
                 for x in kb.edges(eid):
-                    o = kb.entity(x["dst"] if x["src"] == eid else x["src"])
-                    if o and (o["kind"] == "concept" or o["id"] in mine) and len(nodes) < limit:
-                        node(o, 1)
+                    o = x["dst"] if x["src"] == eid else x["src"]
+                    if o not in nodes:
+                        touch.setdefault(o, set()).add(eid)
+            for o, hits in sorted(touch.items(), key=lambda t: -len(t[1])):
+                oe = kb.entity(o)
+                if oe and len(nodes) < cap and (oe["kind"] == "concept" or len(hits) >= 2):
+                    node(oe, 1)
         for nid in list(nodes):
             for x in kb.edges(nid):
-                link(x["src"], x["dst"], x["rel"], x["origin"], x["status"], x["note"])
+                link(x["src"], x["dst"], x["rel"], x["origin"], x["status"], x["note"], x["id"])
+        pics = picture_index()
         for n in nodes.values():
             n["observed"] = n["id"] in mine
+            n["image"] = (pics.get(n["id"]) or {}).get("thumb")
         if personal:
             seen_pairs = set()
             for h in mod.store.entries():                   # gemeinsam in einem eigenen Bild
@@ -456,8 +473,9 @@ def extend(r, mod, url):
                         if (a, b) not in seen_pairs and len(seen_pairs) < 60:
                             seen_pairs.add((a, b))
                             link(a, b, "im selben Bild", "personal")
-            targets = [center] if center else list(mine)
-            for p in memory.observation_log(mod):
+            # Aufnahme-Kette nur um ein Objekt; im Überblick stehen Nächte/Stunden am Objektknoten (vorher 2 Extraknoten je Objekt)
+            targets = [nodes[next(iter(nodes))]["id"]] if center and nodes else []
+            for p in memory.observation_log(mod) if targets else []:
                 if not p["sessions"]:
                     continue
                 e = memory._match(kb, p["name"], p.get("ra"), p.get("dec"))
@@ -482,7 +500,7 @@ def extend(r, mod, url):
                     nodes[vid] = {"id": vid, "label": f"Bildbearbeitung ({len(p['results'])} Version{'' if len(p['results']) == 1 else 'en'})",
                                   "kind": "processing", "group": "personal", "href": f"#/p/{p['id']}/versionen", "level": 2}
                     link(pid, vid, "entwickelt", "personal")
-        return {"nodes": list(nodes.values()), "links": list(links.values()), "center": center}
+        return {"nodes": list(nodes.values()), "links": list(links.values()), "center": next(iter(nodes)) if center and nodes else None}
 
     @r.post("/kb/edges")
     def add_edge(body: dict = Body(...)):

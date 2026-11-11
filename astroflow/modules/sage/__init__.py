@@ -36,7 +36,7 @@ class Module(BaseModule):
     name = "Sage"
     description = "Lebende Astronomie-Enzyklopädie: Objekte im Bild bestimmen, recherchieren, mit deinen Aufnahmen verknüpfen und erzählen lassen."
     icon = "book"
-    scripts = ("sage.js", "sage-wiki.js")
+    scripts = ("sage.js", "sage-wiki.js", "sage-netz.js")
     styles = ("sage.css", "sage-wiki.css")
 
     def __init__(self, ctx):
