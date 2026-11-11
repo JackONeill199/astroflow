@@ -29,7 +29,8 @@ unter einer Oberfläche (einzeln abschaltbar unter Einstellungen → Module & Sy
 ### Vom Rohbild zum fertigen Foto
 
 Jedes Objekt erscheint automatisch, sobald seine Rohbilder im Eingangsordner liegen – Objekt, Kamera und Nacht erkennt AstroFlow aus Header, Ordnername oder
-Plate-Solving. Beim Stacken zeigt die **Live-Ansicht** echte Zwischenvorschauen mit dem aktuellen Schritt.
+Plate-Solving. Neue Nächte werden zum vorhandenen Stack dazugerechnet, verschobene Bildfelder (Mosaikmodus, Nachführsprünge) zu einem größeren Bild
+zusammengesetzt. Eine Grafikkarte oder Zusatzprogramme braucht es dafür nicht. Beim Stacken zeigt die **Live-Ansicht** echte Zwischenvorschauen mit dem aktuellen Schritt.
 
 ![Live-Ansicht beim Stacken](docs/media/stacking-live.webp)
 
@@ -131,7 +132,7 @@ Sage und SkyTrace.
 
 ### Windows: Installer oder portables ZIP (empfohlen)
 
-Von der Releases-Seite des Repositories laden:
+Von der [Releases-Seite](https://github.com/JackONeill199/astroflow/releases/latest) laden:
 
 - **`AstroFlow-Setup-<Version>.exe`** – Installer pro Benutzer (keine Administratorrechte), Startmenü, optional Desktop-Verknüpfung und Start beim Anmelden.
   Bei „Vollständig“ richtet AstroFlow danach selbst ein:
@@ -219,6 +220,7 @@ Befehlspalette **Strg+K** (Objekte und Aktionen aller Module); Tasten `/` Suche,
 | Kalibrierung | Master-Dark/Bias/Flat; automatische Hotpixel-Korrektur (auch ohne Darks), Karte ortsfester Sensorfehler, Messung und Abzug des Sensorglühens aus den Aufnahmen |
 | Qualität & Auswahl | Sternzahl, FWHM, Exzentrizität, Hintergrund → Score; Wolken, Unschärfe, Nachführfehler werden verworfen |
 | Registrierung & Stacking | Dreiecks-Matching (Feldrotation, Meridian-Flip, mehrere Nächte); gewichtetes Sigma-Clipping; inkrementell – neue Aufnahmen werden nachgestackt |
+| Mosaik | Verschiebt sich das Bildfeld deutlich (Mosaikmodus, Nachführsprünge), werden alle Felder auf einer größeren Fläche zusammengesetzt statt auf den gemeinsamen Kern zugeschnitten; Hintergründe angeglichen, Übergänge geblendet (Option automatisch/ein/aus, Zuschnitt groß/kompakt) |
 | Farbe | Fotometrische Farbkalibrierung über Gaia-Sternfarben (nur Feldkoordinaten gehen an einen Gaia-Server; abschaltbar) |
 | Entwicklung | Gradientenentfernung, Entfaltung, Stretch, Entrauschen, Sternreduktion, Kontrast, Sättigung – profilabhängig; automatische Qualitätskontrolle mit bis zu 3 Rendering-Runden |
 | Speicher | Hochgeladene Einzelbilder werden nach erfolgreichem Stacking gelöscht (abschaltbar, `ASTROFLOW_DELETE_UPLOADS=0`); Nachstacken neuer Nächte geht weiter, komplettes Neu-Stacken nicht mehr. Eingebundene Ordner werden nie angetastet |
@@ -308,10 +310,16 @@ die Oberflächentests laufen in einem echten Chromium.
 ## Grenzen
 
 - Der eingebaute Objektkatalog ist klein (mit ASTAPs `deep_sky.csv` deutlich größer).
-- Die Stackfläche entspricht dem Referenzbild; keine Mosaike. Kein echtes Drizzle; keine Planeten-/Mond-Modi; Kometenmodus nur für Farbkameras bzw. einen Filter.
+- Rohaufnahmen nur als FITS; Kamera-RAW (CR2, NEF, ARW …) und XISF werden nicht gestackt.
+- Mosaike nur aus Aufnahmen, die gemeinsame Sterne mit dem Referenzbild haben (Raster bis etwa eine Bildbreite um die Mitte); die Fläche steht nach dem
+  ersten Stack fest – weiter außen liegende neue Aufnahmen brauchen „Komplett neu stacken“. Kein echtes Drizzle; keine Planeten-/Mond-Modi; Kometenmodus nur
+  für Farbkameras bzw. einen Filter und nicht mit Mosaiken.
 - Ohne Flats bleibt multiplikative Vignettierung teilweise sichtbar.
 - Die Himmelsqualität ohne Dark-Frames ist nur für bekannte Geräte (bisher Stellina) möglich, die Genauigkeit liegt bei etwa ±0,2–0,4 mag.
 - Installer und portables ZIP gibt es bisher nur für Windows; unter Linux und macOS startest du AstroFlow mit Python oder Docker.
+- Oberfläche und Dokumentation gibt es bisher nur auf Deutsch.
+- Entwickelt und geeicht vor allem mit Daten von Stellina und Vespera; Seestar, Dwarf und andere Geräte sind wenig erprobt – Rückmeldungen und
+  Beispieldaten helfen sehr.
 
 ## AstroFlow unterstützen
 
