@@ -14,7 +14,7 @@ class Module(BaseModule):
     description = "Rohbilder automatisch kalibrieren, stacken und zum fertigen Astrofoto entwickeln."
     icon = "grid"
     scripts = ("chartdeco.js", "live.js", "stacking.js", "tonight.js", "depth.js", "hrd.js", "asteroids.js", "skyquality.js", "diagnose.js", "analysis.js", "dashboard.js")
-    styles = ("chartdeco.css", "depth.css", "hrd.css", "asteroids.css", "analysis.css", "dashboard.css", "statistics.css", "housekeeping.css", "library.css", "stages.css", "tutor.css", "versions.css", "live.css", "tonight.css", "skyquality.css", "diagnose.css")
+    styles = ("chartdeco.css", "depth.css", "hrd.css", "asteroids.css", "analysis.css", "dashboard.css", "statistics.css", "housekeeping.css", "library.css", "stages.css", "tutor.css", "versions.css", "live.css", "tonight.css", "skyquality.css", "diagnose.css", "frames.css")
 
     def __init__(self, ctx):
         super().__init__(ctx)
@@ -37,6 +37,9 @@ class Module(BaseModule):
         ctx.services["catalog_resolve"] = catalog_resolve
         ctx.services["catalog_objects"] = catalog_objects
         self.eng.pl.on_stacked = self._stacked
+        from .site_watch import SiteWatch                        # Ortsliste geändert → betroffene Nächte neu rechnen
+        self.site_watch = SiteWatch(self.eng)
+        ctx.on("sites.changed", self.site_watch.changed)
         ctx.services["asteroid_tally"] = self.asteroid_tally       # Sage-Erfolge: nachgewiesene Asteroiden
         ctx.services["site_sky"] = self.site_sky                  # Ortsliste: Himmelsqualität je Standort
         ctx.services["night_zero_points"] = self.night_zero_points  # Nullpunkte je Nacht/Gerät (SkyTrace: Satellitenhelligkeit)

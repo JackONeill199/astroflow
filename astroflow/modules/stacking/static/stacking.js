@@ -476,21 +476,24 @@ async function picturesView(el) {
 async function projectView(el, id, tab = 'bild') {
   id = +id;
   let p = await api('/stacking/projects/' + id), frames = null, sel = null, cmp = null, viewer = null, sig = '', before = false, stage = null, cview = 'jpg', blink = null;
-  let fFilter = 'all', fBand = 'all', fSort = ['date', 1];
+  let fFilter = 'all', fBand = 'all', fSort = ['date', 1], fShown = 0;
   let liveView = null, livePoster = null, viz = null, vizKind = '', anView = null;
   function updateJob() {
     const jobHost = $('#job', el);
     if (jobHost) { setJobLine(jobHost, p.job); jobHost.hidden = tab === 'bild' && !!liveView; }
-    liveView?.update(p);
+    // schematische Darstellung des aktiven Schritts (nur während ein Auftrag wirklich läuft): im Reiter Bild in der Bildfläche der
+    // Live-Ansicht (bis ein echtes Bild da ist), in „Aufnahmen“ gar nicht (Nutzerwunsch), sonst über dem Inhalt
+    const step = pipeStep(p), stepKind = step >= 0 && typeof vizProcess === 'function' ? STEP_VIZ[step] : '';
+    const vdata = stepKind ? { kind: stepKind, progress: p.job?.progress, label: p.job?.message || undefined, ...(stepKind === 'stack' ? stackCount(p.job) : {}) } : null;
+    liveView?.update(p, vdata);
     if (p.live?.preview) livePoster = `/api/stacking/projects/${id}/live/${encodeURIComponent(p.live.preview)}`;
     if ($('#ctxTitle')?.textContent === 'Session' && el.isConnected) sessionCtx();
     const pipe = $('#pipe', el);
     if (pipe) { const tmp = document.createElement('div'); tmp.innerHTML = pipeHtml(p); if (pipe.innerHTML !== tmp.firstChild.innerHTML) pipe.innerHTML = tmp.firstChild.innerHTML; pipe.hidden = !showPipe(p); }
-    // schematische Darstellung des aktiven Schritts (nur während ein Auftrag wirklich läuft)
-    const host = $('#pipeViz', el), step = pipeStep(p), kind = step >= 0 && tab !== 'bild' && typeof vizProcess === 'function' ? STEP_VIZ[step] : '';
+    const host = $('#pipeViz', el), kind = tab === 'bild' || tab === 'aufnahmen' ? '' : stepKind;
     if (!host) return;
     if (kind !== vizKind) { viz?.destroy(); viz = null; vizKind = kind; host.hidden = !kind; if (kind) viz = vizProcess(host, { kind }); }
-    viz?.update({ kind, progress: p.job?.progress, label: p.job?.message || undefined, ...(kind === 'stack' ? stackCount(p.job) : {}) });
+    viz?.update(vdata);
   }
   const tabs = () => [...TABS.filter(([k]) => !p.imported || k === 'bild' || (k === 'versionen' && p.results.length > 1)),
     ...((p.companions ?? p.options?.companion_ids?.length ?? 0) ? [['teleskopbilder', 'Teleskopbilder']] : [])];
@@ -735,60 +738,151 @@ async function projectView(el, id, tab = 'bild') {
     const n = (fn) => frames.filter(fn).length;
     t.innerHTML = `<div class="panel"><div class="panel-h"><h2>Qualität je Aufnahme</h2><span class="grow"></span>
         <span class="mut sm">${n(f => f.stacked)} gestackt · ${n(f => f.status === 'rejected')} verworfen</span></div>
-        ${chart(frames)}<div class="legend"><span><i style="background:var(--acc)"></i>Sternzahl</span><span><i style="background:#fb923c"></i>FWHM (Unschärfe)</span><span><i style="background:var(--bad);height:8px;width:3px"></i>verworfen</span></div></div>
+        <div id="fchart"></div><ul class="cd-leg sm fq-leg"><li><svg viewBox="0 0 12 12" aria-hidden="true"><rect class="fq-rej" x="5" y="1" width="2.5" height="10" rx="1"/></svg>verworfen</li><li title="Beide Spuren: oben ist die bessere Aufnahme">↑ besser</li></ul></div>
       <div class="panel"><div class="toolbar" style="margin-bottom:12px">
         <div class="seg" id="ff">${[['all', 'Alle', frames.length], ['stacked', 'Gestackt', n(f => f.stacked)], ['selected', 'Ausgewählt', n(f => f.status === 'selected' && !f.stacked)], ['rejected', 'Verworfen', n(f => f.status === 'rejected')]]
           .filter(([k, , c]) => k === 'all' || c).map(([k, l, c]) => `<button data-v="${k}" class="${fFilter === k ? 'on' : ''}">${l} <span class="dim">${c}</span></button>`).join('')}</div>
         ${bands.length > 1 ? `<div class="seg" id="fb">${['all', ...bands].map(b => `<button data-v="${b}" class="${fBand === b ? 'on' : ''}">${b === 'all' ? 'Alle Filter' : esc(b)}</button>`).join('')}</div>` : ''}
-        <span class="grow"></span><span class="mut sm">Klick auf „ausschließen“ entfernt eine Aufnahme dauerhaft</span></div>
+        <span class="grow"></span>${frames.some(f => !f.deleted && (f.status === 'selected' || f.status === 'rejected')) ? '<span class="mut sm">Klick auf „ausschließen“ entfernt eine Aufnahme dauerhaft</span>' : ''}</div>
         <div class="tablewrap" id="ftable"></div></div>`;
+    // Diagramm in echter Breite zeichnen (Schrift unverzerrt), bei deutlich anderer Breite neu; Klick auf eine Aufnahme → Popup
+    const fc = $('#fchart'), d = frames.filter(f => f.n_stars != null);
+    let cw = 0;
+    const draw = () => { const w = fc.clientWidth; if (w && Math.abs(w - cw) > 24) { cw = w; fc.innerHTML = chart(frames, w); } };
+    draw();
+    const ro = new ResizeObserver(() => fc.isConnected ? draw() : ro.disconnect());
+    ro.observe(fc);
+    fc.onclick = (e) => { const r = e.target.closest('[data-fid]'); if (r) framePopup(r.dataset.fid, frames, d); };
     $('#ff').onclick = (e) => { const b = e.target.closest('button'); if (b) { fFilter = b.dataset.v; tabFrames(t); } };
     $('#fb') && ($('#fb').onclick = (e) => { const b = e.target.closest('button'); if (b) { fBand = b.dataset.v; tabFrames(t); } });
     drawTable();
   }
-  function drawTable() {
+  // Tabelle schrittweise: erst FROWS Zeilen, weitere beim Herunterscrollen (1500 Zeilen auf einmal kosteten ~0,5–0,8 s Aufbau)
+  const FROWS = 150;
+  function drawTable(keep = false) {
+    fShown = keep ? Math.max(fShown, FROWS) : FROWS;
     const cols = [['name', 'Datei'], ['band', 'Filter'], ['night', 'Nacht'], ['n_stars', 'Sterne'], ['fwhm', 'FWHM'], ['ecc', 'Exzentr.'], ['score', 'Score'], ['status', 'Status']];
     let list = frames.filter(f => (fFilter === 'all' || (fFilter === 'stacked' ? f.stacked : fFilter === 'selected' ? f.status === 'selected' && !f.stacked : f.status === fFilter))
       && (fBand === 'all' || (f.band || 'RGB') === fBand));
     const [k, dir] = fSort;
     if (k !== 'date') list.sort((a, b) => ((a[k] ?? -1e9) < (b[k] ?? -1e9) ? -1 : (a[k] ?? -1e9) > (b[k] ?? -1e9) ? 1 : 0) * dir);
     const stat = (f) => f.stacked ? ['stacked', 'gestackt'] : f.status === 'selected' ? ['selected', 'ausgewählt'] : f.status === 'rejected' ? ['rejected', 'verworfen'] : f.status === 'failed' ? ['failed', 'Fehler'] : ['new', 'neu'];
-    $('#ftable').innerHTML = `<table><thead><tr>${cols.map(([c, l]) => `<th data-k="${c}" class="${k === c ? 'sorted' + (dir > 0 ? ' asc' : '') : ''}">${l}</th>`).join('')}<th></th></tr></thead><tbody>
-      ${list.map(f => { const [sc, sl] = stat(f); return `<tr data-id="${f.id}"><td class="name" title="${esc(f.name)}">${esc(f.name)}</td>
+    const row = (f) => { const [sc, sl] = stat(f); return `<tr data-id="${f.id}"><td class="name" title="${esc(f.name)}">${esc(f.name)}</td>
         <td>${f.band ? `<span class="chip"><i style="background:${BAND_COLOR[f.band] || '#999'}"></i>${esc(f.band)}</span>` : '<span class="dim">Farbe</span>'}</td>
-        <td>${fnight(f.night)}</td><td class="tnum">${f.n_stars ?? ''}</td><td class="tnum">${f.fwhm ?? ''}</td><td class="tnum">${f.ecc ?? ''}</td><td class="tnum">${f.score ? f.score.toFixed(2) : ''}</td>
-        <td><span class="status s-${sc}">${sl}${f.manual ? ' (manuell)' : ''}${f.deleted ? ' · Datei gelöscht' : f.offline ? ' · <span title="Ordner gerade nicht erreichbar (z. B. Platte abgesteckt) – wird verarbeitet, sobald er wieder da ist">nicht erreichbar</span>' : ''}</span>${f.status === 'rejected' && f.reason ? `<div class="why">${esc(f.reason)}</div>` : ''}</td>
-        <td>${f.deleted ? '' : f.status === 'rejected' ? `<button class="linkbtn" data-f="${f.id}" data-m="1">einschließen</button>` : f.status === 'selected' ? `<button class="linkbtn" data-f="${f.id}" data-m="-1">ausschließen</button>` : ''}</td></tr>`; }).join('')}
-      </tbody></table>${list.length ? '' : '<div class="empty" style="border:0">Keine Aufnahmen in dieser Auswahl.</div>'}`;
+        <td>${fnight(f.night)}</td><td class="tnum">${f.n_stars != null && f.star_cap && f.n_stars >= f.star_cap ? `<span title="Höchstzahl der Sternerkennung – im Bild sind mehr Sterne">${f.n_stars}+</span>` : f.n_stars ?? ''}</td><td class="tnum">${f.fwhm ?? ''}</td><td class="tnum">${f.ecc ?? ''}</td><td class="tnum">${f.score ? f.score.toFixed(2) : ''}</td>
+        <td><div class="fstat"><div><span class="status s-${sc}">${sl}${f.manual ? ' (manuell)' : ''}${f.deleted ? ' · Datei gelöscht' : f.offline ? ' · <span title="Ordner gerade nicht erreichbar (z. B. Platte abgesteckt) – wird verarbeitet, sobald er wieder da ist">nicht erreichbar</span>' : ''}</span>${f.status === 'rejected' && f.reason ? `<div class="why">${esc(f.reason)}</div>` : ''}</div>${frameThumb(f)}</div></td>
+        <td>${f.deleted ? '' : f.status === 'rejected' ? `<button class="linkbtn" data-f="${f.id}" data-m="1">einschließen</button>` : f.status === 'selected' ? `<button class="linkbtn" data-f="${f.id}" data-m="-1">ausschließen</button>` : ''}</td></tr>`; };
+    $('#ftable').innerHTML = `<table><thead><tr>${cols.map(([c, l]) => `<th data-k="${c}" class="${k === c ? 'sorted' + (dir > 0 ? ' asc' : '') : ''}">${l}</th>`).join('')}<th></th></tr></thead><tbody>
+      ${list.slice(0, fShown).map(row).join('')}</tbody></table>${list.length ? '' : '<div class="empty" style="border:0">Keine Aufnahmen in dieser Auswahl.</div>'}
+      ${list.length > fShown ? `<button class="btn ghost sm fmore" id="fmore">Weitere anzeigen <span class="dim">${list.length - fShown}</span></button>` : ''}`;
+    const more = $('#fmore');
+    if (more) {                                 // nachladen, sobald der Knopf ins Bild kommt (oder per Klick)
+      const add = () => {
+        const n = fShown; fShown = Math.min(list.length, fShown + FROWS * 2);
+        $('#ftable tbody').insertAdjacentHTML('beforeend', list.slice(n, fShown).map(row).join(''));
+        if (fShown >= list.length) { io.disconnect(); more.remove(); } else more.querySelector('span').textContent = list.length - fShown;
+      };
+      const io = new IntersectionObserver((es) => { if (!more.isConnected) io.disconnect(); else if (es.some(e => e.isIntersecting)) add(); });
+      io.observe(more);
+      more.onclick = add;
+    }
     $('#ftable thead').onclick = (e) => { const th = e.target.closest('th[data-k]'); if (!th) return; const c = th.dataset.k; fSort = [c, fSort[0] === c ? -fSort[1] : (c === 'name' || c === 'night' ? 1 : -1)]; drawTable(); };
+    // kaputte/fehlende Vorschau (Rohdatei inzwischen weg) → Platzhalter statt Bruch-Symbol
+    $('#ftable tbody').addEventListener('error', (e) => { const b = e.target.closest?.('.fthumb'); if (b && e.target.tagName === 'IMG') { b.classList.add('none'); b.innerHTML = icon('image'); } }, true);
     $('#ftable tbody').onclick = async (e) => {
+      const pv = e.target.closest('[data-pv]');
+      if (pv) { framePopup(pv.dataset.pv, frames, list); return; }
       const b = e.target.closest('button[data-f]'); if (!b) return;
       const f = frames.find(x => x.id === b.dataset.f), m = +b.dataset.m, prev = { manual: f.manual, status: f.status, reason: f.reason };
       let r;
       try { r = await send('/stacking/frames/' + f.id, { manual: m }, 'PATCH'); } catch (err) { toast(err.message, 'err'); return; }
-      const apply = (v) => { Object.assign(f, v); drawTable(); $(`#ftable tr[data-id="${f.id}"]`)?.classList.add('flash'); };
+      const apply = (v) => { Object.assign(f, v); drawTable(true); $(`#ftable tr[data-id="${f.id}"]`)?.classList.add('flash'); };
       apply(m > 0 ? { manual: m, status: 'selected' } : { manual: m, status: 'rejected', reason: 'manuell ausgeschlossen' });
       // Rückgängig nur, wenn dadurch kein Neu-Stacken ausgelöst wurde
       const undo = r.restack_needed ? null : { label: 'Rückgängig', fn: async () => { await send('/stacking/frames/' + f.id, { manual: prev.manual || 0 }, 'PATCH'); apply(prev); } };
       toast(r.restack_needed ? 'Ausgeschlossen. Die Aufnahme steckt schon im Stack – beim nächsten Durchlauf wird neu gestackt.' : m > 0 ? 'Wird beim nächsten Durchlauf mitgestackt.' : 'Aufnahme ausgeschlossen.', '', undo);
     };
   }
-  function chart(fr) {
+  // Sternzahl am Deckel der Erkennung (quality.MAX_STARS) sagt nichts – dann zeigt die erste Spur den Himmelshintergrund
+  const starsCapped = (fr) => { const d = fr.filter(f => f.n_stars != null && f.star_cap); return d.length > 1 && d.filter(f => f.n_stars >= f.star_cap).length >= 0.8 * d.length && d.every(f => f.bg != null); };
+  // Qualität je Aufnahme: zwei schmale Spuren übereinander, beide „oben = besser“ (Motive aus chartdeco.js zeigen das ohne Text),
+  // Nächte als abwechselnd hinterlegte Bänder. Die Linie verbindet nur verwendete Aufnahmen, verworfene stehen als rote Striche unter der Grundlinie – sonst wären
+  // deren Ausreißer (Dämmerung, Windböe) das Auffälligste. Skala aus den verwendeten (1.–99. Perzentil), Punkte außerhalb stehen am Rand.
+  // Breite = echte Pixelbreite (Schrift unverzerrt).
+  let fqSeq = 0;                        // eindeutige Verlaufs-IDs je gezeichnetem Diagramm
+  function chart(fr, width) {
     const d = fr.filter(f => f.n_stars != null);
     if (d.length < 2) return '<div class="mut sm">Noch nicht analysiert.</div>';
-    const W = 1000, H = 190, P = 26;
-    const mxN = Math.max(...d.map(f => f.n_stars), 1), fw = d.map(f => f.fwhm || 0), mxF = Math.max(...fw, 1);
-    const x = (i) => P + i * (W - 2 * P) / (d.length - 1), yN = (v) => H - P - v / mxN * (H - 2 * P), yF = (v) => H - P - v / mxF * (H - 2 * P);
-    const path = (fn) => d.map((f, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${fn(f).toFixed(1)}`).join('');
-    let nightMarks = '';
-    d.forEach((f, i) => { if (i && f.night !== d[i - 1].night) nightMarks += `<line x1="${x(i - .5)}" x2="${x(i - .5)}" y1="${P / 2}" y2="${H - P}" stroke="var(--border)" stroke-dasharray="3 4"/><text x="${x(i - .5) + 4}" y="${P / 2 + 8}">${fnight(f.night)}</text>`; });
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-      <line x1="${P}" x2="${W - P}" y1="${H - P}" y2="${H - P}" stroke="var(--border-soft)"/>${nightMarks}
-      <path class="line" pathLength="1" d="${path(f => yN(f.n_stars))}" fill="none" stroke="var(--acc)" stroke-width="2" vector-effect="non-scaling-stroke"/>
-      <path class="line" pathLength="1" d="${path(f => yF(f.fwhm || 0))}" fill="none" stroke="#fb923c" stroke-width="2" vector-effect="non-scaling-stroke"/>
-      ${d.map((f, i) => f.status === 'rejected' ? `<rect x="${x(i) - 2}" y="${H - P + 4}" width="4" height="10" rx="1" fill="var(--bad)"><title>${esc(f.name)}: ${esc(f.reason)}</title></rect>` : '').join('')}
-      ${d.map((f, i) => `<rect x="${x(i) - (W - 2 * P) / d.length / 2}" y="0" width="${(W - 2 * P) / d.length}" height="${H}" fill="transparent"><title>${esc(f.name)}\n${f.n_stars} Sterne · FWHM ${f.fwhm} px${f.band ? ' · ' + f.band : ''}</title></rect>`).join('')}
-    </svg>`;
+    const D = window.AFdeco, W = Math.max(280, Math.round(width || 800)), L = 50, R = D ? D.R : 8, T0 = 18, TH = W < 560 ? 60 : 76, GAP = 12;
+    const RB = T0 + 2 * TH + GAP + 4, H = RB + 9,              // RB: Leiste der verworfenen unter der unteren Spur
+    PW = W - L - R, n = d.length, x = (i) => L + (i + .5) * PW / n, de = (v, k = 1) => (+v).toLocaleString('de-DE', { maximumFractionDigits: k });
+    const q = (arr, p) => { const s = arr.filter(v => v != null && isFinite(v)).sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(p * s.length))] : 0; };
+    // Mindestspanne 30 % des Medians: sonst bläht die enge Skala reines Messrauschen (3,1 ↔ 3,4 px) zu Zacken über die ganze Höhe auf
+    const range = (vals, lo0) => { const lo = lo0 ?? q(vals, .01), hi = q(vals, .99), pad = Math.max((Math.max(hi - lo, Math.abs(q(vals, .5)) * .3) - (hi - lo)) / 2, (hi - lo) * .08, 1e-6); return [lo0 ?? lo - pad, hi + pad]; };
+    const capped = starsCapped(d), rej = (f) => f.status === 'rejected';
+    // Spur oben: Himmelshintergrund (niedrig = dunkel = gut) bzw. Sternzahl (hoch = gut); unten: FWHM (klein = scharf = gut)
+    const tracks = [
+      capped ? { val: f => f.bg, up: false, motif: 'sky', name: 'Himmel', tip: `Himmelshintergrund – oben dunkel, unten hell (Mond, Dämmerung, Dunst). Statt der Sternzahl, weil die Erkennung höchstens ${d[0].star_cap} Sterne zählt.` }
+        : { val: f => f.n_stars, up: true, motif: 'depth', name: 'Sterne', tip: 'Erkannte Sterne – oben viele', ticks: true, lo0: 0, dig: 0 },
+      { val: f => f.fwhm, up: false, motif: 'seeing', name: 'Schärfe', tip: 'FWHM in Pixeln – oben scharf, unten unscharf (Seeing, Wind, Fokus)', ticks: true, unit: ' px' },
+    ];
+    // Nächte: zusammenhängende Gruppen (Reihenfolge der Liste = Aufnahmezeit)
+    const nights = [];
+    d.forEach((f, i) => { const g = nights[nights.length - 1]; if (g && g.night === f.night) { g.b = i; g.n++; g.rej += f.status === 'rejected'; } else nights.push({ night: f.night, a: i, b: i, n: 1, rej: +(f.status === 'rejected') }); });
+    const xa = (i) => L + i * PW / n;
+    let g = '', lastEnd = -1e9;
+    const sfmt = new Intl.DateTimeFormat('de-DE', { day: 'numeric', month: 'short' }), sc = new Map();     // je Nacht einmal formatieren
+    const short = (nt) => { if (!nt) return '–'; let v = sc.get(nt); if (v == null) sc.set(nt, v = sfmt.format(new Date(nt + 'T12:00'))); return v; };
+    nights.forEach((nt, k) => {
+      const x1 = xa(nt.a), x2 = xa(nt.b + 1), lbl = short(nt.night), lw = lbl.length * 5.6, cx = Math.min(Math.max((x1 + x2) / 2, L + lw / 2), L + PW - lw / 2);
+      if (k % 2) g += `<rect class="fq-night" x="${x1.toFixed(1)}" y="${T0}" width="${(x2 - x1).toFixed(1)}" height="${2 * TH + GAP}"/>`;
+      if (cx - lw / 2 < lastEnd + 6) return;                       // Datum ausdünnen, Band bleibt
+      lastEnd = cx + lw / 2;
+      g += `<text class="fq-date" x="${cx.toFixed(1)}" y="${T0 - 6}" text-anchor="middle">${esc(lbl)}<title>${esc(fnight(nt.night))} · ${nt.n} Aufnahmen${nt.rej ? ` · ${nt.rej} verworfen` : ''}</title></text>`;
+    });
+    // Stand der Nacht ohne Beschriftung (Nutzerwunsch): je Nachtband ein Verlauf nach der Sonnenhöhe der Aufnahmen (Server, f.sun) –
+    // Dämmerung hell-bläulich, astronomische Nacht (Sonne unter −18°) ohne Tönung. Erst nach den Motiven einfügen (sonst verdeckt)
+    const tw = (a) => a == null ? null : Math.min(1, Math.max(0, (a + 18) / 12));
+    const gid = `fqd${++fqSeq}`;
+    let dusk = '';
+    nights.forEach((nt, k) => {
+      const cnt = nt.b - nt.a + 1, step = Math.ceil(cnt / 48), st = [];
+      for (let i = nt.a; i <= nt.b; i += step) { const v = tw(d[i].sun); if (v != null) st.push([(i - nt.a + .5) / cnt, v]); }
+      if (!st.some(([, v]) => v > 0.02)) return;
+      dusk += `<linearGradient id="${gid}-${k}">${st.map(([o, v]) => `<stop class="fq-dusk-s" offset="${o.toFixed(3)}" stop-opacity="${v.toFixed(2)}"/>`).join('')}</linearGradient>
+        <rect class="fq-dusk" x="${xa(nt.a).toFixed(1)}" y="${T0}" width="${(xa(nt.b + 1) - xa(nt.a)).toFixed(1)}" height="${2 * TH + GAP}" fill="url(#${gid}-${k})"/>`;
+    });
+    tracks.forEach((tr, k) => {
+      const T = T0 + k * (TH + GAP), ok = d.filter(f => !rej(f)), [lo, hi] = range((ok.length > 1 ? ok : d).map(tr.val), tr.lo0);
+      const Y = (v) => { const r = Math.min(1, Math.max(0, (v - lo) / (hi - lo))); return T + (tr.up ? 1 - r : r) * TH; };
+      if (D) g += D.draw(tr.motif, { L, T, PW, PH: TH, W, R, Y, lo: 0, hi: 0, sharpTop: true });   // lo=hi=0: keine mag-Richtwerte beim Himmel
+      g += `<rect class="fq-frame" x="${L}" y="${T}" width="${PW}" height="${TH}" rx="4"/>`;
+      if (tr.ticks) {                                              // kleine Achse links: Wert oben und unten
+        const top = tr.up ? hi : lo, bot = tr.up ? lo : hi;
+        g += `<text class="fq-tick" x="${L - 5}" y="${T + 21}" text-anchor="end">${de(top, tr.dig ?? 1)}${tr.unit || ''}</text><text class="fq-tick" x="${L - 5}" y="${T + TH}" text-anchor="end">${de(bot, tr.dig ?? 1)}${tr.unit || ''}</text>`;
+      }
+      // je Nacht eine Teillinie; bei vielen Aufnahmen gleitender Median als Linie, Einzelwerte blass dahinter
+      const w = Math.floor(n / 240) * 2 + 1, half = w >> 1;
+      let p = '', raw = '', one = '';
+      nights.forEach(nt => {
+        const pts = [];
+        for (let i = nt.a; i <= nt.b; i++) { const v = tr.val(d[i]); if (v != null && !rej(d[i])) pts.push([x(i), v]); }
+        pts.forEach(([xi, v], j) => {
+          const m = w < 3 ? v : pts.slice(Math.max(0, j - half), j + half + 1).map(e => e[1]).sort((a, b) => a - b), med = w < 3 ? v : m[m.length >> 1];
+          p += `${j ? 'L' : 'M'}${xi.toFixed(1)},${Y(med).toFixed(1)}`;
+          if (w >= 3) raw += `${j ? 'L' : 'M'}${xi.toFixed(1)},${Y(v).toFixed(1)}`;
+        });
+        if (pts.length === 1) one += `<circle class="fq-one" cx="${pts[0][0].toFixed(1)}" cy="${Y(pts[0][1]).toFixed(1)}" r="2.2"/>`;   // ein Wert allein ergäbe keinen Strich
+      });
+      g += `${raw ? `<path class="fq-raw" d="${raw}"/>` : ''}<path class="fq-line" d="${p}"/>${one}<text class="fq-t" x="${L - 5}" y="${T + 9}" text-anchor="end">${tr.name}<title>${esc(tr.tip)}</title></text>`;
+    });
+    g += dusk;
+    // Treffer je Aufnahme (Tooltip, Klick → Popup), darunter je verworfene Aufnahme ein roter Strich (Nutzerwunsch: keine Punkte auf der Linie)
+    const bw = PW / n;
+    g += d.map((f, i) => `<rect class="fq-hit" data-fid="${f.id}" x="${xa(i).toFixed(1)}" y="${T0}" width="${bw.toFixed(2)}" height="${RB + 8 - T0}"><title>${esc(f.name)} · ${esc(short(f.night))}${f.clock ? ` · ${f.clock}` : ''}
+${capped ? `Hintergrund ${f.bg}` : `${f.n_stars} Sterne`} · FWHM ${f.fwhm ?? '–'} px${f.status === 'rejected' ? `\nverworfen: ${esc(f.reason || '')}` : ''}</title></rect>`).join('');
+    g += d.map((f, i) => rej(f) ? `<rect class="fq-rej" x="${(x(i) - Math.max(1, bw / 2)).toFixed(1)}" y="${RB}" width="${Math.max(2, bw).toFixed(1)}" height="8" rx="1"/>` : '').join('');
+    return `<svg class="fq" viewBox="0 0 ${W} ${H}" role="img" aria-label="Qualität je Aufnahme">${g}</svg>`;
   }
 
   // ---- Tab: Versionen ----
@@ -1270,6 +1364,92 @@ function upload(files) {
 
 // ------------------------------------------------------------ Speicherbelegung --- //
 const HK_COLORS = ['var(--acc)', 'var(--data-2)', 'var(--data-3)', 'var(--warn)', 'var(--ok)', 'var(--bad)', '#f0abfc', '#93c5fd', 'var(--dim)'];
+// ---- Aufnahmen: Vorschaubild je Einzelaufnahme (frame_preview.py) + Popup mit Begründung ----
+function frameThumb(f) {
+  return f.preview
+    ? `<button class="fthumb" data-pv="${f.id}" title="Vorschau und Begründung" aria-label="Vorschau von ${esc(f.name)}"><img src="/api/stacking/frames/${f.id}/preview" alt="" loading="lazy" decoding="async"></button>`
+    : `<button class="fthumb none" data-pv="${f.id}" title="Begründung anzeigen – kein Vorschaubild (Rohdatei gelöscht)" aria-label="Details zu ${esc(f.name)}">${icon('image')}</button>`;
+}
+// Grund der Auswahl (quality.select_frames) → entscheidende Messgröße und Erklärung
+const FRAME_WHY = {
+  'Himmelshintergrund zu hell': ['bg', 'Der Himmel war deutlich heller als bei den übrigen Aufnahmen – typisch für Mond, Dämmerung oder Streulicht an Wolken. Das hebt Hintergrund und Rauschen im fertigen Bild.'],
+  'unscharf (Seeing/Fokus)': ['fwhm', 'Die Sterne sind deutlich breiter als im Durchschnitt der Serie – unruhige Luft, Wind oder Fokus. Sie würden das Ergebnis weicher machen.'],
+  'Sterne verzogen (Nachführfehler/Wind)': ['ecc', 'Die Sterne sind länglich statt rund – Nachführfehler, Wind oder eine Erschütterung.'],
+  'wenige Sterne (Wolken/Dunst)': ['n_stars', 'Es sind viel weniger Sterne zu sehen als sonst – Wolken, Dunst oder Tau auf der Optik.'],
+  'zu wenige Sterne (Wolken/Fehlbelichtung)': ['n_stars', 'Kaum Sterne erkannt – Wolken, Fehlbelichtung oder ein Bild ohne Himmel.'],
+  'manuell ausgeschlossen': [null, 'Von dir ausgeschlossen.'],
+  'manuell eingeschlossen': [null, 'Von dir eingeschlossen.'],
+  'bereits gestackt': [null, 'Steckt schon im Stack – nachträglich wird eine Aufnahme nur von Hand wieder entfernt.'],
+};
+async function framePopup(fid, all, order) {
+  const d = $('#dlg');
+  let f = all.find(x => x.id === fid), seq = 0;
+  if (!f) return;
+  const band = (x) => x.band || 'RGB';
+  const med = (k) => {
+    const v = all.filter(x => band(x) === band(f) && x[k] != null).map(x => x[k]).sort((a, b) => a - b);
+    return v.length ? v[v.length >> 1] : null;
+  };
+  const num = (v, n = 2) => v == null ? '–' : (+v).toLocaleString('de-DE', { maximumFractionDigits: n });
+  const draw = (x) => {
+    const capped = x.n_stars != null && x.star_cap && x.n_stars >= x.star_cap;
+    const [key, text] = FRAME_WHY[x.reason] || [null, ''];
+    const [cls, head, body] = x.stacked ? ['ok', 'Gestackt', x.reason && x.reason !== 'bereits gestackt' ? text : 'Die Messwerte liegen im üblichen Bereich dieser Serie.']
+      : x.status === 'selected' ? ['ok', 'Ausgewählt', text || 'Wird beim nächsten Durchlauf mitgestackt.']
+      : x.status === 'rejected' ? ['bad', 'Verworfen' + (x.reason ? ': ' + x.reason : ''), text || (String(x.reason || '').startsWith('nicht unter den besten')
+        ? 'Die Auswahl behält nur die besten Aufnahmen (Einstellung „Beste behalten“) – diese lag darunter.' : '')]
+      : x.status === 'failed' ? ['bad', 'Fehler', x.reason || ''] : ['', 'Noch nicht analysiert', ''];
+    const rows = [['n_stars', 'Sterne', capped ? `${x.n_stars}+` : num(x.n_stars, 0), capped ? 'Höchstzahl der Erkennung – im Bild sind mehr' : 'erkannte Sterne'],
+      ['fwhm', 'FWHM (Unschärfe)', x.fwhm == null ? '–' : num(x.fwhm) + ' px', 'kleiner = schärfer'],
+      ['ecc', 'Exzentrizität', num(x.ecc), '0 = rund, ab 0,8 deutlich länglich'],
+      ['bg', 'Himmelshintergrund', num(x.bg, 1), 'Helligkeit des Himmels (Rohwert)'],
+      ['score', 'Score', num(x.score), 'Gesamtnote aus Sternen, Schärfe, Form und Signal']];
+    const [W, H] = (x.shape || []).slice(-2).reverse();
+    const stars = W && x.stars?.length ? x.stars.map(s => `<circle cx="${s[0]}" cy="${s[1]}" r="${(Math.max(W, H) / 110).toFixed(1)}"/>`).join('') : '';
+    const on = !!store.get('stacking.fpvStars', false);
+    const pos = order.findIndex(o => o.id === x.id);
+    d.innerHTML = `<div class="fpv">
+      <div class="fpv-h"><h2 title="${esc(x.name)}">${esc(x.name)}</h2>
+        <button class="btn ghost sm" data-step="-1" ${pos > 0 ? '' : 'disabled'} title="Vorherige Aufnahme (←)" aria-label="Vorherige Aufnahme">‹</button>
+        <button class="btn ghost sm" data-step="1" ${pos >= 0 && pos < order.length - 1 ? '' : 'disabled'} title="Nächste Aufnahme (→)" aria-label="Nächste Aufnahme">›</button>
+        <button class="btn ghost sm" data-close title="Schließen" aria-label="Schließen">${icon('x')}</button></div>
+      <div class="fpv-body"><div class="fpv-main"><div class="fpv-img">${x.preview
+        ? `<div class="fpv-pic"><img src="/api/stacking/frames/${x.id}/preview" alt="Vorschau ${esc(x.name)}">${stars ? `<svg class="fpv-stars" viewBox="0 0 ${W} ${H}" aria-hidden="true"${on ? '' : ' hidden'}>${stars}</svg>` : ''}</div>`
+        : `<div class="fpv-none">${icon('image')}<span>Kein Vorschaubild – die Rohdatei wurde gelöscht, bevor es Vorschauen gab. Die Messwerte sind erhalten.</span></div>`}</div>
+      ${x.preview && stars ? `<label class="modrow"><input type="checkbox" id="fpvStars" ${on ? 'checked' : ''}><span class="switch"></span><span>Erkannte Sterne markieren <span class="dim">(hellste ${x.stars.length})</span></span></label>` : ''}</div>
+      <div class="fpv-side"><div class="fpv-verdict ${cls}"><b>${esc(head)}</b>${body ? `<p>${esc(body)}</p>` : ''}</div>
+      <table class="fpv-facts"><thead><tr><th>Messwert</th><th class="tnum">Aufnahme</th><th class="tnum">Median</th></tr></thead><tbody>
+        ${rows.map(([k, l, v, hint]) => { const m = med(k); return `<tr class="${k === key ? 'hit' : ''}"><td title="${esc(hint)}">${l}</td><td class="tnum">${v}</td><td class="tnum dim">${k === 'n_stars' && m != null && x.star_cap && m >= x.star_cap ? m + '+' : num(m, k === 'bg' ? 1 : k === 'n_stars' ? 0 : 2)}</td></tr>`; }).join('')}
+      </tbody></table>
+      <p class="mut sm">${[fnight(x.night), x.date ? new Date(x.date).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr' : '', x.exptime ? num(x.exptime, 1) + ' s belichtet' : '',
+        x.snr ? 'Signal/Rauschen ' + num(x.snr, 0) : '', x.trails ? `${x.trails} Spur${x.trails > 1 ? 'en' : ''} maskiert` : ''].filter(Boolean).map(esc).join(' · ')}</p></div></div></div>`;
+  };
+  const show = async (id) => {
+    const mine = ++seq;
+    f = all.find(x => x.id === id) || f;
+    draw(f);
+    try {
+      const det = await api('/stacking/frames/' + id);
+      if (mine === seq && d.open && d.querySelector('.fpv')) draw({ ...f, ...det, preview: f.preview });
+    } catch (e) { /* Listenwerte reichen für die Anzeige */ }
+  };
+  const step = (n) => { const i = order.findIndex(o => o.id === f.id) + n; if (order[i]) show(order[i].id); };
+  d.onclick = (e) => {
+    if (e.target === d || e.target.closest('[data-close]')) { d.close(); return; }
+    const b = e.target.closest('[data-step]');
+    if (b) step(+b.dataset.step);
+  };
+  d.onchange = (e) => {
+    if (e.target.id !== 'fpvStars') return;
+    store.set('stacking.fpvStars', e.target.checked);
+    $('.fpv-stars', d)?.toggleAttribute('hidden', !e.target.checked);
+  };
+  d.onkeydown = (e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); step(e.key === 'ArrowLeft' ? -1 : 1); } };
+  d.onclose = () => { d.onkeydown = d.onchange = null; };
+  d.showModal();
+  await show(fid);
+}
+
 async function housekeeping(panel) {
   const body = $('#hkBody', panel), keepOf = () => +($('#hkKeep', panel)?.value || 2);
   let seq = 0;      // nur die Antwort der jüngsten Abfrage zeichnet (sonst ersetzt eine späte ältere das schon bedienbare Formular)

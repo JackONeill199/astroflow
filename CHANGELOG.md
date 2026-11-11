@@ -3,6 +3,41 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.59.1 – 10.11.2026
+
+### Behoben
+- Geht beim Stacken der Arbeitsspeicher aus, scheitert der Auftrag nicht mehr mit „Unerwarteter Fehler“: Er wartet zwei Minuten und setzt am letzten Zwischenstand fort (höchstens dreimal), danach erscheint eine klare Meldung.
+
+## 0.59.0 – 10.11.2026
+
+### Neu
+- „Heute Nacht“: Mit ‹ › bzw. den Pfeiltasten durch die nächsten 14 Nächte blättern – Empfehlungen und Bewertung gelten für die gewählte Nacht, jede Nacht am eingetragenen Ort; ab dem dritten Tag Hinweis „Vorhersage unsicher“, danach nur Astronomie.
+- Das Diagramm zeigt Bewölkung als Wolkenband, Mondbahn und Dämmerung als weichen Verlauf; Zielkurven sind farblich klar unterscheidbar, Tooltip mit Höhe, Uhrzeit und Wetter, Legende als Symbole.
+
+## 0.58.0 – 10.11.2026
+
+### Neu
+- Aufnahmen-Diagramm verständlicher: zwei getrennte Spuren (Himmelshintergrund und Schärfe, jeweils oben = besser), Nächte als hinterlegte Bänder mit Datum, dezenter Dämmerungsverlauf je Nacht zeigt den Stand der Nacht nach Sonnenhöhe (genaue Uhrzeit im Tooltip), verworfene Aufnahmen als rote Striche unter der Grundlinie.
+- Reiter „Bild“: Solange die Aufnahmen vermessen werden, zeigt die Bildfläche die schematische Animation (statt im Reiter „Aufnahmen“).
+- Die Kachel „Bildqualität“ ist farbig nach Note und zeigt Rauschen, Schärfe und Sternform als kleine Balken; darunter ein kurzer Tutor-Hinweis, bei zu kurzer Belichtung mit Zielzeit. Im Kasten führt nur noch „Mehr in der Analyse“ zur Analyse.
+### Behoben
+- Reiter „Aufnahmen“ öffnet bei großen Projekten deutlich schneller: die Liste zeigt erst 150 Zeilen und lädt beim Scrollen nach. Der Hinweis „ausschließen“ erscheint nur noch, wenn es den Knopf gibt.
+
+## 0.57.0 – 10.11.2026
+
+### Neu
+- Aufnahmen: Jede Einzelaufnahme bekommt ein kleines Vorschaubild in der Liste; ein Klick öffnet es groß mit der Begründung, warum sie gestackt oder verworfen wurde. Die Vorschauen werden bei der Analyse platzsparend gespeichert und lassen sich unter Einstellungen → Speicher löschen.
+
+## 0.56.1 – 10.11.2026
+
+### Behoben
+- Aufnahmen-Diagramm: Die obere Linie reicht wieder bis zum rechten Rand; statt der bei 150 gedeckelten (und damit flachen) Sternzahl zeigt sie den Himmelshintergrund. Datumsbeschriftungen eng beieinanderliegender Nächte überlappen nicht mehr.
+
+## 0.56.0 – 10.11.2026
+
+### Neu
+- Ein in SkyTrace zugewiesener Standort einer Beobachtung gilt jetzt auch für diese Nacht in Bilder: Er landet als Einzelnacht in der gemeinsamen Ortsliste (Einstellungen → Standorte), sodass Himmelsqualität, Gerätediagnose und Tutor mit dem richtigen Ort rechnen. Selbst eingetragene Zeiträume und Nächte bleiben unangetastet.
+
 ## 0.55.0 – 09.11.2026
 
 ### Neu

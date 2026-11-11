@@ -32,6 +32,27 @@ def test_night_of():
     assert sites.night_of(None) is None and sites.night_of("kaputt") is None
 
 
+
+def test_clock_of():
+    """Uhrzeit fürs Aufnahmen-Diagramm: Rechnerzeitzone, solange der Ort passt; Ort in anderer Zeitzone → ganze Stunde der Länge."""
+    import datetime as dt
+    t = dt.datetime(2022, 5, 21, 13, 30, tzinfo=dt.timezone.utc)
+    here = t.astimezone()
+    lon_here = here.utcoffset().total_seconds() / 3600 * 15
+    assert sites.clock_of(t, lon=lon_here, book=sites.SiteBook(path="/gibtsnicht.json")) == here.strftime("%H:%M")
+    far = 135.0 if abs(lon_here - 135) > 40 else -75.0                     # sicher > 2,5 h neben der Rechnerzeitzone
+    assert sites.clock_of("2022-05-21T13:30:00", lon=far) == (t + dt.timedelta(hours=round(far / 15))).strftime("%H:%M")
+    assert sites.clock_of(None) is None and sites.clock_of("kaputt") is None
+
+
+def test_sun_alt():
+    """Sonnenhöhe für die Färbung „Stand der Nacht“: Sommersonnenwende 45° N, 0° O – Mittag ~68,4°, Mitternacht ~−21,6°."""
+    assert abs(sites.sun_alt("2022-06-21T12:00:00", 45, 0) - 68.4) < 1
+    assert abs(sites.sun_alt("2022-06-21T00:00:00", 45, 0) + 21.6) < 1
+    assert -90 <= sites.sun_alt("2022-06-21T00:00:00") <= 90          # ohne Ort: Näherung aus der Rechnerzeitzone
+    assert sites.sun_alt(None) is None
+
+
 def test_resolution_order(tmp_path):
     b = book(tmp_path, periods=[{"site_id": "trip", "from": "2024-07-01", "to": "2024-07-14"}])
     assert b.site_for(night="2024-06-30")["id"] == "home"
@@ -123,6 +144,13 @@ def test_api_and_tonight(tmp_path, monkeypatch):
         assert r["today_site"]["id"] == other
         t = c.get("/api/stacking/tonight").json()
         assert t["site_info"]["id"] == other and t["site"][0] == pytest.approx(45)
+        # spätere Nacht: eigenes Datum und eigener Ort aus der Ortsliste
+        import datetime as dt
+        later = (dt.date.fromisoformat(t["night"]) + dt.timedelta(days=2)).isoformat()
+        c.post("/api/sites/night", json={"night": later, "site_id": sid})
+        t2 = c.get("/api/stacking/tonight", params={"night": 2}).json()
+        assert t2["night"] == later and t2["night_index"] == 2 and t2["site_info"]["id"] == sid and t2["site"][0] == pytest.approx(47.5)
+        assert t2["nights"][2]["date"] == later
         assert c.post("/api/sites/night", json={"night": "gestern"}).status_code == 400
         assert c.get("/api/sites/resolve", params={"night": "2001-01-01"}).json()["site"]["id"] == sid
 

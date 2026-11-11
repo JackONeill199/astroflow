@@ -109,3 +109,28 @@ def test_import_stopped_by_low_space_keeps_rest(tmp_path, monkeypatch):
     lib._import([g])
     assert lib.state["imported"]["raw"] == 2 and "angehalten" in lib.state["imported"]["errors"][0]
     assert g["to_import"] == files[2:] and g["n_new"] == 2 and g["n_known"] == 2 and g["state"] == "partial"
+
+
+def test_memory_error_waits_and_retries_then_gives_up(tmp_path, monkeypatch):
+    """Zu wenig RAM beim Stacken: Auftrag wartet und startet erneut statt „Unerwarteter Fehler“; nach den Versuchen klare Meldung."""
+    eng, pid = engine(tmp_path)
+    monkeypatch.setattr(type(eng), "MEM_RETRY_S", 0.05)
+    jid = eng.enqueue(pid)
+    calls = []
+
+    def process(pid, opts, progress):
+        calls.append(pid)
+        if len(calls) == 1:
+            raise MemoryError("Unable to allocate 48.9 MiB")
+
+    eng.pl.stack = process
+    run_once(eng)
+    assert calls == [pid, pid] and not eng.paused
+    assert eng.db.one("SELECT state FROM jobs WHERE id=?", (jid,))["state"] == "done"
+
+    jid = eng.enqueue(pid)
+    eng.pl.stack = lambda *a: (_ for _ in ()).throw(MemoryError())
+    eng.stop.clear()
+    run_once(eng)
+    job = eng.db.one("SELECT state, message FROM jobs WHERE id=?", (jid,))
+    assert job["state"] == "error" and "Arbeitsspeicher" in job["message"]

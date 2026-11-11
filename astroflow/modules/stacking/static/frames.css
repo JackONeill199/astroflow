@@ -1,0 +1,57 @@
+/* Reiter „Aufnahmen“: Vorschaubild je Zeile (rechts in der Statusspalte) und Popup mit Begründung (stacking.js → framePopup) */
+.fstat { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem }
+.fthumb { flex: none; width: 3.25rem; height: 2.25rem; padding: 0; border: 1px solid var(--border-soft); border-radius: var(--r); background-color: var(--bg);
+  overflow: hidden; cursor: zoom-in; display: grid; place-items: center; color: var(--dim); transition: border-color var(--t) }
+.fthumb:hover, .fthumb:focus-visible { border-color: var(--acc) }
+.fthumb img { width: 100%; height: 100%; object-fit: cover; display: block }
+.fthumb.none { cursor: pointer }
+.fthumb svg { width: 1rem; height: 1rem }
+
+#dlg:has(.fpv) { width: min(64rem, 94vw); max-height: 94vh; overflow: auto }
+.fpv, .fpv-main, .fpv-side { display: grid; gap: 0.75rem; align-content: start; min-width: 0 }
+.fpv-body { display: grid; gap: 1rem }
+@media (min-width: 900px) { .fpv-body { grid-template-columns: minmax(0, 1.6fr) minmax(16rem, 1fr) } }
+.fpv-h { display: flex; align-items: center; gap: 0.375rem; min-width: 0 }
+.fpv-h h2 { font-size: 1rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.fpv-h .btn { min-width: 2rem; justify-content: center }
+.fpv-img { display: grid; place-items: center; border-radius: var(--r-lg); overflow: hidden; background-color: var(--bg); border: 1px solid var(--border-soft) }
+/* Bild und Sternmarken (SVG in Vollauflösungs-Pixeln) im selben Kasten, beide eingepasst (object-fit: contain = xMidYMid meet) */
+.fpv-pic { position: relative; width: 100% }
+.fpv-pic img { display: block; width: 100%; height: auto; max-height: min(60vh, 36rem); object-fit: contain }
+.fpv-stars { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none }
+.fpv-stars circle { fill: none; stroke: var(--acc); stroke-width: 1.5px; vector-effect: non-scaling-stroke; opacity: 0.85 }
+.fpv-none { display: flex; align-items: center; gap: 0.75rem; padding: 1.5rem 1rem; color: var(--mut); font-size: 0.8125rem }
+.fpv-none svg { width: 1.5rem; height: 1.5rem; flex: none; color: var(--dim) }
+.fpv .modrow { margin: 0 }
+.fpv-verdict { border-left: 3px solid var(--dim); padding: 0.25rem 0 0.25rem 0.75rem }
+.fpv-verdict.ok { border-color: var(--ok) }
+.fpv-verdict.bad { border-color: var(--bad) }
+.fpv-verdict p { margin: 0.25rem 0 0; color: var(--mut); font-size: 0.8125rem }
+.fpv-facts { width: 100%; border-collapse: collapse; font-size: 0.8125rem }
+.fpv-facts th, .fpv-facts td { padding: 0.3125rem 0.5rem; border-bottom: 1px solid var(--border-soft); text-align: left }
+.fpv-facts th { color: var(--mut); font-weight: 500 }
+.fpv-facts .tnum { text-align: right }
+.fpv-facts tr.hit td { color: var(--bad); font-weight: 600 }
+.fpv-facts tr.hit td.dim { font-weight: 400 }
+.fpv > p { margin: 0 }
+
+/* Diagramm „Qualität je Aufnahme“ (stacking.js → chart): zwei Spuren, beide oben = besser; Motive aus chartdeco.css */
+.fq { width: 100%; height: auto; display: block; overflow: visible; cursor: pointer }
+.fq text { fill: var(--dim); font-size: 0.625rem }
+.fq .fq-t { fill: var(--mut); font-weight: 600; cursor: help }
+.fq .fq-date { cursor: help }
+.fq-frame { fill: none; stroke: var(--border-soft) }
+.fq-night { fill: color-mix(in srgb, var(--fg) 6%, transparent) }
+.fq-raw { fill: none; stroke: var(--acc); stroke-width: 1; opacity: .28; animation: chart-reveal 1s var(--ease) both }
+.fq-line { fill: none; stroke: var(--acc); stroke-width: 1.75; stroke-linejoin: round; animation: chart-reveal 1s var(--ease) both }
+.fq-rej { fill: var(--bad); opacity: .8; pointer-events: none }
+.fq-one { fill: var(--acc); pointer-events: none }
+.fq-hit { fill: transparent }
+.fq-hit:hover { fill: color-mix(in srgb, var(--fg) 10%, transparent) }
+#fchart { min-height: 9rem }
+.fq-leg { margin: 0.375rem 0 0 }
+/* Stand der Nacht: Dämmerung leicht bläulich-hell, tiefe Nacht ohne Tönung – so schwach, dass die Linien vorne bleiben */
+.fq-dusk { opacity: .3; pointer-events: none }
+.fq-dusk-s { stop-color: var(--data-2) }
+/* Tabelle schrittweise (drawTable): Nachlade-Knopf unter der Tabelle, lädt beim Hineinscrollen automatisch */
+.fmore { display: flex; margin: 0.75rem auto 0.25rem }

@@ -1,8 +1,9 @@
 """Heute Nacht: Dämmerung, Mond, Höhenverlauf der eigenen Objekte, Empfehlungen, Nachtplan und Saison.
 
 Alles offline mit astropy (IERS-Download aus, wie im Bild-Tutor). Standort aus Einstellungen → Bild-Tutor (tutor.lat/lon);
-ohne Standort liefert plan() nur {"site": None}. Wolkenvorhersage (Open-Meteo, Ort auf 0,1° gerundet) nur, wenn im Tutor
-„Wetter“ eingeschaltet ist – Cache 1 h in work/tutor/. Zeiten als Unix-Sekunden (UTC); die Oberfläche zeigt Ortszeit.
+ohne Standort liefert plan() nur {"site": None}. Wolkenvorhersage (Open-Meteo, Ort auf 0,1° gerundet, 8 Tage, Wolkenschichten
+und Wind) nur, wenn im Tutor „Wetter“ eingeschaltet ist – Cache 1 h in work/tutor/. Zeiten als Unix-Sekunden (UTC); die Oberfläche
+zeigt Ortszeit. `night=k` plant k Nächte später (bis NIGHTS-1); `nights` fasst jede Nacht für die Nachtleiste zusammen.
 
 Empfehlungen (seit 0.20.0):
 * **Neue Ziele** aus `deepsky` (Messier + Caldwell fest, dazu ASTAP deep_sky.csv), gefiltert nach Helligkeit (je Gerät) und
@@ -37,9 +38,13 @@ MAX_CURVES = 6           # maximale Anzahl Empfehlungen in der Grafik
 BLOCKED_PENALTY = 1.5    # Ziele, die nur wegen Wolken ausfallen, stehen hinter klar erreichbaren
 MIN_GAIN = 0.10          # „Mehr Zeit“ nur, wenn das Rauschen heute um ≥ 10 % sinken kann
 MIN_BLOCK = 2400         # Nachtplan: kürzere Blöcke entfallen (s)
+NIGHTS = 14             # so viele Nächte kann man vorblättern (Astronomie immer, Wetter soweit die Vorhersage reicht)
+FORECAST_DAYS = 8        # Vorhersage-Tage (Open-Meteo, gleicher Dienst und gleiche Ortsrundung wie bisher)
+UNCERTAIN_FROM = 2       # ab der dritten Nacht ist die Wolkenvorhersage unsicher
 OFFSETS = list(range(0, 197, 14))      # Tage ab heute für den Saison-Ausblick (bis ~6 Monate)
 MONTHS = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
 _cache: dict = {}
+_nights_cache: dict = {}
 _CACHE_MAX = 4
 
 
@@ -103,7 +108,7 @@ def _dur(sec: float) -> str:
     return (f"{h:.1f}".replace(".", ",") if h != int(h) else f"{int(h)}") + " h"
 
 
-def _gain(exposure: float | None, hours: float) -> dict | None:
+def _gain(exposure: float | None, hours: float, today: bool = True) -> dict | None:
     """Rauschgewinn durch heute mögliche Zusatzzeit. Zufälliges Rauschen im Stack sinkt mit 1/√t (gleiche Aufnahmequalität
     vorausgesetzt): t_neu = t + Zusatz → Rauschen × √(t / t_neu). Ohne bekannte Belichtung kein Wert."""
     if not exposure or exposure <= 0 or hours <= 0:
@@ -113,7 +118,7 @@ def _gain(exposure: float | None, hours: float) -> dict | None:
         return None
     pct = 1 - math.sqrt(exposure / (exposure + add))
     return {"before": float(exposure), "add": float(add), "after": float(exposure + add), "noise_pct": round(pct * 100),
-            "text": f"Bisher {_dur(exposure)}, heute bis zu {_dur(add)} möglich → Rauschen etwa −{round(pct * 100)} % "
+            "text": f"Bisher {_dur(exposure)}, {'heute' if today else 'in dieser Nacht'} bis zu {_dur(add)} möglich → Rauschen etwa −{round(pct * 100)} % "
                     f"(Rauschen sinkt mit 1/√Zeit)."}
 
 
@@ -150,17 +155,22 @@ def _spans(t: np.ndarray, ok: np.ndarray) -> list[list[float]]:
     return out
 
 
+HOURLY = "cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,wind_speed_10m,relative_humidity_2m,temperature_2m,dew_point_2m"
+
+
 def _forecast(site, cache: Path, t0: float, t1: float, timeout: float = 10.0) -> dict | None:
+    """Stündliche Vorhersage für [t0, t1] (hours) und die 48 h danach (later, nur Wolken). Ort auf 0,1° gerundet; dieselbe
+    Abfrage (höchstens eine je Stunde und Ort) deckt alle vorblätterbaren Nächte ab."""
     import httpx
     lat, lon = round(site[0], 1), round(site[1], 1)
     cache.mkdir(parents=True, exist_ok=True)
-    f = cache / f"vorhersage_{lat}_{lon}.json"
+    f = cache / f"vorhersage{FORECAST_DAYS}_{lat}_{lon}.json"
     data = None
     if f.exists() and time.time() - f.stat().st_mtime < 3600:
         data = json.loads(f.read_text(encoding="utf-8"))
     else:
-        r = httpx.get(FORECAST_URL, params={"latitude": lat, "longitude": lon, "hourly": "cloud_cover,relative_humidity_2m,temperature_2m,dew_point_2m",
-                                            "forecast_days": 3, "timezone": "UTC"}, timeout=timeout)
+        r = httpx.get(FORECAST_URL, params={"latitude": lat, "longitude": lon, "hourly": HOURLY,
+                                            "forecast_days": FORECAST_DAYS, "timezone": "UTC"}, timeout=timeout)
         r.raise_for_status()
         data = r.json().get("hourly") or {}
         if data.get("time"):
@@ -168,13 +178,27 @@ def _forecast(site, cache: Path, t0: float, t1: float, timeout: float = 10.0) ->
     hours, later = [], []
     for i, s in enumerate(data.get("time") or []):
         ts = dt.datetime.fromisoformat(s).replace(tzinfo=dt.timezone.utc).timestamp()
-        if t1 + 1800 < ts <= t1 + 48 * 3600 and (data.get("cloud_cover") or [None] * (i + 1))[i] is not None:
-            later.append({"t": ts, "cloud": data["cloud_cover"][i]})
+        g = lambda k: (data.get(k) or [None] * (i + 1))[i]
+        if t1 + 1800 < ts <= t1 + 48 * 3600 and g("cloud_cover") is not None:
+            later.append({"t": ts, "cloud": g("cloud_cover")})
         if t0 - 1800 <= ts <= t1 + 1800:
-            g = lambda k: (data.get(k) or [None] * (i + 1))[i]
-            hours.append({"t": ts, "cloud": g("cloud_cover"), "humidity": g("relative_humidity_2m"),
+            hours.append({"t": ts, "cloud": g("cloud_cover"), "low": g("cloud_cover_low"), "mid": g("cloud_cover_mid"), "high": g("cloud_cover_high"),
+                          "wind": g("wind_speed_10m"), "humidity": g("relative_humidity_2m"),
                           "dew_spread": None if g("temperature_2m") is None or g("dew_point_2m") is None else round(g("temperature_2m") - g("dew_point_2m"), 1)})
     return {"hours": hours, "later": later, "source": "Open-Meteo-Vorhersage (Raster ~10 km)"} if hours else None
+
+
+def _series(ts: np.ndarray, hours: list[dict], key: str) -> np.ndarray | None:
+    """Stündliche Werte auf die Zeitachse legen; außerhalb der Vorhersage (±1 h) NaN."""
+    hh = [h for h in hours if h.get(key) is not None]
+    if not hh:
+        return None
+    v = np.interp(ts, [h["t"] for h in hh], [h[key] for h in hh])
+    return np.where((ts < hh[0]["t"] - 3600) | (ts > hh[-1]["t"] + 3600), np.nan, v)
+
+
+def _rounded(v: np.ndarray | None, sel) -> list | None:
+    return None if v is None else [None if np.isnan(x) else round(float(x)) for x in v[sel]]
 
 
 # ------------------------------------------------------------------ Geometrie (numpy, ohne AltAz-Transformation) #
@@ -223,10 +247,13 @@ def _season(h: np.ndarray, t0: float, lat: float) -> dict | None:
 
 
 def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None, device: dict | None = None,
-         hidden: set | frozenset | None = None, collection: dict | None = None) -> dict:
+         hidden: set | frozenset | None = None, collection: dict | None = None, night: int = 0,
+         night_sites: list | None = None) -> dict:
     """projects: Objektzeilen mit exposure (Sekunden des neuesten Ergebnisses) und optional gespeicherten Befunden.
     hidden: Kennungen (Katalog-ID bzw. Projekt-ID als Text), die der Nutzer ausgeblendet hat.
-    collection: optionaler Dienst „collection_progress“ (Sage): {"messier": [Nummern bereits entdeckter Messier-Objekte]}."""
+    collection: optionaler Dienst „collection_progress“ (Sage): {"messier": [Nummern bereits entdeckter Messier-Objekte]}.
+    night: 0 = die Nacht, die gerade geplant wird (wie bisher), 1 … NIGHTS-1 = so viele Nächte später.
+    night_sites: optional je Nacht [lat, lon] aus der Ortsliste (Nachtleiste rechnet jede Nacht an ihrem Ort); fehlt = überall `site`."""
     if cfg.get("lat") is None or cfg.get("lon") is None:
         return {"site": None}
     now = time.time() if now is None else now
@@ -234,8 +261,13 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
     hidden = frozenset(str(h) for h in (hidden or ()))
     collection = collection or {}
     site = [float(cfg["lat"]), float(cfg["lon"])]
-    t0, t1 = _window(now, site[1])
-    key = (str(cache.resolve()), tuple(site), int(now // 600), json.dumps(projects, sort_keys=True), json.dumps(device, sort_keys=True),
+    night = max(0, min(NIGHTS - 1, int(night or 0)))
+    base0, _ = _window(now, site[1])
+    t0, t1 = base0 + night * 86400, base0 + (night + 1) * 86400
+    ref = max(now, t0)                                   # „ab jetzt“ – in späteren Nächten zählt die ganze Nacht
+    night_sites = [[float(v) for v in s] if s else site for s in (night_sites or [])][:NIGHTS]
+    night_sites += [site] * (NIGHTS - len(night_sites))
+    key = (str(cache.resolve()), tuple(site), int(now // 600), night, json.dumps(night_sites), json.dumps(projects, sort_keys=True), json.dumps(device, sort_keys=True),
            bool(cfg.get("weather")), tuple(sorted(hidden)), json.dumps(collection, sort_keys=True), deepsky.signature())
     hit = _cache.get(key)
     if hit and time.time() - hit[0] < 600:
@@ -303,22 +335,25 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
     waxing = bool(illum[min(mid_dark + 6, len(illum) - 1)] > illum[mid_dark])
 
     # ---- Wetter: Wolken je Schritt (nur mit Vorhersage); unbekannte Stunden zählen als klar -------------------------
-    weather, weather_error = None, None
+    weather, weather_error, all_hours = None, None, []
     if cfg.get("weather"):
         try:
-            weather = _forecast(site, cache, view[0], view[1])
+            wide = _forecast(site, cache, base0, base0 + NIGHTS * 86400)          # alle Nächte aus derselben Abfrage
         except Exception as e:                          # Netz weg: Planung geht trotzdem
-            weather_error = f"Wettervorhersage nicht erreichbar ({type(e).__name__})"
-    cloud = None
-    if weather and weather.get("hours"):
-        hh = [h for h in weather["hours"] if h.get("cloud") is not None]
-        if hh:
-            cloud = np.interp(ts, [h["t"] for h in hh], [h["cloud"] for h in hh])
-            cloud = np.where((ts < hh[0]["t"] - 3600) | (ts > hh[-1]["t"] + 3600), np.nan, cloud)
+            wide, weather_error = None, f"Wettervorhersage nicht erreichbar ({type(e).__name__})"
+        if wide:
+            last = max([h["t"] for h in wide.get("hours", [])] or [0])
+            all_hours = sorted([*wide.get("hours", []), *({"t": h["t"], "cloud": h["cloud"]} for h in wide.get("later", []) if h["t"] > last)],
+                               key=lambda h: h["t"])
+            hours = [h for h in all_hours if view[0] - 1800 <= h["t"] <= view[1] + 1800]
+            later = [{"t": h["t"], "cloud": h["cloud"]} for h in all_hours
+                     if view[1] + 1800 < h["t"] <= view[1] + 48 * 3600 and h.get("cloud") is not None]
+            weather = {"hours": hours, "later": later, "source": wide.get("source"), "until": all_hours[-1]["t"]} if hours else None
+    cloud = _series(ts, weather["hours"], "cloud") if weather else None
     clear = np.ones(len(ts)) if cloud is None else np.clip(1 - np.nan_to_num(cloud, nan=0.0) / 80, 0, 1)      # ab 80 % Wolken nicht nutzbar
 
     # ---- Gewichtung je Objekt und Schritt ------------------------------------------------------------------------
-    future = ts >= now
+    future = ts >= ref
     good = dark[None, :] & (alt >= MIN_ALT) & future[None, :]
     moon_up = (moon > 0)[None, :]
     loss = illum[None, :] * np.clip(1 - msep / 80, 0, 1)                     # Phase × Nähe
@@ -327,7 +362,7 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
     weight = good * w_moon * w_zen * clear[None, :]
     eff = weight.sum(axis=1) * STEP_MIN / 60                                 # nutzbare Stunden
     eff_clear = (good * w_moon * w_zen).sum(axis=1) * STEP_MIN / 60          # dieselben Stunden bei klarem Himmel (ohne Wetter)
-    sky = _sky(cloud, dark & (ts >= now), weather, ts, sun, t0, now)
+    sky = _sky(cloud, dark & (ts >= ref), weather, ts, sun, t0, ref)
     raw = good.sum(axis=1) * STEP_MIN / 60
     zen_h = (good & (alt > ZENITH_ALT)).sum(axis=1) * STEP_MIN / 60 if bool(device.get("alt_az", True)) else np.zeros(len(alt))
     jmax = np.argmax(np.where(dark[None, :] & future[None, :], alt, -90), axis=1) if len(alt) else np.zeros(0, int)
@@ -358,11 +393,11 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
         reasons = _need(p)
         blocked = x["eff_hours"] < 1 <= x["eff_clear"] and cloud is not None          # nur wegen Wolken nicht nutzbar → „bei klarem Himmel“
         h = x["eff_clear"] if blocked else x["eff_hours"]
-        g = _gain(p.get("exposure"), min(h, 8))
+        g = _gain(p.get("exposure"), min(h, 8), night == 0)
         if not reasons or h < 1 or (g and g["noise_pct"] < MIN_GAIN * 100):
             continue
         sc = _score(h, x["max_alt"], x["culm_dark"], x["season"], (g["noise_pct"] / 100 * 2.2) if g else 0.6) - (BLOCKED_PENALTY if blocked else 0)
-        reasons = reasons + _visibility_reasons({**x, "eff_hours": h}, device) + (["Laut Vorhersage zu bewölkt – gilt bei klarem Himmel."] if blocked else [])
+        reasons = reasons + _visibility_reasons({**x, "eff_hours": h}, device, night == 0) + (["Laut Vorhersage zu bewölkt – gilt bei klarem Himmel."] if blocked else [])
         pool.append({**x, "category": "more", "reasons": reasons, "gain": g, "kind_label": objects.KIND_LABEL.get(x.get("kind") or "", ""),
                      "benefit": g["text"] if g else "Mehr Gesamtbelichtung senkt das Rauschen (1/√Zeit) und macht schwache Details klarer.",
                      "href": f"#/p/{x['id']}", "rank": sc, "weather_blocked": blocked})
@@ -382,7 +417,7 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
     new_pool.sort(key=lambda x: -x["rank"])
     top_new = new_pool[:10]
     for x in top_new:
-        x["reasons"] = _new_reasons(x, device, owned_m, collection) + (["Laut Vorhersage zu bewölkt – gilt bei klarem Himmel."] if x["weather_blocked"] else [])
+        x["reasons"] = _new_reasons(x, device, owned_m, collection, night == 0) + (["Laut Vorhersage zu bewölkt – gilt bei klarem Himmel."] if x["weather_blocked"] else [])
         x["benefit"] = "Eine neue Aufnahme ergänzt deine Sammlung."
         x["href"] = f"#/nacht/{x['id']}"
     for x in pool + top_new:
@@ -390,8 +425,8 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
     recommendations = _select(pool + top_new)
 
     # ---- Ablaufplan: ein Ziel zur Zeit ---------------------------------------------------------------------------------
-    blocks = _night_plan([r for r in recommendations if not r["weather_blocked"]], own, cands, n_own, weight, ts, now, clear, cloud)
-    status = _status(tw, dark, ts, now, sky, recommendations, targets)
+    blocks = _night_plan([r for r in recommendations if not r["weather_blocked"]], own, cands, n_own, weight, ts, ref, clear, cloud)
+    status = _status(tw, dark, ts, ref, sky, recommendations, targets)
 
     # ---- „Bald gut sichtbar“ ---------------------------------------------------------------------------------------------
     soon = []
@@ -411,7 +446,11 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
                     "rise": _cross(vt, vm, 0, False), "set": _cross(vt, vm, 0, True), "moonless": _spans(ts, moonless)},
            "targets": targets[:MAX_CURVES], "more_targets": max(0, len(targets) - MAX_CURVES), "plan": blocks,
            "suggestions": top_new, "recommendations": recommendations, "soon": soon[:5], "device": device,
-           "sun": [round(float(v), 1) for v in sun[sel]], "cloud": None if cloud is None else [None if np.isnan(v) else round(float(v)) for v in cloud[sel]],
+           "sun": [round(float(v), 1) for v in sun[sel]], "cloud": _rounded(cloud, sel),
+           "clouds": {k: _rounded(_series(ts, weather["hours"], k), sel) for k in ("low", "mid", "high")} if weather else None,
+           "wind": _rounded(_series(ts, weather["hours"], "wind"), sel) if weather else None,
+           "night_index": night, "nights": _strip(night_sites, site, base0, all_hours, now, cache, bool(cfg.get("weather"))),
+           "forecast": {"covered": cloud is not None and bool(np.isfinite(cloud[sel]).any()), "uncertain": night >= UNCERTAIN_FROM},
            "weather": weather, "weather_error": weather_error, "weather_on": bool(cfg.get("weather")), "min_alt": MIN_ALT,
            "catalog": {"candidates": len(cands), "messier": sum(c.source == "messier" for c in cands), "astap": sum(c.source == "astap" for c in cands),
                        "astap_found": bool(objects.extended_catalog()), "mag_limit": device.get("mag_limit")},
@@ -420,6 +459,73 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
         _cache.pop(next(iter(_cache)))
     _cache[key] = (time.time(), out)
     return {**out, "now": now}
+
+
+def _strip(night_sites, site, base0, hours, now, cache, weather) -> list[dict]:
+    """Nachtleiste mit dem Ort jeder Nacht: je eigenem Ort eigene Rechnung und Vorhersage (gleicher Dienst, gleiche Rundung)."""
+    out = [None] * NIGHTS
+    for s in {tuple(x) for x in night_sites}:
+        s = list(s)
+        if s == site:
+            b0, hh = base0, hours
+        else:
+            b0, hh = _window(now, s[1])[0], []
+            if weather:
+                try:
+                    w = _forecast(s, cache, b0, b0 + NIGHTS * 86400) or {}
+                    last = max([h["t"] for h in w.get("hours", [])] or [0])
+                    hh = sorted([*w.get("hours", []), *(h for h in w.get("later", []) if h["t"] > last)], key=lambda h: h["t"])
+                except Exception:                      # Netz weg: diese Nächte ohne Wolken
+                    hh = []
+        rows = _nights(s, b0, hh, now)
+        for k in range(NIGHTS):
+            if night_sites[k] == s:
+                out[k] = rows[k]
+    return out
+
+
+def _nights(site: list[float], base0: float, hours: list[dict], now: float) -> list[dict]:
+    """Nachtleiste: je Nacht (ab der geplanten) Datum, dunkle Stunden, Mond (Beleuchtung, Stunden über dem Horizont im
+    Dunkeln) und – soweit die Vorhersage reicht – mittlere Bewölkung im Dunkeln. Datum über core.sites.planning_night."""
+    key = ("nights", tuple(site), int(base0), int(now // 3600), tuple((h["t"], h.get("cloud")) for h in hours))
+    if key in _nights_cache:
+        return _nights_cache[key]
+    from astropy import units as u
+    from astropy.coordinates import EarthLocation, get_body
+    from astropy.time import Time
+    from astropy.utils import iers
+
+    from ...core.sites import planning_night
+    step = 1200
+    ts = base0 + np.arange(0, NIGHTS * 86400, step, dtype=float)
+    with warnings.catch_warnings(), iers.conf.set_temp("auto_download", False), iers.conf.set_temp("auto_max_age", None):
+        warnings.simplefilter("ignore")
+        t = Time(ts, format="unix")
+        lst = t.sidereal_time("mean", longitude=site[1] * u.deg).rad
+        sun_g, moon_g = get_body("sun", t), get_body("moon", t, EarthLocation(lat=site[0] * u.deg, lon=site[1] * u.deg))
+        p_ = math.radians(site[0])
+        alt = lambda b: np.degrees(np.arcsin(np.clip(math.sin(p_) * np.sin(b.dec.rad) + math.cos(p_) * np.cos(b.dec.rad) * np.cos(lst - b.ra.rad), -1, 1)))
+        sun, moon = alt(sun_g), alt(moon_g)
+        illum = (1 - np.cos(sun_g.separation(get_body("moon", t)).rad)) / 2
+    cloud = _series(ts, hours, "cloud") if hours else None
+    first = dt.date.fromisoformat(planning_night(base0 + 43200, site[1]))
+    out = []
+    for k in range(NIGHTS):
+        m = (ts >= base0 + k * 86400) & (ts < base0 + (k + 1) * 86400)
+        dark = m & (sun <= -18)
+        idx = np.where(dark if dark.any() else m)[0]
+        mid = int(idx[len(idx) // 2])
+        cl = cloud[dark] if cloud is not None else np.array([])
+        cl = cl[np.isfinite(cl)]
+        out.append({"index": k, "date": (first + dt.timedelta(days=k)).isoformat(), "dark_hours": round(float(dark.sum() * step / 3600), 1),
+                    "moon": round(float(illum[mid]) * 100), "waxing": bool(illum[min(mid + 3, len(illum) - 1)] > illum[mid]),
+                    "moon_dark_hours": round(float((dark & (moon > 0)).sum() * step / 3600), 1),
+                    "cloud": round(float(cl.mean())) if dark.any() and len(cl) >= dark.sum() / 2 else None,
+                    "uncertain": k >= UNCERTAIN_FROM})
+    if len(_nights_cache) >= _CACHE_MAX:
+        _nights_cache.pop(next(iter(_nights_cache)))
+    _nights_cache[key] = out
+    return out
 
 
 KIND_APPEAL = {"open_cluster": 0.85, "globular": 0.95}      # offene Haufen wirken auf Smart-Teleskopen weniger spektakulär
@@ -490,8 +596,8 @@ def _score(eff: float, max_alt: float, culm: bool, season: dict | None, extra: f
             + (0.6 if season and season["kind"] == "last" else 0.0))
 
 
-def _visibility_reasons(x: dict, device: dict) -> list[str]:
-    r = [f"Heute etwa {_dur(x['eff_hours'] * 3600)} nutzbar (dunkel, über {MIN_ALT:.0f}°), höchster Stand {round(x['max_alt'])}°."]
+def _visibility_reasons(x: dict, device: dict, today: bool = True) -> list[str]:
+    r = [f"{'Heute' if today else 'In dieser Nacht'} etwa {_dur(x['eff_hours'] * 3600)} nutzbar (dunkel, über {MIN_ALT:.0f}°), höchster Stand {round(x['max_alt'])}°."]
     if x["culm_dark"]:
         r.append("Kulminiert mitten in der dunklen Zeit.")
     if x["zenith_hours"] >= 0.5:
@@ -501,7 +607,7 @@ def _visibility_reasons(x: dict, device: dict) -> list[str]:
     return r
 
 
-def _new_reasons(x: dict, device: dict, owned_m: set, collection: dict) -> list[str]:
+def _new_reasons(x: dict, device: dict, owned_m: set, collection: dict, today: bool = True) -> list[str]:
     src = {"messier": "Messier-Katalog", "caldwell": "Caldwell-Katalog", "astap": "ASTAP-Katalog (Helligkeit unbekannt, nach Größe/Name gewählt)"}[x["source"]]
     r = [f"Fehlt noch in deiner Bibliothek ({src})."]
     if x["source"] == "messier" and collection.get("messier") is not None:
@@ -511,7 +617,7 @@ def _new_reasons(x: dict, device: dict, owned_m: set, collection: dict) -> list[
     if x.get("mag") is not None:
         de = lambda v: str(round(v, 1)).replace(".", ",")
         r.append(f"Helligkeit ca. {de(x['mag'])} mag – für dein Gerät erreichbar (Grenze etwa {de(device.get('mag_limit', deepsky.MAG_DEFAULT))} mag).")
-    return r + _visibility_reasons(x, device)
+    return r + _visibility_reasons(x, device, today)
 
 
 def _select(pool: list[dict]) -> list[dict]:

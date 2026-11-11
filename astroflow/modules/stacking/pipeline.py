@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from . import calibration, channels, comet, develop, stackfix, gpu, graxpert, live, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner, stars, trails, tutor
+from . import calibration, channels, comet, develop, frame_preview, stackfix, gpu, graxpert, live, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner, stars, trails, tutor
 from ...core.config import Settings, free_ram_mb
 from ...core.errors import user_message
 from . import diskspace
@@ -600,6 +600,13 @@ class Pipeline:
                 met = quality.analyze_frame(raw, bool(info["bayerpat"]) and raw.ndim == 2)
                 met["calib"] = m.desc
                 met["mv"] = quality.METRICS_VERSION
+                if frame_preview.enabled():            # Vorschau jetzt, solange das Rohbild da ist (Uploads werden gelöscht)
+                    try:
+                        frame_preview.save(self.s.work_dir, r["id"], raw, info.get("bayerpat") if raw.ndim == 2 else None)
+                    except Exception as e:             # Vorschau ist Beiwerk – die Analyse zählt
+                        if resource_error(e):
+                            raise
+                        print(f"Vorschau {r['id']}: {e!r}", flush=True)
                 return r["id"], met, None
             except calibration.SourceOffline as e:     # Kalibrierbilder auf abgesteckter Platte: kein Lesefehler
                 return r["id"], None, e
