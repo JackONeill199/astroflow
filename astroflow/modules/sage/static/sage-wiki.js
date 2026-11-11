@@ -749,7 +749,7 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
     const groups = {};
     d.edges.forEach(x => { (groups[x.status === 'suggested' ? 'suggested' : x.origin] ||= []).push(x); });
     const label = { suggested: 'KI-Vorschläge – bitte prüfen', catalog: 'Aus Fachkatalogen', curated: 'Grundwissen', user: 'Von dir', 'ai+user': 'KI-Vorschläge, von dir bestätigt' };
-    host.innerHTML = `<div class="split"><div><div class="panel sw-gpanel"><div class="panel-h"><h2>Wissensnetz um ${esc(e.name)}</h2><span class="grow"></span><span class="mut sm">Ziehen · Mausrad · Doppelklick öffnet</span></div><div class="sw-graph" id="swG"></div>${legend()}</div></div>
+    host.innerHTML = `<div class="split"><div><div class="panel sw-gpanel"><div class="panel-h"><h2>Wissensnetz um ${esc(e.name)}</h2><span class="grow"></span><a class="linkbtn" href="#/sage/netz/${id}">${icon('expand')}Groß</a></div><div class="sw-graph" id="swG">${netLoading()}</div></div></div>
       <div>${Object.entries(groups).map(([g, xs]) => `<div class="panel"><h2 style="margin-bottom:8px">${label[g] || g}</h2>${xs.map(x => `<div class="sw-edge" data-x="${x.id}"><a href="#/sage/o/${x.other.id}">${x.dir === 'out' ? '' : esc(x.other.name) + ' '}<span class="mut">${esc(x.rel)}</span>${x.dir === 'out' ? ' ' + esc(x.other.name) : ' ' + esc(e.name)}</a>
           ${x.note ? `<div class="dim sm">${esc(x.note)}</div>` : ''}${x.source_id ? `<button class="cite" data-s="${x.source_id}">Q</button>` : ''}
           ${x.status === 'suggested' ? `<div class="row sm" style="margin-top:4px"><button class="linkbtn" data-a="verified">${icon('check')}Bestätigen</button><button class="linkbtn" data-a="rejected">Verwerfen</button></div>` : ''}</div>`).join('')}</div>`).join('')}
@@ -757,8 +757,10 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
           <label class="field"><span>Beziehung</span><input name="rel" placeholder="z. B. beleuchtet, liegt vor, gleiche Region" required></label><button class="btn sm" type="submit">${icon('plus')}Verbinden</button></form></div></div>`;
     host.querySelectorAll('.sw-edge [data-a]').forEach(b => { b.onclick = async () => { await send(`${K}/edges/${b.closest('[data-x]').dataset.x}`, { status: b.dataset.a }, 'PATCH'); await reload(); show('netz'); }; });
     $('#swEdgeF').onsubmit = async (ev) => { ev.preventDefault(); try { await send(`${K}/edges`, { src: id, dst: ev.target.dst.value, rel: ev.target.rel.value }); await reload(); show('netz'); } catch (err) { toast(err.message, 'err'); } };
-    const g = await api(`${K}/graph?center=${id}&depth=2`);
-    if ($('#swG')) cleanup.push(drawGraph($('#swG'), g, { center: id }));
+    const g = await api(`${K}/graph?center=${id}&depth=2`).catch(() => null);
+    if (!g || !host.isConnected || !$('#swG', host)) return;
+    const nz = window.SageNetz.draw($('#swG', host), g, { center: g.center || id, onChange: async () => { await reload(); show('netz'); } });
+    cleanup.push(() => nz.destroy());
   }
 
   // ---- Geschichten & Audio
@@ -866,77 +868,41 @@ function labels(svg, w, h, objs, self) {
 }
 
 // ---------------------------------------------------------------- Wissensnetz --- //
-const legend = () => `<div class="sw-legend"><span><i class="l-cat"></i>Fachkatalog</span><span><i class="l-cur"></i>Grundwissen</span><span><i class="l-ai"></i>KI-Vorschlag</span><span><i class="l-per"></i>deine Daten</span></div>`;
-// Kräftebasiertes Layout in SVG (bis ~100 Knoten); Ziehen verschiebt, Mausrad zoomt, Klick zeigt die Karte, Doppelklick öffnet
-function drawGraph(host, g, { center = null, onPick = null } = {}) {
-  const W = host.clientWidth || 800, H = host.clientHeight || 520;
-  const N = g.nodes.map((n, i) => ({ ...n, x: W / 2 + Math.cos(i * 2.4) * (40 + (n.level || 1) * 90), y: H / 2 + Math.sin(i * 2.4) * (40 + (n.level || 1) * 70), vx: 0, vy: 0 }));
-  const by = Object.fromEntries(N.map(n => [n.id, n]));
-  const L = g.links.filter(l => by[l.source] && by[l.target]).map(l => ({ ...l, s: by[l.source], t: by[l.target] }));
-  if (center && by[center]) { by[center].x = W / 2; by[center].y = H / 2; by[center].fixed = true; }
-  for (let it = 0; it < 320; it++) {
-    const a = 1 - it / 320;
-    for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) {
-      const p = N[i], q = N[j]; let dx = q.x - p.x, dy = q.y - p.y, d2 = dx * dx + dy * dy + .01;
-      const f = 9000 / d2 * a; const d = Math.sqrt(d2); dx /= d; dy /= d;
-      p.vx -= dx * f; p.vy -= dy * f; q.vx += dx * f; q.vy += dy * f;
-    }
-    for (const l of L) { const dx = l.t.x - l.s.x, dy = l.t.y - l.s.y, d = Math.hypot(dx, dy) || 1, f = (d - (l.origin === 'personal' ? 85 : 125)) * .04 * a;
-      l.s.vx += dx / d * f; l.s.vy += dy / d * f; l.t.vx -= dx / d * f; l.t.vy -= dy / d * f; }
-    for (const n of N) { if (n.fixed) { n.vx = n.vy = 0; continue; } n.vx += (W / 2 - n.x) * .004 * a; n.vy += (H / 2 - n.y) * .004 * a; n.x += n.vx; n.y += n.vy; n.vx *= .55; n.vy *= .55; }
-  }
-  const cls = (l) => l.origin === 'personal' ? 'l-per' : l.status === 'suggested' || l.origin === 'ai' ? 'l-ai' : l.origin === 'curated' ? 'l-cur' : 'l-cat';
-  host.innerHTML = `<svg class="sw-gsvg" viewBox="0 0 ${W} ${H}"><g class="vp">${L.map((l, i) => `<line data-l="${i}" class="${cls(l)}" x1="${l.s.x}" y1="${l.s.y}" x2="${l.t.x}" y2="${l.t.y}"><title>${esc(l.s.label)} – ${esc(l.rel)} → ${esc(l.t.label)}</title></line>`).join('')}
-    ${N.map((n, i) => `<g class="gn ${n.kind} g-${n.group} ${n.observed ? 'obs' : ''} ${n.id === center ? 'ctr' : ''}" data-i="${i}" transform="translate(${n.x},${n.y})"><circle r="${n.id === center ? 13 : n.kind === 'concept' ? 9 : n.kind === 'object' ? 8 : 6}"/><text y="${n.id === center ? 27 : 21}">${esc(n.label.length > 28 ? n.label.slice(0, 27) + '…' : n.label)}</text></g>`).join('')}</g></svg>`;
-  const svg = $('svg', host), vp = $('.vp', svg);
-  // Ergebnis ins Bild einpassen
-  const xs = N.map(n => n.x), ys = N.map(n => n.y), bw = Math.max(...xs) - Math.min(...xs) + 160, bh = Math.max(...ys) - Math.min(...ys) + 70;
-  let sc = Math.min(1.7, W / bw, H / bh), tx = W / 2 - (Math.min(...xs) + Math.max(...xs)) / 2 * sc, ty = H / 2 - (Math.min(...ys) + Math.max(...ys)) / 2 * sc, drag = null;
-  const apply = () => vp.setAttribute('transform', `translate(${tx},${ty}) scale(${sc})`);
-  apply();
-  const pt = (ev) => { const r = svg.getBoundingClientRect(); return [(ev.clientX - r.left) * W / r.width, (ev.clientY - r.top) * H / r.height]; };
-  const onWheel = (ev) => { ev.preventDefault(); const [px, py] = pt(ev), f = Math.exp(-ev.deltaY * .0015), ns = Math.min(3, Math.max(.35, sc * f)); tx = px - (px - tx) * ns / sc; ty = py - (py - ty) * ns / sc; sc = ns; apply(); };
-  svg.addEventListener('wheel', onWheel, { passive: false });
-  svg.addEventListener('pointerdown', (ev) => { const gn = ev.target.closest('.gn'); const [px, py] = pt(ev); drag = { n: gn ? N[+gn.dataset.i] : null, el: gn, px, py, tx, ty, moved: false }; svg.setPointerCapture(ev.pointerId); });
-  svg.addEventListener('pointermove', (ev) => {
-    if (!drag) return; const [px, py] = pt(ev);
-    if (Math.hypot(px - drag.px, py - drag.py) > 3) drag.moved = true;
-    if (drag.n) { drag.n.x = (px - tx) / sc; drag.n.y = (py - ty) / sc; drag.el.setAttribute('transform', `translate(${drag.n.x},${drag.n.y})`);
-      L.forEach((l, i) => { if (l.s === drag.n || l.t === drag.n) { const e = svg.querySelector(`[data-l="${i}"]`); e.setAttribute('x1', l.s.x); e.setAttribute('y1', l.s.y); e.setAttribute('x2', l.t.x); e.setAttribute('y2', l.t.y); } }); }
-    else { tx = drag.tx + px - drag.px; ty = drag.ty + py - drag.py; apply(); }
-  });
-  svg.addEventListener('pointerup', (ev) => {
-    if (drag?.n && !drag.moved) {
-      const n = drag.n;
-      $$('.gn', svg).forEach(x => x.classList.toggle('hi', x === drag.el));
-      if (onPick) onPick(n, ev);
-      else if (n.href) floatCard(`<b>${esc(n.label)}</b><div class="row" style="margin-top:8px"><a class="btn sm" href="${n.href}">Öffnen</a></div>`, ev);
-      else if (n.kind === 'object' || n.kind === 'concept') card(n.label, ev);
-      else floatCard(`<b>${esc(n.label)}</b><div class="mut sm">Aus deinen Aufnahmedaten</div>`, ev);
-    }
-    drag = null;
-  });
-  svg.addEventListener('dblclick', (ev) => { const gn = ev.target.closest('.gn'); const n = gn && N[+gn.dataset.i]; if (n && (n.kind === 'object' || n.kind === 'concept')) location.hash = `#/sage/o/${n.id}`; else if (n?.href) location.hash = n.href; });
-  return () => svg.removeEventListener('wheel', onWheel);
-}
-
+// Zeichnen: static/sage-netz.js (window.SageNetz). Gerüst sofort, Daten danach (der erste Abruf liest das Aufnahmeprotokoll).
+const netLoading = () => `<div class="nz-load">${icon('orbit')}<span>Netz wird geknüpft …</span></div>`;
 async function graphView(el, center) {
-  crumbs([['Sage', '#/sage/wiki'], ['Wissensnetz']]);
-  el.innerHTML = `<div class="pagehead"><div><h1>Wissensnetz</h1><p class="mut">Objekte, Begriffe und deine Aufnahmen – jede Linie mit Herkunft. Gestrichelt: Vorschläge der KI, noch nicht bestätigt.</p></div>
-      <span class="grow"></span><input type="search" id="swGQ" placeholder="Zentrieren auf … (z. B. M45)" value="${esc(center || '')}"></div>
-    <div class="panel sw-gpanel big"><div class="sw-graph" id="swG"></div>${legend()}</div>`;
-  let off = null;
-  const load = async (c) => {
-    off?.();
-    const g = await api(`${K}/graph${c ? `?center=${encodeURIComponent(c)}&depth=2` : ''}`).catch(err => { toast(err.message, 'err'); return null; });
-    if (!g) return;
-    if (!g.nodes.length) { $('#swG').innerHTML = `<div class="empty" style="border:0">${icon('orbit')}<h2>Noch leer</h2>Bestimme Bilder oder recherchiere Objekte – das Netz wächst mit.</div>`; return; }
-    off = drawGraph($('#swG'), g, { center: g.center });
+  const head = (name) => crumbs([['Sage', '#/sage/wiki'], ...(center ? [['Wissensnetz', '#/sage/netz'], [name || center]] : [['Wissensnetz']])]);
+  head();
+  const mode = store.get('sage.netz', 'art');
+  el.innerHTML = `<div class="pagehead"><div><h1>Wissensnetz</h1><p class="mut">${center ? 'Alles, was mit diesem Objekt zusammenhängt – innen direkt, außen über Ecken.'
+      : 'Deine Objekte in Gruppen, Linien zeigen Zusammenhänge.'} Tippe einen Punkt an.</p></div></div>
+    <div class="panel sw-gpanel big"><div class="nz-bar"><label class="nz-q">${icon('search')}<input type="search" id="swGQ" list="swGL" placeholder="Objekt finden …" autocomplete="off" aria-label="Objekt finden"></label><datalist id="swGL"></datalist>
+      ${center ? '' : `<div class="seg" role="group" aria-label="Gruppieren nach">${[['art', 'Objektart'], ['bild', 'Sternbild']].map(([k, t]) => `<button type="button" data-m="${k}" class="${k === mode ? 'on' : ''}" aria-pressed="${k === mode}">${t}</button>`).join('')}</div>`}</div>
+      <div class="sw-graph" id="swG">${netLoading()}</div></div>`;
+  const host = $('#swG', el);
+  let nz = null;
+  (async () => {
+    const g = await api(`${K}/graph${center ? `?center=${encodeURIComponent(center)}&depth=2` : ''}`).catch(err => { toast(err.message, 'err'); return null; });
+    if (!el.isConnected) return;
+    if (!g) { host.innerHTML = `<div class="empty" style="border:0">${icon('alert')}<h2>Nicht geladen</h2>Das Wissensnetz ist gerade nicht erreichbar.</div>`; return; }
+    if (!g.nodes.length) { host.innerHTML = `<div class="empty" style="border:0">${icon('orbit')}<h2>Noch leer</h2>Bestimme Bilder oder recherchiere Objekte – das Netz wächst mit.</div>`; return; }
+    if (center) head(g.nodes.find(n => n.id === g.center)?.label);
+    nz = window.SageNetz.draw(host, g, { center: g.center, mode });
+    $('#swGL', el).innerHTML = [...new Set(nz.labels())].sort().map(l => `<option value="${esc(l)}">`).join('');
+  })();
+  const q = $('#swGQ', el);
+  const find = async (go) => {
+    const n = nz?.find(q.value);
+    if (n) { q.blur(); nz.focus(n); return; }                // Fokus weg: schließt Vorschlagsliste und Handytastatur
+    if (!go || !q.value.trim()) return;
+    const r = await api(`${K}/entities?q=${encodeURIComponent(q.value.trim())}&limit=1`).catch(() => ({ items: [] }));
+    if (r.items[0]) location.hash = `#/sage/netz/${r.items[0].id}`; else toast('Nicht gefunden – erst in der Enzyklopädie recherchieren.', 'err');
   };
-  $('#swGQ').onkeydown = async (e) => { if (e.key !== 'Enter') return; const q = e.target.value.trim(); if (!q) { load(null); return; }
-    const r = await api(`${K}/entities?q=${encodeURIComponent(q)}&limit=1`); if (r.items[0]) location.hash = `#/sage/netz/${r.items[0].id}`; else toast('Nicht gefunden – erst in der Enzyklopädie recherchieren.', 'err'); };
-  await load(center);
-  return { destroy: () => off?.() };
+  q.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); find(true); } };
+  q.onchange = () => find(false);                          // Auswahl aus der Vorschlagsliste
+  el.querySelector('.seg')?.addEventListener('click', (e) => { const b = e.target.closest('[data-m]'); if (!b) return;
+    $$('.seg [data-m]', el).forEach(x => { x.setAttribute('aria-pressed', String(x === b)); x.classList.toggle('on', x === b); }); store.set('sage.netz', b.dataset.m); nz?.regroup(b.dataset.m); });
+  return { destroy: () => nz?.destroy() };
 }
 
 // ---------------------------------------------------------- Meine Entdeckungen --- //
@@ -1034,5 +1000,5 @@ if (M) {
       ['sparkle', 'Frag Sage', 'Assistent mit Werkzeugen', () => chat({ scope: 'global' })], ...ents.items.map(c => ['star', c.name, `${c.otype_label || ''} · Enzyklopädie`, `#/sage/o/${c.id}`, c.image]), ...base];
   };
 }
-window.SageWiki = { card, chat, pick, research: startResearch };
+window.SageWiki = { card, chat, pick, research: startResearch, float: floatCard, closeFloat };
 })();
