@@ -110,7 +110,10 @@ def test_pipeline_builds_library_and_skips_with_darks(tmp_path):
     info = json.loads(db.one("SELECT options FROM projects WHERE id=?", (pid,))["options"])["glow_info"]
     assert list(info.values())[0]["quelle"] == "nacht"
 
-    s2 = load_settings(tmp_path / "data2")                       # mit Darks: kein Glühmodell
+
+def test_pipeline_with_darks_builds_no_glow_model(tmp_path):
+    """Mit Darks: kein Glühmodell (eigener Test statt Teil des vorigen – halbiert die Laufzeit des längeren, läuft parallel)."""
+    s2 = load_settings(tmp_path / "data2")
     db2 = DB(s2.db_path)
     pl2 = Pipeline(s2, db2, ReviewerConfig())
     demo.generate(s2.input_dir / "n", n_lights=36, n_darks=4, n_flats=0)

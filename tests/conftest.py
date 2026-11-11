@@ -98,7 +98,9 @@ UI_FILES = ("test_ui_layout.py", "test_skytrace_3d_ui.py", "test_skytrace_video_
 def pytest_collection_modifyitems(items):
     """Marker automatisch: `ui` = Tests mit echtem Browser (Playwright) – schneller Teilsatz: `-m "not ui"`."""
     for it in items:
-        if it.path.name in UI_FILES:
+        # Dateiliste ODER Fixture `browser` (auch test_meteors.py, test_viewer_slow.py …): sonst liefen solche Tests
+        # im Job ohne Chromium (übersprungen) und fehlten im Browser-Job
+        if it.path.name in UI_FILES or "browser" in getattr(it, "fixturenames", ()):
             it.add_marker(pytest.mark.ui)
 
 

@@ -3,6 +3,12 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.66.1 – 11.11.2026
+
+### Behoben
+- „Heute Nacht“: Nach schnellem Hin- und Herwechseln der Seiten blieb manchmal eine zuvor gewählte Nacht stehen statt „Heute Nacht“.
+- Sage: Während einer Hintergrund-Recherche konnten Katalogverknüpfungen eines Objekts kurz fehlen.
+
 ## 0.66.0 – 11.11.2026
 
 ### Neu

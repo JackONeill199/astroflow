@@ -1,6 +1,7 @@
 """Volles Datenlaufwerk: Aufträge halten an statt endlos zu scheitern, Import hält bei knappem Speicher an."""
 import errno
 import threading
+import time
 
 import pytest
 
@@ -21,7 +22,13 @@ def engine(tmp_path):
 def run_once(eng):
     """Worker so lange laufen lassen, bis die Warteschlange leer ist oder er anhält."""
     def stop_soon():
-        eng.stop.wait(1.5)
+        # Nicht nach fester Zeit abbrechen (auf langsamen CI-Rechnern reichten 1,5 s für die Wiederholungen nicht):
+        # sobald kein Auftrag mehr wartet/läuft oder die Warteschlange angehalten ist; harte Obergrenze nur gegen Hänger
+        end = time.monotonic() + 60
+        while time.monotonic() < end and not eng.stop.is_set():
+            if eng.paused or eng.hold() or not eng.db.one("SELECT 1 AS n FROM jobs WHERE state IN ('queued','running') LIMIT 1"):
+                break
+            time.sleep(0.02)
         eng.stop.set()
     threading.Thread(target=stop_soon, daemon=True).start()
     eng.worker()
