@@ -19,7 +19,7 @@ MIN_STARS = 12
 
 
 def cache_path(work_dir: Path, pid: int) -> Path:
-    return Path(work_dir) / f"p{pid}" / "picture_analysis.json"
+    return Path(work_dir) / f"p{int(pid)}" / "picture_analysis.json"
 
 
 def north_angle(rotation: float) -> float:

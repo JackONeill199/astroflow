@@ -62,7 +62,7 @@ def main_object(ra: float, dec: float, fov_w: float, fov_h: float) -> objects.Ca
 
 
 def solution_path(work_dir: Path, pid: int) -> Path:
-    return Path(work_dir) / f"p{pid}" / "picture_solution.json"
+    return Path(work_dir) / f"p{int(pid)}" / "picture_solution.json"
 
 
 def stored_solution(work_dir: Path, pid: int) -> dict | None:
