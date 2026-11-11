@@ -186,8 +186,15 @@
           db = dbFor(s.telescopes); repaint();
           saveRev++;
           telSave = telSave.catch(() => {}).then(async () => {
-            const saved = await send('/setup', { telescopes: s.telescopes });
-            if (--pendingSaves === 0) { saveRev++; s = saved; db = dbFor(s.telescopes || []); repaint(); }
+            let saved = null;
+            try { saved = await send('/setup', { telescopes: s.telescopes }); }
+            finally {
+              if (--pendingSaves === 0) {
+                saveRev++;
+                s = saved || await api('/setup').catch(() => s);       // bei Fehler: Serverstand übernehmen
+                db = dbFor(s.telescopes || []); repaint();
+              }
+            }
           });
           pendingSaves++;
           await telSave;
