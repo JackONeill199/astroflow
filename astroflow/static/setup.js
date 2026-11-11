@@ -92,7 +92,7 @@
   async function setupView(el) {
     crumbs([['Einrichtung']]);
     let s = await api('/setup'), sites = await api('/sites?nights=false').catch(() => ({ list: [] }));
-    let timer = null, db = null, saveRev = 0;
+    let timer = null, db = null, saveRev = 0, telSave = Promise.resolve(), pendingSaves = 0;
     const busyNow = () => Object.values(s.tasks || {}).some(t => t.state === 'running') || !!s.components?.queue_active;
     const paint = () => {
       const tel = s.telescopes || [], a = s.astap, t = s.tasks || {};
@@ -161,7 +161,7 @@
     const refresh = async () => {
       if (!el.isConnected) return stop();
       const rev = saveRev, fresh = await api('/setup').catch(() => s);
-      if (rev !== saveRev) return;                    // Wahl wurde währenddessen gespeichert: veraltete Antwort verwerfen
+      if (rev !== saveRev || pendingSaves) return;                    // Wahl wurde währenddessen gespeichert: veraltete Antwort verwerfen
       s = fresh;
       repaint();
       if (!busyNow()) stop();
@@ -180,11 +180,17 @@
         if (b.id === 'suDir') folderDialog(s.data.path, (p) => changeDir(p), { title: 'Datenordner wählen', ok: 'Diesen Ordner verwenden', hint: 'Ein leerer oder neuer Ordner auf einem Laufwerk mit viel Platz – nicht in OneDrive/Dropbox.' });
         else if (b.id === 'suDirDef') changeDir(s.default_data);
         else if (b.closest('#suTel')) {
+          // Auswahl sofort lokal ändern (mehrere schnelle Klicks), Speichern nacheinander
           const cur = s.telescopes || [], v = b.dataset.v;
+          s = { ...s, telescopes: cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v] };
+          db = dbFor(s.telescopes); repaint();
           saveRev++;
-          s = await send('/setup', { telescopes: cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v] });
-          saveRev++;
-          db = dbFor(s.telescopes || []); repaint();
+          telSave = telSave.catch(() => {}).then(async () => {
+            const saved = await send('/setup', { telescopes: s.telescopes });
+            if (--pendingSaves === 0) { saveRev++; s = saved; db = dbFor(s.telescopes || []); repaint(); }
+          });
+          pendingSaves++;
+          await telSave;
         }
         else if (b.closest('#suDb')) { db = b.dataset.v; repaint(); }
         else if (b.id === 'suAstap') { await send('/components/install', { id: 'astap', option: db }); await refresh(); watch(); }
