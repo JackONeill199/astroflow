@@ -22,7 +22,8 @@ function pictureAnalysisTab(t, ctx) {
   const viewer = ctx.viewerFor($('#paViewer', t));
   viewer.el.classList.add('an-viewer', 'hover-labels');
   const root = t.firstElementChild;                       // `t` (#tab) bleibt beim Reiterwechsel stehen, nur sein Inhalt wird ersetzt
-  const alive = () => root.isConnected;
+  const alive = () => !!root && root.isConnected;
+  const put = (id, html) => { const e = alive() ? root.querySelector('#' + id) : null; if (e) e.innerHTML = html; };       // nie in einen schon ersetzten Reiter schreiben
   const head = (h, sub = '') => `<div class="panel-h"><h2>${h}</h2>${sub ? `<span class="grow"></span><span class="mut sm">${sub}</span>` : ''}</div>`;
   const kpi = (label, v, sub = '') => `<div class="stat an-kpi"><small>${label}</small><b class="tnum">${v}</b><small class="dim">${sub}</small></div>`;
   $('.an-toc', t).addEventListener('click', (e) => {
@@ -39,10 +40,10 @@ function pictureAnalysisTab(t, ctx) {
     const f = d.field, q = d.quality;
     // ---- Objekte ----
     const objs = (d.objects || []).filter(o => o.x != null);
-    $('#paObjects', t).innerHTML = head('Objekte im Bild', f ? `${objs.length} ${objs.length === 1 ? "Katalogobjekt" : "Katalogobjekte"}` : '') + (!d.solved ? needSolve('die Objektliste')
+    put('paObjects', head('Objekte im Bild', f ? `${objs.length} ${objs.length === 1 ? "Katalogobjekt" : "Katalogobjekte"}` : '') + (!d.solved ? needSolve('die Objektliste')
       : !objs.length ? '<p class="mut">Im Bildfeld liegt kein Objekt aus dem eingebauten Katalog.</p>'
       : `<div class="pa-bar"><label class="modrow"><input type="checkbox" id="paMarks"><span class="switch"></span><span>Objekte im Bild einblenden</span></label></div>
-        <ul class="pa-objs">${objs.map((o, i) => `<li><button class="pa-obj" data-i="${i}" title="Im Bild zeigen"><b>${esc(o.name)}</b><span class="mut sm">${esc(o.kind_label || '')}${o.size ? ` · ${de(o.size, o.size < 10 ? 1 : 0)}′` : ''}</span></button></li>`).join('')}</ul>`);
+        <ul class="pa-objs">${objs.map((o, i) => `<li><button class="pa-obj" data-i="${i}" title="Im Bild zeigen"><b>${esc(o.name)}</b><span class="mut sm">${esc(o.kind_label || '')}${o.size ? ` · ${de(o.size, o.size < 10 ? 1 : 0)}′` : ''}</span></button></li>`).join('')}</ul>`));
     $('#paMarks', t)?.addEventListener('change', (e) => viewer.el.classList.toggle('marks-on', e.target.checked));
     $('.pa-objs', t)?.addEventListener('click', (e) => {
       const b = e.target.closest('[data-i]'); if (!b) return;
@@ -51,11 +52,11 @@ function pictureAnalysisTab(t, ctx) {
       $('#paViewer', t).scrollIntoView({ behavior: anReduced() ? 'auto' : 'smooth', block: 'nearest' });
     });
     // ---- Bildfeld ----
-    $('#paField', t).innerHTML = head('Bildfeld und Maßstab') + (!f ? needSolve('Bildfeld und Maßstab', false) : `<div class="depth-kpis pa-kpis">
+    put('paField', head('Bildfeld und Maßstab') + (!f ? needSolve('Bildfeld und Maßstab', false) : `<div class="depth-kpis pa-kpis">
         ${kpi('Bildfeld', `${de(f.fov_w, 2)}° × ${de(f.fov_h, 2)}°`, `${de(f.fov_w * 60, 0)}′ × ${de(f.fov_h * 60, 0)}′`)}
         ${kpi('Maßstab', `${de(f.scale, 2)}″/px`, `${f.width} × ${f.height} px`)}
         ${kpi('Norden', f.north === 0 ? 'oben' : `${de(Math.abs(f.north), 0)}° ${f.north > 0 ? 'rechts' : 'links'}`, f.north === 0 ? 'Bild nicht gedreht' : 'von oben gedreht')}</div>
-      <p class="pa-hint"><b>Einordnung:</b> ${esc(f.device_hint)} <span class="mut">${esc(f.caveat)}</span></p>`);
+      <p class="pa-hint"><b>Einordnung:</b> ${esc(f.device_hint)} <span class="mut">${esc(f.caveat)}</span></p>`));
     // ---- Qualität ----
     let qh = '';
     if (!q) qh = `<p class="mut">${esc(d.quality_error || 'Das Bild konnte nicht gelesen werden.')}</p>`;
@@ -72,18 +73,18 @@ function pictureAnalysisTab(t, ctx) {
         ${s && s.pa && s.pa[1] > 0.5 && !s.round ? `<p class="mut sm">Die länglichen Sterne zeigen überwiegend in dieselbe Richtung (${de(s.pa[0], 0)}°) – typisch für Nachführfehler oder Wind.</p>` : ''}
         <p class="mut sm pa-caveat">${icon('alert')}<span>Am fertigen Bild gemessen, keine exakten Werte: Das Strecken bläht Sterne auf, Rauschminderung und Verkleinern verändern Schärfe und Rauschen. ${q.n_stars ? `Grundlage: ${q.n_stars} erkannte Sterne.` : ''}</span></p>`;
     }
-    $('#paQual', t).innerHTML = head('Grobe Bildqualität', 'Einordnung') + qh;
+    put('paQual', head('Grobe Bildqualität', 'Einordnung') + qh);
     // ---- Eigene Aufnahmen ----
     const own = d.own || [];
-    $('#paOwn', t).innerHTML = head('Eigene Aufnahmen desselben Objekts') + (!own.length
+    put('paOwn', head('Eigene Aufnahmen desselben Objekts') + (!own.length
       ? `<p class="mut">${p.coords || d.solved ? 'Von diesem Objekt gibt es in AstroFlow noch keine eigene Aufnahme.' : 'Ohne bekanntes Objekt lassen sich keine eigenen Aufnahmen zuordnen.'}</p>`
       : `<div class="pa-cmp"><a class="pa-thumb pa-self" href="#/p/${p.id}/bild"><img src="/api/stacking/results/${r.id}/thumb" alt=""><span><b>Dieses Bild</b><small class="mut">Importiert</small></span></a>
         ${own.map(o => `<a class="pa-thumb" href="#/p/${o.project}/bild"><img src="/api/stacking/results/${o.result}/thumb" alt="" loading="lazy"><span><b>${esc(o.name)}</b>
-          <small class="mut">${o.imported ? 'Fertiges Bild' : `${o.n_frames} Aufnahmen${o.exposure && typeof dur === 'function' ? ' · ' + dur(o.exposure) : ''}`}</small></span></a>`).join('')}</div>`);
+          <small class="mut">${o.imported ? 'Fertiges Bild' : `${o.n_frames} Aufnahmen${o.exposure && typeof dur === 'function' ? ' · ' + dur(o.exposure) : ''}`}</small></span></a>`).join('')}</div>`));
     t.querySelectorAll('[data-solve]').forEach(b => b.addEventListener('click', () => ctx.solve?.()));
     $$('.pa-sec', t).forEach(anReveal);
   }).catch(e => {
-    if (alive()) $('#paObjects', t).innerHTML = `<p class="warn">${esc(e.message || 'Analyse nicht verfügbar')}</p>`;
+    if (alive()) put('paObjects', `<p class="warn">${esc(e.message || 'Analyse nicht verfügbar')}</p>`);
   });
   return { viewer, destroy() {} };
 }
