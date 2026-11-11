@@ -484,18 +484,6 @@ async function atlasView(el, query) {
   // ---- Daten ----
   const msg = (t) => { const m = $('#obsMsg', el); if (m) { m.hidden = !t; m.textContent = t || ''; } };
   skyData().then(s => { if (el.isConnected) { sky = s; draw(); } }).catch(() => msg('Sterndaten konnten nicht geladen werden.'));
-  try {
-    atlas = await api('/stacking/atlas');
-  } catch (e) { msg(e.message); }
-  if (!el.isConnected) return;
-  const strip = $('#obsStrip', el);
-  $('#obsCount', el).textContent = String(atlas.photos.length);
-  strip.innerHTML = atlas.photos.length
-    ? atlas.photos.slice().sort((a, b) => (b.created || 0) - (a.created || 0)).map(p => `<button type="button" class="obs-shot" data-pid="${p.pid}" title="${esc(p.name)} am Himmel zeigen"><img src="${esc(p.thumb)}" alt="" loading="lazy"><span>${esc(p.name)}</span></button>`).join('')
-    : `<p class="mut sm">Noch keine Bilder mit bekannter Himmelsposition. Sobald ein Stack oder importiertes Bild per Plate-Solving gelöst ist, erscheint es hier.</p>`;
-  strip.onclick = (e) => { const b = e.target.closest('[data-pid]'); const p = b && atlas.photos.find(x => x.pid === +b.dataset.pid); if (p) flyPhoto(p); };
-  $('#obsList', el).innerHTML = [...new Set([...atlas.photos.map(p => p.name), ...atlas.catalog.filter(o => o.src !== 'a').map(o => o.name)])]
-    .map(n => `<option value="${esc(n)}">`).join('');
   // Einstieg aus Sage: passendes Katalogobjekt an der Marke gleich auswählen (sonst Auswahl leeren)
   const focusTarget = () => {
     let best = null, bd = Infinity;
@@ -509,8 +497,23 @@ async function atlasView(el, query) {
     // schmale Fenster: die Schublade nicht gleich über die Karte legen (Details über den Panel-Knopf)
     if (best) select({ type: 'cat', o: best }, matchMedia('(min-width: 1280px)').matches); else if (sel) { sel = null; AF.ctx.clear(); }
   };
-  if (target) focusTarget();
-  draw();
+  // Atlasdaten getrennt laden: die Ansicht (mit destroy) kommt sofort zurück, auch wenn man vor der Antwort weiternavigiert
+  (async () => {
+    try {
+      atlas = await api('/stacking/atlas');
+    } catch (e) { msg(e.message); }
+    if (!el.isConnected) return;
+    const strip = $('#obsStrip', el);
+    $('#obsCount', el).textContent = String(atlas.photos.length);
+    strip.innerHTML = atlas.photos.length
+      ? atlas.photos.slice().sort((a, b) => (b.created || 0) - (a.created || 0)).map(p => `<button type="button" class="obs-shot" data-pid="${p.pid}" title="${esc(p.name)} am Himmel zeigen"><img src="${esc(p.thumb)}" alt="" loading="lazy"><span>${esc(p.name)}</span></button>`).join('')
+      : `<p class="mut sm">Noch keine Bilder mit bekannter Himmelsposition. Sobald ein Stack oder importiertes Bild per Plate-Solving gelöst ist, erscheint es hier.</p>`;
+    strip.onclick = (e) => { const b = e.target.closest('[data-pid]'); const p = b && atlas.photos.find(x => x.pid === +b.dataset.pid); if (p) flyPhoto(p); };
+    $('#obsList', el).innerHTML = [...new Set([...atlas.photos.map(p => p.name), ...atlas.catalog.filter(o => o.src !== 'a').map(o => o.name)])]
+      .map(n => `<option value="${esc(n)}">`).join('');
+    if (target) focusTarget();
+    draw();
+  })();
 
   return {
     navigate(path) {
