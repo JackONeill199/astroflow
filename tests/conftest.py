@@ -113,6 +113,29 @@ def _offline(monkeypatch):
     monkeypatch.setenv("ASTROFLOW_MODULES", "stacking")
 
 
+def _import_solved_picture(app, port: int):
+    """Ein fertig importiertes, „gelöstes“ Bild (ohne echten Solver: Lösung direkt gespeichert) für den Reiter Analyse."""
+    import io
+    import httpx
+    import numpy as np
+    from PIL import Image
+    rng = np.random.default_rng(7)
+    a = rng.normal(40, 4, (300, 400, 3)).clip(0, 255)
+    for _ in range(60):
+        y, x = rng.integers(6, 294), rng.integers(6, 394)
+        a[y - 1:y + 2, x - 1:x + 2] = 250
+    buf = io.BytesIO()
+    Image.fromarray(a.astype(np.uint8)).save(buf, "PNG")
+    base = f"http://127.0.0.1:{port}"
+    pid = httpx.post(f"{base}/api/stacking/upload", files={"files": ("Fertig.png", buf.getvalue())}, headers={"Origin": base},
+                     timeout=60).json()["pictures"][0]["id"]
+    sol = {"ra": 10.6847, "dec": 41.269, "fov_w": 0.44, "fov_h": 0.33, "scale": 4.0, "rotation": 170.0, "width": 400, "height": 300,
+           "solver": "astap", "seconds": 1.0,
+           "objects": [{"name": "M31 Andromedagalaxie", "id": "M31", "kind": "galaxy", "kind_label": "Galaxie", "size": 180.0,
+                        "x": 200.0, "y": 150.0, "radius": 60.0}]}
+    app.state.modules["stacking"].eng.picture_solve._apply(pid, sol)
+
+
 @pytest.fixture(scope="session")
 def server(tmp_path_factory):
     """Testserver für die Oberflächentests (alle Module, Demodaten) – je Prozess/Worker einmal, auf freiem Port."""
@@ -132,7 +155,8 @@ def server(tmp_path_factory):
     mp = pytest.MonkeyPatch()
     try:
         for k, v in {"ASTROFLOW_MODULES": ",".join(AVAILABLE), "ASTROFLOW_AUTO": "0", "ASTROFLOW_GAIA": "0",
-                     "ASTROFLOW_GPU": "0", "ASTROFLOW_GRAXPERT": "0", "ASTROFLOW_SAGE_OFFLINE": "1"}.items():
+                     "ASTROFLOW_GPU": "0", "ASTROFLOW_GRAXPERT": "0", "ASTROFLOW_SAGE_OFFLINE": "1",
+                     "ASTROFLOW_PICTURE_SOLVE": "0"}.items():
             mp.setenv(k, v)
         mp.delenv("SKYTRACE_HOME", raising=False)          # SkyTrace setzt sie beim Laden prozessweit – danach wieder entfernen
         s = load_settings(root / "data")
@@ -155,13 +179,15 @@ def server(tmp_path_factory):
         db.x("UPDATE projects SET name=? WHERE id=?", (LONG, pid))
         _sky_seed(db, pid)
         port = _free_port()
-        srv = uvicorn.Server(uvicorn.Config(create_app(s), host="127.0.0.1", port=port, log_level="warning"))
+        app = create_app(s)
+        srv = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
         th = threading.Thread(target=srv.run, daemon=True)
         th.start()
         for _ in range(200):
             if srv.started:
                 break
             time.sleep(0.05)
+        _import_solved_picture(app, port)
         yield f"http://127.0.0.1:{port}", pid
         srv.should_exit = True
         th.join(10)
