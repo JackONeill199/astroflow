@@ -247,7 +247,7 @@ def test_warteschlange_und_abschliessen(home, monkeypatch):
     d = c.get("/api/components").json()
     pos = {i["id"]: i["queue_pos"] for i in d["items"]}
     assert d["queue_active"] and d["queue_running"] == "astap"
-    assert pos["astap"] == 0 and pos["graxpert"] == 1 and pos["gpu"] == 2          # astap läuft, dann Reihenfolge
+    assert pos["astap"] == 0 and pos["gpu"] == 1 and pos["skytrace"] == 2          # astap läuft, dann Reihenfolge
     # Abschließen während des Downloads: nichts bricht ab
     assert c.post("/api/setup", json={"done": True}).status_code == 200
     assert c.get("/api/setup").json()["tasks"]["astap"]["state"] == "running"
@@ -255,7 +255,7 @@ def test_warteschlange_und_abschliessen(home, monkeypatch):
     assert c.post("/api/components/install", json={"id": "astap", "option": "d05"}).status_code == 409
     gate.set()
     t.join(10)
-    assert started == ["astap", "graxpert", "gpu"] and not setup.order_active
+    assert started == ["astap", "gpu", "skytrace"] and not setup.order_active
     assert not launcher.read_config().get("components_pending")
     assert c.get("/api/components").json()["queue_active"] is False
 
