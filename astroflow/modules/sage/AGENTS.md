@@ -26,7 +26,7 @@ insights/runs/usage/stories/chats/http_cache. Regeln: **Messwerte nur aus Fachqu
   „Nach Objektart stöbern“ (filtert das Raster), „Alle Einträge“. Daten: `/kb/home` (`featured` + `tonight`), `/kb/entities`, `/kb/insights`.
   Vorher war hier die komplette Objektseite eingebettet (~3000 px vor dem Raster). Vorschaubilder sind um 1,3× hineingezoomt (Objekt klein in der Feldmitte). Das Bannerfoto dagegen nie zuschneiden (Nutzerwunsch: Seitenverhältnis behalten; auf 2560 px wirkte `cover` + Zoom wie ein Panorama-Streifen).
 - **Dashboard der Objektseite** (Nutzerwunsch 29.10.2026, Vorlage: Mockup „Plejaden“; `objectView(…, {embedded: true})` bettet sie ohne Brotkrumen ein).
-  Objektkopf: Titelbild (`data.hero`, wählbar), Kurzname, Bezeichnungen (`designations`), Faktenkarte, Himmelskarte (`/kb/skymap`).
+  Objektkopf: Titelbild (`data.hero`, wählbar), Kurzname, Bezeichnungen (`designations`), Faktenkarte. Panel „Position am Himmel“ = Koordinaten + Link ins Observatorium (Bilder-Modul, `#/observatorium?ra=&dec=&fov=&name=`, seit 11.11.2026 statt der kleinen Karte; `/kb/skymap` bleibt als API) + DSS2-Himmelsbild.
   Übersicht: Bild + Galerie (`gallery`), KI-Zusammenfassung/Forschung/Persönlicher Kontext, Beschreibung, Schnellfakten
   (Durchmesser aus Winkelgröße × Entfernung, Helligkeit aus SIMBAD `flux` – fehlt z. B. für M45), Verwandte, Notizen, Aufnahmen.
   Export als Markdown mit Quellen: `/kb/entities/<id>/export.md`.

@@ -54,6 +54,17 @@ Folgende mitgelieferte Drittkomponenten stehen unter eigenen Lizenzen:
   Herkunft: https://github.com/mattiaverga/OpenNGC (Mattia Verga und Mitwirkende); https://en.wikipedia.org (Autoren laut Versionsgeschichte)
   Lizenz: beide CC-BY-SA 4.0 (siehe astroflow/modules/stacking/katalogdaten/LICENSE-OpenNGC); Weitergabe nur unter gleichen Bedingungen.
 
+- Yale Bright Star Catalogue, 5. Ausgabe (Hoffleit & Warren 1991; Sterne bis 6,5 mag für den Himmelsatlas)
+  astroflow/modules/stacking/static/himmel/sterne.json (erzeugt mit tools/himmel_extract.py aus bsc5.dat.gz,
+  http://tdc-www.harvard.edu/catalogs/bsc5.html, inhaltsgleich mit CDS VizieR V/50)
+  gemeinfrei (Katalog der NASA/ADC bzw. Yale University Observatory)
+
+- d3-celestial (Sternbildlinien und deutsche Sternbildnamen)
+  astroflow/modules/stacking/static/himmel/sternbilder.json (erzeugt mit tools/himmel_extract.py aus
+  data/constellations.lines.json und data/constellations.json)
+  Herkunft: https://github.com/ofrohn/d3-celestial (Copyright (c) 2015, Olaf Frohn)
+  Lizenz: BSD-3-Clause (siehe astroflow/modules/stacking/static/himmel/LICENSE-d3-celestial.txt)
+
 - pystray (Symbol im Infobereich unter Windows)
   Lizenz: LGPL-3.0. Wird im Windows-Paket als Python-Paket (Quelltext in
   python\Lib\site-packages) mitgeliefert und von AstroFlow nur importiert; es lässt sich durch

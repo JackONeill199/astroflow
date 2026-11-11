@@ -849,6 +849,13 @@ def build_router(eng: Engine) -> APIRouter:
             raise HTTPException(409, str(e))
         return {"groups": n, **eng.library.view()}
 
+    # ---- Observatorium: Himmelsatlas (observatory.py) ------------------------------------
+    @r.get("/atlas")
+    def get_atlas():
+        """Eigene Bilder mit ihrer Lage am Himmel und der Deep-Sky-Katalog. Ohne Netz, nur gespeicherte Lösungen."""
+        from . import observatory
+        return {"photos": observatory.photos(db, eng.s.work_dir), "catalog": observatory.catalog()}
+
     # ---- Nachtplanung: Standort und optionale Wetterfreigabe aus dem Bild-Tutor ------------
     @r.get("/tonight")
     def get_tonight(hide: str = "", night: int = 0):

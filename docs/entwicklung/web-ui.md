@@ -12,7 +12,7 @@
   (Build-Kennung aus Dateizeiten) – nur `index.html` braucht weiter das manuelle `?v=`.
 
 ## Web-UI (`astroflow/static/` + `modules/*/static/`)
-Hash-Routing: `#/` Übersicht, `#/nacht`, `#/himmel` (Himmelsqualität), `#/analyse` (Analyse-Dashboard), `#/bilder` (Sessions), `#/galerie` (fertige Bilder), `#/p/<id>/<bild|analyse|aufnahmen|versionen|optionen>`, `#/import`,
+Hash-Routing: `#/` Übersicht, `#/nacht`, `#/observatorium[?ra=&dec=&fov=&name=]` (Himmelsatlas, `observatorium.md`), `#/himmel` (Himmelsqualität), `#/analyse` (Analyse-Dashboard), `#/bilder` (Sessions), `#/galerie` (fertige Bilder), `#/p/<id>/<bild|analyse|aufnahmen|versionen|optionen>`, `#/import`,
 `#/skytrace[/neu|/3d (= 3D-Erde, Analysen)|/erde[/<Nacht>]|/statistik|/<lauf>/<vorschau|kandidaten|beobachtungen|protokoll|3d>]`, `#/sage[/wiki|/entdeckungen|/sammlung|/<eintrag>]`, `#/activity` (Aufträge), `#/settings/<modul|standorte|module>`.
 **Designsystem (seit 0.21.0, Nutzerauftrag „professionelles, konsistentes Designsystem wie eine native Desktop-App“):** Tokens in `:root` von `style.css`
 (`--bg/--sidebar/--surface/--surface-2/--border/--fg/--mut/--dim/--acc/--ok/--warn/--bad`, Maße, `--t` 160 ms); Datenfarben `--data-2/--data-3`, Rahmen `--border-soft`;
