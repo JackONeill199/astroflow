@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.61.1 – 11.11.2026
+
+### Behoben
+- Windows-Installer: Die Lizenzseite zeigt oben eine deutsche Kurzfassung (was erlaubt ist, was nicht) und darunter den englischen Originaltext sauber lesbar statt mit rohen Formatierungszeichen.
+
 ## 0.61.0 – 11.11.2026
 
 ### Neu
