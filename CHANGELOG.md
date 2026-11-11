@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.59.1 – 10.11.2026
+
+### Behoben
+- Geht beim Stacken der Arbeitsspeicher aus, scheitert der Auftrag nicht mehr mit „Unerwarteter Fehler“: Er wartet zwei Minuten und setzt am letzten Zwischenstand fort (höchstens dreimal), danach erscheint eine klare Meldung.
+
 ## 0.59.0 – 10.11.2026
 
 ### Neu
