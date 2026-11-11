@@ -854,18 +854,20 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
         if shifts:
             stats["channel_shift"] = shifts
     ai = p.get("_ai") or {}                          # GraXpert lief schon auf dem linearen Stack (pipeline.develop)
+    # Mosaik: Bildränder sind keine Sensorränder (Glühen je Aufnahme schon abgezogen) – sonst helle Bänder im Randband
+    edge_glow = (lambda a: a) if p.get("_mosaic") else remove_edge_glow
     if not ai.get("bge"):
         log("Hintergrundgradient entfernen")
         if p.get("background", "poly") != "sky":
             # Standard: Polynom ohne Ränder → Randglühen → Grad 2. Am ebensten bei Galaxien/Haufen (Messung 10.11.2026,
             # 11 Fälle); sky_background war bei M17/M45 besser, bei NGC 6888/M3/M101 schlechter (Randbänder) → nur Option
             img = remove_gradient(img, int(p["gradient_degree"]), edge_exclude=EDGE_EXCLUDE)
-            img = remove_edge_glow(img)              # steiles Randglühen, das das Polynom nicht erfasst
+            img = edge_glow(img)                     # steiles Randglühen, das das Polynom nicht erfasst
             img = remove_gradient(img, 2)            # Restneigung nach der Randkorrektur
         else:                                        # Option: Himmels-Stützpunkte + Abdeckungsstufe (Staub-/Nebelfelder)
             cv = cov[y0:y1, x0:x1]
             model, binfo = sky_background(img, min(3, int(p["gradient_degree"])), cov=cv)
-            img = remove_edge_glow(img - model)
+            img = edge_glow(img - model)
             model, _ = sky_background(img, 2, cov=cv)              # Restneigung nach der Randkorrektur (wie früher Grad 2)
             img = img - model
             stats["background"] = binfo
@@ -873,7 +875,7 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
     elif float(ai.get("smoothing", 0.1)) >= 0.5:
         # GraXpert mit hoher Glättung (Staubprofile) lässt steiles Randglühen (Stellina ohne Darks) stehen
         log("Randglühen entfernen")
-        img = remove_edge_glow(img)
+        img = edge_glow(img)
     img, trimmed = (img, [0, 0, 0, 0]) if crop else trim_bad_edges(img)
     stats["crop"] = [y0 + trimmed[0], y1 - trimmed[1], x0 + trimmed[2], x1 - trimmed[3]]
     if sat is not None:

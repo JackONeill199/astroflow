@@ -161,6 +161,36 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    Restfehler (KV) 0,42 → 0,21 px, ~285 Paare; Stack Exzentrizität Ecken 0,33 → 0,23 (Mitte 0,25), FWHM Ecken 3,68 → 3,62 (Mitte 3,63);
    ohne Verzeichnung 0 von 16 übernommen, Stack identisch. 3072×2080 je Aufnahme: Warp CPU 1,13 → 1,19 s, GPU 72 → 156 ms (Maske auf der
    CPU), Fit 1 ms. Tests `test_distortion.py`, `test_gpu.py::test_warp_poly_matches_cpu`. **Offen:** Messung an echten Stellina-Daten.
+   **Mosaik** (`mosaic.py`, seit 11.11.2026, Anlass Stellina-Rosette: Mosaikmodus fährt ein Raster ~415 px ab, Stack war auf 38 % der
+   Referenzfläche zugeschnitten). Projektoption `mosaic` auto|on|off (Standard auto; Kometenmodus: auto = aus), `mosaic_crop` wide|compact
+   (nur Entwicklung). Ablauf beim **Neuaufbau** in `_stack` (`_mosaic_plan`): Transformationen aller Aufnahmen aus den gespeicherten
+   Sternlisten (`_transforms`) → `mosaic.plan`: Mosaik, wenn die Bildmitten robust (5.–95. Perzentil) über > `DETECT` 25 % der Bildbreite/-höhe
+   streuen (Drift, Dithering, Feldrotation bleiben darunter) und die Leinwand ≥ `MIN_GAIN` 1,15× größer wäre. Leinwand = Rechteck um
+   alle Rasterzellen, die ≥ 2 % der Aufnahmen abdecken, gedeckelt auf `MAX_AREA` 6× Referenzfläche bzw. `MAX_PIXELS` 48 Mio. Ausgabepixel
+   (Rand mit der geringsten Abdeckung fällt zuerst). Die Referenz rückt auf die Aufnahme nahe der Mitte aller Aufnahmen (`center_ref`,
+   unter den besten 50 %) – sonst teilen die äußeren Kacheln kaum Sterne mit ihr. `state.json`: `mosaic` {spread, area, frames, mode},
+   `origin` [x, y] (Leinwandecke in Referenzpixeln), `canvas` [H, W] (nativ), `bg_match` (Zähler). Ohne diese Schlüssel = gewöhnlicher
+   Stack (`mosaic.origin/canvas` liefern dann 0 bzw. das Referenzbild; weitere Filter übernehmen die Schlüssel über `ref_meta`).
+   **Warp:** `M = shift(origin) @ M` bzw. `shift_poly(P, −origin)`; nur das Rechteck der Aufnahme wird gewarpt (`footprint`) und in die
+   Leinwand eingesetzt. **Reihenfolge** beim Neuaufbau: von der Mitte nach außen (`order`), Ergänzen später wie gehabt.
+   **Nähte:** (1) Hintergrund nicht über den eigenen Median (hängt am Nebelanteil der Kachel), sondern `match_background`: je Kanal
+   robuste Ebene der Differenz zum Ziel im Überlapp (Versatz, wenn der Überlapp < 40 % der Aufnahme überspannt); Ziel = bisheriger
+   Stack (verkleinert, zählt ×3) + schon angeglichene Aufnahmen des Stapels. (2) Weiche Randgewichte `feather` (Smoothstep über 6 % der
+   kürzeren Bildseite, Rand 0,05) als Pixelgewicht `F` in `StackState.add_batch` (dann CPU statt GPU-Akkumulation).
+   **Leistung:** mit `F` rechnet `add_batch` nur im Rechteck, das der Stapel trifft; `_masked_median` nimmt bei > 20 % teilbedeckter
+   Pixel Sortieren + Greifen statt `nanmedian` (dort ~10× langsamer; gewöhnliche Stacks unverändert auf dem alten Weg). Ohne beides
+   lief die Rosette mit ~0,13 Aufnahmen/s, mit beidem ~1,2/s.
+   **Entwicklung:** `mosaic.effective_cov` wählt die Mindesttiefe t aus 0,5/0,4/0,3/0,22/0,15 (Fläche × √t maximal, `compact` = 0,5)
+   und bildet die Abdeckung so ab, dass t bei 0,5 liegt – Zuschnitt (`coverage_box`), GraXpert-Lückenfüllung, `stackfix`, Gaia-Farbkalibrierung
+   (cov > 0,9) arbeiten mit ihren gewohnten Schwellen. `params._mosaic` schaltet `remove_edge_glow` ab (Mosaikränder sind keine
+   Sensorränder; das Glühen ist je Aufnahme schon abgezogen – sonst helle Bänder bei 60 % des Randbands). `results.stats.mosaic`
+   (Fläche, Leinwand, Mindesttiefe, Zuschnittsart), Details im Bild-Tab. `skyquality.frame_links` enthält den Ursprung (Matrix
+   Aufnahme → Stack-Raster: Himmelsqualität, Asteroiden), `_dense_ref` rechnet Stack-Sterne zurück. Plate-Solving löst den Stack selbst
+   (Schlüssel `ref_fid|HxW`). Kometenmodus mit einem Mosaik-Stack: Fehler in `comet.json` („braucht einen gewöhnlichen Stack“).
+   **Grenzen:** Aufnahmen brauchen gemeinsame Sterne mit der Referenz (Raster bis ~1 Bildbreite Abstand zur Mitte); die Leinwand steht nach
+   dem ersten Stack fest (später weiter außen liegende Aufnahmen werden abgeschnitten, „Komplett neu stacken“ plant neu); ein bestehender
+   Stack wird erst durch „Komplett neu stacken“ zum Mosaik. Tests `test_mosaic.py` (`demo.generate_mosaic`: 2×2-Raster, Nebel außermittig,
+   Himmel je Aufnahme verschieden).
 6. **Kanäle** (`channels.py`): L/R/G/B/Ha/OIII/SII → RGB, LRGB, RGB+Hα, HOO, SHO oder Mono (Option `palette`).
 
 ## Weitere Bausteine des Stackens (Sensorglühen, Stacking-Stufen, Live-Ansicht)

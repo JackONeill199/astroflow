@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from . import calibration, channels, comet, develop, frame_preview, stackfix, gpu, graxpert, live, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner, stars, trails, tutor
+from . import calibration, channels, comet, develop, frame_preview, stackfix, gpu, graxpert, live, mosaic, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner, stars, trails, tutor
 from ...core.config import Settings, free_ram_mb
 from ...core.errors import user_message
 from . import diskspace
@@ -37,6 +37,8 @@ DEFAULT_OPTIONS = {
     "comet_mode": "auto",       # Kometenmodus: auto (nach Name/Typ) | on | off – nicht „mode“, das heißt bei Aufträgen „develop“
     "comet_name": None,         # Bezeichnung für JPL Horizons, falls der Name keine enthält (z. B. „C/2022 E3“)
     "distortion": "global",     # Verzerrungskorrektur: global = Einstellung (Standard an) | auto | off (registration.distortion_mode)
+    "mosaic": "auto",           # Mosaik (Stackfläche = Hülle aller Aufnahmen): auto (bei stark versetzten Aufnahmen) | on | off
+    "mosaic_crop": "wide",      # Zuschnitt eines Mosaiks: wide (Fläche gegen Tiefe abwägen) | compact (volle Tiefe wie ohne Mosaik)
 }
 GLOW_SAMPLE = 30                # Frames je Nacht für die Glühmessung
 CHECKPOINT_S = 120              # Stack-Zustand spätestens alle 2 min sichern (Wiederaufnahme nach Abbruch)
@@ -688,6 +690,9 @@ class Pipeline:
         n_all = sum(len(w) for w in wanted.values())
         with_comet = comet.active(proj, opt)
         dist = registration.distortion_mode(opt.get("distortion")) == "auto"
+        mos = mosaic.mode(opt.get("mosaic"))
+        if with_comet and mos == "auto":                 # Kometenstack rechnet im Raster des Referenzbilds
+            mos = "off"
         full = progress
         if with_comet:                                   # Sterne-Stack 36–60 %, Kometen-Stack 60–84 %
             progress = lambda f, stage, msg="", _p=full: _p(0.36 + (f - 0.36) * 0.5 if f > 0.36 else f, stage, msg)
@@ -703,7 +708,7 @@ class Pipeline:
                 sub = lambda f, stage, msg="", lo=lo, span=span, b=b: progress(
                     0.36 + 0.48 * (lo + span * (f - 0.36) / 0.48), stage, (f"[{b}] " if b else "") + msg)
                 st = self._stack(project_id, todo or wanted[b], st, lib, cache, scale, sub, ref, save_dir=stack_dir(wd, b),
-                                 stages=stage_dir(wd, b), distortion=dist)
+                                 stages=stage_dir(wd, b), distortion=dist, mosaic_mode=mos)
                 states[b] = st
             done_before += len(wanted[b])
         if not states:
@@ -726,6 +731,9 @@ class Pipeline:
             if len(states) != 1:
                 raise ValueError("Kometenmodus nur für Farbkameras bzw. einen Filter – mehrere Filter werden auf die Sterne gestackt")
             (band, A), = states.items()
+            if A.meta.get("mosaic"):
+                raise ValueError("Der Sterne-Stack ist ein Mosaik – der Kometenmodus braucht einen gewöhnlichen Stack "
+                                 "(Option „Mosaik“ auf „Automatisch“ oder „Aus“ und komplett neu stacken)")
             info.update(self._comet_stack(proj, opt, band, A, by_band[band], lib, cache, scale, offline, progress))
         except Exception as e:
             if resource_error(e):
@@ -949,9 +957,8 @@ class Pipeline:
         except Exception:
             return None
 
-    def distortion_state(self, pid: int) -> bool | None:
-        """Wurde der (Sterne-)Stack mit Verzerrungskorrektur aufgebaut? None = noch kein Stack. Ältere Stacks ohne Marke:
-        mit Einträgen je Aufnahme (`reg`) gemischt/an, sonst aus. Je Stand von state.json gecacht (Ansicht wird gepollt)."""
+    def _stack_hints(self, pid: int) -> dict | None:
+        """Kennzahlen aus state.json des (Sterne-)Stacks für die gepollte Ansicht, je Dateistand gecacht. None = kein Stack."""
         wd = self.s.work_dir / f"p{pid}"
         f = wd / "stack" / "state.json"
         if not f.exists():
@@ -961,16 +968,29 @@ class Pipeline:
             mt = f.stat().st_mtime
         except OSError:
             return None
-        hit = self._hint_cache.get(("dist", str(f)))
+        hit = self._hint_cache.get(("stack", str(f)))
         if hit and hit[0] == mt:
             return hit[1]
         try:
             meta = json.loads(f.read_text(encoding="utf-8"))
-            val = bool(meta.get("distortion", bool(meta.get("reg"))))
+            val = {"distortion": bool(meta.get("distortion", bool(meta.get("reg")))),
+                   "mosaic": {**meta["mosaic"], "canvas": meta.get("canvas")} if meta.get("mosaic") else False}
         except (OSError, ValueError):
             val = None
-        self._hint_cache[("dist", str(f))] = (mt, val)
+        self._hint_cache[("stack", str(f))] = (mt, val)
         return val
+
+    def distortion_state(self, pid: int) -> bool | None:
+        """Wurde der (Sterne-)Stack mit Verzerrungskorrektur aufgebaut? None = noch kein Stack. Ältere Stacks ohne Marke:
+        mit Einträgen je Aufnahme (`reg`) gemischt/an, sonst aus. Je Stand von state.json gecacht (Ansicht wird gepollt)."""
+        h = self._stack_hints(pid)
+        return h["distortion"] if h else None
+
+    def mosaic_state(self, pid: int) -> dict | bool | None:
+        """Ist der (Sterne-)Stack ein Mosaik? dict (mosaic.plan: spread, area, frames, mode + canvas), False = gewöhnlicher
+        Stack, None = noch kein Stack."""
+        h = self._stack_hints(pid)
+        return h["mosaic"] if h else None
 
     def _master(self, project_id: int) -> dict:
         """Gespeicherte Master-Stacks je Filter (None = Farbkamera)."""
@@ -1031,6 +1051,12 @@ class Pipeline:
             palette = "OSC"
             filt = (json.loads(stacked[0]["info"]).get("filter") or "") if stacked else ""
             narrow = opt["narrowband"] if opt["narrowband"] is not None else bool(re.search(r"ha|oiii|duo|dual|nb|lp|lenhance|l-extreme|uv/ir", filt, re.I))
+        mos_info = None
+        if (mst := next(iter(states.values())).meta).get("mosaic"):
+            # Mosaik: Abdeckung so umrechnen, dass die gewählte Mindesttiefe bei 0,5 liegt – Zuschnitt, GraXpert-Lücken,
+            # Stack-Reparatur und Farbkalibrierung arbeiten dann mit ihrer gewohnten Schwelle
+            cov, mos_info = mosaic.effective_cov(cov, mosaic.crop_mode(opt.get("mosaic_crop")))
+            mos_info.update(mst["mosaic"], canvas=mosaic.canvas(mst), bg_match=mst.get("bg_match"))
         hotfix = None
         if palette == "OSC" and mean.shape[0] == 3 and None in states and not states[None].meta.get("defects"):
             # Stack von vor der Fehlerkarte: Hotpixel-Punkte direkt im linearen Stack entfernen (Rohbilder oft gelöscht)
@@ -1046,6 +1072,8 @@ class Pipeline:
         params = {**objects.profile_for(pname), **user}
         if opt.get("star_separation"):
             params["star_separation"] = opt["star_separation"]
+        if mos_info is not None:
+            params["_mosaic"] = True                     # processing: kein Randglühen an den Mosaikrändern
         if params.get("star_separation") == "starnet" and not stars.starnet_path():
             params["star_separation"] = "off"           # Profil „nur StarNet“: ohne StarNet keine eigene Trennung
         gx: dict = {}
@@ -1068,7 +1096,9 @@ class Pipeline:
             mean, gx = graxpert.apply(mean, cov, gmode, float(params.get("ai_denoise", graxpert.DEFAULT_STRENGTH)),
                                       self.s.work_dir / f"p{project_id}" / "graxpert", exe,
                                       log=lambda m: prog(0.05, "Bearbeitung", m), preview=view,
-                                      tag=f"hotfix:{hotfix['key']}" if hotfix and hotfix.get("n") else "",
+                                      tag=" ".join(t for t in (f"hotfix:{hotfix['key']}" if hotfix and hotfix.get("n") else "",
+                                                               # Mosaik: Abdeckung (Lückenfüllung cov ≤ 0,5) hängt an der Mindesttiefe
+                                                               f"mosaic:{mos_info['min_depth']}" if mos_info else "") if t),
                                       smoothing=float(params.get("bge_smoothing", graxpert.DEFAULT_SMOOTHING)))
             params["_ai"] = {k: v for k, v in gx.items() if k in ("bge", "denoise", "smoothing")}
         if mean.shape[0] == 3 and not narrow and params.get("color_calibration", True) and "wb_gains" not in user:
@@ -1112,6 +1142,8 @@ class Pipeline:
             stats["distortion"] = dsum
         if cinfo is not None:
             stats["comet"] = cinfo
+        if mos_info is not None:
+            stats["mosaic"] = mos_info
         stats.update({"profile": pname, "narrowband": narrow, "frames": len(stacked), "exposure_s": exposure,
                       "palette": palette, "bands": band_stats,
                       "nights": sorted({r["night"] for r in stacked if r["night"]})})   # Bild-Tutor: nur Nächte dieses Ergebnisses
@@ -1240,37 +1272,83 @@ class Pipeline:
                 ok = cov > 0.5
                 lum = np.where(ok, lum, np.median(lum[ok]) if ok.any() else 0.0).astype(np.float32)
                 st = quality.detect_stars(lum, max_stars=quality.DENSE_STARS)
-                dense = [[round(float((x + 0.5) / sc - 0.5), 2), round(float((y + 0.5) / sc - 0.5), 2), round(float(f), 1)]
+                ox, oy = mosaic.origin(meta)            # Stack-Raster -> Referenzpixel (Mosaik: Leinwandecke)
+                dense = [[round(float((x + 0.5) / sc - 0.5 + ox), 2), round(float((y + 0.5) / sc - 0.5 + oy), 2), round(float(f), 1)]
                          for x, y, f in zip(st.x, st.y, st.flux)]
             meta["ref_dense"] = dense or meta["ref_stars"]
         return np.array([[s[0], s[1]] for s in meta["ref_dense"]], float).reshape(-1, 2)
 
+    def _transforms(self, rows, ref_stars, ref_id) -> dict:
+        """Transformationen Aufnahme → Referenz aus den gespeicherten Sternlisten (dieselbe Zuordnung wie beim Stacken)."""
+        ref_xy = np.array([[s[0], s[1]] for s in ref_stars], float).reshape(-1, 2)
+
+        def one(r):
+            if r["id"] == ref_id:
+                return r["id"], np.eye(3)
+            tg = np.array([[s[0], s[1]] for s in json.loads(r["metrics"]).get("stars", [])], float).reshape(-1, 2)
+            try:
+                res = registration.find_transform(ref_xy, tg)
+            except Exception:
+                res = None
+            return r["id"], (res[0] if res else None)
+        with ThreadPoolExecutor(max(1, self.s.threads)) as ex:
+            return {f: M for f, M in ex.map(one, rows) if M is not None}
+
+    def _mosaic_plan(self, todo, ref, how, scale):
+        """Mosaik? Transformationen aller Aufnahmen zur Referenz -> mosaic.plan. Bei einem Mosaik rückt die Referenz in die
+        Mitte der Aufnahmen (die äußeren Kacheln teilen sonst kaum Sterne mit ihr). Gibt (Referenz, Plan | None, Ms | None)."""
+        stars_of = lambda r: json.loads(r["metrics"]).get("stars", [])
+        shape = tuple(json.loads(ref["info"])["shape"])[-2:]
+        Ms = self._transforms(todo, stars_of(ref), ref["id"])
+        plan = mosaic.plan(Ms, shape, how, scale)
+        if plan is None:
+            return ref, None, None
+        new = mosaic.center_ref(Ms, shape, [r["id"] for r in todo if len(stars_of(r)) >= 15])
+        if new and new != ref["id"]:
+            ref2 = next(r for r in todo if r["id"] == new)
+            Ms2 = self._transforms(todo, stars_of(ref2), ref2["id"])
+            plan2 = mosaic.plan(Ms2, shape, how, scale)
+            if plan2 is not None and len(Ms2) >= len(Ms):
+                ref, Ms, plan = ref2, Ms2, plan2
+        return ref, plan, Ms
+
     def _stack(self, pid, todo, state, lib, cache, scale, progress, ref_meta: dict | None = None,
                save_dir: Path | None = None, stages: Path | None = None, shifts: dict | None = None,
                mask: np.ndarray | None = None, mark: bool = True, unmasked: np.ndarray | None = None,
-               distortion: bool = False) -> StackState:
+               distortion: bool = False, mosaic_mode: str = "off") -> StackState:
         """shifts: je Frame zusätzliche Verschiebung (Referenzpixel) nach der Sternregistrierung – Kometen-Stack;
         mask: Pixel im Sterne-Raster, die nicht eingehen (Sterne), wird mitverschoben; mark=False: frames.stacked nicht setzen
         (der Kometen-Stack führt seine Aufnahmen nur in state.json).
         distortion: je Aufnahme zusätzlich ein Polynom 2. Ordnung anpassen (registration.fit_distortion) und, wenn es
-        trägt, damit statt mit der Ähnlichkeit warpen. Ergebnis je Aufnahme in meta["reg"] (Restfehler, Paare, Grund)."""
+        trägt, damit statt mit der Ähnlichkeit warpen. Ergebnis je Aufnahme in meta["reg"] (Restfehler, Paare, Grund).
+        mosaic_mode (mosaic.MODES): beim Neuaufbau prüfen, ob die Aufnahmen ein Mosaik bilden – dann ist die Leinwand die
+        Hülle aller Aufnahmen (meta origin/canvas/mosaic), sonst das Referenzbild."""
+        mosaic_ms = None
         if state is None and ref_meta is not None:
             # weiterer Filter: auf die Referenz des ersten Kanals registrieren, Fluss relativ zum eigenen ersten Batch
             i0 = json.loads(todo[0]["info"])
             C = 3 if channels.is_color(i0) else 1
             _, H, W = ref_meta["shape"]
-            state = StackState((C, H * scale, W * scale))
-            state.meta.update({k: ref_meta[k] for k in ("ref_fid", "ref_stars", "scale", "ref_fwhm", "ref_dense") if k in ref_meta},
-                              shape=[C, H, W], flux_k0=None)
+            Hc, Wc = mosaic.canvas(ref_meta)
+            state = StackState((C, Hc * scale, Wc * scale))
+            state.meta.update({k: ref_meta[k] for k in ("ref_fid", "ref_stars", "scale", "ref_fwhm", "ref_dense", "origin", "canvas", "mosaic")
+                               if k in ref_meta}, shape=[C, H, W], flux_k0=None)
         if state is None:
             ref = next((r for r in todo if len(json.loads(r["metrics"]).get("stars", [])) >= 15), None)
             if ref is None:
                 raise ValueError("kein Referenzbild mit genug Sternen")
+            mplan = None
+            if mosaic_mode != "off":
+                progress(0.36, "Stacking", "Lage der Aufnahmen prüfen (Mosaik?)")
+                ref, mplan, mosaic_ms = self._mosaic_plan(todo, ref, mosaic_mode, scale)
             ri = json.loads(ref["info"])
             raw, _ = self._load(ref["path"], ri, lib, ref["night"], cache)
             rgb0 = to_channels(raw, ri["bayerpat"])
             C, H, W = rgb0.shape
-            state = StackState((C, H * scale, W * scale))
+            Hc, Wc = (mplan["canvas"] if mplan else (H, W))
+            state = StackState((C, Hc * scale, Wc * scale))
+            if mplan:
+                state.meta.update(mplan)
             rm = json.loads(ref["metrics"])
             state.meta.update(ref_fid=ref["id"], ref_stars=rm["stars"], scale=scale, shape=[C, H, W],
                               ref_bg=[float(np.median(rgb0[c])) for c in range(C)], ref_noise=rm["noise"],
@@ -1294,11 +1372,20 @@ class Pipeline:
         ref_xy = np.array([[s[0], s[1]] for s in meta["ref_stars"]])
         ref_flux = np.array([s[2] for s in meta["ref_stars"]])
         C, H, W = meta["shape"]
+        Hc, Wc = mosaic.canvas(meta)                    # Leinwand (Mosaik: Hülle aller Aufnahmen, sonst = Referenzbild)
+        ox, oy = mosaic.origin(meta)
+        is_mosaic = bool(meta.get("mosaic"))
+        out_shape = (Hc * scale, Wc * scale)
+        if is_mosaic and not meta.get("frames"):        # Neuaufbau: von der Mitte nach außen (Überlapp für den Hintergrund)
+            if mosaic_ms is None:
+                mosaic_ms = self._transforms(todo, meta["ref_stars"], meta["ref_fid"])
+            pos = {r["id"]: r for r in todo}
+            todo = [pos[f] for f in mosaic.order(mosaic_ms, (H, W), list(pos))]
         # RAM-Budget je Stapel: Einstellung, aber höchstens 1/5 des gerade freien Speichers (doppelte Pufferung +
         # Clipping-Zwischenwerte; andere Programme wie ein geladenes LLM verkleinern den Spielraum)
         free = free_ram_mb()
         budget = min(self.s.batch_mb, max(300, free // 5)) if free else self.s.batch_mb
-        bsz = batch_size_for((C, H * scale, W * scale), budget)
+        bsz = batch_size_for((C, *out_shape), budget)
         g = gpu.engine()                               # Grafikkarte für Ausrichten + Clipping (sonst None = CPU)
 
         def work(r):
@@ -1318,6 +1405,8 @@ class Pipeline:
                 M0 = M                                   # Sternregistrierung ohne Kometenverschiebung
                 if d is not None:
                     M = np.array([[1, 0, d[0]], [0, 1, d[1]], [0, 0, 1]], float) @ M
+                if ox or oy:                             # Mosaik: Leinwandecke liegt bei (ox, oy) im Referenzraster
+                    M = mosaic.shift(ox, oy) @ M
                 raw, _ = self._load(r["path"], info, lib, r["night"], cache)
                 P, rinfo = None, None
                 if dense_ref is not None and r["id"] != meta["ref_fid"]:
@@ -1330,13 +1419,38 @@ class Pipeline:
                     rinfo["poly"] = P is not None
                     if P is not None and d is not None:
                         P = registration.shift_poly(P, d)
+                    if P is not None and (ox or oy):
+                        P = registration.shift_poly(P, (-ox, -oy))
                 img = to_channels(raw, info["bayerpat"])
-                warped, valid = registration.warp(img, M, (H * scale, W * scale), scale, gpu=g, poly=P)
+                fe = None
+                if is_mosaic:
+                    # nur das Rechteck der Aufnahme warpen (die Leinwand ist meist viel größer), dann einsetzen
+                    box = mosaic.footprint(M, (H, W), out_shape, scale)
+                    if box is None:
+                        return r["id"], None, "liegt außerhalb der Mosaikfläche"
+                    y0, y1, x0, x1 = box
+                    sh = (x0 / scale, y0 / scale)
+                    Ms = mosaic.shift(*sh) @ M
+                    Ps = registration.shift_poly(P, (-sh[0], -sh[1])) if P is not None else None
+                    wsub, vsub = registration.warp(img, Ms, (y1 - y0, x1 - x0), scale, gpu=g, poly=Ps)
+                    sub = vsub.ravel()[::7]
+                    if not sub.any():
+                        return r["id"], None, "liegt außerhalb der Mosaikfläche"
+                    bg = np.array([np.median(wsub[c].ravel()[::7][sub]) for c in range(C)])
+                    warped = np.zeros((C, *out_shape), np.float32)
+                    valid = np.zeros(out_shape, bool)
+                    warped[:, y0:y1, x0:x1] = wsub - bg[:, None, None].astype(np.float32)
+                    valid[y0:y1, x0:x1] = vsub
+                    fe = (box, mosaic.feather(M, (H, W), box, scale))
+                    del wsub, vsub
+                else:
+                    warped, valid = registration.warp(img, M, out_shape, scale, gpu=g, poly=P)
                 if mask is not None and d is not None:
                     sm = comet.shift_mask(mask, d[0] * scale, d[1] * scale)
                     valid &= ~(sm & ~unmasked) if unmasked is not None else ~sm
-                sub = valid.ravel()[::7]
-                bg = np.array([np.median(warped[c].ravel()[::7][sub]) for c in range(C)])
+                if not is_mosaic:
+                    sub = valid.ravel()[::7]
+                    bg = np.array([np.median(warped[c].ravel()[::7][sub]) for c in range(C)])
                 ratio = ref_flux[pairs[:, 1]] / np.maximum(tf[pairs[:, 0]], 1e-6)
                 fw = max(m["fwhm"] or meta["ref_fwhm"], 1.0)
                 lines = m.get("trail_lines")
@@ -1345,8 +1459,10 @@ class Pipeline:
                     lines = trails.to_full(trails.find(luma), s_an)
                 # Spuren: Lage im Ausgaberaster über M; mit Polynom zusätzlich Aufnahme-Linien + Polynom (Maske wie der Warp)
                 tl = {"ref": trails.transform(lines, M, scale), "frame": lines, "P": P} if lines else None
+                if is_mosaic:                            # Hintergrund schon beim Einsetzen abgezogen (kein zweites Leinwand-Array)
+                    return r["id"], (warped, valid, float(np.median(ratio)), m["noise"], fw, rinfo, tl, fe), None
                 return r["id"], ((warped - bg[:, None, None]).astype(np.float32), valid, float(np.median(ratio)), m["noise"], fw,
-                                 rinfo, tl), None
+                                 rinfo, tl, fe), None
             except Exception as e:
                 return r["id"], None, f"Fehler: {e}"
 
@@ -1374,6 +1490,20 @@ class Pipeline:
                     meta["flux_k0"] = float(np.median(kr))
                 k = np.clip(kr / meta.get("flux_k0", 1.0), 0.4, 2.5)
                 X *= k[:, None, None, None].astype(np.float32)
+                Fm = None
+                if is_mosaic:
+                    # Hintergrund am bisherigen Stack ausrichten statt am eigenen Median (Kacheln mit viel/wenig Nebel)
+                    step = max(1, int(math.ceil(math.sqrt(out_shape[0] * out_shape[1] / 1.5e6))))
+                    mref, mok = mosaic.reference(state, step)
+                    how = mosaic.match_background(X, V, mref, mok, step)
+                    bgm = meta.setdefault("bg_match", {"plane": 0, "offset": 0, "median": 0})
+                    for h in how:
+                        bgm[h or "median"] += 1
+                    del mref, mok
+                    Fm = np.full(V.shape, mosaic.FEATHER_MIN, np.float32)
+                    for b, (_, dd) in enumerate(good):
+                        (y0, y1, x0, x1), fa = dd[7]
+                        Fm[b, y0:y1, x0:x1] = fa
                 noise = np.maximum(np.array([d[3] for _, d in good]) * k, 1e-6)
                 fw = np.array([d[4] for _, d in good])
                 ws = (1 / noise**2 * (meta["ref_fwhm"] / fw) ** 2).astype(np.float32)
@@ -1395,10 +1525,10 @@ class Pipeline:
                             m, c = snaps[t - n0]
                             run.stack_frame(m, n=t, exposure=e, band=band, cov=c)
                     run.later(early_frames)
-                state.add_batch(X, V, ws, workers=self.s.threads, prefixes=cut.values(), gpu=g)
+                state.add_batch(X, V, ws, workers=self.s.threads, prefixes=cut.values(), gpu=g, F=Fm)
                 for b, mb in masked.items():             # ausgeblendete Spur zählt für die Abdeckung weiter
                     state.swm += ws[b] * mb
-                del X, V, masked
+                del X, V, masked, Fm
                 exp0 = meta["exposure"]
                 for (fid, d), w in zip(good, ws):
                     if reg is not None and d[5] is not None:

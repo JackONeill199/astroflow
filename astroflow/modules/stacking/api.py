@@ -559,6 +559,7 @@ def build_router(eng: Engine) -> APIRouter:
         v["hotpixel_hint"] = not v.get("imported") and eng.pl.hotpixel_hint(pid)
         # Verzerrungskorrektur: globaler Modus (für „Wie global“) und Modus, mit dem der Stack aufgebaut wurde
         v["distortion"] = {"global": registration.distortion_mode(None), "stack": eng.pl.distortion_state(pid)}
+        v["mosaic"] = eng.pl.mosaic_state(pid)          # Mosaik-Stack (Fläche, Streuung) | False | None = noch kein Stack
         v["profiles"] = list(objects.PROFILES)
         v["palettes"] = list(channels.PALETTES)
         v["kind_labels"] = objects.KIND_LABEL

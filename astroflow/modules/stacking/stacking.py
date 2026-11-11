@@ -36,11 +36,20 @@ def _median0(X: np.ndarray) -> np.ndarray:
 
 def _masked_median(X: np.ndarray, valid: np.ndarray) -> np.ndarray:
     """Median über Achse 0 nur gültiger Werte. Schnell: Median über alle Frames für voll gültige Pixel,
-    nanmedian nur für die (wenigen) Randpixel mit teilweiser Abdeckung."""
+    nanmedian nur für die (wenigen) Randpixel mit teilweiser Abdeckung. Viele teilbedeckte Pixel (Mosaik: Kacheln
+    eines Stapels überlappen nur teilweise): sortieren (ungültige als +inf ans Ende) und die Mitte je Pixel greifen –
+    nanmedian wäre dort um ein Vielfaches langsamer."""
     med = _median0(X)
     part = ~valid.all(0)
     if part.any():
         idx = np.nonzero(part)
+        if len(idx[0]) > 0.2 * part.size:
+            sub = np.sort(np.where(valid[(slice(None), *idx)], X[(slice(None), *idx)], np.inf), axis=0)
+            n = valid[(slice(None), *idx)].sum(0)
+            lo = np.take_along_axis(sub, np.maximum((n - 1) // 2, 0)[None], 0)[0]
+            hi = np.take_along_axis(sub, np.maximum(n // 2, 0)[None], 0)[0]
+            med[idx] = np.where(n > 0, (lo + hi) / 2, np.nan) if med.dtype.kind == "f" else (lo + hi) / 2
+            return med
         sub = np.where(valid[(slice(None), *idx)], X[(slice(None), *idx)], np.nan)
         med[idx] = np.nanmedian(sub, axis=0)
     return med
@@ -128,13 +137,32 @@ class StackState:
             return None
 
     # ---- Akkumulieren ------------------------------------------------------ #
-    def add_batch(self, X: np.ndarray, V: np.ndarray, w: np.ndarray, workers: int = 1, prefixes=(), gpu=None) -> int:
+    def add_batch(self, X: np.ndarray, V: np.ndarray, w: np.ndarray, workers: int = 1, prefixes=(), gpu=None,
+                  F: np.ndarray | None = None) -> int:
         """X (B,C,H,W) normierte Frames, V (B,H,W) gültig, w (B,) Gewichte. Gibt Zahl abgelehnter Pixel zurück.
         Pixel sind unabhängig -> Verarbeitung in Zeilenstreifen, parallel auf `workers` Threads (numpy gibt den GIL frei).
         prefixes: Stapelanteile k, für die der Zwischenstand „bisher + erste k Frames“ in self.snaps[k] = (Mittel, Gewichtsminimum)
         landet (Stacking-Stufen; die Clipping-Maske stammt aus dem ganzen Stapel).
-        `gpu` (gpu.Engine): Clipping und Aufsummieren auf der Grafikkarte, bei Fehlern CPU; Stapel mit Stufen rechnet die CPU."""
+        `gpu` (gpu.Engine): Clipping und Aufsummieren auf der Grafikkarte, bei Fehlern CPU; Stapel mit Stufen rechnet die CPU.
+        F (B,H,W): zusätzliches Gewicht je Pixel (Mosaik: weiche Kachelränder, mosaic.feather) – rechnet die CPU."""
         self.snaps = {k: (np.empty(self.shape, np.float32), np.empty(self.shape[1:], np.float32)) for k in prefixes}
+        xs = slice(None)
+        if F is not None:
+            # Mosaik: nur das Rechteck rechnen, das die Aufnahmen des Stapels treffen (Rest der Leinwand bleibt unberührt)
+            hit = V.any(0)
+            if not hit.any():
+                return 0
+            r, c = np.nonzero(hit.any(1))[0], np.nonzero(hit.any(0))[0]
+            y0, y1, x0, x1 = int(r[0]), int(r[-1]) + 1, int(c[0]), int(c[-1]) + 1
+            if self.snaps:                            # Zwischenstand außerhalb des Rechtecks = bisheriger Stack
+                cur, cmin = self.swx / np.maximum(self.sw, 1e-9), self.sw.min(0)
+                for m, cc in self.snaps.values():
+                    m[:], cc[:] = cur, cmin
+                del cur, cmin
+            X, V, F = X[:, :, y0:y1, x0:x1], V[:, y0:y1, x0:x1], F[:, y0:y1, x0:x1]
+            xs, yoff = slice(x0, x1), y0
+        else:
+            yoff = 0
         H = X.shape[2]
         w = w.astype(np.float32)
         # globale Größen einmal vorab (Streifen sollen sich nicht gegenseitig beeinflussen)
@@ -147,7 +175,7 @@ class StackState:
             sd = np.sqrt(np.clip(self.swx2[:, s] / np.maximum(sw, 1e-9) - m**2, 0, None))
             if (sw > 0).any():
                 sd_floor = 0.5 * float(np.median(sd[sw > 0]))
-        if gpu is not None and not gpu.broken and X.shape[0] <= 32 and not self.snaps:
+        if gpu is not None and not gpu.broken and X.shape[0] <= 32 and not self.snaps and F is None:
             try:
                 return gpu.accumulate(self, X, V, w, check, sd_floor)
             except Exception as e:
@@ -157,34 +185,37 @@ class StackState:
 
         def strip(i):
             ys = slice(bounds[i], bounds[i + 1])
-            return self._add_rows(X[:, :, ys], V[:, ys], w, ys, check, sd_floor)
+            return self._add_rows(X[:, :, ys], V[:, ys], w, slice(bounds[i] + yoff, bounds[i + 1] + yoff), check, sd_floor,
+                                  None if F is None else F[:, ys], xs)
 
         if n == 1:
             return strip(0)
         with ThreadPoolExecutor(n) as ex:
             return sum(ex.map(strip, range(n)))
 
-    def _add_rows(self, X, V, w, ys, check, sd_floor) -> int:
+    def _add_rows(self, X, V, w, ys, check, sd_floor, F=None, xs=slice(None)) -> int:
         keep = clip_batch(X, V)
         if check:
             # zusätzlich gegen bestehenden Stack prüfen (Satelliten/Cosmics in kleinen Batches)
-            sw = self.sw[:, ys]
-            mean = self.swx[:, ys] / np.maximum(sw, 1e-9)
-            sd = np.maximum(np.sqrt(np.clip(self.swx2[:, ys] / np.maximum(sw, 1e-9) - mean**2, 0, None)), sd_floor)
+            sw = self.sw[:, ys, xs]
+            mean = self.swx[:, ys, xs] / np.maximum(sw, 1e-9)
+            sd = np.maximum(np.sqrt(np.clip(self.swx2[:, ys, xs] / np.maximum(sw, 1e-9) - mean**2, 0, None)), sd_floor)
             keep &= ~((sw > 0)[None] & (np.abs(X - mean[None]) > 5 * sd[None]))
         wk = keep * w[:, None, None, None]
+        if F is not None:
+            wk = wk * F[:, None]
         Xk = np.where(keep, X, 0).astype(np.float32)
         wx = wk * Xk
         if self.snaps:                                # Zwischenstände über laufende Summen (linear statt je k neu summiert)
             cw, cwx = np.cumsum(wk, 0, dtype=np.float32), np.cumsum(wx, 0, dtype=np.float32)
             for k, (m, c) in self.snaps.items():
-                sw = self.sw[:, ys] + cw[k - 1]
-                m[:, ys] = (self.swx[:, ys] + cwx[k - 1]) / np.maximum(sw, 1e-9)
-                c[ys] = sw.min(0)
+                sw = self.sw[:, ys, xs] + cw[k - 1]
+                m[:, ys, xs] = (self.swx[:, ys, xs] + cwx[k - 1]) / np.maximum(sw, 1e-9)
+                c[ys, xs] = sw.min(0)
             del cw, cwx
-        self.sw[:, ys] += wk.sum(0)
-        self.swx[:, ys] += wx.sum(0)
-        self.swx2[:, ys] += (wx * Xk).sum(0)
+        self.sw[:, ys, xs] += wk.sum(0)
+        self.swx[:, ys, xs] += wx.sum(0)
+        self.swx2[:, ys, xs] += (wx * Xk).sum(0)
         return int(V.sum() * X.shape[1] - keep.sum())
 
     # ---- Ergebnis ---------------------------------------------------------- #

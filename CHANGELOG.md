@@ -3,6 +3,12 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.61.0 – 11.11.2026
+
+### Neu
+- Mosaik-Unterstützung: Verschiebt das Teleskop das Bildfeld während der Aufnahme (z. B. Stellina-Mosaik oder Nachführsprünge), erkennt AstroFlow das automatisch und setzt alle Felder auf einer größeren Fläche zusammen, statt das Bild auf den gemeinsamen Kern zuzuschneiden. Hintergründe werden angeglichen, Übergänge weich geblendet.
+- Neue Projektoptionen: Mosaik automatisch/ein/aus und Zuschnitt groß (alles mit Daten) oder kompakt (nur gut abgedeckte Fläche).
+
 ## 0.60.0 – 11.11.2026
 
 ### Neu
