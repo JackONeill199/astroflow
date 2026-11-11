@@ -242,7 +242,7 @@ def _astap(cfg: SolverConfig, img: Path, hw, hints: dict) -> fits.Header:
     ini = img.with_suffix(".ini")
     ini.unlink(missing_ok=True)
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=cfg.timeout)
+        r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=cfg.timeout)   # ASTAP schreibt cp1252
     except subprocess.TimeoutExpired:
         raise SolveError(f"ASTAP: Zeitüberschreitung nach {cfg.timeout} s")
     if not ini.exists():
