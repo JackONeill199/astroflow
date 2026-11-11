@@ -3,7 +3,7 @@
    Backend: core/setup.py (/api/setup…, /api/system/…). */
 (() => {
   const TELESCOPES = [['stellina', 'Stellina'], ['vespera', 'Vespera'], ['seestar', 'Seestar'], ['dwarf', 'Dwarf'], ['andere', 'Andere Kamera']];
-  const DB_FOR = { andere: 'd50' };
+  const dbFor = (list) => list.includes('andere') ? 'd50' : 'd05';   // Gesamtempfehlung (wie core/setup.py → recommended_db)
   const sizeOf = (b) => b == null ? '–' : b >= 1e12 ? (b / 1e12).toFixed(1).replace('.', ',') + ' TB' : Math.round(b / 1e9) + ' GB';
 
   async function waitForServer(msgEl) {
@@ -40,19 +40,24 @@
     host.className = 'cmp-list';
     host.innerHTML = '<div class="skel" style="height:8rem"></div>';
     const row = (c) => {
-      const [kind, label] = STATE[c.state] || ['', c.state];
       const t = c.task, busy = t?.state === 'running';
+      const queued = c.pending && c.state !== 'installed' && !busy && !(t?.state === 'error') && data.queue_active;
+      const failed = c.pending && c.state !== 'installed' && t?.state === 'error';
+      let [kind, label] = STATE[c.state] || ['', c.state];
+      if (busy) [kind, label] = ['acc', 'wird installiert'];
+      else if (queued) [kind, label] = ['acc', c.queue_pos === 1 ? 'wartet – als Nächstes' : `wartet – Platz ${c.queue_pos}`];
       const btns = c.id === 'starnet'
         ? `<a class="btn ghost sm" href="#/settings/stacking" data-local-only>ZIP einspielen</a>`
-        : c.state === 'unsupported' || c.can_install === false ? ''
+        : c.state === 'unsupported' || c.can_install === false || queued ? ''
         : `${c.state === 'installed' ? `<button class="btn ghost sm" data-cmp="${c.id}" data-force="1" data-local-only ${busy ? 'disabled' : ''}>Reparieren</button>`
-            : `<button class="btn sm" data-cmp="${c.id}" data-local-only ${busy ? 'disabled' : ''}>${icon('down')}Installieren</button>`}
+            : `<button class="btn sm" data-cmp="${c.id}" data-local-only ${busy ? 'disabled' : ''}>${icon('down')}${failed ? 'Erneut versuchen' : 'Installieren'}</button>`}
            ${c.can_remove ? `<button class="btn ghost sm" data-rm="${c.id}" data-local-only ${busy ? 'disabled' : ''}>Entfernen</button>` : ''}`;
       return `<div class="cmp-row" data-id="${c.id}"><div class="cmp-main"><b>${esc(c.title)}</b> <span class="chip ${kind}">${label}</span>
           ${c.version ? `<span class="mut sm">${esc(c.version)}</span>` : ''}${c.pending && c.state !== 'installed' ? ' <span class="chip acc">vom Installer vorgemerkt</span>' : ''}
           <div class="mut sm">${esc(c.what)}${c.size_mb ? ` · ~${fsize(c.size_mb)}` : ''}</div>
           <div class="dim sm">${esc(c.license)} · <a href="${esc(c.source)}" target="_blank" rel="noopener">${c.id === 'graxpert' ? 'Quellcode' : 'Quelle'}</a></div>
-          ${c.detail ? `<div class="dim sm cmp-detail">${esc(c.detail)}</div>` : ''}${taskLine(t)}</div>
+          ${queued ? `<div class="mut sm cmp-detail">Wird automatisch installiert, sobald die Komponenten davor fertig sind – du musst nichts anklicken.</div>` : ''}
+          ${c.detail && !queued ? `<div class="dim sm cmp-detail">${esc(c.detail)}</div>` : ''}${taskLine(t)}</div>
         <div class="cmp-acts">${btns}</div></div>`;
     };
     const paint = () => { host.innerHTML = data.items.filter(c => !skip.includes(c.id)).map(row).join(''); };
@@ -87,11 +92,13 @@
   async function setupView(el) {
     crumbs([['Einrichtung']]);
     let s = await api('/setup'), sites = await api('/sites?nights=false').catch(() => ({ list: [] }));
-    let timer = null, db = null;
+    let timer = null, db = null, saveRev = 0;
+    const busyNow = () => Object.values(s.tasks || {}).some(t => t.state === 'running') || !!s.components?.queue_active;
     const paint = () => {
-      const tel = s.telescope, a = s.astap, t = s.tasks || {};
-      db = db || DB_FOR[tel] || 'd05';
+      const tel = s.telescopes || [], a = s.astap, t = s.tasks || {};
+      db = db || dbFor(tel);
       const astapOk = a.path && a.databases.length;
+      const bg = busyNow();
       const cloud = s.data.cloud ? `<div class="notice"><div><b>Liegt in ${esc(s.data.cloud)}</b><div class="mut sm">Stacks und Zwischenstände sind schnell viele GB und würden ständig synchronisiert. Besser einen Ordner außerhalb wählen.</div></div></div>` : '';
       const low = s.data.free != null && s.data.free < 20e9 ? `<p class="warn sm">Auf diesem Laufwerk sind nur ${sizeOf(s.data.free)} frei – für Stacks besser 20 GB oder mehr.</p>` : '';
       el.innerHTML = `<div class="pagehead"><div><h1>Einrichtung</h1><p class="mut">Ein paar Angaben, dann verarbeitet AstroFlow deine Aufnahmen automatisch. Alles lässt sich später unter Einstellungen ändern.</p></div></div>
@@ -106,8 +113,9 @@
           : `<p class="mut sm">Bei dieser Instanz fest vorgegeben (<code>--data</code> bzw. <code>ASTROFLOW_DATA</code>).</p>`}
         </li>
         <li class="panel su-step"><h2>Teleskop</h2>
-          <p class="mut sm">Bestimmt, welche Sterndatenbank fürs Plate-Solving passt. Die Aufnahmen selbst erkennt AstroFlow am Dateikopf.</p>
-          <div class="seg" id="suTel">${TELESCOPES.map(([v, l]) => `<button data-v="${v}" class="${v === tel ? 'on' : ''}">${l}</button>`).join('')}</div>
+          <p class="mut sm">Bestimmt, welche Sterndatenbank fürs Plate-Solving passt. Mehrere Geräte sind möglich. Die Aufnahmen selbst erkennt AstroFlow am Dateikopf.</p>
+          <div class="seg" id="suTel">${TELESCOPES.map(([v, l]) => `<button data-v="${v}" aria-pressed="${tel.includes(v)}" class="${tel.includes(v) ? 'on' : ''}">${l}</button>`).join('')}</div>
+          ${tel.length ? `<p class="mut sm su-why">Empfehlung: Sterndatenbank ${dbFor(tel).toUpperCase()}${tel.length > 1 ? ' (für alle gewählten Geräte zusammen)' : ''}.</p>` : ''}
         </li>
         <li class="panel su-step"><h2>Standort</h2>
           ${sites.list?.length ? `<p class="sm">${icon('check')} ${sites.list.length === 1 ? `Ort „${esc(sites.list[0].name)}“ eingetragen.` : `${sites.list.length} Orte eingetragen.`}</p>`
@@ -145,16 +153,18 @@
           </dl>
         </li>
       </ol>
-      <div class="su-foot"><button class="btn" id="suDone">${icon('check')}${s.done ? 'Fertig' : 'Einrichtung abschließen'}</button></div>`;
+      <div class="su-foot">${bg ? `<p class="mut sm su-bg">${icon('down')} Downloads laufen im Hintergrund weiter – du kannst abschließen. Fortschritt unter <a href="#/activity">Aufträge</a>.</p>` : ''}<button class="btn" id="suDone">${icon('check')}${s.done ? 'Fertig' : 'Einrichtung abschließen'}</button></div>`;
     };
     const comps = document.createElement('div');
     componentsPanel(comps, { skip: ['astap'] });
     const repaint = () => { paint(); $('#suCompSlot', el)?.replaceWith(comps); };
     const refresh = async () => {
       if (!el.isConnected) return stop();
-      s = await api('/setup').catch(() => s);
+      const rev = saveRev, fresh = await api('/setup').catch(() => s);
+      if (rev !== saveRev) return;                    // Wahl wurde währenddessen gespeichert: veraltete Antwort verwerfen
+      s = fresh;
       repaint();
-      if (!Object.values(s.tasks || {}).some(t => t.state === 'running')) stop();
+      if (!busyNow()) stop();
     };
     const stop = () => { clearInterval(timer); timer = null; };
     const watch = () => { if (!timer) timer = setInterval(refresh, 1200); };
@@ -169,12 +179,21 @@
       try {
         if (b.id === 'suDir') folderDialog(s.data.path, (p) => changeDir(p), { title: 'Datenordner wählen', ok: 'Diesen Ordner verwenden', hint: 'Ein leerer oder neuer Ordner auf einem Laufwerk mit viel Platz – nicht in OneDrive/Dropbox.' });
         else if (b.id === 'suDirDef') changeDir(s.default_data);
-        else if (b.closest('#suTel')) { s = await send('/setup', { telescope: b.dataset.v }); db = DB_FOR[b.dataset.v] || 'd05'; repaint(); }
+        else if (b.closest('#suTel')) {
+          const cur = s.telescopes || [], v = b.dataset.v;
+          saveRev++;
+          s = await send('/setup', { telescopes: cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v] });
+          saveRev++;
+          db = dbFor(s.telescopes || []); repaint();
+        }
         else if (b.closest('#suDb')) { db = b.dataset.v; repaint(); }
         else if (b.id === 'suAstap') { await send('/components/install', { id: 'astap', option: db }); await refresh(); watch(); }
         else if (b.id === 'suDemo') { await send('/setup/demo'); await refresh(); watch(); }
         else if (b.id === 'suFw') { const r = await send('/setup/firewall'); toast(r.detail, 'ok'); }
-        else if (b.id === 'suDone') { await send('/setup', { done: true }); location.hash = s.demo.exists ? '#/bilder' : '#/'; }
+        else if (b.id === 'suDone') {
+          const bg = busyNow();
+          await send('/setup', { done: true });
+          if (bg) toast('Downloads laufen im Hintergrund weiter – Fortschritt unter Aufträge.', 'ok', { label: 'Aufträge', href: '#/activity' }); location.hash = s.demo.exists ? '#/bilder' : '#/'; }
       } catch (err) { toast(err.message, 'err'); }
     };
     el.onchange = async (e) => {
@@ -187,7 +206,7 @@
       } catch (err) { toast(err.message, 'err'); }
     };
     repaint();
-    if (Object.values(s.tasks || {}).some(t => t.state === 'running')) watch();
+    if (busyNow()) watch();
     return { destroy: () => { stop(); comps._stop?.(); } };
   }
 

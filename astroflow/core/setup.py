@@ -35,6 +35,19 @@ from . import components as comp
 TELESCOPES = {   # Auswahl im Assistenten → empfohlene Sterndatenbank (Bildfeld ≥ 0,6° → D05)
     "stellina": "d05", "vespera": "d05", "seestar": "d05", "dwarf": "d05", "andere": "d50",
 }
+RANK = {"astap": 0, "graxpert": 1, "gpu": 2, "skytrace": 3, "demo": 9}   # Reihenfolge der Installer-Aufträge
+
+
+def ranked(pend: list[str]) -> list[str]:
+    """Aufträge in der Reihenfolge, in der `run_order` sie abarbeitet."""
+    return sorted(pend, key=lambda x: RANK.get(x.split(":")[0], 5))
+
+
+def recommended_db(telescopes: list[str]) -> str:
+    """Gesamtempfehlung der Sterndatenbank: sobald ein gewähltes Gerät D50 braucht (kleines Bildfeld), D50; sonst D05."""
+    return "d50" if any(TELESCOPES.get(t) == "d50" for t in telescopes) else "d05"
+
+
 TASK_NAMES = {"astap": "ASTAP + Sterndatenbank", "demo": "Demo-Aufnahmen", "gpu": "GPU-Beschleunigung",
               "graxpert": "GraXpert", "skytrace": "SkyTrace-Analyse-Engine"}
 
@@ -81,6 +94,15 @@ class Setup:
         self.tasks: dict[str, dict] = {}
         self._lock = threading.Lock()
         self._stop = threading.Event()
+        self.order_active = False     # `run_order` arbeitet den Installer-Auftrag gerade ab
+
+    def telescopes(self) -> list[str]:
+        """Gewählte Teleskope; ältere Stände speicherten nur einen Einzelwert (`telescope`)."""
+        sec = self.ctx.store.get("setup")
+        lst = sec.get("telescopes")
+        if not isinstance(lst, list):
+            lst = [sec["telescope"]] if sec.get("telescope") else []
+        return [t for t in lst if isinstance(t, str) and t in TELESCOPES]
 
     # ---- Zustand ------------------------------------------------------------
     @property
@@ -100,7 +122,8 @@ class Setup:
         demo = st.input_dir / "demo"
         return {
             "pending": bool(self.launched and not sec.get("done")),
-            "done": bool(sec.get("done")), "launched": self.launched, "telescope": sec.get("telescope") or "",
+            "done": bool(sec.get("done")), "launched": self.launched, "telescope": (self.telescopes() or [""])[0],
+            "telescopes": self.telescopes(),
             "data": folder_info(st.data_dir), "default_data": str(launcher.default_data_dir()),
             "config": str(launcher.config_path()) if self.launched else None,
             "drives": drives(), **self.lan_state(), "port": launcher.port(),
@@ -127,8 +150,13 @@ class Setup:
 
     def save(self, body: dict) -> dict:
         vals = {}
-        if "telescope" in body:
-            vals["telescope"] = str(body["telescope"] or "")[:40]
+        if "telescopes" in body or "telescope" in body:
+            raw = body["telescopes"] if "telescopes" in body else [body["telescope"]]
+            if isinstance(raw, str):
+                raw = [raw]
+            lst = list(dict.fromkeys(str(t)[:40] for t in (raw or []) if str(t) in TELESCOPES))
+            vals["telescopes"] = lst
+            vals["telescope"] = lst[0] if lst else ""        # Einzelwert für ältere Stände
         if "done" in body:
             vals["done"] = bool(body["done"])
         if vals:
@@ -152,7 +180,7 @@ class Setup:
                 # Einrichtung im neuen Ordner fortsetzen (Teleskopwahl mitnehmen)
                 from .store import SettingsStore
                 SettingsStore(new / "settings.json").update("setup", {"telescope": self.ctx.store.get("setup").get("telescope"),
-                                                                       "done": False})
+                                                                       "telescopes": self.telescopes(), "done": False})
                 launcher.write_config({"data_dir": str(new.resolve())})
                 restart, target = True, new.resolve()
         if "lan" in body and self.launched and bool(body["lan"]) != bool(launcher.read_config().get("lan")):
@@ -195,12 +223,18 @@ class Setup:
 
     def components(self) -> dict:
         items = comp.status(self._solver_cfg(), self._skytrace_health())
-        pend = comp.take_order() if self.launched else []
+        pend = ranked(comp.take_order()) if self.launched else []
+        names = [x.split(":")[0] for x in pend]
+        installed = {c["id"] for c in items if c["state"] == "installed"}
+        waiting = [n for n in names if (self.tasks.get(n) or {}).get("state") not in ("running", "error") and n not in installed]
         for c in items:
             c["task"] = self.tasks.get(c["id"])
-            c["pending"] = any(x.split(":")[0] == c["id"] for x in pend)
-        return {"items": items, "pending": pend, "tools_dir": str(comp.tools_dir()),
-                "telescope_db": TELESCOPES.get(self.ctx.store.get("setup").get("telescope") or "", "d05")}
+            c["pending"] = c["id"] in names
+            # Platz in der Warteschlange (1 = als Nächstes); 0 = nicht in der Schlange oder läuft schon
+            c["queue_pos"] = waiting.index(c["id"]) + 1 if self.order_active and c["id"] in waiting else 0
+        running = next((n for n in names if (self.tasks.get(n) or {}).get("state") == "running"), None)
+        return {"items": items, "pending": pend, "queue_active": self.order_active, "queue_running": running,
+                "tools_dir": str(comp.tools_dir()), "telescope_db": recommended_db(self.telescopes())}
 
     def install_component(self, name: str, option: str | None = None, force: bool = False):
         if name == "demo":
@@ -219,6 +253,9 @@ class Setup:
 
     def _component_job(self, prog, name, option, force) -> str:
         msg = comp.install(name, prog, option, force)
+        for item in list(comp.take_order()) if self.launched else []:
+            if item.split(":")[0] == name:
+                comp.done_order(item)                       # manuell installiert → nicht noch einmal aus der Schlange
         if name == "skytrace" and self.app_state.modules.get("skytrace"):
             try:
                 self.app_state.modules["skytrace"].check_engine()      # Engine-Zustand sofort neu prüfen
@@ -239,26 +276,32 @@ class Setup:
         die Demo kommt zuletzt, damit sie GraXpert und die SkyTrace-Engine schon nutzt."""
         if not self.launched or os.environ.get("ASTROFLOW_COMPONENTS_AUTO") == "0":
             return
-        pend = comp.take_order()
-        if not pend:
+        if not comp.take_order():
             return
-        rank = {"astap": 0, "graxpert": 1, "gpu": 2, "skytrace": 3, "demo": 9}
-        for item in sorted(pend, key=lambda x: rank.get(x.split(":")[0], 5)):
-            if self._stop.is_set():
-                return
-            name, _, opt = item.partition(":")
-            if name == "demo" and (self.ctx.settings.input_dir / "demo").exists():
-                comp.done_order(item)
-                continue
-            try:
-                self.install_component(name, opt or None)
-            except HTTPException as e:
-                self.tasks[name] = {"state": "error", "detail": str(e.detail), "started": time.time(), "finished": time.time()}
-                continue
-            while (self.tasks.get(name) or {}).get("state") == "running" and not self._stop.wait(1):
-                pass
-            if (self.tasks.get(name) or {}).get("state") == "done":
-                comp.done_order(item)
+        self.order_active = True
+        try:
+            for item in ranked(comp.take_order()):
+                if self._stop.is_set():
+                    return
+                if item not in comp.take_order():            # inzwischen von Hand erledigt
+                    continue
+                name, _, opt = item.partition(":")
+                if name == "demo" and (self.ctx.settings.input_dir / "demo").exists():
+                    comp.done_order(item)
+                    continue
+                if (self.tasks.get(name) or {}).get("state") != "running":       # läuft sie schon (Klick), nur abwarten
+                    try:
+                        self.install_component(name, opt or None)
+                    except HTTPException as e:
+                        if (self.tasks.get(name) or {}).get("state") != "running":
+                            self.tasks[name] = {"state": "error", "detail": str(e.detail), "started": time.time(), "finished": time.time()}
+                            continue
+                while (self.tasks.get(name) or {}).get("state") == "running" and not self._stop.wait(1):
+                    pass
+                if (self.tasks.get(name) or {}).get("state") == "done":
+                    comp.done_order(item)
+        finally:
+            self.order_active = False
 
     # Rückwärtskompatibel (Assistent 0.33)
     def install_astap(self, db: str):

@@ -21,7 +21,8 @@
 .su-extras dd { margin: 0; min-width: 0 }
 .su-extras .btn { margin: 0.25rem 0 0 }
 .su-row { padding: 0; border: 0 }
-.su-foot { display: flex; justify-content: flex-end; margin: 0.5rem 0 2rem }
+.su-foot { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 0.75rem 1.25rem; margin: 0.5rem 0 2rem }
+.su-foot .su-bg { margin: 0; flex: 1 1 18rem; text-align: right }
 @media (max-width: 600px) {
   .su-step { padding-left: 1rem }
   .su-step::before { position: static; display: inline-grid; margin-bottom: 0.5rem }
