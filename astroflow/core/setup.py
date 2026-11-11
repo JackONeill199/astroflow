@@ -254,7 +254,8 @@ class Setup:
     def _component_job(self, prog, name, option, force) -> str:
         msg = comp.install(name, prog, option, force)
         for item in list(comp.take_order()) if self.launched else []:
-            if item.split(":")[0] == name:
+            n, _, o = item.partition(":")
+            if n == name and (not o or o == (option or "")):        # nur die tatsächlich installierte Datenbank-Option
                 comp.done_order(item)                       # manuell installiert → nicht noch einmal aus der Schlange
         if name == "skytrace" and self.app_state.modules.get("skytrace"):
             try:

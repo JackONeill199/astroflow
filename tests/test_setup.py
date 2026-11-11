@@ -530,3 +530,13 @@ def test_engine_ein_pip_lauf_mit_cpu_index(home, monkeypatch):
     assert len(calls) == 1
     args = calls[0]
     assert args[args.index("--index-url") + 1] == comp.TORCH_CPU_INDEX and "--extra-index-url" in args and "-r" in args
+
+
+def test_manuelle_installation_streicht_nur_passende_option(home, monkeypatch):
+    home.mkdir(parents=True, exist_ok=True)
+    comp.order_path().write_text("astap:d05\nastap:d50\n", encoding="utf-8")
+    c = client(home / "Daten", True, monkeypatch)
+    setup = c.app.state.setup
+    monkeypatch.setattr(comp, "install", lambda *a, **k: "ok")
+    setup._component_job(lambda f, d: None, "astap", "d05", False)
+    assert launcher.read_config()["components_pending"] == ["astap:d50"]
