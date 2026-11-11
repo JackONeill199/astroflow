@@ -105,10 +105,14 @@ def test_select_frames_tail_rejection_capped():
     assert "f24" in bad and "f0" not in bad
 
 
-def test_select_frames_ignores_old_analyses_without_tail_profile():
+def test_select_frames_mixed_old_and_new_analyses():
+    # Gemischte Serie: ältere Analysen ohne Zusatzmetrik bleiben, neu analysierte Schweifbilder fliegen trotzdem heraus
     metrics = _metrics(20, {2})
-    del metrics["f5"]["tail_profile_stars"]                      # ältere Analyse ohne Zusatzmetrik
-    assert all(ok for ok, _, _ in quality.select_frames(metrics).values())
+    for i in range(10, 20):
+        metrics[f"f{i}"] = {k: v for k, v in metrics[f"f{i}"].items() if not k.startswith("tail_profile")}
+    sel = quality.select_frames(metrics)
+    assert not sel["f2"][0] and "schweif" in sel["f2"][1]
+    assert sum(ok for ok, _, _ in sel.values()) == 19
 
 
 # ---- SkyTrace -------------------------------------------------------------------------------------------------------

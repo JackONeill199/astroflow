@@ -152,7 +152,7 @@ def analyze_frame(raw: np.ndarray, bayer: bool) -> dict:
     m.update(bg_plane(luma, s))
     m.update(shape_metrics(stars, luma.shape, s))      # Gerätediagnose (diagnose.py), ebenfalls ohne Versionserhöhung
     # Mittleres Sternprofil: runder Kern + schwacher gleichgerichteter Schweif (Ruck der Montierung, core/star_tails.py).
-    # Zusatzmetrik ohne Erhöhung von METRICS_VERSION – select_frames nutzt sie nur, wenn alle Frames sie haben.
+    # Zusatzmetrik ohne Erhöhung von METRICS_VERSION (Entscheidung beim Master) – select_frames prüft nur Frames, die sie haben.
     from ...core.star_tails import tail_profile
     m.update(tail_profile(luma))
     return m
@@ -216,13 +216,15 @@ def select_frames(metrics: dict[str, dict], keep_percent: float | None = None) -
     b_lim = b_med + max(4 * _mad_sigma(bg), 0.3 * abs(b_med)) if len(ok) >= 8 else np.inf
     # Gemeinsamer Sternschweif (Ruck der Montierung): absolute Grenze, aber wie bei ecc höchstens ECC_MAX_REJECT der Frames
     from ...core import star_tails
+    # Nur Frames mit der Zusatzmetrik werden geprüft (ältere Analysen ohne sie bleiben unberührt, gemischte Serien auch).
+    measured = {k: m for k, m in ok.items() if "tail_profile_stars" in m}
     tailed = set()
-    if all("tail_profile_stars" in m for m in ok.values()):
+    if measured:
         t_lim = star_tails.MIN_FRACTION
-        if sum(star_tails.has_tail(m) for m in ok.values()) > ECC_MAX_REJECT * len(ok):
-            fr = np.array([m.get("tail_profile_fraction", 0.0) for m in ok.values()], float)
+        if sum(star_tails.has_tail(m) for m in measured.values()) > ECC_MAX_REJECT * len(measured):
+            fr = np.array([m.get("tail_profile_fraction", 0.0) for m in measured.values()], float)
             t_lim = max(t_lim, float(np.quantile(fr, 1 - ECC_MAX_REJECT)) + 1e-9)
-        tailed = {k for k, m in ok.items() if star_tails.has_tail(m, t_lim)}
+        tailed = {k for k, m in measured.items() if star_tails.has_tail(m, t_lim)}
     scores = {}
     for k, m in ok.items():
         sc = (m["n_stars"] / n_med) ** 0.5 / ((m["fwhm"] / f_med) ** 1.5 * (1 + 2 * (m["ecc"] - e_med)))

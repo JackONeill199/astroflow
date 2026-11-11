@@ -40,7 +40,7 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    `core/star_tails.tail_profile` stapelt bis zu 40 subpixelgenau zentrierte, auf den Kernfluss normierte Sterne zum mittleren Profil
    und misst den einseitigen Fluss (Richtung minus Gegenrichtung) plus Belege je Stern; `has_tail` = Anteil ≥ 3,5 %, Länge ≥ 3 FWHM,
    ≥ 50 % der Sterne, ≥ 3 Bildviertel. Felder `tail_profile_*` in `frames.metrics` sind eine **Zusatzmetrik ohne `METRICS_VERSION`**
-   (nur neu analysierte Frames; `select_frames` nutzt sie nur, wenn alle Frames des Bands sie haben), Grenze höchstens ⅓ der Frames
+   (nur neu analysierte Frames; `select_frames` prüft nur Frames, die sie haben), Grenze höchstens ⅓ dieser Frames
    wie bei `ecc`. Gemessen an einer Stellina-Serie (931 × 10 s): gute Bilder 0,4–2,2 %, Schweifbilder 4–29 %. Test `test_star_tails.py`.
 4. **Kalibrierung** (`calibration.py`): Master-Dark/Flat/Bias passend nach Größe/Gain/Belichtung/Filter/Nacht, gecacht in `work/calibration`.
    Danach immer `cosmetic()`: Hot-/Cold-Pixel je CFA-Farbebene durch Nachbar-Median ersetzen (Sterne geschützt: hellster Nachbar muss dunkel sein).
