@@ -144,6 +144,41 @@ echo fertig > "RES\fertig.txt"
     return wsb
 
 
+LIZENZ_KURZ = """AstroFlow – Lizenz in Kürze
+
+AstroFlow ist kostenlos und quelloffen. Es steht unter der PolyForm Noncommercial License 1.0.0:
+
+  - Privat und für nicht-kommerzielle Zwecke frei nutzbar – Hobby, Lernen, Forschung, Vereine,
+    Schulen, Sternwarten und andere gemeinnützige Einrichtungen.
+  - Verändern und weitergeben ist erlaubt, solange dieser Lizenztext mitgegeben wird.
+  - Kommerzielle Nutzung (z. B. Verkauf, bezahlte Dienstleistung damit) ist nicht erlaubt.
+  - Ohne Gewähr: AstroFlow wird so bereitgestellt, wie es ist.
+
+Die SkyTrace-Engine und ihr Erkennungsmodell stehen unter der AGPL-3.0, Lizenzen der übrigen
+Bestandteile: NOTICE.txt und THIRD-PARTY-LICENSES.txt im Programmordner.
+
+Diese Zusammenfassung ist eine Lesehilfe. Rechtlich gilt allein der englische Originaltext unten.
+"""
+
+
+def license_page(markdown: str) -> str:
+    """Lizenzseite des Installers: deutsche Kurzfassung + englischer Originaltext ohne Markdown-Zeichen
+    (Inno Setup zeigt die Datei als reinen Text). Wortlaut und `Required Notice:` bleiben unverändert."""
+    out = []
+    for line in markdown.splitlines():
+        s = line.rstrip()
+        m = re.match(r"(#{1,6})\s+(.*)", s)
+        if m:
+            s = m.group(2)
+            s += "\n" + ("=" if len(m.group(1)) == 1 else "-") * len(s)
+        s = re.sub(r"\[([^\]]+)\]\(#[^)]*\)", r"\1", s)     # interne Verweise
+        s = re.sub(r"<(https?://[^>]+)>", r"\1", s)          # <URL>
+        s = re.sub(r"\*{1,3}([^*]+)\*{1,3}", r"\1", s)       # **fett**, ***kursiv fett***
+        s = re.sub(r"^>\s?", "    ", s)                      # Zitat -> eingerückt
+        out.append(s)
+    return LIZENZ_KURZ + "\n" + "_" * 78 + "\n\n" + "\n".join(out).strip() + "\n"
+
+
 def collect_licenses(python_dir: Path, version: str = "") -> str:
     """Lizenztexte der gebündelten Pakete sammeln (`THIRD-PARTY-LICENSES.txt`): je `*.dist-info` in site-packages Name, Version,
     Lizenzangabe aus METADATA und die Dateien LICENSE*/COPYING*/NOTICE* (auch unter `licenses/`), dazu `LICENSE.txt` des Python-Ordners.
@@ -221,6 +256,8 @@ def build(out: Path, installer: bool = True, cache: Path | None = None) -> dict:
     shutil.copy2(HERE / "AstroFlow beenden.cmd", stage / "AstroFlow beenden.cmd")
     shutil.copy2(HERE / "LIESMICH.txt", stage / "LIESMICH.txt")
     shutil.copy2(ROOT / "LICENSE", stage / "LICENSE.txt")
+    # Lizenzseite im Installer (astroflow.iss → LicenseFile); UTF-8 mit BOM, damit Inno Setup Umlaute richtig liest
+    (stage / "LIZENZ.txt").write_text(license_page((ROOT / "LICENSE").read_text(encoding="utf-8")), encoding="utf-8-sig")
     shutil.copy2(ROOT / "NOTICE", stage / "NOTICE.txt")
     (stage / "THIRD-PARTY-LICENSES.txt").write_text(collect_licenses(stage / "python", ver), encoding="utf-8")
 

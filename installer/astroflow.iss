@@ -33,7 +33,7 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 CloseApplications=no
-LicenseFile={#SourceDir}\LICENSE.txt
+LicenseFile={#SourceDir}\LIZENZ.txt
 UsePreviousSetupType=yes
 
 [Languages]
