@@ -111,6 +111,11 @@ def test_failed_solve_is_quiet_and_can_be_retried(env):
         assert c.post(f"/api/stacking/projects/{pid}/solve").json() == {"picture_solve": True}
         p = wait_solve(c, pid, ("done",))
         assert p["name"] == "M31 Andromedagalaxie"
+        for _ in range(100):                                  # erneuter Versuch per Knopf meldet den Erfolg an Sage
+            if len(events) == 2:
+                break
+            time.sleep(0.05)
+        assert events[-1]["name"] == "M31 Andromedagalaxie"
 
 
 def test_user_name_wins_and_catalog_name_sets_object(env):
@@ -169,3 +174,44 @@ def test_attempt_order_uses_device_field_first():
     assert picture_solve.attempts({"series": {"instrument": "Stellina"}}, 3000, 2000)[0] == (0.7, 500)
     assert picture_solve.attempts({"model": "Vespera II"}, 3840, 2160)[0] == (1.4, 500)
     assert picture_solve.attempts({}, 970, 1724) == [(0.0, 1000), (0.0, 500)]
+
+
+def test_unexpected_error_does_not_stay_busy(env, monkeypatch):
+    app, eng, fake, events = env
+
+    def boom(*a, **k):
+        raise PermissionError("kein Zugriff")
+    monkeypatch.setattr(picture_solve, "solve_picture", boom)
+    with TestClient(app) as c:
+        pid = c.post("/api/stacking/upload", files={"files": ("z.png", sky_png())}).json()["pictures"][0]["id"]
+        p = wait_solve(c, pid)
+        assert p["options"]["picture_solve"]["state"] == "failed" and "kein Zugriff" not in p["options"]["picture_solve"]["message"]
+        for _ in range(100):
+            if eng.picture_solve.busy() == 0:
+                break
+            time.sleep(0.05)
+        assert eng.picture_solve.busy() == 0
+        assert not [a for a in eng.activity() if a["kind"] == "Objekt bestimmen" and a["state"] == "running"]
+
+
+def test_series_solves_the_shown_version(env, monkeypatch):
+    """Teleskop-Serie ohne bekanntes Objekt, Versionen in falscher Reihenfolge importiert: gelöst wird die Version,
+    die auch Sage zeigt (höchste Sequenz), nicht der zuletzt importierte Upload."""
+    from test_picture_import import telescope_jpg
+    app, eng, fake, events = env
+    seen = []
+    real = picture_solve.solve_picture
+    monkeypatch.setattr(picture_solve, "solve_picture", lambda cfg, image, *a, **k: seen.append(image) or real(cfg, image, *a, **k))
+    with TestClient(app) as c:
+        picture_solve_enabled = picture_solve.enabled
+        picture_solve.enabled = lambda: False
+        try:
+            for seq in (5, 2):
+                d = c.post("/api/stacking/upload", files={"files": (f"img-{seq:04d}-output.jpg", telescope_jpg(seq, name="Unbekanntes Feld 7"))}).json()
+        finally:
+            picture_solve.enabled = picture_solve_enabled
+        pid = d["pictures"][0]["id"]
+        shown = app.state.ctx.service("project_picture")(pid)
+        c.post(f"/api/stacking/projects/{pid}/solve")
+        wait_solve(c, pid)
+        assert str(seen[0]) == shown["image"]

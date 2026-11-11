@@ -1088,7 +1088,7 @@ ${capped ? `Hintergrund ${f.bg}` : `${f.n_stars} Sterne`} · FWHM ${f.fwhm ?? '�
     const d = $('#dlg');
     d.innerHTML = `<form method="dialog" id="rf"><h2 style="font-size:18px;margin-bottom:14px">${p.imported ? 'Namen setzen' : 'Objekt umbenennen'}</h2>
       <input name="n" value="${esc(p.name)}" style="width:100%" maxlength="80" autofocus>
-      ${p.imported ? '<p class="mut sm" style="margin-top:8px">Ein Katalogname wie „IC 1805“ oder „M42“ setzt zugleich das Objekt (Sage findet dann die passenden Infos). Der Name bleibt auch nach einem Plate-Solving erhalten.</p>' : ''}
+      ${p.imported ? '<p class="mut sm" style="margin-top:0.5rem">Ein Katalogname wie „IC 1805“ oder „M42“ setzt zugleich das Objekt (Sage findet dann die passenden Infos). Der Name bleibt auch nach einem Plate-Solving erhalten.</p>' : ''}
       <div class="row" style="justify-content:flex-end;margin-top:18px"><button class="btn ghost" value="">Abbrechen</button><button class="btn" value="ok">Speichern</button></div></form>`;
     d.showModal();
     d.onclose = async () => {

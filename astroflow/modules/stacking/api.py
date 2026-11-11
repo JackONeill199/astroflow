@@ -537,7 +537,7 @@ def build_router(eng: Engine) -> APIRouter:
             raise HTTPException(400, "Kein Plate-Solver eingerichtet – siehe Einstellungen.")
         if picture:
             # fertiges Bild: eigener Hintergrund-Thread (blind, zeitlich begrenzt), nicht die Stacking-Warteschlange
-            eng.picture_solve.queue(pid)
+            eng.picture_solve.queue(pid, notify=True)                 # Erfolg → Sage (entdoppelt je Ergebnis)
             return {"picture_solve": True}
         return {"job": eng.enqueue(pid, {"action": "solve"})}
 
@@ -604,7 +604,8 @@ def build_router(eng: Engine) -> APIRouter:
                     opts["picture_solve"] = {"state": "manual", "object": obj.display, "at": time.time(),
                                              "message": f"Von Hand gesetzt: {obj.display}"}
                     if not p["obj_id"] and not opts.get("gallery_parent"):      # jetzt bekannt → Sage kann es eintragen
-                        last = db.one("SELECT id FROM results WHERE project_id=? ORDER BY id DESC LIMIT 1", (pid,))
+                        from .picture_solve import LATEST
+                        last = db.one(f"SELECT id FROM results WHERE project_id=? ORDER BY {LATEST} LIMIT 1", (pid,))
                         if last:
                             eng.ctx.emit("stacking.imported", project_id=pid, result_id=last["id"], name=name)
                 db.x("UPDATE projects SET options=? WHERE id=?", (json.dumps(opts), pid))

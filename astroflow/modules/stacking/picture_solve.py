@@ -25,6 +25,8 @@ DEVICE_FOV = (("seestar s30", (2.17, 1.21)), ("seestar", (1.29, 0.73)), ("vesper
               ("vespera pro", (1.6, 1.6)), ("vespera", (1.6, 0.9)), ("stellina", (1.05, 0.7)))
 ATTEMPT_TIMEOUT = 120     # s je ASTAP-Aufruf
 BUDGET = 300              # s für alle Versuche eines Bildes zusammen
+# dasselbe Ergebnis, das `project_picture` (Sage) zeigt: bei Teleskop-Serien die höchste Sequenz, nicht der letzte Import
+LATEST = "COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC, id DESC"
 MSG_NONE = "Objekt nicht bestimmt – das Sternmuster wurde nicht erkannt (bei kleinen oder stark bearbeiteten Bildern häufig)."
 MSG_NO_SOLVER = "Kein Plate-Solver eingerichtet – ASTAP unter Einstellungen → Bilder einrichten."
 
@@ -178,13 +180,13 @@ class PictureSolveRunner:
             try:
                 self.run(pid, notify)
             except Exception:
-                traceback.print_exc()
-                self._set(pid, {"state": "failed", "message": "Plate-Solving fehlgeschlagen (Details im Server-Protokoll)."})
+                traceback.print_exc()                             # Aktivität nicht als „läuft“ stehen lassen
+                self._finish(pid, {"state": "failed", "message": "Plate-Solving fehlgeschlagen (Details im Server-Protokoll)."})
 
     def run(self, pid: int, notify: bool = False) -> dict | None:
         db = self.eng.db
         p, opt = self._project(pid)
-        r = p and db.one("SELECT * FROM results WHERE project_id=? ORDER BY id DESC LIMIT 1", (pid,))
+        r = p and db.one(f"SELECT * FROM results WHERE project_id=? ORDER BY {LATEST} LIMIT 1", (pid,))
         if not r:
             return None
         files = json.loads(r["files"] or "{}")
@@ -215,7 +217,7 @@ class PictureSolveRunner:
 
     def _finish(self, pid: int, state: dict):
         self._set(pid, state)
-        cur = self.current or {}
+        cur = self.current or {"started": time.time()}
         self.recent = ([{**cur, "pid": pid, "state": "done" if state["state"] == "done" else "error",
                          "message": state["message"], "finished": time.time()}] + self.recent)[:10]
         self.current = None
