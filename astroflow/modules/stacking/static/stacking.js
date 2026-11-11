@@ -1387,6 +1387,7 @@ const FRAME_WHY = {
   'Himmelshintergrund zu hell': ['bg', 'Der Himmel war deutlich heller als bei den übrigen Aufnahmen – typisch für Mond, Dämmerung oder Streulicht an Wolken. Das hebt Hintergrund und Rauschen im fertigen Bild.'],
   'unscharf (Seeing/Fokus)': ['fwhm', 'Die Sterne sind deutlich breiter als im Durchschnitt der Serie – unruhige Luft, Wind oder Fokus. Sie würden das Ergebnis weicher machen.'],
   'Sterne verzogen (Nachführfehler/Wind)': ['ecc', 'Die Sterne sind länglich statt rund – Nachführfehler, Wind oder eine Erschütterung.'],
+  'Sternschweif (Ruck der Montierung)': [null, 'Die Sterne haben einen runden Kern, aber alle einen schwachen Schweif in dieselbe Richtung – die Montierung hat während der Belichtung kurz geruckt. Im Stack würde jeder Stern einen Schmier bekommen.'],
   'wenige Sterne (Wolken/Dunst)': ['n_stars', 'Es sind viel weniger Sterne zu sehen als sonst – Wolken, Dunst oder Tau auf der Optik.'],
   'zu wenige Sterne (Wolken/Fehlbelichtung)': ['n_stars', 'Kaum Sterne erkannt – Wolken, Fehlbelichtung oder ein Bild ohne Himmel.'],
   'manuell ausgeschlossen': [null, 'Von dir ausgeschlossen.'],

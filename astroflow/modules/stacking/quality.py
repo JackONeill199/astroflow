@@ -151,6 +151,10 @@ def analyze_frame(raw: np.ndarray, bayer: bool) -> dict:
     from .skyquality import bg_plane
     m.update(bg_plane(luma, s))
     m.update(shape_metrics(stars, luma.shape, s))      # Gerätediagnose (diagnose.py), ebenfalls ohne Versionserhöhung
+    # Mittleres Sternprofil: runder Kern + schwacher gleichgerichteter Schweif (Ruck der Montierung, core/star_tails.py).
+    # Zusatzmetrik ohne Erhöhung von METRICS_VERSION – select_frames nutzt sie nur, wenn alle Frames sie haben.
+    from ...core.star_tails import tail_profile
+    m.update(tail_profile(luma))
     return m
 
 
@@ -210,6 +214,15 @@ def select_frames(metrics: dict[str, dict], keep_percent: float | None = None) -
     if e_lim > ECC_MAX:
         e_lim = max(ECC_MAX, float(np.quantile(ec, 1 - ECC_MAX_REJECT)))
     b_lim = b_med + max(4 * _mad_sigma(bg), 0.3 * abs(b_med)) if len(ok) >= 8 else np.inf
+    # Gemeinsamer Sternschweif (Ruck der Montierung): absolute Grenze, aber wie bei ecc höchstens ECC_MAX_REJECT der Frames
+    from ...core import star_tails
+    tailed = set()
+    if all("tail_profile_stars" in m for m in ok.values()):
+        t_lim = star_tails.MIN_FRACTION
+        if sum(star_tails.has_tail(m) for m in ok.values()) > ECC_MAX_REJECT * len(ok):
+            fr = np.array([m.get("tail_profile_fraction", 0.0) for m in ok.values()], float)
+            t_lim = max(t_lim, float(np.quantile(fr, 1 - ECC_MAX_REJECT)) + 1e-9)
+        tailed = {k for k, m in ok.items() if star_tails.has_tail(m, t_lim)}
     scores = {}
     for k, m in ok.items():
         sc = (m["n_stars"] / n_med) ** 0.5 / ((m["fwhm"] / f_med) ** 1.5 * (1 + 2 * (m["ecc"] - e_med)))
@@ -223,6 +236,8 @@ def select_frames(metrics: dict[str, dict], keep_percent: float | None = None) -
             reason = "unscharf (Seeing/Fokus)"
         elif m["ecc"] > e_lim:
             reason = "Sterne verzogen (Nachführfehler/Wind)"
+        elif k in tailed:
+            reason = "Sternschweif (Ruck der Montierung)"
         elif m["bg"] > b_lim:
             reason = "Himmelshintergrund zu hell"
         res[k] = (reason == "", reason, sc)
