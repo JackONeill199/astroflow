@@ -41,7 +41,7 @@ Der **Stacking-Verlauf** zeigt, was 1, 3, 10, 30, 100 … Aufnahmen ausmachen, u
 |---|---|
 | ![Stacking-Verlauf](docs/media/stacking-stufen.webp) | ![Vorher/Nachher](docs/media/vorher-nachher.webp) |
 
-*(Stacking-Verlauf: M16, Vorher/Nachher: M17 – echte Aufnahmen eines Smart-Teleskops. Die Live-Ansicht zeigt synthetische Demodaten.)*
+*(Stacking-Verlauf: M16, Vorher/Nachher und Live-Ansicht: M17 – echte Aufnahmen eines Smart-Teleskops.)*
 
 ### Ergebnisse
 
