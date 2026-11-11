@@ -20,7 +20,7 @@ import pytest
 # in jedem xdist-Worker, und von Unterprozessen geerbt). Einzelne Tests überschreiben per monkeypatch.
 os.environ.update({"ASTROFLOW_GAIA": "0", "ASTROFLOW_GRAXPERT": "0", "ASTROFLOW_GPU": "0", "ASTROFLOW_SAGE_OFFLINE": "1",
                    "ASTROFLOW_HORIZONS": "0", "ASTROFLOW_SKY": "0", "ASTROFLOW_UPDATE_CHECK": "0",
-                   "ASTROFLOW_DIAG": "0"})
+                   "ASTROFLOW_DIAG": "0", "ASTROFLOW_PICTURE_SOLVE": "0"})   # kein echtes ASTAP nach Bildimporten
 os.environ.pop("ASTROFLOW_LAUNCHER", None)           # Einrichtungsassistent nur in eigenen Tests (monkeypatch)
 
 

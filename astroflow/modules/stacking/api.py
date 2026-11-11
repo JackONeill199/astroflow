@@ -68,6 +68,8 @@ class Engine:
         self.dashboard = Dashboard(self)                  # Analyse-Dashboard über alle Objekte + Sammelauftrag
         skyquality.ensure_table(self.db)
         self.sky = skyquality.SkyRunner(self.pl, ctx.services.get("site_for"))
+        from .picture_solve import PictureSolveRunner
+        self.picture_solve = PictureSolveRunner(self)     # fertig importierte Bilder: Objekt per Plate-Solving
         stars.STARNET.tools_dir = self.s.data_dir / "tools" / "starnet"
         self._apply_saved()
         self.q: queue.Queue[int] = queue.Queue()
@@ -342,7 +344,7 @@ class Engine:
         return {"input_dir": str(self.s.input_dir), "output_dir": str(self.s.output_dir),
                 "auto": self.s.auto, "scan_interval": self.s.scan_interval, "threads": self.s.threads,
                 "last_scan": self.last_scan, "frames": frames, "busy_jobs": busy + (self.sky.state.get("state") == "running")
-                + self.dashboard.batch.busy(), "disk": disk,
+                + self.dashboard.batch.busy() + self.picture_solve.busy(), "disk": disk,
                 "hold": self.hold(), "paused": bool(self.paused),
                 "projects": n_proj, "finished": n_res,
                 "delete_uploads": self.s.delete_uploads, "gaia": self.s.gaia,
@@ -359,7 +361,7 @@ class Engine:
                         "detail": j["message"] or j["stage"] or "", "stage": j["stage"], "state": j["state"],
                         "progress": j["progress"], "started": j["started"] or j["created"], "finished": j["finished"],
                         "href": f"#/p/{j['project_id']}"})
-        return self.dashboard.batch.activity() + self.sky.activity() + out
+        return self.dashboard.batch.activity() + self.sky.activity() + self.picture_solve.activity() + out
 
 
 _coll_cache: dict = {}          # Dienst collection_progress (Sage), 2 min zwischengespeichert
@@ -421,8 +423,9 @@ def build_router(eng: Engine) -> APIRouter:
         out = []
         for p in rows:
             pid = p["id"]
-            imported = json.loads(p["options"] or "{}").get("input_type") == "picture"
-            is_comet = not imported and comet.active(p, json.loads(p["options"] or "{}"))
+            opts = json.loads(p["options"] or "{}")
+            imported = opts.get("input_type") == "picture"
+            is_comet = not imported and comet.active(p, opts)
             fr = counts.get(pid, {})
             sv = solve.get(pid)
             d = dl.get(pid, {"n": 0, "b": 0, "s": 0})
@@ -432,13 +435,15 @@ def build_router(eng: Engine) -> APIRouter:
                 coords = {"ra": p["ra"], "dec": p["dec"], "source": "solve" if sv else ("catalog" if p["obj_id"] else "header")}
                 if sv:
                     coords["solve"] = json.loads(sv)
+                elif imported and (opts.get("picture_solve") or {}).get("state") == "done":    # fertiges Bild, gelöst
+                    coords.update(source="solve", solve=opts["picture_solve"].get("solution"))
             out.append({
                 "id": pid, "name": p["name"], "kind": p["kind"], "kind_label": objects.KIND_LABEL.get(p["kind"] or "generic"),
                 "options": json.loads(p["options"] or "{}"), "frames": fr, "total": sum(fr.values()),
                 "companions": comp.get(pid, 0),
                 "nights": nights.get(pid, []), "n_results": n_results.get(pid, 0), "created": p["created"],
                 # Kometen sind am Namen erkannt: „Objekt bestimmen“ würde nichts zuordnen (der Stack wird für die Bahn ohnehin gelöst)
-                "coords": coords, "can_solve": not imported and not p["obj_id"] and not is_comet, "imported": imported,
+                "coords": coords, "can_solve": not p["obj_id"] and not is_comet and not (imported and opts.get("gallery_parent")), "imported": imported,
                 "comet": is_comet,
                 # Einzelbilder nach dem Stacking gelöscht -> kein komplettes Neu-Stacken mehr möglich
                 "deleted": {"frames": d["n"], "bytes": d["b"], "can_restack": not imported and d["s"] == 0},
@@ -522,13 +527,18 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.post("/projects/{pid}/solve")
     def solve(pid: int):
-        p = db.one("SELECT options FROM projects WHERE id=?", (pid,))
+        p = db.one("SELECT options, obj_id FROM projects WHERE id=?", (pid,))
         if not p:
             raise HTTPException(404)
-        if json.loads(p["options"] or "{}").get("input_type") == "picture":
-            raise HTTPException(409, "Fertige Bilder bitte mit Sage bestimmen lassen.")
+        picture = json.loads(p["options"] or "{}").get("input_type") == "picture"
+        if picture and p["obj_id"]:
+            raise HTTPException(409, "Das Objekt dieses Bildes ist schon bekannt – bei Bedarf über „Namen setzen“ ändern.")
         if not eng.pl.solver_cfg.enabled:
             raise HTTPException(400, "Kein Plate-Solver eingerichtet – siehe Einstellungen.")
+        if picture:
+            # fertiges Bild: eigener Hintergrund-Thread (blind, zeitlich begrenzt), nicht die Stacking-Warteschlange
+            eng.picture_solve.queue(pid)
+            return {"picture_solve": True}
         return {"job": eng.enqueue(pid, {"action": "solve"})}
 
     @r.post("/scan")
@@ -582,7 +592,22 @@ def build_router(eng: Engine) -> APIRouter:
             raise HTTPException(404)
         opts = json.loads(p["options"] or "{}")
         if "name" in body:
-            db.x("UPDATE projects SET name=? WHERE id=?", (str(body["name"])[:80], pid))
+            name = str(body["name"]).strip()[:80] or p["name"]
+            db.x("UPDATE projects SET name=? WHERE id=?", (name, pid))
+            if opts.get("input_type") == "picture" and name != p["name"]:
+                # fertiges Bild: Name gilt als bewusst vergeben (Plate-Solving überschreibt ihn nicht);
+                # ein Katalogname setzt zugleich das Objekt („IC 1805“, „Herznebel“, „M42 Orion“)
+                opts["name_custom"] = True
+                obj = objects.resolve_name(name) or objects.resolve_extended(name)
+                if obj and obj.id != p["obj_id"]:
+                    db.x("UPDATE projects SET obj_id=?, kind=?, ra=?, dec=? WHERE id=?", (obj.id, obj.kind, obj.ra, obj.dec, pid))
+                    opts["picture_solve"] = {"state": "manual", "object": obj.display, "at": time.time(),
+                                             "message": f"Von Hand gesetzt: {obj.display}"}
+                    if not p["obj_id"] and not opts.get("gallery_parent"):      # jetzt bekannt → Sage kann es eintragen
+                        last = db.one("SELECT id FROM results WHERE project_id=? ORDER BY id DESC LIMIT 1", (pid,))
+                        if last:
+                            eng.ctx.emit("stacking.imported", project_id=pid, result_id=last["id"], name=name)
+                db.x("UPDATE projects SET options=? WHERE id=?", (json.dumps(opts), pid))
         if "options" in body:
             opts.update(body["options"])
             db.x("UPDATE projects SET options=? WHERE id=?", (json.dumps(opts), pid))
@@ -789,7 +814,7 @@ def build_router(eng: Engine) -> APIRouter:
             opt = json.loads(p["options"] or "{}")
             if not opt.get("gallery_parent") and not (raw and (opt.get("imported") or {}).get("series")):
                 last = db.one("SELECT id FROM results WHERE project_id=? ORDER BY COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC,id DESC LIMIT 1", (pid,))
-                eng.ctx.emit("stacking.imported", project_id=pid, result_id=last["id"], name=p["name"])
+                eng.picture_solve.after_import(pid, last["id"], p["name"])      # unbekanntes Objekt: erst lösen, dann melden
         return {"saved": n, "raw": raw, "skipped": skipped, "pictures": pictures, "errors": errors}
 
     @r.post("/queue")

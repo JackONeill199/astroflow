@@ -499,6 +499,22 @@ async function projectView(el, id, tab = 'bild') {
     ...((p.companions ?? p.options?.companion_ids?.length ?? 0) ? [['teleskopbilder', 'Teleskopbilder']] : [])];
   crumbs([['Bilder', '#/bilder'], [p.name]]);
 
+  // Fertig importiertes Bild: Objekt per Plate-Solving (Hintergrund) bzw. von Hand über den Namen
+  const solving = () => ['queued', 'running'].includes(p.options?.picture_solve?.state);
+  function pictureSolveNotice() {
+    const ps = p.options?.picture_solve || {};
+    if (solving()) return `<div class="notice" id="psNote">${icon('star')}<div><b>Objekt wird bestimmt …</b><div class="mut sm">${ps.state === 'queued' ? 'Wartet auf das Plate-Solving.'
+      : 'ASTAP sucht das Sternmuster am Himmel – blind kann das ein bis fünf Minuten dauern.'} Das Original bleibt unverändert.</div></div><span class="badge-dot run">läuft</span></div>`;
+    if (ps.state === 'done' && ps.object && !p.can_solve) return `<div class="notice" id="psNote">${icon('star')}<div><b>Objekt per Plate-Solving bestimmt: ${esc(ps.object)}</b>
+      <div class="mut sm">Bildfeld ${(+ps.solution?.fov_w).toFixed(2)}° × ${(+ps.solution?.fov_h).toFixed(2)}° · ${(+ps.solution?.scale).toFixed(1)}″/px. Stimmt etwas nicht? Über „Namen setzen“ korrigieren.</div></div>
+      <span class="grow"></span><button class="btn ghost sm" id="psName">Namen setzen</button></div>`;
+    if (!p.can_solve) return '';
+    const msg = ps.state === 'failed' ? ps.message : ps.state === 'done' ? ps.message
+      : 'Weder Dateiname noch Metadaten nennen ein Himmelsobjekt. Plate-Solving sucht das Sternmuster am Himmel; alternativ den Namen selbst setzen (z. B. „IC 1805“).';
+    return `<div class="notice" id="psNote">${icon('star')}<div><b>Objekt unbekannt</b><div class="mut sm">${esc(msg || '')}</div></div><span class="grow"></span>
+      <button class="btn sm" id="solveBtn">${ps.state === 'failed' ? 'Erneut versuchen' : 'Objekt bestimmen'}</button><button class="btn ghost sm" id="psName">Namen setzen</button></div>`;
+  }
+
   function head() {
     const r = p.result, busy = running(p.job);
     return `<div class="pagehead"><div style="min-width:0">
@@ -518,12 +534,13 @@ async function projectView(el, id, tab = 'bild') {
           ${r && !p.imported ? `<a href="#" data-act="develop">Neu entwickeln <small>${p.hotpixel_hint ? 'entfernt Hotpixel-Punkte' : 'ohne Stacking'}</small></a>` : ''}
           ${p.imported ? '<span class="pop-note">Fertig importiert · keine Rohaufnahmen vorhanden</span>' : p.deleted?.can_restack === false ? `<span class="pop-note">Komplett neu stacken nicht möglich – Einzelbilder nach dem Stacking gelöscht</span>`
             : `<a href="#" data-act="restack">Komplett neu stacken <small>alle Aufnahmen</small></a>`}
-          ${p.can_solve ? `<a href="#" data-act="solve">Objekt per Plate-Solving bestimmen <small>Sternmuster</small></a>` : ''}
+          ${p.can_solve && !solving() ? `<a href="#" data-act="solve">Objekt per Plate-Solving bestimmen <small>Sternmuster</small></a>` : ''}
           ${r && AF.on('sage') ? `<a href="#" data-act="story">Geschichte erzählen <small>Sage · Objekte im Bild + KI</small></a>` : ''}
           <a href="#" data-act="rename">Umbenennen</a>
           ${busy ? '' : `<hr><a href="#" data-act="delete" class="danger">Objekt löschen <small>mit allen Versionen</small></a>`}
         </div></div></div></div>
-      ${p.can_solve && !p.coords && !busy ? `<div class="notice">${icon('star')}<div><b>Objekt unbekannt</b><div class="mut sm">Die Aufnahmen enthalten weder Objektnamen noch Koordinaten.
+      ${p.imported ? pictureSolveNotice() : ''}
+      ${p.can_solve && !p.imported && !p.coords && !busy ? `<div class="notice">${icon('star')}<div><b>Objekt unbekannt</b><div class="mut sm">Die Aufnahmen enthalten weder Objektnamen noch Koordinaten.
         Plate-Solving bestimmt die Himmelsposition aus dem Sternmuster und ordnet sie dem richtigen Objekt zu.</div></div><span class="grow"></span>
         <button class="btn sm" id="solveBtn">Jetzt bestimmen</button></div>` : ''}
       ${p.comet && /Plate-Solver/.test(r?.stats?.comet?.ephemeris_error || '') && !busy ? `<div class="notice">${icon('star')}<div><b>Kometenbahn aus dem Bild gemessen</b><div class="mut sm">Mit eingerichtetem Plate-Solver (z. B. ASTAP) holt AstroFlow die Bahn von ${esc(r.stats.comet.designation || 'diesem Kometen')} zusätzlich aus der JPL-Ephemeride – genauer bei schwachen oder sehr schnellen Kometen.</div></div><span class="grow"></span>
@@ -538,6 +555,7 @@ async function projectView(el, id, tab = 'bild') {
 
   function draw() {
     viz?.destroy(); viz = null; vizKind = '';
+    if (el.isConnected) crumbs([['Bilder', '#/bilder'], [p.name]]);     // Name kann sich im Hintergrund ändern (Plate-Solving)
     el.innerHTML = head();
     $('#rename').onclick = rename;
     $('#run')?.addEventListener('click', () => run(false));
@@ -550,6 +568,7 @@ async function projectView(el, id, tab = 'bild') {
       $('#more').classList.remove('open');
     };
     $('#solveBtn')?.addEventListener('click', solve);
+    $('#psName')?.addEventListener('click', rename);
     drawTab(false);
   }
   // Kontextpanel „Session“: Aufnahmen, Belichtung, Nächte, Status, Himmelsposition (aktualisiert sich mit dem Auftrag)
@@ -1027,7 +1046,7 @@ ${capped ? `Hintergrund ${f.bg}` : `${f.n_stars} Sterne`} · FWHM ${f.fwhm ?? '�
   async function solve() {
     try {
       await send(`/stacking/projects/${id}/solve`);
-      toast('Plate-Solving gestartet – die Aufnahmen werden danach dem passenden Objekt zugeordnet.');
+      toast(p.imported ? 'Plate-Solving gestartet – das Bild bekommt danach sein Objekt.' : 'Plate-Solving gestartet – die Aufnahmen werden danach dem passenden Objekt zugeordnet.');
       await refresh(true);
     } catch (e) {
       toast(e.message, 'err');
@@ -1067,13 +1086,14 @@ ${capped ? `Hintergrund ${f.bg}` : `${f.n_stars} Sterne`} · FWHM ${f.fwhm ?? '�
   }
   async function rename() {
     const d = $('#dlg');
-    d.innerHTML = `<form method="dialog" id="rf"><h2 style="font-size:18px;margin-bottom:14px">Objekt umbenennen</h2>
+    d.innerHTML = `<form method="dialog" id="rf"><h2 style="font-size:18px;margin-bottom:14px">${p.imported ? 'Namen setzen' : 'Objekt umbenennen'}</h2>
       <input name="n" value="${esc(p.name)}" style="width:100%" maxlength="80" autofocus>
+      ${p.imported ? '<p class="mut sm" style="margin-top:8px">Ein Katalogname wie „IC 1805“ oder „M42“ setzt zugleich das Objekt (Sage findet dann die passenden Infos). Der Name bleibt auch nach einem Plate-Solving erhalten.</p>' : ''}
       <div class="row" style="justify-content:flex-end;margin-top:18px"><button class="btn ghost" value="">Abbrechen</button><button class="btn" value="ok">Speichern</button></div></form>`;
     d.showModal();
     d.onclose = async () => {
       const v = $('input', d)?.value.trim();
-      if (d.returnValue === 'ok' && v && v !== p.name) { await send('/stacking/projects/' + id, { name: v }, 'PATCH'); toast('Umbenannt.', 'ok'); await refresh(true); crumbs([['Bilder', '#/bilder'], [p.name]]); }
+      if (d.returnValue === 'ok' && v && v !== p.name) { const kind = p.kind; await send('/stacking/projects/' + id, { name: v }, 'PATCH'); await refresh(true); toast(p.imported && p.options?.picture_solve?.state === 'manual' && p.kind !== kind ? `Objekt gesetzt: ${p.options.picture_solve.object}.` : 'Umbenannt.', 'ok'); crumbs([['Bilder', '#/bilder'], [p.name]]); }
     };
   }
   async function refresh(force) {
@@ -1086,12 +1106,12 @@ ${capped ? `Hintergrund ${f.bg}` : `${f.n_stars} Sterne`} · FWHM ${f.fwhm ?? '�
       location.hash = '#/bilder';
       return;
     }
-    const s = JSON.stringify([p.name, p.total, p.results.map(r => r.id), p.job?.state, p.frames, p.coords]);
+    const s = JSON.stringify([p.name, p.total, p.results.map(r => r.id), p.job?.state, p.frames, p.coords, p.options?.picture_solve?.state, p.kind]);
     if (force || s !== sig) {
       const old = sig ? JSON.parse(sig) : null, cur = JSON.parse(s);
       const changedResults = old && old[2]?.[0] !== p.results[0]?.id;
       // nur die Frame-Zähler haben sich geändert (Analyse läuft) → Bild und Formular nicht neu aufbauen
-      const framesOnly = old && !force && JSON.stringify([old[0], old[1], old[2], old[3], old[5]]) === JSON.stringify([cur[0], cur[1], cur[2], cur[3], cur[5]]);
+      const framesOnly = old && !force && JSON.stringify([old[0], old[1], old[2], old[3], old[5], old[6], old[7]]) === JSON.stringify([cur[0], cur[1], cur[2], cur[3], cur[5], cur[6], cur[7]]);
       if (changedResults) {
         sel = null; cmp = null;
         const prevId = p.results[1]?.id;
@@ -1112,7 +1132,7 @@ ${capped ? `Hintergrund ${f.bg}` : `${f.n_stars} Sterne`} · FWHM ${f.fwhm ?? '�
       updateJob();
     }
   }
-  sig = JSON.stringify([p.name, p.total, p.results.map(r => r.id), p.job?.state, p.frames, p.coords]);
+  sig = JSON.stringify([p.name, p.total, p.results.map(r => r.id), p.job?.state, p.frames, p.coords, p.options?.picture_solve?.state, p.kind]);
   const prev = window.__afSel;
   if (prev && prev.id === id) { sel = prev.sel; cmp = prev.cmp; }
   draw();
