@@ -49,6 +49,11 @@ mindestens fünf individuell belegte Schweife (Score ≥ 5) in drei Quadranten u
 So werden auch unterbrochene lange Schweife außerhalb der bisherigen Kernprüfung als globale Bewegung verworfen.
 Test: `test_skytrace_field_motion.py`; scharfe Felder, mehrere echte Linien, symmetrische Beugung und lokale/ungeordnete
 Schweife bleiben erhalten. Originalbefund: drei Fehlkandidaten in einem verwackelten NGC-1499-Bild.
+Kürzere Schweife (~10–30 px neben einem runden Kern, Ruck der Montierung) fielen dort durch (Score hoch, aber zu wenige
+Radialabschnitte). Dafür `assess_quality` → `field_motion_evidence='mean_star_profile'`: gemeinsames Verfahren
+`astroflow/core/star_tails.py` (auch Bilder; doppelt lizenziert, die Engine lädt es über den Pfad – fehlt es, entfällt nur
+diese Prüfung). Stellina-Serie 931 Bilder: 7 bisher als scharf bewertete Schweifbilder neu verworfen, keines verloren.
+Test: `tests/test_star_tails.py`.
 
 Für den Differenzvergleich hat die direkt gemessene Registrierung zum Nachbarbild Vorrang vor der Differenz zweier
 globaler Referenzlösungen. Letztere können gegeneinander springen (bestätigt: lange blasse NGC-1499-Spur unten links,

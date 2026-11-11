@@ -36,6 +36,12 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
 3. **Auswahl**: Ausreißer je **Filter-Band** verwerfen (Wolken, Unschärfe, Nachführfehler); manuelle Ein-/Ausschlüsse (`frames.manual` ±1) gewinnen.
    Verzogene Sterne zusätzlich absolut (`quality.ECC_MAX` 0,8 ≈ 1,7:1), aber höchstens `ECC_MAX_REJECT` = ⅓ der Frames – rein relativ
    ließ M57 (Wind/Nachführung, 89 von 133 Frames ≥ 1,5:1) alles durch; jetzt 91 Frames, Stack 1,50 → 1,39:1 (Stellina 1,36).
+   **Sternschweif (Ruck der Montierung)**: runder Kern + schwacher gleichgerichteter Schweif entgeht `ecc` (Momente sehen nur den Kern).
+   `core/star_tails.tail_profile` stapelt bis zu 40 subpixelgenau zentrierte, auf den Kernfluss normierte Sterne zum mittleren Profil
+   und misst den einseitigen Fluss (Richtung minus Gegenrichtung) plus Belege je Stern; `has_tail` = Anteil ≥ 3,5 %, Länge ≥ 3 FWHM,
+   ≥ 50 % der Sterne, ≥ 3 Bildviertel. Felder `tail_profile_*` in `frames.metrics` sind eine **Zusatzmetrik ohne `METRICS_VERSION`**
+   (nur neu analysierte Frames; `select_frames` prüft nur Frames, die sie haben), Grenze höchstens ⅓ dieser Frames
+   wie bei `ecc`. Gemessen an einer Stellina-Serie (931 × 10 s): gute Bilder 0,4–2,2 %, Schweifbilder 4–29 %. Test `test_star_tails.py`.
 4. **Kalibrierung** (`calibration.py`): Master-Dark/Flat/Bias passend nach Größe/Gain/Belichtung/Filter/Nacht, gecacht in `work/calibration`.
    Danach immer `cosmetic()`: Hot-/Cold-Pixel je CFA-Farbebene durch Nachbar-Median ersetzen (Sterne geschützt: hellster Nachbar muss dunkel sein).
    Grund: Ohne Darks richtete die Registrierung Stellina-Aufnahmen an den ortsfesten Hotpixeln aus → Sterne mehrfach im Stack (behoben, Test `test_hotpixels.py`).

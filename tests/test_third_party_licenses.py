@@ -1,5 +1,6 @@
 """Sammelfunktion für THIRD-PARTY-LICENSES.txt im Windows-Paket (installer/build_windows.py) – mit künstlichem site-packages."""
 import importlib.util
+import re
 from pathlib import Path
 
 SPEC = importlib.util.spec_from_file_location("build_windows", Path(__file__).resolve().parent.parent / "installer" / "build_windows.py")
@@ -34,3 +35,17 @@ def test_collect_licenses(tmp_path):
 def test_collect_licenses_ohne_python_lizenz(tmp_path):
     (tmp_path / "python" / "Lib" / "site-packages").mkdir(parents=True)
     assert "fehlt" in bw.collect_licenses(tmp_path / "python")
+
+
+def test_lizenzseite_installer():
+    """Installer-Lizenzseite: deutsche Kurzfassung, Originaltext ohne Markdown, Wortlaut und Required Notice erhalten."""
+    md = (Path(__file__).resolve().parent.parent / "LICENSE").read_text(encoding="utf-8")
+    txt = bw.license_page(md)
+    kurz, original = txt.split("_" * 78)
+    assert "Lizenz in Kürze" in kurz and "nicht-kommerzielle" in kurz and "englische Originaltext" in kurz
+    assert not any(z in original for z in "#*<>[]")
+    assert "Required Notice: Copyright" in original and "https://polyformproject.org/licenses/noncommercial/1.0.0" in original
+    # Wortlaut unverändert: ohne Markdown-Zeichen und Leerraum identisch
+    rein = lambda s: "".join(c for c in s if c.isalnum())
+    ohne_md = rein(re.sub(r"\]\(#[^)]*\)", "", md))
+    assert rein(original) == ohne_md
