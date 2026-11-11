@@ -47,7 +47,7 @@ PERSIST = {"reviewer": ("provider", "base_url", "model", "api_key", "max_rounds"
            "solver": ("backend", "astap", "astap_db", "nova_key", "timeout"),
            "storage": ("delete_uploads", "gaia"),
            "starnet": ("path",),
-           "graxpert": ("path", "mode", "gpu"),
+           "graxpert": ("path", "mode", "gpu", "cpu_denoise"),
            "gpu": ("mode",),
            "distortion": ("mode",)}
 
@@ -1216,7 +1216,7 @@ def build_router(eng: Engine) -> APIRouter:
         files = json.loads(x["files"]) if x else {}
         if kind not in files or not Path(files[kind]).exists():
             raise HTTPException(404)
-        return FileResponse(files[kind], filename=Path(files[kind]).name if kind in ("tif", "fits", "png", "original") else None)
+        return FileResponse(files[kind], filename=Path(files[kind]).name if kind in ("tif", "fits", "fits_graxpert", "png", "original") else None)
 
     @r.get("/starnet")
     def get_starnet():
@@ -1265,7 +1265,8 @@ def build_router(eng: Engine) -> APIRouter:
     def get_graxpert():
         exe = graxpert.graxpert_path()
         g = graxpert.GRAXPERT
-        return {"path": exe, "found": bool(exe), "custom": g.path, "mode": g.mode, "gpu": g.gpu, "page": graxpert.PAGE}
+        return {"path": exe, "found": bool(exe), "custom": g.path, "mode": g.mode, "gpu": g.gpu, "cpu_denoise": g.cpu_denoise,
+                "page": graxpert.PAGE}
 
     @r.post("/graxpert")
     async def set_graxpert(request: Request, body: dict = Body(...)):
@@ -1287,6 +1288,8 @@ def build_router(eng: Engine) -> APIRouter:
             g.mode = body["mode"]
         if "gpu" in body:
             g.gpu = bool(body["gpu"])
+        if "cpu_denoise" in body:                       # KI-Entrauschen auch ohne Grafikkarte (langsam)
+            g.cpu_denoise = bool(body["cpu_denoise"])
         eng.save_settings()
         return get_graxpert()
 

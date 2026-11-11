@@ -3,6 +3,18 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.60.0 – 11.11.2026
+
+### Neu
+- Bessere Bilder ohne GraXpert und ohne GPU: neues Mehrskalen-Entrauschen auf der CPU (weniger Farbrauschen, Sterne bleiben erhalten), gemessen an elf eigenen Stacks mindestens auf dem Niveau der Stellina-eigenen Bilder.
+- GraXpert bleibt bevorzugt: Mit Grafikkarte entfernt es wie bisher Hintergrund und Rauschen. Ohne Grafikkarte nutzt AstroFlow nur den GraXpert-Hintergrund und entrauscht mit dem neuen CPU-Verfahren (Sekunden statt Minuten). Ohne GraXpert greift der komplette CPU-Weg.
+- Wer ältere Bilder ohne Grafikkarte entwickelt, sieht mehr Tiefe und weniger Farbrauschen; die Bildqualität im Tutor schlägt bei zu kurzer Gesamtbelichtung eine Zielzeit vor.
+- Als „Himmel“ gelten jetzt die dunkelsten Bildteile statt der dunklen Bildhälfte – Staub und Nebel werden nicht mehr grau gezogen (Bewertungsstand 3; ältere Ergebnisse werden einmal neu bewertet, die Bilder bleiben unverändert).
+- GraXpert glättet beim Profil „Reflexionsnebel“ stärker und trägt so den Staub nicht mehr ab; das Profil betont großflächige Strukturen.
+- Neue Option Hintergrund „Himmel“ (DBE-artig) für Bilder mit schwierigem Verlauf.
+### Geändert
+- `_linear.fits` ist jetzt der unbearbeitete Stack für Siril/PixInsight; das GraXpert-Ergebnis liegt zusätzlich als `_linear_graxpert.fits` bei.
+
 ## 0.59.1 – 10.11.2026
 
 ### Behoben
