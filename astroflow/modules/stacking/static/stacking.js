@@ -495,7 +495,7 @@ async function projectView(el, id, tab = 'bild') {
     if (kind !== vizKind) { viz?.destroy(); viz = null; vizKind = kind; host.hidden = !kind; if (kind) viz = vizProcess(host, { kind }); }
     viz?.update(vdata);
   }
-  const tabs = () => [...TABS.filter(([k]) => !p.imported || k === 'bild' || (k === 'versionen' && p.results.length > 1)),
+  const tabs = () => [...TABS.filter(([k]) => !p.imported || k === 'bild' || k === 'analyse' || (k === 'versionen' && p.results.length > 1)),
     ...((p.companions ?? p.options?.companion_ids?.length ?? 0) ? [['teleskopbilder', 'Teleskopbilder']] : [])];
   crumbs([['Bilder', '#/bilder'], [p.name]]);
 
@@ -605,7 +605,7 @@ async function projectView(el, id, tab = 'bild') {
   });
   // Nur den Tab-Inhalt neu zeichnen – Kopf, Jobzeile und Marker bleiben stehen
   function drawTab(animate = true) {
-    if (p.imported && !['bild', 'versionen'].includes(tab)) tab = 'bild';
+    if (p.imported && !['bild', 'analyse', 'versionen'].includes(tab)) tab = 'bild';
     viewer?.destroy();
     liveView?.destroy();
     anView?.destroy();
@@ -739,6 +739,11 @@ async function projectView(el, id, tab = 'bild') {
   // ---- Tab: Analyse (analysis.js): Bild oben, darunter Tiefe, Veränderungen, Himmel der Nacht, Tutor ----
   function tabAnalysis(t) {
     const r = p.results.find(x => x.id === sel) || p.results[0];
+    if (r && p.imported && typeof pictureAnalysisTab === 'function') {      // fertiges Bild: eigene, ehrliche Analyse (picanalysis.js)
+      anView = pictureAnalysisTab(t, { p, r, solve: () => solve(true), viewerFor: (host) => createViewer(host, `/api/stacking/results/${r.id}/jpg`, null, undefined, `/api/stacking/results/${r.id}/thumb`, { overlay: plateLabels(r.id) }) });
+      viewer = anView.viewer;
+      return;
+    }
     if (!r || typeof analysisTab !== 'function') {
       t.innerHTML = `<div class="viewer"><div class="none"><div>${running(p.job) ? '<div class="spinner"></div>Wird gerade verarbeitet – die Auswertungen erscheinen, sobald das Bild fertig ist.'
         : `Noch kein Ergebnis – die Analyse braucht ein fertiges Bild.<br><br><button class="btn" id="run2">${icon('play')}Jetzt verarbeiten</button>`}</div></div></div>`;
@@ -1043,9 +1048,9 @@ ${capped ? `Hintergrund ${f.bg}` : `${f.n_stars} Sterne`} · FWHM ${f.fwhm ?? '�
   }
 
   // ---- Aktionen ----
-  async function solve() {
+  async function solve(force) {
     try {
-      await send(`/stacking/projects/${id}/solve`);
+      await send(`/stacking/projects/${id}/solve`, force === true ? { force: true } : undefined);
       toast(p.imported ? 'Plate-Solving gestartet – das Bild bekommt danach sein Objekt.' : 'Plate-Solving gestartet – die Aufnahmen werden danach dem passenden Objekt zugeordnet.');
       await refresh(true);
     } catch (e) {
