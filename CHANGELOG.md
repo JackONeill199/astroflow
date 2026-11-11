@@ -3,6 +3,12 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.64.0 – 11.11.2026
+
+### Neu
+- Importierte fertige Bilder ohne erkennbares Objekt werden im Hintergrund per Plate-Solving (ASTAP, lokal) bestimmt: Objekt, Koordinaten und Bildfeld werden eingetragen, Sage kennt das Objekt danach. Klappt bei normalen Smart-Teleskop-Bildern ab etwa 800 px; stark verkleinerte Webbilder können scheitern.
+- In der Ansicht eines importierten Bildes: „Objekt bestimmen“ bzw. „Erneut versuchen“ und „Namen setzen“ (ein Katalogname wie „M42“ setzt zugleich das Objekt).
+
 ## 0.63.0 – 11.11.2026
 
 ### Neu

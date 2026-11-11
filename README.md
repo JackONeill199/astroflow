@@ -198,7 +198,8 @@ AstroFlow läuft ohne diese Programme; sie verbessern oder erweitern einzelne Fu
 ## Bedienung in Kürze
 
 1. **Importieren:** Dateien oder ganze Ordner irgendwo auf die Seite ziehen (oder „Importieren“). FITS werden als Rohaufnahmen verarbeitet, JPG/PNG/TIFF als fertige
-   Bilder in die Galerie übernommen.
+   Bilder in die Galerie übernommen. Nennt der Dateiname kein Objekt, bestimmt AstroFlow es mit ASTAP aus dem Sternmuster (im Hintergrund, nur lokal);
+   klappt das nicht, lässt sich der Name in der Bildansicht über „Namen setzen“ eintragen (z. B. „IC 1805“).
 2. **Hauptordner durchsuchen:** Import → „Hauptordner durchsuchen“ → Ordner wählen (Ordnerdialog mit Suche, auch in Unterordnern). AstroFlow findet auf einer ganzen
    Teleskop-Festplatte, was noch nicht (fertig) gestackt ist; die Quelldateien bleiben unverändert am Ort und werden nicht kopiert.
 3. **Orte eintragen:** Einstellungen → Standorte (für Tutor, Heute Nacht, Himmelsqualität, SkyTrace).

@@ -146,6 +146,9 @@ def import_picture(eng, stream, filename: str, notify: bool = True) -> dict:
             info = {"filename": filename, "format": fmt, "bit_depth": bit_depth,
                     "width": preview.width, "height": preview.height, "date_obs": observed,
                     "sha256": digest.hexdigest()}
+            for tag, k in ((271, "make"), (272, "model")):   # Gerät hilft beim Plate-Solving (Bildfeld des Smart-Teleskops)
+                if isinstance(exif.get(tag), str) and exif[tag].strip():
+                    info[k] = exif[tag].strip()[:60]
             if series:
                 info["series"] = series
                 key = f"picture-series|{objects.normalize_name(series['object'])}|{series['instrument']}|{series['night']}"
@@ -189,5 +192,5 @@ def import_picture(eng, stream, filename: str, notify: bool = True) -> dict:
             attach_previews(eng)
             opt = json.loads(eng.db.one("SELECT options FROM projects WHERE id=?", (pid,))["options"])
             if not opt.get("gallery_parent"):
-                eng.ctx.emit("stacking.imported", project_id=pid, result_id=rid, name=name)
+                eng.picture_solve.after_import(pid, rid, name)
         return {"id": pid, "name": name, "result_id": rid, "duplicate": False}

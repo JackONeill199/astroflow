@@ -58,6 +58,7 @@ class Module(BaseModule):
         threading.Thread(target=self.eng.worker, daemon=True).start()
         threading.Thread(target=self.eng.watcher, daemon=True).start()
         threading.Thread(target=self.eng.insights.worker, daemon=True, name="stacking-insights").start()
+        threading.Thread(target=self.eng.picture_solve.backfill, daemon=True, name="stacking-picture-backfill").start()
 
     def stop(self):
         self.eng.stop.set()
@@ -175,6 +176,9 @@ class Module(BaseModule):
         """Objekte im neuesten Bild eines Objekts aus der gespeicherten Stack-Lösung (None = keine Lösung gespeichert)."""
         from .services import project_solution
         pic = self.project_picture(pid)
+        if pic and pic["imported"]:                               # fertiges Bild: Lösung aus dem Import-Plate-Solving
+            from .picture_solve import stored_solution
+            return stored_solution(self.ctx.settings.work_dir, pid)
         return pic and project_solution(self.ctx.settings.work_dir, pid, pic["files"])
 
 

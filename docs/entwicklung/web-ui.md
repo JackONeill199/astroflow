@@ -75,6 +75,14 @@ Fertige Bilder: `modules/stacking/picture_import.py`, Projektoption `input_type=
 SHA256 gegen doppelte Uploads, eigenes Ereignis `stacking.imported` → Sage (kein SkyTrace). Keine erfundenen Belichtungs-/Frame- oder Qualitätswerte.
 Stellina-Verlaufsbilder: EXIF Make/Model/ImageDescription/DateTime + `img-…-output` → `imported.series`, ein Projekt je Objekt/Gerät/Nacht mit geordneten Versionen.
 `picture_import.attach_previews` ordnet diese bei passenden Rohdaten per `options.gallery_parent` zu (nach Upload und Scan); Hauptgalerie/Statistik/Sage-Auswahl zeigen nur eigenständige Projekte.
+Objekt fertiger Bilder (`picture_solve.py`, seit 11.11.2026): ohne erkanntes Objekt (`obj_id` leer) löst ein eigener Thread (`eng.picture_solve`,
+nicht die Stacking-Warteschlange) die Anzeigeversion mit dem lokalen Solver – erst Bildfeld des erkannten Smart-Teleskops (`DEVICE_FOV`, EXIF/Seestar-Dateiname),
+dann blind `-fov 0 -r 180` mit `-s 1000`, dann `-s 500`; je Aufruf ≤ 120 s, zusammen ≤ 300 s; nova nie. Erst danach `stacking.imported` (Sage bekommt das Objekt).
+Zustand in `options.picture_solve` (queued|running|done|failed|manual), volle Lösung mit Objektpositionen in `work/p<id>/picture_solution.json`
+(Dienst `project_solution` liefert sie für importierte Bilder). Hauptobjekt wie beim Scan (`objects.nearest` → `nearest_extended`).
+Umbenennen (`PATCH name`) setzt `options.name_custom` (Lösung überschreibt den Namen nicht); ein Katalogname setzt zugleich das Objekt (`state=manual`).
+Beim Start einmalig `picture_solve.backfill` für nie versuchte Altimporte; gescheiterte nur per Knopf „Objekt bestimmen“ (`POST /projects/<id>/solve`).
+Tests schalten das automatische Lösen ab (`ASTROFLOW_PICTURE_SOLVE=0` in `conftest.py`); `test_picture_solve.py` nutzt die ASTAP-Attrappe.
 Begleitbilder bleiben über den Tab `teleskopbilder` erreichbar; beim Löschen des Elternprojekts wird die Zuordnung aufgehoben, keine Begleitdatei mitgelöscht.
 Zusätzlicher Schutz (`picture_import.skipped_pictures`, Server + Frontend): > 10 FITS im Upload → nur FITS (auch kein TIFF, Nutzerwunsch 31.10.);
 sonst > 10 TIFF/FITS → alle JPG/PNG übersprungen

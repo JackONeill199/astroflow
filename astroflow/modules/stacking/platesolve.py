@@ -229,7 +229,8 @@ def _astap(cfg: SolverConfig, img: Path, hw, hints: dict) -> fits.Header:
     exe = cfg.astap_path()
     if not exe:
         raise SolveError("ASTAP nicht gefunden")
-    cmd = (cfg.cmd_prefix or [exe]) + ["-f", str(img), "-z", "0", "-s", "500"]
+    # -s: höchstens so viele Sterne – sternreiche Webbilder (Schmalband, Sterne verkleinert) brauchen mehr als 500
+    cmd = (cfg.cmd_prefix or [exe]) + ["-f", str(img), "-z", "0", "-s", str(int(hints.get("stars") or 500))]
     if "ra" in hints:
         cmd += ["-ra", f"{hints['ra'] / 15:.5f}", "-spd", f"{hints['dec'] + 90:.5f}", "-r", "15"]
     else:
@@ -241,7 +242,7 @@ def _astap(cfg: SolverConfig, img: Path, hw, hints: dict) -> fits.Header:
     ini = img.with_suffix(".ini")
     ini.unlink(missing_ok=True)
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=cfg.timeout)
+        r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=cfg.timeout)   # ASTAP schreibt cp1252
     except subprocess.TimeoutExpired:
         raise SolveError(f"ASTAP: Zeitüberschreitung nach {cfg.timeout} s")
     if not ini.exists():
@@ -358,7 +359,7 @@ def solve_frame(cfg: SolverConfig, path: str, bayer: bool, instrument: str | Non
 
 
 def solve_image(cfg: SolverConfig, L: np.ndarray, work: Path, ra_hint: float | None = None, dec_hint: float | None = None,
-                fov_h: float | None = None) -> dict:
+                fov_h: float | None = None, stars: int | None = None) -> dict:
     """Löst ein (lineares) Luminanzbild, z. B. den Master-Stack, und gibt die WCS-Kopfzeilen bezogen auf **dieses**
     Bild zurück (0-basierte Zeile r, Spalte c ↔ FITS-Pixel x = c + 1, y = r + 1)."""
     chain = cfg.chain()
@@ -378,6 +379,8 @@ def solve_image(cfg: SolverConfig, L: np.ndarray, work: Path, ra_hint: float | N
         hints.update(ra=ra_hint, dec=dec_hint)
     if fov_h:
         hints["fov_h_img"] = fov_h
+    if stars:
+        hints["stars"] = stars
     errors = []
     try:
         for b in chain:
