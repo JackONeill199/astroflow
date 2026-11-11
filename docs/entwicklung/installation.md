@@ -4,7 +4,7 @@
 > stehen zusätzlich in Kurzform in `AGENTS.md` → „Wenn du … änderst“. Neue Befunde hier ergänzen, nicht in `AGENTS.md`.
 
 ## Installation und Einrichtung (`core/launcher.py`, `core/setup.py`, `installer/`; seit 0.33.0 – Voraussetzung fürs öffentliche Repo)
-- **Zwei Wege, getrennt:** Bestehende Instanzen (`serve --data`, `ASTROFLOW_DATA`, `Start.bat` mit `./data`, Port 8080/8766) bleiben unverändert.
+- **Zwei Wege, getrennt:** Bestehende Instanzen (`serve --data`, `ASTROFLOW_DATA`, `scripts/windows/Start.bat` mit `./data`, Port 8080/8766) bleiben unverändert.
   **Heimnetz bei `serve`** (seit 0.46.0): ohne `--host` gilt `127.0.0.1`, außer `--lan` (Start.bat: `ASTROFLOW_LAN=1`) oder
   `settings.json` → `lan.enabled` (Einstellungen → Heimnetz, wirkt nach dem nächsten Start). Fehlt die Einstellung, setzt
   `security.lan_enabled` sie einmalig: bestehende Instanz (`astroflow.db` vorhanden – bis 0.45 lauschte `serve` immer auf 0.0.0.0)
@@ -25,7 +25,7 @@
   `setup.done` nicht gesetzt) und die Startseite aufgerufen wird; sonst über Einstellungen → Module & System (`setupSystemPanel`: Updates,
   Neu starten, Beenden). Schritte: Datenordner (Laufwerke + frei, `launcher.cloud_folder` warnt bei OneDrive/Dropbox/…; Wechsel legt im neuen
   Ordner `setup` an und startet neu – **alte Daten werden nicht verschoben**, DB-Pfade sind absolut), Teleskop (→ D05 bzw. D50 für „andere“),
-  Standort (Link), ASTAP, Demo, Extras (GPU per pip, GraXpert/StarNet nur Links, Heimnetz + Firewall-Regel wie `Netzwerk-freigeben.bat` per UAC,
+  Standort (Link), ASTAP, Demo, Extras (GPU per pip, GraXpert/StarNet nur Links, Heimnetz + Firewall-Regel wie `scripts/windows/Netzwerk-freigeben.bat` per UAC,
   Update-Prüfung). Hintergrundaufgaben `Setup._run` → `tasks` + Aktivität (`setup:<key>`).
 - **Komponenten** (`core/components.py`, seit 0.44.0, Nutzerwunsch „vollständiger Installer, auch GraXpert“): `astap` (Option d05/d50),
   `graxpert`, `gpu`, `skytrace`, `starnet` (nur Zustand + Link). `status()` → Zustand installed|partial|missing|unsupported, Version,

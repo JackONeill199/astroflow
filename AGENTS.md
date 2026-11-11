@@ -138,8 +138,8 @@ Schlüssel stehen im Klartext in `data/settings.json`. Tests: `tests/test_securi
 .venv/Scripts/python -m pytest -q -p no:xdist -o addopts=""   # seriell (zum Debuggen eines einzelnen Tests, `-s`, pdb)
 python -m astroflow serve --port 8080 --data ./data   # Web-UI (alle Module), nur dieser Rechner; --lan = auch Heimnetz (Kopplung)
 python -m astroflow process --data ./data             # alles per CLI verarbeiten
-Start.bat / Stop.bat                                  # Windows: Server im Hintergrund starten/beenden (Port 8766, ./data)
-Netzwerk-freigeben.bat [entfernen]                    # Firewall-Regel „AstroFlow LAN“ (TCP 8766, privat, LocalSubnet; braucht Admin – Nutzer führt aus)
+scripts/windows/Start.bat | Stop.bat                  # Windows: Server im Hintergrund starten/beenden (Port 8766, ./data)
+scripts/windows/Netzwerk-freigeben.bat [entfernen]    # Firewall-Regel „AstroFlow LAN“ (TCP 8766, privat, LocalSubnet; braucht Admin – Nutzer führt aus)
 python -m astroflow demo ./data/input/demo            # synthetische Testdaten (Bayer, 2 Nächte, Darks/Flats)
 docker compose up -d --build                          # Image enthält ASTAP + D05 (ARG ASTAP_DB=d05|d50)
 python installer/build_windows.py                     # Windows: portables ZIP (+ Installer mit Inno Setup) nach dist/, s. docs/entwicklung/installation.md

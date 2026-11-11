@@ -4,10 +4,12 @@ rem Anpassbar per Umgebungsvariable: ASTROFLOW_PORT, ASTROFLOW_DATA, ASTROFLOW_N
 rem Heimnetz (Handy/Tablet): Einstellungen -> Heimnetz einschalten, mit Stop.bat/Start.bat neu starten, Gerät per QR-Code koppeln.
 chcp 65001 >nul
 setlocal
-cd /d "%~dp0"
+rem Liegt in scripts\windows\ – Projektordner zwei Ebenen höher
+for %%I in ("%~dp0..\..") do set "ROOT=%%~fI\"
+cd /d "%ROOT%"
 if not defined ASTROFLOW_PORT set "ASTROFLOW_PORT=8766"
-if not defined ASTROFLOW_DATA set "ASTROFLOW_DATA=%~dp0data"
-set "PY=%~dp0.venv\Scripts\python.exe"
+if not defined ASTROFLOW_DATA set "ASTROFLOW_DATA=%ROOT%data"
+set "PY=%ROOT%.venv\Scripts\python.exe"
 set "URL=http://localhost:%ASTROFLOW_PORT%"
 set "LOG=%ASTROFLOW_DATA%\server.log"
 
@@ -30,7 +32,7 @@ echo AstroFlow wird gestartet (Port %ASTROFLOW_PORT%, Daten: %ASTROFLOW_DATA%) .
 rem Ohne --host: nur dieser Rechner, außer Einstellungen -> Heimnetz ist eingeschaltet (bzw. ASTROFLOW_LAN=1)
 set "LANARG="
 if "%ASTROFLOW_LAN%"=="1" set "LANARG=,'--lan'"
-powershell -NoProfile -Command "Start-Process -FilePath '%PY%' -ArgumentList '-m','astroflow','serve','--port','%ASTROFLOW_PORT%','--data','\"%ASTROFLOW_DATA%\"'%LANARG% -WorkingDirectory '%~dp0.' -WindowStyle Hidden -RedirectStandardOutput '%LOG%' -RedirectStandardError '%LOG%.err'"
+powershell -NoProfile -Command "Start-Process -FilePath '%PY%' -ArgumentList '-m','astroflow','serve','--port','%ASTROFLOW_PORT%','--data','\"%ASTROFLOW_DATA%\"'%LANARG% -WorkingDirectory '%ROOT%.' -WindowStyle Hidden -RedirectStandardOutput '%LOG%' -RedirectStandardError '%LOG%.err'"
 
 rem Warten, bis der Server antwortet (max. 60 s)
 powershell -NoProfile -Command "for ($i=0; $i -lt 120; $i++) { if (Get-NetTCPConnection -LocalPort %ASTROFLOW_PORT% -State Listen -ErrorAction SilentlyContinue) { exit 0 }; Start-Sleep -Milliseconds 500 }; exit 1"
