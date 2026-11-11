@@ -123,6 +123,8 @@ was am meisten gebracht hat; „Alles analysieren“ rechnet fehlende Auswertung
 **Observatorium:** ein zoombarer Himmelsatlas des ganzen Himmels – Sterne, Sternbilder, Messier-/Caldwell-Objekte und **deine eigenen Fotos an ihrer echten Position,
 in echter Größe und Drehung** (aus dem Plate-Solving). Klick auf ein Foto öffnet das Projekt, auf ein Katalogobjekt die Sage-Seite; Sage springt von jeder Objektseite hierher.
 
+![Observatorium: eigene Fotos im Schwan an ihrer echten Position](docs/screenshots/observatorium.webp)
+
 Orte legst du unter Einstellungen → Standorte **nach Datum** an (Zeiträume, einzelne Nächte, Standard-Ort); „Heute bin ich in …“ wechselt den Ort für die
 aktuelle Nacht. Der Ort einer Aufnahme ergibt sich aus FITS-Kopf → Zeitraum → Standard.
 
@@ -159,6 +161,8 @@ automatisch übernommen.
 
 Dazu: **Bild bestimmen**, **Geschichte erzählen** und vorlesen lassen, **Meine Entdeckungen**, **Wissensnetz**. Gestackte Aufnahmen landen auf Wunsch automatisch in
 Sage und SkyTrace.
+
+![Wissensnetz: Objekte nach Art gruppiert, Linien zeigen Zusammenhänge](docs/screenshots/wissensnetz.webp)
 
 ## Installation
 
