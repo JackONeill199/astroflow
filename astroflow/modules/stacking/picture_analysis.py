@@ -124,12 +124,15 @@ def own_images(eng, pid: int, obj_id: str | None, rid: int) -> list[dict]:
 def analyse(eng, rid: int) -> dict | None:
     """Ergebnis für `GET /results/<id>/picture-analysis` (None = Ergebnis unbekannt). Gerechnet wird beim ersten Abruf und
     nach Versions-/Lösungsänderung neu, sonst aus `work/p<id>/picture_analysis.json`."""
-    x = eng.db.one("SELECT r.id, r.project_id, r.files, p.obj_id, p.name FROM results r JOIN projects p ON p.id=r.project_id WHERE r.id=?", (rid,))
+    x = eng.db.one("SELECT r.id, r.project_id, r.files, r.stats, p.obj_id, p.name FROM results r JOIN projects p ON p.id=r.project_id WHERE r.id=?", (rid,))
     if not x:
         return None
     pid = x["project_id"]
     work = eng.s.work_dir
     sol = picture_solve.stored_solution(work, pid)
+    shape = (json.loads(x["stats"] or "{}").get("shape") or [0, 0])
+    if sol and [sol.get("height"), sol.get("width")] != list(shape):
+        sol = None                    # Lösung gehört zu einer anderen Version (andere Abmessungen): hier nicht verwenden
     sp = picture_solve.solution_path(work, pid)
     cache = cache_path(work, pid)
     base = {"solved": bool(sol), "v": PICTURE_ANALYSIS_VERSION}
