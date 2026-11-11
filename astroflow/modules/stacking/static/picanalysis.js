@@ -21,7 +21,8 @@ function pictureAnalysisTab(t, ctx) {
   </div>`;
   const viewer = ctx.viewerFor($('#paViewer', t));
   viewer.el.classList.add('an-viewer', 'hover-labels');
-  const alive = () => t.isConnected;
+  const root = t.firstElementChild;                       // `t` (#tab) bleibt beim Reiterwechsel stehen, nur sein Inhalt wird ersetzt
+  const alive = () => root.isConnected;
   const head = (h, sub = '') => `<div class="panel-h"><h2>${h}</h2>${sub ? `<span class="grow"></span><span class="mut sm">${sub}</span>` : ''}</div>`;
   const kpi = (label, v, sub = '') => `<div class="stat an-kpi"><small>${label}</small><b class="tnum">${v}</b><small class="dim">${sub}</small></div>`;
   $('.an-toc', t).addEventListener('click', (e) => {
