@@ -129,8 +129,14 @@ def test_horizon_points_from_own_frames(tmp_path):
     site = {"id": "s1", "lat": 50.0, "lon": 10.0}
     pts = observatory.horizon_points(db, lambda night: site, "s1")
     assert len(pts) == 1 and pts[0]["n"] == 3 and pts[0]["night"] == "2026-11-02"
-    ref = SkyCoord(10.68 * u.deg, 41.27 * u.deg).transform_to(AltAz(
-        obstime=Time(dt.datetime(2026, 11, 2, 21, 20, tzinfo=dt.timezone.utc)), location=EarthLocation(lat=50 * u.deg, lon=10 * u.deg)))
+    # Referenz mit astropy wie in tonight.py ohne IERS-Download/Altersprüfung (Netzsperre, leerer Cache): genügt für den Vergleich
+    import warnings
+    from astropy.utils import iers
+    with warnings.catch_warnings(), iers.conf.set_temp("auto_download", False), iers.conf.set_temp("auto_max_age", None), \
+            iers.conf.set_temp("iers_degraded_accuracy", "warn"):
+        warnings.simplefilter("ignore")
+        ref = SkyCoord(10.68 * u.deg, 41.27 * u.deg).transform_to(AltAz(
+            obstime=Time(dt.datetime(2026, 11, 2, 21, 20, tzinfo=dt.timezone.utc)), location=EarthLocation(lat=50 * u.deg, lon=10 * u.deg)))
     from astroflow.modules.stacking.objects import ang_sep
     assert ang_sep(pts[0]["az"], pts[0]["alt"], ref.az.deg, ref.alt.deg) < 0.6       # ohne Präzession genähert (nahe Zenit wirkt Azimut größer)
     assert observatory.horizon_points(db, lambda night: site, "anderer") == []
