@@ -127,6 +127,7 @@ in echter Größe und Drehung** (aus dem Plate-Solving). Klick auf ein Foto öff
 
 Orte legst du unter Einstellungen → Standorte **nach Datum** an (Zeiträume, einzelne Nächte, Standard-Ort); „Heute bin ich in …“ wechselt den Ort für die
 aktuelle Nacht. Der Ort einer Aufnahme ergibt sich aus FITS-Kopf → Zeitraum → Standard.
+Je Ort lässt sich ein **Horizont** einzeichnen (Bäume, Häuser, Balkon) – „Heute Nacht“ rechnet dann nur mit dem freien Himmel.
 
 ### Kometenmodus
 

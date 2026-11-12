@@ -28,6 +28,8 @@ MERGE_M = 200                      # Migration: Orte näher als 200 m sind derse
 DEFAULT_ACCURACY_M = 100           # ohne Angabe (Adresssuche, Koordinaten von Hand)
 HEADER_ACCURACY_M = 30             # Kamera mit GPS schreibt den Ort in den FITS-Kopf
 MAX_SITES = 200
+HORIZON_STEP = 10                  # Horizontmaske: Höhe des freien Himmels alle 10° Azimut (N = 0°, O = 90°)
+HORIZON_N = 360 // HORIZON_STEP
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
@@ -307,12 +309,40 @@ def valid(site: dict | None) -> dict | None:
     return out
 
 
+def clean_horizon(h) -> list[float] | None:
+    """Horizontmaske prüfen: 36 Höhen in Grad (0–90) ab Norden über Osten; alles 0 bzw. leer = freier Horizont (None)."""
+    if not h:
+        return None
+    if not isinstance(h, (list, tuple)) or len(h) != HORIZON_N:
+        raise ValueError(f"Horizont: {HORIZON_N} Höhenwerte (alle {HORIZON_STEP}°) erwartet.")
+    try:
+        out = [round(min(90.0, max(0.0, float(v))), 1) for v in h]
+    except (TypeError, ValueError):
+        raise ValueError("Horizont: Höhen als Zahlen in Grad angeben.") from None
+    if any(v != v for v in out):                                  # NaN
+        raise ValueError("Horizont: Höhen als Zahlen in Grad angeben.")
+    return out if any(out) else None
+
+
+def horizon_at(h: list | None, az: float) -> float:
+    """Höhe der Horizontmaske bei Azimut `az` (Grad, linear zwischen den Stützstellen); ohne Maske 0."""
+    if not h:
+        return 0.0
+    x = (az % 360) / HORIZON_STEP
+    i = int(x) % HORIZON_N
+    f = x - int(x)
+    return h[i] * (1 - f) + h[(i + 1) % HORIZON_N] * f
+
+
 def _clean_site(s: dict, sid: str | None = None) -> dict:
     s = valid(s)
     name = str(s.get("name") or "").strip()[:80] or "Standort"
     out = {"id": str(sid or s.get("id") or _new_id()), "name": name, "lat": round(s["lat"], 6), "lon": round(s["lon"], 6),
            "alt_m": round(s["alt_m"], 1), "accuracy_m": round(s.get("accuracy_m") or DEFAULT_ACCURACY_M, 1),
            "note": str(s.get("note") or "").strip()[:300]}
+    hz = clean_horizon(s.get("horizon"))
+    if hz:
+        out["horizon"] = hz
     return _with_src(out, s)
 
 
@@ -358,6 +388,8 @@ def normalize(data: dict) -> dict:
 def _public(s: dict, source: str, detail: str, by: str | None = None) -> dict:
     out = {"id": s.get("id"), "name": s.get("name") or "Standort", "lat": s["lat"], "lon": s["lon"], "alt_m": s.get("alt_m", 0),
            "accuracy_m": s.get("accuracy_m") or DEFAULT_ACCURACY_M, "source": source, "detail": detail}
+    if s.get("horizon"):
+        out["horizon"] = s["horizon"]               # Horizontmaske des Ortes (Heute Nacht, Observatorium)
     if by:
         out["by"] = by                              # automatisch gepflegte Einzelnacht (z. B. "skytrace")
     return out

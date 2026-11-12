@@ -49,6 +49,11 @@
 - **Nutzer:** `tutor.pick_site` (FITS → `site_for(night=häufigste Nacht)` → alte `tutor.lat/lon`), `GET /stacking/tonight` (Ort für jetzt,
   `site_info`), SkyTrace `resolve_site` (s. `docs/entwicklung/skytrace-standorte.md`). UI: `static/sites.js|css` (Einstellungen → Standorte, Abschnitt des Kerns
   in `settingsView`), `tonight.js` „Heute bin ich in …“, die Tutor-Einstellung verweist nur noch auf die Liste.
+- **Horizontmaske** (12.11.2026, Observatorium Schritt „Horizont“): je Ort optional `horizon` = 36 Höhen in Grad (0–90, alle
+  `HORIZON_STEP` = 10° Azimut ab Norden über Osten); `clean_horizon` prüft (alles 0/leer = kein Feld), `horizon_at` interpoliert linear,
+  `_public` gibt die Maske mit aus (`site_for` → `horizon`). Editor: `static/horizon.js` (`horizonEditor(site, save)`, Panorama im Dialog `#dlg`:
+  malen, Vorlagen, Tastatur; `horizonMini` = Silhouette in der Ortsliste), gespeichert über `POST /api/sites` mit der ganzen Liste.
+  Wirkung: Heute Nacht (`tonight._limit`: Mindesthöhe = max(30°, Maske(Azimut))), später Observatorium und Planer.
 - **Datenschutz:** Orte sind privat – Tests nur mit erfundenen Orten (`tests/test_sites.py`, UI-Fixture in `conftest.py`), Screenshots maskiert.
 - **Automatisch gepflegte Einzelnächte** (10.11.2026, Nutzerwunsch „in SkyTrace zugewiesener Ort soll für die Nacht auch in Bilder gelten“):
   `SiteBook.sync_nights(src, {Nacht: Ort}, claim)` legt Einzelnächte mit Marke `src` (+ Kurztext `why`) an, stellt sie um oder entfernt sie;
