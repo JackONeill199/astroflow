@@ -122,6 +122,7 @@ was am meisten gebracht hat; „Alles analysieren“ rechnet fehlende Auswertung
 
 **Observatorium:** ein zoombarer Himmelsatlas des ganzen Himmels – Sterne, Sternbilder, Messier-/Caldwell-Objekte und **deine eigenen Fotos an ihrer echten Position,
 in echter Größe und Drehung** (aus dem Plate-Solving). Klick auf ein Foto öffnet das Projekt, auf ein Katalogobjekt die Sage-Seite; Sage springt von jeder Objektseite hierher.
+Unter **Planung** fragt ein Assistent nach Nächten, Gerät(en) – Stellina und Vespera auch gleichzeitig –, Wunsch (Neues oder vorhandene vertiefen), Mindestbelichtung und Merkliste und rechnet einen **Plan über mehrere Nächte** aus Sichtbarkeit, Horizont, Mond und (soweit vorhanden) Wetter.
 
 ![Observatorium: eigene Fotos im Schwan an ihrer echten Position](docs/screenshots/observatorium.webp)
 

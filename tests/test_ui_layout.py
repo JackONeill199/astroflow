@@ -156,7 +156,7 @@ def _heat_fixture(lat, lon):
 # Fixtures `server` und `browser` (je Worker einmal) stehen in conftest.py
 
 
-ROUTES = ["#/", "#/nacht", "#/observatorium", "#/observatorium?ra=83.8&dec=-5.4&fov=4&name=M42", "#/bilder", "#/analyse", "#/galerie", "#/galerie/{pid}", "#/p/{pid}/bild", "#/p/{pid}/analyse", "#/p/{ipid}/analyse", "#/p/{pid}/aufnahmen", "#/p/{pid}/versionen", "#/p/{pid}/optionen",
+ROUTES = ["#/", "#/nacht", "#/observatorium", "#/observatorium/plan", "#/observatorium?ra=83.8&dec=-5.4&fov=4&name=M42", "#/bilder", "#/analyse", "#/galerie", "#/galerie/{pid}", "#/p/{pid}/bild", "#/p/{pid}/analyse", "#/p/{ipid}/analyse", "#/p/{pid}/aufnahmen", "#/p/{pid}/versionen", "#/p/{pid}/optionen",
           "#/import", "#/activity", "#/himmel", "#/skytrace", "#/skytrace/neu", "#/skytrace/statistik", "#/skytrace/2026-10-28_10-00-00-000001/beobachtungen", "#/skytrace/standorte", "#/skytrace/erfolge", "#/skytrace/3d", "#/skytrace/erde", "#/skytrace/erde/2022-08-01", "#/sage", "#/sage/wiki", "#/sage/entdeckungen", "#/sage/sammlung", "#/sage/netz",
           "#/settings/stacking", "#/settings/skytrace", "#/settings/sage", "#/settings/standorte", "#/settings/heimnetz", "#/settings/module", "#/willkommen"]
 

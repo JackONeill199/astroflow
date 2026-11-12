@@ -1,0 +1,184 @@
+'use strict';
+/* Observatorium, Planer #/observatorium/plan: Assistent (Nächte, Geräte, Wunsch, Mindestbelichtung, Merkliste) → Plan über
+   mehrere Nächte (/api/stacking/plan, planner.py), Zeitleiste je Nacht und Gerät, Fortschritt je Ziel. Der gespeicherte Plan
+   erscheint zusätzlich im Atlas (Ringe) und in „Heute Nacht“ (AFplan.nightSection). */
+(() => {
+const NIGHTS = [1, 3, 5, 7, 14], HOURS = [1, 2, 3, 4], MODES = [['new', 'Neues'], ['mix', 'Mischung'], ['deep', 'Vertiefen']];
+const de = (v, n = 1) => Number(v).toFixed(n).replace('.', ',');
+const hm = (t) => new Date(t * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+const dayName = (n) => new Date(n + 'T12:00:00Z').toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric', timeZone: 'UTC' });
+const hours = (h) => h >= 1 ? `${de(h, h % 1 ? 1 : 0)} h` : `${Math.round(h * 60)} min`;
+// stabile Farbe je Ziel (Farbton aus der Kennung) – Datenfarbe, kein UI-Token
+const hue = (id) => { let x = 0; for (const c of String(id)) x = (x * 31 + c.charCodeAt(0)) % 360; return x; };
+const color = (id) => `hsl(${hue(id)} 62% 62%)`;
+const tabs = (cur) => `<nav class="seg obs-tabs" aria-label="Observatorium"><a href="#/observatorium" class="${cur === 'atlas' ? 'on' : ''}">${icon('globe')}Atlas</a><a href="#/observatorium/plan" class="${cur === 'plan' ? 'on' : ''}">${icon('list')}Planung</a></nav>`;
+
+// Zeitleiste: Zeilen = Nächte, je Gerät eine Spur; x = Ortszeit von der frühesten Dämmerung bis zur spätesten
+function timeline(plan, width = 760) {
+  const ns = plan.nights, devs = plan.devices;
+  const spans = ns.flatMap(n => n.dark.map(([a, b]) => [a - n.dark[0][0], b - n.dark[0][0]]));
+  if (!spans.length) return '<p class="mut sm">In diesem Zeitraum wird es nicht astronomisch dunkel.</p>';
+  // Bezug: Uhrzeit des ersten Abends; alle Nächte auf dieselbe Achse (Sekunden ab 18 Uhr Ortszeit des Browsers)
+  const base = (n) => { const d = new Date(n.dark[0]?.[0] * 1000 || Date.parse(n.night + 'T18:00:00')); d.setHours(17, 0, 0, 0); return d.getTime() / 1000; };
+  let x0 = Infinity, x1 = -Infinity;
+  ns.forEach(n => { const b = base(n); n.dark.forEach(([a, e]) => { x0 = Math.min(x0, a - b); x1 = Math.max(x1, e - b); }); });
+  x0 = Math.floor(x0 / 3600) * 3600; x1 = Math.ceil(x1 / 3600) * 3600;
+  // Breite = echte Breite des Panels (Schrift bleibt lesbar); schmal: kürzere Ränder, Wetter nur als Zahl
+  const W = Math.max(300, Math.round(width)), narrow = W < 560;
+  const lane = devs.length > 1 ? 13 : 20, rowH = lane * devs.length + 12, L = narrow ? 52 : 76, R = narrow ? 40 : 78, T = 20, H = T + ns.length * rowH + 4;
+  const X = (s) => L + (s - x0) / (x1 - x0) * (W - L - R);
+  let g = '';
+  for (let s = x0; s <= x1; s += 3600) {
+    const hh = (17 + s / 3600) % 24;
+    if (hh % 2 === 0 || x1 - x0 <= 8 * 3600) g += `<line class="pl-grid" x1="${X(s)}" x2="${X(s)}" y1="${T - 4}" y2="${H}"/><text class="pl-ax" x="${X(s)}" y="12" text-anchor="middle">${String(Math.floor(hh)).padStart(2, '0')}</text>`;
+  }
+  ns.forEach((n, i) => {
+    const y = T + i * rowH, b = base(n);
+    g += `<text class="pl-day" x="0" y="${y + rowH / 2 + 2}">${esc(narrow ? dayName(n.night).replace(/\.,? .*$/, '') + ' ' + n.night.slice(8, 10) + '.' : dayName(n.night))}</text>`;
+    n.dark.forEach(([a, e]) => { g += `<rect class="pl-dark" x="${X(a - b)}" y="${y + 2}" width="${Math.max(1, X(e - b) - X(a - b))}" height="${rowH - 8}" rx="4"/>`; });
+    const w = n.weather === 'none' ? `<tspan class="pl-nowx">${narrow ? '–' : 'ohne Wetter'}</tspan><title>ohne Wettervorhersage</title>` : n.cloud != null ? (narrow ? `${n.cloud} %` : `${n.cloud} % ☁`) : '';
+    g += `<text class="pl-side" x="${W - R + 6}" y="${y + rowH / 2 + 2}">${w}</text>`;
+    if (!n.blocks.length) g += `<text class="pl-empty" x="${(X(x0) + X(x1)) / 2}" y="${y + rowH / 2 + 2}" text-anchor="middle">${n.cloud >= 60 ? 'bewölkt – frei gelassen' : 'nichts geplant'}</text>`;
+    n.blocks.forEach((bl, k) => {
+      const di = Math.max(0, devs.findIndex(d => d.id === bl.device)), by = y + 4 + di * lane, bx = X(bl.start - b), bw = Math.max(3, X(bl.end - b) - bx);
+      const t = plan.targets.find(x => x.id === bl.target) || { name: bl.target };
+      g += `<g class="pl-block" tabindex="0" role="button" data-n="${i}" data-k="${k}" aria-label="${esc(t.name)}, ${hm(bl.start)} bis ${hm(bl.end)}">
+        <rect x="${bx.toFixed(1)}" y="${by}" width="${bw.toFixed(1)}" height="${lane - 2}" rx="3" style="fill:${color(bl.target)}"/>
+        ${bw > 34 ? `<text x="${(bx + 4).toFixed(1)}" y="${by + lane / 2 + 2}">${esc(short(t.name, bw))}</text>` : ''}<title>${esc(t.name)} · ${hm(bl.start)}–${hm(bl.end)} · ${hours(bl.hours)}</title></g>`;
+    });
+  });
+  return `<svg class="pl-tl" viewBox="0 0 ${W} ${H}" role="img" aria-label="Plan je Nacht">${g}</svg>
+    ${devs.length > 1 ? `<p class="mut sm pl-lanes">Je Nacht oben ${esc(devs[0].name)}, unten ${esc(devs[1].name)}.</p>` : ''}`;
+}
+const short = (name, px) => { const n = String(name).replace(/^(C \d+) \((NGC|IC) \d+\) /, '$1 '), max = Math.max(3, Math.floor(px / 6.2)); return n.length > max ? n.slice(0, max - 1) + '…' : n; };
+
+function progress(plan) {
+  if (!plan.targets.length) return '<p class="mut sm">Kein Ziel bekommt in diesem Zeitraum Zeit – mehr Nächte wählen oder Horizont/Wetter prüfen.</p>';
+  const row = (t) => {
+    const nights = plan.nights.filter(n => n.blocks.some(b => b.target === t.id)).map(n => dayName(n.night).split(',')[0]);
+    return `<li><i style="background:${color(t.id)}"></i><span class="pl-name">${t.href ? `<a href="${t.href}">${esc(t.name)}</a>` : esc(t.name)}${t.watch ? ' <span class="chip acc">Merkliste</span>' : ''}</span>
+      <span class="pl-bar" title="${hours(t.hours)} von ${hours(t.goal)}"><b style="width:${Math.min(100, t.hours / t.goal * 100).toFixed(0)}%;background:${color(t.id)}"></b></span>
+      <span class="pl-h tnum">${hours(t.hours)}${t.done ? ' ✓' : ''}</span><span class="pl-when dim sm">${esc(nights.join(', '))}</span></li>`;
+  };
+  const first = plan.targets.slice(0, 10), rest = plan.targets.slice(10);    // lange Listen: Rest aufklappbar
+  return `<ul class="pl-prog">${first.map(row).join('')}</ul>${rest.length ? `<details class="pl-more"><summary class="sm">Alle ${plan.targets.length} Ziele</summary><ul class="pl-prog">${rest.map(row).join('')}</ul></details>` : ''}`;
+}
+
+async function planView(el) {
+  crumbs([['Übersicht', '#/'], ['Observatorium', '#/observatorium'], ['Planung']]);
+  el.innerHTML = `<div class="pagehead"><div><h1>Observatorium</h1><p class="mut">Welche Objekte in den nächsten Nächten – berechnet aus Sichtbarkeit, Horizont, Mond und Wetter.</p></div>${tabs('plan')}</div>
+    <div id="plBody"><div class="skel" style="height:14rem"></div></div>`;
+  let d;
+  try { d = await api('/stacking/plan'); } catch (e) { if (el.isConnected) $('#plBody', el).innerHTML = `<div class="panel">${esc(e.message)}</div>`; return; }
+  if (!el.isConnected) return;
+  let catalog = [];
+  const w = { nights: 3, devices: [d.default_device], mode: 'mix', min_hours: 2, watch: [], ...(d.plan?.wishes || {}) };
+  w.devices = w.devices.filter(id => d.devices.some(o => o.id === id));
+  if (!w.devices.length) w.devices = [d.devices[0].id];
+  let wizard = !d.plan;
+
+  const chips = (key, list, multi) => list.map(([v, l]) => {
+    const on = multi ? w[key].includes(v) : w[key] === v;
+    return `<button type="button" class="pl-opt${on ? ' on' : ''}" data-k="${key}" data-v="${esc(String(v))}" aria-pressed="${on}">${esc(l)}</button>`;
+  }).join('');
+  function wizardHtml() {
+    return `<section class="panel pl-wiz"><div class="panel-h"><h2>${icon('sparkle')}Plan erstellen</h2><span class="grow"></span>${d.plan ? '<button type="button" class="linkbtn" data-act="close">Abbrechen</button>' : ''}</div>
+      ${d.has_site ? '' : `<div class="notice">${icon('alert')}<div>Für die Planung fehlt ein Standort. <a href="#/settings/standorte">Standort eintragen</a></div></div>`}
+      <ol class="pl-steps">
+        <li><b>Wie viele Nächte?</b><div class="pl-opts">${chips('nights', NIGHTS.map(n => [n, String(n)]))}</div></li>
+        <li><b>Welche Geräte?</b> <span class="dim sm">bis zu zwei gleichzeitig</span><div class="pl-opts">${chips('devices', d.devices.map(o => [o.id, o.name]), true)}</div></li>
+        <li><b>Was willst du?</b><div class="pl-opts">${chips('mode', MODES)}</div></li>
+        <li><b>Mindestens je Objekt</b><div class="pl-opts">${chips('min_hours', HOURS.map(h => [h, `${h} h`]))}</div></li>
+        <li><b>Merkliste</b> <span class="dim sm">kommt bevorzugt in den Plan</span>
+          <div class="pl-opts pl-watch">${w.watch.map(id => `<button type="button" class="pl-opt on" data-unwatch="${esc(id)}" title="Entfernen">${esc(nameOf(id))} ×</button>`).join('')}
+            <label class="pl-add">${icon('plus')}<input id="plWatch" list="plCat" placeholder="Objekt hinzufügen" aria-label="Objekt zur Merkliste hinzufügen" autocomplete="off"></label>
+            <datalist id="plCat">${catalog.map(o => `<option value="${esc(o.name)}">`).join('')}</datalist></div></li>
+      </ol>
+      <div class="row pl-go"><span class="mut sm">${d.weather_on ? 'Wetter: Open-Meteo, soweit die Vorhersage reicht (~8 Tage).' : 'Wettervorhersage ist aus – geplant wird nur nach Sichtbarkeit.'}</span><span class="grow"></span>
+        <button type="button" class="btn" data-act="run" ${d.has_site ? '' : 'disabled'}>${icon('play')}Plan berechnen</button></div></section>`;
+  }
+  const nameOf = (id) => catalog.find(o => o.id === id)?.name || id;
+  function planHtml(p) {
+    const total = p.nights.reduce((s, n) => s + n.blocks.reduce((t, b) => t + b.hours, 0), 0);
+    const fc = p.nights.filter(n => n.weather !== 'none').length;
+    return `<section class="panel pl-plan"><div class="panel-h"><h2>${icon('list')}${p.nights.length} ${p.nights.length === 1 ? 'Nacht' : 'Nächte'} · ${p.devices.map(x => esc(x.name)).join(' + ')}</h2><span class="grow"></span>
+        <button type="button" class="btn sm" data-act="edit">${icon('refresh')}Neu planen</button><button type="button" class="btn ghost sm icon" data-act="del" title="Plan löschen" aria-label="Plan löschen">${icon('trash')}</button></div>
+      <div class="pl-sum"><span><b class="tnum">${p.targets.length}</b> Ziele</span><span><b class="tnum">${hours(total)}</b> geplant</span>
+        <span><b class="tnum">${p.targets.filter(t => t.done).length}</b> erreichen ${hours(p.wishes.min_hours)}</span>
+        <span class="dim">${p.weather_on ? (fc ? `Wetter für ${fc} ${fc === 1 ? 'Nacht' : 'Nächte'}` : 'keine Vorhersage') : 'ohne Wetter'}${p.site?.horizon ? ' · mit Horizont' : ''}</span></div>
+      ${p.watch_missing?.length ? `<p class="sm warn">Nicht unterzubringen: ${p.watch_missing.map(esc).join(', ')}</p>` : ''}
+      <div id="plTl">${timeline(p, $('#plBody', el)?.clientWidth - 32 || 760)}</div></section>
+      <section class="panel"><h2>Ziele</h2>${progress(p)}<p class="dim sm pl-foot">Berechnet ${new Date(p.created * 1000).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })} · Wetter und Fortschritt ändern sich – bei Bedarf „Neu planen“.</p></section>`;
+  }
+  function draw() {
+    if (!el.isConnected) return;
+    $('#plBody', el).innerHTML = (wizard ? wizardHtml() : '') + (d.plan ? planHtml(d.plan) : '');
+  }
+  draw();
+  // Zeitleiste bei geänderter Breite neu zeichnen (nur die Grafik)
+  let lastW = 0;
+  const ro = new ResizeObserver(() => { const tl = $('#plTl', el), wd = $('#plBody', el)?.clientWidth || 0;
+    if (tl && d.plan && Math.abs(wd - lastW) > 8) { lastW = wd; tl.innerHTML = timeline(d.plan, tl.clientWidth || wd - 32); } });
+  ro.observe($('#plBody', el));
+  api('/stacking/atlas').then(a => { catalog = (a.catalog || []).filter(o => o.src !== 'a'); if (wizard) draw(); }).catch(() => {});
+
+  const body = $('#plBody', el);
+  body.addEventListener('click', async (e) => {
+    const o = e.target.closest('.pl-opt[data-k]');
+    if (o) {
+      const k = o.dataset.k, v = k === 'mode' || k === 'devices' ? o.dataset.v : +o.dataset.v;
+      if (k === 'devices') w.devices = w.devices.includes(v) ? (w.devices.length > 1 ? w.devices.filter(x => x !== v) : w.devices) : [...w.devices, v].slice(-2);
+      else w[k] = v;
+      draw(); return;
+    }
+    const u = e.target.closest('[data-unwatch]');
+    if (u) { w.watch = w.watch.filter(x => x !== u.dataset.unwatch); draw(); return; }
+    const blk = e.target.closest('.pl-block');
+    if (blk) { showBlock(+blk.dataset.n, +blk.dataset.k); return; }
+    const a = e.target.closest('[data-act]')?.dataset.act;
+    if (a === 'edit') { wizard = true; draw(); $('.pl-wiz', el)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); }
+    if (a === 'close') { wizard = false; draw(); }
+    if (a === 'del' && await confirmDlg('Plan löschen?', 'Der gespeicherte Plan wird entfernt. Atlas und „Heute Nacht“ zeigen ihn dann nicht mehr.', 'Löschen', true)) {
+      try { d.plan = (await send('/stacking/plan', null, 'DELETE')).plan; wizard = true; draw(); } catch (err) { toast(err.message, 'err'); }
+    }
+    if (a === 'run') {
+      const b = e.target.closest('button'); b.disabled = true; b.classList.add('pending');
+      try { d.plan = (await send('/stacking/plan', w)).plan; wizard = false; draw(); toast('Plan berechnet.', 'ok'); }
+      catch (err) { toast(err.message, 'err'); b.disabled = false; b.classList.remove('pending'); }
+    }
+  });
+  body.addEventListener('keydown', (e) => { const blk = e.target.closest?.('.pl-block'); if (blk && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); showBlock(+blk.dataset.n, +blk.dataset.k); } });
+  body.addEventListener('change', (e) => {
+    if (e.target.id !== 'plWatch') return;
+    const t = e.target.value.trim().toLowerCase(), o = catalog.find(x => x.name.toLowerCase() === t) || catalog.find(x => x.id.toLowerCase() === t.replace(/\s+/g, ''));
+    if (!o) { toast('Objekt nicht im Katalog.', ''); return; }
+    if (!w.watch.includes(o.id)) w.watch = [...w.watch, o.id].slice(0, 20);
+    draw(); $('#plWatch', el)?.focus();
+  });
+  function showBlock(ni, k) {
+    const p = d.plan, n = p.nights[ni], bl = n?.blocks[k];
+    if (!bl) return;
+    const t = p.targets.find(x => x.id === bl.target) || { name: bl.target }, dev = p.devices.find(x => x.id === bl.device);
+    AF.ctx.open(el, { title: t.name, html: `<dl class="kv"><dt>Nacht</dt><dd>${esc(dayName(n.night))}</dd><dt>Zeit</dt><dd>${hm(bl.start)}–${hm(bl.end)}</dd>
+        <dt>Nutzbar</dt><dd>${hours(bl.hours)}</dd><dt>Gerät</dt><dd>${esc(dev?.name || bl.device)}</dd>${bl.max_alt != null ? `<dt>Höchster Stand</dt><dd>${Math.round(bl.max_alt)}°</dd>` : ''}
+        <dt>Gesamt im Plan</dt><dd>${hours(t.hours || 0)} von ${hours(p.wishes.min_hours)}</dd></dl>
+      <div class="row obs-ctx-acts"><a class="btn sm" href="#/observatorium?ra=${(+t.ra).toFixed(4)}&dec=${(+t.dec).toFixed(4)}&fov=6&name=${encodeURIComponent(t.name)}">${icon('globe')}Im Atlas</a>${t.href ? `<a class="btn sm ghost" href="${t.href}">${icon('image')}Projekt</a>` : ''}</div>` });
+    AF.ctx.show();
+  }
+  return { destroy() { ro.disconnect(); } };
+}
+
+// „Heute Nacht“: Abschnitt mit den Blöcken der gezeigten Nacht aus dem gespeicherten Plan
+function nightSection(plan, night) {
+  const n = plan?.nights?.find(x => x.night === night);
+  if (!n) return '';
+  const name = (id) => plan.targets.find(t => t.id === id)?.name || id, dev = (id) => plan.devices.find(x => x.id === id)?.name || id;
+  return `<section class="panel pl-tonight"><div class="panel-h"><h2>${icon('list')}Dein Plan für diese Nacht</h2><span class="grow"></span><a class="linkbtn" href="#/observatorium/plan">Plan öffnen ${icon('arrow')}</a></div>
+    ${n.blocks.length ? `<ul class="pl-tn">${n.blocks.map(b => `<li><i style="background:${color(b.target)}"></i><span class="tnum">${hm(b.start)}–${hm(b.end)}</span><b>${esc(name(b.target))}</b>${plan.devices.length > 1 ? `<span class="dim sm">${esc(dev(b.device))}</span>` : ''}</li>`).join('')}</ul>`
+      : `<p class="mut sm">${n.cloud >= 60 ? 'Laut Plan bewölkt – nichts vorgesehen.' : 'Für diese Nacht ist nichts geplant.'}</p>`}</section>`;
+}
+
+window.AFplan = { tabs, color, nightSection };
+const m = AF.modules.stacking;
+m.routes.push([/^\/observatorium\/plan$/, 'observatory', planView]);
+})();

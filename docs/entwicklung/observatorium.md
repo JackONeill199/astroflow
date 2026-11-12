@@ -32,6 +32,22 @@ Etappen: 1 Atlas (dieser Stand) · 2 Horizontmaske je Standort + Ansicht „Von 
 - Tests: `tests/test_observatory.py` (Ecken/Ausrichtung/Drehung, alte und neue Import-Lösungen, API mit Zwischenspeicher, Himmelsdaten),
   Routen in `tests/test_ui_layout.py`.
 
+## Planer `#/observatorium/plan` (12.11.2026, Schritt 2 nach der Horizontmaske)
+- **Backend** `modules/stacking/planner.py`, API `GET/POST/DELETE /api/stacking/plan` (POST = Assistent {nights 1–14, devices 1–2, mode
+  new|mix|deep, min_hours, watch[]} → rechnen und in `settings.json` → `observatory.plan` speichern; feste deutsche Fehlermeldungen).
+- **Rechnung** je Nacht wie Heute Nacht (`tonight._alt/_limit/_sep/_series/_window/_forecast`): 10-min-Schritte, astronomisch dunkel, Höhe über
+  max(30°, Horizontmaske des Ortes der Nacht – `site_for(night)`), Mondgewicht, Zenit-Abschlag je Gerät (Alt-Az), Wolken nur aus der vorhandenen
+  Open-Meteo-Schicht (nur mit Tutor-Einstellung „Wetter“, sonst/später „ohne Wetter“).
+- **Vergabe:** Nacht je Gerät in gleich lange Abschnitte ≥ min(Mindestbelichtung, 3 h); Abschnitte nach größtem Nutzen vergeben
+  (Priorität × min(Gewinn, Restbedarf), angefangene Ziele ×1,6), nie dasselbe Ziel gleichzeitig auf zwei Geräten, Abschnitte mit < 25 %
+  Nutzen bleiben frei (Wolken → Ziel wandert in spätere Nächte). Priorität: Wunsch (neu/Mischung/vertiefen), Objektart, Helligkeit,
+  Merkliste ×2. Ausgeschlossen: Begleiter eigener Objekte (wie Heute Nacht) und Kometen-Projekte (wandern).
+- **Geräte:** feste Liste `planner.DEVICES` (Bildfeld wie `picture_solve.DEVICE_FOV`) + „Gerät aus deinen Aufnahmen“ (`tonight.library`).
+- **Oberfläche** `static/planner.js|css`: Reiter Atlas | Planung (`AFplan.tabs`), Assistent mit Chips, Zeitleiste (Breite = Panel, schmal kürzere
+  Ränder), Zielliste mit Fortschritt (10 sichtbar, Rest aufklappbar), Klick auf einen Block → Kontextpanel mit „Im Atlas“.
+  Atlas: Ebene „Plan“ (gestrichelte Ringe, „geplant · Tag“). Heute Nacht: Abschnitt „Dein Plan für diese Nacht“ (`AFplan.nightSection`).
+- Tests: `tests/test_planner.py`.
+
 ## Geplant (Konzept vom 11.11.2026, Freigabe des Nutzers)
 - **Horizontmaske (gebaut 12.11.2026, siehe `standorte-himmel.md`):** Feld, Editor, Wirkung in Heute Nacht. Offen aus Etappe 2:
   Vorschlag aus eigenen Aufnahmen und Atlas „Von hier“ (nach dem Planer, Reihenfolge Nutzerentscheidung 12.11.2026).
