@@ -120,7 +120,8 @@ async function atlasView(el, query) {
   const start = fromQuery(q);
   if (start) Object.assign(v, reduced() ? start : { ...start, fov: Math.min(FOV_MAX, start.fov * 5) });   // danach hineinfliegen
   const on = { photos: true, catalog: true, cons: true, grid: true, plan: true, tracks: true, ...store.get(LKEY, {}) };
-  const wantHere = q.get('blick') === 'hier', pathDate = (q.get('date') || '').slice(0, 10);
+  const wantHere = q.get('blick') === 'hier';
+  let pathDate = (q.get('date') || '').slice(0, 10);
   if (wantHere) on.tracks = true;
   // Bahnen der Ziele durch die Nacht (/api/stacking/dome, dome.py): nur „Von hier“; trackSel = angeklicktes Ziel
   let paths = null, pathsP = null;
@@ -413,8 +414,12 @@ async function atlasView(el, query) {
   }
   function loadPaths() {
     if (pathsP || !site) return;
-    pathsP = api('/stacking/dome' + (pathDate ? '?date=' + encodeURIComponent(pathDate) : '')).then(r => {
-      if (!el.isConnected || !r || r.error || !r.targets) return;
+    const req = pathsP = api('/stacking/dome' + (pathDate ? '?date=' + encodeURIComponent(pathDate) : '')).then(async r => {
+      if (!el.isConnected || req !== pathsP || !r || r.error || !r.targets) return;
+      // Ort dieser Nacht (Ortsliste: kann je Nacht wechseln) – Himmel, Boden und Maske passend zu den Bahnen
+      const ns = (await api('/sites/resolve?night=' + encodeURIComponent(r.night)).catch(() => null))?.site;
+      if (!el.isConnected || req !== pathsP) return;
+      if (ns && ns.lat != null) site = ns;
       paths = r;
       const b = $('[data-layer="tracks"]', el); if (b) b.hidden = mode !== 'here';
       setRange();
@@ -789,7 +794,7 @@ async function atlasView(el, query) {
     freeList(to);
   };
   $('#obsT', el).oninput = (e) => setT(t0 + +e.target.value * 60);
-  $('#obsNow', el).onclick = () => { $('#obsT', el).value = 0; setT(Date.now() / 1000); };
+  $('#obsNow', el).onclick = () => { const nowT = Date.now() / 1000; $('#obsT', el).value = String(Math.max(0, Math.round((nowT - t0) / 60))); setT(nowT); };
   showT();
   api('/sites/resolve').then(r => {
     if (!el.isConnected || !r?.site || r.site.lat == null) return;
@@ -878,6 +883,14 @@ async function atlasView(el, query) {
       const m = path.match(/^\/observatorium(?:\?(.*))?$/);
       if (!m) return false;
       const qs = new URLSearchParams(m[1] || '');
+      const nd = (qs.get('date') || '').slice(0, 10);
+      if (nd !== pathDate) {                                        // andere Nacht (oder wieder heute): Bahnen neu
+        pathDate = nd; pathsP = null; paths = null; freeSig = '';
+        tsel = tShow = Date.now() / 1000;
+        if (sel?.type === 'track') { sel = null; AF.ctx.clear(); }
+        freeList();
+        if (mode === 'here') loadPaths(); else { const b = $('[data-layer="tracks"]', el); if (b) b.hidden = true; }
+      }
       if (qs.get('blick') === 'hier' && site) {                     // „Bahnen im Atlas“ bei schon offenem Atlas
         if (!on.tracks) { on.tracks = true; $('[data-layer="tracks"]', el)?.classList.add('on'); }
         setMode('here');

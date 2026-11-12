@@ -107,3 +107,28 @@ def test_tracks_layer_in_atlas(server, browser):
     assert page.locator('[data-layer="tracks"]').is_hidden()
     assert not errors
     page.close()
+
+
+def test_tracks_now_button_and_date_change(server, browser):
+    """„Jetzt“ stellt auch den Regler auf jetzt (Codex); anderes Datum bei offenem Atlas lädt die Bahnen dieser Nacht neu."""
+    import re
+    base, _ = server
+    page = browser.new_page()
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{base}/#/observatorium?blick=hier")
+    page.wait_for_selector("#obsFree:not([hidden]) .obs-fi", timeout=30000)
+    page.click("#obsNow")
+    page.wait_for_timeout(500)
+    minutes = lambda: (lambda h, m: int(h) * 60 + int(m))(*re.search(r"(\d\d):(\d\d)", page.text_content("#obsTL")).groups())
+    a = minutes()
+    page.eval_on_selector("#obsT", "e => e.dispatchEvent(new Event('input', {bubbles: true}))")   # Regler unverändert „anfassen“
+    page.wait_for_timeout(500)
+    assert abs(minutes() - a) <= 1
+    nxt = page.evaluate("async () => (await (await fetch('/api/stacking/dome?night=1')).json()).night")
+    page.evaluate(f"location.hash = '#/observatorium?blick=hier&date={nxt}'")
+    page.wait_for_function("() => /in der Nacht/.test(document.querySelector('#obsFree h2')?.textContent || '')", timeout=30000)
+    page.evaluate("location.hash = '#/observatorium?blick=hier'")
+    page.wait_for_function("() => /heute Nacht/.test(document.querySelector('#obsFree h2')?.textContent || '')", timeout=30000)
+    assert not errors
+    page.close()
