@@ -3,6 +3,16 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.69.0 – 12.11.2026
+
+### Neu
+- **Observatorium „Von hier“ – Bahnen:** neue Ebene zeigt, wie deine Ziele durch die Nacht wandern und wann sie im freien Ausschnitt über deinem Horizont stehen (Grenze 30° bzw. Horizontmaske), dazu der Mond. „Ganzer Himmel“ zeigt alles von oben, darunter Listen „Jetzt frei“, „Später frei“ und „Nie frei“ mit Grund.
+- **Ablauf der Teleskope:** Mit einem Plan zeigt „Von hier“ ein Fadenkreuz am gerade angepeilten Ziel, Schwenkpfeile mit Uhrzeit zum nächsten Ziel und eine Ablauf-Liste je Gerät.
+- **Observatorium:** sanfte Übergänge beim Wechsel zwischen Atlas und Planung, zwischen Himmel und „Von hier“, bei Sprüngen im Atlas (Kamerafahrt), im Planer und im Horizont-Dialog (ohne Animation bei „Bewegung reduzieren“).
+
+### Behoben
+- Observatorium: Bahnen nutzen den Standort der gewählten Nacht; eine offene Ansicht folgt dem Datumswechsel nach Mitternacht; „Jetzt“ stellt auch den Zeitregler zurück; Ziele gelten am Ende des freien Fensters nicht mehr 10 Minuten zu lange als frei.
+
 ## 0.68.0 – 12.11.2026
 
 ### Neu
