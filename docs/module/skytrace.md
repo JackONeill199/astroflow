@@ -71,7 +71,7 @@ der Zuordnung und dem Ausschnitt deiner Aufnahme.
 
 | Quelle | Was SkyTrace tut | Was dafür nötig ist |
 |---|---|---|
-| Asteroiden (JPL) | Positionsabgleich nach JPL-Ephemeriden zum Belichtungsmittelpunkt, mit Zeitlimit und Cache | Internet (nur Zeit und Himmelsposition, kein Foto) |
+| Asteroiden (JPL) | Positionsabgleich nach JPL-Ephemeriden zum Belichtungsmittelpunkt, mit Zeitlimit und Cache | Internet. Übertragen werden Zeit, Himmelsposition **und der Beobachtungsstandort** (Breite, Länge, Höhe) an die JPL-Abfrage, kein Foto; Ergebnisse werden zwischengespeichert |
 | Meteore (GMN, CNEOS-Feuerkugeln) | Abgleich mit Meteorbahnen und Feuerkugel-Ereignissen zur Aufnahmezeit | **Vorhandene** lokale Monatsdateien – es wird nichts weltweit heruntergeladen |
 | Flugzeuge | Abgleich mit **eigenen** Flugdaten (Datei oder URL) | Eigene Flugdaten; einen automatischen Flugabgleich gibt es nicht |
 
