@@ -1,4 +1,4 @@
-"""CLI: astroflow [start] | stop | serve | process | demo"""
+"""CLI: astroflow [start] | stop | serve | process | demo | components | autostart"""
 from __future__ import annotations
 
 import argparse
@@ -17,6 +17,9 @@ def main(argv=None):
     st.add_argument("--wait-pid", type=int, default=None, help=argparse.SUPPRESS)
     co = sub.add_parser("components", help="optionale Komponenten: status | install NAME[:OPTION] … | remove NAME …")
     co.add_argument("args", nargs="*")
+    au = sub.add_parser("autostart", help="beim Anmelden starten: on | off | status (Windows: Registry, Linux: ~/.config/autostart)")
+    au.add_argument("action", nargs="?", default="status", choices=("on", "off", "status"))
+    au.add_argument("--home", default=None, help="portabler Programmordner (wie ASTROFLOW_HOME)")
     tr = sub.add_parser("tray", help="Symbol im Infobereich (startet „astroflow start“ von selbst)")
     tr.add_argument("--port", type=int, default=None)
     so = sub.add_parser("stop", help="laufenden Server beenden")
@@ -45,6 +48,18 @@ def main(argv=None):
     if a.cmd == "tray":
         from .core import tray
         return tray.main(a.port)
+    if a.cmd == "autostart":
+        import os
+        from .core import tray
+        if a.home:
+            os.environ["ASTROFLOW_HOME"] = a.home
+        if not tray.autostart_supported():
+            print("Autostart wird auf diesem System nicht unterstützt.")
+            return 1
+        if a.action != "status":
+            tray.set_autostart(a.action == "on")
+        print("Autostart: " + ("an" if tray.autostart_enabled() else "aus"))
+        return 0
     if a.cmd == "components":
         from .core import components
         return components.cli(a.args)

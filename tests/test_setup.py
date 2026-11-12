@@ -461,7 +461,9 @@ def test_paketordner_haken(tmp_path, monkeypatch):
     before = list(sys.path)
     try:
         spec.loader.exec_module(mod)
-        tag = f"cp{sys.version_info[0]}{sys.version_info[1]}-" + ("win_amd64" if sys.maxsize > 2**32 else "win32")
+        plat = ("win_amd64" if sys.maxsize > 2**32 else "win32") if sys.platform == "win32" else mod._platform_tag()
+        tag = f"cp{sys.version_info[0]}{sys.version_info[1]}-" + plat
+        assert sys.platform == "win32" or plat.startswith(("linux_", "darwin_"))
         assert mod.DIR == str(tmp_path / "app" / "Pakete" / tag)
         assert sys.path[-1] == mod.DIR and sys.path[:len(before)] == before
     finally:

@@ -11,8 +11,12 @@ from astropy.io import fits
 from astropy.wcs import WCS
 from analyse import BASE, event
 
-CATALOG=Path('C:/Program Files/astap/deep_sky.csv')
+import os
+# ASTAP-Objektkatalog: Windows-Installation, sonst der Ordner des Einrichtungsassistenten (~/astap) bzw. /opt/astap
+CATALOG=next((c for c in (Path('C:/Program Files/astap/deep_sky.csv'),Path.home()/'astap'/'deep_sky.csv',Path('/opt/astap/deep_sky.csv')) if c.is_file()),
+             Path('C:/Program Files/astap/deep_sky.csv'))
 TOOLS=BASE/'tools/astap'
+CLI='astap_cli.exe' if os.name=='nt' else 'astap_cli'
 
 
 def catalog_entries():
@@ -38,8 +42,8 @@ def hint(path):
 
 def solve_image(path,data,folder,out,stop_file=None):
     """Solve a generated FITS copy. No -update and no writes alongside source files."""
-    solver=TOOLS/'astap_cli.exe'
-    if not solver.exists(): solver=Path('C:/Program Files/astap/astap_cli.exe')
+    solver=TOOLS/CLI
+    if not solver.exists(): solver=Path('C:/Program Files/astap/astap_cli.exe') if os.name=='nt' else Path.home()/'astap'/CLI
     database=TOOLS/'catalog'
     if not list(database.rglob('*.1476')):
         event('error',text='Plate Solving: lokaler Sternkatalog fehlt. Ereigniserkennung läuft weiter.'); return None
@@ -61,7 +65,7 @@ def solve_image(path,data,folder,out,stop_file=None):
     event('status',text='Lokales Plate Solving: Sternmuster werden mit ASTAP abgeglichen …')
     try:
         with (target/'solver-console.log').open('w') as log:
-            proc=subprocess.Popen(command,stdout=log,stderr=subprocess.STDOUT,creationflags=subprocess.CREATE_NO_WINDOW)
+            proc=subprocess.Popen(command,stdout=log,stderr=subprocess.STDOUT,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
             start=time.monotonic()
             while proc.poll() is None:
                 if (Path(stop_file) if stop_file else out/'STOP').exists() or time.monotonic()-start>120:

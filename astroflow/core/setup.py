@@ -49,7 +49,7 @@ def recommended_db(telescopes: list[str]) -> str:
 
 
 TASK_NAMES = {"astap": "ASTAP + Sterndatenbank", "demo": "Demo-Aufnahmen", "gpu": "GPU-Beschleunigung",
-              "graxpert": "GraXpert", "skytrace": "SkyTrace-Analyse-Engine"}
+              "graxpert": "GraXpert", "skytrace": "SkyTrace-Analyse-Engine", "firewall": "Firewall-Freigabe"}
 
 
 def _version_tuple(v: str) -> tuple:
@@ -58,9 +58,9 @@ def _version_tuple(v: str) -> tuple:
 
 
 def drives() -> list[dict]:
-    """Laufwerke mit freiem Speicher (Windows: A–Z, sonst Home + Wurzel)."""
+    """Laufwerke mit freiem Speicher (Windows: A–Z, sonst Home, Wurzel und eingehängte Datenträger unter /media, /run/media, /mnt)."""
     out, seen = [], set()
-    roots = [f"{c}:\\" for c in "CDEFGHIJKLMNOPQRSTUVWXYZ"] if os.name == "nt" else [str(Path.home()), "/"]
+    roots = [f"{c}:\\" for c in "CDEFGHIJKLMNOPQRSTUVWXYZ"] if os.name == "nt" else [str(Path.home()), "/", *_mounts()]
     for r in roots:
         try:
             if os.name == "nt" and not os.path.exists(r):
@@ -73,6 +73,35 @@ def drives() -> list[dict]:
         seen.add((du.total, du.free))
         out.append({"path": r, "free": du.free, "total": du.total})
     return out
+
+
+MOUNT_BASES = ("/media", "/run/media", "/mnt")       # USB-Platten, zweite Festplatten (udisks hängt unter /media/<Nutzer> ein)
+
+
+def _mounts(bases=MOUNT_BASES) -> list[str]:
+    """Eingehängte Datenträger: Unterordner von /media/<Nutzer>, /run/media/<Nutzer> und /mnt, die ein eigener Einhängepunkt sind."""
+    out = []
+    for base in bases:
+        for d in _subdirs(Path(base)):
+            if _is_mount(d):
+                out.append(str(d))
+            else:                                    # /media/<Nutzer>/<Datenträger>
+                out += [str(e) for e in _subdirs(d) if _is_mount(e)]
+    return out
+
+
+def _subdirs(p: Path) -> list[Path]:
+    try:
+        return sorted(d for d in p.iterdir() if d.is_dir())
+    except OSError:                                  # fehlt oder gehört einem anderen Nutzer
+        return []
+
+
+def _is_mount(p: Path) -> bool:
+    try:
+        return os.path.ismount(p)
+    except OSError:
+        return False
 
 
 def folder_info(path: Path) -> dict:
@@ -247,8 +276,8 @@ class Setup:
                 raise HTTPException(400, "Unbekannte Sterndatenbank.")
             if _system() not in ASTAP_CLI:
                 raise HTTPException(400, f"Für {_system()[0]} {_system()[1]} gibt es keine ASTAP-Kommandozeile – bitte ASTAP selbst installieren.")
-        if name == "graxpert" and os.name != "nt":
-            raise HTTPException(400, "GraXpert installiert AstroFlow nur unter Windows selbst.")
+        if name == "graxpert" and not comp.graxpert_supported():
+            raise HTTPException(400, "GraXpert installiert AstroFlow nur unter Windows und Linux (x86_64) selbst.")
         return self._run(name, self._component_job, name, option, force)
 
     def _component_job(self, prog, name, option, force) -> str:
@@ -327,9 +356,13 @@ class Setup:
         return "Demo-Aufnahmen liegen bereit und werden verarbeitet."
 
     # Heimnetz ----------------------------------------------------------------------
-    def firewall(self) -> dict:
+    def firewall(self, remove: bool = False) -> dict:
+        if sys.platform.startswith("linux"):
+            return self._firewall_linux(remove)
         if os.name != "nt":
             return {"ok": True, "detail": "Keine Windows-Firewall – ggf. die Firewall des Systems selbst freigeben."}
+        if remove:
+            return {"ok": False, "detail": "Entfernen unter Windows: scripts/windows/Netzwerk-freigeben.bat entfernen."}
         import subprocess
         p = launcher.port()
         cmd = (f"Remove-NetFirewallRule -DisplayName 'AstroFlow LAN' -ErrorAction SilentlyContinue; "
@@ -339,6 +372,36 @@ class Setup:
                           f"Start-Process powershell -Verb RunAs -WindowStyle Hidden -ArgumentList '-NoProfile','-Command',\"{cmd}\""],
                          creationflags=0x08000000)
         return {"ok": True, "detail": "Windows fragt nach Administratorrechten. Danach ist AstroFlow im Heimnetz erreichbar."}
+
+    def _firewall_linux(self, remove: bool) -> dict:
+        """ufw/firewalld per pkexec (feste Befehle, s. core/firewall.py); sonst den Befehl zum Selbst-Ausführen anzeigen."""
+        from . import firewall as fw
+        p = launcher.port()
+        try:
+            plan = fw.plan(p, remove)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            return {"ok": False, "detail": "Die Firewall ließ sich nicht prüfen."}
+        if not plan.get("kind"):
+            return {"ok": True, "detail": f"Keine aktive Firewall (ufw/firewalld) gefunden – nichts zu tun. Läuft eine andere, dort "
+                                          f"TCP-Port {p} für das Heimnetz freigeben."}
+        if not plan.get("net"):
+            return {"ok": False, "detail": "Kein privates Heimnetz (IPv4) gefunden – Freigabe nicht möglich."}
+        what = "Freigabe entfernen" if remove else "Freigabe"
+        if not plan.get("argv"):
+            return {"ok": True, "manual": plan["manual"], "detail": f"{what} bitte im Terminal ausführen: {plan['manual']}"}
+
+        def job(prog):
+            prog(0.1, "Das System fragt nach dem Passwort …")
+            ok, msg = fw.execute(plan["argv"])
+            if not ok:
+                raise RuntimeError(msg)
+            return (f"Freigabe entfernt ({plan['kind']})." if remove else
+                    f"AstroFlow ist im Heimnetz {plan['net']} erreichbar ({plan['kind']}, TCP-Port {p}).")
+        self._run("firewall", job)
+        return {"ok": True, "pending": True, "manual": plan["manual"],
+                "detail": f"Das System fragt nach dem Passwort ({plan['kind']}, Heimnetz {plan['net']}, TCP-Port {p})."}
 
     # Updates -----------------------------------------------------------------------
     def check_update(self, force: bool = False) -> dict:
@@ -443,9 +506,9 @@ def build_router(setup: Setup) -> APIRouter:
         return setup.remove_component(str(body.get("id") or ""))
 
     @r.post("/setup/firewall")
-    def post_firewall(request: Request):
+    def post_firewall(request: Request, body: dict = Body({})):
         security.require_local(request, "Firewall freigeben")
-        return setup.firewall()
+        return setup.firewall(bool(body.get("remove")))
 
     @r.get("/system/update")
     def get_update(force: bool = False):

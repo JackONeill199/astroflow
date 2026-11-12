@@ -33,6 +33,9 @@
           ${restartHint}
           ${active && s.platform === 'Windows' ? `<div class="su-acts pa-gap"><button class="btn ghost sm" id="paFw">Windows-Firewall freigeben</button>
             <span class="dim sm">Falls Geräte die Seite nicht erreichen (fragt nach Administratorrechten).</span></div>` : ''}
+          ${active && s.platform === 'Linux' ? `<div class="su-acts pa-gap"><button class="btn ghost sm" id="paFw" data-local-only>Firewall freigeben</button>
+            <button class="btn ghost sm" id="paFwRm" data-local-only>Freigabe entfernen</button>
+            <span class="dim sm">ufw oder firewalld, nur für das eigene Heimnetz (das System fragt nach dem Passwort).</span></div>` : ''}
           <p class="dim sm pa-gap">Einstellungen, die Programme starten (Komponenten, Programmpfade, StarNet), Heimnetz, Datenordner und Beenden gehen nur am Rechner selbst.</p>
         </div>
         <div class="panel"><h2>Gerät koppeln</h2>
@@ -65,7 +68,7 @@
       if (!b) return;
       try {
         if (b.id === 'paNew') { d = await send('/pairing/code'); sig = ''; paint(); toast('Neuer Kopplungscode – der alte gilt nicht mehr.', 'ok'); }
-        else if (b.id === 'paFw') { const r = await send('/setup/firewall'); toast(r.detail, 'ok'); }
+        else if (b.id === 'paFw' || b.id === 'paFwRm') { const r = await send('/setup/firewall', { remove: b.id === 'paFwRm' }); toast(r.detail, r.ok ? 'ok' : 'err'); }
         else if (b.dataset.paRm) {
           if (!await confirmDlg('Gerät entfernen?', 'Das Gerät muss danach neu gekoppelt werden, um AstroFlow zu öffnen.', 'Entfernen', true)) return;
           d = await send('/pairing/remove', { id: b.dataset.paRm }); sig = ''; paint();

@@ -146,7 +146,7 @@
           <dl class="su-extras">
             ${s.launched ? `<dt>Heimnetz</dt><dd><label class="modrow su-row" data-local-only><div>Vom Handy oder Tablet im eigenen WLAN erreichbar. Jedes Gerät wird einmal per QR-Code gekoppelt (Einstellungen → Heimnetz).</div>
               <input type="checkbox" id="suLan" ${s.lan ? 'checked' : ''}><span class="switch"></span></label>
-              ${s.lan && s.platform === 'Windows' ? `<button class="btn ghost sm" id="suFw" data-local-only>Windows-Firewall freigeben</button>` : ''}
+              ${s.lan && (s.platform === 'Windows' || s.platform === 'Linux') ? `<button class="btn ghost sm" id="suFw" data-local-only>${s.platform === 'Windows' ? 'Windows-Firewall' : 'Firewall'} freigeben</button>` : ''}
               ${s.lan ? `<a class="btn ghost sm" href="#/settings/heimnetz">Gerät koppeln</a>` : ''}</dd>` : ''}
             <dt>Updates</dt><dd><label class="modrow su-row"><div>Einmal am Tag nach einer neuen Version fragen (eine anonyme Anfrage an GitHub).</div>
               <input type="checkbox" id="suUpd" ${s.update_check ? 'checked' : ''}><span class="switch"></span></label></dd>
@@ -202,7 +202,7 @@
         else if (b.closest('#suDb')) { db = b.dataset.v; repaint(); }
         else if (b.id === 'suAstap') { await send('/components/install', { id: 'astap', option: db }); await refresh(); watch(); }
         else if (b.id === 'suDemo') { await send('/setup/demo'); await refresh(); watch(); }
-        else if (b.id === 'suFw') { const r = await send('/setup/firewall'); toast(r.detail, 'ok'); }
+        else if (b.id === 'suFw') { const r = await send('/setup/firewall'); toast(r.detail, r.ok ? 'ok' : 'err'); }
         else if (b.id === 'suDone') {
           const bg = busyNow();
           await send('/setup', { done: true });
