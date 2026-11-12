@@ -31,14 +31,13 @@ Jedes Modul hat eine eigene Seite mit allen Funktionen, Bildern und Videos.
 <!-- modul:bilder – Block pflegt die Bilder-Sitzung -->
 ### Bilder – vom Rohbild zum fertigen Foto
 
-FITS-Aufnahmen werden automatisch sortiert, kalibriert, gestackt und entwickelt; neue Nächte werden nachgestackt. Dazu Analysen
-(Tiefe, Vergleich, HR-Diagramm, Asteroiden, Gerätediagnose), „Heute Nacht“, das **Observatorium** mit deinen Fotos am Himmel und Beobachtungsplaner.
+FITS-Aufnahmen werden automatisch sortiert, kalibriert, gestackt und entwickelt; neue Nächte werden nachgestackt, aussortierte Aufnahmen kommen mit Begründung.
+Dazu Analysen (Tiefe, Vergleich, HR-Diagramm, Asteroiden, Gerätediagnose), „Heute Nacht“ und das **Observatorium**: deine Fotos am Himmel,
+der Himmel „von hier“ mit Zeitregler und ein Beobachtungsplaner über mehrere Nächte.
 
 ![Live-Ansicht beim Stacken](docs/media/stacking-live.webp)
 
-| | | |
-|---|---|---|
-| ![NGC 7000](docs/screenshots/ergebnis-ngc7000.webp) | ![NGC 6888](docs/screenshots/ergebnis-ngc6888.webp) | ![M16](docs/screenshots/ergebnis-m16.webp) |
+![Observatorium: der Himmel von hier mit Zeitregler](docs/screenshots/observatorium-von-hier.webp)
 
 **[Alles zu Bilder →](docs/module/bilder.md)**
 <!-- /modul:bilder -->
@@ -46,10 +45,13 @@ FITS-Aufnahmen werden automatisch sortiert, kalibriert, gestackt und entwickelt;
 <!-- modul:skytrace – Block pflegt die SkyTrace-Sitzung -->
 ### SkyTrace – was sich zwischen den Sternen bewegt
 
-Lichtspuren in Bildfolgen werden erkannt und zur echten Aufnahmezeit mit Satelliten, Meteoren und Flugzeugen abgeglichen – mit 3D-Erde,
-Standort- und Uhrsuche, Statistik und Erfolgen.
+Lichtspuren in Bildfolgen werden als Kandidaten erfasst und zur echten Aufnahmezeit mit historischen Satellitenbahnen, Meteoren und Flugzeugen
+abgeglichen – ein Hinweis, nie eine Behauptung. Dazu 3D-Erde und Karte, Standort- und Uhrsuche (Vorschläge nie automatisch), Statistik und Erfolge;
+die Analyse braucht die optionale Engine, alles Vorhandene lässt sich auch ohne ansehen.
 
 ![SkyTrace erkennt Spuren](docs/media/skytrace-spuren.webp)
+
+![Kandidaten durchblättern](docs/media/skytrace-kandidaten-blaettern.webp)
 
 **[Alles zu SkyTrace →](docs/module/skytrace.md)**
 <!-- /modul:skytrace -->
@@ -57,10 +59,11 @@ Standort- und Uhrsuche, Statistik und Erfolgen.
 <!-- modul:sage – Block pflegt die Sage-Sitzung -->
 ### Sage – die lebende Enzyklopädie
 
-Jedes fotografierte Objekt bekommt einen Eintrag mit deinem Bild, Katalogdaten und Quellen; dazu Bild bestimmen, Geschichten zum Vorlesen,
-Entdeckungen, Wissensnetz und Sammlung mit Erfolgen.
+Jedes fotografierte Objekt bekommt einen Eintrag mit deinem Bild, Messwerten aus Fachkatalogen und deinen eigenen Beobachtungen –
+jede Aussage mit Quelle oder als KI-Vorschlag gekennzeichnet. Dazu Wissensnetz, Entdeckungen, Geschichten zum Vorlesen und eine
+Messier-Sammlung. Der Kern läuft ohne KI-Schlüssel; Recherche, Chat und Geschichten sind optional.
 
-![Sage-Enzyklopädie](docs/screenshots/sage-enzyklopaedie.webp)
+![Rundgang durch Sage](docs/media/sage-rundgang.webp)
 
 **[Alles zu Sage →](docs/module/sage.md)**
 <!-- /modul:sage -->

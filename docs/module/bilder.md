@@ -1,8 +1,20 @@
 # Bilder – vom Rohbild zum fertigen Astrofoto
 
-Das Kernmodul von AstroFlow: Aufnahmen sortieren, kalibrieren, stacken und entwickeln, dazu Analysen, Heute Nacht, Observatorium und Kometenmodus.
+Das Kernmodul von AstroFlow: Aufnahmen sortieren, kalibrieren, stacken und entwickeln, dazu Analysen, „Heute Nacht“, ein Observatorium mit Beobachtungsplaner
+und der Kometenmodus. Alles läuft lokal auf deinem Rechner.
 
 [← Zurück zur Übersicht](../../README.md)
+
+**Inhalt:**
+[Vom Rohbild zum Foto](#vom-rohbild-zum-fertigen-foto) ·
+[Ergebnisse](#ergebnisse) ·
+[Das einzelne Objekt](#das-einzelne-objekt-bild-qualität-aufnahmen) ·
+[Fertige Bilder importieren](#fertige-bilder-importieren) ·
+[Analyse](#analyse-was-dein-bild-zeigt) ·
+[Heute Nacht und Himmelsqualität](#heute-nacht-und-himmelsqualität) ·
+[Observatorium und Planer](#observatorium-atlas-von-hier-und-beobachtungsplaner) ·
+[Standorte und Horizont](#standorte-und-horizont) ·
+[Kometenmodus](#kometenmodus)
 
 
 ## Vom Rohbild zum fertigen Foto
@@ -49,10 +61,33 @@ Himmelshelligkeit und Schärfe über die Zeit, die Nächte als Bänder mit Dämm
 
 ![Aufnahmen-Diagramm](../screenshots/aufnahmen.webp)
 
+Ein Klick auf das Vorschaubild öffnet die Aufnahme groß – mit dem Grund in Klartext („unscharf – Seeing/Fokus“, „wenige Sterne – Wolken/Dunst“), den Messwerten
+im Vergleich zum Median der Nacht und auf Wunsch den erkannten Sternen als Markierung. Mit den Pfeilen blätterst du durch die Serie; „ausschließen“ und „einschließen“
+korrigieren die automatische Auswahl.
+
+![Eine verworfene Aufnahme mit Begründung](../screenshots/aufnahme-vorschau.webp)
+
+*(Demodaten: synthetische Aufnahmen.)*
+
+**Aussortieren mit Verstand:** Neben Unschärfe, Wolken, Dunst und Satellitenspuren erkennt AstroFlow auch **Sternschweife durch einen Ruck der Montierung**
+(runder Sternkern mit schwachem, gleichgerichtetem Schweif) und verwirft solche Aufnahmen mit dem Grund „Sternschweif“. Satelliten- und Flugzeugspuren in den
+übrigen Aufnahmen werden maskiert statt die ganze Aufnahme zu opfern.
+
 Verschiebt das Teleskop das Bildfeld deutlich (Mosaikmodus der Stellina, Nachführsprünge), setzt AstroFlow die Felder zu einem größeren Bild zusammen
 (Optionen: Mosaik automatisch/ein/aus, Zuschnitt groß oder kompakt).
 
 ![Mosaik aus verschobenen Bildfeldern](../screenshots/mosaik.webp)
+
+## Fertige Bilder importieren
+
+Neben Rohaufnahmen nimmt AstroFlow auch **fertige Bilder** (JPG, PNG, TIFF) auf – etwa die Ausgabe deines Smart-Teleskops oder ein bearbeitetes Foto –, damit sie
+in Galerie, Sage und Observatorium auftauchen. Erkennt AstroFlow das Objekt nicht aus dem Dateinamen, bestimmt es im Hintergrund per **Plate-Solving**
+(ASTAP, lokal, ohne Konto): Objekt, Koordinaten, Bildfeld und Ausrichtung werden eingetragen. Das klappt bei normalen Smart-Teleskop-Bildern ab etwa
+800 px; stark verkleinerte Webbilder können scheitern – dann hilft „Namen setzen“ (ein Katalogname wie „M42“ setzt zugleich das Objekt) oder „Erneut versuchen“.
+
+Der Reiter **Analyse** zeigt für importierte Bilder die Objekte im Bild (auch als Überlagerung, mit „Objekte im Bild einblenden“), Bildfeld, Maßstab und
+Ausrichtung, eine grobe Einordnung der Bildqualität (Sternschärfe, Sternform, Rauschen, Farbstich) und deine eigenen Aufnahmen desselben Objekts.
+Messungen, die lineare Rohdaten brauchen (Grenzgröße, HR-Diagramm, Farbkalibrierung), gibt es für fertige Bilder bewusst nicht – ehrlich statt geschätzt.
 
 ## Analyse: Was dein Bild zeigt
 
@@ -83,7 +118,7 @@ Weitere Auswertungen je Objekt, alle aus gespeicherten Daten:
 |---|---|
 | ![Asteroiden im Bild](../screenshots/analyse-asteroiden.webp) | ![Gerätediagnose](../screenshots/analyse-geraet.webp) |
 
-*(Das Asteroiden-Beispiel stammt aus synthetischen Demodaten mit einer JPL-Attrappe.)*
+*(Beispiele aus echten Aufnahmen eines Smart-Teleskops; Ortsnamen sind durch „Beispielort“ ersetzt. Beim Asteroiden-Bild lagen 48 Kleinkörper laut JPL im Feld, nachgewiesen wurde keiner – AstroFlow meldet nur, was wirklich zu sehen ist.)*
 
 Das **Analyse-Dashboard** (Bilder → Analyse) fasst die ganze Bibliothek zusammen: Kennzahlen, Rekorde, „Dein Universum“ als 3D-Wolke, Verläufe und die Frage,
 was am meisten gebracht hat; „Alles analysieren“ rechnet fehlende Auswertungen im Hintergrund nach.
@@ -99,15 +134,46 @@ was am meisten gebracht hat; „Alles analysieren“ rechnet fehlende Auswertung
 
 *(Demodaten mit erfundenem Ort.)*
 
-**Observatorium:** ein zoombarer Himmelsatlas des ganzen Himmels – Sterne, Sternbilder, Messier-/Caldwell-Objekte und **deine eigenen Fotos an ihrer echten Position,
-in echter Größe und Drehung** (aus dem Plate-Solving). Klick auf ein Foto öffnet das Projekt, auf ein Katalogobjekt die Sage-Seite; Sage springt von jeder Objektseite hierher.
-Unter **Planung** fragt ein Assistent nach Nächten, Gerät(en) – Stellina und Vespera auch gleichzeitig –, Wunsch (Neues oder vorhandene vertiefen), Mindestbelichtung und Merkliste und rechnet einen **Plan über mehrere Nächte** aus Sichtbarkeit, Horizont, Mond und (soweit vorhanden) Wetter.
+## Observatorium: Atlas, „Von hier“ und Beobachtungsplaner
+
+Das Observatorium ist ein zoombarer **Himmelsatlas** des ganzen Himmels – Sterne, Sternbilder mit deutschen Namen, Messier-/Caldwell-Objekte und **deine eigenen Fotos
+an ihrer echten Position, in echter Größe und Drehung** (aus dem Plate-Solving). Ein Klick auf ein Foto öffnet das Projekt, auf ein Katalogobjekt die Sage-Seite;
+Sage springt umgekehrt von jeder Objektseite hierher. Ebenen (Fotos, Katalog, Sternbilder, Gitter) schaltest du einzeln, die Suche fliegt zu jedem Objekt.
 
 ![Observatorium: eigene Fotos im Schwan an ihrer echten Position](../screenshots/observatorium.webp)
 
+**Von hier:** Der Schalter „Von hier“ zeigt den Himmel, wie er **von deinem Standort aus** aussieht – mit Himmelsrichtungen, Boden unter deiner Horizontmaske, der
+Dämmerung und einem **Zeitregler** von jetzt bis 16 Stunden voraus. So siehst du, wann das Ziel über den Baum klettert. Fotos, Katalog und Plan gelten in beiden
+Ansichten; alles wird lokal gerechnet.
+
+![Von hier: der Himmel am Beispielort, Zeitregler unten](../screenshots/observatorium-von-hier.webp)
+
+*(Demodaten mit erfundenem Ort und erfundener Horizontmaske; die gestrichelten Ringe sind Ziele aus dem Plan. Eigene Fotos erscheinen hier an ihrer Position.)*
+
+**Planung:** Ein Assistent fragt nach den Nächten (1–14), nach einem oder **zwei Geräten gleichzeitig** (z. B. Stellina und Vespera), dem Wunsch (Neues,
+Mischung oder vorhandene Objekte vertiefen), der Mindestbelichtung je Objekt und einer Merkliste – und rechnet daraus einen **Plan über mehrere Nächte**: welches Objekt wann
+auf welchem Gerät aufgenommen wird, nach Dunkelheit, Höhe über dem Horizont, Mond und – mit aktivierter Wetter-Einstellung – Wolken. Die Zeitleiste zeigt jede Nacht
+je Gerät, die Zielliste den Fortschritt, geplante Ziele erscheinen als Ringe im Atlas, und „Heute Nacht“ zeigt **Dein Plan für diese Nacht**. Mit „Kalender“
+exportierst du den Plan als `.ics`-Datei für dein Kalenderprogramm.
+
+![Beobachtungsplaner: fünf Nächte, zwei Geräte](../screenshots/observatorium-planer.webp)
+
+*(Demodaten mit erfundenem Ort, ohne Wetter.)*
+
+## Standorte und Horizont
+
 Orte legst du unter Einstellungen → Standorte **nach Datum** an (Zeiträume, einzelne Nächte, Standard-Ort); „Heute bin ich in …“ wechselt den Ort für die
-aktuelle Nacht. Der Ort einer Aufnahme ergibt sich aus FITS-Kopf → Zeitraum → Standard.
-Je Ort lässt sich ein **Horizont** einzeichnen (Bäume, Häuser, Balkon) – „Heute Nacht“ rechnet dann nur mit dem freien Himmel. Punkte zeigen, wo du dort schon fotografiert hast; im Observatorium zeigt „Von hier“ den Himmel über deinem Horizont zu einer wählbaren Uhrzeit. Die Ebene **Bahnen** zeigt dort, wie deine Ziele durch die Nacht wandern und wann sie im freien Ausschnitt über deinem Horizont stehen – „Ganzer Himmel“ zeigt alles von oben. Mit einem Plan siehst du dort auch, wann dein Teleskop welches Objekt anpeilt und wohin es danach schwenkt.
+aktuelle Nacht. Der Ort einer Aufnahme ergibt sich aus FITS-Kopf → Zeitraum → Standard. Dein Standort verlässt dabei den Rechner nie.
+
+Je Ort lässt sich ein **Horizont** einzeichnen – Bäume, Häuser, Balkonbrüstung: Linie auf die richtige Höhe ziehen oder eine Vorlage nehmen. „Heute Nacht“, der
+Planer und „Von hier“ rechnen dann nur mit dem freien Himmel. Aus deinen eigenen Aufnahmen entsteht ein **Vorschlag**: Punkte zeigen, wohin du an diesem Ort
+schon fotografiert hast (rot = von der Maske verdeckt), und „An Aufnahmen anpassen“ senkt die Maske dort ab.
+
+![Horizontmaske mit Punkten aus eigenen Aufnahmen](../screenshots/horizont-maske.webp)
+
+*(Demodaten mit erfundenem Ort.)*
+
+**Bahnen:** In „Von hier“ zeigt die Ebene **Bahnen**, wie deine Ziele durch die Nacht wandern und wann sie im freien Ausschnitt über deinem Horizont stehen – mit Listen „Jetzt frei“, „Später frei“ und „Nie frei“; „Ganzer Himmel“ zeigt alles von oben. Mit einem Plan siehst du dort auch, wann dein Teleskop welches Objekt anpeilt und wohin es danach schwenkt.
 
 ## Kometenmodus
 
