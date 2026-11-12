@@ -104,6 +104,7 @@ def test_plan_api_store_and_delete(tmp_path):
         DB(s.db_path)
         d = c.get("/api/stacking/plan").json()
         assert d["plan"] is None and d["has_site"] and any(o["id"] == "vespera" for o in d["devices"])
+        assert d["eq_detected"] == d["eq_default"] == [] and next(o for o in d["devices"] if o["id"] == "seestar")["eq_mode"]
         assert c.post("/api/stacking/plan", json={"devices": ["gibtsnicht"]}).status_code == 400
         r = c.post("/api/stacking/plan", json={"nights": 2, "devices": ["stellina"], "mode": "new", "min_hours": 2})
         assert r.status_code == 200 and len(r.json()["plan"]["nights"]) == 2

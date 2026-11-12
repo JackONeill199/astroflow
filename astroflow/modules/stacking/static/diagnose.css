@@ -31,6 +31,20 @@
 .dg-help p { margin: 0.375rem 0 }
 .dg-help b { color: var(--fg) }
 
+/* Höhe & Bildfelddrehung */
+.dg-sky { margin-top: 0.75rem; max-width: 48rem }
+.dg-sky h4 { display: flex; align-items: center; gap: 0.375rem; font-size: 0.8125rem; margin: 0 0 0.25rem }
+.dg-sky h4 svg { width: 0.875rem; height: 0.875rem; color: var(--acc) }
+.dg-sky p { margin: 0.25rem 0 }
+.dg-alts { display: grid; gap: 0.1875rem; margin: 0.375rem 0 }
+.dg-alt { display: grid; grid-template-columns: 4rem minmax(0, 1fr) minmax(0, 1.4fr); gap: 0.5rem; align-items: center; font-size: 0.75rem }
+.dg-alt > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.dg-alt i { position: relative; height: 0.625rem; width: var(--w); min-width: 0.25rem; border-radius: 0.25rem; background: var(--surface-2); overflow: hidden }
+.dg-alt i b, .dg-alt i em { position: absolute; top: 0; bottom: 0 }
+.dg-alt i b { left: 0; width: var(--s); background: var(--warn) }
+.dg-alt i em { left: var(--s); width: var(--o); background: var(--border) }
+@media (max-width: 600px) { .dg-alt { grid-template-columns: 3.5rem minmax(0, 1fr); } .dg-alt > span:last-child { grid-column: 2 } }
+
 /* Diagramme */
 .dg-chart { width: 100%; height: auto; display: block; overflow: visible }
 .dg-chart text { fill: var(--dim); font-size: 11px }

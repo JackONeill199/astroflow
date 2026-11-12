@@ -15,6 +15,12 @@ Drei Teile, alle aus gespeicherten Messwerten:
   r²-Anteil = Bildfeldwölbung; Unsicherheit per Bootstrap. Neuere Aufnahmen tragen zusätzlich eine 3×3-Karte je Bild
   (`metrics.tiles`, `quality.shape_metrics`) – deren Mittel bestätigt die Stack-Messung unabhängig von der Registrierung.
 
+- **Himmelslage (seit DIAG_VERSION 2):** Höhe, Azimut und Bildfelddrehung je Aufnahme lokal aus Zeit, Ort der Nacht und
+  Objektposition (`sky_track`, nichts in die DB). Daraus **Montierung je Nacht** (`mount`): dreht sich das Bild (Registrierung)
+  mit dem parallaktischen Winkel, ist es Alt-Az ohne Ausgleich; steht es still, obwohl Alt-Az es deutlich gedreht hätte, ist es
+  EQ-Modus – oder ein Derotator (Stellina), deshalb nur zusammen mit der Geräte-Tabelle (`devices.json`). Und **verworfene
+  Aufnahmen nach Höhe** (`sky`): Anteil der wegen Sternform verworfenen Aufnahmen in der Zone starker Drehung/über der
+  Zenit-Grenze gegen den Rest, gegengeprüft mit Driftrichtung/Länglichkeit (`elong_vs_drift`, `smear_ratio`).
 Ergebnis in `results.stats.diagnose` (`v` = DIAG_VERSION), Gerätetrend über alle Nächte in `device_summary`.
 Befunde für den Tutor: `findings`.
 """
@@ -25,11 +31,16 @@ import json
 import math
 import re
 import time
+import traceback
 from pathlib import Path
 
 import numpy as np
 
-DIAG_VERSION = 1
+DIAG_VERSION = 2          # 2 (12.11.2026): Himmelslage je Aufnahme, Montierung je Nacht, verworfene Aufnahmen nach Höhe
+Q_MIN = 3.0               # Grad: so weit muss sich der parallaktische Winkel drehen, damit die Montierung erkennbar ist
+ROT_ALTAZ = 0.6           # |Bilddrehung / parallaktischer Winkel| ab hier: Bildfeld dreht wie bei Alt-Az ohne Ausgleich
+ROT_STEADY = 0.2          # darunter: Bildfeld steht (EQ oder Derotator)
+SHAPE_REASONS = ("verzogen", "unscharf")      # Ablehnungsgründe, die Nachführung/Drehung betreffen können (grade.py)
 SEEING_EXP = 0.6          # FWHM des Seeings ∝ Luftmasse^0,6
 MIN_SEG = 3               # Aufnahmen je Abschnitt für eine Driftmessung
 JUMP_PX = 12.0            # Abweichung von der Fortsetzung, ab der ein neuer Abschnitt beginnt (Nachzentrieren, Dithern)
@@ -170,8 +181,106 @@ def _periodic(t: np.ndarray, res: np.ndarray) -> dict | None:
     return best if best and best["fap"] < 0.01 else None
 
 
-def tracking(fr: list[dict], links: dict, exptime: float | None, scale: float | None, shape: tuple | None) -> dict | None:
-    """Drift, Unruhe, Drehung und Verschmieren einer Nacht aus den Registrierungsmatrizen (Frame → Referenz)."""
+# ------------------------------------------------------------------ Himmelslage ---
+def sky_track(times: list[dt.datetime], ra: float, dec: float, site: list) -> dict:
+    """Höhe, Azimut (ab Nord), parallaktischer Winkel (Grad) und Bildfelddrehung einer Alt-Az-Montierung (°/min) je Zeitpunkt.
+    Offline (Ortssternzeit über astropy ohne IERS-Download), Standort bleibt auf dem Rechner."""
+    import warnings
+    from astropy import units as u
+    from astropy.time import Time
+    from astropy.utils import iers
+    from . import devices
+    with warnings.catch_warnings(), iers.conf.set_temp("auto_download", False), iers.conf.set_temp("auto_max_age", None):
+        warnings.simplefilter("ignore")
+        lst = Time(times).sidereal_time("mean", longitude=site[1] * u.deg).rad
+    p, d = math.radians(site[0]), math.radians(dec)
+    h = np.asarray(lst, float) - math.radians(ra)
+    alt = np.degrees(np.arcsin(np.clip(math.sin(p) * math.sin(d) + math.cos(p) * math.cos(d) * np.cos(h), -1, 1)))
+    az = np.degrees(np.arctan2(-math.cos(d) * np.sin(h), math.sin(d) * math.cos(p) - math.cos(d) * np.cos(h) * math.sin(p))) % 360
+    q = np.degrees(np.unwrap(np.arctan2(np.sin(h), math.tan(p) * math.cos(d) - math.sin(d) * np.cos(h))))
+    return {"alt": alt, "az": az, "q": q, "rate": devices.rotation_rate(alt, az, site[0])}
+
+
+def mount_mode(fit: dict | None, device: dict) -> dict:
+    """Montierung einer Nacht aus dem Vergleich Bilddrehung ↔ parallaktischer Winkel (fit aus `tracking`) und der Geräte-Tabelle.
+    state: rotating (dreht wie Alt-Az) | steady (steht still) | unknown; mode: altaz | eq | derot | None (unklar)."""
+    from . import devices
+    if not fit or fit.get("q_range") is None or fit["q_range"] < Q_MIN or fit.get("slope") is None:
+        return {"state": "unknown", "mode": None, **(fit or {})}
+    s = abs(fit["slope"])
+    d = devices.get(device.get("id")) or {}
+    if s >= ROT_ALTAZ:
+        return {"state": "rotating", "mode": "altaz", **fit}
+    if s > ROT_STEADY:
+        return {"state": "unknown", "mode": None, **fit}
+    if d.get("derotator") == "optical":
+        mode = "derot"
+    elif d.get("eq_mode") or not device.get("smart"):          # EQ-fähiges Gerät bzw. Astrokamera (meist EQ-Montierung)
+        mode = "eq"
+    else:
+        mode = None                                             # Gerät ohne EQ-Modus und ohne Derotator: unerwartet, nichts behaupten
+    return {"state": "steady", "mode": mode, **fit}
+
+
+ALT_BINS = (0, 30, 45, 60, 70, 80, 90)
+
+
+def _flag(f: dict) -> int:
+    """0 = verwendet, 1 = wegen Sternform verworfen (verzogen/unscharf), 2 = aus anderem Grund verworfen."""
+    if f.get("status") != "rejected":
+        return 0
+    r = str(f.get("reason") or "").lower()
+    return 1 if any(k in r for k in SHAPE_REASONS) else 2
+
+
+def sky_rejects(rows: list[dict], trk: dict, prof: dict, mount: dict, exptime: float | None, shape, tr: dict | None) -> dict:
+    """Verworfene Aufnahmen nach Höhe/Bildfelddrehung. trk: sky_track der Aufnahmen; prof: devices.profile des Geräts;
+    mount: mount_mode der Nacht (gemessen schlägt Tabelle). Ergebnis: Höhenklassen, Zone starker Drehung gegen den Rest, Urteil."""
+    from . import devices
+    flags = np.array([_flag(f) for f in rows])
+    alt, rate = trk["alt"], trk["rate"]
+    H, W = (shape or [0, 0])[-2:]
+    radius = math.hypot(W, H) / 2 if W and H else prof["radius_px"]
+    mode = {"altaz": "software", "eq": "eq", "derot": "derot"}.get(mount.get("mode")) or prof["mode"]
+    p = {**prof, "mode": mode, "exp": float(exptime or prof["exp"]), "radius_px": radius}
+    smear = devices.edge_smear(rate, p) if mode in ("software", "derot") else np.zeros(len(rows))
+    zl = prof.get("zenith_limit") if mode in ("software", "derot", "legacy") else None
+    hi = (smear >= 1.0) | ((alt > zl) if zl is not None else False)
+    if mode == "legacy":
+        hi = alt > devices.DEFAULT_ZENITH
+    bins = []
+    for a, b in zip(ALT_BINS[:-1], ALT_BINS[1:]):
+        m = (alt >= a) & (alt < b if b < 90 else alt <= b)
+        if m.any():
+            bins.append({"from": a, "to": b, "n": int(m.sum()), "shape": int((flags[m] == 1).sum()), "other": int((flags[m] == 2).sum())})
+    def part(m):
+        n = int(m.sum())
+        return {"n": n, "shape": int((flags[m] == 1).sum()), "share": _r(float((flags[m] == 1).mean()), 3) if n else None}
+    zone, rest = part(hi), part(~hi)
+    aligned = bool(tr and tr.get("elong_vs_drift") is not None and (tr.get("elong_coherence") or 0) >= 0.4 and tr["elong_vs_drift"] <= 25)
+    drift = bool(tr and (tr.get("smear_ratio") or 0) >= SMEAR_WARN)
+    verdict = None
+    if zone["n"] >= 5 and rest["n"] >= 5 and zone["shape"] >= 3:
+        sz, sr = zone["share"], rest["share"] or 0.0
+        if sz >= max(2 * sr, sr + 0.15):
+            verdict = "mixed" if aligned else "rotation"
+    total_shape = int((flags == 1).sum())
+    if verdict is None and total_shape >= max(5, 0.1 * len(rows)):
+        verdict = "drift" if (aligned or drift) else "unclear"
+    out = {"mode": mode, "zenith_limit": zl, "rate_max": _r(float(rate.max()), 3) if len(rate) else None,
+           "smear_max": _r(float(smear.max()), 2) if len(smear) else None, "alt_range": [_r(float(alt.min()), 1), _r(float(alt.max()), 1)],
+           "bins": bins, "zone": zone, "rest": rest, "rejected_shape": total_shape, "rejected_other": int((flags == 2).sum()),
+           "aligned": aligned, "verdict": verdict}
+    t0 = rows[0]["t"]
+    out["series"] = _thin([[round((f["t"] - t0).total_seconds() / 3600, 4), _r(float(alt[i]), 1), _r(float(trk["az"][i]), 1),
+                            _r(float(rate[i]), 3), int(flags[i])] for i, f in enumerate(rows)], 400)
+    return out
+
+
+def tracking(fr: list[dict], links: dict, exptime: float | None, scale: float | None, shape: tuple | None,
+             para: dict | None = None) -> dict | None:
+    """Drift, Unruhe, Drehung und Verschmieren einer Nacht aus den Registrierungsmatrizen (Frame → Referenz).
+    para: parallaktischer Winkel je Aufnahme (id → Grad) – Vergleich mit der Bilddrehung ergibt die Montierung (`rot_vs_q`)."""
     rows = [f for f in fr if f["id"] in links]
     if len(rows) < MIN_SEG + 1:
         return None
@@ -255,6 +364,13 @@ def tracking(fr: list[dict], links: dict, exptime: float | None, scale: float | 
     if ok.sum() >= 15 and np.ptp(loc[ok]) > 0 and np.ptp(ecc[ok]) > 0:
         from scipy.stats import spearmanr
         out["ecc_vs_speed"] = _r(float(spearmanr(loc[ok], ecc[ok])[0]), 2)
+    if para:
+        qq = np.array([para.get(f["id"], np.nan) for f in rows], float)
+        ok = np.isfinite(qq)
+        if ok.sum() >= 8:
+            fit = theil_sen(qq[ok], rot[ok])
+            out["rot_vs_q"] = {"q_range": _r(float(np.ptp(qq[ok])), 2), "rot_range": _r(float(np.ptp(rot[ok])), 2),
+                               "slope": _r(fit["slope"], 3) if fit else None}
     out["series"] = _thin([[round(float(ts[i] / 3600), 4), round(float(pos[i, 0] - pos[0, 0]), 1), round(float(pos[i, 1] - pos[0, 1]), 1),
                             round(float(rot[i] - rot[0]), 3), _r(res_all[i], 2)] for i in range(len(rows))], 400)
     return out
@@ -485,7 +601,7 @@ def field_frames(fr: list[dict]) -> dict | None:
 # ------------------------------------------------------------------ Gesamt ---
 def compute(pl, pid: int, nights: set | None = None, site_for=None, cfg: dict | None = None, log=lambda m: None) -> dict:
     """Gerätediagnose eines Objekts (Nächte einer Version) – nur aus gespeicherten Daten."""
-    from . import photometry, tutor
+    from . import devices, photometry, tutor
     from .skyquality import frame_links
     db = pl.db
     proj = db.one("SELECT * FROM projects WHERE id=?", (pid,))
@@ -495,6 +611,7 @@ def compute(pl, pid: int, nights: set | None = None, site_for=None, cfg: dict | 
     if len(fr) < 8:
         return {"v": DIAG_VERSION, "ok": False, "error": "Zu wenige analysierte Aufnahmen für eine Gerätediagnose.", "erstellt": time.time()}
     device = tutor.detect_device([f["instrument"] for f in fr], tuple(fr[0]["shape"]) if fr[0].get("shape") else None)
+    prof = devices.profile(device)
     if any(f["temp"] is None for f in fr):
         header_temps(fr)
     scales = [f["scale"] for f in fr if f.get("scale")]
@@ -533,15 +650,19 @@ def compute(pl, pid: int, nights: set | None = None, site_for=None, cfg: dict | 
         site, site_src, _ = tutor.pick_site(rows, cfg or {}, site_for)
         if site:
             sources.append(site_src)
-        alt = None
+        alt, trk = None, None
         if site and proj["ra"] is not None and proj["dec"] is not None:
             try:
-                e = tutor.ephemeris([f["t"] for f in rows], proj["ra"], proj["dec"], site)
-                alt = e.get("target_alt")
+                trk = sky_track([f["t"] for f in rows], proj["ra"], proj["dec"], site)
+                alt = trk["alt"]
             except Exception:
-                alt = None
-        n = {"night": night, "frames": len(rows), "exptime": exptime,
-             "tracking": tracking(rows, links, exptime, scale, rows[0].get("shape")) if links else None,
+                traceback.print_exc()
+                alt, trk = None, None
+        q = {f["id"]: float(trk["q"][i]) for i, f in enumerate(rows)} if trk else None
+        tr = tracking(rows, links, exptime, scale, rows[0].get("shape"), q) if links else None
+        mount = mount_mode((tr or {}).get("rot_vs_q"), device) if trk else {"state": "unknown", "mode": None}
+        n = {"night": night, "frames": len(rows), "exptime": exptime, "tracking": tr, "mount": mount,
+             "sky": sky_rejects(rows, trk, prof, mount, exptime, rows[0].get("shape"), tr) if trk else None,
              "events": {k: v for k, v in ev.items() if k != "bad_idx"},
              "focus": focus(rows, alt, scale, set(ev.get("bad_idx", []))), "site_source": site_src, "site": site,
              "field_frames": field_frames(rows),                 # Kippung dieser Nacht (neuere Analysen) – für den Gerätetrend
@@ -616,6 +737,21 @@ def device_summary(db) -> list[dict]:
     return sorted(out, key=lambda x: -len(x["nights"]))
 
 
+def eq_detected(db) -> dict:
+    """Je Gerät (Erkennungs-ID) die neueste Nacht mit erkannter Montierung: {id: {"eq": bool, "night": …}}. Grundlage für den
+    EQ-Modus in Heute Nacht und im Planer (nur Diagnosen der aktuellen Version)."""
+    out: dict[str, dict] = {}
+    for r in db.q("SELECT json_extract(stats,'$.diagnose') d FROM results WHERE json_extract(stats,'$.diagnose.v')=? "
+                  "AND json_extract(stats,'$.diagnose.ok')=1", (DIAG_VERSION,)):
+        d = json.loads(r["d"] or "{}")
+        key = (d.get("device") or {}).get("id")
+        for n in d.get("nights") or []:
+            mode = (n.get("mount") or {}).get("mode")
+            if key and mode in ("eq", "altaz") and n["night"] >= (out.get(key) or {}).get("night", ""):
+                out[key] = {"eq": mode == "eq", "night": n["night"]}
+    return out
+
+
 # ------------------------------------------------------------------ Tutor ---
 def _de(v, nd=1) -> str:
     return f"{v:.{nd}f}".replace(".", ",")
@@ -626,6 +762,11 @@ def _d(night: str) -> str:
         return dt.date.fromisoformat(night).strftime("%d.%m.%Y")
     except ValueError:
         return night
+
+
+def devices_get(device: dict) -> dict | None:
+    from . import devices
+    return devices.get(device.get("id"))
 
 
 def findings(d: dict | None, device: dict) -> list[dict]:
@@ -659,6 +800,33 @@ def findings(d: dict | None, device: dict) -> list[dict]:
             out.append(_f("periodic_error", "info", "Periodischer Nachführfehler",
                           f"Die Abweichung schwingt mit einer Periode von etwa {_de(per['period_s'] / 60)} min und ±{_de(per['amp_px'])} Pixeln.",
                           ["Periodischen Fehler mit PEC (Periodic Error Correction) der Montierung trainieren oder Autoguiding nutzen."]))
+    # --- Montierung / Bildfelddrehung -----------------------------------------------
+    eq_n = [n for n in nights if (n.get("mount") or {}).get("mode") == "eq"]
+    if eq_n and smart:
+        n = eq_n[-1]
+        out.append(_f("mount_eq", "ok", "EQ-Modus erkannt",
+                      f"Am {_d(n['night'])} stand das Bildfeld still, obwohl eine azimutale Montierung es in dieser Zeit um etwa "
+                      f"{_de(n['mount']['q_range'], 0)}° gedreht hätte – das Gerät lief offenbar im EQ-Modus. Heute Nacht und der Planer "
+                      "rechnen für dieses Gerät dann ohne Bildfelddrehung.", []))
+    sky_n = [n for n in nights if (n.get("sky") or {}).get("verdict") in ("rotation", "mixed")]
+    if sky_n:
+        n = max(sky_n, key=lambda n: n["sky"]["zone"]["shape"])
+        s = n["sky"]
+        z, r = s["zone"], s["rest"]
+        where = (f"über {_de(s['zenith_limit'], 0)}° Höhe bzw. bei schneller Bildfelddrehung" if s.get("zenith_limit") is not None
+                 else "bei schneller Bildfelddrehung (nahe am Meridian, hoch am Himmel)")
+        text = (f"Am {_d(n['night'])} wurden {where} {z['shape']} von {z['n']} Aufnahmen wegen verzogener oder unscharfer Sterne verworfen "
+                f"({_de(z['share'] * 100, 0)} %), sonst nur {r['shape']} von {r['n']} ({_de((r['share'] or 0) * 100, 0)} %). "
+                "Höhe und Drehung sind aus Aufnahmezeit, Ort und Objektlage berechnet.")
+        if s["verdict"] == "rotation":
+            text += " Das passt zur Zenit-Totzone bzw. Bildfelddrehung einer azimutalen Montierung."
+        else:
+            text += (" Die Sterne sind allerdings auch in Driftrichtung länglich – vermutlich wirken Drehung und Drift bzw. Wind zusammen.")
+        tips = ["Hohe Ziele vor oder nach dem Meridiandurchgang aufnehmen; „Heute Nacht“ und der Planer berücksichtigen das je Gerät."]
+        if (devices_get(device) or {}).get("eq_mode"):
+            tips.append("Im EQ-Modus (Polhöhenwiege) dreht sich das Bildfeld nicht – für lange Sitzungen nahe am Zenit die bessere Wahl.")
+        out.append(_f("zenith_rejects", "info" if z["shape"] < 10 else "warn", "Verworfene Aufnahmen hoch am Himmel", text, tips,
+                      {"verworfen_zone": z["shape"], "aufnahmen_zone": z["n"], "verworfen_rest": r["shape"], "aufnahmen_rest": r["n"]}))
     # --- Stöße / Böen -------------------------------------------------------------
     ev = [(n, e) for n in nights for e in (n.get("events") or {}).get("events") or []]
     if ev:
