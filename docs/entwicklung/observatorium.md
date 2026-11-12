@@ -50,6 +50,21 @@ Etappen: 1 Atlas (dieser Stand) · 2 Horizontmaske je Standort + Ansicht „Von 
   Atlas: Ebene „Plan“ (gestrichelte Ringe, „geplant · Tag“). Heute Nacht: Abschnitt „Dein Plan für diese Nacht“ (`AFplan.nightSection`).
 - Tests: `tests/test_planner.py`.
 
+## Schritt 3: „Von hier“ und Feinschliff (12.11.2026)
+- **Atlas „Von hier“** (Schalter Himmel | Von hier, nur mit Standort aus `/api/sites/resolve`): dieselbe stereografische Projektion,
+  aber in Azimut/Höhe – Himmelskoordinaten werden je Zeichnung über die Ortssternzeit umgerechnet (`gmst`, `horizontal`; Azimut wächst nach
+  rechts = Blick nach Süden mit Osten links; Pseudo-Koordinaten der Ansicht: ra = 360 − Azimut, dec = Höhe). Eigene Ansicht je Blickart
+  (`obs.view` / `obs.view.here`, `obs.mode`). Zeitregler jetzt … +16 h (10-min-Schritte), Himmel in der Dämmerung aufgehellt
+  (genäherte Sonnenposition `sunRaDec`). Boden = alles außerhalb der Horizontlinie (Maske des Ortes, sonst 0°; `evenodd`-Füllung,
+  Projektion fast bis zum Gegenpunkt – `projection(…, cut)`), Himmelsrichtungen knapp über 0°. Fotos, Katalog, Plan-Ringe und Suche
+  funktionieren in beiden Blickarten (`fly` rechnet um).
+- **Horizont-Vorschlag aus eigenen Aufnahmen:** `GET /api/stacking/horizon-points?site=<id>` (`observatory.horizon_points`): je Objekt
+  und Nacht Azimut/Höhe der Bildmitte zur mittleren DATE-OBS-Zeit, Ort der Nacht aus der Ortsliste, ohne Kometen, nur Punkte über 0°.
+  Der Editor (`horizonEditor(…, {points})`) zeigt sie als Punkte (rot = von der Maske verdeckt); „An Aufnahmen anpassen“ senkt die Maske
+  dort auf 2° unter die Punkte. Ohne Bilder-Modul fehlt die Funktion.
+- **Plan als Kalender:** Knopf „Kalender“ im Planer erzeugt im Browser eine `.ics` (ein Termin je Block, UTC; `AFplan.ics`).
+- Bewusst nicht: Milchstraße (bräuchte weitere Fremddaten mit Lizenzprüfung) – bei Bedarf als eigener Schritt.
+
 ## Geplant (Konzept vom 11.11.2026, Freigabe des Nutzers)
 - **Horizontmaske (gebaut 12.11.2026, siehe `standorte-himmel.md`):** Feld, Editor, Wirkung in Heute Nacht. Offen aus Etappe 2:
   Vorschlag aus eigenen Aufnahmen und Atlas „Von hier“ (nach dem Planer, Reihenfolge Nutzerentscheidung 12.11.2026).

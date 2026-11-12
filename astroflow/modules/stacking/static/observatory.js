@@ -17,13 +17,13 @@ const skyData = () => skyP || (skyP = Promise.all(['sterne', 'sternbilder'].map(
   .then(([s, c]) => ({ stars: s.stars, cons: c.items })).catch(e => { skyP = null; throw e; }));
 
 // Stereografische Projektion um (ra0, dec0); Osten links, Norden oben. S = Pixel je Bogenmaß in der Mitte.
-function projection(v, W, H) {
+function projection(v, W, H, cut = -0.6) {
   const d0 = v.dec * D2R, sd0 = Math.sin(d0), cd0 = Math.cos(d0);
   const S = Math.min(W, H) / (4 * Math.tan(v.fov * D2R / 4));
   const fwd = (ra, dec) => {
     const d = dec * D2R, a = (ra - v.ra) * D2R, sd = Math.sin(d), cd = Math.cos(d), ca = Math.cos(a);
     const cc = sd0 * sd + cd0 * cd * ca;
-    if (cc < -0.6) return null;
+    if (cc < cut) return null;
     const k = 2 / (1 + cc);
     return [W / 2 - k * cd * Math.sin(a) * S, H / 2 - k * (cd0 * sd - sd0 * cd * ca) * S];
   };
@@ -51,6 +51,22 @@ const fmtDec = (d) => `${d < 0 ? '−' : '+'}${Math.abs(Math.round(d))}°`;
 const fmtFov = (f) => f >= 2 ? `${Math.round(f)}°` : `${Math.round(f * 60)}′`;
 const fmtExp = (s) => !s ? '' : s >= 3600 ? `${de(s / 3600, 1)} h` : `${Math.round(s / 60)} min`;
 const fmtDate = (ts) => ts ? new Date(ts * 1000).toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+
+// „Von hier“: Ortssternzeit, Azimut/Höhe (Nord 0°, Ost 90°) und genäherte Sonnenposition (~0,01°) – alles lokal
+const gmst = (ts) => ((280.46061837 + 360.98564736629 * (ts / 86400 + 2440587.5 - 2451545)) % 360 + 360) % 360;
+function horizontal(ra, dec, lst, lat) {
+  const h = (lst - ra) * D2R, d = dec * D2R, p = lat * D2R;
+  const alt = Math.asin(Math.max(-1, Math.min(1, Math.sin(p) * Math.sin(d) + Math.cos(p) * Math.cos(d) * Math.cos(h))));
+  const az = Math.atan2(-Math.cos(d) * Math.sin(h), Math.sin(d) * Math.cos(p) - Math.cos(d) * Math.cos(h) * Math.sin(p));
+  return [norm(az / D2R), alt / D2R];
+}
+function sunRaDec(ts) {
+  const n = ts / 86400 + 2440587.5 - 2451545, L = (280.46 + 0.9856474 * n) % 360, gA = (357.528 + 0.9856003 * n) * D2R;
+  const lam = (L + 1.915 * Math.sin(gA) + 0.02 * Math.sin(2 * gA)) * D2R, eps = (23.439 - 4e-7 * n) * D2R;
+  return [norm(Math.atan2(Math.cos(eps) * Math.sin(lam), Math.cos(lam)) / D2R), Math.asin(Math.sin(eps) * Math.sin(lam)) / D2R];
+}
+const hzAt = (h, az) => { if (!h) return 0; const x = norm(az) / 10, i = Math.floor(x) % 36, f = x - Math.floor(x); return h[i] * (1 - f) + h[(i + 1) % 36] * f; };
+const DIRS8 = ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'];
 
 // Zeichenreihenfolge der eigenen Fotos (hinten → vorne): großes Bildfeld hinten, kleines vorne; das überfahrene und
 // das ausgewählte Foto ganz nach vorne (überfahren vor ausgewählt, damit man ein verdecktes Nachbarbild anschauen kann)
@@ -102,6 +118,10 @@ async function atlasView(el, query) {
   if (start) Object.assign(v, start);
   const on = { photos: true, catalog: true, cons: true, grid: true, plan: true, ...store.get(LKEY, {}) };
   let planned = [];                         // Ziele des gespeicherten Plans (Planer): {ra, dec, name, when}
+  // Blickart: 'sky' (äquatorial) oder 'here' (Azimut/Höhe vom Standort zur Zeit tsel); je Blickart eigene Ansicht
+  let mode = 'sky', site = null, tsel = Date.now() / 1000;
+  const views = { sky: { ...v }, here: { ra: 180, dec: 35, fov: 150, ...store.get(KEY + '.here', {}) } };
+  const toHor = (ra, dec) => horizontal(ra, dec, gmst(tsel) + site.lon, site.lat);
   const sage = AF.on('sage');
 
   el.innerHTML = `<div class="pagehead"><div><h1>Observatorium</h1><p class="mut">Dein Himmel – mit allen eigenen Aufnahmen an ihrem Platz.</p></div>${window.AFplan?.tabs('atlas') || ''}</div>
@@ -109,10 +129,12 @@ async function atlasView(el, query) {
       <canvas id="obsCanvas" aria-label="Himmelskarte" role="img" tabindex="0"></canvas>
       <div class="obs-top">
         <label class="obs-search">${icon('search')}<input id="obsFind" type="search" list="obsList" placeholder="Objekt suchen" autocomplete="off" aria-label="Objekt suchen"><datalist id="obsList"></datalist></label>
+        <div class="seg obs-mode" role="group" aria-label="Blickart" hidden><button type="button" data-mode="sky" class="on" aria-pressed="true">${icon('globe')}<span>Himmel</span></button><button type="button" data-mode="here" aria-pressed="false">${icon('pin')}<span>Von hier</span></button></div>
         <div class="seg obs-layers" role="group" aria-label="Ebenen">${LAYERS.map(([k, l, i]) => `<button type="button" data-layer="${k}" aria-pressed="${on[k]}" class="${on[k] ? 'on' : ''}" title="${l}"${k === 'plan' ? ' hidden' : ''}>${icon(i)}<span>${l}</span></button>`).join('')}</div>
       </div>
       <div class="obs-zoom" role="group" aria-label="Zoom"><button type="button" data-z="in" title="Vergrößern" aria-label="Vergrößern">${icon('plus')}</button><button type="button" data-z="out" title="Verkleinern" aria-label="Verkleinern">${icon('minus')}</button><button type="button" data-z="home" title="Ganzer Himmel" aria-label="Ganzer Himmel">${icon('globe')}</button></div>
       <div class="obs-read tnum" id="obsRead" aria-live="off"></div>
+      <div class="obs-time" id="obsTime" hidden><input type="range" id="obsT" min="0" max="${16 * 60}" step="10" value="0" aria-label="Uhrzeit"><b class="tnum" id="obsTL"></b><button type="button" class="btn ghost sm" id="obsNow">Jetzt</button></div>
       <div class="obs-msg" id="obsMsg" hidden></div>
     </div>
     <section class="obs-strip-wrap"><div class="panel-h"><h2>${icon('image')}Meine Fotos am Himmel</h2><span class="grow"></span><span class="chip" id="obsCount">…</span></div><div class="obs-strip" id="obsStrip"></div></section>`;
@@ -123,12 +145,12 @@ async function atlasView(el, query) {
   let col = {};
   const readColors = () => {
     const cs = getComputedStyle(document.documentElement), c = (n) => cs.getPropertyValue(n).trim();
-    col = { bg: c('--bg'), surface: c('--surface'), border: c('--border'), fg: c('--fg'), mut: c('--mut'), dim: c('--dim'), acc: c('--acc'), cat: c('--data-2'), warn: c('--warn'), font: getComputedStyle(document.body).fontFamily };
+    col = { ok: c('--ok'), bg: c('--bg'), surface: c('--surface'), border: c('--border'), fg: c('--fg'), mut: c('--mut'), dim: c('--dim'), acc: c('--acc'), cat: c('--data-2'), warn: c('--warn'), font: getComputedStyle(document.body).fontFamily };
   };
   readColors();
 
   const draw = () => { if (!raf) raf = requestAnimationFrame(paint); };
-  const save = () => store.set(KEY, { ra: +v.ra.toFixed(3), dec: +v.dec.toFixed(3), fov: +v.fov.toFixed(3) });
+  const save = () => store.set(mode === 'here' ? KEY + '.here' : KEY, { ra: +v.ra.toFixed(3), dec: +v.dec.toFixed(3), fov: +v.fov.toFixed(3) });
 
   function size() {
     const r = stage.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -154,15 +176,20 @@ async function atlasView(el, query) {
     if (!el.isConnected) return;
     const dpr = g.__dpr;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    P = projection(v, W, H);
+    const base = projection(v, W, H), here = mode === 'here' && site;
+    // „Von hier“: Himmelskoordinaten → Azimut/Höhe; Azimut wächst nach rechts (Blick nach Süden: Osten links). Keine Vorauswahl
+    // nach Himmelsabstand (reach 180), die Bildschirmprüfung reicht.
+    P = here ? { ...base, fwd: (ra, dec) => { const [az, alt] = toHor(ra, dec); return base.fwd(360 - az, alt); }, reach: 180 } : base;
     const { fwd, S, reach } = P;
     hits = [];
-    // Himmel
+    // Himmel (von hier: in der Dämmerung heller)
     const grd = g.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.hypot(W, H) / 2);
     grd.addColorStop(0, col.surface); grd.addColorStop(1, col.bg);
     g.fillStyle = grd; g.fillRect(0, 0, W, H);
+    const sunAlt = here ? toHor(...sunRaDec(tsel))[1] : -90;
+    if (sunAlt > -18) { g.fillStyle = `rgba(70, 110, 170, ${Math.min(0.75, (sunAlt + 18) / 18 * 0.75)})`; g.fillRect(0, 0, W, H); }
     g.font = '500 11px ' + col.font;
-    if (on.grid) grid(P);
+    if (on.grid) grid(base);
     if (sky && on.cons) constellations(P);
     if (sky) stars(P);
     const shown = on.photos ? photoQuads(P) : [];
@@ -181,6 +208,7 @@ async function atlasView(el, query) {
       }
       g.setLineDash([]);
     }
+    if (here) ground();
     if (target) {
       const t = fwd(target.ra, target.dec);
       if (t) {
@@ -191,8 +219,29 @@ async function atlasView(el, query) {
         if (target.name && !target.matched) { g.fillStyle = col.warn; g.fillText(target.name, t[0] + r + 12, t[1] - r + 2); }
       }
     }
-    $('#obsRead', el).textContent = `${fmtRA(v.ra)} · ${fmtDec(v.dec)} · Feld ${fmtFov(v.fov)}`;
+    $('#obsRead', el).textContent = here ? `${DIRS8[Math.round(norm(360 - v.ra) / 45) % 8]} · Höhe ${Math.round(v.dec)}° · Feld ${fmtFov(v.fov)} · Sonne ${Math.round(sunAlt)}°`
+      : `${fmtRA(v.ra)} · ${fmtDec(v.dec)} · Feld ${fmtFov(v.fov)}`;
     void S; void reach;
+  }
+
+  // Boden unter der Horizontmaske des Ortes (bzw. 0°), Himmelsrichtungen auf der Horizontlinie
+  function ground() {
+    // Horizontlinie als geschlossener Linienzug (stereografisch: ein Kreis bzw. eine Kurve); der Boden ist alles außerhalb
+    // (Blick über den Horizont) bzw. innerhalb (Blick nach unten). Fast bis zum Gegenpunkt projizieren, sonst fehlen Stücke.
+    const { fwd } = projection(v, W, H, -0.9995), hz = site.horizon, pts = [];
+    for (let az = 0; az <= 360; az += 1) { const q = fwd(360 - az, hzAt(hz, az)); if (q) pts.push(q); }
+    if (pts.length < 3) return;
+    g.beginPath();
+    if (v.dec >= 0) g.rect(-10, -10, W + 20, H + 20);
+    pts.forEach((c, i) => i ? g.lineTo(...c) : g.moveTo(...c)); g.closePath();
+    g.fillStyle = col.bg; g.globalAlpha = 0.93; g.fill('evenodd'); g.globalAlpha = 1;
+    g.strokeStyle = col.ok; g.lineWidth = 1.5; g.beginPath();
+    pts.forEach((c, i) => (i && Math.hypot(c[0] - pts[i - 1][0], c[1] - pts[i - 1][1]) < W) ? g.lineTo(...c) : g.moveTo(...c));
+    g.stroke();
+    const { fwd: f2 } = projection(v, W, H);
+    g.font = '700 12px ' + col.font; g.textAlign = 'center'; g.fillStyle = col.mut;
+    DIRS8.forEach((n, k) => { const p = f2(360 - k * 45, 2); if (p && p[0] > 8 && p[0] < W - 8 && p[1] > 8 && p[1] < H - 8) g.fillText(n, p[0], p[1] - 4); });
+    g.textAlign = 'start'; g.font = '500 11px ' + col.font;
   }
 
   function grid({ fwd, reach }) {
@@ -410,6 +459,7 @@ async function atlasView(el, query) {
   }
   function fly(to) {
     cancelAnimationFrame(anim);
+    if (mode === 'here' && site && !to.raw) { const [az, alt] = toHor(to.ra, to.dec); to = { ra: 360 - az, dec: alt, fov: to.fov }; }
     const from = { ...v }, dra = ((to.ra - from.ra + 540) % 360) - 180;
     if (reduced()) { Object.assign(v, { ra: norm(to.ra), dec: to.dec, fov: clampFov(to.fov) }); save(); draw(); return; }
     const t0 = performance.now(), T = 700, lf0 = Math.log(from.fov), lf1 = Math.log(clampFov(to.fov));
@@ -485,7 +535,7 @@ async function atlasView(el, query) {
   });
   $('.obs-zoom', el).onclick = (e) => {
     const z = e.target.closest('[data-z]')?.dataset.z;
-    if (z === 'in') zoomAt(1 / 1.6); else if (z === 'out') zoomAt(1.6); else if (z === 'home') fly({ ra: v.ra, dec: v.dec, fov: FOV_HOME });
+    if (z === 'in') zoomAt(1 / 1.6); else if (z === 'out') zoomAt(1.6); else if (z === 'home') fly({ ra: v.ra, dec: mode === 'here' ? 35 : v.dec, fov: mode === 'here' ? 150 : FOV_HOME, raw: true });
   };
   $('.obs-layers', el).onclick = (e) => {
     const b = e.target.closest('[data-layer]');
@@ -494,6 +544,28 @@ async function atlasView(el, query) {
     on[k] = !on[k]; b.classList.toggle('on', on[k]); b.setAttribute('aria-pressed', on[k]);
     store.set(LKEY, on); draw();
   };
+  // Blickart umschalten (je Blickart eigene Mitte/Zoom), Zeitregler ab jetzt bis +16 h
+  const setMode = (m) => {
+    if (m === mode || (m === 'here' && !site)) return;
+    views[mode] = { ra: v.ra, dec: v.dec, fov: v.fov };
+    mode = m; Object.assign(v, views[m]); store.set('obs.mode', m);
+    $$('.obs-mode [data-mode]', el).forEach(b => { b.classList.toggle('on', b.dataset.mode === m); b.setAttribute('aria-pressed', b.dataset.mode === m); });
+    $('#obsTime', el).hidden = m !== 'here';
+    cv.setAttribute('aria-label', m === 'here' ? 'Himmel von deinem Standort aus' : 'Himmelskarte');
+    draw();
+  };
+  $('.obs-mode', el).onclick = (e) => { const b = e.target.closest('[data-mode]'); if (b) setMode(b.dataset.mode); };
+  const t0 = Math.floor(Date.now() / 600000) * 600;
+  const showT = () => { $('#obsTL', el).textContent = new Date(tsel * 1000).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' }); };
+  $('#obsT', el).oninput = (e) => { tsel = t0 + +e.target.value * 60; showT(); draw(); };
+  $('#obsNow', el).onclick = () => { tsel = Date.now() / 1000; $('#obsT', el).value = 0; showT(); draw(); };
+  showT();
+  api('/sites/resolve').then(r => {
+    if (!el.isConnected || !r?.site || r.site.lat == null) return;
+    site = r.site;
+    $('.obs-mode', el).hidden = false;
+    if (store.get('obs.mode', 'sky') === 'here') setMode('here');
+  }).catch(() => {});
   const find = $('#obsFind', el);
   find.addEventListener('change', () => {
     const t = find.value.trim().toLowerCase();

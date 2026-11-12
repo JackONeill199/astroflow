@@ -161,3 +161,53 @@ def catalog() -> list[dict]:
     return [{"id": t.id, "name": t.display, "ra": round(t.ra, 4), "dec": round(t.dec, 4), "kind": t.kind,
              "kind_label": KIND_LABEL.get(t.kind, ""), "size": t.size, "mag": t.mag, "src": t.source[0]}
             for t in deepsky.catalog()]
+
+
+def horizon_points(db, site_for, site_id: str | None, limit: int = 400) -> list[dict]:
+    """Wo das Teleskop an diesem Ort schon fotografiert hat: Azimut/Höhe der Bildmitte je Objekt und Nacht zur mittleren
+    Aufnahmezeit (Rohbilder mit DATE-OBS, Ort der Nacht aus der Ortsliste). Dort war der Himmel frei – Hilfe für die
+    Horizontmaske. Rein lokal, ohne Netz."""
+    import datetime as dt
+
+    import numpy as np
+
+    from . import tonight
+    from .fits_io import parse_date
+    rows = db.q("SELECT f.project_id pid, f.night, json_extract(f.info,'$.date_obs') d, p.name, p.ra, p.dec FROM frames f "
+                "JOIN projects p ON p.id=f.project_id WHERE f.kind='light' AND p.ra IS NOT NULL AND p.dec IS NOT NULL "
+                "AND json_extract(f.info,'$.date_obs') IS NOT NULL AND COALESCE(json_extract(p.options,'$.comet_mode'),0)=0")
+    groups: dict = {}
+    for r in rows:
+        t = parse_date(r["d"])
+        if t is None:
+            continue
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=dt.timezone.utc)
+        groups.setdefault((r["pid"], r["night"]), {"name": r["name"], "ra": r["ra"], "dec": r["dec"], "ts": []})["ts"].append(t.timestamp())
+    sites_cache: dict = {}
+    out = []
+    for (pid, night), g in sorted(groups.items(), key=lambda kv: str(kv[0][1] or ""), reverse=True):
+        if night not in sites_cache:
+            try:
+                sites_cache[night] = site_for(night=night) if night else None
+            except Exception:
+                sites_cache[night] = None
+        s = sites_cache[night]
+        if not s or (site_id and s.get("id") != site_id):
+            continue
+        ts = float(np.median(g["ts"]))
+        lst = np.radians([_gmst(ts) + s["lon"]])
+        ra, dec = np.radians([g["ra"]]), np.radians([g["dec"]])
+        alt = float(tonight._alt(ra, dec, lst, s["lat"])[0, 0])
+        az = float(tonight._az(ra, dec, lst, s["lat"])[0, 0])
+        if alt > 0:
+            out.append({"az": round(az, 1), "alt": round(alt, 1), "name": g["name"], "night": night, "n": len(g["ts"])})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _gmst(ts: float) -> float:
+    """Mittlere Greenwich-Sternzeit in Grad (genügt auf ~0,1° für Azimut/Höhe der Bildmitte)."""
+    jd = ts / 86400 + 2440587.5
+    return (280.46061837 + 360.98564736629 * (jd - 2451545.0)) % 360

@@ -102,7 +102,7 @@ async function planView(el) {
     const total = p.nights.reduce((s, n) => s + n.blocks.reduce((t, b) => t + b.hours, 0), 0);
     const fc = p.nights.filter(n => n.weather !== 'none').length;
     return `<section class="panel pl-plan"><div class="panel-h"><h2>${icon('list')}${p.nights.length} ${p.nights.length === 1 ? 'Nacht' : 'Nächte'} · ${p.devices.map(x => esc(x.name)).join(' + ')}</h2><span class="grow"></span>
-        <button type="button" class="btn sm" data-act="edit">${icon('refresh')}Neu planen</button><button type="button" class="btn ghost sm icon" data-act="del" title="Plan löschen" aria-label="Plan löschen">${icon('trash')}</button></div>
+        <button type="button" class="btn ghost sm" data-act="ics" title="Als Kalenderdatei (.ics) speichern">${icon('down')}Kalender</button><button type="button" class="btn sm" data-act="edit">${icon('refresh')}Neu planen</button><button type="button" class="btn ghost sm icon" data-act="del" title="Plan löschen" aria-label="Plan löschen">${icon('trash')}</button></div>
       <div class="pl-sum"><span><b class="tnum">${p.targets.length}</b> Ziele</span><span><b class="tnum">${hours(total)}</b> geplant</span>
         <span><b class="tnum">${p.targets.filter(t => t.done).length}</b> erreichen ${hours(p.wishes.min_hours)}</span>
         <span class="dim">${p.weather_on ? (fc ? `Wetter für ${fc} ${fc === 1 ? 'Nacht' : 'Nächte'}` : 'keine Vorhersage') : 'ohne Wetter'}${p.site?.horizon ? ' · mit Horizont' : ''}</span></div>
@@ -138,6 +138,11 @@ async function planView(el) {
     const a = e.target.closest('[data-act]')?.dataset.act;
     if (a === 'edit') { wizard = true; draw(); $('.pl-wiz', el)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); }
     if (a === 'close') { wizard = false; draw(); }
+    if (a === 'ics' && d.plan) {
+      const url = URL.createObjectURL(new Blob([ics(d.plan)], { type: 'text/calendar' })), link = document.createElement('a');
+      link.href = url; link.download = `beobachtungsplan-${d.plan.nights[0]?.night || 'astroflow'}.ics`; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    }
     if (a === 'del' && await confirmDlg('Plan löschen?', 'Der gespeicherte Plan wird entfernt. Atlas und „Heute Nacht“ zeigen ihn dann nicht mehr.', 'Löschen', true)) {
       try { d.plan = (await send('/stacking/plan', null, 'DELETE')).plan; wizard = true; draw(); } catch (err) { toast(err.message, 'err'); }
     }
@@ -168,6 +173,20 @@ async function planView(el) {
   return { destroy() { ro.disconnect(); } };
 }
 
+// Plan als Kalenderdatei (iCalendar, UTC) – wird im Browser erzeugt und gespeichert, nichts geht ins Netz
+function ics(plan) {
+  const z = (t) => new Date(t * 1000).toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+  const txt = (v) => String(v).replace(/[\\;,]/g, (c) => '\\' + c).replace(/\n/g, '\\n');
+  const dev = (id) => plan.devices.find(x => x.id === id)?.name || id;
+  const ev = plan.nights.flatMap(n => n.blocks.flatMap((b, k) => {          // Zeilen ganz flach: je Feld eine Zeile
+    const t = plan.targets.find(x => x.id === b.target) || { name: b.target };
+    return ['BEGIN:VEVENT', `UID:astroflow-${n.night}-${b.device}-${k}@astroflow.local`, `DTSTAMP:${z(plan.created)}`,
+      `DTSTART:${z(b.start)}`, `DTEND:${z(b.end)}`, `SUMMARY:${txt(`${t.name} · ${dev(b.device)}`)}`,
+      `DESCRIPTION:${txt(`Nutzbar etwa ${hours(b.hours)}${b.max_alt != null ? `, höchster Stand ${Math.round(b.max_alt)}°` : ''} (AstroFlow-Plan)`)}`, 'END:VEVENT'];
+  }));
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//AstroFlow//Beobachtungsplan//DE', 'CALSCALE:GREGORIAN', ...ev, 'END:VCALENDAR'].join('\r\n') + '\r\n';
+}
+
 // „Heute Nacht“: Abschnitt mit den Blöcken der gezeigten Nacht aus dem gespeicherten Plan
 function nightSection(plan, night) {
   const n = plan?.nights?.find(x => x.night === night);
@@ -178,7 +197,7 @@ function nightSection(plan, night) {
       : `<p class="mut sm">${n.cloud >= 60 ? 'Laut Plan bewölkt – nichts vorgesehen.' : 'Für diese Nacht ist nichts geplant.'}</p>`}</section>`;
 }
 
-window.AFplan = { tabs, color, nightSection };
+window.AFplan = { tabs, color, nightSection, ics };
 const m = AF.modules.stacking;
 m.routes.push([/^\/observatorium\/plan$/, 'observatory', planView]);
 })();

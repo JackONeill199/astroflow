@@ -122,6 +122,22 @@ def test_comets_are_not_planned(tmp_path):
     assert not {"8", "9"} & {t["id"] for t in p["targets"]}
 
 
+def test_calendar_export(server, browser):
+    """Plan als .ics (im Browser erzeugt): ein Termin je Block, Zeiten in UTC, Sonderzeichen maskiert."""
+    base, _ = server
+    page = browser.new_page()
+    page.goto(f"{base}/#/observatorium/plan")
+    page.wait_for_function("() => !!(window.AFplan && window.AFplan.ics)")
+    out = page.evaluate("""() => window.AFplan.ics({created: 1793660000, devices: [{id: 'stellina', name: 'Vaonis Stellina'}],
+        targets: [{id: 'M33', name: 'M33, Dreiecksgalaxie'}],
+        nights: [{night: '2026-11-02', blocks: [{device: 'stellina', target: 'M33', start: 1793660400, end: 1793671200, hours: 3, max_alt: 61}]}]})""")
+    page.close()
+    lines = out.split("\r\n")
+    assert out.count("BEGIN:VEVENT") == 1 and "BEGIN:VEVENT" in lines and "END:VEVENT" in lines       # je Feld eine eigene Zeile
+    assert all("," not in ln.split(":", 1)[0] for ln in lines if ln)                                    # nie mehrere Felder in einer Zeile
+    assert "DTSTART:20261102T" in out and r"SUMMARY:M33\, Dreiecksgalaxie · Vaonis Stellina" in out
+
+
 def test_targets_from_later_sites_and_usable_second_choice(tmp_path):
     """Ortswechsel im Zeitraum: ein Ziel, das nur am späteren (südlicheren) Ort hoch genug kommt, bleibt Kandidat.
     Mindestnutzen wird vor der Auswahl geprüft: ein Abschnitt bleibt nicht leer, nur weil das bestbewertete Ziel ihn kaum nutzt."""
