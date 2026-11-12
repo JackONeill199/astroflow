@@ -91,7 +91,32 @@ Python und alle Pakete sind enthalten, es muss nichts weiter installiert werden.
 Minute fertig), GPU-Beschleunigung und Heimnetz-Freigabe. „AstroFlow beenden“ steht im Startmenü und unter Einstellungen → Module & System. Beim Deinstallieren
 bleiben die Daten erhalten.
 
+### Linux: Paket mit Installationsskript (empfohlen)
+
+Von der [Releases-Seite](https://github.com/JackONeill199/astroflow/releases/latest) **`AstroFlow-<Version>-Linux-x86_64.tar.gz`** laden, dann:
+
+```bash
+tar xzf AstroFlow-*-Linux-x86_64.tar.gz
+cd AstroFlow
+./install.sh                # nur für deinen Benutzer, ohne root/sudo; --autostart = beim Anmelden starten
+```
+
+Danach steht **AstroFlow** im Anwendungsmenü (Rechtsklick → „AstroFlow beenden“), im Terminal gibt es `astroflow` und `astroflow stop`.
+Python und alle Pakete sind enthalten (Linux x86_64 mit glibc 2.28 oder neuer: Ubuntu 20.04+, Debian 11+, Fedora, Linux Mint, openSUSE …).
+Der Einrichtungsassistent lädt auf Wunsch ASTAP mit Sterndatenbank, **GraXpert**, GPU-Beschleunigung und die SkyTrace-Engine; die
+Heimnetz-Freigabe in ufw bzw. firewalld geht auf Knopfdruck (das System fragt nach dem Passwort).
+
+- **Portabel:** statt `install.sh` einfach `./AstroFlow` starten (Daten im Ordner `Daten` daneben), `./AstroFlow-beenden` beendet.
+- **Update:** neues Paket entpacken und dort `./install.sh` erneut ausführen – Daten, Einstellungen und Zusatzpakete bleiben.
+- **Entfernen:** `astroflow-deinstallieren` (Daten unter `~/AstroFlow` bleiben; `--werkzeuge` entfernt auch ASTAP, GraXpert und Zusatzpakete).
+- Das Symbol im Infobereich erscheint, wo die Arbeitsfläche es anzeigt (KDE, Xfce, Cinnamon; GNOME nur mit der Erweiterung „AppIndicator“).
+- Für ARM-Rechner (z. B. Raspberry Pi 5) gibt es noch kein Paket – dort mit Python (unten) oder Docker.
+
 ### Mit Python (Windows, Linux, macOS)
+
+Wer schon Python 3.12 hat, kann AstroFlow auch mit [pipx](https://pipx.pypa.io) oder [uv](https://docs.astral.sh/uv/) installieren:
+`pipx install git+https://github.com/JackONeill199/astroflow` bzw. `uv tool install git+https://github.com/JackONeill199/astroflow`, danach `astroflow`.
+Oder klassisch in einer eigenen Umgebung:
 
 ```bash
 python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
@@ -133,7 +158,7 @@ AstroFlow läuft ohne diese Programme; sie verbessern oder erweitern einzelne Fu
 | Werkzeug | Wofür | Einrichtung |
 |---|---|---|
 | [ASTAP](https://www.hnsky.org/astap.htm) (ab 2023) + Sterndatenbank D05/D20/D50 | Plate-Solving, Objektnamen, Gaia-Farbkalibrierung, Tiefenanalyse | Im Assistenten auf Knopfdruck (D05 ~100 MB, D50 ~900 MB) oder selbst installieren; wird automatisch gesucht, sonst Einstellungen → Bilder → Plate-Solving. Alternativen: lokales astrometry.net, nova.astrometry.net (nur auf ausdrückliche Wahl) |
-| [GraXpert](https://github.com/Steffenhir/GraXpert/releases/latest) | KI-Hintergrundextraktion und -Entrauschen des linearen Stacks | Windows: im Installer oder unter Einstellungen → Module & System → Komponenten (lädt das offizielle Release, GPL-3); sonst von der Herstellerseite installieren. Ohne GraXpert (auch ohne GPU): eigenes Hintergrundmodell mit Objektschutz + Mehrskalen-Entrauschen auf der CPU |
+| [GraXpert](https://github.com/Steffenhir/GraXpert/releases/latest) | KI-Hintergrundextraktion und -Entrauschen des linearen Stacks | Windows und Linux (x86_64): im Installer bzw. Assistenten oder unter Einstellungen → Module & System → Komponenten (lädt das offizielle Release, GPL-3); sonst von der Herstellerseite installieren. Ohne GraXpert (auch ohne GPU): eigenes Hintergrundmodell mit Objektschutz + Mehrskalen-Entrauschen auf der CPU |
 | StarNet2 | Sterntrennung bei Nebeln | Einstellungen → Bilder → StarNet: ZIP installieren oder Pfad setzen. Ohne StarNet keine Sterntrennung bei Nebeln |
 | `pyopencl` (GPU) | Ausrichten und Sigma-Clipping auf der Grafikkarte (OpenCL), Stacking etwa 3× schneller | Im Installer, unter Einstellungen → Module & System → Komponenten oder `pip install pyopencl`; ohne GPU rechnet der Prozessor |
 | SkyTrace-Engine (OpenCV, PyTorch/YOLO, PyAV, Skyfield …) | Spurenanalyse in SkyTrace | Im Installer bzw. unter Einstellungen → Module & System → Komponenten (PyTorch für den Prozessor, ~1,4 GB), sonst `pip install -r astroflow/modules/skytrace/requirements-engine.txt` oder unter Einstellungen → SkyTrace einen vorhandenen Interpreter wählen. Ohne Engine startet AstroFlow trotzdem; vorhandene Ergebnisse bleiben ansehbar |
@@ -260,7 +285,7 @@ die Oberflächentests laufen in einem echten Chromium.
   für Farbkameras bzw. einen Filter und nicht mit Mosaiken.
 - Ohne Flats bleibt multiplikative Vignettierung teilweise sichtbar.
 - Die Himmelsqualität ohne Dark-Frames ist nur für bekannte Geräte (bisher Stellina) möglich, die Genauigkeit liegt bei etwa ±0,2–0,4 mag.
-- Installer und portables ZIP gibt es bisher nur für Windows; unter Linux und macOS startest du AstroFlow mit Python oder Docker.
+- Fertige Pakete gibt es für Windows und Linux (x86_64); unter macOS und auf ARM-Linux startest du AstroFlow mit Python oder Docker.
 - Oberfläche und Dokumentation gibt es bisher nur auf Deutsch.
 - Entwickelt und geeicht vor allem mit Daten von Stellina und Vespera; Seestar, Dwarf und andere Geräte sind wenig erprobt – Rückmeldungen und
   Beispieldaten helfen sehr.

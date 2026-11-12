@@ -112,3 +112,47 @@
   übrigen Prozesse); portabler Autostart-Eintrag mit `--home` startet ohne ASTROFLOW_HOME in den portablen Daten.
 - Ohne eingerichtete SkyTrace-Engine (kein Interpreter gewählt, keine venv) überspringt `skytrace.auto` still (Zustand `skipped`) statt je Nacht
   „Analyse-Engine unvollständig“ zu melden. Engine per Knopf seit 0.44.0 (Komponente `skytrace`).
+
+## Linux (seit Linux-Paket, 12.11.2026 – Freigabe des Masters/Nutzers)
+- **Paketform:** `AstroFlow-<Version>-Linux-x86_64.tar.gz` aus `installer/build_linux.py` (python-build-standalone Linux-gnu mit fester
+  `PBS_SHA256`, gleiche `PBS_TAG`/`PBS_PY` wie Windows, gemeinsame Teile aus `build_windows.py`: `fetch`, `make_icon` (PNG), `collect_licenses`).
+  Inhalt: `python/`, Starter `AstroFlow`/`AstroFlow-beenden` (portabel, `ASTROFLOW_HOME` = Paketordner), `install.sh`/`uninstall.sh` →
+  `linux_install.py` (mit dem mitgelieferten Python, `-I`), `astroflow.png`, Lizenzen, `LIESMICH.txt`. Skripte werden beim Bau mit LF und 0755
+  geschrieben. pip-Skripte in `python/bin` (absoluter Bau-Pfad im `#!`) werden entfernt. Bewusst **kein** AppImage (libfuse2 fehlt ab Ubuntu
+  22.04), kein .deb/.rpm (root, je Distro), kein Flatpak (Sandbox vs. freie Datenordner/ASTAP/GraXpert). Rückfall: `pipx`/`uv tool install` aus
+  GitHub, Docker. aarch64 (Raspberry Pi 5) erst nach dem öffentlichen Repo (ARM-Runner).
+- **Installation pro Nutzer, ohne root** (`linux_install.py`): Programm `~/.local/share/astroflow/app` (Update: über `.neu`/`.alt` ersetzt,
+  laufender Server vorher per `astroflow stop` beendet; Reste portabler Nutzung `Daten/`, `Pakete/`, `Werkzeuge/`, `config.json` werden nicht
+  mitkopiert), Befehle `~/.local/bin/astroflow` (sh → `python3 -I -m astroflow`) und `astroflow-deinstallieren`, Menüeintrag
+  `~/.local/share/applications/astroflow.desktop` mit Aktion „AstroFlow beenden“, Symbol `~/.local/share/icons/hicolor/256x256/apps/`.
+  `--autostart` → `astroflow autostart on`. Deinstallation entfernt nur einen `astroflow`-Befehl, der „AstroFlow“ enthält; Daten bleiben,
+  `--werkzeuge` entfernt per `components remove` ASTAP/GraXpert (nur Selbstinstalliertes) und `packages`/`tools`.
+- **Pfade:** Daten `~/AstroFlow`, Einstellungen `~/.config/astroflow`, Werkzeuge `~/.local/share/astroflow/tools`, ASTAP `~/astap`,
+  Paketordner `~/.local/share/astroflow/packages/cp312-linux_x86_64` (`astroflow_pakete.py`, Tag per `_platform_tag`).
+- **Autostart:** XDG `~/.config/autostart/astroflow.desktop` (`tray.set_autostart`, `Exec=` nach Desktop Entry Specification maskiert,
+  `tray._desktop_quote`), auch CLI `astroflow autostart on|off|status`. Infobereich per pystray nur, wo die Arbeitsfläche ihn anbietet.
+- **Meldungen ohne Konsole:** `launcher.message` nutzt unter Linux zenity, kdialog oder notify-send.
+- **Datenträger im Assistenten:** zusätzlich Einhängepunkte unter `/media/<Nutzer>`, `/run/media/<Nutzer>`, `/mnt` (`setup._mounts`).
+- **GraXpert unter Linux x86_64:** offizielles `graxpert-linux-amd64.zip` (~375 MB, entpackt ~1,1 GB inkl. CUDA-Bibliothek), feste
+  `GRAXPERT_LINUX_SHA256`, fortsetzbarer Download, sicheres Entpacken ohne den Wurzelordner `GraXpert-linux/` (`components._extract_tree`:
+  keine Pfade/Verweise nach außen, Ausführrechte aus dem ZIP), Programm `<Werkzeuge>/GraXpert/GraXpert`. Normal installiertes GraXpert hat
+  Vorrang wie unter Windows. macOS und ARM: „unsupported“ + Hinweis.
+- **Heimnetz-Firewall** (`core/firewall.py`, Nutzerentscheidung 12.11.2026): nur auf Klick und nur am Rechner selbst (`/setup/firewall`
+  mit `require_local`, UI `data-local-only`, Einstellungen → Heimnetz „Firewall freigeben“/„Freigabe entfernen“). Erkennung ohne root:
+  `firewall-cmd --state` bzw. `/etc/ufw/ufw.conf` `ENABLED=yes`. Feste Befehle, einzige Werte: Port (int 1–65535) und das lokale Subnetz aus
+  `ip -o -4 addr` (nur RFC 1918, Schnittstelle der Hauptadresse zuerst). ufw: `allow from <Netz> to any port <P> proto tcp comment 'AstroFlow LAN'`
+  (Entfernen `delete allow …`); firewalld: Rich-Rule in der Zone der Heimnetz-Schnittstelle (`--get-zone-of-interface`, sonst Standardzone), zur Laufzeit und `--permanent` – kein `--reload`, das fremde Laufzeit-Änderungen verwürfe –, beides in einem `pkexec /bin/sh -c` (ein Passwortdialog). Ergebnis als
+  Einrichtungsauftrag „Firewall-Freigabe“ in der Aktivität, feste deutsche Meldungen. Ohne pkexec oder grafische Sitzung: Befehl mit `sudo` nur
+  anzeigen. Keine aktive Firewall: Hinweis, nichts zu tun. Tests nur mit Attrappen (`tests/test_linux.py`).
+- **Engine/GPU-Hinweise:** fehlt libGL/libglib (OpenCV), meldet die Engine-Prüfung `LIBGL_MISSING` mit Paketnamen; ohne OpenCL-Treiber nennt
+  der GPU-Zustand die passenden Pakete.
+- **Selbstprüfung** `installer/pruefe_paket_linux.py` (nur Standardbibliothek, nutzt `call/flow/wait` aus `pruefe_paket.py`): leeres HOME/XDG,
+  PATH `/usr/bin:/bin`, ohne Browser/Infobereich; `install.sh --no-start --autostart` → Dateien + `desktop-file-validate` → `astroflow start`
+  → Assistent/Demo (optional `--astap`) → Server nutzt das Paket-Python (über `/proc`) → `stop` → Update (Daten bleiben) →
+  `astroflow-deinstallieren` → portabel (`./AstroFlow`, Daten in `AstroFlow/Daten`).
+- **CI** `.github/workflows/linux-paket.yml`: nur manuell; Bau + Prüfung (mit ASTAP-Download) auf ubuntu-22.04, Prüfung ohne Download in
+  `debian:12-slim` und `fedora:41`; auf einem Tag `v*` hängt der Job `release` (einziger mit `contents: write`) Paket + `.sha256` an den
+  **vorhandenen** Release-Entwurf des Tags an (`--clobber`) bzw. legt ihn an. Der Windows-Workflow macht es seit demselben Stand genauso –
+  die beiden Läufe nacheinander starten (gleichzeitig könnten zwei Entwürfe entstehen). Veröffentlichte Releases werden nie verändert.
+- **Docker:** ASTAP-CLI und Sterndatenbank (jetzt das ZIP statt .deb) werden im `Dockerfile` gegen dieselben SHA-256 wie
+  `components.ASTAP_SHA256` geprüft (`tests/test_linux.py::test_dockerfile_prueft_astap`).
