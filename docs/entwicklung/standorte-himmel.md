@@ -53,7 +53,8 @@
   `HORIZON_STEP` = 10° Azimut ab Norden über Osten); `clean_horizon` prüft (alles 0/leer = kein Feld), `horizon_at` interpoliert linear,
   `_public` gibt die Maske mit aus (`site_for` → `horizon`). Editor: `static/horizon.js` (`horizonEditor(site, save)`, Panorama im Dialog `#dlg`:
   malen, Vorlagen, Tastatur; `horizonMini` = Silhouette in der Ortsliste), gespeichert über `POST /api/sites` mit der ganzen Liste.
-  Wirkung: Heute Nacht (`tonight._limit`: Mindesthöhe = max(30°, Maske(Azimut))), später Observatorium und Planer.
+  Wirkung: Heute Nacht (`tonight._limit`: Mindesthöhe = max(30°, Maske(Azimut))), Planer und Atlas „Von hier“. Mit Bilder-Modul zeigt der Editor
+  die eigenen Aufnahmen des Ortes als Punkte (`/api/stacking/horizon-points`, siehe `observatorium.md`).
 - **Datenschutz:** Orte sind privat – Tests nur mit erfundenen Orten (`tests/test_sites.py`, UI-Fixture in `conftest.py`), Screenshots maskiert.
 - **Automatisch gepflegte Einzelnächte** (10.11.2026, Nutzerwunsch „in SkyTrace zugewiesener Ort soll für die Nacht auch in Bilder gelten“):
   `SiteBook.sync_nights(src, {Nacht: Ort}, claim)` legt Einzelnächte mit Marke `src` (+ Kurztext `why`) an, stellt sie um oder entfernt sie;

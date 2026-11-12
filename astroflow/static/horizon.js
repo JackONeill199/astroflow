@@ -1,6 +1,8 @@
 // Horizontmaske je Standort (core/sites.py: `horizon` = 36 Höhen alle 10° Azimut ab Norden über Osten).
 // Panorama-Editor im gemeinsamen Dialog #dlg: Linie ziehen bzw. darübermalen, Vorlagen, Tastatur (← → wählen, ↑ ↓ ±5°).
-// Global: horizonEditor(site, save) – save(horizon | null) speichert; horizonMini(horizon) – kleine Silhouette für Listen.
+// Global: horizonEditor(site, save, {points}) – save(horizon | null) speichert; points = Promise/Liste {az, alt, name, night} der eigenen
+// Aufnahmen an diesem Ort (Bilder-Modul, optional): als Punkte gezeigt, „An Aufnahmen anpassen“ senkt die Maske darunter.
+// horizonMini(horizon) – kleine Silhouette für Listen.
 (() => {
 'use strict';
 const N = 36, STEP = 10, MIN_ALT = 30;
@@ -21,9 +23,9 @@ function horizonMini(h, w = 108, hgt = 22) {
     <polygon class="hz-mini-land" points="0,${hgt} ${pts} ${w},${hgt}"/></svg>`;
 }
 
-function horizonEditor(site, save) {
+function horizonEditor(site, save, { points = null } = {}) {
   const d = $('#dlg');
-  let h = hasMask(site.horizon) ? site.horizon.slice() : Array(N).fill(0), cur = 18;
+  let h = hasMask(site.horizon) ? site.horizon.slice() : Array(N).fill(0), cur = 18, shots = [];
   // Zeichenfläche = echte Breite (Schrift bleibt auf schmalen Fenstern lesbar), Höhe ~ 0,37 × Breite, mindestens 200 px
   let W = 720, H = 270, PW = 0, PH = 0;
   const L = 34, R = 14, T = 14, B = 34;
@@ -37,15 +39,19 @@ function horizonEditor(site, save) {
   d.innerHTML = `<div class="row hz-head"><h2>Horizont · ${esc(site.name)}</h2><span class="grow"></span><button class="btn ghost sm icon" value="x" aria-label="Schließen">${icon('x')}</button></div>
     <p class="mut sm hz-hint">Linie auf die Höhe von Bäumen, Häusern oder Balkonbrüstung ziehen – darunter sieht das Teleskop nicht.</p>
     <svg class="hz-edit" id="hzSvg" viewBox="0 0 ${W} ${H}" tabindex="0" role="slider" aria-valuemin="0" aria-valuemax="90"></svg>
-    <div class="hz-presets" role="group" aria-label="Vorlagen">${PRESETS.map(([n], i) => `<button type="button" class="chip" data-p="${i}">${esc(n)}</button>`).join('')}</div>
+    <div class="hz-presets" role="group" aria-label="Vorlagen">${PRESETS.map(([n], i) => `<button type="button" class="chip" data-p="${i}">${esc(n)}</button>`).join('')}
+      <button type="button" class="chip hz-fit" data-fit hidden title="Wo du schon fotografiert hast, war der Himmel frei: Maske dort unter die Punkte senken">${icon('camera')}An Aufnahmen anpassen</button></div>
     <div class="row hz-foot"><span class="mut sm" id="hzInfo"></span><span class="grow"></span><button class="btn ghost" value="0">Abbrechen</button><button class="btn" value="1">Speichern</button></div>`;
   const svg = $('#hzSvg', d);
+  const hAt = (az) => { const x = (az % 360) / STEP, i = Math.floor(x) % N, f = x - Math.floor(x); return h[i] * (1 - f) + h[(i + 1) % N] * f; };
   const paint = () => {
     const pts = [...h, h[0]].map((v, i) => `${X(i * STEP).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
     let g = '';
     for (const a of [0, 30, 60, 90]) g += `<line class="${a === MIN_ALT ? 'hz-min' : 'hz-grid'}" x1="${L}" x2="${L + PW}" y1="${Y(a)}" y2="${Y(a)}"/><text class="hz-ax" x="${L - 6}" y="${Y(a) + 4}" text-anchor="end">${a}°</text>`;
     DIRS.forEach((n, k) => { g += `<line class="hz-grid" x1="${X(k * 45)}" x2="${X(k * 45)}" y1="${T}" y2="${T + PH}"/><text class="hz-ax${n.length === 1 ? ' main' : ''}" x="${X(k * 45)}" y="${H - 12}" text-anchor="middle">${n}</text>`; });
     g += `<polygon class="hz-land" points="${L},${T + PH} ${pts} ${L + PW},${T + PH}"/><polyline class="hz-line" points="${pts}"/>`;
+    // eigene Aufnahmen: hier war der Himmel frei (rot, wenn die Maske sie verdecken würde)
+    g += shots.map(p => `<circle class="hz-shot${p.alt < hAt(p.az) ? ' blocked' : ''}" cx="${X(p.az).toFixed(1)}" cy="${Y(p.alt).toFixed(1)}" r="3"><title>${esc(p.name)} · ${esc(p.night || '')} · ${Math.round(p.alt)}°</title></circle>`).join('');
     g += h.map((v, i) => `<circle class="hz-pt${i === cur ? ' cur' : ''}" cx="${X(i * STEP).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${i === cur ? 5 : 3}"/>`).join('');
     svg.innerHTML = g;
     svg.setAttribute('aria-valuenow', String(Math.round(h[cur])));
@@ -81,6 +87,10 @@ function horizonEditor(site, save) {
   d.onclick = async (e) => {
     const p = e.target.closest('[data-p]');
     if (p) { h = PRESETS[+p.dataset.p][1].slice(); paint(); return; }
+    if (e.target.closest('[data-fit]')) {                        // Maske unter jede Aufnahme senken (2° Luft)
+      for (const s of shots) for (const i of [Math.floor(s.az / STEP) % N, Math.ceil(s.az / STEP) % N]) h[i] = Math.max(0, Math.min(h[i], Math.floor(s.alt - 2)));
+      paint(); return;
+    }
     const v = e.target.closest('button')?.value;
     if (v === 'x' || v === '0') d.close();
     if (v === '1') { const b = e.target.closest('button'); b.disabled = true; if (await save(hasMask(h) ? h : null)) d.close(); else b.disabled = false; }
@@ -89,6 +99,10 @@ function horizonEditor(site, save) {
   d.showModal();
   fit(); paint();
   svg.focus();
+  Promise.resolve(points).then(list => {
+    if (!d.open || !Array.isArray(list) || !list.length) return;
+    shots = list; $('[data-fit]', d).hidden = false; paint();
+  }).catch(() => {});
 }
 window.horizonEditor = horizonEditor;
 window.horizonMini = horizonMini;

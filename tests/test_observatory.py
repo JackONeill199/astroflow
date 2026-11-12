@@ -112,3 +112,25 @@ def test_sky_data_files():
     for c in cs:
         for seg in c["lines"]:
             assert len(seg) % 2 == 0 and all(0 <= v < 360 for v in seg[0::2])
+
+
+def test_horizon_points_from_own_frames(tmp_path):
+    """Horizont-Vorschlag: Azimut/Höhe der eigenen Aufnahmen am Ort zur mittleren Aufnahmezeit (lokal gerechnet)."""
+    import datetime as dt
+    from astropy import units as u
+    from astropy.coordinates import AltAz, EarthLocation, SkyCoord
+    from astropy.time import Time
+    s = load_settings(tmp_path / "d")
+    db = DB(s.db_path)
+    pid = db.x("INSERT INTO projects(key, name, ra, dec, created) VALUES('m31','M31',10.68,41.27,0)")
+    for k, t in enumerate(("2026-11-02T21:00:00", "2026-11-02T21:20:00", "2026-11-02T21:40:00")):
+        db.x("INSERT INTO frames(id, project_id, path, kind, night, info) VALUES(?,?,?,?,?,?)",
+             (f"f{k}", pid, f"x/{k}.fits", "light", "2026-11-02", json.dumps({"date_obs": t})))
+    site = {"id": "s1", "lat": 50.0, "lon": 10.0}
+    pts = observatory.horizon_points(db, lambda night: site, "s1")
+    assert len(pts) == 1 and pts[0]["n"] == 3 and pts[0]["night"] == "2026-11-02"
+    ref = SkyCoord(10.68 * u.deg, 41.27 * u.deg).transform_to(AltAz(
+        obstime=Time(dt.datetime(2026, 11, 2, 21, 20, tzinfo=dt.timezone.utc)), location=EarthLocation(lat=50 * u.deg, lon=10 * u.deg)))
+    from astroflow.modules.stacking.objects import ang_sep
+    assert ang_sep(pts[0]["az"], pts[0]["alt"], ref.az.deg, ref.alt.deg) < 0.6       # ohne Präzession genähert (nahe Zenit wirkt Azimut größer)
+    assert observatory.horizon_points(db, lambda night: site, "anderer") == []

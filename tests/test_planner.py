@@ -120,3 +120,17 @@ def test_comets_are_not_planned(tmp_path):
               {**M31, "id": 9, "name": "Komet", "kind": "comet", "obj_id": None}]
     p = planner.plan(comets, lambda night: SITE, wishes, [opts[0]], tmp_path, now=EVENING)
     assert not {"8", "9"} & {t["id"] for t in p["targets"]}
+
+
+def test_calendar_export(server, browser):
+    """Plan als .ics (im Browser erzeugt): ein Termin je Block, Zeiten in UTC, Sonderzeichen maskiert."""
+    base, _ = server
+    page = browser.new_page()
+    page.goto(f"{base}/#/observatorium/plan")
+    page.wait_for_function("() => !!(window.AFplan && window.AFplan.ics)")
+    out = page.evaluate("""() => window.AFplan.ics({created: 1793660000, devices: [{id: 'stellina', name: 'Vaonis Stellina'}],
+        targets: [{id: 'M33', name: 'M33, Dreiecksgalaxie'}],
+        nights: [{night: '2026-11-02', blocks: [{device: 'stellina', target: 'M33', start: 1793660400, end: 1793671200, hours: 3, max_alt: 61}]}]})""")
+    page.close()
+    assert out.count("BEGIN:VEVENT") == 1 and "\r\n" in out
+    assert "DTSTART:20261102T" in out and "SUMMARY:M33\, Dreiecksgalaxie · Vaonis Stellina" in out

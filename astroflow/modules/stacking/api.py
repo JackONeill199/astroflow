@@ -914,6 +914,15 @@ def build_router(eng: Engine) -> APIRouter:
         eng.ctx.store.update("observatory", {"plan": out})
         return {"plan": out}
 
+    @r.get("/horizon-points")
+    def get_horizon_points(site: str = ""):
+        """Azimut/Höhe der eigenen Aufnahmen an einem Ort (Hilfe für den Horizont-Editor)."""
+        from . import observatory
+        svc = eng.ctx.services.get("site_for")
+        if not svc:
+            return {"points": []}
+        return {"points": observatory.horizon_points(db, svc, site[:40] or None)}
+
     @r.delete("/plan")
     def delete_plan():
         eng.ctx.store.update("observatory", {"plan": None})

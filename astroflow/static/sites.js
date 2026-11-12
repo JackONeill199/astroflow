@@ -137,7 +137,9 @@ async function sitesSettings(el) {
       const s = d.list.find(x => x.id === row.dataset.id);
       if (b.dataset.act === 'assign') { assign = { id: s.id, from: d.today, to: '' }; draw(); $('#siteAssign [name=from]', el)?.focus(); }
       if (b.dataset.act === 'edit') { edit = { ...s }; draw(); }
-      if (b.dataset.act === 'horizon') horizonEditor(s, (hz) => save({ ...d, list: d.list.map(x => x.id === s.id ? { ...x, horizon: hz || [] } : x) }, hz ? 'Horizont gespeichert.' : 'Horizont frei.'));
+      if (b.dataset.act === 'horizon') horizonEditor(s, (hz) => save({ ...d, list: d.list.map(x => x.id === s.id ? { ...x, horizon: hz || [] } : x) }, hz ? 'Horizont gespeichert.' : 'Horizont frei.'),
+        // Bilder-Modul (optional): wo an diesem Ort schon fotografiert wurde
+        { points: AF.on('stacking') ? api('/stacking/horizon-points?site=' + encodeURIComponent(s.id)).then(r => r.points) : null });
       if (b.dataset.act === 'default') save({ ...d, default: s.id }, `${s.name} ist jetzt der Standard-Ort.`);
       if (b.dataset.act === 'del') {
         const used = d.periods.filter(p => p.site_id === s.id).length;
