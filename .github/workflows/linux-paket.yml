@@ -1,0 +1,106 @@
+# Linux-Paket (tar.gz mit install.sh) bauen und in sauberer Umgebung prüfen – auf Ubuntu und in Debian- und Fedora-Containern.
+# Manuell (Actions → „Linux-Paket“ → Run workflow), wie das Windows-Paket. Auf einem Versions-Tag v* gestartet („Use workflow
+# from“ → Tag), wird das Paket an den Release-Entwurf des Tags angehängt (fehlt er, wird er angelegt).
+# Zusätzlich in PRs, die nur am Linux-Paket selbst etwas ändern (Pfadfilter) – sonst ließe sich der Bau vor dem Merge nicht prüfen.
+name: Linux-Paket
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "installer/build_linux.py"
+      - "installer/linux_install.py"
+      - "installer/pruefe_paket_linux.py"
+      - "installer/linux/**"
+      - ".github/workflows/linux-paket.yml"
+
+permissions:
+  contents: read          # Bauen und Prüfen nur lesend; Schreibrecht nur im Job „release“ bei Tags
+
+jobs:
+  bauen:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build-Werkzeuge
+        run: python -m pip install --upgrade pip setuptools pillow
+
+      - name: Paket bauen
+        run: python installer/build_linux.py --out dist
+
+      - name: Prüfung in sauberer Umgebung (Installieren, ASTAP-Download, Demo, Update, Deinstallieren, portabel)
+        run: |
+          sudo apt-get install -y --no-install-recommends desktop-file-utils
+          python installer/pruefe_paket_linux.py dist/AstroFlow-*-Linux-x86_64.tar.gz --astap
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: astroflow-linux
+          path: |
+            dist/AstroFlow-*-Linux-x86_64.tar.gz
+            dist/AstroFlow-*-Linux-x86_64.tar.gz.sha256
+          retention-days: 14
+
+  distros:
+    # Läuft das Paket auch auf anderen Distributionen? Ohne Python im System außer dem Prüfwerkzeug (python3 der Distribution).
+    needs: bauen
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["debian:12-slim", "fedora:41"]
+    container: ${{ matrix.image }}
+    steps:
+      - name: Prüfwerkzeug
+        run: |
+          if command -v apt-get >/dev/null; then apt-get update && apt-get install -y --no-install-recommends python3 ca-certificates
+          else dnf install -y python3; fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: astroflow-linux
+          path: dist
+
+      - name: Prüfung (ohne ASTAP-Download)
+        run: python3 installer/pruefe_paket_linux.py dist/AstroFlow-*-Linux-x86_64.tar.gz
+
+  release:
+    # Nur bei Versions-Tags, als eigener Job mit Schreibrecht (die Bau-Jobs oben bleiben lesend)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [bauen, distros]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: astroflow-linux
+          path: dist
+
+      - name: An Release-Entwurf anhängen (fehlt er, anlegen)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            if [ "$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)" != "true" ]; then
+              echo "Release $GITHUB_REF_NAME ist schon veröffentlicht – nichts angehängt." >&2; exit 1
+            fi
+            gh release upload "$GITHUB_REF_NAME" dist/AstroFlow-*-Linux-x86_64.tar.gz dist/AstroFlow-*-Linux-x86_64.tar.gz.sha256 --clobber
+          else
+            python3 installer/release_notes.py "$ver" dist/notizen.md      # Abschnitt der Version aus CHANGELOG.md
+            gh release create "$GITHUB_REF_NAME" --draft --title "AstroFlow $ver" --notes-file dist/notizen.md \
+              dist/AstroFlow-*-Linux-x86_64.tar.gz dist/AstroFlow-*-Linux-x86_64.tar.gz.sha256
+          fi

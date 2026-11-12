@@ -72,12 +72,20 @@ jobs:
           name: astroflow-windows
           path: dist
 
-      - name: Release-Entwurf
+      - name: Release-Entwurf (vorhandenen Entwurf des Tags ergänzen, sonst anlegen – das Linux-Paket hängt sich genauso an)
         env:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
           $ver = $env:GITHUB_REF_NAME.TrimStart('v')
-          python installer/release_notes.py $ver dist/notizen.md      # Abschnitt der Version aus CHANGELOG.md
+          $files = Get-ChildItem dist\AstroFlow-*.zip, dist\AstroFlow-Setup-*.exe
+          gh release view $env:GITHUB_REF_NAME --json isDraft --jq .isDraft > dist/entwurf.txt 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            if ((Get-Content dist/entwurf.txt) -ne 'true') { Write-Error "Release $env:GITHUB_REF_NAME ist schon veröffentlicht – nichts angehängt."; exit 1 }
+            gh release upload $env:GITHUB_REF_NAME $files --clobber
+          } else {
+            python installer/release_notes.py $ver dist/notizen.md      # Abschnitt der Version aus CHANGELOG.md
+            if ($LASTEXITCODE) { exit 1 }
+            gh release create $env:GITHUB_REF_NAME --draft --title "AstroFlow $ver" --notes-file dist/notizen.md $files
+          }
           if ($LASTEXITCODE) { exit 1 }
-          gh release create $env:GITHUB_REF_NAME --draft --title "AstroFlow $ver" --notes-file dist/notizen.md (Get-ChildItem dist\AstroFlow-*.zip, dist\AstroFlow-Setup-*.exe)

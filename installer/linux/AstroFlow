@@ -1,0 +1,7 @@
+#!/bin/sh
+# AstroFlow (portabel) starten: Server im Hintergrund, danach öffnet sich der Browser.
+# Daten und Einstellungen liegen in diesem Ordner (Daten/, config.json). Fest installieren: ./install.sh
+DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ASTROFLOW_HOME="$DIR"
+export ASTROFLOW_HOME
+exec "$DIR/python/bin/python3" -I -m astroflow start "$@"

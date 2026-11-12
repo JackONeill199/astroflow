@@ -1,0 +1,34 @@
+AstroFlow – lokale Astro-Plattform für Smart-Teleskope und Astrokameras (Linux)
+==============================================================================
+
+Installieren (empfohlen, ohne root):
+           Im Terminal in diesem Ordner:  ./install.sh
+           Danach: Anwendungsmenü → AstroFlow, oder im Terminal: astroflow
+           Beim ersten Start führt ein Assistent durch Datenordner, Teleskop, Standort und Plate-Solving.
+           Optional: ./install.sh --autostart  (beim Anmelden im Hintergrund starten)
+Portabel:  ./AstroFlow  startet direkt aus diesem Ordner (Daten in "Daten/" daneben),
+           ./AstroFlow-beenden  beendet.
+Beenden:   Menüeintrag → Rechtsklick → "AstroFlow beenden", im Terminal "astroflow stop" oder
+           in AstroFlow unter Einstellungen → Module & System → "AstroFlow beenden".
+Update:    Neues Paket entpacken und dort ./install.sh ausführen – Daten, Einstellungen und
+           Zusatzpakete bleiben erhalten.
+Entfernen: astroflow-deinstallieren  (Daten bleiben; mit --werkzeuge auch ASTAP, GraXpert und
+           Zusatzpakete).
+
+Daten:     ~/AstroFlow (im Assistenten änderbar), Einstellungen ~/.config/astroflow.
+
+Python ist enthalten – es muss nichts weiter installiert werden (Linux x86_64 mit glibc 2.28 oder
+neuer, z. B. Ubuntu 20.04+, Debian 11+, Fedora, Linux Mint, openSUSE).
+Optional auf Knopfdruck im Assistenten: ASTAP + Sterndatenbank (von SourceForge), GraXpert
+(von GitHub), GPU-Beschleunigung (braucht den OpenCL-Treiber der Grafikkarte), SkyTrace-Engine.
+StarNet bitte vom Hersteller laden. Heimnetz: Einstellungen → Heimnetz (ufw/firewalld-Freigabe
+auf Knopfdruck, das System fragt nach dem Passwort).
+Das Symbol im Infobereich erscheint, wenn die Arbeitsfläche es unterstützt (KDE, Xfce, Cinnamon;
+GNOME nur mit der Erweiterung "AppIndicator").
+
+Anleitung und Quelltext: https://github.com/JackONeill199/astroflow
+Lizenz: PolyForm Noncommercial 1.0.0 (siehe LICENSE.txt) – Quellcode offen, private und
+nicht-kommerzielle Nutzung frei. Stände bis v0.51.3 bleiben MIT. Detektormodell in
+SkyTrace: AGPL-3.0, Engine: AGPL-3.0-or-later (Details in NOTICE.txt);
+Python: PSF-Lizenz; weitere Pakete: jeweils eigene Lizenz.
+Alle Lizenztexte der enthaltenen Pakete: THIRD-PARTY-LICENSES.txt (und NOTICE.txt).

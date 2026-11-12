@@ -92,7 +92,10 @@ def make_icon(path: Path):
     d = ImageDraw.Draw(img)
     for cx, cy, r, c in ((128, 128, 18, (255, 255, 255)), (56, 60, 6, (255, 255, 255)), (200, 192, 5, (255, 255, 255)), (196, 56, 7, (255, 217, 168))):
         d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=c + (255,))
-    img.save(path, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    if path.suffix.lower() == ".png":                    # Linux-Paket: Menüsymbol 256×256
+        img.save(path)
+    else:
+        img.save(path, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
 
 
 def write_sandbox(out: Path, results: Path | None = None) -> Path:
@@ -179,17 +182,17 @@ def license_page(markdown: str) -> str:
     return LIZENZ_KURZ + "\n" + "_" * 78 + "\n\n" + "\n".join(out).strip() + "\n"
 
 
-def collect_licenses(python_dir: Path, version: str = "") -> str:
+def collect_licenses(python_dir: Path, version: str = "", site: Path | None = None, py_license: Path | None = None) -> str:
     """Lizenztexte der gebündelten Pakete sammeln (`THIRD-PARTY-LICENSES.txt`): je `*.dist-info` in site-packages Name, Version,
     Lizenzangabe aus METADATA und die Dateien LICENSE*/COPYING*/NOTICE* (auch unter `licenses/`), dazu `LICENSE.txt` des Python-Ordners.
     Reihenfolge nach Paketname; einzelne Texte auf 300 KB begrenzt."""
     from email.parser import Parser
-    site = python_dir / "Lib" / "site-packages"
+    site = site or python_dir / "Lib" / "site-packages"           # Linux-Paket: python/lib/python3.12/site-packages
     sep = "=" * 78
     out = ["Lizenzen der im AstroFlow-Paket enthaltenen Drittkomponenten" + (f" (AstroFlow {version})" if version else ""),
            "AstroFlow selbst steht unter der PolyForm Noncommercial License 1.0.0 (LICENSE.txt, Überblick in NOTICE.txt);",
            "SkyTrace-Engine: AGPL-3.0-or-later (einzelne Hilfsdateien doppelt lizenziert), Detektormodell: AGPL-3.0 (LICENSE im jeweiligen Ordner).", ""]
-    pyl = python_dir / "LICENSE.txt"
+    pyl = py_license or python_dir / "LICENSE.txt"
     out += [sep, "Python (python-build-standalone, https://github.com/astral-sh/python-build-standalone) – PSF-Lizenz", sep]
     out += [pyl.read_text(encoding="utf-8", errors="replace")[:300_000] if pyl.is_file() else "(LICENSE.txt des Python-Ordners fehlt)", ""]
     out += ["Hinweis: Die mitgelieferten C-Bibliotheken von Python (u. a. OpenSSL, zlib, bzip2, xz, expat, libffi, SQLite, Tcl/Tk,",
