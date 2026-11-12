@@ -6,7 +6,10 @@
 (() => {
 const D2R = Math.PI / 180, FOV_MIN = 0.3, FOV_MAX = 220, FOV_HOME = 120;
 const KEY = 'obs.view', LKEY = 'obs.layers';
-const LAYERS = [['photos', 'Meine Fotos', 'image'], ['catalog', 'Katalog', 'target'], ['cons', 'Sternbilder', 'star'], ['grid', 'Gitter', 'grid'], ['plan', 'Plan', 'list']];
+const LAYERS = [['photos', 'Meine Fotos', 'image'], ['catalog', 'Katalog', 'target'], ['cons', 'Sternbilder', 'star'], ['grid', 'Gitter', 'grid'], ['plan', 'Plan', 'list'], ['tracks', 'Bahnen', 'orbit']];
+const ZENITH = { ra: 180, dec: 90, fov: 190 };                   // „Von hier“: ganzer Himmel von oben (Norden oben, Osten links)
+const hmT = (t) => new Date(t * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+const spanT = (s) => `${hmT(s[0])}–${hmT(s[1])}`;
 const de = (v, n = 1) => Number(v).toFixed(n).replace('.', ',');
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const norm = (ra) => ((ra % 360) + 360) % 360;
@@ -116,11 +119,15 @@ async function atlasView(el, query) {
   };
   const start = fromQuery(q);
   if (start) Object.assign(v, reduced() ? start : { ...start, fov: Math.min(FOV_MAX, start.fov * 5) });   // danach hineinfliegen
-  const on = { photos: true, catalog: true, cons: true, grid: true, plan: true, ...store.get(LKEY, {}) };
+  const on = { photos: true, catalog: true, cons: true, grid: true, plan: true, tracks: true, ...store.get(LKEY, {}) };
+  const wantHere = q.get('blick') === 'hier', pathDate = (q.get('date') || '').slice(0, 10);
+  if (wantHere) on.tracks = true;
+  // Bahnen der Ziele durch die Nacht (/api/stacking/dome, dome.py): nur „Von hier“; trackSel = angeklicktes Ziel
+  let paths = null, pathsP = null;
   let planned = [];                         // Ziele des gespeicherten Plans (Planer): {ra, dec, name, when}
   // Blickart: 'sky' (äquatorial) oder 'here' (Azimut/Höhe vom Standort zur Zeit tsel); je Blickart eigene Ansicht
   let mode = 'sky', site = null, tsel = Date.now() / 1000;
-  const views = { sky: { ...v }, here: { ra: 180, dec: 35, fov: 150, ...store.get(KEY + '.here', {}) } };
+  const views = { sky: { ...v }, here: { ...ZENITH, ...(wantHere ? {} : store.get(KEY + '.here', {})) } };
   const toHor = (ra, dec) => horizontal(ra, dec, gmst(tsel) + site.lon, site.lat);
   const sage = AF.on('sage');
 
@@ -130,13 +137,14 @@ async function atlasView(el, query) {
       <div class="obs-top">
         <label class="obs-search">${icon('search')}<input id="obsFind" type="search" list="obsList" placeholder="Objekt suchen" autocomplete="off" aria-label="Objekt suchen"><datalist id="obsList"></datalist></label>
         <div class="seg obs-mode" role="group" aria-label="Blickart" hidden><button type="button" data-mode="sky" class="on" aria-pressed="true">${icon('globe')}<span>Himmel</span></button><button type="button" data-mode="here" aria-pressed="false">${icon('pin')}<span>Von hier</span></button></div>
-        <div class="seg obs-layers" role="group" aria-label="Ebenen">${LAYERS.map(([k, l, i]) => `<button type="button" data-layer="${k}" aria-pressed="${on[k]}" class="${on[k] ? 'on' : ''}" title="${l}"${k === 'plan' ? ' hidden' : ''}>${icon(i)}<span>${l}</span></button>`).join('')}</div>
+        <div class="seg obs-layers" role="group" aria-label="Ebenen">${LAYERS.map(([k, l, i]) => `<button type="button" data-layer="${k}" aria-pressed="${on[k]}" class="${on[k] ? 'on' : ''}" title="${l}"${k === 'plan' || k === 'tracks' ? ' hidden' : ''}>${icon(i)}<span>${l}</span></button>`).join('')}</div>
       </div>
       <div class="obs-zoom" role="group" aria-label="Zoom"><button type="button" data-z="in" title="Vergrößern" aria-label="Vergrößern">${icon('plus')}</button><button type="button" data-z="out" title="Verkleinern" aria-label="Verkleinern">${icon('minus')}</button><button type="button" data-z="home" title="Ganzer Himmel" aria-label="Ganzer Himmel">${icon('globe')}</button></div>
       <div class="obs-read tnum" id="obsRead" aria-live="off"></div>
-      <div class="obs-time" id="obsTime" hidden><input type="range" id="obsT" min="0" max="${16 * 60}" step="10" value="0" aria-label="Uhrzeit"><b class="tnum" id="obsTL"></b><button type="button" class="btn ghost sm" id="obsNow">Jetzt</button><a class="btn ghost sm" href="#/observatorium/kuppel" title="Himmel von oben mit den Bahnen deiner Ziele">${icon('dome')}Kuppel</a></div>
+      <div class="obs-time" id="obsTime" hidden><input type="range" id="obsT" min="0" max="${16 * 60}" step="10" value="0" aria-label="Uhrzeit"><b class="tnum" id="obsTL"></b><button type="button" class="btn ghost sm" id="obsNow">Jetzt</button></div>
       <div class="obs-msg" id="obsMsg" hidden></div>
     </div>
+    <section class="obs-free" id="obsFree" hidden></section>
     <section class="obs-strip-wrap"><div class="panel-h"><h2>${icon('image')}Meine Fotos am Himmel</h2><span class="grow"></span><span class="chip" id="obsCount">…</span></div><div class="obs-strip" id="obsStrip"></div></section>`;
 
   const stage = $('#obsStage', el), cv = $('#obsCanvas', el), g = cv.getContext('2d');
@@ -223,6 +231,7 @@ async function atlasView(el, query) {
       g.setLineDash([]);
     }
     if (here) ground();
+    if (here && on.tracks && paths) trackLayer(base);
     if (target) {
       const t = fwd(target.ra, target.dec);
       if (t) {
@@ -252,10 +261,134 @@ async function atlasView(el, query) {
     g.strokeStyle = col.ok; g.lineWidth = 1.5; g.beginPath();
     pts.forEach((c, i) => (i && Math.hypot(c[0] - pts[i - 1][0], c[1] - pts[i - 1][1]) < W) ? g.lineTo(...c) : g.moveTo(...c));
     g.stroke();
+    // ab hier frei: Mindesthöhe (30°) bzw. höher, wo die Maske höher ist – gestrichelt
+    const lim = paths?.min_alt ?? 30, fr = [];
+    for (let az = 0; az <= 360; az += 2) { const q = fwd(360 - az, Math.max(lim, hzAt(hz, az))); if (q) fr.push(q); }
+    g.setLineDash([6, 5]); g.globalAlpha = 0.75; g.beginPath();
+    fr.forEach((c, i) => (i && Math.hypot(c[0] - fr[i - 1][0], c[1] - fr[i - 1][1]) < W) ? g.lineTo(...c) : g.moveTo(...c));
+    g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
     const { fwd: f2 } = projection(v, W, H);
     g.font = '700 12px ' + col.font; g.textAlign = 'center'; g.fillStyle = col.mut;
     DIRS8.forEach((n, k) => { const p = f2(360 - k * 45, 2); if (p && p[0] > 8 && p[0] < W - 8 && p[1] > 8 && p[1] < H - 8) g.fillText(n, p[0], p[1] - 4); });
     g.textAlign = 'start'; g.font = '500 11px ' + col.font;
+  }
+
+  // Bahnen durch die Nacht (Azimut/Höhe vom Server): gestrichelt = dunkel, aber tief oder verdeckt; kräftig = frei;
+  // dick = geplanter Block; Marke zur gewählten Uhrzeit. Angeklicktes Ziel mit Stundenmarken, andere blasser.
+  const pathTargets = () => { const pl = paths.targets.filter(t => t.source === 'plan'); return pl.length ? pl : paths.targets; };
+  const pathColor = (t) => (t.source === 'plan' && window.AFplan ? window.AFplan.color(t.id) : col.acc);
+  const pathAt = (t, ts) => {                                     // Position zur Zeit ts (zwischen den 10-min-Punkten)
+    const fi = (ts - paths.t0) / paths.step, i = Math.floor(fi), f = fi - i;
+    if (i < 0 || i + 1 >= paths.n) return null;
+    const da = ((t.az[i + 1] - t.az[i] + 540) % 360) - 180;
+    return [t.az[i] + da * f, t.alt[i] + (t.alt[i + 1] - t.alt[i]) * f];
+  };
+  const freeAt = (t, ts) => t.free.some(([a, b]) => ts >= a && ts < b);
+  function trackLayer(base) {
+    const d = paths, T = (i) => d.t0 + i * d.step;
+    const dark = (i) => d.dark.some(([a, b]) => T(i) >= a && T(i) < b);
+    const pick = sel?.type === 'track' ? sel.o.id : null;
+    const line = (t, ok) => {
+      g.beginPath(); let on2 = false;
+      for (let i = 0; i < d.n; i++) {
+        const q = ok(i) && t.alt[i] >= 0 ? base.fwd(360 - t.az[i], t.alt[i]) : null;
+        if (!q) { on2 = false; continue; }
+        if (on2) g.lineTo(...q); else g.moveTo(...q);
+        on2 = true;
+      }
+      g.stroke();
+    };
+    g.lineCap = 'round';
+    for (const t of pathTargets()) {
+      const c = pathColor(t), me = t.id === pick;
+      g.globalAlpha = pick && !me ? 0.3 : 1;
+      g.strokeStyle = me ? col.fg : col.dim; g.lineWidth = 1; g.setLineDash([2, 4]); line(t, dark); g.setLineDash([]);
+      g.strokeStyle = c; g.lineWidth = me ? 3 : 2; line(t, (i) => t.free.some(([a, b]) => T(i) >= a && T(i) < b));
+      if (t.blocks.length) { g.lineWidth = me ? 6 : 5; g.globalAlpha *= 0.85; line(t, (i) => t.blocks.some(b => T(i) >= b.start && T(i) < b.end)); }
+    }
+    g.globalAlpha = 1; g.lineCap = 'butt';
+    // Stundenmarken auf der gewählten Bahn (volle Stunden der Ortszeit des Browsers)
+    const st = pick && pathTargets().find(t => t.id === pick);
+    if (st) {
+      const h = new Date(d.t0 * 1000); h.setMinutes(60, 0, 0);
+      g.font = '600 11px ' + col.font;
+      for (let ts = h.getTime() / 1000; ts <= T(d.n - 1); ts += 3600) {
+        const p = pathAt(st, ts), fi = (ts - d.t0) / d.step;
+        if (!p || p[1] < 0 || !dark(Math.floor(fi)) || !dark(Math.ceil(fi))) continue;
+        const q = base.fwd(360 - p[0], p[1]);
+        if (!q) continue;
+        g.fillStyle = col.fg; g.beginPath(); g.arc(q[0], q[1], 2.5, 0, 2 * Math.PI); g.fill();
+        g.fillText(hmT(ts).slice(0, 2), q[0] + 6, q[1] - 5);
+      }
+      g.font = '500 11px ' + col.font;
+    }
+    // Mond und Ziele zur gewählten Uhrzeit
+    const mp = pathAt(d.moon, tsel);
+    if (mp && mp[1] > 0) {
+      const q = base.fwd(360 - mp[0], mp[1]);
+      if (q) { g.fillStyle = col.warn; g.beginPath(); g.arc(q[0], q[1], 7, 0, 2 * Math.PI); g.fill(); g.fillText(`Mond ${d.moon.illum} %`, q[0] + 11, q[1] + 4); }
+    }
+    const labels = [];
+    g.font = '600 11px ' + col.font;
+    for (const t of pathTargets()) {
+      const p = pathAt(t, tsel);
+      if (!p || p[1] < 0) continue;
+      const q = base.fwd(360 - p[0], p[1]);
+      if (!q) continue;
+      const free = freeAt(t, tsel), me = t.id === pick;
+      g.globalAlpha = pick && !me ? 0.4 : 1;
+      g.beginPath(); g.arc(q[0], q[1], me ? 6 : 4.5, 0, 2 * Math.PI);
+      if (free) { g.fillStyle = pathColor(t); g.fill(); } else { g.strokeStyle = col.mut; g.lineWidth = 1.3; g.stroke(); }
+      if ((free || me) && !labels.some(([x, y]) => Math.abs(x - q[0]) < 80 && Math.abs(y - q[1]) < 14)) {
+        g.fillStyle = col.fg; g.fillText(t.name, q[0] + 9, q[1] + 4); labels.push(q);
+      }
+      hits.push({ type: 'track', o: t, x: q[0], y: q[1], r: 11 });
+    }
+    g.globalAlpha = 1; g.font = '500 11px ' + col.font;
+  }
+
+  // Listen unter der Karte: jetzt frei / später frei / schon vorbei / nie frei (zur gewählten Uhrzeit)
+  let freeSig = '';
+  function freeList(ts = tsel) {
+    const box = $('#obsFree', el);
+    const showIt = mode === 'here' && on.tracks && paths && paths.targets.length;
+    box.hidden = !showIt;
+    if (!showIt) { freeSig = ''; return; }
+    const now = [], later = [], past = [], never = [];
+    for (const t of pathTargets()) {
+      const cur = t.free.find(([a, b]) => ts >= a && ts < b), next = t.free.filter(([a]) => a > ts);
+      if (cur) now.push([cur[1], t, `noch bis ${hmT(cur[1])}`]);
+      else if (next.length) later.push([next[0][0], t, `frei ${next.map(spanT).join(', ')}`]);
+      else if (t.free.length) past.push([0, t, `war frei ${t.free.map(spanT).join(', ')}`]);
+      else never.push([0, t, t.why || 'nie frei']);
+    }
+    now.sort((a, b) => a[0] - b[0]); later.sort((a, b) => a[0] - b[0]);
+    const pick = sel?.type === 'track' ? sel.o.id : '';
+    const sig = [ts > 0 ? Math.round(ts / 600) : 0, pick, now.length, later.length, past.length].join('|');
+    if (sig === freeSig) return;
+    const first = !freeSig;
+    freeSig = sig;
+    const item = ([, t, txt]) => `<li><button type="button" class="obs-fi${t.id === pick ? ' on' : ''}" data-track="${esc(t.id)}"><i style="background:${pathColor(t)}"></i><span class="obs-fn">${esc(t.name)}</span><span class="dim sm">${esc(txt)}</span></button></li>`;
+    const grp = (title, rows, empty) => `<div class="obs-fg"><h3>${title} <span class="chip">${rows.length}</span></h3>${rows.length
+      ? `<ul>${rows.slice(0, 8).map(item).join('')}</ul>${rows.length > 8 ? `<details><summary class="sm">Alle ${rows.length}</summary><ul>${rows.slice(8).map(item).join('')}</ul></details>` : ''}`
+      : `<p class="mut sm">${empty}</p>`}</div>`;
+    const d = paths;
+    box.innerHTML = `<div class="panel-h"><h2>${icon('orbit')}Bahnen ${d.k ? 'in der Nacht ' + new Date(d.night + 'T12:00:00Z').toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric', timeZone: 'UTC' }) : 'heute Nacht'}</h2><span class="grow"></span>
+        <span class="mut sm">${d.dark.length ? 'dunkel ' + d.dark.map(spanT).join(', ') : 'keine astronomische Dunkelheit'} · Mond ${d.moon.illum} %</span></div>
+      <p class="mut sm obs-fhint">Kräftige Linie = frei (dunkel, über ${d.min_alt}° und über deinem Horizont, gestrichelte Grenze) · dick = geplant · gestrichelt = tief oder verdeckt. Uhrzeit mit dem Regler wählen.</p>
+      <div class="obs-fgrid">${grp(`Jetzt frei <span class="dim sm">(${hmT(ts)})</span>`, now, 'Gerade steht kein Ziel im freien Ausschnitt.')}${grp('Später frei', later, 'Bis zum Morgen kommt nichts mehr dazu.')}
+        ${past.length ? grp('Schon vorbei', past, '') : ''}${grp('In dieser Nacht nie frei', never, 'Alle Ziele kommen irgendwann ins freie Fenster.')}</div>`;
+    if (first) box.classList.add('obs-in');
+  }
+  function loadPaths() {
+    if (pathsP || !site) return;
+    pathsP = api('/stacking/dome' + (pathDate ? '?date=' + encodeURIComponent(pathDate) : '')).then(r => {
+      if (!el.isConnected || !r || r.error || !r.targets) return;
+      paths = r;
+      const b = $('[data-layer="tracks"]', el); if (b) b.hidden = mode !== 'here';
+      setRange();
+      crossfade(() => {}); freeList();
+    }).catch(() => {});
   }
 
   function grid({ fwd, reach }) {
@@ -417,11 +550,19 @@ async function atlasView(el, query) {
 
   // ---- Auswahl → Kontextpanel ----
   function select(h, show = true) {
+    const wasTrack = sel?.type === 'track';
     sel = h ? { type: h.type, o: h.o } : null;
     draw();
+    if (wasTrack && sel?.type !== 'track') freeList();
     if (!sel) { AF.ctx.clear(); return; }
     const o = sel.o;
-    if (sel.type === 'photo') {
+    if (sel.type === 'track') {
+      freeList();
+      AF.ctx.open(el, { title: o.name, html: `<dl class="kv"><dt>Frei</dt><dd>${o.free.length ? o.free.map(spanT).join(', ') + ` (${de(o.free_hours, 1)} h)` : esc(o.why || 'nie')}</dd>
+          <dt>Höchster Stand</dt><dd>${Math.round(o.max_alt)}°</dd>${o.blocks.length ? `<dt>Geplant</dt><dd>${o.blocks.map(b => spanT([b.start, b.end])).join(', ')}</dd>` : ''}
+          <dt>Herkunft</dt><dd>${o.source === 'plan' ? 'Beobachtungsplan' : 'eigenes Objekt'}</dd></dl>
+        ${o.href ? `<div class="row obs-ctx-acts"><a class="btn sm" href="${o.href}">${icon('image')}Projekt öffnen</a></div>` : ''}` });
+    } else if (sel.type === 'photo') {
       AF.ctx.open(el, { title: o.name, html: `<a class="obs-ctx-img" href="${o.href}"><img src="${esc(o.thumb)}" alt=""></a>
         <dl class="kv">${o.kind_label ? `<dt>Art</dt><dd>${esc(o.kind_label)}</dd>` : ''}${o.exposure ? `<dt>Belichtung</dt><dd>${fmtExp(o.exposure)}${o.frames ? ` · ${o.frames} Bilder` : ''}</dd>` : ''}
           <dt>Bildfeld</dt><dd>${fmtFov(o.fov[0])} × ${fmtFov(o.fov[1])}</dd><dt>Position</dt><dd>${fmtRA(o.ra)} · ${fmtDec(o.dec)}</dd>${o.created ? `<dt>Stand</dt><dd>${fmtDate(o.created)}</dd>` : ''}</dl>
@@ -563,7 +704,7 @@ async function atlasView(el, query) {
   });
   $('.obs-zoom', el).onclick = (e) => {
     const z = e.target.closest('[data-z]')?.dataset.z;
-    if (z === 'in') zoomTo(1 / 1.6); else if (z === 'out') zoomTo(1.6); else if (z === 'home') fly({ ra: v.ra, dec: mode === 'here' ? 35 : v.dec, fov: mode === 'here' ? 150 : FOV_HOME, raw: true });
+    if (z === 'in') zoomTo(1 / 1.6); else if (z === 'out') zoomTo(1.6); else if (z === 'home') fly(mode === 'here' ? { ...ZENITH, raw: true } : { ra: v.ra, dec: v.dec, fov: FOV_HOME, raw: true });
   };
   $('.obs-layers', el).onclick = (e) => {
     const b = e.target.closest('[data-layer]');
@@ -571,6 +712,7 @@ async function atlasView(el, query) {
     const k = b.dataset.layer;
     on[k] = !on[k]; b.classList.toggle('on', on[k]); b.setAttribute('aria-pressed', on[k]);
     store.set(LKEY, on); crossfade(() => {});
+    if (k === 'tracks') { if (!on.tracks && sel?.type === 'track') select(null); freeList(); }
   };
   // Blickart umschalten (je Blickart eigene Mitte/Zoom), Zeitregler ab jetzt bis +16 h
   const setMode = (m, instant = false) => {
@@ -580,18 +722,32 @@ async function atlasView(el, query) {
     store.set('obs.mode', m);
     $$('.obs-mode [data-mode]', el).forEach(b => { b.classList.toggle('on', b.dataset.mode === m); b.setAttribute('aria-pressed', b.dataset.mode === m); });
     $('#obsTime', el).hidden = m !== 'here';
+    const tb = $('[data-layer="tracks"]', el); if (tb) tb.hidden = m !== 'here' || !paths;
+    if (m === 'here') loadPaths();
+    if (m !== 'here' && sel?.type === 'track') { sel = null; AF.ctx.clear(); }
     cv.setAttribute('aria-label', m === 'here' ? 'Himmel von deinem Standort aus' : 'Himmelskarte');
-    if (instant || reduced()) { mode = m; Object.assign(v, views[m]); draw(); return; }
+    if (instant || reduced()) { mode = m; Object.assign(v, views[m]); draw(); freeList(); return; }
     crossfade(() => { mode = m; Object.assign(v, views[m], { fov: clampFov(views[m].fov * 1.3) }); });
+    freeList();
     fly({ ...views[m], raw: true }, 420);
   };
   $('.obs-mode', el).onclick = (e) => { const b = e.target.closest('[data-mode]'); if (b) setMode(b.dataset.mode); };
-  const t0 = Math.floor(Date.now() / 600000) * 600;
+  // Zeitregler: ab jetzt bis +16 h; mit Bahnen über die ganze Nacht (ab jetzt bzw. ab Abend, falls die Nacht noch kommt)
+  let t0 = Math.floor(Date.now() / 600000) * 600;
+  function setRange() {
+    const d = paths, end = d.t0 + (d.n - 1) * d.step, nowT = Date.now() / 1000;
+    t0 = Math.floor(Math.min(nowT, d.t0) / 600) * 600;
+    const r = $('#obsT', el);
+    r.max = String(Math.max(60, Math.round((end - t0) / 60)));
+    if (pathDate && d.k > 0) tsel = d.dark[0]?.[0] ?? d.t0;         // spätere Nacht aus Heute Nacht/Planer: ab Beginn der Dunkelheit
+    r.value = String(Math.max(0, Math.round((tsel - t0) / 60)));
+    showT();
+  }
   const showT = (ts = tsel) => { $('#obsTL', el).textContent = new Date(ts * 1000).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' }); };
   let tAnim = 0;
   const setT = (to) => {                                          // Himmel dreht sich kurz zum neuen Zeitpunkt statt zu springen
     showT(to); cancelAnimationFrame(tAnim);
-    if (reduced() || mode !== 'here') { tsel = to; draw(); return; }
+    if (reduced() || mode !== 'here') { tsel = to; draw(); freeList(to); return; }
     const from = tsel, t1 = performance.now(), T = 180 + Math.min(220, Math.abs(to - from) / 3600 * 30);
     const step = (t) => {
       const k = Math.min(1, (t - t1) / T), e = 1 - (1 - k) ** 3;
@@ -599,6 +755,7 @@ async function atlasView(el, query) {
       if (k < 1 && el.isConnected) tAnim = requestAnimationFrame(step);
     };
     tAnim = requestAnimationFrame(step);
+    freeList(to);
   };
   $('#obsT', el).oninput = (e) => setT(t0 + +e.target.value * 60);
   $('#obsNow', el).onclick = () => { $('#obsT', el).value = 0; setT(Date.now() / 1000); };
@@ -607,8 +764,15 @@ async function atlasView(el, query) {
     if (!el.isConnected || !r?.site || r.site.lat == null) return;
     site = r.site;
     $('.obs-mode', el).hidden = false;
-    if (store.get('obs.mode', 'sky') === 'here') { setMode('here', true); if (start) fly(start); }   // Ziel aus Sage/Planer auch „von hier“ anfliegen
+    if (wantHere || store.get('obs.mode', 'sky') === 'here') { setMode('here', true); if (start) fly(start); }   // Ziel aus Sage/Planer auch „von hier“ anfliegen
   }).catch(() => {});
+  $('#obsFree', el).addEventListener('click', (e) => {
+    const b = e.target.closest('[data-track]'), t = b && paths?.targets.find(x => x.id === b.dataset.track);
+    if (!t) return;
+    const p = pathAt(t, tsel);
+    if (p && p[1] > 0) fly({ ra: 360 - p[0], dec: Math.min(85, p[1]), fov: Math.min(v.fov, 100), raw: true });
+    select({ type: 'track', o: t });
+  });
   const find = $('#obsFind', el);
   find.addEventListener('change', () => {
     const t = find.value.trim().toLowerCase();
@@ -677,7 +841,12 @@ async function atlasView(el, query) {
     navigate(path) {
       const m = path.match(/^\/observatorium(?:\?(.*))?$/);
       if (!m) return false;
-      const to = fromQuery(new URLSearchParams(m[1] || ''));
+      const qs = new URLSearchParams(m[1] || '');
+      if (qs.get('blick') === 'hier' && site) {                     // „Bahnen im Atlas“ bei schon offenem Atlas
+        if (!on.tracks) { on.tracks = true; $('[data-layer="tracks"]', el)?.classList.add('on'); }
+        setMode('here');
+      }
+      const to = fromQuery(qs);
       if (to) fly(to); else target = null;
       focusTarget(); draw();
       return true;

@@ -1,4 +1,4 @@
-"""Observatorium, Himmelskuppel: Bahnen, freie Fenster, Plan-Blöcke und Mond einer Nacht (offline, erfundener Ort)."""
+"""Observatorium, Bahnen im Atlas „Von hier“: Bahnen, freie Fenster, Plan-Blöcke und Mond einer Nacht (offline, erfundener Ort)."""
 import datetime as dt
 
 import pytest
@@ -86,14 +86,22 @@ def test_missing_site_and_api(tmp_path):
         assert c.get("/api/stacking/dome?night=99").json()["k"] == 13
 
 
-def test_dome_view_draws_and_lists(server, browser):
-    """Ansicht ohne Standort: Hinweis statt Fehler; Reiter „Kuppel“ im Observatorium."""
+def test_tracks_layer_in_atlas(server, browser):
+    """Atlas „Von hier“ mit ?blick=hier: Ebene „Bahnen“ sichtbar, Listen unter der Karte, Klick → Kontextpanel; Himmel ↔ zurück."""
     base, _ = server
     page = browser.new_page()
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
-    page.goto(f"{base}/#/observatorium/kuppel")
-    page.wait_for_selector("#dmSvg, .dm-grid .notice")
-    assert page.locator(".obs-tabs a[href='#/observatorium/kuppel'].on").count() == 1
+    page.goto(f"{base}/#/observatorium?blick=hier")
+    page.wait_for_selector("#obsFree:not([hidden]) .obs-fi", timeout=30000)
+    assert page.locator('[data-layer="tracks"]:not([hidden])').count() == 1
+    assert page.locator('[data-mode="here"].on').count() == 1
+    page.locator("#obsFree .obs-fi").first.click()
+    page.wait_for_selector("#obsFree .obs-fi.on")
+    page.click('[data-layer="tracks"]')                          # Ebene aus → Listen weg
+    page.wait_for_selector("#obsFree", state="hidden")
+    page.click('[data-mode="sky"]')
+    page.wait_for_timeout(300)
+    assert page.locator('[data-layer="tracks"]').is_hidden()
     assert not errors
     page.close()

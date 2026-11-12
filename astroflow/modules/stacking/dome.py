@@ -1,5 +1,5 @@
-"""Observatorium, Himmelskuppel: Bahnen der Ziele durch eine Nacht in Azimut/Höhe für die Ansicht von oben
-(Zenit in der Mitte, Horizont am Rand). Je Ziel die Zeiten im freien Fenster – dunkel und über max(30°, Horizontmaske),
+"""Observatorium, Ebene „Bahnen“ im Atlas „Von hier“: Bahnen der Ziele durch eine Nacht in Azimut/Höhe
+(der Atlas zeichnet sie in seiner Projektion, „Ganzer Himmel“ = von oben). Je Ziel die Zeiten im freien Fenster – dunkel und über max(30°, Horizontmaske),
 dieselbe Regel wie „Heute Nacht“ und der Planer –, dazu Mond und die Blöcke des gespeicherten Plans in dieser Nacht.
 
 Alles lokal gerechnet (astropy ohne IERS-Download, wie der Planer); der Standort verlässt den Rechner nicht – an den Browser
@@ -53,7 +53,7 @@ def dome(projects: list[dict], site_for, plan: dict | None, now: float | None = 
     now = time.time() if now is None else now
     first = site_for(None)
     if not first:
-        return {"error": "Für die Himmelskuppel fehlt ein Standort (Einstellungen → Standorte)."}
+        return {"error": "Für die Bahnen fehlt ein Standort (Einstellungen → Standorte)."}
     base0, _ = tonight._window(now, first["lon"])
     night0 = sites.planning_night(now, first["lon"])
     if date:
