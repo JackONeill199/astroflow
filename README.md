@@ -57,10 +57,11 @@ Standort- und Uhrsuche, Statistik und Erfolgen.
 <!-- modul:sage – Block pflegt die Sage-Sitzung -->
 ### Sage – die lebende Enzyklopädie
 
-Jedes fotografierte Objekt bekommt einen Eintrag mit deinem Bild, Katalogdaten und Quellen; dazu Bild bestimmen, Geschichten zum Vorlesen,
-Entdeckungen, Wissensnetz und Sammlung mit Erfolgen.
+Jedes fotografierte Objekt bekommt einen Eintrag mit deinem Bild, Messwerten aus Fachkatalogen und deinen eigenen Beobachtungen –
+jede Aussage mit Quelle oder als KI-Vorschlag gekennzeichnet. Dazu Wissensnetz, Entdeckungen, Geschichten zum Vorlesen und eine
+Messier-Sammlung. Der Kern läuft ohne KI-Schlüssel; Recherche, Chat und Geschichten sind optional.
 
-![Sage-Enzyklopädie](docs/screenshots/sage-enzyklopaedie.webp)
+![Rundgang durch Sage](docs/media/sage-rundgang.webp)
 
 **[Alles zu Sage →](docs/module/sage.md)**
 <!-- /modul:sage -->
