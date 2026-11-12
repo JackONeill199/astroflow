@@ -64,6 +64,8 @@ gestrichelte Prognosen direkt über deiner echten Aufnahme, Bahnen außerhalb de
 
 ![Satellitenbahnen über der Aufnahme](../media/skytrace-satellitenabgleich.webp)
 
+![Geprüfte Bahnen mit Abstand und Abdeckung](../media/skytrace-satellitenabgleich-tabelle.webp)
+
 Ein Klick auf eine Satellitenbahn (3D-Erde, Karte, Liste) öffnet eine **Infokarte** mit Name, Kennung, Start, Bahn, gemessener Helligkeit, der Sicherheit
 der Zuordnung und dem Ausschnitt deiner Aufnahme.
 
