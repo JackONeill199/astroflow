@@ -4,7 +4,8 @@ Nur auf ausdrücklichen Klick und nur am Rechner selbst (Endpunkt `/setup/firewa
 fest: einzige Werte darin sind der Port (int, 1–65535) und das lokale Subnetz, das AstroFlow selbst aus `ip -o -4 addr` liest und
 per `ipaddress` als privates IPv4-Netz (RFC 1918) prüft – nichts davon kommt aus der Anfrage. Ausgeführt wird per `pkexec` (Polkit fragt nach
 dem Passwort). Ohne pkexec, ohne grafische Sitzung oder bei unbekannter Firewall wird der Befehl nur angezeigt.
-Regel wie unter Windows: TCP, nur das lokale Subnetz (`LocalSubnet`), Entfernen ebenso.
+Regel wie unter Windows: TCP, nur das lokale Subnetz (`LocalSubnet`), Entfernen ebenso. firewalld: in der Zone der
+Heimnetz-Schnittstelle (sonst Standardzone; Zonenname geprüft), Laufzeit und Dauerkonfiguration einzeln statt `--reload`.
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ from pathlib import Path
 SBIN = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"   # ufw/firewall-cmd liegen oft nicht im PATH des Nutzers
 UFW_CONF = Path("/etc/ufw/ufw.conf")
 COMMENT = "AstroFlow LAN"
+ZONE_RE = re.compile(r"[A-Za-z0-9_-]{1,32}")
 HOME_NETS = tuple(ipaddress.IPv4Network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))   # RFC 1918
 
 
@@ -61,28 +63,47 @@ def _primary_ip() -> str | None:
         return None
 
 
-def local_subnet(addr_output: str | None = None, primary: str | None = None) -> ipaddress.IPv4Network | None:
-    """Privates IPv4-Subnetz der Netzwerkschnittstelle (z. B. 10.20.30.0/24) oder None."""
+def home_link(addr_output: str | None = None, primary: str | None = None) -> tuple[ipaddress.IPv4Network, str] | None:
+    """(privates IPv4-Subnetz, Name der Schnittstelle) des Heimnetzes, z. B. (10.20.30.0/24, 'enp3s0'), oder None."""
     if addr_output is None:
         ip = _which("ip")
         r = _run([ip, "-o", "-4", "addr", "show", "scope", "global"]) if ip else None
         addr_output = r.stdout if r is not None and r.returncode == 0 else ""
     primary = primary if primary is not None else _primary_ip()
     nets = []
-    for m in re.finditer(r"\binet\s+(\d{1,3}(?:\.\d{1,3}){3}/\d{1,2})\b", addr_output or ""):
+    for m in re.finditer(r"^\s*\d+:\s+([\w.@:-]{1,32})\s+inet\s+(\d{1,3}(?:\.\d{1,3}){3}/\d{1,2})\b", addr_output or "", re.M):
         try:
-            iface = ipaddress.IPv4Interface(m.group(1))
+            iface = ipaddress.IPv4Interface(m.group(2))
         except ValueError:
             continue
         net = iface.network
         if any(iface.ip in r for r in HOME_NETS) and 8 <= net.prefixlen <= 30:
-            nets.append((str(iface.ip) == primary, net))
+            nets.append((str(iface.ip) == primary, net, m.group(1).split("@")[0]))
     nets.sort(key=lambda t: not t[0])                  # Schnittstelle mit der Hauptadresse zuerst
-    return nets[0][1] if nets else None
+    return (nets[0][1], nets[0][2]) if nets else None
 
 
-def commands(kind: str, net: ipaddress.IPv4Network, port: int, remove: bool = False) -> list[list[str]]:
-    """Feste Befehle je Firewall (ohne pkexec). Port und Netz sind geprüfte Werte."""
+def local_subnet(addr_output: str | None = None, primary: str | None = None) -> ipaddress.IPv4Network | None:
+    """Privates IPv4-Subnetz der Netzwerkschnittstelle (z. B. 10.20.30.0/24) oder None."""
+    link = home_link(addr_output, primary)
+    return link[0] if link else None
+
+
+def firewalld_zone(iface: str | None) -> str | None:
+    """Zone der Heimnetz-Schnittstelle (ohne root abfragbar), sonst die Standardzone. Nur einfache Zonennamen."""
+    fc = _which("firewall-cmd")
+    if not fc:
+        return None
+    for args in ([f"--get-zone-of-interface={iface}"] if iface else []) + [["--get-default-zone"]]:
+        r = _run([fc, *([args] if isinstance(args, str) else args)])
+        zone = (r.stdout or "").strip() if r is not None and r.returncode == 0 else ""
+        if ZONE_RE.fullmatch(zone):
+            return zone
+    return None
+
+
+def commands(kind: str, net: ipaddress.IPv4Network, port: int, remove: bool = False, zone: str | None = None) -> list[list[str]]:
+    """Feste Befehle je Firewall (ohne pkexec). Port, Netz und Zone sind geprüfte Werte."""
     port = int(port)
     if not 1 <= port <= 65535:
         raise ValueError("Ungültiger Port.")
@@ -94,7 +115,12 @@ def commands(kind: str, net: ipaddress.IPv4Network, port: int, remove: bool = Fa
     if kind == "firewalld":
         fc = _which("firewall-cmd") or "/usr/bin/firewall-cmd"
         rich = f'rule family="ipv4" source address="{net}" port port="{port}" protocol="tcp" accept'
-        return [[fc, "--permanent", "--remove-rich-rule" if remove else "--add-rich-rule", rich], [fc, "--reload"]]
+        if zone is not None and not ZONE_RE.fullmatch(zone):
+            raise ValueError("Ungültige Zone.")
+        z = [f"--zone={zone}"] if zone else []
+        op = "--remove-rich-rule" if remove else "--add-rich-rule"
+        # Laufzeit und Dauerkonfiguration einzeln (kein --reload: das verwürfe fremde Laufzeit-Änderungen)
+        return [[fc, *z, op, rich], [fc, "--permanent", *z, op, rich]]
     raise ValueError("Unbekannte Firewall.")
 
 
@@ -117,11 +143,13 @@ def plan(port: int, remove: bool = False) -> dict:
     kind = detect()
     if not kind:
         return {"kind": None}
-    net = local_subnet()
-    if not net:
+    link = home_link()
+    if not link:
         return {"kind": kind, "net": None}
-    cmds = commands(kind, net, port, remove)
-    return {"kind": kind, "net": str(net), "cmds": cmds, "argv": pkexec_argv(cmds), "manual": "sudo sh -c " + shlex.quote(shell_line(cmds))
+    net, iface = link
+    zone = firewalld_zone(iface) if kind == "firewalld" else None
+    cmds = commands(kind, net, port, remove, zone)
+    return {"kind": kind, "net": str(net), "zone": zone, "cmds": cmds, "argv": pkexec_argv(cmds), "manual": "sudo sh -c " + shlex.quote(shell_line(cmds))
             if len(cmds) > 1 else "sudo " + shlex.join(cmds[0])}
 
 

@@ -93,11 +93,13 @@ def test_firewall_befehle_fest(monkeypatch):
     assert fw.commands("ufw", net, 8766) == [["/usr/sbin/ufw", "allow", "from", "192.168.1.0/24", "to", "any", "port", "8766",
                                               "proto", "tcp", "comment", "AstroFlow LAN"]]
     assert fw.commands("ufw", net, 8766, remove=True)[0][:3] == ["/usr/sbin/ufw", "delete", "allow"]
-    add = fw.commands("firewalld", net, 8766)
-    assert add[0][:3] == ["/usr/sbin/firewall-cmd", "--permanent", "--add-rich-rule"]
-    assert add[0][3] == 'rule family="ipv4" source address="192.168.1.0/24" port port="8766" protocol="tcp" accept'
-    assert add[1] == ["/usr/sbin/firewall-cmd", "--reload"]
-    assert fw.commands("firewalld", net, 8766, remove=True)[0][2] == "--remove-rich-rule"
+    add = fw.commands("firewalld", net, 8766, zone="home")
+    rich = 'rule family="ipv4" source address="192.168.1.0/24" port port="8766" protocol="tcp" accept'
+    assert add == [["/usr/sbin/firewall-cmd", "--zone=home", "--add-rich-rule", rich],                 # Laufzeit …
+                   ["/usr/sbin/firewall-cmd", "--permanent", "--zone=home", "--add-rich-rule", rich]]  # … und dauerhaft, kein --reload
+    assert fw.commands("firewalld", net, 8766, remove=True, zone="home")[1][3] == "--remove-rich-rule"
+    with pytest.raises(ValueError):
+        fw.commands("firewalld", net, 8766, zone="home; rm -rf /")
     for bad in (0, 70000, "8766; rm -rf /"):
         with pytest.raises(ValueError):
             fw.commands("ufw", net, bad)
@@ -111,6 +113,22 @@ def test_firewall_befehle_fest(monkeypatch):
     monkeypatch.delenv("DISPLAY")
     monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
     assert fw.pkexec_argv(add) is None                     # ohne grafische Sitzung: nur anzeigen
+
+
+def test_firewalld_zone_der_schnittstelle(monkeypatch):
+    assert fw.home_link(IP_ADDR, "10.20.30.23") == (ipaddress.IPv4Network("10.20.30.0/24"), "enp3s0")
+    monkeypatch.setattr(fw, "_which", lambda n: f"/usr/bin/{n}")
+    asked = []
+
+    def fake(cmd, timeout=10):
+        asked.append(cmd[1])
+        out = {"--get-zone-of-interface=enp3s0": "home\n", "--get-default-zone": "public\n"}.get(cmd[1], "")
+        return type("R", (), {"returncode": 0 if out else 2, "stdout": out})()
+    monkeypatch.setattr(fw, "_run", fake)
+    assert fw.firewalld_zone("enp3s0") == "home"
+    assert fw.firewalld_zone("wlan9") == "public"                        # Schnittstelle in keiner Zone → Standardzone
+    monkeypatch.setattr(fw, "_run", lambda cmd, timeout=10: type("R", (), {"returncode": 0, "stdout": "bö$e zone"})())
+    assert fw.firewalld_zone("enp3s0") is None
 
 
 def test_firewall_erkennung(tmp_path, monkeypatch):
@@ -143,7 +161,7 @@ def test_firewall_endpunkt_linux(home, tmp_path, monkeypatch):
     calls = []
     net = ipaddress.IPv4Network("192.168.1.0/24")
     monkeypatch.setattr(fw, "detect", lambda: "ufw")
-    monkeypatch.setattr(fw, "local_subnet", lambda: net)
+    monkeypatch.setattr(fw, "home_link", lambda: (net, "eth0"))
     monkeypatch.setattr(fw, "_which", lambda n: f"/usr/sbin/{n}")
     monkeypatch.setattr(fw, "execute", lambda argv, timeout=300: calls.append(argv) or (True, ""))
     monkeypatch.setenv("DISPLAY", ":0")
