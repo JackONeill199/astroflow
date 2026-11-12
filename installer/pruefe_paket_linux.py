@@ -132,10 +132,13 @@ def main() -> int:
     times["beenden_s"] = round(time.time() - t4, 1)
     marker = home / "AstroFlow" / "pruef-marke.txt"
     marker.write_text("bleibt", encoding="utf-8")
+    cfg = sorted(str(p.relative_to(home)) for p in (home / ".config").rglob("*"))      # Einstellungen vor dem Update
     t5 = time.time()
     run([str(src / "install.sh"), "--no-start"], env, cwd=str(src))
     times["update_s"] = round(time.time() - t5, 1)
-    assert marker.is_file() and (home / ".config" / "astroflow").is_dir() and autostart.is_file()
+    assert marker.is_file(), "Daten nach dem Update weg"
+    assert autostart.is_file(), "Autostart nach dem Update weg"
+    assert sorted(str(p.relative_to(home)) for p in (home / ".config").rglob("*")) == cfg, "Einstellungen nach dem Update verändert"
     t6 = time.time()
     print(run([str(home / ".local" / "bin" / "astroflow-deinstallieren")], env).stdout, flush=True)
     times["deinstallieren_s"] = round(time.time() - t6, 1)
