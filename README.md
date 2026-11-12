@@ -37,9 +37,7 @@ der Himmel „von hier“ mit Zeitregler und ein Beobachtungsplaner über mehrer
 
 ![Live-Ansicht beim Stacken](docs/media/stacking-live.webp)
 
-| | | |
-|---|---|---|
-| ![NGC 7000](docs/screenshots/ergebnis-ngc7000.webp) | ![NGC 6888](docs/screenshots/ergebnis-ngc6888.webp) | ![M16](docs/screenshots/ergebnis-m16.webp) |
+![Observatorium: der Himmel von hier mit Zeitregler](docs/screenshots/observatorium-von-hier.webp)
 
 **[Alles zu Bilder →](docs/module/bilder.md)**
 <!-- /modul:bilder -->

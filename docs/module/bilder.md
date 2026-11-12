@@ -148,7 +148,7 @@ Ansichten; alles wird lokal gerechnet.
 
 ![Von hier: der Himmel am Beispielort, Zeitregler unten](../screenshots/observatorium-von-hier.webp)
 
-*(Demodaten mit erfundenem Ort „Beispielort“ und erfundener Horizontmaske; die gestrichelten Ringe sind Ziele aus dem Plan.)*
+*(Demodaten mit erfundenem Ort und erfundener Horizontmaske; die gestrichelten Ringe sind Ziele aus dem Plan. Eigene Fotos erscheinen hier an ihrer Position.)*
 
 **Planung:** Ein Assistent fragt nach den Nächten (1–14), nach einem oder **zwei Geräten gleichzeitig** (z. B. Stellina und Vespera), dem Wunsch (Neues,
 Mischung oder vorhandene Objekte vertiefen), der Mindestbelichtung je Objekt und einer Merkliste – und rechnet daraus einen **Plan über mehrere Nächte**: welches Objekt wann
