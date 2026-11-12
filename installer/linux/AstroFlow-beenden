@@ -1,0 +1,6 @@
+#!/bin/sh
+# AstroFlow (portabel) beenden. Laufende Aufträge setzen beim nächsten Start am letzten Zwischenstand fort.
+DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ASTROFLOW_HOME="$DIR"
+export ASTROFLOW_HOME
+exec "$DIR/python/bin/python3" -I -m astroflow stop "$@"
