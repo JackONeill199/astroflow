@@ -85,9 +85,10 @@ def library(db) -> tuple[list[dict], dict]:
         eq = eq_detected(db).get(device["id"])               # EQ-Modus aus der Bilddrehung der letzten erkannten Nacht
     except Exception:
         eq = None
-    exp = info.get("exptime")
+    exp = info.get("exptime")                              # tatsächliche Einzelbelichtung → Randverschmieren (devices.profile)
     return rows, {"id": device["id"], "name": device["name"], "alt_az": bool(device.get("alt_az")), "fov": field, "source": source,
-                  "mag_limit": deepsky.mag_limit(device), **({"exptime": float(exp)} if isinstance(exp, (int, float)) and exp > 0 else {}),
+                  "mag_limit": deepsky.mag_limit(device), **({"model": device["model"]} if device.get("model") else {}),
+                  **({"exptime": float(exp)} if isinstance(exp, (int, float)) and exp > 0 else {}),
                   **({"eq": True, "eq_night": eq["night"]} if eq and eq["eq"] else {})}
 
 

@@ -41,6 +41,7 @@ def device_options(library_device: dict | None) -> list[dict]:
         out.insert(0, {"id": "library", "name": library_device.get("name") or "Gerät aus deinen Aufnahmen",
                        "fov": library_device.get("fov"), "alt_az": bool(library_device.get("alt_az")),
                        "mag_limit": library_device.get("mag_limit") or deepsky.MAG_DEFAULT, "lib_id": library_device.get("id"),
+                       **{k: library_device[k] for k in ("model", "exptime") if library_device.get(k)},
                        "eq_mode": devtab.profile({**library_device, "id": "library", "lib_id": library_device.get("id")})["eq_mode"]})
     return out
 
