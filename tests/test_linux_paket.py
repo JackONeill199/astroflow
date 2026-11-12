@@ -32,7 +32,12 @@ def li(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "home" / ".local" / "share"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "home" / ".config"))
     calls = []
-    monkeypatch.setattr(mod.subprocess, "run", lambda cmd, **kw: calls.append(list(cmd)))
+    mod.stop_code = 0
+
+    def fake_run(cmd, **kw):
+        calls.append(list(cmd))
+        return type("R", (), {"returncode": mod.stop_code if cmd[-1:] == ["stop"] else 0})()
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
     monkeypatch.setattr(mod.subprocess, "Popen", lambda cmd, **kw: calls.append(["Popen", *cmd]))
     monkeypatch.setattr(mod.shutil, "which", lambda n: None)
     mod.calls = calls
@@ -70,6 +75,23 @@ def test_installieren_und_entfernen(li, tmp_path, monkeypatch):
     for f in (prefix, bindir / "astroflow", bindir / "astroflow-deinstallieren", li.desktop_file(), li.icon_file()):
         assert not f.exists(), f
     assert data.is_dir()
+
+
+def test_server_laesst_sich_nicht_beenden(li, tmp_path, monkeypatch):
+    """`astroflow stop` meldet Fehler → weder Update noch Deinstallation fassen das laufende Programm an."""
+    prefix, bindir = tmp_path / "app", tmp_path / "bin"
+    assert li.install(prefix, bindir, start=False) == 0
+    (prefix / "alt.txt").write_text("x", encoding="utf-8")
+    li.stop_code = 1
+    assert li.install(prefix, bindir, start=False) == 1 and (prefix / "alt.txt").is_file()
+    assert li.uninstall(prefix, bindir) == 1 and prefix.is_dir() and (bindir / "astroflow").is_file()
+
+
+def test_deinstallieren_kennt_eigenen_befehlsordner(li, tmp_path):
+    bindir = tmp_path / "eigener-bin"
+    assert li.install(tmp_path / "app", bindir, start=False) == 0
+    text = (bindir / "astroflow-deinstallieren").read_text(encoding="utf-8")
+    assert "uninstall.sh" in text and f"--bin {li._sh(str(bindir))}" in text
 
 
 def test_nicht_aus_dem_programmordner(li, tmp_path):

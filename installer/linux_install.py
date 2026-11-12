@@ -76,11 +76,21 @@ def _log(*a):
     print("[AstroFlow]", *a, flush=True)
 
 
-def _running_stop(wrapper: Path):
-    """Laufenden Server (und Symbol) beenden, bevor Dateien ersetzt werden."""
-    if wrapper.is_file():
-        subprocess.run([str(wrapper), "stop"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                       timeout=60, check=False)
+def _running_stop(wrapper: Path) -> bool:
+    """Laufenden Server (und Symbol) beenden, bevor Dateien ersetzt werden. False, wenn er sich nicht beenden ließ
+    (`astroflow stop` meldet dann 1) – dann nichts ersetzen oder löschen, sonst liefe er ohne sein Python weiter."""
+    if not wrapper.is_file():
+        return True
+    try:
+        r = subprocess.run([str(wrapper), "stop"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           timeout=90, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return r.returncode == 0
+
+
+STOP_FAILED = ("AstroFlow läuft noch und ließ sich nicht beenden – abgebrochen, nichts verändert. Bitte AstroFlow beenden "
+               "(Einstellungen → Module & System → AstroFlow beenden) und erneut versuchen.")
 
 
 def install(prefix: Path, bindir: Path, autostart: bool = False, desktop: bool = True, start: bool = True) -> int:
@@ -92,7 +102,9 @@ def install(prefix: Path, bindir: Path, autostart: bool = False, desktop: bool =
         return 1
     wrapper = bindir / "astroflow"
     update = prefix.exists()
-    _running_stop(wrapper)
+    if not _running_stop(wrapper):
+        _log(STOP_FAILED)
+        return 1
     _log("Aktualisiere" if update else "Installiere", "nach", prefix)
     stage = prefix.with_name(prefix.name + ".neu")
     shutil.rmtree(stage, ignore_errors=True)
@@ -117,7 +129,7 @@ def install(prefix: Path, bindir: Path, autostart: bool = False, desktop: bool =
     tmp.replace(wrapper)
     un = bindir / "astroflow-deinstallieren"
     un.write_text("#!/bin/sh\n# AstroFlow entfernen (Daten bleiben; --werkzeuge entfernt auch ASTAP, GraXpert, Zusatzpakete)\n"
-                  f"exec {_sh(str(prefix / 'uninstall.sh'))} \"$@\"\n", encoding="utf-8")
+                  f"exec {_sh(str(prefix / 'uninstall.sh'))} --bin {_sh(str(bindir))} \"$@\"\n", encoding="utf-8")
     un.chmod(0o755)
     if desktop:
         icon_file().parent.mkdir(parents=True, exist_ok=True)
@@ -143,7 +155,9 @@ def install(prefix: Path, bindir: Path, autostart: bool = False, desktop: bool =
 
 def uninstall(prefix: Path, bindir: Path, tools: bool = False) -> int:
     wrapper = bindir / "astroflow"
-    _running_stop(wrapper)
+    if not _running_stop(wrapper):
+        _log(STOP_FAILED)
+        return 1
     if tools:                                          # nur, was AstroFlow selbst installiert hat (komponenten.json)
         py = prefix / "python" / "bin" / "python3"
         if py.is_file():
