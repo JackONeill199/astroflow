@@ -31,7 +31,7 @@ function horizonEditor(site, save, { points = null } = {}) {
   const L = 34, R = 14, T = 14, B = 34;
   const X = (az) => L + az / 360 * PW, Y = (alt) => T + (90 - alt) / 90 * PH;
   const fit = () => {
-    W = Math.max(300, Math.round(svg.getBoundingClientRect().width) || 720); H = Math.max(200, Math.round(W * 0.37));
+    W = Math.max(300, Math.round(svg.clientWidth) || 720); H = Math.max(200, Math.round(W * 0.37));
     PW = W - L - R; PH = H - T - B;
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   };
@@ -84,13 +84,34 @@ function horizonEditor(site, save, { points = null } = {}) {
     else return;
     e.preventDefault(); paint();
   };
+  // Vorlage/Anpassung: Linie gleitet kurz zur neuen Form (Speichern nimmt immer das Ziel)
+  let goal = null, mAnim = 0;
+  const morph = (to) => {
+    cancelAnimationFrame(mAnim);
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { h = to; paint(); return; }
+    const from = h.slice(), t0 = performance.now();
+    goal = to;
+    const step = (t) => {
+      const k = Math.min(1, (t - t0) / 260), e = 1 - (1 - k) ** 3;
+      h = k < 1 ? from.map((a, i) => a + (to[i] - a) * e) : to.slice();
+      paint();
+      if (k < 1 && d.open) mAnim = requestAnimationFrame(step); else goal = null;
+    };
+    mAnim = requestAnimationFrame(step);
+  };
+  const settle = () => { if (goal) { cancelAnimationFrame(mAnim); h = goal.slice(); goal = null; } };
+  svg.addEventListener('pointerdown', settle, true);
+  svg.addEventListener('keydown', settle, true);
   d.onclick = async (e) => {
     const p = e.target.closest('[data-p]');
-    if (p) { h = PRESETS[+p.dataset.p][1].slice(); paint(); return; }
+    if (p) { morph(PRESETS[+p.dataset.p][1].slice()); return; }
     if (e.target.closest('[data-fit]')) {                        // Maske unter jede Aufnahme senken (2° Luft)
-      for (const s of shots) for (const i of [Math.floor(s.az / STEP) % N, Math.ceil(s.az / STEP) % N]) h[i] = Math.max(0, Math.min(h[i], Math.floor(s.alt - 2)));
-      paint(); return;
+      settle();
+      const to = h.slice();
+      for (const s of shots) for (const i of [Math.floor(s.az / STEP) % N, Math.ceil(s.az / STEP) % N]) to[i] = Math.max(0, Math.min(to[i], Math.floor(s.alt - 2)));
+      morph(to); return;
     }
+    settle();
     const v = e.target.closest('button')?.value;
     if (v === 'x' || v === '0') d.close();
     if (v === '1') { const b = e.target.closest('button'); b.disabled = true; if (await save(hasMask(h) ? h : null)) d.close(); else b.disabled = false; }
@@ -101,7 +122,8 @@ function horizonEditor(site, save, { points = null } = {}) {
   svg.focus();
   Promise.resolve(points).then(list => {
     if (!d.open || !Array.isArray(list) || !list.length) return;
-    shots = list; $('[data-fit]', d).hidden = false; paint();
+    shots = list; $('[data-fit]', d).hidden = false;
+    svg.classList.add('hz-new'); paint(); setTimeout(() => svg.classList.remove('hz-new'), 700);   // Punkte blenden einmal ein
   }).catch(() => {});
 }
 window.horizonEditor = horizonEditor;

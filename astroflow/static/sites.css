@@ -100,5 +100,8 @@ dialog.hz-dlg { width: min(50rem, 96vw) }
 .hz-foot { margin-top: 1rem; gap: 0.5rem; flex-wrap: wrap }
 .hz-shot { fill: var(--acc); stroke: var(--bg); stroke-width: 1 }
 .hz-shot.blocked { fill: var(--bad) }
+.hz-new .hz-shot { animation: fadeIn var(--t2) var(--ease) both }
+.hz-fit:not([hidden]) { animation: fadeIn var(--t2) var(--ease) both }
+@media (prefers-reduced-motion: reduce) { .hz-new .hz-shot, .hz-fit { animation: none } }
 .hz-fit { display: inline-flex; align-items: center; gap: 0.3125rem }
 .hz-fit svg { width: 0.8125rem; height: 0.8125rem }
