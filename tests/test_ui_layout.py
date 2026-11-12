@@ -825,3 +825,35 @@ def test_aufnahme_popup(server, browser, size):
     page.keyboard.press("Escape")
     page.close()
     assert not errors, errors
+
+
+def test_picture_analysis_marks_follow_switch(server, browser):
+    """Reiter Analyse fertiger Bilder: Objekt-Überlagerung ist nur mit dem Schalter sichtbar – Anfangszustand, Umschalten, Reiterwechsel, Neuladen."""
+    base, _ = server
+    ipid = _imported_pid(base)
+    page = browser.new_page(viewport={"width": 1440, "height": 900})
+    op = lambda: float(page.evaluate("getComputedStyle(document.querySelector('.pa-viewer .vov')).opacity"))
+    try:
+        page.goto(f"{base}/#/p/{ipid}/analyse")
+        page.wait_for_selector("#paMarks", state="attached")
+        page.wait_for_selector(".pa-viewer.ready")
+        page.wait_for_timeout(700)
+        assert not page.is_checked("#paMarks") and op() < 0.05
+        page.hover(".pa-viewer")                                  # Überfahren zeigt nichts mehr an
+        page.wait_for_timeout(900)
+        assert op() < 0.05
+        page.locator("label.modrow:has(#paMarks)").click()
+        page.wait_for_timeout(900)
+        assert page.is_checked("#paMarks") and op() > 0.9
+        page.goto(f"{base}/#/p/{ipid}/bild")                      # Reiterwechsel und Neuladen behalten den Schalterzustand
+        page.goto(f"{base}/#/p/{ipid}/analyse")
+        page.reload()
+        page.wait_for_selector("#paMarks", state="attached")
+        page.wait_for_selector(".pa-viewer.ready")
+        page.wait_for_timeout(700)
+        assert page.is_checked("#paMarks") and op() > 0.9
+        page.locator("label.modrow:has(#paMarks)").click()
+        page.wait_for_timeout(900)
+        assert not page.is_checked("#paMarks") and op() < 0.05
+    finally:
+        page.close()

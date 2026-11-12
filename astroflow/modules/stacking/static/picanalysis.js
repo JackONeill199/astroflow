@@ -12,7 +12,7 @@ function pictureAnalysisTab(t, ctx) {
   t.innerHTML = `<div class="an pa">
     <div class="an-top"><div id="paViewer"></div>
       <nav class="an-toc" aria-label="Abschnitte">${secs.map(([id, l, ic], i) => `<a href="#${id}" data-sec="${id}" style="--i:${i}">${icon(ic)}<span>${l}</span></a>`).join('')}
-        <p class="dim sm">Namen erscheinen beim Überfahren; mit „Objekte einblenden“ stehen sie dauerhaft im Bild.</p></nav></div>
+        <p class="dim sm">Mit „Objekte im Bild einblenden“ erscheinen Kreise und Namen im Bild; aus, bleibt das Bild frei.</p></nav></div>
     <section class="panel an-sec pa-sec" id="paObjects"><div class="skel" style="height:6rem"></div></section>
     <section class="panel an-sec pa-sec" id="paField"></section>
     <section class="panel an-sec pa-sec" id="paQual"></section>
@@ -20,7 +20,7 @@ function pictureAnalysisTab(t, ctx) {
     <p class="mut sm pa-note">${icon('alert')}<span>Für fertige Bilder gibt es bewusst keine Grenzgröße, kein HR-Diagramm, keine Farbkalibrierung und keine Asteroiden – das wäre an gestreckten Daten falsch.</span></p>
   </div>`;
   const viewer = ctx.viewerFor($('#paViewer', t));
-  viewer.el.classList.add('an-viewer', 'hover-labels');
+  viewer.el.classList.add('an-viewer', 'pa-viewer');      // Überlagerung nur über den Schalter (kein Überfahren, kein Touch-Sonderfall)
   const root = t.firstElementChild;                       // `t` (#tab) bleibt beim Reiterwechsel stehen, nur sein Inhalt wird ersetzt
   const alive = () => !!root && root.isConnected;
   const put = (id, html) => { const e = alive() ? root.querySelector('#' + id) : null; if (e) e.innerHTML = html; };       // nie in einen schon ersetzten Reiter schreiben
@@ -42,9 +42,11 @@ function pictureAnalysisTab(t, ctx) {
     const objs = (d.objects || []).filter(o => o.x != null);
     put('paObjects', head('Objekte im Bild', f ? `${objs.length} ${objs.length === 1 ? "Katalogobjekt" : "Katalogobjekte"}` : '') + (!d.solved ? needSolve('die Objektliste')
       : !objs.length ? '<p class="mut">Im Bildfeld liegt kein Objekt aus dem eingebauten Katalog.</p>'
-      : `<div class="pa-bar"><label class="modrow"><input type="checkbox" id="paMarks"><span class="switch"></span><span>Objekte im Bild einblenden</span></label></div>
+      : `<div class="pa-bar"><label class="modrow"><input type="checkbox" id="paMarks"${store.get('pa.marks', false) ? ' checked' : ''}><span class="switch"></span><span>Objekte im Bild einblenden</span></label></div>
         <ul class="pa-objs">${objs.map((o, i) => `<li><button class="pa-obj" data-i="${i}" title="Im Bild zeigen"><b>${esc(o.name)}</b><span class="mut sm">${esc(o.kind_label || '')}${o.size ? ` · ${de(o.size, o.size < 10 ? 1 : 0)}′` : ''}</span></button></li>`).join('')}</ul>`));
-    $('#paMarks', t)?.addEventListener('change', (e) => viewer.el.classList.toggle('marks-on', e.target.checked));
+    const marks = $('#paMarks', t);
+    viewer.el.classList.toggle('marks-on', !!marks?.checked);                       // Anfangszustand = Schalter (auch nach Reiterwechsel/Neuladen)
+    marks?.addEventListener('change', (e) => { viewer.el.classList.toggle('marks-on', e.target.checked); store.set('pa.marks', e.target.checked); });
     $('.pa-objs', t)?.addEventListener('click', (e) => {
       const b = e.target.closest('[data-i]'); if (!b) return;
       const o = objs[+b.dataset.i], img = $('img.b', viewer.el), sc = img?.naturalWidth && f?.width ? img.naturalWidth / f.width : 1;

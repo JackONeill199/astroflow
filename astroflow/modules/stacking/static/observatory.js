@@ -68,6 +68,14 @@ function sunRaDec(ts) {
 const hzAt = (h, az) => { if (!h) return 0; const x = norm(az) / 10, i = Math.floor(x) % 36, f = x - Math.floor(x); return h[i] * (1 - f) + h[(i + 1) % 36] * f; };
 const DIRS8 = ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'];
 
+// Zeichenreihenfolge der eigenen Fotos (hinten → vorne): großes Bildfeld hinten, kleines vorne; das überfahrene und
+// das ausgewählte Foto ganz nach vorne (überfahren vor ausgewählt, damit man ein verdecktes Nachbarbild anschauen kann)
+function photoOrder(list, selPid = null, hoverPid = null) {
+  const area = (p) => (p.fov?.[0] || 0) * (p.fov?.[1] || 0);
+  const rank = (p) => (p.pid === hoverPid ? 2 : p.pid === selPid ? 1 : 0);
+  return list.slice().sort((a, b) => rank(a) - rank(b) || area(b) - area(a) || a.pid - b.pid);
+}
+
 function pointInPoly(x, y, pts) {
   let inside = false;
   for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
@@ -132,7 +140,7 @@ async function atlasView(el, query) {
     <section class="obs-strip-wrap"><div class="panel-h"><h2>${icon('image')}Meine Fotos am Himmel</h2><span class="grow"></span><span class="chip" id="obsCount">…</span></div><div class="obs-strip" id="obsStrip"></div></section>`;
 
   const stage = $('#obsStage', el), cv = $('#obsCanvas', el), g = cv.getContext('2d');
-  let W = 0, H = 0, P = null, sky = null, atlas = { photos: [], catalog: [] }, sel = null, hits = [], raf = 0, anim = 0;
+  let W = 0, H = 0, P = null, sky = null, atlas = { photos: [], catalog: [] }, sel = null, hover = null, hits = [], raf = 0, anim = 0;
   const imgs = new Map();
   let col = {};
   const readColors = () => {
@@ -354,12 +362,14 @@ async function atlasView(el, query) {
       if (x1 < -20 || y1 < -20 || x0 > W + 20 || y0 > H + 20) continue;
       out.push({ p, q, x0, x1, y0, y1, wpx: Math.max(x1 - x0, y1 - y0) });
     }
-    return out;
+    const order = photoOrder(out.map(x => x.p), sel?.type === 'photo' ? sel.o.pid : null, hover);
+    const at = new Map(order.map((p, i) => [p.pid, i]));
+    return out.sort((a, b) => at.get(a.p.pid) - at.get(b.p.pid));
   }
 
   function photos(list) {
     for (const { p, q, x0, x1, y0, y1, wpx } of list) {
-      const me = sel?.type === 'photo' && sel.o.pid === p.pid;
+      const me = sel?.type === 'photo' && sel.o.pid === p.pid, hot = me || hover === p.pid;
       if (wpx < 12) {                                             // im Weitwinkel nur als Punkt sichtbar
         const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
         g.fillStyle = col.acc; g.globalAlpha = 0.9;
@@ -374,18 +384,20 @@ async function atlasView(el, query) {
         drawTri(g, im, [[0, 0], [w, 0], [w, h]], [q[0], q[1], q[2]]);
         drawTri(g, im, [[0, 0], [w, h], [0, h]], [q[0], q[2], q[3]]);
       } else { g.fillStyle = col.surface; g.globalAlpha = 0.8; g.beginPath(); q.forEach((c, i) => i ? g.lineTo(...c) : g.moveTo(...c)); g.closePath(); g.fill(); g.globalAlpha = 1; }
-      g.strokeStyle = col.acc; g.lineWidth = me ? 2.5 : 1.3; g.globalAlpha = me ? 1 : 0.85;
+      g.strokeStyle = me ? col.fg : col.acc; g.lineWidth = hot ? 2.5 : 1.3; g.globalAlpha = hot ? 1 : 0.85;
       g.beginPath(); q.forEach((c, i) => i ? g.lineTo(...c) : g.moveTo(...c)); g.closePath(); g.stroke(); g.globalAlpha = 1;
       hits.push({ type: 'photo', o: p, poly: q });
     }
     // Namen erst nach allen Bildern, damit kein Nachbarbild sie verdeckt
     g.font = '600 11px ' + col.font;
-    for (const { p, q, wpx } of list) {
-      if (wpx <= 36) continue;
-      const top = q.reduce((a, c) => (c[1] < a[1] ? c : a)), me = sel?.type === 'photo' && sel.o.pid === p.pid;
-      g.fillStyle = me ? col.fg : col.acc;
+    list.forEach(({ p, q, wpx }, i) => {
+      if (wpx <= 36) return;
+      const top = q.reduce((a, c) => (c[1] < a[1] ? c : a));
+      if (list.slice(i + 1).some(o => o.wpx >= 12 && pointInPoly(top[0] + 4, top[1] - 8, o.q))) return;   // liegt unter einem vorderen Foto
+      const hot = (sel?.type === 'photo' && sel.o.pid === p.pid) || hover === p.pid;
+      g.fillStyle = hot ? col.fg : col.acc;
       g.fillText(p.name, top[0] + 4, top[1] - 5);
-    }
+    });
     g.font = '500 11px ' + col.font;
   }
 
@@ -463,15 +475,18 @@ async function atlasView(el, query) {
 
   const ptrs = new Map();
   let drag = null, pinch = 0, moved = false;
+  const dragFrom = (x, y) => ({ x, y, P: projection(v, W, H), ra: v.ra, dec: v.dec });
   cv.addEventListener('pointerdown', (e) => {
     cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.offsetX, e.offsetY]);
     cancelAnimationFrame(anim);
-    if (ptrs.size === 1) { drag = { x: e.offsetX, y: e.offsetY, P: projection(v, W, H), ra: v.ra, dec: v.dec }; moved = false; }
+    if (ptrs.size === 1) { drag = dragFrom(e.offsetX, e.offsetY); moved = false; }
     if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = Math.hypot(a[0] - b[0], a[1] - b[1]); moved = true; }
   });
   cv.addEventListener('pointermove', (e) => {
     if (!ptrs.has(e.pointerId)) {                                // nur Zeiger über der Karte: Mauszeiger
-      cv.style.cursor = hitAt(e.offsetX, e.offsetY) ? 'pointer' : 'grab';
+      const h = hitAt(e.offsetX, e.offsetY), hp = h?.type === 'photo' ? h.o.pid : null;
+      cv.style.cursor = h ? 'pointer' : 'grab';
+      if (hp !== hover) { hover = hp; draw(); }                 // überfahrenes Foto nach vorne
       return;
     }
     ptrs.set(e.pointerId, [e.offsetX, e.offsetY]);
@@ -493,6 +508,8 @@ async function atlasView(el, query) {
     const was = ptrs.has(e.pointerId);
     ptrs.delete(e.pointerId);
     if (ptrs.size < 2) pinch = 0;
+    // nach dem Pinch zieht der verbleibende Finger weiter: Zieh-Basis auf seine Position und die neue Ansicht setzen
+    if (ptrs.size === 1 && was) { const [x, y] = [...ptrs.values()][0]; drag = dragFrom(x, y); }
     if (!ptrs.size) {
       if (was && !moved && e.type === 'pointerup') select(hitAt(e.offsetX, e.offsetY));
       if (moved) save();
@@ -501,6 +518,7 @@ async function atlasView(el, query) {
   };
   cv.addEventListener('pointerup', up);
   cv.addEventListener('pointercancel', up);
+  cv.addEventListener('pointerleave', () => { if (hover !== null && !ptrs.size) { hover = null; draw(); } });
   cv.addEventListener('wheel', (e) => { e.preventDefault(); zoomAt(Math.exp(e.deltaY * 0.0015), e.offsetX, e.offsetY); }, { passive: false });
   cv.addEventListener('dblclick', (e) => zoomAt(1 / 2, e.offsetX, e.offsetY));
   cv.addEventListener('keydown', (e) => {
@@ -627,5 +645,5 @@ async function atlasView(el, query) {
 const m = AF.modules.stacking;
 m.nav.push({ href: '#/observatorium', label: 'Observatorium', icon: 'dome', key: 'observatory', parent: 'home' });
 m.routes.push([/^\/observatorium(?:\?(.*))?$/, 'observatory', atlasView]);
-window.AFobs = { projection, angSep };
+window.AFobs = { projection, angSep, photoOrder };
 })();

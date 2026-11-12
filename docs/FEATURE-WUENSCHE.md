@@ -25,6 +25,7 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md` (Details in `docs/entwicklung/
 | 17 | 05.11.2026 | Gerätediagnose: Nachführung, Fokusdrift, Sensorneigung | umgesetzt in 0.43.0 (ohne Rohbilder; Kippung aus Master-Stack) |
 | 18 | 05.11.2026 | SkyTrace: Satellitenhelligkeit und Satelliten pro Stunde | umgesetzt in 0.39.0 (Statistik; mag mit Nullpunkt aus den Bilder-Stacks, Rate je Belichtungsstunde) |
 | 19 | 05.11.2026 | Interaktive Bildführung: KI zeigt und erklärt im Bild | offen |
+| 20 | 12.11.2026 | HOO/SHO für Farbkameras mit Dual-Band-Filter | offen |
 
 ## 1. Bibliothek teilen (nur ansehen) – 03.11.2026
 
@@ -190,3 +191,19 @@ Sage liefert belegtes Wissen je Objekt – verlässlich, nichts erfunden.
   liefern andere Geräte keinen Wert. Ausleserauschen der Stellina mit Bias-Aufnahmen genauer bestimmen (größte Unsicherheit
   bei dunklem Himmel). Lichtrichtung braucht die neue Hintergrundebene je Aufnahme – ältere Nächte nur, wenn Rohbilder noch da sind.
 
+## 20. HOO/SHO für Farbkameras mit Dual-Band-Filter – 12.11.2026
+
+Wunsch des Nutzers: SHO „auf jeden Fall unterstützt haben“. Stand heute:
+- **Mono-Kamera mit Ha/OIII/SII-Filtern:** SHO, HOO, LRGB, RGB+Hα fertig (`channels.py`, Option `palette`), aber nur mit
+  synthetischen Daten geprüft (`tests/test_multifilter.py`) – echte Mono-Schmalbanddaten fehlen noch.
+- **Farbkameras mit Dual-/Tri-Band- bzw. LP-Filter** (Seestar LP, Vespera Dual-Band, L-eXtreme, L-eNhance): Filter wird am
+  Namen erkannt und als Schmalband entwickelt (keine Gaia-Farbkalibrierung), aber Ha und OIII werden nicht getrennt und es gibt
+  keine HOO-/SHO-Palette.
+
+**Idee:**
+- Aus dem linearen Bayer-Stack Ha ≈ R und OIII ≈ (G+B)/2 (bzw. gewichtet nach Filterkurve und Sensorempfindlichkeit) gewinnen,
+  Sterne vor der Kombination getrennt behandeln (StarNet/Sternmaske), dann HOO wie bei Mono; Palette in den Projektoptionen wählbar.
+- „SHO-ähnlich“ aus Dual-Band nur als Farbumverteilung kennzeichnen (SII liegt nahe Hα, beide im Rot-Kanal – kein echtes SII).
+- Tri-Band-Filter (Hα/OIII/SII mit getrennten Durchlässen) gesondert prüfen.
+- An echten Daten messen (Seestar/Vespera mit Dual-Band, Stellina mit Lichtverschmutzungsfilter) und mit Siril/PixInsight-Ergebnissen
+  vergleichen; Mono-SHO mit echten Testdaten (öffentliche Beispieldatensätze, Lizenz prüfen) absichern.
