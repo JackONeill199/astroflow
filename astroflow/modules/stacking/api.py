@@ -859,6 +859,66 @@ def build_router(eng: Engine) -> APIRouter:
         from . import observatory
         return {"photos": observatory.photos(db, eng.s.work_dir), "catalog": observatory.catalog()}
 
+    # ---- Observatorium: Planer über mehrere Nächte (planner.py) --------------------------
+    def _plan_site_for():
+        """Ort je Nacht aus der Ortsliste (mit Horizontmaske); ohne Ortsliste der Ort aus dem Bild-Tutor."""
+        svc = eng.ctx.services.get("site_for")
+        cfg = tutor.settings(eng.ctx.store)
+        fallback = {"id": None, "name": "Standort", "lat": cfg["lat"], "lon": cfg["lon"]} if cfg.get("lat") is not None and cfg.get("lon") is not None else None
+        if not svc:
+            return lambda night: fallback
+        from ...core.sites import planning_night
+        def site_for(night):
+            try:
+                if night is None:
+                    lon = (svc(night="1900-01-01") or fallback or {}).get("lon") or 0
+                    night = planning_night(time.time(), lon)
+                return svc(night=night) or fallback
+            except Exception:
+                traceback.print_exc()
+                return fallback
+        return site_for
+
+    def _plan_options():
+        from . import planner
+        _, device = tonight.library(db)
+        return planner.device_options(device), device
+
+    @r.get("/plan")
+    def get_plan():
+        opts, device = _plan_options()
+        lib = next((o["id"] for o in opts if o["id"] == "library"), None)
+        return {"plan": eng.ctx.store.get("observatory").get("plan"), "devices": opts,
+                "default_device": lib or (device.get("id") if device.get("id") in {o["id"] for o in opts} else "stellina"),
+                "has_site": bool(_plan_site_for()(None)), "weather_on": bool(tutor.settings(eng.ctx.store).get("weather"))}
+
+    @r.post("/plan")
+    def make_plan(body: dict = Body(...)):
+        """Assistent: {nights, devices[1–2], mode new|mix|deep, min_hours, watch[]} → Plan rechnen und speichern."""
+        from . import planner
+        opts, _ = _plan_options()
+        try:
+            wishes = planner.clean_wishes(body, opts)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        devices = [next(o for o in opts if o["id"] == d) for d in wishes["devices"]]
+        projects, _ = tonight.library(db)
+        try:
+            out = planner.plan(projects, _plan_site_for(), wishes, devices, eng.s.work_dir / "tutor",
+                               weather=bool(tutor.settings(eng.ctx.store).get("weather")))
+        except Exception:
+            traceback.print_exc()
+            raise HTTPException(500, "Der Plan konnte nicht berechnet werden – Details im Protokoll.")
+        if out.get("error"):
+            raise HTTPException(400, out["error"])
+        eng.ctx.store.update("observatory", {"plan": out})
+        return {"plan": out}
+
+    @r.delete("/plan")
+    def delete_plan():
+        eng.ctx.store.update("observatory", {"plan": None})
+        return {"plan": None}
+
     # ---- Nachtplanung: Standort und optionale Wetterfreigabe aus dem Bild-Tutor ------------
     @r.get("/tonight")
     def get_tonight(hide: str = "", night: int = 0):

@@ -6,7 +6,7 @@
 (() => {
 const D2R = Math.PI / 180, FOV_MIN = 0.3, FOV_MAX = 220, FOV_HOME = 120;
 const KEY = 'obs.view', LKEY = 'obs.layers';
-const LAYERS = [['photos', 'Meine Fotos', 'image'], ['catalog', 'Katalog', 'target'], ['cons', 'Sternbilder', 'star'], ['grid', 'Gitter', 'grid']];
+const LAYERS = [['photos', 'Meine Fotos', 'image'], ['catalog', 'Katalog', 'target'], ['cons', 'Sternbilder', 'star'], ['grid', 'Gitter', 'grid'], ['plan', 'Plan', 'list']];
 const de = (v, n = 1) => Number(v).toFixed(n).replace('.', ',');
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const norm = (ra) => ((ra % 360) + 360) % 360;
@@ -100,15 +100,16 @@ async function atlasView(el, query) {
   };
   const start = fromQuery(q);
   if (start) Object.assign(v, start);
-  const on = { photos: true, catalog: true, cons: true, grid: true, ...store.get(LKEY, {}) };
+  const on = { photos: true, catalog: true, cons: true, grid: true, plan: true, ...store.get(LKEY, {}) };
+  let planned = [];                         // Ziele des gespeicherten Plans (Planer): {ra, dec, name, when}
   const sage = AF.on('sage');
 
-  el.innerHTML = `<div class="pagehead"><div><h1>Observatorium</h1><p class="mut">Dein Himmel – mit allen eigenen Aufnahmen an ihrem Platz.</p></div></div>
+  el.innerHTML = `<div class="pagehead"><div><h1>Observatorium</h1><p class="mut">Dein Himmel – mit allen eigenen Aufnahmen an ihrem Platz.</p></div>${window.AFplan?.tabs('atlas') || ''}</div>
     <div class="obs-stage" id="obsStage">
       <canvas id="obsCanvas" aria-label="Himmelskarte" role="img" tabindex="0"></canvas>
       <div class="obs-top">
         <label class="obs-search">${icon('search')}<input id="obsFind" type="search" list="obsList" placeholder="Objekt suchen" autocomplete="off" aria-label="Objekt suchen"><datalist id="obsList"></datalist></label>
-        <div class="seg obs-layers" role="group" aria-label="Ebenen">${LAYERS.map(([k, l, i]) => `<button type="button" data-layer="${k}" aria-pressed="${on[k]}" class="${on[k] ? 'on' : ''}" title="${l}">${icon(i)}<span>${l}</span></button>`).join('')}</div>
+        <div class="seg obs-layers" role="group" aria-label="Ebenen">${LAYERS.map(([k, l, i]) => `<button type="button" data-layer="${k}" aria-pressed="${on[k]}" class="${on[k] ? 'on' : ''}" title="${l}"${k === 'plan' ? ' hidden' : ''}>${icon(i)}<span>${l}</span></button>`).join('')}</div>
       </div>
       <div class="obs-zoom" role="group" aria-label="Zoom"><button type="button" data-z="in" title="Vergrößern" aria-label="Vergrößern">${icon('plus')}</button><button type="button" data-z="out" title="Verkleinern" aria-label="Verkleinern">${icon('minus')}</button><button type="button" data-z="home" title="Ganzer Himmel" aria-label="Ganzer Himmel">${icon('globe')}</button></div>
       <div class="obs-read tnum" id="obsRead" aria-live="off"></div>
@@ -167,6 +168,19 @@ async function atlasView(el, query) {
     const shown = on.photos ? photoQuads(P) : [];
     if (on.catalog) catalog(P, shown.filter(x => x.wpx > 36).map(x => x.q));
     photos(shown);
+    if (on.plan && planned.length) {                            // geplante Ziele: gestrichelte Ringe mit erster Nacht
+      g.setLineDash([5, 4]); g.lineWidth = 1.6;
+      const labels = [];                                          // Beschriftungen nicht übereinander (M31/M32/M110)
+      for (const t of planned) {
+        const q = fwd(t.ra, t.dec);
+        if (!q || q[0] < -30 || q[1] < -30 || q[0] > W + 30 || q[1] > H + 30) continue;
+        g.strokeStyle = t.color; g.beginPath(); g.arc(q[0], q[1], 13, 0, 2 * Math.PI); g.stroke();
+        if (v.fov < 90 && !labels.some(([x, y]) => Math.abs(x - q[0]) < 90 && Math.abs(y - q[1]) < 16)) {
+          g.fillStyle = t.color; g.fillText(`geplant · ${t.when}`, q[0] + 16, q[1] + 16); labels.push(q);
+        }
+      }
+      g.setLineDash([]);
+    }
     if (target) {
       const t = fwd(target.ra, target.dec);
       if (t) {
@@ -519,6 +533,13 @@ async function atlasView(el, query) {
   (async () => {
     try {
       atlas = await api('/stacking/atlas');
+      const pl = (await api('/stacking/plan').catch(() => null))?.plan;
+      if (pl?.targets?.length) {
+        const first = (id) => pl.nights.find(n => n.blocks.some(b => b.target === id))?.night;
+        planned = pl.targets.map(t => ({ ra: t.ra, dec: t.dec, name: t.name, color: window.AFplan?.color(t.id) || col.acc,
+          when: new Date(first(t.id) + 'T12:00:00Z').toLocaleDateString('de-DE', { weekday: 'short', timeZone: 'UTC' }) }));
+        const b = $('[data-layer="plan"]', el); if (b) b.hidden = false;
+      }
     } catch (e) { msg(e.message); }
     if (!el.isConnected) return;
     const strip = $('#obsStrip', el);
