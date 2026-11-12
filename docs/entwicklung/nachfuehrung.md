@@ -14,7 +14,7 @@ Montierung (Alt-Az) braucht zwei Achsen mit wechselnden Geschwindigkeiten, das B
 - maximal im Meridian nahe Nord/Süd (cos A = ±1), null im Ost-/West-Durchgang (A = 90°/270°);
 - strebt gegen unendlich, wenn h → 90° (Zenit) – dort auch die Totzone der Achsen (IRAIT: kritische Geschwindigkeiten nahe Zenit);
 - Rand-Verschmierung = Drehrate × T × Abstand zur Bildmitte (Keicher, „Field Rotation in Alt-Az Mounts“, 2005, via Suche; Wert nicht selbst geprüft).
-  Daraus max. Belichtung: `T_max = Δmax / (r_Rand · ω · cos φ · |cos A| / cos h)` mit Δmax ≈ 1 Pixel (oder 0,5 × Sterngröße).
+  Daraus max. Belichtung: `T_max = Δmax / (r_Rand · ω · cos φ · |cos A| / cos h)` mit Δmax ≈ 1 Pixel (oder 0,5 × Sterngröße). **ω muss hier in Radiant pro Sekunde stehen** (7,29·10⁻⁵ rad/s); mit 0,00417 °/s käme eine um 180/π ≈ 57,3 zu kurze Zeit heraus.
   Pixelgröße/Brennweite gehen über r_Rand (Halbdiagonale in Pixel) ein.
 - **Vorsicht:** die Formel auf lambdageeks.com weicht ab (cos Alt·sin Az / cos Lat) – nicht verwenden. Die „Polausrichtungsfehler“-Rechner im Netz sind etwas anderes.
 
@@ -44,7 +44,7 @@ Beschnitt (Vaonis: Vespera-Fotos sind „oft etwas kleiner“ wegen automatische
 Schlüssel die echten Dateien enthalten, wurde **nicht** geprüft (echte Kopfzeilen der Arbeitsinstanz nicht angesehen – offene Aufgabe, siehe Fragen):
 typisch bei Smart-Teleskopen sind Zielkoordinaten (RA/DEC, OBJCTRA/OBJCTDEC), Zeit (DATE-OBS), Breite/Länge (SITELAT/SITELONG) – **Höhe/Azimut und Montierungsmodus stehen
 wahrscheinlich nicht drin**. Das ist unproblematisch: Höhe/Azimut lassen sich aus Zeit + Ort + gelöstem RA/Dec berechnen (`tonight.py` rechnet das ohnehin ohne AltAz-Transformation).
-Den EQ-Modus erkennt man am besten **aus den Daten**: bei EQ driftet die Bildfeldrotation nicht (Rotationswinkel der Plate-Solves über die Nacht konstant).
+Den EQ-Modus erkennt man am besten **aus den Daten**: bei EQ driftet die Bildfeldrotation nicht (Rotationswinkel der Plate-Solves über die Nacht konstant). **Aber:** konstante Rotation zeigt auch ein Alt-Az-Gerät mit mechanischem Derotator (Stellina), dort bleibt die Achsen-Totzone am Zenit. Daher gilt konstante Orientierung nur zusammen mit der Gerätefähigkeit (`eq_mode`) oder einer vom Nutzer bestätigten Montierungsart als EQ-Nachweis, nie allein.
 
 ## 3. Was AstroFlow schon hat
 
@@ -73,8 +73,9 @@ Priorität A = klein und wertvoll, B = mittel, C = groß/später.
 **A3 – EQ-Modus als Nachtoption** im Planer (Geräte mit `eq_mode`): wenn der Nutzer EQ meldet (Schalter je Nacht/Gerät) oder die Analyse konstante Rotation zeigt, entfällt der Zenit-Abschlag. Klein bis mittel.
 
 **B1 – Aufnahmen je Höhe/Azimut erklären (Analyse).** Je Aufnahme aus Zeit+Ort+Plate-Solve Höhe/Azimut/Rotationsrate berechnen (in `frames.info`, kein neues DB-Feld, optional wie die Zusatzmetriken ohne `METRICS_VERSION`-Erhöhung)
-und in der Diagnose zeigen: „von N verworfenen Aufnahmen lagen M in Höhe > 75° (Zenit-Totzone)“; Verhältnis Rotationsrate ↔ Elongation (Ausrichtung der Sternlängen radial zur Bildmitte = Feldrotation; parallel = Drift;
-gleichmäßig = Fokus/Wind). `ecc_pa` + Position im Bild reicht für die Unterscheidung „tangential zur Bildmitte (Rotation)“ vs. „einheitlich (Drift/Wind)“. Aufwand mittel; Version `DIAG_VERSION` erhöhen.
+und in der Diagnose zeigen: „von N verworfenen Aufnahmen lagen M in Höhe > 75° (Zenit-Totzone)“; Verhältnis Rotationsrate ↔ Elongation (Sternlängen **tangential** zur Bildmitte = Feldrotation; alle gleich gerichtet = Drift/Wind;
+rundum gleichmäßig = Fokus). **Der gespeicherte `ecc_pa` reicht dafür nicht:** er ist nur ein Mittelwinkel plus Einheitlichkeit je Aufnahme, die Zuordnung Stern-Position ↔ Richtung geht verloren.
+Nötig ist eine neue räumliche Zusatzmetrik (z. B. je Bildkachel Winkel und Elongation, oder Positions-/Winkelpaare der Sterne; wie `tiles`/`ecc_pa` ohne `METRICS_VERSION`-Erhöhung nach Nutzerentscheidung). Aufwand mittel; Version `DIAG_VERSION` erhöhen.
 
 **B2 – Randbeschnitt durch Rotation im Stack anzeigen** (Anteil verlorene Fläche; ggf. Empfehlung „weniger lange Sessions im Meridian“). Daten sind in der Registrierung vorhanden (Rotationswinkel je Frame); Aufwand klein–mittel.
 
