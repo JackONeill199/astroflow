@@ -115,7 +115,7 @@ async function atlasView(el, query) {
     return { ra: norm(ra), dec: Math.max(-90, Math.min(90, dec)), fov: isFinite(f) ? Math.max(FOV_MIN, Math.min(FOV_MAX, f)) : 8 };
   };
   const start = fromQuery(q);
-  if (start) Object.assign(v, start);
+  if (start) Object.assign(v, reduced() ? start : { ...start, fov: Math.min(FOV_MAX, start.fov * 5) });   // danach hineinfliegen
   const on = { photos: true, catalog: true, cons: true, grid: true, plan: true, ...store.get(LKEY, {}) };
   let planned = [];                         // Ziele des gespeicherten Plans (Planer): {ra, dec, name, when}
   // Blickart: 'sky' (äquatorial) oder 'here' (Azimut/Höhe vom Standort zur Zeit tsel); je Blickart eigene Ansicht
@@ -126,7 +126,7 @@ async function atlasView(el, query) {
 
   el.innerHTML = `<div class="pagehead"><div><h1>Observatorium</h1><p class="mut">Dein Himmel – mit allen eigenen Aufnahmen an ihrem Platz.</p></div>${window.AFplan?.tabs('atlas') || ''}</div>
     <div class="obs-stage" id="obsStage">
-      <canvas id="obsCanvas" aria-label="Himmelskarte" role="img" tabindex="0"></canvas>
+      <canvas id="obsCanvas" aria-label="Himmelskarte" role="img" tabindex="0"></canvas><canvas class="obs-fade" id="obsFade" aria-hidden="true" hidden></canvas>
       <div class="obs-top">
         <label class="obs-search">${icon('search')}<input id="obsFind" type="search" list="obsList" placeholder="Objekt suchen" autocomplete="off" aria-label="Objekt suchen"><datalist id="obsList"></datalist></label>
         <div class="seg obs-mode" role="group" aria-label="Blickart" hidden><button type="button" data-mode="sky" class="on" aria-pressed="true">${icon('globe')}<span>Himmel</span></button><button type="button" data-mode="here" aria-pressed="false">${icon('pin')}<span>Von hier</span></button></div>
@@ -150,6 +150,20 @@ async function atlasView(el, query) {
   readColors();
 
   const draw = () => { if (!raf) raf = requestAnimationFrame(paint); };
+  const now = () => { cancelAnimationFrame(raf); paint(); };
+  // Überblenden statt Springen (Ebenen, Blickart, eintreffende Daten): altes Bild als Standbild darüber, neu zeichnen, Standbild
+  // ausblenden. Während einer Kamerafahrt nicht (das Standbild stünde dann neben dem bewegten Bild).
+  let lastMove = 0;
+  const fadeCv = $('#obsFade', el);
+  fadeCv.addEventListener('transitionend', () => { if (fadeCv.classList.contains('out')) fadeCv.hidden = true; });
+  function crossfade(change) {
+    if (reduced() || !W || !P || performance.now() - lastMove < 80) { change(); draw(); return; }
+    fadeCv.width = cv.width; fadeCv.height = cv.height; fadeCv.style.width = W + 'px'; fadeCv.style.height = H + 'px';
+    fadeCv.getContext('2d').drawImage(cv, 0, 0);
+    fadeCv.classList.remove('out'); fadeCv.hidden = false;
+    change(); now();
+    void fadeCv.offsetWidth; fadeCv.classList.add('out');
+  }
   const save = () => store.set(mode === 'here' ? KEY + '.here' : KEY, { ra: +v.ra.toFixed(3), dec: +v.dec.toFixed(3), fov: +v.fov.toFixed(3) });
 
   function size() {
@@ -449,24 +463,37 @@ async function atlasView(el, query) {
 
   // ---- Bewegung ----
   const clampFov = (f) => Math.max(FOV_MIN, Math.min(FOV_MAX, f));
-  function zoomAt(f, X = W / 2, Y = H / 2) {
+  function zoomAt(f, X = W / 2, Y = H / 2, commit = true) {
     const before = P.inv(X, Y);
     v.fov = clampFov(v.fov * f);
     const P2 = projection(v, W, H), after = P2.inv(X, Y);
     v.ra = norm(v.ra + (before[0] - after[0] + 540) % 360 - 180);
     v.dec = Math.max(-90, Math.min(90, v.dec + before[1] - after[1]));
-    save(); draw();
+    if (commit) { save(); draw(); }
   }
-  function fly(to) {
+  function zoomTo(f, X = W / 2, Y = H / 2) {                      // Knöpfe, Tasten, Doppelklick: kurz animiert (Rad/Pinch direkt)
+    cancelAnimationFrame(anim);
+    if (reduced()) return zoomAt(f, X, Y);
+    const t0 = performance.now(), lf = Math.log(f);
+    let done = 0;
+    const step = (t) => {
+      const k = Math.min(1, (t - t0) / 240), e = 1 - (1 - k) ** 3;
+      zoomAt(Math.exp(lf * (e - done)), X, Y, false); done = e; lastMove = t; now();
+      if (k < 1 && el.isConnected) anim = requestAnimationFrame(step); else save();
+    };
+    anim = requestAnimationFrame(step);
+  }
+  function fly(to, T = null) {
     cancelAnimationFrame(anim);
     if (mode === 'here' && site && !to.raw) { const [az, alt] = toHor(to.ra, to.dec); to = { ra: 360 - az, dec: alt, fov: to.fov }; }
     const from = { ...v }, dra = ((to.ra - from.ra + 540) % 360) - 180;
     if (reduced()) { Object.assign(v, { ra: norm(to.ra), dec: to.dec, fov: clampFov(to.fov) }); save(); draw(); return; }
-    const t0 = performance.now(), T = 700, lf0 = Math.log(from.fov), lf1 = Math.log(clampFov(to.fov));
+    const t0 = performance.now(), lf0 = Math.log(from.fov), lf1 = Math.log(clampFov(to.fov));
+    T = T ?? Math.min(750, 320 + angSep(from.ra, from.dec, to.ra, to.dec) * 2.5 + Math.abs(lf1 - lf0) * 110);
     const step = (t) => {
       const k = Math.min(1, (t - t0) / T), e = k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2;
       v.ra = norm(from.ra + dra * e); v.dec = from.dec + (to.dec - from.dec) * e; v.fov = Math.exp(lf0 + (lf1 - lf0) * e);
-      paint();
+      lastMove = t; now();
       if (k < 1 && el.isConnected) anim = requestAnimationFrame(step); else save();
     };
     anim = requestAnimationFrame(step);
@@ -520,51 +547,67 @@ async function atlasView(el, query) {
   cv.addEventListener('pointercancel', up);
   cv.addEventListener('pointerleave', () => { if (hover !== null && !ptrs.size) { hover = null; draw(); } });
   cv.addEventListener('wheel', (e) => { e.preventDefault(); zoomAt(Math.exp(e.deltaY * 0.0015), e.offsetX, e.offsetY); }, { passive: false });
-  cv.addEventListener('dblclick', (e) => zoomAt(1 / 2, e.offsetX, e.offsetY));
+  cv.addEventListener('dblclick', (e) => zoomTo(1 / 2, e.offsetX, e.offsetY));
+  const nudge = (dra, ddec) => fly({ ra: v.ra + dra, dec: Math.max(-90, Math.min(90, v.dec + ddec)), fov: v.fov, raw: true }, 180);
   cv.addEventListener('keydown', (e) => {
     const s = v.fov / 10, k = e.key;
-    if (k === '+' || k === '=') zoomAt(1 / 1.5);
-    else if (k === '-') zoomAt(1.5);
-    else if (k === 'ArrowLeft') { v.ra = norm(v.ra + s / Math.max(0.1, Math.cos(v.dec * D2R))); save(); draw(); }
-    else if (k === 'ArrowRight') { v.ra = norm(v.ra - s / Math.max(0.1, Math.cos(v.dec * D2R))); save(); draw(); }
-    else if (k === 'ArrowUp') { v.dec = Math.min(90, v.dec + s); save(); draw(); }
-    else if (k === 'ArrowDown') { v.dec = Math.max(-90, v.dec - s); save(); draw(); }
+    if (k === '+' || k === '=') zoomTo(1 / 1.5);
+    else if (k === '-') zoomTo(1.5);
+    else if (k === 'ArrowLeft') nudge(s / Math.max(0.1, Math.cos(v.dec * D2R)), 0);
+    else if (k === 'ArrowRight') nudge(-s / Math.max(0.1, Math.cos(v.dec * D2R)), 0);
+    else if (k === 'ArrowUp') nudge(0, s);
+    else if (k === 'ArrowDown') nudge(0, -s);
     else if (k === 'Escape') select(null);
     else return;
     e.preventDefault();
   });
   $('.obs-zoom', el).onclick = (e) => {
     const z = e.target.closest('[data-z]')?.dataset.z;
-    if (z === 'in') zoomAt(1 / 1.6); else if (z === 'out') zoomAt(1.6); else if (z === 'home') fly({ ra: v.ra, dec: mode === 'here' ? 35 : v.dec, fov: mode === 'here' ? 150 : FOV_HOME, raw: true });
+    if (z === 'in') zoomTo(1 / 1.6); else if (z === 'out') zoomTo(1.6); else if (z === 'home') fly({ ra: v.ra, dec: mode === 'here' ? 35 : v.dec, fov: mode === 'here' ? 150 : FOV_HOME, raw: true });
   };
   $('.obs-layers', el).onclick = (e) => {
     const b = e.target.closest('[data-layer]');
     if (!b) return;
     const k = b.dataset.layer;
     on[k] = !on[k]; b.classList.toggle('on', on[k]); b.setAttribute('aria-pressed', on[k]);
-    store.set(LKEY, on); draw();
+    store.set(LKEY, on); crossfade(() => {});
   };
   // Blickart umschalten (je Blickart eigene Mitte/Zoom), Zeitregler ab jetzt bis +16 h
-  const setMode = (m) => {
+  const setMode = (m, instant = false) => {
     if (m === mode || (m === 'here' && !site)) return;
+    cancelAnimationFrame(anim);
     views[mode] = { ra: v.ra, dec: v.dec, fov: v.fov };
-    mode = m; Object.assign(v, views[m]); store.set('obs.mode', m);
+    store.set('obs.mode', m);
     $$('.obs-mode [data-mode]', el).forEach(b => { b.classList.toggle('on', b.dataset.mode === m); b.setAttribute('aria-pressed', b.dataset.mode === m); });
     $('#obsTime', el).hidden = m !== 'here';
     cv.setAttribute('aria-label', m === 'here' ? 'Himmel von deinem Standort aus' : 'Himmelskarte');
-    draw();
+    if (instant || reduced()) { mode = m; Object.assign(v, views[m]); draw(); return; }
+    crossfade(() => { mode = m; Object.assign(v, views[m], { fov: clampFov(views[m].fov * 1.3) }); });
+    fly({ ...views[m], raw: true }, 420);
   };
   $('.obs-mode', el).onclick = (e) => { const b = e.target.closest('[data-mode]'); if (b) setMode(b.dataset.mode); };
   const t0 = Math.floor(Date.now() / 600000) * 600;
-  const showT = () => { $('#obsTL', el).textContent = new Date(tsel * 1000).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' }); };
-  $('#obsT', el).oninput = (e) => { tsel = t0 + +e.target.value * 60; showT(); draw(); };
-  $('#obsNow', el).onclick = () => { tsel = Date.now() / 1000; $('#obsT', el).value = 0; showT(); draw(); };
+  const showT = (ts = tsel) => { $('#obsTL', el).textContent = new Date(ts * 1000).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' }); };
+  let tAnim = 0;
+  const setT = (to) => {                                          // Himmel dreht sich kurz zum neuen Zeitpunkt statt zu springen
+    showT(to); cancelAnimationFrame(tAnim);
+    if (reduced() || mode !== 'here') { tsel = to; draw(); return; }
+    const from = tsel, t1 = performance.now(), T = 180 + Math.min(220, Math.abs(to - from) / 3600 * 30);
+    const step = (t) => {
+      const k = Math.min(1, (t - t1) / T), e = 1 - (1 - k) ** 3;
+      tsel = from + (to - from) * e; now();
+      if (k < 1 && el.isConnected) tAnim = requestAnimationFrame(step);
+    };
+    tAnim = requestAnimationFrame(step);
+  };
+  $('#obsT', el).oninput = (e) => setT(t0 + +e.target.value * 60);
+  $('#obsNow', el).onclick = () => { $('#obsT', el).value = 0; setT(Date.now() / 1000); };
   showT();
   api('/sites/resolve').then(r => {
     if (!el.isConnected || !r?.site || r.site.lat == null) return;
     site = r.site;
     $('.obs-mode', el).hidden = false;
-    if (store.get('obs.mode', 'sky') === 'here') setMode('here');
+    if (store.get('obs.mode', 'sky') === 'here') { setMode('here', true); if (start) fly(start); }   // Ziel aus Sage/Planer auch „von hier“ anfliegen
   }).catch(() => {});
   const find = $('#obsFind', el);
   find.addEventListener('change', () => {
@@ -584,10 +627,11 @@ async function atlasView(el, query) {
   const onTheme = new MutationObserver(() => { readColors(); draw(); });
   onTheme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-look', 'data-theme', 'style'] });
   size();
+  if (start) fly(start);
 
   // ---- Daten ----
   const msg = (t) => { const m = $('#obsMsg', el); if (m) { m.hidden = !t; m.textContent = t || ''; } };
-  skyData().then(s => { if (el.isConnected) { sky = s; draw(); } }).catch(() => msg('Sterndaten konnten nicht geladen werden.'));
+  skyData().then(s => { if (el.isConnected) crossfade(() => { sky = s; }); }).catch(() => msg('Sterndaten konnten nicht geladen werden.'));
   // Einstieg aus Sage: passendes Katalogobjekt an der Marke gleich auswählen (sonst Auswahl leeren)
   const focusTarget = () => {
     let best = null, bd = Infinity;
@@ -603,8 +647,9 @@ async function atlasView(el, query) {
   };
   // Atlasdaten getrennt laden: die Ansicht (mit destroy) kommt sofort zurück, auch wenn man vor der Antwort weiternavigiert
   (async () => {
+    let a = atlas;
     try {
-      atlas = await api('/stacking/atlas');
+      a = await api('/stacking/atlas');
       const pl = (await api('/stacking/plan').catch(() => null))?.plan;
       if (pl?.targets?.length) {
         const first = (id) => pl.nights.find(n => n.blocks.some(b => b.target === id))?.night;
@@ -614,10 +659,12 @@ async function atlasView(el, query) {
       }
     } catch (e) { msg(e.message); }
     if (!el.isConnected) return;
+    crossfade(() => { atlas = a; });
     const strip = $('#obsStrip', el);
     $('#obsCount', el).textContent = String(atlas.photos.length);
+    strip.classList.add('stagger');
     strip.innerHTML = atlas.photos.length
-      ? atlas.photos.slice().sort((a, b) => (b.created || 0) - (a.created || 0)).map(p => `<button type="button" class="obs-shot" data-pid="${p.pid}" title="${esc(p.name)} am Himmel zeigen"><img src="${esc(p.thumb)}" alt="" loading="lazy"><span>${esc(p.name)}</span></button>`).join('')
+      ? atlas.photos.slice().sort((a, b) => (b.created || 0) - (a.created || 0)).map((p, i) => `<button type="button" class="obs-shot" style="--i:${i}" data-pid="${p.pid}" title="${esc(p.name)} am Himmel zeigen"><img src="${esc(p.thumb)}" alt="" loading="lazy"><span>${esc(p.name)}</span></button>`).join('')
       : `<p class="mut sm">Noch keine Bilder mit bekannter Himmelsposition. Sobald ein Stack oder importiertes Bild per Plate-Solving gelöst ist, erscheint es hier.</p>`;
     strip.onclick = (e) => { const b = e.target.closest('[data-pid]'); const p = b && atlas.photos.find(x => x.pid === +b.dataset.pid); if (p) flyPhoto(p); };
     $('#obsList', el).innerHTML = [...new Set([...atlas.photos.map(p => p.name), ...atlas.catalog.filter(o => o.src !== 'a').map(o => o.name)])]
@@ -636,7 +683,7 @@ async function atlasView(el, query) {
       return true;
     },
     destroy() {
-      ro.disconnect(); onTheme.disconnect(); cancelAnimationFrame(anim); cancelAnimationFrame(raf);
+      ro.disconnect(); onTheme.disconnect(); cancelAnimationFrame(anim); cancelAnimationFrame(raf); cancelAnimationFrame(tAnim);
       AF.ctx.body()?.removeEventListener('click', onCtxClick);
     },
   };

@@ -65,6 +65,16 @@ Etappen: 1 Atlas (dieser Stand) · 2 Horizontmaske je Standort + Ansicht „Von 
 - **Plan als Kalender:** Knopf „Kalender“ im Planer erzeugt im Browser eine `.ics` (ein Termin je Block, UTC; `AFplan.ics`).
 - Bewusst nicht: Milchstraße (bräuchte weitere Fremddaten mit Lizenzprüfung) – bei Bedarf als eigener Schritt.
 
+## Übergänge (12.11.2026, Nutzerwunsch „bei den Übergängen fehlen Animationen“)
+- Atlas: `crossfade(change)` legt das alte Bild als Standbild (`#obsFade`) über die Karte, zeichnet neu und blendet es aus (Ebenen,
+  Blickart, eintreffende Stern-/Atlasdaten; nicht während einer Kamerafahrt – `lastMove`). Blickart zusätzlich mit kurzer Fahrt hinein.
+  `fly` dauert je nach Weg/Zoom 320–750 ms; Zoomknöpfe, `+`/`-`, Doppelklick (`zoomTo`) und Pfeiltasten (`nudge`) animiert, Rad/Pinch direkt.
+  Zeitregler dreht den Himmel weich zum neuen Zeitpunkt (`setT`). Einstieg mit Ziel (Sage, Planer): weiter draußen beginnen, hineinfliegen.
+- Planer: `draw(fresh)` blendet nur neu erscheinende Abschnitte ein (Schritte nacheinander), Zeitleiste wächst je Nacht (`.pl-grow`),
+  Fortschrittsbalken füllen sich; Auswahlknöpfe schalten ohne Neuzeichnen; „Abbrechen“ blendet den Assistenten aus (`leave`).
+- Horizont-Editor: Vorlagen/„An Aufnahmen anpassen“ gleiten zur neuen Linie (`morph`, Speichern nimmt das Ziel), Punkte blenden ein.
+- Alles mit `prefers-reduced-motion`-Ausstieg (CSS und `reduced()` im JS).
+
 ## Geplant (Konzept vom 11.11.2026, Freigabe des Nutzers)
 - **Horizontmaske (gebaut 12.11.2026, siehe `standorte-himmel.md`):** Feld, Editor, Wirkung in Heute Nacht. Offen aus Etappe 2:
   Vorschlag aus eigenen Aufnahmen und Atlas „Von hier“ (nach dem Planer, Reihenfolge Nutzerentscheidung 12.11.2026).

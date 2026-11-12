@@ -56,4 +56,22 @@
   .pl-prog .pl-when { display: none }
   .pl-add input { width: 9rem }
 }
-@media (prefers-reduced-motion: reduce) { .pl-block rect, .pl-opt, .obs-tabs a { transition: none } }
+/* Übergänge: neue Abschnitte blenden ein (Schritte nacheinander), Zeitleiste wächst je Nacht von links, Fortschritt füllt sich;
+   Reiter Atlas | Planung: Markierung blendet ein; geschlossener Assistent blendet aus (planner.js `draw(fresh)`, `leave`) */
+.obs-tabs a.on { animation: plTab var(--t2) var(--ease) both }
+@keyframes plTab { from { background-color: transparent } }
+.pl-in { animation: fadeUp var(--t2) var(--ease) both; animation-delay: calc(var(--i, 0) * 60ms) }
+.pl-in .pl-steps > li { animation: fadeUp var(--t2) var(--ease) both; animation-delay: calc(var(--s, 0) * 40ms) }
+.pl-steps > li:nth-child(2) { --s: 1 } .pl-steps > li:nth-child(3) { --s: 2 } .pl-steps > li:nth-child(4) { --s: 3 } .pl-steps > li:nth-child(5) { --s: 4 }
+.pl-out { animation: plOut 160ms var(--ease) forwards; pointer-events: none }
+@keyframes plOut { to { opacity: 0; transform: translateY(-0.25rem) } }
+.pl-block { transform-box: fill-box; transform-origin: left center }
+.pl-grow .pl-block { animation: plGrow 360ms var(--ease) both; animation-delay: calc(min(var(--n, 0), 14) * 35ms + 80ms) }
+@keyframes plGrow { from { opacity: 0; transform: scaleX(.3) } }
+.pl-grow .pl-dark { animation: fadeIn var(--t2) var(--ease) both }
+.pl-in .pl-bar b { animation: plBar 480ms var(--ease) both; animation-delay: 120ms }
+@keyframes plBar { from { width: 0 } }
+@media (prefers-reduced-motion: reduce) {
+  .pl-block rect, .pl-opt, .obs-tabs a { transition: none }
+  .obs-tabs a.on, .pl-in, .pl-in .pl-steps > li, .pl-out, .pl-grow .pl-block, .pl-grow .pl-dark, .pl-in .pl-bar b { animation: none }
+}

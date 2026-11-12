@@ -42,7 +42,7 @@ function timeline(plan, width = 760) {
     n.blocks.forEach((bl, k) => {
       const di = Math.max(0, devs.findIndex(d => d.id === bl.device)), by = y + 4 + di * lane, bx = X(bl.start - b), bw = Math.max(3, X(bl.end - b) - bx);
       const t = plan.targets.find(x => x.id === bl.target) || { name: bl.target };
-      g += `<g class="pl-block" tabindex="0" role="button" data-n="${i}" data-k="${k}" aria-label="${esc(t.name)}, ${hm(bl.start)} bis ${hm(bl.end)}">
+      g += `<g class="pl-block" style="--n:${i}" tabindex="0" role="button" data-n="${i}" data-k="${k}" aria-label="${esc(t.name)}, ${hm(bl.start)} bis ${hm(bl.end)}">
         <rect x="${bx.toFixed(1)}" y="${by}" width="${bw.toFixed(1)}" height="${lane - 2}" rx="3" style="fill:${color(bl.target)}"/>
         ${bw > 34 ? `<text x="${(bx + 4).toFixed(1)}" y="${by + lane / 2 + 2}">${esc(short(t.name, bw))}</text>` : ''}<title>${esc(t.name)} · ${hm(bl.start)}–${hm(bl.end)} · ${hours(bl.hours)}</title></g>`;
     });
@@ -108,13 +108,22 @@ async function planView(el) {
         <span class="dim">${p.weather_on ? (fc ? `Wetter für ${fc} ${fc === 1 ? 'Nacht' : 'Nächte'}` : 'keine Vorhersage') : 'ohne Wetter'}${p.site?.horizon ? ' · mit Horizont' : ''}</span></div>
       ${p.watch_missing?.length ? `<p class="sm warn">Nicht unterzubringen: ${p.watch_missing.map(esc).join(', ')}</p>` : ''}
       <div id="plTl">${timeline(p, $('#plBody', el)?.clientWidth - 32 || 760)}</div></section>
-      <section class="panel"><h2>Ziele</h2>${progress(p)}<p class="dim sm pl-foot">Berechnet ${new Date(p.created * 1000).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })} · Wetter und Fortschritt ändern sich – bei Bedarf „Neu planen“.</p></section>`;
+      <section class="panel pl-goals"><h2>Ziele</h2>${progress(p)}<p class="dim sm pl-foot">Berechnet ${new Date(p.created * 1000).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })} · Wetter und Fortschritt ändern sich – bei Bedarf „Neu planen“.</p></section>`;
   }
-  function draw() {
+  // Neu zeichnen; `fresh` = Abschnitte, die neu erscheinen (Selektor) – nur die blenden ein, Zeitleiste wächst dann von links
+  const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function draw(fresh = null) {
     if (!el.isConnected) return;
-    $('#plBody', el).innerHTML = (wizard ? wizardHtml() : '') + (d.plan ? planHtml(d.plan) : '');
+    const b = $('#plBody', el);
+    b.innerHTML = (wizard ? wizardHtml() : '') + (d.plan ? planHtml(d.plan) : '');
+    if (!fresh || still()) return;
+    $$(fresh, b).forEach((x, i) => { x.classList.add('pl-in'); x.style.setProperty('--i', i); });
+    const tl = $('.pl-in #plTl', b);
+    if (tl) { tl.classList.add('pl-grow'); setTimeout(() => tl.classList.remove('pl-grow'), 1200); }
   }
-  draw();
+  // Abschnitt kurz ausblenden, dann umbauen
+  const leave = (sel, then) => { const x = $(sel, el); if (!x || still()) return then(); x.classList.add('pl-out'); setTimeout(() => { if (el.isConnected) then(); }, 160); };
+  draw('#plBody > section');
   // Zeitleiste bei geänderter Breite neu zeichnen (nur die Grafik)
   let lastW = 0;
   const ro = new ResizeObserver(() => { const tl = $('#plTl', el), wd = $('#plBody', el)?.clientWidth || 0;
@@ -129,26 +138,30 @@ async function planView(el) {
       const k = o.dataset.k, v = k === 'mode' || k === 'devices' ? o.dataset.v : +o.dataset.v;
       if (k === 'devices') w.devices = w.devices.includes(v) ? (w.devices.length > 1 ? w.devices.filter(x => x !== v) : w.devices) : [...w.devices, v].slice(-2);
       else w[k] = v;
-      draw(); return;
+      $$(`.pl-opt[data-k="${k}"]`, body).forEach(x => {
+        const xv = k === 'mode' || k === 'devices' ? x.dataset.v : +x.dataset.v, on = k === 'devices' ? w.devices.includes(xv) : w[k] === xv;
+        x.classList.toggle('on', on); x.setAttribute('aria-pressed', on);
+      });
+      return;
     }
     const u = e.target.closest('[data-unwatch]');
     if (u) { w.watch = w.watch.filter(x => x !== u.dataset.unwatch); draw(); return; }
     const blk = e.target.closest('.pl-block');
     if (blk) { showBlock(+blk.dataset.n, +blk.dataset.k); return; }
     const a = e.target.closest('[data-act]')?.dataset.act;
-    if (a === 'edit') { wizard = true; draw(); $('.pl-wiz', el)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); }
-    if (a === 'close') { wizard = false; draw(); }
+    if (a === 'edit') { wizard = true; draw('.pl-wiz'); $('.pl-wiz', el)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); }
+    if (a === 'close') leave('.pl-wiz', () => { wizard = false; draw(); });
     if (a === 'ics' && d.plan) {
       const url = URL.createObjectURL(new Blob([ics(d.plan)], { type: 'text/calendar' })), link = document.createElement('a');
       link.href = url; link.download = `beobachtungsplan-${d.plan.nights[0]?.night || 'astroflow'}.ics`; link.click();
       setTimeout(() => URL.revokeObjectURL(url), 2000);
     }
     if (a === 'del' && await confirmDlg('Plan löschen?', 'Der gespeicherte Plan wird entfernt. Atlas und „Heute Nacht“ zeigen ihn dann nicht mehr.', 'Löschen', true)) {
-      try { d.plan = (await send('/stacking/plan', null, 'DELETE')).plan; wizard = true; draw(); } catch (err) { toast(err.message, 'err'); }
+      try { d.plan = (await send('/stacking/plan', null, 'DELETE')).plan; wizard = true; draw('#plBody > section'); } catch (err) { toast(err.message, 'err'); }
     }
     if (a === 'run') {
       const b = e.target.closest('button'); b.disabled = true; b.classList.add('pending');
-      try { d.plan = (await send('/stacking/plan', w)).plan; wizard = false; draw(); toast('Plan berechnet.', 'ok'); }
+      try { d.plan = (await send('/stacking/plan', w)).plan; wizard = false; draw('#plBody > section'); toast('Plan berechnet.', 'ok'); }
       catch (err) { toast(err.message, 'err'); b.disabled = false; b.classList.remove('pending'); }
     }
   });
