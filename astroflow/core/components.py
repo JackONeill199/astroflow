@@ -92,7 +92,7 @@ GRAXPERT_SOURCE = "https://github.com/Steffenhir/GraXpert"
 # Linux (x86_64): offizielles ZIP (cx_Freeze-Ordner „GraXpert-linux/“ mit Programm „GraXpert“, ~1,1 GB entpackt, davon 545 MB
 # CUDA-Bibliothek von onnxruntime). Prüfsumme selbst gebildet (GitHub nennt keine), 12.11.2026.
 GRAXPERT_LINUX_ZIP = f"https://github.com/Steffenhir/GraXpert/releases/download/{GRAXPERT_VERSION}/graxpert-linux-amd64.zip"
-GRAXPERT_LINUX_SHA256 = "@@SHA@@"
+GRAXPERT_LINUX_SHA256 = "0a7364c3304ba19f12231d533c80b294054d6558d54ecd81668e4dec49092588"
 GRAXPERT_LINUX_MB = 375
 
 TORCH_CPU_INDEX = "https://download.pytorch.org/whl/cpu"
