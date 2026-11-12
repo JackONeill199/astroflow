@@ -45,10 +45,13 @@ der Himmel „von hier“ mit Zeitregler und ein Beobachtungsplaner über mehrer
 <!-- modul:skytrace – Block pflegt die SkyTrace-Sitzung -->
 ### SkyTrace – was sich zwischen den Sternen bewegt
 
-Lichtspuren in Bildfolgen werden erkannt und zur echten Aufnahmezeit mit Satelliten, Meteoren und Flugzeugen abgeglichen – mit 3D-Erde,
-Standort- und Uhrsuche, Statistik und Erfolgen.
+Lichtspuren in Bildfolgen werden als Kandidaten erfasst und zur echten Aufnahmezeit mit historischen Satellitenbahnen, Meteoren und Flugzeugen
+abgeglichen – ein Hinweis, nie eine Behauptung. Dazu 3D-Erde und Karte, Standort- und Uhrsuche (Vorschläge nie automatisch), Statistik und Erfolge;
+die Analyse braucht die optionale Engine, alles Vorhandene lässt sich auch ohne ansehen.
 
 ![SkyTrace erkennt Spuren](docs/media/skytrace-spuren.webp)
+
+![Kandidaten durchblättern](docs/media/skytrace-kandidaten-blaettern.webp)
 
 **[Alles zu SkyTrace →](docs/module/skytrace.md)**
 <!-- /modul:skytrace -->
