@@ -31,14 +31,13 @@ Jedes Modul hat eine eigene Seite mit allen Funktionen, Bildern und Videos.
 <!-- modul:bilder – Block pflegt die Bilder-Sitzung -->
 ### Bilder – vom Rohbild zum fertigen Foto
 
-FITS-Aufnahmen werden automatisch sortiert, kalibriert, gestackt und entwickelt; neue Nächte werden nachgestackt. Dazu Analysen
-(Tiefe, Vergleich, HR-Diagramm, Asteroiden, Gerätediagnose), „Heute Nacht“, das **Observatorium** mit deinen Fotos am Himmel und Beobachtungsplaner.
+FITS-Aufnahmen werden automatisch sortiert, kalibriert, gestackt und entwickelt; neue Nächte werden nachgestackt, aussortierte Aufnahmen kommen mit Begründung.
+Dazu Analysen (Tiefe, Vergleich, HR-Diagramm, Asteroiden, Gerätediagnose), „Heute Nacht“ und das **Observatorium**: deine Fotos am Himmel,
+der Himmel „von hier“ mit Zeitregler und ein Beobachtungsplaner über mehrere Nächte.
 
 ![Live-Ansicht beim Stacken](docs/media/stacking-live.webp)
 
-| | | |
-|---|---|---|
-| ![NGC 7000](docs/screenshots/ergebnis-ngc7000.webp) | ![NGC 6888](docs/screenshots/ergebnis-ngc6888.webp) | ![M16](docs/screenshots/ergebnis-m16.webp) |
+![Observatorium: der Himmel von hier mit Zeitregler](docs/screenshots/observatorium-von-hier.webp)
 
 **[Alles zu Bilder →](docs/module/bilder.md)**
 <!-- /modul:bilder -->
