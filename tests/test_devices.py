@@ -71,3 +71,25 @@ def test_weights_by_mode():
     assert w["soft"][0] == 1 and w["soft"][2] < 0.4 and np.all(np.diff(w["soft"]) <= 0)
     assert np.all(w["derot"][:3] == 1) and w["derot"][3] >= w["soft"][3]
     assert np.all(devices.weights(alt, np.full(4, 90.0), 50.0, devices.profile({"id": "vespera"}))[:3] == 1)  # Ost/West
+
+
+def test_detected_model_and_exposure_reach_the_profile(tmp_path):
+    """Vespera II / Seestar S30 aus der Erkennung nutzen ihr eigenes Profil; Heute Nacht übernimmt die echte Belichtung."""
+    import json
+    from astroflow.modules.stacking import tonight
+    from astroflow.modules.stacking.db import DB
+    v2, s30 = tutor.detect_device(["Vespera II"]), tutor.detect_device(["Seestar S30"])
+    assert v2["id"] == "vespera" and v2["model"] == "vespera2" and s30["model"] == "seestar30"
+    assert "model" not in tutor.detect_device(["Vespera Pro"])                     # Pro: kein Tabelleneintrag → Familie
+    p = devices.profile({"id": "vespera", "model": "vespera2"})
+    assert p["zenith_limit"] == 75 and math.isclose(p["radius_px"], math.hypot(3840, 2160) / 2)
+    db = DB(tmp_path / "a.db")
+    db.x("INSERT INTO projects(id, key, name) VALUES(1, 'k', 'M31')")
+    db.x("INSERT INTO frames(id, project_id, kind, night, info) VALUES('f', 1, 'light', '2026-10-05', ?)",
+         (json.dumps({"instrument": "Vespera II", "exptime": 20.0}),))
+    _, dev = tonight.library(db)
+    prof = devices.profile(dev)
+    assert dev["model"] == "vespera2" and prof["exp"] == 20.0 and prof["zenith_limit"] == 75
+    cam = {**dev, "id": "camera", "model": None, "alt_az": True}                  # eigene Kamera → „library“ mit Belichtung
+    lib = planner.device_options(cam)[0]
+    assert lib["id"] == "library" and devices.profile(lib)["exp"] == 20.0

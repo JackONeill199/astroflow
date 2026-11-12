@@ -889,7 +889,7 @@ def build_router(eng: Engine) -> APIRouter:
         opts, device = _plan_options()
         lib = next((o["id"] for o in opts if o["id"] == "library"), None)
         return {"plan": eng.ctx.store.get("observatory").get("plan"), "devices": opts,
-                "default_device": lib or (device.get("id") if device.get("id") in {o["id"] for o in opts} else "stellina"),
+                "default_device": lib or next((k for k in (device.get("model"), device.get("id")) if k in {o["id"] for o in opts}), "stellina"),
                 "has_site": bool(_plan_site_for()(None)), "weather_on": bool(tutor.settings(eng.ctx.store).get("weather"))}
 
     @r.post("/plan")

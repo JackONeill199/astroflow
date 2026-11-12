@@ -46,8 +46,11 @@ def detect_device(instruments: list[str], shape: tuple | None = None) -> dict:
             d = {"id": key, **DEVICES[key]}
             if key == "seestar" and (m := re.search(r"s\s?(30|50)", text)):
                 d["name"] = f"ZWO Seestar S{m.group(1)}"
+                d["model"] = "seestar30" if m.group(1) == "30" else "seestar"     # Modell in devices.json (Sensor, Grenzen)
             if key == "vespera" and re.search(r"pro|ii|2", text):
                 d["name"] += " II/Pro"
+                if re.search(r"ii|2", text) and not re.search(r"pro", text):
+                    d["model"] = "vespera2"
             return d
     key = SHAPES.get(tuple(shape[-2:])) if shape else None
     if key:

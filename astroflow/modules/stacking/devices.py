@@ -105,9 +105,11 @@ def mag_limits() -> dict:
 # ------------------------------------------------------------------ Nachführung ---
 def profile(device: dict | None) -> dict:
     """Nachführungsprofil eines Geräts. device: Gerät wie in Heute Nacht/Planer ({id, alt_az, …}; optional `eq` = EQ-Modus
-    laut Nutzer oder Erkennung, `exptime` = Belichtung der eigenen Aufnahmen, `lib_id` = erkanntes Gerät hinter „library“)."""
+    laut Nutzer oder Erkennung, `exptime` = Belichtung der eigenen Aufnahmen, `lib_id` = erkanntes Gerät hinter „library“,
+    `model` = genaues Modell aus der Geräteerkennung, z. B. vespera2)."""
     device = device or {}
-    key = device.get("lib_id") if device.get("id") == "library" else device.get("id")
+    # erkanntes Modell (Vespera II, Seestar S30) vor der Gerätefamilie; „library“ = Gerät aus den eigenen Aufnahmen
+    key = device.get("model") or (device.get("lib_id") if device.get("id") == "library" else device.get("id"))
     d = _get(str(key)) if key else None
     src = (d or {}).get("sources", {})
     if device.get("eq"):

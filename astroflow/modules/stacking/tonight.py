@@ -80,8 +80,10 @@ def library(db) -> tuple[list[dict], dict]:
         # Gesicherter Rückfall aus tutor.DEVICES, keine pauschalen Werte für Gerätefamilien.
         field = [1.0, 0.7] if device["id"] == "stellina" else None
         source = "ungefähres Stellina-Bildfeld" if field else None
+    exp = info.get("exptime")                              # tatsächliche Einzelbelichtung → Randverschmieren (devices.profile)
     return rows, {"id": device["id"], "name": device["name"], "alt_az": bool(device.get("alt_az")), "fov": field, "source": source,
-                  "mag_limit": deepsky.mag_limit(device)}
+                  "mag_limit": deepsky.mag_limit(device), **({"model": device["model"]} if device.get("model") else {}),
+                  **({"exptime": float(exp)} if isinstance(exp, (int, float)) and exp > 0 else {})}
 
 
 def _need(p: dict) -> list[str]:
