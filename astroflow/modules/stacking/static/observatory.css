@@ -61,3 +61,16 @@
   .obs-time { left: 0.75rem; right: 3.5rem; transform: none; width: auto; bottom: 2.5rem }
   .obs-time .btn { display: none }
 }
+/* Übergänge (dezent, 150–400 ms): Karte blendet ein, Standbild beim Überblenden (crossfade), Bedienelemente erscheinen weich */
+#obsCanvas { animation: fadeIn var(--t2) var(--ease) both }
+.obs-fade { position: absolute; left: 0; top: 0; pointer-events: none; opacity: 1 }
+.obs-stage canvas.obs-fade[hidden] { display: none }
+.obs-fade.out { opacity: 0; transition: opacity 280ms var(--ease) }
+.obs-mode:not([hidden]), .obs-msg:not([hidden]), .obs-layers [data-layer="plan"]:not([hidden]) { animation: fadeIn var(--t2) var(--ease) both }
+.obs-time:not([hidden]) { animation: obsRise var(--t2) var(--ease) both }
+@keyframes obsRise { from { opacity: 0; translate: 0 0.375rem } }
+.obs-layers button { transition: opacity var(--t), background-color var(--t), color var(--t) }
+@media (prefers-reduced-motion: reduce) {
+  #obsCanvas, .obs-mode, .obs-msg, .obs-time, .obs-layers button, .obs-strip > * { animation: none !important; transition: none }
+  .obs-stage canvas.obs-fade { display: none }
+}
