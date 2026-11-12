@@ -62,7 +62,7 @@ def _primary_ip() -> str | None:
 
 
 def local_subnet(addr_output: str | None = None, primary: str | None = None) -> ipaddress.IPv4Network | None:
-    """Privates IPv4-Subnetz der Netzwerkschnittstelle (z. B. 192.168.178.0/24) oder None."""
+    """Privates IPv4-Subnetz der Netzwerkschnittstelle (z. B. 10.20.30.0/24) oder None."""
     if addr_output is None:
         ip = _which("ip")
         r = _run([ip, "-o", "-4", "addr", "show", "scope", "global"]) if ip else None

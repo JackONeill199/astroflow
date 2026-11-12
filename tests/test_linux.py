@@ -75,13 +75,13 @@ def test_eingehaengte_datentraeger(tmp_path, monkeypatch):
 
 
 # ---- Firewall -------------------------------------------------------------------------------------------------------
-IP_ADDR = """2: enp3s0    inet 192.168.178.23/24 brd 192.168.178.255 scope global dynamic enp3s0\\       valid_lft 86000sec
+IP_ADDR = """2: enp3s0    inet 10.20.30.23/24 brd 10.20.30.255 scope global dynamic enp3s0\\       valid_lft 86000sec
 3: docker0    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0\\       valid_lft forever
 4: wg0    inet 100.64.0.2/32 scope global wg0\\       valid_lft forever"""
 
 
 def test_lokales_subnetz():
-    assert fw.local_subnet(IP_ADDR, "192.168.178.23") == ipaddress.IPv4Network("192.168.178.0/24")
+    assert fw.local_subnet(IP_ADDR, "10.20.30.23") == ipaddress.IPv4Network("10.20.30.0/24")
     assert fw.local_subnet(IP_ADDR, "172.17.0.1") == ipaddress.IPv4Network("172.17.0.0/16")
     assert fw.local_subnet("1: eth0 inet 203.0.113.5/24 scope global eth0", None) is None      # öffentlich → keine Freigabe
     assert fw.local_subnet("", None) is None
