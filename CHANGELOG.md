@@ -3,6 +3,16 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.70.0 – 12.11.2026
+
+### Neu
+- **Linux-Paket:** `AstroFlow-<Version>-Linux-x86_64.tar.gz` mit eigenem Python – entpacken und `./AstroFlow` starten (portabel) oder per `./install.sh` ohne root installieren: Befehl `astroflow`, Eintrag im Anwendungsmenü (mit „AstroFlow beenden“), optional Autostart; Update = neues Paket, `install.sh` erneut; `astroflow-deinstallieren` entfernt das Programm, Daten bleiben. Läuft auf Ubuntu ab 20.04, Debian ab 11, Fedora, Mint, openSUSE.
+- **Linux:** GraXpert lässt sich wie unter Windows per Klick installieren (offizielles Linux-Paket, geprüfte Prüfsumme); Autostart beim Anmelden über Einstellungen; Heimnetz-Freigabe für ufw bzw. firewalld per Klick (nur am Rechner selbst, das System fragt nach dem Passwort; sonst wird der Befehl zum Kopieren angezeigt); eingehängte Datenträger unter `/media`, `/run/media` und `/mnt` stehen im Einrichtungsassistenten zur Wahl; Fehlermeldungen erscheinen auch ohne Terminal als Desktop-Hinweis.
+
+### Behoben
+- SkyTrace-Plate-Solving brach unter Linux und macOS mit einem Fehler ab.
+- Docker-Image: ASTAP und Sterndatenbank werden nur noch in geprüfter Fassung (Prüfsumme) geladen.
+
 ## 0.69.0 – 12.11.2026
 
 ### Neu
