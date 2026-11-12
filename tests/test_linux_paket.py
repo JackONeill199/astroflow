@@ -94,6 +94,34 @@ def test_deinstallieren_kennt_eigenen_befehlsordner(li, tmp_path):
     assert "uninstall.sh" in text and f"--bin {li._sh(str(bindir))}" in text
 
 
+def test_fremder_prefix_bleibt_unberuehrt(li, tmp_path):
+    """Versehentlich `--prefix ~/Dokumente`: weder Installation noch Deinstallation ersetzen oder löschen fremde Ordner."""
+    docs = tmp_path / "Dokumente"
+    docs.mkdir()
+    (docs / "brief.txt").write_text("wichtig", encoding="utf-8")
+    bindir = tmp_path / "bin"
+    assert li.install(docs, bindir, start=False) == 1
+    assert li.uninstall(docs, bindir) == 1
+    assert (docs / "brief.txt").read_text(encoding="utf-8") == "wichtig" and sorted(p.name for p in docs.iterdir()) == ["brief.txt"]
+    assert not (bindir / "astroflow").exists() and not any(c[-1:] == ["stop"] for c in li.calls)      # nichts gestartet/beendet
+    # fremder Ordner neben dem Ziel („.alt“) blockiert ebenfalls
+    (tmp_path / "app.alt").mkdir()
+    (tmp_path / "app.alt" / "x.txt").write_text("x", encoding="utf-8")
+    assert li.install(tmp_path / "app", bindir, start=False) == 1 and (tmp_path / "app.alt" / "x.txt").is_file()
+    # leerer Ordner ist in Ordnung, danach trägt er die Marke und darf ersetzt/gelöscht werden
+    empty = tmp_path / "leer"
+    empty.mkdir()
+    assert li.install(empty, bindir, start=False) == 0 and (empty / li.MARKER).is_file()
+    assert li.install(empty, bindir, start=False) == 0
+    from astroflow.core import tray
+    tray_set = tray.set_autostart
+    try:
+        tray.set_autostart = lambda on: None
+        assert li.uninstall(empty, bindir) == 0 and not empty.exists()
+    finally:
+        tray.set_autostart = tray_set
+
+
 def test_nicht_aus_dem_programmordner(li, tmp_path):
     assert li.install(li.SRC, tmp_path / "bin") == 1                       # install.sh im installierten Ordner: nichts überschreiben
 

@@ -89,6 +89,35 @@ def _running_stop(wrapper: Path) -> bool:
     return r.returncode == 0
 
 
+MARKER = ".astroflow-install"            # liegt in jedem von install.sh angelegten Programmordner
+NOT_OURS = ("Der Ordner {} ist keine AstroFlow-Installation und nicht leer – abgebrochen, nichts verändert. "
+            "Bitte einen leeren oder neuen Ordner angeben (Standard: ~/.local/share/astroflow/app).")
+
+
+def is_ours(d: Path) -> bool:
+    """Darf AstroFlow diesen Ordner ersetzen bzw. löschen? Nur wenn er fehlt, leer ist oder erkennbar eine AstroFlow-Installation
+    ist (Marke `.astroflow-install`, oder `python/bin/python3` + `linux_install.py` eines abgebrochenen Laufs). Schützt vor
+    versehentlichem `--prefix ~/Dokumente`."""
+    if not d.exists() and not d.is_symlink():
+        return True
+    if not d.is_dir() or d.is_symlink():
+        return False
+    if (d / MARKER).is_file() or ((d / "python" / "bin" / "python3").exists() and (d / "linux_install.py").is_file()):
+        return True
+    try:
+        return not any(d.iterdir())
+    except OSError:
+        return False
+
+
+def _guard(*dirs: Path) -> bool:
+    for d in dirs:
+        if not is_ours(d):
+            _log(NOT_OURS.format(d))
+            return False
+    return True
+
+
 STOP_FAILED = ("AstroFlow läuft noch und ließ sich nicht beenden – abgebrochen, nichts verändert. Bitte AstroFlow beenden "
                "(Einstellungen → Module & System → AstroFlow beenden) und erneut versuchen.")
 
@@ -101,12 +130,14 @@ def install(prefix: Path, bindir: Path, autostart: bool = False, desktop: bool =
         _log("Ist bereits installiert – zum Aktualisieren install.sh aus dem neu entpackten Paket starten.")
         return 1
     wrapper = bindir / "astroflow"
+    stage, old = prefix.with_name(prefix.name + ".neu"), prefix.with_name(prefix.name + ".alt")
+    if not _guard(prefix, stage, old):
+        return 1
     update = prefix.exists()
     if not _running_stop(wrapper):
         _log(STOP_FAILED)
         return 1
     _log("Aktualisiere" if update else "Installiere", "nach", prefix)
-    stage = prefix.with_name(prefix.name + ".neu")
     shutil.rmtree(stage, ignore_errors=True)
     shutil.copytree(SRC, stage, symlinks=True)
     for portable in ("Daten", "Pakete", "Werkzeuge", "config.json"):     # Reste einer portablen Nutzung nicht mitnehmen
@@ -115,7 +146,8 @@ def install(prefix: Path, bindir: Path, autostart: bool = False, desktop: bool =
             shutil.rmtree(p, ignore_errors=True)
         elif p.exists():
             p.unlink()
-    old = prefix.with_name(prefix.name + ".alt")
+    (stage / MARKER).write_text("AstroFlow-Programmordner (install.sh). Wird bei Update/Deinstallation ersetzt bzw. gelöscht.\n",
+                                encoding="utf-8")
     shutil.rmtree(old, ignore_errors=True)
     if prefix.exists():
         prefix.rename(old)
@@ -155,6 +187,8 @@ def install(prefix: Path, bindir: Path, autostart: bool = False, desktop: bool =
 
 def uninstall(prefix: Path, bindir: Path, tools: bool = False) -> int:
     wrapper = bindir / "astroflow"
+    if not _guard(prefix):
+        return 1
     if not _running_stop(wrapper):
         _log(STOP_FAILED)
         return 1
