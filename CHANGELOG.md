@@ -3,6 +3,17 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.68.0 – 12.11.2026
+
+### Neu
+- **Beobachtungsplaner** (Observatorium → Planung): plant für 1–14 Nächte und ein oder zwei Geräte gleichzeitig, welches Objekt wann aufgenommen wird – nach Dunkelheit, Höhe, Mond und (mit Wetter-Einstellung) Wolken; Wunsch „Neues“, „Mischung“ oder „Vertiefen“, Mindestbelichtung je Objekt, Merkliste. Zeitleiste je Nacht und Gerät, geplante Ziele als Ringe im Atlas, „Dein Plan für diese Nacht“ in Heute Nacht, Export als Kalender (`.ics`).
+- **Horizontmaske je Standort** (Einstellungen → Standorte): Bäume, Hauswände oder Balkon als Panorama einzeichnen (mit Vorlagen); Heute Nacht und der Planer rechnen nur mit Zeiten, in denen das Ziel frei steht. Vorschlag aus den eigenen Aufnahmen: Punkte zeigen, wohin du schon fotografiert hast, „An Aufnahmen anpassen“ senkt die Maske dort.
+- **Observatorium „Von hier“:** der Himmel vom eigenen Standort aus mit Zeitregler bis +16 h, Boden unter der Horizontmaske, Himmelsrichtungen und Dämmerung – alles lokal gerechnet.
+
+### Behoben
+- Observatorium: Ein ausgewähltes oder überfahrenes Foto liegt jetzt vorne, wenn sich eigene Fotos überlappen; nach einem Zwei-Finger-Zoom springt die Karte nicht mehr.
+- Analyse fertiger Bilder: Objektkreise und -namen erscheinen nur noch bei eingeschaltetem „Objekte im Bild einblenden“ (vorher auch beim Überfahren und auf Touch-Geräten); die Einstellung bleibt gemerkt.
+
 ## 0.67.0 – 11.11.2026
 
 ### Neu
