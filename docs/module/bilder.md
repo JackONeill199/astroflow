@@ -118,7 +118,7 @@ Weitere Auswertungen je Objekt, alle aus gespeicherten Daten:
 |---|---|
 | ![Asteroiden im Bild](../screenshots/analyse-asteroiden.webp) | ![Gerätediagnose](../screenshots/analyse-geraet.webp) |
 
-*(Das Asteroiden-Beispiel stammt aus synthetischen Demodaten mit einer JPL-Attrappe.)*
+*(Beispiele aus echten Aufnahmen eines Smart-Teleskops; Ortsnamen sind durch „Beispielort“ ersetzt. Beim Asteroiden-Bild lagen 48 Kleinkörper laut JPL im Feld, nachgewiesen wurde keiner – AstroFlow meldet nur, was wirklich zu sehen ist.)*
 
 Das **Analyse-Dashboard** (Bilder → Analyse) fasst die ganze Bibliothek zusammen: Kennzahlen, Rekorde, „Dein Universum“ als 3D-Wolke, Verläufe und die Frage,
 was am meisten gebracht hat; „Alles analysieren“ rechnet fehlende Auswertungen im Hintergrund nach.
