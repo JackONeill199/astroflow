@@ -45,15 +45,15 @@ ASTAP_CLI = {   # (Betriebssystem, Architektur) → Datei auf SourceForge
 ASTAP_CATALOG = "windows_installer/astapwin32.zip"          # enthält deep_sky.csv (plattformunabhängig, ~1 MB)
 ASTAP_DBS = {"d05": ("star_databases/d05_star_database.zip", 102), "d50": ("star_databases/d50_star_database.zip", 900)}
 # SourceForge hat keine versionierten Dateinamen (die Dateien werden bei neuen ASTAP-Versionen ersetzt). Deshalb gilt nur die
-# geprüfte Fassung: SHA-256 selbst gebildet am 07.11.2026 (alle Weiterleitungen über https). Neue ASTAP-Fassung → Abbruch mit
+# geprüfte Fassung: SHA-256 selbst gebildet am 07.11.2026, zweite Fassung der Programme am 12.11.2026 (alle Weiterleitungen über https). Neue ASTAP-Fassung → Abbruch mit
 # Hinweis; dann hier bewusst ergänzen (Tupel = erlaubte Fassungen).
 ASTAP_SHA256 = {
-    "windows_installer/astap_command-line_version_win64.zip": ("19918dcc91db608b14153b9233e5776e7ca8d5c839cba52a117d559174c01b0c",),
-    "linux_installer/astap_command-line_version_Linux_amd64.zip": ("5e2229e936fc53587dbacc8b0892822552af275b0c2d6f66b38947e0e41aeb47",),
-    "linux_installer/astap_command-line_version_Linux_aarch64.zip": ("2e56d79a626c895298d49c9d841d4a449154f5764e2f39eee8bba669fdc6fa35",),
-    "macOS installer/astap_command-line_version_macOS_M1.zip": ("9c64e6bd5087ce910ff43d56e860a4dcea6abacfd556aca80dcf9eae129096e7",),
-    "macOS installer/astap_command-line_version_macOS_x86_64.zip": ("f75a359a86d3b320d62df9f72df26a23f754c574b155372e38eea71c22078517",),
-    "windows_installer/astapwin32.zip": ("f39b180633896f494b2db26bd8aca6b7e17c33c355fbccc19f6813e1e638eb4e",),
+    "windows_installer/astap_command-line_version_win64.zip": ("19918dcc91db608b14153b9233e5776e7ca8d5c839cba52a117d559174c01b0c", "90aff31165ac4c75e2b7ff5f896e5fa3ffb16cae3496d879c81e1d9ae2133a1f"),
+    "linux_installer/astap_command-line_version_Linux_amd64.zip": ("5e2229e936fc53587dbacc8b0892822552af275b0c2d6f66b38947e0e41aeb47", "3f19121d39d1855e6e01c1419658ec6a5e0610c554ca32dc6bf903f1146ba1b3"),
+    "linux_installer/astap_command-line_version_Linux_aarch64.zip": ("2e56d79a626c895298d49c9d841d4a449154f5764e2f39eee8bba669fdc6fa35", "55055cf9d1daa5a96d05f624b3f0e4c61dca9da3ec43657d651528e2db5dbca7"),
+    "macOS installer/astap_command-line_version_macOS_M1.zip": ("9c64e6bd5087ce910ff43d56e860a4dcea6abacfd556aca80dcf9eae129096e7", "db11b837920c7a92d604e588e907afb72cabf88999036a9ba3df3203668b91a5"),
+    "macOS installer/astap_command-line_version_macOS_x86_64.zip": ("f75a359a86d3b320d62df9f72df26a23f754c574b155372e38eea71c22078517", "d7fb7e9a0e101aaa0b664b52a0c2e9eca2ceae62d36e7c1053f66562cca10f99"),
+    "windows_installer/astapwin32.zip": ("f39b180633896f494b2db26bd8aca6b7e17c33c355fbccc19f6813e1e638eb4e", "0fb2d8b209f7ae84518ef2f43e72f6666934a4924cf302f28316ab6a08787084"),
     "star_databases/d05_star_database.zip": ("39d59b73cb960fa0956c35162e70b09a8af10ef20a1e8f5cae7b77d48be5ce31",),
     "star_databases/d50_star_database.zip": ("ca89a958ca0808185f0e546541b4ac73addc40fee4ad8bdd8bb79981c1dd8b43",),
 }

@@ -4,7 +4,7 @@ FROM python:3.12-slim
 # Nur https und nur die geprüften Fassungen: SHA-256 wie in astroflow/core/components.py (ASTAP_SHA256) – SourceForge ersetzt die
 # Dateien bei neuen ASTAP-Versionen unter gleichem Namen; dann bricht der Bau ab und die Prüfsummen werden dort bewusst ergänzt.
 ARG ASTAP_DB=d05
-ARG ASTAP_CLI_SHA256=5e2229e936fc53587dbacc8b0892822552af275b0c2d6f66b38947e0e41aeb47
+ARG ASTAP_CLI_SHA256=3f19121d39d1855e6e01c1419658ec6a5e0610c554ca32dc6bf903f1146ba1b3
 ARG ASTAP_D05_SHA256=39d59b73cb960fa0956c35162e70b09a8af10ef20a1e8f5cae7b77d48be5ce31
 ARG ASTAP_D50_SHA256=ca89a958ca0808185f0e546541b4ac73addc40fee4ad8bdd8bb79981c1dd8b43
 RUN set -e; apt-get update && apt-get install -y --no-install-recommends wget unzip ca-certificates \
