@@ -928,6 +928,18 @@ def build_router(eng: Engine) -> APIRouter:
         eng.ctx.store.update("observatory", {"plan": None})
         return {"plan": None}
 
+    @r.get("/dome")
+    def get_dome(night: int = 0, date: str = ""):
+        """Himmelskuppel (dome.py): Bahnen von Plan-Zielen und eigenen Objekten durch eine Nacht, freie Fenster, Mond.
+        night: 0 = die gerade geplante Nacht, 1 … = so viele Nächte später; date (JJJJ-MM-TT) hat Vorrang."""
+        from . import dome
+        projects, _ = tonight.library(db)
+        try:
+            return dome.dome(projects, _plan_site_for(), eng.ctx.store.get("observatory").get("plan"), k=night, date=date[:10])
+        except Exception:
+            traceback.print_exc()
+            raise HTTPException(500, "Die Himmelskuppel konnte nicht berechnet werden.")
+
     # ---- Nachtplanung: Standort und optionale Wetterfreigabe aus dem Bild-Tutor ------------
     @r.get("/tonight")
     def get_tonight(hide: str = "", night: int = 0):

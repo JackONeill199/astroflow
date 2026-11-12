@@ -134,7 +134,7 @@ async function atlasView(el, query) {
       </div>
       <div class="obs-zoom" role="group" aria-label="Zoom"><button type="button" data-z="in" title="Vergrößern" aria-label="Vergrößern">${icon('plus')}</button><button type="button" data-z="out" title="Verkleinern" aria-label="Verkleinern">${icon('minus')}</button><button type="button" data-z="home" title="Ganzer Himmel" aria-label="Ganzer Himmel">${icon('globe')}</button></div>
       <div class="obs-read tnum" id="obsRead" aria-live="off"></div>
-      <div class="obs-time" id="obsTime" hidden><input type="range" id="obsT" min="0" max="${16 * 60}" step="10" value="0" aria-label="Uhrzeit"><b class="tnum" id="obsTL"></b><button type="button" class="btn ghost sm" id="obsNow">Jetzt</button></div>
+      <div class="obs-time" id="obsTime" hidden><input type="range" id="obsT" min="0" max="${16 * 60}" step="10" value="0" aria-label="Uhrzeit"><b class="tnum" id="obsTL"></b><button type="button" class="btn ghost sm" id="obsNow">Jetzt</button><a class="btn ghost sm" href="#/observatorium/kuppel" title="Himmel von oben mit den Bahnen deiner Ziele">${icon('dome')}Kuppel</a></div>
       <div class="obs-msg" id="obsMsg" hidden></div>
     </div>
     <section class="obs-strip-wrap"><div class="panel-h"><h2>${icon('image')}Meine Fotos am Himmel</h2><span class="grow"></span><span class="chip" id="obsCount">…</span></div><div class="obs-strip" id="obsStrip"></div></section>`;

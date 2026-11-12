@@ -11,7 +11,7 @@ const hours = (h) => h >= 1 ? `${de(h, h % 1 ? 1 : 0)} h` : `${Math.round(h * 60
 // stabile Farbe je Ziel (Farbton aus der Kennung) – Datenfarbe, kein UI-Token
 const hue = (id) => { let x = 0; for (const c of String(id)) x = (x * 31 + c.charCodeAt(0)) % 360; return x; };
 const color = (id) => `hsl(${hue(id)} 62% 62%)`;
-const tabs = (cur) => `<nav class="seg obs-tabs" aria-label="Observatorium"><a href="#/observatorium" class="${cur === 'atlas' ? 'on' : ''}">${icon('globe')}Atlas</a><a href="#/observatorium/plan" class="${cur === 'plan' ? 'on' : ''}">${icon('list')}Planung</a></nav>`;
+const tabs = (cur) => `<nav class="seg obs-tabs" aria-label="Observatorium"><a href="#/observatorium" class="${cur === 'atlas' ? 'on' : ''}">${icon('globe')}Atlas</a><a href="#/observatorium/plan" class="${cur === 'plan' ? 'on' : ''}">${icon('list')}Planung</a><a href="#/observatorium/kuppel" class="${cur === 'dome' ? 'on' : ''}">${icon('dome')}Kuppel</a></nav>`;
 
 // Zeitleiste: Zeilen = Nächte, je Gerät eine Spur; x = Ortszeit von der frühesten Dämmerung bis zur spätesten
 function timeline(plan, width = 760) {
@@ -102,7 +102,7 @@ async function planView(el) {
     const total = p.nights.reduce((s, n) => s + n.blocks.reduce((t, b) => t + b.hours, 0), 0);
     const fc = p.nights.filter(n => n.weather !== 'none').length;
     return `<section class="panel pl-plan"><div class="panel-h"><h2>${icon('list')}${p.nights.length} ${p.nights.length === 1 ? 'Nacht' : 'Nächte'} · ${p.devices.map(x => esc(x.name)).join(' + ')}</h2><span class="grow"></span>
-        <button type="button" class="btn ghost sm" data-act="ics" title="Als Kalenderdatei (.ics) speichern">${icon('down')}Kalender</button><button type="button" class="btn sm" data-act="edit">${icon('refresh')}Neu planen</button><button type="button" class="btn ghost sm icon" data-act="del" title="Plan löschen" aria-label="Plan löschen">${icon('trash')}</button></div>
+        <a class="btn ghost sm" href="#/observatorium/kuppel" title="Bahnen der Ziele über deinem Horizont">${icon('dome')}Kuppel</a><button type="button" class="btn ghost sm" data-act="ics" title="Als Kalenderdatei (.ics) speichern">${icon('down')}Kalender</button><button type="button" class="btn sm" data-act="edit">${icon('refresh')}Neu planen</button><button type="button" class="btn ghost sm icon" data-act="del" title="Plan löschen" aria-label="Plan löschen">${icon('trash')}</button></div>
       <div class="pl-sum"><span><b class="tnum">${p.targets.length}</b> Ziele</span><span><b class="tnum">${hours(total)}</b> geplant</span>
         <span><b class="tnum">${p.targets.filter(t => t.done).length}</b> erreichen ${hours(p.wishes.min_hours)}</span>
         <span class="dim">${p.weather_on ? (fc ? `Wetter für ${fc} ${fc === 1 ? 'Nacht' : 'Nächte'}` : 'keine Vorhersage') : 'ohne Wetter'}${p.site?.horizon ? ' · mit Horizont' : ''}</span></div>
@@ -192,7 +192,7 @@ function nightSection(plan, night) {
   const n = plan?.nights?.find(x => x.night === night);
   if (!n) return '';
   const name = (id) => plan.targets.find(t => t.id === id)?.name || id, dev = (id) => plan.devices.find(x => x.id === id)?.name || id;
-  return `<section class="panel pl-tonight"><div class="panel-h"><h2>${icon('list')}Dein Plan für diese Nacht</h2><span class="grow"></span><a class="linkbtn" href="#/observatorium/plan">Plan öffnen ${icon('arrow')}</a></div>
+  return `<section class="panel pl-tonight"><div class="panel-h"><h2>${icon('list')}Dein Plan für diese Nacht</h2><span class="grow"></span><a class="linkbtn" href="#/observatorium/kuppel?date=${encodeURIComponent(night)}">Kuppel</a><a class="linkbtn" href="#/observatorium/plan">Plan öffnen ${icon('arrow')}</a></div>
     ${n.blocks.length ? `<ul class="pl-tn">${n.blocks.map(b => `<li><i style="background:${color(b.target)}"></i><span class="tnum">${hm(b.start)}–${hm(b.end)}</span><b>${esc(name(b.target))}</b>${plan.devices.length > 1 ? `<span class="dim sm">${esc(dev(b.device))}</span>` : ''}</li>`).join('')}</ul>`
       : `<p class="mut sm">${n.cloud >= 60 ? 'Laut Plan bewölkt – nichts vorgesehen.' : 'Für diese Nacht ist nichts geplant.'}</p>`}</section>`;
 }
