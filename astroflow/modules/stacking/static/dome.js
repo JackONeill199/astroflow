@@ -86,13 +86,20 @@ async function domeView(el, query) {
         ${blocks ? `<path class="dm-tblock" d="${blocks}" style="stroke:${c || 'var(--acc)'}"/>` : ''}
         <path class="dm-hit" d="${base}"><title>${esc(t.name)}${t.free.length ? ' · frei ' + t.free.map(span).join(', ') : ''}</title></path></g>`;
     }
-    // Uhrzeit-Marken entlang der gewählten Bahn (volle Stunden)
+    // Uhrzeit-Marken entlang der gewählten Bahn: volle Stunden der Ortszeit des Browsers, zwischen den Bahnpunkten
+    // interpoliert (das 10-min-Raster beginnt am Sonnenmittag des Ortes und trifft volle Stunden meist nicht)
     const st = sel && visible().find(t => t.id === sel);
-    if (st) for (let i = 0; i < d.n; i++) {
-      const t = T(i);
-      if (Math.round(t) % 3600 !== 0 || st.alt[i] < 0 || !dark(i)) continue;
-      const [x, y] = xy(st.az[i], st.alt[i]);
-      g += `<g class="dm-tick"><circle cx="${f1(x)}" cy="${f1(y)}" r="3"/><text x="${f1(x + 6)}" y="${f1(y - 5)}">${hm(t).slice(0, 2)}</text></g>`;
+    if (st) {
+      const h = new Date(d.t0 * 1000); h.setMinutes(60, 0, 0);
+      for (let t = h.getTime() / 1000; t <= T(d.n - 1); t += 3600) {
+        const fi = (t - d.t0) / d.step, i = Math.floor(fi), f = fi - i;
+        if (i + 1 >= d.n || !dark(i) || !dark(i + 1)) continue;
+        const da = ((st.az[i + 1] - st.az[i] + 540) % 360) - 180;          // Azimut über 0°/360° hinweg
+        const az = st.az[i] + da * f, alt = st.alt[i] + (st.alt[i + 1] - st.alt[i]) * f;
+        if (alt < 0) continue;
+        const [x, y] = xy(az, alt);
+        g += `<g class="dm-tick"><circle cx="${f1(x)}" cy="${f1(y)}" r="3"/><text x="${f1(x + 6)}" y="${f1(y - 5)}">${hm(t).slice(0, 2)}</text></g>`;
+      }
     }
     return g;
   }
