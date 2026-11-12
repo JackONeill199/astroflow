@@ -122,7 +122,32 @@ def message(text: str, error: bool = False):
             return
         except Exception:
             pass
+    if os.name != "nt" and not _tty() and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        if _desktop_message(text, error):        # Start aus dem Menü (Linux): ohne Konsole sähe niemand die Meldung
+            return
     print(text, file=sys.stderr if error else sys.stdout)
+
+
+def _tty() -> bool:
+    try:
+        return bool(sys.stderr and sys.stderr.isatty())
+    except (AttributeError, ValueError):
+        return False
+
+
+def _desktop_message(text: str, error: bool) -> bool:
+    """Linux-Desktop: Meldung über zenity, kdialog oder notify-send (was vorhanden ist). True, wenn eines davon lief."""
+    import shutil
+    for cmd in (["zenity", "--error" if error else "--info", "--title=AstroFlow", "--no-markup", f"--text={text}"],
+                ["kdialog", "--title", "AstroFlow", "--error" if error else "--msgbox", text],
+                ["notify-send", "-a", "AstroFlow", "-u", "critical" if error else "normal", "AstroFlow", text]):
+        if shutil.which(cmd[0]):
+            try:
+                subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600)
+                return True
+            except (OSError, subprocess.SubprocessError):
+                continue
+    return False
 
 
 def spawn_server(data: Path, p: int, h: str) -> subprocess.Popen:

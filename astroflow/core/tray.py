@@ -102,13 +102,50 @@ def stop_running(timeout: float = 10):
         pass
 
 
-# ---- Autostart (Registry „Run“ des Benutzers; die Installer-Aufgabe legt dagegen eine Verknüpfung im Autostart-Ordner an) ----
+# ---- Autostart (Windows: Registry „Run“ des Benutzers, die Installer-Aufgabe legt dagegen eine Verknüpfung im Autostart-Ordner an;
+# Linux: XDG-Autostart `~/.config/autostart/astroflow.desktop`, den auch `install.sh` anlegt) ----
 def _startup_lnk() -> Path | None:
     a = os.environ.get("APPDATA")
     return Path(a) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup" / "AstroFlow.lnk" if a else None
 
 
+def xdg_autostart_path() -> Path:
+    return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "autostart" / "astroflow.desktop"
+
+
+def autostart_supported() -> bool:
+    return os.name == "nt" or sys.platform.startswith("linux")
+
+
+def start_command() -> list[str]:
+    """Befehl für den Autostart: Server ohne Browser; portabel mit --home (Konfiguration, Daten und Pakete im Programmordner)."""
+    cmd = [launcher._gui_python(), *(["-I"] if sys.flags.isolated else []), "-m", "astroflow", "start", "--no-browser"]
+    if launcher.home():
+        cmd += ["--home", str(launcher.home())]
+    return cmd
+
+
+def _desktop_quote(arg: str) -> str:
+    """Argument für `Exec=` einer .desktop-Datei nach der Desktop Entry Specification: immer in "…", darin " ` $ und
+    Backslash mit Backslash maskiert; danach gilt die Maskierung für Zeichenketten (Backslash verdoppelt) und % wird zu %%."""
+    q = "".join("\\" + c if c in '"`$\\' else c for c in arg)
+    return '"' + q.replace("\\", "\\\\").replace("%", "%%") + '"'
+
+
+def desktop_entry(exec_args: list[str], name: str = "AstroFlow", comment: str = "AstroFlow im Hintergrund starten",
+                  icon: str = "astroflow", extra: str = "") -> str:
+    return ("[Desktop Entry]\nType=Application\n"
+            f"Name={name}\nComment={comment}\nExec={' '.join(_desktop_quote(a) for a in exec_args)}\n"
+            f"Icon={icon}\nTerminal=false\nCategories=Science;Astronomy;\n{extra}")
+
+
 def autostart_enabled() -> bool:
+    if sys.platform.startswith("linux"):
+        try:
+            text = xdg_autostart_path().read_text(encoding="utf-8")
+        except OSError:
+            return False
+        return "Hidden=true" not in text and "X-GNOME-Autostart-enabled=false" not in text
     if os.name != "nt":
         return False
     lnk = _startup_lnk()
@@ -124,6 +161,14 @@ def autostart_enabled() -> bool:
 
 
 def set_autostart(on: bool):
+    if sys.platform.startswith("linux"):
+        p = xdg_autostart_path()
+        if on:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(desktop_entry(start_command(), extra="X-GNOME-Autostart-enabled=true\n"), encoding="utf-8")
+        else:
+            p.unlink(missing_ok=True)
+        return
     if os.name != "nt":
         return
     import winreg
@@ -309,7 +354,7 @@ class Tray:
             M(lambda _: "Aufträge fortsetzen" if self.paused() else "Aufträge anhalten", self.toggle_pause),
             pystray.Menu.SEPARATOR,
             M("Benachrichtigung, wenn ein Bild fertig ist", self.toggle_notify, checked=lambda _: self.notify),
-            M("Beim Anmelden starten", self.toggle_autostart, checked=lambda _: autostart_enabled(), visible=os.name == "nt"),
+            M("Beim Anmelden starten", self.toggle_autostart, checked=lambda _: autostart_enabled(), visible=autostart_supported()),
             pystray.Menu.SEPARATOR,
             M("Beenden", self.quit),
         )

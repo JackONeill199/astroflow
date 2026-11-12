@@ -93,8 +93,8 @@ def system_graxpert() -> str | None:
 def own_graxpert() -> str | None:
     """Vom Installer/Assistenten ausgepacktes GraXpert (core/components.py)."""
     try:
-        from ...core.components import graxpert_dir
-        own = graxpert_dir() / "GraXpert.exe"
+        from ...core.components import graxpert_exe
+        own = graxpert_exe()
         return str(own) if own.is_file() else None
     except Exception:
         return None

@@ -45,15 +45,15 @@ ASTAP_CLI = {   # (Betriebssystem, Architektur) → Datei auf SourceForge
 ASTAP_CATALOG = "windows_installer/astapwin32.zip"          # enthält deep_sky.csv (plattformunabhängig, ~1 MB)
 ASTAP_DBS = {"d05": ("star_databases/d05_star_database.zip", 102), "d50": ("star_databases/d50_star_database.zip", 900)}
 # SourceForge hat keine versionierten Dateinamen (die Dateien werden bei neuen ASTAP-Versionen ersetzt). Deshalb gilt nur die
-# geprüfte Fassung: SHA-256 selbst gebildet am 07.11.2026 (alle Weiterleitungen über https). Neue ASTAP-Fassung → Abbruch mit
+# geprüfte Fassung: SHA-256 selbst gebildet am 07.11.2026, zweite Fassung der Programme am 12.11.2026 (alle Weiterleitungen über https). Neue ASTAP-Fassung → Abbruch mit
 # Hinweis; dann hier bewusst ergänzen (Tupel = erlaubte Fassungen).
 ASTAP_SHA256 = {
-    "windows_installer/astap_command-line_version_win64.zip": ("19918dcc91db608b14153b9233e5776e7ca8d5c839cba52a117d559174c01b0c",),
-    "linux_installer/astap_command-line_version_Linux_amd64.zip": ("5e2229e936fc53587dbacc8b0892822552af275b0c2d6f66b38947e0e41aeb47",),
-    "linux_installer/astap_command-line_version_Linux_aarch64.zip": ("2e56d79a626c895298d49c9d841d4a449154f5764e2f39eee8bba669fdc6fa35",),
-    "macOS installer/astap_command-line_version_macOS_M1.zip": ("9c64e6bd5087ce910ff43d56e860a4dcea6abacfd556aca80dcf9eae129096e7",),
-    "macOS installer/astap_command-line_version_macOS_x86_64.zip": ("f75a359a86d3b320d62df9f72df26a23f754c574b155372e38eea71c22078517",),
-    "windows_installer/astapwin32.zip": ("f39b180633896f494b2db26bd8aca6b7e17c33c355fbccc19f6813e1e638eb4e",),
+    "windows_installer/astap_command-line_version_win64.zip": ("19918dcc91db608b14153b9233e5776e7ca8d5c839cba52a117d559174c01b0c", "90aff31165ac4c75e2b7ff5f896e5fa3ffb16cae3496d879c81e1d9ae2133a1f"),
+    "linux_installer/astap_command-line_version_Linux_amd64.zip": ("5e2229e936fc53587dbacc8b0892822552af275b0c2d6f66b38947e0e41aeb47", "3f19121d39d1855e6e01c1419658ec6a5e0610c554ca32dc6bf903f1146ba1b3"),
+    "linux_installer/astap_command-line_version_Linux_aarch64.zip": ("2e56d79a626c895298d49c9d841d4a449154f5764e2f39eee8bba669fdc6fa35", "55055cf9d1daa5a96d05f624b3f0e4c61dca9da3ec43657d651528e2db5dbca7"),
+    "macOS installer/astap_command-line_version_macOS_M1.zip": ("9c64e6bd5087ce910ff43d56e860a4dcea6abacfd556aca80dcf9eae129096e7", "db11b837920c7a92d604e588e907afb72cabf88999036a9ba3df3203668b91a5"),
+    "macOS installer/astap_command-line_version_macOS_x86_64.zip": ("f75a359a86d3b320d62df9f72df26a23f754c574b155372e38eea71c22078517", "d7fb7e9a0e101aaa0b664b52a0c2e9eca2ceae62d36e7c1053f66562cca10f99"),
+    "windows_installer/astapwin32.zip": ("f39b180633896f494b2db26bd8aca6b7e17c33c355fbccc19f6813e1e638eb4e", "0fb2d8b209f7ae84518ef2f43e72f6666934a4924cf302f28316ab6a08787084"),
     "star_databases/d05_star_database.zip": ("39d59b73cb960fa0956c35162e70b09a8af10ef20a1e8f5cae7b77d48be5ce31",),
     "star_databases/d50_star_database.zip": ("ca89a958ca0808185f0e546541b4ac73addc40fee4ad8bdd8bb79981c1dd8b43",),
 }
@@ -89,6 +89,11 @@ GRAXPERT_MSI = f"https://github.com/Steffenhir/GraXpert/releases/download/{GRAXP
 GRAXPERT_SHA256 = "767fac98f57d89185a0ac5d1c1aee43083f1310e77682168a9aa3a70a88c8bd6"
 GRAXPERT_MB = 160
 GRAXPERT_SOURCE = "https://github.com/Steffenhir/GraXpert"
+# Linux (x86_64): offizielles ZIP (cx_Freeze-Ordner „GraXpert-linux/“ mit Programm „GraXpert“, ~1,1 GB entpackt, davon 545 MB
+# CUDA-Bibliothek von onnxruntime). Prüfsumme selbst gebildet (GitHub nennt keine), 12.11.2026.
+GRAXPERT_LINUX_ZIP = f"https://github.com/Steffenhir/GraXpert/releases/download/{GRAXPERT_VERSION}/graxpert-linux-amd64.zip"
+GRAXPERT_LINUX_SHA256 = "0a7364c3304ba19f12231d533c80b294054d6558d54ecd81668e4dec49092588"
+GRAXPERT_LINUX_MB = 375
 
 TORCH_CPU_INDEX = "https://download.pytorch.org/whl/cpu"
 ENGINE_REQS = Path(__file__).resolve().parent.parent / "modules" / "skytrace" / "requirements-engine.txt"
@@ -111,7 +116,7 @@ INFO = {
     "starnet": {"title": "StarNet", "license": "Hersteller: „all rights reserved“ – kein automatischer Download",
                 "source": "https://www.starnetastro.com", "what": "Sterntrennung bei Nebeln (ZIP unter Einstellungen → Bilder → StarNet)"},
 }
-SIZES_MB = {"astap": 105, "graxpert": 413, "gpu": 40, "skytrace": 1400}      # belegter Platz nach der Installation (gemessen bzw. grob)
+SIZES_MB = {"astap": 105, "graxpert": 413 if os.name == "nt" else 1080, "gpu": 40, "skytrace": 1400}      # belegter Platz nach der Installation (gemessen bzw. grob)
 
 
 def system() -> tuple[str, str]:
@@ -139,6 +144,16 @@ def tools_dir() -> Path:
 
 def graxpert_dir() -> Path:
     return tools_dir() / "GraXpert"
+
+
+def graxpert_exe() -> Path:
+    """Programm im eigenen GraXpert-Ordner (Windows: MSI-Abbild, Linux: Inhalt von „GraXpert-linux/“ aus dem ZIP)."""
+    return graxpert_dir() / ("GraXpert.exe" if os.name == "nt" else "GraXpert")
+
+
+def graxpert_supported() -> bool:
+    """Kann AstroFlow GraXpert hier selbst installieren? Windows (MSI) und Linux x86_64 (ZIP); macOS nur über die GraXpert-Seite."""
+    return os.name == "nt" or system() == ("Linux", "x86_64")
 
 
 def _record_path() -> Path:
@@ -210,14 +225,14 @@ def _status_astap(rec, solver_cfg, _):
 def _status_graxpert(rec, *_):
     from ..modules.stacking import graxpert
     p = graxpert.graxpert_path()
-    supported = os.name == "nt"
+    supported = graxpert_supported()
     if p and p != graxpert.own_graxpert():
         return {"state": "installed", "version": "", "detail": f"{p} – eigene Installation, AstroFlow verändert sie nicht",
                 "supported": supported, "can_install": False, "can_remove": False}
     if p:
         return {"state": "installed", "version": rec.get("version") or "", "detail": p, "supported": supported}
     return {"state": "missing" if supported else "unsupported", "supported": supported,
-            "detail": "" if supported else "Unter macOS/Linux bitte von der GraXpert-Seite installieren – AstroFlow findet es dann."}
+            "detail": "" if supported else "Auf diesem System bitte von der GraXpert-Seite installieren – AstroFlow findet es dann."}
 
 
 def _status_gpu(rec, *_):
@@ -229,6 +244,9 @@ def _status_gpu(rec, *_):
         g = gpu.status()
         dev = g.get("device")
         detail = f"Grafikkarte: {dev}" if dev else "pyopencl vorhanden, aber keine geeignete OpenCL-Grafikkarte (≥ 2 GB) gefunden – es rechnet der Prozessor."
+        if not dev and sys.platform.startswith("linux"):
+            detail += (" Unter Linux braucht OpenCL den Treiber der Grafikkarte (NVIDIA: Treiberpaket mit OpenCL; AMD/Intel: "
+                       "z. B. mesa-opencl-icd bzw. intel-opencl-icd).")
         if g.get("mode") == "off":
             detail = "pyopencl vorhanden, GPU in den Einstellungen abgeschaltet."
     except Exception as e:
@@ -247,6 +265,8 @@ def vc_runtime_ok() -> bool:
 
 VC_MISSING = ("Microsoft-C++-Laufzeit fehlt (msvcp140.dll) – PyTorch lässt sich ohne sie nicht laden. "
               "Einstellungen → Module & System → Komponenten → SkyTrace-Analyse-Engine → Reparieren.")
+LIBGL_MISSING = ("OpenCV braucht Grafikbibliotheken des Systems (libGL, libglib), die hier fehlen – unter Debian/Ubuntu: "
+                 "sudo apt install libgl1 libglib2.0-0, unter Fedora: sudo dnf install mesa-libGL glib2. Danach erneut prüfen.")
 
 
 # --------------------------------------------------------------------------- #
@@ -488,13 +508,15 @@ def _refresh_astap():
 
 
 def _install_graxpert(prog, option, force) -> str:
-    if os.name != "nt":
-        raise ValueError("GraXpert installiert AstroFlow nur unter Windows selbst – bitte von der GraXpert-Seite installieren.")
+    if not graxpert_supported():
+        raise ValueError("GraXpert installiert AstroFlow nur unter Windows und Linux (x86_64) selbst – bitte von der GraXpert-Seite installieren.")
     from ..modules.stacking import graxpert as gx
     other = gx.system_graxpert()
     if other:                                         # normal installiertes GraXpert hat Vorrang und wird nie angefasst
         return f"GraXpert ist bereits installiert ({other}) – AstroFlow nutzt diese Installation."
     dest = graxpert_dir()
+    if os.name != "nt":
+        return _install_graxpert_zip(prog, force, dest)
     exe = dest / "GraXpert.exe"
     if exe.is_file() and not force:
         _record("graxpert", {"dir": str(dest), "version": GRAXPERT_VERSION, "installed": time.time()})
@@ -527,6 +549,78 @@ def _install_graxpert(prog, option, force) -> str:
     log.unlink(missing_ok=True)
     _record("graxpert", {"dir": str(dest), "version": GRAXPERT_VERSION, "sha256": GRAXPERT_SHA256, "installed": time.time()})
     return f"GraXpert {GRAXPERT_VERSION} installiert ({dest}). GPL-3.0, Quellcode: {GRAXPERT_SOURCE}"
+
+
+def _install_graxpert_zip(prog, force, dest: Path) -> str:
+    """Linux: offizielles ZIP laden (fortsetzbar, feste SHA-256), sicher in einen Zwischenordner entpacken (keine Pfade außerhalb,
+    Ausführrechte aus dem ZIP), dann den alten Ordner ersetzen."""
+    exe = graxpert_exe()
+    if exe.is_file() and not force:
+        _record("graxpert", {"dir": str(dest), "version": GRAXPERT_VERSION, "installed": time.time()})
+        return f"GraXpert {GRAXPERT_VERSION} ist bereits installiert."
+    part = tools_dir() / f".graxpert-{GRAXPERT_VERSION}-linux.zip.part"
+    part.parent.mkdir(parents=True, exist_ok=True)
+    label = f"Lade GraXpert {GRAXPERT_VERSION} (~{GRAXPERT_LINUX_MB} MB) von GitHub"
+    prog(0.01, label + " …")
+    download(GRAXPERT_LINUX_ZIP, lambda f: prog(0.01 + 0.7 * f, f"{label} … {f*100:.0f} %"), to=part, resume=True)
+    prog(0.72, "Prüfe Prüfsumme …")
+    if sha256_of(part) != GRAXPERT_LINUX_SHA256:
+        part.unlink(missing_ok=True)
+        raise RuntimeError("Prüfsumme des GraXpert-Pakets stimmt nicht – Download verworfen, bitte erneut versuchen.")
+    prog(0.75, "Packe GraXpert aus …")
+    stage = dest.with_name("GraXpert.neu")
+    shutil.rmtree(stage, ignore_errors=True)
+    try:
+        _extract_tree(part, stage, lambda f: prog(0.75 + 0.22 * f, "Packe GraXpert aus …"))
+    except zipfile.BadZipFile:
+        shutil.rmtree(stage, ignore_errors=True)
+        part.unlink(missing_ok=True)
+        raise RuntimeError("GraXpert-Download beschädigt – bitte erneut versuchen.")
+    except Exception:
+        shutil.rmtree(stage, ignore_errors=True)
+        raise
+    if not (stage / exe.name).is_file():
+        shutil.rmtree(stage, ignore_errors=True)
+        raise RuntimeError("Im GraXpert-Paket fehlt das Programm – Paketaufbau hat sich geändert?")
+    shutil.rmtree(dest, ignore_errors=True)
+    stage.replace(dest)
+    part.unlink(missing_ok=True)
+    _record("graxpert", {"dir": str(dest), "version": GRAXPERT_VERSION, "sha256": GRAXPERT_LINUX_SHA256, "installed": time.time()})
+    return f"GraXpert {GRAXPERT_VERSION} installiert ({dest}). GPL-3.0, Quellcode: {GRAXPERT_SOURCE}"
+
+
+def _extract_tree(zpath: Path, stage: Path, prog=None):
+    """ZIP mit genau einem Wurzelordner (z. B. „GraXpert-linux/“) nach `stage` entpacken, den Wurzelordner weglassen.
+    Pfade außerhalb von `stage` und Verweise (Symlinks) nach außen → Abbruch; Dateirechte (ausführbar) aus dem ZIP."""
+    import stat
+    stage.mkdir(parents=True)
+    root = stage.resolve()
+    with zipfile.ZipFile(zpath) as z:
+        infos = z.infolist()
+        for n, info in enumerate(infos):
+            parts = Path(info.filename.replace("\\", "/")).parts[1:]       # Wurzelordner weglassen
+            if not parts:
+                continue
+            target = stage.joinpath(*parts)
+            if not target.resolve().is_relative_to(root) or any(p in ("..", "") for p in parts):
+                raise RuntimeError("Unzulässiger Pfad im GraXpert-Paket – abgebrochen.")
+            mode = info.external_attr >> 16
+            if info.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if stat.S_ISLNK(mode):
+                link = z.read(info).decode("utf-8", "replace")
+                if Path(link).is_absolute() or not (target.parent / link).resolve().is_relative_to(root):
+                    raise RuntimeError("Unzulässiger Verweis im GraXpert-Paket – abgebrochen.")
+                os.symlink(link, target)
+                continue
+            with z.open(info) as src, open(target, "wb") as out:
+                shutil.copyfileobj(src, out, 1 << 20)
+            if os.name != "nt" and mode & 0o111:
+                target.chmod(0o755)
+            if prog and n % 200 == 0:
+                prog(n / max(1, len(infos)))
 
 
 def _constraints() -> Path:
@@ -587,7 +681,11 @@ def _engine_import_test() -> str | None:
     if not r.returncode:
         return None
     last = ((r.stderr or r.stdout).strip().splitlines() or ["?"])[-1][:300]
-    return VC_MISSING if ("c10.dll" in last or "WinError 126" in last) else "PyTorch lässt sich nicht laden: " + last
+    if "c10.dll" in last or "WinError 126" in last:
+        return VC_MISSING
+    if "libGL.so" in last or "libgthread" in last or "libglib" in last:
+        return LIBGL_MISSING
+    return "PyTorch lässt sich nicht laden: " + last
 
 
 def _install_skytrace(prog, option, force) -> str:
