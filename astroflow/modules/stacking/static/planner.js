@@ -102,7 +102,7 @@ async function planView(el) {
     const total = p.nights.reduce((s, n) => s + n.blocks.reduce((t, b) => t + b.hours, 0), 0);
     const fc = p.nights.filter(n => n.weather !== 'none').length;
     return `<section class="panel pl-plan"><div class="panel-h"><h2>${icon('list')}${p.nights.length} ${p.nights.length === 1 ? 'Nacht' : 'Nächte'} · ${p.devices.map(x => esc(x.name)).join(' + ')}</h2><span class="grow"></span>
-        <button type="button" class="btn ghost sm" data-act="ics" title="Als Kalenderdatei (.ics) speichern">${icon('down')}Kalender</button><button type="button" class="btn sm" data-act="edit">${icon('refresh')}Neu planen</button><button type="button" class="btn ghost sm icon" data-act="del" title="Plan löschen" aria-label="Plan löschen">${icon('trash')}</button></div>
+        <a class="btn ghost sm" href="#/observatorium?blick=hier" title="Bahnen der Ziele über deinem Horizont im Atlas">${icon('orbit')}Bahnen</a><button type="button" class="btn ghost sm" data-act="ics" title="Als Kalenderdatei (.ics) speichern">${icon('down')}Kalender</button><button type="button" class="btn sm" data-act="edit">${icon('refresh')}Neu planen</button><button type="button" class="btn ghost sm icon" data-act="del" title="Plan löschen" aria-label="Plan löschen">${icon('trash')}</button></div>
       <div class="pl-sum"><span><b class="tnum">${p.targets.length}</b> Ziele</span><span><b class="tnum">${hours(total)}</b> geplant</span>
         <span><b class="tnum">${p.targets.filter(t => t.done).length}</b> erreichen ${hours(p.wishes.min_hours)}</span>
         <span class="dim">${p.weather_on ? (fc ? `Wetter für ${fc} ${fc === 1 ? 'Nacht' : 'Nächte'}` : 'keine Vorhersage') : 'ohne Wetter'}${p.site?.horizon ? ' · mit Horizont' : ''}</span></div>
@@ -205,7 +205,7 @@ function nightSection(plan, night) {
   const n = plan?.nights?.find(x => x.night === night);
   if (!n) return '';
   const name = (id) => plan.targets.find(t => t.id === id)?.name || id, dev = (id) => plan.devices.find(x => x.id === id)?.name || id;
-  return `<section class="panel pl-tonight"><div class="panel-h"><h2>${icon('list')}Dein Plan für diese Nacht</h2><span class="grow"></span><a class="linkbtn" href="#/observatorium/plan">Plan öffnen ${icon('arrow')}</a></div>
+  return `<section class="panel pl-tonight"><div class="panel-h"><h2>${icon('list')}Dein Plan für diese Nacht</h2><span class="grow"></span><a class="linkbtn" href="#/observatorium?blick=hier&date=${encodeURIComponent(night)}">Bahnen im Atlas</a><a class="linkbtn" href="#/observatorium/plan">Plan öffnen ${icon('arrow')}</a></div>
     ${n.blocks.length ? `<ul class="pl-tn">${n.blocks.map(b => `<li><i style="background:${color(b.target)}"></i><span class="tnum">${hm(b.start)}–${hm(b.end)}</span><b>${esc(name(b.target))}</b>${plan.devices.length > 1 ? `<span class="dim sm">${esc(dev(b.device))}</span>` : ''}</li>`).join('')}</ul>`
       : `<p class="mut sm">${n.cloud >= 60 ? 'Laut Plan bewölkt – nichts vorgesehen.' : 'Für diese Nacht ist nichts geplant.'}</p>`}</section>`;
 }

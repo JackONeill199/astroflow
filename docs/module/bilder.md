@@ -173,6 +173,8 @@ schon fotografiert hast (rot = von der Maske verdeckt), und „An Aufnahmen anpa
 
 *(Demodaten mit erfundenem Ort.)*
 
+**Bahnen:** In „Von hier“ zeigt die Ebene **Bahnen**, wie deine Ziele durch die Nacht wandern und wann sie im freien Ausschnitt über deinem Horizont stehen – mit Listen „Jetzt frei“, „Später frei“ und „Nie frei“; „Ganzer Himmel“ zeigt alles von oben. Mit einem Plan siehst du dort auch, wann dein Teleskop welches Objekt anpeilt und wohin es danach schwenkt.
+
 ## Kometenmodus
 
 Kometen bekommen zwei Stacks – auf die Sterne und auf den Kometenkern – und werden zu einem Bild zusammengesetzt (Bahn aus der JPL-Ephemeride oder im Bild
