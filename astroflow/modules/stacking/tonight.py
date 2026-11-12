@@ -11,7 +11,8 @@ Empfehlungen (seit 0.20.0):
 * **Mehr Zeit** für eigene Objekte mit wenig Belichtung/Rauschen; Gewinn nach der √t-Regel aus bisheriger Belichtung und den
   heute nutzbaren Stunden (`_gain`).
 * **Rangfolge:** nutzbare Stunden in der dunklen Zeit, gewichtet mit Mond (Phase × Abstand), Wolken (falls Vorhersage an) und
-  Zenitnähe (> 80° bei Alt-Az-Geräten: Feldrotation); Kulmination im Dunkeln; Auswahl mischt Objektarten und Kategorien.
+  Bildfelddrehung je Gerät (`devices.weights`: Software-Derotation voll, Derotator gering, EQ null, dazu Zenit-Grenze
+  des Geräts; unbekannte Alt-Az-Geräte wie bisher > 80°); Kulmination im Dunkeln; Auswahl mischt Objektarten und Kategorien.
 * **Saison:** Stunden im Dunkeln über Mindesthöhe für die nächsten Wochen → „Letzte Gelegenheit“ bzw. „bald gut sichtbar“.
 * **Nachtplan:** ein Ziel zur Zeit (Smart-Teleskop): Nacht in 1–4 Abschnitte, jedem das am besten stehende Ziel.
 """
@@ -28,13 +29,14 @@ from pathlib import Path
 import numpy as np
 
 from ...core import sites
-from . import deepsky, objects, tutor
+from . import deepsky, devices, objects, tutor
 
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 STEP_MIN = 10            # Abtastung der Nacht
 MIN_ALT = 30.0           # „gut sichtbar“ ab dieser Höhe
-ZENITH_ALT = 80.0        # darüber starke Feldrotation bei Alt-Az-Montierung
-ZENITH_WEIGHT = 0.4      # Gewicht dieser Stunden in der Rangfolge
+ZENITH_ALT = devices.DEFAULT_ZENITH       # Rückfall für unbekannte Alt-Az-Geräte (Werte je Gerät: devices.json)
+ZENITH_WEIGHT = devices.ZENITH_WEIGHT     # Gewicht der Stunden über der Zenit-Grenze
+ROT_REDUCED = 0.75       # Schritte mit kleinerem Drehungsgewicht zählen als „Bildfelddrehung“ (zenith_hours)
 MAX_CURVES = 6           # maximale Anzahl Empfehlungen in der Grafik
 BLOCKED_PENALTY = 1.5    # Ziele, die nur wegen Wolken ausfallen, stehen hinter klar erreichbaren
 MIN_GAIN = 0.10          # „Mehr Zeit“ nur, wenn das Rauschen heute um ≥ 10 % sinken kann
@@ -277,6 +279,8 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
         return {"site": None}
     now = time.time() if now is None else now
     device = device or {"id": "camera", "name": "Gerät unbekannt", "alt_az": False, "fov": None, "source": None, "mag_limit": deepsky.MAG_DEFAULT}
+    prof = devices.profile(device)
+    device = {**device, "tracking": prof}
     hidden = frozenset(str(h) for h in (hidden or ()))
     collection = collection or {}
     site = [float(cfg["lat"]), float(cfg["lon"])]
@@ -331,6 +335,7 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
             return np.degrees(np.arcsin(np.clip(math.sin(p_) * np.sin(dec) + math.cos(p_) * np.cos(dec) * np.cos(lst - ra), -1, 1)))
         sun, moon = body_alt(sra, sdec), body_alt(mra, mdec)
         alt = _alt(ras, decs, lst, site[0]) if len(ras) else np.zeros((0, len(ts)))
+        az = _az(ras, decs, lst, site[0]) if len(ras) else np.zeros((0, len(ts)))
         hlim = _limit(ras, decs, lst, site[0], horizon)
         msep = _sep(ras, decs, mra, mdec) if len(ras) else np.zeros((0, len(ts)))
         # Saison-Ausblick: Nacht von heute + 0, 14, 28 … Tage in Stundenschritten
@@ -379,13 +384,13 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
     moon_up = (moon > 0)[None, :]
     loss = illum[None, :] * np.clip(1 - msep / 80, 0, 1)                     # Phase × Nähe
     w_moon = np.where(moon_up, (1 - 0.85 * loss) * (1 - 0.3 * illum[None, :]), 1.0)
-    w_zen = np.where((alt > ZENITH_ALT) & bool(device.get("alt_az", True)), ZENITH_WEIGHT, 1.0)
+    w_zen = devices.weights(alt, az, site[0], prof)                         # Bildfelddrehung und Zenit-Grenze je Gerät
     weight = good * w_moon * w_zen * clear[None, :]
     eff = weight.sum(axis=1) * STEP_MIN / 60                                 # nutzbare Stunden
     eff_clear = (good * w_moon * w_zen).sum(axis=1) * STEP_MIN / 60          # dieselben Stunden bei klarem Himmel (ohne Wetter)
     sky = _sky(cloud, dark & (ts >= ref), weather, ts, sun, t0, ref)
     raw = good.sum(axis=1) * STEP_MIN / 60
-    zen_h = (good & (alt > ZENITH_ALT)).sum(axis=1) * STEP_MIN / 60 if bool(device.get("alt_az", True)) else np.zeros(len(alt))
+    zen_h = (good & (w_zen < ROT_REDUCED)).sum(axis=1) * STEP_MIN / 60                # Stunden mit Abschlag durch Drehung/Zenit
     jmax = np.argmax(np.where(dark[None, :] & future[None, :], alt, -90), axis=1) if len(alt) else np.zeros(0, int)
     jtr = np.argmax(alt, axis=1) if len(alt) else np.zeros(0, int)           # Kulmination des ganzen Tages
     culm = (dark[jtr] & (alt[np.arange(len(alt)), jtr] >= (hlim[np.arange(len(alt)), jtr] if horizon else MIN_ALT))) if len(alt) else np.zeros(0, bool)
@@ -624,10 +629,27 @@ def _visibility_reasons(x: dict, device: dict, today: bool = True) -> list[str]:
     if x["culm_dark"]:
         r.append("Kulminiert mitten in der dunklen Zeit.")
     if x["zenith_hours"] >= 0.5:
-        r.append("Steht zeitweise sehr hoch (> 80°): bei Alt-Az-Montierung starke Feldrotation, diese Stunden zählen weniger.")
+        r.append(_rotation_reason(x, device))
     if x["season"]:
         r.append(x["season"]["text"])
     return r
+
+
+def _rotation_reason(x: dict, device: dict) -> str:
+    """Hinweis auf Bildfelddrehung/Zenit-Grenze je Gerät (devices.profile)."""
+    prof = device.get("tracking") or devices.profile(device)
+    if prof["mode"] == "legacy":
+        return f"Steht zeitweise sehr hoch (> {ZENITH_ALT:.0f}°): bei Alt-Az-Montierung starke Feldrotation, diese Stunden zählen weniger."
+    zl = prof.get("zenith_limit")
+    text = (f"Rund um den Meridiandurchgang (bis {round(x['max_alt'])}° hoch) dreht sich das Bildfeld "
+            + ("trotz Derotator " if prof["mode"] == "derot" else "") + "schnell – besser vor oder nach der höchsten Stellung aufnehmen; "
+            f"etwa {_dur(x['zenith_hours'] * 3600)} zählen weniger.")
+    if zl is not None and x["max_alt"] > zl:
+        text += (f" Über {zl:.0f}° gilt das Gerät als unzuverlässig ("
+                 + ("Vorschlag aus Forum/Tests" if prof.get("zenith_status") == "vorschlag" else "Herstellerangabe") + ").")
+    if prof.get("eq_mode"):
+        text += " Im EQ-Modus entfällt die Drehung."
+    return text
 
 
 def _new_reasons(x: dict, device: dict, owned_m: set, collection: dict, today: bool = True) -> list[str]:

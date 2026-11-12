@@ -72,7 +72,7 @@ async function planView(el) {
   try { d = await api('/stacking/plan'); } catch (e) { if (el.isConnected) $('#plBody', el).innerHTML = `<div class="panel">${esc(e.message)}</div>`; return; }
   if (!el.isConnected) return;
   let catalog = [];
-  const w = { nights: 3, devices: [d.default_device], mode: 'mix', min_hours: 2, watch: [], ...(d.plan?.wishes || {}) };
+  const w = { nights: 3, devices: [d.default_device], mode: 'mix', min_hours: 2, watch: [], eq: d.eq_default || [], ...(d.plan?.wishes || {}) };
   w.devices = w.devices.filter(id => d.devices.some(o => o.id === id));
   if (!w.devices.length) w.devices = [d.devices[0].id];
   let wizard = !d.plan;
@@ -86,7 +86,7 @@ async function planView(el) {
       ${d.has_site ? '' : `<div class="notice">${icon('alert')}<div>Für die Planung fehlt ein Standort. <a href="#/settings/standorte">Standort eintragen</a></div></div>`}
       <ol class="pl-steps">
         <li><b>Wie viele Nächte?</b><div class="pl-opts">${chips('nights', NIGHTS.map(n => [n, String(n)]))}</div></li>
-        <li><b>Welche Geräte?</b> <span class="dim sm">bis zu zwei gleichzeitig</span><div class="pl-opts">${chips('devices', d.devices.map(o => [o.id, o.name]), true)}</div></li>
+        <li><b>Welche Geräte?</b> <span class="dim sm">bis zu zwei gleichzeitig</span><div class="pl-opts">${chips('devices', d.devices.map(o => [o.id, o.name]), true)}</div><div class="pl-eq" id="plEq">${eqHtml()}</div></li>
         <li><b>Was willst du?</b><div class="pl-opts">${chips('mode', MODES)}</div></li>
         <li><b>Mindestens je Objekt</b><div class="pl-opts">${chips('min_hours', HOURS.map(h => [h, `${h} h`]))}</div></li>
         <li><b>Merkliste</b> <span class="dim sm">kommt bevorzugt in den Plan</span>
@@ -97,11 +97,17 @@ async function planView(el) {
       <div class="row pl-go"><span class="mut sm">${d.weather_on ? 'Wetter: Open-Meteo, soweit die Vorhersage reicht (~8 Tage).' : 'Wettervorhersage ist aus – geplant wird nur nach Sichtbarkeit.'}</span><span class="grow"></span>
         <button type="button" class="btn" data-act="run" ${d.has_site ? '' : 'disabled'}>${icon('play')}Plan berechnen</button></div></section>`;
   }
+  // EQ-Modus je gewähltem Gerät, das ihn kann (Seestar, Dwarf, eigene Kamera): dann keine Bildfelddrehung in der Rangfolge
+  function eqHtml() {
+    return d.devices.filter(o => o.eq_mode && w.devices.includes(o.id)).map(o => `<label class="modrow"><div><b>${esc(o.name)} im EQ-Modus</b>
+      <div class="mut sm">${(d.eq_detected || []).includes(o.id) ? 'In deinen letzten Aufnahmen erkannt. ' : ''}Mit Polhöhenwiege/Keil dreht sich das Bildfeld nicht – hohe Ziele zählen dann voll.</div></div>
+      <input type="checkbox" data-eq="${esc(o.id)}" ${w.eq.includes(o.id) ? 'checked' : ''}><span class="switch"></span></label>`).join('');
+  }
   const nameOf = (id) => catalog.find(o => o.id === id)?.name || id;
   function planHtml(p) {
     const total = p.nights.reduce((s, n) => s + n.blocks.reduce((t, b) => t + b.hours, 0), 0);
     const fc = p.nights.filter(n => n.weather !== 'none').length;
-    return `<section class="panel pl-plan"><div class="panel-h"><h2>${icon('list')}${p.nights.length} ${p.nights.length === 1 ? 'Nacht' : 'Nächte'} · ${p.devices.map(x => esc(x.name)).join(' + ')}</h2><span class="grow"></span>
+    return `<section class="panel pl-plan"><div class="panel-h"><h2>${icon('list')}${p.nights.length} ${p.nights.length === 1 ? 'Nacht' : 'Nächte'} · ${p.devices.map(x => esc(x.name) + (x.eq ? ' (EQ)' : '')).join(' + ')}</h2><span class="grow"></span>
         <a class="btn ghost sm" href="#/observatorium?blick=hier" title="Bahnen der Ziele über deinem Horizont im Atlas">${icon('orbit')}Bahnen</a><button type="button" class="btn ghost sm" data-act="ics" title="Als Kalenderdatei (.ics) speichern">${icon('down')}Kalender</button><button type="button" class="btn sm" data-act="edit">${icon('refresh')}Neu planen</button><button type="button" class="btn ghost sm icon" data-act="del" title="Plan löschen" aria-label="Plan löschen">${icon('trash')}</button></div>
       <div class="pl-sum"><span><b class="tnum">${p.targets.length}</b> Ziele</span><span><b class="tnum">${hours(total)}</b> geplant</span>
         <span><b class="tnum">${p.targets.filter(t => t.done).length}</b> erreichen ${hours(p.wishes.min_hours)}</span>
@@ -142,6 +148,7 @@ async function planView(el) {
         const xv = k === 'mode' || k === 'devices' ? x.dataset.v : +x.dataset.v, on = k === 'devices' ? w.devices.includes(xv) : w[k] === xv;
         x.classList.toggle('on', on); x.setAttribute('aria-pressed', on);
       });
+      if (k === 'devices') { w.eq = w.eq.filter(x => w.devices.includes(x)); const q = $('#plEq', body); if (q) q.innerHTML = eqHtml(); }
       return;
     }
     const u = e.target.closest('[data-unwatch]');
@@ -167,6 +174,8 @@ async function planView(el) {
   });
   body.addEventListener('keydown', (e) => { const blk = e.target.closest?.('.pl-block'); if (blk && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); showBlock(+blk.dataset.n, +blk.dataset.k); } });
   body.addEventListener('change', (e) => {
+    const eq = e.target.dataset?.eq;
+    if (eq) { w.eq = e.target.checked ? [...new Set([...w.eq, eq])] : w.eq.filter(x => x !== eq); return; }
     if (e.target.id !== 'plWatch') return;
     const t = e.target.value.trim().toLowerCase(), o = catalog.find(x => x.name.toLowerCase() === t) || catalog.find(x => x.id.toLowerCase() === t.replace(/\s+/g, ''));
     if (!o) { toast('Objekt nicht im Katalog.', ''); return; }

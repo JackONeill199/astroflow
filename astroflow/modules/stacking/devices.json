@@ -1,0 +1,120 @@
+{
+  "_hinweis": "Geräte-Tabelle (eine Quelle für Tutor, Heute Nacht, Planer, Gerätediagnose). Werte mit Herkunft: {\"v\": Wert, \"status\": \"gesichert\"|\"vorschlag\", \"quelle\": Text}. Vorschlag = Forum/Test/Händler, später mit eigenen Aufnahmen kalibrieren. Felder siehe devices.py, Recherche docs/entwicklung/nachfuehrung.md.",
+  "stellina": {
+    "name": "Vaonis Stellina", "smart": true, "planner": true,
+    "mount": {"v": "altaz", "status": "gesichert", "quelle": "Vaonis-Support"},
+    "derotator": {"v": "optical", "status": "gesichert", "quelle": "Vaonis-Support „Is the field derotator integrated?“"},
+    "eq_mode": {"v": false, "status": "gesichert", "quelle": "Vaonis (kein EQ-Modus angeboten)"},
+    "zenith_limit": {"v": null, "status": "gesichert", "quelle": "Nutzererfahrung 12.11.2026: nahe am Zenit kein Problem (Derotator)"},
+    "exp_altaz": {"v": 10, "status": "gesichert", "quelle": "FITS-Kopf eigener Aufnahmen (EXPOSURE 10 s)"},
+    "exp_eq": null,
+    "sensor": {"v": [3072, 2080], "status": "gesichert", "quelle": "FITS-Kopf eigener Aufnahmen"},
+    "fov": {"v": [1.0, 0.7], "status": "gesichert", "quelle": "Plate-Solving eigener Aufnahmen"},
+    "mag_limit": 11.5, "aperture": 80, "focal": 400, "gust": 30, "dew_heater": true,
+    "texts": {
+      "filter": "Für Stellina bietet Vaonis einen Lichtverschmutzungsfilter (CLS) an – er hilft bei Stadtlicht und Mond vor allem bei Emissionsnebeln.",
+      "wind": "Stellina windgeschützt aufstellen (Hauswand, Hecke, Auto als Windschutz) und auf festen Untergrund achten.",
+      "dew": "",
+      "fov": "Bildfeld ca. 1° × 0,7° – kleine Galaxien bleiben klein, große Nebel passen oft nicht ganz hinein."
+    }
+  },
+  "vespera": {
+    "name": "Vaonis Vespera", "smart": true, "planner": true,
+    "mount": {"v": "altaz", "status": "gesichert", "quelle": "Vaonis-Support"},
+    "derotator": {"v": "software", "status": "gesichert", "quelle": "Vaonis-Support „How Vespera compensate for the lack of field derotator?“"},
+    "eq_mode": {"v": false, "status": "gesichert", "quelle": "Vaonis (kein EQ-Modus angeboten)"},
+    "zenith_limit": {"v": 80, "status": "vorschlag", "quelle": "bisherige Annahme in AstroFlow (80°)"},
+    "exp_altaz": {"v": 10, "status": "gesichert", "quelle": "Vaonis-Support (10-s-Einzelbelichtungen)"},
+    "exp_eq": null,
+    "sensor": {"v": [1920, 1080], "status": "gesichert", "quelle": "Vaonis-Datenblatt (Sony IMX462)"},
+    "fov": {"v": [1.6, 0.9], "status": "gesichert", "quelle": "Vaonis-Datenblatt"},
+    "mag_limit": 10.5, "aperture": 50, "focal": 200, "gust": 25, "dew_heater": false,
+    "texts": {
+      "filter": "Für Vespera gibt es von Vaonis einen Dual-Band-Filter (Hα/OIII) für Emissionsnebel bei Mond/Stadtlicht und einen CLS-Filter. Für Galaxien und Sternhaufen hilft nur dunkler Himmel.",
+      "wind": "Vespera ist leicht – windgeschützt und auf festem Boden aufstellen, Stativ möglichst niedrig.",
+      "dew": "Bei feuchter Luft Objektiv auf Beschlag prüfen; eine Taukappe hilft.",
+      "fov": "Großes Bildfeld – für große Objekte den Mosaik-Modus der App nutzen."
+    }
+  },
+  "vespera2": {
+    "name": "Vaonis Vespera II", "smart": true, "planner": true, "family": "vespera",
+    "mount": {"v": "altaz", "status": "gesichert", "quelle": "Vaonis-Support"},
+    "derotator": {"v": "software", "status": "gesichert", "quelle": "Vaonis-Support (kein mechanischer Derotator)"},
+    "eq_mode": {"v": false, "status": "vorschlag", "quelle": "kein EQ-Modus belegt"},
+    "zenith_limit": {"v": 75, "status": "vorschlag", "quelle": "Mile High Astro, „Vespera II First Impressions“ (10° vom Zenit Ränder leicht verzogen)"},
+    "exp_altaz": {"v": 10, "status": "gesichert", "quelle": "Vaonis-Support"},
+    "exp_eq": null,
+    "sensor": {"v": [3840, 2160], "status": "gesichert", "quelle": "Vaonis-Datenblatt (Sony IMX585)"},
+    "fov": {"v": [2.5, 1.4], "status": "gesichert", "quelle": "Vaonis-Datenblatt"},
+    "mag_limit": 10.5, "aperture": 50, "focal": 250, "gust": 25, "dew_heater": false,
+    "texts": {}
+  },
+  "seestar": {
+    "name": "ZWO Seestar S50", "smart": true, "planner": true,
+    "mount": {"v": "altaz", "status": "gesichert", "quelle": "ZWO"},
+    "derotator": {"v": "software", "status": "gesichert", "quelle": "ZWO (Feldrotation wird beim Stacken ausgeglichen)"},
+    "eq_mode": {"v": true, "status": "gesichert", "quelle": "Agena Astro „How to Set Up & Use EQ Mode on the ZWO Seestar S50 & S30“"},
+    "zenith_limit": {"v": 70, "status": "vorschlag", "quelle": "Unofficial Seestar Wiki (FAQ): ab ca. 70° Höhe Streifen/Verwerfen"},
+    "exp_altaz": {"v": 10, "status": "gesichert", "quelle": "ZWO-Standard, Agena Astro"},
+    "exp_eq": {"v": 30, "status": "vorschlag", "quelle": "Agena Astro, Tests (30 s und länger im EQ-Modus)"},
+    "sensor": {"v": [1080, 1920], "status": "gesichert", "quelle": "ZWO-Datenblatt (Sony IMX462)"},
+    "fov": {"v": [1.29, 0.73], "status": "gesichert", "quelle": "ZWO-Datenblatt"},
+    "mag_limit": 10.5, "aperture": 50, "focal": 250, "gust": 20, "dew_heater": false,
+    "texts": {
+      "filter": "Seestar hat einen eingebauten Lichtverschmutzungsfilter (Dual-Band): in der App für Emissionsnebel einschalten, für Galaxien und Sternhaufen aus.",
+      "wind": "Seestar ist sehr leicht – bei Wind tief aufstellen und windgeschützt; für lange Sessions ist der EQ-Modus mit Polhöhenwiege ruhiger.",
+      "dew": "Die Taukappenheizung des Seestar in der App einschalten, wenn die Luft feucht ist.",
+      "fov": "Großes Bildfeld – für kleine Galaxien sehr viel Belichtungszeit sammeln."
+    }
+  },
+  "seestar30": {
+    "name": "ZWO Seestar S30", "smart": true, "planner": true, "family": "seestar",
+    "mount": {"v": "altaz", "status": "gesichert", "quelle": "ZWO"},
+    "derotator": {"v": "software", "status": "gesichert", "quelle": "ZWO"},
+    "eq_mode": {"v": true, "status": "gesichert", "quelle": "Agena Astro (EQ-Modus S50 & S30)"},
+    "zenith_limit": {"v": 70, "status": "vorschlag", "quelle": "Unofficial Seestar Wiki (FAQ), Wert der S50 übernommen"},
+    "exp_altaz": {"v": 10, "status": "gesichert", "quelle": "ZWO-Standard"},
+    "exp_eq": {"v": 30, "status": "vorschlag", "quelle": "Agena Astro"},
+    "sensor": {"v": [1920, 1080], "status": "gesichert", "quelle": "ZWO-Datenblatt (Sony IMX662)"},
+    "fov": {"v": [2.17, 1.21], "status": "gesichert", "quelle": "ZWO-Datenblatt"},
+    "mag_limit": 10.5, "aperture": 30, "focal": 150, "gust": 20, "dew_heater": false,
+    "texts": {}
+  },
+  "dwarf": {
+    "name": "DWARFLAB Dwarf", "smart": true, "planner": false,
+    "mount": {"v": "altaz", "status": "gesichert", "quelle": "DWARFLAB-Handbuch"},
+    "derotator": {"v": "software", "status": "gesichert", "quelle": "DWARFLAB-Handbuch"},
+    "eq_mode": {"v": true, "status": "gesichert", "quelle": "DWARFLAB-Handbuch Teil 2 (EQ-Modus per Neigung)"},
+    "zenith_limit": {"v": null, "status": "vorschlag", "quelle": "kein Wert gefunden – Standard 80°"},
+    "exp_altaz": {"v": 15, "status": "vorschlag", "quelle": "High Point Scientific (Dwarf Mini, 15 s Alt-Az)"},
+    "exp_eq": {"v": 60, "status": "vorschlag", "quelle": "mehrfach genannt (Dwarf 3), nicht offiziell belegt"},
+    "sensor": null, "fov": null,
+    "mag_limit": 9.5, "aperture": 35, "focal": 100, "gust": 20, "dew_heater": false,
+    "texts": {
+      "filter": "Den eingebauten Astro- bzw. Dual-Band-Filter passend zum Objekt wählen (Dual-Band nur für Emissionsnebel).",
+      "wind": "Sehr leichtes Gerät – unbedingt windgeschützt aufstellen.",
+      "dew": "Linse bei feuchter Luft auf Beschlag prüfen.", "fov": ""
+    }
+  },
+  "evscope": {
+    "name": "Unistellar eVscope", "smart": true, "planner": false,
+    "mount": {"v": "altaz", "status": "gesichert", "quelle": "Unistellar-Hilfe"},
+    "derotator": {"v": "software", "status": "gesichert", "quelle": "Unistellar-Hilfe „About Derotation, Zenith Angle and Epochs“"},
+    "eq_mode": {"v": false, "status": "gesichert", "quelle": "Unistellar-Hilfe"},
+    "zenith_limit": {"v": 80, "status": "gesichert", "quelle": "Unistellar-Hilfe: empfohlen unter 80°, höchstens 85° (Wortlaut „Zenitwinkel“)"},
+    "exp_altaz": null, "exp_eq": null, "sensor": null, "fov": null,
+    "mag_limit": 12.0, "aperture": 114, "focal": 450, "gust": 30, "dew_heater": false,
+    "texts": {"filter": "", "wind": "Windgeschützt aufstellen.", "dew": "Bei feuchter Luft auf Beschlag am Spiegel/Tubus achten.", "fov": ""}
+  },
+  "camera": {
+    "name": "Astrokamera", "smart": false, "planner": false,
+    "mount": {"v": null, "status": "vorschlag", "quelle": "unbekannt – wie bisher ohne Zenit-Abschlag"},
+    "derotator": null, "eq_mode": null, "zenith_limit": null, "exp_altaz": null, "exp_eq": null, "sensor": null, "fov": null,
+    "mag_limit": null, "gust": 30, "dew_heater": false,
+    "texts": {
+      "filter": "Bei Mond oder Stadtlicht: Schmalband-/Dual-Band-Filter für Emissionsnebel; Galaxien besser in mondlosen Nächten.",
+      "wind": "Montierung und Stativ windgeschützt aufstellen, Gegengewichte ausbalancieren; Autoguiding glättet Böen teilweise.",
+      "dew": "Taukappe und Heizmanschette am Objektiv bzw. an der Schmidt-Platte verwenden.", "fov": ""
+    }
+  }
+}

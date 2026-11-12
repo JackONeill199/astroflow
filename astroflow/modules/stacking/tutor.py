@@ -20,6 +20,8 @@ from pathlib import Path
 
 import numpy as np
 
+from . import devices
+
 TUTOR_VERSION = 3                  # 3 (11.11.2026): Belichtungsempfehlung exposure_more + recommendation
 MODES = ("einsteiger", "experte")
 WEATHER_URL = "https://archive-api.open-meteo.com/v1/archive"
@@ -27,35 +29,10 @@ WEATHER_VARS = ("temperature_2m", "relative_humidity_2m", "dew_point_2m", "cloud
 
 
 # ------------------------------------------------------------------ Geräte #
-# Nur gesicherte Angaben; Tipps vorsichtig formuliert. alt_az: Bildfeldrotation; gust: Böen (km/h), ab denen das Gerät
-# erfahrungsgemäß unruhig wird (leichte Geräte früher).
-DEVICES = {
-    "stellina": {"name": "Vaonis Stellina", "smart": True, "alt_az": True, "aperture": 80, "focal": 400, "gust": 30, "dew_heater": True,
-                 "filter": "Für Stellina bietet Vaonis einen Lichtverschmutzungsfilter (CLS) an – er hilft bei Stadtlicht und Mond vor allem bei Emissionsnebeln.",
-                 "wind": "Stellina windgeschützt aufstellen (Hauswand, Hecke, Auto als Windschutz) und auf festen Untergrund achten.",
-                 "dew": "",                                       # eingebaute Tauheizung (Hinweis des Nutzers)
-                 "fov": "Bildfeld ca. 1° × 0,7° – kleine Galaxien bleiben klein, große Nebel passen oft nicht ganz hinein."},
-    "vespera": {"name": "Vaonis Vespera", "smart": True, "alt_az": True, "aperture": 50, "focal": 200, "gust": 25,
-                "filter": "Für Vespera gibt es von Vaonis einen Dual-Band-Filter (Hα/OIII) für Emissionsnebel bei Mond/Stadtlicht und einen CLS-Filter. Für Galaxien und Sternhaufen hilft nur dunkler Himmel.",
-                "wind": "Vespera ist leicht – windgeschützt und auf festem Boden aufstellen, Stativ möglichst niedrig.",
-                "dew": "Bei feuchter Luft Objektiv auf Beschlag prüfen; eine Taukappe hilft.",
-                "fov": "Großes Bildfeld – für große Objekte den Mosaik-Modus der App nutzen."},
-    "seestar": {"name": "ZWO Seestar", "smart": True, "alt_az": True, "aperture": 50, "focal": 250, "gust": 20,
-                "filter": "Seestar hat einen eingebauten Lichtverschmutzungsfilter (Dual-Band): in der App für Emissionsnebel einschalten, für Galaxien und Sternhaufen aus.",
-                "wind": "Seestar ist sehr leicht – bei Wind tief aufstellen und windgeschützt; für lange Sessions ist der EQ-Modus mit Polhöhenwiege ruhiger.",
-                "dew": "Die Taukappenheizung des Seestar in der App einschalten, wenn die Luft feucht ist.",
-                "fov": "Großes Bildfeld – für kleine Galaxien sehr viel Belichtungszeit sammeln."},
-    "dwarf": {"name": "DWARFLAB Dwarf", "smart": True, "alt_az": True, "aperture": 35, "focal": 100, "gust": 20,
-              "filter": "Den eingebauten Astro- bzw. Dual-Band-Filter passend zum Objekt wählen (Dual-Band nur für Emissionsnebel).",
-              "wind": "Sehr leichtes Gerät – unbedingt windgeschützt aufstellen.",
-              "dew": "Linse bei feuchter Luft auf Beschlag prüfen.", "fov": ""},
-    "evscope": {"name": "Unistellar eVscope", "smart": True, "alt_az": True, "aperture": 114, "focal": 450, "gust": 30,
-                "filter": "", "wind": "Windgeschützt aufstellen.", "dew": "Bei feuchter Luft auf Beschlag am Spiegel/Tubus achten.", "fov": ""},
-    "camera": {"name": "Astrokamera", "smart": False, "alt_az": False, "gust": 30,
-               "filter": "Bei Mond oder Stadtlicht: Schmalband-/Dual-Band-Filter für Emissionsnebel; Galaxien besser in mondlosen Nächten.",
-               "wind": "Montierung und Stativ windgeschützt aufstellen, Gegengewichte ausbalancieren; Autoguiding glättet Böen teilweise.",
-               "dew": "Taukappe und Heizmanschette am Objektiv bzw. an der Schmidt-Platte verwenden.", "fov": ""},
-}
+# Geräte-Tabelle: devices.json (eine Quelle für Tutor, Heute Nacht, Planer, Diagnose). alt_az: Bildfeldrotation;
+# gust: Böen (km/h), ab denen das Gerät erfahrungsgemäß unruhig wird (leichte Geräte früher).
+DEVICES = devices.tutor_devices()
+
 # Bildformate der Smart-Teleskope (H, B) als Rückfall, wenn der Header kein Gerät nennt
 SHAPES = {(2080, 3072): "stellina"}
 

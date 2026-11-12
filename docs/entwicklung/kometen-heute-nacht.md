@@ -40,8 +40,8 @@
   Bildfeldseite, mind. 2′. Eigene Objekte: `keys_for(name)` (Schlüssel M/NGC/IC/C + Namen + ASTAP-Zweitnamen) und Position (Radius = Katalogausdehnung des
   eigenen Objekts, damit M32/M110 bei M31 entfallen). `objects.extended_catalog` speichert nun die Zweitnamen in `aliases`.
 - **Rechnung** (`plan`): Höhen analytisch aus Ortssternzeit (numpy, kein AltAz je Objekt) → ~140–250 Kandidaten in ~1 s, Ergebnis 10 min gecacht (Schlüssel
-  enthält Projekte, Gerät, `hide`, `collection`). Nutzbare Stunden `eff_hours` = dunkel × Höhe ≥ 30° bzw. über der Horizontmaske des Ortes (`_limit`, `_az`; Ziele bekommen dann `lim` je Schritt, das Diagramm zeichnet nur dort kräftig) × Mondgewicht (Phase × Abstand, `w_moon`) × Zenit
-  (> 80° bei `alt_az`: 0,4) × Wolken (`clear = 1 − cloud/80`). `_score` ≈ 0–6 gemeinsam für „new“ und „more“; `_select` greedy, max. 2 je Objektart, beide
+  enthält Projekte, Gerät, `hide`, `collection`). Nutzbare Stunden `eff_hours` = dunkel × Höhe ≥ 30° bzw. über der Horizontmaske des Ortes (`_limit`, `_az`; Ziele bekommen dann `lim` je Schritt, das Diagramm zeichnet nur dort kräftig) × Mondgewicht (Phase × Abstand, `w_moon`) × Bildfelddrehung
+  je Gerät (`devices.weights`, siehe `nachfuehrung.md`; unbekanntes Alt-Az-Gerät wie früher > 80°: 0,4) × Wolken (`clear = 1 − cloud/80`). `_score` ≈ 0–6 gemeinsam für „new“ und „more“; `_select` greedy, max. 2 je Objektart, beide
   Kategorien vertreten. Saison: Nächte heute + 0…196 Tage (14-Tage-Schritte, stündlich) → `_season` (`last`/`soon`).
 - **Mehr Zeit** `_gain`: Rauschen × √(t/(t+Zusatz)), Zusatz = nutzbare Stunden (auf 0,5 h, max. 8); unter 10 % Gewinn entfällt das Ziel.
 - **Nachtplan** `_night_plan`: nutzbare Nacht in 1–4 Abschnitte (≈ 3 h), Zuordnung der Ziele per Permutation (Summe der gewichteten Sichtbarkeit); Blöcke < 40 min entfallen.

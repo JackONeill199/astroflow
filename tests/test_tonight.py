@@ -186,12 +186,22 @@ def test_mix_of_kinds_and_categories(tmp_path):
     assert [x["rank"] for x in recs] == sorted((x["rank"] for x in recs), reverse=True)
 
 
-def test_zenith_penalty_only_for_alt_az(tmp_path):
+def test_field_rotation_penalty_per_device(tmp_path):
+    """Bildfelddrehung je Gerät (devices.json): Software-Derotation voll, Derotator (Stellina) kaum, EQ/Kamera gar nicht;
+    unbekanntes Alt-Az-Gerät wie bisher (> 80°)."""
     zen = {**M31, "dec": 50.0, "exposure": 600}                          # steht bei 50° Breite im Zenit
-    alt_az = tonight.plan([zen], SITE, tmp_path, EVENING, STELLINA)["targets"][0]
-    eq = tonight.plan([zen], SITE, tmp_path, EVENING, CAMERA)["targets"][0]
-    assert alt_az["zenith_hours"] > 0 and alt_az["eff_hours"] < eq["eff_hours"]
-    assert eq["zenith_hours"] == 0
+    run = lambda dev: tonight.plan([zen], SITE, tmp_path, EVENING, dev)["targets"][0]
+    seestar, stellina = run({**STELLINA, "id": "seestar"}), run(STELLINA)
+    eq, cam = run({**STELLINA, "id": "seestar", "eq": True}), run(CAMERA)
+    legacy = run({**STELLINA, "id": "unbekannt"})
+    assert seestar["zenith_hours"] > 1 and seestar["eff_hours"] < stellina["eff_hours"] <= eq["eff_hours"]
+    assert stellina["zenith_hours"] < 0.5 and eq["zenith_hours"] == cam["zenith_hours"] == 0
+    assert eq["eff_hours"] == cam["eff_hours"]
+    assert 0 < legacy["zenith_hours"] and legacy["eff_hours"] < eq["eff_hours"]
+    d = tonight.plan([zen], SITE, tmp_path, EVENING, {**STELLINA, "id": "seestar"})
+    assert d["device"]["tracking"]["mode"] == "software" and d["device"]["tracking"]["zenith_limit"] == 70
+    reason = next((r for x in d["recommendations"] if x["id"] == 7 for r in x["reasons"] if "Meridian" in r), "")
+    assert "vor oder nach" in reason and "Vorschlag" in reason and "EQ-Modus" in reason
 
 
 def test_full_moon_lowers_effective_hours(tmp_path):

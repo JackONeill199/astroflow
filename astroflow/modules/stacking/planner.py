@@ -1,7 +1,8 @@
 """Observatorium, Planer: Beobachtungsplan über mehrere Nächte für ein oder zwei Geräte.
 
 Grundlage ist dieselbe Rechnung wie „Heute Nacht“ (`tonight`): 10-min-Schritte, astronomische Dunkelheit, Höhe über
-max(30°, Horizontmaske des Ortes), Mondgewicht (Phase × Abstand), Zenit-Abschlag bei Alt-Az-Montierung, Wolken aus der
+max(30°, Horizontmaske des Ortes), Mondgewicht (Phase × Abstand), Bildfelddrehung je Gerät (`devices.weights`; EQ-Modus
+je Gerät wählbar), Wolken aus der
 vorhandenen Open-Meteo-Schicht (`tonight._forecast`, nur soweit die Vorhersage reicht – spätere Nächte „ohne Wetter“).
 
 Ablauf: Jede Nacht wird je Gerät in gleich lange Abschnitte (≈ Mindestbelichtung, 1–3 h) geteilt. Nacht für Nacht werden
@@ -22,6 +23,7 @@ import numpy as np
 
 from ...core import sites
 from . import deepsky, objects, tonight
+from . import devices as devtab
 
 STEP_MIN = tonight.STEP_MIN
 MAX_NIGHTS = tonight.NIGHTS
@@ -30,13 +32,7 @@ MAX_CANDIDATES = 500
 WISHES = ("new", "mix", "deep")
 COMET = re.compile(r"^\s*(komet\b|comet\b|[CPDXI]/\d{4}|\d{1,4}[PDI](/|\b))", re.I)       # Kometen-Projekte (Name)
 # Geräte zur Auswahl (Bildfeld lange × kurze Seite in Grad, wie beim Lösen importierter Bilder); „library“ = aus den Aufnahmen
-DEVICES = {
-    "stellina": {"name": "Vaonis Stellina", "fov": [1.0, 0.7], "alt_az": True, "mag_limit": deepsky.MAG_LIMITS["stellina"]},
-    "vespera": {"name": "Vaonis Vespera", "fov": [1.6, 0.9], "alt_az": True, "mag_limit": deepsky.MAG_LIMITS["vespera"]},
-    "vespera2": {"name": "Vaonis Vespera II", "fov": [2.5, 1.4], "alt_az": True, "mag_limit": deepsky.MAG_LIMITS["vespera"], "mag_id": "vespera"},
-    "seestar": {"name": "ZWO Seestar S50", "fov": [1.29, 0.73], "alt_az": True, "mag_limit": deepsky.MAG_LIMITS["seestar"]},
-    "seestar30": {"name": "ZWO Seestar S30", "fov": [2.17, 1.21], "alt_az": True, "mag_limit": deepsky.MAG_LIMITS["seestar"], "mag_id": "seestar"},
-}
+DEVICES = devtab.planner_devices()          # aus devices.json (Geräte mit bekanntem Bildfeld)
 
 
 def device_options(library_device: dict | None) -> list[dict]:
@@ -44,7 +40,8 @@ def device_options(library_device: dict | None) -> list[dict]:
     if library_device and library_device.get("id") not in DEVICES:           # eigene Kamera: Bildfeld aus dem letzten Plate-Solving
         out.insert(0, {"id": "library", "name": library_device.get("name") or "Gerät aus deinen Aufnahmen",
                        "fov": library_device.get("fov"), "alt_az": bool(library_device.get("alt_az")),
-                       "mag_limit": library_device.get("mag_limit") or deepsky.MAG_DEFAULT, "lib_id": library_device.get("id")})
+                       "mag_limit": library_device.get("mag_limit") or deepsky.MAG_DEFAULT, "lib_id": library_device.get("id"),
+                       "eq_mode": devtab.profile({**library_device, "id": "library", "lib_id": library_device.get("id")})["eq_mode"]})
     return out
 
 
@@ -63,8 +60,10 @@ def clean_wishes(w: dict, options: list[dict]) -> dict:
     if mode not in WISHES:
         raise ValueError("Wunsch: neue Objekte, Mischung oder vorhandene vertiefen.")
     watch = [str(x)[:40] for x in (w.get("watch") or [])][:20]
+    eq_ok = {d["id"] for d in options if d.get("eq_mode")}
+    eq = [d for d in devices if d in {str(x) for x in (w.get("eq") or [])} and d in eq_ok]     # EQ-Modus nur, wo das Gerät ihn kann
     return {"nights": max(1, min(MAX_NIGHTS, nights)), "min_hours": max(0.5, min(12.0, round(hours * 2) / 2)),
-            "devices": devices, "mode": mode, "watch": watch}
+            "devices": devices, "mode": mode, "watch": watch, "eq": eq}
 
 
 def _targets(projects: list[dict], devices: list[dict], wishes: dict, lats: list[float]) -> list[dict]:
@@ -113,6 +112,7 @@ def _night(site: dict, t0: float, t1: float, tg: list[dict], devices: list[dict]
 
     ts = np.arange(t0, t1 + 1, STEP_MIN * 60, dtype=float)
     ras, decs = np.radians([t["ra"] for t in tg]), np.radians([t["dec"] for t in tg])
+    profs = [devtab.profile(d) for d in devices]
     lat, lon = site["lat"], site["lon"]
     with warnings.catch_warnings(), iers.conf.set_temp("auto_download", False), iers.conf.set_temp("auto_max_age", None):
         warnings.simplefilter("ignore")
@@ -125,6 +125,7 @@ def _night(site: dict, t0: float, t1: float, tg: list[dict], devices: list[dict]
         body = lambda ra, dec: np.degrees(np.arcsin(np.clip(math.sin(p) * np.sin(dec) + math.cos(p) * np.cos(dec) * np.cos(lst - ra), -1, 1)))
         sun, moon = body(sun_g.ra.rad, sun_g.dec.rad), body(moon_g.ra.rad, moon_g.dec.rad)
         alt = tonight._alt(ras, decs, lst, lat)
+        az = tonight._az(ras, decs, lst, lat)
         lim = tonight._limit(ras, decs, lst, lat, site.get("horizon"))
         msep = tonight._sep(ras, decs, moon_g.ra.rad, moon_g.dec.rad)
     dark = sun <= -18
@@ -135,10 +136,7 @@ def _night(site: dict, t0: float, t1: float, tg: list[dict], devices: list[dict]
     clear = np.ones(len(ts)) if cloud is None else np.clip(1 - np.nan_to_num(cloud, nan=0.0) / 80, 0, 1)
     known = None if cloud is None else np.isfinite(cloud) & dark
     base = good * w_moon * clear[None, :]
-    per_dev = []
-    for d in devices:
-        w_zen = np.where((alt > tonight.ZENITH_ALT) & bool(d.get("alt_az", True)), tonight.ZENITH_WEIGHT, 1.0)
-        per_dev.append(base * w_zen)
+    per_dev = [base * devtab.weights(alt, az, lat, p) for p in profs]         # Bildfelddrehung/Zenit-Grenze je Gerät
     mid = int(np.argmax(dark)) + int(dark.sum()) // 2 if dark.any() else len(ts) // 2
     info = {"dark": tonight._spans(ts, dark), "dark_hours": round(float(dark.sum()) * STEP_MIN / 60, 2),
             "moon": round(float(illum[mid]) * 100),
@@ -162,6 +160,7 @@ def plan(projects: list[dict], site_for, wishes: dict, devices: list[dict], cach
          weather: bool = False) -> dict:
     """site_for(night) → Ort (mit `horizon`) oder None. Rückgabe: Plan je Nacht und Gerät, Fortschritt je Ziel."""
     now = time.time() if now is None else now
+    devices = [{**d, "eq": d["id"] in wishes.get("eq", [])} for d in devices]          # EQ-Modus je Gerät (Assistent)
     first = site_for(None)
     if not first:
         return {"error": "Für die Planung fehlt ein Standort (Einstellungen → Standorte)."}
@@ -237,6 +236,8 @@ def plan(projects: list[dict], site_for, wishes: dict, devices: list[dict], cach
                 "hours": round(float(got[i]), 2), "goal": wishes["min_hours"], "done": bool(got[i] >= wishes["min_hours"] - 0.05)}
                for i in sorted(used, key=lambda i: -got[i])]
     missing = [tg[i]["name"] for i in range(len(tg)) if tg[i]["watch"] and got[i] == 0]
-    return {"created": now, "wishes": wishes, "devices": [{k: d.get(k) for k in ("id", "name", "fov", "alt_az")} for d in devices],
+    return {"created": now, "wishes": wishes,
+            "devices": [{**{k: d.get(k) for k in ("id", "name", "fov", "alt_az", "eq_mode", "eq")}, "tracking": devtab.profile(d)["label"]}
+                        for d in devices],
             "site": {"id": first.get("id"), "name": first.get("name"), "horizon": bool(first.get("horizon"))},
             "weather_on": bool(weather), "nights": nights, "targets": targets, "watch_missing": missing}

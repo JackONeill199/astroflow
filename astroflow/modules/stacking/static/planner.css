@@ -11,6 +11,9 @@
   background-color: var(--acc); color: var(--accfg); font-size: 0.75rem; font-weight: 600 }
 .pl-steps > li > b { font-weight: 600 }
 .pl-steps > li > .dim { grid-column: 2 }
+.pl-eq { grid-column: 2; margin-top: 0.5rem }
+.pl-eq:empty { display: none }
+.pl-eq .modrow { margin-bottom: 0.25rem }
 .pl-opts { grid-column: 2; display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 0.375rem }
 .pl-opt { border: 1px solid var(--border); background-color: var(--surface); color: var(--mut); font: inherit; font-size: 0.8125rem; padding: 0.3125rem 0.75rem;
   border-radius: var(--r-sm); cursor: pointer; transition: border-color var(--t), color var(--t), background-color var(--t) }

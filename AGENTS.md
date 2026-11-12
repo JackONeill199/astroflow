@@ -25,6 +25,7 @@ Stack: Python 3.12+ · numpy/scipy/astropy · FastAPI + uvicorn · SQLite · Van
 | Installation, Starter, Assistent, Komponenten (ASTAP, GraXpert, GPU, SkyTrace-Engine), Prüfsummen, Infobereich, Paket/Inno/Sandbox, Messwerte | `docs/entwicklung/installation.md` |
 | Standorte (`core/sites.py`), Himmelsqualität, saubere Nächte | `docs/entwicklung/standorte-himmel.md` |
 | Kometenmodus, Heute Nacht (`tonight`, `deepsky`) | `docs/entwicklung/kometen-heute-nacht.md` |
+| Geräte-Tabelle (`devices.json`/`devices.py`), Nachführung, Bildfelddrehung, EQ-Erkennung | `docs/entwicklung/nachfuehrung.md` |
 | Observatorium: Himmelsatlas mit eigenen Fotos (`observatory`), später Horizontmaske und Mehrnächte-Planung | `docs/entwicklung/observatorium.md` |
 | Tiefe, Vergleich (Grenzgröße, helle Nachbarn, Hotpixel-Reste) | `docs/entwicklung/analyse-tiefe-vergleich.md` |
 | HR-Diagramm, Asteroiden, Gerätediagnose, Analyse-Dashboard | `docs/entwicklung/analyse-auswertungen.md` |
