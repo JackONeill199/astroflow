@@ -465,3 +465,30 @@ def test_forecast_asks_same_service_with_rounded_site(tmp_path, monkeypatch):
     assert w["hours"][0]["low"] == 10 and w["hours"][0]["wind"] == 7 and w["hours"][0]["mid"] is None
     tonight._forecast([50.123, 10.987], tmp_path, EVENING, EVENING + 86400)
     assert len(calls) == 1                                                      # aus dem Cache
+
+
+# ---------------------------------------------------------------- Horizontmaske #
+def test_horizon_mask_blocks_directions(tmp_path):
+    """Horizontmaske des Ortes: M31 steht im Herbst abends im Osten, nachts nahe Zenit/Norden. Eine Hauswand im Osten
+    (70° Höhe zwischen 40° und 140° Azimut) nimmt die Abendstunden, ein freier Horizont ändert nichts, eine volle Wand alles."""
+    free = tonight.plan([M31], SITE, tmp_path, EVENING)["targets"][0]
+    east = [70.0 if 40 <= i * 10 <= 140 else 0.0 for i in range(36)]
+    walled = tonight.plan([M31], {**SITE, "horizon": east}, tmp_path, EVENING)
+    w = walled["targets"][0]
+    assert walled["horizon"] == east and "lim" in w and len(w["lim"]) == len(w["alt"])
+    assert 0 < w["good_hours"] < free["good_hours"]
+    assert w["good"][0][0] > free["good"][0][0]                             # sichtbar erst später, wenn M31 aus dem Osten heraus ist
+    assert all(v >= tonight.MIN_ALT for v in w["lim"])
+    assert tonight.plan([M31], {**SITE, "horizon": [0.0] * 36}, tmp_path, EVENING)["horizon"] is None
+    assert "lim" not in tonight.plan([M31], {**SITE, "horizon": [0.0] * 36}, tmp_path, EVENING)["targets"][0]
+    boxed = tonight.plan([M31], {**SITE, "horizon": [90.0] * 36}, tmp_path, EVENING)
+    assert not boxed["targets"] and not boxed["plan"]
+
+
+def test_azimuth_convention():
+    """Azimut ab Norden über Osten: Meridiandurchgang südlich = 180°, aufgehend = Osten (0–180°)."""
+    lat, dec = 50.0, np.radians([10.0])
+    ra = np.radians([100.0])
+    lst = np.radians([100.0, 40.0, 160.0])                                    # Meridian, 4 h vorher, 4 h nachher
+    az = tonight._az(ra, dec, lst, lat)[0]
+    assert abs(az[0] - 180) < 1e-6 and 0 < az[1] < 180 and 180 < az[2] < 360

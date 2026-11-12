@@ -58,6 +58,15 @@ const ramp = (id, d, g, cls, op) => `<linearGradient id="${id}" x1="0" x2="1" y1
 }).join('')}</linearGradient>`;
 let chartSeq = 0;
 
+// Teilpfade, wo a[i] ≥ lim[i] (Ziel über Mindesthöhe und Horizontmaske)
+function segments(a, lim, X, Y, times) {
+  let out = '', pen = false;
+  a.forEach((v, i) => {
+    if (v >= lim[i]) { out += `${pen ? 'L' : 'M'}${X(times[i]).toFixed(1)} ${Y(v).toFixed(1)}`; pen = true; } else pen = false;
+  });
+  return out || 'M0 0';
+}
+
 function chart(d, W, H, selected, hidden) {
   const g = geom(d, W, H), {L, T, PW, PH, X, Y} = g, id = `tn${++chartSeq}`;
   const path = a => a.map((v, i) => `${i ? 'L' : 'M'}${X(d.times[i]).toFixed(1)} ${Y(v).toFixed(1)}`).join('');
@@ -106,7 +115,9 @@ function chart(d, W, H, selected, hidden) {
   if (!hidden.has(selected) && d.recommendations[selected]) order.push(selected);
   for (const k of order) {
     const o = d.recommendations[k], p = path(o.alt), dash = o.weather_blocked ? ' stroke-dasharray="7 5"' : '';
-    out += `<g class="tn-series${k === selected ? ' sel' : ''}${o.weather_blocked ? ' blocked' : ''}" data-target="${k}" style="--target:${COLORS[k]}"><path class="tn-low" d="${p}"${dash}/><path class="tn-high" d="${p}" clip-path="url(#${id}u)"${dash}/><title>${esc(o.name)}</title></g>`;
+    // mit Horizontmaske: kräftig nur, wo das Ziel über Mindesthöhe und Maske steht (lim je Schritt), sonst wie bisher per Clip
+    const high = o.lim ? `<path class="tn-high" d="${segments(o.alt, o.lim, X, Y, d.times)}"${dash}/>` : `<path class="tn-high" d="${p}" clip-path="url(#${id}u)"${dash}/>`;
+    out += `<g class="tn-series${k === selected ? ' sel' : ''}${o.weather_blocked ? ' blocked' : ''}" data-target="${k}" style="--target:${COLORS[k]}"><path class="tn-low" d="${p}"${dash}/>${high}<title>${esc(o.name)}</title></g>`;
   }
   const so = d.recommendations[selected];
   if (so && !hidden.has(selected)) {
@@ -208,7 +219,7 @@ customElements.define('af-tonight-chart', class extends HTMLElement {
     const rows = d.recommendations.map((o, k) => {
       if (this.hiddenTargets.has(k)) return '';
       if (o.alt[i] >= 0) dots += `<circle cx="${x}" cy="${y(o.alt[i])}" r="${k === this.selected ? 5 : 4}" fill="${COLORS[k]}" stroke="var(--surface)"/>`;
-      return `<span style="--target:${COLORS[k]}"${o.alt[i] < d.min_alt ? ' class="low"' : ''}>${esc(o.name)}<b>${Math.round(o.alt[i])}°</b></span>`;
+      return `<span style="--target:${COLORS[k]}"${o.alt[i] < (o.lim ? o.lim[i] : d.min_alt) ? ' class="low"' : ''}>${esc(o.name)}<b>${Math.round(o.alt[i])}°</b></span>`;
     }).join('');
     const sky = [d.cloud?.[i] != null ? `☁ ${Math.round(+d.cloud[i])} %` : "", d.wind?.[i] != null ? `Wind ${Math.round(+d.wind[i])} km/h` : ""].filter(Boolean).join(' · ');
     this.querySelector('.tn-cursor').innerHTML = dots;
@@ -263,6 +274,7 @@ function legend(d) {
     item('<i class="tn-lg-twi" aria-hidden="true"></i>', 'Dämmerung', 'Verlauf von hell nach dunkel: bürgerliche, nautische und astronomische Dämmerung'),
     item('<rect class="tn-night" width="18" height="12" rx="2"/><circle class="tn-lg-star" cx="5" cy="4" r="1"/><circle class="tn-lg-star" cx="13" cy="7" r=".8"/>', 'Dunkel', 'Sonne unter −18°'),
     item('<path class="tn-minalt" d="M0 6h18"/>', `${d.min_alt}°`, 'Mindesthöhe: darunter blass gezeichnet'),
+    d.horizon ? item('<path class="tn-lg-hz" d="M0 12V7l3-3 2 3h3V5h3l2 3 2-2 3 3v4z"/>', 'Horizont', 'Horizontmaske des Standorts (Einstellungen → Standorte): hinter Bäumen und Häusern blass gezeichnet') : '',
     item(`<g transform="translate(3 0)">${moonIcon(6, 6, 5, Math.max(d.moon.illum, 30), d.moon.waxing, d.site?.[0] < 0)}</g>`, 'Mond', 'Mondbahn; die Fläche ist umso heller, je voller der Mond'),
     d.cloud ? item('<rect class="tn-lg-cloud" width="18" height="3.5" rx="1"/><rect class="tn-lg-cloud" y="4.25" width="18" height="3.5" rx="1" opacity=".6"/><rect class="tn-lg-cloud" y="8.5" width="18" height="3.5" rx="1" opacity=".3"/>', 'Wolken', 'Band oben: hohe, mittlere und tiefe Wolken; Schleier im Diagramm: Gesamtbewölkung') : '',
     d.wind?.some(v => v != null) ? item('<path class="tn-wind-ico" d="M1 4h9a2 2 0 1 0-2-2M1 8h12a2 2 0 1 1-2 2"/>', 'Wind', 'Streifen unter den Wolken: kräftiger = mehr Wind (bei Böen wackelt das Bild)') : '',

@@ -362,3 +362,55 @@ def test_api_reports_unused(tmp_path, monkeypatch):
     with TestClient(create_app(s)) as c:
         v = c.get("/api/sites?nights=false").json()
         assert v["unused"] == ["trip"] and v["shadowed"] == []
+
+
+# ---------------------------------------------------------------- Horizontmaske #
+def test_horizon_clean_and_interpolate():
+    h = [float(i) for i in range(36)]
+    assert sites.clean_horizon(h) == h and sites.clean_horizon(None) is None and sites.clean_horizon([0] * 36) is None
+    assert sites.clean_horizon([120] + [-5] * 35)[:2] == [90.0, 0.0]          # auf 0–90° begrenzt
+    for bad in ([1, 2, 3], ["x"] * 36, "36"):
+        with pytest.raises(ValueError):
+            sites.clean_horizon(bad)
+    assert sites.horizon_at(h, 15) == 1.5 and sites.horizon_at(h, 355) == 17.5   # zwischen 350° (35) und 0° (0)
+    assert sites.horizon_at(None, 123) == 0.0
+
+
+def test_horizon_saved_with_site_and_resolved():
+    data = sites.normalize({"list": [{"name": "Erfundener Garten", "lat": 47.5, "lon": 11.25, "horizon": [20] * 36},
+                                     {"name": "Frei", "lat": 47.6, "lon": 11.3, "horizon": []}]})
+    a, b = data["list"]
+    assert a["horizon"] == [20.0] * 36 and "horizon" not in b
+    assert sites.resolve({**data, "default": a["id"]}, night="2026-11-11")["horizon"] == [20.0] * 36
+    assert "horizon" not in sites.resolve({**data, "default": b["id"]}, night="2026-11-11")
+
+
+def test_horizon_editor_saves_mask(server, browser):
+    """Einstellungen → Standorte: Horizont-Editor öffnen, Vorlage „Balkon Süd“ wählen, im Panorama malen und speichern;
+    die Ortsliste zeigt danach die Silhouette, die API die Maske. Am Ende wieder freier Horizont (geteilter Testserver)."""
+    import httpx
+    base, _ = server
+    page = browser.new_page(viewport={"width": 1440, "height": 900})
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{base}/#/settings/standorte")
+    row = page.locator('.site-row[data-id="b"]')
+    row.locator(".site-hz").click()
+    page.locator("#dlg .hz-presets [data-p]", has_text="Balkon Süd").click()
+    box = page.locator("#hzSvg").bounding_box()
+    page.mouse.move(box["x"] + box["width"] * 0.30, box["y"] + box["height"] * 0.35)      # Osten, ~50°
+    page.mouse.down()
+    page.mouse.move(box["x"] + box["width"] * 0.36, box["y"] + box["height"] * 0.45, steps=4)
+    page.mouse.up()
+    page.locator("#dlg button[value='1']").click()
+    page.wait_for_selector("#dlg", state="hidden")
+    hz = next(s for s in httpx.get(f"{base}/api/sites?nights=false").json()["list"] if s["id"] == "b")["horizon"]
+    assert len(hz) == 36 and hz[18] == 10 and hz[0] == 90 and 20 < hz[11] < 90         # Süden frei (Brüstung), Norden zu, Osten gemalt
+    assert row.locator(".site-hz").inner_text().strip() == "Horizont"
+    row.locator(".site-hz").click()
+    page.locator("#dlg .hz-presets [data-p]", has_text="Frei").click()
+    page.locator("#dlg button[value='1']").click()
+    page.wait_for_selector("#dlg", state="hidden")
+    assert "horizon" not in next(s for s in httpx.get(f"{base}/api/sites?nights=false").json()["list"] if s["id"] == "b")
+    page.close()
+    assert not errors, errors

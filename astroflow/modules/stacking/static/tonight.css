@@ -72,6 +72,7 @@ af-tonight-chart { display: block; width: 100%; min-width: 0; margin-top: 0.625r
 .tn-below { fill: #000; opacity: .25 }
 .tn-grid { stroke: var(--mut); stroke-opacity: .16 }
 .tn-minalt { fill: none; stroke: var(--fg); stroke-opacity: .45; stroke-dasharray: 3 4 }
+.tn-lg-hz { fill: var(--ok); fill-opacity: .55 }
 svg .tn-axis { fill: var(--mut) }
 .tn-moon-line { fill: none; stroke: var(--tn-moon); stroke-width: 1.5; stroke-dasharray: 1 4; stroke-linecap: round; opacity: .75 }
 .tn-moon-disc { fill: color-mix(in srgb, var(--tn-moon) 14%, transparent); stroke: color-mix(in srgb, var(--tn-moon) 45%, transparent); stroke-width: .75 }

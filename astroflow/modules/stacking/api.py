@@ -899,7 +899,7 @@ def build_router(eng: Engine) -> APIRouter:
             except Exception:
                 night_sites = None
             if here:
-                cfg = {**cfg, "lat": here["lat"], "lon": here["lon"]}
+                cfg = {**cfg, "lat": here["lat"], "lon": here["lon"], "horizon": here.get("horizon")}
         out = tonight.plan(projects, cfg, eng.s.work_dir / "tutor", device=device, hidden=hidden, collection=coll, night=night_ix,
                            night_sites=night_sites)
         sky = None

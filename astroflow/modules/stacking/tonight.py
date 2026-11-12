@@ -27,6 +27,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ...core import sites
 from . import deepsky, objects, tutor
 
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
@@ -209,6 +210,24 @@ def _alt(ra: np.ndarray, dec: np.ndarray, lst: np.ndarray, lat: float) -> np.nda
     return np.degrees(np.arcsin(np.clip(s, -1, 1)))
 
 
+def _az(ra: np.ndarray, dec: np.ndarray, lst: np.ndarray, lat: float) -> np.ndarray:
+    """Azimut in Grad (Nord 0°, Ost 90°): Objekte (N) × Zeiten (T)."""
+    p = math.radians(lat)
+    h = lst[None, :] - ra[:, None]
+    y = -np.cos(dec)[:, None] * np.sin(h)
+    x = np.sin(dec)[:, None] * math.cos(p) - np.cos(dec)[:, None] * np.cos(h) * math.sin(p)
+    return np.degrees(np.arctan2(y, x)) % 360
+
+
+def _limit(ra: np.ndarray, dec: np.ndarray, lst: np.ndarray, lat: float, horizon: list | None) -> np.ndarray | float:
+    """Mindesthöhe je Objekt und Zeit: MIN_ALT bzw. höher, wo die Horizontmaske des Ortes (Bäume, Häuser) den Himmel verdeckt."""
+    if not horizon or not len(ra):
+        return MIN_ALT
+    grid = np.arange(0, 361, sites.HORIZON_STEP)
+    hz = np.interp(_az(ra, dec, lst, lat), grid, list(horizon) + [horizon[0]])
+    return np.maximum(MIN_ALT, hz)
+
+
 def _sep(ra: np.ndarray, dec: np.ndarray, mra: np.ndarray, mdec: np.ndarray) -> np.ndarray:
     """Winkelabstand in Grad: Objekte (N) × Zeiten (T)."""
     c = np.sin(dec)[:, None] * np.sin(mdec)[None, :] + np.cos(dec)[:, None] * np.cos(mdec)[None, :] * np.cos(ra[:, None] - mra[None, :])
@@ -261,6 +280,7 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
     hidden = frozenset(str(h) for h in (hidden or ()))
     collection = collection or {}
     site = [float(cfg["lat"]), float(cfg["lon"])]
+    horizon = sites.clean_horizon(cfg.get("horizon"))                    # Horizontmaske des Ortes der geplanten Nacht
     night = max(0, min(NIGHTS - 1, int(night or 0)))
     base0, _ = _window(now, site[1])
     t0, t1 = base0 + night * 86400, base0 + (night + 1) * 86400
@@ -268,7 +288,7 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
     night_sites = [[float(v) for v in s] if s else site for s in (night_sites or [])][:NIGHTS]
     night_sites += [site] * (NIGHTS - len(night_sites))
     key = (str(cache.resolve()), tuple(site), int(now // 600), night, json.dumps(night_sites), json.dumps(projects, sort_keys=True), json.dumps(device, sort_keys=True),
-           bool(cfg.get("weather")), tuple(sorted(hidden)), json.dumps(collection, sort_keys=True), deepsky.signature())
+           bool(cfg.get("weather")), tuple(horizon or ()), tuple(sorted(hidden)), json.dumps(collection, sort_keys=True), deepsky.signature())
     hit = _cache.get(key)
     if hit and time.time() - hit[0] < 600:
         return {**hit[1], "now": now}
@@ -311,6 +331,7 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
             return np.degrees(np.arcsin(np.clip(math.sin(p_) * np.sin(dec) + math.cos(p_) * np.cos(dec) * np.cos(lst - ra), -1, 1)))
         sun, moon = body_alt(sra, sdec), body_alt(mra, mdec)
         alt = _alt(ras, decs, lst, site[0]) if len(ras) else np.zeros((0, len(ts)))
+        hlim = _limit(ras, decs, lst, site[0], horizon)
         msep = _sep(ras, decs, mra, mdec) if len(ras) else np.zeros((0, len(ts)))
         # Saison-Ausblick: Nacht von heute + 0, 14, 28 … Tage in Stundenschritten
         ots = (t0 + np.array(OFFSETS)[:, None] * 86400 + np.arange(25)[None, :] * 3600).ravel()
@@ -319,7 +340,7 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
         osun = get_body("sun", ot)
         osun_alt = np.degrees(np.arcsin(np.clip(math.sin(p_) * np.sin(osun.dec.rad) + math.cos(p_) * np.cos(osun.dec.rad) * np.cos(olst - osun.ra.rad), -1, 1)))
         o_dark = (osun_alt <= -18).reshape(len(OFFSETS), 25)
-        o_good = ((_alt(ras, decs, olst, site[0]) >= MIN_ALT).reshape(len(ras), len(OFFSETS), 25) & o_dark[None]) if len(ras) else None
+        o_good = ((_alt(ras, decs, olst, site[0]) >= _limit(ras, decs, olst, site[0], horizon)).reshape(len(ras), len(OFFSETS), 25) & o_dark[None]) if len(ras) else None
         o_hours = o_good.sum(axis=2) if o_good is not None else np.zeros((0, len(OFFSETS)))
 
     tw = {"sunset": _cross(ts, sun, -0.833, True), "civil": _cross(ts, sun, -6, True), "nautical": _cross(ts, sun, -12, True),
@@ -354,7 +375,7 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
 
     # ---- Gewichtung je Objekt und Schritt ------------------------------------------------------------------------
     future = ts >= ref
-    good = dark[None, :] & (alt >= MIN_ALT) & future[None, :]
+    good = dark[None, :] & (alt >= hlim) & future[None, :]
     moon_up = (moon > 0)[None, :]
     loss = illum[None, :] * np.clip(1 - msep / 80, 0, 1)                     # Phase × Nähe
     w_moon = np.where(moon_up, (1 - 0.85 * loss) * (1 - 0.3 * illum[None, :]), 1.0)
@@ -367,7 +388,7 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
     zen_h = (good & (alt > ZENITH_ALT)).sum(axis=1) * STEP_MIN / 60 if bool(device.get("alt_az", True)) else np.zeros(len(alt))
     jmax = np.argmax(np.where(dark[None, :] & future[None, :], alt, -90), axis=1) if len(alt) else np.zeros(0, int)
     jtr = np.argmax(alt, axis=1) if len(alt) else np.zeros(0, int)           # Kulmination des ganzen Tages
-    culm = (dark[jtr] & (alt[np.arange(len(alt)), jtr] >= MIN_ALT)) if len(alt) else np.zeros(0, bool)
+    culm = (dark[jtr] & (alt[np.arange(len(alt)), jtr] >= (hlim[np.arange(len(alt)), jtr] if horizon else MIN_ALT))) if len(alt) else np.zeros(0, bool)
     seasons = [_season(o_hours[i], t0, site[0]) for i in range(len(alt))]
 
     def entry(i: int, info: dict) -> dict:
@@ -378,7 +399,8 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
         return {**info, "max_alt": round(float(a[jmax[i]]), 1), "max_t": float(ts[jmax[i]]),
                 "good_hours": round(float(raw[i]), 2), "eff_hours": round(float(eff[i]), 2), "eff_clear": round(float(eff_clear[i]), 2), "good": spans,
                 "moon_sep": round(sep, 1), "alt": [round(float(v), 1) for v in a[sel]],
-                "culm_dark": bool(culm[i]), "zenith_hours": round(float(zen_h[i]), 2), "season": seasons[i]}
+                "culm_dark": bool(culm[i]), "zenith_hours": round(float(zen_h[i]), 2), "season": seasons[i],
+                **({"lim": [round(float(v)) for v in hlim[i][sel]]} if horizon else {})}
 
     targets = [entry(i, {"id": p["id"], "name": p["name"], "kind": p.get("kind"), "exposure": p.get("exposure") or 0}) for i, p in enumerate(own)]
     targets = sorted([x for x in targets if x["good_hours"] > 0], key=lambda x: -x["good_hours"])
@@ -452,6 +474,7 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
            "night_index": night, "nights": _strip(night_sites, site, base0, all_hours, now, cache, bool(cfg.get("weather"))),
            "forecast": {"covered": cloud is not None and bool(np.isfinite(cloud[sel]).any()), "uncertain": night >= UNCERTAIN_FROM},
            "weather": weather, "weather_error": weather_error, "weather_on": bool(cfg.get("weather")), "min_alt": MIN_ALT,
+           "horizon": horizon,
            "catalog": {"candidates": len(cands), "messier": sum(c.source == "messier" for c in cands), "astap": sum(c.source == "astap" for c in cands),
                        "astap_found": bool(objects.extended_catalog()), "mag_limit": device.get("mag_limit")},
            "hidden": sorted(hidden), "sky": sky, "status": status}

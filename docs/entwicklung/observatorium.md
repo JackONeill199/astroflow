@@ -33,7 +33,9 @@ Etappen: 1 Atlas (dieser Stand) · 2 Horizontmaske je Standort + Ansicht „Von 
   Routen in `tests/test_ui_layout.py`.
 
 ## Geplant (Konzept vom 11.11.2026, Freigabe des Nutzers)
-- **Etappe 2:** `horizon` je Standort im `SiteBook` (36 Höhenwerte, alle 10° Azimut), Panorama-Editor mit Vorlagen, Vorschlag aus den eigenen
+- **Horizontmaske (gebaut 12.11.2026, siehe `standorte-himmel.md`):** Feld, Editor, Wirkung in Heute Nacht. Offen aus Etappe 2:
+  Vorschlag aus eigenen Aufnahmen und Atlas „Von hier“ (nach dem Planer, Reihenfolge Nutzerentscheidung 12.11.2026).
+- **Etappe 2 (ursprünglich):** `horizon` je Standort im `SiteBook` (36 Höhenwerte, alle 10° Azimut), Panorama-Editor mit Vorlagen, Vorschlag aus den eigenen
   Aufnahmen (Alt/Az zur Aufnahmezeit, lokal); wirkt in Heute Nacht. Atlas-Ansicht „Von hier“ (Azimut/Höhe, Zeitregler).
 - **Etappe 3:** Assistent (Nächte, Gerät(e) – zwei parallel möglich, Standard eines –, Neues/Vertiefen, Mindestbelichtung, Merkliste), Rechenkern
   aus `tonight.py`, Wetter nur über `tonight._forecast`. Plan in `settings.json` (Abschnitt `observatory`), Anzeige im Atlas und in Heute Nacht.

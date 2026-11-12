@@ -45,7 +45,8 @@ async function sitesSettings(el) {
       return `<li class="site-row" data-id="${esc(s.id)}"><span class="site-dot ${color(s.id)}" aria-hidden="true"></span>
         <div class="site-main"><b>${esc(s.name)}</b>${s.id === d.default ? ' <span class="chip acc">Standard</span>' : ''}
           <div class="mut sm site-coords">${coords(s)}</div>
-          <div class="sm"><span class="${lvl}">${fmtAcc(s.accuracy_m)}</span> <span class="dim">· ${txt}</span>${s.note ? ` <span class="dim">· ${esc(s.note)}</span>` : ''}</div>${skyLine(d.sky?.[s.id])}${unusedNote(s)}</div>
+          <div class="sm"><span class="${lvl}">${fmtAcc(s.accuracy_m)}</span> <span class="dim">· ${txt}</span>${s.note ? ` <span class="dim">· ${esc(s.note)}</span>` : ''}</div>${skyLine(d.sky?.[s.id])}
+          <button type="button" class="site-hz" data-act="horizon" title="Horizont bearbeiten: wo Bäume, Häuser oder der Balkon den Himmel verdecken">${horizonMini(s.horizon)}<span class="sm">${s.horizon ? 'Horizont' : 'Horizont frei'}</span></button>${unusedNote(s)}</div>
         <div class="site-acts">${s.id !== d.default ? `<button class="btn ghost sm" data-act="default">Als Standard</button>` : ''}
           <button class="btn ghost sm icon" data-act="edit" title="Bearbeiten" aria-label="${esc(s.name)} bearbeiten">${icon('edit')}</button>
           <button class="btn ghost sm icon" data-act="del" title="Löschen" aria-label="${esc(s.name)} löschen">${icon('trash')}</button></div></li>`;
@@ -136,6 +137,7 @@ async function sitesSettings(el) {
       const s = d.list.find(x => x.id === row.dataset.id);
       if (b.dataset.act === 'assign') { assign = { id: s.id, from: d.today, to: '' }; draw(); $('#siteAssign [name=from]', el)?.focus(); }
       if (b.dataset.act === 'edit') { edit = { ...s }; draw(); }
+      if (b.dataset.act === 'horizon') horizonEditor(s, (hz) => save({ ...d, list: d.list.map(x => x.id === s.id ? { ...x, horizon: hz || [] } : x) }, hz ? 'Horizont gespeichert.' : 'Horizont frei.'));
       if (b.dataset.act === 'default') save({ ...d, default: s.id }, `${s.name} ist jetzt der Standard-Ort.`);
       if (b.dataset.act === 'del') {
         const used = d.periods.filter(p => p.site_id === s.id).length;

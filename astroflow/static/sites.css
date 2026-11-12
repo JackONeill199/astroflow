@@ -74,3 +74,27 @@
 .site-assign p { margin: 0 0 0.5rem }
 .site-assign-f { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0 0.875rem }
 .site-assign-f input { width: 100%; min-width: 0 }
+/* Horizontmaske: kleine Silhouette in der Ortsliste, Panorama-Editor im Dialog (horizon.js) */
+.site-hz { display: inline-flex; align-items: center; gap: 0.5rem; margin-top: 0.375rem; padding: 0.1875rem 0.5rem 0.1875rem 0.25rem; border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm); background-color: var(--surface); color: var(--mut); font: inherit; cursor: pointer; transition: border-color var(--t), color var(--t) }
+.site-hz:hover, .site-hz:focus-visible { border-color: var(--acc); color: var(--fg) }
+.hz-mini { width: 6.75rem; height: 1.375rem; display: block }
+.hz-mini-land { fill: color-mix(in srgb, var(--ok) 45%, var(--surface-2)) }
+.hz-mini-min { stroke: var(--dim); stroke-width: 1; stroke-dasharray: 2 3 }
+dialog.hz-dlg { width: min(50rem, 96vw) }
+.hz-head h2 { font-size: 1rem; margin: 0 }
+.hz-hint { margin: 0.375rem 0 0.75rem }
+.hz-edit { display: block; width: 100%; height: auto; border-radius: var(--r); background-color: var(--bg); touch-action: none; cursor: crosshair; outline: none }
+.hz-edit:focus-visible { box-shadow: 0 0 0 2px var(--acc) }
+.hz-grid { stroke: var(--border); stroke-width: 1 }
+.hz-min { stroke: var(--fg); stroke-opacity: .45; stroke-dasharray: 3 4 }
+.hz-ax { fill: var(--dim); font-size: 0.6875rem }
+.hz-ax.main { fill: var(--mut); font-weight: 600 }
+.hz-land { fill: color-mix(in srgb, var(--ok) 28%, var(--bg)); fill-opacity: .9 }
+.hz-line { fill: none; stroke: var(--ok); stroke-width: 2; stroke-linejoin: round }
+.hz-pt { fill: var(--surface-2); stroke: var(--ok); stroke-width: 1.5 }
+.hz-pt.cur { fill: var(--acc); stroke: var(--fg) }
+.hz-presets { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 0.75rem }
+.hz-presets .chip { cursor: pointer; height: 1.625rem; font-size: 0.75rem }
+.hz-presets .chip:hover { color: var(--fg); border-color: var(--acc) }
+.hz-foot { margin-top: 1rem; gap: 0.5rem; flex-wrap: wrap }
