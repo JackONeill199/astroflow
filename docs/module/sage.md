@@ -75,7 +75,7 @@ Ein Eintrag entsteht in Stufen, jede ist einzeln nutzbar:
    „enthält …“), Literaturhinweise.
 3. **Mit KI recherchieren:** Ein begrenzter Agent liest dazu Fachartikel (arXiv, auf Wunsch NASA ADS), schreibt Abschnitte wie
    Beschreibung, Physik und neue Forschung und gibt jede Aussage mit Beleg an. Jeder Lauf wird protokolliert (Schritte, abgerufene
-   Quellen, Kosten) und hat ein **Lauf- und ein Monatsbudget**, damit nichts unbemerkt teuer wird.
+   Quellen, Kosten) und hat ein **Lauf- und ein Monatsbudget**, damit die Recherche nicht unbemerkt teuer wird.
 
 Das Ergebnis erscheint als KI-Entwurf unter **Forschung & Quellen**; du kannst Abschnitte prüfen, bearbeiten, in früheren Fassungen
 nachlesen oder entfernen.
@@ -181,6 +181,6 @@ Sage ist so gebaut, dass der Kern ohne KI und ohne Konto funktioniert. Eine KI i
 
 - **Anbieter:** OpenAI, OpenRouter, LM Studio oder ein eigener OpenAI-kompatibler Server – auch rein lokal ohne Cloud. Schlüssel und
   Modell trägst du unter Einstellungen → Sage ein; Schlüssel werden nur an die Adresse geschickt, für die du sie eingegeben hast.
-- **Kosten im Griff:** Lauf- und Monatsbudget, Protokoll aller Aufrufe; Hintergrundaufgaben nutzen eine KI nur, wenn du das erlaubst.
+- **Kosten:** Lauf- und Monatsbudget samt Protokoll gelten für die KI-Recherche (Agent). **Geschichten und Vorlesen unterliegen diesem Budget nicht** – auch die automatisch erzeugte Geschichte nach dem Stacken nicht; wer das vermeiden will, schaltet sie in den Einstellungen ab. Entdeckungs-Aufgaben nutzen eine KI nur, wenn du das erlaubst.
 - **Datenschutz:** Abgefragt werden SIMBAD und arXiv (Objektnamen, keine Standortdaten); an eine KI gehen Objektdaten und Katalogauszüge,
   nie deine Bilder. Ohne Internet bleibt alles Bisherige sichtbar; neue Recherchen warten, bis es wieder geht.
