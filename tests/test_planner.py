@@ -133,4 +133,23 @@ def test_calendar_export(server, browser):
         nights: [{night: '2026-11-02', blocks: [{device: 'stellina', target: 'M33', start: 1793660400, end: 1793671200, hours: 3, max_alt: 61}]}]})""")
     page.close()
     assert out.count("BEGIN:VEVENT") == 1 and "\r\n" in out
-    assert "DTSTART:20261102T" in out and "SUMMARY:M33\, Dreiecksgalaxie · Vaonis Stellina" in out
+    assert "DTSTART:20261102T" in out and r"SUMMARY:M33\, Dreiecksgalaxie · Vaonis Stellina" in out
+
+
+def test_targets_from_later_sites_and_usable_second_choice(tmp_path):
+    """Ortswechsel im Zeitraum: ein Ziel, das nur am späteren (südlicheren) Ort hoch genug kommt, bleibt Kandidat.
+    Mindestnutzen wird vor der Auswahl geprüft: ein Abschnitt bleibt nicht leer, nur weil das bestbewertete Ziel ihn kaum nutzt."""
+    south = {**SITE, "id": "s2", "name": "Erfundener Süden", "lat": 30.0}
+    sites_by_night = lambda night: south if night and night >= "2026-11-03" else SITE
+    opts = planner.device_options(None)
+    low = {**M31, "id": 11, "name": "Tiefes Ziel", "ra": 30.0, "dec": -28.0, "obj_id": None}
+    wishes = planner.clean_wishes({"nights": 2, "devices": ["stellina"], "mode": "deep", "min_hours": 2}, opts)
+    p = planner.plan([low], sites_by_night, wishes, [opts[0]], tmp_path, now=EVENING)
+    assert "11" in {b["target"] for b in p["nights"][1]["blocks"]}                 # am südlichen Ort eingeplant
+    assert "11" not in {b["target"] for b in p["nights"][0]["blocks"]}             # am nördlichen nie über 30°
+    assert p["nights"][1]["site"]["id"] == "s2"
+    # Vor der Korrektur verwarf ein knapp unbrauchbares Spitzenziel den ganzen Abschnitt; jetzt bleibt keine dunkle Nacht leer
+    q = planner.plan([M31], lambda night: SITE, planner.clean_wishes({"nights": 1, "devices": ["stellina"], "watch": ["M33"]}, opts),
+                     [opts[0]], tmp_path, now=EVENING)
+    used = sum(b["end"] - b["start"] for b in q["nights"][0]["blocks"]) / 3600
+    assert used > 0.8 * q["nights"][0]["dark_hours"]

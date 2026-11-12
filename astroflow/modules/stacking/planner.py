@@ -67,13 +67,15 @@ def clean_wishes(w: dict, options: list[dict]) -> dict:
             "devices": devices, "mode": mode, "watch": watch}
 
 
-def _targets(projects: list[dict], devices: list[dict], wishes: dict, lat: float) -> list[dict]:
-    """Kandidaten: eigene Objekte (vertiefen) + Katalog (neu) + Merkliste; je Gerät, ob es passt."""
+def _targets(projects: list[dict], devices: list[dict], wishes: dict, lats: list[float]) -> list[dict]:
+    """Kandidaten: eigene Objekte (vertiefen) + Katalog (neu) + Merkliste; je Gerät, ob es passt. `lats`: Breiten aller Orte des
+    Zeitraums – ein Ziel bleibt, wenn es an mindestens einem davon über die Mindesthöhe kommt."""
+    rises = lambda dec: any(90 - abs(lat - dec) >= tonight.MIN_ALT for lat in lats)
     mode, watch = wishes["mode"], set(wishes["watch"])
     w_own, w_new = {"new": 0.35, "mix": 1.0, "deep": 1.3}[mode], {"new": 1.3, "mix": 1.0, "deep": 0.3}[mode]
     out, taken, own = [], set(), []
     for p in projects:
-        if p.get("ra") is None or p.get("dec") is None or 90 - abs(lat - p["dec"]) < tonight.MIN_ALT:
+        if p.get("ra") is None or p.get("dec") is None or not rises(p["dec"]):
             continue
         if p.get("kind") == "comet" or COMET.match(str(p.get("name") or "")):      # Kometen wandern: feste Koordinaten taugen nicht zum Planen
             continue
@@ -85,7 +87,7 @@ def _targets(projects: list[dict], devices: list[dict], wishes: dict, lat: float
                     "category": "more", "href": f"#/p/{p['id']}", "prio": w_own * (2.0 if hit else 1.0), "watch": hit,
                     "fits": [True] * len(devices)})
     for c in deepsky.catalog():
-        if c.keys & taken or 90 - abs(lat - c.dec) < tonight.MIN_ALT:
+        if c.keys & taken or not rises(c.dec):
             continue
         # Begleiter im selben Feld eines eigenen Objekts (M32/M110 bei M31) sind kein neues Ziel – wie in Heute Nacht
         if any(objects.ang_sep(c.ra, c.dec, ra, dec) <= max(0.3, r, c.size / 120) for ra, dec, r in own):
@@ -165,7 +167,9 @@ def plan(projects: list[dict], site_for, wishes: dict, devices: list[dict], cach
         return {"error": "Für die Planung fehlt ein Standort (Einstellungen → Standorte)."}
     base0, _ = tonight._window(now, first["lon"])
     night0 = sites.planning_night(now, first["lon"])
-    tg = _targets(projects, devices, wishes, first["lat"])
+    night_dates = [(dt.date.fromisoformat(night0) + dt.timedelta(days=k)).isoformat() for k in range(wishes["nights"])]
+    night_sites = [site_for(n) or first for n in night_dates]
+    tg = _targets(projects, devices, wishes, sorted({s["lat"] for s in night_sites}))
     if not tg:
         return {"error": "Keine passenden Ziele für diese Geräte gefunden."}
     need = np.full(len(tg), wishes["min_hours"], dtype=float)
@@ -176,8 +180,7 @@ def plan(projects: list[dict], site_for, wishes: dict, devices: list[dict], cach
     forecasts: dict = {}
     nights = []
     for k in range(wishes["nights"]):
-        night = (dt.date.fromisoformat(night0) + dt.timedelta(days=k)).isoformat()
-        site = site_for(night) or first
+        night, site = night_dates[k], night_sites[k]
         t0, t1 = base0 + k * 86400, base0 + (k + 1) * 86400
         hours = None
         if weather:
@@ -202,11 +205,12 @@ def plan(projects: list[dict], site_for, wishes: dict, devices: list[dict], cach
                 rem = np.clip(need - got, 0, None)
                 # angefangene Ziele zuerst fertig machen, statt immer neue zu beginnen
                 score = prio * np.minimum(gain, rem) * fits[:, di] * np.where((got > 0) & (rem > 0), 1.6, 1.0)
+                score[gain < MIN_USE * (b - a) * STEP_MIN / 60] = 0     # nur Ziele, die den Abschnitt wirklich nutzen, kommen in Frage
                 for ki, ba, bb in busy:                  # dasselbe Ziel nie gleichzeitig auf zwei Geräten
                     if ba < b and a < bb:
                         score[ki] = 0
                 ki = int(np.argmax(score))
-                if score[ki] > 0 and gain[ki] >= MIN_USE * (b - a) * STEP_MIN / 60 and (best is None or score[ki] > best[0]):
+                if score[ki] > 0 and (best is None or score[ki] > best[0]):
                     best = (score[ki], si, ki, float(gain[ki]))
             if best is None:
                 break
