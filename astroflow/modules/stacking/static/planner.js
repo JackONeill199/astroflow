@@ -178,7 +178,7 @@ function ics(plan) {
   const z = (t) => new Date(t * 1000).toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
   const txt = (v) => String(v).replace(/[\\;,]/g, (c) => '\\' + c).replace(/\n/g, '\\n');
   const dev = (id) => plan.devices.find(x => x.id === id)?.name || id;
-  const ev = plan.nights.flatMap(n => n.blocks.map((b, k) => {
+  const ev = plan.nights.flatMap(n => n.blocks.flatMap((b, k) => {          // Zeilen ganz flach: je Feld eine Zeile
     const t = plan.targets.find(x => x.id === b.target) || { name: b.target };
     return ['BEGIN:VEVENT', `UID:astroflow-${n.night}-${b.device}-${k}@astroflow.local`, `DTSTAMP:${z(plan.created)}`,
       `DTSTART:${z(b.start)}`, `DTEND:${z(b.end)}`, `SUMMARY:${txt(`${t.name} · ${dev(b.device)}`)}`,

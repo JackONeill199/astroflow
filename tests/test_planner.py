@@ -132,7 +132,9 @@ def test_calendar_export(server, browser):
         targets: [{id: 'M33', name: 'M33, Dreiecksgalaxie'}],
         nights: [{night: '2026-11-02', blocks: [{device: 'stellina', target: 'M33', start: 1793660400, end: 1793671200, hours: 3, max_alt: 61}]}]})""")
     page.close()
-    assert out.count("BEGIN:VEVENT") == 1 and "\r\n" in out
+    lines = out.split("\r\n")
+    assert out.count("BEGIN:VEVENT") == 1 and "BEGIN:VEVENT" in lines and "END:VEVENT" in lines       # je Feld eine eigene Zeile
+    assert all("," not in ln.split(":", 1)[0] for ln in lines if ln)                                    # nie mehrere Felder in einer Zeile
     assert "DTSTART:20261102T" in out and r"SUMMARY:M33\, Dreiecksgalaxie · Vaonis Stellina" in out
 
 
