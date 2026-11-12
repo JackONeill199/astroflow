@@ -23,6 +23,8 @@ Etappen: 1 Atlas (dieser Stand) · 2 Horizontmaske je Standort + Ansicht „Von 
   (0,3°–220°). Osten links, Norden oben. Fotos als Textur über zwei affine Dreiecke (`drawTri`), unter ~12 px nur als Punkt; ab ~360 px
   Bildbreite das volle JPG statt der Vorschau. Katalog bewusst **rund** (Galaxie Ellipse, Nebel gestrichelt, Haufen gepunktet) –
   eckige Rahmen gehören den eigenen Fotos; ein Katalogname entfällt, wenn ein beschriftetes Foto ihn zeigt.
+  Überlappende Fotos: `photoOrder` (hinten → vorne) – großes Bildfeld hinten, kleines vorne, das ausgewählte und darüber das
+  überfahrene Foto ganz vorne (hervorgehoben); Namen verdeckter Fotos entfallen. Nach einem Pinch setzt der verbleibende Finger die Zieh-Basis neu.
   Ebenen (Fotos, Katalog, Sternbilder, Gitter) und Blickrichtung je Browser (`store` `obs.layers`, `obs.view`).
   Klick → Kontextpanel (Foto: Projekt öffnen + Sage; Katalog: eigene Bilder des Objekts + Sage über `/sage/kb/card`, nur wenn Sage aktiv).
   Leiste „Meine Fotos am Himmel“ fliegt zum Bild. Animationen entfallen bei `prefers-reduced-motion`.

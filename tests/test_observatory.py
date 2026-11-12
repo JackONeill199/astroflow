@@ -112,3 +112,21 @@ def test_sky_data_files():
     for c in cs:
         for seg in c["lines"]:
             assert len(seg) % 2 == 0 and all(0 <= v < 360 for v in seg[0::2])
+
+
+def test_photo_draw_order(server, browser):
+    """Überlappende eigene Fotos: großes Bildfeld hinten, kleines vorne; ausgewählt und überfahren ganz vorne
+    (Fehler 12.11.2026: ausgewähltes Herznebel-Foto blieb hinter dem Stellina-Stack von IC 1795)."""
+    base, _ = server
+    page = browser.new_page()
+    page.goto(f"{base}/#/observatorium")
+    page.wait_for_function("() => !!(window.AFobs && window.AFobs.photoOrder)")
+    order = lambda sel=None, hov=None: page.evaluate(
+        """([s, h]) => window.AFobs.photoOrder([
+             {pid: 1, fov: [1.0, 0.7]}, {pid: 2, fov: [2.3, 1.3]}, {pid: 3, fov: [0.5, 0.4]}, {pid: 4, fov: [1.0, 0.7]}], s, h).map(p => p.pid)""",
+        [sel, hov])
+    assert order() == [2, 1, 4, 3]                       # hinten → vorne: großes Feld zuerst, gleich groß nach Kennung
+    assert order(sel=2) == [1, 4, 3, 2]                  # ausgewählt nach vorne
+    assert order(sel=2, hov=1) == [4, 3, 2, 1]           # überfahren vor ausgewählt
+    assert order(sel=3, hov=3) == [2, 1, 4, 3]
+    page.close()
