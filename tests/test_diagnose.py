@@ -383,3 +383,15 @@ def test_eq_detected_feeds_tonight(tmp_path):
          (json.dumps({"instrument": "Seestar S50", "exptime": 10.0}),))
     _, dev = tonight.library(db)
     assert dev["id"] == "seestar" and dev["eq"] and dev["eq_night"] == "2026-10-05" and dev["exptime"] == 10.0
+
+
+def test_diagnose_uses_detected_model():
+    """Vespera II aus der Erkennung: Diagnose nimmt Modellprofil (Sensor, 75°-Grenze), nicht das der Vespera."""
+    from astroflow.modules.stacking import devices
+    v2 = tutor.detect_device(["Vespera II"])
+    assert devices.profile(v2)["zenith_limit"] == 75
+    fr = _night_frames()
+    trk = diagnose.sky_track([f["t"] for f in fr], 10.68, 45.0, SITE)
+    s = diagnose.sky_rejects(fr, trk, devices.profile(v2), {"state": "unknown", "mode": None}, 10.0, None, None)
+    assert s["zenith_limit"] == 75
+    assert diagnose.devices_get(v2)["name"] == "Vaonis Vespera II"

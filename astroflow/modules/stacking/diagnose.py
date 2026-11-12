@@ -208,7 +208,7 @@ def mount_mode(fit: dict | None, device: dict) -> dict:
     if not fit or fit.get("q_range") is None or fit["q_range"] < Q_MIN or fit.get("slope") is None:
         return {"state": "unknown", "mode": None, **(fit or {})}
     s = abs(fit["slope"])
-    d = devices.get(device.get("id")) or {}
+    d = devices.get(device.get("model") or device.get("id")) or {}
     if s >= ROT_ALTAZ:
         return {"state": "rotating", "mode": "altaz", **fit}
     if s > ROT_STEADY:
@@ -766,7 +766,7 @@ def _d(night: str) -> str:
 
 def devices_get(device: dict) -> dict | None:
     from . import devices
-    return devices.get(device.get("id"))
+    return devices.get(device.get("model") or device.get("id"))
 
 
 def findings(d: dict | None, device: dict) -> list[dict]:
