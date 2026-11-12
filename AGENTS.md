@@ -2,7 +2,7 @@
 
 Kompakter Einstieg für KI-Agenten und neue Sessions. Falls vorhanden zusätzlich `AGENTS.local.md` lesen (lokal, nicht im Repo).
 Details je Thema stehen in `docs/entwicklung/` (Wegweiser unten) – **nur die Datei lesen, die die Aufgabe betrifft**.
-Nutzerdoku: `README.md`, Änderungen: `CHANGELOG.md` (bei Nutzer-sichtbaren Änderungen ergänzen), Wünsche für später:
+Nutzerdoku: `README.md` (kurz, je Modul ein markierter Block `<!-- modul:<id> -->`) + Modulseiten `docs/module/{bilder,skytrace,sage}.md`, Änderungen: `CHANGELOG.md` (bei Nutzer-sichtbaren Änderungen ergänzen), Wünsche für später:
 `docs/FEATURE-WUENSCHE.md` (bei Umsetzung Status nachtragen).
 
 ## Was ist das
