@@ -141,7 +141,7 @@
   mit `require_local`, UI `data-local-only`, Einstellungen → Heimnetz „Firewall freigeben“/„Freigabe entfernen“). Erkennung ohne root:
   `firewall-cmd --state` bzw. `/etc/ufw/ufw.conf` `ENABLED=yes`. Feste Befehle, einzige Werte: Port (int 1–65535) und das lokale Subnetz aus
   `ip -o -4 addr` (nur RFC 1918, Schnittstelle der Hauptadresse zuerst). ufw: `allow from <Netz> to any port <P> proto tcp comment 'AstroFlow LAN'`
-  (Entfernen `delete allow …`); firewalld: Rich-Rule `--permanent` + `--reload` in einem `pkexec /bin/sh -c` (ein Passwortdialog). Ergebnis als
+  (Entfernen `delete allow …`); firewalld: Rich-Rule in der Zone der Heimnetz-Schnittstelle (`--get-zone-of-interface`, sonst Standardzone), zur Laufzeit und `--permanent` – kein `--reload`, das fremde Laufzeit-Änderungen verwürfe –, beides in einem `pkexec /bin/sh -c` (ein Passwortdialog). Ergebnis als
   Einrichtungsauftrag „Firewall-Freigabe“ in der Aktivität, feste deutsche Meldungen. Ohne pkexec oder grafische Sitzung: Befehl mit `sudo` nur
   anzeigen. Keine aktive Firewall: Hinweis, nichts zu tun. Tests nur mit Attrappen (`tests/test_linux.py`).
 - **Engine/GPU-Hinweise:** fehlt libGL/libglib (OpenCV), meldet die Engine-Prüfung `LIBGL_MISSING` mit Paketnamen; ohne OpenCL-Treiber nennt
