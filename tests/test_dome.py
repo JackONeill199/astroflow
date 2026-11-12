@@ -124,7 +124,7 @@ def test_tracks_now_button_and_date_change(server, browser):
     a = minutes()
     page.eval_on_selector("#obsT", "e => e.dispatchEvent(new Event('input', {bubbles: true}))")   # Regler unverändert „anfassen“
     page.wait_for_timeout(500)
-    assert abs(minutes() - a) <= 1
+    assert abs(minutes() - a) <= 5                                # Regler rastet in 10-min-Schritten (vorher: Stunden daneben)
     nxt = page.evaluate("async () => (await (await fetch('/api/stacking/dome?night=1')).json()).night")
     page.evaluate(f"location.hash = '#/observatorium?blick=hier&date={nxt}'")
     page.wait_for_function("() => /in der Nacht/.test(document.querySelector('#obsFree h2')?.textContent || '')", timeout=30000)
