@@ -1,6 +1,7 @@
 /* Observatorium, Himmelskuppel (dome.js): Kuppel links, Listen rechts; schmal untereinander */
 .dm-wrap { container-type: inline-size }
 .dm-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; align-items: start }
+.dm-grid > .panel { margin: 0 }                       /* globales .panel + .panel setzt sonst die Liste tiefer */
 @container (min-width: 56rem) { .dm-grid { grid-template-columns: minmax(0, 1fr) minmax(16rem, 21rem) } }
 .dm-grid.dm-busy .dm-stage { opacity: .5; transition: opacity var(--t) }
 .dm-main { animation: fadeIn var(--t2) var(--ease) both }
