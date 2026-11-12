@@ -81,6 +81,9 @@ Etappen: 1 Atlas (dieser Stand) · 2 Horizontmaske je Standort + Ansicht „Von 
 - Grenze „frei ab“ = max(30°, Horizontmaske) gestrichelt über der Horizontlinie. „Ganzer Himmel“ in „Von hier“ = Blick von oben
   (`ZENITH`, Zenit Mitte, Norden oben, Osten links); `?blick=hier[&date=]` öffnet so mit Bahnen (Links aus Planer, „Dein Plan für diese
   Nacht“, Heute Nacht → Dämmerung und Mond). Zeitregler reicht mit Bahnen über die ganze Nacht (`setRange`).
+- **Teleskope** (Plan-Geräte, `dome.devices` + Blöcke): Fadenkreuz am gerade angepeilten Ziel („Vaonis Stellina · bis 23:00“),
+  gestrichelter Pfeil von Block zu Block mit Uhrzeit des Schwenks; über den Listen „Ablauf deiner Teleskope“ (Schritt anklicken →
+  Zeitregler auf den Blockbeginn, Ziel gewählt).
 - Listen unter der Karte (`freeList`): „Jetzt frei“, „Später frei“, „Schon vorbei“, „In dieser Nacht nie frei“ (mit Grund); Klick fliegt hin.
 - Rechnung `dome.py` (`GET /api/stacking/dome?night=&date=`): Nacht = Sonne unter −6°, 10-min-Schritte, Ort je Nacht aus der Ortsliste,
   astropy ohne IERS-Download wie der Planer. Ziele: zuerst die des gespeicherten Plans (mit ihren Blöcken), sonst eigene Objekte

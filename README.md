@@ -128,7 +128,7 @@ Unter **Planung** fragt ein Assistent nach Nächten, Gerät(en) – Stellina und
 
 Orte legst du unter Einstellungen → Standorte **nach Datum** an (Zeiträume, einzelne Nächte, Standard-Ort); „Heute bin ich in …“ wechselt den Ort für die
 aktuelle Nacht. Der Ort einer Aufnahme ergibt sich aus FITS-Kopf → Zeitraum → Standard.
-Je Ort lässt sich ein **Horizont** einzeichnen (Bäume, Häuser, Balkon) – „Heute Nacht“ rechnet dann nur mit dem freien Himmel. Punkte zeigen, wo du dort schon fotografiert hast; im Observatorium zeigt „Von hier“ den Himmel über deinem Horizont zu einer wählbaren Uhrzeit. Die Ebene **Bahnen** zeigt dort, wie deine Ziele durch die Nacht wandern und wann sie im freien Ausschnitt über deinem Horizont stehen – „Ganzer Himmel“ zeigt alles von oben.
+Je Ort lässt sich ein **Horizont** einzeichnen (Bäume, Häuser, Balkon) – „Heute Nacht“ rechnet dann nur mit dem freien Himmel. Punkte zeigen, wo du dort schon fotografiert hast; im Observatorium zeigt „Von hier“ den Himmel über deinem Horizont zu einer wählbaren Uhrzeit. Die Ebene **Bahnen** zeigt dort, wie deine Ziele durch die Nacht wandern und wann sie im freien Ausschnitt über deinem Horizont stehen – „Ganzer Himmel“ zeigt alles von oben. Mit einem Plan siehst du dort auch, wann dein Teleskop welches Objekt anpeilt und wohin es danach schwenkt.
 
 ### Kometenmodus
 

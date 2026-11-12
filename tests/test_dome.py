@@ -60,10 +60,12 @@ def test_horizon_mask_blocks_and_explains():
 def test_plan_targets_first_with_blocks_of_that_night():
     blk = {"target": "ngc7000", "device": "stellina", "start": EVENING + 3 * 3600, "end": EVENING + 5 * 3600}
     plan = {"targets": [{"id": "ngc7000", "name": "NGC 7000 Nordamerikanebel", "ra": 314.7, "dec": 44.5, "href": None}],
-            "nights": [{"night": "2026-11-02", "blocks": [blk]}, {"night": "2026-11-03", "blocks": []}]}
+            "nights": [{"night": "2026-11-02", "blocks": [blk]}, {"night": "2026-11-03", "blocks": []}],
+            "devices": [{"id": "stellina", "name": "Vaonis Stellina", "fov": [1.0, 0.7]}]}
     out = dome.dome([M31], lambda night: SITE, plan, now=EVENING)
     assert [t["source"] for t in out["targets"]] == ["plan", "own"]
     assert out["targets"][0]["blocks"] == [{"start": blk["start"], "end": blk["end"], "device": "stellina"}]
+    assert out["devices"] == [{"id": "stellina", "name": "Vaonis Stellina"}]                # Ablauf: welches Teleskop wann
     nxt = dome.dome([M31], lambda night: SITE, plan, now=EVENING, date="2026-11-03")
     assert nxt["night"] == "2026-11-03" and nxt["k"] == 1 and nxt["targets"][0]["blocks"] == []
 

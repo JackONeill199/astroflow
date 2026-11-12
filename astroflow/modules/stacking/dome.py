@@ -115,7 +115,9 @@ def dome(projects: list[dict], site_for, plan: dict | None, now: float | None = 
             "sun": [round(float(v), 1) for v in sun], "dark": _spans(ts, dark), "min_alt": tonight.MIN_ALT,
             "moon": {"alt": [round(float(v), 1) for v in moon_alt], "az": [round(float(v), 1) for v in moon_az],
                      "illum": round(float(illum[mid]) * 100)},
-            "targets": targets}
+            "targets": targets,
+            # Geräte des Plans (Ablauf: welches Teleskop wann welches Ziel anpeilt – aus den Blöcken der Ziele)
+            "devices": [{"id": d.get("id"), "name": d.get("name") or d.get("id")} for d in (plan or {}).get("devices", [])]}
 
 
 def _why(alt: np.ndarray, lim: np.ndarray, above: np.ndarray, dark: np.ndarray) -> str:

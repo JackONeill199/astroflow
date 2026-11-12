@@ -284,6 +284,9 @@ async function atlasView(el, query) {
     return [t.az[i] + da * f, t.alt[i] + (t.alt[i + 1] - t.alt[i]) * f];
   };
   const freeAt = (t, ts) => t.free.some(([a, b]) => ts >= a && ts < b);
+  // Ablauf je Teleskop: Blöcke des Plans in dieser Nacht nach Zeit, mit Ziel
+  const runs = () => (paths.devices || []).map(dv => ({ ...dv, seq: paths.targets.flatMap(t => t.blocks.filter(b => b.device === dv.id).map(b => ({ ...b, t })))
+    .sort((a, b) => a.start - b.start) })).filter(r => r.seq.length);
   function trackLayer(base) {
     const d = paths, T = (i) => d.t0 + i * d.step;
     const dark = (i) => d.dark.some(([a, b]) => T(i) >= a && T(i) < b);
@@ -344,12 +347,37 @@ async function atlasView(el, query) {
       }
       hits.push({ type: 'track', o: t, x: q[0], y: q[1], r: 11 });
     }
-    g.globalAlpha = 1; g.font = '500 11px ' + col.font;
+    g.globalAlpha = 1;
+    // Teleskope: Schwenkweg zwischen aufeinanderfolgenden Blöcken (Pfeil mit Uhrzeit) und Fadenkreuz am gerade angepeilten Ziel
+    const at = (t, ts) => { const p = pathAt(t, ts); return p && p[1] > -5 ? base.fwd(360 - p[0], p[1]) : null; };
+    runs().forEach((r, ri) => {
+      g.strokeStyle = col.fg; g.fillStyle = col.fg; g.lineWidth = 1.4; g.setLineDash([5, 4]); g.globalAlpha = 0.75;
+      for (let k = 1; k < r.seq.length; k++) {
+        const a = at(r.seq[k - 1].t, r.seq[k - 1].end), b = at(r.seq[k].t, r.seq[k].start);
+        if (!a || !b || Math.hypot(b[0] - a[0], b[1] - a[1]) < 12) continue;
+        g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.stroke();
+        const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+        g.setLineDash([]); g.beginPath(); g.moveTo(...b);
+        g.lineTo(b[0] - 9 * Math.cos(ang - 0.4), b[1] - 9 * Math.sin(ang - 0.4)); g.lineTo(b[0] - 9 * Math.cos(ang + 0.4), b[1] - 9 * Math.sin(ang + 0.4));
+        g.closePath(); g.fill(); g.setLineDash([5, 4]);
+        g.fillText(hmT(r.seq[k].start), (a[0] + b[0]) / 2 + 5, (a[1] + b[1]) / 2 - 5);
+      }
+      g.setLineDash([]); g.globalAlpha = 1;
+      const cur = r.seq.find(b => tsel >= b.start && tsel < b.end), q = cur && at(cur.t, tsel);
+      if (!q) return;
+      const R = 17;
+      g.strokeStyle = col.fg; g.lineWidth = 2;
+      g.beginPath(); g.arc(q[0], q[1], R, 0, 2 * Math.PI); g.stroke();
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { g.beginPath(); g.moveTo(q[0] + dx * (R - 6), q[1] + dy * (R - 6)); g.lineTo(q[0] + dx * (R + 7), q[1] + dy * (R + 7)); g.stroke(); }
+      g.font = '700 11px ' + col.font; g.fillStyle = col.fg;
+      g.fillText(`${r.name} · bis ${hmT(cur.end)}`, q[0] + R + 9, q[1] - R + 2 + ri * 14);
+    });
+    g.font = '500 11px ' + col.font;
   }
 
   // Listen unter der Karte: jetzt frei / später frei / schon vorbei / nie frei (zur gewählten Uhrzeit)
   let freeSig = '';
-  function freeList(ts = tsel) {
+  function freeList(ts = tShow) {                              // tShow: Zielzeit des Reglers (auch während der Animation)
     const box = $('#obsFree', el);
     const showIt = mode === 'here' && on.tracks && paths && paths.targets.length;
     box.hidden = !showIt;
@@ -364,7 +392,8 @@ async function atlasView(el, query) {
     }
     now.sort((a, b) => a[0] - b[0]); later.sort((a, b) => a[0] - b[0]);
     const pick = sel?.type === 'track' ? sel.o.id : '';
-    const sig = [ts > 0 ? Math.round(ts / 600) : 0, pick, now.length, later.length, past.length].join('|');
+    const rr = runs(), active = rr.map(r => r.seq.find(b => ts >= b.start && ts < b.end)?.start || 0);
+    const sig = [ts > 0 ? Math.round(ts / 600) : 0, pick, now.length, later.length, past.length, active.join(',')].join('|');
     if (sig === freeSig) return;
     const first = !freeSig;
     freeSig = sig;
@@ -376,6 +405,8 @@ async function atlasView(el, query) {
     box.innerHTML = `<div class="panel-h"><h2>${icon('orbit')}Bahnen ${d.k ? 'in der Nacht ' + new Date(d.night + 'T12:00:00Z').toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric', timeZone: 'UTC' }) : 'heute Nacht'}</h2><span class="grow"></span>
         <span class="mut sm">${d.dark.length ? 'dunkel ' + d.dark.map(spanT).join(', ') : 'keine astronomische Dunkelheit'} · Mond ${d.moon.illum} %</span></div>
       <p class="mut sm obs-fhint">Kräftige Linie = frei (dunkel, über ${d.min_alt}° und über deinem Horizont, gestrichelte Grenze) · dick = geplant · gestrichelt = tief oder verdeckt. Uhrzeit mit dem Regler wählen.</p>
+      ${rr.length ? `<div class="obs-run"><h3>${icon('target')}Ablauf deiner Teleskope</h3>${rr.map((r, ri) => `<div class="obs-runrow"><b>${esc(r.name)}</b><ol>${r.seq.map(b =>
+        `<li><button type="button" class="obs-step${b.start === active[ri] ? ' on' : ''}" data-at="${b.start}" data-track="${esc(b.t.id)}" title="${esc(b.t.name)} ${spanT([b.start, b.end])} – Zeit dorthin stellen"><i style="background:${pathColor(b.t)}"></i><span class="tnum">${hmT(b.start)}</span> ${esc(b.t.name)}</button></li>`).join('')}</ol></div>`).join('')}</div>` : ''}
       <div class="obs-fgrid">${grp(`Jetzt frei <span class="dim sm">(${hmT(ts)})</span>`, now, 'Gerade steht kein Ziel im freien Ausschnitt.')}${grp('Später frei', later, 'Bis zum Morgen kommt nichts mehr dazu.')}
         ${past.length ? grp('Schon vorbei', past, '') : ''}${grp('In dieser Nacht nie frei', never, 'Alle Ziele kommen irgendwann ins freie Fenster.')}</div>`;
     if (first) box.classList.add('obs-in');
@@ -739,14 +770,14 @@ async function atlasView(el, query) {
     t0 = Math.floor(Math.min(nowT, d.t0) / 600) * 600;
     const r = $('#obsT', el);
     r.max = String(Math.max(60, Math.round((end - t0) / 60)));
-    if (pathDate && d.k > 0) tsel = d.dark[0]?.[0] ?? d.t0;         // spätere Nacht aus Heute Nacht/Planer: ab Beginn der Dunkelheit
+    if (pathDate && d.k > 0) tsel = tShow = d.dark[0]?.[0] ?? d.t0;         // spätere Nacht aus Heute Nacht/Planer: ab Beginn der Dunkelheit
     r.value = String(Math.max(0, Math.round((tsel - t0) / 60)));
     showT();
   }
   const showT = (ts = tsel) => { $('#obsTL', el).textContent = new Date(ts * 1000).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' }); };
-  let tAnim = 0;
+  let tAnim = 0, tShow = tsel;
   const setT = (to) => {                                          // Himmel dreht sich kurz zum neuen Zeitpunkt statt zu springen
-    showT(to); cancelAnimationFrame(tAnim);
+    tShow = to; showT(to); cancelAnimationFrame(tAnim);
     if (reduced() || mode !== 'here') { tsel = to; draw(); freeList(to); return; }
     const from = tsel, t1 = performance.now(), T = 180 + Math.min(220, Math.abs(to - from) / 3600 * 30);
     const step = (t) => {
@@ -769,7 +800,12 @@ async function atlasView(el, query) {
   $('#obsFree', el).addEventListener('click', (e) => {
     const b = e.target.closest('[data-track]'), t = b && paths?.targets.find(x => x.id === b.dataset.track);
     if (!t) return;
-    const p = pathAt(t, tsel);
+    if (b.dataset.at) {                                           // Ablauf: Zeitregler auf den Beginn des Blocks
+      const to = +b.dataset.at + 60;
+      $('#obsT', el).value = String(Math.max(0, Math.round((to - t0) / 60)));
+      setT(to);
+    }
+    const p = pathAt(t, b.dataset.at ? +b.dataset.at + 60 : tsel);
     if (p && p[1] > 0) fly({ ra: 360 - p[0], dec: Math.min(85, p[1]), fov: Math.min(v.fov, 100), raw: true });
     select({ type: 'track', o: t });
   });
