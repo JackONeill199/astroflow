@@ -527,7 +527,7 @@ async function projectView(el, id, tab = 'bild') {
           ${r && !p.imported ? `<span class="chip">${dur(r.exposure)} integriert</span>` : ''}
           ${p.coords?.source === 'solve' ? `<span class="chip acc" title="Koordinaten per Plate-Solving bestimmt">${icon('star')}Plate-Solved</span>` : ''}
           ${p.comet ? '<span class="chip acc" title="Zwei Stacks: auf die Sterne und auf den Kometenkern">Kometenmodus</span>' : ''}</div>
-        ${(p.other_devices || []).length ? `<div class="dim sm other-dev" style="margin-top:6px">Auch mit ${(p.other_devices || []).map(o => `<a href="#/p/${o.id}">${esc(o.device)}</a>`).join(', ')} aufgenommen →</div>` : ''}</div>
+        ${(p.other_devices || []).length ? `<div class="dim sm other-dev" style="margin-top:0.375rem">Auch mit ${(p.other_devices || []).map(o => `<a href="#/p/${o.id}">${esc(o.device)}</a>`).join(', ')} aufgenommen →</div>` : ''}</div>
       <div class="page-actions">${p.imported ? '' : `<button class="btn" id="run" ${busy ? 'disabled' : ''} title="${r ? 'Neue Aufnahmen und Nächte nachstacken – der bisherige Stack bleibt erhalten' : ''}">${icon(busy ? 'refresh' : 'play')}${busy ? 'Läuft …' : r ? 'Nachstacken' : 'Verarbeiten'}</button>`}
         ${r ? `<div class="menu" id="dl"><button class="btn ghost">${icon('down')}Export${icon('chev')}</button><div class="pop">
           <a href="#" data-act="share">Teilen-Karte <small>Bild mit Infos für Foren &amp; Co.</small></a>
