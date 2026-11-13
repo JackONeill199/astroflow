@@ -42,10 +42,19 @@ _PATTERNS = [
     (re.compile(r"\\\\[^\s\"'<>|]+"), "<Pfad>"),
     (re.compile(r"(?<![\w.:/-])(?:~|/home|/Users|/root|/mnt|/media|/Volumes|/run/media|/srv|/data|/opt|/tmp|/var|/private)"
                 r"(?:/[^\s\"'<>]*)?"), "<Pfad>"),
-    (re.compile(r"\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}"), "<Schlüssel>"),
-    (re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AIza[0-9A-Za-z_-]{30,}|xox[abpr]-[A-Za-z0-9-]{10,})"),
-     "<Schlüssel>"),
-    (re.compile(r"(?i)\b(api[_-]?key|token|secret|passwor[dt]|authorization|bearer|cookie|af_geraet)\b([\"']?\s{0,3}[=:]\s{0,3}|\s)[^\s,;]+"),
+    # Schlüssel – zuerst ganze Blöcke/Kopfzeilen, dann bekannte Formate, dann „name = wert“ (auch in Anführungszeichen/JSON)
+    (re.compile(r"-----BEGIN [A-Z ]{0,40}PRIVATE KEY-----[\s\S]{0,8000}?-----END [A-Z ]{0,40}PRIVATE KEY-----"), "<Schlüssel>"),
+    (re.compile(r"(?i)\b((?:proxy-)?authorization|(?:set-)?cookie)([\"']?\s{0,3}[=:]\s{0,3}[\"']?)[^\n\"']{1,2000}"), r"\1\2<Schlüssel>"),
+    (re.compile(r"(?i)\b(bearer)\s{1,3}[A-Za-z0-9._~+/=-]{8,}"), r"\1 <Schlüssel>"),
+    # „Token abc123…“ nur mit Ziffer/Sonderzeichen (sonst träfe es Fließtext wie „Token gespeichert“)
+    (re.compile(r"(?i)\b(token)\s{1,3}(?=[A-Za-z]{0,500}[0-9._~+/=-])[A-Za-z0-9._~+/=-]{8,}"), r"\1 <Schlüssel>"),
+    # „Basic <base64>“: Großbuchstabe/Ziffer nach dem ersten Zeichen (Fließtext wie „Basic Features“ bleibt)
+    (re.compile(r"\b([Bb]asic)\s{1,3}(?=[A-Za-z0-9+/][a-z]{0,200}[A-Z0-9+/=])[A-Za-z0-9+/]{8,}={0,2}"), r"\1 <Schlüssel>"),
+    (re.compile(r"\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}|\bsk_[A-Za-z0-9]{20,}"), "<Schlüssel>"),
+    (re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AIza[0-9A-Za-z_-]{30,}|xox[abpr]-[A-Za-z0-9-]{10,}"
+                r"|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,})"), "<Schlüssel>"),
+    (re.compile(r"(?i)\b(api[_-]?key|apikey|x-api-key|key|(?:access|refresh|id|auth)?[_-]?token|secret|client[_-]?secret|passwor[dt]|passwd|pwd"
+                r"|session(?:[_-]?id)?|af_geraet)([\"']?\s{0,3}[=:]\s{0,3})(?:\"[^\"\n]{0,500}\"|'[^'\n]{0,500}'|[^\s,;&\"'}\]]+)"),
      r"\1\2<Schlüssel>"),
     (re.compile(r"\b[A-Fa-f0-9]{32,}\b|\b[A-Za-z0-9+/_-]{40,}={0,2}"), "<Kennung>"),
     (re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"), "<IP>"),

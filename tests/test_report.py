@@ -37,6 +37,40 @@ def test_scrubber_masks_private_parts():
     assert keep == "TypeError: x is undefined (stacking.js:12) · AstroFlow 0.71.0 · Python 3.12.1 · 12:30:45"
 
 
+@pytest.mark.parametrize("text, secret", [
+    ("Authorization: Bearer my-secret-token", "my-secret-token"),
+    ("Authorization: Basic dXNlcjpwYXNz", "dXNlcjpwYXNz"),
+    ('{"Authorization": "Bearer abc.def-123456"}', "abc.def-123456"),
+    ("Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.c2lnbmF0dXJl", "eyJhbGci"),
+    ("curl -H 'Authorization: Token 9f8e7d6c5b4a' x", "9f8e7d6c5b4a"),
+    ("Basic dXNlcjpwYXNz", "dXNlcjpwYXNz"),
+    ('{"api_key": "geheim mit leerzeichen", "x": 1}', "geheim mit"),
+    ("api_key='abc123def'", "abc123def"),
+    ("password=hunter2&user=x", "hunter2"),
+    ('"access_token":"tok_123456"', "tok_123456"),
+    ("key: s3cr3t", "s3cr3t"),
+    ("Cookie: af_geraet=abc; other=def", "abc"),
+    ("X-Api-Key: 0123abcd", "0123abcd"),
+    ("OpenRouter sk-or-v1-0123456789abcdef0123456789abcdef", "0123456789abcdef"),
+    ("OpenAI sk-proj-AbCdEf0123456789xyz", "AbCdEf"),
+    ("ElevenLabs sk_0123456789abcdef0123456789", "0123456789abcdef"),
+    ("ghp_abcdefghijklmnopqrstuvwxyz0123", "ghp_"),
+    ("github_pat_11ABCDEFG0123456789_abcdefghij", "github_pat_"),
+    ("AWS AKIAIOSFODNN7EXAMPLE", "AKIAIOSFODNN7EXAMPLE"),
+    ("-----BEGIN RSA PRIVATE KEY-----\nMIIEow\n-----END RSA PRIVATE KEY-----", "MIIEow"),
+])
+def test_scrubber_masks_credentials(text, secret):
+    out = report.Scrubber([])(text)
+    assert secret not in out, out
+    assert "<Schlüssel>" in out
+
+
+def test_scrubber_keeps_prose_around_keywords():
+    s = report.Scrubber([])
+    for t in ("Token gespeichert", "Basic Features fehlen", "Der Schlüssel fehlt"):
+        assert s(t) == t
+
+
 def test_route_without_ids():
     assert report.clean_route("#/bilder/projekt/123/ergebnis?x=1") == "#/bilder/projekt/:id/ergebnis"
     assert report.clean_route("#/sage/objekt/M42") == "#/sage/objekt/:id"
