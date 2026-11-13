@@ -95,8 +95,8 @@ Etappen: 1 Atlas (dieser Stand) · 2 Horizontmaske je Standort + Ansicht „Von 
   (so bleibt das Kontextpanel rechts darüber nutzbar), die Karte füllt per `body.obs-full` das Fenster – ohne API (iPhone) nur die Klasse.
   Im Vollbild ist die Einblend-Animation der Seite aus (`.page.swap` mit `both` bildet sonst einen Stapelkontext unter der Kopfleiste).
   Größe rechnet der ResizeObserver der Karte neu.
-- **Boden „Von hier“** (`ground()`, Nutzerentscheidung 13.11.2026): Boden **nur unter 0°**, deckend (`color-mix` aus Tokens, `readColors`)
-  mit hellem Dunstsaum am Horizont, in der Dämmerung heller; Sterne/Linien/Katalog darunter verdeckt. Der von der **Horizontmaske** verdeckte
+- **Boden „Von hier“** (`ground()`, Nutzerentscheidung 13.11.2026): Boden **nur unter 0°**, deckend und fast schwarz (`color-mix` aus Tokens, `readColors`)
+  mit minimalem Dunstsaum am Horizont, in der Dämmerung kaum heller; Sterne/Linien/Katalog darunter verdeckt. Der von der **Horizontmaske** verdeckte
   Himmel bleibt Himmel: leicht abgedunkelt, dezent schraffiert, mit klarer Kontur. Die grüne gestrichelte Grenze „frei ab“ (max(30°, Maske)) bleibt.
   Himmelsrichtungen auf dem Boden knapp unter dem Horizont. Marke aus Sage/Planer unter dem Horizont nur blass mit „unter dem Horizont“.
 

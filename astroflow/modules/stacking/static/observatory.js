@@ -155,8 +155,8 @@ async function atlasView(el, query) {
   const readColors = () => {
     const cs = getComputedStyle(document.documentElement), c = (n) => cs.getPropertyValue(n).trim();
     const mix = (v) => { const i = document.createElement('i'); i.style.color = v; document.body.append(i); const r = getComputedStyle(i).color; i.remove(); return r; };
-    col = { ground: mix('color-mix(in srgb, var(--ok) 9%, color-mix(in srgb, var(--bg) 80%, #000))'),
-      groundLight: mix('color-mix(in srgb, var(--ok) 22%, var(--surface-2))'),
+    col = { ground: mix('color-mix(in srgb, var(--bg) 18%, #000)'),
+      groundLight: mix('color-mix(in srgb, var(--surface-2) 45%, #000)'),
       ok: c('--ok'), bg: c('--bg'), surface: c('--surface'), border: c('--border'), fg: c('--fg'), mut: c('--mut'), dim: c('--dim'), acc: c('--acc'), cat: c('--data-2'), warn: c('--warn'), font: getComputedStyle(document.body).fontFamily };
   };
   readColors();
@@ -278,9 +278,9 @@ async function atlasView(el, query) {
     if (zero.length >= 3) {
       region(zero); g.fillStyle = col.ground; g.fill('evenodd');
       g.save(); region(zero); g.clip('evenodd');                    // heller Saum am Horizont (Dunst), zum Rand hin dunkler
-      g.strokeStyle = col.groundLight; g.globalAlpha = 0.28 + 0.3 * day;
+      g.strokeStyle = col.groundLight; g.globalAlpha = 0.22 + 0.1 * day;                       // Boden fast schwarz (Nutzerwunsch), nur ein Hauch Dunst
       for (const w of [0.12, 0.06, 0.025]) { g.lineWidth = Math.max(6, Math.min(W, H) * w); stroke(zero); }
-      if (day > 0) { g.globalAlpha = 0.3 * day; g.fillStyle = col.groundLight; g.fillRect(0, 0, W, H); }
+      if (day > 0) { g.globalAlpha = 0.08 * day; g.fillStyle = col.groundLight; g.fillRect(0, 0, W, H); }
       g.restore();
     }
     if (hz) { g.strokeStyle = col.fg; g.globalAlpha = 0.8; g.lineWidth = 1.8; stroke(pts); g.globalAlpha = 1; }   // Kontur der Maske
