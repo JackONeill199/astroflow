@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.73.2 – 14.11.2026
+
+### Behoben
+- **Große Ordner hochladen:** Ordner mit mehr als 1000 Dateien (z. B. 1800 Aufnahmen einer langen Nacht) schlugen nach vollständiger Übertragung mit „Fehler“ fehl. Der Upload läuft jetzt in Teilen mit einem gemeinsamen Fortschrittsbalken; ein abgebrochener Teil wird einmal wiederholt, und bei Problemen steht da, wie viele Dateien angekommen sind (#114).
+
 ## 0.73.1 – 13.11.2026
 
 ### Behoben
