@@ -124,3 +124,14 @@ def test_graxpert_preferred_cpu_denoise_only_as_fallback():
     _, st_cpu = processing.process(img, cov, p)
     assert "denoise_cpu" not in st_gx
     assert st_bge.get("denoise_cpu") == 0.5 and st_cpu.get("denoise_cpu") == 0.5
+
+
+def test_continuum_color_only_in_dust_profile():
+    """Glühen-Korrektur der Staubfarbe (13.11.2026) läuft im Profil reflection, nicht bei Emissionsnebeln (Hα ist echtes Rot)."""
+    from astroflow.modules.stacking import objects
+    img, _, _ = _field(seed=5, H=240, W=360)
+    cov = np.ones(img.shape[1:], np.float32)
+    for kind, on in (("reflection", True), ("emission", False), ("galaxy", False)):
+        p = {**objects.profile_for(kind), "star_separation": "off", "_ai": {"bge": True, "denoise": 0.5, "smoothing": 1.0}}
+        _, st = processing.process(img, cov, p)
+        assert ("continuum_color" in st) is on, kind

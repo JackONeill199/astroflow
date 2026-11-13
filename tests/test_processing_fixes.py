@@ -73,3 +73,31 @@ def test_grade_lifts_nebula_structure_but_not_sky():
     core = (slice(40, 220), slice(140, 360))
     assert L1[core].std() > 1.15 * L0[core].std()                                  # mehr Struktur im Nebel
     assert abs(float(L1[:, :80].std() - L0[:, :80].std())) < 0.1 * L0[:, :80].std()  # Himmelsrauschen nicht verstärkt
+
+
+def test_continuum_color_removes_red_glow_keeps_dust_and_blue_nebula():
+    """Staubprofil (NGC 7023): rotes Sensor-/IR-Glühen (Grün fehlt) wird zu Kontinuumsfarbe, brauner Staub und blauer
+    Reflexionsnebel bleiben, Sterne werden nicht angefasst."""
+    rng = np.random.default_rng(3)
+    H, W = 240, 360
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    blob = lambda cy, cx, r: np.exp(-((yy - cy) ** 2 + (xx - cx) ** 2) / (2 * r**2))
+    glow = 1.0 * blob(0, 0, 70)                                   # Glühen in der Ecke: R:G:B 1,8 : 0,3 : 0,15
+    dust = 1.0 * blob(170, 260, 45)                               # brauner Staub 1,3 : 1 : 0,75
+    neb = 1.0 * blob(120, 150, 25)                                # blauer Nebel 0,7 : 1 : 1,4
+    img = np.stack([1.8 * glow + 1.3 * dust + 0.7 * neb,
+                    0.3 * glow + 1.0 * dust + 1.0 * neb,
+                    0.15 * glow + 0.75 * dust + 1.4 * neb]).astype(np.float32)
+    stars, _, _ = _starfield(rng, H, W, n=40)
+    img += (stars / stars.max() * 5)[None] * np.array([1.6, 1.0, 0.6], np.float32)[:, None, None]  # rötliche Sterne
+    img += rng.normal(0, 0.02, img.shape).astype(np.float32)
+    out, amount = processing.continuum_color(img, 1.0)
+    assert amount > 0
+    g0 = (slice(0, 25), slice(0, 25))                             # Glühen: Rot höchstens 1,8 × Grün, vorher 6 ×
+    assert img[0][g0].mean() > 4 * img[1][g0].mean()
+    assert out[0][g0].mean() < 1.9 * out[1][g0].mean()
+    for sl in ((slice(160, 180), slice(250, 270)), (slice(110, 130), slice(140, 160))):   # Staub und Nebel unverändert
+        assert np.allclose(out[:, sl[0], sl[1]].mean((1, 2)), img[:, sl[0], sl[1]].mean((1, 2)), rtol=0.03)
+    assert np.allclose(out[1], img[1])                            # Grün bleibt, nur Rot/Blau werden gesenkt
+    # ohne Profilwert: process lässt die Farbe in Ruhe (Emissionsnebel – Hα ist echtes Rot)
+    assert processing.continuum_color(img, 0.0)[0] is img

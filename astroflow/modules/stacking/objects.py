@@ -239,6 +239,8 @@ def nearest_extended(ra: float, dec: float, radius_deg: float = 0.3, min_size: f
 # background    : Hintergrund ohne GraXpert: „poly“ (Standard) oder „sky“ (processing.sky_background, DBE-artig mit Objektschutz und
 #                 Abdeckungsstufe – je Objekt als Option; besser bei M17/M45, schlechter bei NGC 6888/M3, gemessen 10.11.2026)
 # cpu_denoise   : lineares Wavelet-Entrauschen ohne GraXpert (processing.denoise_multiscale), Standard = ai_denoise bzw. 0,5
+# continuum_color: großflächige Farbe auf Kontinuumsfarben begrenzen (processing.continuum_color, 0..1, Standard aus). Staubprofil 1,0:
+#                 Glättung 1,0 ließ bei NGC 7023 rotes Sensor-/IR-Glühen stehen (fleckiger roter Schleier), echter Staub bleibt braun
 # grade_large   : zusätzlicher Lokalkontrast der Ebenen 64/128 px in processing.grade (Staub, Dunkelwolken), Standard 0
 PROFILES: dict[str, dict] = {
     # denoise/chroma_denoise seit 2026-10-30 etwa halbiert (vorher 0,4–0,6 / 1,5–2,5): gleiche Objekthelligkeit, 15–35 % mehr
@@ -251,7 +253,8 @@ PROFILES: dict[str, dict] = {
     "emission":     dict(gradient_degree=3, target_bg=0.08, asinh=40, denoise=0.3, chroma_denoise=1.5, saturation=1.50, contrast=0.35, sharpen=0.3, deconv=0, star_reduction=0.35, scnr=0.4, bg_dark=0.03, star_separation="starnet", star_brightness=0.85, linear_denoise_max=0.3, grade=1.0, vibrance=0.5),
     # reflection (seit 10.11.2026, Profi-Recherche NGC 7023): Staub liegt knapp über dem Himmel – heller Hintergrund
     # (target_bg 0,10, Schwarzpunkt 0,045 statt 0,03) und großskaliger Lokalkontrast 64/128 px (grade_large), GraXpert-Glättung 1,0
-    "reflection":   dict(bge_smoothing=1.0, gradient_degree=3, target_bg=0.10, asinh=30, denoise=0.3, chroma_denoise=1.5, saturation=1.40, contrast=0.3, sharpen=0.25, deconv=0, star_reduction=0.0, scnr=0.5, bg_dark=0.045, star_separation="starnet", star_brightness=0.85, grade=1.0, vibrance=0.5, grade_large=1.0),
+    # und dazu continuum_color (13.11.2026): was die Glättung an rotem Glühen stehen lässt, wird braun statt rot
+    "reflection":   dict(bge_smoothing=1.0, continuum_color=1.0, gradient_degree=3, target_bg=0.10, asinh=30, denoise=0.3, chroma_denoise=1.5, saturation=1.40, contrast=0.3, sharpen=0.25, deconv=0, star_reduction=0.0, scnr=0.5, bg_dark=0.045, star_separation="starnet", star_brightness=0.85, grade=1.0, vibrance=0.5, grade_large=1.0),
     "snr":          dict(gradient_degree=3, target_bg=0.08, asinh=40, denoise=0.3, chroma_denoise=1.5, saturation=1.50, contrast=0.35, sharpen=0.3, deconv=0, star_reduction=0.3, scnr=0.4, bg_dark=0.03, star_separation="starnet", star_brightness=0.85, grade=1.0, vibrance=0.5),
     # planetary: kleines, helles Objekt im Sternfeld – Weißpunkt höher und kein lineares Entrauschen (Ring brennt sonst
     # aus, Sterne blähen auf), wenig glätten und höheres target_bg: Korn und schwache Sterne bleiben (M57 gegen Stellina, 2026-10-30)
