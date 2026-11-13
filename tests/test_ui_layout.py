@@ -857,3 +857,36 @@ def test_picture_analysis_marks_follow_switch(server, browser):
         assert not page.is_checked("#paMarks") and op() < 0.05
     finally:
         page.close()
+
+
+@pytest.mark.parametrize("size", list(SIZES))
+def test_teilen_dialog(server, browser, size):
+    """Galerie-Betrachter → „Teilen“: Vorschau der Karte lädt, Format umschalten zeichnet neu, nichts ragt über den Dialog;
+    ein importiertes Bild lässt sich erst nach „mein eigenes Foto“ herunterladen."""
+    base, pid = server
+    w, h = SIZES[size]
+    page = browser.new_page(viewport={"width": w, "height": h})
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{base}/#/galerie/{pid}")
+    page.locator("#pvShare").click()
+    img = page.locator("#shPrev img")
+    page.wait_for_function("() => { const i = document.querySelector('#shPrev img'); return i && !i.hidden && i.complete && i.naturalWidth > 0 }")
+    assert "layout=quer" in img.get_attribute("src")
+    page.locator("#shLayout button[data-v=hoch]").click()
+    page.wait_for_function("() => (document.querySelector('#shPrev img')?.getAttribute('src') || '').includes('layout=hoch')")
+    assert "download=1" in page.locator("#shDl").get_attribute("href")
+    assert page.evaluate("(() => { const d = document.querySelector('#dlg'); return d.scrollWidth <= d.clientWidth + 1 })()")
+    assert page.evaluate(FIND_OVERFLOW) == []
+    page.keyboard.press("Escape")
+    ipid = _imported_pid(base)
+    import httpx
+    irid = httpx.get(f"{base}/api/stacking/projects/{ipid}").json()["result"]["id"]
+    page.evaluate(f"shareDialog({irid})")
+    page.locator("#shDl.disabled").wait_for()
+    assert page.locator("#shPrev[data-msg]").count() == 1
+    page.locator("#dlg label.modrow:has(input[data-k=own])").click()
+    page.wait_for_function("() => !document.querySelector('#shDl').classList.contains('disabled')")
+    page.wait_for_function("() => { const i = document.querySelector('#shPrev img'); return i && !i.hidden && i.naturalWidth > 0 }")
+    page.close()
+    assert not errors, errors

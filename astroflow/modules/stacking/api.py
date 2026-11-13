@@ -1345,6 +1345,43 @@ def build_router(eng: Engine) -> APIRouter:
     def set_insights(body: dict = Body(...)):
         return eng.insights.save(body)
 
+    # ---- Teilen-Karte (share.py): gestaltete JPEG-Datei + Forentext, nur aus gespeicherten Ergebnissen ----------
+    share_lock = threading.Lock()                    # eine Karte gleichzeitig (Pillow, Bild bis 4096 px)
+
+    def _share(rid: int, q: dict):
+        from . import share
+        try:
+            data = share.collect(eng, rid, result_objects)
+        except KeyError:
+            raise HTTPException(404)
+        return share, data, share.options(q, data)
+
+    @r.get("/results/{rid}/share")
+    def share_info(rid: int, request: Request):
+        """Inhalte für den Teilen-Dialog: verfügbare Highlights, Voreinstellung, Forentext (BBCode/Markdown)."""
+        share, data, o = _share(rid, dict(request.query_params))
+        return share.info(data, o)
+
+    @r.get("/results/{rid}/share/card.jpg")
+    def share_card(rid: int, request: Request):
+        """Die Karte als JPEG (Vorschau bzw. mit ?download=1 als Anhang). Keine Pfade vom Client, feste Fehlertexte."""
+        from fastapi.responses import Response
+        q = dict(request.query_params)
+        share, data, o = _share(rid, q)
+        if not data["photo"]:
+            raise HTTPException(404, "Für diese Version gibt es kein fertiges Bild.")
+        if share.needs_owner(data, o):
+            raise HTTPException(409, "Bitte bestätige, dass es dein eigenes Bild ist, oder nenne den Fotografen.")
+        try:
+            with share_lock:
+                body = share.card(data, o)
+        except Exception:
+            traceback.print_exc()
+            raise HTTPException(500, "Die Teilen-Karte ließ sich nicht erzeugen – Details im Server-Protokoll.")
+        disp = "attachment" if q.get("download") == "1" else "inline"
+        return Response(body, media_type="image/jpeg", headers={"Content-Disposition": f'{disp}; filename="{share.filename(data, o)}"',
+                                                                 "Cache-Control": "no-store"})
+
     @r.get("/results/{rid}/{kind}")
     def result_file(rid: int, kind: str):
         x = db.one("SELECT files FROM results WHERE id=?", (rid,))

@@ -13,8 +13,8 @@ class Module(BaseModule):
     name = "Bilder"
     description = "Rohbilder automatisch kalibrieren, stacken und zum fertigen Astrofoto entwickeln."
     icon = "grid"
-    scripts = ("chartdeco.js", "live.js", "stacking.js", "tonight.js", "observatory.js", "planner.js", "depth.js", "hrd.js", "asteroids.js", "skyquality.js", "diagnose.js", "analysis.js", "picanalysis.js", "dashboard.js")
-    styles = ("chartdeco.css", "depth.css", "hrd.css", "asteroids.css", "analysis.css", "dashboard.css", "statistics.css", "housekeeping.css", "library.css", "stages.css", "tutor.css", "versions.css", "live.css", "tonight.css", "observatory.css", "planner.css", "skyquality.css", "diagnose.css", "frames.css", "picanalysis.css")
+    scripts = ("chartdeco.js", "live.js", "stacking.js", "tonight.js", "observatory.js", "planner.js", "depth.js", "hrd.js", "asteroids.js", "skyquality.js", "diagnose.js", "analysis.js", "picanalysis.js", "dashboard.js", "share.js")
+    styles = ("chartdeco.css", "depth.css", "hrd.css", "asteroids.css", "analysis.css", "dashboard.css", "statistics.css", "housekeeping.css", "library.css", "stages.css", "tutor.css", "versions.css", "live.css", "tonight.css", "observatory.css", "planner.css", "skyquality.css", "diagnose.css", "frames.css", "picanalysis.css", "share.css")
 
     def __init__(self, ctx):
         super().__init__(ctx)

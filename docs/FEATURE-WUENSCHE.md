@@ -6,7 +6,7 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md` (Details in `docs/entwicklung/
 
 | Nr. | Gewünscht am | Wunsch | Status |
 |---|---|---|---|
-| 1 | 03.11.2026 | Bibliothek teilen (nur ansehen) | offen |
+| 1 | 03.11.2026 | Bibliothek teilen (nur ansehen) | teilweise: Teilen-Karte für Foren (Bilddatei + Forentext, `share.py`); Nur-Lesen-Zugang offen |
 | 2 | 03.11.2026 | Doppelte UI-Elemente vereinheitlichen | offen |
 | 3 | 03.11.2026 | Sage-Inhalte direkt in Bilder | offen |
 | 4 | 03.11.2026 | Übersicht: empfohlene Ziele für heute Nacht | Grundversion in 0.19.0 |
@@ -32,7 +32,11 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md` (Details in `docs/entwicklung/
 Die eigene Objekt-Bibliothek mit anderen teilen. Wer den Zugang bekommt, darf nur **ansehen**: keine Daten ändern,
 nichts löschen, keine Aufträge starten, keine Einstellungen sehen.
 
-Zu klären:
+**Erster Schritt umgesetzt (11/2026): Teilen-Karte.** Aus jedem fertigen Bild entsteht eine gestaltete JPEG-Datei
+(Foto, Objekt, Aufnahme, „Was AstroFlow herausgefunden hat“, Himmelskarte, dezente Fußzeile) plus Forentext als BBCode/
+Markdown – ohne Link und ohne Hochladen, ohne Standort, Uhrzeiten, Pfade und Seriennummern (`stacking/share.py`).
+
+Zu klären (Nur-Lesen-Zugang):
 - Weg des Teilens: Freigabe-Link im Heimnetz oder Export als statische Seite/Archiv, das ohne AstroFlow läuft.
 - Was sichtbar ist: fertige Bilder, Versionen, Datenblatt, Sage-Texte. Was nie sichtbar ist: Pfade, Beobachtungsort,
   Schlüssel, Einstellungen.
