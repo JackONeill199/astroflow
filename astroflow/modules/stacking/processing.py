@@ -393,6 +393,38 @@ def neutralize_background(img: np.ndarray) -> np.ndarray:
     return img - (bg - bg.mean())[:, None, None]
 
 
+CONTINUUM_MAX = 1.8      # continuum_color: Rot bzw. Blau höchstens 1,8 × Grün (kühlste/heißeste Sterne nach dem Weißabgleich)
+
+
+def continuum_color(img: np.ndarray, amount: float = 1.0, sigma: float = 8.0) -> tuple[np.ndarray, float]:
+    """Großflächige Farbe des linearen, farbkalibrierten Bildes auf Kontinuumsfarben begrenzen (Staubprofil).
+    Sternlicht, Staub und Reflexionsnebel haben glatte Spektren: Grün liegt zwischen Rot und Blau, etwa G² ≥ R·B, und
+    weder Rot noch Blau übersteigen Grün stark. Sensor-/IR-Glühen der Farbsensoren verletzt das (rot bis magenta, Grün
+    fehlt); GraXpert mit hoher Glättung lässt es stehen, Sättigung und Vibrance machten daraus fleckigen roten Schleier
+    (NGC 7023: Anteil, den Glättung 1,0 zusätzlich stehen lässt, R:G:B ≈ 1,8 : 0,3 : 0,15). Korrigiert wird nur die
+    sternfreie, geglättete Farbe über dem neutralisierten Himmel: R/B (Farbtemperatur) bleibt, R und B werden so weit
+    gesenkt, dass R·B ≤ G² und R, B ≤ CONTINUUM_MAX·G. Brauner Staub (R > G > B) und blauer Nebel bleiben unberührt.
+    Nicht für Emissionsnebel: Hα (+ Hβ/OIII) ist echtes Rot/Magenta. Gibt (Bild, mittlerer Abzug je Rauschen) zurück."""
+    if img.shape[0] != 3 or amount <= 0:
+        return img, 0.0
+    L = luminance(img)
+    w = (~_star_mask(L, grow=3)).astype(np.float32)
+    ws = ndi.gaussian_filter(w, sigma) + 1e-6
+    r, g, b = (np.clip(ndi.gaussian_filter(img[c] * w, sigma) / ws, 0, None) for c in range(3))   # sternfrei, geglättet
+    k = np.sqrt((r + 1e-9) / (b + 1e-9))
+    lim = np.sqrt(r * b) > g                                    # Grün fehlt -> auf G² = R·B mit gleichem R/B
+    r2 = np.where(lim, g * k, r)
+    b2 = np.where(lim, g / k, b)
+    r2 = np.minimum(r2, CONTINUUM_MAX * g)
+    b2 = np.minimum(b2, CONTINUUM_MAX * g)
+    dr, db = (r - r2) * float(amount), (b - b2) * float(amount)
+    out = img.copy()
+    out[0] -= dr
+    out[2] -= db
+    noise = 1.4826 * float(np.median(np.abs(L - np.median(L)))) + 1e-9
+    return out, round(float((dr + db).mean()) / noise, 3)
+
+
 def remove_color_gradient(img: np.ndarray, degree: int = 1, grid: int = 12) -> np.ndarray:
     """Farbverlauf des Himmels (z. B. rötlich zu einer Seite: Dämmerung, Mond, Horizontlicht) entfernen, ohne die
     Helligkeit zu ändern: Polynom über die Farbabweichung (Kanal − Luminanz) der Himmelskacheln, ohne Mittelwert
@@ -943,6 +975,9 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
         img = remove_color_gradient(img, int(p["color_gradient"]))
         stats["color_gradient"] = int(p["color_gradient"])
     img = neutralize_background(img)
+    if not mono and not narrowband and p.get("continuum_color", 0) > 0:
+        log("Glühen aus der Staubfarbe entfernen")
+        img, stats["continuum_color"] = continuum_color(img, float(p["continuum_color"]))
     show(img)
 
     if p["deconv"] > 0 and fwhm > 1.5:

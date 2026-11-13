@@ -133,6 +133,12 @@ Schritte 11–13 (Speicher, volles Laufwerk, Aufräumen): `daten-server.md`.
    - GraXpert: Glättung je Profil (`bge_smoothing`, reflection 1,0, sonst 0,1 – 0,1 trug bei NGC 7023 die Hälfte des Staubs ab), ab 0,5
      danach `remove_edge_glow`; Cache-Schlüssel nur bei abweichender Glättung neu. Profil reflection: `target_bg` 0,10, `bg_dark` 0,045,
      `grade_large` 1,0 (zusätzlicher Lokalkontrast 64/128 px in `grade`, Profi-Äquivalent LHE ~150 px).
+   - Staubfarbe (`continuum_color`, Profil reflection 1,0, seit 13.11.2026): Glättung 1,0 lässt bei Stellina rotes Sensor-/IR-Glühen
+     stehen (NGC 7023: Anteil 1,0 − 0,1 hat R:G:B ≈ 1,8 : 0,3 : 0,15, am stärksten an den Rändern) – nach Sättigung/Vibrance ein fleckiger
+     roter Schleier, die QC sah nichts (Himmel = dunkelste 15 %, dort neutral). `processing.continuum_color` begrenzt nach der
+     Hintergrund-Neutralisierung die sternfreie, geglättete Farbe (σ 8 px) auf Kontinuumsfarben: R·B ≤ G² bei gleichem R/B, R und B
+     ≤ 1,8 × G; nur R/B werden gesenkt. Brauner Staub und blauer Nebel bleiben. Nicht bei Emissionsnebeln (Hα/OIII ist echtes Magenta).
+     Randbeschnitt: ab Glättung 0,5 räumt `remove_edge_glow` die Ränder, deshalb greift `trim_bad_edges` meist nicht mehr (kein `edge_trim`).
    - Ausgabe: `_linear.fits` = unbearbeiteter Stack (bis 0.55 stand dort das GraXpert-Ergebnis), mit GraXpert zusätzlich `_linear_graxpert.fits`
      (`files.fits_graxpert`, Export-Menü).
    - Messwerkzeug: Skripte im privaten Recherche-Ordner bzw. PR-Beschreibung (Kennzahlen am fertigen Bild, Himmel = dunkelste 12 %).
