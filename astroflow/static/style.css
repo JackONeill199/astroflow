@@ -573,6 +573,29 @@ details[open] > summary ~ * { animation: fadeIn var(--t2) var(--ease) }
 .steps .btn { margin-left: 0.25rem }
 
 /* ---- CommandPalette ----------------------------------------------------------- */
+/* Fehler melden (report.js): Formular → Vorschau; Screenshot mit Schwärzen. Maskierung während der Aufnahme: html.af-masking */
+#reportDlg { width: min(40rem, 94vw); max-height: 92vh; overflow: auto; overscroll-behavior: contain }
+#reportDlg .rep-h { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.375rem }
+#reportDlg .rep-h h2 { font-size: 1rem; margin: 0; flex: 1 }
+#reportDlg .rep-note { margin: 0 0 0.875rem }
+#reportDlg textarea { resize: vertical; width: 100% }
+#reportDlg .modrow { margin-bottom: 0.875rem }
+#reportDlg .rep-shotbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.625rem 0.75rem;
+  border: 1px dashed var(--border); border-radius: var(--r-lg) }
+#reportDlg .rep-shot { margin-top: 0.625rem; display: grid; gap: 0.5rem }
+#reportDlg .rep-shot[hidden] { display: none }
+#reportDlg .rep-shot p { margin: 0 }
+#reportDlg canvas { width: auto; height: auto; max-width: 100%; max-height: 50vh; justify-self: center; border: 1px solid var(--border); border-radius: var(--r-sm); cursor: crosshair; touch-action: none; background-color: var(--bg) }
+#reportDlg .rep-acts { justify-content: flex-end; margin-top: 1rem }
+#reportDlg .rep-prev { display: grid; gap: 0.625rem; margin-bottom: 0.625rem }
+#reportDlg .rep-pl { font-size: 0.75rem; color: var(--mut); font-weight: 500; display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap }
+#reportDlg pre { margin: 0.25rem 0 0; padding: 0.5rem 0.625rem; background-color: var(--bg); border: 1px solid var(--border-soft); border-radius: var(--r-sm);
+  font: 0.75rem/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 12rem; overflow: auto }
+#repPick { cursor: pointer }
+html.af-masking .leaflet-container, html.af-masking [data-privat] { position: relative }
+html.af-masking .leaflet-container::after, html.af-masking [data-privat]::after { content: "verdeckt"; position: absolute; inset: 0; z-index: 10000;
+  display: grid; place-items: center; background: #000; color: #888; font-size: 0.75rem }
+html.af-masking canvas[data-privat] { visibility: hidden }
 #pal { padding: 0; width: min(37.5rem, 94vw); margin-top: 12vh; overflow: hidden }
 #pal .pin { display: flex; align-items: center; gap: 0.625rem; padding: 0.625rem 0.875rem; border-bottom: 1px solid var(--border-soft) }
 #pal .pin svg { color: var(--dim) }

@@ -46,7 +46,7 @@ const helpers = () => window.SkyTraceHelpers;
 const HELP = 'Ziehen dreht · Mausrad/zwei Finger zoomen · nah heran = flache Karte · Antippen zeigt Details';          // aus skytrace.js (Heatmap-Zellen, Ortsmarken, Übernehmen, Texte, Läufe)
 
 const MARKUP = (page) => `<div class="ste-main">
-    <div class="ste-stage"><canvas aria-label="Drehbarer Globus mit Standorten, Heatmap der Standortsuche, Teleskopweg und Bahnen"></canvas><div class="ste-labels"></div>
+    <div class="ste-stage" data-privat><canvas aria-label="Drehbarer Globus mit Standorten, Heatmap der Standortsuche, Teleskopweg und Bahnen"></canvas><div class="ste-labels"></div>
       <div class="ste-tools"><div class="seg st3d-views" hidden aria-label="Kamera"><button data-v="earth" class="on">Erde</button><button data-v="scope">Teleskop</button><button data-v="pass">Durchgang</button><button data-v="sat">Folgen</button></div>
         <span class="ste-pill ste-nvpill" hidden>${icon('target')}Nachtsicht</span><span class="grow"></span>
         <span class="st3d-schema" hidden title="Kuppel, Himmel und Ziel sind nicht maßstäblich">Schema</span>

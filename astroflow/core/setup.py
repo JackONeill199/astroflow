@@ -159,7 +159,8 @@ class Setup:
             "platform": platform.system(), "astap": astap, "dbs": {k: v[1] for k, v in ASTAP_DBS.items()},
             "demo": {"exists": demo.exists()}, "gpu": self._gpu_state(), "components": self.components(),
             "update_check": sysc.get("update_check", True), "update": sysc.get("update") or {},
-            "tray_notify": sysc.get("tray_notify", True),
+            "tray_notify": sysc.get("tray_notify", True), "report": sysc.get("report", True),
+            "report_env_off": os.environ.get("ASTROFLOW_REPORT") == "0",
             "version": VERSION, "tasks": dict(self.tasks),
         }
 
@@ -192,6 +193,8 @@ class Setup:
             self.ctx.store.update("setup", vals)
         if "update_check" in body:
             self.ctx.store.update("system", {"update_check": bool(body["update_check"])})
+        if "report" in body:
+            self.ctx.store.update("system", {"report": bool(body["report"])})
         if "tray_notify" in body:
             self.ctx.store.update("system", {"tray_notify": bool(body["tray_notify"])})
         restart, target = False, None
