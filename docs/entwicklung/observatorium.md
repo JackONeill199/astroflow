@@ -38,7 +38,7 @@ Etappen: 1 Atlas (dieser Stand) · 2 Horizontmaske je Standort + Ansicht „Von 
 - **Backend** `modules/stacking/planner.py`, API `GET/POST/DELETE /api/stacking/plan` (POST = Assistent {nights 1–14, devices 1–2, mode
   new|mix|deep, min_hours, watch[]} → rechnen und in `settings.json` → `observatory.plan` speichern; feste deutsche Fehlermeldungen).
 - **Rechnung** je Nacht wie Heute Nacht (`tonight._alt/_limit/_sep/_series/_window/_forecast`): 10-min-Schritte, astronomisch dunkel, Höhe über
-  max(30°, Horizontmaske des Ortes der Nacht – `site_for(night)`), Mondgewicht, Zenit-Abschlag je Gerät (Alt-Az), Wolken nur aus der vorhandenen
+  max(30°, Horizontmaske des Ortes der Nacht – `site_for(night)`), Mondgewicht, Bildfelddrehung je Gerät (`devices.weights`, EQ-Modus je Gerät im Assistenten, `wishes.eq`; `nachfuehrung.md`), Wolken nur aus der vorhandenen
   Open-Meteo-Schicht (nur mit Tutor-Einstellung „Wetter“, sonst/später „ohne Wetter“).
 - **Vergabe:** Nacht je Gerät in gleich lange Abschnitte ≥ min(Mindestbelichtung, 3 h); Abschnitte nach größtem Nutzen vergeben
   (Priorität × min(Gewinn, Restbedarf), angefangene Ziele ×1,6), nie dasselbe Ziel gleichzeitig auf zwei Geräten, Abschnitte mit < 25 %

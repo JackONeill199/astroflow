@@ -155,3 +155,20 @@ def test_targets_from_later_sites_and_usable_second_choice(tmp_path):
                      [opts[0]], tmp_path, now=EVENING)
     used = sum(b["end"] - b["start"] for b in q["nights"][0]["blocks"]) / 3600
     assert used > 0.8 * q["nights"][0]["dark_hours"]
+
+
+def test_eq_mode_per_device_removes_rotation_penalty(tmp_path):
+    """EQ-Modus nur für Geräte, die ihn können (Seestar ja, Stellina nein); im EQ-Modus zählen hohe Ziele voll."""
+    opts = planner.device_options(None)
+    w = planner.clean_wishes({"nights": 1, "devices": ["seestar", "stellina"], "eq": ["seestar", "stellina"], "min_hours": 3}, opts)
+    assert w["eq"] == ["seestar"]
+    zen = {**M31, "dec": 50.0, "exposure": 600}                          # steht am erfundenen Ort (50° N) im Zenit
+
+    def hours(eq):
+        wi = planner.clean_wishes({"nights": 1, "devices": ["seestar"], "eq": eq, "min_hours": 8, "watch": ["7"]}, opts)
+        devs = [next(o for o in opts if o["id"] == d) for d in wi["devices"]]
+        p = planner.plan([zen], lambda night: SITE, wi, devs, tmp_path, now=EVENING)
+        return p, next((t["hours"] for t in p["targets"] if t["id"] == "7"), 0)
+    (alt, h_alt), (eq, h_eq) = hours([]), hours(["seestar"])
+    assert h_eq > h_alt and eq["devices"][0]["eq"] and not alt["devices"][0]["eq"]
+    assert "EQ" in eq["devices"][0]["tracking"] and "Software" in alt["devices"][0]["tracking"]

@@ -15,7 +15,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import objects
+from . import devices, objects
 
 # Kurzcodes der Objektart → objects.KIND_LABEL
 _K = {"g": "galaxy", "e": "emission", "r": "reflection", "p": "planetary", "s": "snr", "k": "globular", "o": "open_cluster", "x": "other"}
@@ -97,7 +97,7 @@ EXTRA_KEYS = {("C", 49): ("NGC2244", "C50", "ROSETTE"), ("C", 60): ("NGC4039", "
               ("C", 33): ("NGC6995", "IC1340"), ("C", 20): ("IC5070",), ("C", 4): (), ("M", 45): ("PLEIADES", "PLEJADEN"),
               ("M", 42): ("ORION",), ("M", 31): ("ANDROMEDA",), ("C", 41): ("HYADES", "HYADEN")}
 
-MAG_LIMITS = {"stellina": 11.5, "vespera": 10.5, "seestar": 10.5, "dwarf": 9.5, "evscope": 12.0}
+MAG_LIMITS = devices.mag_limits()      # Grenzgröße je Gerät aus devices.json
 MAG_DEFAULT = 11.0
 MIN_SIZE = 2.0            # Bogenminuten: darunter sind Objekte auf Smart-Teleskopen nur Pünktchen
 MIN_FRACTION = 0.03       # oder weniger als 3 % der kurzen Bildfeldseite
