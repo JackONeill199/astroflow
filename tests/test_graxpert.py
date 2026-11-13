@@ -55,7 +55,7 @@ def test_apply_removes_gradient_keeps_holes_and_caches(tmp_path):
     assert info == {"mode": "bge", "bge": True, "smoothing": 0.1}
     assert out.shape == mean.shape
     assert np.allclose(out[:, :, :5], 0)                     # Rand unverändert zurückgesetzt
-    assert np.ptp(out[0, 10, 10:]) < 0.5 * np.ptp(mean[0, 10, 10:])   # Verlauf großteils weg
+    assert np.ptp(out[0, 10, 10:]) < 0.8 * np.ptp(mean[0, 10, 10:])   # Verlauf kleiner (Attrappe zieht fest 0,3 der Skala ab; Skala nur über die abgedeckte Fläche)
     out2, info2 = graxpert.apply(mean, cov, "bge", cache_dir=tmp_path / "c", exe=exe)
     assert info2.get("cache") and np.array_equal(out, out2)
 
@@ -190,3 +190,29 @@ def test_nonfinite_tiny_share_is_repaired_from_input(tmp_path, monkeypatch):
     assert np.isfinite(out).all() and info["bge"] and "error" not in info
     assert info["nonfinite_repaired"] is True and 0 < info["nonfinite_pct"] < graxpert.TINY_PCT
     assert "retried_cpu" not in info
+
+
+# Attrappe wie GraXpert: Normierung über MAD – ist sie in einem Kanal 0, kommt NaN heraus (IC 443 Mosaik, 72 % Lücke)
+FAKE_MAD = FAKE.replace("d =fits.getdata(src).astype(np.float32)", '''d =fits.getdata(src).astype(np.float32)
+for ch in (d if d.ndim == 3 else d[None]):
+    if np.median(np.abs(ch - np.median(ch))) == 0:
+        d = d * np.nan
+        break
+H0 = d.shape''')
+
+
+def test_large_gaps_cropped_and_noise_filled_no_nan(tmp_path):
+    """Mosaik mit > 50 % Lücke: Zuschnitt auf die abgedeckte Fläche, Lücken mit Himmel + Rauschen statt konstant → MAD > 0."""
+    p = tmp_path / "gx_mad.py"
+    p.write_text(FAKE_MAD, encoding="utf-8")
+    H, W = 200, 300
+    rng = np.random.default_rng(7)
+    mean = (1000 + rng.normal(0, 5, (3, H, W))).astype(np.float32)
+    cov = np.zeros((H, W), np.float32)
+    cov[20:80, 30:110] = 1                                   # 8 % abgedeckt, Rest Lücke
+    mean[:, cov == 0] = 0
+    assert (cov <= 0.5).mean() > 0.5
+    out, info = graxpert.apply(mean, cov, "bge", exe=str(p))
+    assert "error" not in info and info["bge"] and np.isfinite(out).all()
+    assert out.shape == mean.shape and np.allclose(out[:, cov == 0], 0)      # Lücken bleiben unverändert
+    assert graxpert.GRAXPERT_VERSION >= 2
