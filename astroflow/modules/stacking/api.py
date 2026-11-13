@@ -16,7 +16,7 @@ from pathlib import Path
 from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
-from . import calibration, channels, comet, diskspace, frame_preview, gpu, graxpert, objects, platesolve, quality, registration, reviewer, skyquality, stars, tonight, tutor
+from . import calibration, channels, comet, diskspace, frame_preview, gpu, graxpert, objects, platesolve, quality, registration, reviewer, scanner, skyquality, stars, tonight, tutor
 from ...core import security, sites
 from .db import DB
 from .pipeline import Pipeline
@@ -391,6 +391,7 @@ def build_router(eng: Engine) -> APIRouter:
         ids = [p["id"] for p in rows]
         ph = ",".join("?" * len(ids))
         counts, nights, dl, last, job, n_results, solve, comp = {}, {}, {}, {}, {}, {}, {}, {}
+        same_obj: dict[str, list] = {}
         with db.conn() as c:
             for x in c.execute(f"SELECT project_id, status, COUNT(*) n FROM frames WHERE kind='light' AND project_id IN ({ph}) "
                                "GROUP BY project_id, status", ids):
@@ -413,6 +414,10 @@ def build_router(eng: Engine) -> APIRouter:
             for x in c.execute("SELECT json_extract(options,'$.gallery_parent') gp, COUNT(*) n FROM projects "
                                "WHERE json_extract(options,'$.gallery_parent') IS NOT NULL GROUP BY gp"):
                 comp[x["gp"]] = x["n"]
+            # Gerät je Objekt (aus dem Schlüssel) und dasselbe Objekt mit anderem Gerät: Hinweis „Auch mit … aufgenommen“
+            for x in c.execute("SELECT id, key, name, obj_id, json_extract(options,'$.input_type') it FROM projects"):
+                if x["it"] != "picture" and not str(x["key"]).startswith(scanner.COMET_KEY) and (dv := scanner.device_name(x["key"])):
+                    same_obj.setdefault(x["obj_id"] or x["name"].strip().lower(), []).append((x["id"], dv))
             # Lösung nur für Objekte mit Koordinaten nötig (liest JSON je Frame – der teuerste Teil)
             with_coords = [p["id"] for p in rows if p["ra"] is not None]
             if with_coords:
@@ -438,8 +443,11 @@ def build_router(eng: Engine) -> APIRouter:
                     coords["solve"] = json.loads(sv)
                 elif imported and (opts.get("picture_solve") or {}).get("state") == "done":    # fertiges Bild, gelöst
                     coords.update(source="solve", solve=opts["picture_solve"].get("solution"))
+            dev = None if imported else scanner.device_name(p["key"])
+            others = [] if not dev or is_comet else [{"id": i, "device": d} for i, d in same_obj.get(p["obj_id"] or p["name"].strip().lower(), [])
+                                                     if i != pid and d != dev]
             out.append({
-                "id": pid, "name": p["name"], "kind": p["kind"], "kind_label": objects.KIND_LABEL.get(p["kind"] or "generic"),
+                "id": pid, "name": p["name"], "device": dev, "other_devices": others, "kind": p["kind"], "kind_label": objects.KIND_LABEL.get(p["kind"] or "generic"),
                 "options": json.loads(p["options"] or "{}"), "frames": fr, "total": sum(fr.values()),
                 "companions": comp.get(pid, 0),
                 "nights": nights.get(pid, []), "n_results": n_results.get(pid, 0), "created": p["created"],

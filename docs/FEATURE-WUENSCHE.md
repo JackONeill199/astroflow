@@ -211,3 +211,19 @@ Wunsch des Nutzers: SHO „auf jeden Fall unterstützt haben“. Stand heute:
 - Tri-Band-Filter (Hα/OIII/SII mit getrennten Durchlässen) gesondert prüfen.
 - An echten Daten messen (Seestar/Vespera mit Dual-Band, Stellina mit Lichtverschmutzungsfilter) und mit Siril/PixInsight-Ergebnissen
   vergleichen; Mono-SHO mit echten Testdaten (öffentliche Beispieldatensätze, Lizenz prüfen) absichern.
+
+## 21. Geräte kombinieren – 13.11.2026
+
+**Status: offen** – Wunsch des Nutzers (IC 443 mit Stellina und später mit Vespera aufgenommen). Projekte werden bewusst je Objekt **und**
+Kamera/Format getrennt (`scanner.assign_project`); das Gerät steht als Tag im Projektkopf, mit Hinweis auf dasselbe Objekt mit anderem Gerät.
+
+**Idee:** Stacks desselben Objekts von verschiedenen Teleskopen (z. B. Stellina + Vespera) zu **einem** Bild kombinieren.
+- Beide Stacks per Plate-Solving/WCS-Reprojektion auf ein gemeinsames Raster umrechnen (unterschiedliche Pixelmaßstäbe und Bildfelder).
+- Farb- und Helligkeitsabgleich zwischen den Kameras (Gaia-Fotometrie liefert die Referenz), Gewichtung nach gemessenem Rauschen/Tiefe.
+- Ergebnis als **eigene Version** (Versionsliste des Objekts), die Einzelstacks bleiben unverändert.
+
+**Zu klären:**
+- Auflösung des Ziels (feinerer Maßstab mit Hochskalieren des gröberen Stacks, oder Mittelweg) und Umgang mit der unterschiedlichen Sternschärfe.
+- Rand/Feldgröße: nur der gemeinsame Ausschnitt oder die Vereinigung (Mosaik-Logik aus `mosaic.py` wiederverwenden?).
+- Projektmodell: **verknüpfte Projekte** statt Zusammenlegen (die Trennung nach Kamera bleibt, die Verknüpfung entsteht über Objekt-ID).
+- Rechenaufwand und Speicher (zwei große Stacks plus Reprojektion), Abbruch/Fortschritt im Hintergrund.

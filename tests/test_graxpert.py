@@ -139,3 +139,54 @@ def test_cpu_denoise_setting_persists():
                            ctx=SimpleNamespace(store=SimpleNamespace(get=lambda sec: {"cpu_denoise": True, "unbekannt": 1})))
     api.Engine._apply_saved(stub)
     assert cfg.cpu_denoise is True and not hasattr(cfg, "unbekannt")
+
+
+# Attrappe mit Aussetzer: liefert mit Grafikkarte (-gpu true) NaN – Anteil über GX_NAN_FRAC, auch ohne GPU bei GX_NAN_CPU=1
+FAKE_NAN = FAKE.replace("fits.PrimaryHDU(d.astype", '''gpu = a[a.index("-gpu") + 1] == "true"
+if gpu or os.environ.get("GX_NAN_CPU"):
+    n = max(1, int(d.shape[-1] * d.shape[-2] * float(os.environ.get("GX_NAN_FRAC", "0.5"))))
+    d = np.ascontiguousarray(d); d.reshape(-1)[:n] = np.nan
+print("Used inference providers : ['DmlExecutionProvider']" if gpu else "Used inference providers : ['CPUExecutionProvider']")
+fits.PrimaryHDU(d.astype''')
+
+
+def _nan_fake(tmp_path) -> str:
+    p = tmp_path / "graxpert_nan.py"
+    p.write_text(FAKE_NAN, encoding="utf-8")
+    return str(p)
+
+
+def _flat():
+    mean = np.full((3, 40, 50), 1000, np.float32) + np.random.default_rng(5).normal(0, 5, (3, 40, 50)).astype(np.float32)
+    return mean, np.ones((40, 50), np.float32)
+
+
+def test_nonfinite_retries_without_gpu(tmp_path, monkeypatch, capsys):
+    """Ungültige Werte mit Grafikkarte: Messung ins Protokoll, einmal ohne GPU wiederholen – Ergebnis ist dann sauber."""
+    monkeypatch.setattr(graxpert, "GRAXPERT", graxpert.GraxpertConfig(gpu=True))
+    mean, cov = _flat()
+    out, info = graxpert.apply(mean, cov, "bge", exe=_nan_fake(tmp_path))
+    assert np.isfinite(out).all() and info["bge"] and "error" not in info
+    assert info["retried_cpu"] is True and info["nonfinite_pct"] > 1
+    assert "ungültige Pixel" in capsys.readouterr().out
+
+
+def test_nonfinite_cpu_also_fails_gives_fixed_message(tmp_path, monkeypatch):
+    monkeypatch.setattr(graxpert, "GRAXPERT", graxpert.GraxpertConfig(gpu=True))
+    monkeypatch.setenv("GX_NAN_CPU", "1")
+    mean, cov = _flat()
+    out, info = graxpert.apply(mean, cov, "bge", exe=_nan_fake(tmp_path))
+    assert out is mean and info["error"] == "GraXpert lieferte auch ohne Grafikkarte ungültige Werte"
+    assert info["retried_cpu"] and info["nonfinite_pct"] > 1
+
+
+def test_nonfinite_tiny_share_is_repaired_from_input(tmp_path, monkeypatch):
+    """Nur ein winziger Anteil (< 0,1 %) bleibt ungültig → diese Pixel kommen aus der Eingabe, kein Verwerfen."""
+    monkeypatch.setattr(graxpert, "GRAXPERT", graxpert.GraxpertConfig(gpu=False))
+    monkeypatch.setenv("GX_NAN_FRAC", "0.0005")        # 1 Pixel von 2000
+    monkeypatch.setenv("GX_NAN_CPU", "1")
+    mean, cov = _flat()
+    out, info = graxpert.apply(mean, cov, "bge", exe=_nan_fake(tmp_path))
+    assert np.isfinite(out).all() and info["bge"] and "error" not in info
+    assert info["nonfinite_repaired"] is True and 0 < info["nonfinite_pct"] < graxpert.TINY_PCT
+    assert "retried_cpu" not in info
