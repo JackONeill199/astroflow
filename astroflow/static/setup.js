@@ -236,12 +236,13 @@
     const s = await api('/setup').catch(() => null);
     if (!s || !el.isConnected) return;
     const u = s.update || {};
+    if (s.update_check) AF.updateHint?.(s.update_offer);       // frischer Serverstand → Chip mitziehen
     const p = document.createElement('div');
     p.className = 'panel';
     p.innerHTML = `<h2>Einrichtung und Updates</h2>
       <dl class="kv" style="margin:0.75rem 0">
         <dt>Datenordner</dt><dd><code>${esc(s.data.path)}</code></dd>
-        <dt>Version</dt><dd>${esc(s.version)} · <span id="sysUpdState">${updState(AF.app.update, u)}</span></dd>
+        <dt>Version</dt><dd>${esc(s.version)} · <span id="sysUpdState">${updState(s.update_offer, u)}</span></dd>
       </dl>
       <label class="modrow"><div><b>Nach Updates suchen</b><div class="mut sm">Einmal am Tag eine anonyme Anfrage an GitHub, ob es eine neue Version gibt.</div></div>
         <input type="checkbox" id="sysUpd" ${s.update_check ? 'checked' : ''}><span class="switch"></span></label>

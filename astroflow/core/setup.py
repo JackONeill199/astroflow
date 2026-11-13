@@ -258,6 +258,7 @@ class Setup:
             "platform": platform.system(), "astap": astap, "dbs": {k: v[1] for k, v in ASTAP_DBS.items()},
             "demo": {"exists": demo.exists()}, "gpu": self._gpu_state(), "components": self.components(),
             "update_check": sysc.get("update_check", True), "update": sysc.get("update") or {},
+            "update_offer": update_offer(sysc.get("update") or {}),   # frisch je Aufruf: findet die Hintergrundprüfung später etwas, steht es hier
             "tray_notify": sysc.get("tray_notify", True), "report": sysc.get("report", True),
             "report_env_off": os.environ.get("ASTROFLOW_REPORT") == "0",
             "version": VERSION, "tasks": dict(self.tasks),

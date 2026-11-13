@@ -77,14 +77,17 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
     async def _settings_broken(request, exc):            # defekte settings.json: klare Meldung statt 500, nichts wird überschrieben
         return JSONResponse({"detail": str(exc)}, status_code=409)
 
+    def update_offer():
+        sysc = ctx.store.get("system")
+        return setup_mod.update_offer(sysc.get("update") or {}) if sysc.get("update_check", True) else None
+
     @app.get("/api/app")
     def app_info(request: Request):
-        upd = ctx.store.get("system").get("update") or {}
         return {"version": VERSION, "build": build, "modules": [m.info() for m in loaded],
                 "local": security.is_loopback(request.client.host if request.client else ""),
                 "setup": {"pending": setup.state()["pending"] if setup.launched else False, "launched": setup.launched},
                 "settings_problem": ctx.store.problem, "report": report_mod.enabled(ctx.store),
-                "update": setup_mod.update_offer(upd) if ctx.store.get("system").get("update_check", True) else None}
+                "update": update_offer()}
 
     @app.get("/api/status")
     def status():
@@ -96,7 +99,8 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
                 st = {"error": str(e)}
             mods[m.id] = st
             busy += int(st.get("busy_jobs") or 0)
-        return {"version": VERSION, "busy": busy, "modules": mods}
+        upd = update_offer()                              # nur die Nummer: das Frontend holt Details, wenn sie sich ändert
+        return {"version": VERSION, "busy": busy, "modules": mods, "update": upd["latest"] if upd else None}
 
     @app.get("/api/activity")
     def activity(limit: int = 40):

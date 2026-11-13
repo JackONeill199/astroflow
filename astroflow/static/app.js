@@ -699,6 +699,7 @@ async function poll() {
     if (b) { b.hidden = !st.busy; b.textContent = st.busy; }
     for (const id of AF.order) AF.modules[id].status?.(st, navBadge);
     sideFoot(st);
+    if ((st.update || null) !== (AF.app.update?.latest || null)) api('/app').then(a => updateHint(a.update)).catch(() => {});   // Hintergrundprüfung fand etwas
     if (st.busy || lastActive?.size || $('#jobpop').classList.contains('open')) await pollActivity(); else { lastActive = new Map(); showJobPill(null); }
     await view?.update?.(st);
   } catch { /* Server kurz weg – nächster Versuch */ }

@@ -396,6 +396,8 @@ def test_update_angebot_je_system(home, tmp_path, monkeypatch):
     monkeypatch.setattr(setup_mod, "install_kind", lambda: "windows")
     a = c.get("/api/app").json()["update"]
     assert a["download"]["url"].endswith("AstroFlow-Setup-99.0.0.exe") and a["current"] == __version__
+    assert c.get("/api/status").json()["update"] == "99.0.0"                # Polling sieht die Nummer → Frontend holt Details
+    assert c.get("/api/setup").json()["update_offer"]["latest"] == "99.0.0"
     monkeypatch.setattr(setup_mod, "install_kind", lambda: "linux")
     assert c.get("/api/system/update").json()["update"]["download"]["name"].endswith("Linux-x86_64.tar.gz")
     monkeypatch.setattr(setup_mod, "VERSION", "99.0.0")                     # Version installiert → kein Hinweis mehr
@@ -404,7 +406,7 @@ def test_update_angebot_je_system(home, tmp_path, monkeypatch):
     c.post("/api/setup", json={"update_check": False})                       # „Jetzt prüfen“ geht auch abgeschaltet
     monkeypatch.setattr(setup_mod, "VERSION", "0.1.0")
     assert c.post("/api/system/update/check").json()["update"]["latest"] == "99.0.0"
-    assert c.get("/api/app").json()["update"] is None
+    assert c.get("/api/app").json()["update"] is None and c.get("/api/status").json()["update"] is None
     monkeypatch.setattr(httpx, "get", lambda url, **kw: (_ for _ in ()).throw(httpx.ConnectError("kein Netz")))
     r = c.post("/api/system/update/check").json()
     assert r["update"] is None and r["latest"] is None and r["checked"]
