@@ -140,7 +140,7 @@ async function atlasView(el, query) {
         <div class="seg obs-mode" role="group" aria-label="Blickart" hidden><button type="button" data-mode="sky" class="on" aria-pressed="true">${icon('globe')}<span>Himmel</span></button><button type="button" data-mode="here" aria-pressed="false">${icon('pin')}<span>Von hier</span></button></div>
         <div class="seg obs-layers" role="group" aria-label="Ebenen">${LAYERS.map(([k, l, i]) => `<button type="button" data-layer="${k}" aria-pressed="${on[k]}" class="${on[k] ? 'on' : ''}" title="${l}"${k === 'plan' || k === 'tracks' ? ' hidden' : ''}>${icon(i)}<span>${l}</span></button>`).join('')}</div>
       </div>
-      <div class="obs-zoom" role="group" aria-label="Zoom"><button type="button" data-z="in" title="Vergrößern" aria-label="Vergrößern">${icon('plus')}</button><button type="button" data-z="out" title="Verkleinern" aria-label="Verkleinern">${icon('minus')}</button><button type="button" data-z="home" title="Ganzer Himmel" aria-label="Ganzer Himmel">${icon('globe')}</button></div>
+      <div class="obs-zoom" role="group" aria-label="Zoom"><button type="button" data-z="in" title="Vergrößern" aria-label="Vergrößern">${icon('plus')}</button><button type="button" data-z="out" title="Verkleinern" aria-label="Verkleinern">${icon('minus')}</button><button type="button" data-z="home" title="Ganzer Himmel" aria-label="Ganzer Himmel">${icon('globe')}</button><button type="button" data-z="full" title="Vollbild (F)" aria-label="Vollbild" aria-pressed="false">${icon('expand')}</button></div>
       <div class="obs-read tnum" id="obsRead" aria-live="off"></div>
       <div class="obs-time" id="obsTime" hidden><input type="range" id="obsT" min="0" max="${16 * 60}" step="10" value="0" aria-label="Uhrzeit"><b class="tnum" id="obsTL"></b><button type="button" class="btn ghost sm" id="obsNow">Jetzt</button></div>
       <div class="obs-msg" id="obsMsg" hidden></div>
@@ -154,7 +154,10 @@ async function atlasView(el, query) {
   let col = {};
   const readColors = () => {
     const cs = getComputedStyle(document.documentElement), c = (n) => cs.getPropertyValue(n).trim();
-    col = { ok: c('--ok'), bg: c('--bg'), surface: c('--surface'), border: c('--border'), fg: c('--fg'), mut: c('--mut'), dim: c('--dim'), acc: c('--acc'), cat: c('--data-2'), warn: c('--warn'), font: getComputedStyle(document.body).fontFamily };
+    const mix = (v) => { const i = document.createElement('i'); i.style.color = v; document.body.append(i); const r = getComputedStyle(i).color; i.remove(); return r; };
+    col = { ground: mix('color-mix(in srgb, var(--ok) 9%, color-mix(in srgb, var(--bg) 80%, #000))'),
+      groundLight: mix('color-mix(in srgb, var(--ok) 22%, var(--surface-2))'), silhouette: mix('color-mix(in srgb, var(--surface-3) 75%, var(--bg))'),
+      ok: c('--ok'), bg: c('--bg'), surface: c('--surface'), border: c('--border'), fg: c('--fg'), mut: c('--mut'), dim: c('--dim'), acc: c('--acc'), cat: c('--data-2'), warn: c('--warn'), font: getComputedStyle(document.body).fontFamily };
   };
   readColors();
 
@@ -234,13 +237,16 @@ async function atlasView(el, query) {
     if (here) ground();
     if (here && on.tracks && paths) trackLayer(base);
     if (target) {
-      const t = fwd(target.ra, target.dec);
+      const t = fwd(target.ra, target.dec), below = here && toHor(target.ra, target.dec)[1] < 0;
       if (t) {
+        g.globalAlpha = below ? 0.55 : 1;
+        if (below) { g.fillStyle = col.mut; g.fillText(`${target.name || 'Ziel'} · unter dem Horizont`, t[0] + 26, t[1] + 16); }
         g.strokeStyle = col.warn; g.lineWidth = 1.5;
         const r = 14;
         g.beginPath(); g.arc(t[0], t[1], r, 0, 2 * Math.PI); g.stroke();
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { g.beginPath(); g.moveTo(t[0] + dx * (r + 3), t[1] + dy * (r + 3)); g.lineTo(t[0] + dx * (r + 9), t[1] + dy * (r + 9)); g.stroke(); }
-        if (target.name && !target.matched) { g.fillStyle = col.warn; g.fillText(target.name, t[0] + r + 12, t[1] - r + 2); }
+        if (target.name && !target.matched && !below) { g.fillStyle = col.warn; g.fillText(target.name, t[0] + r + 12, t[1] - r + 2); }
+        g.globalAlpha = 1;
       }
     }
     $('#obsRead', el).textContent = here ? `${DIRS8[Math.round(norm(360 - v.ra) / 45) % 8]} · Höhe ${Math.round(v.dec)}° · Feld ${fmtFov(v.fov)} · Sonne ${Math.round(sunAlt)}°`
@@ -252,16 +258,22 @@ async function atlasView(el, query) {
   function ground() {
     // Horizontlinie als geschlossener Linienzug (stereografisch: ein Kreis bzw. eine Kurve); der Boden ist alles außerhalb
     // (Blick über den Horizont) bzw. innerhalb (Blick nach unten). Fast bis zum Gegenpunkt projizieren, sonst fehlen Stücke.
-    const { fwd } = projection(v, W, H, -0.9995), hz = site.horizon, pts = [];
-    for (let az = 0; az <= 360; az += 1) { const q = fwd(360 - az, hzAt(hz, az)); if (q) pts.push(q); }
-    if (pts.length < 3) return;
-    g.beginPath();
-    if (v.dec >= 0) g.rect(-10, -10, W + 20, H + 20);
-    pts.forEach((c, i) => i ? g.lineTo(...c) : g.moveTo(...c)); g.closePath();
-    g.fillStyle = col.bg; g.globalAlpha = 0.93; g.fill('evenodd'); g.globalAlpha = 1;
-    g.strokeStyle = col.ok; g.lineWidth = 1.5; g.beginPath();
-    pts.forEach((c, i) => (i && Math.hypot(c[0] - pts[i - 1][0], c[1] - pts[i - 1][1]) < W) ? g.lineTo(...c) : g.moveTo(...c));
-    g.stroke();
+    const { fwd } = projection(v, W, H, -0.9995), hz = site.horizon;
+    const line = (altAt) => { const out = []; for (let az = 0; az <= 360; az += 1) { const q = fwd(360 - az, altAt(az)); if (q) out.push(q); } return out; };
+    const region = (pts) => { g.beginPath(); if (v.dec >= 0) g.rect(-10, -10, W + 20, H + 20); pts.forEach((c, i) => i ? g.lineTo(...c) : g.moveTo(...c)); g.closePath(); };
+    const stroke = (pts) => { g.beginPath(); pts.forEach((c, i) => (i && Math.hypot(c[0] - pts[i - 1][0], c[1] - pts[i - 1][1]) < W) ? g.lineTo(...c) : g.moveTo(...c)); g.stroke(); };
+    const pts = line((az) => hzAt(hz, az)), zero = hz ? line(() => 0) : pts;
+    if (pts.length < 3 || zero.length < 3) return;
+    const day = Math.max(0, Math.min(1, (toHor(...sunRaDec(tsel))[1] + 18) / 18));      // Dämmerung/Tag: Boden heller
+    // Bäume/Häuser (Maske über 0°) als deckende Silhouette, darunter der Boden – beide decken Sterne, Linien und Katalog ab
+    if (hz) { region(pts); g.fillStyle = col.silhouette; g.fill('evenodd'); }
+    region(zero); g.fillStyle = col.ground; g.fill('evenodd');
+    g.save(); region(zero); g.clip('evenodd');                    // heller Saum am Horizont (Dunst), zum Rand hin dunkler
+    g.strokeStyle = col.groundLight; g.globalAlpha = 0.28 + 0.3 * day;
+    for (const w of [0.12, 0.06, 0.025]) { g.lineWidth = Math.max(6, Math.min(W, H) * w); stroke(zero); }
+    if (day > 0) { g.globalAlpha = 0.3 * day; g.fillStyle = col.groundLight; g.fillRect(0, 0, W, H); }
+    g.restore();
+    g.strokeStyle = col.ok; g.lineWidth = 1.5; stroke(pts);
     // ab hier frei: Mindesthöhe (30°) bzw. höher, wo die Maske höher ist – gestrichelt
     const lim = paths?.min_alt ?? 30, fr = [];
     for (let az = 0; az <= 360; az += 2) { const q = fwd(360 - az, Math.max(lim, hzAt(hz, az))); if (q) fr.push(q); }
@@ -269,8 +281,9 @@ async function atlasView(el, query) {
     fr.forEach((c, i) => (i && Math.hypot(c[0] - fr[i - 1][0], c[1] - fr[i - 1][1]) < W) ? g.lineTo(...c) : g.moveTo(...c));
     g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
     const { fwd: f2 } = projection(v, W, H);
-    g.font = '700 12px ' + col.font; g.textAlign = 'center'; g.fillStyle = col.mut;
-    DIRS8.forEach((n, k) => { const p = f2(360 - k * 45, 2); if (p && p[0] > 8 && p[0] < W - 8 && p[1] > 8 && p[1] < H - 8) g.fillText(n, p[0], p[1] - 4); });
+    g.textAlign = 'center'; g.fillStyle = col.fg;                // Himmelsrichtungen auf dem Boden, knapp unter dem Horizont
+    DIRS8.forEach((n, k) => { const p = f2(360 - k * 45, -5); g.font = `700 ${n.length === 1 ? 14 : 11}px ` + col.font;
+      if (p && p[0] > 8 && p[0] < W - 8 && p[1] > 12 && p[1] < H - 6) g.fillText(n, p[0], p[1] + 5); });
     g.textAlign = 'start'; g.font = '500 11px ' + col.font;
   }
 
@@ -738,8 +751,31 @@ async function atlasView(el, query) {
     else return;
     e.preventDefault();
   });
+  const fullBtn = $('[data-z="full"]', el);
+  const isFull = () => document.body.classList.contains('obs-full');
+  const setFull = (onf) => {
+    document.body.classList.toggle('obs-full', onf);
+    fullBtn.setAttribute('aria-pressed', onf); fullBtn.title = onf ? 'Vollbild beenden (F, Esc)' : 'Vollbild (F)';
+    fullBtn.innerHTML = icon(onf ? 'fit' : 'expand');
+  };
+  const toggleFull = () => {
+    const de2 = document.documentElement;
+    if (isFull()) { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); setFull(false); return; }
+    setFull(true);
+    de2.requestFullscreen?.({ navigationUI: 'hide' }).catch(() => {});        // ohne API (iPhone): Karte füllt das Fenster
+    cv.focus({ preventScroll: true });
+  };
+  const onFsChange = () => { if (!document.fullscreenElement && isFull()) setFull(false); };
+  const onFullKey = (e) => {
+    if (!el.isConnected || e.ctrlKey || e.metaKey || e.altKey || e.target.closest?.('input, textarea, select, [contenteditable]')) return;
+    if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFull(); }
+    else if (e.key === 'Escape' && isFull()) { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); setFull(false); }
+  };
+  document.addEventListener('fullscreenchange', onFsChange);
+  document.addEventListener('keydown', onFullKey);
   $('.obs-zoom', el).onclick = (e) => {
     const z = e.target.closest('[data-z]')?.dataset.z;
+    if (z === 'full') { toggleFull(); return; }
     if (z === 'in') zoomTo(1 / 1.6); else if (z === 'out') zoomTo(1.6); else if (z === 'home') fly(mode === 'here' ? { ...ZENITH, raw: true } : { ra: v.ra, dec: v.dec, fov: FOV_HOME, raw: true });
   };
   $('.obs-layers', el).onclick = (e) => {
@@ -901,6 +937,8 @@ async function atlasView(el, query) {
       return true;
     },
     destroy() {
+      document.removeEventListener('fullscreenchange', onFsChange); document.removeEventListener('keydown', onFullKey);
+      if (isFull()) { setFull(false); if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); }
       ro.disconnect(); onTheme.disconnect(); cancelAnimationFrame(anim); cancelAnimationFrame(raf); cancelAnimationFrame(tAnim);
       AF.ctx.body()?.removeEventListener('click', onCtxClick);
     },

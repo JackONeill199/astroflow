@@ -90,6 +90,15 @@ Etappen: 1 Atlas (dieser Stand) · 2 Horizontmaske je Standort + Ansicht „Von 
   (ohne Kometen), höchstens 80. Je Ziel `alt`/`az`, `free` (Regel wie Heute Nacht/Planer: `tonight._limit` & astronomisch dunkel), `why`;
   Mond. An den Browser gehen nur Name und Maske des Ortes, keine Koordinaten. Zeitfenster sind halboffen [Beginn, Ende).
 
+## Vollbild und Boden (13.11.2026, Nutzerwunsch)
+- **Vollbild:** Knopf unten rechts (bei den Zoom-Knöpfen) und Taste `F`, Esc/Knopf beendet. Fullscreen-API auf das ganze Dokument
+  (so bleibt das Kontextpanel rechts darüber nutzbar), die Karte füllt per `body.obs-full` das Fenster – ohne API (iPhone) nur die Klasse.
+  Im Vollbild ist die Einblend-Animation der Seite aus (`.page.swap` mit `both` bildet sonst einen Stapelkontext unter der Kopfleiste).
+  Größe rechnet der ResizeObserver der Karte neu.
+- **Boden „Von hier“** (`ground()`): deckend in den Farben aus `color-mix` (Tokens, `readColors`): Bäume/Häuser der Maske als Silhouette,
+  darunter der Boden unter 0° mit hellem Dunstsaum am Horizont, in der Dämmerung heller; Sterne/Linien/Katalog darunter sind verdeckt.
+  Himmelsrichtungen auf dem Boden knapp unter dem Horizont. Marke aus Sage/Planer unter dem Horizont nur blass mit „unter dem Horizont“.
+
 ## Geplant (Konzept vom 11.11.2026, Freigabe des Nutzers)
 - **Horizontmaske (gebaut 12.11.2026, siehe `standorte-himmel.md`):** Feld, Editor, Wirkung in Heute Nacht. Offen aus Etappe 2:
   Vorschlag aus eigenen Aufnahmen und Atlas „Von hier“ (nach dem Planer, Reihenfolge Nutzerentscheidung 12.11.2026).

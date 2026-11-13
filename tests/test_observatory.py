@@ -157,3 +157,34 @@ def test_photo_draw_order(server, browser):
     assert order(sel=2, hov=1) == [4, 3, 2, 1]           # überfahren vor ausgewählt
     assert order(sel=3, hov=3) == [2, 1, 4, 3]
     page.close()
+
+
+def test_fullscreen_and_ground(server, browser):
+    """Vollbild per Knopf und Taste F (Karte füllt das Fenster, Werkzeugleiste/Zeitregler bleiben, Kopfleiste liegt darunter);
+    „Von hier“: deckender Boden – unter dem Horizont ist kein Sternenhimmel mehr zu sehen."""
+    base, _ = server
+    page = browser.new_page(viewport={"width": 1000, "height": 700})
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{base}/#/")
+    page.evaluate("""() => { localStorage.setItem('af.obs.mode', '"here"'); localStorage.setItem('af.obs.view.here', JSON.stringify({ra: 180, dec: 10, fov: 100})); }""")
+    page.goto(f"{base}/#/observatorium")
+    page.wait_for_selector('[data-mode="here"].on', timeout=20000)
+    page.wait_for_timeout(800)
+    # unterer Rand der Karte liegt unter dem Horizont: deckender Boden statt Himmel mit Sternen (alle Pixel einer Zeile gleich hell)
+    row = page.evaluate("""() => { const c = document.querySelector('#obsCanvas'), g = c.getContext('2d'), y = c.height - 4;
+        const d = g.getImageData(0, y, c.width, 1).data, v = []; for (let i = 0; i < d.length; i += 4) v.push(d[i] + d[i + 1] + d[i + 2]);
+        return [Math.min(...v), Math.max(...v)]; }""")
+    assert row[1] - row[0] < 40, row
+    page.click('[data-z="full"]')
+    page.wait_for_function("() => document.body.classList.contains('obs-full')")
+    page.wait_for_timeout(300)
+    box = page.evaluate("""() => { const r = document.querySelector('.obs-stage').getBoundingClientRect(), c = document.querySelector('#obsCanvas');
+        const top = document.elementFromPoint(r.left + 30, r.top + 25); return [r.left, r.top, r.width, r.height, c.clientWidth, !!top?.closest('.obs-stage')]; }""")
+    assert box[:4] == [0, 0, 1000, 700] and box[4] == 1000 and box[5]          # füllt das Fenster, nichts liegt darüber
+    page.keyboard.press("f")
+    page.wait_for_function("() => !document.body.classList.contains('obs-full')")
+    assert page.locator('[data-z="full"]').get_attribute("aria-pressed") == "false"
+    assert not errors
+    page.close()
+
