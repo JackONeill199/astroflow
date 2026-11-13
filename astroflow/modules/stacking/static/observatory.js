@@ -8,7 +8,8 @@ const D2R = Math.PI / 180, FOV_MIN = 0.3, FOV_MAX = 220, FOV_HOME = 120;
 const KEY = 'obs.view', LKEY = 'obs.layers';
 const LAYERS = [['photos', 'Meine Fotos', 'image'], ['catalog', 'Katalog', 'target'], ['cons', 'Sternbilder', 'star'], ['grid', 'Gitter', 'grid'], ['plan', 'Plan', 'list'], ['tracks', 'Bahnen', 'orbit']];
 const ZENITH = { ra: 180, dec: 90, fov: 190 };                   // „Von hier“: ganzer Himmel von oben (Norden oben, Osten links)
-const hmT = (t) => new Date(t * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+const HM = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' });
+const hmT = (t) => HM.format(t * 1000);
 const spanT = (s) => `${hmT(s[0])}–${hmT(s[1])}`;
 const de = (v, n = 1) => Number(v).toFixed(n).replace('.', ',');
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -216,8 +217,9 @@ async function atlasView(el, query) {
     if (sunAlt > -18) { g.fillStyle = `rgba(70, 110, 170, ${Math.min(0.75, (sunAlt + 18) / 18 * 0.75)})`; g.fillRect(0, 0, W, H); }
     g.font = '500 11px ' + col.font;
     if (on.grid) grid(base);
-    if (sky && on.cons) constellations(P);
-    if (sky) stars(P);
+    const Pup = here ? { ...P, fwd: (ra, dec) => { const [az, alt] = toHor(ra, dec); return alt < -2 ? null : base.fwd(360 - az, alt); } } : P;
+    if (sky && on.cons) constellations(Pup);
+    if (sky) stars(Pup);
     const shown = on.photos ? photoQuads(P) : [];
     if (on.catalog) catalog(P, shown.filter(x => x.wpx > 36).map(x => x.q));
     photos(shown);
@@ -234,7 +236,7 @@ async function atlasView(el, query) {
       }
       g.setLineDash([]);
     }
-    if (here) ground();
+    if (here) groundLayer();
     if (here && on.tracks && paths) trackLayer(base);
     if (target) {
       const t = fwd(target.ra, target.dec), below = here && toHor(target.ra, target.dec)[1] < 0;
@@ -255,7 +257,7 @@ async function atlasView(el, query) {
   }
 
   // Boden unter der Horizontmaske des Ortes (bzw. 0°), Himmelsrichtungen auf der Horizontlinie
-  function ground() {
+  function ground(g) {
     // Horizontlinie als geschlossener Linienzug (stereografisch: ein Kreis bzw. eine Kurve); der Boden ist alles außerhalb
     // (Blick über den Horizont) bzw. innerhalb (Blick nach unten). Fast bis zum Gegenpunkt projizieren, sonst fehlen Stücke.
     const { fwd } = projection(v, W, H, -0.9995), hz = site.horizon;
@@ -317,6 +319,22 @@ async function atlasView(el, query) {
     DIRS8.forEach((n, k) => { const p = f2(360 - k * 45, -5); g.font = `700 ${n.length === 1 ? 14 : 11}px ` + col.font;
       if (p && p[0] > 8 && p[0] < W - 8 && p[1] > 12 && p[1] < H - 6) g.fillText(n, p[0], p[1] + 5); });
     g.textAlign = 'start'; g.font = '500 11px ' + col.font;
+  }
+
+  // Boden-Schicht im Puffer (Profil 13.11.2026: Flächen/Säume kosten gedrosselt ~2/3 der Bildzeit); während Bewegung direkt zeichnen
+  let gbuf = null;
+  function groundLayer() {
+    const day = Math.round(Math.max(0, Math.min(1, (toHor(...sunRaDec(tsel))[1] + 18) / 18)) * 20);
+    if (performance.now() - lastMove < 120) { gbuf = null; ground(g); return; }
+    const key = [v.ra, v.dec, v.fov, W, H, g.__dpr, day, site.lat, site.lon, (site.horizon || []).join(','), paths?.min_alt, col.ground, col.skyGlow, col.fg].join('|');
+    if (!gbuf || gbuf.key !== key) {
+      gbuf = gbuf || { cv: document.createElement('canvas') };
+      gbuf.cv.width = cv.width; gbuf.cv.height = cv.height;
+      const x = gbuf.cv.getContext('2d');
+      x.setTransform(g.__dpr, 0, 0, g.__dpr, 0, 0);
+      ground(x); gbuf.key = key;
+    }
+    g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.drawImage(gbuf.cv, 0, 0); g.restore();
   }
 
   // Bahnen durch die Nacht (Azimut/Höhe vom Server): gestrichelt = dunkel, aber tief oder verdeckt; kräftig = frei;
@@ -544,7 +562,8 @@ async function atlasView(el, query) {
       const r = Math.max(0.55, (lim + 1.2 - mag) * 0.42 * boost);
       g.fillStyle = starColor(st[i + 3]);
       g.globalAlpha = Math.min(1, 0.35 + (lim - mag) * 0.22);
-      g.beginPath(); g.arc(p[0], p[1], r, 0, 2 * Math.PI); g.fill();
+      if (r < 1.3) g.fillRect(p[0] - r * 0.9, p[1] - r * 0.9, r * 1.8, r * 1.8);
+      else { g.beginPath(); g.arc(p[0], p[1], r, 0, 2 * Math.PI); g.fill(); }
     }
     g.globalAlpha = 1;
   }
@@ -848,7 +867,7 @@ async function atlasView(el, query) {
     showT();
   }
   const showT = (ts = tsel) => { $('#obsTL', el).textContent = new Date(ts * 1000).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' }); };
-  let tAnim = 0, tShow = tsel;
+  let tAnim = 0, tShow = tsel, freeT = 0;
   const setT = (to) => {                                          // Himmel dreht sich kurz zum neuen Zeitpunkt statt zu springen
     tShow = to; showT(to); cancelAnimationFrame(tAnim);
     if (reduced() || mode !== 'here') { tsel = to; draw(); freeList(to); return; }
@@ -859,7 +878,7 @@ async function atlasView(el, query) {
       if (k < 1 && el.isConnected) tAnim = requestAnimationFrame(step);
     };
     tAnim = requestAnimationFrame(step);
-    freeList(to);
+    clearTimeout(freeT); freeT = setTimeout(() => { if (el.isConnected) freeList(to); }, 140);
   };
   $('#obsT', el).oninput = (e) => setT(t0 + +e.target.value * 60);
   $('#obsNow', el).onclick = () => { const nowT = Date.now() / 1000; $('#obsT', el).value = String(Math.max(0, Math.round((nowT - t0) / 60))); setT(nowT); };
@@ -971,7 +990,7 @@ async function atlasView(el, query) {
     destroy() {
       document.removeEventListener('fullscreenchange', onFsChange); document.removeEventListener('keydown', onFullKey);
       if (isFull()) { setFull(false); if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); }
-      ro.disconnect(); onTheme.disconnect(); cancelAnimationFrame(anim); cancelAnimationFrame(raf); cancelAnimationFrame(tAnim);
+      ro.disconnect(); onTheme.disconnect(); cancelAnimationFrame(anim); cancelAnimationFrame(raf); cancelAnimationFrame(tAnim); clearTimeout(freeT);
       AF.ctx.body()?.removeEventListener('click', onCtxClick);
     },
   };
