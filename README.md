@@ -247,6 +247,11 @@ ASTROFLOW_SOLVE_TIMEOUT: 180
 | OpenRouter / OpenAI / ElevenLabs | optionaler KI-Prüfer, Geschichten, Vorlesen | standardmäßig aus; LM Studio bleibt komplett lokal |
 | nova.astrometry.net | Online-Plate-Solving (verkleinertes Graustufenbild) | nur auf ausdrückliche Wahl |
 
+- **Fehler melden** (Käfer-Knopf oben rechts, Strg+Umschalt+F): AstroFlow stellt einen bereinigten Bericht zusammen (Version, System,
+  Module, Ansicht ohne IDs, letzte Browser-Fehler, auf Wunsch Protokollauszug – Pfade, Benutzer-/Rechnername, IPs, Schlüssel, Koordinaten und
+  Ortsnamen werden ersetzt), zeigt ihn als Vorschau und öffnet dann das vorausgefüllte **öffentliche** GitHub-Formular (GitHub-Konto nötig).
+  AstroFlow selbst sendet nichts. Ein Screenshot ist optional, wird vorher maskiert, lässt sich schwärzen und bleibt als Datei auf deinem Rechner.
+  Abschaltbar unter Einstellungen → Module & System bzw. `ASTROFLOW_REPORT=0`.
 - Schreibende Anfragen mit fremdem `Origin` werden abgelehnt.
 
 ## Architektur, Entwicklung und Tests

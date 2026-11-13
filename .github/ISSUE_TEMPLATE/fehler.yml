@@ -37,6 +37,7 @@ body:
       options:
         - Windows-Installer
         - Portables ZIP
+        - Linux-Paket
         - Aus dem Quellcode (pip/venv)
         - Docker
     validations:
@@ -84,11 +85,20 @@ body:
     validations:
       required: true
   - type: textarea
+    id: umgebung
+    attributes:
+      label: Umgebung
+      description: Füllt AstroFlow beim Knopf „Fehler melden“ automatisch aus (Version, System, Module, Ansicht, Browser-Fehler – bereinigt).
+      render: text
+    validations:
+      required: false
+  - type: textarea
     id: log
     attributes:
       label: Protokoll
       description: |
-        Die letzten Zeilen aus `server.log` bzw. `server.log.err` im Datenordner (Standard `%USERPROFILE%\AstroFlow`
+        Tipp: In AstroFlow oben rechts auf „Fehler melden“ klicken (Strg+Umschalt+F) – dann ist dieses Formular vorausgefüllt
+        und bereinigt. Sonst: die letzten Zeilen aus `server.log` bzw. `server.log.err` im Datenordner (Standard `%USERPROFILE%\AstroFlow`
         bzw. `~/AstroFlow`). **Vorher private Pfade, Orte und Schlüssel entfernen.**
       render: text
     validations:

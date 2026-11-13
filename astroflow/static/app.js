@@ -954,7 +954,8 @@ async function openPalette() {
   const go = (h) => () => { location.hash = h; };
   const base = [...NAV.items.map(n => [n.icon || 'arrow', n.label, n.module ? AF.info(n.module).name : n.key === 'home' ? 'Start' : 'System', go(n.href)]),
     ...(AF.on('stacking') ? [['upload', 'Dateien importieren', 'FITS, JPG, PNG, TIFF', go('#/import')]] : []),
-    ['pulse', 'Aufträge anzeigen', 'alle laufenden und fertigen Aufträge', go('#/activity')], ['gear', 'Einstellungen', 'Module, Solver, KI', go('#/settings')], ['pin', 'Standorte', 'Beobachtungsorte und Zeiträume', go('#/settings/standorte')]];
+    ['pulse', 'Aufträge anzeigen', 'alle laufenden und fertigen Aufträge', go('#/activity')], ['gear', 'Einstellungen', 'Module, Solver, KI', go('#/settings')], ['pin', 'Standorte', 'Beobachtungsorte und Zeiträume', go('#/settings/standorte')],
+    ...(AF.app.report ? [['bug', 'Fehler melden', 'vorausgefülltes GitHub-Formular (Strg+Umschalt+F)', () => report.open()]] : [])];
   let extra = [], sel = 0, items = [];
   const draw = () => {
     const words = inp.value.toLowerCase().split(/\s+/).filter(Boolean);
@@ -993,6 +994,7 @@ async function boot() {
   catch (e) { $('#view').innerHTML = `<div class="empty">${icon('alert')}<h2>Server nicht erreichbar</h2>${esc(e.message)}</div>`; return; }
   buildNav();
   $('#palBtn').onclick = openPalette;
+  $('#reportBtn').hidden = !AF.app.report;                 // Fehler melden (report.js), in den Einstellungen abschaltbar
   // Sidebar ein-/ausklappen (gemerkt je Browser); Kontextpanel; Auftrags-Popover
   const shell = $('#shell');
   shell.classList.toggle('mini', store.get('side.mini', false));

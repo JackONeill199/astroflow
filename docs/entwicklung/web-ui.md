@@ -90,6 +90,16 @@ sonst > 10 TIFF/FITS → alle JPG/PNG übersprungen
 (am 30.10.2026 landeten 233 Stellina-Vorschauen in der Galerie – der Server lief noch ohne die Verlaufsbild-Erkennung).
 Sage zeigt einen Verweis zum zentralen Import; eigener Upload nur als Rückfall bei deaktiviertem Bilder-Modul. API `/sage/analyze` bleibt kompatibel.
 Befehlspalette Strg+K: Einträge aller Module (`palette()`) + Aktionen der aktuellen Ansicht (`actions()`).
+**Fehler melden** (`static/report.js` + `core/report.py`, Nutzerentscheidung 13.11.2026: nur GitHub-Formular, kein eigener Relay-Dienst):
+Kopfknopf `#reportBtn` (`data-report`), Strg+Umschalt+F, Palette; aus über `system.report` / `ASTROFLOW_REPORT=0` (`/api/app` → `report`).
+`report.js` lädt **vor** `app.js` (Fehlerpuffer: `error`, `unhandledrejection`, `console.error`, nur im Speicher, max. 20). Ablauf: Formular →
+`POST /api/report/compose` (bereinigt **serverseitig** alles mit `report.Scrubber`: Sperrliste aus Benutzer-/Rechnername, Datenordner, Ortsliste
+inkl. Koordinaten-Schreibweisen + Muster für Pfade/IPs/E-Mails/Schlüssel/Koordinaten) → Vorschau → Link auf `REPO/issues/new?template=fehler.yml&…`
+(Feld-IDs aus `.github/ISSUE_TEMPLATE/fehler.yml`, `tests/test_report.py` prüft sie). URL ≤ `URL_MAX` (7000): erst `log`, dann `umgebung` per
+Zwischenablage, danach lange Texte kürzen. Der Server sendet nichts nach außen. Screenshot: `getDisplayMedia` (nur sicherer Kontext, also nicht
+über http im Heimnetz/Handy → „Bild wählen“), vorher `maskPage` (Textknoten/Eingaben mit Sperrwörtern/Mustern → █, MutationObserver für neu
+Gezeichnetes, `html.af-masking` verdeckt `.leaflet-container` und `[data-privat]`, z. B. 3D-Erde); Schwärzen-Rechtecke, nur „Screenshot speichern“
+(PNG neu gezeichnet, ohne Metadaten), **nie hochladen**. Neue Ansichten mit Ort/Pfad-Grafik (Karten, Canvas) → `data-privat` setzen.
 Tastenkürzel: `/` Suche in Listen, `1–4` Tabs (Objekt, SkyTrace-Lauf), `F` Vollbild, `B` Vorher/Nachher. Server schickt `Cache-Control: no-cache` für `/`.
 **Nach Änderungen an `index.html`/`app.js`/`style.css` `?v=` in `index.html` hochzählen**; Modul-Dateien bekommen die Build-Kennung automatisch.
 **Diagramm-Motive** (`modules/stacking/static/chartdeco.js` + `chartdeco.css`, Nutzerwunsch 09.11.2026 „visuell gleich verstehen, nicht zu viel Text“):

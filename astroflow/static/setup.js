@@ -237,6 +237,8 @@
       </dl>
       <label class="modrow"><div><b>Nach Updates suchen</b><div class="mut sm">Einmal am Tag eine anonyme Anfrage an GitHub, ob es eine neue Version gibt.</div></div>
         <input type="checkbox" id="sysUpd" ${s.update_check ? 'checked' : ''}><span class="switch"></span></label>
+      <label class="modrow"><div><b>„Fehler melden“ anzeigen</b><div class="mut sm">${s.report_env_off ? 'Per <code>ASTROFLOW_REPORT=0</code> ausgeschaltet.' : 'Knopf oben rechts (Strg+Umschalt+F): stellt einen bereinigten Bericht zusammen und öffnet das GitHub-Formular. AstroFlow sendet selbst nichts.'}</div></div>
+        <input type="checkbox" id="sysReport" ${s.report && !s.report_env_off ? 'checked' : ''} ${s.report_env_off ? 'disabled' : ''}><span class="switch"></span></label>
       <div class="su-acts" style="margin-top:0.875rem"><a class="btn ghost sm" href="#/willkommen">${icon('gear')}Einrichtungsassistent</a>
         <button class="btn ghost sm" id="sysCheck">Jetzt prüfen</button>
         ${s.launched ? `<button class="btn ghost sm" id="sysRestart" data-local-only>Neu starten</button>` : ''}
@@ -248,7 +250,13 @@
     cp.innerHTML = '<h2>Komponenten</h2><p class="mut sm" style="margin:0.375rem 0 0.75rem">Werkzeuge, die AstroFlow auf Wunsch lädt. Fehlt etwas, läuft AstroFlow trotzdem – nur die betroffene Funktion entfällt.</p><div></div>';
     el.append(cp);
     componentsPanel(cp.lastElementChild);
-    p.onchange = async (e) => { if (e.target.id === 'sysUpd') { try { await send('/setup', { update_check: e.target.checked }); toast('Gespeichert.', 'ok'); } catch (err) { toast(err.message, 'err'); } } };
+    p.onchange = async (e) => {
+      if (e.target.id === 'sysUpd') { try { await send('/setup', { update_check: e.target.checked }); toast('Gespeichert.', 'ok'); } catch (err) { toast(err.message, 'err'); } }
+      if (e.target.id === 'sysReport') {
+        try { await send('/setup', { report: e.target.checked }); AF.app.report = e.target.checked; $('#reportBtn').hidden = !e.target.checked; toast('Gespeichert.', 'ok'); }
+        catch (err) { toast(err.message, 'err'); e.target.checked = !e.target.checked; }
+      }
+    };
     p.onclick = async (e) => {
       const b = e.target.closest('button');
       if (!b) return;
