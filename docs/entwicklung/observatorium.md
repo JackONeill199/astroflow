@@ -98,6 +98,7 @@ Etappen: 1 Atlas (dieser Stand) · 2 Horizontmaske je Standort + Ansicht „Von 
 - **Boden „Von hier“** (`ground()`, Nutzerentscheidung 13.11.2026): Boden **nur unter 0°**, deckend und fast schwarz (`color-mix` aus Tokens, `readColors`)
   mit minimalem Dunstsaum am Horizont, in der Dämmerung kaum heller; Sterne/Linien/Katalog darunter verdeckt. Der von der **Horizontmaske** verdeckte
   Himmel bleibt Himmel: leicht abgedunkelt, dezent schraffiert, mit klarer Kontur. Die grüne gestrichelte Grenze „frei ab“ (max(30°, Maske)) bleibt.
+  Kuppel-Eindruck (Nutzerwunsch): Himmelslicht innen am 0°-Rand (`col.skyGlow`), schwacher Glanz oben links (vom Zenit aus), Hauch Spiegelung auf dem Boden.
   Himmelsrichtungen auf dem Boden knapp unter dem Horizont. Marke aus Sage/Planer unter dem Horizont nur blass mit „unter dem Horizont“.
 
 ## Geplant (Konzept vom 11.11.2026, Freigabe des Nutzers)

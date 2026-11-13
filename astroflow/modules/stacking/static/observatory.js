@@ -156,7 +156,7 @@ async function atlasView(el, query) {
     const cs = getComputedStyle(document.documentElement), c = (n) => cs.getPropertyValue(n).trim();
     const mix = (v) => { const i = document.createElement('i'); i.style.color = v; document.body.append(i); const r = getComputedStyle(i).color; i.remove(); return r; };
     col = { ground: mix('color-mix(in srgb, var(--bg) 18%, #000)'),
-      groundLight: mix('color-mix(in srgb, var(--surface-2) 45%, #000)'),
+      groundLight: mix('color-mix(in srgb, var(--surface-2) 45%, #000)'), skyGlow: mix('color-mix(in srgb, var(--acc) 40%, var(--fg))'),
       ok: c('--ok'), bg: c('--bg'), surface: c('--surface'), border: c('--border'), fg: c('--fg'), mut: c('--mut'), dim: c('--dim'), acc: c('--acc'), cat: c('--data-2'), warn: c('--warn'), font: getComputedStyle(document.body).fontFamily };
   };
   readColors();
@@ -282,6 +282,28 @@ async function atlasView(el, query) {
       for (const w of [0.12, 0.06, 0.025]) { g.lineWidth = Math.max(6, Math.min(W, H) * w); stroke(zero); }
       if (day > 0) { g.globalAlpha = 0.08 * day; g.fillStyle = col.groundLight; g.fillRect(0, 0, W, H); }
       g.restore();
+    }
+    // Kuppel-Eindruck (Nutzerwunsch 13.11.2026), sehr dezent: Himmelslicht innen am Horizont wie in gewölbtem Glas, schwacher
+    // Glanz oben links, und ein Hauch Spiegelung des Himmels auf dem Boden direkt am Horizont
+    if (zero.length >= 3) {
+      const R0 = Math.min(W, H), poly = () => zero.forEach((c, i) => i ? g.lineTo(...c) : g.moveTo(...c));
+      g.save(); g.beginPath(); if (v.dec < 0) g.rect(-10, -10, W + 20, H + 20); poly(); g.closePath(); g.clip('evenodd');   // nur Himmel
+      g.strokeStyle = col.skyGlow;
+      for (const [w, a] of [[0.10, 0.035], [0.05, 0.045], [0.02, 0.06]]) { g.globalAlpha = a; g.lineWidth = Math.max(4, R0 * w); stroke(zero); }
+      const fz = projection(v, W, H).fwd, z = fz(0, 90), s0 = fz(180, 0);
+      if (z && s0) {
+        const r = Math.hypot(s0[0] - z[0], s0[1] - z[1]), cx = z[0] - 0.38 * r, cy = z[1] - 0.42 * r;
+        if (cx > -r && cx < W + r && cy > -r && cy < H + r) {
+          const gl = g.createRadialGradient(cx, cy, 0, cx, cy, 0.6 * r);
+          gl.addColorStop(0, col.skyGlow); gl.addColorStop(1, 'transparent');
+          g.globalAlpha = 0.1; g.fillStyle = gl; g.fillRect(0, 0, W, H);
+        }
+      }
+      g.restore();
+      g.save(); region(zero); g.clip('evenodd');                    // Spiegelung auf dem Boden
+      g.strokeStyle = col.skyGlow;
+      for (const [w, a] of [[0.035, 0.05], [0.012, 0.07]]) { g.globalAlpha = a; g.lineWidth = Math.max(3, R0 * w); stroke(zero); }
+      g.restore(); g.globalAlpha = 1;
     }
     if (hz) { g.strokeStyle = col.fg; g.globalAlpha = 0.8; g.lineWidth = 1.8; stroke(pts); g.globalAlpha = 1; }   // Kontur der Maske
     // ab hier frei: Mindesthöhe (30°) bzw. höher, wo die Maske höher ist – gestrichelt
