@@ -95,8 +95,9 @@ Etappen: 1 Atlas (dieser Stand) · 2 Horizontmaske je Standort + Ansicht „Von 
   (so bleibt das Kontextpanel rechts darüber nutzbar), die Karte füllt per `body.obs-full` das Fenster – ohne API (iPhone) nur die Klasse.
   Im Vollbild ist die Einblend-Animation der Seite aus (`.page.swap` mit `both` bildet sonst einen Stapelkontext unter der Kopfleiste).
   Größe rechnet der ResizeObserver der Karte neu.
-- **Boden „Von hier“** (`ground()`): deckend in den Farben aus `color-mix` (Tokens, `readColors`): Bäume/Häuser der Maske als Silhouette,
-  darunter der Boden unter 0° mit hellem Dunstsaum am Horizont, in der Dämmerung heller; Sterne/Linien/Katalog darunter sind verdeckt.
+- **Boden „Von hier“** (`ground()`): alles unter der Maskenlinie (ohne Maske unter 0°) ist eine deckende Silhouette in Bodenfarbe
+  (`color-mix` aus Tokens, `readColors`) – Boden und Bäume/Häuser ohne Naht, klare Kontur, leichter Saum an der Kontur, in der Dämmerung
+  heller; Sterne/Linien/Katalog darunter sind verdeckt. Die grüne gestrichelte Grenze „frei ab“ (max(30°, Maske)) bleibt darüber.
   Himmelsrichtungen auf dem Boden knapp unter dem Horizont. Marke aus Sage/Planer unter dem Horizont nur blass mit „unter dem Horizont“.
 
 ## Geplant (Konzept vom 11.11.2026, Freigabe des Nutzers)

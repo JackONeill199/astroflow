@@ -156,7 +156,7 @@ async function atlasView(el, query) {
     const cs = getComputedStyle(document.documentElement), c = (n) => cs.getPropertyValue(n).trim();
     const mix = (v) => { const i = document.createElement('i'); i.style.color = v; document.body.append(i); const r = getComputedStyle(i).color; i.remove(); return r; };
     col = { ground: mix('color-mix(in srgb, var(--ok) 9%, color-mix(in srgb, var(--bg) 80%, #000))'),
-      groundLight: mix('color-mix(in srgb, var(--ok) 22%, var(--surface-2))'), silhouette: mix('color-mix(in srgb, var(--surface-3) 75%, var(--bg))'),
+      groundLight: mix('color-mix(in srgb, var(--ok) 22%, var(--surface-2))'),
       ok: c('--ok'), bg: c('--bg'), surface: c('--surface'), border: c('--border'), fg: c('--fg'), mut: c('--mut'), dim: c('--dim'), acc: c('--acc'), cat: c('--data-2'), warn: c('--warn'), font: getComputedStyle(document.body).fontFamily };
   };
   readColors();
@@ -262,22 +262,23 @@ async function atlasView(el, query) {
     const line = (altAt) => { const out = []; for (let az = 0; az <= 360; az += 1) { const q = fwd(360 - az, altAt(az)); if (q) out.push(q); } return out; };
     const region = (pts) => { g.beginPath(); if (v.dec >= 0) g.rect(-10, -10, W + 20, H + 20); pts.forEach((c, i) => i ? g.lineTo(...c) : g.moveTo(...c)); g.closePath(); };
     const stroke = (pts) => { g.beginPath(); pts.forEach((c, i) => (i && Math.hypot(c[0] - pts[i - 1][0], c[1] - pts[i - 1][1]) < W) ? g.lineTo(...c) : g.moveTo(...c)); g.stroke(); };
-    const pts = line((az) => hzAt(hz, az)), zero = hz ? line(() => 0) : pts;
-    if (pts.length < 3 || zero.length < 3) return;
+    const pts = line((az) => hzAt(hz, az));
+    if (pts.length < 3) return;
     const day = Math.max(0, Math.min(1, (toHor(...sunRaDec(tsel))[1] + 18) / 18));      // Dämmerung/Tag: Boden heller
     // Bäume/Häuser (Maske über 0°) als deckende Silhouette, darunter der Boden – beide decken Sterne, Linien und Katalog ab
-    if (hz) { region(pts); g.fillStyle = col.silhouette; g.fill('evenodd'); }
-    region(zero); g.fillStyle = col.ground; g.fill('evenodd');
-    g.save(); region(zero); g.clip('evenodd');                    // heller Saum am Horizont (Dunst), zum Rand hin dunkler
-    g.strokeStyle = col.groundLight; g.globalAlpha = 0.28 + 0.3 * day;
-    for (const w of [0.12, 0.06, 0.025]) { g.lineWidth = Math.max(6, Math.min(W, H) * w); stroke(zero); }
+    // Boden und Horizontmaske (Bäume/Häuser) als eine deckende Silhouette in Bodenfarbe: alles unter der Maskenlinie
+    // (ohne Maske: unter 0°). Ein leichter Saum an der Kontur gibt Tiefe; der Bereich darunter ist überall gleich dunkel.
+    region(pts); g.fillStyle = col.ground; g.fill('evenodd');
+    g.save(); region(pts); g.clip('evenodd');
+    g.strokeStyle = col.groundLight; g.globalAlpha = 0.16 + 0.25 * day;
+    for (const w of [0.07, 0.035, 0.015]) { g.lineWidth = Math.max(4, Math.min(W, H) * w); stroke(pts); }
     if (day > 0) { g.globalAlpha = 0.3 * day; g.fillStyle = col.groundLight; g.fillRect(0, 0, W, H); }
     g.restore();
-    g.strokeStyle = col.ok; g.lineWidth = 1.5; stroke(pts);
+    g.strokeStyle = col.groundLight; g.lineWidth = 1.6; stroke(pts);                     // klare Kontur der Silhouette
     // ab hier frei: Mindesthöhe (30°) bzw. höher, wo die Maske höher ist – gestrichelt
     const lim = paths?.min_alt ?? 30, fr = [];
     for (let az = 0; az <= 360; az += 2) { const q = fwd(360 - az, Math.max(lim, hzAt(hz, az))); if (q) fr.push(q); }
-    g.setLineDash([6, 5]); g.globalAlpha = 0.75; g.beginPath();
+    g.strokeStyle = col.ok; g.lineWidth = 1.5; g.setLineDash([6, 5]); g.globalAlpha = 0.85; g.beginPath();
     fr.forEach((c, i) => (i && Math.hypot(c[0] - fr[i - 1][0], c[1] - fr[i - 1][1]) < W) ? g.lineTo(...c) : g.moveTo(...c));
     g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
     const { fwd: f2 } = projection(v, W, H);
