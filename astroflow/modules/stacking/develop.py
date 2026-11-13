@@ -342,7 +342,9 @@ def corrections(qc: dict, p: dict) -> dict:
         sep = p.get("star_separation", "off") not in ("off", None, False)
         nxt_hdr = [h for h in HDR_STEPS if h > p.get("hdr", 0)]
         nxt = [w for w in WHITE_STEPS if w > p.get("white_pct", WHITE_STEPS[0])]
-        if sep or not nxt:
+        # ohne Trennung: hdr spätestens mit der letzten Weißpunkt-Stufe – sonst wäre sie bei Start 99,9 erst nach der
+        # letzten der QC_ROUNDS Renderings dran und käme nie zum Zug
+        if sep or not nxt or nxt[0] == WHITE_STEPS[-1]:
             # Sternentrennung: der Nebel läuft über GHS mit festem Weißpunkt – white_pct/asinh bleiben dort wirkungslos
             # (M1: drei Runden ohne Änderung). Lichterschutz nach der Endbearbeitung dämpft den Kern, Struktur bleibt.
             if nxt_hdr:

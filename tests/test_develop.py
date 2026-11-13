@@ -112,6 +112,9 @@ def test_object_burn_corrections_use_hdr_with_star_separation():
     assert develop.corrections(qc, {**base, "hdr": develop.HDR_STEPS[-1]}) == {}   # Ende der Stufen
     off = develop.corrections(qc, {**base, "star_separation": "off"})
     assert off["white_pct"] > 99.9 and "hdr" not in off          # ohne Trennung zuerst der Weißpunkt (wie bisher)
+    second = develop.corrections(qc, {**base, "star_separation": "off", "white_pct": develop.WHITE_STEPS[1]})
+    # letzte Weißpunkt-Stufe zusammen mit hdr: sonst reichen die QC-Runden bei Start 99,9 nie bis zum Lichterschutz
+    assert second["white_pct"] == develop.WHITE_STEPS[-1] and second["hdr"] == develop.HDR_STEPS[0]
     done = develop.corrections(qc, {**base, "star_separation": "off", "white_pct": develop.WHITE_STEPS[-1]})
     assert done["hdr"] == develop.HDR_STEPS[0]                   # Weißpunkt ausgereizt: Lichterschutz
 
