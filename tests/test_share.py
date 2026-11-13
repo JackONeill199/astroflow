@@ -69,10 +69,17 @@ def app_db(tmp_path, monkeypatch):
     # importiertes fremdes Bild (Kamera mit Seriennummer im Namen)
     _photo(out / "fremd.jpg", 900, 900)
     ipid = db.x("INSERT INTO projects(key,name,obj_id,kind,ra,dec,options,created) VALUES(?,?,?,?,?,?,?,?)",
-                ("imp", "Fremdes Bild", None, None, None, None, json.dumps({"input_type": "picture"}), time.time()))
+                ("imp", "Fremdes Bild", None, None, None, None, json.dumps({"input_type": "picture", "name_custom": True}), time.time()))
     irid = db.x("INSERT INTO results(project_id,created,n_frames,exposure,files,stats,review) VALUES(?,?,?,?,?,?,?)",
                 (ipid, time.time(), 1, 0, json.dumps({"jpg": str(out / "fremd.jpg")}),
-                 json.dumps({"imported": {"camera": "ZWO ASI2600MC Pro SN 12345678", "date_obs": "2025-01-03T22:14:55", "format": "JPEG"}}), "[]"))
+                 json.dumps({"imported": {"make": "ZWO", "model": "ASI2600MC Pro SN 12345678", "date_obs": "2025-01-03T22:14:55", "format": "JPEG",
+                                         "filename": "Erfundenhausen_2025-01-03_221455.jpg"}}), "[]"))
+    # importiert, nicht bestimmt, nicht umbenannt: Name = Dateistamm (wie picture_import) → nie auf die Karte
+    npid = db.x("INSERT INTO projects(key,name,obj_id,kind,ra,dec,options,created) VALUES(?,?,?,?,?,?,?,?)",
+                ("imp2", "Erfundenhausen_2025-01-03_221455", None, None, None, None, json.dumps({"input_type": "picture"}), time.time()))
+    db.x("INSERT INTO results(project_id,created,n_frames,exposure,files,stats,review) VALUES(?,?,?,?,?,?,?)",
+         (npid, time.time(), 1, 0, json.dumps({"jpg": str(out / "fremd.jpg")}),
+          json.dumps({"imported": {"model": "Seestar S50", "filename": "Erfundenhausen_2025-01-03_221455.jpg"}}), "[]"))
     return create_app(s), rid, irid
 
 
@@ -137,6 +144,9 @@ def test_importiertes_bild_braucht_urheber(app_db):
         assert "gestackt" not in info["text"]["bbcode"]                     # fertiges Bild: nichts behaupten, was nicht passiert ist
         assert "ZWO ASI2600MC Pro" in info["text"]["bbcode"] and "12345678" not in json.dumps(info)
         assert "03.01.2025" in info["text"]["bbcode"] and "22:14" not in json.dumps(info)
+        info2 = c.get(f"/api/stacking/results/{irid + 1}/share").json()
+        assert info2["name"] == "Astrofoto" and "ZWO Seestar S50" in info2["text"]["bbcode"]
+        assert "Erfundenhausen" not in json.dumps(info2) and "221455" not in json.dumps(info2)
         r = c.get(f"/api/stacking/results/{irid}/share/card.jpg")
         assert r.status_code == 409 and "eigenes Bild" in r.json()["detail"]
         assert c.get(f"/api/stacking/results/{irid}/share/card.jpg", params={"own": "1"}).status_code == 200

@@ -121,6 +121,15 @@ def clean_device(name: str | None) -> str | None:
     return s[:40] or None
 
 
+def import_device(imp: dict) -> str | None:
+    """Gerät eines importierten Bildes aus den EXIF-Feldern des Imports (`make`/`model`, Teleskopserie `series.instrument`)."""
+    make, model = str(imp.get("make") or "").strip(), str(imp.get("model") or "").strip()
+    series = (imp.get("series") or {}).get("instrument") if isinstance(imp.get("series"), dict) else None
+    if model and make and not model.lower().startswith(make.lower()):
+        return f"{make} {model}"
+    return model or series or make or imp.get("camera") or imp.get("instrument") or None
+
+
 def clean_text(v: str | None, limit: int = 60) -> str:
     """Freitext vom Client (Fotograf): ohne Steuerzeichen, eine Zeile, begrenzt."""
     s = unicodedata.normalize("NFKC", str(v or ""))
@@ -248,6 +257,9 @@ def collect(eng, rid: int, objects_fn=None) -> dict:
 
     # Objekt
     name = clean_text(p["name"], 80) or "Astrofoto"
+    imp_info = st.get("imported") or opts.get("imported") or {}
+    if imported and not (p["obj_id"] or opts.get("name_custom") or imp_info.get("series")):
+        name = "Astrofoto"                  # Name stammt noch aus dem Dateinamen (Ort, Zeit, Seriennummer möglich) – nie zeigen
     obj = {"name": name, "kind": KIND_LABEL.get(p["kind"]) if p["kind"] and p["kind"] != "generic" else None,
            "constellation": None, "distance": None}
     const = constellation(p["ra"], p["dec"]) if p["obj_id"] or not imported or (opts.get("picture_solve") or {}).get("state") in ("done", "manual") else None
@@ -274,7 +286,7 @@ def collect(eng, rid: int, objects_fn=None) -> dict:
     pic = None
     if imported:
         imp = st.get("imported") or {}
-        shot["device"] = clean_device(imp.get("camera") or imp.get("instrument"))
+        shot["device"] = clean_device(import_device(imp))
         shot["dates"] = fmt_dates([str(imp.get("date_obs") or "")[:10]])
         ps = opts.get("picture_solve") or {}
         sol = ps.get("solution") or {}
