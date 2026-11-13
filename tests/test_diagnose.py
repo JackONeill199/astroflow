@@ -219,6 +219,11 @@ def test_end_to_end_drift_tilt_and_temperature(drift_env):
     # Neue Frame-Metriken aus der echten Analyse: Karten je Aufnahme bestätigen die Verkippung
     ff = d["field_frames"]
     assert ff and ff["frames"] >= 30 and ff["tilt_sig"] and "rechts" in ff["soft_side"]   # 3×3 Kacheln: Richtung grob
+    # Mit (erfundenem) Ort: Höhe/Azimut je Aufnahme, Montierung der Nacht; Stellina mit Derotator dreht nicht
+    n2 = diagnose.compute(pl, p["id"], cfg={"lat": 50.0, "lon": 10.0})["nights"][0]
+    assert p["ra"] is not None                                    # Demo-Kopf nennt RA/DEC
+    assert sum(b["n"] for b in n2["sky"]["bins"]) == n2["frames"] and n2["sky"]["mode"] in ("derot", "software")
+    assert n2["mount"]["state"] in ("steady", "unknown") and n2["mount"]["mode"] in ("derot", None)
 
 
 def test_insights_store_tutor_and_device_summary(drift_env):
@@ -279,3 +284,114 @@ def test_device_trend_uses_only_night_specific_tilt(tmp_path):
     db.x("INSERT INTO results(project_id, created, stats) VALUES(1, 0, ?)", (json.dumps({"diagnose": d}),))
     ns = diagnose.device_summary(db)[0]["nights"]
     assert [n["tilt"] for n in ns] == [7.0, None] and all(n["curv"] is None for n in ns)
+
+
+# ------------------------------------------------------------------ Himmelslage / Montierung (DIAG_VERSION 2) ---
+SITE = [50.0, 10.0]                                              # erfundener Ort
+NIGHT = dt.datetime(2026, 11, 2, 18, 0, tzinfo=dt.timezone.utc)
+
+
+def _night_frames(n=180, step=120.0, **kw):
+    return [{"id": f"n{i}", "night": "2026-11-02", "t": NIGHT + dt.timedelta(seconds=i * step), "status": "selected", "reason": "",
+             "exptime": 10.0, "metrics": {"fwhm": 4.0, "ecc": 0.3, "n_stars": 100}, **kw} for i in range(n)]
+
+
+def test_sky_track_alt_az_and_rotation():
+    from astroflow.modules.stacking import devices
+    fr = _night_frames()
+    trk = diagnose.sky_track([f["t"] for f in fr], 10.68, 45.0, SITE)            # kulminiert 5° südlich des Zenits
+    assert trk["alt"].max() == pytest.approx(85, abs=0.3) and trk["alt"].min() > 0
+    assert abs(trk["az"][int(np.argmax(trk["alt"]))] - 180) < 3
+    i = int(np.argmax(trk["alt"]))
+    assert trk["rate"][i] == pytest.approx(float(devices.rotation_rate(trk["alt"][i], trk["az"][i], SITE[0])))
+    assert np.ptp(trk["q"]) > 90                                    # parallaktischer Winkel dreht sich stark
+    assert trk["rate"][i] > 5 * trk["rate"][0]
+
+
+def test_mount_from_rotation_vs_parallactic_angle():
+    fr = _night_frames(60, step=60.0)
+    trk = diagnose.sky_track([f["t"] for f in fr], 300.0, 30.0, SITE)
+    q = {f["id"]: float(trk["q"][i]) for i, f in enumerate(fr)}
+    pos = np.zeros((len(fr), 2))
+    altaz = diagnose.tracking(fr, _links(fr, pos, -(trk["q"] - trk["q"][0])), 10.0, None, (360, 480), q)
+    steady = diagnose.tracking(fr, _links(fr, pos, np.random.default_rng(2).normal(0, 0.02, len(fr))), 10.0, None, (360, 480), q)
+    assert abs(altaz["rot_vs_q"]["slope"]) == pytest.approx(1.0, abs=0.05) and altaz["rot_vs_q"]["q_range"] > diagnose.Q_MIN
+    assert abs(steady["rot_vs_q"]["slope"]) < 0.05
+    dev = lambda k: {"id": k, **(tutor.DEVICES.get(k) or {}), "smart": k != "camera"}
+    assert diagnose.mount_mode(altaz["rot_vs_q"], dev("seestar"))["mode"] == "altaz"
+    assert diagnose.mount_mode(steady["rot_vs_q"], dev("seestar"))["mode"] == "eq"
+    assert diagnose.mount_mode(steady["rot_vs_q"], dev("stellina"))["mode"] == "derot"       # Derotator ist kein EQ
+    assert diagnose.mount_mode(steady["rot_vs_q"], dev("vespera"))["mode"] is None          # unerwartet: nichts behaupten
+    assert diagnose.mount_mode(steady["rot_vs_q"], {"id": "camera", "smart": False})["mode"] == "eq"
+    assert diagnose.mount_mode({**steady["rot_vs_q"], "q_range": 1.0}, dev("seestar"))["state"] == "unknown"
+
+
+def _rejects(fr, cond, reason="Sterne verzogen (Nachführfehler/Wind)"):
+    for i, f in enumerate(fr):
+        if cond(i):
+            f.update(status="rejected", reason=reason)
+    return fr
+
+
+def test_rejected_frames_explained_by_altitude():
+    from astroflow.modules.stacking import devices
+    fr = _night_frames()
+    trk = diagnose.sky_track([f["t"] for f in fr], 10.68, 50.0, SITE)
+    prof = devices.profile({"id": "seestar"})
+    alt_az = {"state": "rotating", "mode": "altaz"}
+    _rejects(fr, lambda i: trk["alt"][i] > 75 and i % 3 != 0)
+    _rejects(fr, lambda i: i in (5, 40), "Himmelshintergrund zu hell")
+    s = diagnose.sky_rejects(fr, trk, prof, alt_az, 10.0, (1080, 1920), {"elong_vs_drift": 70, "elong_coherence": 0.2})
+    assert s["verdict"] == "rotation" and s["zone"]["shape"] >= 3 and s["rest"]["shape"] == 0 and s["rejected_other"] == 2
+    assert sum(b["n"] for b in s["bins"]) == len(fr) and len(s["series"]) == len(fr)
+    mixed = diagnose.sky_rejects(fr, trk, prof, alt_az, 10.0, (1080, 1920), {"elong_vs_drift": 5, "elong_coherence": 0.8})
+    assert mixed["verdict"] == "mixed"
+    # EQ-Modus: keine Drehungszone → keine Zenit-Erklärung
+    eq = diagnose.sky_rejects(fr, trk, prof, {"state": "steady", "mode": "eq"}, 10.0, (1080, 1920), None)
+    assert eq["zone"]["n"] == 0 and eq["verdict"] == "unclear"
+    # gleichmäßig über die Nacht verworfen + Sterne in Driftrichtung länglich → Drift/Wind, nicht Zenit
+    even = _rejects(_night_frames(), lambda i: i % 4 == 0)
+    d = diagnose.sky_rejects(even, trk, prof, alt_az, 10.0, (1080, 1920), {"elong_vs_drift": 8, "elong_coherence": 0.7})
+    assert d["verdict"] == "drift"
+
+
+def test_findings_mount_and_zenith_rejects():
+    seestar = {"id": "seestar", **tutor.DEVICES["seestar"]}
+    sky = {"verdict": "rotation", "zenith_limit": 70, "zone": {"n": 30, "shape": 12, "share": 0.4}, "rest": {"n": 150, "shape": 3, "share": 0.02}}
+    d = {"ok": True, "nights": [{"night": "2026-11-02", "mount": {"mode": "eq", "q_range": 40.0}, "sky": sky}]}
+    f = {x["code"]: x for x in diagnose.findings(d, seestar)}
+    assert "EQ-Modus" in f["mount_eq"]["title"]
+    z = f["zenith_rejects"]
+    assert z["level"] == "warn" and "70°" in z["text"] and "12 von 30" in z["text"] and any("EQ-Modus" in t for t in z["tips"])
+    d["nights"][0]["sky"] = {**sky, "verdict": "unclear"}
+    assert "zenith_rejects" not in {x["code"] for x in diagnose.findings(d, seestar)}
+
+
+def test_eq_detected_feeds_tonight(tmp_path):
+    """Neueste erkannte Nacht je Gerät entscheidet; Heute Nacht übernimmt den EQ-Modus des zuletzt verwendeten Geräts."""
+    from astroflow.modules.stacking import tonight
+    db = DB(tmp_path / "a.db")
+    db.x("INSERT INTO projects(id, key, name, ra, dec) VALUES(1, 'k', 'M31', 10.68, 41.27)")
+    def diag(rid, dev, nights):
+        d = {"v": diagnose.DIAG_VERSION, "ok": True, "device": {"id": dev}, "nights": [{"night": n, "mount": {"mode": m}} for n, m in nights]}
+        db.x("INSERT INTO results(id, project_id, stats) VALUES(?, 1, ?)", (rid, json.dumps({"diagnose": d})))
+    diag(1, "seestar", [("2026-10-01", "altaz"), ("2026-10-05", "eq")])
+    diag(2, "seestar", [("2026-10-03", "altaz"), ("2026-10-04", None)])
+    diag(3, "stellina", [("2026-10-06", "derot")])
+    assert diagnose.eq_detected(db) == {"seestar": {"eq": True, "night": "2026-10-05"}}
+    db.x("INSERT INTO frames(id, project_id, kind, night, info) VALUES('f', 1, 'light', '2026-10-05', ?)",
+         (json.dumps({"instrument": "Seestar S50", "exptime": 10.0}),))
+    _, dev = tonight.library(db)
+    assert dev["id"] == "seestar" and dev["eq"] and dev["eq_night"] == "2026-10-05" and dev["exptime"] == 10.0
+
+
+def test_diagnose_uses_detected_model():
+    """Vespera II aus der Erkennung: Diagnose nimmt Modellprofil (Sensor, 75°-Grenze), nicht das der Vespera."""
+    from astroflow.modules.stacking import devices
+    v2 = tutor.detect_device(["Vespera II"])
+    assert devices.profile(v2)["zenith_limit"] == 75
+    fr = _night_frames()
+    trk = diagnose.sky_track([f["t"] for f in fr], 10.68, 45.0, SITE)
+    s = diagnose.sky_rejects(fr, trk, devices.profile(v2), {"state": "unknown", "mode": None}, 10.0, None, None)
+    assert s["zenith_limit"] == 75
+    assert diagnose.devices_get(v2)["name"] == "Vaonis Vespera II"

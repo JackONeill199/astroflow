@@ -104,13 +104,44 @@ function nightStrip(n, f) {
   ]);
 }
 
+// Himmelslage einer Nacht (DIAG_VERSION 2): Montierung aus der Bilddrehung, verworfene Aufnahmen je Höhenklasse
+const VERDICT = {
+  rotation: 'Verworfene Aufnahmen häufen sich, wo das Bildfeld schnell dreht bzw. über der Zenit-Grenze – passt zu Zenit-Totzone/Bildfelddrehung.',
+  mixed: 'Verworfene Aufnahmen häufen sich hoch am Himmel, die Sterne sind aber auch in Driftrichtung länglich – vermutlich Drehung und Drift/Wind zusammen.',
+  drift: 'Verworfene Aufnahmen verteilen sich über die Nacht, Sterne in Driftrichtung länglich bzw. Bild wandert – eher Drift oder Wind als Zenitnähe.',
+  unclear: 'Verworfene Aufnahmen ohne klaren Zusammenhang mit Höhe oder Drift (Seeing, Fokus, Wolken möglich).',
+};
+function mountText(m) {
+  if (!m || m.state === 'unknown') return m?.q_range != null && m.q_range < 3 ? 'Montierung nicht erkennbar (Bildfeld hätte sich kaum gedreht)' : 'Montierung nicht erkennbar';
+  if (m.state === 'rotating') return `Bildfeld dreht mit (Alt-Az, ${de(m.rot_range, 0)}° in der Nacht)`;
+  return { eq: '<b>EQ-Modus erkannt</b> – Bildfeld steht still', derot: 'Bildfeld steht still (Derotator)' }[m.mode]
+    || 'Bildfeld steht still – Ursache unklar';
+}
+function skyBlock(n) {
+  const s = n?.sky;
+  if (!s) return `<div class="dg-sky"><h4>${icon('orbit')}Höhe &amp; Bildfelddrehung</h4><p class="mut sm dg-empty">Ohne Standort oder Objektlage keine Höhe je Aufnahme.</p></div>`;
+  const max = Math.max(1, ...s.bins.map(b => b.n));
+  const rows = s.bins.map(b => {
+    const sh = b.n ? b.shape / b.n * 100 : 0, ot = b.n ? b.other / b.n * 100 : 0;
+    return `<div class="dg-alt"><span class="tnum">${b.from}–${b.to}°</span><i style="--w:${(b.n / max * 100).toFixed(1)}%"><b style="--s:${sh.toFixed(1)}%"></b><em style="--o:${ot.toFixed(1)}%;--s:${sh.toFixed(1)}%"></em></i>
+      <span class="tnum dim">${b.shape ? `${b.shape} von ${b.n} verzogen/unscharf` : `${b.n} Aufnahmen`}${b.other ? ` · ${b.other} sonst` : ''}</span></div>`;
+  }).join('');
+  return `<div class="dg-sky"><h4>${icon('orbit')}Höhe &amp; Bildfelddrehung</h4>
+    <p class="sm">${mountText(n.mount)} · Höhe ${de(s.alt_range[0], 0)}–${de(s.alt_range[1], 0)}°${s.rate_max != null ? ` · Drehrate bis ${de(s.rate_max * 60, 0)}°/h` : ''}${s.zenith_limit != null ? ` · Zenit-Grenze ${de(s.zenith_limit, 0)}°` : ''}</p>
+    <div class="dg-alts">${rows}</div>
+    ${s.verdict ? `<p class="sm mut">${VERDICT[s.verdict]}</p>` : ''}</div>`;
+}
+
 const HELP = `<details class="dg-help"><summary>Was bedeuten die Werte?</summary>
   <p><b>Nachführung:</b> Jede Gerade im Diagramm ist ein Abschnitt zwischen zwei Nachzentrierungen (Sprünge); ihre Steigung ist die Drift während der Aufnahmen.
     Verschmieren = Drift × Belichtungszeit – ab der halben Sterngröße werden Sterne sichtbar länglich.</p>
   <p><b>Fokus:</b> Ob Seeing oder Fokus, lässt sich bei auf- oder untergehenden Objekten nicht ganz trennen – gemeldet wird eine Drift nur, wenn sie mit und ohne
     Luftmassen-Korrektur gleich ausfällt. Grüne senkrechte Linien: automatisch nachfokussiert bzw. neue Beobachtung.</p>
   <p><b>Bildfeld:</b> Verkippung = Sterne werden zu einer Seite größer (Ebene durch die Sterngrößen), Wölbung = größer zum Rand hin.
-    Gemeldet wird erst ab 10 % Unterschied und dreifacher Messunsicherheit.</p></details>`;
+    Gemeldet wird erst ab 10 % Unterschied und dreifacher Messunsicherheit.</p>
+  <p><b>Höhe &amp; Bildfelddrehung:</b> Höhe, Azimut und Drehrate (ω·cos φ·|cos A|/cos h) je Aufnahme aus Zeit, Ort und Objektlage – lokal gerechnet.
+    Dreht sich das Bild mit dem parallaktischen Winkel, läuft das Gerät azimutal ohne Ausgleich; steht es still, ist es EQ-Modus oder ein Derotator (Stellina).
+    Balken: Aufnahmen je Höhe, farbig der Anteil, der wegen verzogener/unscharfer Sterne verworfen wurde.</p></details>`;
 
 // Gerätetrend: Kennzahlenleiste + drei Verläufe über alle Nächte in einer Reihe
 function deviceTrend(dev) {
@@ -155,6 +186,7 @@ function render(host, d, devs, night) {
       <div class="dg-c"><h4>${icon('grid')}Bildfeld</h4>${f && !f.error ? fieldMap(f) : `<p class="mut sm dg-empty">${f?.error ? 'Nicht messbar: ' + esc(f.error) : 'Kein Master-Stack mit genug Sternen.'}</p>`}</div>
     </div>
     <p class="dg-extra sm">${extra}</p>
+    ${skyBlock(n)}
     ${dev ? `<div class="dg-dev"><h3>${icon('camera')}${esc(dev.name || 'Gerät')} über alle Nächte</h3>${deviceTrend(dev)}</div>` : ''}
     ${HELP}`;
   $$('[data-night]', host).forEach(b => b.onclick = () => render(host, d, devs, b.dataset.night));

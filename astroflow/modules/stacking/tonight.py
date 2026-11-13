@@ -80,10 +80,16 @@ def library(db) -> tuple[list[dict], dict]:
         # Gesicherter Rückfall aus tutor.DEVICES, keine pauschalen Werte für Gerätefamilien.
         field = [1.0, 0.7] if device["id"] == "stellina" else None
         source = "ungefähres Stellina-Bildfeld" if field else None
+    from .diagnose import eq_detected
+    try:
+        eq = eq_detected(db).get(device["id"])               # EQ-Modus aus der Bilddrehung der letzten erkannten Nacht
+    except Exception:
+        eq = None
     exp = info.get("exptime")                              # tatsächliche Einzelbelichtung → Randverschmieren (devices.profile)
     return rows, {"id": device["id"], "name": device["name"], "alt_az": bool(device.get("alt_az")), "fov": field, "source": source,
                   "mag_limit": deepsky.mag_limit(device), **({"model": device["model"]} if device.get("model") else {}),
-                  **({"exptime": float(exp)} if isinstance(exp, (int, float)) and exp > 0 else {})}
+                  **({"exptime": float(exp)} if isinstance(exp, (int, float)) and exp > 0 else {}),
+                  **({"eq": True, "eq_night": eq["night"]} if eq and eq["eq"] else {})}
 
 
 def _need(p: dict) -> list[str]:

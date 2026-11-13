@@ -888,7 +888,14 @@ def build_router(eng: Engine) -> APIRouter:
     def get_plan():
         opts, device = _plan_options()
         lib = next((o["id"] for o in opts if o["id"] == "library"), None)
-        return {"plan": eng.ctx.store.get("observatory").get("plan"), "devices": opts,
+        from .diagnose import eq_detected
+        try:
+            det = eq_detected(db)
+        except Exception:
+            traceback.print_exc()
+            det = {}
+        found = [o["id"] for o in opts if (det.get(o.get("lib_id") or o.get("mag_id") or o["id"]) or {}).get("eq") and o.get("eq_mode")]
+        return {"plan": eng.ctx.store.get("observatory").get("plan"), "devices": opts, "eq_detected": found, "eq_default": found,
                 "default_device": lib or next((k for k in (device.get("model"), device.get("id")) if k in {o["id"] for o in opts}), "stellina"),
                 "has_site": bool(_plan_site_for()(None)), "weather_on": bool(tutor.settings(eng.ctx.store).get("weather"))}
 

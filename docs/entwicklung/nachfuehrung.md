@@ -30,6 +30,22 @@ der Hinweis empfiehlt „vor oder nach der höchsten Stellung“, nennt die Zeni
 (Grenze 70°), Seestar im EQ-Modus 7,9 h. Planer (3 Nächte, Mischung, 2 h): für Stellina/Vespera gleich, für den Seestar wandert C4
 (NGC 7023, +68°) aus dem Abendblock in die zweite Nachthälfte, abends kommt M27.
 
+**Gerätediagnose (DIAG_VERSION 2):** je Nacht `sky_track` (Höhe, Azimut, parallaktischer Winkel q, Drehrate je Aufnahme aus Zeit, Ort
+der Nacht über `tutor.pick_site` und Objektlage; nichts in der DB, nur im Diagnose-Ergebnis). **Montierung** `mount`: Theil-Sen der
+gemessenen Bilddrehung (Registrierung) gegen q (`tracking.rot_vs_q`); |Steigung| ≥ 0,6 = `altaz` (dreht ohne Ausgleich), ≤ 0,2 = steht still →
+`derot` bei optischem Derotator, `eq` bei EQ-fähigem Gerät bzw. Astrokamera, sonst `None` (unerwartet, nichts behauptet); q muss sich um
+≥ 3° drehen. `diagnose.eq_detected(db)` → neueste erkannte Nacht je Gerät; **Heute Nacht** übernimmt `eq` für das zuletzt verwendete Gerät,
+der **Planer** setzt den EQ-Schalter vor (`eq_default`). **Verworfene Aufnahmen** `sky`: Höhenklassen mit wegen Sternform verworfenen
+Aufnahmen; Zone = Randverschmieren ≥ 1 px (aus gemessener Montierung, sonst Geräteprofil) oder über der Zenit-Grenze. Urteil `rotation`,
+wenn die Zone ≥ 3 solche Aufnahmen hat und ihr Anteil ≥ doppelt und ≥ 15 Punkte über dem Rest liegt; `mixed`, wenn zusätzlich die Sterne in
+Driftrichtung länglich sind (`elong_vs_drift` ≤ 25°, Kohärenz ≥ 0,4); sonst bei vielen Formfehlern `drift` (Länglichkeit in Driftrichtung oder
+`smear_ratio` ≥ 0,5) bzw. `unclear`. Befunde `mount_eq` und `zenith_rejects` (nur bei `rotation`/`mixed`). Hinweis: Ein Objekt genau durch den
+Zenit läuft dort ost-west (cos A → 0) – die Feldrotation bleibt endlich, problematisch ist dann die Azimutgeschwindigkeit; dafür steht die
+getrennte Zenit-Grenze je Gerät. Alte Diagnosen (Version 1) zeigen „veraltet“ und werden mit „Neu berechnen“ ergänzt.
+
+**Offen:** Randbeschnitt durch Rotation im Stack (B2), Kalibrierung der Vorschlagswerte aus eigenen Aufnahmen (Auswertung `sky.bins` über
+viele Nächte), räumliche Elongationsmetrik (tangential = Drehung) – siehe Abschnitt 4.
+
 **FITS-Kopfzeilen (geprüft 12.11.2026, nur lesend):** Stellina-Rohbilder enthalten `DATE-OBS`, `INSTRUME`, `EXPOSURE` (ms), `GAIN`, `OFFSET`,
 `TEMP`, `PIXSZ`, `FOCAL`, `BAYERPAT` – **keine** Koordinaten, keinen Ort, keine Höhe/Azimut, keinen Montierungsmodus; die Begleitdatei
 `params.json` nennt nur Belichtung/Gain/Anzahl/Spiegelung. Vespera-/Seestar-Dateien lagen nicht vor. Höhe/Azimut also immer aus Zeit + Ort
