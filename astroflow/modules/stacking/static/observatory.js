@@ -265,16 +265,25 @@ async function atlasView(el, query) {
     const pts = line((az) => hzAt(hz, az));
     if (pts.length < 3) return;
     const day = Math.max(0, Math.min(1, (toHor(...sunRaDec(tsel))[1] + 18) / 18));      // Dämmerung/Tag: Boden heller
-    // Bäume/Häuser (Maske über 0°) als deckende Silhouette, darunter der Boden – beide decken Sterne, Linien und Katalog ab
-    // Boden und Horizontmaske (Bäume/Häuser) als eine deckende Silhouette in Bodenfarbe: alles unter der Maskenlinie
-    // (ohne Maske: unter 0°). Ein leichter Saum an der Kontur gibt Tiefe; der Bereich darunter ist überall gleich dunkel.
-    region(pts); g.fillStyle = col.ground; g.fill('evenodd');
-    g.save(); region(pts); g.clip('evenodd');
-    g.strokeStyle = col.groundLight; g.globalAlpha = 0.16 + 0.25 * day;
-    for (const w of [0.07, 0.035, 0.015]) { g.lineWidth = Math.max(4, Math.min(W, H) * w); stroke(pts); }
-    if (day > 0) { g.globalAlpha = 0.3 * day; g.fillStyle = col.groundLight; g.fillRect(0, 0, W, H); }
-    g.restore();
-    g.strokeStyle = col.groundLight; g.lineWidth = 1.6; stroke(pts);                     // klare Kontur der Silhouette
+    // Nutzerentscheidung 13.11.2026: Boden nur unter 0° (deckend, Sterne darunter weg); der von der Horizontmaske verdeckte
+    // Himmel bleibt Himmel – leicht abgedunkelt und schraffiert, mit klarer Kontur der Maske
+    const zero = line(() => 0);
+    if (hz) {
+      region(pts); g.fillStyle = col.bg; g.globalAlpha = 0.42; g.fill('evenodd'); g.globalAlpha = 1;
+      g.save(); region(pts); g.clip('evenodd');
+      g.strokeStyle = col.mut; g.globalAlpha = 0.22; g.lineWidth = 1; g.beginPath();
+      for (let x = -H; x < W; x += 9) { g.moveTo(x, H); g.lineTo(x + H, 0); }                  // dezente Schraffur
+      g.stroke(); g.restore(); g.globalAlpha = 1;
+    }
+    if (zero.length >= 3) {
+      region(zero); g.fillStyle = col.ground; g.fill('evenodd');
+      g.save(); region(zero); g.clip('evenodd');                    // heller Saum am Horizont (Dunst), zum Rand hin dunkler
+      g.strokeStyle = col.groundLight; g.globalAlpha = 0.28 + 0.3 * day;
+      for (const w of [0.12, 0.06, 0.025]) { g.lineWidth = Math.max(6, Math.min(W, H) * w); stroke(zero); }
+      if (day > 0) { g.globalAlpha = 0.3 * day; g.fillStyle = col.groundLight; g.fillRect(0, 0, W, H); }
+      g.restore();
+    }
+    if (hz) { g.strokeStyle = col.fg; g.globalAlpha = 0.8; g.lineWidth = 1.8; stroke(pts); g.globalAlpha = 1; }   // Kontur der Maske
     // ab hier frei: Mindesthöhe (30°) bzw. höher, wo die Maske höher ist – gestrichelt
     const lim = paths?.min_alt ?? 30, fr = [];
     for (let az = 0; az <= 360; az += 2) { const q = fwd(360 - az, Math.max(lim, hzAt(hz, az))); if (q) fr.push(q); }
