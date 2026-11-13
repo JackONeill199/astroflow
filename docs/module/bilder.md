@@ -152,7 +152,7 @@ Sage springt umgekehrt von jeder Objektseite hierher. Ebenen (Fotos, Katalog, St
 
 **Von hier:** Der Schalter „Von hier“ zeigt den Himmel, wie er **von deinem Standort aus** aussieht – mit Himmelsrichtungen, Boden unter deiner Horizontmaske, der
 Dämmerung und einem **Zeitregler** von jetzt bis 16 Stunden voraus. So siehst du, wann das Ziel über den Baum klettert. Fotos, Katalog und Plan gelten in beiden
-Ansichten; alles wird lokal gerechnet.
+Ansichten; alles wird lokal gerechnet. Unter dem Horizont liegt ein deckender Boden; was deine Horizontmaske (Bäume, Häuser) verdeckt, ist abgedunkelt und schraffiert. Mit dem **Vollbild**-Knopf unten rechts (oder Taste F) füllt die Karte den ganzen Bildschirm – in beiden Ansichten.
 
 ![Von hier: der Himmel am Beispielort, Zeitregler unten](../screenshots/observatorium-von-hier.webp)
 

@@ -106,3 +106,12 @@
 .obs-step.on { border-color: var(--acc); background-color: var(--acc-soft) }
 .obs-step i { width: 0.5rem; height: 0.5rem; border-radius: 0.125rem }
 @media (prefers-reduced-motion: reduce) { .obs-step { transition: none } }
+/* Vollbild (Knopf/Taste F): Karte füllt das Fenster bzw. den Bildschirm; Werkzeugleiste, Zeitregler und Suche liegen in der Karte,
+   das Kontextpanel bleibt rechts darüber nutzbar */
+body.obs-full { overflow: hidden }
+/* Einblend-Animation der Seite (.page.swap/.enter, „both“) bildet einen eigenen Stapelkontext – sonst läge die Kopfleiste über der Karte */
+body.obs-full .page { animation: none !important; opacity: 1 }
+body.obs-full .obs-stage { position: fixed; inset: 0; z-index: 66; height: auto; border: 0; border-radius: 0; animation: fadeIn var(--t2) var(--ease) both }
+body.obs-full .ctx { position: fixed; z-index: 70; top: 0; right: 0; bottom: 0; height: auto }
+body.obs-full .shell.ctx-shown .ctx-scrim { z-index: 68; inset: 0 }          /* Abdunklung des Panels (schmale Fenster) über der Karte, Klick daneben schließt */
+@media (prefers-reduced-motion: reduce) { body.obs-full .obs-stage { animation: none } }

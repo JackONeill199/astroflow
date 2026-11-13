@@ -8,7 +8,8 @@ const D2R = Math.PI / 180, FOV_MIN = 0.3, FOV_MAX = 220, FOV_HOME = 120;
 const KEY = 'obs.view', LKEY = 'obs.layers';
 const LAYERS = [['photos', 'Meine Fotos', 'image'], ['catalog', 'Katalog', 'target'], ['cons', 'Sternbilder', 'star'], ['grid', 'Gitter', 'grid'], ['plan', 'Plan', 'list'], ['tracks', 'Bahnen', 'orbit']];
 const ZENITH = { ra: 180, dec: 90, fov: 190 };                   // „Von hier“: ganzer Himmel von oben (Norden oben, Osten links)
-const hmT = (t) => new Date(t * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+const HM = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' });
+const hmT = (t) => HM.format(t * 1000);
 const spanT = (s) => `${hmT(s[0])}–${hmT(s[1])}`;
 const de = (v, n = 1) => Number(v).toFixed(n).replace('.', ',');
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -140,7 +141,7 @@ async function atlasView(el, query) {
         <div class="seg obs-mode" role="group" aria-label="Blickart" hidden><button type="button" data-mode="sky" class="on" aria-pressed="true">${icon('globe')}<span>Himmel</span></button><button type="button" data-mode="here" aria-pressed="false">${icon('pin')}<span>Von hier</span></button></div>
         <div class="seg obs-layers" role="group" aria-label="Ebenen">${LAYERS.map(([k, l, i]) => `<button type="button" data-layer="${k}" aria-pressed="${on[k]}" class="${on[k] ? 'on' : ''}" title="${l}"${k === 'plan' || k === 'tracks' ? ' hidden' : ''}>${icon(i)}<span>${l}</span></button>`).join('')}</div>
       </div>
-      <div class="obs-zoom" role="group" aria-label="Zoom"><button type="button" data-z="in" title="Vergrößern" aria-label="Vergrößern">${icon('plus')}</button><button type="button" data-z="out" title="Verkleinern" aria-label="Verkleinern">${icon('minus')}</button><button type="button" data-z="home" title="Ganzer Himmel" aria-label="Ganzer Himmel">${icon('globe')}</button></div>
+      <div class="obs-zoom" role="group" aria-label="Zoom"><button type="button" data-z="in" title="Vergrößern" aria-label="Vergrößern">${icon('plus')}</button><button type="button" data-z="out" title="Verkleinern" aria-label="Verkleinern">${icon('minus')}</button><button type="button" data-z="home" title="Ganzer Himmel" aria-label="Ganzer Himmel">${icon('globe')}</button><button type="button" data-z="full" title="Vollbild (F)" aria-label="Vollbild" aria-pressed="false">${icon('expand')}</button></div>
       <div class="obs-read tnum" id="obsRead" aria-live="off"></div>
       <div class="obs-time" id="obsTime" hidden><input type="range" id="obsT" min="0" max="${16 * 60}" step="10" value="0" aria-label="Uhrzeit"><b class="tnum" id="obsTL"></b><button type="button" class="btn ghost sm" id="obsNow">Jetzt</button></div>
       <div class="obs-msg" id="obsMsg" hidden></div>
@@ -154,7 +155,10 @@ async function atlasView(el, query) {
   let col = {};
   const readColors = () => {
     const cs = getComputedStyle(document.documentElement), c = (n) => cs.getPropertyValue(n).trim();
-    col = { ok: c('--ok'), bg: c('--bg'), surface: c('--surface'), border: c('--border'), fg: c('--fg'), mut: c('--mut'), dim: c('--dim'), acc: c('--acc'), cat: c('--data-2'), warn: c('--warn'), font: getComputedStyle(document.body).fontFamily };
+    const mix = (v) => { const i = document.createElement('i'); i.style.color = v; document.body.append(i); const r = getComputedStyle(i).color; i.remove(); return r; };
+    col = { ground: mix('color-mix(in srgb, var(--bg) 18%, #000)'),
+      groundLight: mix('color-mix(in srgb, var(--surface-2) 45%, #000)'), skyGlow: mix('color-mix(in srgb, var(--acc) 40%, var(--fg))'),
+      ok: c('--ok'), bg: c('--bg'), surface: c('--surface'), border: c('--border'), fg: c('--fg'), mut: c('--mut'), dim: c('--dim'), acc: c('--acc'), cat: c('--data-2'), warn: c('--warn'), font: getComputedStyle(document.body).fontFamily };
   };
   readColors();
 
@@ -213,8 +217,9 @@ async function atlasView(el, query) {
     if (sunAlt > -18) { g.fillStyle = `rgba(70, 110, 170, ${Math.min(0.75, (sunAlt + 18) / 18 * 0.75)})`; g.fillRect(0, 0, W, H); }
     g.font = '500 11px ' + col.font;
     if (on.grid) grid(base);
-    if (sky && on.cons) constellations(P);
-    if (sky) stars(P);
+    const Pup = here ? { ...P, fwd: (ra, dec) => { const [az, alt] = toHor(ra, dec); return alt < -2 ? null : base.fwd(360 - az, alt); } } : P;
+    if (sky && on.cons) constellations(Pup);
+    if (sky) stars(Pup);
     const shown = on.photos ? photoQuads(P) : [];
     if (on.catalog) catalog(P, shown.filter(x => x.wpx > 36).map(x => x.q));
     photos(shown);
@@ -231,16 +236,19 @@ async function atlasView(el, query) {
       }
       g.setLineDash([]);
     }
-    if (here) ground();
+    if (here) groundLayer();
     if (here && on.tracks && paths) trackLayer(base);
     if (target) {
-      const t = fwd(target.ra, target.dec);
+      const t = fwd(target.ra, target.dec), below = here && toHor(target.ra, target.dec)[1] < 0;
       if (t) {
+        g.globalAlpha = below ? 0.55 : 1;
+        if (below) { g.fillStyle = col.mut; g.fillText(`${target.name || 'Ziel'} · unter dem Horizont`, t[0] + 26, t[1] + 16); }
         g.strokeStyle = col.warn; g.lineWidth = 1.5;
         const r = 14;
         g.beginPath(); g.arc(t[0], t[1], r, 0, 2 * Math.PI); g.stroke();
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { g.beginPath(); g.moveTo(t[0] + dx * (r + 3), t[1] + dy * (r + 3)); g.lineTo(t[0] + dx * (r + 9), t[1] + dy * (r + 9)); g.stroke(); }
-        if (target.name && !target.matched) { g.fillStyle = col.warn; g.fillText(target.name, t[0] + r + 12, t[1] - r + 2); }
+        if (target.name && !target.matched && !below) { g.fillStyle = col.warn; g.fillText(target.name, t[0] + r + 12, t[1] - r + 2); }
+        g.globalAlpha = 1;
       }
     }
     $('#obsRead', el).textContent = here ? `${DIRS8[Math.round(norm(360 - v.ra) / 45) % 8]} · Höhe ${Math.round(v.dec)}° · Feld ${fmtFov(v.fov)} · Sonne ${Math.round(sunAlt)}°`
@@ -249,29 +257,84 @@ async function atlasView(el, query) {
   }
 
   // Boden unter der Horizontmaske des Ortes (bzw. 0°), Himmelsrichtungen auf der Horizontlinie
-  function ground() {
+  function ground(g) {
     // Horizontlinie als geschlossener Linienzug (stereografisch: ein Kreis bzw. eine Kurve); der Boden ist alles außerhalb
     // (Blick über den Horizont) bzw. innerhalb (Blick nach unten). Fast bis zum Gegenpunkt projizieren, sonst fehlen Stücke.
-    const { fwd } = projection(v, W, H, -0.9995), hz = site.horizon, pts = [];
-    for (let az = 0; az <= 360; az += 1) { const q = fwd(360 - az, hzAt(hz, az)); if (q) pts.push(q); }
+    const { fwd } = projection(v, W, H, -0.9995), hz = site.horizon;
+    const line = (altAt) => { const out = []; for (let az = 0; az <= 360; az += 1) { const q = fwd(360 - az, altAt(az)); if (q) out.push(q); } return out; };
+    const region = (pts) => { g.beginPath(); if (v.dec >= 0) g.rect(-10, -10, W + 20, H + 20); pts.forEach((c, i) => i ? g.lineTo(...c) : g.moveTo(...c)); g.closePath(); };
+    const stroke = (pts) => { g.beginPath(); pts.forEach((c, i) => (i && Math.hypot(c[0] - pts[i - 1][0], c[1] - pts[i - 1][1]) < W) ? g.lineTo(...c) : g.moveTo(...c)); g.stroke(); };
+    const pts = line((az) => hzAt(hz, az));
     if (pts.length < 3) return;
-    g.beginPath();
-    if (v.dec >= 0) g.rect(-10, -10, W + 20, H + 20);
-    pts.forEach((c, i) => i ? g.lineTo(...c) : g.moveTo(...c)); g.closePath();
-    g.fillStyle = col.bg; g.globalAlpha = 0.93; g.fill('evenodd'); g.globalAlpha = 1;
-    g.strokeStyle = col.ok; g.lineWidth = 1.5; g.beginPath();
-    pts.forEach((c, i) => (i && Math.hypot(c[0] - pts[i - 1][0], c[1] - pts[i - 1][1]) < W) ? g.lineTo(...c) : g.moveTo(...c));
-    g.stroke();
+    const day = Math.max(0, Math.min(1, (toHor(...sunRaDec(tsel))[1] + 18) / 18));      // Dämmerung/Tag: Boden heller
+    // Nutzerentscheidung 13.11.2026: Boden nur unter 0° (deckend, Sterne darunter weg); der von der Horizontmaske verdeckte
+    // Himmel bleibt Himmel – leicht abgedunkelt und schraffiert, mit klarer Kontur der Maske
+    const zero = line(() => 0);
+    if (hz) {
+      region(pts); g.fillStyle = col.bg; g.globalAlpha = 0.42; g.fill('evenodd'); g.globalAlpha = 1;
+      g.save(); region(pts); g.clip('evenodd');
+      g.strokeStyle = col.mut; g.globalAlpha = 0.22; g.lineWidth = 1; g.beginPath();
+      for (let x = -H; x < W; x += 9) { g.moveTo(x, H); g.lineTo(x + H, 0); }                  // dezente Schraffur
+      g.stroke(); g.restore(); g.globalAlpha = 1;
+    }
+    if (zero.length >= 3) {
+      region(zero); g.fillStyle = col.ground; g.fill('evenodd');
+      g.save(); region(zero); g.clip('evenodd');                    // heller Saum am Horizont (Dunst), zum Rand hin dunkler
+      g.strokeStyle = col.groundLight; g.globalAlpha = 0.22 + 0.1 * day;                       // Boden fast schwarz (Nutzerwunsch), nur ein Hauch Dunst
+      for (const w of [0.12, 0.06, 0.025]) { g.lineWidth = Math.max(6, Math.min(W, H) * w); stroke(zero); }
+      if (day > 0) { g.globalAlpha = 0.08 * day; g.fillStyle = col.groundLight; g.fillRect(0, 0, W, H); }
+      g.restore();
+    }
+    // Kuppel-Eindruck (Nutzerwunsch 13.11.2026), sehr dezent: Himmelslicht innen am Horizont wie in gewölbtem Glas, schwacher
+    // Glanz oben links, und ein Hauch Spiegelung des Himmels auf dem Boden direkt am Horizont
+    if (zero.length >= 3) {
+      const R0 = Math.min(W, H), poly = () => zero.forEach((c, i) => i ? g.lineTo(...c) : g.moveTo(...c));
+      g.save(); g.beginPath(); if (v.dec < 0) g.rect(-10, -10, W + 20, H + 20); poly(); g.closePath(); g.clip('evenodd');   // nur Himmel
+      g.strokeStyle = col.skyGlow;
+      for (const [w, a] of [[0.10, 0.035], [0.05, 0.045], [0.02, 0.06]]) { g.globalAlpha = a; g.lineWidth = Math.max(4, R0 * w); stroke(zero); }
+      const fz = projection(v, W, H).fwd, z = fz(0, 90), s0 = fz(180, 0);
+      if (z && s0) {
+        const r = Math.hypot(s0[0] - z[0], s0[1] - z[1]), cx = z[0] - 0.38 * r, cy = z[1] - 0.42 * r;
+        if (cx > -r && cx < W + r && cy > -r && cy < H + r) {
+          const gl = g.createRadialGradient(cx, cy, 0, cx, cy, 0.6 * r);
+          gl.addColorStop(0, col.skyGlow); gl.addColorStop(1, 'transparent');
+          g.globalAlpha = 0.1; g.fillStyle = gl; g.fillRect(0, 0, W, H);
+        }
+      }
+      g.restore();
+      g.save(); region(zero); g.clip('evenodd');                    // Spiegelung auf dem Boden
+      g.strokeStyle = col.skyGlow;
+      for (const [w, a] of [[0.035, 0.05], [0.012, 0.07]]) { g.globalAlpha = a; g.lineWidth = Math.max(3, R0 * w); stroke(zero); }
+      g.restore(); g.globalAlpha = 1;
+    }
+    if (hz) { g.strokeStyle = col.fg; g.globalAlpha = 0.8; g.lineWidth = 1.8; stroke(pts); g.globalAlpha = 1; }   // Kontur der Maske
     // ab hier frei: Mindesthöhe (30°) bzw. höher, wo die Maske höher ist – gestrichelt
     const lim = paths?.min_alt ?? 30, fr = [];
     for (let az = 0; az <= 360; az += 2) { const q = fwd(360 - az, Math.max(lim, hzAt(hz, az))); if (q) fr.push(q); }
-    g.setLineDash([6, 5]); g.globalAlpha = 0.75; g.beginPath();
+    g.strokeStyle = col.ok; g.lineWidth = 1.5; g.setLineDash([6, 5]); g.globalAlpha = 0.85; g.beginPath();
     fr.forEach((c, i) => (i && Math.hypot(c[0] - fr[i - 1][0], c[1] - fr[i - 1][1]) < W) ? g.lineTo(...c) : g.moveTo(...c));
     g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
     const { fwd: f2 } = projection(v, W, H);
-    g.font = '700 12px ' + col.font; g.textAlign = 'center'; g.fillStyle = col.mut;
-    DIRS8.forEach((n, k) => { const p = f2(360 - k * 45, 2); if (p && p[0] > 8 && p[0] < W - 8 && p[1] > 8 && p[1] < H - 8) g.fillText(n, p[0], p[1] - 4); });
+    g.textAlign = 'center'; g.fillStyle = col.fg;                // Himmelsrichtungen auf dem Boden, knapp unter dem Horizont
+    DIRS8.forEach((n, k) => { const p = f2(360 - k * 45, -5); g.font = `700 ${n.length === 1 ? 14 : 11}px ` + col.font;
+      if (p && p[0] > 8 && p[0] < W - 8 && p[1] > 12 && p[1] < H - 6) g.fillText(n, p[0], p[1] + 5); });
     g.textAlign = 'start'; g.font = '500 11px ' + col.font;
+  }
+
+  // Boden-Schicht im Puffer (Profil 13.11.2026: Flächen/Säume kosten gedrosselt ~2/3 der Bildzeit); während Bewegung direkt zeichnen
+  let gbuf = null;
+  function groundLayer() {
+    const day = Math.round(Math.max(0, Math.min(1, (toHor(...sunRaDec(tsel))[1] + 18) / 18)) * 20);
+    if (performance.now() - lastMove < 120) { gbuf = null; ground(g); return; }
+    const key = [v.ra, v.dec, v.fov, W, H, g.__dpr, day, site.lat, site.lon, (site.horizon || []).join(','), paths?.min_alt, col.ground, col.skyGlow, col.fg].join('|');
+    if (!gbuf || gbuf.key !== key) {
+      gbuf = gbuf || { cv: document.createElement('canvas') };
+      gbuf.cv.width = cv.width; gbuf.cv.height = cv.height;
+      const x = gbuf.cv.getContext('2d');
+      x.setTransform(g.__dpr, 0, 0, g.__dpr, 0, 0);
+      ground(x); gbuf.key = key;
+    }
+    g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.drawImage(gbuf.cv, 0, 0); g.restore();
   }
 
   // Bahnen durch die Nacht (Azimut/Höhe vom Server): gestrichelt = dunkel, aber tief oder verdeckt; kräftig = frei;
@@ -499,7 +562,8 @@ async function atlasView(el, query) {
       const r = Math.max(0.55, (lim + 1.2 - mag) * 0.42 * boost);
       g.fillStyle = starColor(st[i + 3]);
       g.globalAlpha = Math.min(1, 0.35 + (lim - mag) * 0.22);
-      g.beginPath(); g.arc(p[0], p[1], r, 0, 2 * Math.PI); g.fill();
+      if (r < 1.3) g.fillRect(p[0] - r * 0.9, p[1] - r * 0.9, r * 1.8, r * 1.8);
+      else { g.beginPath(); g.arc(p[0], p[1], r, 0, 2 * Math.PI); g.fill(); }
     }
     g.globalAlpha = 1;
   }
@@ -738,8 +802,31 @@ async function atlasView(el, query) {
     else return;
     e.preventDefault();
   });
+  const fullBtn = $('[data-z="full"]', el);
+  const isFull = () => document.body.classList.contains('obs-full');
+  const setFull = (onf) => {
+    document.body.classList.toggle('obs-full', onf);
+    fullBtn.setAttribute('aria-pressed', onf); fullBtn.title = onf ? 'Vollbild beenden (F, Esc)' : 'Vollbild (F)';
+    fullBtn.innerHTML = icon(onf ? 'fit' : 'expand');
+  };
+  const toggleFull = () => {
+    const de2 = document.documentElement;
+    if (isFull()) { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); setFull(false); return; }
+    setFull(true);
+    de2.requestFullscreen?.({ navigationUI: 'hide' }).catch(() => {});        // ohne API (iPhone): Karte füllt das Fenster
+    cv.focus({ preventScroll: true });
+  };
+  const onFsChange = () => { if (!document.fullscreenElement && isFull()) setFull(false); };
+  const onFullKey = (e) => {
+    if (!el.isConnected || e.ctrlKey || e.metaKey || e.altKey || e.target.closest?.('input, textarea, select, [contenteditable]')) return;
+    if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFull(); }
+    else if (e.key === 'Escape' && isFull()) { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); setFull(false); }
+  };
+  document.addEventListener('fullscreenchange', onFsChange);
+  document.addEventListener('keydown', onFullKey);
   $('.obs-zoom', el).onclick = (e) => {
     const z = e.target.closest('[data-z]')?.dataset.z;
+    if (z === 'full') { toggleFull(); return; }
     if (z === 'in') zoomTo(1 / 1.6); else if (z === 'out') zoomTo(1.6); else if (z === 'home') fly(mode === 'here' ? { ...ZENITH, raw: true } : { ra: v.ra, dec: v.dec, fov: FOV_HOME, raw: true });
   };
   $('.obs-layers', el).onclick = (e) => {
@@ -780,7 +867,7 @@ async function atlasView(el, query) {
     showT();
   }
   const showT = (ts = tsel) => { $('#obsTL', el).textContent = new Date(ts * 1000).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' }); };
-  let tAnim = 0, tShow = tsel;
+  let tAnim = 0, tShow = tsel, freeT = 0;
   const setT = (to) => {                                          // Himmel dreht sich kurz zum neuen Zeitpunkt statt zu springen
     tShow = to; showT(to); cancelAnimationFrame(tAnim);
     if (reduced() || mode !== 'here') { tsel = to; draw(); freeList(to); return; }
@@ -791,7 +878,7 @@ async function atlasView(el, query) {
       if (k < 1 && el.isConnected) tAnim = requestAnimationFrame(step);
     };
     tAnim = requestAnimationFrame(step);
-    freeList(to);
+    clearTimeout(freeT); freeT = setTimeout(() => { if (el.isConnected) freeList(to); }, 140);
   };
   $('#obsT', el).oninput = (e) => setT(t0 + +e.target.value * 60);
   $('#obsNow', el).onclick = () => { const nowT = Date.now() / 1000; $('#obsT', el).value = String(Math.max(0, Math.round((nowT - t0) / 60))); setT(nowT); };
@@ -901,7 +988,9 @@ async function atlasView(el, query) {
       return true;
     },
     destroy() {
-      ro.disconnect(); onTheme.disconnect(); cancelAnimationFrame(anim); cancelAnimationFrame(raf); cancelAnimationFrame(tAnim);
+      document.removeEventListener('fullscreenchange', onFsChange); document.removeEventListener('keydown', onFullKey);
+      if (isFull()) { setFull(false); if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); }
+      ro.disconnect(); onTheme.disconnect(); cancelAnimationFrame(anim); cancelAnimationFrame(raf); cancelAnimationFrame(tAnim); clearTimeout(freeT);
       AF.ctx.body()?.removeEventListener('click', onCtxClick);
     },
   };

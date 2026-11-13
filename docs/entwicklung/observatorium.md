@@ -90,6 +90,18 @@ Etappen: 1 Atlas (dieser Stand) · 2 Horizontmaske je Standort + Ansicht „Von 
   (ohne Kometen), höchstens 80. Je Ziel `alt`/`az`, `free` (Regel wie Heute Nacht/Planer: `tonight._limit` & astronomisch dunkel), `why`;
   Mond. An den Browser gehen nur Name und Maske des Ortes, keine Koordinaten. Zeitfenster sind halboffen [Beginn, Ende).
 
+## Vollbild und Boden (13.11.2026, Nutzerwunsch)
+- **Vollbild:** Knopf unten rechts (bei den Zoom-Knöpfen) und Taste `F`, Esc/Knopf beendet. Fullscreen-API auf das ganze Dokument
+  (so bleibt das Kontextpanel rechts darüber nutzbar), die Karte füllt per `body.obs-full` das Fenster – ohne API (iPhone) nur die Klasse.
+  Im Vollbild ist die Einblend-Animation der Seite aus (`.page.swap` mit `both` bildet sonst einen Stapelkontext unter der Kopfleiste).
+  Größe rechnet der ResizeObserver der Karte neu.
+- **Boden „Von hier“** (`ground()`, Nutzerentscheidung 13.11.2026): Boden **nur unter 0°**, deckend und fast schwarz (`color-mix` aus Tokens, `readColors`)
+  mit minimalem Dunstsaum am Horizont, in der Dämmerung kaum heller; Sterne/Linien/Katalog darunter verdeckt. Der von der **Horizontmaske** verdeckte
+  Himmel bleibt Himmel: leicht abgedunkelt, dezent schraffiert, mit klarer Kontur. Die grüne gestrichelte Grenze „frei ab“ (max(30°, Maske)) bleibt.
+  Leistung (Messung 13.11.2026, Handy gedrosselt ×4): Boden-/Kuppelschicht gepuffert (`groundLayer`, Schlüssel Ansicht/Ort/Farben/Dämmerung, bei Bewegung direkt), Sterne/Sternbilder unter dem Boden nicht gezeichnet, kleine Sterne als Quadrat, Listen beim Zeitregler verzögert → Zeitregler 30 → 60 fps.
+  Kuppel-Eindruck (Nutzerwunsch): Himmelslicht innen am 0°-Rand (`col.skyGlow`), schwacher Glanz oben links (vom Zenit aus), Hauch Spiegelung auf dem Boden.
+  Himmelsrichtungen auf dem Boden knapp unter dem Horizont. Marke aus Sage/Planer unter dem Horizont nur blass mit „unter dem Horizont“.
+
 ## Geplant (Konzept vom 11.11.2026, Freigabe des Nutzers)
 - **Horizontmaske (gebaut 12.11.2026, siehe `standorte-himmel.md`):** Feld, Editor, Wirkung in Heute Nacht. Offen aus Etappe 2:
   Vorschlag aus eigenen Aufnahmen und Atlas „Von hier“ (nach dem Planer, Reihenfolge Nutzerentscheidung 12.11.2026).
