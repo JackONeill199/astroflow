@@ -27,6 +27,7 @@ Stack: Python 3.12+ · numpy/scipy/astropy · FastAPI + uvicorn · SQLite · Van
 | Kometenmodus, Heute Nacht (`tonight`, `deepsky`) | `docs/entwicklung/kometen-heute-nacht.md` |
 | Geräte-Tabelle (`devices.json`/`devices.py`), Nachführung, Bildfelddrehung, EQ-Erkennung | `docs/entwicklung/nachfuehrung.md` |
 | Observatorium: Himmelsatlas mit eigenen Fotos (`observatory`), später Horizontmaske und Mehrnächte-Planung | `docs/entwicklung/observatorium.md` |
+| Belichtungsbedarf je Ziel und Gerät (`need`, Planer, Heute Nacht), Eichung aus eigenen Stacks | `docs/entwicklung/belichtungsbedarf.md` |
 | Tiefe, Vergleich (Grenzgröße, helle Nachbarn, Hotpixel-Reste) | `docs/entwicklung/analyse-tiefe-vergleich.md` |
 | HR-Diagramm, Asteroiden, Gerätediagnose, Analyse-Dashboard | `docs/entwicklung/analyse-auswertungen.md` |
 | Web-UI: Routing, Designsystem, Look, Seitenwechsel, Viewer, 3D, Frontend-Helfer (`folderDialog`, `picker` …), Import fertiger Bilder | `docs/entwicklung/web-ui.md` |

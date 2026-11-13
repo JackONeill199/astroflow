@@ -36,12 +36,16 @@ Etappen: 1 Atlas (dieser Stand) · 2 Horizontmaske je Standort + Ansicht „Von 
 
 ## Planer `#/observatorium/plan` (12.11.2026, Schritt 2 nach der Horizontmaske)
 - **Backend** `modules/stacking/planner.py`, API `GET/POST/DELETE /api/stacking/plan` (POST = Assistent {nights 1–14, devices 1–2, mode
-  new|mix|deep, min_hours, watch[]} → rechnen und in `settings.json` → `observatory.plan` speichern; feste deutsche Fehlermeldungen).
+  new|mix|deep, depth short|normal|thorough – alt `min_hours`, wird zu depth –, watch[], eq[]} → rechnen und in `settings.json` → `observatory.plan` speichern; feste deutsche Fehlermeldungen).
 - **Rechnung** je Nacht wie Heute Nacht (`tonight._alt/_limit/_sep/_series/_window/_forecast`): 10-min-Schritte, astronomisch dunkel, Höhe über
   max(30°, Horizontmaske des Ortes der Nacht – `site_for(night)`), Mondgewicht, Bildfelddrehung je Gerät (`devices.weights`, EQ-Modus je Gerät im Assistenten, `wishes.eq`; `nachfuehrung.md`), Wolken nur aus der vorhandenen
   Open-Meteo-Schicht (nur mit Tutor-Einstellung „Wetter“, sonst/später „ohne Wetter“).
-- **Vergabe:** Nacht je Gerät in gleich lange Abschnitte ≥ min(Mindestbelichtung, 3 h); Abschnitte nach größtem Nutzen vergeben
-  (Priorität × min(Gewinn, Restbedarf), angefangene Ziele ×1,6), nie dasselbe Ziel gleichzeitig auf zwei Geräten, Abschnitte mit < 25 %
+- **Bedarf je Ziel und Gerät**: `need.need_hours` – Objektart/Flächenhelligkeit, Optik, Himmelsqualität des Ortes, Faktor aus
+  eigenen Stacks, × Gründlichkeit; schon gesammelte Belichtung eigener Projekte zählt mit (`have`). Herleitung: `belichtungsbedarf.md`.
+- **Vergabe:** Nacht je Gerät in Halbstunden-Abschnitte (`SLOT_H`); Abschnitte nach größtem Nutzen vergeben (Priorität × min(Gewinn inkl.
+  halber freier Nachbarn, Restbedarf), angefangene Ziele ×1,6, zweiter getrennter Block desselben Ziels in einer Nacht ×0,4); das gewählte
+  Ziel wächst über benachbarte freie Abschnitte, bis sein Restbedarf gedeckt ist (Haufen 30 min, schwache Galaxie mehrere Stunden am Stück).
+  Fortschritt als Anteil am Bedarf (zwei Geräte zählen anteilig). Nie dasselbe Ziel gleichzeitig auf zwei Geräten, Abschnitte mit < 25 %
   Nutzen bleiben frei (Wolken → Ziel wandert in spätere Nächte). Priorität: Wunsch (neu/Mischung/vertiefen), Objektart, Helligkeit,
   Merkliste ×2. Ausgeschlossen: Begleiter eigener Objekte (wie Heute Nacht) und Kometen-Projekte (wandern).
 - **Geräte:** feste Liste `planner.DEVICES` (Bildfeld wie `picture_solve.DEVICE_FOV`) + „Gerät aus deinen Aufnahmen“ (`tonight.library`).

@@ -33,7 +33,7 @@ def _plan(tmp_path, site=SITE, weather=False, **w):
 def test_wishes_are_checked():
     opts = planner.device_options(None)
     ok = planner.clean_wishes({"nights": 99, "devices": ["stellina"], "min_hours": 0.1, "watch": ["M33"] * 30}, opts)
-    assert ok["nights"] == planner.MAX_NIGHTS and ok["min_hours"] == 0.5 and ok["mode"] == "mix" and len(ok["watch"]) == 20
+    assert ok["nights"] == planner.MAX_NIGHTS and ok["depth"] == "short" and ok["mode"] == "mix" and len(ok["watch"]) == 20
     for bad in ({"devices": []}, {"devices": ["unbekannt"]}, {"devices": ["stellina", "stellina"]},
                 {"devices": ["stellina"], "mode": "alles"}, {"devices": ["stellina"], "nights": "x"}):
         with pytest.raises(ValueError):
@@ -55,7 +55,9 @@ def test_plan_reaches_goals_in_the_dark(tmp_path):
     names = [t["name"] for t in p["targets"]]
     assert any(n.startswith("M33") for n in names)                                       # Merkliste kommt in den Plan
     assert p["nights"][0]["blocks"][0]["target"] == "M33" or "M33" in {b["target"] for b in p["nights"][0]["blocks"]}
-    assert all(t["done"] for t in p["targets"])                                          # Abschnitte ≥ Mindestbelichtung
+    done = [t for t in p["targets"] if t["done"]]
+    assert len(done) >= 0.6 * len(p["targets"])                                       # die meisten Ziele erreichen ihren Bedarf
+    assert len({t["goal"] for t in p["targets"]}) > 1 and all(t["why"] for t in p["targets"])    # Bedarf je Ziel, nicht fest
     assert not any(n in ("M32", "M110") for n in (t["id"] for t in p["targets"]))        # Begleiter von M31 sind nicht „neu“
 
 
@@ -108,7 +110,7 @@ def test_plan_api_store_and_delete(tmp_path):
         assert c.post("/api/stacking/plan", json={"devices": ["gibtsnicht"]}).status_code == 400
         r = c.post("/api/stacking/plan", json={"nights": 2, "devices": ["stellina"], "mode": "new", "min_hours": 2})
         assert r.status_code == 200 and len(r.json()["plan"]["nights"]) == 2
-        assert c.get("/api/stacking/plan").json()["plan"]["wishes"]["min_hours"] == 2
+        assert c.get("/api/stacking/plan").json()["plan"]["wishes"]["depth"] == "normal"
         assert c.delete("/api/stacking/plan").json() == {"plan": None}
         assert c.get("/api/stacking/plan").json()["plan"] is None
 
