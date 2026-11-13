@@ -3,6 +3,17 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.73.1 – 13.11.2026
+
+### Behoben
+- **Staub- und Reflexionsnebel ohne roten Schleier:** Bei Objekten wie NGC 7023 lag nach dem Entwickeln ein fleckiger, rötlicher Schleier über dem Himmel. Ursache war rotes Sensor- bzw. Infrarot-Glühen, das die schonende Hintergrundentfernung des Staubprofils stehen ließ. Großflächige Farben werden im Staubprofil jetzt auf echte Staubfarben begrenzt – brauner Staub und blauer Reflexionsnebel bleiben, Emissionsnebel sind nicht betroffen.
+- Vorschaubilder zeigten im Browser (z. B. Brave) manchmal ein altes Bild, wenn Ergebnisnummern neu vergeben wurden – sie werden jetzt beim Laden auf Aktualität geprüft.
+- Update-Details in Einstellungen → Module & System öffnen sich auch bei abgeschalteter automatischer Prüfung; „Jetzt prüfen“ bleibt sichtbar.
+- Einrichtung: Eine vorgemerkte ASTAP-Datenbank D50 wird nicht mehr übersprungen, wenn gerade D05 installiert wird.
+- EQ-Modus-Erkennung merkt sich den Zustand je Modell (z. B. Seestar S50 und S30 getrennt).
+- Mosaike: Maskierte Satellitenspuren am weichen Rand zählen nur noch mit Randgewicht zur Abdeckung.
+- Ort aus SkyTrace: Beobachtungen ohne Datum im Ordnernamen bekommen ihre Nacht aus den Aufnahmezeiten; zwei schnell aufeinanderfolgende Abgleiche setzen keinen alten Ort mehr zurück.
+
 ## 0.73.0 – 13.11.2026
 
 ### Neu
