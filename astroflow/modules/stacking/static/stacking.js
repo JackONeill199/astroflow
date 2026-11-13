@@ -391,13 +391,14 @@ async function pictureView(el, pid) {
     <aside class="pv-side">
       <div class="pv-head"><a class="linkbtn pv-back" href="#/galerie">${icon('back')}Galerie${order.length > 1 ? ` · ${i + 1} von ${order.length}` : ''}</a>
         <h1>${esc(p.name)}</h1>${p.kind_label ? `<small class="mut">${esc(p.kind_label)}</small>` : ''}
-        <div class="row pv-acts"><a class="btn sm" href="#/p/${p.id}/bild">${icon('edit')}Bearbeiten</a><a class="btn ghost sm" href="/api/stacking/results/${r.id}/jpg" download>${icon('down')}JPEG</a></div></div>
+        <div class="row pv-acts"><a class="btn sm" href="#/p/${p.id}/bild">${icon('edit')}Bearbeiten</a><button class="btn ghost sm" id="pvShare" title="Gestaltete Bildkarte für Foren &amp; Co. herunterladen">${icon('share')}Teilen</button><a class="btn ghost sm" href="/api/stacking/results/${r.id}/jpg" download>${icon('down')}JPEG</a></div></div>
       <section class="pv-sec" id="pvKnow"></section>
       <section class="pv-sec"><h2>Deine Aufnahme</h2><dl class="kv">${rows.filter(([, v]) => v).map(([l, v]) => `<dt>${l}</dt><dd>${esc(v)}</dd>`).join('')}</dl></section>
       <p class="dim sm pv-keys">← → blättern · F Vollbild · Esc zurück</p>
     </aside></div>`;
   const v = createViewer($('#pvView', el), `/api/stacking/results/${r.id}/jpg`, null, undefined, `/api/stacking/results/${r.id}/thumb`, p.imported ? {} : { overlay: plateLabels(r.id) });
   v.el.classList.add('hover-labels');
+  $('#pvShare', el).onclick = () => shareDialog(r.id);
   objectKnowledge($('#pvKnow', el), p.name);
   // Nachbarbilder vorladen, damit ← → ohne Wartezeit wechseln
   for (const nid of new Set([prev, next])) { const q = list.find(x => x.id === nid); if (q && nid !== pid) { new Image().src = `/api/stacking/results/${q.result.id}/jpg`; if (AF.on('sage')) knowledgeCard(q.name); } }
@@ -527,6 +528,7 @@ async function projectView(el, id, tab = 'bild') {
           ${p.comet ? '<span class="chip acc" title="Zwei Stacks: auf die Sterne und auf den Kometenkern">Kometenmodus</span>' : ''}</div></div>
       <div class="page-actions">${p.imported ? '' : `<button class="btn" id="run" ${busy ? 'disabled' : ''} title="${r ? 'Neue Aufnahmen und Nächte nachstacken – der bisherige Stack bleibt erhalten' : ''}">${icon(busy ? 'refresh' : 'play')}${busy ? 'Läuft …' : r ? 'Nachstacken' : 'Verarbeiten'}</button>`}
         ${r ? `<div class="menu" id="dl"><button class="btn ghost">${icon('down')}Export${icon('chev')}</button><div class="pop">
+          <a href="#" data-act="share">Teilen-Karte <small>Bild mit Infos für Foren &amp; Co.</small></a>
           ${p.imported ? `<a href="/api/stacking/results/${r.id}/original">Originaldatei <small>unverändert · ${esc(r.stats.imported.format)}</small></a>` : `<a href="/api/stacking/results/${r.id}/tif">TIFF 16-bit <small>Druck/Bearbeitung</small></a>`}<a href="/api/stacking/results/${r.id}/png">PNG <small>${p.imported ? 'Anzeigeversion' : 'verlustfrei'}</small></a>
           <a href="/api/stacking/results/${r.id}/jpg" download>JPEG <small>zum Teilen</small></a>${p.imported ? '' : `<a href="/api/stacking/results/${r.id}/fits">FITS linear <small>unbearbeiteter Stack · für Siril/PixInsight</small></a>${(r.formats || []).includes('fits_graxpert') ? `<a href="/api/stacking/results/${r.id}/fits_graxpert">FITS linear (GraXpert) <small>Hintergrund/Rauschen schon bearbeitet</small></a>` : ''}`}</div></div>` : ''}
         ${r ? `<button class="btn ghost" data-ctx-toggle title="Bild-Details, Bild-Tutor und Himmelsposition ein-/ausblenden">${icon('panel')}Details</button>` : ''}
@@ -561,6 +563,10 @@ async function projectView(el, id, tab = 'bild') {
     $('#run')?.addEventListener('click', () => run(false));
     $$('.menu', el).forEach(m => {
       $('button', m).onclick = (e) => { e.stopPropagation(); $$('.menu.open').forEach(o => o !== m && o.classList.remove('open')); m.classList.toggle('open'); };
+    });
+    $('#dl .pop')?.addEventListener('click', (e) => {         // Teilen-Karte öffnet einen Dialog statt eines Downloads
+      if (!e.target.closest('[data-act=share]')) return;
+      e.preventDefault(); $('#dl').classList.remove('open'); shareDialog(p.result.id);
     });
     $('#more .pop').onclick = (e) => {
       const a = e.target.closest('[data-act]');
@@ -666,7 +672,7 @@ async function projectView(el, id, tab = 'bild') {
           ${AF.on('sage') ? '<button class="btn ghost sm" id="importedSage" style="margin-top:8px">Mit Sage bestimmen und erzählen</button>' : ''}</div></div>` : ''}
 </div><aside class="img-side" id="imgSide" aria-label="Bild-Details"></aside></div>`;
     // Bild-Details neben dem Bild: Kennzahlen, Objektwissen, Kanäle, Bild-Tutor, Details, Himmelsposition, KI-Prüfung
-    $('#imgSide', t).innerHTML = `<div class="row ctx-acts"><a class="btn ghost sm" href="/api/stacking/results/${r.id}/jpg" download>${icon('down')}JPEG</a>
+    $('#imgSide', t).innerHTML = `<div class="row ctx-acts"><button class="btn ghost sm" id="ctxShare" title="Gestaltete Bildkarte für Foren &amp; Co. herunterladen">${icon('share')}Teilen</button><a class="btn ghost sm" href="/api/stacking/results/${r.id}/jpg" download>${icon('down')}JPEG</a>
         ${AF.on('sage') ? `<button class="btn ghost sm" id="ctxStory" title="Sage nutzt die vorhandene Plate-Solving-Lösung und die erkannten Objekte">${icon('book')}Geschichte erzählen</button>` : ''}
         ${!p.imported && !running(p.job) ? `<button class="btn ghost sm" id="ctxDev">${icon('refresh')}Neu entwickeln</button>` : ''}</div>
       ${p.imported ? '' : `<div class="stats">
@@ -705,6 +711,7 @@ async function projectView(el, id, tab = 'bild') {
             ${Object.keys(x.adjust || {}).length ? `<div class="mut sm">${Object.entries(x.adjust).map(([k, v]) => `${esc(k)} → ${esc(v)}`).join(' · ')}</div>` : ''}</div>`).join('')}</div></div>` : ''}
 `;
     $('#ctxStory')?.addEventListener('click', story);
+    $('#ctxShare')?.addEventListener('click', () => shareDialog(r.id));
     objectKnowledge($('#ctxKnow'), p.name);
     $('#ctxDev')?.addEventListener('click', develop);
     if (s.quality && p.imported) tutorPanel($('#tutorBox'), r);

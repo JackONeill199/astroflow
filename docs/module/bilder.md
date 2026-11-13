@@ -49,6 +49,14 @@ Die **Galerie** zeigt alle fertigen Bilder, die **Übersicht** das Zuletzt-Bearb
 
 ![Galerie](../screenshots/galerie.webp)
 
+**Teilen-Karte für Foren & Co.:** „Teilen“ im Galerie-Betrachter, in den Bild-Details oder im Export-Menü erzeugt eine
+gestaltete Bilddatei: das Foto groß, daneben bzw. darunter Objekt, Aufnahme (Gerät, Belichtung, Aufnahmen, Datum) und bis
+zu vier Ergebnisse der Analysen – etwa Grenzgröße, wie lange das Licht der fernsten Galaxie unterwegs war, nachgewiesene
+Asteroiden oder entfernte Satellitenspuren –, auf Wunsch mit Objektnamen im Bild und kleiner Himmelskarte. Querformat
+(Voreinstellung „Forum“: 1600 px, unter 1 MB) oder Hochformat 4:5 für soziale Netzwerke, dazu „Text kopieren“ als BBCode
+oder Markdown. Standort, Uhrzeiten, Dateinamen und Seriennummern stehen nie darauf; hochgeladen wird nichts. Importierte
+Bilder lassen sich nur mit Bestätigung „mein eigenes Foto“ oder genanntem Fotografen teilen.
+
 ## Das einzelne Objekt: Bild, Qualität, Aufnahmen
 
 Die Objektseite zeigt das Ergebnis im Zoom-Betrachter, den **Stacking-Verlauf** und eine **Bildqualität als Note** (Tiefe, Rauschen, Schärfe und Sternform

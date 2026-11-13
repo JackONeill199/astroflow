@@ -1,0 +1,33 @@
+/* Teilen-Karte (share.js) */
+#dlg:has(.share) { width: min(68rem, 96vw); max-height: 94vh; overflow: auto }
+.share-h { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.875rem; min-width: 0 }
+.share-h h2 { font-size: 1rem; flex: none }
+.share-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.share-body { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 1.25rem; align-items: start }
+.share-prev { display: grid; gap: 0.5rem; min-width: 0; position: sticky; top: 0 }
+.share-img { position: relative; display: grid; place-items: center; min-height: 14rem; border-radius: var(--r); background-color: var(--bg); border: 1px solid var(--border-soft); overflow: hidden }
+.share-img img { display: block; width: 100%; height: auto; transition: opacity var(--t) }
+.share-img.hoch img { width: auto; max-width: 100%; max-height: 70vh }
+.share-img .skel { position: absolute; inset: 0; border-radius: 0 }
+.share-img.busy img { opacity: .6 }
+.share-img.busy::after { content: ""; position: absolute; top: 0.75rem; right: 0.75rem; width: 1rem; height: 1rem; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--acc); animation: var(--spin) }
+.share-img[data-msg]::before { content: attr(data-msg); position: absolute; inset: 0; display: grid; place-items: center; padding: 1.5rem; text-align: center; color: var(--mut); font-size: 0.875rem; background-color: var(--bg); z-index: 1 }
+.share-opts { display: grid; gap: 0.5rem; min-width: 0 }
+.share-opts h3 { font-size: 0.8125rem; font-weight: 600; margin: 0.5rem 0 0.125rem }
+.share-opts .modrow { margin-bottom: 0; padding: 0.4375rem 0.625rem; gap: 0.625rem }
+.share-opts .modrow .sm { font-size: 0.75rem }
+.share-opts .modrow b { display: block; overflow-wrap: anywhere }
+.share-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap }
+.share-own { margin: 0 }
+#shBy { width: 100%; background-color: var(--bg) }
+.share-f { display: flex; align-items: center; gap: 0.625rem; flex-wrap: wrap; margin-top: 1rem; padding-top: 0.875rem; border-top: 1px solid var(--border-soft) }
+.share-f a.disabled { opacity: .45; cursor: default }
+@media (max-width: 760px) {
+  .share-body { grid-template-columns: minmax(0, 1fr) }
+  .share-prev { position: static }
+  .share-f .grow { display: none }
+}
+@media (prefers-reduced-motion: reduce) {
+  .share-img img { transition: none }
+  .share-img.busy::after { animation: none }
+}

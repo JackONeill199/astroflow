@@ -65,6 +65,11 @@ Folgende mitgelieferte Drittkomponenten stehen unter eigenen Lizenzen:
   Herkunft: https://github.com/ofrohn/d3-celestial (Copyright (c) 2015, Olaf Frohn)
   Lizenz: BSD-3-Clause (siehe astroflow/modules/stacking/static/himmel/LICENSE-d3-celestial.txt)
 
+- Schrift Inter 4.1 (The Inter Project Authors, https://github.com/rsms/inter)
+  astroflow/modules/stacking/schrift/Inter-AstroFlow.ttf (Teilmenge von InterVariable.ttf: lateinische Zeichen,
+  Satzzeichen und einige Symbole; mit fontTools erzeugt, sonst unverändert) – für die Teilen-Karte (share.py)
+  Lizenz: SIL Open Font License 1.1 (siehe astroflow/modules/stacking/schrift/LICENSE-Inter.txt)
+
 - pystray (Symbol im Infobereich unter Windows)
   Lizenz: LGPL-3.0. Wird im Windows-Paket als Python-Paket (Quelltext in
   python\Lib\site-packages) mitgeliefert und von AstroFlow nur importiert; es lässt sich durch
