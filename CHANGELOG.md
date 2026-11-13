@@ -3,6 +3,17 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.72.0 – 13.11.2026
+
+### Neu
+- **Fehler melden:** Knopf im Kopfbereich (abschaltbar) öffnet einen Dialog für Fehlerberichte – Beschreibung, was erwartet war, automatisch nur unkritische Angaben (Version, System, Module, letzte Fehlermeldungen). Vor dem Absenden siehst du genau, was übertragen wird; danach öffnet sich das vorausgefüllte GitHub-Formular. Ein Screenshot (mit Abdecken von Ortsnamen/Pfaden und Schwärzen) wird nur als Datei gespeichert, ein bereinigter Auszug aus dem Protokoll lässt sich freiwillig anhängen. Ort, Pfade, Schlüssel und Anmeldedaten werden nie übernommen.
+- **Observatorium im Vollbild:** Knopf unten rechts oder Taste F (Esc beendet); Werkzeugleiste, Suche und Zeitregler bleiben nutzbar.
+- **„Von hier“ mit Boden:** unter dem Horizont ein dunkler Boden mit Himmelsrichtungen, der Himmel wirkt wie eine Kuppel; was die Horizontmaske verdeckt, bleibt sichtbar schraffiert. Der Zeitregler läuft auch auf Handys flüssig.
+- **Gerät als Kennzeichen:** Im Objektkopf steht das Gerät (z. B. „Vaonis Vespera“); gibt es das Objekt auch mit einem anderen Gerät, führt ein Hinweis dorthin.
+
+### Behoben
+- GraXpert brach bei Mosaiken mit großen, kaum belichteten Rändern (z. B. stark gewanderte Vespera-Nächte) mit „GraXpert lieferte ungültige Werte“ ab. Jetzt bekommt GraXpert nur den belichteten Ausschnitt, Lücken werden mit Himmel und passendem Rauschen gefüllt; bei ungültigen Werten wird einmal ohne Grafikkarte wiederholt und der Grund angezeigt.
+
 ## 0.71.0 – 13.11.2026
 
 ### Neu
