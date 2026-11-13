@@ -14,6 +14,8 @@ import traceback
 from pathlib import Path
 
 from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadFile
+from fastapi.routing import APIRoute
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.responses import FileResponse, Response
 
 from . import calibration, channels, comet, diskspace, frame_preview, gpu, graxpert, objects, platesolve, quality, registration, reviewer, scanner, skyquality, stars, tonight, tutor
@@ -392,8 +394,26 @@ def _slim(stats: str | None) -> dict:
     return st
 
 
+class _UploadRoute(APIRoute):
+    """Starlette lehnt mehr als 1000 Dateien je Multipart-Anfrage mit nacktem 400 ab (Schutz vor Speicher-/DoS-Missbrauch).
+    Das Limit bleibt; die Oberfläche teilt große Uploads in Teilanfragen, andere Clients bekommen eine verständliche Meldung."""
+
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+
+        async def wrapped(request: Request):
+            try:
+                return await handler(request)
+            except StarletteHTTPException as e:         # Starlettes Basisklasse (die Formularprüfung wirft nicht FastAPIs)
+                if e.status_code == 400 and isinstance(e.detail, str) and e.detail.startswith(("Too many files", "Too many fields")):
+                    raise HTTPException(413, "Zu viele Dateien in einer Anfrage (höchstens 1000). Bitte in mehreren Teilen hochladen – "
+                                             "die Oberfläche macht das automatisch. Teile mit derselben upload_id landen im selben Ordner.")
+                raise
+        return wrapped
+
+
 def build_router(eng: Engine) -> APIRouter:
-    r = APIRouter()
+    r = APIRouter(route_class=_UploadRoute)
     picture_lock = threading.Lock()                  # eine Bildanalyse gleichzeitig (rechnet beim ersten Abruf)
     db = eng.db
 
