@@ -585,7 +585,7 @@ details[open] > summary ~ * { animation: fadeIn var(--t2) var(--ease) }
 #reportDlg .rep-shot { margin-top: 0.625rem; display: grid; gap: 0.5rem }
 #reportDlg .rep-shot[hidden] { display: none }
 #reportDlg .rep-shot p { margin: 0 }
-#reportDlg canvas { width: 100%; height: auto; max-height: 50vh; object-fit: contain; border: 1px solid var(--border); border-radius: var(--r-sm); cursor: crosshair; touch-action: none; background-color: var(--bg) }
+#reportDlg canvas { width: auto; height: auto; max-width: 100%; max-height: 50vh; justify-self: center; border: 1px solid var(--border); border-radius: var(--r-sm); cursor: crosshair; touch-action: none; background-color: var(--bg) }
 #reportDlg .rep-acts { justify-content: flex-end; margin-top: 1rem }
 #reportDlg .rep-prev { display: grid; gap: 0.625rem; margin-bottom: 0.625rem }
 #reportDlg .rep-pl { font-size: 0.75rem; color: var(--mut); font-weight: 500; display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap }

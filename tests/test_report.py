@@ -49,6 +49,11 @@ def test_url_stays_below_limit():
     assert len(url) <= report.URL_MAX
     assert url.startswith(report.NEW_ISSUE + "?template=fehler.yml")
     assert moved[:2] == ["log", "umgebung"] and "actual" in moved
+    # Endet auch, wenn alle Felder bis zur Mindestlänge gekürzt werden müssen (Codex P1: Endlosschleife)
+    url, moved = report.build({"title": "ä" * 150, "actual": "a" * 4000, "steps": "ä" * 2000, "expected": "e" * 2000})
+    assert len(url) <= report.URL_MAX and {"actual", "steps"} <= set(moved)
+    url, _ = report.build({"title": "ä" * 150, "actual": "ä" * 4000, "steps": "ä" * 3000, "expected": "ä" * 2000, "log": "ä" * 5000})
+    assert url.startswith(report.NEW_ISSUE)              # Mindestlängen erreicht: endet trotzdem
     short, none = report.build({"title": "kurz", "actual": "kurz"})
     assert none == [] and "actual=kurz" in short
 

@@ -221,8 +221,11 @@ def build(fields: dict) -> tuple[str, list[str]]:
             f[k] = hint
             moved.append(k)
     for k in ("actual", "steps", "expected", "title"):
-        while len(_url(f)) > URL_MAX and len(f.get(k) or "") > 80:
-            f[k] = f[k][: max(80, int(len(f[k]) * 0.75))].rstrip() + " … (gekürzt)"
+        orig = fields.get(k) or ""
+        n = len(orig)
+        while len(_url(f)) > URL_MAX and n > 80:          # Länge des Originals schrumpft je Runde → endet sicher
+            n = max(80, int(n * 0.75))
+            f[k] = orig[:n].rstrip() + " … (gekürzt)"
             if k not in moved:
                 moved.append(k)
     return _url(f), moved

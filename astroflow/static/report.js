@@ -126,7 +126,12 @@ const report = (() => {
   function bindCanvas() {
     const cv = $('#repCanvas', dlg);
     let start = null;
-    const pt = (e) => { const b = cv.getBoundingClientRect(); return { x: (e.clientX - b.left) * cv.width / b.width, y: (e.clientY - b.top) * cv.height / b.height }; };
+    // Zeiger → Bildpixel über das tatsächlich gezeichnete Bildrechteck (falls das Element je anders proportioniert ist als das Bild)
+    const pt = (e) => {
+      const b = cv.getBoundingClientRect(), s = Math.min(b.width / cv.width, b.height / cv.height);
+      const ox = b.left + (b.width - cv.width * s) / 2, oy = b.top + (b.height - cv.height * s) / 2;
+      return { x: Math.max(0, Math.min(cv.width, (e.clientX - ox) / s)), y: Math.max(0, Math.min(cv.height, (e.clientY - oy) / s)) };
+    };
     const rectOf = (a, b) => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) });
     cv.onpointerdown = (e) => { start = pt(e); cv.setPointerCapture(e.pointerId); e.preventDefault(); };
     cv.onpointermove = (e) => {
