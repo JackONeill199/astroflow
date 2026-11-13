@@ -3,6 +3,15 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.73.0 – 13.11.2026
+
+### Neu
+- **Belichtungsbedarf je Ziel und Gerät:** Beobachtungsplaner und „Heute Nacht“ schätzen, wie lange ein Objekt mit deinem Teleskop belichtet werden sollte – aus Flächenhelligkeit und Objektart, Öffnung und Brennweite des Geräts und der Himmelsqualität am Standort, vorsichtig nachgeeicht an deinen eigenen Stacks. Sternhaufen sind nach ~30 min fertig, schwache Galaxien bekommen mehrere Stunden über mehrere Nächte; schon gesammelte Belichtung zählt mit. Im Assistenten heißt die Einstellung jetzt „Wie gründlich?“ (kurz / normal / gründlich).
+- **Update-Hinweis in der Kopfleiste:** Gibt es eine neue Version, steht ein kleiner Chip neben den Statussymbolen, bis du ihn für diese Version ausblendest oder aktualisierst. Ein Klick zeigt „Was ist neu“ und den passenden Download (Windows-Installer, Linux-Paket oder Anleitung für Quellcode/Docker). In Einstellungen → Module & System gibt es „Jetzt prüfen“. Installiert wird nichts automatisch.
+
+### Behoben
+- Kleine, helle Objekte (z. B. Krebsnebel M1, Ringnebel M57) brannten im fertigen Bild zu einer weißen Fläche aus. Ein Lichterschutz nach der Endbearbeitung erhält jetzt Struktur und Farbe im Kern, der Himmel bleibt unverändert; die Qualitätskontrolle erkennt ausgebrannte Objekte und regelt nach. Bestehende Bilder werden bei der nächsten Entwicklung neu bewertet.
+
 ## 0.72.0 – 13.11.2026
 
 ### Neu
