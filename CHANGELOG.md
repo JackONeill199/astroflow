@@ -3,6 +3,14 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.71.0 – 13.11.2026
+
+### Neu
+- **Teilen-Karte für Foren und Social Media:** Aus jedem fertigen Bild entsteht eine Bilddatei zum Herunterladen – das Foto groß, dazu Objekt (Typ, Sternbild, Entfernung), Aufnahmedaten (Gerät, Belichtung, gestackte/aussortierte Aufnahmen, Datum), bis zu vier Highlights aus der AstroFlow-Analyse (z. B. wie lange das Licht der fernsten Galaxie unterwegs war, Grenzgröße, entfernte Satellitenspuren), optional beschriftete Objekte und eine kleine Himmelskarte. Formate: Forum quer (1600 px, < 1 MB), Hochformat 4:5, Groß (2048 px). „Text kopieren“ liefert dieselben Angaben als BBCode oder Markdown. Nie auf der Karte: Ort, Uhrzeit, Pfade, Dateinamen, Seriennummern; keine Metadaten in der Datei. Bei importierten Bildern erst nach Bestätigung bzw. mit Fotograf. Zu finden im Export-Menü, in den Bild-Details und in der Galerie.
+- **Nachführung je Gerät:** Eine Geräte-Tabelle (Montierung, Derotator, EQ-Modus, Zenit-Grenze – je Wert mit Quelle, unsichere Werte als „Vorschlag“) ersetzt den festen 80°-Zenit-Abschlag. Heute Nacht und der Beobachtungsplaner rechnen mit der Bildfelddrehung des jeweiligen Geräts (Stellina mit Derotator kaum, Vespera voll, EQ-Modus gar nicht).
+- **EQ-Modus automatisch erkannt** (Seestar, Dwarf, Origin, Astrokameras) aus der Bilddrehung der Aufnahmen; der Planer übernimmt ihn als Voreinstellung je Gerät.
+- **Gerätediagnose „Höhe & Bildfelddrehung“:** Höhe, Richtung und Drehrate je Aufnahme (lokal berechnet) und eine vorsichtige Einschätzung, ob verworfene Aufnahmen eher an Zenitnähe/Bildfelddrehung oder an Drift/Wind liegen. Vorhandene Diagnosen erscheinen als „veraltet“, bis sie neu berechnet sind.
+
 ## 0.70.0 – 12.11.2026
 
 ### Neu
