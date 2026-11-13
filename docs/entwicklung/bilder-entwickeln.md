@@ -18,6 +18,19 @@ Schritte 11–13 (Speicher, volles Laufwerk, Aufräumen): `daten-server.md`.
    (`WHITE_STEPS` 99,9/99,98/99,995) und asinh ×1,5. Objekttyp: Ordner-/OBJECT-Namen, die der kleine Katalog nicht kennt, bekommen
    ihren Typ aus ASTAPs `deep_sky.csv` (`objects.resolve_extended`; NGC 4490 lief vorher mit Profil „generic“, asinh 30 statt 120);
    ältere Projekte ohne Typ werden beim Entwickeln nachgetragen.
+   **Kompakte helle Objekte** (13.11.2026, M1 Vespera 51 min: Kern weiße Scheibe, `burnt_core` blieb drei QC-Runden stehen):
+   Bei Nebeln mit Sternentrennung streckt `stars.Stretch` (GHS) mit eigenem Weißpunkt – `white_pct`/`asinh` aus `adapt`/`corrections`
+   wirken dort **nicht** auf den Nebel. GHS legte den Kern auf 0,7–0,84, `local_contrast` und `grade` multiplizierten ihn dann ins
+   Weiß (40 % ≥ 0,97, einzelne Kanäle bei 255). Abhilfe: (1) `processing.soft_gain` – Aufhellungen in `local_contrast`/`grade`
+   laufen weich gegen den Spielraum des hellsten Kanals aus (allein schon: M57 Ring ≥ 0,97 11 % → 0 %); (2) Messwert
+   `object_burn` in `assess` (`QC_VERSION` 4): Anteil des hellen Objekts ≥ 0,90 ohne Sternkerne (Schwelle 0,90, weil `soft_gain`
+   flache Kerne knapp unter Weiß hält); über 0,03 → Problem `object_burn`; (3) Korrektur: mit Sternentrennung Lichterschutz `hdr`
+   (`HDR_STEPS` 1,5/3), ohne zuerst wie bisher `WHITE_STEPS`, danach `hdr`. `processing.compress_highlights` läuft **nach**
+   `grade` (direkt nach dem Stretch zogen Kontrast/Endbearbeitung den Kern wieder hoch): geglättete Helligkeit über 0,5 bekommt
+   eine Schulter, Feinstruktur wird additiv übernommen, im gedämpften Bereich etwas Farbe zurück. Vorher/Nachher: M1 Kern-Median
+   0,95 → 0,69, nichts ≥ 0,9, Filamente sichtbar; M16/IC 443 unverändert (mittl. Abweichung < 0,0003). Der M1-Kern ist auch linear
+   fast neutral (R:G:B ≈ 1,06 : 1 : 0,90) – cremeweiß ist dort richtig. Bekannt: sehr helle Einzelsterne (Polaris, γ Cas)
+   melden `object_burn` wie schon `burnt_core`; `hdr` ändert an ihnen kaum etwas.
    **Bearbeitung** (`processing.py`, Reihenfolge in `process()`): Sättigungsmaske → Farbkanäle auf Grün ausrichten (`align_channels`,
    atmosphärische Dispersion bei Alt-Az-Geräten) → Polynom-Gradient → `remove_edge_glow` (steiles Randglühen, nur in 15-%-Randbändern,
    plus 2D-Eckenkarte) → Polynom Grad 2 → `trim_bad_edges` (max. 5 % je Seite) → Farbkalibrierung über Sterne → gesättigte Kerne neutral →
