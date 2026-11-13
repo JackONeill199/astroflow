@@ -72,10 +72,15 @@ def sync(mod, settings: dict | None = None) -> dict:
     if book is None or not hasattr(book, "sync_nights"):
         return {}
     import observation_settings
-    cfg = settings if settings is not None else observation_settings.load_settings()
-    overrides = cfg.get("sites") or {}
-    nights = session_nights(mod) if overrides else {}
+    # Alles unter der Sperre und Stand frisch von der Platte: zwei gleichzeitige Abgleiche (Speichern und Start-/Lauf-Thread)
+    # dürfen sich nicht mit einem veralteten Plan überholen und so einen eben geänderten Ort zurücksetzen.
     with _lock:
+        try:
+            cfg = observation_settings.load_settings()
+        except Exception:
+            cfg = settings if settings is not None else {}
+        overrides = cfg.get("sites") or {}
+        nights = session_nights(mod) if overrides else {}
         wanted, conflicts = plan(overrides, nights)
         res = book.sync_nights(SRC, wanted, claim=CLAIM)
     return {**res, "conflicts": conflicts, "nights": sorted(wanted)}

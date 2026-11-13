@@ -672,7 +672,7 @@ def compute(pl, pid: int, nights: set | None = None, site_for=None, cfg: dict | 
     if field and not field.get("error") and rot_spread > 3:
         field["smeared"] = True                                  # Feldrotation zwischen den Aufnahmen verwischt die Karte
         field["tilt_sig"] = False
-    return {"v": DIAG_VERSION, "ok": True, "erstellt": time.time(), "device": {"id": device["id"], "name": device["name"]},
+    return {"v": DIAG_VERSION, "ok": True, "erstellt": time.time(), "device": {"id": device["id"], "name": device["name"], **({"model": device["model"]} if device.get("model") else {})},
             "device_key": f"{device['id']}|{fr[0]['instrument'] or ''}", "scale": _r(scale, 3), "site": bool(sources),
             "site_source": max(set(sources), key=sources.count) if sources else None, "nights": out_n, "field": field, "field_frames": field_frames(fr),
             "linked": len(links), "total": len(fr), "temps": sum(1 for f in fr if f["temp"] is not None)}
@@ -738,18 +738,28 @@ def device_summary(db) -> list[dict]:
 
 
 def eq_detected(db) -> dict:
-    """Je Gerät (Erkennungs-ID) die neueste Nacht mit erkannter Montierung: {id: {"eq": bool, "night": …}}. Grundlage für den
-    EQ-Modus in Heute Nacht und im Planer (nur Diagnosen der aktuellen Version)."""
+    """Je Gerätemodell (bei Geräten ohne Modell: Erkennungs-ID) die neueste Nacht mit erkannter Montierung:
+    {schlüssel: {"eq": bool, "night": …}}. Seestar S50 und S30 sind getrennt; ältere Diagnosen ohne Modell stehen unter der
+    Familien-ID (Abfrage über `eq_lookup`). Grundlage für den EQ-Modus in Heute Nacht und im Planer (nur Diagnosen der aktuellen Version)."""
     out: dict[str, dict] = {}
     for r in db.q("SELECT json_extract(stats,'$.diagnose') d FROM results WHERE json_extract(stats,'$.diagnose.v')=? "
                   "AND json_extract(stats,'$.diagnose.ok')=1", (DIAG_VERSION,)):
         d = json.loads(r["d"] or "{}")
-        key = (d.get("device") or {}).get("id")
+        dev = d.get("device") or {}
+        key = dev.get("model") or dev.get("id")
         for n in d.get("nights") or []:
             mode = (n.get("mount") or {}).get("mode")
             if key and mode in ("eq", "altaz") and n["night"] >= (out.get(key) or {}).get("night", ""):
                 out[key] = {"eq": mode == "eq", "night": n["night"]}
     return out
+
+
+def eq_lookup(det: dict, model: str | None, dev_id: str | None) -> dict | None:
+    """Erkannter EQ-Zustand für ein Gerät: erst das Modell; die Familien-ID (ältere Werte ohne Modell, beim Seestar zugleich das S50)
+    zählt nur für Geräte ohne eigenes Modell bzw. mit Modell = ID – ein S30 liest nie Werte des S50."""
+    if model and (hit := det.get(model)):
+        return hit
+    return det.get(dev_id) if dev_id and model in (None, dev_id) else None
 
 
 # ------------------------------------------------------------------ Tutor ---

@@ -133,9 +133,10 @@ def _run(path: Path) -> dict:
         cands = [_candidate(c, path.name) for c in items or [] if isinstance(c, dict)]
         first = s.get('source_first_file') or (_first_file(path / Path(s["video"]).parent) if s.get("video") else None)
         extra = _frames_info(path / Path(s["video"]).parent) if s.get("video") else {}
+        stamps = [c["timestamp"] for c in cands if isinstance(c["timestamp"], (int, float))] or list(extra.get("_times") or [])   # ohne Kandidaten: Aufnahmezeiten
         sessions.append(dict(extra, _sat=_satellites(items, path.name), session=s["session"], run=path.name, folder=Path(s["video"]).parent.name if s.get("video") else None, first=first, frames=s.get("frames") or 0, excluded=s.get("excluded") or 0,
                              hits=s.get("hits") or 0, complete=s.get("state") == "Fertig" and not s.get("limited", False),
-                             night=_night(s["session"], [c["timestamp"] for c in cands if isinstance(c["timestamp"], (int, float))]),
+                             night=_night(s["session"], stamps),
                              candidates=cands))
     data = dict(sessions=sessions)
     with _lock:

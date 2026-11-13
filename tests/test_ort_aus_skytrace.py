@@ -201,3 +201,37 @@ def test_bilder_rechnet_naechte_mit_neuem_ort_neu(tmp_path, monkeypatch):
         watch._timer.join(5)
         assert sorted(queued) == sorted([a, old]) and submitted == [("diagnose", rid)]
         assert watch.last == {"sky": sorted([a, old]), "diagnose": [rid]}
+
+
+def test_nacht_ohne_datum_und_ohne_kandidaten_aus_aufnahmezeiten(tmp_path, monkeypatch, obs):
+    """Beobachtung ohne Datum im Ordnernamen und ohne Kandidaten: die Nacht kommt aus den Aufnahmezeiten (frames.jsonl)."""
+    from astroflow.modules.skytrace import stats
+    run = tmp_path / "st" / "Ergebnisse" / "2024-08-02_01-00-00-000001"
+    folder = run / "lauf-ohne-datum"
+    folder.mkdir(parents=True)
+    ts = 1722546000.0                                                    # 01.08.2024, 21:00 UTC
+    (folder / "frames.jsonl").write_text("".join(json.dumps({"file": f"a{i}.fits", "timestamp": ts + i * 10}) + "\n" for i in range(3)),
+                                         encoding="utf-8")
+    (run / "videos.json").write_text(json.dumps([{"session": "lauf-ohne-datum", "video": "lauf-ohne-datum/ereignisse.mp4",
+                                                  "frames": 3, "state": "Fertig"}]), encoding="utf-8")
+    data = stats.collect(run.parent)
+    assert data["sessions"][0]["night"] == sites.night_of(ts)
+
+
+def test_abgleich_nimmt_stand_von_der_platte_nicht_den_veralteten(tmp_path, monkeypatch, obs):
+    """Wettlauf: ein Abgleich mit veralteten Einstellungen setzt den eben geänderten Ort nicht zurück."""
+    monkeypatch.setenv("ASTROFLOW_MODULES", "stacking,skytrace")
+    home = tmp_path / "skytrace"
+    _lauf(home, ["2024-07-05_observation_M31"])
+    s = load_settings(tmp_path / "d")
+    store = SettingsStore(s.data_dir / "settings.json")
+    store.update("skytrace", {"home": str(home)})
+    store.update("sites", {"list": [HOME], "default": "home", "periods": [], "migrated": {f"skytrace:{home.resolve()}": 1}})
+    with TestClient(create_app(s)) as c:
+        mod = c.app.state.modules["skytrace"]
+        from astroflow.modules.skytrace.site_sync import sync
+        (tmp_path / "catalog_settings.json").write_text(json.dumps({"sites": {"2024-07-05_observation_M31": FERN}}), encoding="utf-8")
+        stale = {"sites": {"2024-07-05_observation_M31": {**FERN, "lat": 40.0}}}        # alter Stand eines überholten Aufrufs
+        sync(mod, stale)
+        site = c.get("/api/sites/resolve", params={"night": "2024-07-05"}).json()["site"]
+        assert abs(site["lat"] - FERN["lat"]) < 1e-6

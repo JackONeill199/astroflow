@@ -907,10 +907,14 @@ def test_update_hinweis(server, browser, size):
            "notes": [{"t": "Neu", "h": True}, {"t": "<img src=x onerror=alert(1)> Ein sehr langer Absatz " * 6, "h": False}]}
 
     def fake_app(route):
-        r = route.fetch()
-        d = r.json()
-        d["update"] = upd
-        route.fulfill(response=r, body=_json.dumps(d), headers={**r.headers, "content-type": "application/json"})
+        from playwright.sync_api import Error as PlaywrightError
+        try:
+            r = route.fetch()
+            d = r.json()
+            d["update"] = upd
+            route.fulfill(response=r, body=_json.dumps(d), headers={**r.headers, "content-type": "application/json"})
+        except PlaywrightError:                                   # Seite schon zu: nichts mehr auszuliefern
+            pass
     page.route("**/api/app", fake_app)
     page.goto(f"{base}/#/")
     chip = page.locator("#updBtn")
@@ -934,5 +938,40 @@ def test_update_hinweis(server, browser, size):
     upd["latest"] = "99.2.0"                                      # neuere Version → wieder sichtbar
     page.reload()
     page.locator("#updBtn").wait_for(state="visible")
+    page.close()
+    assert not errors, errors
+
+
+def test_update_details_bei_abgeschalteter_pruefung(server, browser):
+    """„Nach Updates suchen“ aus: der Details-Link unter Module & System öffnet die Details aus dem /api/setup-Angebot,
+    und der Status-Poll löscht einen von Hand geprüften Stand nicht wieder."""
+    import json as _json
+    base, _ = server
+    page = browser.new_page(viewport={"width": 1440, "height": 900})
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    offer = {"latest": "99.1.0", "current": "0.0.0", "newer": True, "url": "https://github.com/x/y/releases/tag/v99.1.0", "kind": "source",
+             "published": "2026-11-20", "download": None, "notes": [{"t": "Neu", "h": True}, {"t": "Ein Absatz", "h": False}]}
+
+    def fake_setup(route):
+        from playwright.sync_api import Error as PlaywrightError
+        try:
+            r = route.fetch()
+            d = r.json()
+            d.update(update_check=False, update_offer=offer)
+            route.fulfill(response=r, body=_json.dumps(d), headers={**r.headers, "content-type": "application/json"})
+        except PlaywrightError:                                   # Seite schon zu: nichts mehr auszuliefern
+            pass
+    page.route("**/api/setup", fake_setup)
+    page.goto(f"{base}/#/settings/module")
+    link = page.locator("[data-upd]")
+    link.wait_for(state="visible")
+    link.click()
+    page.locator(".upd-panel").wait_for(state="visible")
+    assert "99.1.0" in page.locator(".upd-ver").inner_text()
+    # Status-Poll (alle 2,5 s) darf den von Hand gesetzten Stand nicht zurücksetzen
+    page.evaluate("AF.updateHint({latest: '99.1.0', current: '0.0.0', url: 'x', kind: 'source', notes: []}, true)")
+    page.wait_for_timeout(6000)
+    assert page.evaluate("AF.app.update && AF.app.update.latest") == "99.1.0"
     page.close()
     assert not errors, errors

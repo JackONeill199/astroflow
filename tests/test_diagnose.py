@@ -395,3 +395,28 @@ def test_diagnose_uses_detected_model():
     s = diagnose.sky_rejects(fr, trk, devices.profile(v2), {"state": "unknown", "mode": None}, 10.0, None, None)
     assert s["zenith_limit"] == 75
     assert diagnose.devices_get(v2)["name"] == "Vaonis Vespera II"
+
+
+def test_eq_detected_je_modell_getrennt(tmp_path):
+    """Seestar S30 und S50 teilen die Familie, aber nicht den EQ-Zustand; alte Werte ohne Modell zählen weiter (außer für den S30)."""
+    from astroflow.modules.stacking import tonight
+    db = DB(tmp_path / "a.db")
+    db.x("INSERT INTO projects(id, key, name, ra, dec) VALUES(1, 'k', 'M31', 10.68, 41.27)")
+
+    def diag(rid, dev, nights):
+        d = {"v": diagnose.DIAG_VERSION, "ok": True, "device": dev, "nights": [{"night": n, "mount": {"mode": m}} for n, m in nights]}
+        db.x("INSERT INTO results(id, project_id, stats) VALUES(?, 1, ?)", (rid, json.dumps({"diagnose": d})))
+    diag(1, {"id": "seestar", "model": "seestar"}, [("2026-10-05", "altaz")])
+    diag(2, {"id": "seestar", "model": "seestar30"}, [("2026-10-06", "eq")])
+    det = diagnose.eq_detected(db)
+    assert det == {"seestar": {"eq": False, "night": "2026-10-05"}, "seestar30": {"eq": True, "night": "2026-10-06"}}
+    assert diagnose.eq_lookup(det, "seestar30", "seestar")["eq"] is True
+    assert diagnose.eq_lookup(det, "seestar", "seestar")["eq"] is False
+    # alte Diagnose ohne Modell (Familien-ID): für S50/ohne Modell gültig, für den S30 nicht
+    old = {"seestar": {"eq": True, "night": "2026-09-01"}}
+    assert diagnose.eq_lookup(old, None, "seestar")["eq"] and diagnose.eq_lookup(old, "seestar", "seestar")["eq"]
+    assert diagnose.eq_lookup(old, "seestar30", "seestar") is None
+    db.x("INSERT INTO frames(id, project_id, kind, night, info) VALUES('f', 1, 'light', '2026-10-06', ?)",
+         (json.dumps({"instrument": "Seestar S30", "exptime": 10.0}),))
+    _, dev = tonight.library(db)
+    assert dev["model"] == "seestar30" and dev["eq"]

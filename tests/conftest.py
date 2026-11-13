@@ -45,6 +45,19 @@ def pytest_configure(config):
     subprocess.Popen.__init__ = guarded
     _block_network()
     _local_testclient()
+    _astropy_log_ruhig()
+
+
+def _astropy_log_ruhig():
+    """astropy hängt beim ersten Import seinen Logger an `warnings.showwarning`. Geschieht das erst mitten in einem Test (unter xdist
+    je nach Reihenfolge ein anderer), setzt pytests Warnungs-Rahmen `showwarning` danach zurück und astropy meldet beim Abbau
+    `LoggingError` (sporadisch z. B. in test_sites). Deshalb früh importieren und die Verknüpfung gleich lösen."""
+    try:
+        from astropy import log
+        log.disable_warnings_logging()
+        log.disable_exception_logging()
+    except Exception:
+        pass                                          # astropy fehlt oder war nicht eingehängt – nichts zu tun
 
 
 def _local_testclient():
