@@ -62,6 +62,7 @@ def _star_mask(L: np.ndarray, grow: int = 3, sigma_k: float = 3.0) -> np.ndarray
 
 
 EDGE_EXCLUDE = 0.12
+HDR_KNEE = 0.5            # compress_highlights: darunter (Himmel, schwacher Nebel) bleibt das Bild unverändert
 
 
 def remove_gradient(img: np.ndarray, degree: int = 3, grid: int = 16, edge_exclude: float = 0.0) -> np.ndarray:
@@ -682,6 +683,43 @@ def reduce_stars(img: np.ndarray, amount: float, fwhm: float) -> np.ndarray:
     return img * (1 - mask) + eroded * mask
 
 
+def soft_gain(img: np.ndarray, ratio: np.ndarray) -> np.ndarray:
+    """Helligkeitsfaktor je Pixel anwenden, ohne Kanäle ins Weiß zu schieben: Aufhellungen laufen weich gegen den
+    Spielraum des hellsten Kanals aus (Δ' = Δ·h/(h+Δ), h = 1/max − 1). Ohne das trieben Lokalkontrast und Endbearbeitung
+    den schon hellen Kern kompakter Nebel ins Weiß (M1: Kern 0,79 → 0,95, 40 % ≥ 0,97, einzelne Kanäle bei 255)."""
+    mx = np.maximum(img.max(0), 1e-4)
+    h = np.maximum(1.0 / mx - 1.0, 0.0)
+    up = np.maximum(ratio - 1.0, 0.0)
+    r = np.where(ratio > 1.0, 1.0 + up * h / (h + up + 1e-6), ratio)
+    return np.clip(img * r, 0, 1)
+
+
+def compress_highlights(img: np.ndarray, amount: float, knee: float = HDR_KNEE, detail: float = 1.0,
+                        sigma: float | None = None, color: float = 2.0) -> np.ndarray:
+    """Lichter großflächig dämpfen, Feinstruktur behalten (wie HDR-Multiskalen in PixInsight): die geglättete Helligkeit B
+    bekommt oberhalb von `knee` eine Schulter (t/(1 + a·t)), das Bild wird mit g(B)/B skaliert. Kleine Strukturen
+    (Filamente, Sterne) behalten ihr Verhältnis zur Umgebung; nur ausgedehnte helle Flächen (Kerne kompakter Nebel,
+    Galaxienkerne) werden dunkler. Schwaches Signal und Himmel liegen unter `knee` und bleiben unverändert."""
+    if amount <= 0:
+        return img
+    L = luminance(img)
+    B = ndi.gaussian_filter(L, sigma if sigma else max(3.0, max(L.shape) / 160))
+    t = np.clip((B - knee) / (1 - knee), 0, None)
+    g = knee + (1 - knee) * t / (1 + amount * t)
+    # Feinstruktur additiv übernehmen und anheben, soweit die Grundhelligkeit gedämpft wurde (die Kurve hatte sie oben flach gedrückt)
+    k = 1 + detail * (1 - (g - knee) / np.maximum(B - knee, 1e-4))
+    Ln = np.where(B > knee, g + (L - B) * k, L)
+    ratio = np.clip(np.maximum(Ln, 1e-4) / np.maximum(L, 1e-4), 0.3, 2.0)
+    out = soft_gain(img, ratio)
+    if color > 0:
+        # Die Kanalkurve hat die Farben im Kern oben zusammengeschoben (alle Kanäle nahe 1 → grau); im gedämpften Bereich
+        # Farbe im Verhältnis zur Dämpfung zurückgeben
+        L2 = luminance(out)
+        s = 1 + color * np.clip(1 - ratio, 0, 0.7)
+        out = np.clip(L2 + (out - L2) * s, 0, 1)
+    return out.astype(np.float32)
+
+
 def local_contrast(img: np.ndarray, amount: float, sharpen: float) -> np.ndarray:
     L = luminance(img)
     out = L.copy()
@@ -692,7 +730,7 @@ def local_contrast(img: np.ndarray, amount: float, sharpen: float) -> np.ndarray
         small = ndi.gaussian_filter(L, 1.6 * max(1.0, img.shape[2] / 2000))
         out = out + sharpen * 0.9 * (L - small) * smoothstep(L, 0.1, 0.4)
     ratio = np.clip(np.maximum(out, 1e-4) / np.maximum(L, 1e-4), 0.5, 2.0)
-    return np.clip(img * ratio, 0, 1)
+    return soft_gain(img, ratio)
 
 
 def tame_star_color(img: np.ndarray, fwhm: float, amount: float = 0.75, sat: np.ndarray | None = None) -> np.ndarray:
@@ -784,7 +822,7 @@ def grade(img: np.ndarray, amount: float, vibrance: float = 0.0, large: float = 
         nostar = 1 - ndi.gaussian_filter(stars.astype(np.float32), 2.0).clip(0, 1) * 0.8
         Ln = Ln + large * (0.35 * details[6] + 0.25 * details[7]) * nostar
     ratio = np.clip(np.maximum(Ln, 1e-4) / np.maximum(L, 1e-4), 0.6, 1.8)
-    out = np.clip(img * ratio, 0, 1)
+    out = soft_gain(img, ratio)
     if vibrance > 0:
         L2 = luminance(out)
         chroma = out - L2
@@ -969,6 +1007,13 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
     if p.get("grade", 0) > 0:
         log("Endbearbeitung")
         img = grade(img, float(p["grade"]), float(p.get("vibrance", 0.0)) if not mono else 0.0, float(p.get("grade_large", 0.0)))
+    if p.get("hdr", 0) > 0:
+        # Lichterschutz für kompakte helle Objekte (Qualitätskontrolle: ausgebrannte Objektfläche). Erst nach Kontrast und
+        # Endbearbeitung – direkt nach dem Stretch zogen die den gedämpften Kern wieder hoch. Im GHS-Zweig wirken
+        # white_pct/asinh nicht auf den Nebel, das hier schon.
+        log("Lichter schützen")
+        img = compress_highlights(img, float(p["hdr"]))
+        stats["hdr"] = float(p["hdr"])
     show(img, linear=False)
     if stars_s is not None:
         log("Sterne einsetzen")

@@ -22,9 +22,10 @@ from .processing import crop_to_coverage, luminance
 from .quality import noise_sigma
 
 QC_ROUNDS = 3
-QC_VERSION = 3                 # Stand von assess(); ältere Bewertungen prüft der Tutor am gespeicherten Bild nach
+QC_VERSION = 4                 # Stand von assess(); ältere Bewertungen prüft der Tutor am gespeicherten Bild nach
 # 3 (10.11.2026): Himmel = dunkelste SKY_PCT % (geglättet, ohne Sterne) statt dunkle Bildhälfte – in Staub-/Nebelfeldern
 #   war die dunkle Hälfte Staub; sichtbarer Staub senkte den Score (NGC 7023: 10 → 8) und die Korrekturen drehten ihn zurück
+# 4 (13.11.2026): Messwert object_burn (ausgebrannter Anteil heller Objekte, Problem „object_burn“)
 SKY_PCT = 15
 PREVIEW_SIDE = 1400
 
@@ -52,6 +53,17 @@ COLOR_GRAD_MAX_NEBULA = 0.035
 CORE_MIN_FRAC = 1e-4
 CORE_STAR_RATIO = 5.0
 WHITE_STEPS = (99.9, 99.98, 99.995)   # Weißpunkt-Perzentile, die die Kontrolle bei ausgebranntem Kern nacheinander probiert
+# Ausgebrannte Objektfläche (QC_VERSION 4, 13.11.2026): M1 (Vespera, 51 min) war im Kern eine weiße Scheibe – 40 % der
+# Kernfläche ≥ 0,97. Ursache: Bei Nebeln mit Sternentrennung streckt GHS (stars.Stretch) mit festem Weißpunkt, white_pct/asinh
+# wirken dort nicht; Lokalkontrast und Endbearbeitung schoben den Kern dann ins Weiß. Abhilfe: Lichterschutz `hdr`
+# (processing.compress_highlights) in Stufen HDR_STEPS. Schwelle 0,90 statt 0,97: Lokalkontrast/Endbearbeitung laufen jetzt
+# weich gegen Weiß aus (processing.soft_gain) – ein flacher Kern bei 0,89–0,93 wirkt genauso ausgebrannt. An 92 Ergebnissen
+# (JPEG) gemessen: Treffer ≥ 0,078 (NGC 6543, NGC 7009, M57, M1, NGC 246, M51, NGC 2683; helle Sterne Polaris, γ Cas in IC 59),
+# alle übrigen ≤ 0,012 (M15, M92, M17, M31).
+OBJECT_BURN_LEVEL = 0.90
+OBJECT_BURN_MIN_PX = 20               # kleinste gezählte weiße Fläche (Vorschau ~1200 px)
+OBJECT_BURN_MAX = 0.03                # Anteil des Objekts
+HDR_STEPS = (1.5, 3.0)
 DECONV_MIN_SNR = 15                   # darunter keine Entfaltung (Objekt-SNR aus measure())
 
 
@@ -64,6 +76,27 @@ def burnt_core(L: np.ndarray) -> float:
     stars = float(np.median(areas[1:11])) if n > 1 else 1.0
     big = float(areas[0])
     return big / L.size if big >= CORE_MIN_FRAC * L.size and big >= CORE_STAR_RATIO * max(stars, 1.0) else 0.0
+
+
+def object_burn(L: np.ndarray, obj: np.ndarray) -> float:
+    """Anteil des hellen Objekts, der weiß ausgebrannt ist (L ≥ OBJECT_BURN_LEVEL), ohne Sternkerne: gezählt werden nur
+    weiße Flächen, die deutlich größer sind als typische Sternkerne (wie burnt_core), bezogen auf die Objektteile
+    (zusammenhängende Signalflächen), in denen sie liegen. Kompakte helle Nebel (M1, M57) brennen so als Ganzes aus,
+    ohne dass burnt_core (Anteil am ganzen Bild) es immer bemerkt."""
+    lab, n = ndi.label(L >= OBJECT_BURN_LEVEL)
+    if not n:
+        return 0.0
+    areas = ndi.sum(np.ones_like(L), lab, np.arange(1, n + 1))
+    srt = np.sort(areas)[::-1]
+    stars = float(np.median(srt[1:11])) if n > 1 else 1.0
+    big = np.flatnonzero(areas >= max(CORE_STAR_RATIO * max(stars, 1.0), OBJECT_BURN_MIN_PX)) + 1
+    if not big.size:
+        return 0.0
+    hot = np.isin(lab, big)
+    olab, _ = ndi.label(obj | hot)
+    ids = np.unique(olab[hot])
+    area = float(np.isin(olab, ids[ids > 0]).sum())
+    return float(hot.sum()) / max(area, 1.0)
 
 
 def _bin(a: np.ndarray, f: int) -> np.ndarray:
@@ -225,14 +258,15 @@ def assess(rgb: np.ndarray, mono: bool = False, neutral_sky: bool = True) -> dic
     black = float((L < 0.004).mean())
     white = float((rgb.max(0) >= 0.999).mean())
     core = burnt_core(L)
-    sig =ndi.gaussian_filter(L, 1.5) > bg + 0.12
+    sig = ndi.gaussian_filter(L, 1.5) > bg + 0.12
+    oburn = object_burn(L, sig)
     if not mono and sig.sum() > 100:
         mx, mn = img.max(0)[sig], img.min(0)[sig]
         satur = float(np.median((mx - mn) / np.maximum(mx, 1e-3)))
     else:
         satur = None
     m = {"bg": round(bg, 4), "noise": round(noise, 4), "cast": round(cast, 4), "chroma_noise": round(chroma_noise, 4), "gradient": round(gradient, 4),
-         "black_clip": round(black, 5), "white_clip": round(white, 5), "burnt_core": round(core, 5),
+         "black_clip": round(black, 5), "white_clip": round(white, 5), "burnt_core": round(core, 5), "object_burn": round(oburn, 4),
          "saturation": None if satur is None else round(satur, 3), "signal": round(float(sig.mean()), 4),
          "color_gradient": cg["amount"] if cg else 0.0}
 
@@ -259,6 +293,9 @@ def assess(rgb: np.ndarray, mono: bool = False, neutral_sky: bool = True) -> dic
         issues.append(("white_clip", "Helle Bereiche ausgebrannt", min(2.0, 0.5 + 100 * (white - WHITE_CLIP_MAX))))
     if core:
         issues.append(("burnt_core", "Objektkern ausgebrannt (keine Zeichnung im Kern)", 1.5))
+    if oburn > OBJECT_BURN_MAX:
+        issues.append(("object_burn", "Objekt großflächig weiß (Struktur und Farbe gehen verloren)",
+                       min(2.0, 0.5 + 10 * (oburn - OBJECT_BURN_MAX))))
     if satur is not None and satur > SAT_RANGE[1]:
         issues.append(("oversat", "Farben übersättigt", 1.0))
     elif satur is not None and satur < SAT_RANGE[0]:
@@ -301,14 +338,20 @@ def corrections(qc: dict, p: dict) -> dict:
             adj["star_brightness"] = max(0.5, p.get("star_brightness", 0.85) - 0.1)
         else:
             adj["asinh"] = min(400.0, p["asinh"] * 1.6)
-    if "burnt_core" in codes:
-        # Alles über dem Weißpunkt wird hart weiß – mehr asinh allein hilft nicht. Weißpunkt anheben, asinh hält die
-        # schwachen Bereiche dabei hell.
+    if "burnt_core" in codes or "object_burn" in codes:
+        sep = p.get("star_separation", "off") not in ("off", None, False)
+        nxt_hdr = [h for h in HDR_STEPS if h > p.get("hdr", 0)]
         nxt = [w for w in WHITE_STEPS if w > p.get("white_pct", WHITE_STEPS[0])]
-        if nxt:
-            adj["white_pct"] = nxt[0]
-            adj["asinh"] = min(400.0, max(adj.get("asinh", p["asinh"]), p["asinh"] * 1.5))
-        else:                                        # Weißpunkt ausgereizt: Lichter stärker komprimieren
+        if sep or not nxt:
+            # Sternentrennung: der Nebel läuft über GHS mit festem Weißpunkt – white_pct/asinh bleiben dort wirkungslos
+            # (M1: drei Runden ohne Änderung). Lichterschutz nach der Endbearbeitung dämpft den Kern, Struktur bleibt.
+            if nxt_hdr:
+                adj["hdr"] = nxt_hdr[0]
+        if not sep:
+            # Alles über dem Weißpunkt wird hart weiß – mehr asinh allein hilft nicht. Weißpunkt anheben, asinh hält die
+            # schwachen Bereiche dabei hell; Weißpunkt ausgereizt: Lichter stärker komprimieren
+            if nxt:
+                adj["white_pct"] = nxt[0]
             adj["asinh"] = min(400.0, max(adj.get("asinh", p["asinh"]), p["asinh"] * 1.5))
     if "color_gradient" in codes and p.get("color_gradient", 0) < 3:
         # Polynomgrad des Farbausgleichs: Grad 2, dann 3. Eine Ebene überkorrigierte NGC 891 (Rotstich nur am Rand,

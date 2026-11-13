@@ -34,6 +34,31 @@ def _sky(rng, size=(620, 800)):
     return stars, ext
 
 
+def compact_nebula(size=(420, 600), seed=21, amp=170.0, fwhm=3.5) -> tuple[np.ndarray, np.ndarray]:
+    """Linearer Master-Stack (mean, cov) mit kleinem, hellem Nebel (wie M1/M57: ~80 px, Kern ~50× Rauschen, Filamente,
+    rötlicher Rand) vor Sternfeld – für Tests der Develop Engine (ausgebrannte Kerne)."""
+    rng = np.random.default_rng(seed)
+    h, w = size
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    u, v = (xx - w / 2) / 46, (yy - h / 2) / 34
+    r = np.sqrt(u ** 2 + v ** 2)
+    body = np.exp(-(r ** 2.5))
+    fil = np.clip(ndi.gaussian_filter(rng.normal(size=size), 2.5) * 6, -1, 1)
+    neb = amp * body * (0.85 + 0.3 * fil)
+    edge = np.clip(r - 0.5, 0, 1) * body
+    img = np.stack([neb + 120 * edge * (1 + fil), neb, neb * 0.95]).astype(np.float32)
+    psf_s = fwhm / 2.355
+    for _ in range(260):
+        x, y, f = rng.uniform(8, w - 8), rng.uniform(8, h - 8), 10 ** rng.uniform(2.6, 4.4)
+        col = rng.uniform(0, 1)
+        g = f / (2 * np.pi * psf_s ** 2) * np.exp(-((xx[int(y) - 8:int(y) + 9, int(x) - 8:int(x) + 9] - x) ** 2
+                                                   + (yy[int(y) - 8:int(y) + 9, int(x) - 8:int(x) + 9] - y) ** 2) / (2 * psf_s ** 2))
+        for ch, k in enumerate((0.5 + col, 1.0, 1.5 - col)):
+            img[ch, int(y) - 8:int(y) + 9, int(x) - 8:int(x) + 9] += g * k
+    img = img + 200 + rng.normal(0, 3.0, img.shape).astype(np.float32)
+    return img.astype(np.float32), np.ones(size, np.float32)
+
+
 def _frame(rng, stars, ext, angle_deg, shift, fwhm, trail=0.0, clouds=1.0, sat_trail=False, tilt=0.0):
     """tilt: Sterngröße wächst linear nach rechts (±tilt um die Mitte) – verkippter Sensor für die Gerätediagnose."""
     sh, sw = ext.shape[1:]
