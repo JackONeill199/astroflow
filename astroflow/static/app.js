@@ -502,8 +502,9 @@ const UPD_KIND = {
   docker: [null, 'Docker: im Projektordner <code>git pull</code> und <code>docker compose up -d --build</code>.'],
   source: [null, 'Aus dem Quellcode: <code>git pull</code>, dann <code>pip install -r requirements.txt</code> und AstroFlow neu starten. Fertige Pakete für Windows und Linux stehen auf der Release-Seite.'],
 };
-function updateHint(u) {
+function updateHint(u, manual = false) {
   AF.app.update = u || null;
+  AF.app.updateManual = !!(manual && u?.latest);      // von Hand geprüft (Hintergrundprüfung aus): der Status-Poll darf den Stand nicht löschen
   const b = $('#updBtn');
   const show = !!(u?.latest && store.get('update.dismissed', '') !== u.latest);
   b.hidden = !show;
@@ -513,8 +514,8 @@ function updateHint(u) {
     b.setAttribute('aria-label', `AstroFlow ${u.latest} ist verfügbar`);
   }
 }
-function updatePanel() {
-  const u = AF.app.update;
+function updatePanel(offer) {
+  const u = offer?.latest ? offer : AF.app.update;
   if (!u?.latest) return;
   const [label, how] = UPD_KIND[u.kind] || UPD_KIND.source;
   const notes = (u.notes || []).map(n => n.h ? `<h4>${esc(n.t)}</h4>` : `<p>${esc(n.t)}</p>`).join('');
@@ -537,6 +538,7 @@ function updatePanel() {
   };
 }
 AF.updateHint = updateHint;
+AF.updatePanel = updatePanel;
 
 async function loadModules() {
   AF.app = await api('/app');
@@ -699,7 +701,7 @@ async function poll() {
     if (b) { b.hidden = !st.busy; b.textContent = st.busy; }
     for (const id of AF.order) AF.modules[id].status?.(st, navBadge);
     sideFoot(st);
-    if ((st.update || null) !== (AF.app.update?.latest || null)) api('/app').then(a => updateHint(a.update)).catch(() => {});   // Hintergrundprüfung fand etwas
+    if (!AF.app.updateManual && (st.update || null) !== (AF.app.update?.latest || null)) api('/app').then(a => updateHint(a.update)).catch(() => {});   // Hintergrundprüfung fand etwas
     if (st.busy || lastActive?.size || $('#jobpop').classList.contains('open')) await pollActivity(); else { lastActive = new Map(); showJobPill(null); }
     await view?.update?.(st);
   } catch { /* Server kurz weg – nächster Versuch */ }

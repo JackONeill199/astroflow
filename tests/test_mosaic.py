@@ -233,3 +233,19 @@ def test_graxpert_cache_follows_mosaic_crop(tmp_path, grid, monkeypatch):
     pl.develop(pid)
     pl.develop(pid, extra={"mosaic_crop": "compact"})
     assert len(tags) == 2 and tags[0] != tags[1] and all("mosaic:" in t for t in tags)
+
+
+def test_maskierte_spur_am_mosaikrand_mit_randgewicht():
+    """Die Abdeckung einer ausgeblendeten Satellitenspur folgt im Mosaik dem weichen Kachelrand statt vollem Gewicht."""
+    import numpy as np
+    from types import SimpleNamespace
+    from astroflow.modules.stacking.pipeline import Pipeline
+    state = SimpleNamespace(swm=np.zeros((1, 4), np.float32))
+    masked = {0: np.ones((1, 4), bool)}
+    ws = np.array([2.0], np.float32)
+    Fm = np.array([[[1.0, 0.5, 0.1, 0.1]]], np.float32)
+    Pipeline._add_masked_coverage(state, masked, ws, Fm)
+    assert np.allclose(state.swm, [[2.0, 1.0, 0.2, 0.2]])
+    state.swm[:] = 0
+    Pipeline._add_masked_coverage(state, masked, ws, None)               # ohne Mosaik unverändert voll
+    assert np.allclose(state.swm, 2.0)

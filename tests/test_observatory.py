@@ -89,6 +89,10 @@ def test_atlas_api(tmp_path):
         p = d["photos"][0]
         assert p["pid"] == pid and p["rid"] == rid and p["href"] == f"#/p/{pid}" and p["thumb"].endswith(f"/{rid}/thumb")
         assert len(p["corners"]) == 4 and abs(p["ra"] - 83.82) < 1e-3
+        # Vorschaubild ohne Versionsparameter: Browser müssen jedes Mal per ETag nachfragen (IDs kehren nach neuem Datenordner wieder)
+        th = c.get(p["thumb"])
+        assert th.status_code == 200 and th.headers["cache-control"] == "no-cache" and th.headers.get("etag")
+        assert c.get(p["thumb"], headers={"If-None-Match": th.headers["etag"]}).status_code == 304
         assert (wd / "atlas.json").exists()
         ids = {o["id"] for o in d["catalog"]}
         assert {"M42", "M31"} <= ids and all(0 <= o["ra"] < 360 for o in d["catalog"])

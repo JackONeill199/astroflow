@@ -1526,8 +1526,7 @@ class Pipeline:
                             run.stack_frame(m, n=t, exposure=e, band=band, cov=c)
                     run.later(early_frames)
                 state.add_batch(X, V, ws, workers=self.s.threads, prefixes=cut.values(), gpu=g, F=Fm)
-                for b, mb in masked.items():             # ausgeblendete Spur zählt für die Abdeckung weiter
-                    state.swm += ws[b] * mb
+                self._add_masked_coverage(state, masked, ws, Fm)
                 del X, V, masked, Fm
                 exp0 = meta["exposure"]
                 for (fid, d), w in zip(good, ws):
@@ -1616,6 +1615,12 @@ class Pipeline:
             info["lines"] += len(ok)
             info["pixels"] += int(m.sum())
         return out
+
+    @staticmethod
+    def _add_masked_coverage(state: StackState, masked: dict, ws: np.ndarray, Fm: np.ndarray | None):
+        """Ausgeblendete Spur zählt für die Abdeckung weiter – im Mosaik am weichen Kachelrand nur mit dem Randgewicht `Fm`."""
+        for b, mb in masked.items():
+            state.swm += ws[b] * mb if Fm is None else ws[b] * mb * Fm[b]
 
     # ----------------------------------------------------------------- save #
     def _save(self, proj, rgb, mean, cov, stats, review, n, exposure, params, ai_mean=None) -> int:

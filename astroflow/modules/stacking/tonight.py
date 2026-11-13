@@ -80,9 +80,9 @@ def library(db) -> tuple[list[dict], dict]:
         # Gesicherter Rückfall aus tutor.DEVICES, keine pauschalen Werte für Gerätefamilien.
         field = [1.0, 0.7] if device["id"] == "stellina" else None
         source = "ungefähres Stellina-Bildfeld" if field else None
-    from .diagnose import eq_detected
+    from .diagnose import eq_detected, eq_lookup
     try:
-        eq = eq_detected(db).get(device["id"])               # EQ-Modus aus der Bilddrehung der letzten erkannten Nacht
+        eq = eq_lookup(eq_detected(db), device.get("model"), device["id"])               # EQ-Modus aus der Bilddrehung der letzten erkannten Nacht
     except Exception:
         eq = None
     exp = info.get("exptime")                              # tatsächliche Einzelbelichtung → Randverschmieren (devices.profile)

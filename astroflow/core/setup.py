@@ -422,13 +422,20 @@ class Setup:
                 if name == "demo" and (self.ctx.settings.input_dir / "demo").exists():
                     comp.done_order(item)
                     continue
-                if (self.tasks.get(name) or {}).get("state") != "running":       # läuft sie schon (Klick), nur abwarten
-                    try:
-                        self.install_component(name, opt or None)
-                    except HTTPException as e:
-                        if (self.tasks.get(name) or {}).get("state") != "running":
-                            self.tasks[name] = {"state": "error", "detail": str(e.detail), "started": time.time(), "finished": time.time()}
-                            continue
+                # Läuft die Komponente schon (Klick, ggf. mit anderer Option, z. B. D05 statt D50): erst abwarten, dann neu prüfen –
+                # war genau diese Option damit erledigt, ist der Eintrag weg; sonst wird sie anschließend selbst installiert.
+                while (self.tasks.get(name) or {}).get("state") == "running" and not self._stop.wait(1):
+                    pass
+                if self._stop.is_set():
+                    return
+                if item not in comp.take_order():
+                    continue
+                try:
+                    self.install_component(name, opt or None)
+                except HTTPException as e:
+                    if (self.tasks.get(name) or {}).get("state") != "running":
+                        self.tasks[name] = {"state": "error", "detail": str(e.detail), "started": time.time(), "finished": time.time()}
+                        continue
                 while (self.tasks.get(name) or {}).get("state") == "running" and not self._stop.wait(1):
                     pass
                 if (self.tasks.get(name) or {}).get("state") == "done":

@@ -14,12 +14,26 @@ import traceback
 from pathlib import Path
 
 from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from . import calibration, channels, comet, diskspace, frame_preview, gpu, graxpert, objects, platesolve, quality, registration, reviewer, scanner, skyquality, stars, tonight, tutor
 from ...core import security, sites
 from .db import DB
 from .pipeline import Pipeline
+
+
+# Bilder ohne Versionsparameter: Browser fragen jedes Mal per ETag nach (IDs können nach neuem Datenordner wiederkehren).
+# Starlettes FileResponse setzt den ETag, beantwortet If-None-Match aber nicht – das übernimmt `revalidated`.
+NO_CACHE = {"Cache-Control": "no-cache"}
+
+
+def revalidated(request: Request, path, **kw):
+    """Datei mit `Cache-Control: no-cache`; unverändert (gleicher ETag) → 304 ohne Inhalt."""
+    resp = FileResponse(path, headers=NO_CACHE, stat_result=Path(path).stat(), **kw)
+    inm = request.headers.get("if-none-match")
+    if inm and resp.headers.get("etag") and resp.headers["etag"] in [t.strip().removeprefix("W/") for t in inm.split(",")]:
+        return Response(status_code=304, headers={"ETag": resp.headers["etag"], **NO_CACHE})
+    return resp
 
 
 def _copy_upload(src, path: Path):
@@ -720,7 +734,7 @@ def build_router(eng: Engine) -> APIRouter:
                 "stars": m.get("stars") or []}
 
     @r.get("/frames/{fid}/preview")
-    def frame_preview_img(fid: str):
+    def frame_preview_img(fid: str, request: Request):
         """Vorschaubild einer Aufnahme; fehlt es, wird es aus der noch vorhandenen Rohdatei erzeugt (ohne Neu-Analyse)."""
         x = db.one("SELECT id, path, info, deleted FROM frames WHERE id=? AND kind='light'", (fid,))
         if not x:
@@ -733,7 +747,7 @@ def build_router(eng: Engine) -> APIRouter:
             raise HTTPException(500, "Vorschau ließ sich nicht erzeugen – Details im Server-Protokoll.")
         if not p:
             raise HTTPException(404, "Keine Vorschau – die Rohdatei ist gelöscht.")
-        return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+        return revalidated(request, p, media_type="image/jpeg")
 
     @r.patch("/frames/{fid}")
     def patch_frame(fid: str, body: dict = Body(...)):
@@ -922,13 +936,14 @@ def build_router(eng: Engine) -> APIRouter:
     def get_plan():
         opts, device = _plan_options()
         lib = next((o["id"] for o in opts if o["id"] == "library"), None)
-        from .diagnose import eq_detected
+        from .diagnose import eq_detected, eq_lookup
         try:
             det = eq_detected(db)
         except Exception:
             traceback.print_exc()
             det = {}
-        found = [o["id"] for o in opts if (det.get(o.get("lib_id") or o.get("mag_id") or o["id"]) or {}).get("eq") and o.get("eq_mode")]
+        found = [o["id"] for o in opts if (eq_lookup(det, o.get("model") or o["id"], o.get("lib_id") or o.get("mag_id") or o["id"]) or {}).get("eq")
+                 and o.get("eq_mode")]
         return {"plan": eng.ctx.store.get("observatory").get("plan"), "devices": opts, "eq_detected": found, "eq_default": found,
                 "default_device": lib or next((k for k in (device.get("model"), device.get("id")) if k in {o["id"] for o in opts}), "stellina"),
                 "has_site": bool(_plan_site_for()(None)), "weather_on": bool(tutor.settings(eng.ctx.store).get("weather"))}
@@ -1295,7 +1310,7 @@ def build_router(eng: Engine) -> APIRouter:
         return {"devices": device_summary(db)}
 
     @r.get("/results/{rid}/compare/{name}")
-    def compare_file(rid: int, name: str):
+    def compare_file(rid: int, name: str, request: Request):
         import re as _re
         if not _re.fullmatch(r"(aktuell|referenz)\.jpg|k\d{1,3}\.png", name):
             raise HTTPException(404)
@@ -1303,7 +1318,7 @@ def build_router(eng: Engine) -> APIRouter:
         f = x and eng.s.work_dir / f"p{x['project_id']}" / "vergleich" / f"r{rid}" / name
         if not f or not f.exists():
             raise HTTPException(404)
-        return FileResponse(f)
+        return revalidated(request, f)
 
     # ---- Asteroiden im Bild (asteroids.py) ---------------------------------------------------------
     @r.get("/results/{rid}/asteroids")
@@ -1322,7 +1337,7 @@ def build_router(eng: Engine) -> APIRouter:
         return eng.insights.submit("asteroids", rid)
 
     @r.get("/results/{rid}/asteroids/{name}")
-    def asteroid_file(rid: int, name: str):
+    def asteroid_file(rid: int, name: str, request: Request):
         import re as _re
         if not _re.fullmatch(r"a\d{1,3}\.png", name):
             raise HTTPException(404)
@@ -1330,7 +1345,7 @@ def build_router(eng: Engine) -> APIRouter:
         f = x and eng.s.work_dir / f"p{x['project_id']}" / "asteroiden" / f"r{rid}" / name
         if not f or not f.exists():
             raise HTTPException(404)
-        return FileResponse(f)
+        return revalidated(request, f)
 
     # ---- Analyse-Dashboard über alle Objekte (dashboard.py) ----------------------------------------
     def _filters(device: str = "", night: str = "", year: str = "", q: str = "") -> dict:
@@ -1438,12 +1453,12 @@ def build_router(eng: Engine) -> APIRouter:
                                                                  "Cache-Control": "no-store"})
 
     @r.get("/results/{rid}/{kind}")
-    def result_file(rid: int, kind: str):
+    def result_file(rid: int, kind: str, request: Request):
         x = db.one("SELECT files FROM results WHERE id=?", (rid,))
         files = json.loads(x["files"]) if x else {}
         if kind not in files or not Path(files[kind]).exists():
             raise HTTPException(404)
-        return FileResponse(files[kind], filename=Path(files[kind]).name if kind in ("tif", "fits", "fits_graxpert", "png", "original") else None)
+        return revalidated(request, files[kind], filename=Path(files[kind]).name if kind in ("tif", "fits", "fits_graxpert", "png", "original") else None)
 
     @r.get("/starnet")
     def get_starnet():

@@ -209,6 +209,29 @@ def test_installer_auftrag(home, tmp_path, monkeypatch):
     assert c.get("/api/components").json()["pending"] == ["graxpert"]
 
 
+def test_manuelles_d05_streicht_vorgemerktes_d50_nicht(home, monkeypatch):
+    """Läuft von Hand schon D05, während D50 vorgemerkt ist: nach dem Ende wird D50 trotzdem installiert (nicht gestrichen)."""
+    import threading
+    home.mkdir(parents=True, exist_ok=True)
+    comp.order_path().write_text("astap:d50\n", encoding="utf-8")
+    c = client(home / "Daten", True, monkeypatch)
+    setup = c.app.state.setup
+    seen = []
+
+    def fake_install(self, name, option=None, force=False):
+        seen.append((name, option))
+        self.tasks[name] = {"state": "done", "detail": "x"}
+    monkeypatch.setattr(setup_mod.Setup, "install_component", fake_install)
+    setup.tasks["astap"] = {"state": "running", "detail": "D05 von Hand"}
+    t = threading.Thread(target=setup.run_order, daemon=True)
+    t.start()
+    time.sleep(0.3)
+    assert seen == []                                    # wartet auf den laufenden Auftrag
+    setup.tasks["astap"] = {"state": "done", "detail": "D05 fertig"}
+    t.join(10)
+    assert seen == [("astap", "d50")] and not launcher.read_config().get("components_pending")
+
+
 def test_mehrere_teleskope(home, monkeypatch):
     c = client(home / "Daten", True, monkeypatch)
     s = c.post("/api/setup", json={"telescopes": ["stellina", "vespera", "unsinn", "stellina"]}).json()

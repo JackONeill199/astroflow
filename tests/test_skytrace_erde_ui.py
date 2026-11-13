@@ -279,7 +279,10 @@ def test_kartenmodus_kugel_und_flache_karte(server, browser, width, tmp_path):
     assert not tiles
     page.screenshot(path=str(tmp_path / f"erde-flach-{width}.png"))
     page.locator(".ste-tiles [data-tiles=osm]").click()                               # erst jetzt Kartenkacheln
-    page.wait_for_timeout(200)
+    for _ in range(100):                                                              # Kachelanfragen kommen auf langsamen CI-Rechnern verzögert
+        if tiles:
+            break
+        page.wait_for_timeout(100)
     assert tiles and all("openstreetmap" in u for u in tiles)
     assert not page.evaluate(FIND_OVERFLOW)
     # herauszoomen → wieder die Kugel
