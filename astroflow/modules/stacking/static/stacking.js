@@ -232,7 +232,7 @@ async function galleryView(el) {
     $('#gkind').style.display = kinds.length > 1 ? '' : 'none';
     const tot = projects.reduce((a, p) => a + (p.result?.exposure || 0), 0);
     $('#gsum').textContent = projects.length ? `${projects.length} Objekt${projects.length > 1 ? 'e' : ''} · ${dur(tot)} Gesamtbelichtung` : '';
-    let list = projects.filter(p => (kind === 'all' || (p.kind || 'generic') === kind) && p.name.toLowerCase().includes(q.toLowerCase()));
+    let list = projects.filter(p => (kind === 'all' || (p.kind || 'generic') === kind) && (p.name + ' ' + (p.device || '')).toLowerCase().includes(q.toLowerCase()));
     const key = { recent: p => -(p.result?.created || p.created || 0), name: p => p.name.toLowerCase(), exposure: p => -(p.result?.exposure || 0), frames: p => -p.total }[sort];
     list.sort((a, b) => key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0);
     if (!projects.length) {
@@ -278,7 +278,7 @@ async function galleryView(el) {
         ${pal && pal !== 'OSC' ? `<span class="chip acc badge">${esc(PALETTE_LABEL[pal] || pal)}</span>` : ''}
         ${busy ? `<span class="state">${p.job.state === 'queued' ? 'wartet' : `<span class="spinner" style="width:12px;height:12px"></span>${Math.round((p.job.progress || 0) * 100)} %`}</span>` : ''}</div>
       <div class="body"><h3>${esc(p.name)}</h3>
-        <div class="meta"><span class="chip">${esc(p.kind_label || 'Allgemein')}</span>${p.imported ? '<span class="chip acc">Fertiges Bild</span>' : `<span class="chip">${p.nights.length} ${p.nights.length === 1 ? 'Nacht' : 'Nächte'}</span>`}${p.n_results > 1 ? `<span class="chip">${p.n_results} Versionen</span>` : ''}</div>
+        <div class="meta"><span class="chip">${esc(p.kind_label || 'Allgemein')}</span>${p.device ? `<span class="chip" title="Aufnahmegerät">${esc(p.device)}</span>` : ''}${p.imported ? '<span class="chip acc">Fertiges Bild</span>' : `<span class="chip">${p.nights.length} ${p.nights.length === 1 ? 'Nacht' : 'Nächte'}</span>`}${p.n_results > 1 ? `<span class="chip">${p.n_results} Versionen</span>` : ''}</div>
         ${busy ? jobLine(p.job) : `<div class="foot"><span>${p.imported ? 'Original erhalten' : r ? `${r.n_frames} von ${p.total} Aufnahmen` : `${p.total} Aufnahmen`}</span>
           ${r ? `<span>${p.imported ? esc(r.stats?.imported?.format || '') : dur(r.exposure)}</span>` : `<button class="btn sm quick" data-run="${p.id}">${icon('play')}Verarbeiten</button>`}</div>`}
       </div>`;
@@ -382,7 +382,7 @@ async function pictureView(el, pid) {
   const r = p.result, s = r.stats || {}, imp = s.imported || {};
   const rows = p.imported
     ? [['Art', 'Fertiges Bild · importiert'], ['Aufgenommen', imp.date_obs ? String(imp.date_obs).slice(0, 10) : null], ['Gerät', imp.camera || imp.instrument], ['Format', imp.format]]
-    : [['Belichtung', dur(r.exposure)], ['Aufnahmen', `${r.n_frames} gestackt`], ['Nächte', p.nights.map(fnight).join(', ')], ['Gerät', s.device || s.instrument],
+    : [['Belichtung', dur(r.exposure)], ['Aufnahmen', `${r.n_frames} gestackt`], ['Nächte', p.nights.map(fnight).join(', ')], ['Gerät', p.device || s.device || s.instrument],
        ['Sternschärfe', s.fwhm_px ? `${s.fwhm_px} px (FWHM)` : null], ['Version', `${(p.n_results || 1) > 1 ? `neueste von ${p.n_results}` : 'einzige'} · ${fdate(r.created)}`]];
   el.innerHTML = `<div class="pv">
     <div class="pv-stage"><div id="pvView"></div>
@@ -443,7 +443,7 @@ async function picturesView(el) {
     const tot = list.reduce((a, p) => a + (p.imported ? 0 : p.result.exposure || 0), 0);
     $('#psum').textContent = list.length ? `${list.length} Bild${list.length === 1 ? '' : 'er'}${tot ? ` · ${dur(tot)} Gesamtbelichtung` : ''}` : '';
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-    const shown = list.filter(p => (kind === 'all' || (p.kind || 'generic') === kind) && words.every(w => (p.name + ' ' + (p.kind_label || '')).toLowerCase().includes(w)));
+    const shown = list.filter(p => (kind === 'all' || (p.kind || 'generic') === kind) && words.every(w => (p.name + ' ' + (p.kind_label || '') + ' ' + (p.device || '')).toLowerCase().includes(w)));
     const key = { recent: p => -(p.result.created || 0), name: p => p.name.toLowerCase(), exposure: p => -(p.result.exposure || 0) }[sort];
     shown.sort((a, b) => key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0);
     galleryOrder = shown.map(p => p.id);                       // Reihenfolge für Vor/Zurück im Betrachter
@@ -521,11 +521,13 @@ async function projectView(el, id, tab = 'bild') {
     return `<div class="pagehead"><div style="min-width:0">
         <button class="namebtn" id="rename" title="Umbenennen"><h1 style="display:inline">${esc(p.name)}</h1>${icon('edit')}</button>
         <div class="row" style="margin-top:6px"><span class="chip">${esc(p.kind_label || 'Allgemein')}</span>
+          ${p.device ? `<span class="chip" title="Aufnahmegerät">${esc(p.device)}</span>` : ''}
           ${r?.stats?.palette ? `<span class="chip acc">${esc(PALETTE_LABEL[r.stats.palette] || r.stats.palette)}</span>` : ''}
           ${p.imported ? '<span class="chip acc">Fertiges Bild · importiert</span>' : `<span class="chip">${p.total} Aufnahmen</span><span class="chip">${p.nights.length} ${p.nights.length === 1 ? 'Nacht' : 'Nächte'}</span>`}
           ${r && !p.imported ? `<span class="chip">${dur(r.exposure)} integriert</span>` : ''}
           ${p.coords?.source === 'solve' ? `<span class="chip acc" title="Koordinaten per Plate-Solving bestimmt">${icon('star')}Plate-Solved</span>` : ''}
-          ${p.comet ? '<span class="chip acc" title="Zwei Stacks: auf die Sterne und auf den Kometenkern">Kometenmodus</span>' : ''}</div></div>
+          ${p.comet ? '<span class="chip acc" title="Zwei Stacks: auf die Sterne und auf den Kometenkern">Kometenmodus</span>' : ''}</div>
+        ${(p.other_devices || []).length ? `<div class="dim sm other-dev" style="margin-top:0.375rem">Auch mit ${(p.other_devices || []).map(o => `<a href="#/p/${o.id}">${esc(o.device)}</a>`).join(', ')} aufgenommen →</div>` : ''}</div>
       <div class="page-actions">${p.imported ? '' : `<button class="btn" id="run" ${busy ? 'disabled' : ''} title="${r ? 'Neue Aufnahmen und Nächte nachstacken – der bisherige Stack bleibt erhalten' : ''}">${icon(busy ? 'refresh' : 'play')}${busy ? 'Läuft …' : r ? 'Nachstacken' : 'Verarbeiten'}</button>`}
         ${r ? `<div class="menu" id="dl"><button class="btn ghost">${icon('down')}Export${icon('chev')}</button><div class="pop">
           <a href="#" data-act="share">Teilen-Karte <small>Bild mit Infos für Foren &amp; Co.</small></a>
@@ -689,9 +691,9 @@ async function projectView(el, id, tab = 'bild') {
           <dt>Erstellt</dt><dd>${fdate(r.created)}</dd>
           ${p.imported ? `<dt>Dateiname</dt><dd>${esc(s.imported.filename)}</dd><dt>Format</dt><dd>${esc(s.imported.format)} · ${s.imported.bit_depth} Bit</dd>
           <dt>Auflösung</dt><dd>${s.shape[1]} × ${s.shape[0]} px</dd>${s.imported.date_obs ? `<dt>Aufnahmezeit (Dateimetadaten)</dt><dd>${esc(s.imported.date_obs)}</dd>` : ''}` : `<dt>Bearbeitungsprofil</dt><dd>${esc(PROFILE_LABEL[s.profile] || s.profile || '–')}</dd>
-          <dt>Aufnahmetyp</dt><dd>${s.palette === 'OSC' || !s.palette ? 'Farbkamera' : 'Mono + Filter'}${s.narrowband ? ' · Schmalband' : ''}</dd>
+          ${p.device ? `<dt>Gerät</dt><dd>${esc(p.device)}</dd>` : ''}<dt>Aufnahmetyp</dt><dd>${s.palette === 'OSC' || !s.palette ? 'Farbkamera' : 'Mono + Filter'}${s.narrowband ? ' · Schmalband' : ''}</dd>
           <dt>Sterne erkannt</dt><dd class="tnum">${s.stars ?? '–'}</dd>
-          ${s.graxpert ? `<dt>GraXpert-KI</dt><dd>${[s.graxpert.bge && 'Hintergrund', s.graxpert.denoise && `Entrauschen ${s.graxpert.denoise}`].filter(Boolean).join(' · ') || 'nicht angewendet'}${s.graxpert.error ? `<div class="dim sm">${esc(s.graxpert.error)}</div>` : ''}</dd>` : ''}
+          ${s.graxpert ? `<dt>GraXpert-KI</dt><dd>${[s.graxpert.bge && 'Hintergrund', s.graxpert.denoise && `Entrauschen ${s.graxpert.denoise}`].filter(Boolean).join(' · ') || 'nicht angewendet'}${s.graxpert.error ? `<div class="dim sm">${esc(s.graxpert.error)}</div>` : ''}${s.graxpert.retried_cpu && !s.graxpert.error ? `<div class="dim sm">GraXpert auf der Grafikkarte lieferte ungültige Werte – ohne Grafikkarte wiederholt</div>` : ''}${s.graxpert.nonfinite_repaired ? `<div class="dim sm">${s.graxpert.nonfinite_pct != null ? String(s.graxpert.nonfinite_pct).replace('.', ',') + ' % ' : ''}ungültige Pixel aus dem Original ersetzt</div>` : ''}</dd>` : ''}
           ${s.distortion ? `<dt>Verzerrungskorrektur</dt><dd>${s.distortion.poly} von ${s.distortion.frames} Aufnahmen korrigiert${s.distortion.poly && s.distortion.rms_before != null && s.distortion.rms_after != null ? `<div class="dim sm tnum">Restfehler ${String(s.distortion.rms_before).replace('.', ',')} → ${String(s.distortion.rms_after).replace('.', ',')} px · ${Math.round(s.distortion.pairs)} Sterne je Aufnahme</div>` : ''}</dd>` : ''}
           ${s.mosaic ? `<dt>Mosaik</dt><dd>${s.mosaic.canvas ? `${s.mosaic.canvas[1]} × ${s.mosaic.canvas[0]} px gestackt` : 'Fläche aller Aufnahmen'}${s.mosaic.area ? ` (${String(s.mosaic.area).replace('.', ',')}× ein Einzelbild)` : ''}<div class="dim sm">${s.mosaic.crop === 'compact' ? 'Ausschnitt kompakt (volle Tiefe)' : `Ausschnitt groß: Ränder ab ${Math.round(100 * s.mosaic.min_depth)} % der größten Tiefe`}</div></dd>` : ''}
           <dt>Sterne</dt><dd>${s.star_separation ? `getrennt bearbeitet (${s.star_separation === 'starnet' ? 'StarNet' : 'eigene Trennung'})` : 'mit dem Bild bearbeitet'}</dd>

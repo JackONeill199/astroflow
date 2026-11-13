@@ -55,7 +55,7 @@ def test_apply_removes_gradient_keeps_holes_and_caches(tmp_path):
     assert info == {"mode": "bge", "bge": True, "smoothing": 0.1}
     assert out.shape == mean.shape
     assert np.allclose(out[:, :, :5], 0)                     # Rand unverändert zurückgesetzt
-    assert np.ptp(out[0, 10, 10:]) < 0.5 * np.ptp(mean[0, 10, 10:])   # Verlauf großteils weg
+    assert np.ptp(out[0, 10, 10:]) < 0.8 * np.ptp(mean[0, 10, 10:])   # Verlauf kleiner (Attrappe zieht fest 0,3 der Skala ab; Skala nur über die abgedeckte Fläche)
     out2, info2 = graxpert.apply(mean, cov, "bge", cache_dir=tmp_path / "c", exe=exe)
     assert info2.get("cache") and np.array_equal(out, out2)
 
@@ -139,3 +139,80 @@ def test_cpu_denoise_setting_persists():
                            ctx=SimpleNamespace(store=SimpleNamespace(get=lambda sec: {"cpu_denoise": True, "unbekannt": 1})))
     api.Engine._apply_saved(stub)
     assert cfg.cpu_denoise is True and not hasattr(cfg, "unbekannt")
+
+
+# Attrappe mit Aussetzer: liefert mit Grafikkarte (-gpu true) NaN – Anteil über GX_NAN_FRAC, auch ohne GPU bei GX_NAN_CPU=1
+FAKE_NAN = FAKE.replace("fits.PrimaryHDU(d.astype", '''gpu = a[a.index("-gpu") + 1] == "true"
+if gpu or os.environ.get("GX_NAN_CPU"):
+    n = max(1, int(d.shape[-1] * d.shape[-2] * float(os.environ.get("GX_NAN_FRAC", "0.5"))))
+    d = np.ascontiguousarray(d); d.reshape(-1)[:n] = np.nan
+print("Used inference providers : ['DmlExecutionProvider']" if gpu else "Used inference providers : ['CPUExecutionProvider']")
+fits.PrimaryHDU(d.astype''')
+
+
+def _nan_fake(tmp_path) -> str:
+    p = tmp_path / "graxpert_nan.py"
+    p.write_text(FAKE_NAN, encoding="utf-8")
+    return str(p)
+
+
+def _flat():
+    mean = np.full((3, 40, 50), 1000, np.float32) + np.random.default_rng(5).normal(0, 5, (3, 40, 50)).astype(np.float32)
+    return mean, np.ones((40, 50), np.float32)
+
+
+def test_nonfinite_retries_without_gpu(tmp_path, monkeypatch, capsys):
+    """Ungültige Werte mit Grafikkarte: Messung ins Protokoll, einmal ohne GPU wiederholen – Ergebnis ist dann sauber."""
+    monkeypatch.setattr(graxpert, "GRAXPERT", graxpert.GraxpertConfig(gpu=True))
+    mean, cov = _flat()
+    out, info = graxpert.apply(mean, cov, "bge", exe=_nan_fake(tmp_path))
+    assert np.isfinite(out).all() and info["bge"] and "error" not in info
+    assert info["retried_cpu"] is True and info["nonfinite_pct"] > 1
+    assert "ungültige Pixel" in capsys.readouterr().out
+
+
+def test_nonfinite_cpu_also_fails_gives_fixed_message(tmp_path, monkeypatch):
+    monkeypatch.setattr(graxpert, "GRAXPERT", graxpert.GraxpertConfig(gpu=True))
+    monkeypatch.setenv("GX_NAN_CPU", "1")
+    mean, cov = _flat()
+    out, info = graxpert.apply(mean, cov, "bge", exe=_nan_fake(tmp_path))
+    assert out is mean and info["error"] == "GraXpert lieferte auch ohne Grafikkarte ungültige Werte"
+    assert info["retried_cpu"] and info["nonfinite_pct"] > 1
+
+
+def test_nonfinite_tiny_share_is_repaired_from_input(tmp_path, monkeypatch):
+    """Nur ein winziger Anteil (< 0,1 %) bleibt ungültig → diese Pixel kommen aus der Eingabe, kein Verwerfen."""
+    monkeypatch.setattr(graxpert, "GRAXPERT", graxpert.GraxpertConfig(gpu=False))
+    monkeypatch.setenv("GX_NAN_FRAC", "0.0005")        # 1 Pixel von 2000
+    monkeypatch.setenv("GX_NAN_CPU", "1")
+    mean, cov = _flat()
+    out, info = graxpert.apply(mean, cov, "bge", exe=_nan_fake(tmp_path))
+    assert np.isfinite(out).all() and info["bge"] and "error" not in info
+    assert info["nonfinite_repaired"] is True and 0 < info["nonfinite_pct"] < graxpert.TINY_PCT
+    assert "retried_cpu" not in info
+
+
+# Attrappe wie GraXpert: Normierung über MAD – ist sie in einem Kanal 0, kommt NaN heraus (IC 443 Mosaik, 72 % Lücke)
+FAKE_MAD = FAKE.replace("d =fits.getdata(src).astype(np.float32)", '''d =fits.getdata(src).astype(np.float32)
+for ch in (d if d.ndim == 3 else d[None]):
+    if np.median(np.abs(ch - np.median(ch))) == 0:
+        d = d * np.nan
+        break
+H0 = d.shape''')
+
+
+def test_large_gaps_cropped_and_noise_filled_no_nan(tmp_path):
+    """Mosaik mit > 50 % Lücke: Zuschnitt auf die abgedeckte Fläche, Lücken mit Himmel + Rauschen statt konstant → MAD > 0."""
+    p = tmp_path / "gx_mad.py"
+    p.write_text(FAKE_MAD, encoding="utf-8")
+    H, W = 200, 300
+    rng = np.random.default_rng(7)
+    mean = (1000 + rng.normal(0, 5, (3, H, W))).astype(np.float32)
+    cov = np.zeros((H, W), np.float32)
+    cov[20:80, 30:110] = 1                                   # 8 % abgedeckt, Rest Lücke
+    mean[:, cov == 0] = 0
+    assert (cov <= 0.5).mean() > 0.5
+    out, info = graxpert.apply(mean, cov, "bge", exe=str(p))
+    assert "error" not in info and info["bge"] and np.isfinite(out).all()
+    assert out.shape == mean.shape and np.allclose(out[:, cov == 0], 0)      # Lücken bleiben unverändert
+    assert graxpert.GRAXPERT_VERSION >= 2

@@ -26,6 +26,8 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md` (Details in `docs/entwicklung/
 | 18 | 05.11.2026 | SkyTrace: Satellitenhelligkeit und Satelliten pro Stunde | umgesetzt in 0.39.0 (Statistik; mag mit Nullpunkt aus den Bilder-Stacks, Rate je Belichtungsstunde) |
 | 19 | 05.11.2026 | Interaktive Bildführung: KI zeigt und erklärt im Bild | offen |
 | 20 | 12.11.2026 | HOO/SHO für Farbkameras mit Dual-Band-Filter | offen |
+| 21 | 13.11.2026 | Geräte kombinieren (Stacks verschiedener Teleskope zu einem Bild) | offen |
+| 22 | 13.11.2026 | Echtes Drizzle | offen |
 
 ## 1. Bibliothek teilen (nur ansehen) – 03.11.2026
 
@@ -211,3 +213,30 @@ Wunsch des Nutzers: SHO „auf jeden Fall unterstützt haben“. Stand heute:
 - Tri-Band-Filter (Hα/OIII/SII mit getrennten Durchlässen) gesondert prüfen.
 - An echten Daten messen (Seestar/Vespera mit Dual-Band, Stellina mit Lichtverschmutzungsfilter) und mit Siril/PixInsight-Ergebnissen
   vergleichen; Mono-SHO mit echten Testdaten (öffentliche Beispieldatensätze, Lizenz prüfen) absichern.
+
+## 21. Geräte kombinieren – 13.11.2026
+
+**Status: offen** – Wunsch des Nutzers (IC 443 mit Stellina und später mit Vespera aufgenommen). Projekte werden bewusst je Objekt **und**
+Kamera/Format getrennt (`scanner.assign_project`); das Gerät steht als Tag im Projektkopf, mit Hinweis auf dasselbe Objekt mit anderem Gerät.
+
+**Idee:** Stacks desselben Objekts von verschiedenen Teleskopen (z. B. Stellina + Vespera) zu **einem** Bild kombinieren.
+- Beide Stacks per Plate-Solving/WCS-Reprojektion auf ein gemeinsames Raster umrechnen (unterschiedliche Pixelmaßstäbe und Bildfelder).
+- Farb- und Helligkeitsabgleich zwischen den Kameras (Gaia-Fotometrie liefert die Referenz), Gewichtung nach gemessenem Rauschen/Tiefe.
+- Ergebnis als **eigene Version** (Versionsliste des Objekts), die Einzelstacks bleiben unverändert.
+
+**Zu klären:**
+- Auflösung des Ziels (feinerer Maßstab mit Hochskalieren des gröberen Stacks, oder Mittelweg) und Umgang mit der unterschiedlichen Sternschärfe.
+- Rand/Feldgröße: nur der gemeinsame Ausschnitt oder die Vereinigung (Mosaik-Logik aus `mosaic.py` wiederverwenden?).
+- Projektmodell: **verknüpfte Projekte** statt Zusammenlegen (die Trennung nach Kamera bleibt, die Verknüpfung entsteht über Objekt-ID).
+- Rechenaufwand und Speicher (zwei große Stacks plus Reprojektion), Abbruch/Fortschritt im Hintergrund.
+
+## 22. Echtes Drizzle – 13.11.2026
+
+**Status: offen.** Heute gibt es nur `resolution_scale = 2`: Interpolation auf ein 2× Raster (~4× Arbeitsspeicher), mit kaum echtem Auflösungsgewinn.
+
+**Ziel:** Echtes Drizzle – je Aufnahme nach der Registrierung (inkl. Verzeichnungskorrektur) fällt jedes Pixel als „Tropfen“ mit verkleinertem Pixelanteil (`pixfrac`) auf ein feineres Ausgaberaster, dazu eine Gewichtskarte. Sinnvoll bei **Unterabtastung** (z. B. Vespera mit ~3″/px) und nur mit **vielen Aufnahmen mit Versatz** (Dithering oder natürliche Drift der Montierung).
+
+**Zu klären:**
+- Arbeitsspeicher und GPU-Nutzung (Raster und Gewichtskarte je Kanal; OpenCL wie in `gpu.py`?).
+- Zusammenspiel mit Mosaik (feste Leinwand) und dem Ausreißer-Verwerfen (Sigma-Clipping auf gedroppten Daten).
+- Automatik: nur anbieten bzw. einschalten, wenn die Sternschärfe (FWHM) unter ~2 px liegt und genug Aufnahmen mit Versatz vorhanden sind.

@@ -132,9 +132,56 @@ def _run(exe: str, img: np.ndarray, cmd: str, args: list[str], timeout: int = TI
         raise RuntimeError(f"GraXpert lieferte falsches Format {y.shape} statt {img.shape}")
     if y.shape[0] != img.shape[0]:
         y = np.repeat(y[:1], img.shape[0], 0) if img.shape[0] == 3 else y[:1]
-    if not np.isfinite(y).all():
-        raise RuntimeError("GraXpert lieferte ungültige Werte")
+    bad = ~np.isfinite(y)
+    if bad.any():
+        raise NonFinite(y, bad)
     return y
+
+
+CROP_MARGIN = 32                     # Rand (px) um die abgedeckte Fläche beim Zuschneiden
+TINY_PCT = 0.1                       # bis zu diesem Anteil ungültiger Pixel (%) werden sie aus der Eingabe ersetzt
+
+
+class NonFinite(RuntimeError):
+    """GraXpert lieferte NaN/Inf. Trägt das (teilweise ungültige) Ergebnis und die Messung (Anteil, Kanäle)."""
+
+    def __init__(self, y: np.ndarray, bad: np.ndarray):
+        super().__init__("GraXpert lieferte ungültige Werte")
+        self.y, self.bad = y, bad
+        self.pct = 100.0 * float(bad.any(axis=0).mean())                     # Pixel mit mindestens einem ungültigen Kanal
+        self.channels = [int(c) for c in range(bad.shape[0]) if bad[c].any()]
+
+
+def _run_safe(exe: str, x: np.ndarray, cmd: str, args: list[str], gpu: bool, info: dict, log) -> np.ndarray:
+    """`_run` mit Absicherung gegen ungültige Werte (sporadischer GPU-Aussetzer, IC 443 13.11.2026): Anteil und Kanäle
+    messen und protokollieren, mit Grafikkarte einmal ohne wiederholen; bleibt nur ein winziger Anteil (< TINY_PCT) übrig,
+    werden genau diese Pixel aus der Eingabe übernommen (kein Bildfehler, aber auch kein Verwerfen des ganzen Ergebnisses),
+    sonst Fehler (das Bild wird mit eigenen Verfahren entwickelt)."""
+    gpu_arg = ["-gpu", "true" if gpu else "false"]
+    try:
+        return _run(exe, x, cmd, [*args, *gpu_arg])
+    except NonFinite as e:
+        first = e
+    log_tail = LAST_LOG.strip()[-600:]
+    print(f"[graxpert] {cmd}: {first.pct:.4f} % ungültige Pixel (Kanäle {first.channels}, GPU={gpu}); Log-Ende: {log_tail}")
+    info["nonfinite_pct"] = round(first.pct, 4)
+    if gpu:
+        log("GraXpert lieferte ungültige Werte – wiederhole ohne Grafikkarte")
+        info["retried_cpu"] = True
+        try:
+            return _run(exe, x, cmd, [*args, "-gpu", "false"])
+        except NonFinite as e:
+            first = e
+            print(f"[graxpert] {cmd}: auch ohne GPU {e.pct:.4f} % ungültige Pixel (Kanäle {e.channels}); Log-Ende: {LAST_LOG.strip()[-600:]}")
+            info["nonfinite_pct"] = round(e.pct, 4)
+    if first.pct < TINY_PCT:
+        y = first.y.copy()
+        np.copyto(y, x, where=first.bad)
+        info["nonfinite_repaired"] = True
+        return y
+    raise first
+
+
 
 
 def _cache_key(mean: np.ndarray, mode: str, strength: float, gpu: bool, tag: str = "", smoothing: float = DEFAULT_SMOOTHING) -> str:
@@ -147,7 +194,7 @@ def _cache_key(mean: np.ndarray, mode: str, strength: float, gpu: bool, tag: str
     return h.hexdigest()[:16]
 
 
-GRAXPERT_VERSION = 1                 # erhöhen, wenn sich die Vor-/Nachbereitung ändert (Cache ungültig)
+GRAXPERT_VERSION = 2                 # erhöhen, wenn sich die Vor-/Nachbereitung ändert (Cache ungültig)
 
 
 def apply(mean: np.ndarray, cov: np.ndarray, mode: str, strength: float = 0.5, cache_dir: Path | None = None,
@@ -171,19 +218,35 @@ def apply(mean: np.ndarray, cov: np.ndarray, mode: str, strength: float = 0.5, c
                 return np.load(f), {**json.loads(meta.read_text(encoding="utf-8")), "cache": True}
             except Exception:
                 pass
-    lo = float(np.percentile(mean, 0.01))
-    hi = float(np.percentile(mean, 99.999))
-    scale = max(hi - lo, 1e-12)
-    x = np.clip((mean - lo) / scale, 0, 1).astype(np.float32)
     hole = cov <= 0.5
+    # Auf das Begrenzungsrechteck der abgedeckten Fläche zuschneiden (+ Rand): spart Rechenzeit und verhindert, dass große
+    # Lücken GraXperts Normierung (MAD) auf 0 setzen → NaN überall (IC 443 Mosaik, 72 % Lücke, 13.11.2026).
+    box = (slice(0, mean.shape[1]), slice(0, mean.shape[2]))
     if hole.any() and not hole.all():
-        x[:, hole] = np.median(x[:, ~hole], axis=1)[:, None]
+        ys, xs = np.where(~hole)
+        m = CROP_MARGIN
+        box = (slice(max(0, ys.min() - m), min(mean.shape[1], ys.max() + 1 + m)),
+               slice(max(0, xs.min() - m), min(mean.shape[2], xs.max() + 1 + m)))
+    sub, hsub = mean[:, box[0], box[1]], hole[box]
+    cov_px = sub[:, ~hsub] if hsub.any() and not hsub.all() else sub.reshape(sub.shape[0], -1)
+    lo = float(np.percentile(cov_px, 0.01))
+    hi = float(np.percentile(cov_px, 99.999))
+    scale = max(hi - lo, 1e-12)
+    x = np.clip((sub - lo) / scale, 0, 1).astype(np.float32)
+    if hsub.any() and not hsub.all():
+        # Lücken mit Himmelswert + Rauschen in Höhe des gemessenen Himmelsrauschens füllen (fester Seed → stabiler Cache):
+        # konstante Flächen machen die MAD null, die KI deutet harte Kanten als Hintergrund
+        rng = np.random.default_rng(12345)
+        for c in range(x.shape[0]):
+            v = x[c][~hsub]
+            med = float(np.median(v))
+            sig = max(1.4826 * float(np.median(np.abs(v - med))), 1e-4)
+            x[c][hsub] = np.clip(med + rng.normal(0.0, sig, int(hsub.sum())), 0, 1)
     info: dict = {"mode": mode}
-    gpu_arg = ["-gpu", "true" if gpu else "false"]
     try:
         if mode in ("bge", "all"):
             log("Hintergrund entfernen (GraXpert-KI)")
-            x = _run(exe, x, "background-extraction", ["-correction", "Subtraction", "-smoothing", f"{smoothing:g}", *gpu_arg])
+            x = _run_safe(exe, x, "background-extraction", ["-correction", "Subtraction", "-smoothing", f"{smoothing:g}"], gpu, info, log)
             info["bge"] = True
             info["smoothing"] = round(smoothing, 2)
             if preview:
@@ -195,17 +258,23 @@ def apply(mean: np.ndarray, cov: np.ndarray, mode: str, strength: float = 0.5, c
             info["denoise_skipped"] = "ohne GPU"
         elif mode in ("denoise", "all") and strength > 0:
             log("Entrauschen (GraXpert-KI)")
-            x = _run(exe, x, "denoising", ["-strength", f"{strength:.2f}", "-batch_size", "4", *gpu_arg])
+            x = _run_safe(exe, x, "denoising", ["-strength", f"{strength:.2f}", "-batch_size", "4"], gpu, info, log)
             info["denoise"] = round(strength, 2)
             if preview:
                 from .live import optional, sample
                 optional(preview, sample(x) * scale + lo)
     except Exception as e:                       # GraXpert-Fehler brechen die Bearbeitung nie ab
         log(f"GraXpert fehlgeschlagen ({e}) – eigene Verfahren")
+        # ungültige Werte: feste Meldung (Regel 7), Einzelheiten stehen im Server-Protokoll
+        msg = ("GraXpert lieferte auch ohne Grafikkarte ungültige Werte" if isinstance(e, NonFinite) and info.get("retried_cpu")
+               else "GraXpert lieferte ungültige Werte" if isinstance(e, NonFinite) else str(e)[:300])
+        if not isinstance(e, NonFinite):
+            print(f"[graxpert] fehlgeschlagen: {e}")
         if not info.get("bge"):
-            return mean, {"error": str(e)[:300]}
-        info["error"] = str(e)[:300]
-    out = (x * scale + lo).astype(np.float32)
+            return mean, {"error": msg, **{k: v for k, v in info.items() if k in ("retried_cpu", "nonfinite_pct")}}
+        info["error"] = msg
+    out = mean.astype(np.float32, copy=True)
+    out[:, box[0], box[1]] = (x * scale + lo).astype(np.float32)
     if hole.any():
         out[:, hole] = mean[:, hole]
     if cache_dir is not None and "error" not in info:

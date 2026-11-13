@@ -155,6 +155,20 @@ def scan_dir(root: Path, known_ids: set[str], threads: int = 8,
     return frames, errors
 
 
+def device_name(key: str | None) -> str | None:
+    """Lesbarer Gerätename aus dem Projektschlüssel `<Objekt>|<Kamera>|<B>x<H>` (Kometen: `KOMET:…|<Nacht>|<Kamera>|<B>x<H>`),
+    z. B. „Vaonis Stellina“ – Seriennummern („stellina-b7337b“) fallen weg (`share.clean_device`). None ohne Kamera."""
+    parts = str(key or "").split("|")
+    if len(parts) < 3 or not re.fullmatch(r"\d+x\d+", parts[-1]):
+        return None
+    cam = parts[-2].strip()
+    if not cam or cam.lower() in ("none", "unknown", "unbekannt"):
+        return None
+    from .share import clean_device
+    name = clean_device(cam)
+    return name[:1].upper() + name[1:] if name else None      # INSTRUME ist kleingeschrieben
+
+
 COMET_KEY = "KOMET:"          # Projektschlüssel von Kometen (bewegen sich – nie über Koordinaten zuordnen)
 
 
