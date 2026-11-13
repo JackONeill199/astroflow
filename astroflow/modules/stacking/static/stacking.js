@@ -1341,7 +1341,8 @@ async function libraryPanel(view) {
   setRoot(st.root);
   if (st.state !== 'idle') { seen = st.state === 'done' && !st.imported ? false : true; draw(st); if (st.state === 'scanning' || st.state === 'importing') follow(); }
 }
-function upload(files) {
+const UPLOAD_BATCH_FILES = 200, UPLOAD_BATCH_BYTES = 1024 ** 3;   // je Teilanfrage höchstens 200 Dateien bzw. ca. 1 GB
+async function upload(files) {
   // versteckte Dateien/Ordner (Name mit „.“, z. B. Stellina „.thumbnail/…“, „.webaxs_L/…“) nie hochladen
   const hidden = f => (f.relPath || f.webkitRelativePath || f.name).split(/[\\/]/).some(p => p.startsWith('.') && p !== '.' && p !== '..');
   files = files.filter(f => IMPORT_FILE.test(f.name) && !hidden(f));
@@ -1375,15 +1376,52 @@ function upload(files) {
   if (skipped) box.insertAdjacentHTML('beforeend', `<p class="mut sm">${skipped} Vorschau-/Zwischenbilder (JPG/PNG/TIFF) nicht mit hochgeladen. Die Quelldateien bleiben unverändert.</p>`);
   ($('#ups') || document.body).prepend(box);
   if (!$('#ups')) { location.hash = '#/import'; }
-  const fd = new FormData();
-  fd.append('upload_id', Date.now().toString(36) + Math.random().toString(36).slice(2, 10));   // eigener Ordner je Upload-Vorgang
-  files.forEach(f => fd.append('files', f, f.relPath || f.webkitRelativePath || f.name));
-  const xhr = new XMLHttpRequest();
-  xhr.open('POST', '/api/stacking/upload');
-  xhr.upload.onprogress = (e) => { if (e.lengthComputable) { const pc = e.loaded / e.total * 100; $('i', box).style.width = pc + '%'; $('.pct', box).textContent = Math.round(pc) + ' %'; } };
-  xhr.onload = async () => {
-    if (xhr.status !== 200) { $('.pct', box).innerHTML = '<span class="bad">Fehler</span>'; toast('Upload fehlgeschlagen.', 'err'); return; }
-    const r = JSON.parse(xhr.responseText);
+  // Teilanfragen: Starlette erlaubt höchstens 1000 Dateien je Anfrage (und lehnt erst nach der ganzen Übertragung ab);
+  // außerdem hält eine Wiederholung nur einen Teil statt alles neu zu senden. Gleiche upload_id = gleicher Ordner.
+  const uploadId = Date.now().toString(36) + Math.random().toString(36).slice(2, 10);   // eigener Ordner je Upload-Vorgang
+  const batches = [];
+  for (let cur = [], size = 0, i = 0; i < files.length; i++) {
+    if (cur.length && (cur.length >= UPLOAD_BATCH_FILES || size + files[i].size > UPLOAD_BATCH_BYTES)) { batches.push(cur); cur = []; size = 0; }
+    cur.push(files[i]); size += files[i].size;
+    if (i === files.length - 1) batches.push(cur);
+  }
+  const r = { raw: 0, saved: 0, skipped: 0, pictures: [], errors: [] };
+  let done = 0, sentFiles = 0, failed = null;
+  const setPct = (loaded) => { const pc = total ? Math.min(100, (done + loaded) / total * 100) : 100; $('i', box).style.width = pc + '%'; $('.pct', box).textContent = Math.round(pc) + ' %'; };
+  const sendBatch = (list) => new Promise((resolve, reject) => {
+    const fd = new FormData();
+    fd.append('upload_id', uploadId);
+    list.forEach(f => fd.append('files', f, f.relPath || f.webkitRelativePath || f.name));
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/stacking/upload');
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) setPct(e.loaded / e.total * list.reduce((a, f) => a + f.size, 0)); };
+    xhr.onload = () => {
+      if (xhr.status === 200) { try { return resolve(JSON.parse(xhr.responseText)); } catch (e) { /* unten */ } }
+      let msg = ''; try { msg = JSON.parse(xhr.responseText).detail || ''; } catch (e) { /* keine JSON-Antwort */ }
+      reject(new Error(typeof msg === 'string' ? msg : ''));
+    };
+    xhr.onerror = () => reject(new Error(''));
+    xhr.send(fd);
+  });
+  for (let n = 0; n < batches.length && !failed; n++) {
+    const list = batches[n], bytes = list.reduce((a, f) => a + f.size, 0);
+    let part = null;
+    for (let tries = 0; tries < 2 && !part; tries++) {            // eine Wiederholung je Teil
+      try { part = await sendBatch(list); } catch (e) { if (tries) failed = e; }
+    }
+    if (!part) break;
+    done += bytes; sentFiles += list.length; setPct(0);
+    r.raw += part.raw || 0; r.saved += part.saved || 0; r.skipped += part.skipped || 0;
+    r.pictures.push(...(part.pictures || [])); r.errors.push(...(part.errors || []));
+  }
+  if (failed) {
+    const lost = files.length - sentFiles;
+    $('.pct', box).innerHTML = '<span class="bad">Fehler</span>';
+    box.insertAdjacentHTML('beforeend', `<p class="bad sm">Upload unterbrochen: ${sentFiles} von ${files.length} Dateien sind angekommen, ${lost} fehlen${failed.message ? ` (${esc(failed.message)})` : ''}. Bereits übertragene Dateien bleiben erhalten – den Ordner einfach noch einmal hochladen, schon vorhandene Rohdaten werden erkannt.</p>`);
+    toast(`Upload unterbrochen: ${sentFiles} von ${files.length} Dateien angekommen.`, 'err');
+    if (!r.raw && !r.pictures.length) return;
+  }
+  {
     $('.pct', box).innerHTML = `<span class="row" style="gap:6px"><span class="spinner"></span>wird einsortiert …</span>`;
     try {
       const s = r.raw ? await send('/stacking/scan') : { new_by_project: {} };
@@ -1403,9 +1441,7 @@ function upload(files) {
       toast(rawDup && rawDup === r.raw && !fresh && !series ? `Nichts Neues: alle ${rawDup} Rohdateien waren schon importiert.` : `${r.saved - rawDup} Dateien übernommen${fresh ? ` · ${fresh} fertige Bilder in der Galerie` : ''}${series ? ` · ${series} Teleskop-Verlaufsbilder zusammengefasst` : ''}${duplicates ? ` · ${duplicates} bereits vorhanden` : ''}.`, r.saved ? 'ok' : 'err', one ? { label: 'Öffnen', href: `#/p/${one.id}` } : null);
       poll();
     } catch (e) { $('.pct', box).innerHTML = '<span class="bad">Einsortieren fehlgeschlagen</span>'; toast(e.message, 'err'); }
-  };
-  xhr.onerror = () => toast('Upload fehlgeschlagen.', 'err');
-  xhr.send(fd);
+  }
 }
 
 // ------------------------------------------------------------ Speicherbelegung --- //
