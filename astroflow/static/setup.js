@@ -274,12 +274,13 @@
       try {
         if (b.id === 'sysCheck') {
           b.disabled = true; b.classList.add('busy');
+          const checkOn = !!$('#sysUpd')?.checked;                    // vor dem await erfassen (Ansicht kann inzwischen weg sein)
           const st = $('#sysUpdState');
           if (st) st.innerHTML = '<span class="mut">wird geprüft …</span>';
           const r = await api('/system/update/check', { method: 'POST' }).finally(() => { b.disabled = false; b.classList.remove('busy'); });
           if (r.update) store.set('update.dismissed', '');          // bewusst geprüft → Hinweis wieder zeigen
           offer = r.update;
-          AF.updateHint?.(r.update, !$('#sysUpd')?.checked);          // Prüfung aus: Stand bleibt trotzdem beim Status-Poll erhalten
+          AF.updateHint?.(r.update, !checkOn);          // Prüfung aus: Stand bleibt trotzdem beim Status-Poll erhalten
           if (st?.isConnected) st.innerHTML = updState(r.update, r);
         } else if (b.id === 'sysRestart') { await send('/system/restart'); restartOverlay('AstroFlow startet neu …'); }
         else if (b.id === 'sysQuit') {

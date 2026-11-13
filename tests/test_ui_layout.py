@@ -907,10 +907,14 @@ def test_update_hinweis(server, browser, size):
            "notes": [{"t": "Neu", "h": True}, {"t": "<img src=x onerror=alert(1)> Ein sehr langer Absatz " * 6, "h": False}]}
 
     def fake_app(route):
-        r = route.fetch()
-        d = r.json()
-        d["update"] = upd
-        route.fulfill(response=r, body=_json.dumps(d), headers={**r.headers, "content-type": "application/json"})
+        from playwright.sync_api import Error as PlaywrightError
+        try:
+            r = route.fetch()
+            d = r.json()
+            d["update"] = upd
+            route.fulfill(response=r, body=_json.dumps(d), headers={**r.headers, "content-type": "application/json"})
+        except PlaywrightError:                                   # Seite schon zu: nichts mehr auszuliefern
+            pass
     page.route("**/api/app", fake_app)
     page.goto(f"{base}/#/")
     chip = page.locator("#updBtn")
@@ -950,10 +954,14 @@ def test_update_details_bei_abgeschalteter_pruefung(server, browser):
              "published": "2026-11-20", "download": None, "notes": [{"t": "Neu", "h": True}, {"t": "Ein Absatz", "h": False}]}
 
     def fake_setup(route):
-        r = route.fetch()
-        d = r.json()
-        d.update(update_check=False, update_offer=offer)
-        route.fulfill(response=r, body=_json.dumps(d), headers={**r.headers, "content-type": "application/json"})
+        from playwright.sync_api import Error as PlaywrightError
+        try:
+            r = route.fetch()
+            d = r.json()
+            d.update(update_check=False, update_offer=offer)
+            route.fulfill(response=r, body=_json.dumps(d), headers={**r.headers, "content-type": "application/json"})
+        except PlaywrightError:                                   # Seite schon zu: nichts mehr auszuliefern
+            pass
     page.route("**/api/setup", fake_setup)
     page.goto(f"{base}/#/settings/module")
     link = page.locator("[data-upd]")
