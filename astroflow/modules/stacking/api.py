@@ -903,7 +903,9 @@ def build_router(eng: Engine) -> APIRouter:
         """Eigene Stacks mit Grenzgröße (Eichung des Belichtungsbedarfs); neu gelesen, wenn ein Ergebnis dazukommt."""
         from .need import calibration_rows
         try:
-            key = tuple(db.one("SELECT COUNT(*) n, MAX(id) m FROM results").values())
+            # Tiefe-Auswertungen schreiben per UPDATE ins vorhandene Ergebnis → Summe der Grenzgrößen gehört in den Schlüssel
+            key = tuple(db.one("SELECT COUNT(*) n, MAX(id) m, TOTAL(json_extract(stats,'$.depth.grenze.m5')) g, "
+                               "COUNT(json_extract(stats,'$.depth.grenze.m5')) k FROM results").values())
             if _calib_cache.get("key") != key:
                 _calib_cache.update(key=key, rows=calibration_rows(db))
             return _calib_cache["rows"]
@@ -942,6 +944,13 @@ def build_router(eng: Engine) -> APIRouter:
             raise HTTPException(400, str(e))
         devices = [next(o for o in opts if o["id"] == d) for d in wishes["devices"]]
         projects, _ = tonight.library(db)
+        from .need import project_devices
+        try:
+            shot = project_devices(db)
+        except Exception:
+            traceback.print_exc()
+            shot = {}
+        projects = [{**p, "device": shot.get(p["id"])} for p in projects]
         try:
             out = planner.plan(projects, _plan_site_for(), wishes, devices, eng.s.work_dir / "tutor",
                                weather=bool(tutor.settings(eng.ctx.store).get("weather")), sky=_site_sqm, calib_rows=_calib_rows())

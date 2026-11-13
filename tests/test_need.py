@@ -133,3 +133,25 @@ def test_tonight_shows_need(tmp_path):
     clusters = [x for x in d["recommendations"] if x["kind"] in ("open_cluster", "globular")]
     for x in clusters:
         assert x["need"]["nights"] == 1 and "reicht heute" in x["need"]["text"]
+
+
+def test_calibration_only_from_the_same_model():
+    """Seestar S50-Stacks eichen keine S30 (gleiche Familie, andere Optik)."""
+    s50 = [{"device": "seestar", "family": "seestar", "exposure": 7200, "m5": 14.0}] * 4
+    assert need.calibration(s50, {"id": "seestar30", "mag_id": "seestar"}, None)["factor"] == 1.0
+    assert need.calibration(s50, {"id": "seestar"}, None)["n"] == 4
+
+
+def test_existing_exposure_uses_the_capturing_device(tmp_path):
+    """Vorhandene Belichtung zählt gegen den Bedarf des Aufnahmegeräts – die Reihenfolge der Geräte ändert nichts."""
+    m33 = {"id": 5, "name": "M33 Dreiecksgalaxie", "kind": "galaxy", "ra": 23.46, "dec": 30.66, "obj_id": "M33",
+           "exposure": 3 * 3600, "device": "stellina"}
+    opts = planner.device_options(None)
+
+    def run(devs):
+        w = planner.clean_wishes({"nights": 1, "devices": devs, "mode": "deep", "watch": ["5"]}, opts)
+        d = [next(o for o in opts if o["id"] == x) for x in w["devices"]]
+        return planner.plan([m33], lambda n: SITE, w, d, tmp_path, now=EVENING)
+    a, b = run(["stellina", "seestar30"]), run(["seestar30", "stellina"])
+    ids = lambda p: {t["id"] for t in p["targets"]}
+    assert ("5" in ids(a)) == ("5" in ids(b))

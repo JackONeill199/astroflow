@@ -176,14 +176,32 @@ def calibration_rows(db) -> list[dict]:
     return out
 
 
+def device_key(device: dict | None) -> str | None:
+    """Modellkennung eines Geräts wie in `calibration_rows` (Vespera II, Seestar S30 vor der Familie)."""
+    d = device or {}
+    return d.get("model") or (d.get("lib_id") if d.get("id") == "library" else d.get("id"))
+
+
+def project_devices(db) -> dict:
+    """Aufnahmegerät je Projekt (Modellkennung aus dem Kopf eines Frames) – damit vorhandene Belichtung am Bedarf des
+    richtigen Geräts gemessen wird."""
+    from . import tutor
+    out = {}
+    for r in db.q("SELECT project_id, MIN(info) info FROM frames WHERE kind='light' AND project_id IS NOT NULL GROUP BY project_id"):
+        info = json.loads(r["info"] or "{}")
+        dev = tutor.detect_device([info.get("instrument")], info.get("shape"))
+        out[r["project_id"]] = dev.get("model") or dev["id"]
+    return out
+
+
 def calibration(rows: list[dict], device: dict | None, sqm: float | None) -> dict:
     """Faktor aus eigenen Stacks für ein Gerät: {factor, n, offset, status, text}. Ohne genug Stacks factor 1."""
     from . import devices
     d = device or {}
-    keys = {d.get("model"), d.get("id"), d.get("lib_id"), d.get("mag_id")} - {None, "library"}
-    mine = [r for r in rows if r["device"] in keys or r.get("family") in keys]
-    ratio, _ = device_ratio(device)
+    # nur Stacks genau dieses Modells: Seestar S30 und S50 teilen Familie und Grenzgrößen-ID, aber nicht die Optik
     key = d.get("model") or (d.get("lib_id") if d.get("id") == "library" else d.get("id"))
+    mine = [r for r in rows if r["device"] == key]
+    ratio, _ = device_ratio(device)
     row = devices.get(key) or {}
     ap = d.get("aperture") or row.get("aperture") or (devices.get(row.get("family")) or {}).get("aperture")
     if len(mine) < CALIB_MIN or not ap or ratio is None:

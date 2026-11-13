@@ -96,7 +96,7 @@ def _targets(projects: list[dict], devices: list[dict], wishes: dict, lats: list
         kind = p.get("kind") if p.get("kind") not in (None, "generic") else (cat.kind if cat else "generic")
         out.append({"id": str(p["id"]), "name": p["name"], "kind": kind, "ra": p["ra"], "dec": p["dec"],
                     "category": "more", "href": f"#/p/{p['id']}", "prio": w_own * (2.0 if hit else 1.0), "watch": hit,
-                    "fits": [True] * len(devices), "have": max(0.0, float(p.get("exposure") or 0)) / 3600,
+                    "fits": [True] * len(devices), "have": max(0.0, float(p.get("exposure") or 0)) / 3600, "shot_with": p.get("device"),
                     "info": {"id": cat.id if cat else None, "kind": kind, "mag": cat.mag if cat else None, "size": cat.size if cat else None}})
     for c in deepsky.catalog():
         if c.keys & taken or not rises(c.dec):
@@ -208,7 +208,16 @@ def plan(projects: list[dict], site_for, wishes: dict, devices: list[dict], cach
             sky_val = None
     need_h, why, cal = needs(tg, devices, wishes, sky_val, calib_rows)          # Ziele × Geräte
     # Fortschritt als Anteil am Bedarf (zwei Geräte mit unterschiedlichem Bedarf zählen anteilig); eigene Belichtung zählt mit
-    frac = np.array([min(1.0, t["have"] / need_h[i, 0]) for i, t in enumerate(tg)])
+    keys = [need.device_key(d) for d in devices]
+
+    def have_frac(i, t):
+        """Vorhandene Belichtung am Bedarf ihres Aufnahmegeräts; unbekannt bzw. nicht gewählt → größter Bedarf (vorsichtig,
+        unabhängig von der Reihenfolge der Geräte)."""
+        if not t["have"]:
+            return 0.0
+        hit = [di for di, k in enumerate(keys) if k and k == t.get("shot_with")]
+        return min(1.0, t["have"] / (need_h[i, hit[0]] if hit else need_h[i].max()))
+    frac = np.array([have_frac(i, t) for i, t in enumerate(tg)])
     got = np.zeros(len(tg))                     # im Plan gesammelte (gewichtete) Stunden
     per_dev_h = np.zeros((len(tg), len(devices)))
     prio = np.array([t["prio"] for t in tg])
