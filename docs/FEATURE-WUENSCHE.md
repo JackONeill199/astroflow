@@ -26,6 +26,8 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md` (Details in `docs/entwicklung/
 | 18 | 05.11.2026 | SkyTrace: Satellitenhelligkeit und Satelliten pro Stunde | umgesetzt in 0.39.0 (Statistik; mag mit Nullpunkt aus den Bilder-Stacks, Rate je Belichtungsstunde) |
 | 19 | 05.11.2026 | Interaktive Bildführung: KI zeigt und erklärt im Bild | offen |
 | 20 | 12.11.2026 | HOO/SHO für Farbkameras mit Dual-Band-Filter | offen |
+| 21 | 13.11.2026 | Geräte kombinieren (Stacks verschiedener Teleskope zu einem Bild) | offen |
+| 22 | 13.11.2026 | Echtes Drizzle | offen |
 
 ## 1. Bibliothek teilen (nur ansehen) – 03.11.2026
 
@@ -227,3 +229,14 @@ Kamera/Format getrennt (`scanner.assign_project`); das Gerät steht als Tag im P
 - Rand/Feldgröße: nur der gemeinsame Ausschnitt oder die Vereinigung (Mosaik-Logik aus `mosaic.py` wiederverwenden?).
 - Projektmodell: **verknüpfte Projekte** statt Zusammenlegen (die Trennung nach Kamera bleibt, die Verknüpfung entsteht über Objekt-ID).
 - Rechenaufwand und Speicher (zwei große Stacks plus Reprojektion), Abbruch/Fortschritt im Hintergrund.
+
+## 22. Echtes Drizzle – 13.11.2026
+
+**Status: offen.** Heute gibt es nur `resolution_scale = 2`: Interpolation auf ein 2× Raster (~4× Arbeitsspeicher), mit kaum echtem Auflösungsgewinn.
+
+**Ziel:** Echtes Drizzle – je Aufnahme nach der Registrierung (inkl. Verzeichnungskorrektur) fällt jedes Pixel als „Tropfen“ mit verkleinertem Pixelanteil (`pixfrac`) auf ein feineres Ausgaberaster, dazu eine Gewichtskarte. Sinnvoll bei **Unterabtastung** (z. B. Vespera mit ~3″/px) und nur mit **vielen Aufnahmen mit Versatz** (Dithering oder natürliche Drift der Montierung).
+
+**Zu klären:**
+- Arbeitsspeicher und GPU-Nutzung (Raster und Gewichtskarte je Kanal; OpenCL wie in `gpu.py`?).
+- Zusammenspiel mit Mosaik (feste Leinwand) und dem Ausreißer-Verwerfen (Sigma-Clipping auf gedroppten Daten).
+- Automatik: nur anbieten bzw. einschalten, wenn die Sternschärfe (FWHM) unter ~2 px liegt und genug Aufnahmen mit Versatz vorhanden sind.
