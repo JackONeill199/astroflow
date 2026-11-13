@@ -5,10 +5,15 @@ max(30°, Horizontmaske des Ortes), Mondgewicht (Phase × Abstand), Bildfelddreh
 je Gerät wählbar), Wolken aus der
 vorhandenen Open-Meteo-Schicht (`tonight._forecast`, nur soweit die Vorhersage reicht – spätere Nächte „ohne Wetter“).
 
-Ablauf: Jede Nacht wird je Gerät in gleich lange Abschnitte (≈ Mindestbelichtung, 1–3 h) geteilt. Nacht für Nacht werden
+Ablauf: Jede Nacht wird je Gerät in Halbstunden-Abschnitte (SLOT_H) geteilt. Nacht für Nacht werden
 die Abschnitte in der Reihenfolge des größten Nutzens vergeben (Priorität × min(Gewinn, Restbedarf)); ein Ziel läuft nie auf
-zwei Geräten gleichzeitig, und wer seine Mindestbelichtung erreicht hat, scheidet aus. Abschnitte, die wegen Wolken oder
-fehlender Ziele kaum Nutzen bringen, bleiben frei – das Ziel wandert so von selbst in eine spätere Nacht.
+zwei Geräten gleichzeitig, und wer seinen Bedarf erreicht hat, scheidet aus. Ein gewähltes Ziel wächst über benachbarte
+Abschnitte desselben Geräts, bis sein Restbedarf gedeckt ist – lange Ziele bekommen so einen zusammenhängenden Block, kurze
+(Sternhaufen) nur eine halbe Stunde, und zwei Haufen passen in zwei Stunden. Abschnitte, die wegen Wolken oder fehlender
+Ziele kaum Nutzen bringen, bleiben frei – das Ziel wandert so von selbst in eine spätere Nacht.
+Bedarf je Ziel und Gerät: `need.need_hours` (Objektart/Flächenhelligkeit, Optik, Himmelsqualität, eigene Stacks) × Wunsch
+kurz/normal/gründlich; schon gesammelte Belichtung eigener Projekte zählt mit. Alte Wünsche mit `min_hours` gelten weiter
+(→ `depth`).
 Der Standort verlässt den Rechner nicht (Wetter: gleiche Abfrage und Rundung wie Heute Nacht)."""
 from __future__ import annotations
 
@@ -22,12 +27,14 @@ from pathlib import Path
 import numpy as np
 
 from ...core import sites
-from . import deepsky, objects, tonight
+from . import deepsky, need, objects, tonight
 from . import devices as devtab
 
 STEP_MIN = tonight.STEP_MIN
 MAX_NIGHTS = tonight.NIGHTS
 MIN_USE = 0.25          # Abschnitt nur belegen, wenn mindestens 25 % seiner Dauer nutzbar sind
+SLOT_H = 0.5            # Abschnittslänge (h); lange Ziele wachsen über benachbarte Abschnitte
+REST_MIN = 0.15         # so viel Restbedarf (h) lohnt noch einen weiteren Abschnitt
 MAX_CANDIDATES = 500
 WISHES = ("new", "mix", "deep")
 COMET = re.compile(r"^\s*(komet\b|comet\b|[CPDXI]/\d{4}|\d{1,4}[PDI](/|\b))", re.I)       # Kometen-Projekte (Name)
@@ -53,7 +60,10 @@ def clean_wishes(w: dict, options: list[dict]) -> dict:
         nights = int(w.get("nights") or 3)
         hours = float(w.get("min_hours") or 2)
     except (TypeError, ValueError):
-        raise ValueError("Nächte und Mindestbelichtung als Zahl angeben.") from None
+        raise ValueError("Nächte und Belichtung als Zahl angeben.") from None
+    depth = str(w.get("depth") or "")
+    if depth not in need.DEPTH:                 # alte Wünsche (feste Mindestbelichtung) → Faktor
+        depth = "short" if hours <= 1 else ("thorough" if hours >= 3 else "normal")
     devices = [str(d) for d in (w.get("devices") or [])][:2]
     if not devices or any(d not in ids for d in devices) or len(set(devices)) != len(devices):
         raise ValueError("Ein oder zwei Geräte aus der Liste wählen.")
@@ -63,8 +73,7 @@ def clean_wishes(w: dict, options: list[dict]) -> dict:
     watch = [str(x)[:40] for x in (w.get("watch") or [])][:20]
     eq_ok = {d["id"] for d in options if d.get("eq_mode")}
     eq = [d for d in devices if d in {str(x) for x in (w.get("eq") or [])} and d in eq_ok]     # EQ-Modus nur, wo das Gerät ihn kann
-    return {"nights": max(1, min(MAX_NIGHTS, nights)), "min_hours": max(0.5, min(12.0, round(hours * 2) / 2)),
-            "devices": devices, "mode": mode, "watch": watch, "eq": eq}
+    return {"nights": max(1, min(MAX_NIGHTS, nights)), "depth": depth, "devices": devices, "mode": mode, "watch": watch, "eq": eq}
 
 
 def _targets(projects: list[dict], devices: list[dict], wishes: dict, lats: list[float]) -> list[dict]:
@@ -81,11 +90,14 @@ def _targets(projects: list[dict], devices: list[dict], wishes: dict, lats: list
             continue
         keys = deepsky.keys_for(p.get("obj_id")) | deepsky.keys_for(p.get("name"))
         taken |= keys
-        own.append((p["ra"], p["dec"], max([t.size for t in deepsky.catalog() if t.keys & keys] or [0]) / 120))
+        cat = next((t for t in deepsky.catalog() if t.keys & keys), None)
+        own.append((p["ra"], p["dec"], (cat.size if cat else 0) / 120))
         hit = bool(keys & watch) or str(p["id"]) in watch
-        out.append({"id": str(p["id"]), "name": p["name"], "kind": p.get("kind") or "generic", "ra": p["ra"], "dec": p["dec"],
+        kind = p.get("kind") if p.get("kind") not in (None, "generic") else (cat.kind if cat else "generic")
+        out.append({"id": str(p["id"]), "name": p["name"], "kind": kind, "ra": p["ra"], "dec": p["dec"],
                     "category": "more", "href": f"#/p/{p['id']}", "prio": w_own * (2.0 if hit else 1.0), "watch": hit,
-                    "fits": [True] * len(devices)})
+                    "fits": [True] * len(devices), "have": max(0.0, float(p.get("exposure") or 0)) / 3600, "shot_with": p.get("device"),
+                    "info": {"id": cat.id if cat else None, "kind": kind, "mag": cat.mag if cat else None, "size": cat.size if cat else None}})
     for c in deepsky.catalog():
         if c.keys & taken or not rises(c.dec):
             continue
@@ -99,7 +111,8 @@ def _targets(projects: list[dict], devices: list[dict], wishes: dict, lats: list
         appeal = tonight.KIND_APPEAL.get(c.kind, 1.0) * (1.0 if c.source != "astap" else 0.7)
         bright = 0.15 * max(0.0, min(1.0, ((devices[0].get("mag_limit") or deepsky.MAG_DEFAULT) - c.mag) / 6)) if c.mag is not None else 0.0
         out.append({"id": c.id, "name": c.display, "kind": c.kind, "ra": c.ra, "dec": c.dec, "category": "new", "href": None,
-                    "prio": w_new * appeal * (1 + bright) * (2.0 if hit else 1.0), "watch": hit, "fits": fits if any(fits) else [True] * len(devices)})
+                    "prio": w_new * appeal * (1 + bright) * (2.0 if hit else 1.0), "watch": hit, "fits": fits if any(fits) else [True] * len(devices),
+                    "have": 0.0, "info": c})
     out.sort(key=lambda t: -t["prio"])
     return out[:MAX_CANDIDATES]
 
@@ -157,11 +170,26 @@ def _slots(ts: np.ndarray, dark: np.ndarray, hours_per_slot: float) -> list[tupl
     return [(int(a), int(b)) for a, b in zip(edges[:-1], edges[1:]) if b > a]
 
 
+def needs(tg: list[dict], devices: list[dict], wishes: dict, sky: tuple | None, calib_rows: list[dict] | None) -> tuple[np.ndarray, list, list]:
+    """Bedarf (h) je Ziel × Gerät, Begründung je Ziel × Gerät und Eichung je Gerät."""
+    sqm, src = sky or (None, None)
+    cal = [need.calibration(calib_rows or [], d, sqm) for d in devices]
+    out = np.zeros((len(tg), len(devices)))
+    why = [[None] * len(devices) for _ in tg]
+    for i, t in enumerate(tg):
+        for di, d in enumerate(devices):
+            r = need.need_hours(t["info"], d, sqm, calib=cal[di]["factor"], depth=wishes.get("depth", "normal"), sky_source=src)
+            out[i, di], why[i][di] = r["hours"], r
+    return out, why, cal
+
+
 def plan(projects: list[dict], site_for, wishes: dict, devices: list[dict], cache: Path, now: float | None = None,
-         weather: bool = False) -> dict:
-    """site_for(night) → Ort (mit `horizon`) oder None. Rückgabe: Plan je Nacht und Gerät, Fortschritt je Ziel."""
+         weather: bool = False, sky=None, calib_rows: list[dict] | None = None) -> dict:
+    """site_for(night) → Ort (mit `horizon`) oder None. sky(site) → (SQM, Herkunft) oder None (Himmelsqualität des Ortes).
+    calib_rows: eigene Stacks mit Grenzgröße (`need.calibration_rows`). Rückgabe: Plan je Nacht und Gerät, Fortschritt je Ziel."""
     now = time.time() if now is None else now
     devices = [{**d, "eq": d["id"] in wishes.get("eq", [])} for d in devices]          # EQ-Modus je Gerät (Assistent)
+    wishes = {**wishes, "depth": wishes.get("depth") or "normal"}
     first = site_for(None)
     if not first:
         return {"error": "Für die Planung fehlt ein Standort (Einstellungen → Standorte)."}
@@ -172,11 +200,28 @@ def plan(projects: list[dict], site_for, wishes: dict, devices: list[dict], cach
     tg = _targets(projects, devices, wishes, sorted({s["lat"] for s in night_sites}))
     if not tg:
         return {"error": "Keine passenden Ziele für diese Geräte gefunden."}
-    need = np.full(len(tg), wishes["min_hours"], dtype=float)
-    got = np.zeros(len(tg))
+    sky_val = None
+    if sky:
+        try:
+            sky_val = sky(first)
+        except Exception:                                  # Himmelsqualität ist optional
+            sky_val = None
+    need_h, why, cal = needs(tg, devices, wishes, sky_val, calib_rows)          # Ziele × Geräte
+    # Fortschritt als Anteil am Bedarf (zwei Geräte mit unterschiedlichem Bedarf zählen anteilig); eigene Belichtung zählt mit
+    keys = [need.device_key(d) for d in devices]
+
+    def have_frac(i, t):
+        """Vorhandene Belichtung am Bedarf ihres Aufnahmegeräts; unbekannt bzw. nicht gewählt → größter Bedarf (vorsichtig,
+        unabhängig von der Reihenfolge der Geräte)."""
+        if not t["have"]:
+            return 0.0
+        hit = [di for di, k in enumerate(keys) if k and k == t.get("shot_with")]
+        return min(1.0, t["have"] / (need_h[i, hit[0]] if hit else need_h[i].max()))
+    frac = np.array([have_frac(i, t) for i, t in enumerate(tg)])
+    got = np.zeros(len(tg))                     # im Plan gesammelte (gewichtete) Stunden
+    per_dev_h = np.zeros((len(tg), len(devices)))
     prio = np.array([t["prio"] for t in tg])
     fits = np.array([t["fits"] for t in tg], dtype=bool)               # Ziele × Geräte
-    slot_h = max(1.0, min(3.0, wishes["min_hours"]))       # ein Abschnitt reicht bis 3 h Ziel; mehr wird über Abschnitte/Nächte verteilt
     forecasts: dict = {}
     nights = []
     for k in range(wishes["nights"]):
@@ -194,34 +239,70 @@ def plan(projects: list[dict], site_for, wishes: dict, devices: list[dict], cach
             hours = forecasts[key]
         ts, per_dev, alt, dark, info = _night(site, t0, t1, tg, devices, hours)
         future = ts >= now
-        slots = _slots(ts, dark & future, slot_h)
+        slots = _slots(ts, dark & future, SLOT_H)
         free = [(di, a, b) for di in range(len(devices)) for a, b in slots]
+        gains = {(di, a, b): per_dev[di][:, a:b].sum(axis=1) * STEP_MIN / 60 for di, a, b in free}
         busy: list[tuple[int, int, int]] = []          # (Ziel, a, b) bereits vergeben (für das zweite Gerät)
         blocks = []
+        tonight_t = np.zeros(len(tg), dtype=bool)
+
+        def clash(ki, a, b):                           # dasselbe Ziel nie gleichzeitig auf zwei Geräten
+            return any(k2 == ki and ba < b and a < bb for k2, ba, bb in busy)
+
         while free:
             best = None
-            for si, (di, a, b) in enumerate(free):
-                gain = per_dev[di][:, a:b].sum(axis=1) * STEP_MIN / 60
-                rem = np.clip(need - got, 0, None)
+            rem_all = np.clip(1 - frac, 0, None)
+            open_at = {(sl[0], sl[1]): sl for sl in free}
+            open_to = {(sl[0], sl[2]): sl for sl in free}
+            for si, slot in enumerate(free):
+                di, a, b = slot
+                gain = gains[slot]
+                rem = rem_all * need_h[:, di]
+                # Platz zum Wachsen: freie Nachbarabschnitte zählen halb – lange Ziele beginnen dort, wo sie weiterlaufen können
+                nb = [gains[x] for x in (open_to.get((di, a)), open_at.get((di, b))) if x]
+                room = gain + 0.5 * sum(nb) if nb else gain
                 # angefangene Ziele zuerst fertig machen, statt immer neue zu beginnen
-                score = prio * np.minimum(gain, rem) * fits[:, di] * np.where((got > 0) & (rem > 0), 1.6, 1.0)
+                score = prio * np.minimum(room, rem) * fits[:, di] * np.where((got > 0) & (rem > REST_MIN), 1.6, 1.0)
                 score[gain < MIN_USE * (b - a) * STEP_MIN / 60] = 0     # nur Ziele, die den Abschnitt wirklich nutzen, kommen in Frage
-                for ki, ba, bb in busy:                  # dasselbe Ziel nie gleichzeitig auf zwei Geräten
+                score[rem < REST_MIN * 0.5] = 0
+                score[tonight_t] *= 0.4                  # zweiter, getrennter Block desselben Ziels in einer Nacht nur notfalls
+                for ki, ba, bb in busy:
                     if ba < b and a < bb:
                         score[ki] = 0
                 ki = int(np.argmax(score))
                 if score[ki] > 0 and (best is None or score[ki] > best[0]):
-                    best = (score[ki], si, ki, float(gain[ki]))
+                    best = (score[ki], si, ki)
             if best is None:
                 break
-            _, si, ki, gain = best
+            _, si, ki = best
             di, a, b = free.pop(si)
-            got[ki] += gain
+            gain = float(gains[(di, a, b)][ki])
+            taken = [(a, b)]
             busy.append((ki, a, b))
-            used = np.where(per_dev[di][ki, a:b] > 0)[0] + a
-            s, e = (int(used[0]), int(used[-1]) + 1) if len(used) else (a, b)
-            blocks.append({"device": devices[di]["id"], "target": tg[ki]["id"], "start": float(ts[s]), "end": float(ts[min(e, len(ts) - 1)]),
-                           "hours": round(gain, 2), "max_alt": round(float(alt[ki, s:e].max()), 1) if e > s else None})
+            # Block wachsen lassen: benachbarte freie Abschnitte desselben Geräts, solange Restbedarf bleibt
+            left = need_h[ki, di] * max(0.0, 1 - frac[ki]) - gain
+            while left > REST_MIN:
+                lo, hi = min(x for x, _ in taken), max(y for _, y in taken)
+                cand = [(float(gains[sl][ki]), sl) for sl in free if sl[0] == di and (sl[2] == lo or sl[1] == hi)]
+                cand = [(g, sl) for g, sl in cand if g >= MIN_USE * (sl[2] - sl[1]) * STEP_MIN / 60 and not clash(ki, sl[1], sl[2])]
+                if not cand:
+                    break
+                g, sl = max(cand)
+                free.remove(sl)
+                taken.append((sl[1], sl[2]))
+                busy.append((ki, sl[1], sl[2]))
+                gain += g
+                left -= g
+            frac[ki] += gain / need_h[ki, di]
+            tonight_t[ki] = True
+            got[ki] += gain
+            per_dev_h[ki, di] += gain
+            for a, b in taken:
+                g = float(gains[(di, a, b)][ki])
+                used = np.where(per_dev[di][ki, a:b] > 0)[0] + a
+                s, e = (int(used[0]), int(used[-1]) + 1) if len(used) else (a, b)
+                blocks.append({"device": devices[di]["id"], "target": tg[ki]["id"], "start": float(ts[s]), "end": float(ts[min(e, len(ts) - 1)]),
+                               "hours": round(g, 2), "max_alt": round(float(alt[ki, s:e].max()), 1) if e > s else None})
         merged = []
         for bl in sorted(blocks, key=lambda x: (x["device"], x["start"])):
             m = merged[-1] if merged else None
@@ -233,12 +314,22 @@ def plan(projects: list[dict], site_for, wishes: dict, devices: list[dict], cach
         nights.append({"night": night, "site": {"id": site.get("id"), "name": site.get("name")}, **info,
                        "blocks": sorted(merged, key=lambda x: x["start"])})
     used = [i for i in range(len(tg)) if got[i] > 0]
-    targets = [{**{k: tg[i][k] for k in ("id", "name", "kind", "ra", "dec", "category", "href", "watch")},
-                "hours": round(float(got[i]), 2), "goal": wishes["min_hours"], "done": bool(got[i] >= wishes["min_hours"] - 0.05)}
-               for i in sorted(used, key=lambda i: -got[i])]
+    targets = []
+    for i in sorted(used, key=lambda i: -got[i]):
+        di = int(np.argmax(per_dev_h[i]))                  # Bedarf des Geräts, das das Ziel hauptsächlich aufnimmt
+        n_nights = sum(1 for n in nights if any(b["target"] == tg[i]["id"] for b in n["blocks"]))
+        rest = max(0.0, (1 - frac[i]) * need_h[i, di])
+        done = rest <= max(REST_MIN, 0.05 * need_h[i, di])           # gewichtete Stunden: kleiner Rest gilt als erreicht
+        r = why[i][di]
+        targets.append({**{k: tg[i][k] for k in ("id", "name", "kind", "ra", "dec", "category", "href", "watch")},
+                        "hours": round(float(got[i]), 2), "goal": float(need_h[i, di]), "have": round(float(tg[i]["have"]), 2),
+                        "done": bool(done), "nights": n_nights, "rest": 0.0 if done else round(rest, 2),
+                        "more_nights": 0 if done else need.nights_for(rest, max(1.0, got[i] / max(1, n_nights))),
+                        "why": r["why"], "assumed": r["assumed"]})
     missing = [tg[i]["name"] for i in range(len(tg)) if tg[i]["watch"] and got[i] == 0]
     return {"created": now, "wishes": wishes,
-            "devices": [{**{k: d.get(k) for k in ("id", "name", "fov", "alt_az", "eq_mode", "eq")}, "tracking": devtab.profile(d)["label"]}
-                        for d in devices],
+            "devices": [{**{k: d.get(k) for k in ("id", "name", "fov", "alt_az", "eq_mode", "eq")}, "tracking": devtab.profile(d)["label"],
+                         **({"calibration": c["text"]} if c.get("text") else {})} for d, c in zip(devices, cal)],
             "site": {"id": first.get("id"), "name": first.get("name"), "horizon": bool(first.get("horizon"))},
+            "sky": {"sqm": sky_val[0], "source": sky_val[1]} if sky_val and sky_val[0] is not None else None,
             "weather_on": bool(weather), "nights": nights, "targets": targets, "watch_missing": missing}

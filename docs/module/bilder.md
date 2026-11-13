@@ -159,8 +159,12 @@ Ansichten; alles wird lokal gerechnet. Unter dem Horizont liegt ein deckender Bo
 *(Demodaten mit erfundenem Ort und erfundener Horizontmaske; die gestrichelten Ringe sind Ziele aus dem Plan. Eigene Fotos erscheinen hier an ihrer Position.)*
 
 **Planung:** Ein Assistent fragt nach den Nächten (1–14), nach einem oder **zwei Geräten gleichzeitig** (z. B. Stellina und Vespera), dem Wunsch (Neues,
-Mischung oder vorhandene Objekte vertiefen), der Mindestbelichtung je Objekt und einer Merkliste – und rechnet daraus einen **Plan über mehrere Nächte**: welches Objekt wann
-auf welchem Gerät aufgenommen wird, nach Dunkelheit, Höhe über dem Horizont, Mond und – mit aktivierter Wetter-Einstellung – Wolken. Die Zeitleiste zeigt jede Nacht
+Mischung oder vorhandene Objekte vertiefen), wie gründlich (kurz, normal, gründlich) und einer Merkliste – und rechnet daraus einen **Plan über mehrere Nächte**: welches Objekt wann
+auf welchem Gerät aufgenommen wird, nach Dunkelheit, Höhe über dem Horizont, Mond und – mit aktivierter Wetter-Einstellung – Wolken. Wie lange ein Objekt
+belichtet werden sollte, schätzt AstroFlow **je Ziel und Gerät**: ein Sternhaufen ist nach etwa 30 Minuten fertig, eine lichtschwache Galaxie braucht mit einem
+kleinen Gerät viele Stunden über mehrere Nächte. In die Schätzung fließen Objektart und Flächenhelligkeit, Öffnung und Öffnungsverhältnis, die Himmelsqualität
+deines Ortes und die Grenzgröße deiner eigenen Stacks ein; schon gesammelte Belichtung zählt mit. Die Zielliste zeigt „~30 min“ oder „~5 h über 3 Nächte“
+(Begründung beim Darüberfahren), „Heute Nacht“ ebenso „reicht heute“ oder „braucht ~3 Nächte“. Die Zeitleiste zeigt jede Nacht
 je Gerät, die Zielliste den Fortschritt, geplante Ziele erscheinen als Ringe im Atlas, und „Heute Nacht“ zeigt **Dein Plan für diese Nacht**. Mit „Kalender“
 exportierst du den Plan als `.ics`-Datei für dein Kalenderprogramm.
 

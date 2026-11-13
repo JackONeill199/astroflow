@@ -10,7 +10,9 @@
     "exp_eq": null,
     "sensor": {"v": [3072, 2080], "status": "gesichert", "quelle": "FITS-Kopf eigener Aufnahmen"},
     "fov": {"v": [1.0, 0.7], "status": "gesichert", "quelle": "Plate-Solving eigener Aufnahmen"},
-    "mag_limit": 11.5, "aperture": 80, "focal": 400, "gust": 30, "dew_heater": true,
+    "mag_limit": 11.5,
+    "aperture": {"v": 80, "status": "gesichert", "quelle": "Vaonis-Datenblatt (80 mm, f/5)"}, "focal": {"v": 400, "status": "gesichert", "quelle": "Vaonis-Datenblatt"},
+    "gust": 30, "dew_heater": true,
     "texts": {
       "filter": "Für Stellina bietet Vaonis einen Lichtverschmutzungsfilter (CLS) an – er hilft bei Stadtlicht und Mond vor allem bei Emissionsnebeln.",
       "wind": "Stellina windgeschützt aufstellen (Hauswand, Hecke, Auto als Windschutz) und auf festen Untergrund achten.",
@@ -28,7 +30,9 @@
     "exp_eq": null,
     "sensor": {"v": [1920, 1080], "status": "gesichert", "quelle": "Vaonis-Datenblatt (Sony IMX462)"},
     "fov": {"v": [1.6, 0.9], "status": "gesichert", "quelle": "Vaonis-Datenblatt"},
-    "mag_limit": 10.5, "aperture": 50, "focal": 200, "gust": 25, "dew_heater": false,
+    "mag_limit": 10.5,
+    "aperture": {"v": 50, "status": "gesichert", "quelle": "Vaonis-Datenblatt (50 mm, f/4)"}, "focal": {"v": 200, "status": "gesichert", "quelle": "Vaonis-Datenblatt"},
+    "gust": 25, "dew_heater": false,
     "texts": {
       "filter": "Für Vespera gibt es von Vaonis einen Dual-Band-Filter (Hα/OIII) für Emissionsnebel bei Mond/Stadtlicht und einen CLS-Filter. Für Galaxien und Sternhaufen hilft nur dunkler Himmel.",
       "wind": "Vespera ist leicht – windgeschützt und auf festem Boden aufstellen, Stativ möglichst niedrig.",
@@ -46,7 +50,9 @@
     "exp_eq": null,
     "sensor": {"v": [3840, 2160], "status": "gesichert", "quelle": "Vaonis-Datenblatt (Sony IMX585)"},
     "fov": {"v": [2.5, 1.4], "status": "gesichert", "quelle": "Vaonis-Datenblatt"},
-    "mag_limit": 10.5, "aperture": 50, "focal": 250, "gust": 25, "dew_heater": false,
+    "mag_limit": 10.5,
+    "aperture": {"v": 50, "status": "gesichert", "quelle": "Vaonis-Datenblatt (50 mm, f/5)"}, "focal": {"v": 250, "status": "gesichert", "quelle": "Vaonis-Datenblatt"},
+    "gust": 25, "dew_heater": false,
     "texts": {}
   },
   "seestar": {
@@ -59,7 +65,9 @@
     "exp_eq": {"v": 30, "status": "vorschlag", "quelle": "Agena Astro, Tests (30 s und länger im EQ-Modus)"},
     "sensor": {"v": [1080, 1920], "status": "gesichert", "quelle": "ZWO-Datenblatt (Sony IMX462)"},
     "fov": {"v": [1.29, 0.73], "status": "gesichert", "quelle": "ZWO-Datenblatt"},
-    "mag_limit": 10.5, "aperture": 50, "focal": 250, "gust": 20, "dew_heater": false,
+    "mag_limit": 10.5,
+    "aperture": {"v": 50, "status": "gesichert", "quelle": "ZWO-Datenblatt (50 mm, f/5)"}, "focal": {"v": 250, "status": "gesichert", "quelle": "ZWO-Datenblatt"},
+    "gust": 20, "dew_heater": false,
     "texts": {
       "filter": "Seestar hat einen eingebauten Lichtverschmutzungsfilter (Dual-Band): in der App für Emissionsnebel einschalten, für Galaxien und Sternhaufen aus.",
       "wind": "Seestar ist sehr leicht – bei Wind tief aufstellen und windgeschützt; für lange Sessions ist der EQ-Modus mit Polhöhenwiege ruhiger.",
@@ -77,7 +85,9 @@
     "exp_eq": {"v": 30, "status": "vorschlag", "quelle": "Agena Astro"},
     "sensor": {"v": [1920, 1080], "status": "gesichert", "quelle": "ZWO-Datenblatt (Sony IMX662)"},
     "fov": {"v": [2.17, 1.21], "status": "gesichert", "quelle": "ZWO-Datenblatt"},
-    "mag_limit": 10.5, "aperture": 30, "focal": 150, "gust": 20, "dew_heater": false,
+    "mag_limit": 10.5,
+    "aperture": {"v": 30, "status": "gesichert", "quelle": "ZWO-Datenblatt (30 mm, f/5)"}, "focal": {"v": 150, "status": "gesichert", "quelle": "ZWO-Datenblatt"},
+    "gust": 20, "dew_heater": false,
     "texts": {}
   },
   "dwarf": {
@@ -89,7 +99,9 @@
     "exp_altaz": {"v": 15, "status": "vorschlag", "quelle": "High Point Scientific (Dwarf Mini, 15 s Alt-Az)"},
     "exp_eq": {"v": 60, "status": "vorschlag", "quelle": "mehrfach genannt (Dwarf 3), nicht offiziell belegt"},
     "sensor": null, "fov": null,
-    "mag_limit": 9.5, "aperture": 35, "focal": 100, "gust": 20, "dew_heater": false,
+    "mag_limit": 9.5,
+    "aperture": {"v": 35, "status": "vorschlag", "quelle": "DWARFLAB-Datenblatt Dwarf 3 (Dwarf II: 24 mm / 100 mm)"}, "focal": {"v": 150, "status": "vorschlag", "quelle": "DWARFLAB-Datenblatt Dwarf 3 (f/4,3)"},
+    "gust": 20, "dew_heater": false,
     "texts": {
       "filter": "Den eingebauten Astro- bzw. Dual-Band-Filter passend zum Objekt wählen (Dual-Band nur für Emissionsnebel).",
       "wind": "Sehr leichtes Gerät – unbedingt windgeschützt aufstellen.",
@@ -103,7 +115,9 @@
     "eq_mode": {"v": false, "status": "gesichert", "quelle": "Unistellar-Hilfe"},
     "zenith_limit": {"v": 80, "status": "gesichert", "quelle": "Unistellar-Hilfe: empfohlen unter 80°, höchstens 85° (Wortlaut „Zenitwinkel“)"},
     "exp_altaz": null, "exp_eq": null, "sensor": null, "fov": null,
-    "mag_limit": 12.0, "aperture": 114, "focal": 450, "gust": 30, "dew_heater": false,
+    "mag_limit": 12.0,
+    "aperture": {"v": 114, "status": "gesichert", "quelle": "Unistellar-Datenblatt (114 mm, f/3,9)"}, "focal": {"v": 450, "status": "gesichert", "quelle": "Unistellar-Datenblatt"},
+    "gust": 30, "dew_heater": false,
     "texts": {"filter": "", "wind": "Windgeschützt aufstellen.", "dew": "Bei feuchter Luft auf Beschlag am Spiegel/Tubus achten.", "fov": ""}
   },
   "camera": {

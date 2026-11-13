@@ -29,7 +29,7 @@ from pathlib import Path
 import numpy as np
 
 from ...core import sites
-from . import deepsky, devices, objects, tutor
+from . import deepsky, devices, need, objects, tutor
 
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 STEP_MIN = 10            # Abtastung der Nacht
@@ -277,12 +277,13 @@ def _season(h: np.ndarray, t0: float, lat: float) -> dict | None:
 
 def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None, device: dict | None = None,
          hidden: set | frozenset | None = None, collection: dict | None = None, night: int = 0,
-         night_sites: list | None = None) -> dict:
+         night_sites: list | None = None, site_sky: tuple | None = None, calib: float = 1.0) -> dict:
     """projects: Objektzeilen mit exposure (Sekunden des neuesten Ergebnisses) und optional gespeicherten Befunden.
     hidden: Kennungen (Katalog-ID bzw. Projekt-ID als Text), die der Nutzer ausgeblendet hat.
     collection: optionaler Dienst „collection_progress“ (Sage): {"messier": [Nummern bereits entdeckter Messier-Objekte]}.
     night: 0 = die Nacht, die gerade geplant wird (wie bisher), 1 … NIGHTS-1 = so viele Nächte später.
-    night_sites: optional je Nacht [lat, lon] aus der Ortsliste (Nachtleiste rechnet jede Nacht an ihrem Ort); fehlt = überall `site`."""
+    night_sites: optional je Nacht [lat, lon] aus der Ortsliste (Nachtleiste rechnet jede Nacht an ihrem Ort); fehlt = überall `site`.
+    site_sky: (SQM, Herkunft) des Ortes, calib: Faktor aus eigenen Stacks – beides für den geschätzten Belichtungsbedarf (`need`)."""
     if cfg.get("lat") is None or cfg.get("lon") is None:
         return {"site": None}
     now = time.time() if now is None else now
@@ -300,7 +301,8 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
     night_sites = [[float(v) for v in s] if s else site for s in (night_sites or [])][:NIGHTS]
     night_sites += [site] * (NIGHTS - len(night_sites))
     key = (str(cache.resolve()), tuple(site), int(now // 600), night, json.dumps(night_sites), json.dumps(projects, sort_keys=True), json.dumps(device, sort_keys=True),
-           bool(cfg.get("weather")), tuple(horizon or ()), tuple(sorted(hidden)), json.dumps(collection, sort_keys=True), deepsky.signature())
+           bool(cfg.get("weather")), tuple(horizon or ()), tuple(sorted(hidden)), json.dumps(collection, sort_keys=True), deepsky.signature(),
+           tuple(site_sky or ()), round(calib, 2))
     hit = _cache.get(key)
     if hit and time.time() - hit[0] < 600:
         return {**hit[1], "now": now}
@@ -457,6 +459,7 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
         x["href"] = f"#/nacht/{x['id']}"
     for x in pool + top_new:
         x["moon_warning"] = x["moon_sep"] < 40 and x["good_hours"] > 0
+        x["need"] = _need_info(x, by_id.get(x["id"]) if x["category"] == "more" else None, device, site_sky, calib)
     recommendations = _select(pool + top_new)
 
     # ---- Ablaufplan: ein Ziel zur Zeit ---------------------------------------------------------------------------------
@@ -671,6 +674,24 @@ def _new_reasons(x: dict, device: dict, owned_m: set, collection: dict, today: b
         de = lambda v: str(round(v, 1)).replace(".", ",")
         r.append(f"Helligkeit ca. {de(x['mag'])} mag – für dein Gerät erreichbar (Grenze etwa {de(device.get('mag_limit', deepsky.MAG_DEFAULT))} mag).")
     return r + _visibility_reasons(x, device, today)
+
+
+def _need_info(x: dict, project: dict | None, device: dict, sky: tuple | None, calib: float) -> dict:
+    """Geschätzter Belichtungsbedarf (need.py) mit schon gesammelter Belichtung und den heute nutzbaren Stunden."""
+    if project is not None:
+        keys = deepsky.keys_for(project.get("obj_id")) | deepsky.keys_for(project.get("name"))
+        cat = next((t for t in deepsky.catalog() if t.keys & keys), None)
+        info = {"id": cat.id if cat else None, "kind": x.get("kind") if x.get("kind") not in (None, "generic") else (cat.kind if cat else None),
+                "mag": cat.mag if cat else None, "size": cat.size if cat else None}
+        have = max(0.0, float(project.get("exposure") or 0)) / 3600
+    else:
+        info, have = {"id": x["id"], "kind": x.get("kind"), "mag": x.get("mag"), "size": x.get("size")}, 0.0
+    sqm, src = sky or (None, None)
+    r = need.need_hours(info, device, sqm, calib=calib, sky_source=src)
+    per = float(x.get("eff_hours") or 0)
+    return {"hours": r["hours"], "have": round(have, 2), "rest": round(max(0.0, r["hours"] - have), 2),
+            "nights": need.nights_for(max(0.0, r["hours"] - have), per), "text": need.text(r["hours"], have, per),
+            "why": r["why"], "assumed": r["assumed"]}
 
 
 def _select(pool: list[dict]) -> list[dict]:

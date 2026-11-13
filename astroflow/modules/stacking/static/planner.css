@@ -56,7 +56,7 @@
   .pl-prog .pl-bar { grid-column: 2 / 4; grid-row: 2 }
   .pl-prog .pl-h { grid-column: 3; grid-row: 1 }
   .pl-prog li { row-gap: 0.25rem }
-  .pl-prog .pl-when { display: none }
+  .pl-prog .pl-when { grid-column: 2 / 4; grid-row: 3 }
   .pl-add input { width: 9rem }
 }
 /* Übergänge: neue Abschnitte blenden ein (Schritte nacheinander), Zeitleiste wächst je Nacht von links, Fortschritt füllt sich;

@@ -887,6 +887,32 @@ def build_router(eng: Engine) -> APIRouter:
                 return fallback
         return site_for
 
+    def _site_sqm(site: dict | None):
+        """Himmelsqualität des Ortes (SQM aus eigenen Aufnahmen) für den Belichtungsbedarf; ohne Messwert (None, None)."""
+        from .skyquality import for_site
+        try:
+            sky = for_site(db, (site or {}).get("id"))
+        except Exception:
+            traceback.print_exc()
+            sky = None
+        return (float(sky["sqm"]), "aus deinen Aufnahmen") if sky and sky.get("sqm") is not None else (None, None)
+
+    _calib_cache: dict = {}
+
+    def _calib_rows():
+        """Eigene Stacks mit Grenzgröße (Eichung des Belichtungsbedarfs); neu gelesen, wenn ein Ergebnis dazukommt."""
+        from .need import calibration_rows
+        try:
+            # Tiefe-Auswertungen schreiben per UPDATE ins vorhandene Ergebnis → Summe der Grenzgrößen gehört in den Schlüssel
+            key = tuple(db.one("SELECT COUNT(*) n, MAX(id) m, TOTAL(json_extract(stats,'$.depth.grenze.m5')) g, "
+                               "COUNT(json_extract(stats,'$.depth.grenze.m5')) k FROM results").values())
+            if _calib_cache.get("key") != key:
+                _calib_cache.update(key=key, rows=calibration_rows(db))
+            return _calib_cache["rows"]
+        except Exception:
+            traceback.print_exc()
+            return []
+
     def _plan_options():
         from . import planner
         _, device = tonight.library(db)
@@ -909,7 +935,7 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.post("/plan")
     def make_plan(body: dict = Body(...)):
-        """Assistent: {nights, devices[1–2], mode new|mix|deep, min_hours, watch[]} → Plan rechnen und speichern."""
+        """Assistent: {nights, devices[1–2], mode new|mix|deep, depth short|normal|thorough (alt: min_hours), watch[], eq[]} → Plan rechnen und speichern."""
         from . import planner
         opts, _ = _plan_options()
         try:
@@ -918,9 +944,16 @@ def build_router(eng: Engine) -> APIRouter:
             raise HTTPException(400, str(e))
         devices = [next(o for o in opts if o["id"] == d) for d in wishes["devices"]]
         projects, _ = tonight.library(db)
+        from .need import project_devices
+        try:
+            shot = project_devices(db)
+        except Exception:
+            traceback.print_exc()
+            shot = {}
+        projects = [{**p, "device": shot.get(p["id"])} for p in projects]
         try:
             out = planner.plan(projects, _plan_site_for(), wishes, devices, eng.s.work_dir / "tutor",
-                               weather=bool(tutor.settings(eng.ctx.store).get("weather")))
+                               weather=bool(tutor.settings(eng.ctx.store).get("weather")), sky=_site_sqm, calib_rows=_calib_rows())
         except Exception:
             traceback.print_exc()
             raise HTTPException(500, "Der Plan konnte nicht berechnet werden – Details im Protokoll.")
@@ -996,14 +1029,21 @@ def build_router(eng: Engine) -> APIRouter:
                 night_sites = None
             if here:
                 cfg = {**cfg, "lat": here["lat"], "lon": here["lon"], "horizon": here.get("horizon")}
-        out = tonight.plan(projects, cfg, eng.s.work_dir / "tutor", device=device, hidden=hidden, collection=coll, night=night_ix,
-                           night_sites=night_sites)
         sky = None
         if here:
             try:
                 sky = skyquality.for_site(db, here.get("id"))
             except Exception:
                 sky = None
+        from .need import calibration
+        sqm = (float(sky["sqm"]), "aus deinen Aufnahmen") if sky and sky.get("sqm") is not None else None
+        try:
+            calib = calibration(_calib_rows(), device, sqm[0] if sqm else None)["factor"]
+        except Exception:
+            traceback.print_exc()
+            calib = 1.0
+        out = tonight.plan(projects, cfg, eng.s.work_dir / "tutor", device=device, hidden=hidden, collection=coll, night=night_ix,
+                           night_sites=night_sites, site_sky=sqm, calib=calib)
         return {**out, "site_info": {k: here.get(k) for k in ("id", "name", "source", "detail")} if here else None,
                 "sites_on": bool(site_for), "night": night, "sky_quality": sky}
 

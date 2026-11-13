@@ -12,7 +12,7 @@ Zenit kein Problem (Nutzererfahrung, als gesichert eingetragen: keine Zenit-Gren
 **Geräte-Tabelle** `stacking/devices.json` + Lader `stacking/devices.py` – eine Quelle statt `tutor.DEVICES`, `planner.DEVICES`,
 `deepsky.MAG_LIMITS` und festem 80°-Zenit (die drei Namen bleiben als abgeleitete Ansichten: `tutor_devices()`, `planner_devices()`,
 `mag_limits()`). Je Gerät: `mount` (altaz/eq), `derotator` (none/software/optical), `eq_mode`, `zenith_limit` (Höhe, `null` = keine bzw.
-unbekannt), `exp_altaz`/`exp_eq` (s), `sensor` (Pixel, für das Randverschmieren), `fov` (°), dazu Grenzgröße, Öffnung, Brennweite, Böen,
+unbekannt), `exp_altaz`/`exp_eq` (s), `sensor` (Pixel, für das Randverschmieren), `fov` (°), dazu Grenzgröße, Öffnung und Brennweite (mit Quelle, für den Belichtungsbedarf – `belichtungsbedarf.md`), Böen,
 Tauheizung, Tipps (`texts`, Familie über `family`). Werte mit Herkunft: `{"v": …, "status": "gesichert"|"vorschlag", "quelle": "…"}`.
 Neue Geräte: Eintrag ergänzen (Test `test_devices.py` prüft Status/Quelle); in den Planer nur mit `planner: true` und bekanntem `fov`.
 
