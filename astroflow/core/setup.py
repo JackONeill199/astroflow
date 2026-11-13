@@ -5,7 +5,8 @@
   der Sterndatenbanken ist nicht eindeutig angegeben. Ziel ist der Ordner, den AstroFlow ohnehin durchsucht
   (Windows `%LOCALAPPDATA%\\astap`, sonst `~/astap`). Vorhandene Dateien werden nicht überschrieben.
 * Update-Prüfung: höchstens einmal am Tag eine anonyme GET-Anfrage an die GitHub-Releases-API, abschaltbar
-  (`settings.json` → `system.update_check`); jeder Fehler (auch 404 bei privatem Repo) bleibt still.
+  (`settings.json` → `system.update_check`); jeder Fehler (auch 404 bei privatem Repo) bleibt still. Beim selben Abruf werden
+  „Was ist neu“ (Release-Text als reiner, gekürzter Text) und die Download-Adressen der Pakete mitgespeichert – heruntergeladen wird nichts.
 """
 from __future__ import annotations
 
@@ -55,6 +56,104 @@ TASK_NAMES = {"astap": "ASTAP + Sterndatenbank", "demo": "Demo-Aufnahmen", "gpu"
 def _version_tuple(v: str) -> tuple:
     import re
     return tuple(int(x) for x in re.findall(r"\d+", v or "")[:3]) or (0,)
+
+
+NOTES_MAX = 2400                                       # Zeichen „Was ist neu“, danach gekürzt
+_ASSETS = {"windows": ("AstroFlow-Setup-", ".exe"), "windows_zip": ("AstroFlow-", "-Windows-portabel.zip"),
+           "linux": ("AstroFlow-", "-Linux-x86_64.tar.gz")}
+
+
+def release_notes(body: str, limit: int = NOTES_MAX) -> list[dict]:
+    """Release-Text (Markdown) → Absätze als reiner Text `[{t, h}]` (h = Überschrift). Bilder, Links, Hervorhebungen und HTML fallen weg.
+    Steht vor der ersten Überschrift nur der Download-Hinweis, beginnt „Was ist neu“ mit der ersten Überschrift."""
+    import re
+    text = str(body or "")[:20000].replace("\r\n", "\n")
+    first = re.search(r"^#{1,6} ", text, re.M)
+    if first:
+        text = text[first.start():]
+    out, used, para = [], 0, []
+
+    def clean(line: str) -> str:
+        line = re.sub(r"!\[[^\]\n]{0,300}\]\([^)\s]{0,500}\)", "", line)          # Bilder
+        line = re.sub(r"\[([^\]\n]{0,300})\]\([^)\s]{0,500}\)", r"\1", line)     # Links → Text
+        line = re.sub(r"<[^<>\n]{0,300}>", "", line)                             # HTML-Schnipsel
+        line = re.sub(r"(\*\*|__|`)", "", line)
+        return re.sub(r"\s+", " ", line).strip()
+
+    def flush():
+        nonlocal used
+        if para and used < limit:
+            t = " ".join(para)
+            if used + len(t) > limit and limit - used < 120:       # kein Mini-Schnipsel am Ende
+                used, t = limit, ""
+            elif used + len(t) > limit:
+                t = t[: max(0, limit - used)].rsplit(" ", 1)[0] + " …"
+            if t.strip():
+                out.append({"t": t, "h": False})
+                used += len(t)
+        para.clear()
+
+    for raw in text.split("\n"):
+        if used >= limit:
+            break
+        m = re.match(r"^(#{1,6}) (.{1,200})$", raw.strip())
+        if m:
+            flush()
+            t = clean(m.group(2))
+            if t:
+                out.append({"t": t, "h": True})
+                used += len(t)
+            continue
+        line = clean(raw)
+        if not line:
+            flush()
+            continue
+        if re.match(r"^[-*] ", raw.strip()):                                      # Aufzählung → eigener Absatz
+            flush()
+            line = "• " + line[2:].strip() if line[:2] in ("- ", "* ") else line
+        para.append(line)
+    flush()
+    while out and out[-1]["h"]:                                                   # keine Überschrift ohne Text am Ende
+        out.pop()
+    if used >= limit and out and not out[-1]["t"].endswith("…"):
+        out[-1]["t"] += " …"
+    return out
+
+
+def release_assets(assets) -> dict:
+    """Download-Adressen der Pakete aus `assets` – nur https auf github.com, nur bekannte Dateinamen."""
+    out = {}
+    for a in assets or []:
+        if not isinstance(a, dict):
+            continue
+        name, url = str(a.get("name") or ""), str(a.get("browser_download_url") or "")
+        if not url.startswith("https://github.com/"):
+            continue
+        for key, (pre, suf) in _ASSETS.items():
+            if name.startswith(pre) and name.endswith(suf) and key not in out:
+                out[key] = {"name": name[:120], "url": url[:500], "size": int(a.get("size") or 0)}
+    return out
+
+
+def install_kind() -> str:
+    """windows | linux (installiertes Paket) | docker | source – bestimmt den passenden Download."""
+    if Path("/.dockerenv").exists():
+        return "docker"
+    if os.environ.get("ASTROFLOW_LAUNCHER") == "1" or getattr(sys, "frozen", False):
+        return {"Windows": "windows", "Linux": "linux"}.get(platform.system(), "source")
+    return "source"
+
+
+def update_offer(info: dict) -> dict | None:
+    """Für `/api/app` und „Jetzt prüfen“: nur wenn die gemeldete Version neuer als die laufende ist (nach einem Update also nicht mehr)."""
+    latest = str((info or {}).get("latest") or "")
+    if not latest or _version_tuple(latest) <= _version_tuple(VERSION):
+        return None
+    kind = install_kind()
+    dl = (info.get("downloads") or {}).get(kind) if kind in ("windows", "linux") else None
+    return {"latest": latest, "current": VERSION, "url": info.get("url") or RELEASES_PAGE, "newer": True,
+            "checked": info.get("checked"), "published": info.get("published"), "notes": info.get("notes") or [],
+            "kind": kind, "download": dl}
 
 
 def drives() -> list[dict]:
@@ -159,6 +258,7 @@ class Setup:
             "platform": platform.system(), "astap": astap, "dbs": {k: v[1] for k, v in ASTAP_DBS.items()},
             "demo": {"exists": demo.exists()}, "gpu": self._gpu_state(), "components": self.components(),
             "update_check": sysc.get("update_check", True), "update": sysc.get("update") or {},
+            "update_offer": update_offer(sysc.get("update") or {}),   # frisch je Aufruf: findet die Hintergrundprüfung später etwas, steht es hier
             "tray_notify": sysc.get("tray_notify", True), "report": sysc.get("report", True),
             "report_env_off": os.environ.get("ASTROFLOW_REPORT") == "0",
             "version": VERSION, "tasks": dict(self.tasks),
@@ -421,8 +521,11 @@ class Setup:
             if r.status_code == 200:
                 d = r.json()
                 latest = str(d.get("tag_name") or "").lstrip("v")
-                info.update(latest=latest, url=d.get("html_url") or RELEASES_PAGE,
-                            newer=_version_tuple(latest) > _version_tuple(VERSION))
+                url = str(d.get("html_url") or "")
+                info.update(latest=latest, url=url if url.startswith("https://github.com/") else RELEASES_PAGE,
+                            newer=_version_tuple(latest) > _version_tuple(VERSION),
+                            published=str(d.get("published_at") or "")[:10] or None,
+                            notes=release_notes(d.get("body") or ""), downloads=release_assets(d.get("assets")))
         except Exception:
             pass                                       # still: kein Netz, privates Repo (404), Ratenlimit …
         self.ctx.store.update("system", {"update": info})
@@ -514,8 +617,15 @@ def build_router(setup: Setup) -> APIRouter:
         return setup.firewall(bool(body.get("remove")))
 
     @r.get("/system/update")
-    def get_update(force: bool = False):
-        return setup.check_update(force)
+    def get_update():
+        info = setup.ctx.store.get("system").get("update") or {}
+        return {"checked": info.get("checked"), "latest": info.get("latest"), "update": update_offer(info)}
+
+    @r.post("/system/update/check")
+    def post_update_check():
+        """„Jetzt prüfen“: fragt sofort an (auch wenn die tägliche Prüfung abgeschaltet ist)."""
+        info = setup.check_update(force=True)
+        return {"checked": info.get("checked"), "latest": info.get("latest"), "update": update_offer(info)}
 
     @r.post("/system/shutdown")
     def post_shutdown(request: Request):
