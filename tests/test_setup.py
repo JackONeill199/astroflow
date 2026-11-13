@@ -336,6 +336,80 @@ def test_update_hinweis(home, tmp_path, monkeypatch):
     assert setup.check_update(force=True).get("newer") is None
 
 
+RELEASE_BODY = """**Windows:** `AstroFlow-Setup-99.0.0.exe` (Installer) – Download-Hinweis vor der ersten Überschrift
+
+## Das Wichtigste
+
+### Teilen-Karte
+Aus jedem Bild wird eine **Karte** – siehe [Anleitung](https://example.org/a).
+Zweite Zeile <script>alert(1)</script>mit HTML.
+
+![Bild](https://example.org/b.webp)
+
+### Außerdem
+- Erster Punkt
+- Zweiter Punkt
+"""
+RELEASE_ASSETS = [
+    {"name": "AstroFlow-Setup-99.0.0.exe", "browser_download_url": "https://github.com/x/y/releases/download/v99.0.0/AstroFlow-Setup-99.0.0.exe", "size": 9},
+    {"name": "AstroFlow-99.0.0-Linux-x86_64.tar.gz", "browser_download_url": "https://github.com/x/y/releases/download/v99.0.0/AstroFlow-99.0.0-Linux-x86_64.tar.gz"},
+    {"name": "AstroFlow-99.0.0-Windows-portabel.zip", "browser_download_url": "http://boese.example/AstroFlow-99.0.0-Windows-portabel.zip"},
+    {"name": "fremd.exe", "browser_download_url": "https://github.com/x/y/fremd.exe"},
+]
+
+
+def test_release_text_als_reiner_text():
+    notes = setup_mod.release_notes(RELEASE_BODY)
+    assert notes[0] == {"t": "Das Wichtigste", "h": True}                # Download-Hinweis davor fällt weg
+    text = " ".join(n["t"] for n in notes)
+    assert "Aus jedem Bild wird eine Karte – siehe Anleitung." in text
+    assert not any(c in text for c in "<>*[]") and "example.org" not in text          # Tags weg, ihr Inhalt bleibt harmloser Text
+    assert [n["t"] for n in notes if not n["h"]][-2:] == ["• Erster Punkt", "• Zweiter Punkt"]
+    lang = setup_mod.release_notes("## Titel\n" + "Wort " * 5000, limit=300)
+    assert len(lang) == 2 and lang[1]["t"].endswith("…") and len(lang[1]["t"]) <= 302
+    assert setup_mod.release_notes("") == [] and setup_mod.release_notes(None) == []
+    assert setup_mod.release_notes("[" * 50000 + "](" * 50000) is not None           # kein Hängenbleiben bei kaputtem Text
+
+
+def test_release_downloads_nur_github_https():
+    dl = setup_mod.release_assets(RELEASE_ASSETS)
+    assert set(dl) == {"windows", "linux"}                                 # http-Adresse und unbekannte Datei fallen weg
+    assert dl["windows"]["name"] == "AstroFlow-Setup-99.0.0.exe"
+    assert setup_mod.release_assets(None) == {} and setup_mod.release_assets(["kaputt"]) == {}
+
+
+def test_update_angebot_je_system(home, tmp_path, monkeypatch):
+    import httpx
+    c = client(tmp_path / "data", False, monkeypatch)
+    setup = c.app.state.setup
+
+    class R:
+        status_code = 200
+        def json(self):
+            return {"tag_name": "v99.0.0", "html_url": "https://github.com/x/y/releases/tag/v99.0.0", "published_at": "2026-11-20T10:00:00Z",
+                    "body": RELEASE_BODY, "assets": RELEASE_ASSETS}
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: R())
+    r = c.post("/api/system/update/check").json()
+    assert r["latest"] == "99.0.0" and r["update"]["published"] == "2026-11-20"
+    assert r["update"]["notes"][0]["t"] == "Das Wichtigste"
+    assert r["update"]["kind"] == "source" and r["update"]["download"] is None            # Quellcode: kein Paket-Download
+    monkeypatch.setattr(setup_mod, "install_kind", lambda: "windows")
+    a = c.get("/api/app").json()["update"]
+    assert a["download"]["url"].endswith("AstroFlow-Setup-99.0.0.exe") and a["current"] == __version__
+    monkeypatch.setattr(setup_mod, "install_kind", lambda: "linux")
+    assert c.get("/api/system/update").json()["update"]["download"]["name"].endswith("Linux-x86_64.tar.gz")
+    monkeypatch.setattr(setup_mod, "VERSION", "99.0.0")                     # Version installiert → kein Hinweis mehr
+    assert c.get("/api/app").json()["update"] is None
+    assert c.get("/api/system/update").json()["update"] is None
+    c.post("/api/setup", json={"update_check": False})                       # „Jetzt prüfen“ geht auch abgeschaltet
+    monkeypatch.setattr(setup_mod, "VERSION", "0.1.0")
+    assert c.post("/api/system/update/check").json()["update"]["latest"] == "99.0.0"
+    assert c.get("/api/app").json()["update"] is None
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: (_ for _ in ()).throw(httpx.ConnectError("kein Netz")))
+    r = c.post("/api/system/update/check").json()
+    assert r["update"] is None and r["latest"] is None and r["checked"]
+
+
 def test_version_vergleich():
     v = setup_mod._version_tuple
     assert v("0.33.0") < v("0.33.1") < v("0.34.0") < v("1.0.0")

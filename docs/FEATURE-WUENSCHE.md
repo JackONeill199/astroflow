@@ -28,6 +28,7 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md` (Details in `docs/entwicklung/
 | 20 | 12.11.2026 | HOO/SHO für Farbkameras mit Dual-Band-Filter | offen |
 | 21 | 13.11.2026 | Geräte kombinieren (Stacks verschiedener Teleskope zu einem Bild) | offen |
 | 22 | 13.11.2026 | Echtes Drizzle | offen |
+| 23 | 13.11.2026 | „Jetzt aktualisieren“: Update auf Knopfdruck laden und starten | offen (Hinweis mit Download-Link seit Update-Chip) |
 
 ## 1. Bibliothek teilen (nur ansehen) – 03.11.2026
 
@@ -240,3 +241,14 @@ Kamera/Format getrennt (`scanner.assign_project`); das Gerät steht als Tag im P
 - Arbeitsspeicher und GPU-Nutzung (Raster und Gewichtskarte je Kanal; OpenCL wie in `gpu.py`?).
 - Zusammenspiel mit Mosaik (feste Leinwand) und dem Ausreißer-Verwerfen (Sigma-Clipping auf gedroppten Daten).
 - Automatik: nur anbieten bzw. einschalten, wenn die Sternschärfe (FWHM) unter ~2 px liegt und genug Aufnahmen mit Versatz vorhanden sind.
+
+## 23. „Jetzt aktualisieren“ – 13.11.2026
+Heute zeigt AstroFlow nur einen ruhigen Hinweis in der Kopfleiste (Chip „0.73.0 verfügbar“) mit „Was ist neu“ und dem passenden
+Download-Link; geladen und installiert wird bewusst nichts. Später denkbar, nur auf Knopfdruck und nur am Rechner selbst (`require_local`):
+- Windows: `AstroFlow-Setup-<Version>.exe` aus dem Release laden (nur https, nur `github.com`/`objects.githubusercontent.com`),
+  **SHA-256 prüfen** gegen eine Prüfsumme aus dem Release (eigene `.sha256`-Datei wie beim Linux-Paket – für Windows müsste der
+  Paket-Workflow sie erst erzeugen), dann den Installer starten (er beendet den Server selbst, Daten bleiben).
+- Linux: Paket laden, Prüfsumme prüfen, entpacken und `install.sh` ausführen (ersetzt über `.neu`/`.alt`).
+- Quellcode/Docker: kein Automatismus, nur Anleitung.
+- Offen: Signatur statt nur Prüfsumme (Prüfsumme aus derselben Quelle schützt nur vor kaputten Downloads), Fortschritt als Auftrag,
+  Rückfall bei Abbruch, Neustart danach automatisch.

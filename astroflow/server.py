@@ -84,7 +84,7 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
                 "local": security.is_loopback(request.client.host if request.client else ""),
                 "setup": {"pending": setup.state()["pending"] if setup.launched else False, "launched": setup.launched},
                 "settings_problem": ctx.store.problem, "report": report_mod.enabled(ctx.store),
-                "update": upd if upd.get("newer") and ctx.store.get("system").get("update_check", True) else None}
+                "update": setup_mod.update_offer(upd) if ctx.store.get("system").get("update_check", True) else None}
 
     @app.get("/api/status")
     def status():

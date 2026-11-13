@@ -80,9 +80,17 @@
 - **ASTAP auf Knopfdruck:** nur von SourceForge „astap-program“ (CLI je OS, `astapwin32.zip` nur für `deep_sky.csv` – laut Danksagung
   **nur nicht-kommerziell frei**, Lizenz der Sterndatenbanken nicht eindeutig → nie mitliefern), nach `%LOCALAPPDATA%\astap` bzw. `~/astap`
   (sucht `platesolve`/`objects` ohnehin dort), vorhandene Dateien bleiben. D05 als ZIP (~102 MB), D50 ~900 MB.
-- **Update-Hinweis:** `Setup.update_loop` (20 s nach Start, dann stündlich prüfen, ob 24 h um) → GitHub `releases/latest`, anonym,
-  `system.update_check` (Standard an), jeder Fehler still (privates Repo = 404). `/api/app.update` nur wenn neuer; Frontend-Toast einmal je Version
-  (`localStorage af.update.seen`). `ASTROFLOW_UPDATE_CHECK=0` setzt `conftest.py`.
+- **Update-Hinweis:** `Setup.update_loop` (20 s nach Start, dann stündlich prüfen, ob 24 h um) → GitHub `releases/latest`, anonym (nur
+  GET, nichts über den Nutzer), `system.update_check` (Standard an), jeder Fehler still (privates Repo = 404). Beim selben Abruf gespeichert
+  (`system.update`): `notes` = Release-Text als reiner Text (`setup.release_notes`: ab der ersten Überschrift, Bilder/Links/HTML/Hervorhebungen
+  weg, Absätze `{t, h}`, gekürzt auf `NOTES_MAX` Zeichen, Regex mit begrenzten Wiederholungen) und `downloads` (`release_assets`: nur
+  https auf `github.com`, nur bekannte Paketnamen). `setup.update_offer` baut daraus `/api/app.update` – **vergleicht bei jeder Anfrage mit
+  der laufenden Version** (nach einem Update sofort weg) und wählt den Download nach `install_kind()` (windows/linux = Paket, sonst
+  docker/source → Anleitung). `GET /system/update` = Stand, `POST /system/update/check` = „Jetzt prüfen“ (auch bei abgeschalteter Prüfung).
+  Frontend (`app.js` `updateHint`/`updatePanel`): Chip `#updBtn` in der Kopfleiste (mobil nur die Nummer), Klick → Kontextpanel mit
+  Download, Release-Seite und „Was ist neu“ (alles über `esc()`); „Hinweis für diese Version ausblenden“ merkt `af.update.dismissed` im
+  Browser, eine neuere Version erscheint wieder. Ein Banner wurde verglichen und verworfen (kostet auf jeder Seite Höhe). Einstellungen →
+  Module & System zeigt den Stand (`#sysUpdState`). `ASTROFLOW_UPDATE_CHECK=0` setzt `conftest.py`. Selbst laden/installieren: Wunsch 23.
 - **Paket:** `pyproject.toml` (setuptools ≥ 77, alle Dateien unter `astroflow/` als Paketdaten, Abhängigkeiten = `requirements.txt`, Test prüft
   Gleichheit; noch nicht auf PyPI). `installer/build_windows.py`: python-build-standalone (fest `PBS_TAG`/`PBS_PY`) + Wheel + pip-Install,
   numpy/scipy-Tests entfernt, Symbol gezeichnet (Pillow), `AstroFlow.cmd`/`AstroFlow beenden.cmd` (portabel), ZIP; mit ISCC Inno-Installer

@@ -492,6 +492,52 @@ function ctxSync() {
   $$('[data-ctx-toggle]:not([data-side])').forEach(b => { b.classList.toggle('on', shown); b.setAttribute('aria-pressed', shown); });
 }
 
+// ------------------------------------------------------------ Update-Hinweis --- //
+// Ruhiger Chip in der Kopfleiste, solange eine neuere Version gemeldet ist (`/api/app.update`, Server vergleicht mit der laufenden Version)
+// und sie in diesem Browser nicht weggeklickt wurde (`store` update.dismissed). Kommt eine neuere Version, erscheint er wieder.
+// Klick → Kontextpanel mit „Was ist neu“ (reiner Text vom Server, alles über esc()) und dem passenden Download – installiert wird nichts.
+const UPD_KIND = {
+  windows: ['Windows-Installer laden', 'Den Installer ausführen – er beendet AstroFlow kurz, Daten und Einstellungen bleiben erhalten.'],
+  linux: ['Linux-Paket laden', 'Paket entpacken und <code>./install.sh</code> ausführen – Daten und Einstellungen bleiben erhalten.'],
+  docker: [null, 'Docker: im Projektordner <code>git pull</code> und <code>docker compose up -d --build</code>.'],
+  source: [null, 'Aus dem Quellcode: <code>git pull</code>, dann <code>pip install -r requirements.txt</code> und AstroFlow neu starten. Fertige Pakete für Windows und Linux stehen auf der Release-Seite.'],
+};
+function updateHint(u) {
+  AF.app.update = u || null;
+  const b = $('#updBtn');
+  const show = !!(u?.latest && store.get('update.dismissed', '') !== u.latest);
+  b.hidden = !show;
+  if (show) {
+    b.querySelector('.v').textContent = u.latest;
+    b.title = `AstroFlow ${u.latest} ist verfügbar – Details`;
+    b.setAttribute('aria-label', `AstroFlow ${u.latest} ist verfügbar`);
+  }
+}
+function updatePanel() {
+  const u = AF.app.update;
+  if (!u?.latest) return;
+  const [label, how] = UPD_KIND[u.kind] || UPD_KIND.source;
+  const notes = (u.notes || []).map(n => n.h ? `<h4>${esc(n.t)}</h4>` : `<p>${esc(n.t)}</p>`).join('');
+  const dl = u.download;
+  AF.ctx.open($('#updBtn'), { title: 'Update verfügbar', html: `<div class="upd-panel">
+    <p class="upd-ver"><b>AstroFlow ${esc(u.latest)}</b><span class="mut sm">Du nutzt ${esc(u.current || AF.app.version)}${u.published ? ` · erschienen ${esc(fnight(u.published))}` : ''}</span></p>
+    <div class="upd-acts">
+      ${label && dl ? `<a class="btn sm" href="${esc(dl.url)}" target="_blank" rel="noopener">${icon('down')}${esc(label)}</a>` : ''}
+      <a class="btn ghost sm" href="${esc(u.url)}" target="_blank" rel="noopener">Release-Seite</a>
+    </div>
+    <p class="mut sm">${dl || !label ? how : 'Fertige Pakete stehen auf der Release-Seite.'} AstroFlow lädt und installiert nichts selbst.</p>
+    <button class="upd-dismiss" id="updDismiss">Hinweis für diese Version ausblenden</button>
+    ${notes ? `<h3>Was ist neu</h3><div class="upd-notes">${notes}</div>` : ''}</div>` });
+  AF.ctx.show();
+  $('#updDismiss').onclick = () => {
+    store.set('update.dismissed', u.latest);
+    updateHint(u);
+    AF.ctx.clear();
+    toast('Hinweis ausgeblendet. Neue Versionen meldet AstroFlow wieder; „Jetzt prüfen“ unter Einstellungen → Module & System.', 'ok');
+  };
+}
+AF.updateHint = updateHint;
+
 async function loadModules() {
   AF.app = await api('/app');
   const v = AF.app.build || AF.app.version;
@@ -1032,11 +1078,8 @@ async function boot() {
   // Erster Start der installierten Version → Einrichtung; neue Version → einmaliger Hinweis je Version
   if (AF.app.setup?.pending && /^#?\/?$/.test(location.hash)) location.hash = '#/willkommen';
   if (AF.app.settings_problem) toast('Die Einstellungsdatei (settings.json) ist beschädigt und wird nicht überschrieben. Eine Kopie liegt daneben (settings.json.defekt-…). Bitte reparieren oder löschen.', 'err');
-  const upd = AF.app.update;
-  if (upd?.latest && store.get('update.seen', '') !== upd.latest) {
-    store.set('update.seen', upd.latest);
-    toast(`AstroFlow ${upd.latest} ist verfügbar.`, 'ok', { label: 'Herunterladen', href: upd.url });
-  }
+  updateHint(AF.app.update);
+  $('#updBtn').onclick = () => updatePanel();
   await route();
   poll();
   setInterval(() => { if (!document.hidden) poll(); }, 2500);

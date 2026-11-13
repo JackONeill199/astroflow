@@ -890,3 +890,49 @@ def test_teilen_dialog(server, browser, size):
     page.wait_for_function("() => { const i = document.querySelector('#shPrev img'); return i && !i.hidden && i.naturalWidth > 0 }")
     page.close()
     assert not errors, errors
+
+
+@pytest.mark.parametrize("size", ["handy", "desktop"])
+def test_update_hinweis(server, browser, size):
+    """Neuere Version gemeldet → ruhiger Chip in der Kopfleiste; Klick öffnet „Was ist neu“ (Release-Text nur als Text),
+    „Für diese Version ausblenden“ entfernt ihn auch nach dem Neuladen. Nichts ragt über; Server-Zustand bleibt unberührt."""
+    import json as _json
+    base, _ = server
+    w, h = SIZES[size]
+    page = browser.new_page(viewport={"width": w, "height": h})
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    upd = {"latest": "99.1.0", "current": "0.0.0", "newer": True, "url": "https://github.com/x/y/releases/tag/v99.1.0", "kind": "windows",
+           "published": "2026-11-20", "download": {"name": "AstroFlow-Setup-99.1.0.exe", "url": "https://github.com/x/y/releases/download/v99.1.0/AstroFlow-Setup-99.1.0.exe"},
+           "notes": [{"t": "Neu", "h": True}, {"t": "<img src=x onerror=alert(1)> Ein sehr langer Absatz " * 6, "h": False}]}
+
+    def fake_app(route):
+        r = route.fetch()
+        d = r.json()
+        d["update"] = upd
+        route.fulfill(response=r, body=_json.dumps(d), headers={**r.headers, "content-type": "application/json"})
+    page.route("**/api/app", fake_app)
+    page.goto(f"{base}/#/")
+    chip = page.locator("#updBtn")
+    chip.wait_for(state="visible")
+    assert "99.1.0" in chip.inner_text()
+    assert page.evaluate(FIND_OVERFLOW) == []
+    top = page.evaluate("(() => { const t = document.querySelector('.top'); return [t.scrollWidth, t.clientWidth] })()")
+    assert top[0] <= top[1] + 1, top
+    chip.click()
+    page.locator(".upd-panel").wait_for(state="visible")
+    page.wait_for_timeout(500)                                    # Kontextspalte fährt ein (Übergang der Rasterspalten)
+    panel = page.locator("#ctxBody")
+    assert page.locator(".upd-notes img").count() == 0 and "<img" in panel.inner_text()      # Release-Text nur als Text
+    assert "AstroFlow-Setup-99.1.0.exe" in page.locator(".upd-acts a.btn").first.get_attribute("href")
+    assert page.evaluate(FIND_OVERFLOW) == []
+    page.locator("#updDismiss").click()
+    page.wait_for_function("() => document.querySelector('#updBtn').hidden")
+    page.reload()
+    page.wait_for_load_state("networkidle")
+    assert page.locator("#updBtn").is_hidden()
+    upd["latest"] = "99.2.0"                                      # neuere Version → wieder sichtbar
+    page.reload()
+    page.locator("#updBtn").wait_for(state="visible")
+    page.close()
+    assert not errors, errors

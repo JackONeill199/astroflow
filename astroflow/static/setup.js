@@ -223,6 +223,14 @@
     return { destroy: () => { stop(); comps._stop?.(); } };
   }
 
+  // Stand der Update-Prüfung als kurze Zeile: neuere Version (Klick öffnet Details) · aktuell · nicht erreichbar · noch nie geprüft
+  function updState(upd, info) {
+    if (upd?.latest) return `<a href="#" data-upd>Version ${esc(upd.latest)} verfügbar – Details</a>`;
+    if (info?.latest) return `<span class="mut">aktuell (geprüft ${ago(info.checked)})</span>`;
+    if (info?.checked) return `<span class="mut">GitHub nicht erreichbar (versucht ${ago(info.checked)})</span>`;
+    return '<span class="mut">noch nicht geprüft</span>';
+  }
+
   // Einstellungen → Module & System: Einrichtung, Updates, Beenden
   async function setupSystemPanel(el) {
     const s = await api('/setup').catch(() => null);
@@ -233,7 +241,7 @@
     p.innerHTML = `<h2>Einrichtung und Updates</h2>
       <dl class="kv" style="margin:0.75rem 0">
         <dt>Datenordner</dt><dd><code>${esc(s.data.path)}</code></dd>
-        <dt>Version</dt><dd>${esc(s.version)}${u.newer ? ` · <a href="${esc(u.url)}" target="_blank" rel="noopener">Version ${esc(u.latest)} verfügbar</a>` : u.checked ? ` · <span class="mut">aktuell (geprüft ${ago(u.checked)})</span>` : ''}</dd>
+        <dt>Version</dt><dd>${esc(s.version)} · <span id="sysUpdState">${updState(AF.app.update, u)}</span></dd>
       </dl>
       <label class="modrow"><div><b>Nach Updates suchen</b><div class="mut sm">Einmal am Tag eine anonyme Anfrage an GitHub, ob es eine neue Version gibt.</div></div>
         <input type="checkbox" id="sysUpd" ${s.update_check ? 'checked' : ''}><span class="switch"></span></label>
@@ -258,12 +266,18 @@
       }
     };
     p.onclick = async (e) => {
+      if (e.target.closest('[data-upd]')) { e.preventDefault(); $('#updBtn')?.click(); return; }
       const b = e.target.closest('button');
       if (!b) return;
       try {
         if (b.id === 'sysCheck') {
-          const r = await api('/system/update?force=true');
-          toast(r.newer ? `Version ${r.latest} ist verfügbar.` : r.latest ? 'AstroFlow ist aktuell.' : 'Keine Versionsinformation erreichbar.', r.newer ? 'ok' : '', r.newer ? { label: 'Herunterladen', href: r.url } : null);
+          b.disabled = true; b.classList.add('busy');
+          const st = $('#sysUpdState');
+          if (st) st.innerHTML = '<span class="mut">wird geprüft …</span>';
+          const r = await api('/system/update/check', { method: 'POST' }).finally(() => { b.disabled = false; b.classList.remove('busy'); });
+          if (r.update) store.set('update.dismissed', '');          // bewusst geprüft → Hinweis wieder zeigen
+          AF.updateHint?.(r.update);
+          if (st?.isConnected) st.innerHTML = updState(r.update, r);
         } else if (b.id === 'sysRestart') { await send('/system/restart'); restartOverlay('AstroFlow startet neu …'); }
         else if (b.id === 'sysQuit') {
           if (!await confirmDlg('AstroFlow beenden?', 'Laufende Aufträge setzen beim nächsten Start am letzten Zwischenstand fort. Neu starten über das Startmenü bzw. den Starter.', 'Beenden', true)) return;
