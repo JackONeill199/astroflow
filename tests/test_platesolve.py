@@ -70,6 +70,12 @@ def test_hints_from_header(tmp_path):
     q = tmp_path / "y.fits"
     fits.PrimaryHDU(np.zeros((10, 10), np.uint16)).writeto(q)
     assert platesolve._hints(str(q), (1920, 1080), "Seestar S50")["fov_h"] == pytest.approx(1920 * 2.39 / 3600)
+    # Vespera ohne Brennweite im Kopf: Maßstab je Modell (Wort im Namen, sonst Bildformat; erfundene Seriennummer mit „2“)
+    serial = "vespera-2a4f0c2b7e21"
+    assert platesolve._hints(str(q), (1080, 1920), serial)["scale"] == 3.0
+    assert platesolve._hints(str(q), (2160, 3840), serial)["scale"] == 2.39
+    assert platesolve._hints(str(q), (3536, 3536), serial)["scale"] == 1.65
+    assert platesolve._hints(str(q), (1080, 1920), "Vespera II")["scale"] == 2.39
 
 
 def test_scan_solves_once_per_group_and_finds_object(fake_astap, tmp_path):
@@ -155,3 +161,26 @@ def test_folder_name_gets_kind_from_extended_catalog(tmp_path, monkeypatch):
     assert objects.resolve_extended("PGC 41333").id == "NGC4490"
     monkeypatch.setattr(objects, "_EXT", None)
     monkeypatch.setattr(objects, "_EXT_ALIAS", {})
+
+
+def test_messier_kind_without_small_catalog(tmp_path, monkeypatch):
+    """M77 fehlt im kleinen Katalog, ASTAP führt es ohne Art: Profil kommt aus Messier/Caldwell (deepsky), nicht „generic“."""
+    from astroflow.modules.stacking import deepsky, objects
+    from astroflow.modules.stacking.fits_io import FrameInfo
+    from astroflow.modules.stacking.scanner import assign_project
+    csv = tmp_path / "deep_sky.csv"
+    csv.write_text("header\nunits\n97685,1,M77/NGC1068,72,60\n", encoding="utf-8")
+    monkeypatch.setenv("ASTROFLOW_DEEPSKY", str(csv))
+    deepsky.reset()
+    try:
+        assert objects.resolve_name("M77") is None and objects.resolve_extended("M77").kind == "generic"
+        for name in ("M77", "Messier 77", "NGC 1068"):
+            assert objects.kind_of(name) == "galaxy"
+        assert objects.kind_of("C 14") == "open_cluster" and objects.kind_of("M56") == "globular"
+        assert objects.kind_of("M31") == "galaxy" and objects.kind_of("POLARIS") is None
+        a = assign_project(FrameInfo(path="x", shape=(1080, 1920), object="M77"), {})
+        assert a.key.startswith("M77|") and a.kind == "galaxy"          # Schlüssel bleibt, nur das Profil ändert sich
+        info = FrameInfo(path="x", shape=(1080, 1920), ra=40.67, dec=-0.013, solve={"fov_w": 1.6, "fov_h": 0.9})
+        assert assign_project(info, {}).kind == "galaxy"                 # gelöstes Feld ohne Namen
+    finally:
+        deepsky.reset()

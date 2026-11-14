@@ -38,7 +38,7 @@ DEFAULT_OPTIONS = {
     "comet_name": None,         # Bezeichnung für JPL Horizons, falls der Name keine enthält (z. B. „C/2022 E3“)
     "distortion": "global",     # Verzerrungskorrektur: global = Einstellung (Standard an) | auto | off (registration.distortion_mode)
     "mosaic": "auto",           # Mosaik (Stackfläche = Hülle aller Aufnahmen): auto (bei stark versetzten Aufnahmen) | on | off
-    "mosaic_crop": "wide",      # Zuschnitt eines Mosaiks: wide (Fläche gegen Tiefe abwägen) | compact (volle Tiefe wie ohne Mosaik)
+    "mosaic_crop": "auto",      # Zuschnitt eines Mosaiks: auto (Einzelfeld mit Versatz/Drehung kompakt, sonst wide) | wide (Fläche gegen Tiefe abwägen) | compact (volle Tiefe wie ohne Mosaik)
 }
 GLOW_SAMPLE = 30                # Frames je Nacht für die Glühmessung
 CHECKPOINT_S = 120              # Stack-Zustand spätestens alle 2 min sichern (Wiederaufnahme nach Abbruch)
@@ -1055,7 +1055,7 @@ class Pipeline:
         if (mst := next(iter(states.values())).meta).get("mosaic"):
             # Mosaik: Abdeckung so umrechnen, dass die gewählte Mindesttiefe bei 0,5 liegt – Zuschnitt, GraXpert-Lücken,
             # Stack-Reparatur und Farbkalibrierung arbeiten dann mit ihrer gewohnten Schwelle
-            cov, mos_info = mosaic.effective_cov(cov, mosaic.crop_mode(opt.get("mosaic_crop")))
+            cov, mos_info = mosaic.effective_cov(cov, mosaic.crop_mode(opt.get("mosaic_crop")), mst["mosaic"].get("area"))
             mos_info.update(mst["mosaic"], canvas=mosaic.canvas(mst), bg_match=mst.get("bg_match"))
         hotfix = None
         if palette == "OSC" and mean.shape[0] == 3 and None in states and not states[None].meta.get("defects"):
@@ -1063,8 +1063,8 @@ class Pipeline:
             prog(0.01, "Bearbeitung", "Hotpixel-Punkte im Stack suchen")
             mean, hotfix = stackfix.repair(mean, cov)
         kind = proj["kind"]
-        if not kind and (ext := objects.resolve_extended(proj["name"])) and ext.kind != "generic":
-            kind = ext.kind                                 # ältere Projekte: Typ nachträglich aus dem großen Katalog
+        if kind in (None, "generic") and (k := objects.kind_of(proj["obj_id"] or proj["name"])) and k != kind:
+            kind = k              # ältere Projekte bzw. Messier-Objekte, die nur ASTAP (ohne Art) kannte: Typ nachträglich setzen
             self.db.x("UPDATE projects SET kind=? WHERE id=?", (kind, project_id))
         is_comet = comet.active(proj, opt)
         pname = opt["profile"] if opt["profile"] != "auto" else ("comet" if is_comet else (kind or "generic"))
@@ -1072,8 +1072,8 @@ class Pipeline:
         params = {**objects.profile_for(pname), **user}
         if opt.get("star_separation"):
             params["star_separation"] = opt["star_separation"]
-        if mos_info is not None:
-            params["_mosaic"] = True                     # processing: kein Randglühen an den Mosaikrändern
+        if mos_info is not None and mos_info["crop"] != "field":
+            params["_mosaic"] = True                     # processing: kein Randglühen an den Mosaikrändern (Einzelfeld: Sensorränder)
         if params.get("star_separation") == "starnet" and not stars.starnet_path():
             params["star_separation"] = "off"           # Profil „nur StarNet“: ohne StarNet keine eigene Trennung
         gx: dict = {}

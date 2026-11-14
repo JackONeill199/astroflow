@@ -58,7 +58,10 @@ def attempts(info: dict, width: int, height: int) -> list[tuple[float, int]]:
 
 def main_object(ra: float, dec: float, fov_w: float, fov_h: float) -> objects.CatObject | None:
     """Hauptobjekt im Bild wie beim Scan gelöster Rohbilder: eingebauter Katalog, sonst großer ASTAP-Katalog."""
-    return objects.nearest(ra, dec) or objects.nearest_extended(ra, dec, 0.35 * min(fov_w, fov_h))
+    obj = objects.nearest(ra, dec) or objects.nearest_extended(ra, dec, 0.35 * min(fov_w, fov_h))
+    if obj is not None and obj.kind == "generic" and (k := objects.kind_of(obj.id)):
+        obj = replace(obj, kind=k)                  # Messier/Caldwell, die ASTAP ohne Art führt (M77 → Galaxie)
+    return obj
 
 
 def solution_path(work_dir: Path, pid: int) -> Path:

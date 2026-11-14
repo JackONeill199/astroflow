@@ -93,3 +93,17 @@ def test_detected_model_and_exposure_reach_the_profile(tmp_path):
     cam = {**dev, "id": "camera", "model": None, "alt_az": True}                  # eigene Kamera → „library“ mit Belichtung
     lib = planner.device_options(cam)[0]
     assert lib["id"] == "library" and devices.profile(lib)["exp"] == 20.0
+
+
+def test_vespera_model_not_from_serial_number():
+    """INSTRUME „vespera-<hex>“: eine „2“ in der Seriennummer macht keine Vespera II; das Bildformat entscheidet."""
+    from astroflow.modules.stacking import tutor
+    serial = "vespera-2a4f0c2b7e21"                                   # erfunden
+    d = tutor.detect_device([serial], (1080, 1920))
+    assert d["id"] == "vespera" and d["name"] == "Vaonis Vespera" and "model" not in d
+    assert "model" not in tutor.detect_device([serial])
+    assert tutor.detect_device([serial], (3, 2160, 3840))["model"] == "vespera2"
+    assert tutor.detect_device([serial], (3536, 3536))["name"] == "Vaonis Vespera Pro"
+    assert tutor.detect_device(["Vespera II"], (1080, 1920))["model"] == "vespera2"     # ausdrückliches Wort gewinnt
+    assert tutor.detect_device(["Vespera 2"])["model"] == "vespera2"
+    assert tutor.detect_device(["Vespera Pro"])["name"] == "Vaonis Vespera Pro"

@@ -187,7 +187,12 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    Pixel Sortieren + Greifen statt `nanmedian` (dort ~10× langsamer; gewöhnliche Stacks unverändert auf dem alten Weg). Ohne beides
    lief die Rosette mit ~0,13 Aufnahmen/s, mit beidem ~1,2/s.
    **Entwicklung:** `mosaic.effective_cov` wählt die Mindesttiefe t aus 0,5/0,4/0,3/0,22/0,15 (Fläche × √t maximal, `compact` = 0,5)
-   und bildet die Abdeckung so ab, dass t bei 0,5 liegt – Zuschnitt (`coverage_box`), GraXpert-Lückenfüllung, `stackfix`, Gaia-Farbkalibrierung
+   und bildet die Abdeckung so ab, dass t bei 0,5 liegt. **Einzelfeld** (`mosaic_crop` Standard `auto`, seit 14.11.2026, Anlass Vespera-II-
+   Nacht M77): Ist der so gewählte Ausschnitt höchstens `FIELD_MAX` = 1 Aufnahme groß (Fläche × `mosaic.area`), war es kein Mosaik, sondern
+   ein Feld mit Versatz und Bildfelddrehung (Vespera dithert ±250 px, Drehung 6° → 28° über die Nacht, Leinwand 3–4×) → crop „field“,
+   t = 0,5 wie ohne Mosaik und **ohne** `params._mosaic` (Randglühen wird wie bei jedem Stack entfernt). Gemessen: Vespera M77/M1/IC 443/M2
+   0,72–0,86 Aufnahmen, Stellina-Rosette (Mosaikmodus) 1,76 → bleibt `wide`. M77: 1666×853 (t 0,4, schwarze Ecke, oranger Rand) →
+   1436×790. `wide`/`compact` gelten weiter ausdrücklich – Zuschnitt (`coverage_box`), GraXpert-Lückenfüllung, `stackfix`, Gaia-Farbkalibrierung
    (cov > 0,9) arbeiten mit ihren gewohnten Schwellen. `params._mosaic` schaltet `remove_edge_glow` ab (Mosaikränder sind keine
    Sensorränder; das Glühen ist je Aufnahme schon abgezogen – sonst helle Bänder bei 60 % des Randbands). `results.stats.mosaic`
    (Fläche, Leinwand, Mindesttiefe, Zuschnittsart), Details im Bild-Tab. `skyquality.frame_links` enthält den Ursprung (Matrix

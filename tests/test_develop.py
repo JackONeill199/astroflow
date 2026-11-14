@@ -154,3 +154,19 @@ def test_develop_all_queues_only_projects_with_stack(tmp_path):
         assert c.post("/api/stacking/develop-all", json={}).json() == {"queued": 1}
         job = db.one("SELECT * FROM jobs ORDER BY id DESC LIMIT 1")
         assert job["project_id"] == pid and json.loads(job["options"]) == {"mode": "develop"}
+
+
+def test_develop_fixes_generic_kind_of_messier_object(tmp_path, monkeypatch):
+    """Projekt mit „generic“ (M77: kleiner Katalog kennt es nicht, ASTAP ohne Art) bekommt beim Entwickeln das Galaxienprofil."""
+    monkeypatch.setenv("ASTROFLOW_DEEPSKY", "0")
+    s = load_settings(tmp_path / "data")
+    db = DB(s.db_path)
+    pl = Pipeline(s, db, ReviewerConfig())
+    demo.generate(s.input_dir / "n", n_lights=8, n_darks=0, n_flats=0)
+    pl.scan()
+    pid = db.one("SELECT id FROM projects")["id"]
+    pl.stack(pid)
+    db.x("UPDATE projects SET name='M77', obj_id=NULL, kind='generic' WHERE id=?", (pid,))
+    rid = pl.develop(pid)
+    assert db.one("SELECT kind FROM projects WHERE id=?", (pid,))["kind"] == "galaxy"
+    assert json.loads(db.one("SELECT stats FROM results WHERE id=?", (rid,))["stats"])["profile"] == "galaxy"

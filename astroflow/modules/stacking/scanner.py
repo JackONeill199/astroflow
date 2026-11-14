@@ -195,8 +195,8 @@ def assign_project(info: FrameInfo, centers: dict[str, tuple[float, float, float
         return Assignment(f"{entry.id}|{cam}", entry.display, entry.id, entry.kind, entry.ra, entry.dec)
     if info.object and info.object.strip():
         nm = info.object.strip()
-        ext = objects.resolve_extended(nm)                     # Objekttyp (Profil) aus dem großen Katalog, Name bleibt
-        return Assignment(f"{objects.normalize_name(nm)}|{cam}", nm, None, ext.kind if ext else None, info.ra, info.dec)
+        # Objekttyp (Profil) aus Messier/Caldwell bzw. dem großen Katalog, Name bleibt
+        return Assignment(f"{objects.normalize_name(nm)}|{cam}", nm, None, objects.kind_of(nm), info.ra, info.dec)
     if info.ra is not None and info.dec is not None:
         for key, (ra, dec, rad) in centers.items():
             if key.endswith("|" + cam) and not key.startswith(COMET_KEY) and objects.ang_sep(info.ra, info.dec, ra, dec) < rad:
@@ -205,7 +205,7 @@ def assign_project(info: FrameInfo, centers: dict[str, tuple[float, float, float
         if near is None and info.solve:                        # gelöstes Feld: großen Katalog (ASTAP) befragen
             near = objects.nearest_extended(info.ra, info.dec, 0.35 * min(info.solve["fov_w"], info.solve["fov_h"]))
         if near:
-            return Assignment(f"{near.id}|{cam}", near.display, near.id, near.kind, near.ra, near.dec)
+            return Assignment(f"{near.id}|{cam}", near.display, near.id, objects.kind_of(near.id) or near.kind, near.ra, near.dec)
         nm = f"Feld RA {info.ra / 15:.2f}h Dec {info.dec:+.1f}°"
         return Assignment(f"FELD{info.ra:.1f}{info.dec:+.1f}|{cam}", nm, None, None, info.ra, info.dec)
     return Assignment(f"UNBEKANNT|{cam}", "Unbekanntes Objekt", None, None, None, None)

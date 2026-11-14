@@ -249,3 +249,20 @@ def test_maskierte_spur_am_mosaikrand_mit_randgewicht():
     state.swm[:] = 0
     Pipeline._add_masked_coverage(state, masked, ws, None)               # ohne Mosaik unverändert voll
     assert np.allclose(state.swm, 2.0)
+
+
+def test_auto_crop_single_field_vs_mosaic():
+    """auto: bringt der große Ausschnitt nicht mehr als eine Aufnahme (Einzelfeld mit Versatz und Bildfelddrehung,
+    Vespera), wird wie ohne Mosaik zugeschnitten; ein echtes Mosaik behält den großen Ausschnitt."""
+    yy, xx = np.mgrid[:400, :400]
+    r = np.hypot(yy - 200, xx - 200)
+    field = np.clip(1.2 - r / 150, 0, 1).astype(np.float32)               # tiefe Mitte, dünner Rand
+    _, info = mosaic.effective_cov(field, "auto", area=3.0)       # großer Ausschnitt 0,28 × 3 = 0,83 Aufnahmen
+    assert info["crop"] == "field" and info["min_depth"] == 0.5
+    _, wide = mosaic.effective_cov(field, "wide", area=3.0)
+    assert wide["crop"] == "wide" and wide["min_depth"] < 0.5               # ausdrücklich „groß“ bleibt groß
+    tiles = np.full((400, 400), 0.3, np.float32)                            # Raster: fast überall gleich tief
+    tiles[150:250, 150:250] = 1.0
+    _, info = mosaic.effective_cov(tiles, "auto", area=4.0)
+    assert info["crop"] == "wide" and info["crop_area"] * 4.0 > mosaic.FIELD_MAX
+    assert mosaic.crop_mode(None) == "auto" and mosaic.crop_mode("groß") == "wide"

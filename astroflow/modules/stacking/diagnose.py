@@ -36,7 +36,7 @@ from pathlib import Path
 
 import numpy as np
 
-DIAG_VERSION = 2          # 2 (12.11.2026): Himmelslage je Aufnahme, Montierung je Nacht, verworfene Aufnahmen nach Höhe
+DIAG_VERSION = 3          # 3 (14.11.2026): erste Vespera nicht mehr als Vespera II (Seriennummer mit „2“); 2 (12.11.2026): Himmelslage je Aufnahme, Montierung je Nacht, verworfene Aufnahmen nach Höhe
 Q_MIN = 3.0               # Grad: so weit muss sich der parallaktische Winkel drehen, damit die Montierung erkennbar ist
 ROT_ALTAZ = 0.6           # |Bilddrehung / parallaktischer Winkel| ab hier: Bildfeld dreht wie bei Alt-Az ohne Ausgleich
 ROT_STEADY = 0.2          # darunter: Bildfeld steht (EQ oder Derotator)

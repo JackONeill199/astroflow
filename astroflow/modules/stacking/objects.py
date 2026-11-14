@@ -195,6 +195,21 @@ def resolve_extended(name: str | None) -> CatObject | None:
     return _EXT_ALIAS.get((tok.group(1) + tok.group(2)).upper()) if tok else None
 
 
+def kind_of(name: str | None) -> str | None:
+    """Objektart (Bearbeitungsprofil) zu einem Namen: kleiner Katalog, dann alle Messier-/Caldwell-Objekte (`deepsky`),
+    dann ASTAP. Der kleine Katalog kennt nur ~60 Objekte, ASTAP führt viele Messier-Galaxien und Haufen ohne Art – M77
+    bekam so das allgemeine statt des Galaxienprofils (14.11.2026). None = unbekannt."""
+    if not name:
+        return None
+    if (c := resolve_name(name)) is not None:
+        return c.kind
+    from . import deepsky                                   # spät: deepsky importiert dieses Modul
+    if (t := deepsky.lookup(name)) is not None and t.kind in PROFILES:
+        return t.kind
+    ext = resolve_extended(name)
+    return ext.kind if ext is not None and ext.kind != "generic" else None
+
+
 def nearest_extended(ra: float, dec: float, radius_deg: float = 0.3, min_size: float = 1.0) -> CatObject | None:
     """Auffälligstes Objekt nahe der Bildmitte: groß und zentral gewinnt."""
     best, best_score = None, 0.0
@@ -218,7 +233,9 @@ def nearest_extended(ra: float, dec: float, radius_deg: float = 0.3, min_size: f
 # bg_dark         : Endgültige Hintergrundhelligkeit über den Schwarzpunkt (Stellina ~0,03; None = aus)
 # star_separation : off | auto (StarNet, falls installiert, sonst eigene Trennung) | starnet (nur StarNet, sonst aus) |
 #                   intern; je Objekt unter Optionen wählbar. Nebel seit 01.11.2026 „starnet“ (NGC 7000 mit echtem StarNet
-#                   deutlich besser; die eigene Trennung fand der Nutzer matschiger), übrige Profile aus.
+#                   deutlich besser; die eigene Trennung fand der Nutzer matschiger). Galaxien seit 14.11.2026 ebenfalls „starnet“
+#                   mit Sternverkleinerung 0,35 (M77 Vespera: Sterne dominierten die kleine Galaxie; M51/M81 Stellina mit StarNet
+#                   mehr Spiralarme, Kern nicht ausgebrannt). Übrige Profile aus.
 # grade / vibrance: Endbearbeitung (processing.grade): Strukturen 4–64 px im Objekt anheben / blasse Farben sättigen
 # star_brightness : Helligkeit der wieder eingesetzten Sterne (1 = wie bei normaler Streckung)
 # asinh           : Stärke der asinh-Kompression (größer = mehr Highlight-Schutz)
@@ -249,7 +266,7 @@ PROFILES: dict[str, dict] = {
     # aufgebläht (FWHM 6,0 statt 5,5 px bei Stellina, Stack 5,0); mit 0,3 knackiger, Nebel bleibt sichtbar. Übrige
     # Emissionsnebel (IC 405, NGC 6888, NGC 7000: 0,12–0,21) liegen darunter. M101 (Galaxie, SNR 11) braucht es weiter.
     "generic":      dict(gradient_degree=3, target_bg=0.08, asinh=30, denoise=0.3, chroma_denoise=1.5, saturation=1.35, contrast=0.25, sharpen=0.3, deconv=0, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=0.85),
-    "galaxy":       dict(gradient_degree=2, target_bg=0.07, asinh=120, denoise=0.3, chroma_denoise=1.5, saturation=1.30, contrast=0.35, sharpen=0.4, deconv=8, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=0.85),
+    "galaxy":       dict(gradient_degree=2, target_bg=0.07, asinh=120, denoise=0.3, chroma_denoise=1.5, saturation=1.30, contrast=0.35, sharpen=0.4, deconv=8, star_reduction=0.35, scnr=0.5, bg_dark=0.03, star_separation="starnet", star_brightness=0.85),
     "emission":     dict(gradient_degree=3, target_bg=0.08, asinh=40, denoise=0.3, chroma_denoise=1.5, saturation=1.50, contrast=0.35, sharpen=0.3, deconv=0, star_reduction=0.35, scnr=0.4, bg_dark=0.03, star_separation="starnet", star_brightness=0.85, linear_denoise_max=0.3, grade=1.0, vibrance=0.5),
     # reflection (seit 10.11.2026, Profi-Recherche NGC 7023): Staub liegt knapp über dem Himmel – heller Hintergrund
     # (target_bg 0,10, Schwarzpunkt 0,045 statt 0,03) und großskaliger Lokalkontrast 64/128 px (grade_large), GraXpert-Glättung 1,0

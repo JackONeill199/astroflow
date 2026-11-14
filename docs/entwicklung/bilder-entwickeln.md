@@ -17,7 +17,9 @@ Schritte 11–13 (Speicher, volles Laufwerk, Aufräumen): `daten-server.md`.
    (Perzentil 99,9 → alles darüber hart weiß; mehr asinh hilft dagegen nicht) → Korrektur hebt `white_pct` stufenweise
    (`WHITE_STEPS` 99,9/99,98/99,995) und asinh ×1,5. Objekttyp: Ordner-/OBJECT-Namen, die der kleine Katalog nicht kennt, bekommen
    ihren Typ aus ASTAPs `deep_sky.csv` (`objects.resolve_extended`; NGC 4490 lief vorher mit Profil „generic“, asinh 30 statt 120);
-   ältere Projekte ohne Typ werden beim Entwickeln nachgetragen.
+   ältere Projekte ohne Typ werden beim Entwickeln nachgetragen. Seit 14.11.2026 über `objects.kind_of`: kleiner Katalog → alle
+   Messier/Caldwell (`deepsky.lookup`) → ASTAP. ASTAP führt viele Messier-Objekte ohne Art (M77, M32, M85, M110, M56, M14, M103 …) –
+   M77 (Vespera) lief so mit „generic“. Projekte mit Typ fehlend oder „generic“ bekommen beim Entwickeln den richtigen Typ.
    **Kompakte helle Objekte** (13.11.2026, M1 Vespera 51 min: Kern weiße Scheibe, `burnt_core` blieb drei QC-Runden stehen):
    Bei Nebeln mit Sternentrennung streckt `stars.Stretch` (GHS) mit eigenem Weißpunkt – `white_pct`/`asinh` aus `adapt`/`corrections`
    wirken dort **nicht** auf den Nebel. GHS legte den Kern auf 0,7–0,84, `local_contrast` und `grade` multiplizierten ihn dann ins
@@ -144,7 +146,9 @@ Schritte 11–13 (Speicher, volles Laufwerk, Aufräumen): `daten-server.md`.
    - Messwerkzeug: Skripte im privaten Recherche-Ordner bzw. PR-Beschreibung (Kennzahlen am fertigen Bild, Himmel = dunkelste 12 %).
 8. **Bild-Tutor** (`tutor.py`, seit 01.11.2026, Nutzerwunsch „Tutor für Anfänger, Hinweise passend zum Instrument, Mond/Wetter der Nacht“):
    `build_report` (API `GET /results/{id}/tutor`, Cache in `results.stats.tutor` mit `TUTOR_VERSION`) = Gerät (`detect_device`:
-   INSTRUME/TELESCOP, Rückfall Bildformat; `DEVICES` mit vorsichtigen Tipps – nur Gesichertes; Stellina hat eine Tauheizung →
+   INSTRUME/TELESCOP, Rückfall Bildformat; Vespera-Modell nur aus ganzen Wörtern „II“/„2“/„Pro“, sonst Bildformat
+   (`VESPERA_SHAPES`: 1920×1080 Vespera, 3840×2160 II, 3536×3536 Pro) – INSTRUME ist „vespera-<hex-seriennummer>“, eine „2“
+   darin machte bis 14.11.2026 aus einer ersten Vespera eine Vespera II; `DEVICES` mit vorsichtigen Tipps – nur Gesichertes; Stellina hat eine Tauheizung →
    kein Tau-Befund aus Wetterdaten, Hinweis des Nutzers) + `night_conditions` (astropy offline, IERS-Download aus; ≤ 48 Stützzeiten
    je Nacht: Sonne/Mond/Objekthöhe, Mondphase aus Elongation; Frame-Verlauf aus `frames.metrics`: Sternzahl-Einbrüche, `bg`/`fwhm`-Trend
    letztes/erstes Fünftel, Exzentrizität > 0,8) + optional `fetch_weather` (Open-Meteo-Archiv/ERA5, Ort auf 0,1° gerundet, Cache
