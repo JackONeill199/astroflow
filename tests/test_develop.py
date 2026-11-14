@@ -170,3 +170,30 @@ def test_develop_fixes_generic_kind_of_messier_object(tmp_path, monkeypatch):
     rid = pl.develop(pid)
     assert db.one("SELECT kind FROM projects WHERE id=?", (pid,))["kind"] == "galaxy"
     assert json.loads(db.one("SELECT stats FROM results WHERE id=?", (rid,))["stats"])["profile"] == "galaxy"
+
+
+def test_galaxy_starless_curve_uses_white_point_not_hdr():
+    """Galaxien (starless_stretch blend/curve): ausgebrannter Kern → Weißpunkt wie ohne Trennung, nicht zuerst hdr
+    (hdr machte den abgeschnittenen Kern von M31 zu einer grauen Scheibe)."""
+    qc = {"issues": [{"code": "burnt_core", "text": ""}], "metrics": {"bg": 0.03}}
+    base = {"asinh": 120, "denoise": 0.3, "chroma_denoise": 1.5, "saturation": 1.3, "target_bg": 0.07,
+            "star_separation": "starnet", "starless_stretch": "blend"}
+    adj = develop.corrections(qc, base)
+    assert adj["white_pct"] == develop.WHITE_STEPS[1] and "hdr" not in adj
+    assert develop.corrections(qc, {**base, "starless_stretch": "ghs"}) == {"hdr": develop.HDR_STEPS[0]}
+
+
+def test_protect_core_keeps_galaxy_core_from_starnet():
+    """StarNet entfernt den sternförmigen Kern einer hellen Galaxie: die Kernregion kommt aus dem Original zurück,
+    ein Feldstern abseits bleibt entfernt."""
+    from astroflow.modules.stacking import processing
+    yy, xx = np.mgrid[0:300, 0:400].astype(np.float32)
+    bulge = 0.4 * np.exp(-(((yy - 150) / 40) ** 2 + ((xx - 200) / 60) ** 2))
+    core = 0.5 * np.exp(-((yy - 150) ** 2 + (xx - 200) ** 2) / 8)
+    star = 0.5 * np.exp(-((yy - 40) ** 2 + (xx - 60) ** 2) / 8)
+    img = np.repeat((0.02 + bulge + core + star)[None], 3, 0)
+    starless = np.repeat((0.02 + bulge)[None], 3, 0)                   # wie StarNet: Kern und Stern weg
+    out, frac = processing.protect_core(img, starless)
+    assert 0 < frac < 0.05
+    assert out[0, 150, 200] == pytest.approx(img[0, 150, 200], rel=0.02)     # Kern bleibt
+    assert out[0, 40, 60] == pytest.approx(starless[0, 40, 60], abs=1e-3)     # Feldstern bleibt entfernt

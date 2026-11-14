@@ -691,6 +691,37 @@ def denoise_multiscale(img: np.ndarray, strength: float, chroma: float = 1.0, co
     return (out[None] + chroma_out).astype(np.float32)
 
 
+BLEND_RANGE = (0.15, 0.5)    # starless_stretch „blend“: ab dieser Helligkeit (Kanalkurve) gilt die Kanalkurve statt GHS
+
+
+def _blend_stretch(ghs_t, curve_t, lo: float, hi: float):
+    """Schwaches Signal mit GHS (Spiralarme, Halo hell), helle Teile mit der Kanalkurve (Kern kompakt, Verlauf bleibt) –
+    Gewicht nach der Helligkeit der Kanalkurve. Weißpunkt/asinh der Qualitätskontrolle wirken so auf den Kern."""
+    class _T:
+        steps = getattr(ghs_t, "steps", None)
+
+        def __call__(self, a):
+            g, c = ghs_t(a), curve_t(a)
+            w = smoothstep(luminance(c), lo, hi)[None]
+            return (g + w * (c - g)).astype(np.float32)
+    return _T()
+
+
+def protect_core(img: np.ndarray, starless: np.ndarray, lo: float = 0.35, hi: float = 0.6) -> tuple[np.ndarray, float]:
+    """Hellen, ausgedehnten Objektkern vor der Sterntrennung schützen: Wo das geglättete sternlose Bild zum hellsten Teil
+    des Objekts gehört, bleibt das Original (Kern, Sterne darin). StarNet hält den sternförmigen Kern großer Galaxien für
+    einen Stern – M31 bekam so eine graublaue Scheibe statt des Kerns (kanalweise unterschiedlich gesättigte Differenz
+    Original − sternlos). Gibt das geschützte sternlose Bild und den Flächenanteil der Maske zurück."""
+    L = luminance(starless)
+    B = ndi.gaussian_filter(L, max(2.0, max(L.shape) / 300))
+    med = float(np.median(B))
+    top = float(B.max())
+    if top <= med:
+        return starless, 0.0
+    m = smoothstep((B - med) / (top - med), lo, hi).astype(np.float32)
+    return (starless + m[None] * (img - starless)).astype(np.float32), float(m.mean())
+
+
 def shrink_stars(stars: np.ndarray, amount: float) -> np.ndarray:
     """Sternebene verkleinern: Grauwert-Erosion (Ränder nach innen) und etwas dunkler – wirkt nur auf Sterne."""
     er = np.stack([ndi.grey_erosion(c, size=(3, 3)) for c in stars])
@@ -1014,14 +1045,24 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
     elif sep:
         starless, _, how = starsep.separate(img, fwhm, str(p.get("star_separation", "auto")), log)
         stats["star_separation"] = how
+        if p.get("core_protect"):
+            starless, stats["core_protect"] = protect_core(img, starless)
+            stats["core_protect"] = round(stats["core_protect"], 4)
         show(starless)
-        log("Stretch (GHS)")
-        T = starsep.Stretch(starless, float(p["target_bg"]), full=img)
         # Sterne mit der kanalweisen Kurve (knackig, Kerne weiß – wie Stellina), Nebel mit GHS
         Ts = channel_curve(img, float(p["target_bg"]), float(p["asinh"]), float(p.get("white_pct", 99.9)))
+        mode = p.get("starless_stretch") or "ghs"
+        if mode == "curve":
+            log("Stretch")
+            T = Ts                                  # Galaxien: dieselbe Kurve wie ohne Trennung (Kern bleibt kompakt)
+        else:
+            log("Stretch (GHS)")
+            T = starsep.Stretch(starless, float(p["target_bg"]), full=img)
+            if mode == "blend":
+                T = _blend_stretch(T, Ts, *BLEND_RANGE)
         stars_s = np.clip(Ts(img) - Ts(starless), 0, 1)
         img = T(starless)
-        stats["ghs"] = T.steps
+        stats["ghs"] = getattr(T, "steps", None)
         del starless
     else:                                                  # ohne Trennung (Sternhaufen): knackige Kanalkurve
         log("Stretch")
