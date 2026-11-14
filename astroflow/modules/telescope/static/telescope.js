@@ -481,7 +481,7 @@
     });
     render();
     poll();
-    return { destroy() { clearTimeout(timer); sv.stop(); dv.stop(); alarm(null); } };
+    return { destroy() { clearTimeout(timer); sv.stop(); dv.stop(); } };   // Alarm läuft weiter (globales Status-Polling)
   }
 
   // ----------------------------------------------------------- Einstellungen --- //
@@ -615,7 +615,10 @@
     nav: [{ href: '#/teleskop', label: 'Teleskop', icon: 'target', key: 'telescope', area: 'work' }],
     routes: [[/^\/teleskop$/, 'telescope', telescopeView]],
     settings,
-    status: (st, badge) => badge('telescope', st.modules.telescope?.busy_jobs, true),
+    status: (st, badge) => {                       // Alarm auf jeder Seite, nicht nur in #/teleskop
+      badge('telescope', st.modules.telescope?.busy_jobs, true);
+      alarm(st.modules.telescope?.alarm || null);
+    },
     async summary(st) {
       const s = st.modules.telescope || {};
       return { title: 'Teleskop', icon: 'target', href: '#/teleskop', sub: `${MODE[s.mode] || 'Autopilot aus'}${s.simulated ? ' · Simulation' : ''}`,

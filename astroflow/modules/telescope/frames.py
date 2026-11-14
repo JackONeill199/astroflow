@@ -120,6 +120,7 @@ class Collector:
         self.unit, self.input_dir = unit, Path(input_dir)
         self.ftp = FtpFrames(host)
         self.folders: dict[tuple, str] = {}        # (id(Item), Start dieses Versuchs) → Ordner am Gerät
+        self.attempt: tuple | None = None          # laufender Versuch (Item, Startzeit)
         self.count = 0
         self.error: str | None = None
         self._stop = threading.Event()
@@ -140,26 +141,36 @@ class Collector:
         return base / safe_name(parts[-2]) if len(parts) >= 2 else base
 
     def _loop(self):
-        last = None
         while not self._stop.wait(self.EVERY):
-            p = self.unit.pilot
-            cur = p._current()
-            try:
-                if cur and p.state.step == "capture":
-                    self._take(cur, final=False)
-                if last is not None and last is not cur and last.status in ("fertig", "verdeckt", "abgebrochen"):
-                    self._take(last, final=True)          # Rest nach dem Ende des Ziels
-                last = cur or last
-                self.error = None
-            except Exception:
-                traceback.print_exc()
-                if self.error is None:
-                    self.error = "Bilder konnten nicht vom Teleskop geholt werden (FTP)."
-                    p.log(self.error, "warn")
+            self.step()
 
-    def _take(self, item, final: bool):
-        key = (id(item), item.real_start)          # neuer Versuch desselben Ziels (Weiter, Wiederöffnen) → neuer Ordner am Gerät
-        folder, got = self.ftp.fetch(lambda fo: self.dest(item, fo), self.folders.get(key), final=final, since=item.real_start)
+    def step(self):
+        """Ein Durchgang (auch für Tests). Ein *Versuch* = (Ziel, Startzeit). Endet er – fertig, verdeckt, Pause, Wetterpause,
+        neuer Versuch –, wird sein Ordner einmal vollständig abgeholt, auch die zuletzt geschriebenen Bilder."""
+        p = self.unit.pilot
+        cur = p._current()
+        try:
+            done = self.attempt
+            if done and not (cur is done[0] and cur.real_start == done[1]):
+                self.attempt = None
+                self._take(done[0], final=True, start=done[1])          # Rest nach dem Ende dieses Versuchs
+            if cur and p.state.step == "capture":
+                if self.attempt is None:
+                    self.attempt = (cur, cur.real_start)
+                self._take(cur, final=False, start=cur.real_start)
+            self.error = None
+        except Exception:
+            traceback.print_exc()
+            if self.error is None:
+                self.error = "Bilder konnten nicht vom Teleskop geholt werden (FTP)."
+                p.log(self.error, "warn")
+
+    def _take(self, item, final: bool, start: float | None = None):
+        start = item.real_start if start is None else start
+        key = (id(item), start)                     # neuer Versuch desselben Ziels (Weiter, Wiederöffnen) → neuer Ordner am Gerät
+        if final and key not in self.folders:
+            return                                  # von diesem Versuch nie einen Ordner gesehen – nichts Fremdes holen
+        folder, got = self.ftp.fetch(lambda fo: self.dest(item, fo), self.folders.get(key), final=final, since=start)
         if folder:
             self.folders[key] = folder
         if got:

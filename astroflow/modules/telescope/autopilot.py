@@ -133,6 +133,7 @@ class Autopilot:
         self.dark: dict | None = None
         self.frames_fetched = 0
         self.plan_note: str | None = None
+        self.known: TelescopeState | None = None   # letzter Zustand MIT Verbindung (für Not-Aus ohne Verbindung)
         self.lock = threading.RLock()
 
     # ------------------------------------------------------------ Protokoll --- #
@@ -244,6 +245,16 @@ class Autopilot:
         cur = self._current()
         if cur:
             self._end_item(cur, "abgebrochen" if force else "geplant", why, now)
+        if not self.state.connected:
+            # Ohne Verbindung lässt sich Einklappen weder senden noch bestätigen. War das Teleskop zuletzt eingeklappt (oder nie
+            # verbunden), gibt es nichts zu tun; stand es zuletzt offen, sofort deutlich warnen statt Minuten später.
+            if self.known is None or self.known.parked:
+                self.log("Keine Verbindung – laut letztem Stand ist das Teleskop eingeklappt." if self.known else
+                         "Keine Verbindung zum Teleskop – es wurde von AstroFlow nicht bewegt.", "info", now)
+                return
+            self.alarm = "Keine Verbindung zum Teleskop – es stand zuletzt offen. Bitte sofort von Hand prüfen und einklappen!"
+            self.log(self.alarm, "bad", now)
+            return
         try:
             if force and self.state.master != "us":
                 self.driver.take_control()
@@ -272,6 +283,8 @@ class Autopilot:
         except DriverError:
             s = TelescopeState(connected=False)
         prev, self.state = self.state, s
+        if s.connected:
+            self.known = s
         ch = self.machine.update(s)
         if ch and not self.machine.plausible(*ch) and ch[1] != "getrennt":
             self.log(f"Unerwarteter Wechsel: {ch[0]} → {ch[1]}", "warn", now)
@@ -331,7 +344,7 @@ class Autopilot:
             self.lost_at = now
             fb = prev.device_plan or (self.cfg["fallback"] and any(i.status == "aktiv" for i in self.items))
             self.log("Verbindung zum Teleskop verloren." + (" Der Plan im Gerät arbeitet weiter und klappt am Ende ein." if fb else ""), "bad", now)
-        if self.mode != "aus" and now - self.last_connect >= RECONNECT_EVERY:
+        if self.mode in ("laeuft", "wartet") and now - self.last_connect >= RECONNECT_EVERY:
             self.last_connect = now
             try:
                 self.driver.connect()
@@ -357,7 +370,7 @@ class Autopilot:
         p["tries"] += 1
         self.log(f"Einklappen noch nicht bestätigt – Versuch {p['tries']} von {PARK_TRIES}.", "warn", now)
         try:
-            if s.connected and s.master != "us":
+            if s.connected and s.master == "none":            # nur freie Kontrolle nehmen, nie der App wegnehmen
                 self.driver.take_control()
             self.driver.park()
         except DriverError:

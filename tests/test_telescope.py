@@ -651,10 +651,64 @@ def test_live_bilder_neuer_versuch_neuer_ordner(tmp_path):
     col.ftp = frames.FtpFrames("x", ftp_factory=lambda: FakeFtp(tree))
     item_ = item(M31, 0.0, 3.0)
     item_.real_start = dt.datetime(2026, 11, 20, 18, 0, tzinfo=dt.timezone.utc).timestamp()
+    col._take(item_, final=False)
     col._take(item_, final=True)
     tree["user"]["p"]["02-observation-m31"] = {"_m": "20261120200000", "01-images-initial": {"img-0000.fits": b"b"}}
     item_.real_start = dt.datetime(2026, 11, 20, 20, 0, tzinfo=dt.timezone.utc).timestamp()   # Weiter nach Pause: neuer Versuch
+    col._take(item_, final=False)
     col._take(item_, final=True)
     base = tmp_path / "Teleskop" / "vespera" / "2026-11-20" / "M31"
     assert (base / "01-observation-m31" / "img-0000.fits").read_bytes() == b"a"
     assert (base / "02-observation-m31" / "img-0000.fits").read_bytes() == b"b"
+
+
+def test_not_aus_ohne_verbindung_kein_fehlalarm():
+    """Nie verbunden bzw. zuletzt eingeklappt: kein Alarm. Zuletzt offen und Verbindung weg: sofort deutliche Warnung."""
+    clock = sim.ManualClock(T0)
+    d = sim.SimDriver(clock)
+    p = ap.Autopilot(d, ap.Env(site=lambda n: SITE, plan=lambda n, m: []), clock=clock)
+    p.emergency(clock.now())
+    run(p, clock, 0.3, step=10)
+    assert p.alarm is None and not p.park_pending
+    p2, d2, c2 = make([item(M31, 0.1, 3.0)], sim.Scenario(offline=[(T0 + 0.5 * H, T0 + 2 * H)]))
+    run(p2, c2, 0.6)                                    # offen, dann Verbindung weg
+    p2.emergency(c2.now())
+    assert p2.alarm and "Keine Verbindung" in p2.alarm
+
+
+def test_kontrolle_nicht_zurueckholen_nach_pause_oder_trennen():
+    """Pause bzw. Trennen: AstroFlow verbindet sich nicht selbst neu und nimmt der App die Kontrolle nicht weg."""
+    p, d, clock = make([item(M31, 0.1, 3.0)])
+    run(p, clock, 0.5)
+    p.pause(clock.now())
+    d.disconnect()
+    n = d.commands.count("takeControl")
+    run(p, clock, 0.5)
+    assert d.commands.count("takeControl") == n and not d.connected
+    p.mode = "fertig"
+    run(p, clock, 0.5)
+    assert d.commands.count("takeControl") == n
+
+
+def test_restbilder_nach_pause_werden_abgeholt(tmp_path):
+    """Pause beendet das Ziel als „geplant“ – die zuletzt geschriebenen Bilder dieses Versuchs kommen trotzdem."""
+    from astroflow.modules.telescope import frames
+    imgs = {"_m": "20261120180500", "img-0000.fits": b"a"}
+    tree = {"user": {"p": {"_m": "20261120180500", "01-observation-m31": {"_m": "20261120180500", "01-images-initial": imgs}}}}
+    it = item(M31, 0.0, 3.0)
+    it.status, it.real_start = "aktiv", T0 + 3600
+    pilot = type("P", (), {"night": "2026-11-20", "log": lambda *a, **k: None, "frames_fetched": 0,
+                           "state": TelescopeState(step="capture"), "_current": lambda self: it if it.status == "aktiv" else None})()
+
+    class U:
+        cfg = {"model": "vespera"}
+    U.pilot = pilot
+    col = frames.Collector(U(), tmp_path, "10.0.0.1")
+    col.ftp = frames.FtpFrames("x", ftp_factory=lambda: FakeFtp(tree))
+    col.step()
+    col.step()                                         # img-0000 stabil → geholt
+    imgs["img-0001.fits"] = b"bb"                      # gerade geschrieben, dann Pause
+    it.status, it.real_start = "geplant", None
+    col.step()
+    out = tmp_path / "Teleskop" / "vespera" / "2026-11-20" / "M31" / "01-observation-m31"
+    assert sorted(x.name for x in out.iterdir()) == ["img-0000.fits", "img-0001.fits"]
