@@ -32,6 +32,9 @@ NOVA_URL = "https://nova.astrometry.net/api"
 
 # Bekannte Bildmaßstäbe (Bogensekunden/Pixel des Rohbilds) als Startwert für den Solver
 KNOWN_SCALES = {"seestar s50": 2.39, "seestar s30": 3.68, "vespera": 3.0, "stellina": 1.24}
+# Vespera-Modelle (Erkennung über tutor.detect_device: Wort im Namen, sonst Bildformat – INSTRUME ist meist „vespera-<seriennummer>“):
+# Vespera 200 mm/2,9 µm, Vespera II 250 mm/2,9 µm (IMX585), Vespera Pro 250 mm/2,0 µm (IMX676)
+VESPERA_SCALES = {"vespera": 3.0, "vespera2": 2.39, "vespera_pro": 1.65}
 
 _ASTAP_CANDIDATES = (
     r"C:\Program Files\astap\astap_cli.exe", r"C:\Program Files\astap\astap.exe",
@@ -175,6 +178,10 @@ def _hints(path: str, shape_hw: tuple[int, int], instrument: str | None) -> dict
     if scale is None:
         inst = (instrument or "").lower()
         scale = next((v for k, v in KNOWN_SCALES.items() if k in inst), None)
+        if "vespera" in inst:
+            from .tutor import detect_device
+            d = detect_device([inst], shape_hw)
+            scale = VESPERA_SCALES[d.get("model") or ("vespera_pro" if d["name"].endswith("Pro") else "vespera")]
     if scale:
         h["scale"] = scale
         h["fov_h"] = shape_hw[0] * scale / 3600

@@ -70,6 +70,12 @@ def test_hints_from_header(tmp_path):
     q = tmp_path / "y.fits"
     fits.PrimaryHDU(np.zeros((10, 10), np.uint16)).writeto(q)
     assert platesolve._hints(str(q), (1920, 1080), "Seestar S50")["fov_h"] == pytest.approx(1920 * 2.39 / 3600)
+    # Vespera ohne Brennweite im Kopf: Maßstab je Modell (Wort im Namen, sonst Bildformat; erfundene Seriennummer mit „2“)
+    serial = "vespera-2a4f0c2b7e21"
+    assert platesolve._hints(str(q), (1080, 1920), serial)["scale"] == 3.0
+    assert platesolve._hints(str(q), (2160, 3840), serial)["scale"] == 2.39
+    assert platesolve._hints(str(q), (3536, 3536), serial)["scale"] == 1.65
+    assert platesolve._hints(str(q), (1080, 1920), "Vespera II")["scale"] == 2.39
 
 
 def test_scan_solves_once_per_group_and_finds_object(fake_astap, tmp_path):
