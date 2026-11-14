@@ -38,8 +38,14 @@ WEATHER_EVERY = 900          # s zwischen zwei Wetterabfragen
 RECONNECT_EVERY = 30
 PARK_CONFIRM_S = 150         # so lange darf Einklappen dauern (Probe 3: ~47 s, plus evtl. laufendes Öffnen ~49 s)
 PARK_TRIES = 3
-WINDOW_FRAMES = 6            # Fenster für „fast nur verworfene Bilder“
+# „Fast nur verworfene Bilder“ (Echtbetrieb 14.11.2026: ein kurzer Wolkenzug im 6er-Fenster sperrte C 51 bei 33 % Verwurf):
+# verworfen über das Fenster UND entweder insgesamt mindestens TOTAL_BAD oder schon BAD_GRACE_S am Stück – so lange
+# nimmt das Gerät weiter auf (ein Wolkenzug ist meist vorher durch).
+WINDOW_FRAMES = 10
 BAD_RATIO = 0.8
+TOTAL_BAD = 0.5
+BAD_GRACE_S = 10 * 60
+CLOUDY = 60                  # % Bewölkung laut Wetterdaten: dann nie „sicher“ ein Hindernis
 OK_MEMORY = 20 * 60          # Erfolg in anderer Richtung gilt so lange als Beleg „kein Wolkenhimmel“
 OTHER_DIR = 20.0             # Grad Abstand = andere Richtung
 BLOCK_AZ = 10.0              # gesperrte Richtung: ±Azimut …
@@ -129,6 +135,7 @@ class Autopilot:
         self.ok_marks: deque = deque(maxlen=200)     # (t, az, alt) gute Bilder
         self.fail_marks: deque = deque(maxlen=50)    # (t, az, alt)
         self.samples: deque = deque(maxlen=60)       # (frames, rejected) des aktiven Ziels
+        self.bad_since: float | None = None          # seit wann das Fenster fast nur verworfene Bilder zeigt
         self.weather: dict | None = None
         self.weather_t = 0.0
         self.weather_offline = False
@@ -569,7 +576,7 @@ class Autopilot:
             self.idle_since = None if working else (self.idle_since or now)
             if s.target and s.target.get("id") != cur.id and not s.device_plan:
                 self._end_item(cur, "abgebrochen", "anderes Ziel am Gerät", now)
-            elif self._failed(cur, s):
+            elif self._failed(cur, s, now):
                 return self._failure(cur, s, now)
             elif self.idle_since is not None and now - self.idle_since >= (STALL_S if cur.seen else 2 * STALL_S):
                 return self._stalled(cur, s, now)
@@ -657,6 +664,7 @@ class Autopilot:
         it.status, it.real_start, it.why = "aktiv", now, ""
         it.frames = it.stacked = it.rejected = 0
         self.samples.clear()
+        self.bad_since = None
         _, _, it.az, it.alt = self.free(it.ra, it.dec, now)
         ok = False
         caps = getattr(self.driver, "capabilities", frozenset())
@@ -691,17 +699,24 @@ class Autopilot:
         if not self.samples or self.samples[-1][0] != s.frames:
             self.samples.append((s.frames, s.rejected))
 
-    def _failed(self, it: Item, s: TelescopeState) -> bool:
+    def _failed(self, it: Item, s: TelescopeState, now: float) -> bool:
         if s.target and s.target.get("id") != it.id:
             return False
         if s.astrometry_failed:
             return it.seen                # nur, wenn das Gerät an *diesem* Versuch gearbeitet hat (kein alter Fehler)
-        if s.frames < WINDOW_FRAMES or not self.samples:
+        base = next((x for x in reversed(self.samples) if x[0] <= s.frames - WINDOW_FRAMES), None) \
+            if s.frames >= WINDOW_FRAMES else None
+        if base is None or (s.rejected - base[1]) / max(1, s.frames - base[0]) < BAD_RATIO:
+            if self.bad_since is not None and base is not None:
+                self.log(f"{it.name}: wieder brauchbare Bilder – war nur ein Wolkenzug.", "info", now)
+            self.bad_since = None if base is not None else self.bad_since
             return False
-        base = next((x for x in reversed(self.samples) if x[0] <= s.frames - WINDOW_FRAMES), None)
-        if base is None:
-            return False
-        return (s.rejected - base[1]) / max(1, s.frames - base[0]) >= BAD_RATIO
+        if s.rejected / max(1, s.frames) >= TOTAL_BAD:
+            return True
+        if self.bad_since is None:
+            self.bad_since = now
+            self.log(f"{it.name}: fast nur verworfene Bilder – vermutlich ein Wolkenzug, nehme weiter auf.", "info", now)
+        return now - self.bad_since >= BAD_GRACE_S
 
     def _stalled(self, it: Item, s: TelescopeState, now: float):
         """Ziel aktiv, aber das Gerät tut seit `STALL_S` nichts (Beobachtung selbst beendet oder nie begonnen): nicht endlos
@@ -739,6 +754,8 @@ class Autopilot:
         self.fail_marks.append((now, az, alt))
         h = self.weather_now(now)
         clear_forecast = h is not None and h.get("cloud") is not None and h["cloud"] < 30
+        cloudy = h is not None and h.get("cloud") is not None and h["cloud"] >= CLOUDY
+        self.bad_since = None
         self._cmd("stop", self.driver.stop, now=now)
         if other_fail and not elsewhere_ok and not clear_forecast:
             self._end_item(it, "geplant", "", now)
@@ -751,19 +768,29 @@ class Autopilot:
             self.clouds_at = now
             self.log(f"Auch {it.name} ohne Sterne ({why}) – das sind Wolken, kein Hindernis.", "bad", now)
             return self._hold(Hold("clouds", "Wolken im Bild gemessen – Teleskop wird eingeklappt."), now)
-        again = any(sky.ang_dist(b["az"], b["alt"], az, alt) <= BLOCK_AZ and now - b["t"] > OK_MEMORY for b in self.blocked)
-        sure = elsewhere_ok or clear_forecast or again
+        # „Sicher“ ein Hindernis erst, wenn dieselbe Richtung in einem früheren, getrennten Versuch schon gescheitert ist
+        # (unsichere Sperren laufen nach OK_MEMORY ab → neuer Versuch) und andere Richtungen klar sind; nie bei Wolken laut
+        # Wetterdaten. Nur dann ein Vorschlag für die Horizontmaske – ein einzelnes Scheitern sperrt nur vorläufig.
+        again = any(sky.ang_dist(b["az"], b["alt"], az, alt) <= BLOCK_AZ and now - b["t"] > OK_MEMORY for b in self.blocked) \
+            or any(abs((q["az"] - az + 540) % 360 - 180) <= BLOCK_AZ and now - q["t"] > OK_MEMORY for q in self.proposals)
+        sure = again and (elsewhere_ok or clear_forecast) and not cloudy
         self._end_item(it, "verdeckt", why, now)
         mark = {"az": round(az, 1), "alt": round(alt, 1), "t": now, "target": it.name, "sure": sure}
         self.blocked.append(mark)
-        near = next((q for q in self.proposals if abs((q["az"] - mark["az"] + 540) % 360 - 180) <= BLOCK_AZ), None)
-        if near:                                     # dieselbe Richtung: einen Vorschlag mit der höchsten Höhe behalten
-            near.update({k: mark[k] for k in ("az", "alt", "t", "target")} if mark["alt"] >= near["alt"] else {"t": mark["t"]})
-            near["sure"] = near["sure"] or mark["sure"]
+        if sure:
+            near = next((q for q in self.proposals if abs((q["az"] - mark["az"] + 540) % 360 - 180) <= BLOCK_AZ), None)
+            if near:                                 # dieselbe Richtung: einen Vorschlag mit der höchsten Höhe behalten
+                near.update({k: mark[k] for k in ("az", "alt", "t", "target")} if mark["alt"] >= near["alt"] else {"t": mark["t"]})
+                near["sure"] = True
+            else:
+                self.proposals.append(dict(mark))
+        if sure:
+            tail = "dieselbe Richtung scheitert erneut, andere sind klar – also ein Hindernis."
+        elif cloudy:
+            tail = "laut Wetterdaten bewölkt, also eher Wolken – versuche es später noch einmal."
         else:
-            self.proposals.append(dict(mark))
-        self.log(f"{it.name} verdeckt ({why}) bei Azimut {az:.0f}°, Höhe {alt:.0f}° – "
-                 + ("andere Richtungen sind klar, also ein Hindernis." if sure else "vermutlich ein Hindernis.")
+            tail = f"vielleicht ein Hindernis, vielleicht eine Wolke – neuer Versuch in {OK_MEMORY // 60} min."
+        self.log(f"{it.name} verdeckt ({why}) bei Azimut {az:.0f}°, Höhe {alt:.0f}° – {tail}"
                  + " Weiter mit dem nächsten freien Ziel.", "warn", now)
         nxt = self._next_free(now)
         if nxt:

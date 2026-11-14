@@ -102,12 +102,17 @@ def test_ganze_nacht_und_einklappen_am_ende():
 
 
 def test_hindernis_wird_erkannt_und_als_vorschlag_gemerkt():
-    p, d, clock = make([item(M31, 0.2, 1.7), item(M45, 1.7, 3.2), item(M81, 3.2, 4.0)], sim.Scenario(obstacles=[WALL]))
-    run(p, clock, 2.0)
+    """Erstes Scheitern sperrt nur vorläufig (kein Vorschlag); nach 20 min neuer Versuch, scheitert dieselbe Richtung
+    erneut, während andere klar sind → sicher ein Hindernis, Vorschlag für die Horizontmaske."""
+    p, d, clock = make([item(M31, 0.2, 1.7), item(M45, 1.7, 4.0), item(M81, 4.0, 4.6)], sim.Scenario(obstacles=[WALL]))
+    run(p, clock, 1.9)
+    assert not p.proposals and p.blocked and not p.blocked[0]["sure"]
+    assert "neuer Versuch in 20 min" in texts(p)
+    run(p, clock, 0.5)
     assert p.proposals and p.proposals[0]["target"] == "M45" and p.proposals[0]["sure"]
     assert 60 <= p.proposals[0]["az"] <= 120
-    assert "Hindernis" in texts(p)
-    run(p, clock, 2.3)
+    assert "also ein Hindernis" in texts(p)
+    run(p, clock, 2.5)
     m45 = [i for i in p.items if i.id == "M45"]
     assert any(i.status == "fertig" for i in m45), "später, über der Wand, wird M45 noch einmal versucht"
     assert d.state().parked
@@ -118,14 +123,44 @@ def test_wolken_sind_kein_hindernis():
     nach dem Wolkenband und 20 stabilen Minuten weiter."""
     sc = sim.Scenario(clouds=[(T0 + 1.0 * H, T0 + 1.6 * H)])
     p, d, clock = make([item(M31, 0.2, 1.3), item(M15, 1.3, 3.0)], sc)
-    run(p, clock, 1.2)
+    run(p, clock, 1.4)
     assert p.mode == "wartet" and p.hold.kind == "clouds"
     assert not p.proposals and not p.blocked
     assert "Wolken" in texts(p)
-    run(p, clock, 0.1)
     assert d.state().parked
-    run(p, clock, 1.0)
+    run(p, clock, 0.9)
     assert p.mode == "laeuft" and any(i.status == "aktiv" for i in p.items)
+
+
+def test_kurzer_wolkenzug_sperrt_keine_richtung():
+    """Echtbetrieb 14.11.2026 (C 51): ein paar Minuten Wolke mitten in einer guten Aufnahme → weiter aufnehmen, keine
+    Sperre, kein Vorschlag."""
+    sc = sim.Scenario(clouds=[(T0 + 1.0 * H, T0 + 1.0 * H + 7 * 60)])
+    p, d, clock = make([item(M31, 0.2, 1.6)], sc)
+    run(p, clock, 1.7)
+    m31 = p.items[0]
+    assert m31.status == "fertig" and m31.rejected > ap.WINDOW_FRAMES
+    assert not p.blocked and not p.proposals
+    assert "Wolkenzug" in texts(p) and "verdeckt" not in texts(p)
+
+
+def test_einmal_verworfen_ist_kein_sicheres_hindernis():
+    """Lange Wolke nur über einem Ziel, andere Richtung vorher klar: vorläufig gesperrt, aber nicht „sicher“, kein Vorschlag."""
+    p, d, clock = make([item(M31, 0.0, 3.0)], cfg={"fallback": False})
+    run(p, clock, 0.5)
+    cur = p.items[0]
+    p.ok_marks.append((clock.now() - 60, 200.0, 30.0))          # gutes Bild in ganz anderer Richtung
+    d.sc.clouds = [(clock.now(), clock.now() + 2 * H)]
+    run(p, clock, 0.4)
+    assert cur.status == "verdeckt" and p.blocked and not p.blocked[0]["sure"] and not p.proposals
+
+
+def test_bei_bewoelkung_nie_sicheres_hindernis():
+    p, d, clock = make([item(M45, 1.7, 3.2), item(M81, 0.2, 1.7)], sim.Scenario(obstacles=[WALL]),
+                       forecast=_forecast([(-2, 14, 65)]))   # bewölkt, aber unter der Einklapp-Grenze
+    run(p, clock, 2.6)
+    assert not p.proposals and all(not b["sure"] for b in p.blocked)
+    assert "eher Wolken" in texts(p)
 
 
 def _forecast(spans):
@@ -962,6 +997,6 @@ def test_alter_astrometriefehler_trifft_neues_ziel_nicht():
     cur = p.items[0]
     s = d.state()
     cur.status, cur.seen = "aktiv", False
-    assert p._failed(cur, s) is False
+    assert p._failed(cur, s, clock.now()) is False
     cur.seen = True
-    assert p._failed(cur, s) is True
+    assert p._failed(cur, s, clock.now()) is True

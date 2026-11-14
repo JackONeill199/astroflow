@@ -242,9 +242,13 @@ Gebaut nach Abschnitt 4–7; Abweichungen und Details:
 - **Plan:** Blöcke des Planers für Nacht und Gerät (`plan_items`, `observatory.plan`); ohne Plan im Simulator eine Vorführ-Nacht
   aus dem Katalog (`demo_items`); Ziele von Hand (`POST /targets`, Katalogname). Lücke im Plan → nächstes freies Ziel früher beginnen.
 - **Ersatzziel** für ein verdecktes/zu tiefes Ziel höchstens 30 min am Stück (`SUB_MAX`), danach neuer Versuch beim geplanten Ziel.
-- **Hindernis oder Wolke** (`_failure`): Scheitern (Astrometrie oder ≥ 80 % verworfene Bilder in den letzten 6) + gutes Bild in anderer
-  Richtung (≥ 20°) in den letzten 20 min, das dort nicht durch späteres Scheitern überholt ist, oder klare Vorhersage, oder dieselbe
-  Richtung scheitert nach > 20 min erneut → sicheres Hindernis. Sonst „vermutlich“ (Sperre läuft nach 20 min ab). Scheitert danach eine
+- **Hindernis oder Wolke** (`_failed`/`_failure`, seit dem Echtbetrieb 14.11.2026 strenger – ein kurzer Wolkenzug hatte C 51 bei 33 %
+  Verwurf gesperrt): Scheitern = Astrometrie gescheitert oder ≥ 80 % verworfen in den letzten 10 Bildern **und** zusätzlich ≥ 50 %
+  verworfen insgesamt bzw. schon 10 min am Stück (`BAD_GRACE_S`; so lange nimmt das Gerät weiter auf, Protokoll „Wolkenzug“).
+  **Sicheres Hindernis** nur, wenn dieselbe Richtung in einem früheren, getrennten Versuch (> 20 min vorher) schon gescheitert ist
+  **und** eine andere Richtung (≥ 20°) in den letzten 20 min gute Bilder lieferte, die dort nicht durch späteres Scheitern überholt
+  sind, oder die Vorhersage klar ist – nie bei ≥ 60 % Bewölkung laut Wetterdaten (`CLOUDY`). Nur dann ein Vorschlag für die
+  Horizontmaske. Sonst „vielleicht“ (Sperre läuft nach 20 min ab, dann neuer Versuch). Scheitert danach eine
   andere Richtung ohne Erfolg dazwischen → Wolken: einklappen, Vermutungen zurücknehmen, nach 20 stabilen Minuten wieder öffnen.
   Gesperrt wird ±10° Azimut bis 5° über die gescheiterte Höhe; Vorschläge je Richtung zusammengefasst, Übernahme in die Horizontmaske
   nur per Knopf mit Rückfrage (`horizon_with`: Stützstelle ± Nachbarn auf Höhe + 2°, nie absenken).
