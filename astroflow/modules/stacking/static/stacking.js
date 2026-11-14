@@ -1194,6 +1194,7 @@ async function importView(el) {
   // Zwei Einstiege: kopieren (Hochladen) oder vorhandenen Ordner einbinden (Hauptordner durchsuchen, nichts wird kopiert)
   let mode = store.get('import.mode', 'copy') === 'link' ? 'link' : 'copy';
   el.innerHTML = `<div class="pagehead"><div><h1>Importieren</h1><p>Rohaufnahmen (FITS) und fertige Astrofotos (JPG, PNG, TIFF). Objekt, Kamera und Nacht erkennt AstroFlow selbst.</p></div></div>
+    <div id="impScope"></div>
     <div class="imp-choice" role="tablist" aria-label="Art des Imports">
       <button class="imp-opt" role="tab" data-m="copy"><span class="imp-ic">${icon('upload')}</span><span><b>Dateien nach AstroFlow kopieren</b>
         <small>Hochladen legt eine Kopie im Datenordner an – gut für einzelne Nächte und fertige Bilder.</small></span></button>
@@ -1224,6 +1225,7 @@ async function importView(el) {
     $('#impCopy', el).hidden = m !== 'copy'; $('#lib', el).hidden = m !== 'link';
   };
   $$('.imp-opt', el).forEach(b => b.onclick = () => setMode(b.dataset.m));
+  AF.modules.telescope?.importPanel?.($('#impScope', el));          // Teleskop-Modul: Aufnahmen direkt vom Gerät (falls erreichbar)
   setMode(mode);
   const dz = $('#dz');
   $('#fi').onchange = (e) => { upload([...e.target.files]); e.target.value = ''; };

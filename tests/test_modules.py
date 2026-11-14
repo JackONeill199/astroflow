@@ -14,8 +14,9 @@ def test_alle_module_laden(tmp_path, monkeypatch):
     monkeypatch.setenv("SKYTRACE_HOME", str(tmp_path / "st"))
     with TestClient(create_app(load_settings(tmp_path / "d"))) as c:
         info = c.get("/api/app").json()
-        assert [m["id"] for m in info["modules"]] == ["stacking", "skytrace", "sage"]
-        assert all(m["available"] and not m["error"] for m in info["modules"])
+        assert [m["id"] for m in info["modules"]] == ["stacking", "skytrace", "sage", "telescope"]
+        assert [m["id"] for m in info["modules"] if m["enabled"]] == ["stacking", "skytrace", "sage"]
+        assert all(m["available"] and not m["error"] for m in info["modules"] if m["enabled"])
         assert info["build"] and "/m/skytrace/evidence.js" in info["modules"][1]["scripts"]
         st = c.get("/api/status").json()
         assert set(st["modules"]) == {"stacking", "skytrace", "sage"} and st["busy"] == 0
@@ -56,3 +57,17 @@ def test_settings_store_abschnitte(tmp_path):
     st.update("sage", {"nova_key": None})
     data = json.loads((tmp_path / "s.json").read_text(encoding="utf-8"))
     assert data == {"solver": {"backend": "astap"}, "sage": {"story_model": "x"}}
+
+
+def test_teleskop_standardmaessig_aus(tmp_path, monkeypatch):
+    """Teleskop-Modul: ohne Einstellung und ohne ASTROFLOW_MODULES aus; Einstellungen → Module & System bzw. die Umgebung schalten es ein."""
+    from astroflow.core.modules import enabled_ids
+    from astroflow.core.store import SettingsStore
+    monkeypatch.delenv("ASTROFLOW_MODULES", raising=False)
+    store = SettingsStore(tmp_path / "settings.json")
+    on = enabled_ids(store)
+    assert on["telescope"] is False and on["stacking"] and on["skytrace"] and on["sage"]
+    store.update("modules", {"telescope": True})
+    assert enabled_ids(store)["telescope"] is True
+    monkeypatch.setenv("ASTROFLOW_MODULES", "stacking,telescope")
+    assert enabled_ids(SettingsStore(tmp_path / "leer.json"))["telescope"] is True

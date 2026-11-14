@@ -35,6 +35,7 @@ Stack: Python 3.12+ · numpy/scipy/astropy · FastAPI + uvicorn · SQLite · Van
 | SkyTrace (Überblick, feste Regeln, Architektur) | `astroflow/modules/skytrace/AGENTS.md` |
 | SkyTrace: Erkennung · Satelliten/Uhr · Standorte/Rückrechnung · 3D-Erde/Karten · Lauf-Ansicht/Video/Auto · Statistik/Erfolge | `docs/entwicklung/skytrace-erkennung.md`, `skytrace-satelliten-uhr.md`, `skytrace-standorte.md`, `skytrace-erde-3d.md`, `skytrace-lauf-ansicht.md`, `skytrace-statistik-erfolge.md` |
 | Sage | `astroflow/modules/sage/AGENTS.md`, `docs/SAGE.md` |
+| Teleskop selbst steuern: Simulator, Autopilot, Treiber-Plugins, Vaonis nur lesend (Status, Import, Live-Bilder) | `astroflow/modules/telescope/AGENTS.md`, `docs/entwicklung/teleskopsteuerung.md` |
 | Ausbauplan (historisch), Bearbeitungs-Recherche, Release | `docs/PLAN.md`, `docs/BEARBEITUNG.md`, `docs/RELEASE.md`, `docs/PUBLIC-RELEASE.md` |
 
 ## Produkt-Architektur (Kern + Module)

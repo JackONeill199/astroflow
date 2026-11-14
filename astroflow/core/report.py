@@ -103,6 +103,8 @@ def private_words(ctx) -> list[str]:
             words.update({str(p), str(Path(p).resolve()), Path(p).name})
         except OSError:
             pass
+    for d in plugin_dirs(ctx):                            # Treiber-Plugins: Ordner und Namen maskieren
+        words.update({d, Path(d).name} - {"plugins"})
     book = ctx.services.get("sites")
     if book is not None:
         try:
@@ -121,6 +123,40 @@ def private_words(ctx) -> list[str]:
     # Allgemeine Wörter nicht maskieren (sonst wird halber Text zu <privat>)
     common = {"astroflow", "data", "daten", "home", "user", "users", "standort", "beobachtungsort", "localhost", "admin"}
     return sorted((w for w in words if len(w) >= 3 and w.lower() not in common), key=len, reverse=True)[:400]
+
+
+def plugin_dirs(ctx) -> list[str]:
+    """Ordner, die Module als privat melden (Teleskop: Treiber-Plugins, ggf. mit Schlüsseln) – plus immer `<daten>/plugins`."""
+    root = Path(ctx.settings.data_dir) / "plugins"
+    out = [str(root)]
+    try:                                                    # auch ohne Teleskop-Modul: jeder Plugin-Ordner (Name wird maskiert)
+        out += [str(d) for d in root.iterdir() if d.is_dir()][:50]
+    except OSError:
+        pass
+    for fn in ctx.services.get("report_private_dirs") or []:
+        try:
+            out += [str(x) for x in fn() or []]
+        except Exception:
+            pass
+    return out
+
+
+def drop_private_lines(rows: list[str], dirs: list[str]) -> list[str]:
+    """Traceback-Zeilen aus Plugin-Ordnern samt der folgenden Quelltextzeile entfernen (Quelltext könnte Schlüssel zeigen)."""
+    low = [d.lower().replace("/", "\\") for d in dirs if d] + [d.lower().replace("\\", "/") for d in dirs if d]
+    out, skip = [], False
+    for r in rows:
+        if skip:
+            skip = False
+            if r.startswith("    ") and not r.lstrip().startswith("File "):
+                continue
+        if any(d in r.lower() for d in low):
+            if not out or out[-1] != "(Zeile aus einem Treiber-Plugin ausgeblendet)":
+                out.append("(Zeile aus einem Treiber-Plugin ausgeblendet)")
+            skip = True
+            continue
+        out.append(r)
+    return out
 
 
 _TOKEN = "\x00privat\x00"
@@ -195,7 +231,7 @@ def environment(app_state) -> dict:
             "python": platform.python_version(), "modules": sorted(mods)}
 
 
-def log_excerpt(data_dir: Path, scrub: Scrubber, lines: int = LOG_LINES) -> str:
+def log_excerpt(data_dir: Path, scrub: Scrubber, lines: int = LOG_LINES, private: list[str] | None = None) -> str:
     """Letzte Zeilen aus server.log.err (Fehlerausgabe des Starters), sonst server.log – bereinigt."""
     for name in ("server.log.err", "server.log"):
         p = Path(data_dir) / name
@@ -207,7 +243,8 @@ def log_excerpt(data_dir: Path, scrub: Scrubber, lines: int = LOG_LINES) -> str:
                 raw = f.read().decode("utf-8", errors="replace")
         except OSError:
             continue
-        rows = [r for r in raw.splitlines()[1 if size > LOG_TAIL_BYTES else 0:] if r.strip()][-lines:]
+        rows = [r for r in raw.splitlines()[1 if size > LOG_TAIL_BYTES else 0:] if r.strip()]
+        rows = drop_private_lines(rows, list(private or []) + [str(Path(data_dir) / "plugins")])[-lines:]
         if rows:
             return "\n".join(scrub(r, 600) for r in rows)
     return "(kein Protokoll gefunden – AstroFlow wurde nicht über den Starter gestartet)"
@@ -259,7 +296,7 @@ def compose(ctx, app_state, body: dict) -> dict:
         f"Module: {', '.join(env['modules']) or '–'}",
         f"Ansicht: {clean_route(str(body.get('route') or ''))}",
     ] + (["", "Browser-Fehler (neueste zuletzt):", *errs] if errs else []))
-    log = log_excerpt(ctx.settings.data_dir, scrub) if body.get("log") else ""
+    log = log_excerpt(ctx.settings.data_dir, scrub, private=plugin_dirs(ctx)) if body.get("log") else ""
     fields = {"title": "[Fehler] " + txt["title"], "version": env["version"], "os": os_choice(),
               "install": {"Windows-Paket": "Windows-Installer"}.get(env["install"], env["install"]) if env["install"] != "Paket" else "",
               "module": AREAS.get(area, ""), "steps": txt["steps"], "expected": txt["expected"], "actual": txt["actual"],

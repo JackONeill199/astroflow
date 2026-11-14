@@ -172,6 +172,13 @@ exportierst du den Plan als `.ics`-Datei für dein Kalenderprogramm.
 
 *(Demodaten mit erfundenem Ort, ohne Wetter.)*
 
+## Mit dem Teleskop aufnehmen (Modul „Teleskop“, optional)
+Unter Einstellungen → Module & System lässt sich das Teleskop-Modul einschalten (standardmäßig aus). Es arbeitet den Plan aus dem
+Beobachtungsplaner ab: öffnet und richtet das Teleskop aus, schwenkt von Ziel zu Ziel, erkennt verdeckte Richtungen und schlägt sie für die
+Horizontmaske vor und klappt bei Wolken, Wind, Taugefahr und Morgendämmerung ein – mit großem Knopf „Sofort einklappen“. Ausprobieren lässt
+es sich ohne Gerät im **Simulator**. Echte Geräte steuert AstroFlow über **Treiber-Plugins**; für Vaonis-Teleskope gehen ohne Plugin der Status,
+der Import vorhandener Aufnahmen direkt vom Teleskop (Import-Seite) und das Live-Abholen der Rohbilder.
+
 ## Standorte und Horizont
 
 Orte legst du unter Einstellungen → Standorte **nach Datum** an (Zeiträume, einzelne Nächte, Standard-Ort); „Heute bin ich in …“ wechselt den Ort für die

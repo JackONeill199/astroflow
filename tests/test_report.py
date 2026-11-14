@@ -148,3 +148,30 @@ def test_issue_form_has_prefilled_fields():
         assert f"id: {fid}\n" in form, fid
     for opt in report.AREAS.values():
         assert f"- {opt}\n" in form, opt
+
+
+def test_plugins_nie_im_bericht(app_client):
+    """Treiber-Plugins (Teleskop) können Schlüssel enthalten: Traceback-Zeilen aus <daten>/plugins samt Quelltextzeile fallen weg,
+    Ordner- und Plugin-Namen werden maskiert, lange Schlüssel-Zeichenketten ebenso."""
+    c, data = app_client
+    plug = data / "plugins" / "geheimes-plugin"
+    plug.mkdir(parents=True, exist_ok=True)
+    key = "O8GD9ttc5pbBQvCK1W7TfVOmd4ZYlgOZ22Qvz6GhMZoI8bsTWC84EPBZ2Pz"       # erfundener, schlüsselähnlicher Wert
+    (data / "server.log.err").write_text(
+        "Traceback (most recent call last):\n"
+        f"  File \"{plug / 'driver.py'}\", line 9, in connect\n"
+        f"    SECRET = \"{key}\"\n"
+        "  File \"C:\\Python\\Lib\\socket.py\", line 1, in recv\n"
+        "    return x\n"
+        "TimeoutError: timed out\n", encoding="utf-8")
+    d = c.post("/api/report/compose", json={"title": "Teleskop", "actual": "geheimes-plugin hängt", "log": True}).json()
+    whole = d["url"] + d["clipboard"] + str(d["preview"])
+    for leak in (key, str(plug), "geheimes-plugin", "SECRET = "):
+        assert leak not in whole, leak
+    assert "Treiber-Plugin ausgeblendet" in d["clipboard"] and "TimeoutError" in d["clipboard"] and "in recv" in d["clipboard"]
+
+
+def test_private_zeilen_filter():
+    rows = [r'  File "D:\daten\plugins\x\driver.py", line 1', "    geheim()", "ValueError", '  File "D:/daten/plugins/x/a.py"', "    b()"]
+    out = report.drop_private_lines(rows, [r"D:\daten\plugins"])
+    assert out == ["(Zeile aus einem Treiber-Plugin ausgeblendet)", "ValueError", "(Zeile aus einem Treiber-Plugin ausgeblendet)"]

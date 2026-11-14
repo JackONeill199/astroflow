@@ -41,6 +41,7 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
     sites_mod.use_book(book)                    # Nachtdatum (sites.night_of) nach Ortszeit der Ortsliste
     ctx.services["site_for"] = book.site_for
     book.on_change = lambda: ctx.emit("sites.changed")    # Bilder rechnet Himmelsqualität/Gerätediagnose betroffener Nächte neu
+    ctx.services["report_private_dirs"] = []    # Module hängen hier Funktionen an: () → [Ordner, die nie in Fehlerberichte gehören]
     ctx.services["night_sources"] = []          # Module hängen hier Funktionen an: () → [{night, label, module}]
     loaded = load_modules(ctx)
     if only is not None:

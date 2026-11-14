@@ -43,8 +43,15 @@ class Module(BaseModule):
         ctx.services["asteroid_tally"] = self.asteroid_tally       # Sage-Erfolge: nachgewiesene Asteroiden
         ctx.services["site_sky"] = self.site_sky                  # Ortsliste: Himmelsqualität je Standort
         ctx.services["night_zero_points"] = self.night_zero_points  # Nullpunkte je Nacht/Gerät (SkyTrace: Satellitenhelligkeit)
+        ctx.services["scan_input"] = lambda: self.eng.scan_and_queue()        # Teleskop: nach dem Import vom Gerät einlesen
+        ctx.services["weather_forecast"] = self.weather_forecast    # Teleskop: Open-Meteo-Vorhersage (gleiche Schicht und Rundung wie Heute Nacht)
         if isinstance(ctx.services.get("night_sources"), list):   # Einstellungen → Standorte: Nachtliste
             ctx.services["night_sources"].append(self.nights)
+
+    def weather_forecast(self, site: dict, t0: float, t1: float) -> dict | None:
+        """Stündliche Vorhersage für [t0, t1] (`tonight._forecast`: Ort auf 0,1° gerundet, 1-h-Cache). Ausnahme = kein Netz."""
+        from . import tonight
+        return tonight._forecast([site["lat"], site["lon"]], self.ctx.settings.work_dir / "tutor", t0, t1)
 
     def _stacked(self, pid: int, rid: int):
         p = self.eng.db.one("SELECT name FROM projects WHERE id=?", (pid,))
