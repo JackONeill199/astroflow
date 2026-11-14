@@ -12,6 +12,7 @@ from . import MODELS, autopilot as ap, settings
 from .driver import DriverError, Target
 
 MAX_KEYS = 300
+CONFIRM_MSG = "Bitte bestätigen, dass sich der Arm frei bewegen kann."      # Oberfläche erkennt daran den Bestätigungsdialog
 NUM = {"cloud_max": (10, 100), "wind_max": (5, 80), "dew_min": (0, 10), "dew_min_stellina": (0, 10), "reopen_min": (5, 120),
        "min_alt": (10, 60), "exposure": (1, 60), "battery_min": (5, 50), "sim_speed": (1, 600)}
 
@@ -60,19 +61,23 @@ def build_router(mod) -> APIRouter:
         u.pilot.log("Verbindung getrennt.", "info", u.now())
         return {"ok": True}
 
+    def night_and_confirm(u, body: dict):
+        """Gemeinsam für Start und Weiter: aktuelle Nacht laden und – bei echtem Gerät – die Bestätigung für genau diese Nacht
+        verlangen. Durchgesetzt wird sie zusätzlich im Autopiloten direkt vor jedem Bewegungsbefehl (`Autopilot._cmd`)."""
+        p, now = u.pilot, u.now()
+        if p.night is None or p.night != p.current_night(now):
+            p.load_night(now)
+        if not p.confirmed(now):
+            if not body.get("confirm"):
+                raise HTTPException(409, CONFIRM_MSG)
+            p.confirm(now)
+
     @r.post("/start")
     def start(body: dict = Body(default={})):
         u = unit()
         p = u.pilot
         now = u.now()
-        if p.night is None or p.night != p.current_night(now):
-            p.load_night(now)                         # neue Nacht → neue Bestätigung (nie die vom Vortag weiterverwenden)
-        if not u.simulated and p.confirmed_night != p.night:
-            if not body.get("confirm"):
-                raise HTTPException(409, "Bitte bestätigen, dass sich der Arm frei bewegen kann.")
-            p.confirmed_night = p.night
-        if u.simulated:
-            p.confirmed_night = p.night
+        night_and_confirm(u, body)
         if not p.state.connected:
             try:
                 u.driver.connect()
@@ -90,8 +95,9 @@ def build_router(mod) -> APIRouter:
         return {"ok": True}
 
     @r.post("/resume")
-    def resume():
+    def resume(body: dict = Body(default={})):
         u = unit()
+        night_and_confirm(u, body)
         u.pilot.resume(u.now())
         return {"ok": True}
 

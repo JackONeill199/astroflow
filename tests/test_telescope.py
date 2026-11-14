@@ -631,6 +631,7 @@ def test_bestaetigung_gilt_nur_fuer_eine_nacht(tmp_path, monkeypatch):
         clock = sim.ManualClock(T0)
         u.clock, u.driver = clock, _FakeVaonisDriver(clock)
         u.pilot = ap.Autopilot(u.driver, u.pilot.env, u.pilot.cfg, clock=clock)
+        u.pilot.requires_confirm = True                                                         # wie bei einem echten Gerät
         assert c.post("/api/telescope/start", json={}).status_code == 409                    # erste Nacht: Bestätigung nötig
         assert c.post("/api/telescope/start", json={"confirm": True}).status_code == 200
         first = u.pilot.night
@@ -712,3 +713,41 @@ def test_restbilder_nach_pause_werden_abgeholt(tmp_path):
     col.step()
     out = tmp_path / "Teleskop" / "vespera" / "2026-11-20" / "M31" / "01-observation-m31"
     assert sorted(x.name for x in out.iterdir()) == ["img-0000.fits", "img-0001.fits"]
+
+
+def test_ohne_bestaetigung_kein_bewegungsbefehl():
+    """Echtes Gerät: ohne Bestätigung für die *aktuelle* Nacht kommt kein Öffnen/Ausrichten/GoTo beim Treiber an – weder beim
+    ersten Start noch nach einem Nachtwechsel (Takt, Wiederöffnen, Weiter). Einklappen bleibt immer möglich."""
+    p, d, clock = make([item(M31, 0.1, 30)], sim.Scenario(battery_per_h=0))       # M31 steht an beiden Abenden hoch
+    p.requires_confirm = True
+    run(p, clock, 0.2)
+    assert not [c for c in d.commands if c in ("open", "init") or c.startswith(("observe", "plan"))]
+    assert p.mode == "pausiert" and "Bestätigung" in texts(p)
+    p.confirm(clock.now()); p.resume(clock.now())
+    run(p, clock, 0.5)
+    assert "open" in d.commands and any(c.startswith(("observe", "plan")) for c in d.commands)
+    p.pause(clock.now())
+    run(p, clock, 13, step=60)                          # Dämmerung, Tag: eingeklappt (Wächter), Pause bleibt
+    n = len(d.commands)
+    p.resume(clock.now())                               # nächster Abend: „Weiter“ ohne neue Bestätigung
+    run(p, clock, 12, step=60)
+    moves = [c for c in d.commands[n:] if c in ("open", "init") or c.startswith(("observe", "plan"))]
+    assert moves == [] and p.mode == "pausiert"
+    p.emergency(clock.now())
+    assert "park" in d.commands[n:] or d.state().parked
+
+
+def test_api_weiter_verlangt_bestaetigung_der_neuen_nacht(tmp_path, monkeypatch):
+    app = _app(tmp_path, monkeypatch)
+    with TestClient(app, base_url="http://127.0.0.1:8766", client=("127.0.0.1", 50000), headers={"Origin": "http://127.0.0.1:8766"}) as c:
+        u = app.state.modules["telescope"].unit
+        clock = sim.ManualClock(T0)
+        u.clock, u.driver = clock, _FakeVaonisDriver(clock)
+        u.pilot = ap.Autopilot(u.driver, u.pilot.env, u.pilot.cfg, clock=clock)
+        u.pilot.requires_confirm = True
+        assert c.post("/api/telescope/start", json={"confirm": True}).status_code == 200
+        c.post("/api/telescope/pause")
+        clock.advance(24 * H)
+        r = c.post("/api/telescope/resume", json={})
+        assert r.status_code == 409 and "bestätigen" in r.json()["detail"]
+        assert c.post("/api/telescope/resume", json={"confirm": True}).status_code == 200

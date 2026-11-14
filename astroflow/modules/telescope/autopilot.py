@@ -45,6 +45,7 @@ OTHER_DIR = 20.0             # Grad Abstand = andere Richtung
 BLOCK_AZ = 10.0              # gesperrte Richtung: ±Azimut …
 BLOCK_ALT = 5.0              # … bis über die gescheiterte Höhe
 MAX_EVENTS = 300
+MOVES = ("open", "init", "observe", "device_plan", "focus")   # Befehle, die das Teleskop bewegen (Einklappen/Stoppen nie gesperrt)
 SUB_MAX = 1800              # Ersatzziel höchstens so lange am Stück
 OPEN = ("geplant", "verdeckt", "uebersprungen")     # noch nicht erledigt (verdeckt/übersprungen: neuer Versuch, sobald frei)
 
@@ -127,6 +128,7 @@ class Autopilot:
         self.alarm: str | None = None
         self.estop = threading.Event()
         self.confirmed_night: str | None = None
+        self.requires_confirm = False            # echtes Gerät: jede Nacht neu bestätigen, dass sich der Arm frei bewegen kann
         self.last_connect = 0.0
         self.lost_at: float | None = None
         self.warned: set = set()
@@ -150,8 +152,22 @@ class Autopilot:
             self.log(text, kind, now)
 
     # ------------------------------------------------------------- Befehle --- #
+    def confirmed(self, now: float) -> bool:
+        """Bewegung für die *aktuelle* Nacht freigegeben? (Simulator: immer)"""
+        return not self.requires_confirm or self.confirmed_night == self.current_night(now)
+
+    def confirm(self, now: float):
+        self.confirmed_night = self.current_night(now)
+
     def _cmd(self, what: str, fn, *a, now=None) -> bool:
         if self.estop.is_set() and what != "park":
+            return False
+        if what in MOVES and not self.confirmed(self._now() if now is None else now):
+            # Die eine Stelle, an der die Bestätigung je Nacht durchgesetzt wird: kein Öffnen/Ausrichten/GoTo ohne Freigabe für
+            # diese Nacht – egal ob über Start, Weiter, Takt nach Nachtwechsel oder Wiederöffnen nach Wetter.
+            if self.mode in ("laeuft", "wartet"):
+                self.mode = "pausiert"
+                self.log("Für diese Nacht fehlt die Bestätigung, dass sich der Arm frei bewegen kann – angehalten. Bitte „Weiter“ und bestätigen.", "warn", now)
             return False
         if not self.machine.can(what):
             return False
@@ -701,7 +717,7 @@ class Autopilot:
             "blocked": [{k: b[k] for k in ("az", "alt", "target", "sure")} for b in self.blocked],
             "proposals": [{k: p[k] for k in ("az", "alt", "target", "sure", "t")} for p in self.proposals],
             "alarm": self.alarm, "parking": bool(self.park_pending),
-            "confirmed": self.confirmed_night is not None and self.confirmed_night == self.night,
+            "confirmed": self.confirmed(now), "requires_confirm": self.requires_confirm,
         }
 
     def _track_of(self, it: Item) -> list[list[float]]:

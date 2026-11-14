@@ -455,14 +455,14 @@
       try {
         if (act === 'go') {
           askNotify();
-          if (d.mode === 'pausiert') await send(T + '/resume');
-          else {
-            let confirm = false;
-            if (!d.unit?.simulated && !d.confirmed) {
-              confirm = await confirmDlg('Teleskop bewegen?', 'Der Autopilot öffnet das Teleskop, richtet es aus und schwenkt zu den Zielen. Steht es frei, sodass sich der Arm ungehindert bewegen kann?', 'Ja, starten');
-              if (!confirm) return;
-            }
-            await send(T + '/start', { confirm });
+          const url = T + (d.mode === 'pausiert' ? '/resume' : '/start');
+          const ask = () => confirmDlg('Teleskop bewegen?', 'Der Autopilot öffnet das Teleskop, richtet es aus und schwenkt zu den Zielen. Steht es frei, sodass sich der Arm ungehindert bewegen kann?', 'Ja, starten');
+          let confirm = false;
+          if (d.requires_confirm && !d.confirmed) { if (!(confirm = await ask())) return; }
+          try { await send(url, { confirm }); } catch (err) {
+            if (confirm || !/bestätigen/i.test(err.message)) throw err;      // neue Nacht, die die Ansicht noch nicht kannte
+            if (!await ask()) return;
+            await send(url, { confirm: true });
           }
         } else if (act === 'pause') await send(T + '/pause');
         else if (act === 'park') { await send(T + '/park'); toast('Teleskop wird eingeklappt.'); }

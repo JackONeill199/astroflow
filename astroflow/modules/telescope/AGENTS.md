@@ -13,6 +13,9 @@ Konzept, Protokoll, Lizenzfrage und offene Proben: `docs/entwicklung/teleskopste
   Ein defektes Plugin darf AstroFlow nicht lahmlegen (feste Meldung, Simulator). Vertrag unverträglich geändert → `CONTRACT` erhöhen.
 - **Am echten Gerät nur mit ausdrücklicher Freigabe des Nutzers**, jede Probe einzeln. Tests nur gegen `sim.SimDriver`.
 - Ort nur an das Teleskop (`Driver.init`), nie in Protokoll, Status, Browser oder Dateien. Gerätekennungen bleiben im Adapter.
+- **Bestätigung je Nacht** (echtes Gerät): durchgesetzt an genau einer Stelle, `Autopilot._cmd` vor jedem Bewegungsbefehl (`MOVES`: Öffnen,
+  Ausrichten, GoTo/Beobachtung, Geräte-Plan, Fokus) gegen `current_night`. /start und /resume fragen sie über `night_and_confirm` ab (409 →
+  Dialog in der Oberfläche). Einklappen/Stoppen sind nie gesperrt. Neue Bewegungswege nur über `_cmd`.
 - „Sofort einklappen“ (`Autopilot.emergency`) geht ohne Warteschlange und ohne Takt-Sperre; `estop` sperrt danach jede Bewegung.
 - Sonnenmodus, WLAN-Band, Herunterfahren, Löschen, Firmware: im Adapter absichtlich nicht erreichbar.
 - FTP am Teleskop nur lesen (`frames.FtpFrames`: LIST/RETR), lokale Pfade nur aus geprüften Namen (`safe_name`, `img-NNNN.fits`).

@@ -37,6 +37,7 @@ class Unit:
         self.clock = None
         self.driver = self._driver(cfg)
         self.pilot = ap.Autopilot(self.driver, self._env(), {k: cfg[k] for k in ap.DEFAULTS}, clock=self.clock)
+        self.pilot.requires_confirm = not self.simulated
         self._stop = threading.Event()
         self.thread: threading.Thread | None = None
         self.collector = None
