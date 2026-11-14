@@ -3,6 +3,16 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.74.0 – 14.11.2026
+
+### Neu
+- **Galaxien mit StarNet:** Im Galaxienprofil werden Sterne und Galaxie jetzt mit StarNet getrennt und die Sterne leicht verkleinert – die Galaxie tritt hervor, statt zwischen großen Sternen unterzugehen. Ohne StarNet bleibt es wie bisher. Wirkt beim nächsten Entwickeln.
+- **Zuschnitt einzelner Felder:** Sitzungen mit Versatz (Dithering) und Bildfelddrehung, z. B. eine lange Vespera-Nacht, werden wie ein normaler Stack auf die gut belichtete Mitte zugeschnitten statt wie ein Mosaik; dünn belichtete Ränder, schwarze Ecken und Randglühen fallen weg. Echte Mosaike bleiben unverändert (Option `mosaic_crop`, Standard „auto“).
+
+### Behoben
+- Rund 60 Messier- und Caldwell-Objekte (z. B. M77, M32, M85, M108, M110) wurden mit dem allgemeinen statt dem passenden Profil entwickelt, weil die Profilwahl nur einen kleinen Katalog kannte. Jetzt gilt der vollständige Messier-/Caldwell-Katalog; betroffene Projekte werden beim nächsten Entwickeln korrigiert.
+- Die erste Vaonis Vespera wurde als „Vespera II/Pro“ angezeigt, weil eine Ziffer in der Seriennummer als Modellhinweis galt. Jetzt zählen nur ganze Wörter, sonst das Bildformat (1920×1080 Vespera, 3840×2160 Vespera II, 3536×3536 Vespera Pro). Plate-Solving startet mit dem passenden Bildmaßstab je Modell.
+
 ## 0.73.2 – 14.11.2026
 
 ### Behoben
