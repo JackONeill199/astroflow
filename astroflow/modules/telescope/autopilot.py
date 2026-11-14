@@ -48,7 +48,8 @@ MAX_EVENTS = 300
 MOVES = ("open", "init", "observe", "device_plan", "focus")   # Befehle, die das Teleskop bewegen (Einklappen/Stoppen nie gesperrt)
 RETRY_FIRST = 10            # abgelehnter Befehl: erster neuer Versuch nach … s, dann doppelt so lang …
 RETRY_MAX = 120             # … höchstens so lang
-GIVE_UP = {"open": 6 * 60, "init": 15 * 60, "observe": 10 * 60, "device_plan": 10 * 60, "focus": 10 * 60}  # dann echter Fehler
+# dann echter Fehler (Geräte-Plan fehlt absichtlich: er ist nur ein Rückfall, abgelehnt → normale Beobachtung)
+GIVE_UP = {"open": 6 * 60, "init": 15 * 60, "observe": 10 * 60, "focus": 10 * 60}
 # Erfahrungswerte je Phase in s (Vespera, Probe 3: Öffnen ~49 s, Einklappen ~47 s; Auto-Init mit Plate-Solving und Fokus
 # dauert ein paar Minuten). Gemessene Dauern ersetzen sie im laufenden Betrieb (`took`).
 EXPECT_S = {"oeffnet": 50.0, "richtet_aus": 240.0, "klappt_ein": 50.0}
@@ -178,9 +179,11 @@ class Autopilot:
                 self.mode = "pausiert"
                 self.log("Für diese Nacht fehlt die Bestätigung, dass sich der Arm frei bewegen kann – angehalten. Bitte „Weiter“ und bestätigen.", "warn", now)
             return False
+        if what in MOVES and (self.park_pending or self.mode not in ("laeuft", "wartet")):
+            return False                          # angehalten oder Einklappen läuft (z. B. Zeitgrenze im selben Takt): keine Bewegung
         if not self.machine.can(what):
             return False
-        if what == "park":                       # Not-Aus-Weg: nie verzögern (Wiederholung über _park_watch)
+        if what in ("park", "stop"):             # Einklappen/Stoppen nie verzögern (Einklappen wiederholt _park_watch)
             try:
                 fn(*a)
                 return True

@@ -830,3 +830,54 @@ def test_restdauer_beim_einrichten():
     assert v["phase"] == "richtet_aus" and v["eta"] and "noch ca." in v["phase_label"]
     run(p, clock, 0.1, step=2)
     assert "richtet_aus" in p.took and abs(p.took["richtet_aus"] - sim.INIT_S) < 10   # gemessene Dauer ersetzt den Erfahrungswert
+
+
+def test_zeitgrenze_keine_bewegung_im_selben_takt_und_geraeteplan_nur_rueckfall():
+    """Codex #126: Nach der Zeitgrenze (einklappen, anhalten) darf im selben Takt kein GoTo folgen; ein abgelehnter
+    Geräte-Plan ist nur ein Rückfall und löst keine Zeitgrenze aus."""
+    p, d, clock = make([item(M31, 0.1, 3.0)], cfg={"fallback": False})
+    p.retry["observe"] = {"first": clock.now() - 3600, "next": 0, "n": 3, "msg": "x"}
+    calls = []
+    real = d.observe
+
+    def no(*a, **k):
+        calls.append("observe")
+        raise ap.DriverError("abgelehnt")
+    d.observe = no
+    run(p, clock, 0.5)
+    assert p.mode == "pausiert" and "park" in d.commands
+    n = len(calls)
+    d.observe = real
+    p.mode = "laeuft"                                   # selbst wenn der Modus noch „läuft“: Einklappen steht an → keine Bewegung
+    p.park_pending = {"t": clock.now(), "tries": 0}
+    assert p._cmd("observe", d.observe, p.items[0].target, 10.0, now=clock.now()) is False
+    p.mode, p.park_pending = "pausiert", None
+    run(p, clock, 0.2)
+    assert len(calls) == n and not any(c.startswith("observe") for c in d.commands)
+    assert "device_plan" not in ap.GIVE_UP
+
+
+def test_stoppen_ohne_backoff():
+    p, d, clock = make([item(M31, 0.1, 3.0)])
+    run(p, clock, 0.5)
+    real, tries = d.stop, []
+
+    def once(*a):
+        tries.append(1)
+        if len(tries) == 1:
+            raise ap.DriverError("abgelehnt")
+        return real()
+    d.stop = once
+    p.pause(clock.now()); p.resume(clock.now()); run(p, clock, 0.05)
+    p.pause(clock.now())
+    assert len(tries) >= 2 and "stop" not in p.retry
+
+
+def test_keine_bewegung_waehrend_einklappen_ansteht():
+    """Steht Einklappen an (Zeitgrenze, Wächter), darf im selben Takt kein GoTo mehr raus – auch wenn die Phase noch „bereit“ ist."""
+    p, d, clock = make([item(M31, 0.1, 3.0)])
+    run(p, clock, 0.5)
+    assert p.machine.can("observe")
+    p.park_pending = {"t": clock.now(), "tries": 0}
+    n = len(d.commands)
+    assert p._cmd("observe", d.observe, p.items[0].target, 10.0, now=clock.now()) is False and len(d.commands) == n
