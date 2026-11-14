@@ -694,7 +694,24 @@ async function route() {
 // ----------------------------------------------------------------- Polling --- //
 // Gemeinsamer Status aller Module; laufende Aufträge (alle Module) als Anzeige oben + Meldung beim Fertigwerden
 let lastActive = null;   // key -> Auftrag (null = erster Durchlauf, noch nichts melden)
-async function poll() {
+// Verkettet statt setInterval: die nächste Runde startet erst 2,5 s nach der vorigen Antwort, verborgene Tabs pausieren.
+// Unter Last (Stacking) stapelten sich sonst Status-, Aktivitäts- und Listenabfragen, bis der Server minutenlang hinterherlief.
+// Ruft ein Modul poll() während einer laufenden Runde auf, folgt genau eine weitere Runde direkt danach.
+let pollRun = null, pollAgain = false, pollTimer = 0;
+function poll() {
+  if (pollRun) { pollAgain = true; return pollRun; }
+  clearTimeout(pollTimer);
+  pollRun = pollOnce().finally(() => {
+    pollRun = null;
+    if (pollAgain && !document.hidden) { pollAgain = false; poll(); } else { pollAgain = false; schedulePoll(); }
+  });
+  return pollRun;
+}
+function schedulePoll() {
+  clearTimeout(pollTimer);
+  pollTimer = document.hidden ? 0 : setTimeout(poll, 2500);
+}
+async function pollOnce() {
   try {
     const st = AF.status = await api('/status');
     const b = $('#busy');
@@ -1085,7 +1102,6 @@ async function boot() {
   $('#updBtn').onclick = () => updatePanel();
   await route();
   poll();
-  setInterval(() => { if (!document.hidden) poll(); }, 2500);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) clearTimeout(pollTimer); else poll(); });
 }
 boot();
