@@ -3,6 +3,14 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.75.0 – 14.11.2026
+
+### Neu
+- **Teleskop-Modul (zuschaltbar):** AstroFlow kann Smart-Teleskope selbst durch die Nacht führen – mit Simulator zum Ausprobieren, Live-Ansicht mit animiertem Teleskop, Zeitleiste und Ereignisprotokoll. Der Autopilot arbeitet den Beobachtungsplan aus dem Planer ab, prüft laufend Sichtbarkeit (Mindesthöhe, Horizontmaske), erkennt Hindernisse und Wolken und klappt bei Wetter, Tau, Dämmerung oder leerem Akku ein. Bewegungen am echten Gerät nur nach Bestätigung je Nacht; Einklappen und Not-Aus gehen immer. Echte Geräte werden über Treiber-Plugins angebunden; für Vaonis-Teleskope kann AstroFlow ohne Plugin den Status lesen und Aufnahmen vom Teleskop importieren. Standardmäßig aus – einschalten unter Einstellungen → Module & System.
+
+### Behoben
+- **Galaxienkerne:** Seit 0.74.0 nahm die Sterntrennung den sternförmigen Kern großer Galaxien (z. B. M31) als Stern heraus – es blieb ein grauer Fleck in einem flachen, aufgehellten Bulge. Der Kern bleibt jetzt aus dem Original erhalten, der Bulge fällt wieder zum Rand hin ab, Staubbänder reichen bis an den Kern und der Himmel ist dunkler. M81, M51 und M77 bekommen kompaktere Kerne.
+
 ## 0.74.0 – 14.11.2026
 
 ### Neu
