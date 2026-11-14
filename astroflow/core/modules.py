@@ -25,6 +25,9 @@ from .store import SettingsStore
 
 # Reihenfolge = Reihenfolge in Navigation, Übersicht und Einstellungen
 AVAILABLE = ("stacking", "skytrace", "sage", "telescope")
+# Ohne Einstellung und ohne ASTROFLOW_MODULES aus (Nutzerentscheidung 14.11.2026: Teleskop erst nach Einschalten unter
+# Einstellungen → Module & System) – für neue und bestehende Installationen gleich.
+DEFAULT_OFF = ("telescope",)
 
 
 @dataclass
@@ -117,9 +120,9 @@ class Loaded:
 
 
 def enabled_ids(store: SettingsStore) -> dict[str, bool]:
-    """Aktivierte Module: Einstellungen (Abschnitt `modules`) > Umgebung `ASTROFLOW_MODULES` > alle."""
+    """Aktivierte Module: Einstellungen (Abschnitt `modules`) > Umgebung `ASTROFLOW_MODULES` > alle außer `DEFAULT_OFF`."""
     env = os.environ.get("ASTROFLOW_MODULES")
-    base = {m: (m in [x.strip() for x in env.split(",")]) if env else True for m in AVAILABLE}
+    base = {m: (m in [x.strip() for x in env.split(",")]) if env else m not in DEFAULT_OFF for m in AVAILABLE}
     saved = store.get("modules")
     for m in AVAILABLE:
         if isinstance(saved.get(m), bool):
