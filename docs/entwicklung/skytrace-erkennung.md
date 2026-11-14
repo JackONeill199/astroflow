@@ -55,7 +55,8 @@ Umsetzung (`astroflow/modules/skytrace/motion_class.py`, doppelt lizenziert, au�
   – auch gegen eine nur grob passende Bahn; oder verkettete Spur, Satellitenprüfung mit Bahndaten ohne Treffer und ≥ 60″/s.
 - `satellite_or_plane` „Satellit oder Flugzeug“: verkettete Spur, Prüfung nicht möglich (keine Bahndaten/Belichtung/Standort) oder nur grob
   passende Bahn, oder ohne Treffer, aber langsamer als 60″/s (NGC 2244 L2: 23″/s – eher hoher Satellit, der im Archiv fehlt).
-- `asteroid` „Langsamer Beweger (Asteroid möglich)“: nur Punktbeweger (`kind='moving'`) mit ≤ 2″/s; schnellere Punktbeweger → `satellite_or_plane`.
+- `asteroid` „Langsamer Beweger (Asteroid möglich)“: nur Punktbeweger (`kind='moving'`) mit gemessenen ≤ 2″/s; schneller oder ohne Winkelmaß
+  bleibt neutral „Bewegungskandidat“ (keine Klasse allein aus Beispielgeschwindigkeiten).
 - Einzelbild-Spur ohne Merkmal: keine Aussage (Meteor, Satellit, Flugzeug bleiben offen).
 `link_tracks` nennt Ketten nur noch „Bewegtes Objekt in N Aufnahmen (Satellit oder Flugzeug)“. Der Server stuft bei jedem Lesen neu ein
 (`api.run_data`, `stats._run` → `motion_class.annotate`), ältere Läufe brauchen also keine Aktualisierung; `bericht.html` stuft beim

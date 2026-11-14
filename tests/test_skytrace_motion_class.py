@@ -79,7 +79,9 @@ def test_asteroid_nur_bei_langsamer_punktbewegung():
     slow = cand(kind="moving", hits=range(8), segment=[(100 + 0.1 * k, 100) for k in range(8)], frames=frames)
     fast = cand(kind="moving", hits=range(8), segment=[(100 + 5 * k, 100) for k in range(8)], frames=frames)
     assert mc.assess(slow)["verdict"] == "asteroid" and mc.assess(slow)["kind"] == "moving"
-    assert mc.assess(fast)["verdict"] == "satellite_or_plane"                 # 3″/s: zu schnell für einen Asteroiden
+    assert mc.assess(fast)["verdict"] is None                                 # 3″/s: keine Klasse aus der Geschwindigkeit allein
+    unknown = cand(kind="moving", hits=range(8), segment=[(100 + 0.1 * k, 100) for k in range(8)], frames=frames, plausibility={})
+    assert mc.assess(unknown)["verdict"] is None                              # ohne Winkelmaß nicht „langsam“ behaupten
 
 
 def test_server_rechnet_veraltete_einstufung_neu():

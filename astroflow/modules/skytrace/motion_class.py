@@ -184,17 +184,16 @@ def assess(c, others=()):
         features['frames'] = track.get('count')
     verdict = None
     if kind == 'moving':
+        # Geschwindigkeit nur als Kontext: „Asteroid möglich“ nur bei gemessener langsamer Bewegung; schneller oder unbekannt
+        # bleibt neutral „Bewegungskandidat“ (keine Klasse aus Beispielgeschwindigkeiten, skytrace/AGENTS.md).
         speed = mover_speed(c)
         features['speed_arcsec_s'] = round(speed, 3) if speed is not None else None
         if sat_state == 'strong':
             verdict = 'satellite'
-        elif speed is not None and speed > ASTEROID_MAX_ARCSEC_S:
-            verdict = 'satellite_or_plane'
-            reasons.append(f'Punktförmiger Beweger mit etwa {speed:.1f}″/s – zu schnell für einen Asteroiden (≤ {ASTEROID_MAX_ARCSEC_S:g}″/s).')
-        else:
+        elif speed is not None and speed <= ASTEROID_MAX_ARCSEC_S:
             verdict = 'asteroid'
-            reasons.append('Punktförmig, über viele Aufnahmen gleichmäßig gegen die Sterne bewegt'
-                           + (f' (etwa {speed:.2f}″/s)' if speed is not None else '') + ' – typisch für einen Asteroiden; ein Flugzeug quert das Bildfeld in Sekunden.')
+            reasons.append(f'Punktförmig, über viele Aufnahmen gleichmäßig gegen die Sterne bewegt (etwa {speed:.2f}″/s) – '
+                           'vereinbar mit einem Asteroiden; ein Flugzeug quert das Bildfeld in Sekunden.')
     elif sat_state == 'strong' and not pair:
         verdict = 'satellite'
         if blink:
