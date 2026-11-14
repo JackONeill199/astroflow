@@ -3,6 +3,18 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.76.0 – 14.11.2026
+
+### Neu
+- **Teleskop – Verbinden ohne Start:** Neuer Knopf „Verbinden“ bzw. „Trennen“. Verbinden liest nur den Status (Akku, Speicher, Lage) und bewegt das Gerät nicht. Die Kontrolle übernimmt AstroFlow nur, wenn sie frei ist – steuert gerade die Handy-App, bleibt sie dort. Die Knöpfe im Kopf der Teleskop-Seite sind ruhiger: eine Hauptaktion (Verbinden bzw. Start), Einklappen als gut erkennbarer Not-Aus.
+- **Teleskop – „Richtet sich ein“ mit Restdauer:** Während das Teleskop sich öffnet und ausrichtet, zeigt die Seite die voraussichtliche Restdauer (aus Erfahrungswerten, danach aus gemessenen Dauern).
+
+### Behoben
+- **Oberfläche während des Stackings:** Status, Aktivität und Objektliste antworten auch unter Last wieder in Sekundenbruchteilen statt nach bis zu einer Minute. Die Seite fragt erst wieder, wenn die vorige Antwort da ist, teure Listen werden zwischengespeichert und Datenbankzugriffe neben rechnenden Aufträgen bremsen sich nicht mehr gegenseitig aus.
+- **Teleskop – abgelehnte Befehle:** Lehnt das Teleskop einen Befehl ab, schreibt der Autopilot einen Eintrag und versucht es mit wachsendem Abstand erneut statt alle zwei Sekunden einen roten Fehler. Erst nach einer klaren Zeitgrenze gilt es als Fehler, dann wird sicher eingeklappt.
+- **Teleskop – abgebrochene Beobachtung:** Bricht das Teleskop eine Beobachtung selbst ab (z. B. weil es am Ziel keine Sterne findet), erkennt der Autopilot das, sperrt die Richtung und fährt das nächste freie Ziel an. Tut das Gerät bei einem aktiven Ziel länger nichts, startet er einmal neu oder überspringt das Ziel, statt endlos zu warten.
+- **Einstellungen:** Ausgeschaltete Module (z. B. Teleskop) zeigen in der Modulliste wieder Namen, Beschreibung und Symbol statt nur ihrer Kennung.
+
 ## 0.75.0 – 14.11.2026
 
 ### Neu
