@@ -40,17 +40,30 @@ def build_router(mod) -> APIRouter:
     def events(since: int = 0):
         return {"events": unit().pilot.events_since(since)}
 
+    def link(u) -> str:
+        """Verbinden ohne jede Bewegung. Die Kontrolle wird nur genommen, wenn sie frei ist – nie der Handy-App entrissen.
+        Rückgabe: Besitzer der Kontrolle danach ('us' | 'other' | 'none')."""
+        u.driver.connect()
+        master = u.driver.state().master
+        if master == "none":
+            u.driver.take_control()
+            master = u.driver.state().master
+        return master
+
     @r.post("/connect")
     def connect():
+        """Nur verbinden (Status, Akku, Speicher) und freie Kontrolle nehmen – bewegt das Teleskop nie, startet keinen Autopiloten."""
         u = unit()
         try:
-            u.driver.connect()
-            u.driver.take_control()
+            master = link(u)
         except DriverError as e:
             fail(e)
-        u.pilot.log("Verbunden – AstroFlow hat die Kontrolle.", "ok", u.now())
+        if master == "other":
+            u.pilot.log("Verbunden – die Handy-App steuert gerade, AstroFlow hat die Kontrolle nicht übernommen.", "warn", u.now())
+        else:
+            u.pilot.log("Verbunden – AstroFlow hat die Kontrolle. Das Teleskop wurde nicht bewegt.", "ok", u.now())
         u.pilot.tick(u.now())
-        return {"ok": True}
+        return {"ok": True, "master": master, "note": "Die Handy-App steuert gerade." if master == "other" else ""}
 
     @r.post("/disconnect")
     def disconnect():
@@ -59,6 +72,7 @@ def build_router(mod) -> APIRouter:
             raise HTTPException(409, "Erst den Autopilot pausieren oder einklappen.")
         u.driver.disconnect()
         u.pilot.log("Verbindung getrennt.", "info", u.now())
+        u.pilot.tick(u.now())
         return {"ok": True}
 
     def night_and_confirm(u, body: dict):
@@ -80,8 +94,7 @@ def build_router(mod) -> APIRouter:
         night_and_confirm(u, body)
         if not p.state.connected:
             try:
-                u.driver.connect()
-                u.driver.take_control()
+                link(u)
             except DriverError as e:
                 fail(e)
         p.start(now)

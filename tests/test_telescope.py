@@ -737,6 +737,34 @@ def test_ohne_bestaetigung_kein_bewegungsbefehl():
     assert "park" in d.commands[n:] or d.state().parked
 
 
+def test_api_verbinden_bewegt_nie_und_trennen_nur_ohne_autopilot(tmp_path, monkeypatch):
+    app = _app(tmp_path, monkeypatch)
+    with TestClient(app, base_url="http://127.0.0.1:8766", client=("127.0.0.1", 50000), headers={"Origin": "http://127.0.0.1:8766"}) as c:
+        u = app.state.modules["telescope"].unit
+        assert c.get("/api/telescope/state").json()["state"]["connected"] is False
+        r = c.post("/api/telescope/connect")
+        assert r.status_code == 200 and r.json()["master"] == "us"
+        st = c.get("/api/telescope/state").json()
+        assert st["state"]["connected"] and st["mode"] == "aus"
+        assert not [x for x in u.driver.commands if x in ("open", "init", "park") or x.startswith(("observe", "plan", "focus"))]
+        assert c.post("/api/telescope/disconnect").status_code == 200                       # ohne Autopilot ok
+        assert c.get("/api/telescope/state").json()["state"]["connected"] is False
+        assert c.post("/api/telescope/start", json={}).status_code == 200
+        r = c.post("/api/telescope/disconnect")
+        assert r.status_code == 409 and "pausieren" in r.json()["detail"]                    # Autopilot läuft
+
+
+def test_api_verbinden_nimmt_der_handy_app_die_kontrolle_nicht(tmp_path, monkeypatch):
+    app = _app(tmp_path, monkeypatch)
+    with TestClient(app, base_url="http://127.0.0.1:8766", client=("127.0.0.1", 50000), headers={"Origin": "http://127.0.0.1:8766"}) as c:
+        u = app.state.modules["telescope"].unit
+        u.driver.master = "other"
+        u.driver.connected = False
+        r = c.post("/api/telescope/connect")
+        assert r.status_code == 200 and r.json()["master"] == "other" and "Handy-App" in r.json()["note"]
+        assert "takeControl" not in u.driver.commands and u.driver.master == "other"
+
+
 def test_api_weiter_verlangt_bestaetigung_der_neuen_nacht(tmp_path, monkeypatch):
     app = _app(tmp_path, monkeypatch)
     with TestClient(app, base_url="http://127.0.0.1:8766", client=("127.0.0.1", 50000), headers={"Origin": "http://127.0.0.1:8766"}) as c:
