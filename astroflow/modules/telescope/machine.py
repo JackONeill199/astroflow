@@ -14,7 +14,7 @@ LABELS = {
     "eingeklappt": "Eingeklappt",
     "oeffnet": "Öffnet",
     "geoeffnet": "Geöffnet",
-    "richtet_aus": "Richtet sich aus",
+    "richtet_aus": "Richtet sich ein",
     "bereit": "Bereit",
     "schwenkt": "Schwenkt",
     "astrometrie": "Bestimmt die Lage",

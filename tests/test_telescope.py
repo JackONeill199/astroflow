@@ -818,3 +818,150 @@ def test_restbilder_nach_ftp_abbruch_werden_nachgeholt(tmp_path):
     out = tmp_path / "Teleskop" / "vespera" / "2026-11-20" / "M31" / "01-observation-m31"
     assert sorted(x.name for x in out.iterdir()) == ["img-0000.fits", "img-0001.fits"]
     assert col.pending == [] and col.error is None
+
+
+def test_geraet_beschaeftigt_beim_einrichten_kein_fehler_und_backoff():
+    """Nach dem Öffnen richtet sich das Gerät noch selbst ein und lehnt Ausrichten als „beschäftigt“ ab: kein roter Fehler,
+    genau ein Eintrag, neue Versuche mit wachsendem Abstand statt jeden Takt – danach läuft alles normal weiter."""
+    p, d, clock = make([item(M31, 0.1, 3.0)], sim.Scenario(setup_busy_s=4 * 60))
+    run(p, clock, 0.5, step=2.5)
+    assert d.commands.count("init-busy") <= 6                       # 10, 20, 40, 80 s … statt ~100 Versuche
+    assert "init" in d.commands and p.state.initialized
+    bad = [e for e in p.events if e["kind"] == "bad"]
+    assert not bad, bad
+    assert [e["text"] for e in p.events].count("Teleskop ist noch beschäftigt – Ausrichten folgt, sobald es fertig ist.") == 1
+    assert any(c.startswith(("observe", "plan")) for c in d.commands)
+
+
+def test_ausrichten_abgelehnt_nach_zeitgrenze_einklappen_und_anhalten():
+    """Lehnt das Gerät Ausrichten dauerhaft ab (nicht beschäftigt), erst nach der Zeitgrenze ein echter Fehler: einklappen,
+    anhalten – vorher nur ein Hinweis, keine Schleife im Protokoll."""
+    p, d, clock = make([item(M31, 0.1, 3.0)], sim.Scenario(init_rejected=True))
+    run(p, clock, 0.2, step=2.5)
+    assert p.mode == "laeuft" and not [e for e in p.events if e["kind"] == "bad"]
+    assert "neuer Versuch in" in p.view(clock.now())["phase_label"]
+    run(p, clock, 0.3, step=2.5)
+    assert p.mode == "pausiert" and "park" in d.commands
+    assert len([e for e in p.events if e["kind"] == "bad"]) == 1
+    assert d.commands.count("init-rejected") <= 15
+    run(p, clock, 0.3, step=2.5)
+    assert d.state().parked and p.mode == "pausiert"
+
+
+def test_restdauer_beim_einrichten():
+    p, d, clock = make([item(M31, 0.1, 3.0)])
+    for _ in range(200):
+        p.tick(clock.now())
+        if p.machine.phase == "richtet_aus":
+            break
+        clock.advance(2)
+    v = p.view(clock.now())
+    assert v["phase"] == "richtet_aus" and v["eta"] and "noch ca." in v["phase_label"]
+    run(p, clock, 0.1, step=2)
+    assert "richtet_aus" in p.took and abs(p.took["richtet_aus"] - sim.INIT_S) < 10   # gemessene Dauer ersetzt den Erfahrungswert
+
+
+def test_zeitgrenze_keine_bewegung_im_selben_takt_und_geraeteplan_nur_rueckfall():
+    """Codex #126: Nach der Zeitgrenze (einklappen, anhalten) darf im selben Takt kein GoTo folgen; ein abgelehnter
+    Geräte-Plan ist nur ein Rückfall und löst keine Zeitgrenze aus."""
+    p, d, clock = make([item(M31, 0.1, 3.0)], cfg={"fallback": False})
+    p.retry["observe"] = {"first": clock.now() - 3600, "next": 0, "n": 3, "msg": "x"}
+    calls = []
+    real = d.observe
+
+    def no(*a, **k):
+        calls.append("observe")
+        raise ap.DriverError("abgelehnt")
+    d.observe = no
+    run(p, clock, 0.5)
+    assert p.mode == "pausiert" and "park" in d.commands
+    n = len(calls)
+    d.observe = real
+    p.mode = "laeuft"                                   # selbst wenn der Modus noch „läuft“: Einklappen steht an → keine Bewegung
+    p.park_pending = {"t": clock.now(), "tries": 0}
+    assert p._cmd("observe", d.observe, p.items[0].target, 10.0, now=clock.now()) is False
+    p.mode, p.park_pending = "pausiert", None
+    run(p, clock, 0.2)
+    assert len(calls) == n and not any(c.startswith("observe") for c in d.commands)
+    assert "device_plan" not in ap.GIVE_UP
+
+
+def test_stoppen_ohne_backoff():
+    p, d, clock = make([item(M31, 0.1, 3.0)])
+    run(p, clock, 0.5)
+    real, tries = d.stop, []
+
+    def once(*a):
+        tries.append(1)
+        if len(tries) == 1:
+            raise ap.DriverError("abgelehnt")
+        return real()
+    d.stop = once
+    p.pause(clock.now()); p.resume(clock.now()); run(p, clock, 0.05)
+    p.pause(clock.now())
+    assert len(tries) >= 2 and "stop" not in p.retry
+
+
+def test_keine_bewegung_waehrend_einklappen_ansteht():
+    """Steht Einklappen an (Zeitgrenze, Wächter), darf im selben Takt kein GoTo mehr raus – auch wenn die Phase noch „bereit“ ist."""
+    p, d, clock = make([item(M31, 0.1, 3.0)])
+    run(p, clock, 0.5)
+    assert p.machine.can("observe")
+    p.park_pending = {"t": clock.now(), "tries": 0}
+    n = len(d.commands)
+    assert p._cmd("observe", d.observe, p.items[0].target, 10.0, now=clock.now()) is False and len(d.commands) == n
+
+
+def test_vaonis_status_abgebrochene_beobachtung():
+    """Erster Autopilot-Lauf: Gerät brach nach 6× ASTROMETRY_FAILED selbst ab, danach keine Operation – der Grund steht nur in
+    previousOperations. Frisch → astrometry_failed; alt (über FRESH_S) → kein Fehler."""
+    from astroflow.modules.telescope import vaonis_read as vr
+    end = 1794678479308
+    raw = {"result": {"initialized": True, "timestamp": end + 170_000, "currentOperation": None, "otherCurrentOperations": [],
+                      "motors": {"AZ": {"position": 130.6}, "ALT": {"position": 48.4}},
+                      "previousOperations": {"observation": {
+                          "type": "OBSERVATION", "startTime": end - 56_000, "endTime": end, "stopped": True,
+                          "error": {"name": "GENERAL.POINTING_STOPPED", "chain": [{"name": "GENERAL.TOO_MANY_ASTROMETRY_FAILED"}]}}}}}
+    s = vr.translate(raw)
+    assert s.step == "idle" and s.astrometry_failed and "TOO_MANY_ASTROMETRY_FAILED" in s.error
+    raw["result"]["timestamp"] = end + (vr.FRESH_S + 60) * 1000
+    s = vr.translate(raw)
+    assert not s.astrometry_failed and s.error is None
+
+
+def test_geraet_beendet_beobachtung_still_einmal_neu_dann_weiter():
+    """Ziel aktiv, Gerät tut nichts mehr (ohne Fehler): nach STALL_S einmal neu starten; passiert es wieder, Ziel abbrechen
+    und weiter – nie endlos warten."""
+    p, d, clock = make([item(M31, 0.0, 3.0)], sim.Scenario(stop_silently_at=T0 + 0.15 * H), cfg={"fallback": False})
+    run(p, clock, 0.3, step=10)
+    assert "starte sie einmal neu" in texts(p) and sum(c.startswith("observe") for c in d.commands) >= 2
+    m31 = p.items[0]
+    assert m31.status == "aktiv" and m31.restarts == 1
+    d.sc.stop_silently_at = clock.now()                    # zweites Mal
+    run(p, clock, 0.2, step=10)
+    # mit gestapelten Bildern „fertig“, sonst „abgebrochen“ – in beiden Fällen weiter statt warten
+    assert (m31.status, "selbst beendet" in texts(p)) == ("fertig", True) if m31.stacked else \
+        (m31.status, "überspringe das Ziel" in texts(p)) == ("abgebrochen", True)
+    assert sum(c.startswith("observe") for c in d.commands) == 2            # nur einmal neu gestartet
+
+
+def test_ziel_ohne_bilder_nach_stillstand_abgebrochen():
+    p, d, clock = make([item(M31, 0.0, 3.0)], cfg={"fallback": False})
+    run(p, clock, 0.3, step=10)
+    m31 = p.items[0]
+    m31.restarts, m31.stacked = 1, 0                       # schon einmal neu gestartet, keine Bilder
+    d.step, d.target = "idle", None                        # Gerät hört still auf
+    d.sc.stop_silently_at = clock.now()
+    run(p, clock, 0.1, step=10)
+    assert m31.status == "abgebrochen" and "überspringe das Ziel" in texts(p)
+
+
+def test_alter_astrometriefehler_trifft_neues_ziel_nicht():
+    p, d, clock = make([item(M31, 0.0, 3.0)], cfg={"fallback": False})
+    d.astrometry_failed = True                             # Fehler vom vorigen Versuch steht noch im Status
+    cur = p.items[0]
+    s = d.state()
+    cur.status, cur.seen = "aktiv", False
+    assert p._failed(cur, s) is False
+    cur.seen = True
+    assert p._failed(cur, s) is True
