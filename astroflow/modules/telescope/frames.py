@@ -119,7 +119,7 @@ class Collector:
     def __init__(self, unit, input_dir: Path, host: str):
         self.unit, self.input_dir = unit, Path(input_dir)
         self.ftp = FtpFrames(host)
-        self.folders: dict[int, str] = {}          # id(Item) → Ordner am Gerät
+        self.folders: dict[tuple, str] = {}        # (id(Item), Start dieses Versuchs) → Ordner am Gerät
         self.count = 0
         self.error: str | None = None
         self._stop = threading.Event()
@@ -158,9 +158,10 @@ class Collector:
                     p.log(self.error, "warn")
 
     def _take(self, item, final: bool):
-        folder, got = self.ftp.fetch(lambda fo: self.dest(item, fo), self.folders.get(id(item)), final=final, since=item.real_start)
+        key = (id(item), item.real_start)          # neuer Versuch desselben Ziels (Weiter, Wiederöffnen) → neuer Ordner am Gerät
+        folder, got = self.ftp.fetch(lambda fo: self.dest(item, fo), self.folders.get(key), final=final, since=item.real_start)
         if folder:
-            self.folders[id(item)] = folder
+            self.folders[key] = folder
         if got:
             self.count += len(got)
             self.unit.pilot.frames_fetched = self.count

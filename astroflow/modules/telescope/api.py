@@ -65,8 +65,8 @@ def build_router(mod) -> APIRouter:
         u = unit()
         p = u.pilot
         now = u.now()
-        if p.night is None:
-            p.load_night(now)
+        if p.night is None or p.night != p.current_night(now):
+            p.load_night(now)                         # neue Nacht → neue Bestätigung (nie die vom Vortag weiterverwenden)
         if not u.simulated and p.confirmed_night != p.night:
             if not body.get("confirm"):
                 raise HTTPException(409, "Bitte bestätigen, dass sich der Arm frei bewegen kann.")

@@ -616,3 +616,45 @@ def test_fremder_geraeteplan_wird_nicht_abgearbeitet():
     p = ap.Autopilot(sim.SimDriver(clock), ap.Env(site=lambda n: SITE, plan=lambda n, m: ap.plan_items(plan, "2026-11-20", "stellina")), clock=clock)
     p.load_night(T0)
     assert p.items == [] and "anderen Gerät" in p.view(T0)["plan_note"]
+
+
+class _FakeVaonisDriver(sim.SimDriver):
+    """Simulator, der sich wie ein echtes Gerät verhält (Bestätigung nötig)."""
+    kind = "plugin"
+
+
+def test_bestaetigung_gilt_nur_fuer_eine_nacht(tmp_path, monkeypatch):
+    """Läuft der Server über mehrere Nächte, verlangt „Start“ am nächsten Abend erneut die Bestätigung."""
+    app = _app(tmp_path, monkeypatch)
+    with TestClient(app, base_url="http://127.0.0.1:8766", client=("127.0.0.1", 50000), headers={"Origin": "http://127.0.0.1:8766"}) as c:
+        u = app.state.modules["telescope"].unit
+        clock = sim.ManualClock(T0)
+        u.clock, u.driver = clock, _FakeVaonisDriver(clock)
+        u.pilot = ap.Autopilot(u.driver, u.pilot.env, u.pilot.cfg, clock=clock)
+        assert c.post("/api/telescope/start", json={}).status_code == 409                    # erste Nacht: Bestätigung nötig
+        assert c.post("/api/telescope/start", json={"confirm": True}).status_code == 200
+        first = u.pilot.night
+        c.post("/api/telescope/park")
+        clock.advance(24 * H)                                                                  # nächster Abend, Server läuft weiter
+        assert c.post("/api/telescope/start", json={}).status_code == 409                    # neue Nacht → erneut bestätigen
+        assert u.pilot.night != first
+
+
+def test_live_bilder_neuer_versuch_neuer_ordner(tmp_path):
+    from astroflow.modules.telescope import frames
+
+    class U:
+        cfg = {"model": "vespera"}
+        pilot = type("P", (), {"night": "2026-11-20", "log": lambda *a, **k: None, "frames_fetched": 0})()
+    col = frames.Collector(U(), tmp_path, "10.0.0.1")
+    tree = {"user": {"p": {"_m": "20261120180000", "01-observation-m31": {"_m": "20261120180000", "01-images-initial": {"img-0000.fits": b"a"}}}}}
+    col.ftp = frames.FtpFrames("x", ftp_factory=lambda: FakeFtp(tree))
+    item_ = item(M31, 0.0, 3.0)
+    item_.real_start = dt.datetime(2026, 11, 20, 18, 0, tzinfo=dt.timezone.utc).timestamp()
+    col._take(item_, final=True)
+    tree["user"]["p"]["02-observation-m31"] = {"_m": "20261120200000", "01-images-initial": {"img-0000.fits": b"b"}}
+    item_.real_start = dt.datetime(2026, 11, 20, 20, 0, tzinfo=dt.timezone.utc).timestamp()   # Weiter nach Pause: neuer Versuch
+    col._take(item_, final=True)
+    base = tmp_path / "Teleskop" / "vespera" / "2026-11-20" / "M31"
+    assert (base / "01-observation-m31" / "img-0000.fits").read_bytes() == b"a"
+    assert (base / "02-observation-m31" / "img-0000.fits").read_bytes() == b"b"

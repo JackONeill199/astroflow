@@ -161,11 +161,16 @@ class Autopilot:
             self.log(f"{_label(what)} fehlgeschlagen: {e}", "bad", now)
             return False
 
+    def current_night(self, now: float) -> str:
+        """Nachtdatum für `now` (gleiche Regel wie `load_night`, über core/sites)."""
+        site0 = self.env.site(None) if self.env.site else None
+        lon = site0["lon"] if site0 else None
+        return sites.night_of(now, lon=lon) or sites.planning_night(now, lon or 0.0)
+
     def load_night(self, now: float):
         """Plan dieser Nacht laden (Ort und Nacht über core/sites – Nachtdatum nie selbst rechnen)."""
         site0 = self.env.site(None) if self.env.site else None
-        lon = site0["lon"] if site0 else None
-        self.night = sites.night_of(now, lon=lon) or sites.planning_night(now, lon or 0.0)
+        self.night = self.current_night(now)
         self.site = (self.env.site(self.night) if self.env.site else None) or site0
         got = self.env.plan(self.night, self.state.model or "") if self.env.plan else None
         got = [] if got is None else got                 # leere PlanList behalten (trägt den Hinweis)
