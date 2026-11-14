@@ -420,7 +420,8 @@
       if (u.error) notes.push(`<div class="notice err">${icon('alert')}<div><b>Teleskop-Treiber nicht bereit</b><div class="mut sm">${esc(u.error)} – solange läuft der Simulator.</div></div><span class="grow"></span><a class="btn sm ghost" href="#/settings/telescope">Einstellungen</a></div>`);
       if (d.hold) notes.push(`<div class="notice ${['weather', 'clouds', 'dew', 'battery'].includes(d.hold.kind) ? 'err' : ''}">${icon(d.hold.kind === 'dawn' || d.hold.kind === 'twilight' ? 'star' : 'alert')}<div><b>${d.mode === 'fertig' ? 'Nacht beendet' : 'Wartet'}</b><div class="mut sm">${esc(d.hold.text)}</div></div></div>`);
       if (s.raw_enabled === false) notes.push(`<div class="notice">${icon('camera')}<div><b>Rohbilder am Teleskop aus</b><div class="mut sm">Für die AstroFlow-Pipeline in der Vaonis-App „Rohbilder speichern“ einschalten.</div></div></div>`);
-      if (!d.items?.length) notes.push(`<div class="notice">${icon('dome')}<div><b>Noch kein Plan für diese Nacht</b><div class="mut sm">Im Planer eine Nacht planen oder unten Ziele hinzufügen.</div></div><span class="grow"></span><a class="btn sm ghost" href="#/observatorium/plan">Zum Planer</a></div>`);
+      if (d.plan_note) notes.push(`<div class="notice err">${icon('alert')}<div><b>Plan gehört zu einem anderen Gerät</b><div class="mut sm">${esc(d.plan_note)}</div></div><span class="grow"></span><a class="btn sm ghost" href="#/observatorium/plan">Zum Planer</a></div>`);
+      else if (!d.items?.length) notes.push(`<div class="notice">${icon('dome')}<div><b>Noch kein Plan für diese Nacht</b><div class="mut sm">Im Planer eine Nacht planen oder unten Ziele hinzufügen.</div></div><span class="grow"></span><a class="btn sm ghost" href="#/observatorium/plan">Zum Planer</a></div>`);
       put('notes', notes.join(''), '.tel-notes');
       const al = q('.tel-alarm');
       al.hidden = !d.alarm; if (d.alarm) al.innerHTML = `${icon('alert')}<b>${esc(d.alarm)}</b>`;

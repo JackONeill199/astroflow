@@ -132,6 +132,7 @@ class Autopilot:
         self.warned: set = set()
         self.dark: dict | None = None
         self.frames_fetched = 0
+        self.plan_note: str | None = None
         self.lock = threading.RLock()
 
     # ------------------------------------------------------------ Protokoll --- #
@@ -166,7 +167,10 @@ class Autopilot:
         lon = site0["lon"] if site0 else None
         self.night = sites.night_of(now, lon=lon) or sites.planning_night(now, lon or 0.0)
         self.site = (self.env.site(self.night) if self.env.site else None) or site0
-        items = list(self.env.plan(self.night, self.state.model or "") or []) if self.env.plan else []
+        got = self.env.plan(self.night, self.state.model or "") if self.env.plan else None
+        got = [] if got is None else got                 # leere PlanList behalten (trägt den Hinweis)
+        self.plan_note = getattr(got, "note", None)
+        items = list(got)
         manual = [i for i in self.items if i.manual and i.status == "geplant"]
         self.items = sorted(items + manual, key=lambda i: i.start)
         self.blocked, self.warned = [], set()
@@ -469,6 +473,11 @@ class Autopilot:
                 self._end_item(cur, "abgebrochen", "anderes Ziel am Gerät", now)
             elif self._failed(cur, s):
                 return self._failure(cur, s, now)
+            elif not (vis := self.free(cur.ra, cur.dec, now))[0]:
+                # Ziel verlässt den freien Bereich (Mindesthöhe, Horizontmaske, gesperrte Richtung): sauber beenden, weiter
+                self._cmd("stop", self.driver.stop, now=now)
+                self._end_item(cur, "fertig" if cur.stacked else "uebersprungen", vis[1], now)
+                self.log(f"{cur.name} verlässt den freien Bereich ({vis[1]}) – beende und wechsle zum nächsten Ziel.", "warn", now)
             elif now >= cur.end:
                 self._end_item(cur, "fertig", "", now)
             else:
@@ -659,7 +668,7 @@ class Autopilot:
             "state": {k: v for k, v in s.as_dict().items()},
             "current": cur.view() if cur else None, "target_pointing": pointing,
             "items": [{**i.view(), "track": self._track_of(i)} for i in self.items],
-            "min_alt": self.cfg["min_alt"],
+            "min_alt": self.cfg["min_alt"], "plan_note": self.plan_note,
             "night": self.night, "site": {"name": self.site.get("name"), "horizon": self.site.get("horizon")} if self.site else None,
             "dark": self.dark,
             "conditions": {
@@ -723,15 +732,24 @@ def demo_items(now: float, site: dict, catalog: list[dict], hours: float = 8.0, 
     return out
 
 
+class PlanList(list):
+    """Liste der Plan-Abschnitte mit optionalem Hinweis (`note`), warum sie leer ist."""
+    note: str | None = None
+
+
 def plan_items(plan: dict | None, night: str | None, model: str) -> list[Item]:
-    """Blöcke des gespeicherten Planer-Plans (`settings.json` → `observatory.plan`) für diese Nacht und dieses Gerät."""
+    """Blöcke des gespeicherten Planer-Plans (`settings.json` → `observatory.plan`) für diese Nacht und dieses Gerät.
+    Stehen mehrere Geräte im Plan und passt keines zum eingestellten Modell: leer mit Hinweis – nie fremde Blöcke abarbeiten."""
+    out = PlanList()
     if not plan or not night:
-        return []
+        return out
     targets = {t["id"]: t for t in plan.get("targets") or []}
     devs = [d["id"] for d in plan.get("devices") or []]
     want = next((d for d in devs if d == model), None) or next((d for d in devs if model and d.startswith(model)), None) \
         or (devs[0] if len(devs) == 1 else None)
-    out = []
+    if len(devs) > 1 and want is None:
+        out.note = "Der gespeicherte Plan gehört zu einem anderen Gerät – im Planer für dieses Teleskop planen oder das Gerät in den Einstellungen wählen."
+        return out
     for n in plan.get("nights") or []:
         if n.get("night") != night:
             continue
@@ -741,7 +759,8 @@ def plan_items(plan: dict | None, night: str | None, model: str) -> list[Item]:
                 continue
             out.append(Item(str(t["id"]), t.get("name") or str(t["id"]), float(t["ra"]), float(t["dec"]), float(b["start"]), float(b["end"]),
                             hours=float(b.get("hours") or (b["end"] - b["start"]) / 3600)))
-    return sorted(out, key=lambda i: i.start)
+    out.sort(key=lambda i: i.start)
+    return out
 
 
 def horizon_with(horizon: list | None, points: list[dict], step: int = 10) -> list[float]:

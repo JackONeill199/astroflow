@@ -159,7 +159,7 @@ def test_tau_grenze_je_geraet():
 
 
 def test_morgendaemmerung_beendet_die_nacht():
-    p, d, clock = make([item(M31, 0.1, 15)])
+    p, d, clock = make([item(M81, 0.1, 15)])           # M81 bleibt hier die ganze Nacht über 30°
     run(p, clock, 13.5, step=60)
     assert p.mode == "fertig" and d.state().parked
     assert "Morgendämmerung" in texts(p)
@@ -592,3 +592,27 @@ def test_waechter_auch_in_der_pause():
     assert d.state().parked and p.mode == "pausiert"
     assert "trotz Pause" in texts(p)
     assert d.commands.count("observe:M31") + sum(c.startswith("plan:") for c in d.commands) == 1      # nichts neu gestartet
+
+
+def test_laufendes_ziel_verlaesst_freien_bereich():
+    """Ein Ziel wird in jedem Takt geprüft: sinkt es unter die Mindesthöhe, endet es sauber, und es geht weiter (hier: einklappen)."""
+    p, d, clock = make([item(M15, 0.1, 6.0)])           # M15 sinkt am Abend im Südwesten unter 30°
+    run(p, clock, 4.0)
+    m15 = [i for i in p.items if i.id == "M15"]
+    assert m15[0].status in ("fertig", "uebersprungen") and "zu tief" in m15[0].why
+    assert "verlässt den freien Bereich" in texts(p)
+    assert not any(i.status == "aktiv" for i in p.items) and d.state().step != "capture"
+
+
+def test_fremder_geraeteplan_wird_nicht_abgearbeitet():
+    plan = {"devices": [{"id": "vespera"}, {"id": "seestar"}],
+            "targets": [{"id": "M31", "name": "M31", "ra": 10.68, "dec": 41.27}],
+            "nights": [{"night": "2026-11-20", "blocks": [{"device": "vespera", "target": "M31", "start": T0, "end": T0 + H},
+                                                          {"device": "seestar", "target": "M31", "start": T0, "end": T0 + H}]}]}
+    got = ap.plan_items(plan, "2026-11-20", "stellina")
+    assert got == [] and "anderen Gerät" in got.note
+    assert len(ap.plan_items(plan, "2026-11-20", "vespera")) == 1 and ap.plan_items(plan, "2026-11-20", "vespera").note is None
+    clock = sim.ManualClock(T0)
+    p = ap.Autopilot(sim.SimDriver(clock), ap.Env(site=lambda n: SITE, plan=lambda n, m: ap.plan_items(plan, "2026-11-20", "stellina")), clock=clock)
+    p.load_night(T0)
+    assert p.items == [] and "anderen Gerät" in p.view(T0)["plan_note"]

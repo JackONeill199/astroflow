@@ -76,7 +76,7 @@ class Unit:
 
         def plan(night, model):
             items = ap.plan_items(mod.ctx.store.get("observatory").get("plan"), night, self.cfg["model"])
-            if not items and self.simulated and mod.site(night):
+            if not items and not getattr(items, "note", None) and self.simulated and mod.site(night):
                 objs = mod.ctx.service("catalog_objects")
                 if objs:
                     items = ap.demo_items(self.now(), mod.site(night), [o for o in objs() if o.get("kind") in ("galaxy", "globular", "planetary", "nebula", "open")])
