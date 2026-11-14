@@ -789,3 +789,36 @@ def test_restbilder_nach_ftp_abbruch_werden_nachgeholt(tmp_path):
     out = tmp_path / "Teleskop" / "vespera" / "2026-11-20" / "M31" / "01-observation-m31"
     assert sorted(x.name for x in out.iterdir()) == ["img-0000.fits", "img-0001.fits"]
     assert col.pending == [] and col.error is None
+
+
+# ------------------------------------------------------------- Akku-Restzeit --- #
+def test_akku_restzeit_schaetzung():
+    from astroflow.modules.telescope import battery as bt
+    b = bt.BatteryEta()
+    assert b.view(None, False, "vespera", True, 15) is None                         # ohne Akkuwert nichts
+    b.update(T0, 80, False)
+    v = b.view(80, False, "vespera", True, 15)
+    assert not v["measured"] and v["rate"] == bt.DRAIN_PCT_H["vespera"]["aktiv"]     # vor der Messung: Erfahrungswert
+    assert b.rate("vespera", False) < b.rate("vespera", True)                        # eingeklappt hält länger
+    for k in range(1, 31):                                                          # 30 min, 20 %/h
+        b.update(T0 + k * 60, round(80 - 20 * k / 60), False)
+    v = b.view(70, False, "vespera", True, 15)
+    assert v["measured"] and 17 <= v["rate"] <= 23
+    assert abs(v["empty_s"] - 70 / v["rate"] * 3600) < 60 and v["limit_s"] < v["empty_s"]
+    b.update(T0 + 3600, 72, True)
+    assert b.view(72, True, "vespera", True, 15) == {"charging": True} and b.seconds_left(72, "vespera", True) is None
+    assert bt.fmt_left(2 * 3600 + 40 * 60) == "2 h 40 min" and bt.fmt_left(35 * 60) == "35 min"
+
+
+def test_akku_reicht_nicht_ziel_wird_gekuerzt():
+    """Gemessene Entladung 30 %/h ab 50 %: bis zur Grenze 15 % bleiben ~70 min – das 3-h-Ziel wird gekürzt; die Grenze
+    battery_min klappt wie bisher ein."""
+    p, d, clock = make([item(M81, 0.0, 0.5), item(M31, 0.5, 3.5)], sim.Scenario(battery=50, battery_per_h=30))
+    run(p, clock, 0.6, step=20)
+    assert p.view(clock.now())["conditions"]["battery_left"]["measured"]
+    t = texts(p)
+    assert "Akku reicht nur noch ca." in t and "gekürzt" in t
+    m31 = next(i for i in p.items if i.id == M31[0])
+    assert m31.end < T0 + 3.0 * H
+    run(p, clock, 1.5, step=60)
+    assert d.state().parked and "Akku" in texts(p)

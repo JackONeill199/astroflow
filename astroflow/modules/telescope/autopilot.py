@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 
 from ...core import sites
 from . import sky
+from .battery import BatteryEta, fmt_left
 from .driver import DriverError, PlanItem, Target, TelescopeState
 from .machine import Machine
 
@@ -46,6 +47,7 @@ BLOCK_AZ = 10.0              # gesperrte Richtung: ±Azimut …
 BLOCK_ALT = 5.0              # … bis über die gescheiterte Höhe
 MAX_EVENTS = 300
 MOVES = ("open", "init", "observe", "device_plan", "focus")   # Befehle, die das Teleskop bewegen (Einklappen/Stoppen nie gesperrt)
+BATTERY_MIN_ITEM = 10 * 60    # reicht der Akku nicht einmal so lang, startet kein neues Ziel mehr
 SUB_MAX = 1800              # Ersatzziel höchstens so lange am Stück
 OPEN = ("geplant", "verdeckt", "uebersprungen")     # noch nicht erledigt (verdeckt/übersprungen: neuer Versuch, sobald frei)
 
@@ -136,6 +138,7 @@ class Autopilot:
         self.frames_fetched = 0
         self.plan_note: str | None = None
         self.known: TelescopeState | None = None   # letzter Zustand MIT Verbindung (für Not-Aus ohne Verbindung)
+        self.battery = BatteryEta()               # Restzeit aus dem gemessenen Akkuverlauf
         self.lock = threading.RLock()
 
     # ------------------------------------------------------------ Protokoll --- #
@@ -301,6 +304,7 @@ class Autopilot:
         prev, self.state = self.state, s
         if s.connected:
             self.known = s
+            self.battery.update(now, s.battery, s.charging)
         ch = self.machine.update(s)
         if ch and not self.machine.plausible(*ch) and ch[1] != "getrennt":
             self.log(f"Unerwarteter Wechsel: {ch[0]} → {ch[1]}", "warn", now)
@@ -585,7 +589,27 @@ class Autopilot:
             return i
         return None
 
+    def battery_left(self, active: bool = True) -> float | None:
+        """Sekunden bis zur Akkugrenze `battery_min` (None: kein Akkuwert oder lädt)."""
+        s = self.state
+        return self.battery.seconds_left(s.battery, s.model, active, float(self.cfg["battery_min"]))
+
+    def _battery_fits(self, it: Item, now: float) -> bool:
+        """Reicht der Akku für das Ziel? Zu knapp → nicht starten; reicht nicht bis zum Ende → Abschnitt kürzen und sagen."""
+        left = self.battery_left(True)
+        if left is None:
+            return True
+        if left < BATTERY_MIN_ITEM:
+            self._once(f"akku-leer:{it.id}", f"Akku reicht nur noch ca. {fmt_left(left)} – starte {it.name} nicht mehr.", "warn", now)
+            return False
+        if now + left < it.end:
+            it.end = now + left
+            self.log(f"Akku reicht nur noch ca. {fmt_left(left)} – {it.name} wird bis {_fmt(it.end)} gekürzt.", "warn", now)
+        return True
+
     def _start_item(self, it: Item, now: float):
+        if not self._battery_fits(it, now):
+            return
         it.status, it.real_start, it.why = "aktiv", now, ""
         it.frames = it.stacked = it.rejected = 0
         self.samples.clear()
@@ -712,6 +736,7 @@ class Autopilot:
                 "cloud_max": self.cfg["cloud_max"], "wind_max": self.cfg["wind_max"],
                 "weather_at": self.weather["fetched"] if self.weather else None, "weather_offline": self.weather_offline,
                 "battery": s.battery, "battery_min": self.cfg["battery_min"],
+                "battery_left": self.battery.view(s.battery, s.charging, s.model, not s.parked, float(self.cfg["battery_min"])),
             },
             "weather": [{"t": x["t"], "cloud": x.get("cloud")} for x in (self.weather or {}).get("hours") or []],
             "blocked": [{k: b[k] for k in ("az", "alt", "target", "sure")} for b in self.blocked],
