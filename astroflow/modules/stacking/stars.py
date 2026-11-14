@@ -73,7 +73,7 @@ class Stretch:
     für Original und sternloses Bild."""
 
     def __init__(self, ref: np.ndarray, target: float, passes: int = 3, sp_sigma: float = 0.0, hp: float = 0.92,
-                 full: np.ndarray | None = None):
+                 full: np.ndarray | None = None, white: float | None = None):
         """ref: Bild, dessen Hintergrund eingemessen wird (sternlos); full: Bild mit Sternen für den Weißpunkt –
         sonst wäre der Weißpunkt eines sternlosen Bildes winzig und Sterne würden später abgeschnitten."""
         L = luminance(ref)
@@ -81,7 +81,7 @@ class Stretch:
         sig = 1.4826 * float(np.median(np.abs(L - med))) + 1e-12
         self.black = med - 2.8 * sig
         Lw = luminance(full) if full is not None else L
-        self.white = max(float(np.percentile(Lw, 99.95)), med + 10 * sig)
+        self.white = max(float(np.percentile(Lw, 99.95)), med + 10 * sig, white or 0.0)   # white: Mindest-Weißpunkt
         x = np.clip((L[::3, ::3] - self.black) / (self.white - self.black), 0, 1)       # Vorschau zum Einmessen
         self.steps: list[tuple] = []
         bs = [6.0, 3.0, 1.0, 0.5][:passes] if passes <= 4 else [3.0] * passes

@@ -170,3 +170,45 @@ def test_develop_fixes_generic_kind_of_messier_object(tmp_path, monkeypatch):
     rid = pl.develop(pid)
     assert db.one("SELECT kind FROM projects WHERE id=?", (pid,))["kind"] == "galaxy"
     assert json.loads(db.one("SELECT stats FROM results WHERE id=?", (rid,))["stats"])["profile"] == "galaxy"
+
+
+def test_core_protect_galaxy_gets_no_hdr():
+    """Galaxien mit Kernschutz: kein Lichterschutz hdr bei ausgebranntem Kern (machte den Kern von M31 zur grauen
+    Scheibe); Nebel mit Sterntrennung bekommen ihn weiter."""
+    qc = {"issues": [{"code": "burnt_core", "text": ""}], "metrics": {"bg": 0.03}}
+    base = {"asinh": 120, "denoise": 0.3, "chroma_denoise": 1.5, "saturation": 1.3, "target_bg": 0.07,
+            "star_separation": "starnet", "core_protect": 1}
+    assert "hdr" not in develop.corrections(qc, base)
+    assert develop.corrections(qc, {**base, "core_protect": 0}) == {"hdr": develop.HDR_STEPS[0]}
+
+
+def test_protect_core_keeps_galaxy_core_from_starnet():
+    """StarNet entfernt den sternförmigen Kern einer hellen Galaxie: die Kernregion kommt aus dem Original zurück,
+    ein Feldstern abseits bleibt entfernt."""
+    from astroflow.modules.stacking import processing
+    yy, xx = np.mgrid[0:300, 0:400].astype(np.float32)
+    bulge = 0.4 * np.exp(-(((yy - 150) / 40) ** 2 + ((xx - 200) / 60) ** 2))
+    core = 0.5 * np.exp(-((yy - 150) ** 2 + (xx - 200) ** 2) / 8)
+    star = 0.5 * np.exp(-((yy - 40) ** 2 + (xx - 60) ** 2) / 8)
+    img = np.repeat((0.02 + bulge + core + star)[None], 3, 0)
+    starless = np.repeat((0.02 + bulge)[None], 3, 0)                   # wie StarNet: Kern und Stern weg
+    out, frac = processing.protect_core(img, starless)
+    assert 0 < frac < 0.05
+    assert out[0, 150, 200] == pytest.approx(img[0, 150, 200], rel=0.02)     # Kern bleibt
+    assert out[0, 40, 60] == pytest.approx(starless[0, 40, 60], abs=1e-3)     # Feldstern bleibt entfernt
+
+
+def test_channel_curve_white_min_keeps_core_gradient():
+    """Galaxien: Weißpunkt über dem Kern (white_min) – der Kern läuft nicht in eine flache weiße Fläche, der Verlauf
+    zur Mitte bleibt (M31: weiß abgeschnittener Kern mit rosa Rand)."""
+    from scipy import ndimage as ndi
+    from astroflow.modules.stacking import processing
+    rng = np.random.default_rng(1)
+    yy, xx = np.mgrid[0:200, 0:200].astype(np.float32)
+    gal = 0.02 + 0.6 * np.exp(-np.hypot(yy - 100, xx - 100) / 6)
+    img = np.stack([gal * 1.2, gal, gal * 0.9]).astype(np.float32) + rng.normal(0, 0.002, (3, 200, 200)).astype(np.float32)
+    sm = np.stack([ndi.gaussian_filter(c, 1) for c in img])
+    clipped = processing.channel_curve(img, 0.07, 120)(sm)[0, 100, 100:110]
+    kept = processing.channel_curve(img, 0.07, 120, white_min=float(sm.max()))(sm)[0, 100, 100:110]
+    assert (clipped[:5] >= 0.999).all()                              # ohne: Kernbereich flach weiß
+    assert (kept[1:] < 0.999).all() and np.all(np.diff(kept) < 0)    # mit: Verlauf zur Mitte

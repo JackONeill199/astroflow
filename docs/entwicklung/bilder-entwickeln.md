@@ -20,6 +20,22 @@ Schritte 11–13 (Speicher, volles Laufwerk, Aufräumen): `daten-server.md`.
    ältere Projekte ohne Typ werden beim Entwickeln nachgetragen. Seit 14.11.2026 über `objects.kind_of`: kleiner Katalog → alle
    Messier/Caldwell (`deepsky.lookup`) → ASTAP. ASTAP führt viele Messier-Objekte ohne Art (M77, M32, M85, M110, M56, M14, M103 …) –
    M77 (Vespera) lief so mit „generic“. Projekte mit Typ fehlend oder „generic“ bekommen beim Entwickeln den richtigen Typ.
+   **Galaxien mit StarNet** (0.74.0 Profil „galaxy“ mit `star_separation` starnet; Korrektur 14.11.2026 nach M31 Stellina, 1546 Aufnahmen,
+   Ziel: Bild der Stellina-App – dunkler Himmel, kompakter Kern mit weichem Abfall, Staubbänder bis an den Bulge):
+   StarNet hielt den sternförmigen Kern für einen Stern, GHS (Weißpunkt = 99,95-%-Perzentil) schnitt den Kern ab und hob den Bulge zu
+   einer großen hellen Fläche an, und die QC setzte bei `burnt_core` `hdr` 1,5 – `compress_highlights` macht einen in allen Kanälen
+   abgeschnittenen Kern gleichmäßig grau (graublaue Scheibe, ~20 px; `object_burn` 0, die QC sah es nicht). Abhilfe im Profil:
+   `core_protect` – (1) `processing.protect_core`: wo das geglättete sternlose Bild zum hellsten Teil des Objekts gehört (smoothstep
+   0,35–0,6 zwischen Median und Maximum), bleibt das Original (M31 0,07 % der Fläche, keine Sternverkleinerung dort); (2) Weißpunkt
+   von GHS (`stars.Stretch(white=…)`) und Kanalkurve (`channel_curve(white_min=…)`) mindestens das Maximum des geglätteten
+   sternlosen Bildes im hellsten Kanal (sonst rosa Rand: Rot schneidet zuerst ab); (3) `develop.corrections` setzt dort kein `hdr`.
+   `ghs_mix` 0,5: sternlose Ebene zur Hälfte GHS, zur Hälfte Kanalkurve (fester Anteil, monoton); `bg_dark` 0,022 statt 0,03.
+   Helligkeitsprofil M31 vom Kern bis 120 px (1000 px Bildbreite): Stellina-App 0,90/0,78/0,65/0,45/0,21/0,10, Himmel 0,022;
+   0.74 0,74/0,71/0,66/0,56/0,31/0,17; reines GHS mit Kernschutz 0,97/0,89/0,77/0,57/0,31/0,17; Kanalkurve 0,92/0,66/0,49/0,33/0,19/0,12;
+   jetzt 0,94/0,79/0,66/0,48/0,26/0,14, Himmel 0,020. Farbe Bulge R/G 1,17 wie Stellina (B/G 1,01 statt 1,06, Gaia-kalibriert, belassen).
+   Verworfen: helligkeitsabhängige Mischung GHS/Kurve (nicht monoton, Codex PR #120).
+   Erwogen, nicht umgesetzt: QC-Maß „Kern-Dip“ (90-%-Wert im Ring 3–14 px minus Kernmitte; Fehlbilder +0,002/+0,063, gute −0,04 bis
+   −0,29) – meldet ohne Objektart auch echte Ringe (M57).
    **Kompakte helle Objekte** (13.11.2026, M1 Vespera 51 min: Kern weiße Scheibe, `burnt_core` blieb drei QC-Runden stehen):
    Bei Nebeln mit Sternentrennung streckt `stars.Stretch` (GHS) mit eigenem Weißpunkt – `white_pct`/`asinh` aus `adapt`/`corrections`
    wirken dort **nicht** auf den Nebel. GHS legte den Kern auf 0,7–0,84, `local_contrast` und `grade` multiplizierten ihn dann ins
