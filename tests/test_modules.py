@@ -71,3 +71,18 @@ def test_teleskop_standardmaessig_aus(tmp_path, monkeypatch):
     assert enabled_ids(store)["telescope"] is True
     monkeypatch.setenv("ASTROFLOW_MODULES", "stacking,telescope")
     assert enabled_ids(SettingsStore(tmp_path / "leer.json"))["telescope"] is True
+
+
+def test_ausgeschaltetes_modul_zeigt_titel_beschreibung_symbol(tmp_path, monkeypatch):
+    """Nicht geladene Module liefern Titel/Beschreibung/Symbol aus den Quelldaten, ohne dass das Modul importiert wird."""
+    import sys
+    from astroflow.core.modules import AVAILABLE, Loaded, static_meta
+    monkeypatch.setenv("ASTROFLOW_DATA", str(tmp_path))
+    sys.modules.pop("astroflow.modules.telescope", None)
+    info = Loaded("telescope", None, False).info()
+    assert info["name"] == "Teleskop" and info["icon"] == "target" and info["description"]
+    assert info["available"] is False and info["scripts"] == []
+    assert "astroflow.modules.telescope" not in sys.modules
+    for mid in AVAILABLE:
+        meta = static_meta(mid)
+        assert meta.get("name") and meta.get("description") and meta.get("icon"), mid

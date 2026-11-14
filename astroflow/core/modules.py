@@ -102,6 +102,26 @@ class BaseModule:
         return p if p.is_dir() else None
 
 
+def static_meta(mid: str) -> dict:
+    """Titel, Beschreibung und Symbol eines Moduls **ohne Import** (AST der `__init__.py`) – damit auch ausgeschaltete
+    oder defekte Module in den Einstellungen mit deutschem Namen erscheinen."""
+    import ast
+    out: dict = {}
+    try:
+        path = Path(__file__).resolve().parent.parent / "modules" / mid / "__init__.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef) and node.name == "Module":
+                for st in node.body:
+                    if (isinstance(st, ast.Assign) and len(st.targets) == 1 and isinstance(st.targets[0], ast.Name)
+                            and st.targets[0].id in ("name", "description", "icon")
+                            and isinstance(st.value, ast.Constant) and isinstance(st.value.value, str)):
+                        out[st.targets[0].id] = st.value.value
+    except Exception:
+        pass
+    return out
+
+
 @dataclass
 class Loaded:
     id: str
@@ -112,9 +132,11 @@ class Loaded:
     def info(self) -> dict:
         m = self.module
         cls = m.__class__ if m else None
+        meta = {} if m else static_meta(self.id)
         return {"id": self.id, "enabled": self.enabled, "available": m is not None, "error": self.error,
-                "name": getattr(cls, "name", self.id) or self.id, "description": getattr(cls, "description", ""),
-                "icon": getattr(cls, "icon", "star"),
+                "name": (getattr(cls, "name", "") if m else meta.get("name")) or self.id,
+                "description": getattr(cls, "description", "") if m else meta.get("description", ""),
+                "icon": getattr(cls, "icon", "star") if m else meta.get("icon", "star"),
                 "scripts": [f"/m/{self.id}/{s}" for s in getattr(cls, "scripts", ())] if m else [],
                 "styles": [f"/m/{self.id}/{s}" for s in getattr(cls, "styles", ())] if m else []}
 
