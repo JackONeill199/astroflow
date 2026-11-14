@@ -377,7 +377,7 @@
     if (!el.isConnected) return;
     el.innerHTML = `<div class="tel">
       <div class="tel-head"><div class="tel-title"><h1>Teleskop</h1><div class="row tel-tags"></div></div>
-        <div class="tel-btns"><button class="btn ghost tel-link" data-act="connect" title="Nur verbinden: Status, Akku und Speicher ansehen. Das Teleskop bewegt sich dabei nicht.">${icon('check')}<span>Verbinden</span></button>
+        <div class="tel-btns"><button class="btn tel-link" data-act="connect" title="Nur verbinden: Status, Akku und Speicher ansehen. Das Teleskop bewegt sich dabei nicht.">${icon('check')}<span>Verbinden</span></button>
           <button class="btn ghost tel-unlink" data-act="disconnect" title="Verbindung zum Teleskop trennen (nur wenn der Autopilot nicht läuft)">${icon('x')}<span>Trennen</span></button>
           <button class="btn tel-go" data-act="go">${icon('play')}<span>Start</span></button>
           <button class="btn ghost tel-pause" data-act="pause">${icon('pause')}<span>Pause</span></button>
@@ -418,6 +418,7 @@
       const running = ['laeuft', 'wartet'].includes(d.mode);
       go.hidden = running; pause.hidden = !running;
       q('.tel-link').hidden = !!s.connected;
+      go.classList.toggle('ghost', !s.connected);           // Hauptaktion: Verbinden, solange nicht verbunden – sonst Start
       q('.tel-unlink').hidden = !s.connected || running;
       go.querySelector('span').textContent = d.mode === 'pausiert' ? 'Weiter' : 'Start';
       const notes = [];
