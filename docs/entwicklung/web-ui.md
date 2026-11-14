@@ -66,7 +66,7 @@ Ladebalken `loadbar` (unter der Werkzeugleiste, erst nach `LOADBAR_AFTER` 150 ms
 (seit 0.21.1, Nutzerbefund „Übersicht ploppt auf einmal auf“): Gerüst sofort zurückgeben, Abschnitte einzeln füllen – Übersicht: `load()`
 startet je Abschnitt eigene Anfragen (`paintCard` je Modul, `paintFeatured` je homeFeatured), Platzhalter `.skel-*` in fester Höhe, erste Füllung `.fill`.
 Prüfen mit künstlich verzögerter API (Playwright async `page.route` + `asyncio.sleep` – synchron blockiert `time.sleep` alles).
-Polling alle 2,5 s (`/api/status`), Ansichten zeichnen nur bei geänderter Signatur neu (Formulare/Zoom bleiben erhalten). `route()` verwirft Ansichten, die erst
+Polling verkettet (`poll()` in `app.js`, seit 14.11.2026): nächste Runde 2,5 s nach der vorigen Antwort, verborgener Tab pausiert, `poll()` während einer laufenden Runde = genau eine Runde danach – nie `setInterval` für Serverabfragen (Stau unter Last, Test `test_polling_ui.py`). Ansichten zeichnen nur bei geänderter Signatur neu (Formulare/Zoom bleiben erhalten). `route()` verwirft Ansichten, die erst
 nach einem weiteren Klick fertig werden (`routeTicket`), und gibt jeder Ansicht einen eigenen Behälter in `#view` (sonst schrieb eine
 verworfene, noch ladende Ansicht über die aktuelle). Ansichten, die nach `await` global per `$('#…')` suchen, vorher `el.isConnected` prüfen. Bildbetrachter `createViewer(host, src, cmpSrc, labels, ph, {overlay})` mit Zoom/Pan/Pinch, Vergleich
 und optionalem SVG-Overlay in Bildpixeln (Sage-Objektmarken). Achtung: in `createViewer` keine lokale Variable `esc` (TDZ-Fehler). Nach `opts.slowAfter` (Standard 20 s) ohne `load` bzw. bei `error` zeigt `.vload` einen Hinweis mit „Erneut versuchen“ (lädt mit `?neu=` neu; Test `test_viewer_slow.py`).

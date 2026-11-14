@@ -377,7 +377,9 @@
     if (!el.isConnected) return;
     el.innerHTML = `<div class="tel">
       <div class="tel-head"><div class="tel-title"><h1>Teleskop</h1><div class="row tel-tags"></div></div>
-        <div class="tel-btns"><button class="btn tel-go" data-act="go">${icon('play')}<span>Start</span></button>
+        <div class="tel-btns"><button class="btn tel-link" data-act="connect" title="Nur verbinden: Status, Akku und Speicher ansehen. Das Teleskop bewegt sich dabei nicht.">${icon('check')}<span>Verbinden</span></button>
+          <button class="btn ghost tel-unlink" data-act="disconnect" title="Verbindung zum Teleskop trennen (nur wenn der Autopilot nicht läuft)">${icon('x')}<span>Trennen</span></button>
+          <button class="btn tel-go" data-act="go">${icon('play')}<span>Start</span></button>
           <button class="btn ghost tel-pause" data-act="pause">${icon('pause')}<span>Pause</span></button>
           <button class="btn danger tel-stop" data-act="park" title="Stoppt alles und klappt das Teleskop sofort ein">${icon('stop')}<span>Sofort einklappen</span></button></div></div>
       <div class="tel-alarm" hidden></div>
@@ -415,9 +417,13 @@
       const go = q('.tel-go'), pause = q('.tel-pause');
       const running = ['laeuft', 'wartet'].includes(d.mode);
       go.hidden = running; pause.hidden = !running;
+      q('.tel-link').hidden = !!s.connected;
+      go.classList.toggle('ghost', !s.connected);           // Hauptaktion: Verbinden, solange nicht verbunden – sonst Start
+      q('.tel-unlink').hidden = !s.connected || running;
       go.querySelector('span').textContent = d.mode === 'pausiert' ? 'Weiter' : 'Start';
       const notes = [];
       if (u.error) notes.push(`<div class="notice err">${icon('alert')}<div><b>Teleskop-Treiber nicht bereit</b><div class="mut sm">${esc(u.error)} – solange läuft der Simulator.</div></div><span class="grow"></span><a class="btn sm ghost" href="#/settings/telescope">Einstellungen</a></div>`);
+      if (!s.connected && !running && !u.error) notes.push(`<div class="notice">${icon('check')}<div><b>Noch nicht verbunden</b><div class="mut sm">„Verbinden“ liest nur Status, Akku und Speicher – das Teleskop bewegt sich dabei nicht. Erst „Start“ startet den Autopiloten.</div></div></div>`);
       if (d.hold) notes.push(`<div class="notice ${['weather', 'clouds', 'dew', 'battery'].includes(d.hold.kind) ? 'err' : ''}">${icon(d.hold.kind === 'dawn' || d.hold.kind === 'twilight' ? 'star' : 'alert')}<div><b>${d.mode === 'fertig' ? 'Nacht beendet' : 'Wartet'}</b><div class="mut sm">${esc(d.hold.text)}</div></div></div>`);
       if (s.raw_enabled === false) notes.push(`<div class="notice">${icon('camera')}<div><b>Rohbilder am Teleskop aus</b><div class="mut sm">Für die AstroFlow-Pipeline in der Vaonis-App „Rohbilder speichern“ einschalten.</div></div></div>`);
       if (d.plan_note) notes.push(`<div class="notice err">${icon('alert')}<div><b>Plan gehört zu einem anderen Gerät</b><div class="mut sm">${esc(d.plan_note)}</div></div><span class="grow"></span><a class="btn sm ghost" href="#/observatorium/plan">Zum Planer</a></div>`);
@@ -464,7 +470,12 @@
             if (!await ask()) return;
             await send(url, { confirm: true });
           }
-        } else if (act === 'pause') await send(T + '/pause');
+        } else if (act === 'connect') {
+          const r = await send(T + '/connect');
+          if (r.master === 'other') toast('Verbunden. Die Handy-App steuert gerade – AstroFlow hat die Kontrolle nicht übernommen.');
+          else toast('Verbunden. Das Teleskop wurde nicht bewegt.');
+        } else if (act === 'disconnect') { await send(T + '/disconnect'); toast('Verbindung getrennt.'); }
+        else if (act === 'pause') await send(T + '/pause');
         else if (act === 'park') { await send(T + '/park'); toast('Teleskop wird eingeklappt.'); }
         else if (act === 'reload') { const r = await send(T + '/reload'); toast(`${r.items} Ziele für diese Nacht geladen.`); }
         else if (act === 'accept') {

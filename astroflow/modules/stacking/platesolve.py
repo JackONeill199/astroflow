@@ -16,6 +16,7 @@ import math
 import os
 import shutil
 import subprocess
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -45,6 +46,7 @@ _ASTAP_CANDIDATES = (
 
 AVAILABLE_TTL = 30            # s – erkannte Solver merken (neu installiertes ASTAP greift spätestens danach)
 _AVAILABLE: dict = {}
+_REFRESH = threading.Lock()           # höchstens eine Hintergrundsuche gleichzeitig
 
 
 class SolveError(Exception):
@@ -117,18 +119,32 @@ class SolverConfig:
     def solve_field_path(self) -> str | None:
         return shutil.which("solve-field")
 
-    def available(self) -> list[str]:
+    def available(self, wait: bool = True) -> list[str]:
         # Suche über PATH/Dateisystem kostet unter Windows ~190 ms und /status (alle 2,5 s gepollt) fragt sie ab –
-        # deshalb kurz merken; geänderte Einstellungen oder PATH ergeben einen neuen Schlüssel
+        # deshalb kurz merken; geänderte Einstellungen oder PATH ergeben einen neuen Schlüssel.
+        # wait=False (Status): abgelaufenen Stand sofort liefern und im Hintergrund auffrischen – unter Last dauerte
+        # die Suche bis 1,4 s und war die häufigste Spitze von /api/status (Messung 14.11.2026)
         key = (self.backend, self.astap, self.astap_db, bool(self.nova_key), tuple(self.cmd_prefix),
                os.environ.get("PATH"), os.environ.get("LOCALAPPDATA"))
         hit = _AVAILABLE.get(key)
         if hit and time.monotonic() - hit[0] < AVAILABLE_TTL:
             return list(hit[1])
+        if hit and not wait:
+            if _REFRESH.acquire(blocking=False):
+                def refresh():
+                    try:
+                        self._remember(key)
+                    finally:
+                        _REFRESH.release()
+                threading.Thread(target=refresh, daemon=True, name="solver-suche").start()
+            return list(hit[1])
+        return list(self._remember(key))
+
+    def _remember(self, key) -> list[str]:
         out = self._available()
         _AVAILABLE.clear()
         _AVAILABLE[key] = (time.monotonic(), out)
-        return list(out)
+        return out
 
     def _available(self) -> list[str]:
         out = []
@@ -140,11 +156,11 @@ class SolverConfig:
             out.append("nova")
         return out
 
-    def chain(self) -> list[str]:
+    def chain(self, wait: bool = True) -> list[str]:
         if self.backend == "off":
             return []
         if self.backend == "auto":
-            return [b for b in self.available() if b != "nova"]   # Online-Dienst nie automatisch
+            return [b for b in self.available(wait) if b != "nova"]   # Online-Dienst nie automatisch
         return [self.backend]
 
     @property

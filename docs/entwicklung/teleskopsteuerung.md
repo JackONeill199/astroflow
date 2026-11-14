@@ -178,6 +178,12 @@ Tau ab 03:00, Akku leer, App übernimmt Kontrolle, Verbindung bricht ab. Die Obe
 `/api/telescope`: `GET status` (klein, gepollt), `GET events?since=`, `GET night` (Zeitleiste), `POST connect|disconnect`,
 `POST start|pause|resume`, `POST park` (Not-Aus), `POST goto {target}` (einzelnes Ziel), `POST horizon-proposal/accept`,
 `GET/POST settings`.
+
+**Nur verbinden (Knopf „Verbinden“/„Trennen“ auf der Teleskop-Seite):** `POST connect` liest Status, Akku und Speicher und nimmt die
+Kontrolle **nur, wenn sie frei ist** (`master == none`) – nie der Handy-App; steuert sie gerade, antwortet es `{master: "other", note}`
+und die Oberfläche meldet es. Es bewegt nichts und startet keinen Autopiloten (Modus bleibt „aus“, kein `MOVES`-Befehl); dieselbe Regel
+gilt beim Verbinden durch `start`. `POST disconnect` → 409, solange der Autopilot läuft oder wartet. Beide sind Bedienung (auch für
+gekoppelte Geräte), kein `data-local-only`. Tests: `test_api_verbinden_*`.
 - Alle Steuer-Endpunkte unterliegen Herkunftsschutz und Kopplung (Sicherheit 2/3): nur dieser Rechner oder gekoppelte Geräte.
 - **Nur am Rechner selbst** (`require_local`): Pfad zur Bibliothek, Geräteadresse, Laden des Adapters.
 - Keine Ausnahmetexte an den Browser (feste deutsche Meldungen); Status/Protokoll ohne Kennungen und Koordinaten des Ortes.
