@@ -195,6 +195,21 @@ def resolve_extended(name: str | None) -> CatObject | None:
     return _EXT_ALIAS.get((tok.group(1) + tok.group(2)).upper()) if tok else None
 
 
+def kind_of(name: str | None) -> str | None:
+    """Objektart (Bearbeitungsprofil) zu einem Namen: kleiner Katalog, dann alle Messier-/Caldwell-Objekte (`deepsky`),
+    dann ASTAP. Der kleine Katalog kennt nur ~60 Objekte, ASTAP führt viele Messier-Galaxien und Haufen ohne Art – M77
+    bekam so das allgemeine statt des Galaxienprofils (14.11.2026). None = unbekannt."""
+    if not name:
+        return None
+    if (c := resolve_name(name)) is not None:
+        return c.kind
+    from . import deepsky                                   # spät: deepsky importiert dieses Modul
+    if (t := deepsky.lookup(name)) is not None and t.kind in PROFILES:
+        return t.kind
+    ext = resolve_extended(name)
+    return ext.kind if ext is not None and ext.kind != "generic" else None
+
+
 def nearest_extended(ra: float, dec: float, radius_deg: float = 0.3, min_size: float = 1.0) -> CatObject | None:
     """Auffälligstes Objekt nahe der Bildmitte: groß und zentral gewinnt."""
     best, best_score = None, 0.0

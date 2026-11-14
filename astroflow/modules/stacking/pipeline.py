@@ -1063,8 +1063,8 @@ class Pipeline:
             prog(0.01, "Bearbeitung", "Hotpixel-Punkte im Stack suchen")
             mean, hotfix = stackfix.repair(mean, cov)
         kind = proj["kind"]
-        if not kind and (ext := objects.resolve_extended(proj["name"])) and ext.kind != "generic":
-            kind = ext.kind                                 # ältere Projekte: Typ nachträglich aus dem großen Katalog
+        if kind in (None, "generic") and (k := objects.kind_of(proj["obj_id"] or proj["name"])) and k != kind:
+            kind = k              # ältere Projekte bzw. Messier-Objekte, die nur ASTAP (ohne Art) kannte: Typ nachträglich setzen
             self.db.x("UPDATE projects SET kind=? WHERE id=?", (kind, project_id))
         is_comet = comet.active(proj, opt)
         pname = opt["profile"] if opt["profile"] != "auto" else ("comet" if is_comet else (kind or "generic"))

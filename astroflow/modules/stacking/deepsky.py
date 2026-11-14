@@ -270,6 +270,21 @@ def keys_for(name: str | None) -> set[str]:
     return out
 
 
+def lookup(name: str | None) -> Target | None:
+    """Messier-/Caldwell-Ziel zu einem Namen („M77“, „Messier 77“, „NGC 1068“, „C 14“) oder None."""
+    if not name:
+        return None
+    fixed()
+    n = re.sub(r"^MESSIER", "M", norm(name))
+    if n in _KEYS:
+        return _KEYS[n]
+    tok = re.match(r"\s*([A-Za-z]{1,8})\s*0*(\d+)", name)
+    if not tok:
+        return None
+    k = re.sub(r"^MESSIER", "M", (tok.group(1) + tok.group(2)).upper())
+    return _KEYS.get(k) or _KEYS.get(re.sub(r"^CALDWELL", "C", k))
+
+
 def usable(t: Target, device: dict | None, field_fov: list | None) -> bool:
     """Passt das Ziel zu Gerät und Bildfeld (Helligkeit, Größe)?"""
     if t.mag is not None and t.mag > mag_limit(device):
