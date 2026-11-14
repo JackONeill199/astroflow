@@ -67,6 +67,7 @@ class Scenario:
     app_takes_control_at: float | None = None
     stars: int = 180                                                     # Sterne in einem guten Bild
     setup_busy_s: float = 0.0          # nach dem Öffnen so lange „beschäftigt“ (Gerät richtet sich selbst ein) → DriverBusy
+    stop_silently_at: float | None = None   # Gerät beendet die Beobachtung einmal ohne Fehler und ohne Bilder (Stillstand)
     init_rejected: bool = False        # Ausrichten wird immer abgelehnt (z. B. falsche Geräte-Uhr) → DriverError
 
     @classmethod
@@ -172,6 +173,9 @@ class SimDriver(Driver):
             self.step, self.goal = "idle", None
         if s in ("opening", "parking", "init"):
             pass
+        elif s in ("goto", "astrometry", "capture") and self.sc.stop_silently_at and t >= self.sc.stop_silently_at:
+            self.sc.stop_silently_at = None
+            self.step, self.target, self.goal = "idle", None, None
         elif s == "goto":
             self.goal = self._target_altaz(t)
             if self._move(dt):

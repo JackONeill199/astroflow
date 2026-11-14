@@ -53,6 +53,7 @@ GIVE_UP = {"open": 6 * 60, "init": 15 * 60, "observe": 10 * 60, "focus": 10 * 60
 # Erfahrungswerte je Phase in s (Vespera, Probe 3: Öffnen ~49 s, Einklappen ~47 s; Auto-Init mit Plate-Solving und Fokus
 # dauert ein paar Minuten). Gemessene Dauern ersetzen sie im laufenden Betrieb (`took`).
 EXPECT_S = {"oeffnet": 50.0, "richtet_aus": 240.0, "klappt_ein": 50.0}
+STALL_S = 90                # Ziel aktiv, Gerät tut nichts (kein GoTo/Astrometrie/Aufnahme) → nach … s handeln
 SUB_MAX = 1800              # Ersatzziel höchstens so lange am Stück
 OPEN = ("geplant", "verdeckt", "uebersprungen")     # noch nicht erledigt (verdeckt/übersprungen: neuer Versuch, sobald frei)
 
@@ -77,6 +78,8 @@ class Item:
     alt: float | None = None
     substitute_for: str | None = None
     manual: bool = False
+    seen: bool = False               # Gerät hat an diesem Versuch gearbeitet (GoTo/Astrometrie/Aufnahme gemeldet)
+    restarts: int = 0
 
     @property
     def target(self) -> Target:
@@ -143,6 +146,7 @@ class Autopilot:
         self.frames_fetched = 0
         self.plan_note: str | None = None
         self.known: TelescopeState | None = None   # letzter Zustand MIT Verbindung (für Not-Aus ohne Verbindung)
+        self.idle_since: float | None = None      # seit wann das Gerät beim aktiven Ziel nichts tut
         self.retry: dict[str, dict] = {}          # abgelehnte Befehle: {first, next, n, msg, busy} – Backoff statt Schleife
         self.phase_since: float | None = None     # seit wann die aktuelle Phase gilt (Restdauer)
         self.took: dict[str, float] = {}          # gemessene Dauer je Phase (ersetzt den Erfahrungswert)
@@ -559,10 +563,16 @@ class Autopilot:
             return
         cur = self._current()
         if cur:
+            working = s.step in ("goto", "astrometry", "capture") or s.device_plan
+            if working and (not s.target or s.target.get("id") == cur.id):
+                cur.seen = True
+            self.idle_since = None if working else (self.idle_since or now)
             if s.target and s.target.get("id") != cur.id and not s.device_plan:
                 self._end_item(cur, "abgebrochen", "anderes Ziel am Gerät", now)
             elif self._failed(cur, s):
                 return self._failure(cur, s, now)
+            elif self.idle_since is not None and now - self.idle_since >= (STALL_S if cur.seen else 2 * STALL_S):
+                return self._stalled(cur, s, now)
             elif not (vis := self.free(cur.ra, cur.dec, now))[0]:
                 # Ziel verlässt den freien Bereich (Mindesthöhe, Horizontmaske, gesperrte Richtung): sauber beenden, weiter
                 self._cmd("stop", self.driver.stop, now=now)
@@ -642,6 +652,8 @@ class Autopilot:
         return None
 
     def _start_item(self, it: Item, now: float):
+        self.idle_since = None
+        it.seen, it.restarts = False, 0
         it.status, it.real_start, it.why = "aktiv", now, ""
         it.frames = it.stacked = it.rejected = 0
         self.samples.clear()
@@ -683,13 +695,37 @@ class Autopilot:
         if s.target and s.target.get("id") != it.id:
             return False
         if s.astrometry_failed:
-            return True
+            return it.seen                # nur, wenn das Gerät an *diesem* Versuch gearbeitet hat (kein alter Fehler)
         if s.frames < WINDOW_FRAMES or not self.samples:
             return False
         base = next((x for x in reversed(self.samples) if x[0] <= s.frames - WINDOW_FRAMES), None)
         if base is None:
             return False
         return (s.rejected - base[1]) / max(1, s.frames - base[0]) >= BAD_RATIO
+
+    def _stalled(self, it: Item, s: TelescopeState, now: float):
+        """Ziel aktiv, aber das Gerät tut seit `STALL_S` nichts (Beobachtung selbst beendet oder nie begonnen): nicht endlos
+        warten. Astrometrie gescheitert → wie verdeckt; sonst einmal neu starten (bleibt genug Zeit), danach fertig (mit
+        gestapelten Bildern) bzw. abbrechen und weiter."""
+        self.idle_since = None
+        reason = f" ({s.error})" if s.error else ""
+        if s.astrometry_failed:
+            return self._failure(it, s, now)
+        if it.restarts < 1 and it.end - now > 10 * 60:
+            it.restarts += 1
+            it.seen = False
+            self.log(f"{it.name}: Die Beobachtung läuft am Teleskop nicht{reason} – starte sie einmal neu.", "warn", now)
+            self._cmd("observe", self.driver.observe, it.target, float(self.cfg["exposure"]), now=now)
+            return
+        elif it.stacked:
+            self._end_item(it, "fertig", "Gerät hat die Beobachtung beendet", now)
+            self.log(f"Das Teleskop hat {it.name} selbst beendet{reason} – weiter mit dem nächsten Ziel.", "info", now)
+        else:
+            self._end_item(it, "abgebrochen", "Beobachtung lief am Gerät nicht", now)
+            self.log(f"{it.name}: Die Beobachtung startet am Teleskop nicht{reason} – überspringe das Ziel.", "warn", now)
+        nxt = self._next_free(now)
+        if nxt:
+            self._start_item(nxt, now)
 
     def _failure(self, it: Item, s: TelescopeState, now: float):
         az, alt = (s.az if s.az is not None else it.az or 0.0), (s.alt if s.alt is not None else it.alt or 0.0)

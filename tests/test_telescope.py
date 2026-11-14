@@ -881,3 +881,58 @@ def test_keine_bewegung_waehrend_einklappen_ansteht():
     p.park_pending = {"t": clock.now(), "tries": 0}
     n = len(d.commands)
     assert p._cmd("observe", d.observe, p.items[0].target, 10.0, now=clock.now()) is False and len(d.commands) == n
+
+
+def test_vaonis_status_abgebrochene_beobachtung():
+    """Erster Autopilot-Lauf: Gerät brach nach 6× ASTROMETRY_FAILED selbst ab, danach keine Operation – der Grund steht nur in
+    previousOperations. Frisch → astrometry_failed; alt (über FRESH_S) → kein Fehler."""
+    from astroflow.modules.telescope import vaonis_read as vr
+    end = 1794678479308
+    raw = {"result": {"initialized": True, "timestamp": end + 170_000, "currentOperation": None, "otherCurrentOperations": [],
+                      "motors": {"AZ": {"position": 130.6}, "ALT": {"position": 48.4}},
+                      "previousOperations": {"observation": {
+                          "type": "OBSERVATION", "startTime": end - 56_000, "endTime": end, "stopped": True,
+                          "error": {"name": "GENERAL.POINTING_STOPPED", "chain": [{"name": "GENERAL.TOO_MANY_ASTROMETRY_FAILED"}]}}}}}
+    s = vr.translate(raw)
+    assert s.step == "idle" and s.astrometry_failed and "TOO_MANY_ASTROMETRY_FAILED" in s.error
+    raw["result"]["timestamp"] = end + (vr.FRESH_S + 60) * 1000
+    s = vr.translate(raw)
+    assert not s.astrometry_failed and s.error is None
+
+
+def test_geraet_beendet_beobachtung_still_einmal_neu_dann_weiter():
+    """Ziel aktiv, Gerät tut nichts mehr (ohne Fehler): nach STALL_S einmal neu starten; passiert es wieder, Ziel abbrechen
+    und weiter – nie endlos warten."""
+    p, d, clock = make([item(M31, 0.0, 3.0)], sim.Scenario(stop_silently_at=T0 + 0.15 * H), cfg={"fallback": False})
+    run(p, clock, 0.3, step=10)
+    assert "starte sie einmal neu" in texts(p) and sum(c.startswith("observe") for c in d.commands) >= 2
+    m31 = p.items[0]
+    assert m31.status == "aktiv" and m31.restarts == 1
+    d.sc.stop_silently_at = clock.now()                    # zweites Mal
+    run(p, clock, 0.2, step=10)
+    # mit gestapelten Bildern „fertig“, sonst „abgebrochen“ – in beiden Fällen weiter statt warten
+    assert (m31.status, "selbst beendet" in texts(p)) == ("fertig", True) if m31.stacked else \
+        (m31.status, "überspringe das Ziel" in texts(p)) == ("abgebrochen", True)
+    assert sum(c.startswith("observe") for c in d.commands) == 2            # nur einmal neu gestartet
+
+
+def test_ziel_ohne_bilder_nach_stillstand_abgebrochen():
+    p, d, clock = make([item(M31, 0.0, 3.0)], cfg={"fallback": False})
+    run(p, clock, 0.3, step=10)
+    m31 = p.items[0]
+    m31.restarts, m31.stacked = 1, 0                       # schon einmal neu gestartet, keine Bilder
+    d.step, d.target = "idle", None                        # Gerät hört still auf
+    d.sc.stop_silently_at = clock.now()
+    run(p, clock, 0.1, step=10)
+    assert m31.status == "abgebrochen" and "überspringe das Ziel" in texts(p)
+
+
+def test_alter_astrometriefehler_trifft_neues_ziel_nicht():
+    p, d, clock = make([item(M31, 0.0, 3.0)], cfg={"fallback": False})
+    d.astrometry_failed = True                             # Fehler vom vorigen Versuch steht noch im Status
+    cur = p.items[0]
+    s = d.state()
+    cur.status, cur.seen = "aktiv", False
+    assert p._failed(cur, s) is False
+    cur.seen = True
+    assert p._failed(cur, s) is True
