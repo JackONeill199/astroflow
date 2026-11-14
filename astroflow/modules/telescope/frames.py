@@ -42,12 +42,13 @@ class FtpFrames:
         return f
 
     @staticmethod
-    def _list(f, path: str) -> list[tuple[str, dict]]:
+    def _list(f, path: str, limit: int | None = MAX_ENTRIES) -> list[tuple[str, dict]]:
+        """Ordnerliste. `limit` nur für Ordner (Schutz gegen riesige Bäume); Bilderlisten immer vollständig (`limit=None`)."""
         try:
             out = [(n, facts) for n, facts in f.mlsd(path, facts=["type", "size", "modify"]) if n not in (".", "..")]
         except ftplib.error_perm:                   # ohne MLSD: nur Namen
             out = [(n.rsplit("/", 1)[-1], {}) for n in f.nlst(path)]
-        return out[:MAX_ENTRIES]
+        return out if limit is None else out[:limit]
 
     def latest_folder(self, f, since: float | None = None) -> str | None:
         """Jüngster `<plan>/<beobachtung>/0x-images-*`-Ordner unter `user/` (nach Änderungszeit). `since`: nur Beobachtungen,
@@ -72,7 +73,7 @@ class FtpFrames:
             return None
         return f"{best[1]}/{sorted(subs, key=lambda s: (s[1].get('modify', ''), s[0]))[-1][0]}"
 
-    def fetch(self, dest: Path, folder: str | None = None, final: bool = False, since: float | None = None) -> tuple[str | None, list[Path]]:
+    def fetch(self, dest, folder: str | None = None, final: bool = False, since: float | None = None) -> tuple[str | None, list[Path]]:
         """Neue Einzelbilder nach `dest` holen. Eine Datei gilt erst als fertig, wenn ihre Größe beim nächsten Blick gleich
         blieb (oder `final`, wenn die Beobachtung beendet ist). Rückgabe: (Ordner am Gerät, neue Dateien)."""
         got: list[Path] = []
@@ -82,7 +83,8 @@ class FtpFrames:
                 folder = folder or self.latest_folder(f, since)
                 if not folder:
                     return None, got
-                files = [(n, int(x.get("size") or -1)) for n, x in self._list(f, folder) if FRAME.match(n)]
+                files = [(n, int(x.get("size") or -1)) for n, x in self._list(f, folder, None) if FRAME.match(n)]
+                dest = dest(folder) if callable(dest) else dest            # Zielordner kann vom Ordner am Gerät abhängen
                 dest.mkdir(parents=True, exist_ok=True)
                 for name, size in sorted(files):
                     key = f"{folder}/{name}"
@@ -129,9 +131,13 @@ class Collector:
     def stop(self):
         self._stop.set()
 
-    def dest(self, item) -> Path:
+    def dest(self, item, folder: str | None = None) -> Path:
+        """Je Beobachtung am Gerät ein eigener Ordner – dasselbe Ziel zweimal in einer Nacht (Ersatz + geplanter Block) hat am
+        Gerät zwei Beobachtungen mit jeweils img-0001 …, die sich sonst überschreiben würden."""
         p = self.unit.pilot
-        return self.input_dir / "Teleskop" / safe_name(self.unit.cfg["model"]) / safe_name(p.night or "Nacht") / safe_name(item.name)
+        base = self.input_dir / "Teleskop" / safe_name(self.unit.cfg["model"]) / safe_name(p.night or "Nacht") / safe_name(item.name)
+        parts = (folder or "").split("/")
+        return base / safe_name(parts[-2]) if len(parts) >= 2 else base
 
     def _loop(self):
         last = None
@@ -152,7 +158,7 @@ class Collector:
                     p.log(self.error, "warn")
 
     def _take(self, item, final: bool):
-        folder, got = self.ftp.fetch(self.dest(item), self.folders.get(id(item)), final=final, since=item.real_start)
+        folder, got = self.ftp.fetch(lambda fo: self.dest(item, fo), self.folders.get(id(item)), final=final, since=item.real_start)
         if folder:
             self.folders[id(item)] = folder
         if got:

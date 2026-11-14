@@ -537,3 +537,46 @@ def test_private_ordner_der_plugins(tmp_path):
     (d / "plugin.json").write_text(json.dumps({**meta, "private": [".."]}), encoding="utf-8")
     dirs = plugins.private_dirs(tmp_path / "data", [], {"x": {"library": str(tmp_path / "bib" / "vaonis.py")}})
     assert str((tmp_path / "data" / "plugins").resolve()) in dirs and str(tmp_path / "bib") in dirs
+
+
+def test_entry_point_plugin_erst_beim_laden_ausgefuehrt(monkeypatch):
+    """Installierte Plugins (Entry Point) werden beim Entdecken nicht importiert – erst `load` (nach Aktivierung) führt Code aus."""
+    import importlib.metadata as md
+    calls = []
+
+    class Treiber(sim.SimDriver):
+        plugin = {"name": "Paket-Treiber", "contract": 1}
+
+        def __init__(self, options):
+            super().__init__(sim.ManualClock(0))
+
+    class EP:
+        name, value = "paket", "paket.modul:Treiber"
+
+        def load(self):
+            calls.append("load")
+            return Treiber
+    monkeypatch.setattr(md, "entry_points", lambda group=None: [EP()] if group == plugins.GROUP else [])
+    infos = plugins._entry_points()
+    assert calls == [] and infos[0].name == "paket" and infos[0].error is None
+    d = plugins.load(infos[0])
+    assert calls == ["load"] and isinstance(d, Treiber)
+    Treiber.plugin = {"contract": 99}
+    with pytest.raises(DriverError, match="passt nicht"):
+        plugins.load(plugins._entry_points()[0])
+
+
+def test_live_bilder_lange_beobachtung_und_eigener_ordner(tmp_path):
+    from astroflow.modules.telescope import frames
+    imgs = {"_m": "20261120183000", **{f"img-{k:04d}.fits": b"x" * 4 for k in range(450)}}       # > 400 Einträge
+    fake = FakeFtp({"user": {"p": {"_m": "20261120183000", "02-observation-m31": {"_m": "20261120183000", "01-images-initial": imgs}}}})
+    f = frames.FtpFrames("10.0.0.1", ftp_factory=lambda: fake)
+    folder, got = f.fetch(lambda fo: tmp_path / fo.split("/")[-2], final=True)
+    assert len(got) == 450 and (tmp_path / "02-observation-m31" / "img-0449.fits").exists()
+
+
+def test_capture_liste_ohne_400er_grenze():
+    from astroflow.modules.telescope import captures, frames
+    imgs = {"_m": "20261120183000", **{f"img-{k:04d}.fits": b"x" for k in range(686)}}
+    fake = FakeFtp({"user": {"p": {"_m": "20261120183000", "01-observation-m77": {"_m": "20261120183000", "01-images-initial": imgs}}}})
+    assert captures.list_captures(frames.FtpFrames("x", ftp_factory=lambda: fake))[0]["frames"] == 686

@@ -77,6 +77,10 @@ def _has(module: str, vendor: list[str]) -> bool:
 
 
 def _check(info: PluginInfo) -> PluginInfo:
+    try:
+        info.contract = None if info.contract is None else int(info.contract)
+    except (TypeError, ValueError):
+        info.contract = None
     if info.contract != CONTRACT:
         info.error = (f"Plugin passt nicht zu dieser AstroFlow-Version (Treiber-Vertrag {info.contract if info.contract is not None else '?'}, "
                       f"diese Version erwartet {CONTRACT}).")
@@ -127,22 +131,9 @@ def _entry_points() -> list[PluginInfo]:
     except Exception:
         return out
     for ep in list(eps)[:MAX_PLUGINS]:
-        meta = {}
-        info = PluginInfo(id=_pid(ep.name, f"ep:{ep.value}"), name=ep.name, path=f"Paket ({ep.value})", entry=ep)
-        try:
-            meta = getattr(ep.load(), "plugin", {}) or {}         # Laden erst hier, Ausführen erst nach Aktivierung
-        except Exception:
-            info.error = "Plugin-Paket lässt sich nicht laden."
-            out.append(info)
-            continue
-        info.name = str(meta.get("name") or ep.name)[:80]
-        info.family, info.models = str(meta.get("family") or ""), list(meta.get("models") or [])
-        try:
-            info.contract = int(meta.get("contract"))
-        except (TypeError, ValueError):
-            info.contract = None
-        info.requires, info.options = list(meta.get("requires") or []), list(meta.get("options") or [])
-        out.append(_check(info))
+        # Nichts importieren: Paket-Code läuft erst, wenn der Nutzer das Plugin aktiviert und gewählt hat (`load`).
+        # Vertragsversion und Pakete prüft dann `load` aus dem Klassenattribut `plugin`.
+        out.append(PluginInfo(id=_pid(ep.name, f"ep:{ep.value}"), name=ep.name[:80], path=f"Paket ({ep.value})", entry=ep))
     return out
 
 
@@ -200,6 +191,11 @@ def load(info: PluginInfo, options: dict | None = None) -> Driver:
     try:
         if info.entry is not None:
             cls = info.entry.load()
+            meta = getattr(cls, "plugin", {}) or {}
+            info.contract = meta.get("contract")
+            info.requires = list(meta.get("requires") or [])
+            if _check(info).error:
+                raise DriverError(info.error)
         else:
             name = f"astroflow_tplugin_{info.id.replace('-', '_')}"
             spec = importlib.util.spec_from_file_location(name, Path(info.path) / info.module)

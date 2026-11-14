@@ -63,7 +63,7 @@ def list_captures(ftp: FtpFrames) -> list[dict]:
                 for sub, sf in ftp._list(f, base):
                     if not IMAGES_DIR.match(sub) or sf.get("type", "dir") != "dir":
                         continue
-                    for name, x in ftp._list(f, f"{base}/{sub}"):
+                    for name, x in ftp._list(f, f"{base}/{sub}", None):
                         if FRAME.match(name):
                             frames += 1
                             size += int(x.get("size") or 0)
@@ -178,7 +178,7 @@ class CaptureImport:
                     continue
                 folder = dest if sub.lower().startswith("01-") else dest / safe_name(sub)
                 folder.mkdir(parents=True, exist_ok=True)
-                for name, x in sorted(ftp._list(f, f"{base}/{sub}")):
+                for name, x in sorted(ftp._list(f, f"{base}/{sub}", None)):
                     if not FRAME.match(name):
                         continue
                     size, target = int(x.get("size") or -1), folder / name

@@ -7,7 +7,9 @@ Konzept, Protokoll, Lizenzfrage und offene Proben: `docs/entwicklung/teleskopste
 - **Keine Anmelde- oder Befehlslogik für Vaonis im Repo** (Signaturschlüssel aus der App). Steuern nur über Treiber-Plugins
   (`plugins.py`, Vertrag `driver.CONTRACT`); das Vaonis-Steuer-Plugin ist privat und liegt außerhalb des Repos. Im Repo erlaubt:
   Status lesen ohne Anmeldung (`vaonis_read.py`) und anonymer FTP (`frames.py`, `captures.py`). Bibliothek/Schlüssel nie ins Repo.
-- Plugins sind fremder Code: Aktivieren, Plugin-Ordner, Optionen, Geräteadresse und echte Steuerung nur mit `require_local`.
+- Plugins sind fremder Code: Aktivieren, Plugin-Ordner, Optionen, Geräteadresse und das **Wählen** einer echten Steuerung nur mit
+  `require_local`. Bedienen (Verbinden, Start mit Bestätigung, Pause, Weiter, Sofort einklappen) ist für gekoppelte Geräte gewollt
+  (Nutzerentscheidung 14.11.2026: „Steuer-Endpunkte nur am Rechner selbst oder von gekoppelten Geräten“, Sicherheit 2/3).
   Ein defektes Plugin darf AstroFlow nicht lahmlegen (feste Meldung, Simulator). Vertrag unverträglich geändert → `CONTRACT` erhöhen.
 - **Am echten Gerät nur mit ausdrücklicher Freigabe des Nutzers**, jede Probe einzeln. Tests nur gegen `sim.SimDriver`.
 - Ort nur an das Teleskop (`Driver.init`), nie in Protokoll, Status, Browser oder Dateien. Gerätekennungen bleiben im Adapter.
