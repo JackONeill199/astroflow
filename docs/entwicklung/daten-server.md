@@ -101,6 +101,15 @@ REST unter `/api/stacking`: `status`, `scan`, `projects[/{id}]` (GET/PATCH/DELET
 `jobs`, `develop-all` (alle Objekte mit Master-Stack neu entwickeln, Galerie-Knopf), `tutor`, `results/{id}/tutor[/ki]`, `upload` (behält bis zu 4 Ordnerebenen, blockt `..`), `results/{id}/{tif|png|jpg|thumb|fits|before}`, `reviewer`, `solver`, `storage`, `starnet`.
 Tiefe/Vergleich: `results/{id}/depth|compare[/<datei>]`, `insights` (s. `analyse-tiefe-vergleich.md`).
 Kern: `/api/app` (Module, Build), `/api/folders?path=` (Ordnerdialog), `/api/sites…` (Ortsliste), `/api/status` (`{version, busy, modules:{id: status}}`), `/api/activity` (alle Module), `/api/modules` (ein/aus).
+**Server unter Last** (`core/pollcache.py`, seit 14.11.2026): Endpunkte sind synchron und teilen sich den anyio-Pool (40 Threads) und den GIL
+mit Pipeline, Entwickeln und Auto-Analysen. Früher rechnete jede Poll-Anfrage `/projects` neu (~0,4 s Python, 505 KB); stapelten sich die
+Abfragen mehrerer Tabs, war der Pool voll und selbst `/api/status` wartete ~48 s. Jetzt: `Shared` – je Schlüssel rechnet ein Thread, die
+anderen warten auf dessen Ergebnis; frisch bleibt es bei gleicher Signatur, mindestens `min_age` (bei langsamer Berechnung länger, bis 10 s),
+eine schreibende Anfrage (Middleware `guard` → `touch()`) macht alles sofort veraltet. `/api/status` und `/api/activity` sind `async` und
+rechnen in einer eigenen kleinen Thread-Spur (`lane`, 4 Threads), 1 s geteilt. `/api/stacking/projects` hängt am Schreibzähler `DB.gen`
+(jede schreibende Verbindung dieses Prozesses; Schreiben auf `jobs` zählt nur in `DB.jobs_gen`) und legt den Auftragsstand bei jeder
+Anfrage frisch darüber; die Liste kommt ohne Tutor/QC/Parameter/Qualität (~80 % der Größe, nur die Objektseite zeigt sie) und wird ohne
+`jsonable_encoder` serialisiert; ändert nur die Pipeline die DB, kommt sofort der letzte Stand und ein Hintergrund-Thread rechnet neu (`background=True`). Schreibt ein anderer Prozess in die DB (CLI), gilt die Liste höchstens 60 s. Weitere Lastbremsen: `sys.setswitchinterval(0.0005)` in der Lifespan (GIL-Konvoi: sqlite3 gibt den GIL je Zeile frei – 37 000 Zeilen dauerten neben einem rechnenden Python-Thread 154 s statt 0,3 s), `Engine.status` teilt die Anzeigezahlen über `DB.gen` und fragt den Solver mit `chain(wait=False)` ab (ASTAP-Suche im Hintergrund statt bis 1,4 s im Status), der Watcher prüft Fingerabdrücke des Bestands nur bei neuen Dateien und einmal je Start (`Pipeline._fp_checked`). Test: `test_pollcache.py`, `test_polling_ui.py`.
 **Achtung:** Zwei Server auf demselben Datenordner = zwei Worker (beim Start werden „running“-Jobs des anderen neu eingereiht) – Tests/Vorschauen mit eigenem Datenordner.
 
 

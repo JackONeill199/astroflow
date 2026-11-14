@@ -479,7 +479,8 @@ def test_api_import_vom_teleskop(tmp_path, monkeypatch):
         assert d["available"] and d["simulated"] and len(d["items"]) == 3 and not any(e["imported"] for e in d["items"])
         assert c.post("/api/telescope/captures/import", json={"keys": ["../../etc", "C:/Windows"]}).status_code == 409
         key = "2026-11-12_19-58-10_plan_Demo/01-observation-m31"
-        assert c.post("/api/telescope/captures/import", json={"keys": [key, "../../etc"]}).json()["state"] == "running"
+        # kleiner Import kann schon fertig sein, bevor die Antwort kommt
+        assert c.post("/api/telescope/captures/import", json={"keys": [key, "../../etc"]}).json()["state"] in ("running", "done")
         for _ in range(100):
             j = c.get("/api/telescope/captures").json()["job"]
             if j["state"] != "running":

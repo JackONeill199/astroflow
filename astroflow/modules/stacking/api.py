@@ -19,7 +19,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.responses import FileResponse, Response
 
 from . import calibration, channels, comet, diskspace, frame_preview, gpu, graxpert, objects, platesolve, quality, registration, reviewer, scanner, skyquality, stars, tonight, tutor
-from ...core import security, sites
+from ...core import pollcache, security, sites
 from .db import DB
 from .pipeline import Pipeline
 
@@ -73,6 +73,7 @@ class Engine:
         self.ctx = ctx
         self.s = ctx.settings
         self.db = DB(self.s.db_path)
+        self.shared_counts = pollcache.Shared(self._counts, min_age=3.0, signature=lambda: self.db.gen)
         self.review_cfg = reviewer.ReviewerConfig.from_env()
         self.pl = Pipeline(self.s, self.db, self.review_cfg)
         self.pl.site_provider = self._site                # Kometenmodus: Parallaxe lokal am Standort rechnen
@@ -346,12 +347,17 @@ class Engine:
         return r
 
     # ---- Beiträge zur gemeinsamen Oberfläche ---------------------------------
-    def status(self) -> dict:
+    def _counts(self) -> tuple:
         frames = {r["kind"]: r["n"] for r in self.db.q("SELECT kind, COUNT(*) n FROM frames GROUP BY kind")}
-        busy = self.db.one("SELECT COUNT(*) n FROM jobs WHERE state IN ('queued','running')")["n"]
         n_proj = self.db.one("SELECT COUNT(*) n FROM projects WHERE json_extract(options,'$.gallery_parent') IS NULL")["n"]
         n_res = self.db.one("SELECT COUNT(DISTINCT r.project_id) n FROM results r JOIN projects p ON p.id=r.project_id "
                             "WHERE json_extract(p.options,'$.gallery_parent') IS NULL")["n"]
+        return frames, n_proj, n_res
+
+    def status(self) -> dict:
+        # Anzeigezahlen nur nach Änderungen neu (während einer Analyse höchstens alle 3 s); Aufträge immer frisch
+        frames, n_proj, n_res = self.shared_counts.get()
+        busy = self.db.one("SELECT COUNT(*) n FROM jobs WHERE state IN ('queued','running')")["n"]
         try:
             du = shutil.disk_usage(self.s.data_dir)
             disk = {"free": du.free, "total": du.total}
@@ -365,7 +371,7 @@ class Engine:
                 "projects": n_proj, "finished": n_res,
                 "delete_uploads": self.s.delete_uploads, "gaia": self.s.gaia,
                 "reviewer": {"enabled": self.review_cfg.enabled, "provider": self.review_cfg.provider, "model": self.review_cfg.model},
-                "solver": {"enabled": self.pl.solver_cfg.enabled, "active": self.pl.solver_cfg.chain()}}
+                "solver": {"enabled": bool(chain := self.pl.solver_cfg.chain(wait=False)), "active": chain}}
 
     def activity(self, limit: int = 30) -> list[dict]:
         out = []
@@ -381,6 +387,25 @@ class Engine:
 
 
 _coll_cache: dict = {}          # Dienst collection_progress (Sage), 2 min zwischengespeichert
+
+
+# dieselben Schlüssel wie `_slim`, aber schon in SQLite entfernt (ungültiges JSON bleibt unverändert, `_slim` meldet es wie bisher)
+_SLIM_SQL = ("CASE WHEN json_valid(stats) THEN json_remove(stats,'$.depth','$.compare','$.asteroids','$.hrd','$.diagnose') "
+             "ELSE stats END")
+
+
+# Objektliste zusätzlich ohne Tutor, Qualitätsprüfung, Parameter und Qualitätskennzahlen: ~80 % der Antwort, nur die Objektseite
+# (/projects/{pid}, Ergebnisliste) zeigt sie
+_LIST_SQL = ("CASE WHEN json_valid(stats) THEN json_remove(stats,'$.depth','$.compare','$.asteroids','$.hrd','$.diagnose',"
+             "'$.tutor','$.qc','$.params','$.quality') ELSE stats END")
+
+
+def _latest_jobs(c, ids: list[int] | None = None) -> dict[int, dict]:
+    """Neuester Auftrag je Objekt (nur die Felder der Listenansicht)."""
+    where = f"WHERE project_id IN ({','.join('?' * len(ids))}) " if ids is not None else ""
+    return {x["project_id"]: {k: x[k] for k in ("id", "state", "progress", "stage", "message", "finished")}
+            for x in c.execute("SELECT id, project_id, state, progress, stage, message, finished FROM jobs "
+                               f"WHERE id IN (SELECT MAX(id) FROM jobs {where}GROUP BY project_id)", ids or ())}
 
 
 def _slim(stats: str | None) -> dict:
@@ -417,7 +442,7 @@ def build_router(eng: Engine) -> APIRouter:
     picture_lock = threading.Lock()                  # eine Bildanalyse gleichzeitig (rechnet beim ersten Abruf)
     db = eng.db
 
-    def project_views(rows: list[dict]) -> list[dict]:
+    def project_views(rows: list[dict], slim_sql: str | None = None) -> list[dict]:
         """Listenansicht der Objekte. Alle Kennzahlen in wenigen gruppierten Abfragen über eine Verbindung –
         je Objekt einzeln abzufragen kostete bei 58 Objekten ~1,8 s (≈ 460 Verbindungen) und bremste jeden Seitenwechsel."""
         if not rows:
@@ -436,15 +461,15 @@ def build_router(eng: Engine) -> APIRouter:
             for x in c.execute(f"SELECT project_id, COUNT(*) n, COALESCE(SUM(size),0) b, COALESCE(SUM(stacked),0) s FROM frames "
                                f"WHERE kind='light' AND deleted=1 AND project_id IN ({ph}) GROUP BY project_id", ids):
                 dl[x["project_id"]] = dict(x)
-            for x in c.execute(f"SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY "
-                               "COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC, id DESC) rn "
-                               f"FROM results WHERE project_id IN ({ph})) WHERE rn=1", ids):
+            # neuestes Ergebnis je Objekt: erst nur die IDs bestimmen (große stats-Spalte nur parsen, wenn eine Serie drinsteht)
+            for x in c.execute(f"SELECT id, project_id, created, n_frames, exposure, files, {slim_sql or _SLIM_SQL} stats FROM results "
+                               "WHERE id IN (SELECT id FROM (SELECT id, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY "
+                               "CASE WHEN instr(stats,'\"series\"') THEN COALESCE(json_extract(stats,'$.imported.series.sequence'),0) ELSE 0 END "
+                               f"DESC, id DESC) rn FROM results WHERE project_id IN ({ph})) WHERE rn=1)", ids):
                 last[x["project_id"]] = dict(x)
             for x in c.execute(f"SELECT project_id, COUNT(*) n FROM results WHERE project_id IN ({ph}) GROUP BY project_id", ids):
                 n_results[x["project_id"]] = x["n"]
-            for x in c.execute(f"SELECT * FROM jobs WHERE id IN (SELECT MAX(id) FROM jobs WHERE project_id IN ({ph}) "
-                               "GROUP BY project_id)", ids):
-                job[x["project_id"]] = dict(x)
+            job = _latest_jobs(c, ids)
             for x in c.execute("SELECT json_extract(options,'$.gallery_parent') gp, COUNT(*) n FROM projects "
                                "WHERE json_extract(options,'$.gallery_parent') IS NOT NULL GROUP BY gp"):
                 comp[x["gp"]] = x["n"]
@@ -482,7 +507,7 @@ def build_router(eng: Engine) -> APIRouter:
                                                      if i != pid and d != dev]
             out.append({
                 "id": pid, "name": p["name"], "device": dev, "other_devices": others, "kind": p["kind"], "kind_label": objects.KIND_LABEL.get(p["kind"] or "generic"),
-                "options": json.loads(p["options"] or "{}"), "frames": fr, "total": sum(fr.values()),
+                "options": opts, "frames": fr, "total": sum(fr.values()),
                 "companions": comp.get(pid, 0),
                 "nights": nights.get(pid, []), "n_results": n_results.get(pid, 0), "created": p["created"],
                 # Kometen sind am Namen erkannt: „Objekt bestimmen“ würde nichts zuordnen (der Stack wird für die Bahn ohnehin gelöst)
@@ -492,9 +517,20 @@ def build_router(eng: Engine) -> APIRouter:
                 "deleted": {"frames": d["n"], "bytes": d["b"], "can_restack": not imported and d["s"] == 0},
                 "result": {"id": lr["id"], "created": lr["created"], "n_frames": lr["n_frames"], "exposure": lr["exposure"],
                            "stats": _slim(lr["stats"]), "formats": list(json.loads(lr["files"] or "{}"))} if lr else None,
-                "job": {k: jb[k] for k in ("id", "state", "progress", "stage", "message", "finished")} if jb else None,
+                "job": jb,
             })
         return out
+
+    def _project_list(parent_id: int | None) -> list[dict]:
+        rows = db.q("SELECT * FROM projects WHERE json_extract(options,'$.gallery_parent') IS NULL ORDER BY name") if parent_id is None else db.q(
+            "SELECT * FROM projects WHERE json_extract(options,'$.gallery_parent')=? ORDER BY id DESC", (parent_id,))
+        return project_views(rows, _LIST_SQL)
+
+    # Objektliste: pollen Übersicht, Galerie und jede offene Seite (auch mehrere Tabs/Handy). Bis 0,9 s Python-Rechenzeit –
+    # unter Last (GIL) ein Vielfaches – deshalb geteilt und nur nach Änderungen an der DB neu (core/pollcache.py);
+    # der Auftragsstand ändert sich ständig und kommt bei jeder Anfrage frisch dazu. Ändert die Pipeline die DB (Analyse
+    # schreibt je Frame), kommt sofort der letzte Stand und ein Hintergrund-Thread rechnet neu; nach Nutzeraktionen synchron.
+    shared_projects = pollcache.Shared(_project_list, min_age=2.0, signature=lambda: db.gen, background=True)
 
     def project_view(p: dict) -> dict:
         return project_views([p])[0]
@@ -592,9 +628,13 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.get("/projects")
     def projects(parent_id: int | None = None):
-        rows = db.q("SELECT * FROM projects WHERE json_extract(options,'$.gallery_parent') IS NULL ORDER BY name") if parent_id is None else db.q(
-            "SELECT * FROM projects WHERE json_extract(options,'$.gallery_parent')=? ORDER BY id DESC", (parent_id,))
-        return project_views(rows)
+        views = shared_projects.get(parent_id)
+        with db.conn() as c:
+            jobs = _latest_jobs(c)
+        out = [{**v, "job": jobs.get(v["id"])} for v in views]
+        # direkt serialisieren: FastAPIs jsonable_encoder brauchte für ~58 000 Werte allein ~140 ms
+        return Response(json.dumps(out, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode(),
+                        media_type="application/json")
 
     @r.get("/projects/{pid}")
     def project(pid: int):

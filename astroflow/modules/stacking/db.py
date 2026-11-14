@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import time
 from contextlib import contextmanager
@@ -38,9 +39,16 @@ MIGRATIONS = [
 ]
 
 
+_JOBS = re.compile(r"\s*(?:UPDATE|INSERT\s+INTO|DELETE\s+FROM)\s+jobs\b", re.I)
+
+
 class DB:
     def __init__(self, path: Path):
         self.path = str(path)
+        # Schreibzähler dieses Prozesses (Signatur für zwischengespeicherte Listen, core/pollcache.py):
+        # `gen` = alles außer der Auftragstabelle, `jobs_gen` = nur Aufträge (Fortschritt schreibt ständig)
+        self.gen = 0
+        self.jobs_gen = 0
         with self.conn() as c:
             c.executescript(SCHEMA)
             for table, col, decl in MIGRATIONS:
@@ -60,7 +68,7 @@ class DB:
             c.execute("CREATE INDEX IF NOT EXISTS ix_frames_pk ON frames(project_id, kind, status, night, deleted, stacked, size)")
 
     @contextmanager
-    def conn(self):
+    def conn(self, _jobs: bool = False):
         c = sqlite3.connect(self.path, timeout=30)
         c.row_factory = sqlite3.Row
         c.execute("PRAGMA journal_mode=WAL")
@@ -68,7 +76,14 @@ class DB:
             yield c
             c.commit()
         finally:
-            c.close()
+            try:
+                if c.total_changes:
+                    if _jobs:
+                        self.jobs_gen += 1
+                    else:
+                        self.gen += 1
+            finally:
+                c.close()
 
     def q(self, sql: str, args=()) -> list[dict]:
         with self.conn() as c:
@@ -79,7 +94,7 @@ class DB:
         return r[0] if r else None
 
     def x(self, sql: str, args=()) -> int:
-        with self.conn() as c:
+        with self.conn(_jobs=bool(_JOBS.match(sql))) as c:
             return c.execute(sql, args).lastrowid
 
     def many(self, sql: str, rows) -> None:
