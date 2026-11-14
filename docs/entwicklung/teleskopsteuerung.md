@@ -179,6 +179,14 @@ Kontrolle **nur, wenn sie frei ist** (`master == none`) – nie der Handy-App; s
 und die Oberfläche meldet es. Es bewegt nichts und startet keinen Autopiloten (Modus bleibt „aus“, kein `MOVES`-Befehl); dieselbe Regel
 gilt beim Verbinden durch `start`. `POST disconnect` → 409, solange der Autopilot läuft oder wartet. Beide sind Bedienung (auch für
 gekoppelte Geräte), kein `data-local-only`. Tests: `test_api_verbinden_*`.
+
+**Live-Bild (Kachel „Live-Bild“ auf der Teleskop-Seite):** `GET /preview/info` (klein, alle 5 s, nur bei sichtbarer Seite) und
+`GET /preview` (JPEG, ETag → 304; die Ansicht lädt nur bei geänderter Signatur neu, Klick öffnet `createViewer`). Quelle 1: optionale
+Treiber-Fähigkeit `preview` (`Driver.preview()` → `(jpeg_bytes, zeitstempel)`, kein `CONTRACT`-Wechsel; der Simulator liefert eine Attrappe).
+Quelle 2 (Rückfall): die zuletzt per FTP geholte Rohbild-Datei (`Collector.last`), lokal gestreckt und als JPEG gerendert
+(`preview.py`). Ausgeliefert wird nur, was `preview.get` selbst erzeugt – nie ein Pfad vom Client. Ohne Bild: ruhiger Platzhalter.
+Offen: Live-Bild ohne laufendes Ziel (bräuchte eine Probe am Gerät); das Gerätebild (Live-Stack der App) muss das private Plugin liefern.
+Tests: `test_api_vorschau_*`, `test_vorschau_rueckfall_*`.
 - Alle Steuer-Endpunkte unterliegen Herkunftsschutz und Kopplung (Sicherheit 2/3): nur dieser Rechner oder gekoppelte Geräte.
 - **Nur am Rechner selbst** (`require_local`): Pfad zur Bibliothek, Geräteadresse, Laden des Adapters.
 - Keine Ausnahmetexte an den Browser (feste deutsche Meldungen); Status/Protokoll ohne Kennungen und Koordinaten des Ortes.

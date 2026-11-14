@@ -86,7 +86,7 @@ def _az_in(az: float, a0: float, a1: float) -> bool:
 class SimDriver(Driver):
     kind = "sim"
     label = "Simulator"
-    capabilities = frozenset({"device_plan", "focus"})
+    capabilities = frozenset({"device_plan", "focus", "preview"})
 
     def __init__(self, clock=None, scenario: Scenario | None = None, model: str = "vespera"):
         self.clock = clock or RealClock()
@@ -237,6 +237,26 @@ class SimDriver(Driver):
             self.connected = False
             if self.master == "us":
                 self.master = "none"
+
+    def preview(self):
+        """Attrappe: kleines synthetisches Sternfeld, das sich mit der Bildzahl ändert (nur wenn schon Bilder da sind)."""
+        with self._lock:
+            self._advance()
+            n, t = self.frames, self._t
+        if not n or not self.connected:
+            return None
+        import io, random
+        from PIL import Image, ImageDraw
+        rnd = random.Random(7)
+        im = Image.new("L", (480, 320), 8)
+        d = ImageDraw.Draw(im)
+        for _ in range(140):
+            x, y, b = rnd.randrange(480), rnd.randrange(320), rnd.randrange(90, 255)
+            d.ellipse((x - 1, y - 1, x + 1, y + 1), fill=b)
+        d.text((8, 8), f"Simulation · {n} Bilder", fill=200)
+        buf = io.BytesIO()
+        im.convert("RGB").save(buf, "JPEG", quality=80)
+        return buf.getvalue(), t
 
     def take_control(self):
         with self._lock:
