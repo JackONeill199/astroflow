@@ -319,7 +319,10 @@
     out.push(c.cloud != null ? chip(lvl(c.cloud, c.cloud_max), 'Wolken', `${Math.round(c.cloud)} %`) : chip('', 'Wolken', 'keine Vorhersage'));
     if (c.wind != null) out.push(chip(lvl(c.wind, c.wind_max), 'Wind', `${Math.round(c.wind)} km/h`));
     if (c.dew_spread != null) out.push(chip(lvl(c.dew_spread, c.dew_limit, true), 'Taupunktabstand', `${c.dew_spread.toFixed(1)} °C`));
-    if (s.battery != null || s.charging) out.push(chip(s.charging ? 'ok' : lvl(s.battery, c.battery_min, true), 'Akku', s.charging ? (s.battery != null ? `${s.battery} % · lädt` : 'lädt') : `${s.battery} %`));
+    // Akku-Restzeit (Server: gemessene Entladung, vorher Erfahrungswert je Modell) – „2 h 40 min“ wie battery.fmt_left
+    const left = (sec) => { const m = Math.round(sec / 60); if (m < 60) return `${m} min`; let h = Math.floor(m / 60), r = Math.round((m % 60) / 10) * 10; if (r === 60) { h++; r = 0; } return r ? `${h} h ${r} min` : `${h} h`; };
+    const bl = c.battery_left, rest = bl && !bl.charging && bl.empty_s != null ? ` · noch ca. ${left(bl.empty_s)}` : '';
+    if (s.battery != null || s.charging) out.push(chip(s.charging ? 'ok' : lvl(s.battery, c.battery_min, true), 'Akku', s.charging ? (s.battery != null ? `${s.battery} % · lädt` : 'lädt') : `${s.battery} %${rest}`));
     if (s.stars != null && s.step === 'capture') out.push(chip(s.stars > 30 ? 'ok' : s.stars > 8 ? 'warn' : 'bad', 'Sterne im Bild', s.stars));
     const w = c.weather_offline ? `<span class="sm warn">Kein Internet – Vorhersage von ${tf(c.weather_at)}</span>` : c.weather_at ? `<span class="sm dim">Vorhersage von ${tf(c.weather_at)} (Open-Meteo)</span>` : '';
     return `<div class="tel-conds">${out.join('')}</div>${w ? `<div class="tel-wnote">${w}</div>` : ''}`;
