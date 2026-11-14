@@ -284,6 +284,17 @@ class Autopilot:
             return
         if s.raw_enabled is False:
             self._once("raw", "Rohbilder werden am Teleskop nicht gespeichert – für die AstroFlow-Pipeline in der App einschalten.", "warn", now)
+        if self.mode == "pausiert" and not self.estop.is_set():
+            # Pause = keine neuen Ziele, aber die Schutz-Wächter bleiben aktiv: offen stehendes Teleskop bei Wetter, Tau,
+            # Akku oder Morgendämmerung trotzdem einklappen (der Modus bleibt „pausiert“, nichts startet von selbst).
+            if self.night is None:
+                self.load_night(now)
+            self._refresh_weather(now)
+            holds = self.conditions(now, s)
+            if holds and not s.parked and not self.park_pending and s.step != "parking":
+                self.log(f"{holds[0].text} – klappe trotz Pause ein.", "bad", now)
+                self._park_now(now, holds[0].text)
+            return
         if self.mode not in ("laeuft", "wartet") or self.estop.is_set():
             return
         if self.night is None or (self.dark and now > self.dark["end"] + 3600):

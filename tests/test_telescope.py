@@ -580,3 +580,15 @@ def test_capture_liste_ohne_400er_grenze():
     imgs = {"_m": "20261120183000", **{f"img-{k:04d}.fits": b"x" for k in range(686)}}
     fake = FakeFtp({"user": {"p": {"_m": "20261120183000", "01-observation-m77": {"_m": "20261120183000", "01-images-initial": imgs}}}})
     assert captures.list_captures(frames.FtpFrames("x", ftp_factory=lambda: fake))[0]["frames"] == 686
+
+
+def test_waechter_auch_in_der_pause():
+    """Pause stoppt nur neue Ziele – bei Morgendämmerung (oder Wetter, Tau, Akku) klappt das offene Teleskop trotzdem ein."""
+    p, d, clock = make([item(M31, 0.1, 15)])
+    run(p, clock, 1.0)
+    p.pause(clock.now())
+    assert p.mode == "pausiert" and not d.state().parked
+    run(p, clock, 13.0, step=60)
+    assert d.state().parked and p.mode == "pausiert"
+    assert "trotz Pause" in texts(p)
+    assert d.commands.count("observe:M31") + sum(c.startswith("plan:") for c in d.commands) == 1      # nichts neu gestartet
