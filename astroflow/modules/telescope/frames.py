@@ -121,6 +121,7 @@ class Collector:
         self.ftp = FtpFrames(host)
         self.folders: dict[tuple, str] = {}        # (id(Item), Start dieses Versuchs) → Ordner am Gerät
         self.attempt: tuple | None = None          # laufender Versuch (Item, Startzeit)
+        self.pending: list[tuple] = []             # beendete Versuche, deren Abschlussabruf noch aussteht
         self.count = 0
         self.error: str | None = None
         self._stop = threading.Event()
@@ -149,21 +150,34 @@ class Collector:
         neuer Versuch –, wird sein Ordner einmal vollständig abgeholt, auch die zuletzt geschriebenen Bilder."""
         p = self.unit.pilot
         cur = p._current()
+        done = self.attempt
+        if done and not (cur is done[0] and cur.real_start == done[1]):
+            self.attempt = None
+            self.pending.append(done)                                   # Rest nach dem Ende dieses Versuchs
+        ok = True
+        for att in list(self.pending):              # bleibt vorgemerkt, bis der Abschlussabruf geklappt hat (FTP kurz weg)
+            try:
+                self._take(att[0], final=True, start=att[1])
+                self.pending.remove(att)
+            except Exception:
+                self._failed(p)
+                ok = False
         try:
-            done = self.attempt
-            if done and not (cur is done[0] and cur.real_start == done[1]):
-                self.attempt = None
-                self._take(done[0], final=True, start=done[1])          # Rest nach dem Ende dieses Versuchs
             if cur and p.state.step == "capture":
                 if self.attempt is None:
                     self.attempt = (cur, cur.real_start)
                 self._take(cur, final=False, start=cur.real_start)
-            self.error = None
         except Exception:
+            self._failed(p)
+            ok = False
+        if ok:
+            self.error = None
+
+    def _failed(self, p):
+        if self.error is None:                      # nur beim ersten Fehler protokollieren, nicht bei jeder Wiederholung
             traceback.print_exc()
-            if self.error is None:
-                self.error = "Bilder konnten nicht vom Teleskop geholt werden (FTP)."
-                p.log(self.error, "warn")
+            self.error = "Bilder konnten nicht vom Teleskop geholt werden (FTP)."
+            p.log(self.error, "warn")
 
     def _take(self, item, final: bool, start: float | None = None):
         start = item.real_start if start is None else start

@@ -751,3 +751,41 @@ def test_api_weiter_verlangt_bestaetigung_der_neuen_nacht(tmp_path, monkeypatch)
         r = c.post("/api/telescope/resume", json={})
         assert r.status_code == 409 and "bestätigen" in r.json()["detail"]
         assert c.post("/api/telescope/resume", json={"confirm": True}).status_code == 200
+
+
+def test_restbilder_nach_ftp_abbruch_werden_nachgeholt(tmp_path):
+    """Bricht der Abschlussabruf nach dem Ende eines Versuchs ab (FTP kurz weg), bleibt der Versuch vorgemerkt und die
+    Restbilder kommen beim nächsten Durchgang – auch wenn inzwischen ein anderes Ziel läuft."""
+    from astroflow.modules.telescope import frames
+    imgs = {"_m": "20261120180500", "img-0000.fits": b"a"}
+    tree = {"user": {"p": {"_m": "20261120180500", "01-observation-m31": {"_m": "20261120180500", "01-images-initial": imgs}}}}
+    it = item(M31, 0.0, 3.0)
+    it.status, it.real_start = "aktiv", T0 + 3600
+    logs = []
+    pilot = type("P", (), {"night": "2026-11-20", "log": lambda self, *a, **k: logs.append(a), "frames_fetched": 0,
+                           "state": TelescopeState(step="capture"), "_current": lambda self: it if it.status == "aktiv" else None})()
+
+    class U:
+        cfg = {"model": "vespera"}
+    U.pilot = pilot
+    col = frames.Collector(U(), tmp_path, "10.0.0.1")
+    down = {"on": False}
+
+    def factory():
+        if down["on"]:
+            raise OSError("FTP weg")
+        return FakeFtp(tree)
+    col.ftp = frames.FtpFrames("x", ftp_factory=factory)
+    col.step()
+    col.step()                                         # img-0000 geholt
+    imgs["img-0001.fits"] = b"bb"
+    it.status, it.real_start = "geplant", None         # Pause, genau dann bricht FTP ab
+    down["on"] = True
+    col.step()
+    col.step()
+    assert col.error and len(col.pending) == 1 and [a[1] for a in logs].count("warn") == 1     # einmal gewarnt, Versuch bleibt vorgemerkt
+    down["on"] = False
+    col.step()
+    out = tmp_path / "Teleskop" / "vespera" / "2026-11-20" / "M31" / "01-observation-m31"
+    assert sorted(x.name for x in out.iterdir()) == ["img-0000.fits", "img-0001.fits"]
+    assert col.pending == [] and col.error is None
