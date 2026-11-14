@@ -22,7 +22,7 @@ import numpy as np
 
 from . import devices
 
-TUTOR_VERSION = 3                  # 3 (11.11.2026): Belichtungsempfehlung exposure_more + recommendation
+TUTOR_VERSION = 4                  # 4 (14.11.2026): Vespera-Modell aus Wort/Bildformat statt Seriennummer; 3 (11.11.2026): Belichtungsempfehlung exposure_more + recommendation
 MODES = ("einsteiger", "experte")
 WEATHER_URL = "https://archive-api.open-meteo.com/v1/archive"
 WEATHER_VARS = ("temperature_2m", "relative_humidity_2m", "dew_point_2m", "cloud_cover", "wind_speed_10m", "wind_gusts_10m")
@@ -37,6 +37,28 @@ DEVICES = devices.tutor_devices()
 SHAPES = {(2080, 3072): "stellina"}
 
 
+# Vespera-Modelle nach Bildformat (kurze, lange Seite): Vespera (IMX462), Vespera II (IMX585), Vespera Pro (IMX676)
+VESPERA_SHAPES = {(1080, 1920): None, (2160, 3840): "ii", (3536, 3536): "pro"}
+
+
+def _vespera_model(d: dict, text: str, shape: tuple | None) -> None:
+    """Modell einer Vespera: Wort „II“/„2“/„Pro“ im Gerätenamen, sonst das Bildformat. INSTRUME ist oft
+    „vespera-<hex-seriennummer>“ – Ziffern der Seriennummer sind kein Modellhinweis (eine erste Vespera mit „2“ in der
+    Nummer galt bis 14.11.2026 als Vespera II)."""
+    hint = None
+    for w in re.findall(r"[a-z0-9]+", text):                     # nur ganze Wörter („vespera-2a…“ zählt nicht)
+        w = w.removeprefix("vespera")
+        if w in ("ii", "2", "pro"):
+            hint = "pro" if w == "pro" else "ii"
+            break
+    if hint is None and shape:
+        hint = VESPERA_SHAPES.get(tuple(sorted(int(x) for x in shape[-2:])))
+    if hint == "ii":
+        d["name"], d["model"] = devices.get("vespera2")["name"], "vespera2"
+    elif hint == "pro":
+        d["name"] = "Vaonis Vespera Pro"
+
+
 def detect_device(instruments: list[str], shape: tuple | None = None) -> dict:
     """Gerät aus INSTRUME/TELESCOP (häufigster Eintrag) bzw. Bildformat."""
     text = " ".join(i for i in instruments if i).lower()
@@ -47,10 +69,8 @@ def detect_device(instruments: list[str], shape: tuple | None = None) -> dict:
             if key == "seestar" and (m := re.search(r"s\s?(30|50)", text)):
                 d["name"] = f"ZWO Seestar S{m.group(1)}"
                 d["model"] = "seestar30" if m.group(1) == "30" else "seestar"     # Modell in devices.json (Sensor, Grenzen)
-            if key == "vespera" and re.search(r"pro|ii|2", text):
-                d["name"] += " II/Pro"
-                if re.search(r"ii|2", text) and not re.search(r"pro", text):
-                    d["model"] = "vespera2"
+            if key == "vespera":
+                _vespera_model(d, text, shape)
             return d
     key = SHAPES.get(tuple(shape[-2:])) if shape else None
     if key:
