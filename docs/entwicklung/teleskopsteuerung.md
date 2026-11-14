@@ -107,6 +107,11 @@ class Driver:
 `moving`, `operation` + `step` (GO_TARGET, ASTROMETRY, CAPTURE …), `target`, `frames`, `stacked`, `rejected`,
 `astrometry_delta`, `battery`, `storage_free`, `humidity`/`temperature` (falls vorhanden), `error`, `age_s`.
 Kennungen (Teleskop-ID, Gerätenamen der App, Ort) bleiben im Adapter und gehen **nicht** in `TelescopeState`.
+Ablehnungen: `DriverError` (feste Meldung) bzw. `DriverBusy` (Unterklasse, nur wenn das Gerät laut Status noch eine Operation
+ausführt). Der Autopilot wiederholt mit Backoff und meldet erst nach einer Zeitgrenze (`GIVE_UP`) einen Fehler; Restdauer je Phase aus
+Erfahrungswerten (`EXPECT_S`), im Betrieb durch gemessene Dauern ersetzt (`took`). Befund 14.11.2026 (erster Autopilot-Lauf): Die Vespera
+lehnte Ausrichten minutenlang mit HTTP 500 ab, obwohl keine Operation lief – die Geräteuhr stand auf 2018 (die App setzt die Zeit beim
+Verbinden). HTTP 500 heißt also nicht immer „beschäftigt“.
 
 ### Zustandsautomat (`machine.py`)
 ```

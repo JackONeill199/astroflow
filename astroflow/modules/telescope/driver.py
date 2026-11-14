@@ -17,6 +17,11 @@ class DriverError(RuntimeError):
     """Befehl abgelehnt oder Gerät nicht erreichbar (Meldung ist für Menschen, ohne Ausnahmetext)."""
 
 
+class DriverBusy(DriverError):
+    """Gerät nimmt gerade keinen Befehl an, weil es noch etwas erledigt (öffnet, richtet sich selbst ein …) – kein Fehler,
+    der Autopilot wartet und versucht es später erneut. Nur werfen, wenn das Gerät wirklich beschäftigt ist; sonst `DriverError`."""
+
+
 @dataclass
 class Target:
     id: str

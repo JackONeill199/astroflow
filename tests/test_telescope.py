@@ -789,3 +789,44 @@ def test_restbilder_nach_ftp_abbruch_werden_nachgeholt(tmp_path):
     out = tmp_path / "Teleskop" / "vespera" / "2026-11-20" / "M31" / "01-observation-m31"
     assert sorted(x.name for x in out.iterdir()) == ["img-0000.fits", "img-0001.fits"]
     assert col.pending == [] and col.error is None
+
+
+def test_geraet_beschaeftigt_beim_einrichten_kein_fehler_und_backoff():
+    """Nach dem Öffnen richtet sich das Gerät noch selbst ein und lehnt Ausrichten als „beschäftigt“ ab: kein roter Fehler,
+    genau ein Eintrag, neue Versuche mit wachsendem Abstand statt jeden Takt – danach läuft alles normal weiter."""
+    p, d, clock = make([item(M31, 0.1, 3.0)], sim.Scenario(setup_busy_s=4 * 60))
+    run(p, clock, 0.5, step=2.5)
+    assert d.commands.count("init-busy") <= 6                       # 10, 20, 40, 80 s … statt ~100 Versuche
+    assert "init" in d.commands and p.state.initialized
+    bad = [e for e in p.events if e["kind"] == "bad"]
+    assert not bad, bad
+    assert [e["text"] for e in p.events].count("Teleskop ist noch beschäftigt – Ausrichten folgt, sobald es fertig ist.") == 1
+    assert any(c.startswith(("observe", "plan")) for c in d.commands)
+
+
+def test_ausrichten_abgelehnt_nach_zeitgrenze_einklappen_und_anhalten():
+    """Lehnt das Gerät Ausrichten dauerhaft ab (nicht beschäftigt), erst nach der Zeitgrenze ein echter Fehler: einklappen,
+    anhalten – vorher nur ein Hinweis, keine Schleife im Protokoll."""
+    p, d, clock = make([item(M31, 0.1, 3.0)], sim.Scenario(init_rejected=True))
+    run(p, clock, 0.2, step=2.5)
+    assert p.mode == "laeuft" and not [e for e in p.events if e["kind"] == "bad"]
+    assert "neuer Versuch in" in p.view(clock.now())["phase_label"]
+    run(p, clock, 0.3, step=2.5)
+    assert p.mode == "pausiert" and "park" in d.commands
+    assert len([e for e in p.events if e["kind"] == "bad"]) == 1
+    assert d.commands.count("init-rejected") <= 15
+    run(p, clock, 0.3, step=2.5)
+    assert d.state().parked and p.mode == "pausiert"
+
+
+def test_restdauer_beim_einrichten():
+    p, d, clock = make([item(M31, 0.1, 3.0)])
+    for _ in range(200):
+        p.tick(clock.now())
+        if p.machine.phase == "richtet_aus":
+            break
+        clock.advance(2)
+    v = p.view(clock.now())
+    assert v["phase"] == "richtet_aus" and v["eta"] and "noch ca." in v["phase_label"]
+    run(p, clock, 0.1, step=2)
+    assert "richtet_aus" in p.took and abs(p.took["richtet_aus"] - sim.INIT_S) < 10   # gemessene Dauer ersetzt den Erfahrungswert

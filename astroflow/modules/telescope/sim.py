@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass, field
 
 from . import sky
-from .driver import Driver, DriverError, PlanItem, Target, TelescopeState
+from .driver import Driver, DriverBusy, DriverError, PlanItem, Target, TelescopeState
 
 SLEW_DEG_S = 3.0          # Motoren (Grad/s)
 OPEN_S = 8.0              # Arm öffnen / einklappen
@@ -66,6 +66,8 @@ class Scenario:
     offline: list[tuple[float, float]] = field(default_factory=list)     # Verbindung weg
     app_takes_control_at: float | None = None
     stars: int = 180                                                     # Sterne in einem guten Bild
+    setup_busy_s: float = 0.0          # nach dem Öffnen so lange „beschäftigt“ (Gerät richtet sich selbst ein) → DriverBusy
+    init_rejected: bool = False        # Ausrichten wird immer abgelehnt (z. B. falsche Geräte-Uhr) → DriverError
 
     @classmethod
     def demo(cls, start: float) -> "Scenario":
@@ -100,6 +102,7 @@ class SimDriver(Driver):
         self.az, self.alt = PARK_AZ, park_alt(model)
         self.goal: tuple[float, float] | None = None
         self.step, self.step_until = "idle", 0.0
+        self.busy_until = 0.0
         self.target: Target | None = None
         self.exposure = 10.0
         self.frames = self.stacked = self.rejected = 0
@@ -163,6 +166,7 @@ class SimDriver(Driver):
                 self.parked, self.az, self.alt = True, PARK_AZ, park_alt(self.model)
             elif s == "opening":
                 self.parked = False
+                self.busy_until = t + self.sc.setup_busy_s
             else:
                 self.initialized = True
             self.step, self.goal = "idle", None
@@ -281,6 +285,12 @@ class SimDriver(Driver):
             self._need()
             if self.parked:
                 raise DriverError("Erst den Arm öffnen.")
+            if self._t < self.busy_until:
+                self.commands.append("init-busy")
+                raise DriverBusy("Ausrichten: Teleskop ist noch beschäftigt.")
+            if self.sc.init_rejected:
+                self.commands.append("init-rejected")
+                raise DriverError("Ausrichten: vom Teleskop abgelehnt.")
             self.commands.append("init")
             self.lat, self.lon = float(lat), float(lon)
             self.step, self.step_until = "init", self._t + INIT_S

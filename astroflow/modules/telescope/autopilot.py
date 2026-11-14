@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 
 from ...core import sites
 from . import sky
-from .driver import DriverError, PlanItem, Target, TelescopeState
+from .driver import DriverBusy, DriverError, PlanItem, Target, TelescopeState
 from .machine import Machine
 
 DEFAULTS = {
@@ -46,6 +46,12 @@ BLOCK_AZ = 10.0              # gesperrte Richtung: ±Azimut …
 BLOCK_ALT = 5.0              # … bis über die gescheiterte Höhe
 MAX_EVENTS = 300
 MOVES = ("open", "init", "observe", "device_plan", "focus")   # Befehle, die das Teleskop bewegen (Einklappen/Stoppen nie gesperrt)
+RETRY_FIRST = 10            # abgelehnter Befehl: erster neuer Versuch nach … s, dann doppelt so lang …
+RETRY_MAX = 120             # … höchstens so lang
+GIVE_UP = {"open": 6 * 60, "init": 15 * 60, "observe": 10 * 60, "device_plan": 10 * 60, "focus": 10 * 60}  # dann echter Fehler
+# Erfahrungswerte je Phase in s (Vespera, Probe 3: Öffnen ~49 s, Einklappen ~47 s; Auto-Init mit Plate-Solving und Fokus
+# dauert ein paar Minuten). Gemessene Dauern ersetzen sie im laufenden Betrieb (`took`).
+EXPECT_S = {"oeffnet": 50.0, "richtet_aus": 240.0, "klappt_ein": 50.0}
 SUB_MAX = 1800              # Ersatzziel höchstens so lange am Stück
 OPEN = ("geplant", "verdeckt", "uebersprungen")     # noch nicht erledigt (verdeckt/übersprungen: neuer Versuch, sobald frei)
 
@@ -136,6 +142,9 @@ class Autopilot:
         self.frames_fetched = 0
         self.plan_note: str | None = None
         self.known: TelescopeState | None = None   # letzter Zustand MIT Verbindung (für Not-Aus ohne Verbindung)
+        self.retry: dict[str, dict] = {}          # abgelehnte Befehle: {first, next, n, msg, busy} – Backoff statt Schleife
+        self.phase_since: float | None = None     # seit wann die aktuelle Phase gilt (Restdauer)
+        self.took: dict[str, float] = {}          # gemessene Dauer je Phase (ersetzt den Erfahrungswert)
         self.lock = threading.RLock()
 
     # ------------------------------------------------------------ Protokoll --- #
@@ -171,12 +180,51 @@ class Autopilot:
             return False
         if not self.machine.can(what):
             return False
+        if what == "park":                       # Not-Aus-Weg: nie verzögern (Wiederholung über _park_watch)
+            try:
+                fn(*a)
+                return True
+            except DriverError as e:
+                self.log(f"{_label(what)} fehlgeschlagen: {e}", "bad", now)
+                return False
+        t = self._now() if now is None else now
+        r = self.retry.get(what)
+        if r and t < r["next"]:
+            return False                          # abgelehnt – nächster Versuch erst nach der Wartezeit
         try:
             fn(*a)
-            return True
         except DriverError as e:
-            self.log(f"{_label(what)} fehlgeschlagen: {e}", "bad", now)
+            return self._rejected(what, e, t)
+        if r:
+            self.log(f"{_label(what)}: jetzt angenommen.", "ok", now)
+        self.retry.pop(what, None)
+        return True
+
+    def _rejected(self, what: str, e: DriverError, now: float) -> bool:
+        """Abgelehnter Befehl: kein roter Fehler je Takt, sondern ein Eintrag und Backoff (10 s, 20 s … höchstens 2 min).
+        „Beschäftigt“ (das Gerät öffnet oder richtet sich selbst ein) ist kein Fehler. Erst nach `GIVE_UP` ein echter Fehler:
+        dann sicher reagieren – einklappen und anhalten, der Nutzer entscheidet."""
+        busy = isinstance(e, DriverBusy)
+        r = self.retry.setdefault(what, {"first": now, "n": 0, "msg": None})
+        r["n"] += 1
+        wait = min(RETRY_MAX, RETRY_FIRST * 2 ** (r["n"] - 1))
+        r["next"], r["busy"] = now + wait, busy
+        limit = GIVE_UP.get(what)
+        if limit and now - r["first"] >= limit:
+            self.retry.pop(what, None)
+            self.log(f"{_label(what)} klappt seit {round((now - r['first']) / 60)} min nicht ({e}) – klappe ein und halte an.", "bad", now)
+            if self.mode in ("laeuft", "wartet"):
+                self.mode = "pausiert"
+            if not self.state.parked:
+                self._park_now(now, f"{_label(what)} klappt nicht")
             return False
+        if str(e) != r["msg"]:                    # nur bei neuer Meldung ins Protokoll, nicht bei jeder Wiederholung
+            r["msg"] = str(e)
+            if busy:
+                self.log(f"Teleskop ist noch beschäftigt – {_label(what)} folgt, sobald es fertig ist.", "info", now)
+            else:
+                self.log(f"{_label(what)} vom Teleskop abgelehnt: {e} Neuer Versuch gleich, höchstens {round(limit / 60) if limit else '–'} min lang.", "warn", now)
+        return False
 
     def current_night(self, now: float) -> str:
         """Nachtdatum für `now` (gleiche Regel wie `load_night`, über core/sites)."""
@@ -226,6 +274,7 @@ class Autopilot:
                 self.load_night(now)
             self.mode = "laeuft"
             self.hold = None
+            self.retry = {}
             self.log("Autopilot gestartet." + (f" {len(self.items)} Ziele für diese Nacht." if self.items else " Noch keine Ziele – im Planer planen oder Ziele hinzufügen."), "info", now)
 
     def pause(self, now: float):
@@ -302,6 +351,10 @@ class Autopilot:
         if s.connected:
             self.known = s
         ch = self.machine.update(s)
+        if ch:
+            if ch[0] in EXPECT_S and self.phase_since is not None and ch[1] not in ("getrennt", "fremd"):
+                self.took[ch[0]] = now - self.phase_since          # Erfahrungswert für die nächste Restdauer
+            self.phase_since = now
         if ch and not self.machine.plausible(*ch) and ch[1] != "getrennt":
             self.log(f"Unerwarteter Wechsel: {ch[0]} → {ch[1]}", "warn", now)
         if ch and ch[1] == "eingeklappt" and ch[0] not in ("getrennt", "fremd") and not self.park_pending:
@@ -697,7 +750,8 @@ class Autopilot:
             az, alt = sky.altaz(cur.ra, cur.dec, self.site["lat"], self.site["lon"], now)
             pointing = {"az": round(az, 1), "alt": round(alt, 1)}
         return {
-            "now": now, "mode": self.mode, "phase": self.machine.phase, "phase_label": self.machine.label,
+            "now": now, "mode": self.mode, "phase": self.machine.phase, "phase_label": self.phase_text(now),
+            "eta": self.eta(now), "retry": {k: {"busy": bool(r.get("busy")), "in_s": max(0, round(r["next"] - now))} for k, r in self.retry.items()},
             "hold": {"kind": self.hold.kind, "text": self.hold.text} if self.hold and self.mode in ("wartet", "fertig") else None,
             "state": {k: v for k, v in s.as_dict().items()},
             "current": cur.view() if cur else None, "target_pointing": pointing,
@@ -720,6 +774,23 @@ class Autopilot:
             "confirmed": self.confirmed(now), "requires_confirm": self.requires_confirm,
         }
 
+    def eta(self, now: float) -> float | None:
+        """Voraussichtliche Restdauer der aktuellen Phase in s (Öffnen, Einrichten, Einklappen), sonst None."""
+        ph = self.machine.phase
+        if ph not in EXPECT_S or self.phase_since is None:
+            return None
+        return max(0.0, self.took.get(ph, EXPECT_S[ph]) - (now - self.phase_since))
+
+    def phase_text(self, now: float) -> str:
+        label, rest = self.machine.label, self.eta(now)
+        if rest is not None:
+            return f"{label} … noch ca. {_dur(rest)}" if rest >= 5 else f"{label} … gleich fertig"
+        waiting = [k for k in ("open", "init") if k in self.retry]
+        if waiting:
+            r = self.retry[waiting[0]]
+            return f"{label} – {'Teleskop noch beschäftigt' if r.get('busy') else _label(waiting[0]) + ' abgelehnt'}, neuer Versuch in {_dur(max(0, r['next'] - now))}"
+        return label
+
     def _track_of(self, it: Item) -> list[list[float]]:
         """Bahn des Ziels in seinem Abschnitt (Azimut/Höhe alle 10 min) – für die Kuppel; Koordinaten des Ortes bleiben hier."""
         if not self.site:
@@ -741,6 +812,10 @@ _LABELS = {"open": "Öffnen", "init": "Ausrichten", "observe": "Beobachtung star
 
 def _label(cmd: str) -> str:
     return _LABELS.get(cmd, cmd)
+
+
+def _dur(s: float) -> str:
+    return f"{round(s)} s" if s < 90 else f"{round(s / 60)} min"
 
 
 def demo_items(now: float, site: dict, catalog: list[dict], hours: float = 8.0, n: int = 6) -> list[Item]:

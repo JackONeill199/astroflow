@@ -16,6 +16,9 @@ Konzept, Protokoll, Lizenzfrage und offene Proben: `docs/entwicklung/teleskopste
 - **Bestätigung je Nacht** (echtes Gerät): durchgesetzt an genau einer Stelle, `Autopilot._cmd` vor jedem Bewegungsbefehl (`MOVES`: Öffnen,
   Ausrichten, GoTo/Beobachtung, Geräte-Plan, Fokus) gegen `current_night`. /start und /resume fragen sie über `night_and_confirm` ab (409 →
   Dialog in der Oberfläche). Einklappen/Stoppen sind nie gesperrt. Neue Bewegungswege nur über `_cmd`.
+- **Abgelehnte Befehle** (`Autopilot._rejected`): kein roter Fehler je Takt, sondern ein Protokolleintrag und Backoff (10 s … 2 min);
+  `DriverBusy` (Gerät öffnet/richtet sich selbst ein) ist kein Fehler. Erst nach `GIVE_UP` echter Fehler → einklappen, anhalten.
+  Plugins werfen `DriverBusy` nur, wenn das Gerät laut Status wirklich beschäftigt ist, sonst `DriverError`. Einklappen nie verzögern.
 - „Sofort einklappen“ (`Autopilot.emergency`) geht ohne Warteschlange und ohne Takt-Sperre; `estop` sperrt danach jede Bewegung.
 - Sonnenmodus, WLAN-Band, Herunterfahren, Löschen, Firmware: im Adapter absichtlich nicht erreichbar.
 - FTP am Teleskop nur lesen (`frames.FtpFrames`: LIST/RETR), lokale Pfade nur aus geprüften Namen (`safe_name`, `img-NNNN.fits`).
