@@ -21,13 +21,15 @@ Schritte 11–13 (Speicher, volles Laufwerk, Aufräumen): `daten-server.md`.
    Messier/Caldwell (`deepsky.lookup`) → ASTAP. ASTAP führt viele Messier-Objekte ohne Art (M77, M32, M85, M110, M56, M14, M103 …) –
    M77 (Vespera) lief so mit „generic“. Projekte mit Typ fehlend oder „generic“ bekommen beim Entwickeln den richtigen Typ.
    **Galaxien mit StarNet** (0.74.0 Profil „galaxy“ mit `star_separation` starnet; Korrektur 14.11.2026 nach M31 Stellina, 1546 Aufnahmen):
-   StarNet hielt den sternförmigen Kern für einen Stern, GHS blähte den Bulge zu einer flachen Fläche auf (p99 0,33 → 0,56), und die
-   QC setzte bei `burnt_core` zuerst `hdr` 1,5 – `compress_highlights` macht einen in allen Kanälen abgeschnittenen Kern gleichmäßig
-   grau (graublaue Scheibe, ~20 px; `object_burn` 0, die QC sah es nicht). Abhilfe im Profil: `core_protect` (`processing.protect_core`:
-   wo das geglättete sternlose Bild zum hellsten Teil des Objekts gehört – smoothstep 0,35–0,6 zwischen Median und Maximum –, bleibt
-   das Original; M31 0,07 % der Fläche) und `starless_stretch` „blend“ (`_blend_stretch`: GHS für schwaches Signal, Kanalkurve ab
-   `BLEND_RANGE` 0,15–0,5 ihrer Helligkeit). `develop.corrections` behandelt „blend“/„curve“ wie ohne Trennung (erst `white_pct`, dann
-   `hdr`). M31 p99 0,44, kompakter Kern mit Verlauf; M81/M51/M77 behalten die helleren Arme der GHS (p99 wie vorher), Kerne kompakt.
+   StarNet hielt den sternförmigen Kern für einen Stern, GHS (Weißpunkt = 99,95-%-Perzentil) schnitt den Kern ab, und die QC setzte
+   bei `burnt_core` zuerst `hdr` 1,5 – `compress_highlights` macht einen in allen Kanälen abgeschnittenen Kern gleichmäßig grau
+   (graublaue Scheibe, ~20 px; `object_burn` 0, die QC sah es nicht). Abhilfe im Profil `core_protect`: (1) `processing.protect_core`:
+   wo das geglättete sternlose Bild zum hellsten Teil des Objekts gehört (smoothstep 0,35–0,6 zwischen Median und Maximum), bleibt das
+   Original (M31 0,07 % der Fläche, keine Sternverkleinerung dort); (2) GHS-Weißpunkt mindestens das Maximum des geglätteten
+   sternlosen Bildes (`stars.Stretch(white=…)`) – Kern mit Verlauf zur Mitte; (3) `develop.corrections` setzt dort kein `hdr`.
+   Nutzerwunsch: Gesamteindruck von 0.74 (Staubbänder, Ausdehnung, Farbe, Sterne) behalten, Bulge nicht abdunkeln – geprüft: eine
+   Kanalkurve bzw. Mischung GHS/Kurve für helle Teile machte den Bulge dunkler (M31 p99 0,56 → 0,34/0,44), verworfen. M31 jetzt
+   p99 0,56 wie 0.74, M81/M51/M77 Helligkeit gleich, Kerne mit Verlauf.
    Erwogen, nicht umgesetzt: QC-Maß „Kern-Dip“ (90-%-Wert im Ring 3–14 px minus Kernmitte; Fehlbilder +0,002/+0,063, gute −0,04 bis
    −0,29) – meldet ohne Objektart auch echte Ringe (M57).
    **Kompakte helle Objekte** (13.11.2026, M1 Vespera 51 min: Kern weiße Scheibe, `burnt_core` blieb drei QC-Runden stehen):

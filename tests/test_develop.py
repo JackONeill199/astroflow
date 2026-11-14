@@ -172,15 +172,14 @@ def test_develop_fixes_generic_kind_of_messier_object(tmp_path, monkeypatch):
     assert json.loads(db.one("SELECT stats FROM results WHERE id=?", (rid,))["stats"])["profile"] == "galaxy"
 
 
-def test_galaxy_starless_curve_uses_white_point_not_hdr():
-    """Galaxien (starless_stretch blend/curve): ausgebrannter Kern → Weißpunkt wie ohne Trennung, nicht zuerst hdr
-    (hdr machte den abgeschnittenen Kern von M31 zu einer grauen Scheibe)."""
+def test_core_protect_galaxy_gets_no_hdr():
+    """Galaxien mit Kernschutz: kein Lichterschutz hdr bei ausgebranntem Kern (machte den Kern von M31 zur grauen
+    Scheibe); Nebel mit Sterntrennung bekommen ihn weiter."""
     qc = {"issues": [{"code": "burnt_core", "text": ""}], "metrics": {"bg": 0.03}}
     base = {"asinh": 120, "denoise": 0.3, "chroma_denoise": 1.5, "saturation": 1.3, "target_bg": 0.07,
-            "star_separation": "starnet", "starless_stretch": "blend"}
-    adj = develop.corrections(qc, base)
-    assert adj["white_pct"] == develop.WHITE_STEPS[1] and "hdr" not in adj
-    assert develop.corrections(qc, {**base, "starless_stretch": "ghs"}) == {"hdr": develop.HDR_STEPS[0]}
+            "star_separation": "starnet", "core_protect": 1}
+    assert "hdr" not in develop.corrections(qc, base)
+    assert develop.corrections(qc, {**base, "core_protect": 0}) == {"hdr": develop.HDR_STEPS[0]}
 
 
 def test_protect_core_keeps_galaxy_core_from_starnet():

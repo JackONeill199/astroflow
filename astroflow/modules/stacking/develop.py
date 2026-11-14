@@ -339,11 +339,10 @@ def corrections(qc: dict, p: dict) -> dict:
         else:
             adj["asinh"] = min(400.0, p["asinh"] * 1.6)
     if "burnt_core" in codes or "object_burn" in codes:
-        # Galaxien strecken die helle sternlose Ebene mit der Kanalkurve (starless_stretch „curve“/„blend“) – dort wirken
-        # white_pct/asinh wie ohne Trennung. hdr zuerst machte den weiß abgeschnittenen Kern von M31 zu einer grauen Scheibe.
-        sep = (p.get("star_separation", "off") not in ("off", None, False)
-               and p.get("starless_stretch") not in ("curve", "blend"))
-        nxt_hdr = [h for h in HDR_STEPS if h > p.get("hdr", 0)]
+        sep = p.get("star_separation", "off") not in ("off", None, False)
+        # Galaxien mit Kernschutz: GHS-Weißpunkt liegt schon über dem Kern (Verlauf zur Mitte). hdr dunkelt einen Rest
+        # weißer Kernpixel gleichmäßig ab – bei M31 wurde daraus eine graue Scheibe (0.74.0). Dort kein hdr.
+        nxt_hdr = [] if sep and p.get("core_protect") else [h for h in HDR_STEPS if h > p.get("hdr", 0)]
         nxt = [w for w in WHITE_STEPS if w > p.get("white_pct", WHITE_STEPS[0])]
         # ohne Trennung: hdr spätestens mit der letzten Weißpunkt-Stufe – sonst wäre sie bei Start 99,9 erst nach der
         # letzten der QC_ROUNDS Renderings dran und käme nie zum Zug
