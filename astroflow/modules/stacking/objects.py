@@ -239,6 +239,10 @@ def nearest_extended(ra: float, dec: float, radius_deg: float = 0.3, min_size: f
 # core_protect    : hellen, ausgedehnten Kern vor der Sterntrennung schützen (processing.protect_core), GHS-Weißpunkt über den
 #                   Kern legen und kein Lichterschutz hdr – StarNet hielt den Kern von M31 für einen Stern, GHS schnitt ihn ab,
 #                   hdr machte daraus eine graublaue Scheibe (14.11.2026)
+# ghs_mix         : Anteil GHS an der Streckung der sternlosen Ebene, Rest Kanalkurve (beide mit Weißpunkt über dem Kern).
+#                   Galaxien 0,5 mit bg_dark 0,022: trifft Helligkeitsprofil und Himmel des Stellina-App-Bildes von M31
+#                   (Kern → 120 px: 0,90/0,78/0,65/0,45/0,21/0,10, eigenes Ergebnis 0,94/0,79/0,66/0,48/0,26/0,14);
+#                   reines GHS blähte den Bulge zu einer großen hellen Fläche auf (0,89/0,77/0,57/0,31/0,17 schon ab 10 px)
 # grade / vibrance: Endbearbeitung (processing.grade): Strukturen 4–64 px im Objekt anheben / blasse Farben sättigen
 # star_brightness : Helligkeit der wieder eingesetzten Sterne (1 = wie bei normaler Streckung)
 # asinh           : Stärke der asinh-Kompression (größer = mehr Highlight-Schutz)
@@ -269,7 +273,7 @@ PROFILES: dict[str, dict] = {
     # aufgebläht (FWHM 6,0 statt 5,5 px bei Stellina, Stack 5,0); mit 0,3 knackiger, Nebel bleibt sichtbar. Übrige
     # Emissionsnebel (IC 405, NGC 6888, NGC 7000: 0,12–0,21) liegen darunter. M101 (Galaxie, SNR 11) braucht es weiter.
     "generic":      dict(gradient_degree=3, target_bg=0.08, asinh=30, denoise=0.3, chroma_denoise=1.5, saturation=1.35, contrast=0.25, sharpen=0.3, deconv=0, star_reduction=0.0, scnr=0.5, bg_dark=0.03, star_separation="off", star_brightness=0.85),
-    "galaxy":       dict(gradient_degree=2, target_bg=0.07, asinh=120, denoise=0.3, chroma_denoise=1.5, saturation=1.30, contrast=0.35, sharpen=0.4, deconv=8, star_reduction=0.35, scnr=0.5, bg_dark=0.03, star_separation="starnet", star_brightness=0.85, core_protect=1),
+    "galaxy":       dict(gradient_degree=2, target_bg=0.07, asinh=120, denoise=0.3, chroma_denoise=1.5, saturation=1.30, contrast=0.35, sharpen=0.4, deconv=8, star_reduction=0.35, scnr=0.5, bg_dark=0.022, star_separation="starnet", star_brightness=0.85, core_protect=1, ghs_mix=0.5),
     "emission":     dict(gradient_degree=3, target_bg=0.08, asinh=40, denoise=0.3, chroma_denoise=1.5, saturation=1.50, contrast=0.35, sharpen=0.3, deconv=0, star_reduction=0.35, scnr=0.4, bg_dark=0.03, star_separation="starnet", star_brightness=0.85, linear_denoise_max=0.3, grade=1.0, vibrance=0.5),
     # reflection (seit 10.11.2026, Profi-Recherche NGC 7023): Staub liegt knapp über dem Himmel – heller Hintergrund
     # (target_bg 0,10, Schwarzpunkt 0,045 statt 0,03) und großskaliger Lokalkontrast 64/128 px (grade_large), GraXpert-Glättung 1,0

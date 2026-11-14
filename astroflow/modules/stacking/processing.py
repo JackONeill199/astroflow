@@ -531,7 +531,7 @@ def stretch(img: np.ndarray, target_bg: float, asinh_k: float, color_preserve: b
     return (out / mx).astype(np.float32)
 
 
-def channel_curve(ref: np.ndarray, target_bg: float, asinh_k: float, white_pct: float = 99.9):
+def channel_curve(ref: np.ndarray, target_bg: float, asinh_k: float, white_pct: float = 99.9, white_min: float | None = None):
     """Kanalweise Kurve (asinh + Mittelton) mit verknüpften Schwarz-/Weißpunkten aus `ref`; als Funktion, damit
     Original und sternloses Bild exakt dieselbe Kurve bekommen. Sternkerne laufen nach Weiß und bleiben knackig.
     white_pct: Weißpunkt als Perzentil – alles darüber wird Weiß; die Qualitätskontrolle hebt ihn bei ausgebrannten Kernen."""
@@ -539,7 +539,7 @@ def channel_curve(ref: np.ndarray, target_bg: float, asinh_k: float, white_pct: 
     med = float(np.median(L))
     sig = 1.4826 * float(np.median(np.abs(L - med))) + 1e-12
     black = med - 2.8 * sig
-    white = max(float(np.percentile(L, white_pct)), med + 10 * sig)
+    white = max(float(np.percentile(L, white_pct)), med + 10 * sig, white_min or 0.0)    # white_min: Kern nicht abschneiden
     y0 = np.arcsinh(asinh_k * np.clip((L[::3, ::3] - black) / (white - black), 0, None)) / np.arcsinh(asinh_k)
     m0 = float(np.clip(np.median(y0), 1e-5, 0.9))
     t = target_bg
@@ -1040,11 +1040,20 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
         if p.get("core_protect"):
             # Weißpunkt über den (geglätteten) Kern: sonst schneidet GHS ihn ab, der Kern wird eine flache weiße Fläche ohne
             # Verlauf und der Lichterschutz machte daraus eine graue Scheibe (M31, 0.74.0)
-            Ls = luminance(starless)
+            # hellster Kanal: die Kurven arbeiten je Kanal, sonst läuft Rot im Kern zuerst ins Weiß (rosa Rand)
+            Ls = starless.max(0)
             white = float(ndi.gaussian_filter(Ls, max(2.0, max(Ls.shape) / 600)).max())
         T = starsep.Stretch(starless, float(p["target_bg"]), full=img, white=white)
         stars_s = np.clip(Ts(img) - Ts(starless), 0, 1)
-        img = T(starless)
+        if p.get("ghs_mix") is not None:
+            # Galaxien: fester Anteil GHS, Rest Kanalkurve (monoton, da beide monoton). Reines GHS hob den Bulge von M31 zu einer
+            # großen hellen Fläche an, die Kurve allein ließ Arme/Kernnähe zu dunkel; 0,5 trifft das Profil der Stellina-App
+            w = float(p["ghs_mix"])
+            Tc = channel_curve(img, float(p["target_bg"]), float(p["asinh"]), float(p.get("white_pct", 99.9)), white)
+            img = (w * T(starless) + (1 - w) * Tc(starless)).astype(np.float32)
+            stats["ghs_mix"] = w
+        else:
+            img = T(starless)
         stats["ghs"] = T.steps
         del starless
     else:                                                  # ohne Trennung (Sternhaufen): knackige Kanalkurve
