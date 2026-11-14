@@ -17,7 +17,9 @@ volle Abdeckung oft nur ein Drittel davon. Ablauf:
    außen ein, damit jede neue Kachel schon Überlapp hat.
 4. **Zuschnitt** (`effective_cov`): Fläche gegen Mindesttiefe abwägen; die Abdeckung wird so umgerechnet, dass der
    gewählte Tiefenwert bei 0,5 liegt – alle Folgeschritte (Zuschnitt, GraXpert-Lückenfüllung, Stack-Reparatur …)
-   arbeiten mit ihrer gewohnten Schwelle weiter.
+   arbeiten mit ihrer gewohnten Schwelle weiter. Standard `auto`: wird der Ausschnitt dabei nicht größer als eine
+   Aufnahme (`FIELD_MAX`), war es kein Mosaik, sondern ein Einzelfeld mit Versatz und Bildfelddrehung (Vespera: Dithering
+   ±250 px, Drehung über die Nacht) – dann Zuschnitt wie ohne Mosaik (Tiefe 0,5) und Randglühen wie bei jedem Stack.
 
 Stand im Stack-Zustand (state.json): `mosaic` {spread, area, frames}, `origin` [x, y] (Referenzpixel der Leinwandecke),
 `canvas` [H, W] (native Pixel, ohne resolution_scale). Ohne diese Schlüssel: gewöhnlicher Stack (Ursprung 0, Fläche
@@ -30,7 +32,7 @@ import math
 import numpy as np
 
 MODES = ("auto", "on", "off")          # Projektoption `mosaic`
-CROPS = ("wide", "compact")            # Projektoption `mosaic_crop`: Fläche bevorzugen | volle Tiefe (wie ohne Mosaik)
+CROPS = ("auto", "wide", "compact")    # Projektoption `mosaic_crop`: auto (Einzelfeld kompakt, sonst wide) | Fläche bevorzugen | volle Tiefe (wie ohne Mosaik)
 DETECT = 0.25           # Bildmitten streuen über mehr als 25 % der Bildbreite/-höhe -> Mosaik
 MIN_GAIN = 1.15         # Leinwand muss mindestens 15 % größer sein als das Referenzbild (sonst lohnt es nicht)
 MIN_SHARE = 0.02        # Leinwandzelle zählt, wenn mindestens 2 % der Aufnahmen (mind. 2) sie abdecken
@@ -41,6 +43,9 @@ FEATHER_MIN = 0.05      # Gewicht ganz am Rand (nicht 0: sonst zählt der Rand g
 MIN_SAMPLES = 400       # Stichproben im Überlapp für den Hintergrundangleich
 PLANE_SPAN = 0.4        # Ebene nur, wenn der Überlapp mindestens 40 % der Bildbreite und -höhe überspannt
 CROP_LEVELS = (0.5, 0.4, 0.3, 0.22, 0.15)   # Kandidaten für die Mindesttiefe beim Zuschnitt (Anteil der größten Tiefe)
+# auto: Ausschnitt (Fläche gegen Tiefe) höchstens so groß wie eine Aufnahme → Einzelfeld. Gemessen 14.11.2026: vier Vespera-
+# Nächte (M77, M1, IC 443, M2, Leinwand 2,9–4×) 0,72–0,86 Aufnahmen, Stellina-Rosette im Mosaikmodus 1,76
+FIELD_MAX = 1.0
 
 
 def mode(value) -> str:
@@ -50,9 +55,9 @@ def mode(value) -> str:
 
 
 def crop_mode(value) -> str:
-    v = str(value or "wide").strip().lower()
-    v = {"gross": "wide", "groß": "wide", "kompakt": "compact"}.get(v, v)
-    return v if v in CROPS else "wide"
+    v = str(value or "auto").strip().lower()
+    v = {"gross": "wide", "groß": "wide", "kompakt": "compact", "automatisch": "auto"}.get(v, v)
+    return v if v in CROPS else "auto"
 
 
 def origin(meta: dict) -> tuple[float, float]:
@@ -278,14 +283,16 @@ def match_background(X: np.ndarray, V: np.ndarray, ref, ref_ok, step: int) -> li
     return out
 
 
-def effective_cov(cov: np.ndarray, how: str = "wide") -> tuple[np.ndarray, dict]:
+def effective_cov(cov: np.ndarray, how: str = "auto", area: float | None = None) -> tuple[np.ndarray, dict]:
     """Abdeckung eines Mosaiks für Zuschnitt und Folgeschritte umrechnen: Mindesttiefe t wählen (Fläche × √t maximal,
-    das Rauschen wächst mit 1/√Tiefe; `compact` = 0,5 wie ohne Mosaik) und so abbilden, dass t bei 0,5 liegt."""
+    das Rauschen wächst mit 1/√Tiefe; `compact` = 0,5 wie ohne Mosaik) und so abbilden, dass t bei 0,5 liegt.
+    area = Leinwand in Aufnahmeflächen (`mosaic.area`). `auto` wie `wide`, außer der Ausschnitt wäre höchstens
+    `FIELD_MAX` Aufnahmen groß – dann Einzelfeld (crop „field“, t = 0,5)."""
     from .processing import coverage_box
     f = max(1, int(math.ceil(max(cov.shape) / 1000)))
     small = cov[::f, ::f]
     best, best_s, areas = 0.5, -1.0, {}
-    for t in (CROP_LEVELS if how == "wide" else (0.5,)):
+    for t in (CROP_LEVELS if how in ("wide", "auto") else (0.5,)):
         y0, y1, x0, x1 = coverage_box(small, t)
         a = (y1 - y0) * (x1 - x0) / small.size
         areas[t] = round(a, 3)
@@ -293,5 +300,9 @@ def effective_cov(cov: np.ndarray, how: str = "wide") -> tuple[np.ndarray, dict]
         if s > best_s * 1.02:                             # tiefere Schwelle nur bei echtem Flächengewinn
             best, best_s = t, s
     t = best
+    if how == "auto":
+        how = "wide"
+        if area and areas[t] * area <= FIELD_MAX:
+            how, t = "field", 0.5                         # 0,5 steht immer in CROP_LEVELS (Fläche bekannt)
     out = np.where(cov < t, 0.5 * cov / t, 0.5 + 0.5 * (cov - t) / (1 - t)).astype(np.float32)
     return out, {"crop": how, "min_depth": t, "crop_area": areas.get(t)}
