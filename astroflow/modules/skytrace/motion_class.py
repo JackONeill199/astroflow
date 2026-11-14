@@ -216,6 +216,9 @@ def assess(c, others=()):
             if speed is not None and speed < PLANE_MIN_ARCSEC_S:
                 verdict = 'satellite_or_plane'
                 reasons.append(note + f'; mit etwa {speed:.0f}″/s aber langsam – eher ein hoher Satellit, ein Flugzeug wäre sehr weit entfernt oder flöge auf den Beobachter zu.')
+            elif speed is None:
+                verdict = 'satellite_or_plane'
+                reasons.append(note + '; Winkelgeschwindigkeit nicht messbar (Bildfeld unbekannt) – ein langsamer hoher Satellit bleibt möglich.')
             else:
                 verdict = 'likely_plane'
                 reasons.append(note + '.')

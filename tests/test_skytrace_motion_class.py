@@ -71,6 +71,8 @@ def test_verkettete_spur_ohne_bahn():
     assert mc.assess(fast)["verdict"] == "likely_plane"                       # ~107″/s, Bahndaten vorhanden, nichts passt
     assert mc.assess(slow)["verdict"] == "satellite_or_plane"                 # 6″/s: eher hoher Satellit
     assert mc.assess(open_)["verdict"] == "satellite_or_plane"                # nicht prüfbar ≠ nichts da
+    unknown = cand(kind="plane", linked_track={"count": 3, "span_seconds": 21, "rate_pixels_s": 17.8}, catalogs=[sat()], plausibility={})
+    assert mc.assess(unknown)["verdict"] == "satellite_or_plane"              # ohne Winkelmaß keine Aussage „schnell“
     assert "nicht möglich" in " ".join(mc.assess(open_)["reasons"])
 
 

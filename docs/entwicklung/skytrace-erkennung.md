@@ -54,7 +54,7 @@ Umsetzung (`astroflow/modules/skytrace/motion_class.py`, doppelt lizenziert, au�
 - `likely_plane` „Wahrscheinlich Flugzeug“: Blinkmuster oder paralleles Nachbarlicht in derselben Aufnahme (≤ 3°, 3–120 px, ≥ 60 % Überlappung)
   – auch gegen eine nur grob passende Bahn; oder verkettete Spur, Satellitenprüfung mit Bahndaten ohne Treffer und ≥ 60″/s.
 - `satellite_or_plane` „Satellit oder Flugzeug“: verkettete Spur, Prüfung nicht möglich (keine Bahndaten/Belichtung/Standort) oder nur grob
-  passende Bahn, oder ohne Treffer, aber langsamer als 60″/s (NGC 2244 L2: 23″/s – eher hoher Satellit, der im Archiv fehlt).
+  passende Bahn, oder ohne Treffer, aber langsamer als 60″/s bzw. ohne messbare Geschwindigkeit (NGC 2244 L2: 23″/s – eher hoher Satellit, der im Archiv fehlt).
 - `asteroid` „Langsamer Beweger (Asteroid möglich)“: nur Punktbeweger (`kind='moving'`) mit gemessenen ≤ 2″/s; schneller oder ohne Winkelmaß
   bleibt neutral „Bewegungskandidat“ (keine Klasse allein aus Beispielgeschwindigkeiten).
 - Einzelbild-Spur ohne Merkmal: keine Aussage (Meteor, Satellit, Flugzeug bleiben offen).
