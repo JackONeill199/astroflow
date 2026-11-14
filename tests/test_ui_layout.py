@@ -359,6 +359,11 @@ def test_spinners_on_running_object_page(server, browser):
     page.wait_for_selector('.sl-pulse')
     page.wait_for_function("!document.querySelector('#jobpill').classList.contains('idle')")
     page.wait_for_selector('#jobpill .spinner')
+    # auf den Zustand warten (Statuszeile kann einen Poll später drehen – auf Linux-CI gelegentlich zu früh geprüft)
+    try:
+        page.wait_for_function(f"JSON.stringify(({SPINNING})().sort()) === '[\"sl-pulse\",\"spinner\"]'", timeout=8000)
+    except Exception:
+        pass
     assert sorted(page.evaluate(SPINNING)) == ['sl-pulse', 'spinner']
     assert page.locator('#jobpill .spinner').is_visible() and page.locator('#run').is_disabled()
     # gemeinsames Tempo: alle Kreisel über dasselbe Token

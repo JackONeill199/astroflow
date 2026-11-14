@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import sys
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -15,6 +16,7 @@ from .core.config import Settings, load_settings
 from .core.folders import list_folders, search_folders
 from .core.gzip import GZip
 from .core.modules import AVAILABLE, Context, load_modules
+from .core import pollcache
 from .core import qr
 from .core import report as report_mod
 from .core import security
@@ -50,6 +52,10 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
 
     @asynccontextmanager
     async def lifespan(app):
+        # GIL-Konvoi: sqlite3 und Sockets geben den GIL je Zeile/Paket frei; rechnet daneben ein Python-Thread (Pipeline,
+        # Auto-Analysen), wartet jeder Wiedereintritt bis zum Switch-Intervall (Standard 5 ms). 37 000 Frame-Zeilen lesen
+        # dauerte so 154 s statt 0,2 s, /api/status bis 96 s (Messung 14.11.2026); mit 0,5 ms 0,3 s, numpy unverändert.
+        sys.setswitchinterval(min(sys.getswitchinterval(), 0.0005))
         for m in active:
             m.module.start()
         import threading
@@ -90,8 +96,8 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
                 "settings_problem": ctx.store.problem, "report": report_mod.enabled(ctx.store),
                 "update": update_offer()}
 
-    @app.get("/api/status")
-    def status():
+    # Status und Aktivität pollt jeder Tab alle 2,5 s: ein Ergebnis für alle (core/pollcache.py), eigene kleine Thread-Spur
+    def _status():
         mods, busy = {}, 0
         for m in active:
             try:
@@ -103,8 +109,7 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
         upd = update_offer()                              # nur die Nummer: das Frontend holt Details, wenn sie sich ändert
         return {"version": VERSION, "busy": busy, "modules": mods, "update": upd["latest"] if upd else None}
 
-    @app.get("/api/activity")
-    def activity(limit: int = 40):
+    def _activity(limit: int):
         items = []
         for m in active:
             try:
@@ -117,6 +122,17 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
         rank = {"running": 0, "queued": 1}
         items.sort(key=lambda a: (rank.get(a.get("state"), 2), -(a.get("started") or 0)))
         return items[:limit]
+
+    shared_status = pollcache.Shared(_status, min_age=1.0)
+    shared_activity = pollcache.Shared(_activity, min_age=1.0)
+
+    @app.get("/api/status")
+    async def status():
+        return await shared_status.aget()
+
+    @app.get("/api/activity")
+    async def activity(limit: int = 40):
+        return await shared_activity.aget(max(1, min(200, limit)))
 
     # ---- Kopplung von Heimnetz-Geräten (Einstellungen → Heimnetz) ------------------
     @app.get("/api/pair")
@@ -308,7 +324,11 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
                 return HTMLResponse(security.NEED_PAIRING, status_code=401, headers={"Cache-Control": "no-store"})
         if request.method not in security.SAFE_METHODS and not access.origin_ok(request):
             return JSONResponse({"detail": "Anfrage nicht zugelassen (fremde oder fehlende Herkunft)."}, status_code=403)
-        r = await call_next(request)
+        try:
+            r = await call_next(request)
+        finally:
+            if request.method not in security.SAFE_METHODS:
+                pollcache.touch()                 # Nutzeraktion: geteilte Status-/Listen-Ergebnisse sofort neu rechnen
         # Startseite immer neu prüfen – sonst hängt der Browser an alten ?v=-Verweisen auf app.js/style.css
         if request.url.path in ("/", "/index.html"):
             r.headers["Cache-Control"] = "no-cache"

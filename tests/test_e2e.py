@@ -137,6 +137,9 @@ def test_existing_duplicates_marked_retroactively(tmp_path):
         i = json.loads(row["info"]); i.pop("fp", None)
         db.x("UPDATE frames SET kind='light', status='new', info=? WHERE id=?", (json.dumps(i), row["id"]))
     assert db.one("SELECT COUNT(*) n FROM frames WHERE kind='light'")["n"] == 8
+    pl.scan()                                     # ohne neue Dateien prüft der laufende Server den Bestand nicht erneut (Last)
+    assert db.one("SELECT COUNT(*) n FROM frames WHERE kind='light'")["n"] == 8
+    pl = Pipeline(s, db, ReviewerConfig())        # Neustart nach dem Update: einmalige Prüfung des Bestands
     pl.scan()
     assert db.one("SELECT COUNT(*) n FROM frames WHERE kind='light'")["n"] == 4
     assert db.one("SELECT COUNT(*) n FROM frames WHERE kind='duplicate'")["n"] == 4

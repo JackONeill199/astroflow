@@ -18,6 +18,7 @@ from .driver import Driver, DriverError, TelescopeState
 DEVICE_ID = "astroflow"            # so meldet sich AstroFlow (bzw. ein Plugin) als steuerndes Gerät an
 DEFAULT_HOST = "10.0.0.1"          # Werkseinstellung im WLAN des Teleskops
 STATUS_PORT = 8082
+FRESH_S = 600                      # Fehler einer so lange beendeten Beobachtung gilt noch (Gerät bricht selbst ab)
 STALE_S = 30                       # Status älter → gilt als getrennt
 POLL_S = 2.0
 
@@ -49,6 +50,18 @@ def _last_step(op: dict) -> str | None:
     return None
 
 
+def _error_names(e) -> list[str]:
+    """Fehlername samt Ursachenkette (`chain`: Einträge als Objekt oder Text)."""
+    if not isinstance(e, dict) or not e.get("name"):
+        return []
+    out = [str(e["name"])]
+    for c in e.get("chain") or []:
+        n = c.get("name") if isinstance(c, dict) else c
+        if n:
+            out.append(str(n))
+    return out
+
+
 def translate(raw: dict | None, me: str = DEVICE_ID, age_s: float = 0.0, connected: bool = True) -> TelescopeState:
     """Status des Geräts → `TelescopeState`. Kennungen und Ort werden nicht übernommen."""
     r = (raw or {}).get("result", raw) or {}
@@ -76,7 +89,16 @@ def translate(raw: dict | None, me: str = DEVICE_ID, age_s: float = 0.0, connect
                 target = {"id": str(t.get("objectId") or t.get("objectName") or "?"), "name": str(t.get("objectName") or t.get("objectId") or "?"),
                           "ra": t.get("ra"), "dec": t.get("de")}
         if isinstance(op.get("error"), dict) and op["error"].get("name"):
-            err = str(op["error"]["name"])
+            err = " ← ".join(_error_names(op["error"]))
+    if not any(str(o.get("type") or "").upper() == "OBSERVATION" for o in ops):
+        # Erster Autopilot-Lauf (14.11.2026): Die Vespera brach die Beobachtung nach 6× ASTROMETRY_FAILED selbst ab
+        # (GENERAL.POINTING_STOPPED ← TOO_MANY_ASTROMETRY_FAILED) – danach keine Operation mehr, der Grund steht nur in
+        # previousOperations. Einen frischen Fehler von dort übernehmen, sonst sähe es aus wie „bereit, alles gut“.
+        prev = (r.get("previousOperations") or {}).get("observation")
+        ts = r.get("timestamp")
+        end = prev.get("endTime") if isinstance(prev, dict) else None
+        if isinstance(prev, dict) and prev.get("error") and ts and end and 0 <= (ts - end) / 1000 <= FRESH_S:
+            err = " ← ".join(_error_names(prev["error"])) or err
     master = r.get("masterDeviceId")
     st = r.get("storage") or {}
     pub = st.get("public") or st.get("data") or {}

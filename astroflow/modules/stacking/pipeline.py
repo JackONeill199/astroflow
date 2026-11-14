@@ -119,6 +119,7 @@ class Pipeline:
         self.review_cfg = review_cfg or reviewer.ReviewerConfig.from_env()
         self.solver_cfg = solver_cfg or platesolve.SolverConfig.from_env()
         self._scan_lock = threading.Lock()     # Watcher, API-Scan und Nach-Solving nie gleichzeitig
+        self._fp_checked = False                # Fingerabdrücke des Bestands einmal je Start geprüft (dann nur bei neuen Dateien)
         self.on_stacked = None                 # fn(project_id, result_id): neue Aufnahmen gestackt, Rohbilder noch vorhanden
         self.live_runs = {}                     # getrennt je Objekt: Stacking und Entwicklung laufen parallel
         self.site_provider = None               # fn(Nacht) -> [Breite, Länge] | None (Ortsliste bzw. Tutor-Einstellung)
@@ -155,8 +156,10 @@ class Pipeline:
     def _scan(self, extra: list[Path] | None = None) -> dict:
         known = {r["id"] for r in self.db.q("SELECT id FROM frames")}
         frames, errors = scanner.scan_dir(self.s.input_dir, known, self.s.threads, extra)
-        # inhaltsgleiche Dateien (z. B. derselbe Ordner erneut hochgeladen) nie doppelt stacken
-        seen = self._fingerprints()
+        # inhaltsgleiche Dateien (z. B. derselbe Ordner erneut hochgeladen) nie doppelt stacken. Liest Info-JSON aller Frames
+        # (37 000 Frames: unter Last 9–17 s) – deshalb nur bei neuen Dateien und einmal nach dem Start (fehlende Abdrücke nachtragen)
+        seen = self._fingerprints() if frames or not self._fp_checked else {}
+        self._fp_checked = True
         unique, dups = [], []
         for f in sorted(frames, key=lambda f: f.path):
             if f.info.fp and f.info.fp in seen:
