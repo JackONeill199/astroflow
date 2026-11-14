@@ -24,7 +24,7 @@ from .config import Settings
 from .store import SettingsStore
 
 # Reihenfolge = Reihenfolge in Navigation, Übersicht und Einstellungen
-AVAILABLE = ("stacking", "skytrace", "sage")
+AVAILABLE = ("stacking", "skytrace", "sage", "telescope")
 
 
 @dataclass

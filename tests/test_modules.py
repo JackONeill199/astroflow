@@ -14,8 +14,9 @@ def test_alle_module_laden(tmp_path, monkeypatch):
     monkeypatch.setenv("SKYTRACE_HOME", str(tmp_path / "st"))
     with TestClient(create_app(load_settings(tmp_path / "d"))) as c:
         info = c.get("/api/app").json()
-        assert [m["id"] for m in info["modules"]] == ["stacking", "skytrace", "sage"]
-        assert all(m["available"] and not m["error"] for m in info["modules"])
+        assert [m["id"] for m in info["modules"]] == ["stacking", "skytrace", "sage", "telescope"]
+        assert [m["id"] for m in info["modules"] if m["enabled"]] == ["stacking", "skytrace", "sage"]
+        assert all(m["available"] and not m["error"] for m in info["modules"] if m["enabled"])
         assert info["build"] and "/m/skytrace/evidence.js" in info["modules"][1]["scripts"]
         st = c.get("/api/status").json()
         assert set(st["modules"]) == {"stacking", "skytrace", "sage"} and st["busy"] == 0
