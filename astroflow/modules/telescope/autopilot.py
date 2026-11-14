@@ -360,7 +360,7 @@ class Autopilot:
         prev, self.state = self.state, s
         if s.connected:
             self.known = s
-            self.battery.update(now, s.battery, s.charging)
+            self.battery.update(now, s.battery, s.charging, not s.parked)
         ch = self.machine.update(s)
         if ch:
             if ch[0] in EXPECT_S and self.phase_since is not None and ch[1] not in ("getrennt", "fremd"):
@@ -661,14 +661,18 @@ class Autopilot:
         return self.battery.seconds_left(s.battery, s.model, active, float(self.cfg["battery_min"]))
 
     def _battery_fits(self, it: Item, now: float) -> bool:
-        """Reicht der Akku für das Ziel? Zu knapp → nicht starten; reicht nicht bis zum Ende → Abschnitt kürzen und sagen."""
+        """Reicht der Akku für das Ziel? Zu knapp (auch nach Erfahrungswert) → nicht starten; reicht er laut Messung nicht bis
+        zum Ende → Abschnitt kürzen und sagen."""
         left = self.battery_left(True)
         if left is None:
             return True
         if left < BATTERY_MIN_ITEM:
             self._once(f"akku-leer:{it.id}", f"Akku reicht nur noch ca. {fmt_left(left)} – starte {it.name} nicht mehr.", "warn", now)
+            if self.machine.phase in ("schwenkt", "astrometrie", "nimmt_auf"):
+                self._cmd("stop", self.driver.stop, now=now)     # vorige Beobachtung nicht unbeobachtet weiterlaufen lassen
             return False
-        if now + left < it.end:
+        if now + left < it.end and self.battery.measured and self.battery.active:
+            # kürzen nur mit gemessener Rate im offenen Betrieb – der Erfahrungswert ist dafür zu grob
             it.end = now + left
             self.log(f"Akku reicht nur noch ca. {fmt_left(left)} – {it.name} wird bis {_fmt(it.end)} gekürzt.", "warn", now)
         return True

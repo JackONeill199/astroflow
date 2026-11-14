@@ -998,3 +998,22 @@ def test_alter_astrometriefehler_trifft_neues_ziel_nicht():
     assert p._failed(cur, s) is False
     cur.seen = True
     assert p._failed(cur, s) is True
+
+
+def test_akku_rate_je_betriebsart():
+    """Codex #129: Eine eingeklappt gemessene Rate gilt nicht für offen (und umgekehrt) – Wechsel beginnt neuen Verlauf."""
+    from astroflow.modules.telescope import battery as bt
+    b = bt.BatteryEta()
+    for k in range(0, 31):                                       # eingeklappt: 4 %/h
+        b.update(T0 + k * 120, round(90 - 4 * k * 120 / 3600), False, active=False)
+    assert b.measured and b.rate("vespera", False) == b.measured
+    assert b.rate("vespera", True) == bt.DRAIN_PCT_H["vespera"]["aktiv"]          # offen: Erfahrungswert, nicht 4 %/h
+    b.update(T0 + 4000, 85, False, active=True)                 # geöffnet → neuer Verlauf
+    assert b.measured is None and len(b.samples) == 1
+
+
+def test_akku_reicht_nicht_vorige_beobachtung_wird_gestoppt():
+    """Codex #129: Wird das nächste Ziel wegen Akku abgelehnt, läuft die vorige Beobachtung nicht unbeobachtet weiter."""
+    p, d, clock = make([item(M15, 0.0, 0.1), item(M31, 0.1, 3.0)], sim.Scenario(battery=18, battery_per_h=20), cfg={"fallback": False})
+    run(p, clock, 0.2, step=20)
+    assert "starte M31 nicht mehr" in texts(p) and "stop" in d.commands and d.step != "capture"

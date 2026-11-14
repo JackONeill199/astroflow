@@ -29,19 +29,21 @@ class BatteryEta:
     def __init__(self):
         self.samples: deque = deque()          # (t, Prozent) seit dem letzten Laden
         self.charging = False
-        self.measured: float | None = None     # gemessene Entladung in %/h
+        self.measured: float | None = None     # gemessene Entladung in %/h – gilt nur für die Betriebsart `active`
+        self.active: bool | None = None        # offen (True) bzw. eingeklappt (False) während der Messung
 
-    def update(self, t: float, level: int | None, charging: bool):
+    def update(self, t: float, level: int | None, charging: bool, active: bool = True):
         if charging or level is None:
             if charging:
                 self.samples.clear()
                 self.measured = None
             self.charging = bool(charging)
             return
-        if self.charging or (self.samples and level > self.samples[-1][1] + 1):   # gerade geladen → neuer Verlauf
+        if self.charging or (self.samples and level > self.samples[-1][1] + 1) or active != self.active:
+            # gerade geladen bzw. geöffnet/eingeklappt → neuer Verlauf (offen entlädt viel schneller als eingeklappt)
             self.samples.clear()
             self.measured = None
-        self.charging = False
+        self.charging, self.active = False, active
         if not self.samples or self.samples[-1][1] != level or t - self.samples[-1][0] >= 60:
             self.samples.append((t, level))
         while self.samples and t - self.samples[0][0] > WINDOW_S:
@@ -65,7 +67,7 @@ class BatteryEta:
         return -slope * 3600 if slope < 0 else None
 
     def rate(self, model: str, active: bool) -> float:
-        if self.measured:
+        if self.measured and active == self.active:
             return self.measured
         d = DRAIN_PCT_H.get(_family(model) or "", DEFAULT_DRAIN)
         return d["aktiv" if active else "ruhe"]
@@ -82,7 +84,8 @@ class BatteryEta:
         if charging:
             return {"charging": True}
         return {"charging": False, "empty_s": round(self.seconds_left(level, model, active)),
-                "limit_s": round(self.seconds_left(level, model, active, floor)), "measured": self.measured is not None,
+                "limit_s": round(self.seconds_left(level, model, active, floor)),
+                "measured": self.measured is not None and active == self.active,
                 "rate": round(self.rate(model, active), 1)}
 
 
