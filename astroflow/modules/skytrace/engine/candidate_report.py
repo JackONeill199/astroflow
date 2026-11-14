@@ -168,8 +168,10 @@ def extract_candidates(out,summary,settings=None,make_clean=True):
         item['catalogs']=compare(item,site,settings)
         from satellite_overlay import project_paths
         item['satellite_overlay']=project_paths(solution,(width,height),matrix,item['catalogs'])
-        _write_json(target/'kandidat.json',item)
         candidates.append(item)
+    from trail_tracks import classify_candidates
+    classify_candidates(candidates)                       # braucht alle Kandidaten (parallele Lichter derselben Aufnahme)
+    for item in candidates: _write_json(folder/'kandidaten'/item['id']/'kandidat.json',item)
     _write_json(folder/'kandidaten.json',candidates)
     summary['candidates_file']=(folder/'kandidaten.json').relative_to(out).as_posix()
     summary['candidate_count']=len(candidates)

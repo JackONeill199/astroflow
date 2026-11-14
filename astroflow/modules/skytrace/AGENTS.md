@@ -55,6 +55,7 @@ Die Erkennung (Modell `models/night-detector/`, AGPL-3.0, und `ultralytics`, AGP
 | `auto.py` | `AutoAnalysis`: Ereignis `stacking.stacked` → Hardlink-Ordner → Warteschlange (Einstellung `skytrace.auto`) |
 | `reanalysis.py` | `/reanalyse`: Originale aus Manifesten wiederfinden (`eingang.json`) |
 | `rematch.py` | `SiteJobs`: Neuabgleich, Standortsuche, Nächte, Heatmap als Aufträge neben dem `Controller` |
+| `motion_class.py` | Einstufung bewegter Spuren: Satellit / „Satellit oder Flugzeug“ / „Wahrscheinlich Flugzeug“ / langsamer Beweger (doppelt lizenziert; Server importiert, Engine lädt über den Pfad; `VERSION` erhöhen bei geänderten Regeln) |
 | `sitefit.py`, `orbit3d.py`, `run3d.py`, `satdetail.py` | Rückrechnung Ort+Uhr; 3D-Bahnen; Lauf-Ansicht (Teleskopweg); Satelliten-Infokarte (nur Gespeichertes) |
 | `stats.py`, `satellites.py`, `achievements.py` | Statistik, Satellitenhelligkeit/-rate, Erfolge (`erfolge.json`) |
 | `static/` | `skytrace.js` (Ansichten), `evidence.js/css` (Messgrafiken, auch im Bericht), `skytrace-erde.js` (Globus + Seitenleiste), `skytrace-3d.js` (Lauf-Ebene), `skytrace-karte.js` (flache Karte), `skytrace-erfolge.js`, `skytrace-satelliten.js`; Erdtextur unter `static/vendor/` |
@@ -108,7 +109,7 @@ Die Erkennung (Modell `models/night-detector/`, AGPL-3.0, und `ultralytics`, AGP
 - ASTAP (Plate-Solving, `engine/solving.py`): bevorzugt `tools/astap/astap_cli.exe` unter `SKYTRACE_HOME`, sonst die ASTAP-Installation; Deep-Sky-Beschriftung aus `deep_sky.csv`.
 
 ## Tests
-- Server/Modul: `tests/test_skytrace.py` (Engine-Teile nur mit skyfield/sgp4), `test_skytrace_achievements.py`, `_satelliten.py`, `_satellit.py`, `_rematch.py`, `_nights.py`,
+- Server/Modul: `tests/test_skytrace.py` (Engine-Teile nur mit skyfield/sgp4), `test_skytrace_achievements.py`, `_motion_class.py`, `_satelliten.py`, `_satellit.py`, `_rematch.py`, `_nights.py`,
   `_clock.py`, `_global.py`, `_alternatives.py`, `_reanalysis.py`, `_frames.py`, `_3d.py`, `_3d_run.py`, `_field_motion.py`, `_compact.py`, `_performance.py` (die letzten
   drei laufen mit OpenCV unter pytest oder direkt im Engine-Interpreter).
 - Browser (Playwright): `test_skytrace_3d_ui.py`, `_erde_ui.py`, `_video_ui.py`, außerdem alle SkyTrace-Routen in `test_ui_layout.py`. Fixtures mit erfundenen Orten.
@@ -120,7 +121,7 @@ Die Erkennung (Modell `models/night-detector/`, AGPL-3.0, und `ultralytics`, AGP
 | Messdetails / Vorprüfung | `check_evidence`, `check_candidates`, `check_motion_plausibility` (App **und** eigenständigen Bericht mit Zoom/Overlay ansehen) |
 | Sensorstreifen, doppelte Spuren | `check_banding`, `check_streak_merging`, `check_sequence` |
 | Bewegung/Schärfe, Sternschweife | `check_ensemble`, `check_quality`, `check_registration_data`, `check_field_tails`, `check_trail_validation` |
-| Overlays / Blinklichter | `check_video_overlays`, `check_satellite_overlay`, `check_blink_trails` |
+| Overlays / Blinklichter | `check_video_overlays`, `check_satellite_overlay`, `check_blink_trails`, Eichung `probe_blink_injection` (eingesetzte Spuren + negierte Differenz) |
 
 ## Wegweiser (Thema → Datei)
 | Thema | Datei |

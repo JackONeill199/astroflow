@@ -32,6 +32,10 @@ def run(img, seed):
 results = {}
 dashed = draw(frame(1), (200, 150), (900, 700), 600, lambda i: i % 70 < 26)
 results['gestrichelt'] = run(dashed, 101)
+four = draw(frame(6), (200, 150), (900, 700), 900, lambda i: i % 180 < 50 and i < 590)     # 4 Blitze (seit 14.11.2026)
+results['vier'] = run(four, 106)
+three = draw(frame(6), (200, 150), (900, 700), 900, lambda i: i % 180 < 50 and i < 410)    # 3 Blitze: zu wenig (Eichung)
+results['drei'] = run(three, 106)
 knots = draw(draw(frame(2), (300, 800), (1300, 300), 250), (300, 800), (1300, 300), 1500, lambda i: i % 90 < 10)
 results['Knoten'] = run(knots, 102)
 meteor = draw(frame(3), (400, 200), (1100, 600), 500)
@@ -47,6 +51,8 @@ print('Rauschen', [len(r) for r in noise])
 assert planes['gestrichelt'] and planes['gestrichelt'][0]['blink']['form'] == 'gestrichelt' and planes['gestrichelt'][0]['blink']['flashes'] >= 5
 assert len(results['gestrichelt']) == 1, 'Randblitz gehört zur selben Flugzeugspur'
 assert len(planes['Knoten']) == 1 and planes['Knoten'][0]['blink']['form'] == 'Knoten', 'keine zweite Linie quer durch die Knoten'
+assert not planes['drei'], 'drei Blitze reichen nicht (Fehlalarme in der Eichung)'
+assert planes['vier'] and planes['vier'][0]['blink']['flashes'] == 4, 'vier Blitze im Takt reichen'
 assert results['durchgehend'] and not planes['durchgehend'], 'durchgehende Spur bleibt Meteor/Satellit-Kandidat'
 assert not planes['unregelmaessig'], 'unregelmäßige Lücken sind kein Blinktakt'
 assert not any(noise), 'Rauschen und Sterne erzeugen keine Spuren'

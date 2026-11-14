@@ -25,7 +25,7 @@ als „Meteor“ gemeldet. Vergleichslauf: `Ergebnisse/2026-10-28_18-47-38-35255
   zusätzlich als unabhängiger Sternbefund für das Verwerfen verteilter Modellvorschläge (Bild 36: 0,425/0,84, Schweife inkohärent gemessen). `evidence.js classification`: Kataloghinweis →
   verkettete Spur → Modellhinweis (bei schmalem Bildfeld nur als Quelle/Notiz, nicht als Klassenname) → `kind`.
 - **Blinkende Flugzeuge** (`line_detection.blink_pattern`, Hinweis 29.10.2026, **ohne echtes Beispiel**, nur synthetisch
-  `check_blink_trails.py` und an den Vergleichsläufen auf Fehlalarme geprüft): Linienprofil mit ≥ 5 hellen Abschnitten auf einer Geraden,
+  `check_blink_trails.py` und an den Vergleichsläufen auf Fehlalarme geprüft): Linienprofil mit ≥ 5 (seit 14.11.2026 ≥ 4, s. Eichung unten) hellen Abschnitten auf einer Geraden,
   echte Lücken, konstantem Takt (Abstände = Vielfache der Periode, Median-Abweichung ≤ 12 %; einzelne von Sternen verdeckte Blitze
   erlaubt), Anteil ≤ 70 %, integrierter Kontrast ≥ `BLINK_SCORE` 8, auch im Originalbild; zwei Formen: gestrichelt oder Linie mit
   Knoten. → `kind='plane'`, `blink` (Blitze, Takt in Analysepixeln, Form), Klasse „Flugzeugkandidat (Blinklichter)“; nie Meteor.
@@ -34,6 +34,60 @@ als „Meteor“ gemeldet. Vergleichslauf: `Ergebnisse/2026-10-28_18-47-38-35255
   (sonst wurden Sternschweife in IC59 Bild 114 zu kurzen Spuren). Mit erstem echten Flugzeugbeispiel nachkalibrieren.
 - Prüfen: `tests/test_skytrace.py` (Verkettung, Bildfeld), `check_blink_trails.py`, Engine-Checks `check_banding`, `check_streak_merging`, `check_trail_validation`,
   `check_motion_plausibility` mit `SKYTRACE_HOME` und dem Engine-Interpreter.
+
+## Satellit oder Flugzeug: ehrliche Einstufung (14.11.2026)
+Anlass: Nutzer meldet, Flugzeuge landen als Satellit oder als langsamer Beweger. Ausgangsmessung an zwei echten Läufen (nur lesend):
+- **M2, Vespera, 2026-11-13** (Lauf `2026-11-14_11-59-22-774478`): Bild 397 zeigt zwei parallele helle Linien (Positionslichter an den
+  Flügelspitzen, ~60 Analysepixel Abstand) – heute zwei getrennte „Einzelbild-Spuren“ K0007/K0008. Alle Kataloge „nicht prüfbar“, weil
+  `exposure_info` die Vespera-Belichtung (`EXPOSURE= '10.0'` in Sekunden, kein `EXPTIME`) nicht kannte; deshalb wurde auch die durchgehende
+  Spur in Bild 139–141 (K0003–K0005, ~107″/s) nicht verkettet. Farbmessung der Doppellinie in den Bayer-Rohdaten: beide orange
+  (R/G 1,4 bzw. 1,6, Kerne gesättigt) – rot/grün ist dort nicht unterscheidbar, daher (noch) kein Farbmerkmal.
+- **NGC 2244, Stellina, 2022-12-27** (Lauf `2026-11-11_18-10-59-942632`): neun Blinkspuren (5–6 Blitze) waren schon `plane`; K0004 erschien
+  trotzdem als „Raketenstufe PSLV R/B“, weil jede kompatible Bahn gewann (hier nur grob: 3′, 4,8 s vor der Belichtung, 12° Richtung).
+  Das Objekt ab Videosekunde 7 (Bilder 107–128, K0005–K0009) passt in fünf Aufnahmen auf 0,1–3,7″ zu ATLAS 5 CENTAUR R/B (GTO, ~34 700 km,
+  ~9″/s) – das ist ein Satellit; im Video wirkt es wegen der Lücken zwischen den Aufnahmen gestrichelt wie ein blinkendes Flugzeug.
+
+Umsetzung (`astroflow/modules/skytrace/motion_class.py`, doppelt lizenziert, außerhalb von `engine/`; Engine lädt es über den Pfad,
+`trail_tracks.classify_candidates`): Feld `motion_class` je Kandidat (`version`, `verdict`, `name`, `kind`, `reasons`, `features`).
+- `satellite`: Bahn passt **eng** (mittlerer Abstand ≤ 120″, ≤ 2 s außerhalb der Belichtung, Richtung ≤ 5°) und kein Positionslichtpaar –
+  Oberfläche nennt den Satelliten wie bisher (Blinken allein spricht nicht dagegen: taumelnde Raketenstufen).
+- `likely_plane` „Wahrscheinlich Flugzeug“: Blinkmuster oder paralleles Nachbarlicht in derselben Aufnahme (≤ 3°, 3–120 px, ≥ 60 % Überlappung)
+  – auch gegen eine nur grob passende Bahn; oder verkettete Spur, Satellitenprüfung mit Bahndaten ohne Treffer und ≥ 60″/s.
+- `satellite_or_plane` „Satellit oder Flugzeug“: verkettete Spur, Prüfung nicht möglich (keine Bahndaten/Belichtung/Standort) oder nur grob
+  passende Bahn, oder ohne Treffer, aber langsamer als 60″/s (NGC 2244 L2: 23″/s – eher hoher Satellit, der im Archiv fehlt).
+- `asteroid` „Langsamer Beweger (Asteroid möglich)“: nur Punktbeweger (`kind='moving'`) mit ≤ 2″/s; schnellere Punktbeweger → `satellite_or_plane`.
+- Einzelbild-Spur ohne Merkmal: keine Aussage (Meteor, Satellit, Flugzeug bleiben offen).
+`link_tracks` nennt Ketten nur noch „Bewegtes Objekt in N Aufnahmen (Satellit oder Flugzeug)“. Der Server stuft bei jedem Lesen neu ein
+(`api.run_data`, `stats._run` → `motion_class.annotate`), ältere Läufe brauchen also keine Aktualisierung; `bericht.html` stuft beim
+Neuschreiben ein (`report_view`). `evidence.js classification` und `achievements.classify` lesen `motion_class` zuerst; Begründung steht in
+den Messdetails („Einstufung …“). Regeln geändert → `motion_class.VERSION` erhöhen. Tests: `tests/test_skytrace_motion_class.py`.
+Nachher an denselben Läufen: M2 K0007/K0008 → wahrscheinlich Flugzeug, K0003–K0005 → eine Kette „Satellit oder Flugzeug“ (für 2026-11-13
+lieferte das ETH-Archiv beim Test noch keine Bahnen); NGC 2244: alle neun Blinkspuren → wahrscheinlich Flugzeug (K0004 trotz PSLV-Grobtreffer),
+ATLAS-Centaur-Kette bleibt Satellit, L2 → Satellit oder Flugzeug.
+
+### Eichung der Blinkspuren mit eingesetzten Spuren (14.11.2026)
+`engine/probe_blink_injection.py` (Methode nach JTransient/SpacePixels, BSD-2-Clause, nur nach der Beschreibung nachgebaut): setzt gestrichelte
+Spuren (2–6 Blitze, Takt 60–220 Profilpunkte, Blitzlänge 6–25 % des Takts, 3–35 σ, Breite σ 0,8–1,6 px, Farbe als Bayer-Gewicht weiß/grün/rot)
+in echte Bildpaare ohne Erkennung und misst Fehlalarme mit vertauschter Differenz (früheres − späteres Bild). Datensatz: 54 Paare aus
+NGC 2244 und M39 (Stellina), M2 (Vespera), Melotte 111 und M15 (helle Sterne/Sternhaufen; die M45-Originale sind nicht mehr vorhanden),
+453 eingesetzte Spuren, Kopien im eigenen Temp-Ordner. Ergebnis (Wiederfindung helle Spuren ≥ 8 σ; Fehlalarme in 54 negierten Paaren):
+
+| Regel | 3 Blitze | 4 Blitze | 5 Blitze | 6 Blitze | alle ≥ 3 | Fehlalarme | neue Treffer vorwärts |
+|---|---|---|---|---|---|---|---|
+| alt: ≥ 5 Blitze, Score 8, Takt 12 % | 0 % | 3 % | 38 % | 39 % | 16 % | 1 | 0 |
+| ≥ 3 Blitze, Score 12 | 37 % | 39 % | 46 % | 46 % | 41 % | 2 | 1 |
+| ≥ 4 Blitze, Score 8 | 0 % | 36 % | 40 % | 44 % | 26 % | 2 | 0 |
+| **neu: ≥ 4 Blitze, bei 4 Score 10 + jeder Abstand im Takt** | 0 % | 36 % | 40 % | 44 % | 26 % | 1 | 0 |
+
+Direkte Bestätigung mit den neuen Schwellen (`--direct`, gleiche Paare und Spuren): 4 Blitze 31 %, 5 Blitze 32 %, 6 Blitze 44 %, alle ≥ 3 hell 23 %;
+**0 Fehlalarme** in der negierten Differenz, **0 neue Treffer** vorwärts (die großzügige Erkennung wählt teils andere Profile, daher etwas
+andere Werte als die nachträglich bewertete Tabelle).
+
+Gewählt: `BLINK_MIN_FLASHES=4`, `BLINK_SCORE_FEW=10` (nur für 4 Blitze), sonst unverändert (`BLINK_SCORE` 8, `BLINK_REGULARITY` 12 %, die echten
+NGC-2244-Flugzeuge haben Score ab 8,2 und Taktabweichung bis 0,105). Drei Blitze verworfen: die negierte Differenz lieferte Sternketten mit
+Score ~20 und fast perfektem Takt. Der verbleibende Fehlalarm (5 „Knoten“, Takt 0,103) bestand schon vorher. Die absolute Wiederfindung ist
+niedrig, weil eingesetzte Spuren oft über helle Sterne, Bildränder oder unter die Hough-Schwelle fallen – sie dient dem Vergleich der Regeln,
+nicht als Erkennungsrate echter Flugzeuge. `check_blink_trails.py` prüft synthetisch 4 Blitze (erkannt) und 3 Blitze (nicht).
 
 ## Kurze helle Spuren (03.11.2026)
 `line_detection.compact_trails` ergänzt nur bei registriertem Vergleich die bestehende Hough-Suche: native Auflösung,
