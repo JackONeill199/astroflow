@@ -438,7 +438,7 @@ def test_night_strip_dates_moon_and_clouds(tmp_path, monkeypatch):
     assert d["clouds"]["low"] and set(v for v in d["clouds"]["low"] if v is not None) == {90} and d["wind"][5] == 12
     d1 = tonight.plan([], {**SITE, "weather": True}, tmp_path, EVENING, STELLINA, night=1)
     assert d1["sky"]["state"] == "clear" and not any(r["weather_blocked"] for r in d1["recommendations"])
-    assert d1["forecast"] == {"covered": True, "uncertain": False}
+    assert d1["forecast"] == {"covered": True, "uncertain": False, "models": None}
     d4 = tonight.plan([], {**SITE, "weather": True}, tmp_path, EVENING, STELLINA, night=4)
     assert d4["cloud"] is None and d4["forecast"]["covered"] is False and d4["forecast"]["uncertain"]
 

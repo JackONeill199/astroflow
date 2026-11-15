@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from pathlib import Path
 
 from ...core.modules import BaseModule
@@ -45,6 +46,7 @@ class Module(BaseModule):
         ctx.services["night_zero_points"] = self.night_zero_points  # Nullpunkte je Nacht/Gerät (SkyTrace: Satellitenhelligkeit)
         ctx.services["scan_input"] = lambda: self.eng.scan_and_queue()        # Teleskop: nach dem Import vom Gerät einlesen
         ctx.services["weather_forecast"] = self.weather_forecast    # Teleskop: Open-Meteo-Vorhersage (gleiche Schicht und Rundung wie Heute Nacht)
+        ctx.services["weather_rain"] = self.weather_rain          # Teleskop-Autopilot: „Regen in den nächsten N Minuten erwartet?“
         if isinstance(ctx.services.get("night_sources"), list):   # Einstellungen → Standorte: Nachtliste
             ctx.services["night_sources"].append(self.nights)
 
@@ -52,6 +54,25 @@ class Module(BaseModule):
         """Stündliche Vorhersage für [t0, t1] (`tonight._forecast`: Ort auf 0,1° gerundet, 1-h-Cache). Ausnahme = kein Netz."""
         from . import tonight
         return tonight._forecast([site["lat"], site["lon"]], self.ctx.settings.work_dir / "tutor", t0, t1)
+
+    def weather_rain(self, minutes: float = 120, site: dict | None = None, now: float | None = None) -> dict:
+        """Regen in den nächsten `minutes` Minuten? {rain: bool|None, in_minutes, probability, precip}; rain=None = unbekannt
+        (kein Ort, kein Netz). Ort: `site` {lat, lon} oder der Ort der aktuellen Nacht (Ortsliste).
+        Regenstunde = Regenwahrscheinlichkeit ≥ tonight.RAIN_P oder Niederschlag ≥ tonight.RAIN_MM (gleiche Schicht wie Heute Nacht)."""
+        from . import tonight
+        unknown = {"rain": None, "in_minutes": None, "probability": None, "precip": None}
+        try:
+            now = time.time() if now is None else now
+            if site is None:
+                from ...core.sites import night_of
+                f = self.ctx.services.get("site_for")
+                site = f(night=night_of(now, (f() or {}).get("lon") or 0)) if f else None
+            if not site or site.get("lat") is None or site.get("lon") is None:
+                return unknown
+            fc = tonight._forecast([site["lat"], site["lon"]], self.ctx.settings.work_dir / "tutor", now - 3600, now + minutes * 60 + 3600)
+            return tonight.rain_soon(fc, now, minutes)
+        except Exception:
+            return unknown
 
     def _stacked(self, pid: int, rid: int):
         p = self.eng.db.one("SELECT name FROM projects WHERE id=?", (pid,))

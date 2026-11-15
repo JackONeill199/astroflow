@@ -1064,6 +1064,20 @@ def build_router(eng: Engine) -> APIRouter:
             raise HTTPException(500, "Die Bahnen konnten nicht berechnet werden.")
 
     # ---- Nachtplanung: Standort und optionale Wetterfreigabe aus dem Bild-Tutor ------------
+    def _telescope_sky():
+        """Optionaler Dienst `telescope_sky` (Teleskop-Modul): Messung des Himmels jetzt {clear, ratio, t, source}. Nur frische
+        Messwerte (≤ 30 min); fehlt der Dienst oder schlägt er fehl, bleibt es bei der Vorhersage."""
+        svc = eng.ctx.services.get("telescope_sky")
+        if not svc:
+            return None
+        try:
+            m = svc()
+            if not m or m.get("clear") is None or time.time() - float(m.get("t") or 0) > 1800:
+                return None
+            return {"clear": bool(m["clear"]), "ratio": m.get("ratio"), "t": float(m["t"]), "source": str(m.get("source") or "Teleskop")}
+        except Exception:
+            return None
+
     @r.get("/tonight")
     def get_tonight(hide: str = "", night: int = 0):
         """hide: Kennungen, die der Nutzer ausgeblendet hat (kommagetrennt, lokal im Browser gemerkt).
@@ -1120,7 +1134,8 @@ def build_router(eng: Engine) -> APIRouter:
         out = tonight.plan(projects, cfg, eng.s.work_dir / "tutor", device=device, hidden=hidden, collection=coll, night=night_ix,
                            night_sites=night_sites, site_sky=sqm, calib=calib)
         return {**out, "site_info": {k: here.get(k) for k in ("id", "name", "source", "detail")} if here else None,
-                "sites_on": bool(site_for), "night": night, "sky_quality": sky}
+                "sites_on": bool(site_for), "night": night, "sky_quality": sky,
+                "telescope_sky": _telescope_sky() if night_ix == 0 and out.get("weather_on") else None}
 
     # ---- Himmelsqualität (Himmelshelligkeit, Bortle, Lichtrichtung, Seeing) ------------------------
     @r.get("/sky")

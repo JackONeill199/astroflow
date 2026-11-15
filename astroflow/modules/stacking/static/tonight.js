@@ -221,7 +221,7 @@ customElements.define('af-tonight-chart', class extends HTMLElement {
       if (o.alt[i] >= 0) dots += `<circle cx="${x}" cy="${y(o.alt[i])}" r="${k === this.selected ? 5 : 4}" fill="${COLORS[k]}" stroke="var(--surface)"/>`;
       return `<span style="--target:${COLORS[k]}"${o.alt[i] < (o.lim ? o.lim[i] : d.min_alt) ? ' class="low"' : ''}>${esc(o.name)}<b>${Math.round(o.alt[i])}°</b></span>`;
     }).join('');
-    const sky = [d.cloud?.[i] != null ? `☁ ${Math.round(+d.cloud[i])} %` : "", d.wind?.[i] != null ? `Wind ${Math.round(+d.wind[i])} km/h` : ""].filter(Boolean).join(' · ');
+    const sky = [d.cloud?.[i] != null ? `☁ ${Math.round(+d.cloud[i])} %` : "", d.rain?.[i] ? `🌧 Regen${d.rain_p?.[i] != null ? ' ' + Math.round(+d.rain_p[i]) + ' %' : ''}` : "", d.total?.[i] != null && d.cover?.[i] != null && d.total[i] - d.cover[i] >= 25 ? `gesamt ${Math.round(+d.total[i])} % (hohe Schleier)` : "", d.wind?.[i] != null ? `Wind ${Math.round(+d.wind[i])} km/h` : ""].filter(Boolean).join(' · ');
     this.querySelector('.tn-cursor').innerHTML = dots;
     const tip = this.querySelector('.tn-tooltip');
     tip.hidden = false;
@@ -242,7 +242,19 @@ const rotNote = (dev) => { const tr = dev.tracking; return !tr ? 'Zenitnähe üb
 const planList = (d, full) => d.plan?.length ? `<div class="tn-plan"><h3>Nachtplan</h3><ol>${d.plan.map(b => `<li><span class="tn-when">${hm(b.start)} – ${hm(b.end)}</span> <a href="${esc(b.href)}">${esc(b.name)}</a> <small class="mut">${b.category === 'more' ? 'Mehr Zeit' : 'Neu'}${b.cloud != null ? ' · ' + b.cloud + ' % Wolken' : ''}</small></li>`).join('')}</ol>${full ? '<p class="mut sm">Ein Smart-Teleskop nimmt nur ein Ziel gleichzeitig auf: Die nutzbare Nacht ist in Abschnitte geteilt, jeder bekommt das Ziel, das dann am besten steht (Höhe, Mond, Wolken, Zenitnähe).</p>' : ''}</div>` : '';
 const day = (t, tonight) => (tonight ? 'heute Nacht' : 'in der folgenden Nacht') + ` ${hm(t.start)} – ${hm(t.end)}`;
 // Meldung zur Lage – getrennt nach Ursache (bedeckt / teils bewölkt / Höhe / Nacht vorbei / keine Dunkelheit)
+// Wetterhinweise: Regen (Warnung), Modelle uneinig, hohe Schleierwolken, Messung des Teleskops
+function weatherNotes(d) {
+  const out = [], sky = d.sky, m = d.forecast?.models, ts = d.telescope_sky;
+  if (sky?.rain_hours > 0) out.push(`<p class="tn-note rain" role="alert"><b>Regen erwartet</b> – etwa ${String(sky.rain_hours).replace('.', ',')} h der dunklen Zeit gelten als unbrauchbar, egal wie die Wolkenzahl aussieht.</p>`);
+  if (m?.disagree) out.push(`<p class="tn-note unsure"><b>Vorhersage unsicher:</b> Hauptmodell ${m.main_cmp} % Bewölkung, ${esc(m.alt_label)} ${m.alt} % – die Modelle sind uneinig.</p>`);
+  if (m?.veil && !sky?.rain_hours) out.push(`<p class="tn-note veil">Meist <b>hohe Schleierwolken</b> (gesamt ${m.total} %, wirksam etwa ${m.main} %) – Sterne evtl. sichtbar. Hohe Wolken zählen in der Bewertung nur schwach.</p>`);
+  if (ts) out.push(`<p class="tn-note scope ${ts.clear ? 'fine' : 'cloudy'}"><b>Laut ${esc(ts.source)} ${ts.clear ? 'klar' : 'bewölkt'}</b> (Messung ${hm(ts.t)} Uhr)${d.cloud?.length ? ' – Messung vor Vorhersage.' : '.'}</p>`);
+  return out.join('');
+}
 function statusNote(d) {
+  return weatherNotes(d) + statusNote1(d);
+}
+function statusNote1(d) {
   const sky = d.sky, st = d.status?.code, nc = sky?.next_clear;
   const next = nc ? `Nächstes klares Fenster: ${day(nc, nc.tonight)}.` : 'In den nächsten 48 Stunden zeigt die Vorhersage kein klares Fenster.';
   if (st === 'no_dark') return '<p class="tn-note">In dieser Nacht gibt es hier keine astronomisch dunkle Zeit.</p>';
@@ -257,7 +269,8 @@ function nightNav(d) {
   const ns = d.nights || [], k = d.night_index || 0;
   if (!ns[k]) return '';
   const south = d.site?.[0] < 0;
-  const tag = !d.weather_on ? '' : d.forecast?.covered ? (d.forecast.uncertain ? '<span class="tn-unsure" title="Wolkenvorhersagen über mehr als zwei Tage treffen oft nicht zu">Vorhersage unsicher</span>' : '')
+  const tag = !d.weather_on ? '' : d.forecast?.covered ? (d.forecast.uncertain ? '<span class="tn-unsure" title="Wolkenvorhersagen über mehr als zwei Tage treffen oft nicht zu">Vorhersage unsicher</span>'
+    : d.forecast.models?.disagree ? `<span class="tn-unsure" title="Hauptmodell ${d.forecast.models.main_cmp} %, ${esc(d.forecast.models.alt_label)} ${d.forecast.models.alt} % Bewölkung">Vorhersage unsicher</span>` : '')
     : k ? '<span class="tn-unsure off" title="So weit reicht die Vorhersage nicht – nur Dunkelheit, Mond und Ziele">ohne Wetter</span>' : '';
   const cell = n => {
     const cl = n.cloud == null ? null : Math.round(+n.cloud), moon = Math.round(+n.moon) || 0;
@@ -339,7 +352,7 @@ async function nightView(el, catalogId) {
     ${hiddenIds().length ? `<p class="mut sm">${hiddenIds().length} Ziel(e) ausgeblendet. <button type="button" class="tn-hide" data-tn-reset>Alle wieder zeigen</button></p>` : ''}
     ${d.site ? `<section class="panel"><div class="panel-h"><h2>Dämmerung und Mond</h2><span class="grow"></span><a class="linkbtn" href="#/observatorium?blick=hier&date=${encodeURIComponent(d.night || '')}" title="Bahnen über deinem Horizont im Atlas">Bahnen im Atlas ${icon('arrow')}</a></div><div class="tn-facts"><p>Sonnenuntergang: ${hm(tw.sunset)}<br>Nautische Dämmerung: ${hm(tw.nautical)}<br>Astronomisch dunkel: ${period([tw.dark_start, tw.dark_end])}<br>Sonnenaufgang: ${hm(tw.sunrise)}</p>
       <p>Mondaufgang: ${hm(d.moon.rise)}<br>Monduntergang: ${hm(d.moon.set)}<br>Dunkel ohne Mond: ${d.moon.moonless.length ? d.moon.moonless.map(period).join(', ') : 'keine Zeit'}</p></div></section>
-      <section class="panel"><h2>Wetter</h2>${d.weather?.hours?.length ? `<p class="mut sm">${esc(d.weather.source)}</p><div class="tn-weather">${d.weather.hours.map(h => `<span>${hm(h.t)}<br>${h.cloud ?? '–'} % Wolken</span>`).join('')}</div>` : `<p class="mut">${esc(d.weather_error || (d.weather_on ? 'Keine Vorhersage für diese Nacht.' : 'Wettervorhersage ist aus. Unter Einstellungen → Bilder → Bild-Tutor → Wetter einschalten.'))}</p>`}</section>` : ''}`;
+      <section class="panel"><h2>Wetter</h2>${d.weather?.hours?.length ? `<p class="mut sm">${esc(d.weather.source)}</p><div class="tn-weather">${d.weather.hours.map(h => `<span${h.rain ? ' class="rainy"' : ''}>${hm(h.t)}<br>${h.rain ? '🌧 Regen' : `${h.cloud != null ? Math.round(h.cloud) : '–'} % Wolken`}${!h.rain && h.total != null && h.cover != null && h.total - h.cover >= 25 ? `<br><small class="mut">gesamt ${Math.round(h.total)} %, hoch ${Math.round(h.high ?? 0)} %</small>` : ''}</span>`).join('')}</div>` : `<p class="mut">${esc(d.weather_error || (d.weather_on ? 'Keine Vorhersage für diese Nacht.' : 'Wettervorhersage ist aus. Unter Einstellungen → Bilder → Bild-Tutor → Wetter einschalten.'))}</p>`}</section>` : ''}`;
 }
 document.addEventListener('change', async e => {
   if (e.target.id !== 'tnSite') return;

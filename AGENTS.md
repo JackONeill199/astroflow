@@ -48,7 +48,7 @@ astroflow/static/          Shell: index.html, app.js (Router, Navigation, Übers
 - **Modul-Vertrag Backend** (`core/modules.py`): `router()`, `start()/stop()`, `status()` (klein, wird alle 2,5 s gepollt; `busy_jobs` zählt für die Anzeige),
   `activity()` (gemeinsames Format `{key,title,kind,detail,state,progress,started,finished,href}`), `scripts/styles`. Reihenfolge/Liste: `AVAILABLE`.
 - **Module reden nicht per Import miteinander**, sondern über Dienste in `ctx.services`. Stacking: `plate_solver`, `project_picture`,
-  `project_solution`, `project_frames`, `observation_log`, `catalog_resolve`, `catalog_objects`, `site_sky`, `night_zero_points`, `asteroid_tally`;
+  `project_solution`, `project_frames`, `observation_log`, `catalog_resolve`, `catalog_objects`, `site_sky`, `night_zero_points`, `asteroid_tally`, `weather_forecast`, `weather_rain` (Regen in den nächsten N Minuten? für den Teleskop-Autopilot); Teleskop liefert optional `telescope_sky` (Himmelsmessung jetzt, „Heute Nacht“ zeigt sie neben der Vorhersage);
   Sage: `object_facts`, `collection_progress`; Kern: `sites` (`SiteBook`), `site_for`, `night_sources`. **Fehlt ein Dienst, muss das Modul trotzdem laufen.**
   Bedeutung je Dienst: Langfassung in `architektur-sicherheit-tests.md`.
 - **Ereignisse** (`ctx.on` / `ctx.emit`, Liste in `core/modules.py`): `stacking.stacked(project_id, result_id, name)` kommt aus
