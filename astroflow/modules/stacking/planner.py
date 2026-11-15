@@ -36,6 +36,7 @@ MIN_USE = 0.25          # Abschnitt nur belegen, wenn mindestens 25 % seiner Dau
 SLOT_H = 0.5            # Abschnittslänge (h); lange Ziele wachsen über benachbarte Abschnitte
 REST_MIN = 0.15         # so viel Restbedarf (h) lohnt noch einen weiteren Abschnitt
 MAX_CANDIDATES = 500
+MESSIER_MISSING = 1.15  # noch fehlendes Messier-Objekt der Sammlung (Dienst collection_progress)
 WISHES = ("new", "mix", "deep")
 COMET = re.compile(r"^\s*(komet\b|comet\b|[CPDXI]/\d{4}|\d{1,4}[PDI](/|\b))", re.I)       # Kometen-Projekte (Name)
 # Geräte zur Auswahl (Bildfeld lange × kurze Seite in Grad, wie beim Lösen importierter Bilder); „library“ = aus den Aufnahmen
@@ -76,9 +77,11 @@ def clean_wishes(w: dict, options: list[dict]) -> dict:
     return {"nights": max(1, min(MAX_NIGHTS, nights)), "depth": depth, "devices": devices, "mode": mode, "watch": watch, "eq": eq}
 
 
-def _targets(projects: list[dict], devices: list[dict], wishes: dict, lats: list[float]) -> list[dict]:
+def _targets(projects: list[dict], devices: list[dict], wishes: dict, lats: list[float], collection: dict | None = None) -> list[dict]:
     """Kandidaten: eigene Objekte (vertiefen) + Katalog (neu) + Merkliste; je Gerät, ob es passt. `lats`: Breiten aller Orte des
-    Zeitraums – ein Ziel bleibt, wenn es an mindestens einem davon über die Mindesthöhe kommt."""
+    Zeitraums – ein Ziel bleibt, wenn es an mindestens einem davon über die Mindesthöhe kommt. `collection`: optional
+    {"messier": [Nummern schon entdeckter Objekte]} (Sage) – noch fehlende Messier-Objekte leicht bevorzugt."""
+    owned_m = {int(n) for n in (collection or {}).get("messier") or []} if (collection or {}).get("messier") is not None else None
     rises = lambda dec: any(90 - abs(lat - dec) >= tonight.MIN_ALT for lat in lats)
     mode, watch = wishes["mode"], set(wishes["watch"])
     w_own, w_new = {"new": 0.35, "mix": 1.0, "deep": 1.3}[mode], {"new": 1.3, "mix": 1.0, "deep": 0.3}[mode]
@@ -109,6 +112,8 @@ def _targets(projects: list[dict], devices: list[dict], wishes: dict, lats: list
         if not any(fits) and not hit:
             continue
         appeal = tonight.KIND_APPEAL.get(c.kind, 1.0) * (1.0 if c.source != "astap" else 0.7)
+        if owned_m is not None and c.source == "messier" and c.number not in owned_m:
+            appeal *= MESSIER_MISSING
         bright = 0.15 * max(0.0, min(1.0, ((devices[0].get("mag_limit") or deepsky.MAG_DEFAULT) - c.mag) / 6)) if c.mag is not None else 0.0
         out.append({"id": c.id, "name": c.display, "kind": c.kind, "ra": c.ra, "dec": c.dec, "category": "new", "href": None,
                     "prio": w_new * appeal * (1 + bright) * (2.0 if hit else 1.0), "watch": hit, "fits": fits if any(fits) else [True] * len(devices),
@@ -141,9 +146,10 @@ def _night(site: dict, t0: float, t1: float, tg: list[dict], devices: list[dict]
         alt = tonight._alt(ras, decs, lst, lat)
         az = tonight._az(ras, decs, lst, lat)
         lim = tonight._limit(ras, decs, lst, lat, site.get("horizon"))
+        ceil = tonight._ceiling(ras, decs, lst, lat, site.get("top"))           # gemessener Überhang (Plane meine Nacht)
         msep = tonight._sep(ras, decs, moon_g.ra.rad, moon_g.dec.rad)
     dark = sun <= -18
-    good = dark[None, :] & (alt >= lim)
+    good = dark[None, :] & (alt >= lim) & (alt < ceil)
     loss = illum[None, :] * np.clip(1 - msep / 80, 0, 1)
     w_moon = np.where((moon > 0)[None, :], (1 - 0.85 * loss) * (1 - 0.3 * illum[None, :]), 1.0)
     cloud = tonight._series(ts, hours, "cloud") if hours else None
@@ -184,9 +190,14 @@ def needs(tg: list[dict], devices: list[dict], wishes: dict, sky: tuple | None, 
 
 
 def plan(projects: list[dict], site_for, wishes: dict, devices: list[dict], cache: Path, now: float | None = None,
-         weather: bool = False, sky=None, calib_rows: list[dict] | None = None) -> dict:
+         weather: bool = False, sky=None, calib_rows: list[dict] | None = None, *, max_targets: int | None = None,
+         extra: list[dict] | None = None, have_add: dict | None = None, collection: dict | None = None,
+         exclude: set | list | None = None) -> dict:
     """site_for(night) → Ort (mit `horizon`) oder None. sky(site) → (SQM, Herkunft) oder None (Himmelsqualität des Ortes).
-    calib_rows: eigene Stacks mit Grenzgröße (`need.calibration_rows`). Rückgabe: Plan je Nacht und Gerät, Fortschritt je Ziel."""
+    calib_rows: eigene Stacks mit Grenzgröße (`need.calibration_rows`). Rückgabe: Plan je Nacht und Gerät, Fortschritt je Ziel.
+    Für „Plane meine Nacht“ (`autoplan`): max_targets = höchstens so viele Ziele je Nacht, extra = zusätzliche Kandidaten
+    (Komet mit Position dieser Nacht, Felder wie `_targets`), have_add = {Ziel-ID: heute schon gesammelte Stunden},
+    collection = Sammlung (Sage) für noch fehlende Messier-Objekte, exclude = Ziel-IDs, die nicht in Frage kommen (heute verdeckt)."""
     now = time.time() if now is None else now
     devices = [{**d, "eq": d["id"] in wishes.get("eq", [])} for d in devices]          # EQ-Modus je Gerät (Assistent)
     wishes = {**wishes, "depth": wishes.get("depth") or "normal"}
@@ -197,7 +208,12 @@ def plan(projects: list[dict], site_for, wishes: dict, devices: list[dict], cach
     night0 = sites.planning_night(now, first["lon"])
     night_dates = [(dt.date.fromisoformat(night0) + dt.timedelta(days=k)).isoformat() for k in range(wishes["nights"])]
     night_sites = [site_for(n) or first for n in night_dates]
-    tg = _targets(projects, devices, wishes, sorted({s["lat"] for s in night_sites}))
+    tg = list(extra or []) + _targets(projects, devices, wishes, sorted({s["lat"] for s in night_sites}), collection)
+    if exclude:
+        tg = [t for t in tg if t["id"] not in set(exclude)]
+    for t in tg:
+        if have_add and t["id"] in have_add:
+            t["have"] = t["have"] + max(0.0, float(have_add[t["id"]]))
     if not tg:
         return {"error": "Keine passenden Ziele für diese Geräte gefunden."}
     sky_val = None
@@ -266,6 +282,8 @@ def plan(projects: list[dict], site_for, wishes: dict, devices: list[dict], cach
                 score[gain < MIN_USE * (b - a) * STEP_MIN / 60] = 0     # nur Ziele, die den Abschnitt wirklich nutzen, kommen in Frage
                 score[rem < REST_MIN * 0.5] = 0
                 score[tonight_t] *= 0.4                  # zweiter, getrennter Block desselben Ziels in einer Nacht nur notfalls
+                if max_targets and tonight_t.sum() >= max_targets:
+                    score[~tonight_t] = 0                # höchstens so viele Ziele je Nacht (Plane meine Nacht)
                 for ki, ba, bb in busy:
                     if ba < b and a < bb:
                         score[ki] = 0

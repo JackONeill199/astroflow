@@ -4,7 +4,7 @@ Treiber: Simulator (immer da), „Vaonis (nur Status)“ ohne Schlüssel (`vaoni
 fremder Code, nur am Rechner selbst aktivierbar). Im Repo steht keine Anmelde- oder Befehlslogik für Vaonis. Eine „Einheit“ = Treiber + Autopilot + Takt-Thread; die Architektur erlaubt mehrere
 Einheiten (zwei Teleskope, je Adapter eine Verbindung), eingerichtet ist vorerst eine.
 Dienste: `sites` (Ort/Horizont der Nacht), `weather_forecast` (Bilder-Modul), `frame_quick_metrics` (Bilder-Modul: Messwerte je
-Live-Rohbild für die Beschlag-Erkennung), `catalog_resolve`/`catalog_objects` – fehlt
+Live-Rohbild für die Beschlag-Erkennung), `night_autoplan` (Bilder-Modul: „Plane meine Nacht“), `catalog_resolve`/`catalog_objects` – fehlt
 einer, läuft das Modul trotzdem (ohne Wetter bzw. ohne Zielsuche).
 """
 from __future__ import annotations
@@ -110,10 +110,19 @@ class Unit:
             if not fn or self.simulated:                       # Simulator: erfundener Himmel, nicht mit echten Bildern mischen
                 return None
             return fn(site_id)
+        def autoplan(night, horizon, now, opts):
+            fn = mod.ctx.service("night_autoplan")             # Bilder-Modul: Ziele + Zeitplan („Plane meine Nacht“)
+            site = getattr(getattr(self, "pilot", None), "site", None) or mod.site(night)
+            if not fn or not site:
+                return None
+            weather = bool(self.cfg["weather"]) and not (self.simulated and self.cfg["sim_speed"] and float(self.cfg["sim_speed"]) > 1)
+            return fn(model=self.cfg["model"], site={k: site.get(k) for k in ("id", "name", "lat", "lon", "horizon")},
+                      horizon=horizon, now=now, weather=weather, **opts)
         from .skymap import SkyStore
         # Simulator in eigener Datei – erfundene Hindernisse dürfen nie in die gelernte Karte des echten Teleskops
         store = SkyStore(mod.ctx.data_dir / "telescope" / ("himmel-simulator.json" if self.simulated else "himmel.json"))
-        return ap.Env(site=mod.site, forecast=forecast, plan=plan, rain=rain, sky_store=store, frame_points=frame_points)
+        return ap.Env(site=mod.site, forecast=forecast, plan=plan, rain=rain, sky_store=store, frame_points=frame_points,
+                      autoplan=autoplan)
 
     def measure_frames(self, paths, item=None, start: float | None = None, most: int = 12):
         """Frisch geholte Rohbilder messen (Dienst `frame_quick_metrics`) und dem Autopiloten melden; fehlt der Dienst

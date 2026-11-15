@@ -300,6 +300,16 @@ def _limit(ra: np.ndarray, dec: np.ndarray, lst: np.ndarray, lat: float, horizon
     return np.maximum(MIN_ALT, hz)
 
 
+def _ceiling(ra: np.ndarray, dec: np.ndarray, lst: np.ndarray, lat: float, top: list | None) -> np.ndarray | float:
+    """Höchste nutzbare Höhe je Objekt und Zeit: unter einem gemessenen Überhang (Dach, Balkon über dem Teleskop; `top` je
+    10°-Richtung, None = frei bis zum Zenit). Ohne Überhang 90°. Nächste Richtung, nicht interpoliert (ein Dach endet scharf)."""
+    if not top or not len(ra) or all(v is None for v in top):
+        return 90.0
+    vals = np.array([91.0 if v is None else float(v) for v in top])
+    idx = np.round(_az(ra, dec, lst, lat) / sites.HORIZON_STEP).astype(int) % len(vals)
+    return vals[idx]
+
+
 def _sep(ra: np.ndarray, dec: np.ndarray, mra: np.ndarray, mdec: np.ndarray) -> np.ndarray:
     """Winkelabstand in Grad: Objekte (N) × Zeiten (T)."""
     c = np.sin(dec)[:, None] * np.sin(mdec)[None, :] + np.cos(dec)[:, None] * np.cos(mdec)[None, :] * np.cos(ra[:, None] - mra[None, :])

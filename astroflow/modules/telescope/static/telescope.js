@@ -479,7 +479,7 @@
     const dark = d.dark ? `<i class="tel-dark" style="left:${x(d.dark.start)};width:${w(d.dark.start, d.dark.end)}"></i>` : '';
     const clouds = (d.weather || []).filter(h => h.t >= t0 && h.t <= t1 && h.cloud != null)
       .map(h => `<i class="tel-cloud" style="left:${x(h.t - 1800)};width:${w(h.t - 1800, h.t + 1800)};opacity:${(h.cloud / 100 * 0.9).toFixed(2)}" title="${Math.round(h.cloud)} % Wolken"></i>`).join('');
-    const rows = items.map(i => `<div class="tel-bar s-${i.status}${i.substitute_for ? ' sub' : ''}" style="left:${x(i.start)};width:${w(i.start, i.end)}" title="${esc(i.name)} · ${tf(i.start)}–${tf(i.end)} · ${ITEM[i.status]}${i.why ? ' (' + esc(i.why) + ')' : ''}">
+    const rows = items.map(i => `<div class="tel-bar s-${i.status}${i.substitute_for ? ' sub' : ''}" style="left:${x(i.start)};width:${w(i.start, i.end)}" title="${esc(i.name)} · ${tf(i.start)}–${tf(i.end)} · ${ITEM[i.status]}${i.why ? ' (' + esc(i.why) + ')' : ''}${i.reason ? ' – ' + esc(i.reason) : ''}">
         <span>${esc(i.name)}</span></div>`).join('');
     return `<div class="tel-tl"><div class="tel-tl-sky">${dark}${clouds}</div><div class="tel-tl-bars">${rows}</div><div class="tel-tl-axis">${ticks.join('')}</div>
       <i class="tel-now" style="left:${x(d.now)}"></i></div>
@@ -496,6 +496,44 @@
       <div class="row"><button class="btn" data-act="accept">In Horizontmaske übernehmen</button><button class="btn ghost" data-act="dismiss">Verwerfen</button></div></section>`;
   }
 
+  // ------------------------------------------------------ Plane meine Nacht --- //
+  // Schritte Plan → Vermessen → Beobachten → Bilanz, aktueller Zustand mit Grund, Zielliste mit Begründung, Start/Verwerfen,
+  // Frist bei „gleich starten“, am Morgen die Nachtbilanz.
+  const AUTO_STEPS = [['entwurf', 'Plan'], ['vermessen', 'Vermessen'], ['laeuft', 'Beobachten'], ['fertig', 'Bilanz']];
+  const CAT = { more: 'fortsetzen', new: 'neu', comet: 'Komet' };
+  const hrs = (h) => { const m = Math.round(h * 60); return m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m / 60} h`; };
+  function autoHtml(d) {
+    const a = d.auto;
+    if (!a) return '';
+    const k = AUTO_STEPS.findIndex(([s]) => s === a.state);
+    const steps = AUTO_STEPS.map(([, l], i) => `<li class="${i < k ? 'done' : i === k ? 'on' : ''}"><i>${i < k ? icon('check') : i + 1}</i><span>${l}</span></li>`).join('');
+    const items = (d.items || []).filter(i => i.auto || (i.manual && i.status === 'geplant'));
+    const row = (i) => `<li class="st-${i.status}"><time>${tf(i.start)}–${tf(i.end)}</time>
+        <div class="tel-plan-main"><div class="row"><b>${esc(i.name)}</b>${i.category ? `<span class="chip">${esc(CAT[i.category] || i.category)}</span>` : i.manual ? '<span class="chip">von Hand</span>' : ''}
+          ${i.status !== 'geplant' ? `<span class="chip ${i.status === 'fertig' ? 'ok' : i.status === 'aktiv' ? 'acc' : i.status === 'verdeckt' ? 'bad' : ''}">${esc(ITEM[i.status] || i.status)}</span>` : ''}</div>
+          ${i.reason && ['geplant', 'aktiv'].includes(i.status) ? `<div class="mut sm">${esc(i.reason)}</div>` : ''}${i.why && i.status !== 'geplant' ? `<div class="sm warn">${esc(i.why)}</div>` : ''}</div></li>`;
+    const sum = a.summary;
+    const summary = sum ? `<div class="tel-auto-sum"><b>Nachtbilanz</b>
+        <div class="row tel-auto-nums"><span><b class="tnum">${sum.targets.length}</b> Ziele</span><span><b class="tnum">${sum.frames}</b> Bilder</span>
+          <span><b class="tnum">${hrs(sum.hours)}</b> Belichtung</span>${sum.replans ? `<span><b class="tnum">${sum.replans}</b>× neu geplant</span>` : ''}</div>
+        ${sum.blocked?.length ? `<p class="sm warn">Verdeckt: ${esc(sum.blocked.join(', '))}</p>` : ''}
+        ${sum.targets.length ? `<ul class="tel-auto-list">${sum.targets.map(t => `<li><b>${esc(t.name)}</b> <span class="mut sm">${t.stacked} Bilder · ${t.minutes} min · ${esc(ITEM[t.status] || t.status)}</span></li>`).join('')}</ul>` : ''}
+        <p class="mut sm">${sum.measured ? `Himmel vermessen, Grenze in ${sum.known} von 36 Richtungen bekannt. ` : ''}Die Bilder gehen wie gewohnt in die Pipeline.</p></div>` : '';
+    const draft = a.state === 'entwurf';
+    const count = a.deadline_in != null ? `<span class="chip acc tnum">startet in ${a.deadline_in} s</span>` : '';
+    const meta = [a.moon != null ? `Mond ${a.moon} %` : '', a.cloud != null ? `Wolken ${a.cloud} %` : '', `höchstens ${a.max_targets} Ziele`].filter(Boolean).join(' · ');
+    return `<section class="panel tel-auto"><div class="panel-h"><h2>${icon('sparkle')}Meine Nacht</h2><span class="grow"></span><span class="mut sm">${esc(meta)}</span></div>
+      <ol class="tel-steps">${steps}</ol>
+      <div class="row tel-auto-state"><span class="live${['laeuft', 'vermessen'].includes(a.state) && ['laeuft', 'wartet'].includes(d.mode) ? '' : ' off'}"></span><b>${esc(a.label)}</b>${count}</div>
+      ${a.note ? `<div class="notice err">${icon('alert')}<div class="sm">${esc(a.note)}</div></div>` : ''}
+      ${(a.notes || []).map(n => `<p class="mut sm">${esc(n)}</p>`).join('')}
+      ${summary}
+      ${sum ? '' : items.length ? `<ol class="tel-plan">${items.map(row).join('')}</ol>` : a.note ? '' : '<p class="mut sm">Keine passenden Ziele für diese Nacht.</p>'}
+      ${draft ? `<div class="tel-auto-go"><p class="mut sm">Nach dem Start wartet der Autopilot auf die Dunkelheit, öffnet das Teleskop, vermisst den freien Himmel und passt den Plan an. Fällt ein Ziel aus, plant er den Rest neu; am Morgen klappt er ein.</p>
+        <label class="modrow"><div><b>Künftig gleich starten</b><div class="mut sm">Beim nächsten Mal startet der Plan nach einer Minute von selbst (abbrechen jederzeit möglich).</div></div><input type="checkbox" class="tel-always" ${a.autostart ? 'checked' : ''}><span class="switch"></span></label>
+        <div class="row"><button class="btn" data-act="night-start">${icon('play')}Nacht starten</button><button class="btn ghost" data-act="night-cancel">Verwerfen</button></div></div>` : ''}</section>`;
+  }
+
   const evRow = (e) => `<li class="ev-${e.kind}"><time>${tf(e.t)}</time><i></i><span>${esc(e.text)}</span></li>`;
 
   // ---------------------------------------------------------------- Ansicht --- //
@@ -506,11 +544,13 @@
       <div class="tel-head"><div class="tel-title"><h1>Teleskop</h1><div class="row tel-tags"></div></div>
         <div class="tel-btns"><button class="btn tel-link" data-act="connect" title="Nur verbinden: Status, Akku und Speicher ansehen. Das Teleskop bewegt sich dabei nicht.">${icon('check')}<span>Verbinden</span></button>
           <button class="btn ghost tel-unlink" data-act="disconnect" title="Verbindung zum Teleskop trennen (nur wenn der Autopilot nicht läuft)">${icon('x')}<span>Trennen</span></button>
+          <button class="btn tel-plan-go" data-act="night" title="Ziele und Zeitplan dieser Nacht automatisch wählen – danach vermisst der Autopilot den Himmel und beobachtet bis zum Morgen">${icon('sparkle')}<span>Plane meine Nacht</span></button>
           <button class="btn tel-go" data-act="go">${icon('play')}<span>Start</span></button>
           <button class="btn ghost tel-pause" data-act="pause">${icon('pause')}<span>Pause</span></button>
           <button class="btn danger tel-stop" data-act="park" title="Stoppt alles und klappt das Teleskop sofort ein">${icon('stop')}<span>Sofort einklappen</span></button></div></div>
       <div class="tel-alarm" hidden></div>
       <div class="tel-notes"></div>
+      <div class="tel-autobox"></div>
       <div class="tel-grid">
         <section class="panel tel-stagebox"><canvas class="tel-stage" aria-label="Animiertes Teleskop vor dem Himmel"></canvas></section>
         <section class="panel tel-domebox"><canvas class="tel-dome" aria-label="Himmel von oben mit Bahnen der Ziele"></canvas></section>
@@ -534,7 +574,7 @@
     const q = (s) => el.querySelector(s);
     const sv = stage(q('.tel-stage')), dv = dome(q('.tel-dome')), mv = skyMap(q('.tel-skymap'));
     let lastEv = 0, timer = 0, sig = {};
-    const put = (key, html, sel) => { if (sig[key] !== html) { sig[key] = html; q(sel).innerHTML = html; } };
+    const put = (key, html, sel) => { if (sig[key] !== html) { sig[key] = html; q(sel).innerHTML = html; return true; } return false; };
 
     function render() {
       const u = d.unit || {}, s = d.state || {};
@@ -548,8 +588,12 @@
       const go = q('.tel-go'), pause = q('.tel-pause');
       const running = ['laeuft', 'wartet'].includes(d.mode);
       go.hidden = running; pause.hidden = !running;
+      const plan = q('.tel-plan-go');
+      plan.hidden = running || d.auto?.state === 'entwurf';
+      plan.querySelector('span').textContent = d.auto && d.auto.state !== 'fertig' ? 'Neu planen' : 'Plane meine Nacht';
+      go.classList.toggle('ghost', !s.connected || (!!d.auto && d.auto.state === 'entwurf'));
       q('.tel-link').hidden = !!s.connected;
-      go.classList.toggle('ghost', !s.connected);           // Hauptaktion: Verbinden, solange nicht verbunden – sonst Start
+      if (!d.auto) go.classList.toggle('ghost', !s.connected);   // Hauptaktion: Verbinden, solange nicht verbunden – sonst Start
       q('.tel-unlink').hidden = !s.connected || running;
       go.querySelector('span').textContent = d.mode === 'pausiert' ? 'Weiter' : 'Start';
       const notes = [];
@@ -558,11 +602,13 @@
       if (d.hold) notes.push(`<div class="notice ${['weather', 'clouds', 'dew', 'fog', 'battery'].includes(d.hold.kind) ? 'err' : ''}">${icon(d.hold.kind === 'dawn' || d.hold.kind === 'twilight' ? 'star' : 'alert')}<div><b>${d.mode === 'fertig' ? 'Nacht beendet' : 'Wartet'}</b><div class="mut sm">${esc(d.hold.text)}</div></div></div>`);
       if (s.raw_enabled === false) notes.push(`<div class="notice">${icon('camera')}<div><b>Rohbilder am Teleskop aus</b><div class="mut sm">Für die AstroFlow-Pipeline in der Vaonis-App „Rohbilder speichern“ einschalten.</div></div></div>`);
       if (d.plan_note) notes.push(`<div class="notice err">${icon('alert')}<div><b>Plan gehört zu einem anderen Gerät</b><div class="mut sm">${esc(d.plan_note)}</div></div><span class="grow"></span><a class="btn sm ghost" href="#/observatorium/plan">Zum Planer</a></div>`);
-      else if (!d.items?.length) notes.push(`<div class="notice">${icon('dome')}<div><b>Noch kein Plan für diese Nacht</b><div class="mut sm">Im Planer eine Nacht planen oder unten Ziele hinzufügen.</div></div><span class="grow"></span><a class="btn sm ghost" href="#/observatorium/plan">Zum Planer</a></div>`);
+      else if (!d.items?.length && !d.auto) notes.push(`<div class="notice">${icon('dome')}<div><b>Noch kein Plan für diese Nacht</b><div class="mut sm">„Plane meine Nacht“ wählt Ziele und Zeitplan selbst – oder im Planer planen bzw. unten Ziele hinzufügen.</div></div><span class="grow"></span><a class="btn sm ghost" href="#/observatorium/plan">Zum Planer</a></div>`);
       put('notes', notes.join(''), '.tel-notes');
       const al = q('.tel-alarm');
       al.hidden = !d.alarm; if (d.alarm) al.innerHTML = `${icon('alert')}<b>${esc(d.alarm)}</b>`;
       alarm(d.alarm || null);
+      const keep = q('.tel-always')?.checked;
+      if (put('auto', autoHtml(d), '.tel-autobox') && keep != null && q('.tel-always')) q('.tel-always').checked = keep;
       put('cur', currentHtml(d), '.tel-current');
       put('cond', conditionsHtml(d), '.tel-conditions');
       put('tl', timelineHtml(d), '.tel-timeline');
@@ -642,6 +688,32 @@
             if (!await ask()) return;
             await send(url, { confirm: true });
           }
+        } else if (act === 'night') {
+          askNotify();
+          const ask = () => confirmDlg('Teleskop bewegen?', 'Der Plan startet nach einer Minute von selbst: Das Teleskop öffnet sich, vermisst den Himmel und schwenkt zu den Zielen. Steht es frei, sodass sich der Arm ungehindert bewegen kann?', 'Ja, planen');
+          const body = {};
+          if (d.auto?.autostart && d.requires_confirm && !d.confirmed) { if (!(body.confirm = await ask())) return; }
+          for (let k = 0; k < 3; k++) {
+            try { await send(T + '/night/plan', body); break; } catch (err) {
+              if (!body.replace && /schon einen Plan/i.test(err.message)) {
+                if (!await confirmDlg('Plan aus dem Planer ersetzen?', 'Für diese Nacht gibt es schon einen Plan aus dem Planer. „Plane meine Nacht“ wählt die Ziele stattdessen selbst – nur für diese Nacht; der gespeicherte Plan im Planer bleibt.', 'Selbst planen')) return;
+                body.replace = true;
+              } else if (!body.confirm && /bestätigen/i.test(err.message)) {
+                if (!(body.confirm = await ask())) return;
+              } else throw err;
+            }
+          }
+        } else if (act === 'night-start') {
+          const ask = () => confirmDlg('Teleskop bewegen?', 'Der Autopilot öffnet das Teleskop, vermisst den Himmel und schwenkt zu den Zielen – bis zum Morgen. Steht es frei, sodass sich der Arm ungehindert bewegen kann?', 'Ja, starten');
+          const body = { always: !!q('.tel-always')?.checked };
+          if (d.requires_confirm && !d.confirmed) { if (!(body.confirm = await ask())) return; }
+          try { await send(T + '/night/start', body); } catch (err) {
+            if (body.confirm || !/bestätigen/i.test(err.message)) throw err;
+            if (!(body.confirm = await ask())) return;
+            await send(T + '/night/start', body);
+          }
+          toast('Die Nacht läuft – ab hier automatisch.');
+        } else if (act === 'night-cancel') { await send(T + '/night/cancel'); toast('Automatischer Plan verworfen.');
         } else if (act === 'scan') {
           const ask = () => confirmDlg('Himmel vermessen?', 'Das Teleskop öffnet sich (falls nötig) und fährt rundum Peilpunkte ab – etwa 10–20 min. Steht es frei, sodass sich der Arm ungehindert bewegen kann?', 'Ja, vermessen');
           let confirm = false;
@@ -708,6 +780,8 @@
         ${sw('fallback', 'Plan im Gerät als Rückfall', 'Fällt die Verbindung weg, arbeitet das Teleskop den Rest der Nacht selbst ab und klappt am Ende ein (wenn das Plugin es kann).')}
         ${sw('live_frames', 'Rohbilder live abholen', 'Während der Aufnahme neue Einzelbilder per FTP aus dem Teleskop holen (nur lesen) und in den Eingangsordner legen – die Bilder-Pipeline stackt mit.')}
         ${sw('scan_auto', 'Aufstellung zu Beginn der Nacht erkennen', 'Mit gelernten Aufstellungen fährt der Autopilot vor dem ersten Ziel ein paar Peilpunkte an und prüft nur die Grenzen (wenige Minuten). Ohne gelernte Aufstellung: „Himmel vermessen“ im Teleskop.')}
+        ${sw('night_autostart', 'Plane meine Nacht: gleich starten', 'Der Plan startet eine Minute nach dem Klick von selbst (abbrechen jederzeit möglich). Aus: erst nach „Nacht starten“.')}
+        ${num('night_max_targets', 'Plane meine Nacht: höchstens', 'Ziele', 1, 'Je Nacht; weniger Ziele = weniger Schwenks, mehr Belichtung je Ziel.')}
         ${sw('weather', 'Wettervorhersage nutzen', 'Open-Meteo, Ort auf 0,1° gerundet wie bei Heute Nacht; wird während der Nacht alle 15 min aktualisiert.')}</section>
       <section class="panel"><div class="panel-h"><h2>Treiber-Plugins</h2></div>
         <p class="mut sm">Plugins steuern Teleskope, die AstroFlow nicht selbst mitbringt. Sie sind <b>fremder Code</b> mit allen Rechten von AstroFlow –

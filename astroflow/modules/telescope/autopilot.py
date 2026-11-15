@@ -36,6 +36,8 @@ DEFAULTS = {
     "battery_min": 15,       # %
     "fallback": True,        # Geräte-Plan als Rückfall
     "scan_auto": True,       # zu Beginn der Nacht Aufstellung erkennen + Kurzscan (nur mit gelernten Aufstellungen)
+    "night_autostart": False,  # „Plane meine Nacht“: Entwurf nach AUTO_GRACE_S von selbst starten (sonst „Nacht starten“)
+    "night_max_targets": 5,  # „Plane meine Nacht“: höchstens so viele Ziele je Nacht
 }
 WEATHER_EVERY = 900          # s zwischen zwei Wetterabfragen
 RAIN_EVERY = 600             # s zwischen zwei Regenabfragen (Dienst `weather_rain`)
@@ -80,6 +82,11 @@ STALL_S = 90                # Ziel aktiv, Gerät tut nichts (kein GoTo/Astrometr
 SUB_MAX = 1800              # Ersatzziel höchstens so lange am Stück
 OPEN = ("geplant", "verdeckt", "uebersprungen")     # noch nicht erledigt (verdeckt/übersprungen: neuer Versuch, sobald frei)
 FREE_EVERY = 10 * 60        # gutes Bild eines Ziels: höchstens so oft ein freier Punkt für die Himmelskarte
+AUTO_GRACE_S = 60           # „Plane meine Nacht“ mit „gleich starten“: so viele echte Sekunden Frist zum Abbrechen
+REPLAN_EVERY = 10 * 60      # Rest der Nacht höchstens so oft neu planen (Ausfall, Wiederöffnen)
+REFILL_MIN_S = 60 * 60      # Plan früh erledigt: neu planen, wenn noch so viel Dunkelheit bleibt
+AUTO_LABEL = {"entwurf": "Entwurf – wartet auf den Start", "vermessen": "Himmel vermessen", "laeuft": "Beobachtet nach Plan",
+              "fertig": "Nacht beendet"}
 
 
 @dataclass
@@ -104,6 +111,9 @@ class Item:
     manual: bool = False
     seen: bool = False               # Gerät hat an diesem Versuch gearbeitet (GoTo/Astrometrie/Aufnahme gemeldet)
     restarts: int = 0
+    auto: bool = False               # von „Plane meine Nacht“ gewählt
+    reason: str = ""                 # Begründung der automatischen Wahl
+    category: str = ""               # more | new | comet (automatische Wahl)
 
     @property
     def target(self) -> Target:
@@ -111,7 +121,7 @@ class Item:
 
     def view(self) -> dict:
         return {k: getattr(self, k) for k in ("id", "name", "start", "end", "hours", "status", "why", "real_start", "real_end",
-                                              "frames", "stacked", "rejected", "substitute_for", "manual")}
+                                              "frames", "stacked", "rejected", "substitute_for", "manual", "auto", "reason", "category")}
 
 
 @dataclass
@@ -130,6 +140,7 @@ class Env:
     rain: object = None                 # (site, minutes) -> {rain: bool|None, in_minutes, probability, precip} | None
     sky_store: object = None            # skymap.SkyStore (Peilpunkte je Ort und Nacht) | None
     frame_points: object = None         # (site_id) -> {night: [Punkte]} aus früheren Aufnahmen (Bilder-Modul) | None
+    autoplan: object = None             # (night, horizon[36], now, {max_targets, have_add}) -> {blocks, …} | None (Dienst night_autoplan)
 
 
 def _fmt(ts: float) -> str:
@@ -193,13 +204,17 @@ class Autopilot:
         self.site_wide: list = [None] * skymap.N
         self.setup: dict | None = None            # Aufstellung, zu der diese Nacht passt
         self._hz_cache: tuple | None = None
+        self.auto: dict | None = None             # „Plane meine Nacht“: {night, state, deadline, replans, summary …}
         self.lock = threading.RLock()
 
     def adopt(self, old: "Autopilot"):
         """Neuer Autopilot nach geänderten Einstellungen/Treiber (`Module.rebuild`): von Hand hinzugefügte Ziele, gesperrte
         Richtungen, offene Horizont-Vorschläge und das Protokoll übernehmen – sonst gingen sie beim Speichern verloren."""
         with old.lock:
-            self.items = [Item(**vars(i)) for i in old.items if i.manual and i.status == "geplant"]
+            keep = old.auto is not None and old.auto.get("state") == "entwurf"      # Entwurf von „Plane meine Nacht“ behalten
+            self.items = [Item(**vars(i)) for i in old.items if (i.manual or (keep and i.auto)) and i.status == "geplant"]
+            self.auto = dict(old.auto) if keep else None
+            self.night = old.night if keep else None
             self.blocked = [dict(b) for b in old.blocked]
             self.night_points = [dict(p) for p in old.night_points]
             self.last_scan, self.scan_auto_night = old.last_scan, old.scan_auto_night
@@ -299,7 +314,11 @@ class Autopilot:
         site0 = self.env.site(None) if self.env.site else None
         self.night = self.current_night(now)
         self.site = (self.env.site(self.night) if self.env.site else None) or site0
-        got = self.env.plan(self.night, self.state.model or "") if self.env.plan else None
+        if self.auto and self.auto.get("night") == self.night:
+            got = PlanList(i for i in self.items if not i.manual)     # „Plane meine Nacht“ läuft: eigener Plan bleibt
+        else:
+            self.auto = None                                          # neue Nacht: automatischer Plan gilt nicht mehr
+            got = self.env.plan(self.night, self.state.model or "") if self.env.plan else None
         got = [] if got is None else got                 # leere PlanList behalten (trägt den Hinweis)
         self.plan_note = getattr(got, "note", None)
         items = list(got)
@@ -409,6 +428,9 @@ class Autopilot:
     def tick(self, now: float | None = None):
         now = self._now() if now is None else now
         with self.lock:
+            a = self.auto
+            if a and a["state"] == "entwurf" and a.get("deadline") and time.time() >= a["deadline"]:
+                self.night_go(now)                # „gleich starten“: Frist abgelaufen, niemand hat abgebrochen
             try:
                 self._tick(now)
             finally:
@@ -474,8 +496,11 @@ class Autopilot:
         if self.mode == "wartet":
             if not self._may_reopen(now):
                 return
+            was = self.hold
             self.mode, self.hold = "laeuft", None
             self.log("Bedingungen wieder gut – es geht weiter.", "ok", now)
+            if was and was.kind not in ("twilight", "dawn"):
+                self._replan(now, "nach der Pause", force=True)
         self._run(s, now)
 
     def _take(self, now):
@@ -587,8 +612,9 @@ class Autopilot:
             sun = sky.sun_alt(now, self.site["lat"], self.site["lon"])
             if sun > float(self.cfg["sun_limit"]):
                 rising = sky.sun_alt(now + 600, self.site["lat"], self.site["lon"]) > sun
+                until = f" (ab {_fmt(self.dark['start'])})" if not rising and self.dark and self.dark["start"] > now else ""
                 out.append(Hold("dawn" if rising else "twilight",
-                                "Morgendämmerung – die Nacht ist vorbei." if rising else "Noch zu hell – warte auf die Dunkelheit."))
+                                "Morgendämmerung – die Nacht ist vorbei." if rising else f"Noch zu hell – warte auf die Dunkelheit{until}."))
         h = self.weather_now(now)
         if h:
             if h.get("cloud") is not None and h["cloud"] > self.cfg["cloud_max"]:
@@ -623,12 +649,17 @@ class Autopilot:
         if self.hold is None or self.hold.kind != h.kind or self.mode != "wartet":
             self.log(h.text, "warn" if h.kind in ("twilight",) else "bad", now)
         self.hold, self.good_since = h, None
-        self.mode = "fertig" if final and self._started_tonight() else "wartet"
+        auto_on = bool(self.auto and self.auto["state"] in ("vermessen", "laeuft"))
+        self.mode = "fertig" if final and (self._started_tonight() or auto_on) else "wartet"
         if final and self.mode == "fertig":
+            cur = self._current()
+            if cur:                                   # laufendes Ziel endet mit der Nacht (nicht wieder „geplant“)
+                self._end_item(cur, "fertig" if cur.stacked or self.state.stacked else "abgebrochen", "", now)
             for i in self.items:
                 if i.status == "geplant":
                     i.status, i.why = "uebersprungen", "Nacht vorbei" if h.kind == "dawn" else "Akku"
             self.log("Nacht beendet." if h.kind == "dawn" else "Abgebrochen wegen Akku.", "info", now)
+            self._finish_auto(now)
         if not self.state.parked and not self.park_pending:
             self._cmd("stop", self.driver.stop, now=now)
             self._park_now(now, h.text)
@@ -660,7 +691,7 @@ class Autopilot:
         if ph in ("oeffnet", "klappt_ein", "richtet_aus"):
             return
         if ph == "eingeklappt":
-            if not self.scan and not self._anything_free(now) and not self._current():
+            if not self.scan and not self._anything_free(now) and not self._current() and not self._auto_measuring():
                 return self._idle_or_done(now)
             if self._cmd("open", self.driver.open, now=now):
                 self.log("Öffne das Teleskop.", "move", now)
@@ -668,6 +699,8 @@ class Autopilot:
         if ph == "geoeffnet":
             if self.site and self._cmd("init", self.driver.init, self.site["lat"], self.site["lon"], now=now):
                 self.log("Richte das Teleskop aus (Sterne, Fokus).", "move", now)
+            return
+        if self.scan is None and not self._current() and self._auto_measuring() and self._auto_measure(now):
             return
         if self.scan is None and not self._current() and self._auto_scan_due(now):
             self.start_scan(now, "kurz", auto=True)
@@ -692,6 +725,7 @@ class Autopilot:
                 self._cmd("stop", self.driver.stop, now=now)
                 self._end_item(cur, "fertig" if cur.stacked else "uebersprungen", vis[1], now)
                 self.log(f"{cur.name} verlässt den freien Bereich ({vis[1]}) – beende und wechsle zum nächsten Ziel.", "warn", now)
+                self._replan(now, f"{cur.name} verlässt den freien Bereich")
             elif (s.device_plan and now >= cur.end - RAIN_PLAN_GUARD_S and (rain := self.rain_in(now)) is not None
                   and rain <= RAIN_START_MIN):
                 # der Geräte-Plan schwenkt am Blockende selbst zum nächsten Ziel – vorher einklappen (wie `_start_item`)
@@ -712,12 +746,21 @@ class Autopilot:
                 self._cmd("stop", self.driver.stop, now=now)
             self._once(f"wait:{int(now // 1800)}", "Gerade ist kein geplantes Ziel frei – warte auf das nächste.", "info", now)
             return
-        if not self.items:
+        a = self.auto
+        if a and a["state"] == "laeuft" and self.dark and self.dark["end"] - now >= REFILL_MIN_S \
+                and now - a.get("refill", 0.0) >= REFILL_MIN_S:
+            # Plan früh erledigt (Bedarf gedeckt, Ziele ausgefallen): Rest der Nacht neu füllen statt einzuklappen
+            a["refill"] = now
+            if self._replan(now, "Plan erledigt, die Nacht ist noch lang", force=True) and self._anything_free(now):
+                return
+        if not self.items and not a:
             return
         if not self.state.parked and not self.park_pending:
-            self.log("Alle Ziele dieser Nacht erledigt – klappe ein.", "ok", now)
+            self.log("Alle Ziele dieser Nacht erledigt – klappe ein." if self.items else "Keine passenden Ziele für diese Nacht – klappe ein.",
+                     "ok", now)
             self._park_now(now, "Plan erledigt")
         self.mode = "fertig"
+        self._finish_auto(now)
 
     def free(self, ra: float, dec: float, now: float) -> tuple[bool, str, float, float]:
         """(frei, Grund, Azimut, Höhe) – Regel wie Planer/Heute Nacht (max(Mindesthöhe, Horizontmaske)) + gesperrte Richtungen."""
@@ -993,6 +1036,7 @@ class Autopilot:
             tail = f"vielleicht ein Hindernis, vielleicht eine Wolke – neuer Versuch in {OK_MEMORY // 60} min."
         self.log(f"{it.name} verdeckt ({why}) bei Azimut {az:.0f}°, Höhe {alt:.0f}° – {tail}"
                  + " Weiter mit dem nächsten freien Ziel.", "warn", now)
+        self._replan(now, f"{it.name} verdeckt", force=True)
         nxt = self._next_free(now)
         if nxt:
             self._start_item(nxt, now)
@@ -1262,6 +1306,200 @@ class Autopilot:
         az, alt = sky.moon_altaz(now, self.site["lat"], self.site["lon"])
         return {"az": round(az, 1), "alt": round(alt, 1)} if alt > -2 else None
 
+    # --------------------------------------------------- Plane meine Nacht --- #
+    # Ablauf: Entwurf (sofort, mit der bekannten Grenze) → Start (Knopf oder Frist) → warten auf Dunkelheit → öffnen,
+    # ausrichten, Himmel vermessen → neu planen mit der gemessenen Grenze → beobachten (alle Wächter wie sonst; nach einem
+    # Ausfall oder Wiederöffnen wird der Rest neu geplant) → Morgendämmerung: einklappen, Nachtbilanz. Ziele und Zeitplan
+    # kommen aus dem Dienst `night_autoplan` (Bilder-Modul, Planer-Regeln); fehlt er, gibt es diese Funktion nicht.
+    def plan_night(self, now: float, autostart: bool = False) -> str | None:
+        """Entwurf für diese Nacht rechnen und zeigen. Rückgabe: Grund, warum nicht (sonst None)."""
+        with self.lock:
+            if self.mode in ("laeuft", "wartet"):
+                return "Der Autopilot läuft schon – erst pausieren oder einklappen."
+            if not self.env.autoplan:
+                return "Die automatische Zielwahl braucht das Bilder-Modul."
+            if self.night is None or self.night != self.current_night(now):
+                self.auto = None
+                self.load_night(now)
+            if not self.site:
+                return "Für diese Nacht ist kein Standort bekannt (Einstellungen → Standorte)."
+            self.auto = {"night": self.night, "state": "entwurf", "created": now, "replans": 0, "last_plan": None,
+                         "deadline": time.time() + AUTO_GRACE_S if autostart else None, "scan_started": False,
+                         "summary": None, "note": None, "moon": None, "cloud": None}
+            if not self._autoplan(now):
+                return None                       # Hinweis steht in `auto.note` (Ansicht), der Entwurf ist leer
+            n = len([i for i in self.items if i.auto])
+            self.log(f"Plane meine Nacht – Entwurf: {n} Ziel{'e' if n != 1 else ''} "
+                     + (f"({', '.join(dict.fromkeys(i.name for i in self.items if i.auto))}). " if n else ". ")
+                     + "Nach dem Start wird zuerst der Himmel vermessen, dann der Plan angepasst.", "info", now)
+            return None
+
+    def night_go(self, now: float) -> str | None:
+        """Entwurf starten: ab jetzt alles automatisch (Dämmerung abwarten, vermessen, neu planen, beobachten, einklappen)."""
+        with self.lock:
+            a = self.auto
+            if not a or a["state"] != "entwurf":
+                return "Kein Entwurf für diese Nacht – zuerst „Plane meine Nacht“."
+            a["deadline"] = None
+            a["state"] = "vermessen"
+            self.scan_auto_night = self.night             # kein zweiter automatischer Kurzscan
+            self.start(now)
+            self.log("Plane meine Nacht läuft: erst den Himmel vermessen, dann die Ziele – ab hier alles automatisch.", "info", now)
+            return None
+
+    def night_cancel(self, now: float) -> str | None:
+        """Automatischen Plan verwerfen (nicht während der Autopilot läuft) – zurück zum Plan aus dem Planer."""
+        with self.lock:
+            if self.mode in ("laeuft", "wartet"):
+                return "Erst pausieren oder einklappen, dann den automatischen Plan verwerfen."
+            if not self.auto:
+                return None
+            self.auto = None
+            self.items = [i for i in self.items if i.manual and i.status == "geplant"]
+            self.load_night(now)
+            self.log("Automatischer Plan verworfen – es gilt wieder der Plan aus dem Planer.", "info", now)
+            return None
+
+    def _auto_measuring(self) -> bool:
+        return bool(self.auto and self.auto["state"] == "vermessen")
+
+    def _auto_measure(self, now: float) -> bool:
+        """Schritt „vermessen“ (Teleskop offen und ausgerichtet): Scan starten bzw. nach dem Scan neu planen.
+        True = Takt endet hier (Scan läuft)."""
+        a = self.auto
+        if not a["scan_started"]:
+            a["scan_started"] = True
+            if any(p.get("src") == "scan" for p in self.night_points):
+                self.log("Der Himmel ist für diese Nacht schon vermessen – plane mit dieser Messung.", "info", now)
+            else:
+                why = self.start_scan(now, "kurz" if self.groups else "voll")
+                if why is None:
+                    return True
+                self.log(f"Vermessung übersprungen: {why} Plane mit der bekannten Grenze.", "warn", now)
+        a["state"] = "laeuft"
+        self._replan(now, "nach der Vermessung", force=True)
+        return False
+
+    def _plan_horizon(self) -> list[float]:
+        """Grenze für die Planung: gemessene Grenze dieser Nacht, angehoben an heute gesperrten Richtungen."""
+        h = [float(v or 0) for v in self.horizon()["horizon"]]
+        for b in self.blocked:
+            i = skymap.bin_of(b["az"])
+            for j in (i - 1, i, i + 1):
+                h[j % skymap.N] = max(h[j % skymap.N], min(90.0, b["alt"] + BLOCK_ALT))
+        return h
+
+    def _autoplan(self, now: float) -> bool:
+        """Ziele ab `now` neu wählen (Dienst `night_autoplan`). Bleibt: Erledigtes/Begonnenes (Verlauf) und von Hand
+        Hinzugefügtes; nie gestartete automatische Ziele werden ersetzt. False = kein Plan (Hinweis in `auto.note`)."""
+        a = self.auto
+        exp = float(self.cfg["exposure"])
+        have: dict[str, float] = {}
+        for i in self.items:
+            if i.stacked:
+                have[i.id] = have.get(i.id, 0.0) + i.stacked * exp / 3600
+        used = {i.id for i in self.items if i.real_start and i.stacked and not i.manual}
+        opts = {"max_targets": max(1, int(self.cfg["night_max_targets"]) - len(used)), "have_add": have,
+                "top": list(self.horizon()["top"]),
+                "exclude": sorted({i.id for i in self.items if i.status == "verdeckt"})}     # heute verdeckt: nicht wieder wählen
+        try:
+            res = self.env.autoplan(self.night, self._plan_horizon(), now, opts)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            res = {"error": "Die Ziele konnten nicht berechnet werden – Details im Protokoll."}
+        if not res or res.get("error"):
+            a["note"] = (res or {}).get("error") or "Die automatische Zielwahl ist gerade nicht verfügbar."
+            self.log(a["note"], "warn", now)
+            if a["state"] == "entwurf":
+                self.items = [i for i in self.items if i.manual and i.status == "geplant"]
+            return False
+        a["note"] = None
+        a["moon"], a["cloud"], a["notes"] = res.get("moon"), res.get("cloud"), res.get("notes") or []
+        end = self.dark["end"] if self.dark else None
+        new = [Item(str(b["id"]), b["name"], float(b["ra"]), float(b["dec"]), max(now, float(b["start"])), float(b["end"]),
+                    hours=float(b.get("hours") or 0), auto=True, reason=b.get("reason") or "", category=b.get("category") or "")
+               for b in res.get("blocks") or [] if float(b["end"]) > now + 600 and (end is None or float(b["start"]) < end)]
+        keep = []
+        for i in self.items:
+            if i.status == "aktiv" or (i.manual and i.status == "geplant"):
+                keep.append(i)
+            elif i.real_start or (i.status in ("verdeckt", "uebersprungen") and a["state"] != "entwurf"):
+                if i.status in OPEN:                  # Verlauf bleibt sichtbar, wird aber nicht mehr angefahren
+                    i.end = max(i.start, min(i.end, now))
+                keep.append(i)
+        self.items = sorted(keep + new, key=lambda i: i.start)
+        a["last_plan"] = now
+        return True
+
+    def _replan(self, now: float, why: str, force: bool = False) -> bool:
+        """Rest der Nacht neu planen (nach Vermessung, Ausfall, Wiederöffnen). True = neuer Plan gilt."""
+        a = self.auto
+        if not a or a["state"] != "laeuft" or self._current() is not None:
+            return False
+        if not force and a.get("last_plan") is not None and now - a["last_plan"] < REPLAN_EVERY:
+            return False
+        before = [i.name for i in self.items if i.auto and i.end > now]       # auch das eben ausgefallene Ziel
+        if not self._autoplan(now):
+            return False
+        a["replans"] += 1
+        after = [i.name for i in self.items if i.auto and i.status == "geplant"]
+        gone = [n for n in dict.fromkeys(before) if n not in after]
+        added = [n for n in dict.fromkeys(after) if n not in before]
+        plan = ", ".join(f"{i.name} {_fmt(i.start)}–{_fmt(i.end)}" for i in self.items if i.auto and i.status == "geplant") or "keine passenden Ziele"
+        diff = (f" Neu: {', '.join(added)}." if added else "") + (f" Entfällt: {', '.join(gone)}." if gone else "")
+        self.log(f"Plan neu berechnet ({why}): {plan}.{diff}", "info", now)
+        return True
+
+    def _finish_auto(self, now: float):
+        """Nachtbilanz (einmal): Protokoll und Ansicht."""
+        a = self.auto
+        if not a or a["state"] == "fertig":
+            return
+        a["state"] = "fertig"
+        exp = float(self.cfg["exposure"])
+        seen: dict[str, dict] = {}
+        for i in self.items:
+            if not i.real_start:
+                continue
+            x = seen.setdefault(i.name, {"name": i.name, "stacked": 0, "status": i.status, "minutes": 0})
+            x["stacked"] += i.stacked
+            x["minutes"] += round(((i.real_end or now) - i.real_start) / 60)
+            if i.status == "fertig" or x["status"] != "fertig":
+                x["status"] = i.status
+        rows = list(seen.values())
+        frames = sum(r["stacked"] for r in rows)
+        hidden = [r["name"] for r in rows if r["status"] == "verdeckt" and not r["stacked"]]
+        seen_ok = [r for r in rows if r["stacked"]]
+        scanned = any(p.get("src") == "scan" for p in self.night_points)
+        a["summary"] = {"targets": seen_ok, "frames": frames, "hours": round(frames * exp / 3600, 2), "blocked": hidden,
+                        "measured": scanned, "replans": a["replans"], "known": sum(self.horizon()["known"])}
+        hours = frames * exp / 3600
+        tail = (f" Verdeckt: {', '.join(hidden)}." if hidden else "") + (f" {a['replans']}× neu geplant." if a["replans"] else "")
+        self.log(f"Nachtbilanz: {len(seen_ok)} Ziel{'e' if len(seen_ok) != 1 else ''} beobachtet"
+                 + (f" ({', '.join(r['name'] for r in seen_ok)})" if seen_ok else "")
+                 + f", {frames} Bilder gestapelt (≈ {_dur_h(hours)} Belichtung)."
+                 + (" Himmel vermessen." if scanned else "") + tail + " Die Bilder gehen wie gewohnt in die Pipeline.", "ok", now)
+
+    def auto_view(self, now: float) -> dict | None:
+        a = self.auto
+        if not a:
+            return None
+        label = AUTO_LABEL.get(a["state"], a["state"])
+        if a["state"] == "vermessen":
+            if self.hold and self.mode == "wartet":
+                label = self.hold.text
+            elif self.scan is not None:
+                label = "Vermesse den freien Himmel"
+            elif self.machine.phase in ("eingeklappt", "oeffnet", "geoeffnet", "richtet_aus"):
+                label = "Öffne und richte aus – danach wird der Himmel vermessen"
+        elif a["state"] == "laeuft" and self.hold and self.mode == "wartet":
+            label = self.hold.text
+        return {"state": a["state"], "label": label, "night": a["night"], "replans": a["replans"], "note": a.get("note"),
+                "notes": a.get("notes") or [], "moon": a.get("moon"), "cloud": a.get("cloud"), "summary": a.get("summary"),
+                "deadline_in": max(0, round(a["deadline"] - time.time())) if a.get("deadline") else None,
+                "autostart": bool(self.cfg.get("night_autostart")), "max_targets": int(self.cfg["night_max_targets"])}
+
     # ------------------------------------------------------------ Ansicht --- #
     def add_target(self, t: Target, now: float, hours: float = 1.0) -> Item:
         with self.lock:
@@ -1307,6 +1545,7 @@ class Autopilot:
             "sky": self.sky_view(now),
             "alarm": self.alarm, "parking": bool(self.park_pending),
             "confirmed": self.confirmed(now), "requires_confirm": self.requires_confirm,
+            "auto": self.auto_view(now),
         }
 
     def eta(self, now: float) -> float | None:
@@ -1351,6 +1590,12 @@ def _label(cmd: str) -> str:
 
 def _dur(s: float) -> str:
     return f"{round(s)} s" if s < 90 else f"{round(s / 60)} min"
+
+
+def _dur_h(h: float) -> str:
+    """„45 min“, „2 h 10 min“."""
+    m = round(h * 60)
+    return f"{m} min" if m < 60 else (f"{m // 60} h {m % 60} min" if m % 60 else f"{m // 60} h")
 
 
 def demo_items(now: float, site: dict, catalog: list[dict], hours: float = 8.0, n: int = 6) -> list[Item]:

@@ -31,7 +31,7 @@ Anmeldung · `frames.py` Live-Rohbilder per FTP · `captures.py` Import vom Tele
 `api.py` `/api/telescope/*` · `static/telescope.js|css` Ansicht `#/teleskop` + Einstellungen. Tests: `tests/test_telescope.py`.
 Dienste: `sites`, `weather_forecast`, `scan_input` (Bilder-Modul, neu), `frame_quick_metrics` (Bilder-Modul: Messwerte je Live-Rohbild
 für die Beschlag-Erkennung `fog.py`), `frame_sky_points` (Bilder-Modul: frühere Aufnahmen als Peilpunkte), `catalog_resolve`,
-`catalog_objects` – alle optional. Stellt bereit: `telescope_sky`, `telescope_horizon` (nie im Simulator).
+`catalog_objects`, `night_autoplan` (Bilder-Modul: Ziele + Zeitplan für „Plane meine Nacht“, §16) – alle optional. Stellt bereit: `telescope_sky`, `telescope_horizon` (nie im Simulator).
 
 ## Freier Himmel (Scan, Aufstellungen) – `docs/entwicklung/teleskopsteuerung.md` §15
 - Scan-Punkte fahren nur über `Autopilot._cmd("observe", …)` (Bestätigung je Nacht, Not-Aus, Backoff gelten). Regen, Beschlag, Akku,
@@ -39,3 +39,8 @@ für die Beschlag-Erkennung `fog.py`), `frame_sky_points` (Bilder-Modul: früher
 - Nur Azimut/Höhe speichern und senden – nie Koordinaten des Ortes. Die Horizontmaske des Ortes ändert sich nur über `/sky/accept`
   (Bestätigung in der Oberfläche); für die Nacht wirkt die Messung sofort (`Autopilot.horizon()`, Dienst `telescope_horizon`).
 - Verdeckt zählt heute nur sicher (Gegenprobe davor/danach frei); unsicher verdeckt erst nach Wiederholung in einer anderen Nacht.
+
+## Plane meine Nacht – `docs/entwicklung/teleskopsteuerung.md` §16
+- Entwurf bewegt nichts; Bewegung erst nach Start bzw. Frist und immer über `_cmd` (Bestätigung je Nacht, Not-Aus).
+- Zielwahl nur über den Dienst `night_autoplan` (Planer-Regeln im Bilder-Modul) – im Teleskop-Modul keine eigene Objektauswahl.
+- Ein Planer-Plan wird nur nach Rückfrage ersetzt und nie gelöscht; Neuplanung behält Verlauf und von Hand Hinzugefügtes.

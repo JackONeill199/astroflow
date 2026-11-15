@@ -421,3 +421,28 @@ Himmel). Die Horizontmaske des Ortes ändert sich nur nach Bestätigung („Als 
 **Oberfläche:** Abschnitt „Freier Himmel“ in `#/teleskop` (Kuppel mit frei/verdeckt/unsicher, Punkte, Aufstellung, Knöpfe)
 und dieselbe Karte im Observatorium (Atlas, Ansicht „Von hier“). Simulator-Szenario „Balkon“ mit Geländer, Hauswand, Nachbarhaus
 und Dachüberstand, je Nacht leicht verschoben aufgestellt.
+
+## 16. Plane meine Nacht (Nutzerwunsch 15.11.2026)
+„Teleskop aufstellen und Start klicken – ab dann alles automatisch, Ziele selbst gesucht, vorher vermessen.“
+**Ablauf** (`Autopilot.auto.state`): Klick „Plane meine Nacht“ (`POST /night/plan`) → **Entwurf** sofort mit der bekannten
+Grenze (erkannte Aufstellung/Ortsmaske), Zeitleiste mit Begründung je Ziel, bewegt nichts → **Start** (`POST /night/start`,
+Bestätigung je Nacht wie Start) bzw. mit Einstellung `night_autostart` nach `AUTO_GRACE_S` = 60 echten Sekunden von selbst →
+**vermessen**: zu hell → Hold „warte auf die Dunkelheit (ab 18:42)“; öffnen, ausrichten, Kurzscan (gelernte Aufstellungen) bzw.
+voller Scan; schon vermessen oder laut Vorhersage bewölkt → übersprungen → **neu planen** mit der gemessenen Grenze →
+**beobachten** mit allen Wächtern. Rest der Nacht neu geplant (`_replan`) nach: Ziel verdeckt (`_failure`, sofort), Ziel verlässt
+den freien Bereich (höchstens alle `REPLAN_EVERY` = 10 min), Wiederöffnen nach Wetter/Wolken/Beschlag/Regen, Plan früh erledigt
+bei ≥ 1 h Dunkelheit (`REFILL_MIN_S`). Für die Neuplanung zählen: gemessene Grenze + Überhang (`top`), gesperrte Richtungen
+(+5°, ±10°), heute verdeckte Ziele ausgeschlossen, heute gesammelte Belichtung (`have_add`). Morgendämmerung → einklappen →
+**Nachtbilanz** (`_finish_auto`, Protokoll + Ansicht). `load_night` behält den automatischen Plan derselben Nacht.
+**Zielwahl** (Dienst `night_autoplan` des Bilder-Moduls → `stacking/autoplan.py` → `planner.plan` mit 1 Nacht, 1 Gerät, „Mischung“):
+Gerät aus `devices.json`, eigene Projekte (Restbedarf `need`), Katalog (passt ins Bildfeld, hell genug), fehlende Messier aus
+`collection_progress` ×1,15, aktiver Komet (Kometenmodus, Aufnahme ≤ 30 Tage) über Horizons (geozentrisch; ohne Netz entfällt er),
+Mond, Wolken je Stunde (nicht im Zeitraffer), Bildfelddrehung; höchstens `night_max_targets` (Standard 5) Ziele, Blöcke < 20 min
+bzw. < 45 min bei weniger als einem Drittel des Bedarfs entfallen; nichts über einem gemessenen Überhang (`tonight._ceiling`).
+**Grundsatzfragen** (Vorbelegung, im PR benannt): Planer-Plan der Nacht bleibt, „Plane meine Nacht“ ersetzt ihn nur nach Rückfrage
+(409 `PLAN_EXISTS`; der gespeicherte Planer-Plan bleibt unverändert, von Hand hinzugefügte Ziele bleiben); höchstens 5 Ziele;
+erstes Mal „Nacht starten“, Häkchen „Künftig gleich starten“ setzt `night_autostart`. „Verwerfen“ (`/night/cancel`) nur, wenn der
+Autopilot nicht läuft. Fehlt der Dienst (Bilder-Modul aus), meldet `plan_night` das; der übrige Autopilot läuft wie bisher.
+**Oberfläche:** Knopf in der Kopfzeile, Panel „Meine Nacht“ (Schritte Plan → Vermessen → Beobachten → Bilanz, Zustand mit Grund,
+Zielliste mit Begründung, Frist, Bilanz). Tests: `tests/test_telescope_night.py` (ganze Simulator-Nacht, Ausfall, Wetter, Frist,
+API mit echtem Dienst, Planer-Überhang/Höchstzahl).
