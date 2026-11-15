@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 
 from ...core import sites
 from . import sky
+from .battery import BatteryEta, fmt_left
 from .driver import DriverBusy, DriverError, PlanItem, Target, TelescopeState
 from .machine import Machine
 
@@ -46,6 +47,7 @@ BLOCK_AZ = 10.0              # gesperrte Richtung: ±Azimut …
 BLOCK_ALT = 5.0              # … bis über die gescheiterte Höhe
 MAX_EVENTS = 300
 MOVES = ("open", "init", "observe", "device_plan", "focus")   # Befehle, die das Teleskop bewegen (Einklappen/Stoppen nie gesperrt)
+BATTERY_MIN_ITEM = 10 * 60    # reicht der Akku nicht einmal so lang, startet kein neues Ziel mehr
 RETRY_FIRST = 10            # abgelehnter Befehl: erster neuer Versuch nach … s, dann doppelt so lang …
 RETRY_MAX = 120             # … höchstens so lang
 # dann echter Fehler (Geräte-Plan fehlt absichtlich: er ist nur ein Rückfall, abgelehnt → normale Beobachtung)
@@ -146,6 +148,7 @@ class Autopilot:
         self.frames_fetched = 0
         self.plan_note: str | None = None
         self.known: TelescopeState | None = None   # letzter Zustand MIT Verbindung (für Not-Aus ohne Verbindung)
+        self.battery = BatteryEta()               # Restzeit aus dem gemessenen Akkuverlauf
         self.idle_since: float | None = None      # seit wann das Gerät beim aktiven Ziel nichts tut
         self.retry: dict[str, dict] = {}          # abgelehnte Befehle: {first, next, n, msg, busy} – Backoff statt Schleife
         self.phase_since: float | None = None     # seit wann die aktuelle Phase gilt (Restdauer)
@@ -357,6 +360,7 @@ class Autopilot:
         prev, self.state = self.state, s
         if s.connected:
             self.known = s
+            self.battery.update(now, s.battery, s.charging, not s.parked)
         ch = self.machine.update(s)
         if ch:
             if ch[0] in EXPECT_S and self.phase_since is not None and ch[1] not in ("getrennt", "fremd"):
@@ -651,7 +655,31 @@ class Autopilot:
             return i
         return None
 
+    def battery_left(self, active: bool = True) -> float | None:
+        """Sekunden bis zur Akkugrenze `battery_min` (None: kein Akkuwert oder lädt)."""
+        s = self.state
+        return self.battery.seconds_left(s.battery, s.model, active, float(self.cfg["battery_min"]))
+
+    def _battery_fits(self, it: Item, now: float) -> bool:
+        """Reicht der Akku für das Ziel? Zu knapp (auch nach Erfahrungswert) → nicht starten; reicht er laut Messung nicht bis
+        zum Ende → Abschnitt kürzen und sagen."""
+        left = self.battery_left(True)
+        if left is None:
+            return True
+        if left < BATTERY_MIN_ITEM:
+            self._once(f"akku-leer:{it.id}", f"Akku reicht nur noch ca. {fmt_left(left)} – starte {it.name} nicht mehr.", "warn", now)
+            if self.machine.phase in ("schwenkt", "astrometrie", "nimmt_auf"):
+                self._cmd("stop", self.driver.stop, now=now)     # vorige Beobachtung nicht unbeobachtet weiterlaufen lassen
+            return False
+        if now + left < it.end and self.battery.measured and self.battery.active:
+            # kürzen nur mit gemessener Rate im offenen Betrieb – der Erfahrungswert ist dafür zu grob
+            it.end = now + left
+            self.log(f"Akku reicht nur noch ca. {fmt_left(left)} – {it.name} wird bis {_fmt(it.end)} gekürzt.", "warn", now)
+        return True
+
     def _start_item(self, it: Item, now: float):
+        if not self._battery_fits(it, now):
+            return
         self.idle_since = None
         it.seen, it.restarts = False, 0
         it.status, it.real_start, it.why = "aktiv", now, ""
@@ -805,6 +833,7 @@ class Autopilot:
                 "cloud_max": self.cfg["cloud_max"], "wind_max": self.cfg["wind_max"],
                 "weather_at": self.weather["fetched"] if self.weather else None, "weather_offline": self.weather_offline,
                 "battery": s.battery, "battery_min": self.cfg["battery_min"],
+                "battery_left": self.battery.view(s.battery, s.charging, s.model, not s.parked, float(self.cfg["battery_min"])),
             },
             "weather": [{"t": x["t"], "cloud": x.get("cloud")} for x in (self.weather or {}).get("hours") or []],
             "blocked": [{k: b[k] for k in ("az", "alt", "target", "sure")} for b in self.blocked],
