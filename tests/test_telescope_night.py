@@ -306,3 +306,21 @@ def test_ohne_ort_wird_nie_geoeffnet():
     assert "kein Standort" in q.night_go(c2.now())
     run(q, c2, _at(21, 30))
     assert not [c for c in d2.commands if c.split(":")[0] in ("open", "init")]
+
+
+def test_pause_bewahrt_gesammelte_bilder_beim_neuplanen():
+    """Review PR #145: Wetterpause unterbricht ein Ziel (zurück auf „geplant“, Bilder bleiben) – nach der Neuplanung bleiben
+    die Bilder als Verlauf, zählen für den Bedarf und in der Nachtbilanz."""
+    fp = FakePlanner(plan=[("M45", 56.75, 24.12, _at(20), _at(23, 30))])
+    p, d, clock = make(planner=fp, t0=_at(20))
+    p.plan_night(clock.now())
+    p.auto["state"] = "laeuft"
+    it = p.items[0]
+    it.stacked = 100                                  # wie nach _end_item(…, "geplant", …): Bilder da, real_start gelöscht
+    assert p._replan(clock.now(), "nach der Pause", force=True)
+    old = [i for i in p.items if i.stacked == 100]
+    assert old and old[0].status == "abgebrochen" and fp.calls[-1]["opts"]["have_add"]["M45"] > 0
+    assert p._replan(clock.now() + 900, "nochmal", force=True)
+    assert [i for i in p.items if i.stacked == 100] and fp.calls[-1]["opts"]["have_add"]["M45"] > 0
+    p._finish_auto(clock.now())
+    assert p.auto["summary"]["frames"] == 100
