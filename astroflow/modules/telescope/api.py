@@ -220,6 +220,8 @@ def build_router(mod) -> APIRouter:
         Richtungen, in denen gemessen wurde; die übrigen bleiben, wie sie sind."""
         u = unit()
         p = u.pilot
+        if u.simulated:                                   # erfundene Hindernisse nie in die Maske des echten Ortes
+            raise HTTPException(409, "Im Simulator gemessene Grenzen lassen sich nicht als Horizontmaske übernehmen.")
         book = mod.ctx.service("sites")
         site = p.site or {}
         hz = p.horizon()

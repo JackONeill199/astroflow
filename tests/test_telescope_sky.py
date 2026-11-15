@@ -269,7 +269,7 @@ def test_api_scan_annehmen_und_simulator_getrennt(tmp_path, monkeypatch):
 
 
 def test_accept_uebernimmt_nur_gemessene_richtungen(tmp_path, monkeypatch):
-    with TestClient(_app(tmp_path, monkeypatch), base_url="http://127.0.0.1:8766", client=("127.0.0.1", 50000),
+    with TestClient(_app(tmp_path, monkeypatch, driver="vaonis-read"), base_url="http://127.0.0.1:8766", client=("127.0.0.1", 50000),
                     headers={"Origin": "http://127.0.0.1:8766"}) as c:
         c.get("/api/telescope/state")
         mod = _telescope(c.app)
@@ -329,3 +329,28 @@ def test_not_aus_beendet_scan_sofort():
         p.tick(clock.now())
         clock.advance(5)
     assert len(d.commands) == n
+
+
+def test_simulator_aendert_nie_die_ortsmaske(tmp_path, monkeypatch):
+    with TestClient(_app(tmp_path, monkeypatch), base_url="http://127.0.0.1:8766", client=("127.0.0.1", 50000),
+                    headers={"Origin": "http://127.0.0.1:8766"}) as c:
+        c.get("/api/telescope/state")
+        p = _telescope(c.app).unit.pilot
+        p.load_night(p._now())
+        p._add_point({"az": 0, "alt": 40, "res": "verdeckt", "sure": True, "src": "scan", "t": p._now()})
+        assert not c.get("/api/telescope/state").json()["sky"]["can_accept"]
+        assert c.post("/api/telescope/sky/accept").status_code == 409
+        assert not c.get("/api/sites").json()["list"][0].get("horizon")
+
+
+def test_verdeckt_vor_erster_gegenprobe_wird_wiederholt():
+    """Wolke über den ersten Punkten, dann klar: verdeckte Punkte vor dem ersten freien werden nicht bestätigt, sondern neu gemessen."""
+    sc = skyscan.Scan("voll", T0)
+    for res in ("verdeckt", "verdeckt"):
+        sc.next_probe(T0)
+        sc.result(res, T0)
+    first = [p for p in sc.done if p["res"] == "verdeckt"]
+    sc.next_probe(T0)
+    sc.result("frei", T0, solved=True)
+    assert sc.ref and not any(p["sure"] for p in first)
+    assert sum(1 for q in sc.queue if q["why"] == "wiederholung") == len(first)

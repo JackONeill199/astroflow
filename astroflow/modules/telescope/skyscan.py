@@ -233,13 +233,22 @@ class Scan:
         if p["res"] == "frei":
             self.streak = set()
             if self.ref is None and p["alt"] >= 20:
-                self.ref = {"az": p["az"], "alt": p["alt"]}
-                self.ref_ok(now)
+                self._first_ref(p)
         elif p["res"] == "verdeckt":
             self.streak.add(round(p["az"] % 360))
             self.unconfirmed.append(p)
         self.since_ref += 1
         self._follow(p)
+
+    def _first_ref(self, p: dict):
+        """Erster freier Punkt: wird Gegenprobe. Verdeckte Punkte davor hatten keine Gegenprobe vorher (vielleicht Wolke, die
+        inzwischen weitergezogen ist) – nicht bestätigen, sondern noch einmal messen (Review PR #143)."""
+        self.ref = {"az": p["az"], "alt": p["alt"]}
+        for q in self.unconfirmed:
+            if not q.get("retry"):
+                q["retry"] = True
+                self.queue.append({"az": q["az"], "alt": q["alt"], "why": "wiederholung"})
+        self.unconfirmed, self.since_ref, self.streak, self.ref_fails = [], 0, set(), 0
 
     def ref_ok(self, now: float):
         for q in self.unconfirmed:
@@ -249,7 +258,7 @@ class Scan:
     def _ref_result(self, p: dict, now: float):
         if p["res"] == "frei":
             if self.ref is None:
-                self.ref = {"az": p["az"], "alt": p["alt"]}
+                return self._first_ref(p)
             return self.ref_ok(now)
         if self.ref is None:                           # steile Gegenprobe ohne Sterne
             if self.steep >= len(STEEP):

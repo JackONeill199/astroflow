@@ -1250,7 +1250,8 @@ class Autopilot:
                 "scan": sc, "scanning": self.scan is not None,
                 "setup": {"id": self.setup["id"], "nights": len(self.setup["nights"]), "last": self.setup["last"]} if self.setup else None,
                 "setups": len(self.groups), "site_wide": sum(1 for v in self.site_wide if v is not None),
-                "can_accept": bool(self._site_id()) and any(hz["known"]), "measured": self.measured(),
+                "can_accept": bool(self._site_id()) and any(hz["known"]) and getattr(self.driver, "kind", "") != "sim",
+                "measured": self.measured(),
                 "moon": self._moon_view(now)}
 
     def _moon_view(self, now: float) -> dict | None:
