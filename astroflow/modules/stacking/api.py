@@ -642,7 +642,8 @@ def build_router(eng: Engine) -> APIRouter:
         if not p:
             raise HTTPException(404)
         v = project_view(p)
-        from .live import read_state
+        from .live import read_state, touch
+        touch(pid)                                       # Live-Ansicht offen: Einblicke in die Bearbeitung lohnen sich
         v['live'] = read_state(eng.s.work_dir, pid)
         if v['live'].get('job') != (v.get('job') or {}).get('id'):
             v['live'] = {}
@@ -662,13 +663,15 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.get('/projects/{pid}/live/{name}')
     def live_picture(pid: int, name: str):
-        # Vorschau bzw. Zwischenstand (…-f<n>.jpg); Länge begrenzt, damit das Muster nie lange prüft
-        if len(name) > 48 or not re.fullmatch(r'\d{1,24}-(?:f\d{1,9}|\d{1,9})\.jpg', name):
+        # Vorschau, Zwischenstand (…-f<n>.jpg), Einblick-Bild (…-s<n>.jpg) bzw. Einblick (…-i<n>.json); Länge begrenzt,
+        # damit das Muster nie lange prüft
+        if len(name) > 48 or not re.fullmatch(r'\d{1,24}-(?:[fs]\d{1,9}\.jpg|\d{1,9}\.jpg|i\d{1,9}\.json)', name):
             raise HTTPException(404)
         path = eng.s.work_dir / f'p{pid}' / 'live' / name
         if not path.is_file():
             raise HTTPException(404)
-        return FileResponse(path, media_type='image/jpeg', headers={'Cache-Control': 'no-store'})
+        kind = 'application/json' if name.endswith('.json') else 'image/jpeg'
+        return FileResponse(path, media_type=kind, headers={'Cache-Control': 'no-store'})
 
     @r.patch("/projects/{pid}")
     def patch_project(pid: int, body: dict = Body(...)):

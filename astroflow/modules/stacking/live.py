@@ -128,8 +128,9 @@ class LiveRun:
         self._lock = threading.RLock()                            # Zwischenstände entstehen in einem eigenen Thread
         self._bg, self._stopped = None, []
         self.closed = False                                       # abgelöst (neuer Lauf, Objekt gelöscht): nichts mehr schreiben
+        self.pid, self.iseq, self._pics = int(pid), 0, {}         # Einblicke: laufende Nummer, Bilder je Einblick
         # Alte Live-Bilder sind in Ergebnissen separat archiviert.
-        for p in [*self.path.glob('*.jpg'), *self.path.glob('*.jpg.tmp')]:
+        for p in [*self.path.glob('*.jpg'), *self.path.glob('*.jpg.tmp'), *self.path.glob('*.json.tmp'), *self.path.glob('*-i*.json')]:
             p.unlink(missing_ok=True)
         self._write()
 
@@ -210,6 +211,49 @@ class LiveRun:
             if p.name not in (name, f"{self.data['run']}-{self.seq - 1}.jpg"):
                 p.unlink(missing_ok=True)
 
+    def snap(self, img, linear=True):
+        """Bild zu einem Einblick (Vorher/Nachher) – bleibt liegen, solange der Einblick in der Liste steht."""
+        if self.closed:
+            return None
+        with self._lock:
+            self.iseq += 1
+            name = f"{self.data['run']}-s{self.iseq}.jpg"
+        save_picture(self.path / name, img, linear)
+        return name
+
+    def insight(self, kind, data, pictures=None):
+        """Einblick ablegen: kind (z. B. 'stretch'), data (klein, JSON), pictures {Rolle: Name aus snap()}."""
+        with self._lock:
+            if self.closed:
+                return None
+            self.iseq += 1
+            name = f"{self.data['run']}-i{self.iseq}.json"
+            pictures = {k: v for k, v in (pictures or {}).items() if v}
+            body = {'kind': kind, 'pictures': pictures, **data}
+            tmp = self.path / (name + '.tmp')
+            tmp.write_text(json.dumps(body, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
+            tmp.replace(self.path / name)
+            lst = list(self.data.get('insights') or [])
+            lst.append({'name': name, 'kind': kind, 'step': len(self.data['steps'])})
+            for old in lst[:-INSIGHTS_KEEP]:
+                (self.path / old['name']).unlink(missing_ok=True)
+                for p in (self._pics.pop(old['name'], None) or {}).values():
+                    (self.path / p).unlink(missing_ok=True)
+            self._pics[name] = pictures
+            self.data['insights'] = lst[-INSIGHTS_KEEP:]
+            self._write()
+            return name
+
+    def wants(self):
+        """Einblicke rechnen? Nur mit offener Live-Ansicht (sonst kein Mehraufwand)."""
+        return not self.closed and not self.finished and watched(self.pid)
+
+    def noise_point(self, n, rel, band=None):
+        with self._lock:
+            pts = list(self.data.get('noise_curve') or [])
+            if not pts or pts[-1][0] != n:
+                pts.append([int(n), rel, band])
+            self.data['noise_curve'] = pts[-80:]
 
     def stack_frame(self, mean, *, n, exposure=None, band=None, cov=None):
         """Echter Zwischenstand des Stacks (verkleinert, (C,h,w) Mittel) mit fester Streckung als JPG in die Folge
@@ -244,6 +288,8 @@ class LiveRun:
                 return
             frames = list(self.data.get('frames') or [])
             frames.append({'name': name, 'n': int(n), 'exposure': exposure, 'band': band, 'noise': rel})
+            if rel is not None:                       # gemessene Rauschkurve über den ganzen Lauf (Einblick „Stacken“)
+                self.noise_point(n, rel, band)
             for old in frames[:-FRAMES_KEEP]:
                 (self.path / old['name']).unlink(missing_ok=True)
             self.data['frames'] = frames[-FRAMES_KEEP:]
@@ -309,3 +355,80 @@ def optional(fn, *args, **kwargs):
         return fn(*args, **kwargs)
     except Exception:
         return None
+
+
+# ------------------------------------------------------------------ Einblicke #
+# „Was passiert gerade wirklich?“ – kleine Auszüge echter Zwischenergebnisse eines Bearbeitungsschritts (Hotpixel-Positionen,
+# Hintergrundmodell, Gaia-Sterne mit Ausgleichsgeraden, Histogramm und Übertragungskurve …). Der Browser legt sie passgenau
+# über das Live-Bild. Nichts davon ist erfunden: Gibt es für einen Schritt keine Daten, gibt es auch keinen Einblick.
+# Je Einblick eine eigene Datei live/<run>-i<n>.json (nie in state.json: das wird mit der Objektseite gepollt); state.json
+# trägt nur Verweise. Koordinaten: Bruchteile [u, v] des zugehörigen Bildes in Anzeigeausrichtung (oben links = 0, 0;
+# die Vorschaubilder sind wie FITS üblich senkrecht gespiegelt).
+INSIGHTS_KEEP = 6
+MAX_POINTS = 500
+GRID = 48                      # Kantenlänge (längere Seite) für Karten (Hintergrund, Glühen)
+CURVE_N = 256
+WATCH_S = 20.0                 # so lange nach dem letzten Abruf der Live-Ansicht gilt ein Browser als offen
+_watch: dict = {}
+
+
+def touch(pid: int) -> None:
+    """Die Live-Ansicht wurde abgefragt (Objektseite) – nur dann lohnen sich Einblicke."""
+    _watch[int(pid)] = time.monotonic()
+
+
+def watched(pid: int) -> bool:
+    return time.monotonic() - _watch.get(int(pid), -1e9) < WATCH_S
+
+
+def thin(n: int, k: int = MAX_POINTS, seed: int = 0) -> np.ndarray:
+    """Indizes einer festen Stichprobe von höchstens k aus n (reproduzierbar, Reihenfolge bleibt)."""
+    if n <= k:
+        return np.arange(n)
+    return np.sort(np.random.default_rng(seed).choice(n, k, replace=False))
+
+
+def uv(x, y, w: int, h: int, nd: int = 4) -> list:
+    """Pixel (x Spalte, y Zeile, 0-basiert) eines Bildes w×h → [[u, v], …] in Anzeigeausrichtung (senkrecht gespiegelt)."""
+    x, y = np.asarray(x, np.float64), np.asarray(y, np.float64)
+    u = np.round((x + 0.5) / max(w, 1), nd)
+    v = np.round(1 - (y + 0.5) / max(h, 1), nd)
+    return np.c_[u, v].tolist()
+
+
+def grid_of(a: np.ndarray, side: int = GRID) -> tuple[list, float, float]:
+    """2D-Karte (h, w) → Blockmittel auf höchstens side×side, senkrecht gespiegelt (Anzeige), auf 0…255 skaliert.
+    Gibt (Zeilen, Minimum, Maximum) in Originaleinheiten zurück."""
+    a = np.asarray(a, np.float32)
+    h, w = a.shape
+    f = max(1, math.ceil(max(h, w) / side))
+    hh, ww = max(1, h // f), max(1, w // f)
+    b = a[: hh * f, : ww * f].reshape(hh, f, ww, f).mean((1, 3)) if f > 1 else a
+    b = np.nan_to_num(b[::-1], nan=0.0)
+    lo, hi = float(b.min()), float(b.max())
+    q = np.round((b - lo) / (hi - lo) * 255) if hi > lo else np.zeros_like(b)
+    return q.astype(int).tolist(), lo, hi
+
+
+def hist(a: np.ndarray, lo: float, hi: float, n: int = CURVE_N) -> list:
+    """Histogramm (n Klassen) einer Stichprobe, auf das Maximum normiert (3 Stellen)."""
+    v = np.asarray(a, np.float32).ravel()
+    v = v[np.isfinite(v)]
+    if not len(v) or hi <= lo:
+        return []
+    c, _ = np.histogram(v, n, (lo, hi))
+    m = max(1, int(c.max()))
+    return np.round(c / m, 3).tolist()
+
+
+def linear_view(img: np.ndarray, black: float, white: float) -> np.ndarray:
+    """Lineare Darstellung (Schwarz- bis Weißpunkt, ohne Kurve) – so „sieht“ der Stack vor dem Strecken wirklich aus."""
+    a = sample(img)
+    return np.clip((a - black) / max(white - black, 1e-12), 0, 1)
+
+
+def offer(run, fn, *args, **kwargs):
+    """Einblick nur rechnen, wenn ein Browser zusieht; Fehler bleiben folgenlos (wie Vorschaufehler)."""
+    if run is None or not optional(run.wants):
+        return None
+    return optional(fn, run, *args, **kwargs)

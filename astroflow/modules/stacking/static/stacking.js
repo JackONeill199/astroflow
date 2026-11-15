@@ -1122,6 +1122,11 @@ ${capped ? `Hintergrund ${f.bg}` : `${f.n_stars} Sterne`} · FWHM ${f.fwhm ?? '�
     }
     const s = JSON.stringify([p.name, p.total, p.results.map(r => r.id), p.job?.state, p.frames, p.coords, p.options?.picture_solve?.state, p.kind]);
     if (force || s !== sig) {
+      // Auftrag gerade fertig: echte Einblicke in die Bearbeitung erst zu Ende zeigen (live.js begrenzt das auf 20 s)
+      if (!force && tab === 'bild' && liveView?.pending && !running(p.job)) {
+        liveView.update(p);                              // letzter Stand: noch nicht eingereihte Einblicke dieses Laufs übernehmen
+        if (liveView.pending()) return;
+      }
       const old = sig ? JSON.parse(sig) : null, cur = JSON.parse(s);
       const changedResults = old && old[2]?.[0] !== p.results[0]?.id;
       // nur die Frame-Zähler haben sich geändert (Analyse läuft) → Bild und Formular nicht neu aufbauen
