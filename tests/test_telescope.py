@@ -498,10 +498,11 @@ def test_live_bilder_per_ftp(tmp_path):
 def test_aufnahmen_vom_teleskop_auflisten():
     from astroflow.modules.telescope import captures, frames
     items = captures.list_captures(frames.FtpFrames("sim", ftp_factory=sim.SimFtp.shared))
-    assert items[0]["name"] == "M81" and {e["name"] for e in items} == {"M81", "M45", "M31"}     # neueste zuerst
+    assert items[0]["name"] == "M1 Krebsnebel" and {e["name"] for e in items} == {"M1 Krebsnebel", "M81", "M45", "M31"}     # neueste zuerst
     assert {e["key"] for e in items} == {"2026-11-12_19-58-10_plan_Demo/01-observation-m31", "2026-11-12_19-58-10_plan_Demo/02-observation-m45",
-                                         "2026-11-13_22-41-05_plan_Demo/01-observation-m81"}
-    assert items[0]["sub"] == "Plan Demo · 13.11.2026 22:41"
+                                         "2026-11-13_22-41-05_plan_Demo/01-observation-m81", "2026-11-14_23-59-44_observation_M1_Krebsnebel"}
+    assert items[0]["sub"] == "Einzelbeobachtung · 14.11.2026 23:59" and items[0]["plan"] == ""
+    assert items[1]["sub"] == "Plan Demo · 13.11.2026 22:41"
     assert all(e["frames"] == 4 and e["bytes"] > 0 and e["modified"] for e in items)
 
 
@@ -510,7 +511,7 @@ def test_api_import_vom_teleskop(tmp_path, monkeypatch):
     with TestClient(_app(tmp_path, monkeypatch), base_url="http://127.0.0.1:8766", client=("127.0.0.1", 50000),
                     headers={"Origin": "http://127.0.0.1:8766"}) as c:
         d = c.get("/api/telescope/captures").json()
-        assert d["available"] and d["simulated"] and len(d["items"]) == 3 and not any(e["imported"] for e in d["items"])
+        assert d["available"] and d["simulated"] and len(d["items"]) == 4 and not any(e["imported"] for e in d["items"])
         assert c.post("/api/telescope/captures/import", json={"keys": ["../../etc", "C:/Windows"]}).status_code == 409
         key = "2026-11-12_19-58-10_plan_Demo/01-observation-m31"
         # kleiner Import kann schon fertig sein, bevor die Antwort kommt
@@ -534,6 +535,16 @@ def test_api_import_vom_teleskop(tmp_path, monkeypatch):
             _t.sleep(0.05)
         assert j["files"] == 0
         assert any(a["kind"] == "Import" for a in c.get("/api/activity").json())
+        single = "2026-11-14_23-59-44_observation_M1_Krebsnebel"            # Einzelbeobachtung: ohne leere Plan-Ebene
+        c.post("/api/telescope/captures/import", json={"keys": [single]})
+        for _ in range(100):
+            j = c.get("/api/telescope/captures").json()["job"]
+            if j["state"] != "running":
+                break
+            _t.sleep(0.05)
+        assert j["state"] == "done" and j["files"] == 4
+        out = tmp_path / "data" / "input" / "Teleskop" / "vespera" / single
+        assert sorted(p.name for p in out.iterdir()) == [f"img-{k:04d}.fits" for k in range(4)]
 
 
 def test_ordnernamen_lesbar():
@@ -542,6 +553,10 @@ def test_ordnernamen_lesbar():
     assert pretty("2026-11-13_17-21-02_plan_Mein_Plan", "01-observation-ngc2775")[0] == "NGC 2775"
     assert pretty("2026-11-13_17-21-02_plan_X", "02-observation-ic434")[0] == "IC 434"
     assert pretty("irgendwas", "anders") == ("anders", "irgendwas")                 # unbekanntes Schema: unverändert
+    assert pretty("", "2026-11-14_23-59-44_observation_M1_Krebsnebel") == ("M1 Krebsnebel", "Einzelbeobachtung · 14.11.2026 23:59")
+    assert pretty("", "2026-11-14_18-52-27_observation_C_51_IC_1613_")[0] == "C 51 IC 1613"
+    assert pretty("", "2026-11-15_00-22-12_observation_M35")[0] == "M35"
+    assert pretty("", "seltsam") == ("seltsam", "Einzelbeobachtung")
 
 
 def test_plugin_bringt_eigene_pakete_mit(tmp_path, monkeypatch):
@@ -599,6 +614,30 @@ def test_entry_point_plugin_erst_beim_laden_ausgefuehrt(monkeypatch):
     Treiber.plugin = {"contract": 99}
     with pytest.raises(DriverError, match="passt nicht"):
         plugins.load(plugins._entry_points()[0])
+
+
+def test_live_bilder_einzelbeobachtung_ohne_plan(tmp_path):
+    """Echtbetrieb 15.11.2026: Einzelbeobachtungen (so startet der Autopilot jedes Ziel) liegen ohne Plan-Ebene unter `user/`.
+    Vorher fand `latest_folder` sie nicht – keine Live-Bilder, „0 Bilder gestapelt“."""
+    from astroflow.modules.telescope import captures, frames
+    plan_imgs = {"_m": "20261113220000", "img-0001.fits": b"P" * 8}
+    single_imgs = {"_m": "20261114230000", "img-0001.fits": b"A" * 8, "img-0002.fits": b"B" * 8}
+    tree = {"user": {"2026-11-13_21-48-31_plan_Astroflow": {"_m": "20261113220000",
+                                                            "01-observation-m77": {"_m": "20261113220000", "01-images-initial": plan_imgs}},
+                     "2026-11-14_23-59-44_observation_M1_Krebsnebel": {"_m": "20261114230000", "01-images-initial": single_imgs},
+                     "2026-11-14_18-52-27_observation_C_51_IC_1613_": {"_m": "20261114185300", "01-images-initial": {"_m": "20261114185300"}}}}
+    fake = FakeFtp(tree)
+    f = frames.FtpFrames("x", ftp_factory=lambda: fake)
+    assert f.latest_folder(fake) == "user/2026-11-14_23-59-44_observation_M1_Krebsnebel/01-images-initial"
+    since = dt.datetime(2026, 11, 14, 0, 0, tzinfo=dt.timezone.utc).timestamp()
+    assert f.latest_folder(fake, since).startswith("user/2026-11-14_23-59-44_observation_M1")
+    folder, got = f.fetch(lambda fo: tmp_path / fo.split("/")[-2], final=True)
+    assert sorted(p.name for p in got) == ["img-0001.fits", "img-0002.fits"]
+    assert (tmp_path / "2026-11-14_23-59-44_observation_M1_Krebsnebel" / "img-0002.fits").read_bytes() == b"B" * 8
+    items = captures.list_captures(f)                                            # leere Beobachtung (C 51) fehlt, beide Formen da
+    assert [(e["key"], e["frames"]) for e in items] == [("2026-11-14_23-59-44_observation_M1_Krebsnebel", 2),
+                                                       ("2026-11-13_21-48-31_plan_Astroflow/01-observation-m77", 1)]
+    assert not any("STOR" in c or "DELE" in c for c in fake.cmds)
 
 
 def test_live_bilder_lange_beobachtung_und_eigener_ordner(tmp_path):

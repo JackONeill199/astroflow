@@ -1,6 +1,7 @@
 """Live-Bilder vom Teleskop holen: anonymer FTP im WLAN des Teleskops (Vaonis, Hinweis des Nutzers 14.11.2026).
 
-Rohbilder liegen als `img-NNNN.fits` (16 bit, ~4 MB) unter `user/<plan>/<beobachtung>/01-images-initial/`; während einer
+Rohbilder liegen als `img-NNNN.fits` (16 bit, ~4 MB) unter `user/<plan>/<beobachtung>/01-images-initial/` bzw. – bei einer
+Einzelbeobachtung (so startet der Autopilot jedes Ziel) – ohne Plan-Ebene unter `user/<beobachtung>/01-images-initial/`; während einer
 Beobachtung kommen laufend neue dazu – regelmäßig nachsehen = Live-Mitschnitt. Nur lesen (LIST/RETR), nie schreiben oder
 löschen. Abgelegt wird unter `input/Teleskop/<Gerät>/<Nacht>/<Ziel>/` – den Eingangsordner überwacht die Bilder-Pipeline.
 Ordner- und Dateinamen vom Gerät werden nicht für lokale Pfade benutzt (nur geprüfte `img-NNNN.fits`).
@@ -18,6 +19,8 @@ from pathlib import Path
 
 FRAME = re.compile(r"^img-\d{1,6}\.fits?$", re.I)
 IMAGES_DIR = re.compile(r"^\d{2}-images", re.I)
+# Einzelbeobachtung ohne Plan (Echtbetrieb 15.11.2026): „2026-11-14_23-59-44_observation_M1_Krebsnebel“
+SINGLE_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-\d{2}_observation_(.{0,80})$", re.I)
 SAFE = re.compile(r"[^A-Za-z0-9 _.+-]+")
 MAX_ENTRIES = 400          # je Ordnerliste (Schutz gegen riesige Bäume)
 
@@ -50,28 +53,42 @@ class FtpFrames:
             out = [(n.rsplit("/", 1)[-1], {}) for n in f.nlst(path)]
         return out if limit is None else out[:limit]
 
+    def observations(self, f):
+        """Alle Beobachtungen unter `user/`: (Pfad relativ zu `user/`, Plan oder "", Beobachtung, Änderungszeit, Bilderordner
+        oder None = noch nicht gelistet). Zwei Formen: `<plan>/<beobachtung>/0x-images-*` und – Einzelbeobachtung –
+        `<beobachtung>/0x-images-*` (erkannt am Namen oder daran, dass die Bilderordner direkt darin liegen)."""
+        for top, tf in self._list(f, self.root):
+            if tf.get("type", "dir") != "dir":
+                continue
+            kids = self._list(f, f"{self.root}/{top}")
+            imgs = [(n, x) for n, x in kids if IMAGES_DIR.match(n) and x.get("type", "dir") == "dir"]
+            if imgs or SINGLE_RE.match(top):
+                yield top, "", top, tf.get("modify", ""), imgs
+                continue
+            for obs, of in kids:
+                if of.get("type", "dir") == "dir":
+                    yield f"{top}/{obs}", top, obs, of.get("modify", "") or tf.get("modify", ""), None
+
+    def images_dirs(self, f, rel: str, known=None) -> list[tuple[str, dict]]:
+        return known if known is not None else \
+            [(n, x) for n, x in self._list(f, f"{self.root}/{rel}") if IMAGES_DIR.match(n) and x.get("type", "dir") == "dir"]
+
     def latest_folder(self, f, since: float | None = None) -> str | None:
-        """Jüngster `<plan>/<beobachtung>/0x-images-*`-Ordner unter `user/` (nach Änderungszeit). `since`: nur Beobachtungen,
-        die nach dem Start des Ziels geändert wurden (sonst wäre es noch der Ordner des vorigen Ziels)."""
+        """Jüngster Bilderordner einer Beobachtung (beide Formen, s. `observations`) nach Änderungszeit. `since`: nur
+        Beobachtungen, die nach dem Start des Ziels geändert wurden (sonst wäre es noch der Ordner des vorigen Ziels)."""
         lim = time.strftime("%Y%m%d%H%M%S", time.gmtime(since - 120)) if since else ""
         best = None
-        for plan, pf in self._list(f, self.root):
-            if pf.get("type", "dir") != "dir":
+        for rel, _, _, key, imgs in self.observations(f):
+            if lim and key and key < lim:
                 continue
-            for obs, of in self._list(f, f"{self.root}/{plan}"):
-                if of.get("type", "dir") != "dir":
-                    continue
-                key = of.get("modify", "") or pf.get("modify", "")
-                if lim and key and key < lim:
-                    continue
-                if best is None or key > best[0]:
-                    best = (key, f"{self.root}/{plan}/{obs}")
+            if best is None or key > best[0]:
+                best = (key, rel, imgs)
         if not best:
             return None
-        subs = [(n, x) for n, x in self._list(f, best[1]) if IMAGES_DIR.match(n) and x.get("type", "dir") == "dir"]
+        subs = self.images_dirs(f, best[1], best[2])
         if not subs:
             return None
-        return f"{best[1]}/{sorted(subs, key=lambda s: (s[1].get('modify', ''), s[0]))[-1][0]}"
+        return f"{self.root}/{best[1]}/{sorted(subs, key=lambda s: (s[1].get('modify', ''), s[0]))[-1][0]}"
 
     def fetch(self, dest, folder: str | None = None, final: bool = False, since: float | None = None) -> tuple[str | None, list[Path]]:
         """Neue Einzelbilder nach `dest` holen. Eine Datei gilt erst als fertig, wenn ihre Größe beim nächsten Blick gleich

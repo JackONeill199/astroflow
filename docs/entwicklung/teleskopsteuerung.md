@@ -240,7 +240,10 @@ Kein Test spricht ein echtes Gerät an; die Netzsperre aus `conftest.py` bleibt.
 - Voreinstellungen (änderbar): Wolken > 70 %, Wind > 30 km/h, Taupunktabstand < 2 °C (Stellina < 3 °C), Nacht ab/bis Sonne −12°
   (wahlweise −18°), wieder öffnen nach 20 min stabil gut; Belichtung Gerätestandard (10 s), Dauer aus dem Belichtungsbedarf (Planer-Blöcke);
   Einklappen nicht bestätigt → Warnung mit Ton + Browser-/Handy-Benachrichtigung (Seite offen), kein Push-Dienst.
-- Live-Rohbilder: anonymer FTP am Teleskop, `user/<plan>/<beobachtung>/01-images-initial/img-NNNN.fits` (16 bit, ~4 MB), laufend neu.
+- Live-Rohbilder: anonymer FTP am Teleskop, `user/<plan>/<beobachtung>/01-images-initial/img-NNNN.fits` bzw. bei einer Einzelbeobachtung
+  (so startet der Autopilot jedes Ziel) ohne Plan-Ebene `user/<beobachtung>/01-images-initial/…` (16 bit, ~4 MB), laufend neu.
+  Beide Formen über `FtpFrames.observations` (Liste, Import, `latest_folder`/`fetch`) – bis 15.11.2026 fand `latest_folder` Einzelbeobachtungen
+  nicht (keine Live-Bilder, „0 Bilder gestapelt“).
 - Proben am Gerät: Status (Vespera, dann Stellina) → Kontrolle übernehmen/abgeben → Öffnen/Parken → GoTo helles Ziel →
   kurze Beobachtung → Bilder abholen. Jede einzeln nach Freigabe.
 
@@ -312,15 +315,16 @@ Gebaut nach Abschnitt 4–7; Abweichungen und Details:
 ## 13. Import: Aufnahmen vom Teleskop (Nutzerwunsch 14.11.2026)
 - Importansicht (`#/import`) zeigt oben „Aufnahmen auf dem Teleskop“, sobald ein Teleskop erreichbar ist (`importPanel`, Hook aus
   `stacking.js`; ohne Teleskop-Modul fehlt der Abschnitt). Echtes Teleskop eingerichtet, aber nicht erreichbar → leise Zeile „Erneut suchen“.
-- Backend `captures.py`: `GET /api/telescope/captures` listet per FTP (nur LIST) alle Beobachtungen `user/<plan>/<beobachtung>/0x-images-*/`
+- Backend `captures.py`: `GET /api/telescope/captures` listet per FTP (nur LIST) alle Beobachtungen `user/<plan>/<beobachtung>/0x-images-*/` und `user/<beobachtung>/0x-images-*/`
   mit Bildzahl/Größe/Datum (30 s Cache). `POST /captures/import {keys}` – nur Schlüssel aus der zuletzt gelesenen Liste, keine Pfade.
-  Ziel `input/Teleskop/<Gerät>/<plan>/<beobachtung>/` (Namen über `safe_name`), `.part` → umbenennen, vorhandene gleich große Dateien
+  Ziel `input/Teleskop/<Gerät>/<plan>/<beobachtung>/` bzw. ohne Plan `input/Teleskop/<Gerät>/<beobachtung>/` (Namen über `safe_name`), `.part` → umbenennen, vorhandene gleich große Dateien
   übersprungen (fortsetzbar). Danach Dienst `scan_input` (Bilder-Modul) → Einlesen/Stacken. „Schon importiert“ in `data/telescope/importiert.json`.
-- Fortschritt in Aktivität/Statusleiste (`activity`, `busy_jobs`). Simulator: `sim.SimFtp` mit drei Beobachtungen aus kleinen synthetischen FITS.
+- Fortschritt in Aktivität/Statusleiste (`activity`, `busy_jobs`). Simulator: `sim.SimFtp` mit drei Plan-Beobachtungen und einer Einzelbeobachtung aus kleinen synthetischen FITS.
 - **Probe Liste (14.11.2026, Freigabe des Nutzers, nur LIST):** Pure-FTPd, MLSD vorhanden, Wurzel `system/` + `user/`. Schema
   `user/<JJJJ-MM-TT_hh-mm-ss>_plan_<Planname>/<NN>-observation-<objekt>/01-images-initial/img-NNNN.fits`; 3 Beobachtungen,
   992 Rohbilder, 4,1 GB (~4,15 MB je Bild). Auffällig: genau 400 Rohbilder bei langen Beobachtungen (Gerät speichert wohl höchstens 400).
-  Anzeige jetzt lesbar (`captures.pretty`: „M77“, „Plan Astroflow · 13.11.2026 17:21“); Simulator nutzt dasselbe Schema.
+  Anzeige jetzt lesbar (`captures.pretty`: „M77“, „Plan Astroflow · 13.11.2026 17:21“; Einzelbeobachtung
+  `2026-11-14_23-59-44_observation_M1_Krebsnebel` → „M1 Krebsnebel“, „Einzelbeobachtung · 14.11.2026 23:59“); Simulator nutzt dasselbe Schema.
 - **Probe Bilder abholen (14.11.2026, Freigabe des Nutzers):** alle 992 Rohbilder (3 Beobachtungen) per FTP-RETR in einen Ordner des
   Nutzers außerhalb von AstroFlow kopiert, Struktur wie am Gerät; 459 s, ~8,9 MB/s, alle Größen stimmen, keine Reste. Rohbild: 1920 × 1080,
   BITPIX 16, Bayer GBRG, Schlüssel `DATE-OBS`, `EXPOSURE` (10 s, kein `EXPTIME`), `GAIN`, `OBJECT`, `FOCAL`, `PIXSZ`, `INSTRUME` (= Gerätekennung,
