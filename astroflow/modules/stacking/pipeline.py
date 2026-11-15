@@ -596,7 +596,7 @@ class Pipeline:
         glow, bad = self._sensor_maps(rows, lib, cache, progress, glow=opt.get("sensor_glow", True))
         # Glühmodell einer Nacht deutlich anders als bei der letzten Analyse (z. B. unplausible Messung verworfen): deren
         # Aufnahmen neu analysieren (Messwerte, Vorschau) und neu stacken – der alte Abzug steckt in beiden
-        reglow = {n for n, v in glow.items() if n in old_glow and _glow_changed(old_glow[n].get("adu"), v.get("adu"))}
+        reglow = {n for n, v in (glow or {}).items() if n in old_glow and _glow_changed(old_glow[n].get("adu"), v.get("adu"))}
         for k, v in (("glow_info", glow), ("defect_info", bad)):
             if v:
                 self.db.x(f"UPDATE projects SET options=json_set(COALESCE(options,'{{}}'),'$.{k}',json(?)) WHERE id=?",

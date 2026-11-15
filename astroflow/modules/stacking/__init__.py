@@ -265,6 +265,9 @@ def frame_quick_metrics(path: str) -> dict:
     img, s = quality.analysis_image(calibration.cosmetic(raw, bayer), bayer)
     st = quality.detect_stars(img)
     top = slice(0, min(len(st), 60))
-    v = quality.veil_metrics(img).get("veil")
+    vm = quality.veil_metrics(img)
+    v = vm.get("veil")
+    if v is not None and not vm.get("veil_edge", True):
+        v = 0.0                                        # hellster Rest in der Bildmitte: Objekt, kein Schleier
     return {"n_stars": len(st), "fwhm": round(float(np.median(st.fwhm[top]) * s), 2) if len(st) else None,
             "veil": v, "veiled": v is not None and v >= quality.VEIL_MIN}

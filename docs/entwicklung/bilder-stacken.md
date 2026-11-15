@@ -47,6 +47,8 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    samt Halo) und äußersten Rand, in Rauscheinheiten eines Pixels; `veil_map` (6×10) = grober Rest. Verworfen mit „Optik beschlagen?
    (heller Schleier im Bild)“, wenn ≥ `VEIL_MIN_FRAMES` (5) Frames `veil` ≥ `VEIL_MIN` (3,0) haben **und** ihr Muster ortsfest ist
    (Korrelation ≥ 0,6 zum Median-Muster; wandernde Wolken nicht). Absolut, nicht relativ: bei M 35 war die ganze Serie beschlagen.
+   Nur wenn `veil_edge`: der helle Rand (98. Perzentil) überragt den Median des Kerns (innere 30 %) – eine große, helle Galaxie bei
+   wenig Rauschen ist im Kern am hellsten (CI: Mono-Demo M 31 wurde sonst ganz verworfen; M 35 Rand 1,9–2,4 / Kern 0,8–1,1).
    Gemessen an Rohbildern: klare Vespera-/Stellina-Nächte 0,1–1,3 (M 33, NGC 6992, M 27, IC 59), beschlagene Vespera (M 35) 4,5–5,1.
    Eine volle quadratische Fläche schluckte den Beschlag (→ 1,6–2,4), nur die Ebene ließ die starke Demo-Vignettierung stehen;
    Bilder < 6 Kacheln je Richtung (Demo) bekommen keinen Wert. **Zusatzmetrik ohne `METRICS_VERSION`** (Neu-Analyse aller Frames wäre

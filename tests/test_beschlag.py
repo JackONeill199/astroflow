@@ -246,3 +246,20 @@ def test_frames_of_previous_attempt_are_dropped():
     other = ap.Item(*M31, T0, T0 + 3600, hours=1)
     assert not p.frame_seen(clock.now(), {"n_stars": 150, "fwhm": 3.8, "veil": 0.4}, other, other.real_start)
     assert len(p.fog.frames) == n + 1
+
+
+def test_bright_centred_galaxy_is_not_fog():
+    """Große, helle Galaxie bei wenig Rauschen (lange Belichtung, gekühlte Kamera): Halo reicht über die Bildmitte hinaus,
+    ist aber in der Mitte am hellsten – kein Schleier (CI-Befund: Mono-Demo M 31 wurde sonst ganz verworfen)."""
+    rng = np.random.default_rng(7)
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    u, v = (xx - W / 2) / (W / 2), (yy - H / 2) / (H / 2)
+    gal = 40 * SIGMA * np.exp(-np.hypot(u, v / 0.5) / 0.35)
+    met = {}
+    for i in range(8):
+        img = _frame(rng) + gal
+        m = {"n_stars": 120, "fwhm": 3.8, "ecc": 0.5, "bg": float(np.median(img)), "snr": 200.0, "grad": 1.0}
+        m.update(quality.veil_metrics(img))
+        met[f"g{i}"] = m
+    assert all(m["veil_edge"] is False for m in met.values() if m["veil"] >= quality.VEIL_MIN)
+    assert not any(r == quality.VEIL_REASON for _, r, _ in quality.select_frames(met).values())

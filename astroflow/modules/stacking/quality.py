@@ -195,7 +195,12 @@ def veil_metrics(img: np.ndarray, noise: float | None = None, box: int = 48) -> 
     res = (med - sum(c * t for c, t in zip(coef, terms))) / (noise or noise_sigma(img))
     r = res[keep]
     grid = ndi.zoom(res, (VEIL_GRID[0] / bh, VEIL_GRID[1] / bw), order=1, mode="nearest", grid_mode=True)
-    return {"veil": round(float(np.percentile(r, 98) - np.percentile(r, 2)), 2),
+    # Objekt oder Schleier? Ein großes, helles Objekt (Galaxie mit Halo bei wenig Rauschen) ist im Kern am hellsten, ein
+    # Beschlag am Rand. `veil_edge` = der helle Rand (98. Perzentil) überragt den Median des Kerns (innere 30 % × 30 %).
+    # Gemessen: M 35 Rand 1,9–2,4 / Kern 0,8–1,1; synthetische Galaxien Rand 1,6–4,1 / Kern 4,7–22.
+    core = (np.abs(X) < w * 0.15) & (np.abs(Y) < h * 0.15)
+    edge = not core.any() or float(np.percentile(r, 98)) >= float(np.median(res[core]))
+    return {"veil": round(float(np.percentile(r, 98) - np.percentile(r, 2)), 2), "veil_edge": bool(edge),
             "veil_map": [[round(float(v), 1) for v in row] for row in grid[: VEIL_GRID[0], : VEIL_GRID[1]]]}
 
 
@@ -204,7 +209,7 @@ def _veiled(metrics: dict[str, dict]) -> set:
     VEIL_MIN_FRAMES solcher Frames in der Serie, jeder ähnlich zum mittleren Schleiermuster (Korrelation ≥ VEIL_CORR).
     Wandernde Schleier (Wolken) bleiben den übrigen Regeln überlassen."""
     cand = {k: np.asarray(m["veil_map"], float) for k, m in metrics.items()
-            if m.get("veil", 0) >= VEIL_MIN and np.shape(m.get("veil_map")) == VEIL_GRID}
+            if m.get("veil", 0) >= VEIL_MIN and m.get("veil_edge", True) and np.shape(m.get("veil_map")) == VEIL_GRID}
     if len(cand) < VEIL_MIN_FRAMES:
         return set()
     ref = np.median(np.stack(list(cand.values())), axis=0).ravel()
