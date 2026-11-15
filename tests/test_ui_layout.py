@@ -999,3 +999,45 @@ def test_update_details_bei_abgeschalteter_pruefung(server, browser):
     assert page.evaluate("AF.app.update && AF.app.update.latest") == "99.1.0"
     page.close()
     assert not errors, errors
+
+
+@pytest.mark.parametrize('scheme', ['light', 'dark'])
+@pytest.mark.parametrize('size', ['handy', 'schmal', 'desktop'])
+def test_tonight_rain_layer(server, browser, size, scheme, tmp_path, monkeypatch):
+    """Regen im Nachtdiagramm: Ebene + Legende nur bei Regenstunden, Animation endet bei reduzierter Bewegung."""
+    from pathlib import Path
+    from astroflow.modules.stacking import tonight
+    from tests.test_tonight import SITE, EVENING, M31
+    t0 = tonight._window(EVENING, SITE['lon'])[0]
+    dev = {'name': 'Testgerät', 'fov': [1, .7], 'source': 'Testmessung'}
+
+    def make(rainy):
+        hours = [{'t': t0 + 3600 * i, 'cloud': 40, 'low': 20, 'mid': 30, 'high': 10, 'wind': 12,
+                  'rain': 100 if rainy and 3 <= i <= 6 else 0, 'rain_p': 85 if rainy and 3 <= i <= 6 else 5} for i in range(24)]
+        monkeypatch.setattr(tonight, '_forecast', lambda *a, **k: {'hours': hours, 'later': [], 'source': 'Test'})
+        tonight._cache.clear()
+        return tonight.plan([{**M31, 'exposure': 1800}], {**SITE, 'weather': True}, Path(tmp_path), EVENING, dev, night=0)
+    plans = {'rain': make(True), 'dry': make(False)}
+    base, _ = server
+    w, h = SIZES[size]
+    page = browser.new_page(viewport={'width': w, 'height': h}, color_scheme=scheme)
+    errors = []
+    page.on('pageerror', lambda e: errors.append(str(e)))
+    state = {'p': 'rain'}
+    page.route('**/api/stacking/tonight*', lambda route: route.fulfill(json=plans[state['p']]))
+    page.goto(base + '/#/nacht')
+    page.wait_for_selector('af-tonight-chart svg')
+    assert page.locator('.tn-chart rect.tn-rain').count() == 1
+    assert 'Regen' in page.locator('.tn-legend').inner_text()
+    assert page.evaluate("getComputedStyle(document.querySelector('rect.tn-rain')).animationName") == 'tn-rain-fall'
+    assert not page.evaluate(FIND_OVERFLOW)
+    page.screenshot(path=str(tmp_path / f'regen-{size}-{scheme}.png'))
+    page.emulate_media(reduced_motion='reduce')
+    assert page.evaluate("getComputedStyle(document.querySelector('rect.tn-rain')).animationName") == 'none'
+    state['p'] = 'dry'
+    page.goto(base + '/#/')
+    page.goto(base + '/#/nacht')
+    page.wait_for_function("document.querySelector('af-tonight-chart svg') && !document.querySelector('rect.tn-rain')")
+    assert 'Regen' not in page.locator('.tn-legend').inner_text()
+    page.close()
+    assert not errors, errors

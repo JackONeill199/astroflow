@@ -57,6 +57,7 @@ const ramp = (id, d, g, cls, op) => `<linearGradient id="${id}" x1="0" x2="1" y1
   return `<stop offset="${((g.X(t) - g.L) / g.PW).toFixed(4)}" class="${cls}" stop-opacity="${o == null || isNaN(o) ? 0 : clamp(o).toFixed(3)}"/>`;
 }).join('')}</linearGradient>`;
 let chartSeq = 0;
+const hasRain = d => !!d.rain?.some(Boolean);
 
 // Teilpfade, wo a[i] ≥ lim[i] (Ziel über Mindesthöhe und Horizontmaske)
 function segments(a, lim, X, Y, times) {
@@ -92,6 +93,13 @@ function chart(d, W, H, selected, hidden) {
   if (d.cloud) {
     defs += ramp(`${id}cl`, d, g, 'tn-st-veil', i => d.cloud[i] == null ? 0 : d.cloud[i] / 100 * .38);
     sky += `<rect x="${L}" y="${T}" width="${PW}" height="${PH}" fill="url(#${id}cl)"/>`;
+  }
+  // Regen: schräge Striche, nur in Regenstunden, Stärke nach Regenwahrscheinlichkeit; fallen per CSS (Ausstieg bei reduzierter Bewegung)
+  if (hasRain(d)) {
+    defs += ramp(`${id}rm`, d, g, 'tn-st-white', i => !d.rain[i] ? 0 : (d.rain_p?.[i] != null ? .35 + .65 * d.rain_p[i] / 100 : .8))
+      + `<pattern id="${id}rp" width="9" height="16" patternUnits="userSpaceOnUse"><path class="tn-rain-drop" d="M5 1l-2.5 7M9 9l-2.5 7M1 9l-1 3"/></pattern>
+         <mask id="${id}rk"><rect x="${L}" y="${T}" width="${PW}" height="${PH}" fill="url(#${id}rm)"/></mask>`;
+    sky += `<g mask="url(#${id}rk)"><rect class="tn-rain" x="${L}" y="${T - 16}" width="${PW}" height="${PH + 16}" fill="url(#${id}rp)"><title>Regen laut Vorhersage</title></rect></g>`;
   }
   let out = `<g clip-path="url(#${id}c)">${sky}`;
   // unter der Mindesthöhe: leicht abgedunkelt
@@ -295,6 +303,7 @@ function legend(d) {
     d.horizon ? item('<path class="tn-lg-hz" d="M0 12V7l3-3 2 3h3V5h3l2 3 2-2 3 3v4z"/>', 'Horizont', 'Horizontmaske des Standorts (Einstellungen → Standorte): hinter Bäumen und Häusern blass gezeichnet') : '',
     item(`<g transform="translate(3 0)">${moonIcon(6, 6, 5, Math.max(d.moon.illum, 30), d.moon.waxing, d.site?.[0] < 0)}</g>`, 'Mond', 'Mondbahn; die Fläche ist umso heller, je voller der Mond'),
     d.cloud ? item('<rect class="tn-lg-cloud" width="18" height="3.5" rx="1"/><rect class="tn-lg-cloud" y="4.25" width="18" height="3.5" rx="1" opacity=".6"/><rect class="tn-lg-cloud" y="8.5" width="18" height="3.5" rx="1" opacity=".3"/>', 'Wolken', 'Band oben: hohe, mittlere und tiefe Wolken; Schleier im Diagramm: Gesamtbewölkung') : '',
+    hasRain(d) ? item('<path class="tn-rain-drop" d="M5 1L3 6M10 1L8 6M7 6L5 11M13 6l-2 5"/>', 'Regen', 'Schräge Striche im Diagramm: Regenstunden laut Vorhersage (kräftiger = wahrscheinlicher), die Zeit gilt als unbrauchbar') : '',
     d.wind?.some(v => v != null) ? item('<path class="tn-wind-ico" d="M1 4h9a2 2 0 1 0-2-2M1 8h12a2 2 0 1 1-2 2"/>', 'Wind', 'Streifen unter den Wolken: kräftiger = mehr Wind (bei Böen wackelt das Bild)') : '',
   ].join('')}</ul>`;
 }

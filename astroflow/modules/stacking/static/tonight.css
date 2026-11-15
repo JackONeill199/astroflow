@@ -73,6 +73,13 @@ af-tonight-chart { display: block; width: 100%; min-width: 0; margin-top: 0.625r
 .tn-st-veil { stop-color: var(--tn-veil) }
 .tn-st-moon { stop-color: var(--tn-moon) }
 .tn-st-wind { stop-color: var(--warn) }
+.tn-st-white { stop-color: #fff }
+/* Regen: Himmel ist immer dunkel, ein mittleres Blau liest sich dort und in der Legende (hell wie dunkel) */
+:root { --tn-rain: #7ab6f2 }
+.tn-rain-drop { fill: none; stroke: var(--tn-rain); stroke-width: 1.5; stroke-linecap: round }
+.tn-rain { animation: tn-rain-fall 1.1s linear infinite }
+@keyframes tn-rain-fall { to { transform: translateY(16px) } }
+@media (prefers-reduced-motion: reduce) { .tn-rain { animation: none } }
 .tn-below { fill: #000; opacity: .25 }
 .tn-grid { stroke: var(--mut); stroke-opacity: .16 }
 .tn-minalt { fill: none; stroke: var(--fg); stroke-opacity: .45; stroke-dasharray: 3 4 }
