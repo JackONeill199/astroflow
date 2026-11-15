@@ -41,7 +41,8 @@ function createStackLive(host, pid) {
     try { data = await api(liveSrc(i.name)); } catch { data = null; }
     if (destroyed || !root.isConnected) return;
     if (!data) { insBusy = false; insPump(); return; }
-    ins.play(data, liveSrc, () => { insBusy = false; insEnd = Date.now(); insShown = shown; insPump(); });
+    const atStart = shown;                               // Bildstand beim Start: ein Wechsel während der Wiedergabe räumt danach ab
+    ins.play(data, liveSrc, () => { insBusy = false; insEnd = Date.now(); insShown = atStart; insPump(); });
   }
   function insights(live, steps) {
     if (!ins) return;
