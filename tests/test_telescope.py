@@ -1236,3 +1236,73 @@ def test_einstellungen_speichern_behaelt_eigene_ziele(tmp_path, monkeypatch):
         assert new.proposals and "hinzugefügt" in texts(new)
         names = [i["name"] for i in c.get("/api/telescope/state").json()["items"]]
         assert any("1" in n for n in names)
+
+
+def _rain_at(clock, start, end):
+    """Attrappe des Dienstes `weather_rain`: Regen zwischen start und end (Unix-Sekunden)."""
+    def f(site, minutes):
+        now = clock.now()
+        if now >= end or start - now > minutes * 60:
+            return {"rain": False, "in_minutes": None, "probability": 10, "precip": 0.0}
+        return {"rain": True, "in_minutes": max(0, round((start - now) / 60)), "probability": 80, "precip": 1.2}
+    return f
+
+
+def test_regen_klappt_vorsorglich_ein_und_oeffnet_danach():
+    """Regen in ≤ 30 min → laufende Beobachtung beenden, einklappen; danach (kein Regen mehr + stabile Minuten) weiter."""
+    p, d, clock = make([item(M31, 0.0, 4.0)], cfg={"fallback": False})
+    p.env.rain = _rain_at(clock, T0 + 1.5 * H, T0 + 2.0 * H)
+    run(p, clock, 0.9)
+    assert p.mode == "laeuft" and p.items[0].status == "aktiv"                # Regen erst in 36 min: Ziel läuft weiter
+    run(p, clock, 0.4)
+    assert p.mode == "wartet" and p.hold.kind == "rain" and "Regen in ca." in texts(p)
+    assert d.state().parked
+    run(p, clock, 0.6)
+    assert d.state().parked                                                  # regnet noch
+    run(p, clock, 0.9)
+    assert p.mode == "laeuft" and not d.state().parked
+
+
+def test_regen_bald_kein_neues_ziel_und_nicht_oeffnen():
+    """Regen in 30–60 min: kein neues Ziel – statt zu wechseln einklappen; eingeklappt gar nicht erst öffnen."""
+    p, d, clock = make([item(M31, 0.0, 0.5), item(M15, 0.5, 3.0)], cfg={"fallback": False})
+    p.env.rain = _rain_at(clock, T0 + 1.3 * H, T0 + 3.0 * H)
+    run(p, clock, 0.6)
+    assert "starte M15 nicht mehr" in texts(p) and p.hold.kind == "rain"
+    assert not any(i.id == "M15" and i.status == "aktiv" for i in p.items)
+    p2, d2, clock2 = make([item(M31, 0.0, 3.0)], cfg={"fallback": False})
+    p2.env.rain = lambda site, minutes: {"rain": True, "in_minutes": 50, "probability": 70, "precip": 0.5}
+    run(p2, clock2, 0.2)
+    assert d2.state().parked and "open" not in d2.commands and p2.hold.kind == "rain"
+
+
+def test_regen_bald_geraeteplan_wechselt_nicht_selbst():
+    """Mit Geräte-Plan (Rückfall an) schwenkt das Gerät am Blockende selbst weiter – bei Regen in ≤ 60 min vorher einklappen."""
+    p, d, clock = make([item(M31, 0.0, 0.5), item(M15, 0.5, 3.0)])
+    p.env.rain = _rain_at(clock, T0 + 1.3 * H, T0 + 3.0 * H)
+    seen = set()
+    for _ in range(int(0.7 * H / 20)):
+        p.tick(clock.now())
+        clock.advance(20)
+        if (t := d.state().target):
+            seen.add(t.get("id"))
+    assert any(c.startswith("plan:") for c in d.commands)                    # Geräte-Plan war wirklich aktiv
+    assert "M15" not in seen and p.hold.kind == "rain" and d.state().parked
+    assert "kein Zielwechsel mehr" in texts(p)
+
+
+def test_regen_unbekannt_oder_ohne_dienst_wie_bisher():
+    p, d, clock = make([item(M31, 0.0, 1.0)], cfg={"fallback": False})
+    p.env.rain = lambda site, minutes: {"rain": None, "in_minutes": None, "probability": None, "precip": None}
+    run(p, clock, 0.5)
+    assert p.mode == "laeuft" and p.rain_in(clock.now()) is None and p.view(clock.now())["conditions"]["rain_in"] is None
+
+
+def test_regen_dienst_im_modul(tmp_path, monkeypatch):
+    app = _app(tmp_path, monkeypatch)
+    calls = []
+    app.state.ctx.services["weather_rain"] = lambda minutes=120, site=None, now=None: calls.append((minutes, site)) or {"rain": False}
+    env = app.state.modules["telescope"].unit.pilot.env
+    assert env.rain(SITE, 60) == {"rain": False} and calls == [(60, {"lat": 50.0, "lon": 10.0})]
+    app.state.ctx.services.pop("weather_rain")
+    assert env.rain(SITE, 60) is None                                     # Dienst fehlt → kein Regenwächter

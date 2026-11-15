@@ -267,6 +267,10 @@ Gebaut nach Abschnitt 4–7; Abweichungen und Details:
   Gesperrt wird ±10° Azimut bis 5° über die gescheiterte Höhe; Vorschläge je Richtung zusammengefasst, Übernahme in die Horizontmaske
   nur per Knopf mit Rückfrage (`horizon_with`: Stützstelle ± Nachbarn auf Höhe + 2°, nie absenken).
 - **Wetter** linear zwischen den Stundenwerten; im Zeitraffer-Simulator keine echte Vorhersage (passt nicht zur virtuellen Zeit).
+- **Regen** (Dienst `weather_rain` des Bilder-Moduls, alle 10 min, `Env.rain`; fehlt der Dienst oder ist nichts bekannt → wie bisher):
+  Regen in ≤ 30 min → laufende Beobachtung beenden und einklappen (Hold `rain`); in ≤ 60 min → kein neues Ziel (statt zu wechseln
+  einklappen) und eingeklappt gar nicht erst öffnen. Danach wie Wetter: wieder öffnen nach `reopen_min` stabilen Minuten.
+  Anzeige: Chip „Regen in ca. … min“ (`conditions.rain_in`). Im Zeitraffer-Simulator aus.
 - **Rückfall:** Kann der Treiber einen Geräte-Plan (`device_plan`), startet jedes Ziel als Plan „dieses Ziel bis Blockende + Rest der
   Nacht“; das Gerät arbeitet bei Verbindungsverlust weiter und klappt am Ende ein. Beim Vaonis-Adapter ist das **aus**, bis die Probe
   den Körper von `planner/startPlan` bestätigt (Einstellung „Geräte-Plan freischalten (Versuch)“); bis dahin `startObservation`.

@@ -90,7 +90,15 @@ class Unit:
             if self.simulated and self.cfg["sim_speed"] and float(self.cfg["sim_speed"]) > 1:
                 return None                       # Zeitraffer: echte Vorhersage passt nicht zur virtuellen Zeit
             return fn(site, t0, t1)
-        return ap.Env(site=mod.site, forecast=forecast, plan=plan)
+
+        def rain(site, minutes):
+            fn = mod.ctx.service("weather_rain")               # Bilder-Modul; fehlt es → kein Regenwächter
+            if not fn or not self.cfg["weather"]:
+                return None
+            if self.simulated and self.cfg["sim_speed"] and float(self.cfg["sim_speed"]) > 1:
+                return None
+            return fn(minutes=minutes, site={"lat": site["lat"], "lon": site["lon"]})
+        return ap.Env(site=mod.site, forecast=forecast, plan=plan, rain=rain)
 
     @property
     def simulated(self) -> bool:

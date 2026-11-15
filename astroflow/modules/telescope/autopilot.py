@@ -36,6 +36,10 @@ DEFAULTS = {
     "fallback": True,        # Geräte-Plan als Rückfall
 }
 WEATHER_EVERY = 900          # s zwischen zwei Wetterabfragen
+RAIN_EVERY = 600             # s zwischen zwei Regenabfragen (Dienst `weather_rain`)
+RAIN_PARK_MIN = 30           # Regen in so vielen Minuten erwartet → laufende Beobachtung beenden, einklappen
+RAIN_START_MIN = 60          # … in so vielen Minuten → kein neues Ziel, nicht öffnen
+RAIN_PLAN_GUARD_S = 60       # Geräte-Plan: so viele s vor Blockende einklappen, bevor das Gerät selbst zum nächsten Ziel schwenkt
 RECONNECT_EVERY = 30
 PARK_CONFIRM_S = 150         # so lange darf Einklappen dauern (Probe 3: ~47 s, plus evtl. laufendes Öffnen ~49 s)
 PARK_TRIES = 3
@@ -119,6 +123,7 @@ class Env:
     forecast: object = None             # (site, t0, t1) -> {"hours": [...]} | None; Ausnahme = kein Internet
     plan: object = None                 # (night, model) -> [Item]
     device: object = None               # (model) -> {gust, dew_heater, name}
+    rain: object = None                 # (site, minutes) -> {rain: bool|None, in_minutes, probability, precip} | None
 
 
 def _fmt(ts: float) -> str:
@@ -149,6 +154,8 @@ class Autopilot:
         self.weather: dict | None = None
         self.weather_t = 0.0
         self.weather_offline = False
+        self.rain: dict | None = None             # letzte Regenvorhersage {rain, in_minutes, probability, t}
+        self.rain_t = 0.0
         self.good_since: float | None = None
         self.clouds_at: float | None = None
         self.park_pending: dict | None = None
@@ -417,6 +424,7 @@ class Autopilot:
             if self.night is None:
                 self.load_night(now)
             self._refresh_weather(now)
+            self._refresh_rain(now)
             holds = self.conditions(now, s)
             if holds and not s.parked and not self.park_pending and s.step != "parking":
                 self.log(f"{holds[0].text} – klappe trotz Pause ein.", "bad", now)
@@ -427,6 +435,7 @@ class Autopilot:
         if self.night is None or (self.dark and now > self.dark["end"] + 3600):
             self.load_night(now)
         self._refresh_weather(now)
+        self._refresh_rain(now)
         self._track(s, now)
         holds = self.conditions(now, s)
         if holds:
@@ -503,6 +512,29 @@ class Autopilot:
                 self.log("Wettervorhersage wieder aktuell.", "ok", now)
             self.weather_offline = False
 
+    def _refresh_rain(self, now: float):
+        """Regen in der nächsten Stunde? Dienst `weather_rain` (Bilder-Modul); fehlt er oder ist nichts bekannt → wie bisher."""
+        if not self.env.rain or not self.site or now - self.rain_t < RAIN_EVERY:
+            return
+        self.rain_t = now
+        try:
+            r = self.env.rain(self.site, RAIN_START_MIN)
+        except Exception:
+            r = None
+        self.rain = {**r, "t": now} if r and r.get("rain") is not None else None
+
+    def rain_in(self, now: float) -> float | None:
+        """Minuten bis zum erwarteten Regen (0 = jetzt) oder None (kein Regen erwartet/unbekannt/Vorhersage zu alt)."""
+        r = self.rain
+        if not r or not r.get("rain") or r.get("in_minutes") is None or now - r["t"] > 3 * RAIN_EVERY:
+            return None
+        return max(0.0, float(r["in_minutes"]) - (now - r["t"]) / 60)
+
+    def _rain_text(self, m: float) -> str:
+        p = (self.rain or {}).get("probability")
+        when = "jetzt" if m < 5 else f"in ca. {round(m)} min"
+        return f"Regen {when} laut Vorhersage" + (f" ({round(p)} %)" if p is not None else "")
+
     def weather_now(self, now: float) -> dict | None:
         """Vorhersage für jetzt, linear zwischen den Stundenwerten (höchstens 1 h über die Vorhersage hinaus)."""
         hh = sorted((self.weather or {}).get("hours") or [], key=lambda h: h["t"])
@@ -535,6 +567,12 @@ class Autopilot:
             lim = self.dew_limit(s.model)
             if h.get("dew_spread") is not None and h["dew_spread"] < lim:
                 out.append(Hold("dew", f"Taugefahr: Taupunktabstand {h['dew_spread']:.1f} °C (Grenze {lim:.1f} °C)."))
+        rain = self.rain_in(now)
+        if rain is not None:
+            # läuft eine Beobachtung, bleibt sie bis kurz vor dem Regen; eingeklappt wird erst gar nicht geöffnet
+            observing = self._current() is not None and not s.parked
+            if rain <= (RAIN_PARK_MIN if observing else RAIN_START_MIN):
+                out.append(Hold("rain", f"{self._rain_text(rain)} – Teleskop wird eingeklappt."))
         if self.clouds_at is not None and now - self.clouds_at < self.cfg["reopen_min"] * 60:
             out.append(Hold("clouds", "Wolken im Bild gemessen (mehrere Richtungen ohne Sterne)."))
         if s.battery is not None and not s.charging and s.battery < self.cfg["battery_min"]:
@@ -609,6 +647,11 @@ class Autopilot:
                 self._cmd("stop", self.driver.stop, now=now)
                 self._end_item(cur, "fertig" if cur.stacked else "uebersprungen", vis[1], now)
                 self.log(f"{cur.name} verlässt den freien Bereich ({vis[1]}) – beende und wechsle zum nächsten Ziel.", "warn", now)
+            elif (s.device_plan and now >= cur.end - RAIN_PLAN_GUARD_S and (rain := self.rain_in(now)) is not None
+                  and rain <= RAIN_START_MIN):
+                # der Geräte-Plan schwenkt am Blockende selbst zum nächsten Ziel – vorher einklappen (wie `_start_item`)
+                self._end_item(cur, "fertig", "", now)
+                return self._hold(Hold("rain", f"{self._rain_text(rain)} – kein Zielwechsel mehr, Teleskop wird eingeklappt."), now)
             elif now >= cur.end:
                 self._end_item(cur, "fertig", "", now)
             else:
@@ -705,6 +748,10 @@ class Autopilot:
         return True
 
     def _start_item(self, it: Item, now: float):
+        rain = self.rain_in(now)
+        if rain is not None and rain <= RAIN_START_MIN:      # kein neues Ziel kurz vor dem Regen – lieber gleich einklappen
+            self._hold(Hold("rain", f"{self._rain_text(rain)} – starte {it.name} nicht mehr, Teleskop wird eingeklappt."), now)
+            return
         if not self._battery_fits(it, now):
             return
         self.idle_since = None
@@ -907,6 +954,7 @@ class Autopilot:
                 "weather_at": self.weather["fetched"] if self.weather else None, "weather_offline": self.weather_offline,
                 "battery": s.battery, "battery_min": self.cfg["battery_min"],
                 "battery_left": self.battery.view(s.battery, s.charging, s.model, not s.parked, float(self.cfg["battery_min"])),
+                "rain_in": None if (rm := self.rain_in(now)) is None else round(rm),
             },
             "weather": [{"t": x["t"], "cloud": x.get("cloud")} for x in (self.weather or {}).get("hours") or []],
             "blocked": [{k: b[k] for k in ("az", "alt", "target", "sure")} for b in self.blocked],
