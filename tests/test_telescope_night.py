@@ -276,3 +276,33 @@ def test_hoechstzahl_gilt_auch_beim_neuplanen():
     assert p._replan(clock.now(), "Test", force=True)
     assert not [i for i in p.items if i.status == "geplant" and i.id not in ("M33",)]
     assert fp.calls[-1]["opts"]["max_targets"] == 1
+
+
+def test_entwurf_ueberlebt_einstellungen_mit_ort_und_sonnensperre():
+    """Review PR #146: Entwurf offen → Einstellungen speichern (`adopt`) → Start: Ort und Dunkelheit sind da, die Sonnensperre greift."""
+    p, d, clock = make()                                       # DUSK: noch hell
+    p.plan_night(clock.now())
+    q = ap.Autopilot(d, p.env, {}, clock=clock)
+    q.adopt(p)
+    assert q.site and q.dark and q.auto["state"] == "entwurf" and [i.name for i in q.items] == [i.name for i in p.items]
+    assert q.night_go(clock.now()) is None
+    run(q, clock, DUSK + 20 * 60)
+    assert q.mode == "wartet" and q.hold.kind == "twilight" and d.parked
+    assert not [c for c in d.commands if c.split(":")[0] in ("open", "init")]
+
+
+def test_ohne_ort_wird_nie_geoeffnet():
+    """Ohne Standort weder Sonnenhöhe noch Ausrichten: der Autopilot öffnet nie, sondern wartet mit klarer Meldung."""
+    p, d, clock = make(t0=_at(21))
+    p.env.site = lambda n: None
+    p.start(clock.now())
+    run(p, clock, _at(21, 30))
+    assert p.mode == "wartet" and p.hold.kind == "site" and d.parked
+    assert not [c for c in d.commands if c.split(":")[0] in ("open", "init")]
+    assert "Kein Standort" in texts(p)
+    q, d2, c2 = make(t0=_at(21))
+    q.plan_night(c2.now())
+    q.site, q.env.site = None, (lambda n: None)
+    assert "kein Standort" in q.night_go(c2.now())
+    run(q, c2, _at(21, 30))
+    assert not [c for c in d2.commands if c.split(":")[0] in ("open", "init")]
