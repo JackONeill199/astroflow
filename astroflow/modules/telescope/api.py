@@ -14,7 +14,8 @@ from .driver import DriverError, Target
 MAX_KEYS = 300
 CONFIRM_MSG = "Bitte bestätigen, dass sich der Arm frei bewegen kann."      # Oberfläche erkennt daran den Bestätigungsdialog
 NUM = {"cloud_max": (10, 100), "wind_max": (5, 80), "dew_min": (0, 10), "dew_min_stellina": (0, 10), "reopen_min": (5, 120),
-       "min_alt": (10, 60), "exposure": (1, 60), "battery_min": (5, 50), "sim_speed": (1, 600)}
+       "min_alt": (10, 60), "exposure": (1, 60), "battery_min": (5, 50), "sim_speed": (1, 600), "night_max_targets": (1, 8)}
+PLAN_EXISTS = "Für diese Nacht gibt es schon einen Plan aus dem Planer."    # Oberfläche fragt dann, ob er ersetzt werden soll
 
 
 def build_router(mod) -> APIRouter:
@@ -116,6 +117,58 @@ def build_router(mod) -> APIRouter:
                 fail(e)
         p.start(now)
         threading.Thread(target=p.tick, args=(u.now(),), daemon=True).start()
+        return {"ok": True}
+
+    # ---- Plane meine Nacht ------------------------------------------------------------------------------------------
+    @r.post("/night/plan")
+    def night_plan(body: dict = Body(default={})):
+        """Entwurf: Ziele und Zeitplan dieser Nacht automatisch wählen (bewegt nichts). Gibt es schon einen Plan aus dem
+        Planer, erst nach Rückfrage (`replace`) – der gespeicherte Planer-Plan selbst bleibt unverändert. Mit „gleich starten“
+        startet der Entwurf nach einer Frist von selbst; echtes Gerät: dann schon hier die Bestätigung je Nacht."""
+        u = unit()
+        p = u.pilot
+        now = u.now()
+        if p.mode in ("laeuft", "wartet"):
+            raise HTTPException(409, "Der Autopilot läuft schon – erst pausieren oder einklappen.")
+        if p.night is None or p.night != p.current_night(now):
+            p.load_night(now)
+        planner = ap.plan_items(mod.ctx.store.get("observatory").get("plan"), p.night, u.cfg["model"])
+        if planner and not body.get("replace") and not p.auto:
+            raise HTTPException(409, PLAN_EXISTS)
+        autostart = bool(u.cfg["night_autostart"])
+        if autostart:
+            night_and_confirm(u, body)
+        why = p.plan_night(now, autostart=autostart)
+        if why:
+            raise HTTPException(409, why)
+        return {"ok": True, "auto": p.auto_view(u.now())}
+
+    @r.post("/night/start")
+    def night_start(body: dict = Body(default={})):
+        """Entwurf starten (bewegt das Teleskop – Bestätigung je Nacht wie Start). `always`: künftig gleich starten."""
+        u = unit()
+        p = u.pilot
+        night_and_confirm(u, body)
+        if body.get("always"):
+            mod.ctx.store.update("telescope", {"night_autostart": True})
+            u.cfg["night_autostart"] = p.cfg["night_autostart"] = True
+        if not p.state.connected:
+            try:
+                link(u)
+            except DriverError as e:
+                fail(e)
+        why = p.night_go(u.now())
+        if why:
+            raise HTTPException(409, why)
+        threading.Thread(target=p.tick, args=(u.now(),), daemon=True).start()
+        return {"ok": True}
+
+    @r.post("/night/cancel")
+    def night_cancel():
+        u = unit()
+        why = u.pilot.night_cancel(u.now())
+        if why:
+            raise HTTPException(409, why)
         return {"ok": True}
 
     @r.post("/pause")
@@ -342,7 +395,7 @@ def build_router(mod) -> APIRouter:
             upd["sim_scenario"] = body["sim_scenario"]
         if "sun_limit" in body and body["sun_limit"] in (-12, -18, -12.0, -18.0):
             upd["sun_limit"] = float(body["sun_limit"])
-        for k in ("weather", "fallback", "live_frames", "scan_auto"):
+        for k in ("weather", "fallback", "live_frames", "scan_auto", "night_autostart"):
             if k in body:
                 upd[k] = bool(body[k])
         for k, (lo, hi) in NUM.items():

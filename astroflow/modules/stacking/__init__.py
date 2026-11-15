@@ -49,6 +49,7 @@ class Module(BaseModule):
         ctx.services["weather_rain"] = self.weather_rain          # Teleskop-Autopilot: „Regen in den nächsten N Minuten erwartet?“
         ctx.services["frame_quick_metrics"] = frame_quick_metrics  # Teleskop-Autopilot: beschlagene Optik während der Aufnahme
         ctx.services["frame_sky_points"] = self.frame_sky_points  # Teleskop: freie/verdeckte Richtungen aus eigenen Aufnahmen
+        ctx.services["night_autoplan"] = self.night_autoplan      # Teleskop: „Plane meine Nacht“ (Ziele + Zeitplan einer Nacht)
         if isinstance(ctx.services.get("night_sources"), list):   # Einstellungen → Standorte: Nachtliste
             ctx.services["night_sources"].append(self.nights)
 
@@ -56,6 +57,15 @@ class Module(BaseModule):
         """Stündliche Vorhersage für [t0, t1] (`tonight._forecast`: Ort auf 0,1° gerundet, 1-h-Cache). Ausnahme = kein Netz."""
         from . import tonight
         return tonight._forecast([site["lat"], site["lon"]], self.ctx.settings.work_dir / "tutor", t0, t1)
+
+    def night_autoplan(self, *, model: str, site: dict, horizon: list | None, now: float, weather: bool = True,
+                       max_targets: int = 5, have_add: dict | None = None, top: list | None = None,
+                       exclude: list | None = None) -> dict:
+        """Zeitplan einer Nacht für das Teleskop (`autoplan.night_plan`): Ziele aus Planer-Regeln, gemessener Grenze und Bedarf."""
+        from . import autoplan, tutor
+        return autoplan.night_plan(self.eng.db, self.ctx, self.ctx.settings.work_dir, model=model, site=site, horizon=horizon,
+                                   now=now, weather=weather and bool(tutor.settings(self.ctx.store).get("weather")),
+                                   max_targets=max_targets, have_add=have_add, top=top, exclude=exclude)
 
     def weather_rain(self, minutes: float = 120, site: dict | None = None, now: float | None = None) -> dict:
         """Regen in den nächsten `minutes` Minuten? {rain: bool|None, in_minutes, probability, precip}; rain=None = unbekannt
