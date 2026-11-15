@@ -1,6 +1,7 @@
 'use strict';
-/* Teleskop (modules/telescope): Live-Ansicht #/teleskop – animiertes Teleskop vor dem Himmel, Kuppel von oben, aktuelles Ziel,
-   Bedingungen, Zeitleiste der Nacht, Hindernis-Vorschläge, Ereignisprotokoll und große Schalter (Start/Pause/Sofort einklappen).
+/* Teleskop (modules/telescope): Live-Ansicht #/teleskop – Kopf mit Not-Aus, großer Status mit Hauptknopf, Jetzt (Bühne, Ziel,
+   Live-Bild) + Bedingungen, Plan der Nacht (Zeitleiste, Zielliste, zugeklappt Kuppel/Ziel hinzufügen), Freier Himmel mit
+   Hindernis-Vorschlägen, zugeklappt Protokoll und Gerät.
    Der Server schickt keine Koordinaten des Ortes – nur Azimut/Höhe der Ziele und die Horizontmaske. */
 (() => {
   const T = '/telescope';
@@ -401,11 +402,11 @@
     if (s.site_wide) out.push(`<p class="sm mut">${s.site_wide} Richtungen sind in allen Aufstellungen gleich (ferne Hindernisse) und gelten für den ganzen Standort.</p>`);
     return out.join('');
   }
-  const skyLegend = `<div class="row sm mut tel-sky-lg"><span><i class="lg sky-b"></i>verdeckt</span><span><i class="lg sky-u"></i>geschätzt</span>
-    <span><i class="lg sky-n"></i>nicht gemessen</span><span><i class="dot ok"></i>frei</span><span><i class="dot bad"></i>verdeckt</span><span><i class="dot warn"></i>unklar</span><span><i class="dot"></i>ausgelassen</span></div>`;
+  const skyLegend = `<details class="tel-more"><summary>Legende</summary><div class="row sm mut tel-sky-lg"><span><i class="lg sky-b"></i>verdeckt</span><span><i class="lg sky-u"></i>geschätzt</span>
+    <span><i class="lg sky-n"></i>nicht gemessen</span><span><i class="dot ok"></i>frei</span><span><i class="dot bad"></i>verdeckt</span><span><i class="dot warn"></i>unklar</span><span><i class="dot"></i>ausgelassen</span></div></details>`;
   const skyPanelHtml = (withBtns) => `<div class="panel-h"><h2>Freier Himmel</h2><span class="grow"></span><span class="mut sm tel-sky-meta"></span></div>
     <div class="tel-sky-grid"><canvas class="tel-skymap" aria-label="Freier Himmel von oben: verdeckte und freie Richtungen"></canvas>
-      <div class="tel-sky-side"><div class="tel-sky-info"></div>${withBtns ? `<div class="row tel-sky-btns">
+      <div class="tel-sky-side"><div class="tel-sky-info"></div>${withBtns ? `<div class="tel-props"></div><div class="row tel-sky-btns">
         <button class="btn ghost sm" data-act="scan" title="Peilpunkte rundum anfahren und messen, wo Sterne zu sehen sind – bewegt das Teleskop">${icon('target')}Himmel vermessen</button>
         <button class="btn ghost sm" data-act="scan-stop" hidden>${icon('stop')}Scan beenden</button>
         <button class="btn ghost sm" data-act="sky-accept" hidden title="Gemessene Grenze in die Horizontmaske des Ortes übernehmen">${icon('check')}Als Horizontmaske übernehmen</button></div>` : ''}
@@ -433,45 +434,41 @@
   };
 
   // ------------------------------------------------------------ Abschnitte --- //
+  // Akku-Restzeit (Server: gemessene Entladung, vorher Erfahrungswert je Modell) – „2 h 40 min“ wie battery.fmt_left
+  const leftFmt = (sec) => { const m = Math.round(sec / 60); if (m < 60) return `${m} min`; let h = Math.floor(m / 60), r = Math.round((m % 60) / 10) * 10; if (r === 60) { h++; r = 0; } return r ? `${h} h ${r} min` : `${h} h`; };
+  // Bedingungen als ruhige Liste (Punkt in der Ampelfarbe, Name, Wert) statt vieler Chips
   function conditionsHtml(d) {
     const c = d.conditions || {}, s = d.state || {};
-    const chip = (cls, label, val) => `<span class="chip ${cls}"><i style="background:currentColor"></i>${esc(label)} <b>${esc(val)}</b></span>`;
+    const row = (cls, label, val) => `<li class="${cls}"><i></i><span>${esc(label)}</span><b class="tnum">${esc(val)}</b></li>`;
     const lvl = (v, lim, lower = false) => v == null ? '' : (lower ? v < lim : v > lim) ? 'bad' : (lower ? v < lim + 1 : v > lim * 0.8) ? 'warn' : 'ok';
     const out = [];
-    if (c.sun != null) out.push(chip(c.sun > c.sun_limit ? 'warn' : 'ok', 'Sonne', `${Math.round(c.sun)}°`));
-    out.push(c.cloud != null ? chip(lvl(c.cloud, c.cloud_max), 'Wolken', `${Math.round(c.cloud)} %`) : chip('', 'Wolken', 'keine Vorhersage'));
-    if (c.wind != null) out.push(chip(lvl(c.wind, c.wind_max), 'Wind', `${Math.round(c.wind)} km/h`));
-    if (c.dew_spread != null) out.push(chip(lvl(c.dew_spread, c.dew_limit, true), 'Taupunktabstand', `${c.dew_spread.toFixed(1)} °C`));
-    if (c.rain_in != null) out.push(chip(c.rain_in <= 30 ? 'bad' : 'warn', 'Regen', c.rain_in < 5 ? 'jetzt' : `in ca. ${c.rain_in} min`));
-    // Akku-Restzeit (Server: gemessene Entladung, vorher Erfahrungswert je Modell) – „2 h 40 min“ wie battery.fmt_left
-    const left = (sec) => { const m = Math.round(sec / 60); if (m < 60) return `${m} min`; let h = Math.floor(m / 60), r = Math.round((m % 60) / 10) * 10; if (r === 60) { h++; r = 0; } return r ? `${h} h ${r} min` : `${h} h`; };
-    const bl = c.battery_left, rest = bl && !bl.charging && bl.empty_s != null ? ` · noch ca. ${left(bl.empty_s)}` : '';
-    if (s.battery != null || s.charging) out.push(chip(s.charging ? 'ok' : lvl(s.battery, c.battery_min, true), 'Akku', s.charging ? (s.battery != null ? `${s.battery} % · lädt` : 'lädt') : `${s.battery} %${rest}`));
-    if (s.stars != null && s.step === 'capture') out.push(chip(s.stars > 30 ? 'ok' : s.stars > 8 ? 'warn' : 'bad', 'Sterne im Bild', s.stars));
-    const w = c.weather_offline ? `<span class="sm warn">Kein Internet – Vorhersage von ${tf(c.weather_at)}</span>` : c.weather_at ? `<span class="sm dim">Vorhersage von ${tf(c.weather_at)} (Open-Meteo)</span>` : '';
-    return `<div class="tel-conds">${out.join('')}</div>${w ? `<div class="tel-wnote">${w}</div>` : ''}`;
+    if (c.rain_in != null) out.push(row(c.rain_in <= 30 ? 'bad' : 'warn', 'Regen', c.rain_in < 5 ? 'jetzt' : `in ca. ${c.rain_in} min`));
+    out.push(c.cloud != null ? row(lvl(c.cloud, c.cloud_max), 'Wolken', `${Math.round(c.cloud)} %`) : row('', 'Wolken', 'keine Vorhersage'));
+    if (c.wind != null) out.push(row(lvl(c.wind, c.wind_max), 'Wind', `${Math.round(c.wind)} km/h`));
+    if (c.dew_spread != null) out.push(row(lvl(c.dew_spread, c.dew_limit, true), 'Taupunktabstand', `${c.dew_spread.toFixed(1)} °C`));
+    if (c.sun != null) out.push(row(c.sun > c.sun_limit ? 'warn' : 'ok', 'Sonne', `${Math.round(c.sun)}°`));
+    const bl = c.battery_left, rest = bl && !bl.charging && bl.empty_s != null ? ` · noch ca. ${leftFmt(bl.empty_s)}` : '';
+    if (s.battery != null || s.charging) out.push(row(s.charging ? 'ok' : lvl(s.battery, c.battery_min, true), 'Akku', s.charging ? (s.battery != null ? `${s.battery} % · lädt` : 'lädt') : `${s.battery} %${rest}`));
+    if (s.stars != null && s.step === 'capture') out.push(row(s.stars > 30 ? 'ok' : s.stars > 8 ? 'warn' : 'bad', 'Sterne im Bild', String(s.stars)));
+    const w = c.weather_offline ? `<p class="sm warn">Kein Internet – Vorhersage von ${tf(c.weather_at)}</p>` : c.weather_at ? `<p class="sm dim">Vorhersage von ${tf(c.weather_at)} (Open-Meteo)</p>` : '';
+    return `<ul class="tel-conds">${out.join('')}</ul>${w}`;
   }
 
   function currentHtml(d) {
     const c = d.current, s = d.state || {};
-    if (!c) {
-      const next = (d.items || []).find(i => ['geplant', 'verdeckt', 'uebersprungen'].includes(i.status) && i.end > d.now);
-      return `<div class="tel-cur empty-cur"><div class="mut sm">Kein Ziel aktiv</div><div class="tel-cur-name">${next ? 'Als Nächstes: ' + esc(next.name) : '–'}</div>
-        <div class="mut sm">${next ? `${tf(next.start)}–${tf(next.end)}` : esc(d.phase_label || '')}</div></div>`;
-    }
+    if (!c) return `<div class="tel-cur"><div class="mut sm">Gerade keine Aufnahme</div><div class="tel-cur-name">${esc(d.phase_label || '–')}</div></div>`;
     const p = Math.max(0, Math.min(1, (d.now - (c.real_start || c.start)) / Math.max(60, c.end - (c.real_start || c.start))));
-    return `<div class="tel-cur"><div class="mut sm">${esc(STEP[s.step] || d.phase_label)}${c.substitute_for ? ` · Ersatz für ${esc(c.substitute_for)}` : ''}</div>
+    return `<div class="tel-cur"><div class="mut sm">Aktuelles Ziel${c.substitute_for ? ` · Ersatz für ${esc(c.substitute_for)}` : ''}</div>
       <div class="tel-cur-name">${esc(c.name)}</div>
       <div class="progress"><i style="width:${(p * 100).toFixed(1)}%"></i></div>
       <div class="row sm mut tel-cur-nums"><span>${tf(c.real_start || c.start)}–${tf(c.end)}</span><span class="grow"></span>
         <span><b class="tnum">${s.stacked || 0}</b> gestapelt</span>${d.unit?.live_frames ? `<span><b class="tnum">${d.unit.frames_fetched}</b> geholt</span>` : ''}${s.rejected ? `<span><b class="tnum">${s.rejected}</b> verworfen</span>` : ''}</div></div>`;
   }
 
-  function timelineHtml(d) {
-    const items = (d.items || []).filter(i => i.status !== 'abgebrochen' || i.real_start);
+  function timelineHtml(d, items) {
     const t0 = Math.min(d.dark?.start ?? Infinity, ...items.map(i => i.start), d.now) - 1800;
     const t1 = Math.max(d.dark?.end ?? -Infinity, ...items.map(i => i.end), d.now + 3600) + 1800;
-    if (!isFinite(t0) || !isFinite(t1) || t1 <= t0) return '<p class="mut sm">Noch keine Nacht geladen.</p>';
+    if (!isFinite(t0) || !isFinite(t1) || t1 <= t0) return '';
     const x = (t) => ((t - t0) / (t1 - t0) * 100).toFixed(2) + '%';
     const w = (a, b) => ((Math.max(0, b - a)) / (t1 - t0) * 100).toFixed(2) + '%';
     const ticks = [];
@@ -482,96 +479,135 @@
     const rows = items.map(i => `<div class="tel-bar s-${i.status}${i.substitute_for ? ' sub' : ''}" style="left:${x(i.start)};width:${w(i.start, i.end)}" title="${esc(i.name)} · ${tf(i.start)}–${tf(i.end)} · ${ITEM[i.status]}${i.why ? ' (' + esc(i.why) + ')' : ''}${i.reason ? ' – ' + esc(i.reason) : ''}">
         <span>${esc(i.name)}</span></div>`).join('');
     return `<div class="tel-tl"><div class="tel-tl-sky">${dark}${clouds}</div><div class="tel-tl-bars">${rows}</div><div class="tel-tl-axis">${ticks.join('')}</div>
-      <i class="tel-now" style="left:${x(d.now)}"></i></div>
-      <div class="row sm mut tel-legend"><span><i class="lg s-geplant"></i>geplant</span><span><i class="lg s-aktiv"></i>läuft</span><span><i class="lg s-fertig"></i>fertig</span>
-        <span><i class="lg s-verdeckt"></i>verdeckt</span><span><i class="lg s-uebersprungen"></i>übersprungen</span><span><i class="lg dark"></i>dunkel</span></div>`;
+      <i class="tel-now" style="left:${x(d.now)}"></i></div>`;
   }
 
   function proposalsHtml(d) {
     if (!d.proposals?.length) return '';
-    return `<section class="panel tel-prop"><div class="panel-h"><h2>${icon('alert')}Hindernisse erkannt</h2></div>
+    return `<div class="tel-prop"><b>${icon('alert')}Hindernisse erkannt</b>
       <p class="mut sm">In diesen Richtungen fehlten heute die Sterne, während andere Richtungen klar waren. Soll die Horizontmaske des Ortes dort angehoben werden?
         Planer, Heute Nacht und Autopilot meiden die Stellen dann.</p>
       <ul class="tel-plist">${d.proposals.map(p => `<li><b>${esc(p.target)}</b> · Azimut ${Math.round(p.az)}°, bis ${Math.round(p.alt)}° Höhe${p.sure ? '' : ' <span class="chip warn">unsicher</span>'}</li>`).join('')}</ul>
-      <div class="row"><button class="btn" data-act="accept">In Horizontmaske übernehmen</button><button class="btn ghost" data-act="dismiss">Verwerfen</button></div></section>`;
+      <div class="row"><button class="btn sm" data-act="accept">In Horizontmaske übernehmen</button><button class="btn ghost sm" data-act="dismiss">Verwerfen</button></div></div>`;
   }
 
-  // ------------------------------------------------------ Plane meine Nacht --- //
-  // Schritte Plan → Vermessen → Beobachten → Bilanz, aktueller Zustand mit Grund, Zielliste mit Begründung, Start/Verwerfen,
-  // Frist bei „gleich starten“, am Morgen die Nachtbilanz.
+  // ------------------------------------------------------------- Status --- //
+  // Ein großer Kasten oben: Zustand in einem Satz, Grund, was als Nächstes kommt, Schritte von „Plane meine Nacht“ und der
+  // Hauptknopf je Lage (Verbinden · Plane meine Nacht · Nacht starten · Pause · Weiter). Ersetzt die früheren Hinweiskästen.
   const AUTO_STEPS = [['entwurf', 'Plan'], ['vermessen', 'Vermessen'], ['laeuft', 'Beobachten'], ['fertig', 'Bilanz']];
   const CAT = { more: 'fortsetzen', new: 'neu', comet: 'Komet' };
+  const BAD_HOLD = ['weather', 'clouds', 'dew', 'fog', 'battery', 'rain'];
   const hrs = (h) => { const m = Math.round(h * 60); return m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m / 60} h`; };
-  function autoHtml(d) {
-    const a = d.auto;
-    if (!a) return '';
-    const k = AUTO_STEPS.findIndex(([s]) => s === a.state);
-    const steps = AUTO_STEPS.map(([, l], i) => `<li class="${i < k ? 'done' : i === k ? 'on' : ''}"><i>${i < k ? icon('check') : i + 1}</i><span>${l}</span></li>`).join('');
-    const items = (d.items || []).filter(i => i.auto || (i.manual && i.status === 'geplant'));
+  const running = (d) => ['laeuft', 'wartet'].includes(d.mode);
+  function heroHtml(d) {
+    const s = d.state || {}, a = d.auto, c = d.current, items = d.items || [], run = running(d), draft = a?.state === 'entwurf';
+    let title, sub = '', tone = '';
+    if (!s.connected && !run) { title = 'Nicht verbunden'; sub = '„Verbinden“ liest nur Status, Akku und Speicher – das Teleskop bewegt sich dabei nicht. Erst ein Start bewegt es.'; }
+    else if (d.hold) { title = d.mode === 'fertig' ? 'Nacht beendet' : 'Wartet'; sub = d.hold.text; tone = BAD_HOLD.includes(d.hold.kind) ? 'bad' : 'warn'; }
+    else if (c) { title = `${STEP[s.step] || d.phase_label || 'Läuft'}: ${c.name}`; tone = 'acc'; }
+    else if (draft) { title = 'Der Plan für heute Nacht steht'; sub = 'Nach dem Start wartet der Autopilot auf die Dunkelheit, öffnet das Teleskop, vermisst den freien Himmel und passt den Plan an. Fällt ein Ziel aus, plant er den Rest neu; am Morgen klappt er ein.'; }
+    else if (d.mode === 'fertig' || a?.state === 'fertig') title = 'Nacht beendet';
+    else if (run) { title = d.phase_label || MODE[d.mode]; tone = 'acc'; }
+    else if (d.mode === 'pausiert') { title = 'Pausiert'; sub = d.phase_label || ''; }
+    else if (!items.length) { title = 'Noch kein Plan für diese Nacht'; sub = '„Plane meine Nacht“ wählt Ziele und Zeitplan selbst – oder im Planer planen bzw. unter „Plan der Nacht“ Ziele hinzufügen.'; }
+    else { const n = items.filter(i => i.status === 'geplant' && i.end > d.now).length; title = 'Bereit'; sub = `${n} ${n === 1 ? 'Ziel' : 'Ziele'} geplant – „Start“ arbeitet den Plan ab.`; }
+    const nxt = items.find(i => ['geplant', 'verdeckt', 'uebersprungen'].includes(i.status) && i.end > d.now && i !== c && (!c || i.start >= c.start));
+    const next = nxt && !draft ? `<p class="tel-hero-next sm"><span class="mut">${c ? 'Danach' : 'Als Nächstes'}:</span> <b>${esc(nxt.name)}</b> <span class="mut tnum">${tf(nxt.start)}–${tf(nxt.end)}</span></p>` : '';
+    let auto = '';
+    if (a) {
+      const k = AUTO_STEPS.findIndex(([st]) => st === a.state);
+      const steps = AUTO_STEPS.map(([, l], i) => `<li class="${i < k ? 'done' : i === k ? 'on' : ''}"><i>${i < k ? icon('check') : i + 1}</i><span>${l}</span></li>`).join('');
+      auto = `<ol class="tel-steps" aria-label="Plane meine Nacht">${steps}</ol>
+        ${a.note ? `<div class="notice err">${icon('alert')}<div class="sm">${esc(a.note)}</div></div>` : ''}${(a.notes || []).map(n => `<p class="mut sm">${esc(n)}</p>`).join('')}`;
+    }
+    const kicker = `<span class="live${run ? '' : ' off'}"></span><span>${esc(MODE[d.mode] || d.mode)}</span>${a ? `<span class="mut">· Meine Nacht: ${esc(a.label)}</span>` : ''}
+      ${a?.deadline_in != null ? `<span class="chip acc tnum">startet in ${a.deadline_in} s</span>` : ''}`;
+    const b = [];
+    const plan = `<button class="btn${s.connected || run ? '' : ' ghost'}" data-act="night" title="Ziele und Zeitplan dieser Nacht automatisch wählen – danach vermisst der Autopilot den Himmel und beobachtet bis zum Morgen">${icon('sparkle')}<span>${a && a.state !== 'fertig' ? 'Neu planen' : 'Plane meine Nacht'}</span></button>`;
+    if (draft) b.push(`<button class="btn" data-act="night-start">${icon('play')}<span>Nacht starten</span></button>`, `<button class="btn ghost" data-act="night-cancel">Verwerfen</button>`);
+    else if (run) b.push(`<button class="btn ghost" data-act="pause">${icon('pause')}<span>Pause</span></button>`);
+    else if (d.mode === 'pausiert') b.push(`<button class="btn" data-act="go">${icon('play')}<span>Weiter</span></button>`);
+    else {
+      if (!s.connected) b.push(`<button class="btn" data-act="connect" title="Nur verbinden: Status, Akku und Speicher ansehen. Das Teleskop bewegt sich dabei nicht.">${icon('check')}<span>Verbinden</span></button>`);
+      b.push(plan);
+      if (items.some(i => i.status === 'geplant' && i.end > d.now)) b.push(`<button class="btn ghost" data-act="go" title="Den Plan der Nacht abarbeiten (Autopilot starten)">${icon('play')}<span>Start</span></button>`);
+    }
+    const always = draft ? `<label class="modrow tel-always-row"><div><b>Künftig gleich starten</b><div class="mut sm">Beim nächsten Mal startet der Plan nach einer Minute von selbst (abbrechen jederzeit möglich).</div></div><input type="checkbox" class="tel-always" ${a.autostart ? 'checked' : ''}><span class="switch"></span></label>` : '';
+    return `<section class="panel tel-hero${tone ? ' t-' + tone : ''}"><div class="tel-hero-main"><div class="row sm tel-kicker">${kicker}</div>
+        <h2 class="tel-hero-title">${esc(title)}</h2>${sub ? `<p class="tel-hero-sub">${esc(sub)}</p>` : ''}${next}${auto}</div>
+      <div class="tel-hero-act"><div class="tel-hero-btns">${b.join('')}</div>${always}</div></section>`;
+  }
+
+  // ------------------------------------------------------- Plan der Nacht --- //
+  // Zeitleiste + Zielliste mit Begründung (aus „Plane meine Nacht“, aus dem Planer oder von Hand); am Morgen die Bilanz.
+  function planHtml(d) {
+    const a = d.auto, sum = a?.summary, items = (d.items || []).filter(i => i.status !== 'abgebrochen' || i.real_start);
     const row = (i) => `<li class="st-${i.status}"><time>${tf(i.start)}–${tf(i.end)}</time>
         <div class="tel-plan-main"><div class="row"><b>${esc(i.name)}</b>${i.category ? `<span class="chip">${esc(CAT[i.category] || i.category)}</span>` : i.manual ? '<span class="chip">von Hand</span>' : ''}
           ${i.status !== 'geplant' ? `<span class="chip ${i.status === 'fertig' ? 'ok' : i.status === 'aktiv' ? 'acc' : i.status === 'verdeckt' ? 'bad' : ''}">${esc(ITEM[i.status] || i.status)}</span>` : ''}</div>
           ${i.reason && ['geplant', 'aktiv'].includes(i.status) ? `<div class="mut sm">${esc(i.reason)}</div>` : ''}${i.why && i.status !== 'geplant' ? `<div class="sm warn">${esc(i.why)}</div>` : ''}</div></li>`;
-    const sum = a.summary;
     const summary = sum ? `<div class="tel-auto-sum"><b>Nachtbilanz</b>
         <div class="row tel-auto-nums"><span><b class="tnum">${sum.targets.length}</b> Ziele</span><span><b class="tnum">${sum.frames}</b> Bilder</span>
           <span><b class="tnum">${hrs(sum.hours)}</b> Belichtung</span>${sum.replans ? `<span><b class="tnum">${sum.replans}</b>× neu geplant</span>` : ''}</div>
         ${sum.blocked?.length ? `<p class="sm warn">Verdeckt: ${esc(sum.blocked.join(', '))}</p>` : ''}
         ${sum.targets.length ? `<ul class="tel-auto-list">${sum.targets.map(t => `<li><b>${esc(t.name)}</b> <span class="mut sm">${t.stacked} Bilder · ${t.minutes} min · ${esc(ITEM[t.status] || t.status)}</span></li>`).join('')}</ul>` : ''}
         <p class="mut sm">${sum.measured ? `Himmel vermessen, Grenze in ${sum.known} von 36 Richtungen bekannt. ` : ''}Die Bilder gehen wie gewohnt in die Pipeline.</p></div>` : '';
-    const draft = a.state === 'entwurf';
-    const count = a.deadline_in != null ? `<span class="chip acc tnum">startet in ${a.deadline_in} s</span>` : '';
-    const meta = [a.moon != null ? `Mond ${a.moon} %` : '', a.cloud != null ? `Wolken ${a.cloud} %` : '', `höchstens ${a.max_targets} Ziele`].filter(Boolean).join(' · ');
-    return `<section class="panel tel-auto"><div class="panel-h"><h2>${icon('sparkle')}Meine Nacht</h2><span class="grow"></span><span class="mut sm">${esc(meta)}</span></div>
-      <ol class="tel-steps">${steps}</ol>
-      <div class="row tel-auto-state"><span class="live${['laeuft', 'vermessen'].includes(a.state) && ['laeuft', 'wartet'].includes(d.mode) ? '' : ' off'}"></span><b>${esc(a.label)}</b>${count}</div>
-      ${a.note ? `<div class="notice err">${icon('alert')}<div class="sm">${esc(a.note)}</div></div>` : ''}
-      ${(a.notes || []).map(n => `<p class="mut sm">${esc(n)}</p>`).join('')}
-      ${summary}
-      ${sum ? '' : items.length ? `<ol class="tel-plan">${items.map(row).join('')}</ol>` : a.note ? '' : '<p class="mut sm">Keine passenden Ziele für diese Nacht.</p>'}
-      ${draft ? `<div class="tel-auto-go"><p class="mut sm">Nach dem Start wartet der Autopilot auf die Dunkelheit, öffnet das Teleskop, vermisst den freien Himmel und passt den Plan an. Fällt ein Ziel aus, plant er den Rest neu; am Morgen klappt er ein.</p>
-        <label class="modrow"><div><b>Künftig gleich starten</b><div class="mut sm">Beim nächsten Mal startet der Plan nach einer Minute von selbst (abbrechen jederzeit möglich).</div></div><input type="checkbox" class="tel-always" ${a.autostart ? 'checked' : ''}><span class="switch"></span></label>
-        <div class="row"><button class="btn" data-act="night-start">${icon('play')}Nacht starten</button><button class="btn ghost" data-act="night-cancel">Verwerfen</button></div></div>` : ''}</section>`;
+    if (!items.length) return summary || `<p class="mut sm">${a && !a.note ? 'Keine passenden Ziele für diese Nacht.' : 'Noch keine Ziele für diese Nacht – „Plane meine Nacht“, der Planer oder unten von Hand.'}</p>`;
+    return `${summary}${timelineHtml(d, items)}${sum ? '' : `<ol class="tel-plan">${items.map(row).join('')}</ol>`}`;
+  }
+
+  function deviceHtml(d) {
+    const u = d.unit || {}, s = d.state || {};
+    const conn = !s.connected ? 'nicht verbunden' : s.master === 'us' ? 'verbunden, AstroFlow steuert' : s.master === 'other' ? 'verbunden – die Handy-App steuert' : 'verbunden, ohne Kontrolle';
+    const rows = [['Verbindung', conn], ['Gerät', u.model_name || '–'], ['Steuerung', u.simulated ? 'Simulator' : u.label || '–'],
+      u.simulated ? ['Zeitraffer', u.speed > 1 ? `×${Math.round(u.speed)}` : 'Echtzeit'] : null, u.simulated ? ['Simulierte Zeit', tf(d.now)] : null,
+      ['Autopilot', `${MODE[d.mode] || d.mode} · ${d.phase_label || ''}`]].filter(Boolean);
+    return `<dl class="tel-dl">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
+      <div class="row tel-dev-btns">${s.connected && !running(d) ? `<button class="btn ghost sm" data-act="disconnect" title="Verbindung zum Teleskop trennen">${icon('x')}Trennen</button>` : ''}
+        <a class="btn ghost sm" href="#/settings/telescope">Einstellungen</a></div>`;
   }
 
   const evRow = (e) => `<li class="ev-${e.kind}"><time>${tf(e.t)}</time><i></i><span>${esc(e.text)}</span></li>`;
+  const fold = (key, el) => {                                   // aufgeklappte Abschnitte merken (nur Bequemlichkeit)
+    try { if (localStorage.getItem('tel.fold.' + key) === '1') el.open = true; } catch { /* egal */ }
+    el.addEventListener('toggle', () => { try { localStorage.setItem('tel.fold.' + key, el.open ? '1' : '0'); } catch { /* egal */ } });
+  };
 
   // ---------------------------------------------------------------- Ansicht --- //
   async function telescopeView(el) {
     let d = await api(T + '/state');
     if (!el.isConnected) return;
     el.innerHTML = `<div class="tel">
-      <div class="tel-head"><div class="tel-title"><h1>Teleskop</h1><div class="row tel-tags"></div></div>
-        <div class="tel-btns"><button class="btn tel-link" data-act="connect" title="Nur verbinden: Status, Akku und Speicher ansehen. Das Teleskop bewegt sich dabei nicht.">${icon('check')}<span>Verbinden</span></button>
-          <button class="btn ghost tel-unlink" data-act="disconnect" title="Verbindung zum Teleskop trennen (nur wenn der Autopilot nicht läuft)">${icon('x')}<span>Trennen</span></button>
-          <button class="btn tel-plan-go" data-act="night" title="Ziele und Zeitplan dieser Nacht automatisch wählen – danach vermisst der Autopilot den Himmel und beobachtet bis zum Morgen">${icon('sparkle')}<span>Plane meine Nacht</span></button>
-          <button class="btn tel-go" data-act="go">${icon('play')}<span>Start</span></button>
-          <button class="btn ghost tel-pause" data-act="pause">${icon('pause')}<span>Pause</span></button>
-          <button class="btn danger tel-stop" data-act="park" title="Stoppt alles und klappt das Teleskop sofort ein">${icon('stop')}<span>Sofort einklappen</span></button></div></div>
+      <div class="tel-head"><div class="tel-title"><h1>Teleskop</h1><div class="row sm tel-line"></div></div>
+        <button class="btn danger tel-stop" data-act="park" aria-label="Sofort einklappen" title="Not-Aus: stoppt alles und klappt das Teleskop sofort ein">${icon('stop')}<span>Sofort einklappen</span></button></div>
       <div class="tel-alarm" hidden></div>
+      <div class="tel-herobox"></div>
       <div class="tel-notes"></div>
-      <div class="tel-autobox"></div>
       <div class="tel-grid">
-        <section class="panel tel-stagebox"><canvas class="tel-stage" aria-label="Animiertes Teleskop vor dem Himmel"></canvas></section>
-        <section class="panel tel-domebox"><canvas class="tel-dome" aria-label="Himmel von oben mit Bahnen der Ziele"></canvas></section>
+        <section class="panel tel-nowbox"><div class="panel-h"><h2>Jetzt</h2><span class="grow"></span><span class="mut sm tel-live-meta"></span></div>
+          <div class="tel-now-grid"><canvas class="tel-stage" aria-label="Teleskop vor dem Himmel: Höhe, Richtung und Ziel"></canvas>
+            <div class="tel-now-side"><div class="tel-current"></div>
+              <button type="button" class="tel-live-img" data-act="live-open" aria-label="Live-Bild groß öffnen" hidden><img alt="Aktuelles Vorschaubild vom Teleskop"></button>
+              <p class="tel-live-empty sm mut">${icon('camera')}Noch kein Live-Bild – es erscheint, sobald das Teleskop aufnimmt.</p></div></div></section>
+        <section class="panel tel-condbox"><div class="panel-h"><h2>Bedingungen</h2></div><div class="tel-conditions"></div></section>
       </div>
-      <section class="panel tel-live"><div class="panel-h"><h2>Live-Bild</h2><span class="grow"></span><span class="mut sm tel-live-meta"></span></div>
-        <button type="button" class="tel-live-img" data-act="live-open" aria-label="Live-Bild groß öffnen" hidden><img alt="Aktuelles Vorschaubild vom Teleskop"></button>
-        <div class="tel-live-empty"><b>Noch kein Bild</b><span class="mut sm">Sobald das Teleskop aufnimmt, erscheint hier das neueste Bild.</span></div></section>
-      <div class="tel-grid2">
-        <section class="panel"><div class="panel-h"><h2>Aktuelles Ziel</h2></div><div class="tel-current"></div></section>
-        <section class="panel"><div class="panel-h"><h2>Bedingungen</h2></div><div class="tel-conditions"></div></section>
-      </div>
-      <section class="panel tel-sky">${skyPanelHtml(true)}</section>
-      <section class="panel"><div class="panel-h"><h2>Nacht</h2><span class="grow"></span><span class="mut sm tel-night"></span>
+      <section class="panel tel-planbox"><div class="panel-h"><h2>Plan der Nacht</h2><span class="grow"></span>
           <button class="btn ghost sm" data-act="reload" title="Plan der Nacht neu aus dem Planer laden">${icon('refresh')}Plan neu laden</button></div>
-        <div class="tel-timeline"></div>
-        <form class="row tel-add"><input name="name" placeholder="Ziel hinzufügen, z. B. M 81" aria-label="Ziel hinzufügen"><select name="hours" aria-label="Dauer">
-          <option value="0.5">30 min</option><option value="1" selected>1 h</option><option value="2">2 h</option><option value="3">3 h</option></select>
-          <button class="btn ghost" type="submit">${icon('plus')}Hinzufügen</button><a class="sm" href="#/observatorium/plan">Zum Planer</a></form></section>
-      <div class="tel-props"></div>
-      <section class="panel"><div class="panel-h"><h2>Ereignisse</h2></div><ol class="tel-log"></ol></section></div>`;
+        <p class="mut sm tel-night"></p>
+        <div class="tel-plan-body"></div>
+        <div class="tel-plan-more">
+          <details class="tel-more tel-dome-more"><summary>Bahnen am Himmel</summary><canvas class="tel-dome" aria-label="Himmel von oben mit Bahnen der Ziele"></canvas>
+            <div class="row sm mut tel-legend"><span><i class="lg s-geplant"></i>geplant</span><span><i class="lg s-aktiv"></i>läuft</span><span><i class="lg s-fertig"></i>fertig</span>
+              <span><i class="lg s-verdeckt"></i>verdeckt</span><span><i class="lg s-uebersprungen"></i>übersprungen</span><span><i class="lg dark"></i>dunkel</span></div></details>
+          <details class="tel-more tel-add-more"><summary>Ziel von Hand hinzufügen</summary>
+            <form class="row tel-add"><input name="name" placeholder="z. B. M 81" aria-label="Ziel hinzufügen"><select name="hours" aria-label="Dauer">
+              <option value="0.5">30 min</option><option value="1" selected>1 h</option><option value="2">2 h</option><option value="3">3 h</option></select>
+              <button class="btn ghost" type="submit">${icon('plus')}Hinzufügen</button><a class="sm" href="#/observatorium/plan">Zum Planer</a></form></details></div></section>
+      <section class="panel tel-sky">${skyPanelHtml(true)}</section>
+      <details class="panel tel-fold tel-logbox"><summary><h2>Protokoll</h2><span class="mut sm tel-log-last"></span></summary><ol class="tel-log"></ol></details>
+      <details class="panel tel-fold tel-devbox"><summary><h2>Gerät</h2><span class="mut sm tel-dev-sum"></span></summary><div class="tel-dev"></div></details></div>`;
     const q = (s) => el.querySelector(s);
+    fold('dome', q('.tel-dome-more')); fold('log', q('.tel-logbox')); fold('dev', q('.tel-devbox'));
     const sv = stage(q('.tel-stage')), dv = dome(q('.tel-dome')), mv = skyMap(q('.tel-skymap'));
     let lastEv = 0, timer = 0, sig = {};
     const put = (key, html, sel) => { if (sig[key] !== html) { sig[key] = html; q(sel).innerHTML = html; return true; } return false; };
@@ -579,39 +615,21 @@
     function render() {
       const u = d.unit || {}, s = d.state || {};
       sv.set(d); dv.set(d);
-      const tags = [`<span class="chip ${u.simulated ? 'acc' : ''}">${u.simulated ? 'Simulation' : esc(u.label)}</span>`, `<span class="chip">${esc(u.model_name || '')}</span>`,
-        u.simulated && u.speed > 1 ? `<span class="chip">Zeitraffer ×${Math.round(u.speed)}</span>` : '',
-        `<span class="chip ${s.connected ? 'ok' : 'warn'}"><i style="background:currentColor"></i>${s.connected ? (s.master === 'us' ? 'verbunden' : s.master === 'other' ? 'App steuert' : 'verbunden, ohne Kontrolle') : 'nicht verbunden'}</span>`,
-        `<span class="chip ${d.mode === 'laeuft' ? 'acc' : d.mode === 'wartet' ? 'warn' : ''}">${esc(MODE[d.mode] || d.mode)} · ${esc(d.phase_label)}</span>`,
-        u.simulated ? `<span class="chip">Simulierte Zeit ${tf(d.now)}</span>` : ''].join('');
-      put('tags', tags, '.tel-tags');
-      const go = q('.tel-go'), pause = q('.tel-pause');
-      const running = ['laeuft', 'wartet'].includes(d.mode);
-      go.hidden = running; pause.hidden = !running;
-      const plan = q('.tel-plan-go');
-      plan.hidden = running || d.auto?.state === 'entwurf';
-      plan.querySelector('span').textContent = d.auto && d.auto.state !== 'fertig' ? 'Neu planen' : 'Plane meine Nacht';
-      go.classList.toggle('ghost', !s.connected || (!!d.auto && d.auto.state === 'entwurf'));
-      q('.tel-link').hidden = !!s.connected;
-      if (!d.auto) go.classList.toggle('ghost', !s.connected);   // Hauptaktion: Verbinden, solange nicht verbunden – sonst Start
-      q('.tel-unlink').hidden = !s.connected || running;
-      go.querySelector('span').textContent = d.mode === 'pausiert' ? 'Weiter' : 'Start';
+      const conn = !s.connected ? 'nicht verbunden' : s.master === 'us' ? 'verbunden' : s.master === 'other' ? 'App steuert' : 'verbunden, ohne Kontrolle';
+      put('line', `<span class="tel-dot ${s.connected ? 'ok' : 'warn'}"></span><span>${esc(conn)}</span>${u.model_name ? `<span>${esc(u.model_name)}</span>` : ''}${u.simulated ? `<span class="acc">Simulation${u.speed > 1 ? ' ×' + Math.round(u.speed) : ''}</span>` : ''}`, '.tel-line');
       const notes = [];
       if (u.error) notes.push(`<div class="notice err">${icon('alert')}<div><b>Teleskop-Treiber nicht bereit</b><div class="mut sm">${esc(u.error)} – solange läuft der Simulator.</div></div><span class="grow"></span><a class="btn sm ghost" href="#/settings/telescope">Einstellungen</a></div>`);
-      if (!s.connected && !running && !u.error) notes.push(`<div class="notice">${icon('check')}<div><b>Noch nicht verbunden</b><div class="mut sm">„Verbinden“ liest nur Status, Akku und Speicher – das Teleskop bewegt sich dabei nicht. Erst „Start“ startet den Autopiloten.</div></div></div>`);
-      if (d.hold) notes.push(`<div class="notice ${['weather', 'clouds', 'dew', 'fog', 'battery'].includes(d.hold.kind) ? 'err' : ''}">${icon(d.hold.kind === 'dawn' || d.hold.kind === 'twilight' ? 'star' : 'alert')}<div><b>${d.mode === 'fertig' ? 'Nacht beendet' : 'Wartet'}</b><div class="mut sm">${esc(d.hold.text)}</div></div></div>`);
       if (s.raw_enabled === false) notes.push(`<div class="notice">${icon('camera')}<div><b>Rohbilder am Teleskop aus</b><div class="mut sm">Für die AstroFlow-Pipeline in der Vaonis-App „Rohbilder speichern“ einschalten.</div></div></div>`);
       if (d.plan_note) notes.push(`<div class="notice err">${icon('alert')}<div><b>Plan gehört zu einem anderen Gerät</b><div class="mut sm">${esc(d.plan_note)}</div></div><span class="grow"></span><a class="btn sm ghost" href="#/observatorium/plan">Zum Planer</a></div>`);
-      else if (!d.items?.length && !d.auto) notes.push(`<div class="notice">${icon('dome')}<div><b>Noch kein Plan für diese Nacht</b><div class="mut sm">„Plane meine Nacht“ wählt Ziele und Zeitplan selbst – oder im Planer planen bzw. unten Ziele hinzufügen.</div></div><span class="grow"></span><a class="btn sm ghost" href="#/observatorium/plan">Zum Planer</a></div>`);
       put('notes', notes.join(''), '.tel-notes');
       const al = q('.tel-alarm');
       al.hidden = !d.alarm; if (d.alarm) al.innerHTML = `${icon('alert')}<b>${esc(d.alarm)}</b>`;
       alarm(d.alarm || null);
       const keep = q('.tel-always')?.checked;
-      if (put('auto', autoHtml(d), '.tel-autobox') && keep != null && q('.tel-always')) q('.tel-always').checked = keep;
+      if (put('hero', heroHtml(d), '.tel-herobox') && keep != null && q('.tel-always')) q('.tel-always').checked = keep;
       put('cur', currentHtml(d), '.tel-current');
       put('cond', conditionsHtml(d), '.tel-conditions');
-      put('tl', timelineHtml(d), '.tel-timeline');
+      put('plan', planHtml(d), '.tel-plan-body');
       put('props', proposalsHtml(d), '.tel-props');
       const sk = d.sky || {};
       if (sig.skymap !== JSON.stringify(sk)) { sig.skymap = JSON.stringify(sk); mv.set(d); }
@@ -620,7 +638,11 @@
       q('[data-act="scan-stop"]').hidden = !sk.scanning;
       q('[data-act="sky-accept"]').hidden = !sk.can_accept || !!sk.scanning;
       put('skymeta', sk.scanning ? 'läuft' : sk.measured ? 'gemessen' : '', '.tel-sky-meta');
-      put('night', d.night ? `Nacht ${esc(d.night)}${d.site?.name ? ' · ' + esc(d.site.name) : ''}${d.dark ? ` · dunkel ${tf(d.dark.start)}–${tf(d.dark.end)}` : ''}` : '', '.tel-night');
+      const a = d.auto;
+      put('night', [d.night ? `Nacht ${esc(dday2(d.night))}` : '', d.site?.name ? esc(d.site.name) : '', d.dark ? `dunkel ${tf(d.dark.start)}–${tf(d.dark.end)}` : '',
+        a?.moon != null ? `Mond ${a.moon} %` : '', a ? `höchstens ${a.max_targets} Ziele` : ''].filter(Boolean).join(' · '), '.tel-night');
+      put('dev', deviceHtml(d), '.tel-dev');
+      put('devsum', `${esc(u.simulated ? 'Simulator' : u.label || '')}${u.model_name ? ' · ' + esc(u.model_name) : ''}`, '.tel-dev-sum');
     }
     // Live-Bild: nur bei sichtbarer Seite und nur bei geänderter Signatur neu laden
     let liveSig = '', liveTimer = 0, liveTs = 0;
@@ -633,9 +655,9 @@
           if (!el.isConnected) return;
           const box = q('.tel-live-img'), empty = q('.tel-live-empty');
           box.hidden = !i.available; empty.hidden = !!i.available;
-          if (i.available && i.sig !== liveSig) { liveSig = i.sig; q('img', box).src = `/api${T}/preview?v=${encodeURIComponent(i.sig)}`; }
+          if (i.available && i.sig !== liveSig) { liveSig = i.sig; q('.tel-live-img img').src = `/api${T}/preview?v=${encodeURIComponent(i.sig)}`; }
           liveTs = i.available ? i.ts : 0;
-          q('.tel-live-meta').textContent = i.available ? `${tf(i.ts)} · ${i.n} ${i.n === 1 ? 'Bild' : 'Bilder'}` : '';
+          q('.tel-live-meta').textContent = i.available ? `Live-Bild ${tf(i.ts)} · ${i.n} ${i.n === 1 ? 'Bild' : 'Bilder'}` : '';
         } catch { /* nächster Versuch */ }
       }
       liveTimer = setTimeout(livePoll, 5000);
@@ -667,6 +689,7 @@
           log.insertAdjacentHTML('afterbegin', ev.events.slice().reverse().map(evRow).join(''));
           lastEv = ev.events.at(-1).id;
           while (log.children.length > 80) log.lastElementChild.remove();
+          q('.tel-log-last').textContent = `${tf(ev.events.at(-1).t)} · ${ev.events.at(-1).text}`;
         }
         render();
       } catch { /* nächster Versuch */ }
