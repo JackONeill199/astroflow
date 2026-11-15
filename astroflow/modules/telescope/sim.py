@@ -386,17 +386,26 @@ class SimFtp:
 
     @classmethod
     def _build(cls) -> dict:
-        # Ordnerschema wie am Gerät (Probe 14.11.2026): <datum>_<zeit>_plan_<name> / NN-observation-<objekt>
+        # Ordnerschema wie am Gerät (Probe 14.11.2026): <datum>_<zeit>_plan_<name> / NN-observation-<objekt>; Einzelbeobachtung
+        # (Echtbetrieb 15.11.2026, so startet der Autopilot jedes Ziel) ohne Plan-Ebene: <datum>_<zeit>_observation_<objekt>
         obs = {"2026-11-12_19-58-10_plan_Demo": [("01-observation-m31", "M31", "2026-11-12T20:%02d:00"), ("02-observation-m45", "M45", "2026-11-12T22:%02d:00")],
                "2026-11-13_22-41-05_plan_Demo": [("01-observation-m81", "M81", "2026-11-13T23:%02d:00")]}
+        single = [("2026-11-14_23-59-44_observation_M1_Krebsnebel", "M1", "2026-11-15T00:%02d:00")]
+
+        def imgs_of(obj, when):
+            imgs = {"_m": when[:10].replace("-", "") + "235900"}
+            for k in range(4):
+                imgs[f"img-{k:04d}.fits"] = cls._fits(obj, k, when % k)
+            return imgs
         tree = {"user": {}}
         for p, lst in obs.items():
             tree["user"][p] = {"_m": p[:10].replace("-", "") + "235900"}
             for name, obj, when in lst:
-                imgs = {"_m": when[:10].replace("-", "") + "235900"}
-                for k in range(4):
-                    imgs[f"img-{k:04d}.fits"] = cls._fits(obj, k, when % k)
+                imgs = imgs_of(obj, when)
                 tree["user"][p][name] = {"_m": imgs["_m"], "01-images-initial": imgs}
+        for name, obj, when in single:
+            imgs = imgs_of(obj, when)
+            tree["user"][name] = {"_m": imgs["_m"], "01-images-initial": imgs}
         return tree
 
     def login(self):

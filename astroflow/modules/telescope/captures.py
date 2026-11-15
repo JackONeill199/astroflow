@@ -1,7 +1,8 @@
 """Aufnahmen, die schon auf dem Teleskop liegen, in AstroFlow importieren (Importansicht: „Vom Teleskop“).
 
-Liest per anonymem FTP (nur LIST/RETR) die Beobachtungen unter `user/<plan>/<beobachtung>/0x-images-*/img-NNNN.fits` und
-kopiert gewählte Beobachtungen nach `input/Teleskop/<Gerät>/<plan>/<beobachtung>/`. Danach stößt der Dienst `scan_input`
+Liest per anonymem FTP (nur LIST/RETR) die Beobachtungen unter `user/<plan>/<beobachtung>/0x-images-*/img-NNNN.fits` bzw.
+(Einzelbeobachtung) `user/<beobachtung>/0x-images-*/…` und kopiert gewählte Beobachtungen nach
+`input/Teleskop/<Gerät>/<plan>/<beobachtung>/` bzw. `input/Teleskop/<Gerät>/<beobachtung>/`. Danach stößt der Dienst `scan_input`
 (Bilder-Modul) das Einlesen an. Gewählt werden nur Beobachtungen aus der zuletzt gelesenen Liste – der Browser schickt keine
 Pfade, nur deren Schlüssel. Bereits vorhandene Dateien gleicher Größe werden übersprungen (Import fortsetzbar).
 """
@@ -15,7 +16,7 @@ import time
 import traceback
 from pathlib import Path
 
-from .frames import FRAME, IMAGES_DIR, FtpFrames, safe_name
+from .frames import FRAME, SINGLE_RE, FtpFrames, safe_name
 
 CACHE_S = 30
 MAX_OBS = 300
@@ -34,43 +35,64 @@ OBS_RE = re.compile(r"^\d{1,3}-observation-(.{1,80})$", re.I)
 CATALOG_RE = re.compile(r"^(m|ngc|ic|sh2|c|b|abell|arp)[ -]?(\d+)$", re.I)
 
 
+CAT_PREFIX = re.compile(r"^(m|ngc|ic|sh2|c|b|abell|arp)$", re.I)
+
+
+def _cat(prefix: str, num: str) -> str:
+    p = prefix.upper() if len(prefix) <= 3 else prefix.capitalize()
+    return f"M{num}" if p == "M" else f"{p} {num}"
+
+
+def nice(raw: str) -> str:
+    """„m77“ → „M77“, „M1_Krebsnebel“ → „M1 Krebsnebel“, „C_51_IC_1613_“ → „C 51 IC 1613“ (Unterstriche weg, Katalognummern)."""
+    words = [w for w in re.split(r"[_ ]+", raw) if w]
+    out, k = [], 0
+    while k < len(words):
+        w = words[k]
+        c = CATALOG_RE.match(w)
+        if c:
+            out.append(_cat(c.group(1), c.group(2)))
+        elif CAT_PREFIX.match(w) and k + 1 < len(words) and words[k + 1].isdigit():
+            out.append(_cat(w, words[k + 1]))
+            k += 1
+        else:
+            out.append(w)
+        k += 1
+    return " ".join(out) or raw
+
+
 def pretty(plan: str, obs: str) -> tuple[str, str]:
-    """Lesbare Namen: („M77“, „Plan Astroflow · 13.11.2026 17:21“). Unbekanntes Schema → Ordnernamen unverändert."""
+    """Lesbare Namen: („M77“, „Plan Astroflow · 13.11.2026 17:21“) bzw. Einzelbeobachtung („M1 Krebsnebel“,
+    „Einzelbeobachtung · 14.11.2026 23:59“). Unbekanntes Schema → Ordnernamen unverändert."""
+    s = SINGLE_RE.match(obs) if not plan else None
+    if s:
+        return nice(s.group(6)) or obs, f"Einzelbeobachtung · {s.group(3)}.{s.group(2)}.{s.group(1)} {s.group(4)}:{s.group(5)}"
     m = OBS_RE.match(obs)
-    name = obs
-    if m:
-        raw = m.group(1).replace("_", " ").strip()
-        c = CATALOG_RE.match(raw)
-        name = f"{c.group(1).upper() if len(c.group(1)) <= 3 else c.group(1).capitalize()} {c.group(2)}".replace("M ", "M") if c else raw
+    name = nice(m.group(1)) if m else obs
     p = PLAN_RE.match(plan)
-    sub = f"Plan {p.group(6).replace('_', ' ') or 'ohne Namen'} · {p.group(3)}.{p.group(2)}.{p.group(1)} {p.group(4)}:{p.group(5)}" if p else plan
+    sub = f"Plan {p.group(6).replace('_', ' ') or 'ohne Namen'} · {p.group(3)}.{p.group(2)}.{p.group(1)} {p.group(4)}:{p.group(5)}" if p         else plan or "Einzelbeobachtung"
     return name, sub
 
 
 def list_captures(ftp: FtpFrames) -> list[dict]:
-    """Beobachtungen mit Rohbildern (neueste zuerst). Schlüssel = „<plan>/<beobachtung>“."""
+    """Beobachtungen mit Rohbildern (neueste zuerst). Schlüssel = „<plan>/<beobachtung>“ bzw. „<beobachtung>“
+    (Einzelbeobachtung) – Pfad relativ zu `user/` aus dieser Liste, nie vom Browser."""
     out = []
     f = ftp._ftp()
     try:
-        for plan, pf in ftp._list(f, ftp.root):
-            if pf.get("type", "dir") != "dir":
-                continue
-            for obs, of in ftp._list(f, f"{ftp.root}/{plan}"):
-                if of.get("type", "dir") != "dir" or len(out) >= MAX_OBS:
-                    continue
-                base = f"{ftp.root}/{plan}/{obs}"
-                frames, size = 0, 0
-                for sub, sf in ftp._list(f, base):
-                    if not IMAGES_DIR.match(sub) or sf.get("type", "dir") != "dir":
-                        continue
-                    for name, x in ftp._list(f, f"{base}/{sub}", None):
-                        if FRAME.match(name):
-                            frames += 1
-                            size += int(x.get("size") or 0)
-                if frames:
-                    name, sub = pretty(plan, obs)
-                    out.append({"key": f"{plan}/{obs}", "plan": plan, "observation": obs, "name": name, "sub": sub, "frames": frames, "bytes": size,
-                                "modified": _ts(of.get("modify") or pf.get("modify"))})
+        for rel, plan, obs, modify, imgs in ftp.observations(f):
+            if len(out) >= MAX_OBS:
+                break
+            frames, size = 0, 0
+            for sub, _ in ftp.images_dirs(f, rel, imgs):
+                for name, x in ftp._list(f, f"{ftp.root}/{rel}/{sub}", None):
+                    if FRAME.match(name):
+                        frames += 1
+                        size += int(x.get("size") or 0)
+            if frames:
+                name, sub = pretty(plan, obs)
+                out.append({"key": rel, "plan": plan, "observation": obs, "name": name, "sub": sub, "frames": frames, "bytes": size,
+                            "modified": _ts(modify)})
     finally:
         try:
             f.quit()
@@ -150,7 +172,8 @@ class CaptureImport:
         try:
             for e in pick:
                 j["current"] = e["observation"]
-                dest = input_dir / "Teleskop" / safe_name(model) / safe_name(e["plan"]) / safe_name(e["observation"])
+                dest = input_dir / "Teleskop" / safe_name(model)
+                dest = (dest / safe_name(e["plan"]) if e["plan"] else dest) / safe_name(e["observation"])    # Einzelbeobachtung: ohne Plan-Ebene
                 got = self._copy(ftp, e, dest, j)
                 done = self.imported()
                 done[f"{ftp.host}|{e['key']}"] = {"frames": e["frames"], "at": time.time(), "new": got}
@@ -172,10 +195,8 @@ class CaptureImport:
         new = 0
         f = ftp._ftp()
         try:
-            base = f"{ftp.root}/{e['plan']}/{e['observation']}"
-            for sub, sf in ftp._list(f, base):
-                if not IMAGES_DIR.match(sub) or sf.get("type", "dir") != "dir":
-                    continue
+            base = f"{ftp.root}/{e['key']}"
+            for sub, _ in ftp.images_dirs(f, e["key"]):
                 folder = dest if sub.lower().startswith("01-") else dest / safe_name(sub)
                 folder.mkdir(parents=True, exist_ok=True)
                 for name, x in sorted(ftp._list(f, f"{base}/{sub}", None)):
