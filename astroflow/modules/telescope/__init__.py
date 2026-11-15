@@ -201,6 +201,7 @@ class Module(BaseModule):
                 raise DriverError("Erst den Autopilot beenden (Einklappen), dann den Treiber wechseln.")
             old.stop()
             self.units[0] = Unit(self, settings(self.ctx.store))
+            self.units[0].pilot.adopt(old.pilot)          # von Hand hinzugefügte Ziele u. a. nicht verlieren
             self.units[0].start()
 
     def router(self):

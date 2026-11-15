@@ -133,15 +133,14 @@ def test_wolken_sind_kein_hindernis():
 
 
 def test_kurzer_wolkenzug_sperrt_keine_richtung():
-    """Echtbetrieb 14.11.2026 (C 51): ein paar Minuten Wolke mitten in einer guten Aufnahme → weiter aufnehmen, keine
-    Sperre, kein Vorschlag."""
-    sc = sim.Scenario(clouds=[(T0 + 1.0 * H, T0 + 1.0 * H + 7 * 60)])
+    """Ein paar Minuten Wolke mitten in einer guten Aufnahme → weiter aufnehmen, keine Sperre, kein Vorschlag."""
+    sc = sim.Scenario(clouds=[(T0 + 1.0 * H, T0 + 1.0 * H + 3 * 60)])
     p, d, clock = make([item(M31, 0.2, 1.6)], sc)
     run(p, clock, 1.7)
     m31 = p.items[0]
     assert m31.status == "fertig" and m31.rejected > ap.WINDOW_FRAMES
     assert not p.blocked and not p.proposals
-    assert "Wolkenzug" in texts(p) and "verdeckt" not in texts(p)
+    assert "wieder brauchbare Bilder" in texts(p) and "verdeckt" not in texts(p)
 
 
 def test_einmal_verworfen_ist_kein_sicheres_hindernis():
@@ -1081,26 +1080,45 @@ def test_verbindung_weg_ohne_geraeteplan_kein_falscher_hinweis(monkeypatch):
     assert "Verbindung zum Teleskop verloren" in texts(p) and "Plan im Gerät" not in texts(p)
 
 
-@pytest.mark.parametrize("name,frames,bad", [("C 51", 75, 25), ("M1", 71, 23)])
-def test_echtbetrieb_drittel_verworfen_ist_nicht_verdeckt(name, frames, bad):
-    """Echtbetrieb 14.11.2026: C 51 (75 Bilder, 25 verworfen) und M1 (71 Bilder, 23 verworfen, Taupunktabstand 1 °C) wurden als
-    „verdeckt“ abgebrochen. Verworfene Bilder in Schüben von bis zu 7 am Stück (Wolkenzug, 10 s je Bild) – nie verdeckt."""
-    p, d, clock = make([item(M31, 0.0, 3.0)], cfg={"fallback": False})
-    cur = p.items[0]
+def _feed(p, cur, clock, bad_at):
+    """Bilder einzeln (10 s) einspielen; bad_at(n) → verworfen? Gibt die Bildnummer zurück, bei der `_failed` greift."""
     cur.status, cur.seen = "aktiv", True
-    pattern = ([False] * 4 + [True] * 7) * 3                       # 33 Bilder mit 3 Schüben zu je 7 verworfenen
-    pattern = (pattern + [False] * frames)[:frames]
-    while sum(pattern) < bad:                                      # restliche Verwürfe einzeln verteilen
-        k = pattern.index(False, len(pattern) - 3 * (bad - sum(pattern)))
-        pattern[k] = True
     rej, t = 0, clock.now()
-    for n, is_bad in enumerate(pattern, 1):
-        rej += is_bad
+    for n in range(1, 400):
+        rej += bool(bad_at(n))
         s = TelescopeState(connected=True, parked=False, target={"id": cur.id}, step="capture", frames=n, stacked=n - rej, rejected=rej)
         t += 10
         p._track(s, t)
-        assert not p._failed(cur, s, t), f"{name}: nach {n} Bildern ({rej} verworfen) fälschlich verdeckt"
-    assert rej == bad
+        if p._failed(cur, s, t):
+            return n, rej
+    return None, rej
+
+
+def test_m1_balkon_zunehmend_verdeckt_wird_erkannt():
+    """Echtbetrieb 14.11.2026: M1 (Az 146°, Höhe 59°) lief zunehmend hinter den Balkon – Verwurf langsam steigend, zwischendurch
+    gute Bilder, nach 71 Bildern 23 verworfen (32 %). Das ist ein Hindernis und muss als verdeckt erkannt werden, spätestens
+    `BAD_GRACE_S` nachdem die letzten 30 Bilder überwiegend verworfen sind."""
+    p, d, clock = make([item(M31, 0.0, 3.0)], cfg={"fallback": False})
+    acc = {"x": 0.0}
+
+    def bad(n):                                    # Anteil steigt gleichmäßig: 0 → 64 % bei Bild 71, danach weiter bis 100 %
+        acc["x"] += min(1.0, 0.64 * n / 71)
+        if acc["x"] >= 1.0:
+            acc["x"] -= 1.0
+            return True
+        return False
+    hit, rej = _feed(p, p.items[0], clock, bad)
+    assert hit is not None, "zunehmendes Hindernis rutscht durch"
+    assert hit <= 71 + ap.LONG_FRAMES + ap.BAD_GRACE_S / 10, hit
+    assert rej / hit < 0.8                         # erkannt, obwohl insgesamt längst nicht „fast alles“ verworfen ist
+
+
+def test_wolkenzug_mit_pausen_erst_nach_wartezeit():
+    """Schübe von je 7 verworfenen Bildern mit 4 guten dazwischen: nicht sofort verdeckt, sondern erst nach `BAD_GRACE_S`
+    (kann auch ein Hindernis sein – C 51 ist ungeklärt). Das erste Scheitern sperrt ohnehin nur vorläufig."""
+    p, d, clock = make([item(M31, 0.0, 3.0)], cfg={"fallback": False})
+    hit, _ = _feed(p, p.items[0], clock, lambda n: n > 40 and (n - 41) % 11 >= 4)
+    assert hit is not None and hit >= 40 + ap.BAD_GRACE_S / 10
 
 
 def test_dauerhaft_verworfen_ist_verdeckt():
@@ -1118,7 +1136,7 @@ def test_dauerhaft_verworfen_ist_verdeckt():
         if p._failed(cur, s, t):
             hit = k
             break
-    assert hit is not None and 60 + ap.BAD_GRACE_S / 10 <= hit <= 60 + ap.BAD_GRACE_S / 10 + ap.WINDOW_FRAMES
+    assert hit is not None and 60 + ap.BAD_GRACE_S / 10 <= hit <= 60 + ap.BAD_GRACE_S / 10 + ap.LONG_FRAMES
 
 
 def test_dienst_telescope_sky():
@@ -1161,3 +1179,21 @@ def test_akku_reicht_nicht_vorige_beobachtung_wird_gestoppt():
     p, d, clock = make([item(M15, 0.0, 0.1), item(M31, 0.1, 3.0)], sim.Scenario(battery=18, battery_per_h=20), cfg={"fallback": False})
     run(p, clock, 0.2, step=20)
     assert "starte M31 nicht mehr" in texts(p) and "stop" in d.commands and d.step != "capture"
+
+
+def test_einstellungen_speichern_behaelt_eigene_ziele(tmp_path, monkeypatch):
+    """Echtbetrieb 14.11.2026: Wer Einstellungen änderte, verlor von Hand hinzugefügte Ziele (M1) – der Autopilot wird neu
+    gebaut und übernimmt sie jetzt (ebenso Sperren, Vorschläge, Protokoll)."""
+    app = _app(tmp_path, monkeypatch)
+    with TestClient(app, base_url="http://127.0.0.1:8766", client=("127.0.0.1", 50000),
+                    headers={"Origin": "http://127.0.0.1:8766"}) as c:
+        assert c.post("/api/telescope/targets", json={"name": "M 1", "hours": 1}).status_code == 200
+        app.state.modules["telescope"].unit.pilot.proposals.append({"az": 146.0, "alt": 59.0, "t": 0.0, "target": "M1", "sure": True})
+        old = app.state.modules["telescope"].unit.pilot
+        assert c.post("/api/telescope/settings", json={"cloud_max": 55}).status_code == 200
+        new = app.state.modules["telescope"].unit.pilot
+        assert new is not old
+        assert [i.name for i in new.items if i.manual] == [i.name for i in old.items if i.manual] and new.items
+        assert new.proposals and "hinzugefügt" in texts(new)
+        names = [i["name"] for i in c.get("/api/telescope/state").json()["items"]]
+        assert any("1" in n for n in names)

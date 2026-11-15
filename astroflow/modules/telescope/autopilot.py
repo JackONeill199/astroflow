@@ -39,13 +39,18 @@ WEATHER_EVERY = 900          # s zwischen zwei Wetterabfragen
 RECONNECT_EVERY = 30
 PARK_CONFIRM_S = 150         # so lange darf Einklappen dauern (Probe 3: ~47 s, plus evtl. laufendes Öffnen ~49 s)
 PARK_TRIES = 3
-# „Fast nur verworfene Bilder“ (Echtbetrieb 14.11.2026: ein kurzer Wolkenzug im 6er-Fenster sperrte C 51 bei 33 % Verwurf):
-# verworfen über das Fenster UND entweder insgesamt mindestens TOTAL_BAD oder schon BAD_GRACE_S am Stück – so lange
-# nimmt das Gerät weiter auf (ein Wolkenzug ist meist vorher durch).
+# „Zu viele verworfene Bilder“ – zwei Fenster: kurz (≥ 80 % der letzten 10) für ein plötzliches Hindernis, lang (≥ 50 % der
+# letzten 30) für eines, das zunehmend verdeckt und zwischendurch noch gute Bilder lässt (Echtbetrieb 14.11.2026: M1 hinter
+# dem Balkon, Verwurf langsam steigend, Endstand 32 %). Verdeckt, wenn eines davon zutrifft UND insgesamt ≥ 80 % verworfen
+# sind (nie Sterne gesehen) bzw. es schon BAD_GRACE_S anhält – so lange nimmt das Gerät weiter auf (kurzer Wolkenzug).
+# Ob Hindernis oder Wolke, entscheidet `_failure` (erstes Scheitern sperrt nur vorläufig).
 WINDOW_FRAMES = 10
 BAD_RATIO = 0.8
-TOTAL_BAD = 0.8                # insgesamt so viel verworfen → nie Sterne gesehen, sofort verdeckt
-BAD_GRACE_S = 10 * 60
+LONG_FRAMES = 30
+LONG_BAD = 0.5
+LONG_OK = 0.3                # erst darunter gilt es wieder als gut (Hysterese)
+TOTAL_BAD = 0.8
+BAD_GRACE_S = 5 * 60
 CLOUDY = 60                  # % Bewölkung laut Wetterdaten: dann nie „sicher“ ein Hindernis
 SKY_FRESH_S = 15 * 60        # Dienst `telescope_sky`: so alt darf die Messung höchstens sein
 SKY_MIN_FRAMES = 5           # … und so viele Bilder umfassen
@@ -164,6 +169,16 @@ class Autopilot:
         self.phase_since: float | None = None     # seit wann die aktuelle Phase gilt (Restdauer)
         self.took: dict[str, float] = {}          # gemessene Dauer je Phase (ersetzt den Erfahrungswert)
         self.lock = threading.RLock()
+
+    def adopt(self, old: "Autopilot"):
+        """Neuer Autopilot nach geänderten Einstellungen/Treiber (`Module.rebuild`): von Hand hinzugefügte Ziele, gesperrte
+        Richtungen, offene Horizont-Vorschläge und das Protokoll übernehmen – sonst gingen sie beim Speichern verloren."""
+        with old.lock:
+            self.items = [Item(**vars(i)) for i in old.items if i.manual and i.status == "geplant"]
+            self.blocked = [dict(b) for b in old.blocked]
+            self.proposals = [dict(q) for q in old.proposals]
+            self.events = deque(old.events, maxlen=MAX_EVENTS)
+            self.seq = old.seq
 
     # ------------------------------------------------------------ Protokoll --- #
     def log(self, text: str, kind: str = "info", now: float | None = None):
@@ -737,18 +752,23 @@ class Autopilot:
             return False
         if s.astrometry_failed:
             return it.seen                # nur, wenn das Gerät an *diesem* Versuch gearbeitet hat (kein alter Fehler)
-        base = next((x for x in reversed(self.samples) if x[0] <= s.frames - WINDOW_FRAMES), None) \
-            if s.frames >= WINDOW_FRAMES else None
-        if base is None or (s.rejected - base[1]) / max(1, s.frames - base[0]) < BAD_RATIO:
-            if self.bad_since is not None and base is not None:
-                self.log(f"{it.name}: wieder brauchbare Bilder – war nur ein Wolkenzug.", "info", now)
-            self.bad_since = None if base is not None else self.bad_since
+        def share(n):                     # Anteil verworfener Bilder unter den letzten n (None: noch zu wenige)
+            base = next((x for x in reversed(self.samples) if x[0] <= s.frames - n), None) if s.frames >= n else None
+            return None if base is None else (s.rejected - base[1]) / max(1, s.frames - base[0])
+        short, long_ = share(WINDOW_FRAMES), share(LONG_FRAMES)
+        if not ((short or 0) >= BAD_RATIO or (long_ or 0) >= LONG_BAD):
+            # Hysterese: die Wartezeit beginnt erst neu, wenn es wirklich besser ist – sonst rutscht ein Hindernis, das um
+            # die Schwelle pendelt (zwischendurch gute Bilder), immer wieder durch
+            if self.bad_since is not None and (short or 0) < LONG_BAD and (long_ is None or long_ < LONG_OK):
+                self.log(f"{it.name}: wieder brauchbare Bilder.", "info", now)
+                self.bad_since = None
             return False
         if s.rejected / max(1, s.frames) >= TOTAL_BAD:
             return True
         if self.bad_since is None:
             self.bad_since = now
-            self.log(f"{it.name}: fast nur verworfene Bilder – vermutlich ein Wolkenzug, nehme weiter auf.", "info", now)
+            self.log(f"{it.name}: viele verworfene Bilder – Wolke oder Hindernis, nehme noch {BAD_GRACE_S // 60} min weiter auf.",
+                     "info", now)
         return now - self.bad_since >= BAD_GRACE_S
 
     def _stalled(self, it: Item, s: TelescopeState, now: float):

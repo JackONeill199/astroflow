@@ -250,9 +250,12 @@ Gebaut nach Abschnitt 4–7; Abweichungen und Details:
 - **Plan:** Blöcke des Planers für Nacht und Gerät (`plan_items`, `observatory.plan`); ohne Plan im Simulator eine Vorführ-Nacht
   aus dem Katalog (`demo_items`); Ziele von Hand (`POST /targets`, Katalogname). Lücke im Plan → nächstes freies Ziel früher beginnen.
 - **Ersatzziel** für ein verdecktes/zu tiefes Ziel höchstens 30 min am Stück (`SUB_MAX`), danach neuer Versuch beim geplanten Ziel.
-- **Hindernis oder Wolke** (`_failed`/`_failure`, seit dem Echtbetrieb 14.11.2026 strenger – ein kurzer Wolkenzug hatte C 51 bei 33 %
-  Verwurf gesperrt): Scheitern = Astrometrie gescheitert oder ≥ 80 % verworfen in den letzten 10 Bildern **und** zusätzlich ≥ 80 %
-  verworfen insgesamt (nie Sterne gesehen) bzw. schon 10 min am Stück (`BAD_GRACE_S`; so lange nimmt das Gerät weiter auf, Protokoll „Wolkenzug“).
+- **Hindernis oder Wolke** (`_failed`/`_failure`, überarbeitet nach dem Echtbetrieb 14.11.2026: C 51 bei 33 % Verwurf gesperrt –
+  ungeklärt; M1 hinter dem Balkon bei 32 % – echtes Hindernis, Verwurf langsam steigend mit guten Bildern dazwischen):
+  Scheitern = Astrometrie gescheitert oder viele verworfene Bilder – ≥ 80 % der letzten 10 (plötzlich) bzw. ≥ 50 % der letzten 30
+  (zunehmend) – **und** zusätzlich ≥ 80 % insgesamt (nie Sterne gesehen) bzw. das hält schon 5 min an (`BAD_GRACE_S`, so lange nimmt
+  das Gerät weiter auf; neu beginnt die Wartezeit erst unter 30 % der letzten 30 – Hysterese, damit ein Hindernis an der Schwelle
+  nicht durchrutscht). M1-Muster: verdeckt nach ~100 Bildern statt 71.
   **Sicheres Hindernis** nur, wenn dieselbe Richtung in einem früheren, getrennten Versuch (> 20 min vorher) schon gescheitert ist
   **und** eine andere Richtung (≥ 20°) in den letzten 20 min gute Bilder lieferte, die dort nicht durch späteres Scheitern überholt
   sind, oder die Vorhersage klar ist – nie bei ≥ 60 % Bewölkung laut Wetterdaten (`CLOUDY`). Nur dann ein Vorschlag für die
