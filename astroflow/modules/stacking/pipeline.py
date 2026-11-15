@@ -70,6 +70,30 @@ def frame_time(r: dict) -> float | None:
     return d.timestamp() + 0.5 * float(i.get("exptime") or 0)
 
 
+def glow_sample(have: list, n: int = GLOW_SAMPLE) -> list | None:
+    """Stichprobe für die Glühmessung einer Nacht, zeitlich über die Serie verteilt (je Zeitabschnitt ein Frame), oder None,
+    wenn sie kein ortsfestes Glühen von stehendem Himmelslicht trennen kann: Spanne < GLOW_MIN_SPAN_S oder die mittlere Hälfte
+    der Stichprobe < GLOW_MIN_SPAN_S / 2 (sonst bestimmte ein kurzer Block den Median – Review PR #140: 30 Frames in 5 min
+    plus einer 25 min später). Ohne Aufnahmezeiten wie bisher jeder k-te Frame."""
+    timed = sorted(((t, ri) for ri in have if (t := frame_time(ri[0])) is not None), key=lambda x: x[0])
+    if len(timed) < len(have) / 2:
+        return have[:: max(1, len(have) // n)][:n]
+    t0, t1 = timed[0][0], timed[-1][0]
+    if t1 - t0 < calibration.GLOW_MIN_SPAN_S:
+        return None
+    bins: dict = {}
+    for t, ri in timed:
+        bins.setdefault(min(n - 1, int((t - t0) / (t1 - t0) * n)), (t, ri))
+    pick = list(bins.values())
+    if len(pick) < calibration.GLOW_MIN_FRAMES:                     # Lücken: mit den übrigen gleichmäßig auffüllen
+        rest = [x for x in timed if x not in pick]
+        pick += rest[:: max(1, len(rest) // (calibration.GLOW_MIN_FRAMES - len(pick)))][: calibration.GLOW_MIN_FRAMES - len(pick)]
+    q1, q3 = np.percentile([t for t, _ in pick], [25, 75])
+    if q3 - q1 < calibration.GLOW_MIN_SPAN_S / 2:
+        return None
+    return [ri for _, ri in sorted(pick, key=lambda x: x[0])]
+
+
 def _glow_changed(old, new) -> bool:
     """Glühamplitude (ADU) so verschieden, dass die alte Analyse nicht mehr gilt (Faktor 2 und mindestens 20 ADU)."""
     try:
@@ -476,14 +500,13 @@ class Pipeline:
         for (key, night), items in groups.items():
             have = [(r, i) for r, i in items if not r["deleted"] and Path(r["path"]).exists()]
             need_glow = glow and night not in glib.nights(key, with_map=True) and len(have) >= calibration.GLOW_MIN_FRAMES
-            if need_glow:
-                # kurze Serie (Feld steht still): Himmelslicht/Schleier bliebe als „Glühen“ im Median – dann gilt die
-                # Bibliothek der Kamera bzw. (erste Nacht) kein Modell, bis eine längere Serie kommt
-                ts = [t for t in (frame_time(r) for r, _ in have) if t is not None]
-                need_glow = not ts or max(ts) - min(ts) >= calibration.GLOW_MIN_SPAN_S
+            gsample = glow_sample(have) if need_glow else None
+            need_glow = gsample is not None                # zu kurze Serie: Bibliothek der Kamera bzw. (erste Nacht) kein Modell
             need_bad = night not in dlib.nights(key) and len(have) >= calibration.DEFECT_MIN_FRAMES
             if need_glow or need_bad:
-                sample = have[:: max(1, len(have) // GLOW_SAMPLE)][:GLOW_SAMPLE]
+                dsample = have[:: max(1, len(have) // GLOW_SAMPLE)][:GLOW_SAMPLE] if need_bad else []
+                gids, dids = {r["id"] for r, _ in gsample or []}, {r["id"] for r, _ in dsample}
+                sample = list({r["id"]: (r, i) for r, i in dsample + (gsample or [])}.values())   # jede Datei einmal lesen
                 what = " und ".join(t for t, n in (("Sensorglühen", need_glow), ("Hotpixel", need_bad)) if n)
                 progress(0.02, "Analyse", f"{what} messen ({night}, {len(sample)} Aufnahmen)")
 
@@ -491,9 +514,9 @@ class Pipeline:
                     r, i = ri
                     raw, m = self._load(r["path"], i, lib, night, cache)
                     cfa = bool(i["bayerpat"]) and raw.ndim == 2
-                    g = calibration.glow_profiles(raw, cfa) if need_glow and m.dark is None else None
+                    g = calibration.glow_profiles(raw, cfa) if r["id"] in gids and m.dark is None else None
                     fix = cache.get(("cosmetic", r["path"]))
-                    c = calibration.defect_candidates(raw, cfa, fixed=fix[1] if fix else None) if need_bad else None
+                    c = calibration.defect_candidates(raw, cfa, fixed=fix[1] if fix else None) if r["id"] in dids else None
                     return g, c, raw.size
 
                 with ThreadPoolExecutor(self.s.threads) as ex:
@@ -503,7 +526,7 @@ class Pipeline:
                     if med:
                         glib.add(key, night, med)
                 if need_bad:
-                    bad = calibration.defect_map([c for _, c, _ in res], res[0][2])
+                    bad = calibration.defect_map([c for _, c, _ in res if c is not None], res[0][2])
                     dlib.add(key, night, bad if bad is not None else np.zeros(0, np.int64))
             if glow:
                 med, src = glib.medians(key, night)

@@ -227,8 +227,9 @@ Stand im alten Text unter Schritt 7 eingeordnet; gehören technisch zu `Pipeline
    abschaltbar per Projektoption `sensor_glow`. Gemessen (135 IC-405-Frames): Randglühen im Stack 5,9σ/3,6σ → 0,1σ/0,6σ.
    **Schutz vor gelerntem Himmelslicht** (14./15.11.2026, Vespera): 15 beschlagene M-35-Frames aus 3 Minuten wurden als Glühen der Nacht
    gelernt (312 ADU statt 2–9 ADU), der Abzug prägte C 51 und M 1 derselben Nacht einen dunklen Fleck mit Kante auf (`grad` 0,5 → 14) –
-   im Rohbild waren beide sauber. Seitdem: (1) gemessen wird eine Nacht nur, wenn die Stichprobe ≥ `GLOW_MIN_SPAN_S` (20 min) umfasst
-   (Feld steht sonst still), sonst Bibliothek bzw. kein Modell; (2) `GlowLibrary.implausible`: Nacht > max(4 × Median der übrigen
+   im Rohbild waren beide sauber. Seitdem: (1) Stichprobe zeitlich verteilt (`pipeline.glow_sample`: je Zeitabschnitt ein Frame);
+   gemessen wird nur, wenn sie ≥ `GLOW_MIN_SPAN_S` (20 min) umfasst und ihre mittlere Hälfte ≥ 10 min (sonst bestimmt ein kurzer Block
+   mit stehendem Feld den Median – Review: 30 Frames in 5 min + 1 Frame 25 min später), sonst Bibliothek bzw. kein Modell; (2) `GlowLibrary.implausible`: Nacht > max(4 × Median der übrigen
    Nächte, +40 ADU) zählt weder für sich noch für den Bibliotheksmedian (Quelle „… eigene Messung unplausibel“); (3) weicht die
    Glühamplitude einer Nacht stark von `glow_info` der letzten Analyse ab (`pipeline._glow_changed`: Faktor 2 und ≥ 20 ADU), werden
    deren Frames neu analysiert (Messwerte, Vorschau) und neu gestackt; die Nacht bleibt in `projects.options.glow_pending`, bis das

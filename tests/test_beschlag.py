@@ -317,3 +317,32 @@ def test_glow_pending_kept_while_raw_frames_offline(tmp_path, monkeypatch):
     assert "glow_pending" not in opts()
     after = {r["id"]: json.loads(r["metrics"]) for r in db.q("SELECT id, metrics FROM frames WHERE project_id=?", (pid,))}
     assert all("marke" not in after[i] for i in gone)
+
+
+def _timed(minutes):
+    """(Zeile, Info) wie in `_sensor_maps` – nur Aufnahmezeit zählt."""
+    import json
+    base = dt.datetime(2026, 11, 14, 23, 0, 0)
+    out = []
+    for k, m in enumerate(minutes):
+        d = (base + dt.timedelta(minutes=m)).isoformat()
+        out.append(({"id": f"f{k}", "info": json.dumps({"date_obs": d, "exptime": 10.0})}, {}))
+    return out
+
+
+def test_glow_sample_rejects_short_block_with_late_straggler():
+    """Review PR #140: 30 Frames in 5 min plus einer 25 min später – Spanne ≥ 20 min, aber der Median käme aus dem kurzen
+    Block mit stehendem Feld (Beschlag/Himmelslicht als „Glühen“). Keine Messung."""
+    have = _timed([i * 10 / 60 for i in range(30)] + [30.0])
+    assert pipeline.glow_sample(have) is None
+    assert pipeline.glow_sample(_timed([i * 10 / 60 for i in range(30)])) is None          # nur 5 min
+
+
+def test_glow_sample_spreads_over_long_series():
+    have = _timed([i * 0.5 for i in range(240)])                                          # 2 h, alle 30 s
+    s = pipeline.glow_sample(have)
+    assert s is not None and len(s) == pipeline.GLOW_SAMPLE
+    mins = [int(r["id"][1:]) * 0.5 for r, _ in s]
+    assert min(mins) < 5 and max(mins) > 115                                              # über die ganze Serie verteilt
+    two = _timed([i * 10 / 60 for i in range(30)] + [40 + i * 10 / 60 for i in range(30)])   # zwei Blöcke, 40 min auseinander
+    assert pipeline.glow_sample(two) is not None
