@@ -390,13 +390,13 @@ _coll_cache: dict = {}          # Dienst collection_progress (Sage), 2 min zwisc
 
 
 # dieselben Schlüssel wie `_slim`, aber schon in SQLite entfernt (ungültiges JSON bleibt unverändert, `_slim` meldet es wie bisher)
-_SLIM_SQL = ("CASE WHEN json_valid(stats) THEN json_remove(stats,'$.depth','$.compare','$.asteroids','$.hrd','$.diagnose') "
+_SLIM_SQL = ("CASE WHEN json_valid(stats) THEN json_remove(stats,'$.depth','$.compare','$.asteroids','$.hrd','$.diagnose','$.lightcurves') "
              "ELSE stats END")
 
 
 # Objektliste zusätzlich ohne Tutor, Qualitätsprüfung, Parameter und Qualitätskennzahlen: ~80 % der Antwort, nur die Objektseite
 # (/projects/{pid}, Ergebnisliste) zeigt sie
-_LIST_SQL = ("CASE WHEN json_valid(stats) THEN json_remove(stats,'$.depth','$.compare','$.asteroids','$.hrd','$.diagnose',"
+_LIST_SQL = ("CASE WHEN json_valid(stats) THEN json_remove(stats,'$.depth','$.compare','$.asteroids','$.hrd','$.diagnose','$.lightcurves',"
              "'$.tutor','$.qc','$.params','$.quality') ELSE stats END")
 
 
@@ -415,6 +415,7 @@ def _slim(stats: str | None) -> dict:
     st.pop("compare", None)
     st.pop("asteroids", None)
     st.pop("hrd", None)
+    st.pop("lightcurves", None)                    # Lichtkurven: eigener Endpunkt (bis zu 400 Sterne)
     st.pop("diagnose", None)                       # Gerätediagnose: eigener Endpunkt, Verläufe bis 400 Punkte je Nacht
     return st
 
@@ -1363,6 +1364,61 @@ def build_router(eng: Engine) -> APIRouter:
         if not db.one("SELECT id FROM results WHERE id=?", (rid,)):
             raise HTTPException(404)
         return eng.insights.submit("hrd", rid)
+
+    # ---- Lichtkurven veränderlicher Sterne (lightcurve.py): Einzelbilder, nur auf Wunsch ----------------
+    def _lc_ctx(rid: int):
+        from .lightcurve import LC_VERSION, load_curves
+        x = db.one("SELECT project_id, stats FROM results WHERE id=?", (rid,))
+        if not x:
+            raise HTTPException(404)
+        summ = json.loads(x["stats"] or "{}").get("lightcurves") or {}
+        curves = load_curves(eng.s.work_dir, x["project_id"], rid) if summ.get("ok") and summ.get("v") == LC_VERSION else None
+        if curves is None:
+            raise HTTPException(404, "Noch keine Lichtkurven gemessen.")
+        return summ, curves
+
+    @r.get("/results/{rid}/lightcurves")
+    def get_lightcurves(rid: int):
+        from .lightcurve import LC_VERSION, MIN_FRAMES, available_frames
+        out = _insight(rid, "lightcurves", LC_VERSION)
+        x = db.one("SELECT project_id FROM results WHERE id=?", (rid,))
+        out["rohbilder"] = available_frames(eng.pl, x["project_id"])
+        out["min_rohbilder"] = MIN_FRAMES
+        return out
+
+    @r.post("/results/{rid}/lightcurves")
+    def run_lightcurves(rid: int):
+        if not db.one("SELECT id FROM results WHERE id=?", (rid,)):
+            raise HTTPException(404)
+        return eng.insights.submit("lightcurves", rid)
+
+    @r.get("/results/{rid}/lightcurves/star/{i}")
+    def get_lightcurve_star(rid: int, i: int, bin: int = 1):
+        from .lightcurve import star_curve
+        summ, curves = _lc_ctx(rid)
+        try:
+            return star_curve(summ, curves, i, max(1, min(int(bin), 20)))
+        except KeyError:
+            raise HTTPException(404, "Stern nicht gefunden.")
+
+    @r.get("/results/{rid}/lightcurves/export")
+    def export_lightcurves(rid: int, fmt: str = "csv", star: str = "alle", bin: int = 1):
+        from ... import __version__
+        from .lightcurve import export_aavso, export_csv
+        if fmt not in ("csv", "aavso"):
+            raise HTTPException(400, "Unbekanntes Format")
+        summ, curves = _lc_ctx(rid)
+        if star == "alle":
+            ids = [s["i"] for s in summ.get("sterne", [])]
+        elif star.isdigit():
+            ids = [int(star)]
+        else:
+            raise HTTPException(400, "Unbekannter Stern")
+        n = max(1, min(int(bin), 20))
+        body = export_aavso(summ, curves, ids, __version__, n) if fmt == "aavso" else export_csv(summ, curves, ids, n)
+        name = f"lichtkurven_r{rid}{'_aavso' if fmt == 'aavso' else ''}.{'txt' if fmt == 'aavso' else 'csv'}"
+        return Response(body.encode("utf-8"), media_type="text/csv" if fmt == "csv" else "text/plain",
+                        headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
 
     @r.get("/results/{rid}/compare")
     def get_compare(rid: int):
