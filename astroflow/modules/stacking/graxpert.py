@@ -336,6 +336,7 @@ def _dust_guard(exe: str, x0: np.ndarray, x: np.ndarray, hole: np.ndarray, smoot
         for t in dict.fromkeys((target, 0.5)):
             if t <= smoothing + 1e-6:
                 continue
+            discard()                           # jeder Versuch startet mit dem Laufzustand des ersten Laufs
             log(f"Staubwächter: Nebel/Dunkelwolken im Hintergrundmodell – Glättung {smoothing:.1f} → {t:.1f}".replace(".", ","))
             y = _run_safe(exe, x0, "background-extraction", ["-correction", "Subtraction", "-smoothing", f"{t:g}"], gpu, info, log)
             m1 = dust_measure(x0, y, hole, stars)

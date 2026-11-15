@@ -356,3 +356,25 @@ def test_dust_guard_discarded_try_leaves_no_run_state_and_abort_propagates(tmp_p
     with pytest.raises(InterruptedError):
         graxpert.apply(mean, cov, "bge", cache_dir=tmp_path / "c", exe=exe, log=stop)
     assert not (tmp_path / "c").exists()                     # kein ungeprüftes Ergebnis im Cache
+
+
+def test_dust_guard_run_state_belongs_to_accepted_try(tmp_path, monkeypatch):
+    """1,0 verworfen (mit CPU-Wiederholung), 0,5 übernommen → keine Wiederholungsangabe des verworfenen Versuchs."""
+    exe = _dust_fake(tmp_path)
+    mean, cov = _dust_sky(cloud=True)
+    real_run = graxpert._run_safe
+
+    def run(exe_, x, cmd, args, gpu, info, log):
+        y = real_run(exe_, x, cmd, args, gpu, info, log)
+        if args[args.index("-smoothing") + 1] == "1":
+            info["retried_cpu"] = True
+            info["nonfinite_repaired"] = True
+        return y
+
+    calls = []
+    monkeypatch.setattr(graxpert, "_run_safe", run)
+    monkeypatch.setattr(graxpert, "dust_target", lambda m, s: 1.0)
+    monkeypatch.setattr(graxpert, "dust_better", lambda m0, m1: calls.append(1) or len(calls) == 2)
+    _, info = graxpert.apply(mean, cov, "bge", exe=exe)
+    assert info["dust"]["to"] == 0.5 and info["smoothing"] == 0.5
+    assert "retried_cpu" not in info and "nonfinite_repaired" not in info
