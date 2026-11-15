@@ -99,5 +99,10 @@ class Driver:
     def observe(self, target: Target, exposure_s: float, gain: int | None = None) -> None: raise NotImplementedError
     def stop(self) -> None: raise NotImplementedError
     def focus(self) -> None: raise NotImplementedError
+    def preview(self) -> tuple[bytes, float] | None:
+        """Optional (Fähigkeit \"preview\"): das fertige Vorschaubild des Geräts als JPEG-Bytes plus Zeitstempel (Unix-Sekunden),
+        oder None, wenn es noch keins gibt. Nur lesen; ein Fehler (DriverError) heißt „gerade nicht verfügbar“. Ohne diese Methode
+        rendert AstroFlow die Vorschau aus der zuletzt geholten Rohbild-Datei (`preview.py`)."""
+        return None
     def start_device_plan(self, items: list[PlanItem], exposure_s: float) -> None:
         raise DriverError("Dieses Gerät kann keinen eigenen Plan ausführen.")
