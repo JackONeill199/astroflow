@@ -354,3 +354,16 @@ def test_verdeckt_vor_erster_gegenprobe_wird_wiederholt():
     sc.result("frei", T0, solved=True)
     assert sc.ref and not any(p["sure"] for p in first)
     assert sum(1 for q in sc.queue if q["why"] == "wiederholung") == len(first)
+
+
+def test_unsicherer_punkt_waehlt_keine_aufstellung():
+    """Abbruch vor der ersten Gegenprobe: ein unsicher verdeckter Punkt holt keine alten Hindernisse in die Maske zurück."""
+    old = {"2026-11-10": [{"az": 0, "alt": 55, "res": "verdeckt", "sure": True, "src": "scan"},
+                          {"az": 180, "alt": 25, "res": "frei", "sure": True, "src": "scan"}]}
+    p, d, clock = make(sim.Scenario(), frame_points=lambda sid: old)
+    p.load_night(clock.now())
+    assert len(p.groups) == 1
+    p.night_points = [{"az": 0, "alt": 25, "res": "verdeckt", "sure": False, "src": "scan", "t": clock.now()}]
+    p.setup = p._which_setup()
+    p._hz_cache = None
+    assert p.setup is None and p.horizon()["horizon"][0] == 0.0

@@ -1058,7 +1058,8 @@ class Autopilot:
         self._hz_cache = None
 
     def _which_setup(self) -> dict | None:
-        pts = [p for p in self.night_points if p.get("res") in ("frei", "verdeckt") and (p.get("src") == "scan" or p["res"] == "frei")]
+        # nur Bestätigtes: frei bzw. sicher verdeckt – ein unsicherer Punkt (Wolke?) darf keine alten Hindernisse zurückholen
+        pts = self._tonight_points()
         return skymap.match(self.groups, pts) if pts and self.groups else None
 
     def _tonight_points(self) -> list[dict]:
@@ -1176,7 +1177,7 @@ class Autopilot:
             skymap._d(p["az"], q["az"]) < 1 and abs(p["alt"] - q["alt"]) < 1 for q in pts))] + pts
         self._hz_cache = None
         self._persist()
-        self.setup = sc.setup if sc.setup is not None else self._which_setup()
+        self.setup = self._which_setup()           # auch nach dem Kurzscan nur mit bestätigten Punkten (Review PR #143)
         self.last_scan = sc.view(now)
 
     def _scan_tick(self, s: TelescopeState, now: float):
