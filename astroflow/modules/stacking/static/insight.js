@@ -44,7 +44,7 @@ function createInsight(host) {
   const ctx = cv.getContext('2d');
   const css = getComputedStyle(document.documentElement), col = (v, d) => css.getPropertyValue(v).trim() || d;
   const C = { fg: col('--fg', '#f0f2f5'), mut: col('--mut', '#aab2bd'), acc: col('--acc', '#4c9aff'), ok: col('--ok', '#42b883'),
-    bad: col('--bad', '#e16b6b'), warn: col('--warn', '#e5aa52'), d2: col('--data-2', '#8fa6c8'), d3: col('--data-3', '#5fb8a8') };
+    bad: col('--bad', '#e16b6b'), warn: col('--warn', '#e5aa52'), panel: col('--sidebar', '#14171c'), bg: col('--bg', '#0f1115'), line: col('--border', '#303640'), d2: col('--data-2', '#8fa6c8'), d3: col('--data-3', '#5fb8a8') };
   let W = 0, H = 0, dpr = 1, rem = 16, D = null, imgs = {}, t0 = 0, raf = 0, dead = false, done = null, heat = null;
   const size = () => {
     const r = host.getBoundingClientRect(); dpr = Math.min(2, devicePixelRatio || 1); W = r.width; H = r.height;
@@ -102,8 +102,9 @@ function createInsight(host) {
   function panel(w, h) {                           // Diagrammfläche unten rechts, über der Bildunterschrift
     const pad = .75 * rem, bw = Math.min(w, W - 2 * pad), bh = Math.min(h, H - 5.5 * rem, small() ? H * .5 : 1e9);
     const x = W - bw - pad, y = H - bh - (small() ? 2.4 : 2.9) * rem;
-    ctx.fillStyle = '#0b1120e0'; ctx.strokeStyle = '#ffffff1f'; ctx.lineWidth = 1;
-    ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, bw, bh, .375 * rem); else ctx.rect(x, y, bw, bh); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = C.panel; ctx.strokeStyle = C.line; ctx.lineWidth = 1;   // Fläche/Rahmen aus den Tokens (--sidebar, --border)
+    ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, bw, bh, .375 * rem); else ctx.rect(x, y, bw, bh);
+    ctx.save(); ctx.globalAlpha = .9; ctx.fill(); ctx.restore(); ctx.stroke();
     const head = small() ? .5 : 1.5;
     return { x: x + .625 * rem, y: y + head * rem, w: bw - 1.25 * rem, h: bh - (head + 1.1) * rem, top: y + .5 * rem, left: x + .625 * rem };
   }
@@ -126,12 +127,12 @@ function createInsight(host) {
   const S = {
     defects(t) {                                   // Sensorfeld, Glühen als Wärmekarte, Hotpixel blinken an echten Stellen auf
       const R = rect(aspect());
-      ctx.fillStyle = '#05070c'; ctx.fillRect(R.x, R.y, R.w, R.h);
+      ctx.fillStyle = C.bg; ctx.fillRect(R.x, R.y, R.w, R.h);
       if (D.glow) {
         heat ||= heatImage(D.glow.grid);
         ctx.save(); ctx.globalAlpha = .7 * ease(seg(t, 0, 1400)); ctx.imageSmoothingEnabled = true; ctx.drawImage(heat, R.x, R.y, R.w, R.h); ctx.restore();
       }
-      ctx.strokeStyle = '#ffffff26'; ctx.strokeRect(R.x + .5, R.y + .5, R.w - 1, R.h - 1);
+      ctx.strokeStyle = C.line; ctx.strokeRect(R.x + .5, R.y + .5, R.w - 1, R.h - 1);
       const pts = D.points, k = Math.round(pts.length * seg(t, 1000, 4200)), r = Math.max(1.5, .14 * rem);
       for (let i = 0; i < k; i++) {
         const [x, y] = at(R, pts[i][0], pts[i][1]), age = (t - 1000 - i / pts.length * 3200) / 600;
@@ -200,7 +201,7 @@ function createInsight(host) {
       if (!small()) label('Gemessene Farbe vs. Gaia BP−RP', P.left, P.top, C.fg);
       const ys = st.flatMap(s => [s[3], s[4]]), y0 = Math.min(-1, ...ys), y1 = Math.max(1, ...ys), x0 = -.3, x1 = 2.5;
       const X = v => P.x + (v - x0) / (x1 - x0) * P.w, Y = v => P.y + P.h - (v - y0) / (y1 - y0) * P.h;
-      ctx.strokeStyle = '#ffffff26'; ctx.beginPath(); ctx.moveTo(P.x, Y(0)); ctx.lineTo(P.x + P.w, Y(0)); ctx.stroke();
+      ctx.strokeStyle = C.line; ctx.beginPath(); ctx.moveTo(P.x, Y(0)); ctx.lineTo(P.x + P.w, Y(0)); ctx.stroke();
       ctx.setLineDash([3, 3]); ctx.strokeStyle = C.mut; ctx.beginPath(); ctx.moveTo(X(D.g2v), P.y); ctx.lineTo(X(D.g2v), P.y + P.h); ctx.stroke(); ctx.setLineDash([]);
       label('G2V', X(D.g2v) + 3, P.y, C.mut, 'left', .625);
       const shown = Math.round(st.length * seg(t, 1800, 3800));
@@ -234,7 +235,7 @@ function createInsight(host) {
         h.forEach((v, i) => { const hh = Math.sqrt(v) * P.h * .9; ctx.fillRect(P.x + i * bw, P.y + P.h - hh, Math.max(bw, 1), hh); }); };
       bars(D.hist_in, C.mut, .45 * ease(seg(t, 0, 700)));
       bars(D.hist_out, C.d3, .55 * ease(seg(t, 4200, 5400)));
-      ctx.globalAlpha = 1; ctx.strokeStyle = '#ffffff1f'; ctx.beginPath(); ctx.moveTo(X(0), Y(0)); ctx.lineTo(X(1), Y(1)); ctx.stroke();
+      ctx.globalAlpha = 1; ctx.strokeStyle = C.line; ctx.beginPath(); ctx.moveTo(X(0), Y(0)); ctx.lineTo(X(1), Y(1)); ctx.stroke();
       const k = Math.round(n * ease(seg(t, 600, 2400)));
       ctx.strokeStyle = C.acc; ctx.lineWidth = 2; ctx.beginPath();
       for (let i = 0; i < k; i++) ctx[i ? 'lineTo' : 'moveTo'](X(i / (n - 1)), Y(D.curve[i]));
