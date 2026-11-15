@@ -809,10 +809,14 @@ class Autopilot:
             for t, m in pull():
                 self.fog.add(t, m)
 
-    def frame_seen(self, t: float, m: dict):
-        """Messwerte eines gerade geholten Rohbilds (Live-Bilder, Dienst `frame_quick_metrics`)."""
+    def frame_seen(self, t: float, m: dict, item: Item | None = None, start: float | None = None) -> bool:
+        """Messwerte eines gerade geholten Rohbilds (Live-Bilder, Dienst `frame_quick_metrics`). Mit `item`/`start` nur, wenn
+        dieser Versuch noch läuft; False = verworfen (Ziel inzwischen gewechselt)."""
         with self.lock:
+            if item is not None and (self._current() is not item or item.real_start != start):
+                return False
             self.fog.add(t, m)
+            return True
 
     def _fogged(self, it: Item, now: float) -> dict | None:
         """Beschlag am laufenden Ziel? Nur bei klarer Vorhersage – sonst sind es eher Wolken (übrige Wächter)."""

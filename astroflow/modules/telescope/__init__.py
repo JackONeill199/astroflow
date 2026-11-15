@@ -101,15 +101,19 @@ class Unit:
             return fn(minutes=minutes, site={"lat": site["lat"], "lon": site["lon"]})
         return ap.Env(site=mod.site, forecast=forecast, plan=plan, rain=rain)
 
-    def measure_frames(self, paths, most: int = 12):
+    def measure_frames(self, paths, item=None, start: float | None = None, most: int = 12):
         """Frisch geholte Rohbilder messen (Dienst `frame_quick_metrics`) und dem Autopiloten melden; fehlt der Dienst
-        (Bilder-Modul aus), gibt es keine Beschlag-Erkennung. Nach einer Lücke nur die neuesten `most` Bilder."""
+        (Bilder-Modul aus), gibt es keine Beschlag-Erkennung. Nach einer Lücke nur die neuesten `most` Bilder.
+        `item`/`start` = Versuch, zu dem die Bilder gehören: ist er nicht mehr der laufende (Zielwechsel während des Holens
+        oder Messens), werden die Messwerte verworfen – sonst würden sie zum Bezug des neuen Ziels (Review PR #140)."""
         fn = self.mod.ctx.service("frame_quick_metrics")
         if not fn:
             return
         for p in sorted(paths, key=lambda p: p.name)[-most:]:
             try:
-                self.pilot.frame_seen(self.now(), fn(str(p)))
+                m = fn(str(p))
+                if not self.pilot.frame_seen(self.now(), m, item, start):
+                    return
             except Exception:
                 traceback.print_exc()
 

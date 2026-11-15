@@ -232,3 +232,17 @@ def test_short_series_measures_no_glow(tmp_path, monkeypatch):
     pl.process(pid)
     assert "glow_info" not in json.loads(db.one("SELECT options FROM projects WHERE id=?", (pid,))["options"])
     assert not list((s.work_dir / "glow").glob("*.npz"))
+
+
+def test_frames_of_previous_attempt_are_dropped():
+    """Zielwechsel während des Holens/Messens: Messwerte des alten Versuchs zählen nicht für das neue Ziel."""
+    p, d, clock = _pilot(dew_after_h=99, forecast=_clear)
+    _run(p, clock, 0.2)
+    cur = p._current()
+    assert cur is not None
+    n = len(p.fog.frames)
+    assert p.frame_seen(clock.now(), {"n_stars": 150, "fwhm": 3.8, "veil": 0.4}, cur, cur.real_start)
+    assert not p.frame_seen(clock.now(), {"n_stars": 150, "fwhm": 3.8, "veil": 0.4}, cur, cur.real_start - 60)
+    other = ap.Item(*M31, T0, T0 + 3600, hours=1)
+    assert not p.frame_seen(clock.now(), {"n_stars": 150, "fwhm": 3.8, "veil": 0.4}, other, other.real_start)
+    assert len(p.fog.frames) == n + 1

@@ -210,6 +210,6 @@ class Collector:
             self.count += len(got)
             self.unit.pilot.frames_fetched = self.count
             if not final and hasattr(self.unit, "measure_frames"):
-                self.unit.measure_frames(got)          # Beschlag-Erkennung des Autopiloten (Dienst des Bilder-Moduls)
+                self.unit.measure_frames(got, item, start)   # Beschlag-Erkennung (nur solange dieser Versuch läuft)
             if self.count == len(got) or final:
                 self.unit.pilot.log(f"{len(got)} Rohbilder von {item.name} geholt ({self.count} in dieser Nacht).", "ok")
