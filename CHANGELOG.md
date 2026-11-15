@@ -3,6 +3,17 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.81.0 – 15.11.2026
+
+### Neu
+- **Teleskop – „Plane meine Nacht“:** Teleskop aufstellen, einmal klicken – der Autopilot wartet auf die Dunkelheit, vermisst den freien Himmel, wählt passende Ziele selbst (Gerät, offener Belichtungsbedarf, Mond, Wetter, laufende Projekte), zeigt den Zeitplan mit Begründung und arbeitet ihn ab. Fällt ein Ziel aus (verdeckt, Wolken, Beschlag), plant er den Rest neu; am Morgen klappt er ein und fasst die Nacht zusammen.
+- **Teleskop – freien Himmel vermessen:** Der Knopf „Himmel vermessen“ fährt ein Raster von Peilpunkten ab und verfeinert an den Grenzen; frei gilt nur, wo das Plate-Solving gelingt. Gegenproben trennen Wolken von Hindernissen. Daraus entstehen gelernte Aufstellungen (z. B. „Balkon links“), die das Teleskop zu Beginn der Nacht an wenigen Punkten wiedererkennt. Autopilot, Heute Nacht und Planer nutzen die gemessene Grenze; als Horizontmaske übernommen wird sie nur nach Bestätigung. Gespeichert werden nur Richtungen, keine Ortskoordinaten.
+- **Bilder – Einblicke in die Bearbeitung:** Während ein Projekt bearbeitet wird, zeigt die Live-Ansicht echte Zwischenergebnisse passgenau über dem Bild: gefundene Hotpixel und Sensorglühen, Stack-Reparatur, das abgezogene Hintergrundmodell (GraXpert bzw. Polynom), die Gaia-Sterne der Farbkalibrierung mit gemessener Ausgleichsgeraden, die angewandte Stretch-Kurve mit Histogramm, die Sternebene und die gemessene Rauschkurve beim Stacken. Schritte ohne Daten zeigen nur den Fortschritt; ohne geöffnete Seite entsteht kein Mehraufwand.
+
+### Behoben
+- **Teleskop – aufgeräumte Seite:** Die Teleskopseite ist neu gegliedert: oben Status mit Hauptknopf und Not-Aus, darunter Jetzt, Plan der Nacht, Freier Himmel und Bedingungen; Protokoll, Einstellungen und Gerätedetails sind eingeklappt. Keine Funktion fällt weg.
+- **Teleskop – ohne Standort nie öffnen:** Fehlt der Beobachtungsort, öffnet der Autopilot das Teleskop nicht (sonst griffe die Sperre gegen Tageslicht nicht); ein offener Nachtentwurf behält beim Speichern der Einstellungen Ort und Dunkelheit. Nach einer Wetter- oder Regenpause bleiben die schon gesammelten Bilder eines Ziels in der Nachtbilanz.
+
 ## 0.80.0 – 15.11.2026
 
 ### Neu
