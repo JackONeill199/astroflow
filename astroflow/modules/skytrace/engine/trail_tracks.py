@@ -15,6 +15,32 @@ from motion_plausibility import exposure_info
 MAX_GAP_SECONDS=180      # excluded (blurred) exposures may lie in between
 PARALLEL=math.cos(math.radians(8))
 RATE_RANGE=(.55,1.6)     # measured advance / expected advance (segments may be clipped)
+_MOTION_CLASS=None
+
+
+def motion_class():
+    """`astroflow/modules/skytrace/motion_class.py` (doppelt lizenziert): im Server per Import, in der Engine über den Pfad.
+    Fehlt die Datei (Engine allein), bleibt es bei der bisherigen Einstufung."""
+    global _MOTION_CLASS
+    if _MOTION_CLASS is None:
+        try:
+            from astroflow.modules.skytrace import motion_class as module
+        except Exception:
+            import importlib.util
+            from pathlib import Path
+            path=Path(__file__).resolve().parents[1]/'motion_class.py'
+            if not path.is_file(): _MOTION_CLASS=False; return None
+            spec=importlib.util.spec_from_file_location('skytrace_motion_class',path)
+            module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        _MOTION_CLASS=module
+    return _MOTION_CLASS or None
+
+
+def classify_candidates(candidates):
+    """Satellit/Flugzeug/Beweger-Einstufung (`motion_class`) für alle Kandidaten einer Beobachtung setzen."""
+    module=motion_class()
+    if module: module.annotate(candidates)
+    return candidates
 
 
 def _segments(rows):
@@ -61,7 +87,9 @@ def _uniform(chain):
 
 
 def link_tracks(rows):
-    """Mark linked streaks in place (`track_id`, kind `plane`, `linked_track`); returns the number of tracks."""
+    """Mark linked streaks in place (`track_id`, kind `plane`, `linked_track`); returns the number of tracks.
+
+    kind `plane` heißt hier nur „bewegt, kein Meteor“; Satellit oder Flugzeug entscheidet `motion_class` nach dem Katalogabgleich."""
     items=sorted(_segments(rows),key=lambda item:item['time'])
     parent=list(range(len(items)))
     def root(i):
@@ -85,9 +113,9 @@ def link_tracks(rows):
         info=dict(frames=[f+1 for f in frames],count=len(frames),span_seconds=round(span,1),
                   rate_pixels_s=round(float(np.median([c['rate'] for c in chain])),2),
                   direction_degrees=round(math.degrees(math.atan2(*chain[0]['direction'][::-1])),1),
-                  reason=f'Gleichgerichtete Spur in {len(frames)} Aufnahmen über {span:.0f} s mit gleichmäßigem Fortschritt – ein Meteor leuchtet nur in einer Aufnahme.')
+                  reason=f'Gleichgerichtete Spur in {len(frames)} Aufnahmen über {span:.0f} s mit gleichmäßigem Fortschritt – ein Meteor leuchtet nur in einer Aufnahme; Satellit und Flugzeug unterscheidet erst die Satellitenprüfung bzw. ein Flugzeugmerkmal.')
         for c in chain:
             detection=c['detection']
             detection.setdefault('single_frame_kind',detection.get('kind'))
-            detection.update(track_id=f'L{count}',kind='plane',label=f'Bewegtes Objekt in {len(frames)} Aufnahmen (Satellit/Flugzeug?)',linked_track=info)
+            detection.update(track_id=f'L{count}',kind='plane',label=f'Bewegtes Objekt in {len(frames)} Aufnahmen (Satellit oder Flugzeug)',linked_track=info)
     return count

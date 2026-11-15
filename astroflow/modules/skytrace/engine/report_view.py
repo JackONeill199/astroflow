@@ -6,6 +6,7 @@ from pathlib import Path
 
 def render(out,summaries):
     from video_overlays import timeline
+    from trail_tracks import classify_candidates
     candidates=[]; cards=[]
     for summary in summaries:
         path=out/summary.get('candidates_file','__missing__')
@@ -16,9 +17,9 @@ def render(out,summaries):
                 for frame in c.get('frames',[]):
                     if not frame.get('full_image') and context and context.get('frame')==frame.get('index'):
                         frame['full_image']={k:context[k] for k in ('image','width','height') if k in context}
-            candidates.extend(loaded)
+            candidates.extend(classify_candidates(loaded))
         annotated=html.escape(summary['video']); clean=html.escape(summary.get('clean_video',''))
-        items=json.loads(path.read_text(encoding='utf-8')) if path.is_file() else []
+        items=classify_candidates(json.loads(path.read_text(encoding='utf-8'))) if path.is_file() else []
         overlay=timeline(out/Path(summary['video']).parent,items)
         interactive=bool(overlay and clean)
         player=(f'<div class="motion-video"><video controls preload="metadata" data-annotated="{annotated}" data-clean="{clean}" src="{clean if interactive else annotated}"></video><svg class="motion-video-overlay" aria-label="Spuren und Mindest-Winkelgeschwindigkeit"></svg></div>') if summary['frames'] else '<p>Kein geeignetes Bild verarbeitet.</p>'
