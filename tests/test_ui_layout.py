@@ -980,6 +980,9 @@ def test_update_details_bei_abgeschalteter_pruefung(server, browser):
     def fake_setup(route):
         from playwright.sync_api import Error as PlaywrightError
         try:
+            if route.request.method == "POST":                    # Schalter speichern: Server-Zustand bleibt unberührt
+                route.fulfill(json={"ok": True})
+                return
             r = route.fetch()
             d = r.json()
             d.update(update_check=False, update_offer=offer)
@@ -997,6 +1000,10 @@ def test_update_details_bei_abgeschalteter_pruefung(server, browser):
     page.evaluate("AF.updateHint({latest: '99.1.0', current: '0.0.0', url: 'x', kind: 'source', notes: []}, true)")
     page.wait_for_timeout(6000)
     assert page.evaluate("AF.app.update && AF.app.update.latest") == "99.1.0"
+    # Review PR #112: Prüfung wieder einschalten → von Hand geprüfter Stand gilt nicht mehr, neue Angebote zählen wieder
+    assert page.evaluate("AF.app.updateManual") is True
+    page.locator("label.modrow:has(#sysUpd)").click()
+    page.wait_for_function("AF.app.updateManual === false")
     page.close()
     assert not errors, errors
 

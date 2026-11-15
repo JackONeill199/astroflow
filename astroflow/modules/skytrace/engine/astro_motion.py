@@ -178,5 +178,5 @@ class EnsembleMotion:
             if track['outlier_votes']<3: continue
             path=cv2.transform(samples[None,:,1:].astype('float32'),matrix)[0].tolist()
             x,y=path[-1]
-            results.append(dict(kind='moving',label='Unabhaengiger Beweger (unbestaetigt)',confidence=None,box=[max(0,x-12)/w,max(0,y-12)/h,min(w,x+12)/w,min(h,y+12)/h],track_id=track['id'],path=path,motion_pixels=round(motion,3),fit_rms=round(rms,3),ensemble_jitter=round(jitter,3),reference_stars=len(eligible),method='Sternzentren + affine RANSAC-Sternfeldbewegung + Ensemble-Ausreissertest'))
+            results.append(dict(kind='moving',label='Unabhaengiger Beweger (unbestaetigt)',confidence=None,box=[max(0,x-12)/w,max(0,y-12)/h,min(w,x+12)/w,min(h,y+12)/h],track_id=track['id'],path=path,path_frames=[int(i) for i in samples[:,0]],motion_pixels=round(motion,3),fit_rms=round(rms,3),ensemble_jitter=round(jitter,3),reference_stars=len(eligible),method='Sternzentren + affine RANSAC-Sternfeldbewegung + Ensemble-Ausreissertest'))
         return results

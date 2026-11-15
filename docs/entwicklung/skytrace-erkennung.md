@@ -57,6 +57,8 @@ Umsetzung (`astroflow/modules/skytrace/motion_class.py`, doppelt lizenziert, au�
   passende Bahn, oder ohne Treffer, aber langsamer als 60″/s bzw. ohne messbare Geschwindigkeit (NGC 2244 L2: 23″/s – eher hoher Satellit, der im Archiv fehlt).
 - `asteroid` „Langsamer Beweger (Asteroid möglich)“: nur Punktbeweger (`kind='moving'`) mit gemessenen ≤ 2″/s; schneller oder ohne Winkelmaß
   bleibt neutral „Bewegungskandidat“ (keine Klasse allein aus Beispielgeschwindigkeiten).
+  Tempo (`mover_speed`) aus den Aufnahmezeiten der Pfadpunkte (`evidence.segment_times`, Engine: `path_frames` aus `astro_motion`),
+  sonst aus ihren Bildnummern (`segment_frames`) × üblichem Bildabstand; ältere Läufe: ein Bildabstand je Punkt (Näherung).
 - Einzelbild-Spur ohne Merkmal: keine Aussage (Meteor, Satellit, Flugzeug bleiben offen).
 `link_tracks` nennt Ketten nur noch „Bewegtes Objekt in N Aufnahmen (Satellit oder Flugzeug)“. Der Server stuft bei jedem Lesen neu ein
 (`api.run_data`, `stats._run` → `motion_class.annotate`), ältere Läufe brauchen also keine Aktualisierung; `bericht.html` stuft beim

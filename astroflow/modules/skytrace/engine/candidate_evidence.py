@@ -20,6 +20,11 @@ def enrich(item,anchor,detection,rows,loader,width,height):
                   quality=quality,registration=stars,hit_frames=len(item['hit_indices']),analysis_pixels='Pixel der Analyse-/Videoauflösung; Bayer-Bilder können gebinnt sein',
                   source_frame=anchor['index']+1,segment=points.tolist(),temporal=[],profile=None)
     evidence['shape_validation']=detection.get('shape_validation')
+    frames=detection.get('path_frames') if detection.get('segment') is None else None
+    if frames and len(frames)==len(points):
+        # Bild je Pfadpunkt (1-basiert wie frames[].index) und seine Aufnahmezeit: Geschwindigkeit aus echten Abständen
+        evidence['segment_frames']=[int(i)+1 for i in frames]
+        evidence['segment_times']=[((rows.get(int(i)) if isinstance(rows,dict) else None) or {}).get('timestamp') for i in frames]
     evidence['frame_validation']=anchor.get('frame_validation')
     if len(points)>1:
         delta=points[-1]-points[0];length=float(np.linalg.norm(np.diff(points,axis=0),axis=1).sum())
