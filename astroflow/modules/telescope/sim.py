@@ -59,7 +59,8 @@ class ManualClock:
 
 @dataclass
 class Scenario:
-    """Zeiten absolut (Unix-Sekunden). Hindernis: {az0, az1, alt} – verdeckt alles unterhalb `alt` im Azimutbereich."""
+    """Zeiten absolut (Unix-Sekunden). Hindernis: {az0, az1, alt[, alt0]} – verdeckt im Azimutbereich alles unterhalb `alt`
+    (mit `alt0` nur zwischen alt0 und alt, z. B. ein Dachüberstand oben)."""
     clouds: list[tuple[float, float]] = field(default_factory=list)
     obstacles: list[dict] = field(default_factory=list)
     dew_from: float | None = None      # Optik beschlägt ab hier, schleichend über DEW_RAMP_S (Sterne weniger, FWHM, Schleier)
@@ -77,6 +78,18 @@ class Scenario:
         """Vorführung: Hauswand im Osten, Wolkenband nach ~3 h, Tau gegen Morgen."""
         return cls(clouds=[(start + 3.0 * 3600, start + 3.6 * 3600)],
                    obstacles=[{"az0": 60.0, "az1": 115.0, "alt": 38.0}], dew_from=start + 7.5 * 3600)
+
+    @classmethod
+    def balcony(cls, start: float, shift: float = 0.0, clouds: list | None = None) -> "Scenario":
+        """Balkon nach Süden: Hauswand im Norden (bis 80°), Geländer ringsum bis 18°, Nachbarhaus im Südwesten bis 34°,
+        Dachüberstand über der Wand ab 62°. `shift` = das Teleskop steht heute ein paar Grad anders (Azimut der nahen Hindernisse)."""
+        def o(a0, a1, alt, alt0=None):
+            d = {"az0": (a0 + shift) % 360, "az1": (a1 + shift) % 360, "alt": alt}
+            if alt0 is not None:
+                d["alt0"] = alt0
+            return d
+        return cls(clouds=list(clouds or []),
+                   obstacles=[o(285, 75, 80.0), o(0, 359.9, 18.0), o(200, 245, 34.0), o(75, 285, 90.0, alt0=66.0)])
 
 
 def _between(t: float, spans) -> bool:
@@ -127,7 +140,7 @@ class SimDriver(Driver):
         if _between(t, self.sc.clouds):
             return "clouds"
         for o in self.sc.obstacles:
-            if _az_in(az, o["az0"], o["az1"]) and alt < o["alt"]:
+            if _az_in(az, o["az0"], o["az1"]) and o.get("alt0", -90.0) <= alt < o["alt"]:
                 return "obstacle"
         return None
 

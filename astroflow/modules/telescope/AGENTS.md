@@ -25,8 +25,17 @@ Konzept, Protokoll, Lizenzfrage und offene Proben: `docs/entwicklung/teleskopste
 
 ## Aufbau
 `driver.py` Vertrag + `TelescopeState` · `sim.py` Simulator (Uhren, Szenarien) · `machine.py` Phasen/erlaubte Befehle ·
-`autopilot.py` Takt, Wächter, Hindernis/Wolke, Plan aus dem Planer · `plugins.py` Treiber-Plugins · `vaonis_read.py` Status ohne
+`autopilot.py` Takt, Wächter, Hindernis/Wolke, Plan aus dem Planer · `skyscan.py` Himmelsscan (Peilpunkte, Gegenprobe, Halbieren) ·
+`skymap.py` Karte frei/verdeckt je 10°, Aufstellungen, Ablage `<Daten>/telescope/himmel.json` (Simulator: `himmel-simulator.json`) · `plugins.py` Treiber-Plugins · `vaonis_read.py` Status ohne
 Anmeldung · `frames.py` Live-Rohbilder per FTP · `captures.py` Import vom Teleskop ·
 `api.py` `/api/telescope/*` · `static/telescope.js|css` Ansicht `#/teleskop` + Einstellungen. Tests: `tests/test_telescope.py`.
 Dienste: `sites`, `weather_forecast`, `scan_input` (Bilder-Modul, neu), `frame_quick_metrics` (Bilder-Modul: Messwerte je Live-Rohbild
-für die Beschlag-Erkennung `fog.py`), `catalog_resolve`, `catalog_objects` – alle optional.
+für die Beschlag-Erkennung `fog.py`), `frame_sky_points` (Bilder-Modul: frühere Aufnahmen als Peilpunkte), `catalog_resolve`,
+`catalog_objects` – alle optional. Stellt bereit: `telescope_sky`, `telescope_horizon` (nie im Simulator).
+
+## Freier Himmel (Scan, Aufstellungen) – `docs/entwicklung/teleskopsteuerung.md` §15
+- Scan-Punkte fahren nur über `Autopilot._cmd("observe", …)` (Bestätigung je Nacht, Not-Aus, Backoff gelten). Regen, Beschlag, Akku,
+  Dämmerung gehen vor (`_hold` bricht den Scan ab, Punkte bleiben). Simulator-Daten nie in die Karte des echten Geräts.
+- Nur Azimut/Höhe speichern und senden – nie Koordinaten des Ortes. Die Horizontmaske des Ortes ändert sich nur über `/sky/accept`
+  (Bestätigung in der Oberfläche); für die Nacht wirkt die Messung sofort (`Autopilot.horizon()`, Dienst `telescope_horizon`).
+- Verdeckt zählt heute nur sicher (Gegenprobe davor/danach frei); unsicher verdeckt erst nach Wiederholung in einer anderen Nacht.

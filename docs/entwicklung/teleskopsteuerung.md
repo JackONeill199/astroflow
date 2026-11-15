@@ -377,3 +377,47 @@ das Steuern. Darum:
   entfallen im Protokollauszug („Zeile aus einem Treiber-Plugin ausgeblendet“), lange Schlüssel-Zeichenketten maskiert der Scrubber.
   Screenshots im Bericht maskieren dieselbe Wortliste. Plugins liegen in `data/` (per .gitignore ausgeschlossen) oder außerhalb des
   Repos; nie `git add -A`. Tests: `test_report.py::test_plugins_nie_im_bericht`, `test_telescope.py::test_plugin_bringt_eigene_pakete_mit`.
+
+## 15. Freier Himmel: Himmelsscan und gelernte Aufstellungen (15.11.2026)
+
+Ziel: automatisch wissen, welcher Himmelsbereich am Teleskop frei ist – vor allem nahe Hindernisse am Balkon (Geländer,
+Hauswand, Dachüberstand). Das Teleskop steht nicht jede Nacht gleich; GPS ist dafür viel zu grob. Deshalb ist der **Scan der
+Hauptweg**, die gelernte Karte aus früheren Nächten ergänzt nur.
+
+**Datenmodell** (`skymap.py`, nur Standardbibliothek): Peilpunkt `{az, alt, res: frei|verdeckt|zweifel, sure, stars, src: scan|ziel|bild, t}`
+– nur Azimut/Höhe, nie Koordinaten des Ortes. Je Azimut-Stützstelle (36 × 10°, wie die Horizontmaske) ergibt sich `lo` (höchste
+verdeckte Höhe unterhalb des ersten freien Punkts), `hi` (niedrigste freie Höhe) und `top` (verdeckt *über* einem freien Punkt =
+Überhang/Dach). Grenze der Nacht = Ortsmaske, angehoben auf `lo` + 2° (verdeckte Punkte wirken ±15° breit, gedeckelt durch `hi`),
+abgesenkt nur bis `hi` (dort waren nachweislich Sterne, freie Punkte wirken nur ±5°). Liegen `lo` und `hi` vor, gilt die Mitte.
+Ablage `<Daten>/telescope/himmel.json` je Standort-ID: Nächte (Punkte) – daraus werden Aufstellungen jedes Mal neu gebildet.
+
+**Scan** (`skyscan.py`, Knopf „Himmel vermessen“ bzw. Autopilot-Phase): Spalten alle 30° Azimut, je Spalte zuerst 25°, frei →
+15° (nur wenn die Mindesthöhe der Ziele darunter liegt), verdeckt → gleich 55° (Hauswand?); jede zweite freie Spalte einmal 70°
+(Dachüberstand). Nur ab `SCAN_FLOOR` (15°), nie näher als 25° am Mond (dann nächste Stufe, sonst ausgelassen und grau gezeigt). Je Punkt eine kurze Beobachtung über `_cmd`
+(gleiche Bestätigung je Nacht wie jedes GoTo): Plate-Solving gelungen = **sicher frei**; gescheitert ohne Sterne = verdeckt;
+gescheitert mit ein paar Sternen oder ohne Antwort (`PROBE_TIMEOUT_S`) = Zweifel → am Ende einmal wiederholen. Danach halbieren:
+in der Höhe, bis frei und verdeckt höchstens `BISECT_MIN` (8°) auseinanderliegen (nur über der Mindesthöhe der Ziele), unter einem
+Überhang ebenso, im Azimut einmal in der Stützstelle neben der Spalte mit dem höheren Hindernis. Höchstens `MAX_PROBES` (48)
+Punkte und `SCAN_MAX_S` (25 min). Simulator „Balkon“ (3°/s, 15 s Lagebestimmung): ~31–36 Punkte in ~22 min; der Kurzscan mit
+bekannter Aufstellung braucht wenige Minuten. Am echten Gerät hängt die Dauer an Schwenk und Plate-Solving (noch nicht gemessen).
+Wolken: Start nur ohne Wolkenvorhersage ≥ 60 %; der nächstgelegene freie Punkt dient als **Gegenprobe**, alle 8 Punkte bzw. nach verdeckten Punkten in drei
+Spalten ohne freien dazwischen. Ohne jeden freien Punkt nach drei Spalten: steil in anderer Richtung prüfen (Hauswand oder Wolken?). Scheitert sie, werden die verdeckten Punkte seit der letzten guten Gegenprobe zu Zweifeln
+(später wiederholt); scheitert sie zweimal, ist es Wolke → Scan endet, Wolkenwächter klappt ein. Verdeckt ist nur „sicher“, wenn
+die Gegenprobe davor und danach frei war. Regen, Beschlag, Akku und Dämmerung haben Vorrang (der Takt prüft sie vor dem Scan);
+ein Abbruch behält die bisherigen Punkte. Danach klappt der Autopilot ein (nur Scan) bzw. setzt den Plan fort.
+
+**Aufstellungen** (`skymap.setups`): Jede Nacht (Scan-Punkte, Ergebnisse der Ziele, frühere Aufnahmen über den Dienst
+`frame_sky_points` des Bilder-Moduls) wird zu einer Karte. Zwei Nächte gehören zur selben Aufstellung, wenn sie in genügend
+Stützstellen Auskunft geben und sich nirgends widersprechen (frei in der einen deutlich unter verdeckt in der anderen).
+Ein Hindernis wiederholt sich: verdeckt aus Aufnahmen/Zielen zählt erst ab zwei Nächten als sicher, Wolken wandern und fallen so
+heraus. Was in allen Aufstellungen gleich ist (ferne Hindernisse), gilt für den ganzen Standort.
+Zu Beginn der Nacht (`scan_auto`, nur mit gelernten Aufstellungen) fährt der Autopilot wenige **Erkennungspunkte**, die die
+Aufstellungen am besten unterscheiden, und prüft danach nur die Grenzen der erkannten Aufstellung (Kurzscan). Passt keine, folgt
+der volle Scan.
+
+**Wirkung:** `Autopilot.horizon()` (Grenze der Nacht inkl. Überhang) in `free()`; Dienst `telescope_horizon(night)` → Bilder-Modul
+setzt die Maske für Heute Nacht, Planer und Atlas („Von hier“) dieser Nacht (nur echtes Gerät, im Simulator nie – erfundener
+Himmel). Die Horizontmaske des Ortes ändert sich nur nach Bestätigung („Als Horizontmaske übernehmen“).
+**Oberfläche:** Abschnitt „Freier Himmel“ in `#/teleskop` (Kuppel mit frei/verdeckt/unsicher, Punkte, Aufstellung, Knöpfe)
+und dieselbe Karte im Observatorium (Atlas, Ansicht „Von hier“). Simulator-Szenario „Balkon“ mit Geländer, Hauswand, Nachbarhaus
+und Dachüberstand, je Nacht leicht verschoben aufgestellt.

@@ -147,6 +147,7 @@ async function atlasView(el, query) {
       <div class="obs-msg" id="obsMsg" hidden></div>
     </div>
     <section class="obs-free" id="obsFree" hidden></section>
+    <section class="obs-sky" id="obsSky" hidden></section>
     <section class="obs-strip-wrap"><div class="panel-h"><h2>${icon('image')}Meine Fotos am Himmel</h2><span class="grow"></span><span class="chip" id="obsCount">…</span></div><div class="obs-strip" id="obsStrip"></div></section>`;
 
   const stage = $('#obsStage', el), cv = $('#obsCanvas', el), g = cv.getContext('2d');
@@ -441,7 +442,15 @@ async function atlasView(el, query) {
 
   // Listen unter der Karte: jetzt frei / später frei / schon vorbei / nie frei (zur gewählten Uhrzeit)
   let freeSig = '';
+  // Freier Himmel laut Teleskop (nur mit Modul Teleskop): gemessene Karte frei/verdeckt dieser Nacht unter den Bahnen
+  let skyP = null;
+  function skyPanel() {
+    const box = $('#obsSky', el), want = mode === 'here' && !!window.telescopeSkyPanel && AF.on?.('telescope');
+    box.hidden = !want;
+    if (want && !skyP) skyP = window.telescopeSkyPanel(box);
+  }
   function freeList(ts = tShow) {                              // tShow: Zielzeit des Reglers (auch während der Animation)
+    skyPanel();
     const box = $('#obsFree', el);
     const showIt = mode === 'here' && on.tracks && paths && paths.targets.length;
     box.hidden = !showIt;
