@@ -215,6 +215,9 @@ class Autopilot:
             self.items = [Item(**vars(i)) for i in old.items if (i.manual or (keep and i.auto)) and i.status == "geplant"]
             self.auto = dict(old.auto) if keep else None
             self.night = old.night if keep else None
+            if keep:                                   # Ort und Dunkelheit gehören zur Nacht (Sonnensperre, Ausrichten)
+                self.site = dict(old.site) if old.site else None
+                self.dark = dict(old.dark) if old.dark else None
             self.blocked = [dict(b) for b in old.blocked]
             self.night_points = [dict(p) for p in old.night_points]
             self.last_scan, self.scan_auto_night = old.last_scan, old.scan_auto_night
@@ -610,7 +613,10 @@ class Autopilot:
     def conditions(self, now: float, s: TelescopeState | None = None) -> list[Hold]:
         s = s or self.state
         out = []
-        if self.site:
+        if not self.site:
+            # Ohne Ort keine Sonnenhöhe und kein Ausrichten: nie öffnen (sperrt, statt durchzulassen)
+            out.append(Hold("site", "Kein Standort für diese Nacht bekannt – Teleskop bleibt eingeklappt (Einstellungen → Standorte)."))
+        else:
             sun = sky.sun_alt(now, self.site["lat"], self.site["lon"])
             if sun > float(self.cfg["sun_limit"]):
                 rising = sky.sun_alt(now + 600, self.site["lat"], self.site["lon"]) > sun
@@ -1342,6 +1348,14 @@ class Autopilot:
             a = self.auto
             if not a or a["state"] != "entwurf":
                 return "Kein Entwurf für diese Nacht – zuerst „Plane meine Nacht“."
+            if not self.site or self.dark is None:              # z. B. nach einem Neuaufbau: Ort und Dunkelheit neu holen
+                site0 = self.env.site(None) if self.env.site else None
+                self.site = (self.env.site(self.night) if self.env.site else None) or site0
+                self.dark = self._dark_window(now) if self.site else None
+            if not self.site:
+                a["deadline"] = None
+                self.log("Kein Standort für diese Nacht bekannt – „Plane meine Nacht“ startet nicht.", "bad", now)
+                return "Für diese Nacht ist kein Standort bekannt (Einstellungen → Standorte)."
             a["deadline"] = None
             a["state"] = "vermessen"
             self.scan_auto_night = self.night             # kein zweiter automatischer Kurzscan
