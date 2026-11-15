@@ -319,6 +319,7 @@
     out.push(c.cloud != null ? chip(lvl(c.cloud, c.cloud_max), 'Wolken', `${Math.round(c.cloud)} %`) : chip('', 'Wolken', 'keine Vorhersage'));
     if (c.wind != null) out.push(chip(lvl(c.wind, c.wind_max), 'Wind', `${Math.round(c.wind)} km/h`));
     if (c.dew_spread != null) out.push(chip(lvl(c.dew_spread, c.dew_limit, true), 'Taupunktabstand', `${c.dew_spread.toFixed(1)} °C`));
+    if (c.rain_in != null) out.push(chip(c.rain_in <= 30 ? 'bad' : 'warn', 'Regen', c.rain_in < 5 ? 'jetzt' : `in ca. ${c.rain_in} min`));
     // Akku-Restzeit (Server: gemessene Entladung, vorher Erfahrungswert je Modell) – „2 h 40 min“ wie battery.fmt_left
     const left = (sec) => { const m = Math.round(sec / 60); if (m < 60) return `${m} min`; let h = Math.floor(m / 60), r = Math.round((m % 60) / 10) * 10; if (r === 60) { h++; r = 0; } return r ? `${h} h ${r} min` : `${h} h`; };
     const bl = c.battery_left, rest = bl && !bl.charging && bl.empty_s != null ? ` · noch ca. ${left(bl.empty_s)}` : '';
