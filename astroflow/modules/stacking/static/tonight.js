@@ -96,12 +96,13 @@ function chart(d, W, H, selected, hidden) {
   }
   // Regen: schräge Striche, nur in Regenstunden, Stärke nach Regenwahrscheinlichkeit; fallen per CSS (Ausstieg bei reduzierter Bewegung)
   if (hasRain(d)) {
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16, tw = 22 / 16 * rem, th = 30 / 16 * rem;   // Kachel in rem, passt zur CSS-Fallstrecke 1,875rem
     defs += ramp(`${id}rm`, d, g, 'tn-st-white', i => !d.rain[i] ? 0 : (d.rain_p?.[i] != null ? .3 + .5 * d.rain_p[i] / 100 : .6))
-      + `<pattern id="${id}rp" width="22" height="30" patternUnits="userSpaceOnUse"><path class="tn-rain-drop" d="M7 2l-2.5 8M18 17l-2.5 8"/></pattern>
+      + `<pattern id="${id}rp" width="${tw.toFixed(1)}" height="${th.toFixed(1)}" viewBox="0 0 22 30" patternUnits="userSpaceOnUse"><path class="tn-rain-drop" d="M7 2l-2.5 8M18 17l-2.5 8"/></pattern>
          <linearGradient id="${id}rv" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".8" stop-color="#fff" stop-opacity="0"/></linearGradient>
          <mask id="${id}rk"><rect x="${L}" y="${T}" width="${PW}" height="${PH}" fill="url(#${id}rm)"/></mask>
          <mask id="${id}rf"><rect x="${L}" y="${T}" width="${PW}" height="${PH}" fill="url(#${id}rv)"/></mask>`;
-    sky += `<g mask="url(#${id}rf)"><g mask="url(#${id}rk)"><rect class="tn-rain" x="${L}" y="${T - 30}" width="${PW}" height="${PH + 30}" fill="url(#${id}rp)"><title>Regen laut Vorhersage</title></rect></g></g>`;
+    sky += `<g mask="url(#${id}rf)"><g mask="url(#${id}rk)"><rect class="tn-rain" x="${L}" y="${T - th}" width="${PW}" height="${PH + th}" fill="url(#${id}rp)"><title>Regen laut Vorhersage</title></rect></g></g>`;
   }
   let out = `<g clip-path="url(#${id}c)">${sky}`;
   // unter der Mindesthöhe: leicht abgedunkelt

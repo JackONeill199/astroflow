@@ -78,7 +78,7 @@ af-tonight-chart { display: block; width: 100%; min-width: 0; margin-top: 0.625r
 :root { --tn-rain: #7ab6f2 }
 .tn-rain-drop { fill: none; stroke: var(--tn-rain); stroke-width: 1.2; stroke-linecap: round }
 .tn-rain { animation: tn-rain-fall 1.6s linear infinite }
-@keyframes tn-rain-fall { to { transform: translateY(30px) } }
+@keyframes tn-rain-fall { to { transform: translateY(1.875rem) } }
 @media (prefers-reduced-motion: reduce) { .tn-rain { animation: none } }
 .tn-below { fill: #000; opacity: .25 }
 .tn-grid { stroke: var(--mut); stroke-opacity: .16 }
