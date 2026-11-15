@@ -1178,7 +1178,9 @@ class Pipeline:
                                       tag=" ".join(t for t in (f"hotfix:{hotfix['key']}" if hotfix and hotfix.get("n") else "",
                                                                # Mosaik: Abdeckung (Lückenfüllung cov ≤ 0,5) hängt an der Mindesttiefe
                                                                f"mosaic:{mos_info['min_depth']}" if mos_info else "") if t),
-                                      smoothing=float(params.get("bge_smoothing", graxpert.DEFAULT_SMOOTHING)))
+                                      smoothing=float(params.get("bge_smoothing", graxpert.DEFAULT_SMOOTHING)),
+                                      dust_guard=bool(params.get("dust_guard", True)))
+            # smoothing = wirksame Glättung (Staubwächter kann sie heben) → processing räumt ab 0,5 das Randglühen
             params["_ai"] = {k: v for k, v in gx.items() if k in ("bge", "denoise", "smoothing")}
             if gx.get("bge"):                           # Einblick: abgezogenes Hintergrundmodell (vorher − nachher)
                 live.offer(run, live_insight.background, gx_before, mean, "graxpert")

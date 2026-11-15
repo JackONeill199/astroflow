@@ -194,21 +194,157 @@ def _cache_key(mean: np.ndarray, mode: str, strength: float, gpu: bool, tag: str
     return h.hexdigest()[:16]
 
 
-GRAXPERT_VERSION = 2                 # erhöhen, wenn sich die Vor-/Nachbereitung ändert (Cache ungültig)
+GRAXPERT_VERSION = 3                 # erhöhen, wenn sich die Vor-/Nachbereitung ändert (Cache ungültig); 3 = Staubwächter
+
+
+# Staubwächter: Glättung 0,1 folgt 100–500 px großen Strukturen – bei Emissionsnebeln mit Dunkelwolken und Staubfeldern
+# rechnet GraXpert dann Nebel und Dunkelstrukturen als Hintergrund weg. Gemessen wird kachelweise, welchen Anteil der
+# großflächigen Bildstruktur (Kachelmediane nach Abzug einer Fläche 2. Grades) das abgezogene Modell mitnimmt (Steigung
+# Modell gegen Bild), insgesamt und in sternarmen Kacheln (Dunkelwolke/Staub verdecken Hintergrundsterne).
+# Eichung 16.11.2026 an 14 echten Stacks (Glättung 0,1): NGC 7000 0,57 / sternarm 0,61, NGC 7023 0,40 / 0,47 (2 statt 8 Sterne
+# je Kachel), IC 1396 0,43 / 0,22, IC 1805 0,21 / 0,32, Galaxien/Haufen (M31, M51, M101, M3, M17) ≤ 0,04. NGC 6888 0,44 kommt nur
+# vom Randglühen, das höhere Glättung schlechter trifft (0,5: 0,56) → die höhere Glättung gilt nur, wenn sie messbar weniger mitnimmt.
+DUST_TILES = 12                      # Kacheln über die kürzere Seite (mindestens 32 px)
+DUST_ALL = 0.35                      # Anteil gesamt, ab dem der Wächter eingreift
+DUST_DARK = 0.30                     # … bzw. in sternarmen Kacheln
+DUST_STRONG = 0.45                   # ab hier gleich 1,0 statt 0,5
+DUST_POOR = 0.55                     # sternarm = weniger als 55 % der mittleren Sternzahl je Kachel
+DUST_MIN_STARS = 4                   # darunter (Galaxienfelder, kurze Belichtung) sagt die Sterndichte nichts
+DUST_GAIN = 0.03                     # so viel weniger muss die höhere Glättung mitnehmen
+# Mindeststruktur: Streuung der Kachelmediane (nach Fläche 2. Grades) in Einheiten des Kleinskalenrauschens – darunter ist der
+# Anteil Zufall (Sternfeld ohne Nebel: 0,06; echte Stacks 0,23 (IC 1396) bis 24 (M31))
+DUST_MIN_STRUCT = 0.15
+
+
+def _dust_stars(lum: np.ndarray, T: int, ty: int, tx: int) -> tuple[np.ndarray, float]:
+    """Sterne je Kachel: lokale Maxima > 5σ über dem lokalen Mittel (25 px) der leicht geglätteten Helligkeit; dazu σ."""
+    from scipy import ndimage as ndi
+    sm = ndi.gaussian_filter(lum, 1.2)
+    res = sm - ndi.uniform_filter(sm, 25)
+    sig = 1.4826 * float(np.median(np.abs(res - np.median(res)))) + 1e-12
+    pk = (sm == ndi.maximum_filter(sm, 7)) & (res > 5 * sig)
+    return pk[: ty * T, : tx * T].reshape(ty, T, tx, T).sum((1, 3)).astype(np.float64), sig
+
+
+def _tile_median(img: np.ndarray, T: int, ty: int, tx: int) -> np.ndarray:
+    return np.median(img[: ty * T, : tx * T].reshape(ty, T, tx, T).swapaxes(1, 2).reshape(ty, tx, -1), axis=2)
+
+
+def _minus_plane2(R: np.ndarray, ok: np.ndarray) -> np.ndarray:
+    ty, tx = R.shape
+    yy, xx = np.mgrid[0:ty, 0:tx].astype(np.float64)
+    yy = yy / max(ty - 1, 1) * 2 - 1
+    xx = xx / max(tx - 1, 1) * 2 - 1
+    A = np.stack([np.ones_like(xx), xx, yy, xx * xx, xx * yy, yy * yy], -1)
+    c, *_ = np.linalg.lstsq(A[ok], R[ok], rcond=None)
+    return R - A @ c
+
+
+def dust_measure(before: np.ndarray, after: np.ndarray, hole: np.ndarray | None = None,
+                 stars: tuple | None = None) -> dict | None:
+    """Wie viel großflächige Struktur nimmt das Hintergrundmodell (before − after, beide (C,H,W) normiert) mit?
+    Gibt {share, dark, structure, stars, poor, tiles, _stars} oder None (Bild zu klein). `stars` = `_stars` eines früheren Aufrufs."""
+    lum = before.mean(0)
+    H, W = lum.shape
+    T = max(32, int(round(min(H, W) / DUST_TILES)))
+    ty, tx = H // T, W // T
+    if ty < 4 or tx < 4:
+        return None
+    ok = np.ones((ty, tx), bool)
+    ok[[0, -1], :] = False                      # äußerer Kachelring: Randglühen, Sensorränder
+    ok[:, [0, -1]] = False
+    if hole is not None and hole.any():
+        ok &= _tile_median(hole.astype(np.float32), T, ty, tx) < 0.5
+    if ok.sum() < 6:
+        return None
+    stars = _dust_stars(lum, T, ty, tx) if stars is None else stars
+    n, sig = stars
+    rI = _minus_plane2(_tile_median(lum, T, ty, tx), ok)
+    rM = _minus_plane2(_tile_median(lum - after.mean(0), T, ty, tx), ok)
+
+    def share(m):
+        den = float((rI[m] ** 2).sum())
+        return float((rM[m] * rI[m]).sum() / den) if den > 0 else 0.0
+
+    med = float(np.median(n[ok]))
+    poor = ok & (n < DUST_POOR * med)
+    dark = share(poor) if med >= DUST_MIN_STARS and poor.sum() >= 3 else None
+    return {"share": round(share(ok), 3), "dark": None if dark is None else round(dark, 3),
+            "structure": round(float(rI[ok].std()) / sig, 3),
+            "stars": [round(float(np.median(n[poor])), 1) if poor.any() else None, round(med, 1)],
+            "poor": int(poor.sum()), "tiles": int(ok.sum()), "_stars": stars}
+
+
+def dust_target(m: dict | None, smoothing: float) -> float | None:
+    """Höhere Glättung (0,5 bzw. 1,0), wenn das Modell zu viel Struktur mitnimmt – sonst None. Nie nach unten."""
+    if not m or m.get("structure", 1.0) < DUST_MIN_STRUCT:
+        return None
+    hit = max(m["share"] if m["share"] >= DUST_ALL else 0.0,
+              m["dark"] if m["dark"] is not None and m["dark"] >= DUST_DARK else 0.0)
+    if hit <= 0 or smoothing >= 1.0 - 1e-6:
+        return None
+    t = 1.0 if hit >= DUST_STRONG else 0.5
+    return t if t > smoothing + 1e-6 else 1.0
+
+
+def dust_reason(m: dict) -> str:
+    """Begründung für den Nutzer (feste deutsche Sätze mit Messwerten)."""
+    de = lambda v: f"{v:g}".replace(".", ",")
+    s = f"Das Hintergrundmodell nahm {100 * m['share']:.0f} % der großflächigen Struktur mit"
+    if m.get("dark") is not None and m["dark"] >= DUST_DARK:
+        p, md = m["stars"]
+        s += (f", in sternarmen Zonen (Dunkelwolke/Staub, {de(p)} statt {de(md)} Sterne je Kachel) "
+              f"{100 * m['dark']:.0f} %")
+    return s
+
+
+def _dust_guard(exe: str, x0: np.ndarray, x: np.ndarray, hole: np.ndarray, smoothing: float, gpu: bool, info: dict, log) -> np.ndarray:
+    """Staubwächter nach dem ersten Hintergrundlauf: nimmt das Modell zu viel großflächige Struktur mit, mit höherer Glättung
+    neu rechnen (GraXpert-GPU ~4 s) und das nur übernehmen, wenn es messbar weniger mitnimmt (1,0 zu viel → 0,5 versuchen).
+    Fehler beim Messen/Nachrechnen lassen das erste Ergebnis stehen."""
+    try:
+        m0 = dust_measure(x0, x, hole)
+        target = dust_target(m0, smoothing)
+        if target is None:
+            return x
+        stars = m0.pop("_stars")
+        dust = {"from": round(smoothing, 2), "reason": dust_reason(m0), "before": m0}
+        info["dust"] = dust
+        for t in dict.fromkeys((target, 0.5)):
+            if t <= smoothing + 1e-6:
+                continue
+            log(f"Staubwächter: Nebel/Dunkelwolken im Hintergrundmodell – Glättung {smoothing:.1f} → {t:.1f}".replace(".", ","))
+            y = _run_safe(exe, x0, "background-extraction", ["-correction", "Subtraction", "-smoothing", f"{t:g}"], gpu, info, log)
+            m1 = dust_measure(x0, y, hole, stars)
+            m1.pop("_stars", None)
+            dust.setdefault("tried", []).append({"smoothing": t, "share": m1["share"], "dark": m1["dark"]})
+            if m1["share"] <= m0["share"] - DUST_GAIN:
+                dust["to"] = t
+                info["smoothing"] = round(t, 2)
+                return y
+        dust["kept"] = True                     # höhere Glättung nahm nicht weniger mit (z. B. Randglühen statt Nebel)
+        log("Staubwächter: höhere Glättung brachte nichts – bleibt bei " + f"{smoothing:.1f}".replace(".", ","))
+    except Exception as e:
+        print(f"[graxpert] Staubwächter übersprungen: {e}")
+        if "dust" in info and "to" not in info["dust"]:
+            info["dust"]["kept"] = True
+    return x
 
 
 def apply(mean: np.ndarray, cov: np.ndarray, mode: str, strength: float = 0.5, cache_dir: Path | None = None,
           exe: str | None = None, log=lambda m: None, preview=None, tag: str = "",
-          smoothing: float = DEFAULT_SMOOTHING) -> tuple[np.ndarray, dict]:
+          smoothing: float = DEFAULT_SMOOTHING, dust_guard: bool = True) -> tuple[np.ndarray, dict]:
     """Linearen Stack (C,H,W) mit GraXpert bearbeiten. Gibt (Stack, Info). Info leer = nichts gemacht.
     Nicht abgedeckte Ränder (cov ≤ 0,5) werden vorher mit dem Himmelswert gefüllt, damit die KI keine
-    harten Kanten als Hintergrund deutet, und nachher wieder eingesetzt."""
+    harten Kanten als Hintergrund deutet, und nachher wieder eingesetzt. `dust_guard`: Staubwächter (hebt die Glättung,
+    wenn das Modell Nebel/Dunkelwolken mitnimmt – Begründung in info["dust"])."""
     exe = exe or graxpert_path()
     if mode == "off" or not exe:
         return mean, {}
     gpu = bool(GRAXPERT.gpu)
     smoothing = float(np.clip(smoothing, 0.0, 1.0))
-    key = _cache_key(mean, mode, strength, gpu, tag + ("|cpu_denoise" if GRAXPERT.cpu_denoise else ""), smoothing)
+    key = _cache_key(mean, mode, strength, gpu, tag + ("|cpu_denoise" if GRAXPERT.cpu_denoise else "")
+                     + ("" if dust_guard else "|ohne_staubwaechter"), smoothing)
     if cache_dir is not None:
         f = cache_dir / f"{key}.npy"
         meta = cache_dir / f"{key}.json"
@@ -246,9 +382,13 @@ def apply(mean: np.ndarray, cov: np.ndarray, mode: str, strength: float = 0.5, c
     try:
         if mode in ("bge", "all"):
             log("Hintergrund entfernen (GraXpert-KI)")
-            x = _run_safe(exe, x, "background-extraction", ["-correction", "Subtraction", "-smoothing", f"{smoothing:g}"], gpu, info, log)
+            x0 = x
+            x = _run_safe(exe, x0, "background-extraction", ["-correction", "Subtraction", "-smoothing", f"{smoothing:g}"], gpu, info, log)
             info["bge"] = True
             info["smoothing"] = round(smoothing, 2)
+            if dust_guard:
+                x = _dust_guard(exe, x0, x, hsub, smoothing, gpu, info, log)
+            del x0
             if preview:
                 from .live import optional, sample
                 optional(preview, sample(x) * scale + lo)
