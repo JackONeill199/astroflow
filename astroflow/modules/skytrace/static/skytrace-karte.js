@@ -83,14 +83,17 @@ function FlatMap(host, deps) {
     ctx.globalAlpha = 1;
   }
   // Nachtmaske: Anteil Nacht je Zelle aus der Sonnenrichtung (gleiche Kante wie der Erd-Shader)
+  // Rückgabe: größter Wert der Maske (unter 1 = ganz Tag, die Maske wäre leer → Nachtdurchgänge entfallen, Bild unverändert)
   function nightMask(shade) {
     const sun = deps.sunLocal(), id = mg.createImageData(mask.width, mask.height);
+    let max = 0;
     for (let j = 0; j < mask.height; j++) for (let i = 0; i < mask.width; i++) {
       const [x, y] = toW((i + .5) / mask.width * V.W, (j + .5) / mask.height * V.H), la = latOf(y) * D2R, lo = lonOf(x) * D2R;
       const d = Math.cos(la) * Math.cos(lo) * sun[0] + Math.cos(la) * Math.sin(lo) * sun[1] + Math.sin(la) * sun[2];
-      id.data[(j * mask.width + i) * 4 + 3] = 255 * (1 - smooth(-.06, .1, d)) * shade;
+      const v = 255 * (1 - smooth(-.06, .1, d)) * shade; id.data[(j * mask.width + i) * 4 + 3] = v; if (v > max) max = v;
     }
-    mg.putImageData(id, 0, 0);
+    if (max >= 1) mg.putImageData(id, 0, 0);
+    return max;
   }
   // Kartenkacheln (nur nach Knopfdruck; Bilder ohne Pixelzugriff, daher kein CORS nötig). Nutzungsregeln von OSM/OpenTopoMap: nur sichtbare Kacheln,
   // keine Vorab-Downloads, höchstens MAX_TILES (96) je Ansicht, Speicher-Cache (LRU) statt erneuter Abrufe, Ladevorgänge außer Sicht abbrechen, Quellenangabe sichtbar.
@@ -108,16 +111,18 @@ function FlatMap(host, deps) {
     return im;
   }
   const cached = (kind, z, x, y) => { const im = S.tileCache.get(`${kind}/${z}/${x}/${y}`); return im?._t ? im : null; };
-  function drawTiles() {
-    const t = TILES[S.tiles]; if (!t) return;
+  // Erst planen (welche Kachel, welcher Platzhalter, Überblendung), dann zeichnen: deckt der Plan die ganze Ansicht deckend ab, entfallen
+  // Erdbild und Nachtseite darunter (Nutzermeldung 15.11.2026: Zoomen mit Straßenkarte kaum benutzbar – je Bild bis zu acht Vollflächen-
+  // Durchgänge unter den deckenden Kacheln lasteten die GPU aus, ~250 ms je Bild im Trace).
+  function tilePlan() {
+    const t = TILES[S.tiles]; if (!t) return null;
     const [x0, y0] = toW(0, 0), [x1, y1] = toW(V.W, V.H);
     const span = (z) => { const n = 2 ** z; return (Math.floor(x1 * n) - Math.floor(x0 * n) + 1) * (Math.min(n - 1, Math.floor(y1 * n)) - Math.max(0, Math.floor(y0 * n)) + 1); };
     let z = clamp(Math.round(Math.log2(V.Z * V.dpr / 256)), 1, t[2]);
     while (z > 1 && span(z) > MAX_TILES) z--;
     S.tileZ = z;
-    const n = 2 ** z, d = V.dpr, now = performance.now(), want = new Set();
-    let fading = false;
-    g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+    const n = 2 ** z, d = V.dpr, now = performance.now(), want = new Set(), list = [];
+    let covered = y0 >= 0 && y1 <= 1, fading = false;       // über ±85° gibt es keine Kacheln
     for (let ty = Math.max(0, Math.floor(y0 * n)); ty <= Math.min(n - 1, Math.floor(y1 * n)); ty++)
       for (let tx = Math.floor(x0 * n); tx <= Math.floor(x1 * n); tx++) {
         const wx = ((tx % n) + n) % n, im = tileImg(S.tiles, z, wx, ty); want.add(im.dataset.key);
@@ -125,21 +130,31 @@ function FlatMap(host, deps) {
         const [ax, ay] = toS(tx / n, ty / n), [bx, by] = toS((tx + 1) / n, (ty + 1) / n);
         const X0 = Math.round(ax * d), Y0 = Math.round(ay * d), W = Math.round(bx * d) - X0, Hh = Math.round(by * d) - Y0;
         const a = im._t ? Math.min(1, (now - im._t) / 200) : 0;
+        let ph = null;
         if (a < 1) {                                           // Platzhalter: nächster geladener Vorfahr (bis 4 Stufen gröber)
           for (let k = 1; k <= 4 && z - k >= 0; k++) {
             const p = cached(S.tiles, z - k, wx >> k, ty >> k); if (!p) continue;
-            const m = 2 ** k, sz = 256 / m;
-            g.globalAlpha = 1; g.drawImage(p, (wx % m) * sz, (ty % m) * sz, sz, sz, X0, Y0, W, Hh); break;
+            const m = 2 ** k, sz = 256 / m; ph = [p, (wx % m) * sz, (ty % m) * sz, sz]; break;
           }
           if (im._t) fading = true;
+          if (!ph) covered = false;
         }
-        if (a > 0) { g.globalAlpha = a; g.drawImage(im, X0, Y0, W, Hh); }
+        list.push({ im, a, ph, X0, Y0, W, Hh });
       }
-    g.restore();
     for (const [key, im] of S.tileCache) if (!im._t && !im._bad && !want.has(key)) { im.src = ''; S.tileCache.delete(key); }     // außer Sicht: nicht weiterladen
     while (S.tileCache.size > CACHE_TILES) S.tileCache.delete(S.tileCache.keys().next().value);
     S.tileWant = want.size;
     S.again ||= fading;                                     // Überblendung läuft: nächstes Bild wieder zeichnen
+    return { list, covered };
+  }
+  function drawTiles(plan) {
+    // Standardfilter (bilinear): Kacheln stehen ≈ 1:1 auf Gerätepixeln; 'high' (bikubisch/Mipmaps) kostete je Kachel ein Vielfaches an GPU-Zeit
+    g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'low';
+    for (const { im, a, ph, X0, Y0, W, Hh } of plan.list) {
+      if (ph) { g.globalAlpha = 1; g.drawImage(ph[0], ph[1], ph[2], ph[3], ph[3], X0, Y0, W, Hh); }
+      if (a > 0) { g.globalAlpha = a; g.drawImage(im, X0, Y0, W, Hh); }
+    }
+    g.restore();
   }
   // Heatmap als scharfe Zellen (Farbe und Durchsicht wie im Globus-Shader)
   function cells(h) { let c = S.cellCache.get(h); if (!c) { c = deps.H.heatCells(h); c.max = c.reduce((a, x) => Math.max(a, x.v), 0); S.cellCache.set(h, c); } return c; }
@@ -162,14 +177,23 @@ function FlatMap(host, deps) {
   }
   function drawBorders(k, nv) {
     if (!S.outlines || k <= .01) return;
-    const [x0, y0] = toW(0, 0), [x1, y1] = toW(V.W, V.H), la1 = latOf(y0), la0 = latOf(y1);
+    const [x0, y0] = toW(0, 0), [x1, y1] = toW(V.W, V.H), la1 = latOf(y0), la0 = latOf(y1), E = 4;
     g.beginPath();
     for (const r of S.outlines) {
       // Ring als Ganzes in die Weltkopie der Kartenmitte (Natural Earth schneidet Ringe an ±180°, also kein Ring über die Naht)
       const k = Math.round(V.cx - (mx(r.box[0]) + mx(r.box[1])) / 2), a = mx(r.box[0]) + k, b = mx(r.box[1]) + k;
       if (b < x0 || a > x1 || r.box[3] < la0 || r.box[2] > la1) continue;
-      for (let i = 0; i < r.lon.length; i++) { const [sx, sy] = toS(mx(r.lon[i]) + k, my(r.lat[i])); if (i) g.lineTo(sx, sy); else g.moveTo(sx, sy); }
-      g.closePath();
+      // Nur Teilstücke, die die Ansicht berühren: hineingezoomt lag sonst jeder sichtbare Ring (Küsten ganzer Kontinente) mit Koordinaten
+      // bis in die Millionen Pixel im Pfad, den der Browser je Bild komplett neu zerlegen musste. Innerhalb der Ansicht unverändert.
+      const n = r.lon.length; let px, py, pen = false;
+      for (let i = 0; i <= n; i++) {
+        const j = i % n, [sx, sy] = toS(mx(r.lon[j]) + k, my(r.lat[j]));
+        if (i && !(Math.max(px, sx) < -E || Math.min(px, sx) > V.W + E || Math.max(py, sy) < -E || Math.min(py, sy) > V.H + E)) {
+          if (!pen) g.moveTo(px, py);
+          g.lineTo(sx, sy); pen = true;
+        } else pen = false;
+        px = sx; py = sy;
+      }
     }
     g.strokeStyle = nv > .5 ? `rgba(159,243,228,${(.55 * k).toFixed(2)})` : `rgba(210,222,245,${(.5 * k).toFixed(2)})`; g.lineWidth = 1; g.stroke();
   }
@@ -247,20 +271,20 @@ function FlatMap(host, deps) {
   function draw() {
     if (!S.on && S.fade <= 0) return;
     const t0 = performance.now(), ctx = g;
-    ctx.setTransform(V.dpr, 0, 0, V.dpr, 0, 0); ctx.clearRect(0, 0, V.W, V.H);
-    ctx.fillStyle = '#03050b'; ctx.fillRect(0, 0, V.W, V.H);
-    const nv = deps.nv(), shade = deps.shade();
-    if (S.earth) {
+    ctx.setTransform(V.dpr, 0, 0, V.dpr, 0, 0);
+    const nv = deps.nv(), shade = deps.shade(), plan = S.tiles ? tilePlan() : null;
+    S.under = !plan?.covered;                              // Prüfwert: Erdbild unter den Kacheln gezeichnet?
+    if (S.under) { ctx.clearRect(0, 0, V.W, V.H); ctx.fillStyle = '#03050b'; ctx.fillRect(0, 0, V.W, V.H); }
+    if (S.earth && S.under) {
       drawEarth(ctx, S.earth.day, 1); if (nv > .01) drawEarth(ctx, S.earth.dayNv, nv);
-      if (shade > .01) {                                   // Nachtseite: dunkle bzw. Nachtsicht-Fassung, maskiert
-        nightMask(shade);
+      if (shade > .01 && nightMask(shade) >= 1) {          // Nachtseite: dunkle bzw. Nachtsicht-Fassung, maskiert (nur, wenn im Ausschnitt Nacht ist)
         sg.setTransform(V.dpr, 0, 0, V.dpr, 0, 0); sg.globalCompositeOperation = 'source-over'; sg.clearRect(0, 0, V.W, V.H);
         drawEarth(sg, S.earth.night, 1); if (nv > .01) drawEarth(sg, S.earth.sight, nv);
         sg.globalCompositeOperation = 'destination-in'; sg.imageSmoothingEnabled = true; sg.drawImage(mask, 0, 0, V.W, V.H); sg.globalCompositeOperation = 'source-over';
         ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(scratch, 0, 0); ctx.setTransform(V.dpr, 0, 0, V.dpr, 0, 0);
       }
     }
-    if (S.tiles) drawTiles();
+    if (plan) drawTiles(plan);
     drawBorders(deps.layerK('borders'), nv);
     const kH = deps.layerK('heat'); if (kH > .01) drawHeat(kH);
     drawMarks();
@@ -350,7 +374,7 @@ function FlatMap(host, deps) {
     // Prüfwerte: Weltpunkt unter einem Bildschirmpunkt (Tests: Punkt unter dem Zeiger bleibt beim Verschieben)
     at: (sx, sy) => { const [x, y] = toW(sx, sy); return [latOf(y), lonOf(x)]; },
     screenOf: (lat, lon) => llS(lat, lon),
-    state: () => ({ on: S.on, fade: +S.fade.toFixed(3), center: [latOf(V.cy), lonOf(V.cx)].map(v => +v.toFixed(5)), pxPerKm: +pxPerKm().toFixed(4), frameMs: +S.frameMs.toFixed(2), tiles: S.tiles, tileZ: S.tileZ, tileWant: S.tileWant, tileReq: S.tileReq, Z: V.Z, dpr: V.dpr, earth: !!S.earth, targets: targets.length,
+    state: () => ({ on: S.on, fade: +S.fade.toFixed(3), center: [latOf(V.cy), lonOf(V.cx)].map(v => +v.toFixed(5)), pxPerKm: +pxPerKm().toFixed(4), frameMs: +S.frameMs.toFixed(2), tiles: S.tiles, tileZ: S.tileZ, tileWant: S.tileWant, tileReq: S.tileReq, under: S.under, Z: V.Z, dpr: V.dpr, earth: !!S.earth, targets: targets.length,
       sats: targets.filter(t => t.kind === 'sat').map(t => ({ id: t.ref.id, name: t.ref.name, x: +t.sx.toFixed(1), y: +t.sy.toFixed(1), on: !!t.ref.on })) }),
     dispose() { host.removeEventListener('wheel', onWheel); ro.disconnect(); cv.remove(); S.tileCache.clear(); },
   };
