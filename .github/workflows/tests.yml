@@ -70,8 +70,10 @@ jobs:
         include:
           - os: ubuntu-latest
             browsers: ~/.cache/ms-playwright
+            workers: auto
           - os: windows-latest
             browsers: ~/AppData/Local/ms-playwright
+            workers: "3"          # 8 Chromium + Server auf 4 Kernen ließen wechselnde Tests in Zeitüberschreitungen laufen
     env: *env
     steps:
       - uses: actions/checkout@v4
@@ -111,7 +113,7 @@ jobs:
         run: python -m playwright install-deps chromium
 
       - name: pytest (nur Browser-Tests)
-        run: python -m pytest -q -rsfE --timeout=300 --durations=15 -m ui --junitxml=pytest-ui-${{ matrix.os }}.xml
+        run: python -m pytest -q -rsfE --timeout=300 --durations=15 -m ui -n ${{ matrix.workers }} --junitxml=pytest-ui-${{ matrix.os }}.xml
 
       - name: Testprotokoll
         if: always()

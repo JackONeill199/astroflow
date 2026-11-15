@@ -53,6 +53,20 @@ FIND_OVERFLOW = """() => {
 }"""
 
 
+
+def _safe_route(fn):
+    """Route-Handler, der still aufgibt, wenn die Seite schon zu ist (Playwright: „Request context disposed“ / „Response has been disposed“ –
+    unter Last schließt der Test die Seite, während noch ein Abruf läuft)."""
+    from playwright.sync_api import Error as PlaywrightError
+
+    def handler(route):
+        try:
+            fn(route)
+        except PlaywrightError:
+            pass
+    return handler
+
+
 def _free_port():
     with socket.socket() as so:
         so.bind(("127.0.0.1", 0))
@@ -288,6 +302,7 @@ def test_live_processing_is_compact_and_updates_in_place(server, browser, size, 
     errors, state = [], {'step': 0, 'done': False, 'rid': None}
     page.on('pageerror', lambda e: errors.append(str(e)))
 
+    @_safe_route
     def project_response(route):
         response = route.fetch()
         data = response.json()
@@ -299,6 +314,7 @@ def test_live_processing_is_compact_and_updates_in_place(server, browser, size, 
                         'steps': [{'stage': 'Bearbeitung', 'label': label, 'done': False}]}
         route.fulfill(response=response, json=data)
 
+    @_safe_route
     def preview_response(route):
         route.fulfill(response=route.fetch(url=f"{base}/api/stacking/results/{state['rid']}/jpg"))
 
@@ -340,12 +356,14 @@ def test_spinners_on_running_object_page(server, browser):
     page.on('pageerror', lambda e: errors.append(str(e)))
     job = {'id': 999, 'state': 'running', 'progress': .1, 'stage': 'Analyse', 'message': 'Analyse'}
 
+    @_safe_route
     def project_response(route):
         response = route.fetch()
         data = response.json()
         data['job'], data['live'] = job, {'job': 999, 'steps': [{'stage': 'Analyse', 'label': 'Analyse', 'done': False}]}
         route.fulfill(response=response, json=data)
 
+    @_safe_route
     def status_response(route):
         response = route.fetch()
         route.fulfill(response=response, json={**response.json(), 'busy': 1})
@@ -383,6 +401,7 @@ def test_live_stack_emerges_from_noise(server, browser, size):
     state = {'k': 4, 'rid': None, 'preview': None, 'ready': False}
     seq = [1, 2, 3, 4, 5, 6, 8, 10, 12, 15]
 
+    @_safe_route
     def project_response(route):
         try:
             response = route.fetch()

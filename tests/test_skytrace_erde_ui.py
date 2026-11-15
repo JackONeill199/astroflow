@@ -56,7 +56,7 @@ def test_erde_ansicht(server, browser, width, tmp_path):
                            "&& document.querySelector('#steHost')._ste.state().layers.heat >= 1"
                            "&& document.querySelector('#steHost')._ste.state().nv >= 1"
                            # Grenzlinien werden asynchron nachgeladen
-                           "&& document.querySelector('#steHost')._ste.state().borders > 0", timeout=15000)
+                           "&& document.querySelector('#steHost')._ste.state().borders > 0", timeout=30000)
     st = _state(page)
     assert st["night"] == "2022-08-01" and st["heatVisible"] == ["2022-08-01"] and st["borders"] > 100000
     assert st["layers"]["heat"] == 1 and st["layers"]["runs"] == 0 and st["marks"]["sites"] == 3
@@ -203,7 +203,7 @@ def test_alternative_in_der_erde(server, browser):
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.goto(base + "/#/skytrace/erde/2022-05-17")
-    page.wait_for_function("(s => s?.night === '2022-05-17' && !s.flying)(document.querySelector('#steHost')?._ste?.state())", timeout=15000)
+    page.wait_for_function("(s => s?.night === '2022-05-17' && !s.flying)(document.querySelector('#steHost')?._ste?.state())", timeout=30000)
     assert _state(page)["marks"]["alts"] == 1 and page.locator(".ste-lbl.alt").count() == 1
     page.locator('.ste-nights button[data-n="2022-05-17"], button[data-n="2022-05-17"]').first.click()
     card = page.locator(".ste-card")
@@ -236,7 +236,7 @@ def test_kartenmodus_kugel_und_flache_karte(server, browser, width, tmp_path):
     page.on("request", lambda r: tiles.append(r.url) if "tile." in r.url else None)
     page.route("**/*tile*.org/**", lambda route: route.fulfill(status=204))       # nie ins Netz
     page.goto(base + "/#/skytrace/erde/2022-08-01")
-    page.wait_for_function("document.querySelector('#steHost')?._ste && !document.querySelector('#steHost')._ste.state().flying", timeout=15000)
+    page.wait_for_function("document.querySelector('#steHost')?._ste && !document.querySelector('#steHost')._ste.state().flying", timeout=30000)
     page.locator(".ste-stage").scroll_into_view_if_needed()
     box = page.locator(".ste-stage").bounding_box()
     w, h = box["width"], box["height"]
@@ -325,7 +325,7 @@ def test_kartenkacheln_passend_zur_aufloesung(server, browser, dpr, tmp_path):
         route.fulfill(status=200, content_type="image/png", body=_tile_png(z, x, y))
     page.route("**/*tile*.org/**", tile)
     page.goto(base + "/#/skytrace/erde/2022-08-01")
-    page.wait_for_function("document.querySelector('#steHost')?._ste && !document.querySelector('#steHost')._ste.state().flying", timeout=15000)
+    page.wait_for_function("document.querySelector('#steHost')?._ste && !document.querySelector('#steHost')._ste.state().flying", timeout=30000)
     page.evaluate("document.querySelector('#steHost')._ste.flat.enter()")
     page.wait_for_function("document.querySelector('#steHost')._ste.state().flat.fade === 1")
     assert not asked                                                                  # ohne Knopfdruck keine Kacheln
@@ -361,7 +361,7 @@ def test_mausrad_ueber_seitenleiste_scrollt_statt_zu_zoomen(server, browser, tmp
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.route("**/*tile*.org/**", lambda route: route.fulfill(status=204))
     page.goto(base + "/#/skytrace/erde/2022-08-01")
-    page.wait_for_function("document.querySelector('#steHost')?._ste && !document.querySelector('#steHost')._ste.state().flying", timeout=15000)
+    page.wait_for_function("document.querySelector('#steHost')?._ste && !document.querySelector('#steHost')._ste.state().flying", timeout=30000)
     page.locator(".ste-stage").scroll_into_view_if_needed()
     nights = page.locator(".ste-stage > .ste-side .ste-nights")
     nights.evaluate("el => { el.style.maxHeight = '3rem' }")                # sicher scrollbar, auch mit wenigen Nächten
@@ -428,7 +428,7 @@ def _sat_page(browser, base, tmp_path, width, touch=False):
     page.route("**/api/skytrace/satellite?**", detail)
     page.route("**/api/skytrace/satellite/crop?**", lambda route: route.fulfill(body=buf.getvalue(), content_type="image/png"))
     page.goto(base + "/#/skytrace/3d")
-    page.wait_for_function("(s => s?.runReady && !s.flying)(document.querySelector('#steHost')?._ste?.state())", timeout=15000)
+    page.wait_for_function("(s => s?.runReady && !s.flying)(document.querySelector('#steHost')?._ste?.state())", timeout=30000)
     page.locator(".ste-stage").scroll_into_view_if_needed()
     return page, scene, errors, asked
 
