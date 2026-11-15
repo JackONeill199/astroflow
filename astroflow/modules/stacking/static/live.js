@@ -38,7 +38,7 @@ function createStackLive(host, pid) {
     insBusy = true;
     const i = insQueue.shift();
     let data = null;
-    try { data = await api(liveSrc(i.name)); } catch { data = null; }
+    try { data = await api(`/stacking/projects/${pid}/live/${encodeURIComponent(i.name)}`); } catch { data = null; }   // api() setzt /api selbst
     if (destroyed || !root.isConnected) return;
     if (!data) { insBusy = false; insPump(); return; }
     const atStart = shown;                               // Bildstand beim Start: ein Wechsel während der Wiedergabe räumt danach ab
