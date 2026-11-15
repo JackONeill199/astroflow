@@ -10,6 +10,7 @@ import threading
 from pathlib import Path
 
 from ...core import sites
+from .motion_class import annotate as annotate_motion
 
 _cache: dict[str, tuple[tuple, dict]] = {}
 _lock = threading.Lock()
@@ -34,6 +35,7 @@ def _candidate(c: dict, run: str) -> dict:
                 linked_track={"count": track.get("count"), "reason": track.get("reason")} if track else None,
                 blink={k: blink.get(k) for k in ("flashes", "period_pixels", "form")} if isinstance(blink, dict) else None,
                 speed_arcsec_s=speed * 3600 if isinstance(speed, (int, float)) else None,
+                motion_class={k: (c.get("motion_class") or {}).get(k) for k in ("version", "verdict", "name", "kind", "reasons")} if c.get("motion_class") else None,
                 catalogs=[{"provider": r.get("provider"), "status": r.get("status"),
                            "matches": [{k: m.get(k) for k in MATCH_KEYS} for m in r.get("matches") or []][:3]}
                           for r in c.get("catalogs") or []])
@@ -130,6 +132,7 @@ def _run(path: Path) -> dict:
         if not isinstance(s, dict) or not s.get("session"):
             continue
         items = _read(path / s["candidates_file"], []) if s.get("candidates_file") else []
+        annotate_motion(items if isinstance(items, list) else [])
         cands = [_candidate(c, path.name) for c in items or [] if isinstance(c, dict)]
         first = s.get('source_first_file') or (_first_file(path / Path(s["video"]).parent) if s.get("video") else None)
         extra = _frames_info(path / Path(s["video"]).parent) if s.get("video") else {}

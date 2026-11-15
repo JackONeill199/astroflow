@@ -22,6 +22,7 @@ from fastapi.responses import FileResponse, Response
 from ...core import security
 from ...core.errors import user_message
 from .procguard import end_process, guard_process
+from .motion_class import annotate as annotate_motion
 
 DEFAULT_SOURCE = str(Path.home())
 MODES = ("Bildfolge → Ereignisvideo", "Fotos", "Videos")
@@ -375,6 +376,7 @@ class Controller:
                     pass
             item["clean_preview_url"] = url(clean_preview) if clean_preview.exists() else None
             items = _read_json(within(path, summary["candidates_file"]), []) if summary.get("candidates_file") else []
+            annotate_motion(items or [])          # Satellit/Flugzeug/Beweger immer mit aktuellem Stand einstufen (auch ältere Läufe)
             item["folder"] = folder.name
             item["sat_matches"] = sum(1 for c in items or [] if any(r.get("provider") == "satellites" and r.get("status") == "compatible"
                                                                       for r in c.get("catalogs") or []))

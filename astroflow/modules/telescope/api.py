@@ -5,10 +5,10 @@ from __future__ import annotations
 
 import threading
 
-from fastapi import APIRouter, Body, HTTPException, Request
+from fastapi import APIRouter, Body, HTTPException, Request, Response
 
 from ...core import security
-from . import MODELS, autopilot as ap, settings
+from . import MODELS, autopilot as ap, preview as pv, settings
 from .driver import DriverError, Target
 
 MAX_KEYS = 300
@@ -49,6 +49,23 @@ def build_router(mod) -> APIRouter:
             u.driver.take_control()
             master = u.driver.state().master
         return master
+
+    @r.get("/preview/info")
+    def preview_info():
+        """Klein und gepollt: gibt es ein Vorschaubild, welche Signatur, wann (Unix-Zeit) und das wievielte Bild."""
+        p = pv.get(unit())
+        return {"available": bool(p), **({"sig": p["sig"], "ts": p["ts"], "n": p["n"], "source": p["source"]} if p else {})}
+
+    @r.get("/preview")
+    def preview_image(request: Request):
+        """Das Vorschaubild (JPEG) – nur das, was `preview.get` selbst erzeugt hat, nie ein Pfad vom Client. ETag → 304."""
+        p = pv.get(unit())
+        if not p:
+            raise HTTPException(404, "Noch kein Vorschaubild.")
+        tag = f'"{p["sig"]}"'
+        if request.headers.get("if-none-match") == tag:
+            return Response(status_code=304, headers={"ETag": tag})
+        return Response(p["jpeg"], media_type="image/jpeg", headers={"ETag": tag, "Cache-Control": "no-cache"})
 
     @r.post("/connect")
     def connect():

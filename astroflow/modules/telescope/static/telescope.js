@@ -319,7 +319,10 @@
     out.push(c.cloud != null ? chip(lvl(c.cloud, c.cloud_max), 'Wolken', `${Math.round(c.cloud)} %`) : chip('', 'Wolken', 'keine Vorhersage'));
     if (c.wind != null) out.push(chip(lvl(c.wind, c.wind_max), 'Wind', `${Math.round(c.wind)} km/h`));
     if (c.dew_spread != null) out.push(chip(lvl(c.dew_spread, c.dew_limit, true), 'Taupunktabstand', `${c.dew_spread.toFixed(1)} °C`));
-    if (s.battery != null || s.charging) out.push(chip(s.charging ? 'ok' : lvl(s.battery, c.battery_min, true), 'Akku', s.charging ? (s.battery != null ? `${s.battery} % · lädt` : 'lädt') : `${s.battery} %`));
+    // Akku-Restzeit (Server: gemessene Entladung, vorher Erfahrungswert je Modell) – „2 h 40 min“ wie battery.fmt_left
+    const left = (sec) => { const m = Math.round(sec / 60); if (m < 60) return `${m} min`; let h = Math.floor(m / 60), r = Math.round((m % 60) / 10) * 10; if (r === 60) { h++; r = 0; } return r ? `${h} h ${r} min` : `${h} h`; };
+    const bl = c.battery_left, rest = bl && !bl.charging && bl.empty_s != null ? ` · noch ca. ${left(bl.empty_s)}` : '';
+    if (s.battery != null || s.charging) out.push(chip(s.charging ? 'ok' : lvl(s.battery, c.battery_min, true), 'Akku', s.charging ? (s.battery != null ? `${s.battery} % · lädt` : 'lädt') : `${s.battery} %${rest}`));
     if (s.stars != null && s.step === 'capture') out.push(chip(s.stars > 30 ? 'ok' : s.stars > 8 ? 'warn' : 'bad', 'Sterne im Bild', s.stars));
     const w = c.weather_offline ? `<span class="sm warn">Kein Internet – Vorhersage von ${tf(c.weather_at)}</span>` : c.weather_at ? `<span class="sm dim">Vorhersage von ${tf(c.weather_at)} (Open-Meteo)</span>` : '';
     return `<div class="tel-conds">${out.join('')}</div>${w ? `<div class="tel-wnote">${w}</div>` : ''}`;
@@ -388,6 +391,9 @@
         <section class="panel tel-stagebox"><canvas class="tel-stage" aria-label="Animiertes Teleskop vor dem Himmel"></canvas></section>
         <section class="panel tel-domebox"><canvas class="tel-dome" aria-label="Himmel von oben mit Bahnen der Ziele"></canvas></section>
       </div>
+      <section class="panel tel-live"><div class="panel-h"><h2>Live-Bild</h2><span class="grow"></span><span class="mut sm tel-live-meta"></span></div>
+        <button type="button" class="tel-live-img" data-act="live-open" aria-label="Live-Bild groß öffnen" hidden><img alt="Aktuelles Vorschaubild vom Teleskop"></button>
+        <div class="tel-live-empty"><b>Noch kein Bild</b><span class="mut sm">Sobald das Teleskop aufnimmt, erscheint hier das neueste Bild.</span></div></section>
       <div class="tel-grid2">
         <section class="panel"><div class="panel-h"><h2>Aktuelles Ziel</h2></div><div class="tel-current"></div></section>
         <section class="panel"><div class="panel-h"><h2>Bedingungen</h2></div><div class="tel-conditions"></div></section>
@@ -438,6 +444,40 @@
       put('props', proposalsHtml(d), '.tel-props');
       put('night', d.night ? `Nacht ${esc(d.night)}${d.site?.name ? ' · ' + esc(d.site.name) : ''}${d.dark ? ` · dunkel ${tf(d.dark.start)}–${tf(d.dark.end)}` : ''}` : '', '.tel-night');
     }
+    // Live-Bild: nur bei sichtbarer Seite und nur bei geänderter Signatur neu laden
+    let liveSig = '', liveTimer = 0, liveTs = 0;
+    async function livePoll() {
+      clearTimeout(liveTimer);
+      if (!el.isConnected) return;
+      if (!document.hidden) {
+        try {
+          const i = await api(T + '/preview/info');
+          if (!el.isConnected) return;
+          const box = q('.tel-live-img'), empty = q('.tel-live-empty');
+          box.hidden = !i.available; empty.hidden = !!i.available;
+          if (i.available && i.sig !== liveSig) { liveSig = i.sig; q('img', box).src = `/api${T}/preview?v=${encodeURIComponent(i.sig)}`; }
+          liveTs = i.available ? i.ts : 0;
+          q('.tel-live-meta').textContent = i.available ? `${tf(i.ts)} · ${i.n} ${i.n === 1 ? 'Bild' : 'Bilder'}` : '';
+        } catch { /* nächster Versuch */ }
+      }
+      liveTimer = setTimeout(livePoll, 5000);
+    }
+    function liveOpen() {
+      let dl = document.getElementById('telLiveDlg');
+      if (!dl) {
+        dl = document.createElement('dialog'); dl.id = 'telLiveDlg'; dl.className = 'tel-live-dlg';
+        dl.innerHTML = `<div class="tel-live-bar"><b>Live-Bild</b><span class="mut sm tel-live-cap"></span><span class="grow"></span><button type="button" class="btn ghost sm" data-x>Schließen</button></div><div class="tel-live-big"></div>`;
+        document.body.append(dl);
+        dl.querySelector('[data-x]').onclick = () => dl.close();
+        dl.addEventListener('click', (e) => { if (e.target === dl) dl.close(); });
+        dl.addEventListener('close', () => { dl._v?.destroy(); dl._v = null; dl.querySelector('.tel-live-big').innerHTML = ''; });
+        addEventListener('hashchange', () => dl.open && dl.close());
+      }
+      dl.querySelector('.tel-live-cap').textContent = liveTs ? tf(liveTs) : '';
+      dl.showModal();
+      dl._v = createViewer(dl.querySelector('.tel-live-big'), `/api${T}/preview?v=${encodeURIComponent(liveSig)}`);
+    }
+    document.addEventListener('visibilitychange', livePoll);
     async function poll() {
       if (!el.isConnected) return;
       try {
@@ -470,6 +510,7 @@
             if (!await ask()) return;
             await send(url, { confirm: true });
           }
+        } else if (act === 'live-open') { liveOpen(); return;
         } else if (act === 'connect') {
           const r = await send(T + '/connect');
           if (r.master === 'other') toast('Verbunden. Die Handy-App steuert gerade – AstroFlow hat die Kontrolle nicht übernommen.');
@@ -492,7 +533,8 @@
     });
     render();
     poll();
-    return { destroy() { clearTimeout(timer); sv.stop(); dv.stop(); } };   // Alarm läuft weiter (globales Status-Polling)
+    livePoll();
+    return { destroy() { clearTimeout(timer); clearTimeout(liveTimer); document.removeEventListener('visibilitychange', livePoll); sv.stop(); dv.stop(); } };   // Alarm läuft weiter (globales Status-Polling)
   }
 
   // ----------------------------------------------------------- Einstellungen --- //

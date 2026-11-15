@@ -11,6 +11,9 @@ window.AstroEvidence=(()=>{
  function blinkText(b){return `${b.flashes} Blitze im gleichen Takt (alle ${num(b.period_pixels,0)} Analysepixel, ${b.form}) – typisch für Blitz- und Positionslichter eines Flugzeugs; ein taumelnder Satellit kann ähnlich aussehen`;}
  function classification(c){
   const names={meteor:'Meteorkandidat',plane:'Flugzeug-/Satellitenkandidat',satellite:'Satellitenkandidat',moving:'Bewegungskandidat',trail:'Spurkandidat'};
+  // Bewegungsklasse (motion_class.py): Satellit oder Flugzeug / wahrscheinlich Flugzeug / langsamer Beweger – mit Begründung.
+  const motion=c.motion_class;
+  if(motion?.name&&['likely_plane','satellite_or_plane','asteroid'].includes(motion.verdict))return {name:motion.name,kind:motion.kind,source:(motion.reasons||[]).join(' ')||'Indiz, keine bestätigte Identität',reasons:motion.reasons||[]};
   // Passende Satellitenbahn: Namen nennen (bester Treffer nach Abstand und Zeitversatz).
   const sat=(c.catalogs||[]).find(r=>r.provider==='satellites'&&r.status==='compatible'&&r.matches?.length);
   if(sat){const m=sat.matches[0],what=m.object_type&&m.object_type!=='Satellit'?m.object_type:'Satellit',more=sat.matches.length>1?' (+'+(sat.matches.length-1)+' weitere Bahn'+(sat.matches.length>2?'en':'')+')':'';
@@ -18,7 +21,7 @@ window.AstroEvidence=(()=>{
   const compatible=(c.catalogs||[]).filter(r=>r.status==='compatible').map(r=>({satellites:'satellite',aircraft:'plane',meteors:'meteor',fireballs:'meteor'})[r.provider]).filter(Boolean);
   const kinds=[...new Set(compatible)];if(kinds.length===1)return {name:names[kinds[0]],source:'Geometrischer Kataloghinweis; Identität unbestätigt',kind:kinds[0]};
   // Über mehrere Aufnahmen verkettete Spur: ein Meteor leuchtet nur in einer Aufnahme.
-  if(c.linked_track?.count>1)return {name:'Bewegtes Objekt in '+c.linked_track.count+' Aufnahmen',kind:'plane',source:c.linked_track.reason};
+  if(c.linked_track?.count>1)return {name:'Satellit oder Flugzeug',kind:'plane',source:c.linked_track.reason};
   // Regelmäßig unterbrochene Spur: Blitz-/Positionslichter eines Flugzeugs (ein taumelnder Satellit kann ähnlich aussehen).
   if(c.blink)return {name:'Flugzeugkandidat (Blinklichter)',kind:'plane',source:blinkText(c.blink)};
   const hints=[...(c.model_hints||[])].filter(h=>names[h.kind]&&Number.isFinite(h.confidence)).sort((a,b)=>b.confidence-a.confidence);
@@ -186,6 +189,9 @@ window.AstroEvidence=(()=>{
    c.blink?`${num(e.hit_frames,0)} Bild zeigt die Erkennung. ${blinkText(c.blink)}. Ein Meteor zieht eine durchgehende Spur.`
    :c.linked_track?.count>1?`${num(e.hit_frames,0)} Bilder zeigen die Erkennung (Bilder ${c.linked_track.frames.join(', ')}, über ${num(c.linked_track.span_seconds,0)} s). ${c.linked_track.reason} Satellit oder Flugzeug sind dadurch noch nicht unterschieden.`
    :`${num(e.hit_frames,0)} Bild(er) zeigen die Erkennung. Die Spur ist ein Kandidat; Meteor, Satellit, Flugzeug oder ein verbliebenes Artefakt sind dadurch noch nicht unterschieden.`];
+  const motion=c.motion_class;
+  if(motion?.name&&motion.reasons?.length)reasons.unshift(`Einstufung „${motion.name}“: ${motion.reasons.join(' ')} Das ist ein Indiz, keine bestätigte Identität.`);
+  else if(motion?.verdict==='satellite'&&motion.reasons?.length)reasons.push(motion.reasons.join(' '));
   if(Number.isFinite(e.minimum_angular_speed_arcsec_s))reasons.push(`Die gemessene Winkellänge würde bei Ausnutzung der gesamten Belichtung mindestens ${num(e.minimum_angular_speed_arcsec_s,1)} Bogensekunden/s entsprechen. Bei kürzerer Leuchtdauer wäre sie schneller. Entfernung, reale Geschwindigkeit und Bewegungsrichtung sind aus einer Einzelspur nicht bestimmt.`);
   if(q.tail_reference_stars)reasons.push(`Sternschweifprüfung: ${num(q.tail_stars,0)} von ${num(q.tail_reference_stars,0)} untersuchten Sternen mit langen schwachen Ausläufern; Richtungskohärenz ${num(q.tail_direction_coherence,3)}, verteilt über ${num(q.tail_quadrants,0)} Bildquadranten. Gemeinsame Ausläufer sprechen für Bewegung während der Belichtung; eine reine Verschiebung zwischen Aufnahmen reicht dafür nicht.`);
   const form=e.shape_validation,burst=e.frame_validation;

@@ -127,9 +127,12 @@ CLEAN_MIN_FRAMES = 100
 
 
 def classify(c: dict) -> tuple[str, dict | None, str]:
-    """Einordnung wie `evidence.js classification` (Kataloghinweis → Verkettung → Blinken → Modell).
+    """Einordnung wie `evidence.js classification` (Bewegungsklasse → Kataloghinweis → Verkettung → Blinken → Modell).
     Rückgabe (Klasse, Satellitentreffer oder None, ursprünglicher Meteorvorschlag 'meteor'/'')."""
     cats = c.get("catalogs") or []
+    motion = c.get("motion_class") or {}
+    if motion.get("verdict") in ("likely_plane", "satellite_or_plane", "asteroid"):      # `motion_class.py`
+        return motion["kind"], None, "meteor" if c.get("kind") == "meteor" else ""
     hints = sorted((h for h in c.get("model_hints") or [] if h.get("kind") in ("meteor", "plane", "satellite", "moving", "trail")
                     and isinstance(h.get("confidence"), (int, float))), key=lambda h: -h["confidence"])
     proposal = "meteor" if c.get("kind") == "meteor" else ""             # Erkennungsvorschlag des Detektors (kein Modellhinweis)

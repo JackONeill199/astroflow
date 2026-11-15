@@ -30,18 +30,23 @@ def narrow_field(meta):
 
 
 def exposure_info(meta):
-    """EXPTIME is seconds; Stellina EXPOSURE is milliseconds. Never invent 10 s."""
+    """EXPTIME is seconds; Stellina EXPOSURE is milliseconds, Vespera EXPOSURE seconds. Never invent 10 s.
+
+    Vespera (14.11.2026, Lauf M2 2026-11-13): Header `EXPOSURE= '10.0'`, `INSTRUME= 'vespera-…'`, kein EXPTIME – vorher galt die
+    Belichtung als fehlend, alle Katalogabgleiche waren „nicht prüfbar“ und Spuren wurden nicht über Aufnahmen verkettet."""
     seconds=positive(meta.get('EXPTIME'))
-    stellina=positive(meta.get('EXPOSURE')) if 'stellina' in str(meta.get('INSTRUME','')).lower() else None
+    instrument=str(meta.get('INSTRUME','')).lower()
+    stellina=positive(meta.get('EXPOSURE')) if 'stellina' in instrument else None
     milliseconds=stellina/1000 if stellina else None
+    vespera=positive(meta.get('EXPOSURE')) if 'vespera' in instrument else None
     normalized=positive(meta.get('exposure_seconds'))
-    values=[v for v in (seconds,milliseconds,normalized) if v is not None]
+    values=[v for v in (seconds,milliseconds,vespera,normalized) if v is not None]
     if not values: return dict(seconds=None,source=None,status='missing')
     if max(values)-min(values)>max(values)*.01:
         return dict(seconds=None,source=None,status='conflicting')
     # Stellina schreibt in DATE-OBS das Ende der Belichtung (gemessen an 80 Satellitenspuren 2022: Bahn kreuzt
     # die Spur 0–20 s vor DATE-OBS, langsame Satelliten füllen genau [DATE-OBS − Belichtung, DATE-OBS]).
-    return dict(seconds=values[0],source='EXPTIME [s]' if seconds else 'Stellina EXPOSURE [ms]' if milliseconds else 'exposure_seconds [s]',status='known',
+    return dict(seconds=values[0],source='EXPTIME [s]' if seconds else 'Stellina EXPOSURE [ms]' if milliseconds else 'Vespera EXPOSURE [s]' if vespera else 'exposure_seconds [s]',status='known',
                 reference='end' if milliseconds else 'start')
 
 

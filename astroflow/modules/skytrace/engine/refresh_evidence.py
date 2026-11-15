@@ -43,8 +43,10 @@ def refresh(root):
             try:sat=satellite_check(item,item.get('site'),settings)
             except ArchiveAccessError as error:sat=status('satellites',error.status,str(error))
             item['catalogs']=[sat if r['provider']=='satellites' else r for r in item['catalogs']]
-            write_json(folder/'kandidaten'/item['id']/'kandidat.json',item)
             print(item['id'],json.dumps({k:item['evidence'].get(k) for k in ('detector_score','length_pixels','length_arcmin','minimum_angular_speed_arcsec_s')},ensure_ascii=True),flush=True)
+        from trail_tracks import classify_candidates
+        classify_candidates(items)
+        for item in items: write_json(folder/'kandidaten'/item['id']/'kandidat.json',item)
         write_json(path,items)
     report(root,summaries)
 

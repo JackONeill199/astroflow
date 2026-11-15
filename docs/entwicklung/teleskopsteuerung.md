@@ -184,6 +184,14 @@ Kontrolle **nur, wenn sie frei ist** (`master == none`) – nie der Handy-App; s
 und die Oberfläche meldet es. Es bewegt nichts und startet keinen Autopiloten (Modus bleibt „aus“, kein `MOVES`-Befehl); dieselbe Regel
 gilt beim Verbinden durch `start`. `POST disconnect` → 409, solange der Autopilot läuft oder wartet. Beide sind Bedienung (auch für
 gekoppelte Geräte), kein `data-local-only`. Tests: `test_api_verbinden_*`.
+
+**Live-Bild (Kachel „Live-Bild“ auf der Teleskop-Seite):** `GET /preview/info` (klein, alle 5 s, nur bei sichtbarer Seite) und
+`GET /preview` (JPEG, ETag → 304; die Ansicht lädt nur bei geänderter Signatur neu, Klick öffnet `createViewer`). Quelle 1: optionale
+Treiber-Fähigkeit `preview` (`Driver.preview()` → `(jpeg_bytes, zeitstempel)`, kein `CONTRACT`-Wechsel; der Simulator liefert eine Attrappe).
+Quelle 2 (Rückfall): die zuletzt per FTP geholte Rohbild-Datei (`Collector.last`), lokal gestreckt und als JPEG gerendert
+(`preview.py`). Ausgeliefert wird nur, was `preview.get` selbst erzeugt – nie ein Pfad vom Client. Ohne Bild: ruhiger Platzhalter.
+Offen: Live-Bild ohne laufendes Ziel (bräuchte eine Probe am Gerät); das Gerätebild (Live-Stack der App) muss das private Plugin liefern.
+Tests: `test_api_vorschau_*`, `test_vorschau_rueckfall_*`.
 - Alle Steuer-Endpunkte unterliegen Herkunftsschutz und Kopplung (Sicherheit 2/3): nur dieser Rechner oder gekoppelte Geräte.
 - **Nur am Rechner selbst** (`require_local`): Pfad zur Bibliothek, Geräteadresse, Laden des Adapters.
 - Keine Ausnahmetexte an den Browser (feste deutsche Meldungen); Status/Protokoll ohne Kennungen und Koordinaten des Ortes.
@@ -242,9 +250,16 @@ Gebaut nach Abschnitt 4–7; Abweichungen und Details:
 - **Plan:** Blöcke des Planers für Nacht und Gerät (`plan_items`, `observatory.plan`); ohne Plan im Simulator eine Vorführ-Nacht
   aus dem Katalog (`demo_items`); Ziele von Hand (`POST /targets`, Katalogname). Lücke im Plan → nächstes freies Ziel früher beginnen.
 - **Ersatzziel** für ein verdecktes/zu tiefes Ziel höchstens 30 min am Stück (`SUB_MAX`), danach neuer Versuch beim geplanten Ziel.
-- **Hindernis oder Wolke** (`_failure`): Scheitern (Astrometrie oder ≥ 80 % verworfene Bilder in den letzten 6) + gutes Bild in anderer
-  Richtung (≥ 20°) in den letzten 20 min, das dort nicht durch späteres Scheitern überholt ist, oder klare Vorhersage, oder dieselbe
-  Richtung scheitert nach > 20 min erneut → sicheres Hindernis. Sonst „vermutlich“ (Sperre läuft nach 20 min ab). Scheitert danach eine
+- **Hindernis oder Wolke** (`_failed`/`_failure`, überarbeitet nach dem Echtbetrieb 14.11.2026: C 51 bei 33 % Verwurf gesperrt –
+  ungeklärt; M1 hinter dem Balkon bei 32 % – echtes Hindernis, Verwurf langsam steigend mit guten Bildern dazwischen):
+  Scheitern = Astrometrie gescheitert oder viele verworfene Bilder – ≥ 80 % der letzten 10 (plötzlich) bzw. ≥ 50 % der letzten 30
+  (zunehmend) – **und** zusätzlich ≥ 80 % insgesamt (nie Sterne gesehen) bzw. das hält schon 5 min an (`BAD_GRACE_S`, so lange nimmt
+  das Gerät weiter auf; neu beginnt die Wartezeit erst unter 30 % der letzten 30 – Hysterese, damit ein Hindernis an der Schwelle
+  nicht durchrutscht). M1-Muster: verdeckt nach ~100 Bildern statt 71.
+  **Sicheres Hindernis** nur, wenn dieselbe Richtung in einem früheren, getrennten Versuch (> 20 min vorher) schon gescheitert ist
+  **und** eine andere Richtung (≥ 20°) in den letzten 20 min gute Bilder lieferte, die dort nicht durch späteres Scheitern überholt
+  sind, oder die Vorhersage klar ist – nie bei ≥ 60 % Bewölkung laut Wetterdaten (`CLOUDY`). Nur dann ein Vorschlag für die
+  Horizontmaske. Sonst „vielleicht“ (Sperre läuft nach 20 min ab, dann neuer Versuch). Scheitert danach eine
   andere Richtung ohne Erfolg dazwischen → Wolken: einklappen, Vermutungen zurücknehmen, nach 20 stabilen Minuten wieder öffnen.
   Gesperrt wird ±10° Azimut bis 5° über die gescheiterte Höhe; Vorschläge je Richtung zusammengefasst, Übernahme in die Horizontmaske
   nur per Knopf mit Rückfrage (`horizon_with`: Stützstelle ± Nachbarn auf Höhe + 2°, nie absenken).

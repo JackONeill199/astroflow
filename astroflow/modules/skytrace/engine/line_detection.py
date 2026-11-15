@@ -59,14 +59,19 @@ def _best_section(bins):
 
 
 BLINK_SCORE=8.          # integrierter Kontrast der Blitze (wie line_snr, nur über die hellen Abschnitte)
+BLINK_MIN_FLASHES=4     # Mindestzahl Blitze; unter 5 zusätzlich jeder Abstand im Takt, kein verdeckter Blitz, Score ≥ BLINK_SCORE_FEW
+BLINK_SCORE_FEW=10.     # Score für 4 Blitze (geeicht 14.11.2026, probe_blink_injection: 54 echte Bildpaare, 453 eingesetzte Spuren –
+                        # 4 Blitze hell 3 % → 36 % wiedergefunden, Fehlalarme in der umgekehrten Differenz unverändert 1/54;
+                        # 3 Blitze verworfen: zwei Fehlalarme mit Score ~20 und fast perfektem Takt aus Sternketten)
+BLINK_REGULARITY=.12    # Median-Abweichung der Abstände vom Takt (Anteil der Periode)
 
 
 def blink_pattern(contrast, valid):
     """Regelmäßig unterbrochene Spur auf einer Geraden: Blitz-/Positionslichter eines Flugzeugs (Nutzerhinweis 29.10.2026).
 
     Zwei Formen: gestrichelt (helle Abschnitte mit dunklen Lücken) oder eine schwache Linie mit regelmäßigen hellen
-    Knoten. Verlangt ≥ 5 Blitze, echte Lücken, konstanten Takt (Median-Abweichung ≤ 12 % der Periode, ¾ der Abstände ≤ 25 %) und einen integrierten
-    Kontrast ≥ BLINK_SCORE. Einzelne verdeckte Blitze (Stern darüber) sind erlaubt, Abstände = Vielfache des Takts. Ohne echtes Beispiel eingestellt – deshalb streng; ein taumelnder Satellit kann ähnlich
+    Knoten. Verlangt ≥ BLINK_MIN_FLASHES Blitze, echte Lücken, konstanten Takt (Median-Abweichung ≤ BLINK_REGULARITY der Periode, ¾ der
+    Abstände ≤ 25 %; unter 5 Blitzen jeder Abstand) und einen integrierten Kontrast ≥ BLINK_SCORE (4 Blitze: BLINK_SCORE_FEW). Eichung: `probe_blink_injection.py`. Einzelne verdeckte Blitze (Stern darüber) sind erlaubt, Abstände = Vielfache des Takts. Ohne echtes Beispiel eingestellt – deshalb streng; ein taumelnder Satellit kann ähnlich
     aussehen. `contrast` ungekappt, je Abtastpunkt (Analyse-Maßstab ≤ 768 px), `valid` = kein Stern."""
     c=np.convolve(np.where(valid,contrast,0.),np.ones(3)/3,'same')
     for floor in (1.0,None):                       # None: Knoten relativ zur Grundhelligkeit der Linie
@@ -84,7 +89,7 @@ def blink_pattern(contrast, valid):
         if len(runs)<3: continue
         level=float(np.median([c[a:b].mean() for a,b in runs]))
         runs=[(a,b) for a,b in runs if c[a:b].mean()>=.35*level]        # Rauschstücke zwischen den Blitzen
-        if len(runs)<5: continue
+        if len(runs)<max(3,BLINK_MIN_FLASHES): continue
         starts=np.array([a for a,_ in runs]);ends=np.array([b for _,b in runs])
         centers=(starts+ends)/2;spacing=np.diff(centers)
         gaps=starts[1:]-ends[:-1]
@@ -95,11 +100,13 @@ def blink_pattern(contrast, valid):
         regularity=float(np.median(deviation))                        # robust: ein von einem Stern geteilter Blitz stört nicht
         missing=int((steps-1).sum())
         lit=int((ends-starts).sum());span=int(ends[-1]-starts[0])
-        if (np.median(gaps)<5 or regularity>.12 or np.mean(deviation<=.25)<.75 or missing>len(runs)//2 or lit/span>.7): continue
+        if (np.median(gaps)<5 or regularity>BLINK_REGULARITY or np.mean(deviation<=.25)<.75 or missing>len(runs)//2 or lit/span>.7): continue
+        # Wenige Blitze: der Median sagt wenig – jeder Abstand muss im Takt liegen, keiner darf fehlen.
+        if len(runs)<5 and (float(deviation.max())>BLINK_REGULARITY or missing): continue
         spacing=np.full(1,period)
         score=float(np.mean([c[a:b].mean() for a,b in runs])*np.sqrt(lit/4))
-        if score<BLINK_SCORE: continue
-        return dict(flashes=len(runs),period=period,regularity=round(regularity,3),duty=round(lit/span,3),
+        if score<(BLINK_SCORE if len(runs)>=5 else BLINK_SCORE_FEW): continue
+        return dict(flashes=len(runs),period=period,regularity=round(regularity,3),max_deviation=round(float(deviation.max()),3),duty=round(lit/span,3),
                     score=round(score,2),start=int(starts[0]),end=int(ends[-1]),form='Knoten' if floor>1. else 'gestrichelt')
     return None
 
