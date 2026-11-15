@@ -290,10 +290,22 @@ Gebaut nach Abschnitt 4–7; Abweichungen und Details:
   0/30/60/90°, grüner Bogen = frei ab Mindesthöhe, Zeiger + schmaler Blickfeld-Keil = gemeldete Höhe (auf 0–90° begrenzt), Wert an der Spitze, Kompassrose für den Azimut, Phase darunter. Eingeklappt:
   Zeiger eingefahren und grau (`parked`, unabhängig davon, ob ein Gerät dabei −90° oder 0° meldet). Simulator: Vaonis klappt auf −90°
   (`sim.park_alt`), Öffnen schwenkt auf 10°.
-- **Oberfläche** `#/teleskop`: Bühne (Canvas: Panorama 140° um die Blickrichtung, Himmel nach Sonnenhöhe, Sterne driften, Horizontmaske,
-  verdeckte Stellen ✕, Zielmarke, Teleskop zielt auf die Marke, Lichtstrom bei Aufnahme, Wolken), Kuppel von oben (Bahnen, Maske,
-  Mindesthöhe, Spur des Teleskops), aktuelles Ziel, Bedingungen, Zeitleiste (Blöcke nach Status, dunkle Zeit, Wolken, Jetzt), Hindernis-
-  Vorschläge, Ereignisse. Knopf „Sofort einklappen“ immer sichtbar (Kopf klebt oben). Einstellungen unter Einstellungen → Teleskop.
+- **Oberfläche** `#/teleskop` (seit dem Umbau auf „ruhige Seite“, Rangfolge von oben):
+  1. Kopf (klebt unter der App-Leiste, volle Breite): Titel, eine Statuszeile (Verbindung · Gerät · Simulation) und der Not-Aus
+     „Sofort einklappen“ – immer sichtbar, auf dem Handy nur als Symbol.
+  2. Status (`heroHtml`): Zustand in einem Satz mit Grund (ersetzt die früheren Kästen „nicht verbunden“, „kein Plan“, „Wartet“),
+     „Als Nächstes/Danach“, Schritte von „Plane meine Nacht“, Startfrist, und **der** Hauptknopf je Lage: Verbinden · Plane meine Nacht/Neu
+     planen (+ leise „Start“ für einen Plan aus dem Planer) · Nacht starten/Verwerfen mit „Künftig gleich starten“ · Pause · Weiter.
+     Sonderfälle (Treiber-Fehler, Rohbilder aus, Plan eines anderen Geräts) bleiben als Hinweis darunter.
+  3. Jetzt: Bühne (Canvas: Panorama 140° um die Blickrichtung, Himmel nach Sonnenhöhe, Sterne driften, Horizontmaske, verdeckte Stellen ✕,
+     Zielmarke, Lichtstrom bei Aufnahme, Wolken), aktuelles Ziel mit Fortschritt, Live-Bild. Daneben Bedingungen als Liste (Ampelpunkt, Wert).
+  4. Plan der Nacht (`planHtml`): eine Zeitleiste (Blöcke nach Status, dunkle Zeit, Wolken, Jetzt) + eine Zielliste mit Begründung für alle
+     Ziele (Meine Nacht, Planer, von Hand), am Morgen die Bilanz. Zugeklappt: „Bahnen am Himmel“ (Kuppel von oben: Bahnen, Maske, Mindesthöhe,
+     Spur) und „Ziel von Hand hinzufügen“.
+  5. Freier Himmel mit den Hindernis-Vorschlägen (gleiches Thema), Legende zugeklappt.
+  6. Zugeklappt: Protokoll (letztes Ereignis in der Kopfzeile) und Gerät (Verbindung/Kontrolle, Modell, Simulator, Zeitraffer, simulierte
+     Zeit, Trennen). Auf/zu merkt sich der Browser (`localStorage`, nur Bequemlichkeit).
+  Einstellungen unter Einstellungen → Teleskop.
 - **Noch offen / ungeprüft am Gerät:** laufende Operation und „eingeklappt“ in `vaonis.translate` (aus einem Status abgeleitet),
   Fehlernamen der Astrometrie, Körper des Geräte-Plans, ob Beobachtung/Init/Park so akzeptiert werden, FTP-Ordner je Beobachtung,
   Stellina-Protokoll. Ereignis `telescope.captured` für sofortiges Einlesen (statt Ordnerüberwachung) noch nicht gebaut.
