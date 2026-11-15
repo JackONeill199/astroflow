@@ -228,7 +228,13 @@ class Collector:
         if final and key not in self.folders:
             return                                  # von diesem Versuch nie einen Ordner gesehen – nichts Fremdes holen
         ext = getattr(item, "extern", False)          # fremde Beobachtung: neuester Ordner (Start am Gerät unbekannt)
-        folder, got = self.ftp.fetch(lambda fo: self.dest(item, fo), self.folders.get(key), final=final, since=None if ext else start)
+        old = self.folders.get(key)
+        # fremde Beobachtung: während der Aufnahme jedes Mal den neuesten Ordner suchen – dasselbe Ziel in der App neu gestartet
+        # = neuer Ordner am Gerät bei gleicher Ziel-ID (Review PR #148); der alte wird dann einmal vollständig abgeholt
+        folder, got = self.ftp.fetch(lambda fo: self.dest(item, fo), None if ext and not final else old, final=final,
+                                     since=None if ext else start)
+        if ext and not final and folder and old and folder != old:
+            got = self.ftp.fetch(lambda fo: self.dest(item, fo), old, final=True)[1] + got
         if folder:
             self.folders[key] = folder
         if got:

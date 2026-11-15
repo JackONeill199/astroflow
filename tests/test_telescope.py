@@ -1360,6 +1360,20 @@ def test_live_bilder_von_beobachtung_aus_der_app(tmp_path):
     pilot.state = TelescopeState(step="idle")
     col.step()
     assert (tmp_path / "Teleskop" / "vespera" / "2026-11-20" / "M42" / "obs-m42" / "img-0001.fits").read_bytes() == b"C" * 8
+    # Review PR #148: dasselbe Ziel in der App neu gestartet (zwischen zwei Abfragen) → neuer Ordner, Rest des alten kommt mit
+    pilot.state = TelescopeState(step="capture", target={"id": "M42", "name": "M42"})
+    col.step()
+    col.step()
+    first = tree["user"]["plan"]["obs-m42"]["01-images-initial"]
+    first["img-0002.fits"] = b"D" * 8
+    tree["user"]["plan"]["obs-m42b"] = {"_m": "20261120220000", "01-images-initial": {"img-0001.fits": b"E" * 8}}
+    col.step()
+    col.step()
+    m42 = tmp_path / "Teleskop" / "vespera" / "2026-11-20" / "M42"
+    assert (m42 / "obs-m42" / "img-0002.fits").read_bytes() == b"D" * 8
+    assert (m42 / "obs-m42b" / "img-0001.fits").read_bytes() == b"E" * 8
+    pilot.state = TelescopeState(step="idle")
+    col.step()
     pilot.mode = "laeuft"                                  # Autopilot steuert, nur zwischen zwei Zielen: nichts Fremdes holen
     pilot.state = TelescopeState(step="capture", target={"id": "M42", "name": "M42"})
     n = col.count
