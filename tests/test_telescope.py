@@ -102,12 +102,17 @@ def test_ganze_nacht_und_einklappen_am_ende():
 
 
 def test_hindernis_wird_erkannt_und_als_vorschlag_gemerkt():
-    p, d, clock = make([item(M31, 0.2, 1.7), item(M45, 1.7, 3.2), item(M81, 3.2, 4.0)], sim.Scenario(obstacles=[WALL]))
-    run(p, clock, 2.0)
+    """Erstes Scheitern sperrt nur vorläufig (kein Vorschlag); nach 20 min neuer Versuch, scheitert dieselbe Richtung
+    erneut, während andere klar sind → sicher ein Hindernis, Vorschlag für die Horizontmaske."""
+    p, d, clock = make([item(M31, 0.2, 1.7), item(M45, 1.7, 4.0), item(M81, 4.0, 4.6)], sim.Scenario(obstacles=[WALL]))
+    run(p, clock, 1.9)
+    assert not p.proposals and p.blocked and not p.blocked[0]["sure"]
+    assert "neuer Versuch in 20 min" in texts(p)
+    run(p, clock, 0.5)
     assert p.proposals and p.proposals[0]["target"] == "M45" and p.proposals[0]["sure"]
     assert 60 <= p.proposals[0]["az"] <= 120
-    assert "Hindernis" in texts(p)
-    run(p, clock, 2.3)
+    assert "also ein Hindernis" in texts(p)
+    run(p, clock, 2.5)
     m45 = [i for i in p.items if i.id == "M45"]
     assert any(i.status == "fertig" for i in m45), "später, über der Wand, wird M45 noch einmal versucht"
     assert d.state().parked
@@ -118,14 +123,43 @@ def test_wolken_sind_kein_hindernis():
     nach dem Wolkenband und 20 stabilen Minuten weiter."""
     sc = sim.Scenario(clouds=[(T0 + 1.0 * H, T0 + 1.6 * H)])
     p, d, clock = make([item(M31, 0.2, 1.3), item(M15, 1.3, 3.0)], sc)
-    run(p, clock, 1.2)
+    run(p, clock, 1.4)
     assert p.mode == "wartet" and p.hold.kind == "clouds"
     assert not p.proposals and not p.blocked
     assert "Wolken" in texts(p)
-    run(p, clock, 0.1)
     assert d.state().parked
-    run(p, clock, 1.0)
+    run(p, clock, 0.9)
     assert p.mode == "laeuft" and any(i.status == "aktiv" for i in p.items)
+
+
+def test_kurzer_wolkenzug_sperrt_keine_richtung():
+    """Ein paar Minuten Wolke mitten in einer guten Aufnahme → weiter aufnehmen, keine Sperre, kein Vorschlag."""
+    sc = sim.Scenario(clouds=[(T0 + 1.0 * H, T0 + 1.0 * H + 3 * 60)])
+    p, d, clock = make([item(M31, 0.2, 1.6)], sc)
+    run(p, clock, 1.7)
+    m31 = p.items[0]
+    assert m31.status == "fertig" and m31.rejected > ap.WINDOW_FRAMES
+    assert not p.blocked and not p.proposals
+    assert "wieder brauchbare Bilder" in texts(p) and "verdeckt" not in texts(p)
+
+
+def test_einmal_verworfen_ist_kein_sicheres_hindernis():
+    """Lange Wolke nur über einem Ziel, andere Richtung vorher klar: vorläufig gesperrt, aber nicht „sicher“, kein Vorschlag."""
+    p, d, clock = make([item(M31, 0.0, 3.0)], cfg={"fallback": False})
+    run(p, clock, 0.5)
+    cur = p.items[0]
+    p.ok_marks.append((clock.now() - 60, 200.0, 30.0))          # gutes Bild in ganz anderer Richtung
+    d.sc.clouds = [(clock.now(), clock.now() + 2 * H)]
+    run(p, clock, 0.4)
+    assert cur.status == "verdeckt" and p.blocked and not p.blocked[0]["sure"] and not p.proposals
+
+
+def test_bei_bewoelkung_nie_sicheres_hindernis():
+    p, d, clock = make([item(M45, 1.7, 3.2), item(M81, 0.2, 1.7)], sim.Scenario(obstacles=[WALL]),
+                       forecast=_forecast([(-2, 14, 65)]))   # bewölkt, aber unter der Einklapp-Grenze
+    run(p, clock, 2.6)
+    assert not p.proposals and all(not b["sure"] for b in p.blocked)
+    assert "eher Wolken" in texts(p)
 
 
 def _forecast(spans):
@@ -1032,9 +1066,100 @@ def test_alter_astrometriefehler_trifft_neues_ziel_nicht():
     cur = p.items[0]
     s = d.state()
     cur.status, cur.seen = "aktiv", False
-    assert p._failed(cur, s) is False
+    assert p._failed(cur, s, clock.now()) is False
     cur.seen = True
-    assert p._failed(cur, s) is True
+    assert p._failed(cur, s, clock.now()) is True
+
+
+def test_verbindung_weg_ohne_geraeteplan_kein_falscher_hinweis(monkeypatch):
+    """Kann der Treiber keinen Geräte-Plan, darf das Protokoll beim Verbindungsverlust nicht behaupten, der Plan laufe weiter."""
+    monkeypatch.setattr(sim.SimDriver, "capabilities", frozenset({"focus"}))
+    sc = sim.Scenario(offline=[(T0 + 0.5 * H, T0 + 0.6 * H)])
+    p, d, clock = make([item(M31, 0.0, 1.0)], sc)
+    run(p, clock, 0.55)
+    assert "Verbindung zum Teleskop verloren" in texts(p) and "Plan im Gerät" not in texts(p)
+
+
+def _feed(p, cur, clock, bad_at):
+    """Bilder einzeln (10 s) einspielen; bad_at(n) → verworfen? Gibt die Bildnummer zurück, bei der `_failed` greift."""
+    cur.status, cur.seen = "aktiv", True
+    rej, t = 0, clock.now()
+    for n in range(1, 400):
+        rej += bool(bad_at(n))
+        s = TelescopeState(connected=True, parked=False, target={"id": cur.id}, step="capture", frames=n, stacked=n - rej, rejected=rej)
+        t += 10
+        p._track(s, t)
+        if p._failed(cur, s, t):
+            return n, rej
+    return None, rej
+
+
+def test_m1_balkon_zunehmend_verdeckt_wird_erkannt():
+    """Echtbetrieb 14.11.2026: M1 (Az 146°, Höhe 59°) lief zunehmend hinter den Balkon – Verwurf langsam steigend, zwischendurch
+    gute Bilder, nach 71 Bildern 23 verworfen (32 %). Das ist ein Hindernis und muss als verdeckt erkannt werden, spätestens
+    `BAD_GRACE_S` nachdem die letzten 30 Bilder überwiegend verworfen sind."""
+    p, d, clock = make([item(M31, 0.0, 3.0)], cfg={"fallback": False})
+    acc = {"x": 0.0}
+
+    def bad(n):                                    # Anteil steigt gleichmäßig: 0 → 64 % bei Bild 71, danach weiter bis 100 %
+        acc["x"] += min(1.0, 0.64 * n / 71)
+        if acc["x"] >= 1.0:
+            acc["x"] -= 1.0
+            return True
+        return False
+    hit, rej = _feed(p, p.items[0], clock, bad)
+    assert hit is not None, "zunehmendes Hindernis rutscht durch"
+    assert hit <= 71 + ap.LONG_FRAMES + ap.BAD_GRACE_S / 10, hit
+    assert rej / hit < 0.8                         # erkannt, obwohl insgesamt längst nicht „fast alles“ verworfen ist
+
+
+def test_wolkenzug_mit_pausen_erst_nach_wartezeit():
+    """Schübe von je 7 verworfenen Bildern mit 4 guten dazwischen: nicht sofort verdeckt, sondern erst nach `BAD_GRACE_S`
+    (kann auch ein Hindernis sein – C 51 ist ungeklärt). Das erste Scheitern sperrt ohnehin nur vorläufig."""
+    p, d, clock = make([item(M31, 0.0, 3.0)], cfg={"fallback": False})
+    hit, _ = _feed(p, p.items[0], clock, lambda n: n > 40 and (n - 41) % 11 >= 4)
+    assert hit is not None and hit >= 40 + ap.BAD_GRACE_S / 10
+
+
+def test_dauerhaft_verworfen_ist_verdeckt():
+    """Gute Bilder, dann kippt alles (Ziel sinkt hinter einen Baum): nach `BAD_GRACE_S` am Stück verdeckt."""
+    p, d, clock = make([item(M31, 0.0, 3.0)], cfg={"fallback": False})
+    cur = p.items[0]
+    cur.status, cur.seen = "aktiv", True
+    t, n, rej, hit = clock.now(), 0, 0, None
+    for k in range(200):
+        n += 1
+        rej += k >= 60
+        s = TelescopeState(connected=True, parked=False, target={"id": cur.id}, step="capture", frames=n, stacked=n - rej, rejected=rej)
+        t += 10
+        p._track(s, t)
+        if p._failed(cur, s, t):
+            hit = k
+            break
+    assert hit is not None and 60 + ap.BAD_GRACE_S / 10 <= hit <= 60 + ap.BAD_GRACE_S / 10 + ap.LONG_FRAMES
+
+
+def test_dienst_telescope_sky():
+    p, d, clock = make([item(M31, 0.0, 3.0)], cfg={"fallback": False})
+    assert p.sky_now(clock.now()) is None                          # noch eingeklappt/keine Bilder
+    run(p, clock, 0.3)
+    v = p.sky_now(clock.now())
+    assert v["clear"] and v["ratio"] >= 0.9 and clock.now() - v["t"] < 120
+    assert p.sky_now(clock.now() + ap.SKY_FRESH_S + 300) is None   # zu alt
+    d.sc.clouds = [(clock.now(), clock.now() + 2 * H)]
+    run(p, clock, 0.05)
+    v = p.sky_now(clock.now())
+    assert v and not v["clear"] and v["ratio"] < 0.5                # Wolkenzug: laut Teleskop bewölkt
+
+
+def test_dienst_telescope_sky_im_modul(tmp_path, monkeypatch):
+    app = _app(tmp_path, monkeypatch)
+    fn = app.state.ctx.services["telescope_sky"]
+    assert fn() is None                                            # Simulator: nie ein erfundener Himmel
+    mod = app.state.modules["telescope"]
+    monkeypatch.setattr(type(mod.unit), "simulated", property(lambda self: False))
+    monkeypatch.setattr(mod.unit.pilot, "sky_now", lambda now: {"clear": True, "ratio": 0.9, "t": now, "why": "x"})
+    assert fn()["clear"] and fn()["source"] == "Vaonis Vespera"
 
 
 def test_akku_rate_je_betriebsart():
@@ -1054,3 +1179,21 @@ def test_akku_reicht_nicht_vorige_beobachtung_wird_gestoppt():
     p, d, clock = make([item(M15, 0.0, 0.1), item(M31, 0.1, 3.0)], sim.Scenario(battery=18, battery_per_h=20), cfg={"fallback": False})
     run(p, clock, 0.2, step=20)
     assert "starte M31 nicht mehr" in texts(p) and "stop" in d.commands and d.step != "capture"
+
+
+def test_einstellungen_speichern_behaelt_eigene_ziele(tmp_path, monkeypatch):
+    """Echtbetrieb 14.11.2026: Wer Einstellungen änderte, verlor von Hand hinzugefügte Ziele (M1) – der Autopilot wird neu
+    gebaut und übernimmt sie jetzt (ebenso Sperren, Vorschläge, Protokoll)."""
+    app = _app(tmp_path, monkeypatch)
+    with TestClient(app, base_url="http://127.0.0.1:8766", client=("127.0.0.1", 50000),
+                    headers={"Origin": "http://127.0.0.1:8766"}) as c:
+        assert c.post("/api/telescope/targets", json={"name": "M 1", "hours": 1}).status_code == 200
+        app.state.modules["telescope"].unit.pilot.proposals.append({"az": 146.0, "alt": 59.0, "t": 0.0, "target": "M1", "sure": True})
+        old = app.state.modules["telescope"].unit.pilot
+        assert c.post("/api/telescope/settings", json={"cloud_max": 55}).status_code == 200
+        new = app.state.modules["telescope"].unit.pilot
+        assert new is not old
+        assert [i.name for i in new.items if i.manual] == [i.name for i in old.items if i.manual] and new.items
+        assert new.proposals and "hinzugefügt" in texts(new)
+        names = [i["name"] for i in c.get("/api/telescope/state").json()["items"]]
+        assert any("1" in n for n in names)

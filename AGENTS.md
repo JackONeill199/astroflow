@@ -49,7 +49,7 @@ astroflow/static/          Shell: index.html, app.js (Router, Navigation, Übers
   `activity()` (gemeinsames Format `{key,title,kind,detail,state,progress,started,finished,href}`), `scripts/styles`. Reihenfolge/Liste: `AVAILABLE`.
 - **Module reden nicht per Import miteinander**, sondern über Dienste in `ctx.services`. Stacking: `plate_solver`, `project_picture`,
   `project_solution`, `project_frames`, `observation_log`, `catalog_resolve`, `catalog_objects`, `site_sky`, `night_zero_points`, `asteroid_tally`;
-  Sage: `object_facts`, `collection_progress`; Kern: `sites` (`SiteBook`), `site_for`, `night_sources`. **Fehlt ein Dienst, muss das Modul trotzdem laufen.**
+  Sage: `object_facts`, `collection_progress`; Teleskop: `telescope_sky`; Kern: `sites` (`SiteBook`), `site_for`, `night_sources`. **Fehlt ein Dienst, muss das Modul trotzdem laufen.**
   Bedeutung je Dienst: Langfassung in `architektur-sicherheit-tests.md`.
 - **Ereignisse** (`ctx.on` / `ctx.emit`, Liste in `core/modules.py`): `stacking.stacked(project_id, result_id, name)` kommt aus
   `Pipeline.process` nach dem Entwickeln und **vor** dem Löschen hochgeladener Rohbilder (`Pipeline.on_stacked`). Empfänger: SkyTrace

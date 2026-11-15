@@ -159,6 +159,7 @@ class Module(BaseModule):
             ctx.services["report_private_dirs"].append(self.private_dirs)
         from .captures import CaptureImport
         self.captures = CaptureImport(self)                 # Importansicht: vorhandene Aufnahmen vom Teleskop holen
+        ctx.services["telescope_sky"] = self.sky             # „Heute Nacht“: klar/bewölkt laut Teleskop
 
     def private_dirs(self) -> list[str]:
         from . import plugins
@@ -176,6 +177,18 @@ class Module(BaseModule):
         except Exception:
             return None
 
+    def sky(self) -> dict | None:
+        """Himmel laut Teleskop: {clear, ratio, t, why, source} oder None (nichts Frisches; im Simulator nie – erfundener Himmel)."""
+        try:
+            u = self.unit
+            if u.simulated:
+                return None
+            v = u.pilot.sky_now(u.now())
+            return {**v, "source": MODELS.get(u.cfg["model"], u.cfg["model"])} if v else None
+        except Exception:
+            traceback.print_exc()
+            return None
+
     @property
     def unit(self) -> Unit:
         return self.units[0]
@@ -188,6 +201,7 @@ class Module(BaseModule):
                 raise DriverError("Erst den Autopilot beenden (Einklappen), dann den Treiber wechseln.")
             old.stop()
             self.units[0] = Unit(self, settings(self.ctx.store))
+            self.units[0].pilot.adopt(old.pilot)          # von Hand hinzugefügte Ziele u. a. nicht verlieren
             self.units[0].start()
 
     def router(self):
