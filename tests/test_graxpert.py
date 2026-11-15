@@ -327,3 +327,32 @@ def test_dust_better_checks_the_triggering_share():
     assert not b({"share": 0.44, "dark": None}, {"share": 0.56, "dark": None})
     assert b({"share": 0.57, "dark": 0.61}, {"share": 0.41, "dark": 0.49})
     assert not b({"share": 0.24, "dark": 0.40}, {"share": 0.23, "dark": 0.38})
+
+
+def test_dust_guard_discarded_try_leaves_no_run_state_and_abort_propagates(tmp_path, monkeypatch):
+    """Verworfener Versuch: LAST_LOG/Wiederholungsangaben vom ersten Lauf; Abbruch aus dem Fortschritt wird weitergeworfen."""
+    import pytest
+    exe = _dust_fake(tmp_path)
+    monkeypatch.setenv("GX_FAKE_SAME", "1")
+    mean, cov = _dust_sky(cloud=True)
+    real_run = graxpert._run_safe
+
+    def run(exe_, x, cmd, args, gpu, info, log):
+        y = real_run(exe_, x, cmd, args, gpu, info, log)
+        s = args[args.index("-smoothing") + 1]
+        graxpert.LAST_LOG = f"Lauf {s}"
+        if s != "0.1":
+            info["retried_cpu"] = True
+        return y
+
+    monkeypatch.setattr(graxpert, "_run_safe", run)
+    _, info = graxpert.apply(mean, cov, "bge", exe=exe)
+    assert info["dust"]["kept"] and graxpert.LAST_LOG == "Lauf 0.1" and "retried_cpu" not in info
+
+    def stop(msg):
+        if msg.startswith("Staubwächter"):
+            raise InterruptedError("angehalten")
+
+    with pytest.raises(InterruptedError):
+        graxpert.apply(mean, cov, "bge", cache_dir=tmp_path / "c", exe=exe, log=stop)
+    assert not (tmp_path / "c").exists()                     # kein ungeprüftes Ergebnis im Cache

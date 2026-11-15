@@ -311,7 +311,20 @@ def dust_better(m0: dict, m1: dict) -> bool:
 def _dust_guard(exe: str, x0: np.ndarray, x: np.ndarray, hole: np.ndarray, smoothing: float, gpu: bool, info: dict, log) -> np.ndarray:
     """Staubwächter nach dem ersten Hintergrundlauf: nimmt das Modell zu viel großflächige Struktur mit, mit höherer Glättung
     neu rechnen (GraXpert-GPU ~4 s) und das nur übernehmen, wenn es messbar weniger mitnimmt (1,0 zu viel → 0,5 versuchen).
-    Fehler beim Messen/Nachrechnen lassen das erste Ergebnis stehen."""
+    Fehler beim Messen/Nachrechnen lassen das erste Ergebnis stehen; Abbruch und Speichermangel werden weitergeworfen.
+    Verworfene Versuche hinterlassen keinen Laufzustand (LAST_LOG entscheidet über das Entrauschen auf der GPU)."""
+    global LAST_LOG
+    log_first = LAST_LOG
+    run_keys = ("retried_cpu", "nonfinite_pct", "nonfinite_repaired")
+    run_first = {k: info[k] for k in run_keys if k in info}
+
+    def discard():
+        global LAST_LOG
+        LAST_LOG = log_first
+        for k in run_keys:
+            info.pop(k, None)
+        info.update(run_first)
+
     try:
         m0 = dust_measure(x0, x, hole)
         target = dust_target(m0, smoothing)
@@ -333,9 +346,13 @@ def _dust_guard(exe: str, x0: np.ndarray, x: np.ndarray, hole: np.ndarray, smoot
                 info["smoothing"] = round(t, 2)
                 return y
         dust["kept"] = True                     # höhere Glättung nahm nicht weniger mit (z. B. Randglühen statt Nebel)
+        discard()
         log("Staubwächter: höhere Glättung brachte nichts – bleibt bei " + f"{smoothing:.1f}".replace(".", ","))
+    except (InterruptedError, MemoryError):
+        raise
     except Exception as e:
         print(f"[graxpert] Staubwächter übersprungen: {e}")
+        discard()
         if "dust" in info and "to" not in info["dust"]:
             info["dust"]["kept"] = True
     return x
@@ -413,6 +430,8 @@ def apply(mean: np.ndarray, cov: np.ndarray, mode: str, strength: float = 0.5, c
             if preview:
                 from .live import optional, sample
                 optional(preview, sample(x) * scale + lo)
+    except (InterruptedError, MemoryError):      # Abbruch/Speichermangel: Auftrag hält an (pipeline.resource_error)
+        raise
     except Exception as e:                       # GraXpert-Fehler brechen die Bearbeitung nie ab
         log(f"GraXpert fehlgeschlagen ({e}) – eigene Verfahren")
         # ungültige Werte: feste Meldung (Regel 7), Einzelheiten stehen im Server-Protokoll
