@@ -30,6 +30,28 @@ def test_teilanfragen_gleicher_ordner(tmp_path):
     assert len(ordner) == 1 and len(list(ordner.pop().glob("*.fit"))) == 12
 
 
+def test_scan_schreibt_neue_aufnahmen_in_einer_transaktion(tmp_path):
+    """Ursache des wackligen UI-Tests (Windows-CI): je Aufnahme eine eigene Verbindung mit Commit (~25 ms) – 450 Dateien
+    brauchten unter Last über eine Minute. Neue Aufnahmen (auch Duplikate) gehen jetzt gebündelt in die Datenbank."""
+    s = load_settings(tmp_path / "d")
+    s.auto = False
+    eng = create_app(s).state.modules["stacking"].eng          # ohne Lifespan: kein Watcher, der parallel scannt
+    d = s.input_dir / "teile"
+    d.mkdir(parents=True)
+    for i in range(30):
+        (d / f"Light_M31_10.0s_LP_20261001-{i:06d}.fit").write_bytes(_fits(i))
+    (d / "kopie").mkdir()
+    (d / "kopie" / "Light_M31_10.0s_LP_20261001-000000.fit").write_bytes(_fits(0))   # inhaltsgleich
+    einzeln, gebuendelt = [], []
+    x, many = eng.db.x, eng.db.many
+    eng.db.x = lambda sql, *a: (einzeln.append(sql) if "INTO frames" in sql else None) or x(sql, *a)
+    eng.db.many = lambda sql, rows: gebuendelt.append(len(list(rows) if not isinstance(rows, list) else rows)) or many(sql, rows)
+    r = eng.pl.scan()
+    assert r["new_frames"] == 30 and r["duplicates"] == 1, r
+    assert not einzeln and sorted(gebuendelt) == [1, 30]
+    assert eng.db.one("SELECT COUNT(*) n FROM frames")["n"] == 31
+
+
 def test_zu_viele_dateien_verstaendliche_meldung(tmp_path):
     s = load_settings(tmp_path / "d")
     s.auto = False

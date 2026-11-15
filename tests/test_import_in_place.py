@@ -129,13 +129,17 @@ def test_import_needs_no_space_for_raw_data(tmp_path, monkeypatch):
         lib.start_import(["g0"])
 
 
-def test_first_stack_waits_for_unplugged_drive(setup):
+def test_first_stack_waits_for_unplugged_drive(setup, monkeypatch):
     """Platte abgesteckt, bevor der erste Auftrag lief: kein endgültiger Fehler – nach dem Anstecken geht es weiter."""
     s, app, eng, root = setup
     with TestClient(app) as c:
         _import_all(c, root)
         pid = eng.db.one("SELECT id FROM projects")["id"]
-        jid = eng.enqueue(pid)
+        # Auftrag nur hier ausführen: sonst holt ihn der laufende Stack-Thread sofort aus der Warteschlange, stackt parallel
+        # (noch vor dem Abstecken) und überschreibt Zustand und Meldung – „error“ ohne „nicht erreichbar“ (Windows, wackelig)
+        with monkeypatch.context() as m:
+            m.setattr(eng.q, "put", lambda jid: None)
+            jid = eng.enqueue(pid)
         root.rename(root.with_name("abgesteckt"))
         eng._stack_job(jid)
         job = eng.db.one("SELECT * FROM jobs WHERE id=?", (jid,))

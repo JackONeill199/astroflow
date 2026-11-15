@@ -261,7 +261,9 @@
     el.append(cp);
     componentsPanel(cp.lastElementChild);
     p.onchange = async (e) => {
-      if (e.target.id === 'sysUpd') { try { await send('/setup', { update_check: e.target.checked }); toast('Gespeichert.', 'ok'); } catch (err) { toast(err.message, 'err'); } }
+      if (e.target.id === 'sysUpd') { try { await send('/setup', { update_check: e.target.checked });
+        if (e.target.checked) AF.app.updateManual = false;      // Hintergrundprüfung wieder an: neue Angebote zählen wieder (Review PR #112)
+        toast('Gespeichert.', 'ok'); } catch (err) { toast(err.message, 'err'); } }
       if (e.target.id === 'sysReport') {
         try { await send('/setup', { report: e.target.checked }); AF.app.report = e.target.checked; $('#reportBtn').hidden = !e.target.checked; toast('Gespeichert.', 'ok'); }
         catch (err) { toast(err.message, 'err'); e.target.checked = !e.target.checked; }

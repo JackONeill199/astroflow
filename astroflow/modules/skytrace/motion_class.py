@@ -150,17 +150,28 @@ def track_speed(c):
 
 
 def mover_speed(c):
-    """Winkelgeschwindigkeit [″/s] eines langsamen Punktbewegers aus Pfad und Bildabstand; None, wenn unbekannt."""
-    points = (c.get('evidence') or {}).get('segment') or []
+    """Winkelgeschwindigkeit [″/s] eines langsamen Punktbewegers aus Pfad und Zeit; None, wenn unbekannt.
+
+    Zeit aus den Aufnahmezeiten der Pfadpunkte (`evidence.segment_times`), sonst aus ihren Bildnummern (`segment_frames`) mal
+    üblichem Bildabstand – ausgeschlossene oder fehlende Bilder zwischen zwei Punkten zählen so mit (Review PR #130). Ältere
+    Läufe ohne diese Angaben: Punkte als aufeinanderfolgende Bilder im üblichen Abstand (Näherung)."""
+    ev = c.get('evidence') or {}
+    points = ev.get('segment') or []
     scale = _pixel_degrees(c)
-    stamps = sorted(f['timestamp'] for f in c.get('frames') or [] if _num(f.get('timestamp')) is not None and not f.get('excluded'))
-    if len(points) < 2 or not scale or len(stamps) < 2:
+    if len(points) < 2 or not scale:
         return None
+    length = sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(points, points[1:]))
+    times = ev.get('segment_times') or []
+    if len(times) == len(points) and all(_num(t) is not None for t in times) and float(times[-1]) > float(times[0]):
+        return length * scale * 3600 / (float(times[-1]) - float(times[0]))
+    stamps = sorted(f['timestamp'] for f in c.get('frames') or [] if _num(f.get('timestamp')) is not None and not f.get('excluded'))
     steps = sorted(b - a for a, b in zip(stamps, stamps[1:]) if b > a)
     if not steps:
         return None
     step = steps[len(steps) // 2]
-    length = sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(points, points[1:]))
+    nums = ev.get('segment_frames') or []
+    if len(nums) == len(points) and all(_num(n) is not None for n in nums) and float(nums[-1]) > float(nums[0]):
+        return length * scale * 3600 / (step * (float(nums[-1]) - float(nums[0])))
     return length * scale * 3600 / (step * (len(points) - 1))
 
 

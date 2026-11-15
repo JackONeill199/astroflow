@@ -139,3 +139,40 @@ def test_blinkprofil_wenige_blitze_nur_im_takt():
         assert ld.blink_pattern(rng.normal(0, 1, 700), valid) is None
     finally:
         ld.BLINK_MIN_FLASHES, ld.BLINK_SCORE = old
+
+
+def test_beweger_tempo_aus_echten_zeiten_der_pfadpunkte():
+    """Review PR #130: Lücken im Pfad (ausgeschlossene/fehlende Bilder) zählen mit – Tempo aus den Zeitstempeln bzw.
+    Bildnummern der Pfadpunkte, nicht aus „ein Bildabstand je Punkt“."""
+    frames = [{"timestamp": 1000 + 10 * k} for k in range(30)]
+    seg = [(100 + 0.5 * k, 100) for k in range(8)]                       # 3,5 px ≈ 21″
+    plain = cand(kind="moving", hits=range(8), segment=seg, frames=frames)
+    assert abs(mc.mover_speed(plain) - 3.5 * 6 / 70) < 0.05                 # alte Näherung: 7 Bildabstände
+    timed = cand(kind="moving", hits=range(8), segment=seg, frames=frames)
+    timed["evidence"]["segment_times"] = [1000 + 30 * k for k in range(8)]   # jedes dritte Bild (dazwischen ausgeschlossen)
+    numbered = cand(kind="moving", hits=range(8), segment=seg, frames=frames)
+    numbered["evidence"]["segment_frames"] = [1 + 3 * k for k in range(8)]
+    assert abs(mc.mover_speed(timed) - mc.mover_speed(plain) / 3) < 1e-6
+    assert abs(mc.mover_speed(numbered) - mc.mover_speed(plain) / 3) < 1e-6
+    broken = cand(kind="moving", hits=range(8), segment=seg, frames=frames)
+    broken["evidence"]["segment_times"] = [None] * 8                         # unbrauchbar → Rückfall
+    assert mc.mover_speed(broken) == mc.mover_speed(plain)
+
+
+
+def test_engine_fuehrt_bilder_der_pfadpunkte_mit(monkeypatch):
+    """Die Engine legt je Pfadpunkt Bildnummer und Aufnahmezeit in den Nachweis (Bild 3 fehlt im Pfad)."""
+    import pytest
+    pytest.importorskip("cv2")
+    import numpy as np
+    monkeypatch.syspath_prepend(str(ENGINE))
+    from candidate_evidence import enrich
+    rows = {i: dict(index=i, file=f"b{i}", timestamp=1000 + 10 * i, reference_to_current=[[1, 0, 0], [0, 1, 0]],
+                    star_field=dict(accepted=True), quality=dict(excluded=False)) for i in range(6)}
+    data = {f"b{i}": np.full((200, 200), 100, dtype="float32") for i in range(6)}
+    cand_ = dict(id="K1", hit_indices=[4], world_path=None, exposure_seconds=10, kind="moving",
+                 frames=[dict(index=i + 1, timestamp=1000 + 10 * i, hit=i == 4, excluded=False) for i in range(6)])
+    det = dict(kind="moving", path=[[100, 100], [101, 100], [102, 100], [104, 100]], path_frames=[0, 1, 2, 4])
+    ev = enrich(cand_, rows[4], det, rows, lambda name: (data[name], {}), 200, 200)
+    assert ev["segment_frames"] == [1, 2, 3, 5] and ev["segment_times"] == [1000, 1010, 1020, 1040]
+

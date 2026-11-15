@@ -202,6 +202,9 @@ class Pipeline:
                     seen[f.info.fp] = f.path
                 unique.append(f)
         dup_by_proj: dict[int, int] = {}                     # Rückmeldung an den Import: „bereits in Objekt X“
+        # neue Zeilen gesammelt in *einer* Transaktion schreiben: je Aufnahme eine Verbindung mit Commit kostete unter Windows
+        # ~25 ms (450 Dateien: 14 s, unter Last über eine Minute – Upload-Test lief in den Zeitablauf)
+        dup_rows, new_rows = [], []
         owner = {r["path"]: r["project_id"] for r in self.db.q("SELECT path, project_id FROM frames WHERE project_id IS NOT NULL")} if dups else {}
         for f, orig in dups:
             if owner.get(orig):
@@ -209,9 +212,11 @@ class Pipeline:
             if self.s.delete_uploads and self._is_upload(f.path):
                 Path(f.path).unlink(missing_ok=True)       # hochgeladene Kopie: sofort Speicher freigeben
                 continue
-            self.db.x("INSERT OR IGNORE INTO frames(id,project_id,path,kind,night,info,status,reason) VALUES(?,?,?,?,?,?,?,?)",
-                      (f.id, None, f.path, "duplicate", f.night, json.dumps(f.info.to_dict()), "duplicate",
-                       f"identisch mit {Path(orig).name} ({Path(orig).parent.name})"))
+            dup_rows.append((f.id, None, f.path, "duplicate", f.night, json.dumps(f.info.to_dict()), "duplicate",
+                             f"identisch mit {Path(orig).name} ({Path(orig).parent.name})"))
+        if dup_rows:
+            self.db.many("INSERT OR IGNORE INTO frames(id,project_id,path,kind,night,info,status,reason) VALUES(?,?,?,?,?,?,?,?)",
+                         dup_rows)
         frames = unique
         centers = {p["key"]: (p["ra"], p["dec"], p["radius"]) for p in self.db.q("SELECT * FROM projects") if p["ra"] is not None}
         # Lights ohne Koordinaten und ohne bekannten Objektnamen: Plate-Solving je Aufnahmegruppe
@@ -233,9 +238,11 @@ class Pipeline:
                 size = Path(f.path).stat().st_size                 # auch für den Namensabgleich der Hauptordner-Suche
             except OSError:
                 size = 0
-            self.db.x("INSERT OR IGNORE INTO frames(id,project_id,path,kind,night,info,size,status,reason) VALUES(?,?,?,?,?,?,?,?,?)",
-                      (f.id, pid, f.path, f.kind, f.night, json.dumps(f.info.to_dict()), size,
-                       "ignored" if f.kind == "processed" else "new", f.info.processed or ""))
+            new_rows.append((f.id, pid, f.path, f.kind, f.night, json.dumps(f.info.to_dict()), size,
+                             "ignored" if f.kind == "processed" else "new", f.info.processed or ""))
+        if new_rows:
+            self.db.many("INSERT OR IGNORE INTO frames(id,project_id,path,kind,night,info,size,status,reason) VALUES(?,?,?,?,?,?,?,?,?)",
+                         new_rows)
         return {"new_frames": len(frames), "new_by_project": new_by_proj, "errors": errors, "solved": solved,
                 "duplicates": len(dups), "duplicates_by_project": dup_by_proj}
 
