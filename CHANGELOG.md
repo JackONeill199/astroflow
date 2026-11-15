@@ -3,6 +3,15 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.79.0 – 15.11.2026
+
+### Neu
+- **Bilder – beschlagene Optik erkennen:** Zeigen mehrere Aufnahmen eines Ziels denselben hellen, ortsfesten Schleier, werden sie mit „Optik beschlagen? (heller Schleier im Bild)“ verworfen. Wandernde Wolken fallen nicht darunter.
+- **Teleskop – Beschlag-Wächter:** Der Autopilot misst jedes Live-Bild. Bleiben Sternzahl oder Schärfe bei klarer Vorhersage mindestens 5 Minuten deutlich schlechter als zu Beginn des Ziels oder zeigen die Bilder den Schleier, bricht er das Ziel mit „Optik beschlagen?“ ab, klappt ein und nennt im Protokoll den Abstand zum Taupunkt. Nach einer Stunde versucht er es erneut; „Weiter“ hebt die Pause sofort auf. Ohne bekannte Wettervorhersage bricht er nicht ab.
+
+### Behoben
+- **Bilder – Sensorglühen aus zu kurzer Stichprobe:** Das Glühmodell einer Nacht wird nur noch gemessen, wenn die Stichprobe mindestens 20 Minuten umfasst; unplausibel hohe Werte zählen nicht. Bisher konnte ein kurzes, beschlagenes Ziel das Modell der ganzen Nacht verfälschen und anderen Aufnahmen einen hellen Fleck mit Kante einrechnen. Betroffene Nächte werden beim nächsten Verarbeiten automatisch neu analysiert und neu gestapelt.
+
 ## 0.78.1 – 15.11.2026
 
 ### Behoben
