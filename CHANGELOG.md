@@ -3,6 +3,19 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.77.0 – 15.11.2026
+
+### Neu
+- **Teleskop – Live-Vorschau:** Die Teleskop-Seite zeigt eine kleine Kachel mit dem zuletzt geholten Bild der laufenden Aufnahme (Zeitpunkt und Bildzähler); ein Klick öffnet es groß. Ohne Aufnahme steht dort ein ruhiger Platzhalter.
+- **Teleskop – Akku-Restzeit:** Bei Teleskopen mit Akku steht neben dem Akkuwert, wie lange er voraussichtlich noch hält (aus dem gemessenen Verbrauch, getrennt für offen und eingeklappt; beim Laden „lädt“). Reicht der Akku nicht bis zum Ende eines Ziels, kürzt der Autopilot es und sagt das im Protokoll; mit weniger als 10 Minuten Rest startet er kein neues Ziel.
+- **SkyTrace – Flugzeuge ehrlicher einstufen:** Wandernde Spuren heißen nur noch „Satellit“, wenn eine Bahn eng passt. Sonst „Wahrscheinlich Flugzeug“ (Blinkmuster, zwei parallele Positionslichter oder keine passende Bahn bei schneller Spur) bzw. „Satellit oder Flugzeug“, wenn es offen bleibt. „Asteroid möglich“ nur noch bei punktförmigen, gemessen langsamen Bewegern. Vorhandene Läufe werden beim Öffnen neu eingestuft.
+- **Heute Nacht – ehrlichere Wettervorhersage:** Hohe Schleierwolken zählen schwächer als tiefe und mittlere (durch sie sieht man oft noch Sterne) und sind als solche gekennzeichnet. Ein zweites Wettermodell (ECMWF) läuft als Gegenprobe mit; liegen die Modelle weit auseinander, steht „Vorhersage unsicher“ dabei. Stunden mit Regen gelten als unbrauchbar, werden deutlich gewarnt und ziehen die Nachtbewertung klar nach unten. Nimmt gerade ein Teleskop auf, zeigt die Wetteranzeige zusätzlich „laut Teleskop klar“ bzw. „bewölkt“.
+
+### Behoben
+- **SkyTrace – Blinkspuren:** Flugzeug-Blinklichter werden schon ab 4 statt 5 Blitzen erkannt (geeicht an 453 eingesetzten Spuren in echten Aufnahmen, ohne neue Fehlalarme).
+- **SkyTrace – Vespera:** Die Belichtungszeit von Vespera-Aufnahmen wird gelesen; dadurch funktionieren Katalogabgleich und Verkettung über mehrere Aufnahmen.
+- **Teleskop – Abbruch „verdeckt“:** Der Autopilot bricht ein Ziel nicht mehr schon bei rund einem Drittel verworfener Bilder als „verdeckt“ ab. Sofort nur noch ab 80 % Verwurf, sonst erst, wenn es 10 Minuten am Stück schlecht bleibt; dünne Wolken werden nicht mehr als Hindernis gedeutet.
+
 ## 0.76.0 – 14.11.2026
 
 ### Neu
