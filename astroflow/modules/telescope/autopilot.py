@@ -819,16 +819,21 @@ class Autopilot:
             return True
 
     def _fogged(self, it: Item, now: float) -> dict | None:
-        """Beschlag am laufenden Ziel? Nur bei klarer Vorhersage – sonst sind es eher Wolken (übrige Wächter)."""
+        """Beschlag am laufenden Ziel? Nur bei bekannter klarer Vorhersage (Wolkenwert vorhanden und unter CLOUDY) – sonst
+        sind es eher Wolken bzw. es lässt sich nicht unterscheiden; dann kein Abbruch (übrige Wächter)."""
         r = self.fog.check(now, it.real_start or 0.0)
         if r is None:
             return None
         h = self.weather_now(now)
-        if h and h.get("cloud") is not None and h["cloud"] >= CLOUDY:
+        if h is None or h.get("cloud") is None:
+            self._once(f"fog-unknown-{it.id}", f"{it.name}: Bilder werden stetig schlechter – ohne aktuelle Wettervorhersage "
+                       "lässt sich Beschlag nicht von Wolken unterscheiden, das Ziel läuft weiter.", "info", now)
+            return None
+        if h["cloud"] >= CLOUDY:
             self._once(f"fog-cloudy-{it.id}", f"{it.name}: Bilder werden stetig schlechter, laut Vorhersage aber bewölkt – "
                        "eher Wolken als beschlagene Optik.", "info", now)
             return None
-        r["dew_spread"] = h.get("dew_spread") if h else None
+        r["dew_spread"] = h.get("dew_spread")
         return r
 
     def _fog_end(self, it: Item, r: dict, now: float):

@@ -592,11 +592,16 @@ class Pipeline:
 
         # --- 0. Sensorglühen (vor Analyse und Registrierung, in Sensorkoordinaten) --
         # (dazu ortsfeste Sensorfehler: Hotpixel-Paare/-Grüppchen, die die Einzelbild-Kosmetik als Stern schützt)
-        old_glow = json.loads(proj["options"] or "{}").get("glow_info") or {}
+        popt = json.loads(proj["options"] or "{}")
+        old_glow = popt.get("glow_info") or {}
         glow, bad = self._sensor_maps(rows, lib, cache, progress, glow=opt.get("sensor_glow", True))
         # Glühmodell einer Nacht deutlich anders als bei der letzten Analyse (z. B. unplausible Messung verworfen): deren
-        # Aufnahmen neu analysieren (Messwerte, Vorschau) und neu stacken – der alte Abzug steckt in beiden
+        # Aufnahmen neu analysieren (Messwerte, Vorschau) und neu stacken – der alte Abzug steckt in beiden. Die Nacht bleibt
+        # in `glow_pending` vorgemerkt, bis das wirklich geschehen ist (Rohbilder auf abgesteckter Platte: nächster Lauf).
         reglow = {n for n, v in (glow or {}).items() if n in old_glow and _glow_changed(old_glow[n].get("adu"), v.get("adu"))}
+        reglow |= set(popt.get("glow_pending") or [])
+        if reglow:
+            self._glow_pending(project_id, reglow)
         for k, v in (("glow_info", glow), ("defect_info", bad)):
             if v:
                 self.db.x(f"UPDATE projects SET options=json_set(COALESCE(options,'{{}}'),'$.{k}',json(?)) WHERE id=?",
@@ -739,7 +744,19 @@ class Pipeline:
                         lambda f, stage, msg="": full(0.60 + 0.24 * f, stage, msg))
         else:
             (wd / "comet.json").unlink(missing_ok=True)
+        if reglow:
+            # erledigt, wenn alle Rohbilder der Nacht neu analysiert sind und der Stack neu aufgebaut werden konnte; gelöschte
+            # Rohbilder lassen sich nie wiederholen (bleibt nicht vorgemerkt), nicht erreichbare schon
+            blocked = any(r["id"] in offline and r["stacked"] for r in lights)
+            self._glow_pending(project_id, {n for n in reglow if blocked or any(r["night"] == n and r["id"] in offline for r in lights)})
         return states
+
+    def _glow_pending(self, project_id: int, nights: set) -> None:
+        if nights:
+            self.db.x("UPDATE projects SET options=json_set(COALESCE(options,'{}'),'$.glow_pending',json(?)) WHERE id=?",
+                      (json.dumps(sorted(nights)), project_id))
+        else:
+            self.db.x("UPDATE projects SET options=json_remove(COALESCE(options,'{}'),'$.glow_pending') WHERE id=?", (project_id,))
 
     # ============================================================ Kometen #
     def _comet(self, proj, opt, states, by_band, lib, cache, scale, offline, progress) -> None:

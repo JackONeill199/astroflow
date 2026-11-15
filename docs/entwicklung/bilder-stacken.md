@@ -231,7 +231,8 @@ Stand im alten Text unter Schritt 7 eingeordnet; gehören technisch zu `Pipeline
    (Feld steht sonst still), sonst Bibliothek bzw. kein Modell; (2) `GlowLibrary.implausible`: Nacht > max(4 × Median der übrigen
    Nächte, +40 ADU) zählt weder für sich noch für den Bibliotheksmedian (Quelle „… eigene Messung unplausibel“); (3) weicht die
    Glühamplitude einer Nacht stark von `glow_info` der letzten Analyse ab (`pipeline._glow_changed`: Faktor 2 und ≥ 20 ADU), werden
-   deren Frames neu analysiert (Messwerte, Vorschau) und neu gestackt.
+   deren Frames neu analysiert (Messwerte, Vorschau) und neu gestackt; die Nacht bleibt in `projects.options.glow_pending`, bis das
+   für alle Rohbilder geschehen ist (nicht erreichbare Platte → nächster Lauf; gelöschte Rohbilder zählen nicht).
    **2D-Restkarte** (seit 2026-10-30, NGC 4490: Profile ließen Ecke +18 ADU und eine Seite −7 ADU übrig ≈ Stack-Rauschen →
    Flecken + violettes Eckglühen): je Ebene zusätzlich 30-%-Perzentil in Kacheln `GLOW_BIN` 32 px des Rests nach den Profilen
    (Achse 2 im `.npz`). `model_from` → `_rest_map`: Gesamtmuster minus *ausgeblendet* abgezogene Profile (sonst bleibt, was die

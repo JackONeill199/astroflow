@@ -147,7 +147,7 @@ Abweichungen (z. B. „Befehl gesendet, Gerät bewegt sich nach 30 s nicht“) i
      Simulator: `SimDriver.frame_metrics`) in `FogWatch`. Beschlag, wenn ab ≥ 12 Bildern über ≥ 5 min (a) ≥ 80 % der Bilder der
      letzten 5 min einen hellen Schleier zeigen (`veil` ≥ 3) oder (b) Sternzahl (Median) ≥ 35 % unter bzw. FWHM ≥ 30 % über den
      ersten 6 Bildern des Ziels liegt und ≥ 80 % der Bilder im Fenster einzeln schlechter sind (Wolkenzüge lassen Lücken). Nur bei
-     Vorhersage < 60 % Wolken (sonst Protokoll „eher Wolken“). Reaktion: Protokoll mit Sternen/FWHM/Schleier und Taupunktabstand
+     bekannter Vorhersage < 60 % Wolken (bewölkt: Protokoll „eher Wolken“; keine/abgelaufene Vorhersage: Hinweis, kein Abbruch). Reaktion: Protokoll mit Sternen/FWHM/Schleier und Taupunktabstand
      der Vorhersage, Ziel „abgebrochen – Optik beschlagen?“, Hold `fog` → einklappen; „Weiter“/„Start“ (Optik geprüft) hebt ihn auf,
      sonst neuer Versuch nach `FOG_PAUSE_S` (60 min). Läuft vor dem Hindernis-Kriterium. Ohne Live-Bilder keine Erkennung.
    - **Hindernis** (`obstacles.py`): Astrometrie scheitert, Sterne fehlen oder der Hintergrund ist auffällig hell (Laterne),

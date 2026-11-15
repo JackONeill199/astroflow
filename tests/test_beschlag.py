@@ -263,3 +263,57 @@ def test_bright_centred_galaxy_is_not_fog():
         met[f"g{i}"] = m
     assert all(m["veil_edge"] is False for m in met.values() if m["veil"] >= quality.VEIL_MIN)
     assert not any(r == quality.VEIL_REASON for _, r, _ in quality.select_frames(met).values())
+
+
+def test_autopilot_without_forecast_does_not_abort():
+    """Keine (aktuelle) Vorhersage: Beschlag und Wolken lassen sich nicht unterscheiden – kein Abbruch, nur ein Hinweis."""
+    p, d, clock = _pilot(forecast=None)
+    _run(p, clock, 1.5)
+    assert p.items[0].why != "Optik beschlagen?" and p.fog_at is None
+    assert "ohne aktuelle Wettervorhersage" in " | ".join(e["text"] for e in p.events)
+
+
+def _glow_pipeline(tmp_path):
+    import json
+
+    from astroflow.core.config import load_settings
+    from astroflow.modules.stacking import demo
+    from astroflow.modules.stacking.db import DB
+    from astroflow.modules.stacking.pipeline import Pipeline
+    from astroflow.modules.stacking.reviewer import ReviewerConfig
+
+    s = load_settings(tmp_path / "data")
+    db = DB(s.db_path)
+    pl = Pipeline(s, db, ReviewerConfig())
+    demo.generate(s.input_dir / "n", n_lights=30, n_darks=0, n_flats=0)
+    pl.scan()
+    pid = db.one("SELECT id FROM projects")["id"]
+    pl.process(pid)
+    opts = lambda: json.loads(db.one("SELECT options FROM projects WHERE id=?", (pid,))["options"])
+    return pl, db, pid, opts
+
+
+def test_glow_pending_kept_while_raw_frames_offline(tmp_path, monkeypatch):
+    """Glühmodell einer Nacht ändert sich, ihre Rohbilder sind gerade nicht erreichbar: Nacht bleibt vorgemerkt und wird
+    nachgeholt, sobald die Platte wieder da ist (Review PR #140)."""
+    import json
+    pl, db, pid, opts = _glow_pipeline(tmp_path)
+    night = sorted(opts()["glow_info"])[0]
+    info = {**opts()["glow_info"], night: {"quelle": "nacht", "adu": 500.0}}         # „alte“ Analyse mit falschem Modell
+    db.x("UPDATE projects SET options=json_set(options,'$.glow_info',json(?)) WHERE id=?", (json.dumps(info), pid))
+    rows = db.q("SELECT id FROM frames WHERE project_id=? AND night=?", (pid, night))
+    gone = {r["id"] for r in rows[:2]}
+    real = pl.offline
+    monkeypatch.setattr(pl, "offline", lambda rs: {r["id"] for r in rs if r["id"] in gone})
+    try:
+        pl.process(pid)
+    except Exception:
+        pass                                                   # Platte fehlt: Lauf darf abbrechen, Markierung muss bleiben
+    assert opts().get("glow_pending") == [night]
+    monkeypatch.setattr(pl, "offline", real)
+    for i in gone:                                             # Marke: verschwindet nur durch eine Neu-Analyse
+        db.x("UPDATE frames SET metrics=json_set(metrics,'$.marke',1) WHERE id=?", (i,))
+    pl.process(pid)
+    assert "glow_pending" not in opts()
+    after = {r["id"]: json.loads(r["metrics"]) for r in db.q("SELECT id, metrics FROM frames WHERE project_id=?", (pid,))}
+    assert all("marke" not in after[i] for i in gone)
