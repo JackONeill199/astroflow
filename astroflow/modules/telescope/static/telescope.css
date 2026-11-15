@@ -100,3 +100,16 @@
   .tel-alarm, .tel-log li { animation: none }
   .tel-bar, .tel-now { transition: none }
 }
+
+/* Live-Bild */
+.tel-live { margin-bottom: 1rem }
+.tel-live-img { display: block; width: 100%; padding: 0; border: 0; background: var(--surface-2); border-radius: var(--r-sm); cursor: zoom-in; overflow: hidden }
+.tel-live-img[hidden], .tel-live-empty[hidden] { display: none }
+.tel-live-img img { display: block; width: 100%; max-height: 18rem; object-fit: contain; background: var(--bg) }
+.tel-live-empty { display: grid; gap: 0.25rem; place-items: center; text-align: center; padding: 1.5rem 1rem; border-radius: var(--r-sm); background: var(--surface-2) }
+.tel-live-dlg { width: min(96vw, 80rem); height: min(90vh, 60rem); padding: 0; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); color: var(--fg) }
+.tel-live-dlg::backdrop { background: color-mix(in srgb, var(--bg) 80%, transparent) }
+.tel-live-dlg[open] { display: flex; flex-direction: column }
+.tel-live-bar { display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 0.875rem; border-bottom: 1px solid var(--border) }
+.tel-live-big { flex: 1; min-height: 0; position: relative }
+.tel-live-big .viewer { position: absolute; inset: 0; aspect-ratio: auto; border: 0; border-radius: 0 }

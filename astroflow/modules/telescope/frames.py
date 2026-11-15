@@ -123,6 +123,7 @@ class Collector:
         self.attempt: tuple | None = None          # laufender Versuch (Item, Startzeit)
         self.pending: list[tuple] = []             # beendete Versuche, deren Abschlussabruf noch aussteht
         self.count = 0
+        self.last: Path | None = None              # zuletzt geholte Rohbild-Datei (Quelle der Vorschau)
         self.error: str | None = None
         self._stop = threading.Event()
         self.thread = threading.Thread(target=self._loop, daemon=True, name="teleskop-bilder")
@@ -188,6 +189,7 @@ class Collector:
         if folder:
             self.folders[key] = folder
         if got:
+            self.last = max(got, key=lambda p: p.name)
             self.count += len(got)
             self.unit.pilot.frames_fetched = self.count
             if self.count == len(got) or final:

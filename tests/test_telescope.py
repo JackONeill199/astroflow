@@ -766,6 +766,43 @@ def test_api_verbinden_nimmt_der_handy_app_die_kontrolle_nicht(tmp_path, monkeyp
         assert "takeControl" not in u.driver.commands and u.driver.master == "other"
 
 
+def test_api_vorschau_simulator_und_platzhalter(tmp_path, monkeypatch):
+    app = _app(tmp_path, monkeypatch)
+    with TestClient(app, base_url="http://127.0.0.1:8766", client=("127.0.0.1", 50000), headers={"Origin": "http://127.0.0.1:8766"}) as c:
+        u = app.state.modules["telescope"].unit
+        assert c.post("/api/telescope/connect").status_code == 200
+        assert c.get("/api/telescope/preview/info").json() == {"available": False}           # noch keine Bilder → Platzhalter
+        assert c.get("/api/telescope/preview").status_code == 404
+        u.driver.frames, u._pv = 5, None
+        u.pilot.tick(u.now())                                                                # der Takt liest die Bildzahl
+        i = c.get("/api/telescope/preview/info").json()
+        assert i["available"] and i["n"] == 5 and i["source"] == "device"
+        r = c.get("/api/telescope/preview")
+        assert r.status_code == 200 and r.content[:2] == bytes([255, 216]) and r.headers["etag"]
+        assert c.get("/api/telescope/preview", headers={"If-None-Match": r.headers["etag"]}).status_code == 304
+
+
+def test_vorschau_rueckfall_aus_letzter_fits(tmp_path):
+    import types
+    import numpy as np
+    from astropy.io import fits
+    from astroflow.modules.telescope import preview as pv
+
+    class OhneVorschau(sim.SimDriver):
+        capabilities = frozenset()
+
+    p, d, clock = make([])
+    unit = types.SimpleNamespace(driver=OhneVorschau(clock), pilot=p, collector=None)
+    assert pv.get(unit) is None                                                          # kein Sammler → nichts
+    f = tmp_path / "img-0001.fits"
+    fits.writeto(f, (np.random.default_rng(1).random((400, 600)) * 4000).astype(np.uint16))
+    unit.collector, unit._pv = types.SimpleNamespace(last=f, count=3), None
+    r = pv.get(unit)
+    assert r and r["source"] == "fits" and r["n"] == 3 and r["jpeg"][:2] == bytes([255, 216])
+    unit.collector.last, unit._pv = tmp_path / "weg.fits", None
+    assert pv.get(unit) is None                                                          # Datei verschwunden → Platzhalter
+
+
 def test_api_weiter_verlangt_bestaetigung_der_neuen_nacht(tmp_path, monkeypatch):
     app = _app(tmp_path, monkeypatch)
     with TestClient(app, base_url="http://127.0.0.1:8766", client=("127.0.0.1", 50000), headers={"Origin": "http://127.0.0.1:8766"}) as c:
