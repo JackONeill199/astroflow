@@ -955,11 +955,26 @@ def build_router(eng: Engine) -> APIRouter:
                 if night is None:
                     lon = (svc(night="1900-01-01") or fallback or {}).get("lon") or 0
                     night = planning_night(time.time(), lon)
-                return svc(night=night) or fallback
+                return _scanned(svc(night=night), night) or fallback
             except Exception:
                 traceback.print_exc()
                 return fallback
         return site_for
+
+    def _scanned(site: dict | None, night: str | None) -> dict | None:
+        """Optionaler Dienst `telescope_horizon` (Teleskop-Modul): hat das Teleskop in dieser Nacht den freien Himmel gemessen,
+        gilt seine Grenze statt der Horizontmaske des Ortes (nur für diese Nacht; die gespeicherte Maske bleibt)."""
+        svc = eng.ctx.services.get("telescope_horizon")
+        if not site or not svc or not night:
+            return site
+        try:
+            m = svc(night)
+        except Exception:
+            traceback.print_exc()
+            m = None
+        if not m or len(m.get("horizon") or []) != 36:
+            return site
+        return {**site, "horizon": [float(v) for v in m["horizon"]], "horizon_src": f"gemessen vom {m.get('source') or 'Teleskop'}"}
 
     def _site_sqm(site: dict | None):
         """Himmelsqualität des Ortes (SQM aus eigenen Aufnahmen) für den Belichtungsbedarf; ohne Messwert (None, None)."""
@@ -1117,6 +1132,7 @@ def build_router(eng: Engine) -> APIRouter:
             except Exception:
                 night_sites = None
             if here:
+                here = _scanned(here, night) if night_ix == 0 else here
                 cfg = {**cfg, "lat": here["lat"], "lon": here["lon"], "horizon": here.get("horizon")}
         sky = None
         if here:
@@ -1133,7 +1149,7 @@ def build_router(eng: Engine) -> APIRouter:
             calib = 1.0
         out = tonight.plan(projects, cfg, eng.s.work_dir / "tutor", device=device, hidden=hidden, collection=coll, night=night_ix,
                            night_sites=night_sites, site_sky=sqm, calib=calib)
-        return {**out, "site_info": {k: here.get(k) for k in ("id", "name", "source", "detail")} if here else None,
+        return {**out, "site_info": {k: here.get(k) for k in ("id", "name", "source", "detail", "horizon_src")} if here else None,
                 "sites_on": bool(site_for), "night": night, "sky_quality": sky,
                 "telescope_sky": _telescope_sky() if night_ix == 0 and out.get("weather_on") else None}
 

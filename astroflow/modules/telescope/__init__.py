@@ -70,7 +70,13 @@ class Unit:
         if cfg["sim_start"] == "night" and site:
             start = _dusk_after(time.time(), site, float(cfg["sun_limit"]))
         self.clock = sim.SimClock(start, float(cfg["sim_speed"] or 1))
-        sc = sim.Scenario.demo(self.clock.now()) if cfg["sim_scenario"] == "demo" else sim.Scenario()
+        t0 = self.clock.now()
+        if cfg["sim_scenario"] == "demo":
+            sc = sim.Scenario.demo(t0)
+        elif cfg["sim_scenario"] == "balkon":                 # je Nacht ein paar Grad anders aufgestellt
+            sc = sim.Scenario.balcony(t0, shift=(int(t0 // 86400) % 3 - 1) * 4.0)
+        else:
+            sc = sim.Scenario()
         return sim.SimDriver(self.clock, sc, model=cfg["model"])
 
     def _env(self) -> ap.Env:
@@ -99,7 +105,15 @@ class Unit:
             if self.simulated and self.cfg["sim_speed"] and float(self.cfg["sim_speed"]) > 1:
                 return None
             return fn(minutes=minutes, site={"lat": site["lat"], "lon": site["lon"]})
-        return ap.Env(site=mod.site, forecast=forecast, plan=plan, rain=rain)
+        def frame_points(site_id):
+            fn = mod.ctx.service("frame_sky_points")             # Bilder-Modul: frühere Aufnahmen → Peilpunkte je Nacht
+            if not fn or self.simulated:                       # Simulator: erfundener Himmel, nicht mit echten Bildern mischen
+                return None
+            return fn(site_id)
+        from .skymap import SkyStore
+        # Simulator in eigener Datei – erfundene Hindernisse dürfen nie in die gelernte Karte des echten Teleskops
+        store = SkyStore(mod.ctx.data_dir / "telescope" / ("himmel-simulator.json" if self.simulated else "himmel.json"))
+        return ap.Env(site=mod.site, forecast=forecast, plan=plan, rain=rain, sky_store=store, frame_points=frame_points)
 
     def measure_frames(self, paths, item=None, start: float | None = None, most: int = 12):
         """Frisch geholte Rohbilder messen (Dienst `frame_quick_metrics`) und dem Autopiloten melden; fehlt der Dienst
@@ -131,7 +145,9 @@ class Unit:
             self.collector.start()
 
     def _loop(self):
-        while not self._stop.wait(TICK_S if self.simulated else 2.0):
+        # Zeitraffer: öfter takten (höchstens ~5 s Simulatorzeit je Takt), sonst überspringt ein Takt ganze Schritte (Scan)
+        every = max(0.2, min(TICK_S, 5.0 / float(self.cfg["sim_speed"] or 1))) if self.simulated else 2.0
+        while not self._stop.wait(every):
             try:
                 self.pilot.tick(self.now())
             except Exception:
@@ -185,6 +201,7 @@ class Module(BaseModule):
         from .captures import CaptureImport
         self.captures = CaptureImport(self)                 # Importansicht: vorhandene Aufnahmen vom Teleskop holen
         ctx.services["telescope_sky"] = self.sky             # „Heute Nacht“: klar/bewölkt laut Teleskop
+        ctx.services["telescope_horizon"] = self.horizon     # Heute Nacht/Planer/Atlas: gemessene Grenze dieser Nacht
 
     def private_dirs(self) -> list[str]:
         from . import plugins
@@ -210,6 +227,21 @@ class Module(BaseModule):
                 return None
             v = u.pilot.sky_now(u.now())
             return {**v, "source": MODELS.get(u.cfg["model"], u.cfg["model"])} if v else None
+        except Exception:
+            traceback.print_exc()
+            return None
+
+    def horizon(self, night: str | None = None) -> dict | None:
+        """Freier Himmel dieser Nacht laut Teleskop (Scan, erkannte Aufstellung): {horizon: [36], night, source, measured}
+        oder None (andere Nacht, nichts gemessen; im Simulator nie – erfundener Himmel)."""
+        try:
+            u = self.unit
+            p = u.pilot
+            if u.simulated or not p.night or (night and night != p.night) or not p.measured():
+                return None
+            hz = p.horizon()
+            return {"horizon": hz["horizon"], "night": p.night, "source": MODELS.get(u.cfg["model"], u.cfg["model"]),
+                    "known": sum(hz["known"])}
         except Exception:
             traceback.print_exc()
             return None

@@ -145,6 +145,27 @@ def test_horizon_points_from_own_frames(tmp_path):
     assert ang_sep(pts[0]["az"], pts[0]["alt"], ref.az.deg, ref.alt.deg) < 0.6       # ohne Präzession genähert (nahe Zenit wirkt Azimut größer)
     assert observatory.horizon_points(db, lambda night: site, "anderer") == []
 
+
+def test_sky_points_frei_und_verdeckt(tmp_path):
+    """Dienst `frame_sky_points`: je Objekt, Nacht und Viertelstunde frei (genutzt/viele Sterne) oder verdeckt (alles verworfen,
+    kaum Sterne) – nur Azimut/Höhe, keine Koordinaten des Ortes."""
+    s = load_settings(tmp_path / "d")
+    db = DB(s.db_path)
+    pid = db.x("INSERT INTO projects(key, name, ra, dec, created) VALUES('m31','M31',10.68,41.27,0)")
+    rows = [("2026-11-02T21:00:00", "selected", 1, 120), ("2026-11-02T21:05:00", "selected", 1, 110),      # frei
+            ("2026-11-02T23:00:00", "rejected", 0, 1), ("2026-11-02T23:05:00", "rejected", 0, 0),          # verdeckt
+            ("2026-11-02T22:00:00", "rejected", 0, 12)]                                                    # unklar → weg
+    for k, (t, st, stacked, ns) in enumerate(rows):
+        db.x("INSERT INTO frames(id, project_id, path, kind, night, info, metrics, status, stacked) VALUES(?,?,?,?,?,?,?,?,?)",
+             (f"f{k}", pid, f"x/{k}.fits", "light", "2026-11-02", json.dumps({"date_obs": t}), json.dumps({"n_stars": ns}), st, stacked))
+    site = {"id": "s1", "lat": 50.0, "lon": 10.0}
+    out = observatory.sky_points(db, lambda night: site, "s1")
+    pts = out["2026-11-02"]
+    assert sorted(p["res"] for p in pts) == ["frei", "verdeckt"]
+    assert all(set(p) == {"az", "alt", "res", "sure", "stars", "src", "t"} and p["src"] == "bild" for p in pts)
+    assert next(p for p in pts if p["res"] == "verdeckt")["sure"] is False
+    assert observatory.sky_points(db, lambda night: site, "anderer") == {}
+
 def test_photo_draw_order(server, browser):
     """Überlappende eigene Fotos: großes Bildfeld hinten, kleines vorne; ausgewählt und überfahren ganz vorne
     (Fehler 12.11.2026: ausgewähltes Herznebel-Foto blieb hinter dem Stellina-Stack von IC 1795)."""

@@ -191,6 +191,57 @@ def build_router(mod) -> APIRouter:
         p.log(f"Horizontmaske angepasst ({len(pts)} Richtung{'en' if len(pts) != 1 else ''}).", "ok", u.now())
         return {"ok": True}
 
+    @r.post("/sky/scan")
+    def sky_scan(body: dict = Body(default={})):
+        """„Himmel vermessen“: Peilpunkte abfahren (bewegt das Teleskop – gleiche Bestätigung je Nacht wie Start)."""
+        u = unit()
+        p = u.pilot
+        night_and_confirm(u, body)
+        if not p.state.connected:
+            try:
+                link(u)
+            except DriverError as e:
+                fail(e)
+        why = p.start_scan(u.now(), "kurz" if body.get("kind") == "kurz" else "voll")
+        if why:
+            raise HTTPException(409, why)
+        threading.Thread(target=p.tick, args=(u.now(),), daemon=True).start()
+        return {"ok": True}
+
+    @r.post("/sky/stop")
+    def sky_stop():
+        u = unit()
+        u.pilot.stop_scan(u.now())
+        return {"ok": True}
+
+    @r.post("/sky/accept")
+    def sky_accept():
+        """Gemessene Grenze dieser Nacht als Horizontmaske des Ortes übernehmen (nur auf ausdrücklichen Wunsch) – nur die
+        Richtungen, in denen gemessen wurde; die übrigen bleiben, wie sie sind."""
+        u = unit()
+        p = u.pilot
+        book = mod.ctx.service("sites")
+        site = p.site or {}
+        hz = p.horizon()
+        if not book or not site.get("id") or not any(hz["known"]):
+            raise HTTPException(409, "Noch keine Messung oder kein gespeicherter Standort für diese Nacht.")
+        data = book.data()
+        hit = next((s for s in data["list"] if s.get("id") == site["id"]), None)
+        if hit is None:
+            raise HTTPException(409, "Standort nicht gefunden.")
+        old = list(hit.get("horizon") or [0.0] * len(hz["horizon"]))
+        hit["horizon"] = [round(v, 1) if k else round(float(o or 0), 1) for v, k, o in zip(hz["horizon"], hz["known"], old)]
+        try:
+            book.save(data)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(500, "Horizontmaske konnte nicht gespeichert werden.") from None
+        p.site = mod.site(p.night) or p.site
+        p._hz_cache = None
+        p.log(f"Horizontmaske aus der Messung übernommen ({sum(hz['known'])} Richtungen).", "ok", u.now())
+        return {"ok": True}
+
     @r.post("/proposals/dismiss")
     def dismiss():
         unit().pilot.proposals = []
@@ -285,11 +336,11 @@ def build_router(mod) -> APIRouter:
             upd["model"] = body["model"]
         if body.get("sim_start") in ("now", "night"):
             upd["sim_start"] = body["sim_start"]
-        if body.get("sim_scenario") in ("demo", "clear"):
+        if body.get("sim_scenario") in ("demo", "clear", "balkon"):
             upd["sim_scenario"] = body["sim_scenario"]
         if "sun_limit" in body and body["sun_limit"] in (-12, -18, -12.0, -18.0):
             upd["sun_limit"] = float(body["sun_limit"])
-        for k in ("weather", "fallback", "live_frames"):
+        for k in ("weather", "fallback", "live_frames", "scan_auto"):
             if k in body:
                 upd[k] = bool(body[k])
         for k, (lo, hi) in NUM.items():

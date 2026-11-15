@@ -254,8 +254,8 @@
       bg.addColorStop(0, '#0d1424'); bg.addColorStop(1, '#090c14');
       g.fillStyle = bg; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.fill();
       // Horizontmaske
-      const hz = data.site?.horizon;
-      if (hz) {
+      const hz = data.sky?.measured ? data.sky.horizon : data.site?.horizon;      // gemessene Grenze dieser Nacht, sonst Ortsmaske
+      if (hz && hz.some(v => v > 0)) {
         g.fillStyle = 'rgba(225,107,107,.13)';
         g.beginPath();
         for (let a = 0; a <= 360; a += 5) { const f = a / 10, i = Math.floor(f) % 36, h = hz[i] * (1 - (f - Math.floor(f))) + hz[(i + 1) % 36] * (f - Math.floor(f)); const [x, y] = P(a, h); a ? g.lineTo(x, y) : g.moveTo(x, y); }
@@ -308,6 +308,129 @@
     raf = requestAnimationFrame(frame);
     return { set(d) { data = d; }, stop() { cancelAnimationFrame(raf); ro.disconnect(); } };
   }
+
+  // ------------------------------------------------------ Freier Himmel --- //
+  // Karte von oben wie die Kuppel (Zenit Mitte, Norden oben, Osten links). Je 10°-Richtung: verdeckt bis zur Grenze (rot;
+  // kräftig = sicher gemessen, blass = geschätzt), Überhang (Dach) von seiner Höhe bis zum Zenit, nicht gemessen grau (dort gilt
+  // die Horizontmaske des Ortes). Punkte: grün frei, rot verdeckt, gelb unklar. Gestrichelt: gespeicherte Horizontmaske.
+  const SCAN_WHY = { raster: 'Raster', halbieren: 'Grenze eingrenzen', gegenprobe: 'Gegenprobe', wiederholung: 'Wiederholung', erkennen: 'Aufstellung erkennen', grenze: 'Grenze prüfen' };
+  const SCAN_END = { fertig: 'fertig', abgebrochen: 'abgebrochen', wolken: 'wegen Wolken beendet' };
+  function skyMap(canvas) {
+    const g = canvas.getContext('2d');
+    let data = null, W = 0, Hh = 0;
+    const resize = () => {
+      const r = canvas.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
+      W = r.width; Hh = r.height;
+      canvas.width = Math.round(W * dpr); canvas.height = Math.round(Hh * dpr);
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    function draw() {
+      if (!data || !W) return;
+      const sky = data.sky || {}, col = { bad: cssVar('--bad'), ok: cssVar('--ok'), warn: cssVar('--warn'), dim: cssVar('--dim'), mut: cssVar('--mut'), b: cssVar('--border'), acc: cssVar('--acc'), bg: cssVar('--surface-2') };
+      const cx = W / 2, cy = Hh / 2, R = Math.min(W, Hh) / 2 - 16;
+      const rad = (alt) => R * (90 - Math.max(0, Math.min(90, alt))) / 90;
+      const P = (az, alt) => { const rr = rad(alt), a = az * Math.PI / 180; return [cx - rr * Math.sin(a), cy - rr * Math.cos(a)]; };
+      // Kreissektor zwischen zwei Höhen; Winkel im Canvas: Azimut a → -(90° + a) (Norden oben, Osten links)
+      const sector = (az, alt0, alt1, fill) => {
+        const a0 = (-90 - (az + 5)) * Math.PI / 180, a1 = (-90 - (az - 5)) * Math.PI / 180;
+        g.fillStyle = fill; g.beginPath(); g.arc(cx, cy, rad(alt0), a0, a1); g.arc(cx, cy, rad(alt1), a1, a0, true); g.closePath(); g.fill();
+      };
+      g.clearRect(0, 0, W, Hh);
+      g.fillStyle = col.bg; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.fill();
+      const hz = sky.horizon || [], known = sky.known || [], cols = sky.cols || [], top = sky.top || [];
+      for (let i = 0; i < 36; i++) {
+        const az = i * 10, c = cols[i] || {};
+        if (known[i]) sector(az, 0, hz[i], col.bad + (c.sure ? '70' : '38'));
+        else if (hz[i] > 0) sector(az, 0, hz[i], col.dim + '30');
+        if (top[i] != null) sector(az, top[i], 90, col.bad + '55');
+      }
+      g.strokeStyle = col.b; g.lineWidth = 1;
+      for (const a of [30, 60]) { g.beginPath(); g.arc(cx, cy, rad(a), 0, 7); g.stroke(); }
+      g.beginPath(); g.arc(cx, cy, R, 0, 7); g.stroke();
+      g.setLineDash([4, 5]); g.strokeStyle = col.ok + '99';
+      g.beginPath(); g.arc(cx, cy, rad(data.min_alt || 30), 0, 7); g.stroke(); g.setLineDash([]);
+      const sh = sky.site_horizon;
+      if (sh && sh.some(v => v > 0)) {                       // gespeicherte Maske zum Vergleich
+        g.setLineDash([2, 4]); g.strokeStyle = col.mut; g.lineWidth = 1.25; g.beginPath();
+        for (let a = 0; a <= 360; a += 5) { const f = a / 10, i = Math.floor(f) % 36, h = sh[i] * (1 - (f - Math.floor(f))) + sh[(i + 1) % 36] * (f - Math.floor(f)); const [x, y] = P(a, h); a ? g.lineTo(x, y) : g.moveTo(x, y); }
+        g.stroke(); g.setLineDash([]);
+      }
+      g.fillStyle = col.dim; g.font = '600 11px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      for (const [a, n] of [[0, 'N'], [90, 'O'], [180, 'S'], [270, 'W']]) { const rr = R + 9, an = a * Math.PI / 180; g.fillText(n, cx - rr * Math.sin(an), cy - rr * Math.cos(an)); }
+      const pts = [...(sky.points || []), ...(sky.scan?.points || []).filter(p => p.res === 'ausgelassen')];
+      for (const p of pts) {
+        const [x, y] = P(p.az, p.alt);
+        const c = p.res === 'frei' ? col.ok : p.res === 'verdeckt' ? col.bad : p.res === 'zweifel' ? col.warn : col.dim;
+        g.fillStyle = c; g.strokeStyle = col.bg; g.lineWidth = 1.5;
+        g.beginPath(); g.arc(x, y, p.src === 'scan' ? 3.5 : 2.5, 0, 7); g.fill(); g.stroke();
+      }
+      const mo = sky.moon;
+      if (mo) {                                              // Mond (der Scan hält 25° Abstand)
+        const [x, y] = P(mo.az, Math.max(0, mo.alt));
+        g.fillStyle = col.mut; g.beginPath(); g.arc(x, y, 6, 0, 7); g.fill();
+        g.fillStyle = col.bg; g.beginPath(); g.arc(x + 2.5, y - 1.5, 5, 0, 7); g.fill();
+      }
+      const cur = sky.scan?.cur;
+      if (cur && sky.scanning) {
+        const [x, y] = P(cur.az, cur.alt);
+        g.strokeStyle = col.acc; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 8, 0, 7); g.stroke();
+      }
+    }
+    const ro = new ResizeObserver(() => { resize(); draw(); }); ro.observe(canvas);
+    resize();
+    return { set(d) { data = d; draw(); }, stop() { ro.disconnect(); } };
+  }
+
+  const dday2 = (n) => n ? n.split('-').reverse().join('.') : '';
+  function skyInfoHtml(d) {
+    const s = d.sky || {}, sc = s.scan, n = (s.known || []).filter(Boolean).length, out = [];
+    if (s.scanning && sc) {
+      out.push(`<div class="tel-sky-run"><b>${sc.kind === 'kurz' ? 'Prüfe die Aufstellung …' : 'Vermesse den Himmel …'}</b>
+        <span class="mut sm">Punkt ${sc.n + 1}${sc.cur ? ` · ${esc(SCAN_WHY[sc.cur.why] || sc.cur.why)} · Azimut ${Math.round(sc.cur.az)}°, Höhe ${Math.round(sc.cur.alt)}°` : ''} · ${Math.round(sc.elapsed / 60)} min${sc.waiting ? ` · wartet ${sc.waiting} s (Wolke?)` : ''}</span>
+        <div class="progress"><i style="width:${Math.round(sc.progress * 100)}%"></i></div></div>`);
+    } else if (sc) {
+      out.push(`<p class="sm"><b>Letzter Scan ${esc(SCAN_END[sc.state] || sc.state)}</b> · ${sc.points.filter(p => ['frei', 'verdeckt', 'zweifel'].includes(p.res)).length} Punkte in ${Math.max(1, Math.round(sc.elapsed / 60))} min${sc.why ? ` – ${esc(sc.why)}` : ''}</p>`);
+    } else if (!s.measured) {
+      out.push('<p class="sm mut">Diese Nacht noch nicht vermessen. „Himmel vermessen“ fährt Peilpunkte rundum ab (etwa 10–20 min) und zeigt, wo Geländer, Wand oder Dach den Himmel verdecken.</p>');
+    }
+    if (n) out.push(`<p class="sm">Grenze in <b>${n}</b> von 36 Richtungen gemessen – gilt heute für Autopilot, Heute Nacht und Planer.</p>`);
+    const moonSkip = (sc?.points || []).filter(p => p.res === 'ausgelassen').length;
+    if (moonSkip) out.push(`<p class="sm mut">${moonSkip} Peilpunkt${moonSkip === 1 ? '' : 'e'} zu nah am Mond ausgelassen (grau) – dort später noch einmal vermessen.</p>`);
+    if (s.setup) out.push(`<p class="sm">${icon('check')}Aufstellung erkannt: wie in ${s.setup.nights === 1 ? 'einer früheren Nacht' : `${s.setup.nights} früheren Nächten`} (zuletzt ${esc(dday2(s.setup.last))}).</p>`);
+    else if (s.setups) out.push(`<p class="sm mut">${s.setups} Aufstellung${s.setups === 1 ? '' : 'en'} gelernt – heute noch nicht erkannt.</p>`);
+    if (s.site_wide) out.push(`<p class="sm mut">${s.site_wide} Richtungen sind in allen Aufstellungen gleich (ferne Hindernisse) und gelten für den ganzen Standort.</p>`);
+    return out.join('');
+  }
+  const skyLegend = `<div class="row sm mut tel-sky-lg"><span><i class="lg sky-b"></i>verdeckt</span><span><i class="lg sky-u"></i>geschätzt</span>
+    <span><i class="lg sky-n"></i>nicht gemessen</span><span><i class="dot ok"></i>frei</span><span><i class="dot bad"></i>verdeckt</span><span><i class="dot warn"></i>unklar</span><span><i class="dot"></i>ausgelassen</span></div>`;
+  const skyPanelHtml = (withBtns) => `<div class="panel-h"><h2>Freier Himmel</h2><span class="grow"></span><span class="mut sm tel-sky-meta"></span></div>
+    <div class="tel-sky-grid"><canvas class="tel-skymap" aria-label="Freier Himmel von oben: verdeckte und freie Richtungen"></canvas>
+      <div class="tel-sky-side"><div class="tel-sky-info"></div>${withBtns ? `<div class="row tel-sky-btns">
+        <button class="btn ghost sm" data-act="scan" title="Peilpunkte rundum anfahren und messen, wo Sterne zu sehen sind – bewegt das Teleskop">${icon('target')}Himmel vermessen</button>
+        <button class="btn ghost sm" data-act="scan-stop" hidden>${icon('stop')}Scan beenden</button>
+        <button class="btn ghost sm" data-act="sky-accept" hidden title="Gemessene Grenze in die Horizontmaske des Ortes übernehmen">${icon('check')}Als Horizontmaske übernehmen</button></div>` : ''}
+      ${skyLegend}</div></div>`;
+
+  // Observatorium (Atlas „Von hier“): dieselbe Karte, nur ansehen; Link zum Teleskop zum Vermessen
+  window.telescopeSkyPanel = (host) => {
+    host.innerHTML = `<div class="panel tel-sky">${skyPanelHtml(false)}<p class="sm"><a href="#/teleskop">Im Teleskop-Modul vermessen</a></p></div>`;
+    const mp = skyMap(host.querySelector('.tel-skymap'));
+    let timer = 0, sig = '';
+    async function poll() {
+      if (!host.isConnected) { mp.stop(); return; }
+      if (!host.hidden && !document.hidden) {
+        try {
+          const d = await api(T + '/state');
+          if (!host.isConnected) { mp.stop(); return; }
+          const k = JSON.stringify(d.sky);
+          if (k !== sig) { sig = k; mp.set(d); host.querySelector('.tel-sky-info').innerHTML = skyInfoHtml(d) || '<p class="sm mut">Noch keine Messung.</p>'; }
+        } catch { /* nächster Versuch */ }
+      }
+      timer = setTimeout(poll, 10000);
+    }
+    poll();
+    return { destroy() { clearTimeout(timer); mp.stop(); } };
+  };
 
   // ------------------------------------------------------------ Abschnitte --- //
   function conditionsHtml(d) {
@@ -399,6 +522,7 @@
         <section class="panel"><div class="panel-h"><h2>Aktuelles Ziel</h2></div><div class="tel-current"></div></section>
         <section class="panel"><div class="panel-h"><h2>Bedingungen</h2></div><div class="tel-conditions"></div></section>
       </div>
+      <section class="panel tel-sky">${skyPanelHtml(true)}</section>
       <section class="panel"><div class="panel-h"><h2>Nacht</h2><span class="grow"></span><span class="mut sm tel-night"></span>
           <button class="btn ghost sm" data-act="reload" title="Plan der Nacht neu aus dem Planer laden">${icon('refresh')}Plan neu laden</button></div>
         <div class="tel-timeline"></div>
@@ -408,7 +532,7 @@
       <div class="tel-props"></div>
       <section class="panel"><div class="panel-h"><h2>Ereignisse</h2></div><ol class="tel-log"></ol></section></div>`;
     const q = (s) => el.querySelector(s);
-    const sv = stage(q('.tel-stage')), dv = dome(q('.tel-dome'));
+    const sv = stage(q('.tel-stage')), dv = dome(q('.tel-dome')), mv = skyMap(q('.tel-skymap'));
     let lastEv = 0, timer = 0, sig = {};
     const put = (key, html, sel) => { if (sig[key] !== html) { sig[key] = html; q(sel).innerHTML = html; } };
 
@@ -443,6 +567,13 @@
       put('cond', conditionsHtml(d), '.tel-conditions');
       put('tl', timelineHtml(d), '.tel-timeline');
       put('props', proposalsHtml(d), '.tel-props');
+      const sk = d.sky || {};
+      if (sig.skymap !== JSON.stringify(sk)) { sig.skymap = JSON.stringify(sk); mv.set(d); }
+      put('skyinfo', skyInfoHtml(d), '.tel-sky-info');
+      q('[data-act="scan"]').hidden = !!sk.scanning;
+      q('[data-act="scan-stop"]').hidden = !sk.scanning;
+      q('[data-act="sky-accept"]').hidden = !sk.can_accept || !!sk.scanning;
+      put('skymeta', sk.scanning ? 'läuft' : sk.measured ? 'gemessen' : '', '.tel-sky-meta');
       put('night', d.night ? `Nacht ${esc(d.night)}${d.site?.name ? ' · ' + esc(d.site.name) : ''}${d.dark ? ` · dunkel ${tf(d.dark.start)}–${tf(d.dark.end)}` : ''}` : '', '.tel-night');
     }
     // Live-Bild: nur bei sichtbarer Seite und nur bei geänderter Signatur neu laden
@@ -511,6 +642,20 @@
             if (!await ask()) return;
             await send(url, { confirm: true });
           }
+        } else if (act === 'scan') {
+          const ask = () => confirmDlg('Himmel vermessen?', 'Das Teleskop öffnet sich (falls nötig) und fährt rundum Peilpunkte ab – etwa 10–20 min. Steht es frei, sodass sich der Arm ungehindert bewegen kann?', 'Ja, vermessen');
+          let confirm = false;
+          if (d.requires_confirm && !d.confirmed) { if (!(confirm = await ask())) return; }
+          try { await send(T + '/sky/scan', { confirm }); } catch (err) {
+            if (confirm || !/bestätigen/i.test(err.message)) throw err;
+            if (!await ask()) return;
+            await send(T + '/sky/scan', { confirm: true });
+          }
+          toast('Vermesse den Himmel.');
+        } else if (act === 'scan-stop') { await send(T + '/sky/stop'); toast('Scan beendet – die bisherigen Punkte bleiben.');
+        } else if (act === 'sky-accept') {
+          if (!await confirmDlg('Als Horizontmaske übernehmen?', 'In den gemessenen Richtungen wird die Horizontmaske des Ortes auf die heute gemessene Grenze gesetzt (auch abgesenkt, wo Sterne zu sehen waren). Nicht gemessene Richtungen bleiben. Änderbar unter Einstellungen → Standorte.', 'Übernehmen')) return;
+          await send(T + '/sky/accept'); toast('Horizontmaske übernommen.');
         } else if (act === 'live-open') { liveOpen(); return;
         } else if (act === 'connect') {
           const r = await send(T + '/connect');
@@ -535,7 +680,7 @@
     render();
     poll();
     livePoll();
-    return { destroy() { clearTimeout(timer); clearTimeout(liveTimer); document.removeEventListener('visibilitychange', livePoll); sv.stop(); dv.stop(); } };   // Alarm läuft weiter (globales Status-Polling)
+    return { destroy() { clearTimeout(timer); clearTimeout(liveTimer); document.removeEventListener('visibilitychange', livePoll); sv.stop(); dv.stop(); mv.stop(); } };   // Alarm läuft weiter (globales Status-Polling)
   }
 
   // ----------------------------------------------------------- Einstellungen --- //
@@ -562,6 +707,7 @@
         <label class="field" data-local-only><span>Adresse des Teleskops</span><input name="ip" value="${esc(c.ip)}" placeholder="Standard: Teleskop-WLAN (10.0.0.1)"></label>
         ${sw('fallback', 'Plan im Gerät als Rückfall', 'Fällt die Verbindung weg, arbeitet das Teleskop den Rest der Nacht selbst ab und klappt am Ende ein (wenn das Plugin es kann).')}
         ${sw('live_frames', 'Rohbilder live abholen', 'Während der Aufnahme neue Einzelbilder per FTP aus dem Teleskop holen (nur lesen) und in den Eingangsordner legen – die Bilder-Pipeline stackt mit.')}
+        ${sw('scan_auto', 'Aufstellung zu Beginn der Nacht erkennen', 'Mit gelernten Aufstellungen fährt der Autopilot vor dem ersten Ziel ein paar Peilpunkte an und prüft nur die Grenzen (wenige Minuten). Ohne gelernte Aufstellung: „Himmel vermessen“ im Teleskop.')}
         ${sw('weather', 'Wettervorhersage nutzen', 'Open-Meteo, Ort auf 0,1° gerundet wie bei Heute Nacht; wird während der Nacht alle 15 min aktualisiert.')}</section>
       <section class="panel"><div class="panel-h"><h2>Treiber-Plugins</h2></div>
         <p class="mut sm">Plugins steuern Teleskope, die AstroFlow nicht selbst mitbringt. Sie sind <b>fremder Code</b> mit allen Rechten von AstroFlow –
@@ -577,7 +723,7 @@
       <section class="panel"><div class="panel-h"><h2>Simulator</h2></div>
         <div class="tel-set-grid"><label class="field"><span>Zeitraffer</span><select name="sim_speed"><option value="1">Echtzeit</option><option value="10">×10</option><option value="30">×30</option><option value="120">×120</option></select></label>
         <label class="field"><span>Start der Uhr</span><select name="sim_start"><option value="night">Beginn der nächsten Dunkelheit</option><option value="now">Jetzt</option></select></label>
-        <label class="field"><span>Szenario</span><select name="sim_scenario"><option value="demo">Vorführung (Hauswand im Osten, Wolkenband, Tau)</option><option value="clear">Klare Nacht</option></select></label></div></section>
+        <label class="field"><span>Szenario</span><select name="sim_scenario"><option value="demo">Vorführung (Hauswand im Osten, Wolkenband, Tau)</option><option value="clear">Klare Nacht</option><option value="balkon">Balkon (Geländer, Hauswand, Nachbarhaus, Dach)</option></select></label></div></section>
       <div class="row"><button class="btn" type="submit">Speichern</button><span class="mut sm">Wirkt sofort, solange der Autopilot nicht läuft.</span></div></form>`;
     const f = el.querySelector('.tel-set');
     for (const k of ['driver', 'model', 'sun_limit', 'sim_speed', 'sim_start', 'sim_scenario']) f.elements[k].value = String(c[k]).replace(/\.0$/, '');

@@ -207,6 +207,74 @@ def horizon_points(db, site_for, site_id: str | None, limit: int = 400) -> list[
     return out
 
 
+FREE_STARS = 20          # Sterne je Bild, ab denen eine Richtung sicher frei war
+BLOCKED_STARS = 5        # … darunter (und alle Bilder verworfen) war sie verdeckt oder bewölkt
+BUCKET_S = 15 * 60       # ein Punkt je Objekt, Nacht und Viertelstunde
+
+
+def sky_points(db, site_for, site_id: str | None, nights: int = 120) -> dict[str, list[dict]]:
+    """Peilpunkte aus eigenen Aufnahmen an einem Ort (Dienst `frame_sky_points` für das Teleskop-Modul): je Objekt, Nacht und
+    Viertelstunde Azimut/Höhe der Bildmitte, „frei“ (Bilder genutzt bzw. genug Sterne) oder „verdeckt“ (alle verworfen, kaum
+    Sterne – unsicher: Wolke oder Hindernis, das entscheidet erst die Wiederholung über Nächte). Nur Azimut/Höhe, keine Koordinaten."""
+    import datetime as dt
+    import statistics
+
+    from .fits_io import parse_date
+    rows = db.q("SELECT f.project_id pid, f.night, f.status, f.stacked, json_extract(f.info,'$.date_obs') d, "
+                "json_extract(f.metrics,'$.n_stars') ns, p.ra, p.dec FROM frames f JOIN projects p ON p.id=f.project_id "
+                "WHERE f.kind='light' AND p.ra IS NOT NULL AND p.dec IS NOT NULL AND f.night IS NOT NULL "
+                "AND json_extract(f.info,'$.date_obs') IS NOT NULL AND COALESCE(json_extract(p.options,'$.comet_mode'),0)=0")
+    keep = set(sorted({r["night"] for r in rows}, reverse=True)[:nights])
+    groups: dict = {}
+    for r in rows:
+        if r["night"] not in keep:
+            continue
+        t = parse_date(r["d"])
+        if t is None:
+            continue
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=dt.timezone.utc)
+        ts = t.timestamp()
+        g = groups.setdefault((r["pid"], r["night"], int(ts // BUCKET_S)), {"ra": r["ra"], "dec": r["dec"], "ts": [], "ok": 0, "ns": []})
+        g["ts"].append(ts)
+        g["ok"] += int(bool(r["stacked"]) or r["status"] in ("accepted", "selected"))
+        if r["ns"] is not None:
+            g["ns"].append(float(r["ns"]))
+    sites_cache: dict = {}
+    out: dict[str, list[dict]] = {}
+    for (pid, night, _), g in groups.items():
+        if night not in sites_cache:
+            try:
+                sites_cache[night] = site_for(night=night)
+            except Exception:
+                sites_cache[night] = None
+        s = sites_cache[night]
+        if not s or (site_id and s.get("id") != site_id):
+            continue
+        stars = statistics.median(g["ns"]) if g["ns"] else None
+        if g["ok"] or (stars is not None and stars >= FREE_STARS):
+            res = "frei"
+        elif stars is not None and stars < BLOCKED_STARS:
+            res = "verdeckt"
+        else:
+            continue
+        ts = float(statistics.median(g["ts"]))
+        az, alt = _altaz(g["ra"], g["dec"], s["lat"], s["lon"], ts)
+        if alt > 0:
+            out.setdefault(night, []).append({"az": round(az, 1), "alt": round(alt, 1), "res": res, "sure": res == "frei",
+                                              "stars": None if stars is None else round(stars), "src": "bild", "t": ts})
+    return out
+
+
+def _altaz(ra: float, dec: float, lat: float, lon: float, ts: float) -> tuple[float, float]:
+    import math
+    ha = math.radians((_gmst(ts) + lon - ra) % 360.0)
+    la, de = math.radians(lat), math.radians(dec)
+    alt = math.asin(max(-1.0, min(1.0, math.sin(la) * math.sin(de) + math.cos(la) * math.cos(de) * math.cos(ha))))
+    az = math.atan2(-math.sin(ha) * math.cos(de), math.cos(la) * math.sin(de) - math.sin(la) * math.cos(de) * math.cos(ha))
+    return math.degrees(az) % 360.0, math.degrees(alt)
+
+
 def _gmst(ts: float) -> float:
     """Mittlere Greenwich-Sternzeit in Grad (genügt auf ~0,1° für Azimut/Höhe der Bildmitte)."""
     jd = ts / 86400 + 2440587.5

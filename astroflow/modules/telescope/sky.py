@@ -37,3 +37,32 @@ def ang_dist(az1: float, alt1: float, az2: float, alt2: float) -> float:
     a1, a2, z1, z2 = map(math.radians, (alt1, alt2, az1, az2))
     c = math.sin(a1) * math.sin(a2) + math.cos(a1) * math.cos(a2) * math.cos(z1 - z2)
     return math.degrees(math.acos(max(-1.0, min(1.0, c))))
+
+
+def radec(az: float, alt: float, lat: float, lon: float, ts: float) -> tuple[float, float]:
+    """Umkehrung von `altaz`: (RA, Dec) in Grad für eine Richtung am Ort zur Zeit `ts` (Peilpunkte des Himmelsscans)."""
+    A, h, la = math.radians(az), math.radians(alt), math.radians(lat)
+    sin_dec = math.sin(la) * math.sin(h) + math.cos(la) * math.cos(h) * math.cos(A)
+    dec = math.asin(max(-1.0, min(1.0, sin_dec)))
+    ha = math.atan2(-math.sin(A) * math.cos(h), math.cos(la) * math.sin(h) - math.sin(la) * math.cos(h) * math.cos(A))
+    ra = (gmst_deg(ts) + lon - math.degrees(ha)) % 360.0
+    return ra, math.degrees(dec)
+
+
+def moon_radec(ts: float) -> tuple[float, float]:
+    """Mond grob (≈ 1°, genügt, um ihm beim Scan auszuweichen): mittlere Bahn mit den größten Störungen."""
+    d = ts / 86400.0 + 2440587.5 - 2451545.0
+    L = math.radians((218.316 + 13.176396 * d) % 360)
+    M = math.radians((134.963 + 13.064993 * d) % 360)
+    F = math.radians((93.272 + 13.229350 * d) % 360)
+    lam = L + math.radians(6.289) * math.sin(M)
+    beta = math.radians(5.128) * math.sin(F)
+    eps = math.radians(23.439)
+    ra = math.atan2(math.sin(lam) * math.cos(eps) - math.tan(beta) * math.sin(eps), math.cos(lam))
+    dec = math.asin(math.sin(beta) * math.cos(eps) + math.cos(beta) * math.sin(eps) * math.sin(lam))
+    return math.degrees(ra) % 360.0, math.degrees(dec)
+
+
+def moon_altaz(ts: float, lat: float, lon: float) -> tuple[float, float]:
+    ra, dec = moon_radec(ts)
+    return altaz(ra, dec, lat, lon, ts)

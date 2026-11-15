@@ -48,6 +48,7 @@ class Module(BaseModule):
         ctx.services["weather_forecast"] = self.weather_forecast    # Teleskop: Open-Meteo-Vorhersage (gleiche Schicht und Rundung wie Heute Nacht)
         ctx.services["weather_rain"] = self.weather_rain          # Teleskop-Autopilot: „Regen in den nächsten N Minuten erwartet?“
         ctx.services["frame_quick_metrics"] = frame_quick_metrics  # Teleskop-Autopilot: beschlagene Optik während der Aufnahme
+        ctx.services["frame_sky_points"] = self.frame_sky_points  # Teleskop: freie/verdeckte Richtungen aus eigenen Aufnahmen
         if isinstance(ctx.services.get("night_sources"), list):   # Einstellungen → Standorte: Nachtliste
             ctx.services["night_sources"].append(self.nights)
 
@@ -119,6 +120,12 @@ class Module(BaseModule):
         """Verschiedene nachgewiesene Asteroiden über alle Bilder und der schwächste (mag)."""
         from .asteroids import tally
         return tally(self.eng.db)
+
+    def frame_sky_points(self, site_id: str | None) -> dict:
+        """{Nacht: [Peilpunkte]} aus eigenen Aufnahmen an diesem Ort (Azimut/Höhe, frei/verdeckt) – `observatory.sky_points`."""
+        from .observatory import sky_points
+        f = self.ctx.services.get("site_for")
+        return sky_points(self.eng.db, f, site_id) if f else {}
 
     def site_sky(self) -> dict:
         """Himmelsqualität je Standort-ID (Mittel über die Nächte) für die Ortsliste – ohne Lichtrichtung (schnell)."""

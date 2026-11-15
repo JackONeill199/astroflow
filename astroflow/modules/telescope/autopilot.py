@@ -19,7 +19,7 @@ from collections import deque
 from dataclasses import dataclass, field
 
 from ...core import sites
-from . import fog, sky
+from . import fog, sky, skymap, skyscan
 from .battery import BatteryEta, fmt_left
 from .driver import DriverBusy, DriverError, PlanItem, Target, TelescopeState
 from .machine import Machine
@@ -35,6 +35,7 @@ DEFAULTS = {
     "exposure": 10.0,        # s (Gerätestandard)
     "battery_min": 15,       # %
     "fallback": True,        # Geräte-Plan als Rückfall
+    "scan_auto": True,       # zu Beginn der Nacht Aufstellung erkennen + Kurzscan (nur mit gelernten Aufstellungen)
 }
 WEATHER_EVERY = 900          # s zwischen zwei Wetterabfragen
 RAIN_EVERY = 600             # s zwischen zwei Regenabfragen (Dienst `weather_rain`)
@@ -78,6 +79,7 @@ EXPECT_S = {"oeffnet": 50.0, "richtet_aus": 240.0, "klappt_ein": 50.0}
 STALL_S = 90                # Ziel aktiv, Gerät tut nichts (kein GoTo/Astrometrie/Aufnahme) → nach … s handeln
 SUB_MAX = 1800              # Ersatzziel höchstens so lange am Stück
 OPEN = ("geplant", "verdeckt", "uebersprungen")     # noch nicht erledigt (verdeckt/übersprungen: neuer Versuch, sobald frei)
+FREE_EVERY = 10 * 60        # gutes Bild eines Ziels: höchstens so oft ein freier Punkt für die Himmelskarte
 
 
 @dataclass
@@ -126,6 +128,8 @@ class Env:
     plan: object = None                 # (night, model) -> [Item]
     device: object = None               # (model) -> {gust, dew_heater, name}
     rain: object = None                 # (site, minutes) -> {rain: bool|None, in_minutes, probability, precip} | None
+    sky_store: object = None            # skymap.SkyStore (Peilpunkte je Ort und Nacht) | None
+    frame_points: object = None         # (site_id) -> {night: [Punkte]} aus früheren Aufnahmen (Bilder-Modul) | None
 
 
 def _fmt(ts: float) -> str:
@@ -179,6 +183,16 @@ class Autopilot:
         self.retry: dict[str, dict] = {}          # abgelehnte Befehle: {first, next, n, msg, busy} – Backoff statt Schleife
         self.phase_since: float | None = None     # seit wann die aktuelle Phase gilt (Restdauer)
         self.took: dict[str, float] = {}          # gemessene Dauer je Phase (ersetzt den Erfahrungswert)
+        self.scan: skyscan.Scan | None = None     # laufender Himmelsscan
+        self.last_scan: dict | None = None        # Ansicht des letzten Scans dieser Nacht
+        self.scan_only = False                    # Scan ohne Plan gestartet → danach einklappen
+        self.scan_auto_night: str | None = None   # Nacht, in der der automatische Kurzscan schon versucht wurde
+        self.night_points: list[dict] = []        # Peilpunkte dieser Nacht (Scan, gute/verdeckte Ziele)
+        self.free_t: dict[str, float] = {}        # Ziel → Zeit des letzten freien Punkts
+        self.groups: list[dict] = []              # gelernte Aufstellungen des Ortes (ohne diese Nacht)
+        self.site_wide: list = [None] * skymap.N
+        self.setup: dict | None = None            # Aufstellung, zu der diese Nacht passt
+        self._hz_cache: tuple | None = None
         self.lock = threading.RLock()
 
     def adopt(self, old: "Autopilot"):
@@ -187,6 +201,8 @@ class Autopilot:
         with old.lock:
             self.items = [Item(**vars(i)) for i in old.items if i.manual and i.status == "geplant"]
             self.blocked = [dict(b) for b in old.blocked]
+            self.night_points = [dict(p) for p in old.night_points]
+            self.last_scan, self.scan_auto_night = old.last_scan, old.scan_auto_night
             self.proposals = [dict(q) for q in old.proposals]
             self.events = deque(old.events, maxlen=MAX_EVENTS)
             self.seq = old.seq
@@ -291,6 +307,10 @@ class Autopilot:
         self.items = sorted(items + manual, key=lambda i: i.start)
         self.blocked, self.warned = [], set()
         self.dark = self._dark_window(now) if self.site else None
+        store = self.env.sky_store
+        self.night_points = (store.nights(self._site_id()).get(self.night) or []) if store else []
+        self.last_scan, self.setup = None, None
+        self.learn(now)
 
     def _dark_window(self, now: float) -> dict | None:
         """Dunkle Zeit (Sonne unter der Grenze) um `now` – für Zeitleiste und Wartezeit."""
@@ -321,6 +341,7 @@ class Autopilot:
             self.mode = "laeuft"
             self.hold = None
             self.retry = {}
+            self.scan_only = False               # ab jetzt mit Plan (ein laufender Scan wird danach fortgesetzt)
             self.fog_at = None                   # Nutzer hat die Optik geprüft
             self.log("Autopilot gestartet." + (f" {len(self.items)} Ziele für diese Nacht." if self.items else " Noch keine Ziele – im Planer planen oder Ziele hinzufügen."), "info", now)
 
@@ -331,6 +352,8 @@ class Autopilot:
                 cur = self._current()
                 if cur:
                     self._end_item(cur, "geplant", "pausiert", now)
+                self._scan_abort("pausiert", now)
+                self.scan_only = False
                 self._cmd("stop", self.driver.stop, now=now)
                 self.log("Pausiert – das Teleskop bleibt offen und steht still.", "info", now)
 
@@ -345,6 +368,8 @@ class Autopilot:
         """Not-Aus: ohne Warteschlange, ohne auf den Takt zu warten. Stoppt alles und klappt ein."""
         self.estop.set()
         self.mode = "aus"
+        self._scan_abort(why, now)
+        self.scan_only = False
         self.log(f"{why}: stoppe und klappe ein.", "bad", now)
         if self.machine.phase in ("oeffnet", "richtet_aus"):        # Probe 3: laufende Operation lässt sich nicht abbrechen
             self.log("Das Teleskop beendet zuerst den laufenden Schritt (höchstens etwa eine Minute) und klappt dann ein.", "warn", now)
@@ -593,6 +618,8 @@ class Autopilot:
 
     def _hold(self, h: Hold, now: float):
         final = h.kind in ("dawn", "battery")
+        only = self.scan_only
+        self._scan_abort(h.text, now)                 # Regen, Beschlag, Akku, Wetter … haben Vorrang vor dem Himmelsscan
         if self.hold is None or self.hold.kind != h.kind or self.mode != "wartet":
             self.log(h.text, "warn" if h.kind in ("twilight",) else "bad", now)
         self.hold, self.good_since = h, None
@@ -605,6 +632,9 @@ class Autopilot:
         if not self.state.parked and not self.park_pending:
             self._cmd("stop", self.driver.stop, now=now)
             self._park_now(now, h.text)
+        if only:                                      # Scan ohne Plan: nicht auf besseres Wetter warten
+            self.scan_only = False
+            self.mode = "aus"
 
     def _started_tonight(self) -> bool:
         return any(i.real_start for i in self.items)
@@ -630,7 +660,7 @@ class Autopilot:
         if ph in ("oeffnet", "klappt_ein", "richtet_aus"):
             return
         if ph == "eingeklappt":
-            if not self._anything_free(now) and not self._current():
+            if not self.scan and not self._anything_free(now) and not self._current():
                 return self._idle_or_done(now)
             if self._cmd("open", self.driver.open, now=now):
                 self.log("Öffne das Teleskop.", "move", now)
@@ -639,6 +669,10 @@ class Autopilot:
             if self.site and self._cmd("init", self.driver.init, self.site["lat"], self.site["lon"], now=now):
                 self.log("Richte das Teleskop aus (Sterne, Fokus).", "move", now)
             return
+        if self.scan is None and not self._current() and self._auto_scan_due(now):
+            self.start_scan(now, "kurz", auto=True)
+        if self.scan is not None:
+            return self._scan_tick(s, now)
         cur = self._current()
         if cur:
             working = s.step in ("goto", "astrometry", "capture") or s.device_plan
@@ -690,9 +724,13 @@ class Autopilot:
         if not self.site:
             return False, "kein Standort", 0.0, 0.0
         az, alt = sky.altaz(ra, dec, self.site["lat"], self.site["lon"], now)
-        lim = sky.limit(az, self.site.get("horizon"), float(self.cfg["min_alt"]))
+        hz = self.horizon()
+        lim = sky.limit(az, hz["horizon"], float(self.cfg["min_alt"]))
         if alt < lim:
             return False, f"zu tief ({alt:.0f}° unter {lim:.0f}°)", az, alt
+        top = hz["top"][int(round((az % 360) / skymap.STEP)) % skymap.N]
+        if top is not None and alt >= top:
+            return False, f"Richtung heute verdeckt (Überhang ab {top:.0f}°)", az, alt
         for b in self.blocked:
             if not b["sure"] and now - b["t"] > OK_MEMORY:      # unsichere Sperre: nach 20 min neu versuchen (war evtl. eine Wolke)
                 continue
@@ -801,6 +839,9 @@ class Autopilot:
             return
         if s.stacked > cur.stacked and s.az is not None:
             self.ok_marks.append((now, s.az, s.alt))
+            if now - self.free_t.get(cur.id, 0.0) >= FREE_EVERY:      # Himmelskarte: hier waren Sterne
+                self.free_t[cur.id] = now
+                self._add_point({"az": round(s.az, 1), "alt": round(s.alt, 1), "res": "frei", "sure": True, "src": "ziel", "t": now})
         cur.frames, cur.stacked, cur.rejected = s.frames, s.stacked, s.rejected
         if not self.samples or self.samples[-1][0] != s.frames:
             self.samples.append((s.frames, s.rejected, now))
@@ -934,6 +975,8 @@ class Autopilot:
         sure = again and (elsewhere_ok or clear_forecast) and not cloudy
         self._end_item(it, "verdeckt", why, now)
         mark = {"az": round(az, 1), "alt": round(alt, 1), "t": now, "target": it.name, "sure": sure}
+        if not cloudy:                                # fürs Lernen: Hindernis erst, wenn es sich in einer anderen Nacht wiederholt
+            self._add_point({"az": mark["az"], "alt": mark["alt"], "res": "verdeckt", "sure": False, "src": "ziel", "t": now})
         self.blocked.append(mark)
         if sure:
             near = next((q for q in self.proposals if abs((q["az"] - mark["az"] + 540) % 360 - 180) <= BLOCK_AZ), None)
@@ -973,6 +1016,249 @@ class Autopilot:
                 return None
             ratio = round(1.0 - (r1 - r0) / (f1 - f0), 2)
             return {"clear": ratio >= SKY_CLEAR, "ratio": ratio, "t": t1, "why": "Anteil guter Bilder"}
+
+    # --------------------------------------------------------- Freier Himmel --- #
+    def _site_id(self) -> str | None:
+        return (self.site or {}).get("id")
+
+    def _add_point(self, p: dict):
+        self.night_points.append(p)
+        del self.night_points[:-skymap.MAX_POINTS]
+        self._hz_cache = None
+        self._persist()
+
+    def _persist(self):
+        store = self.env.sky_store
+        if store and self.night and self.site:
+            try:
+                store.put_night(self._site_id(), self.night, self.night_points)
+            except Exception:
+                import traceback
+                traceback.print_exc()
+
+    def learn(self, now: float):
+        """Aufstellungen des Ortes aus gespeicherten Nächten (Scans, Ziele) und früheren Aufnahmen (Dienst `frame_sky_points`)
+        neu bilden – ohne diese Nacht, die wird an ihnen gemessen."""
+        sid = self._site_id()
+        nights: dict[str, list] = {}
+        if self.env.frame_points and self.site:
+            try:
+                for k, v in (self.env.frame_points(sid) or {}).items():
+                    nights.setdefault(k, []).extend(v)
+            except Exception:
+                import traceback
+                traceback.print_exc()
+        if self.env.sky_store:
+            for k, v in self.env.sky_store.nights(sid).items():
+                nights.setdefault(k, []).extend(v)
+        nights.pop(self.night, None)
+        self.groups = skymap.setups(nights)
+        self.site_wide = skymap.site_wide(self.groups)
+        self.setup = self._which_setup()
+        self._hz_cache = None
+
+    def _which_setup(self) -> dict | None:
+        pts = [p for p in self.night_points if p.get("res") in ("frei", "verdeckt") and (p.get("src") == "scan" or p["res"] == "frei")]
+        return skymap.match(self.groups, pts) if pts and self.groups else None
+
+    def _tonight_points(self) -> list[dict]:
+        """Punkte, die heute die Grenze bestimmen: freie Punkte und sicher verdeckte Scan-Punkte (Gegenprobe davor und danach frei).
+        Unsicher verdeckte (Wolke?) und verdeckte Ziele (sperren über `blocked`) zählen erst beim Lernen über mehrere Nächte."""
+        return [p for p in self.night_points if p.get("res") == "frei" or (p.get("src") == "scan" and p.get("res") == "verdeckt" and p.get("sure"))]
+
+    def horizon(self) -> dict:
+        """Grenze dieser Nacht: Ortsmaske + standortweit gelernte Grenzen, angepasst durch die erkannte Aufstellung und die
+        heutigen Messungen ({horizon, top, known, cols}). Ohne Messung = Ortsmaske."""
+        base = list((self.site or {}).get("horizon") or [0.0] * skymap.N)
+        sig = (tuple(base), len(self.night_points), self.setup["id"] if self.setup else None, tuple(self.site_wide))
+        if self._hz_cache and self._hz_cache[0] == sig:
+            return self._hz_cache[1]
+        pts = self._tonight_points()
+        base = [max(float(b or 0), w) if w is not None else float(b or 0) for b, w in zip(base, self.site_wide)]
+        prior = []
+        if self.setup:                                # gelernte Punkte, wo heute nicht gemessen wurde
+            prior = [p for p in self.setup["points"]
+                     if not any(skymap._d(p["az"], q["az"]) <= skymap.DIRECT for q in pts if q.get("src") == "scan")]
+        if prior or pts:
+            out = skymap.horizon(prior + pts, base)
+        else:
+            out = {"horizon": base, "top": [None] * skymap.N, "known": [False] * skymap.N, "cols": skymap.columns([])}
+        self._hz_cache = (sig, out)
+        return out
+
+    def measured(self) -> bool:
+        return bool(self._tonight_points() or self.setup)
+
+    def _avoid(self, now: float):
+        lat, lon = self.site["lat"], self.site["lon"]
+        maz, malt = sky.moon_altaz(now, lat, lon)
+
+        def check(az, alt):
+            if malt > -5 and sky.ang_dist(az, alt, maz, malt) < skyscan.MOON_AVOID:
+                return "zu nah am Mond"
+            return None
+        return check
+
+    def _auto_scan_due(self, now: float) -> bool:
+        """Automatischer Kurzscan einmal je Nacht – nur mit gelernten Aufstellungen und ohne Messung dieser Nacht."""
+        if not self.cfg.get("scan_auto") or self.scan_auto_night == self.night or not self.groups or self.scan_only:
+            return False
+        if any(p.get("src") == "scan" for p in self.night_points):
+            return False
+        self.scan_auto_night = self.night
+        return True
+
+    def start_scan(self, now: float, kind: str = "voll", auto: bool = False) -> str | None:
+        """Himmel vermessen (Knopf oder automatisch). Rückgabe: Grund, warum nicht (sonst None)."""
+        with self.lock:
+            if self.scan is not None:
+                return "Der Himmel wird schon vermessen."
+            if not self.site:
+                if self.night is None:
+                    self.load_night(now)
+                if not self.site:
+                    return "Für diese Nacht ist kein Standort bekannt."
+            holds = [x for x in self.conditions(now) if x.kind != "clouds"]
+            if holds:
+                return holds[0].text
+            h = self.weather_now(now)
+            if h and h.get("cloud") is not None and h["cloud"] >= CLOUDY:
+                msg = f"Laut Vorhersage {round(h['cloud'])} % Wolken – vermesse den Himmel lieber in einer klaren Nacht."
+                if auto:
+                    self.log(msg, "info", now)
+                return msg
+            if kind == "kurz" and not self.groups:
+                kind = "voll"
+            self.scan = skyscan.Scan(kind, now, groups=self.groups, need=float(self.cfg["min_alt"]))
+            cur = self._current()
+            if cur:
+                self._end_item(cur, "geplant", "Himmel vermessen", now)
+                self._cmd("stop", self.driver.stop, now=now)
+            if self.mode not in ("laeuft", "wartet"):
+                self.scan_only = True
+                if self.night is None or self.night != self.current_night(now):
+                    self.load_night(now)
+                self.mode, self.hold = "laeuft", None
+                self.estop.clear()
+                self.alarm = None
+                self.retry = {}
+            if self.scan.kind == "kurz":
+                self.log("Erkenne die Aufstellung an wenigen Peilpunkten, dann Kurzscan an den Grenzen.", "info", now)
+            else:
+                self.log(f"Vermesse den freien Himmel: Peilpunkte alle {skyscan.COL_STEP}° Azimut ab {skyscan.SCAN_FLOOR:.0f}° Höhe "
+                         "(etwa 10–20 min).", "info", now)
+            return None
+
+    def stop_scan(self, now: float):
+        with self.lock:
+            if self.scan:
+                self._scan_abort("vom Nutzer beendet", now)
+                self._cmd("stop", self.driver.stop, now=now)
+                if self.scan_only:
+                    self._scan_finish_only(now)
+
+    def _scan_abort(self, why: str, now: float):
+        sc = self.scan
+        if sc is None:
+            return
+        sc.abort(why)
+        self._scan_store(now)
+        self.log(f"Himmelsscan abgebrochen ({why}) – {len(sc.points())} Punkte bleiben erhalten.", "warn", now)
+
+    def _scan_store(self, now: float):
+        """Ergebnis übernehmen: Punkte in die Nacht, Aufstellung bestimmen, speichern."""
+        sc = self.scan
+        self.scan = None
+        if sc is None:
+            return
+        pts = sc.points()
+        self.night_points = [p for p in self.night_points if not (p.get("src") == "scan" and any(
+            skymap._d(p["az"], q["az"]) < 1 and abs(p["alt"] - q["alt"]) < 1 for q in pts))] + pts
+        self._hz_cache = None
+        self._persist()
+        self.setup = sc.setup if sc.setup is not None else self._which_setup()
+        self.last_scan = sc.view(now)
+
+    def _scan_tick(self, s: TelescopeState, now: float):
+        sc = self.scan
+        p = sc.cur
+        if p is not None and p.get("tid") is None:            # Befehl abgelehnt – erneut (Backoff in _cmd)
+            return self._scan_goto(p, now)
+        if p is None:
+            p = sc.next_probe(now, self._avoid(now))
+            if p is None:
+                if sc.state == "laeuft":
+                    return                                     # wartet (Gegenprobe nach Wolkenverdacht)
+                return self._scan_done(sc, now)
+            return self._scan_goto(p, now)
+        same = bool(s.target) and s.target.get("id") == p["tid"]
+        if same and s.step in ("goto", "astrometry"):
+            p["seen"] = True
+        if same and (s.step == "capture" or s.frames > 0):
+            res, solved = "frei", True
+        elif same and s.astrometry_failed and (p.get("seen") or now - p["since"] >= skyscan.STALE_S):
+            res, solved = ("zweifel" if (s.stars or 0) >= skyscan.STARS_SOME else "verdeckt"), False
+        elif now - p["since"] > skyscan.PROBE_TIMEOUT_S:
+            res, solved = "zweifel", False
+        else:
+            return
+        sc.result(res, now, s.stars, solved)
+        if p["why"] == "gegenprobe" and res != "frei" and sc.state == "laeuft":
+            self.log("Gegenprobe ohne Sterne – vielleicht eine Wolke. Prüfe die letzten Punkte später noch einmal.", "warn", now)
+
+    def _scan_goto(self, p: dict, now: float):
+        ra, dec = sky.radec(p["az"], p["alt"], self.site["lat"], self.site["lon"], now)
+        tid = f"scan-{p['n']}"
+        tgt = Target(tid, f"Peilpunkt {p['az']:.0f}° / {p['alt']:.0f}°", ra, dec)
+        if self._cmd("observe", self.driver.observe, tgt, skyscan.EXPOSURE_S, now=now):
+            p["tid"], p["since"] = tid, now
+
+    def _scan_done(self, sc: skyscan.Scan, now: float):
+        self._cmd("stop", self.driver.stop, now=now)
+        self._scan_store(now)
+        pts = sc.points()
+        free = sum(1 for p in pts if p["res"] == "frei")
+        if sc.state == "wolken":
+            self.clouds_at = now
+            self.log(f"Himmelsscan beendet: {sc.why} {len(pts)} Punkte gespeichert; als Hindernis zählt davon nur Sicheres.", "bad", now)
+        else:
+            known = sum(self.horizon()["known"])
+            if self.setup:
+                n = len(self.setup["nights"])
+                setup = f" Aufstellung wie in {n} früheren Nächten." if n != 1 else " Aufstellung wie in einer früheren Nacht."
+            else:
+                setup = " Neue Aufstellung." if self.groups else ""
+            self.log(f"Himmel vermessen: {len(pts)} Punkte, {free} frei, Grenze in {known} von {skymap.N} Richtungen bekannt."
+                     + setup + (f" {sc.why}" if sc.why else ""), "ok", now)
+        if self.scan_only:
+            self._scan_finish_only(now)
+
+    def _scan_finish_only(self, now: float):
+        """Scan ohne Plan: einklappen und den Autopiloten beenden."""
+        self.scan_only = False
+        if not self.state.parked and not self.park_pending:
+            self._park_now(now, "Himmelsscan fertig")
+        self.mode = "aus"
+
+    def sky_view(self, now: float) -> dict:
+        hz = self.horizon()
+        sc = self.scan.view(now) if self.scan else self.last_scan
+        return {"horizon": hz["horizon"], "top": hz["top"], "known": hz["known"],
+                "cols": [{k: c[k] for k in ("lo", "hi", "top", "sure")} for c in hz["cols"]],
+                "site_horizon": (self.site or {}).get("horizon"),
+                "points": [{k: p.get(k) for k in ("az", "alt", "res", "sure", "src")} for p in self.night_points[-200:]],
+                "scan": sc, "scanning": self.scan is not None,
+                "setup": {"id": self.setup["id"], "nights": len(self.setup["nights"]), "last": self.setup["last"]} if self.setup else None,
+                "setups": len(self.groups), "site_wide": sum(1 for v in self.site_wide if v is not None),
+                "can_accept": bool(self._site_id()) and any(hz["known"]), "measured": self.measured(),
+                "moon": self._moon_view(now)}
+
+    def _moon_view(self, now: float) -> dict | None:
+        """Mond als Azimut/Höhe (der Scan weicht ihm aus) – nur über dem Horizont."""
+        if not self.site:
+            return None
+        az, alt = sky.moon_altaz(now, self.site["lat"], self.site["lon"])
+        return {"az": round(az, 1), "alt": round(alt, 1)} if alt > -2 else None
 
     # ------------------------------------------------------------ Ansicht --- #
     def add_target(self, t: Target, now: float, hours: float = 1.0) -> Item:
@@ -1016,6 +1302,7 @@ class Autopilot:
             "weather": [{"t": x["t"], "cloud": x.get("cloud")} for x in (self.weather or {}).get("hours") or []],
             "blocked": [{k: b[k] for k in ("az", "alt", "target", "sure")} for b in self.blocked],
             "proposals": [{k: p[k] for k in ("az", "alt", "target", "sure", "t")} for p in self.proposals],
+            "sky": self.sky_view(now),
             "alarm": self.alarm, "parking": bool(self.park_pending),
             "confirmed": self.confirmed(now), "requires_confirm": self.requires_confirm,
         }

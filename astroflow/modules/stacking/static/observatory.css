@@ -75,7 +75,8 @@
   .obs-stage canvas.obs-fade { display: none }
 }
 /* „Von hier“, Ebene Bahnen: Listen unter der Karte (observatory.js freeList) */
-.obs-free { margin-top: 1.25rem }
+.obs-free, .obs-sky { margin-top: 1.25rem }
+.obs-sky[hidden] { display: none }
 .obs-free.obs-in { animation: fadeUp var(--t2) var(--ease) both }
 .obs-free .panel-h { margin-bottom: 0.25rem; flex-wrap: wrap; gap: 0.25rem 0.75rem }
 .obs-fhint { margin: 0 0 0.75rem }
