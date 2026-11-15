@@ -344,6 +344,8 @@ def test_kartenkacheln_passend_zur_aufloesung(server, browser, dpr, tmp_path):
     assert f["tileWant"] <= 96 and max(z for z, _, _ in asked) == f["tileZ"]
     assert len({a for a in asked}) == len(asked)                                       # nichts doppelt geladen (Cache)
     assert "OpenStreetMap" in page.locator(".ste-attr").inner_text()                  # Quellenangabe sichtbar
+    # Kacheln decken die Ansicht: Erdbild und Nachtseite darunter werden nicht mehr gezeichnet (GPU-Last beim Zoomen, 15.11.2026)
+    page.wait_for_function("document.querySelector('#steHost')._ste.state().flat.under === false")
     # Datumsgrenze: Mitte bei 179,9° O, ein Ort bei 179,9° W liegt gleich daneben (nicht eine Weltbreite entfernt)
     page.evaluate("document.querySelector('#steHost')._ste.flat.flyTo(10, 179.9, 2)")
     sx, _ = page.evaluate("document.querySelector('#steHost')._ste.flat.screenOf(10, -179.9)")

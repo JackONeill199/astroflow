@@ -122,6 +122,12 @@ fehlt `sgp4` im Server, läuft `orbit3d.py` als Skript im Engine-Interpreter (JS
 - **Bedienung:** Karte – Ziehen hält den Weltpunkt unter dem Zeiger fest, Rad/Pinch um den Zeiger, keine Trägheit, Zoom bis ~2,5 m/px. Globus – OrbitControls drehen nur noch in den
   Lauf-Ansichten; im Globus-Modus **Greif-Drehen** (Sehstrahl-Treffer beim Anfassen bleibt unter dem Zeiger, Quaternion je Bewegung, Pole begrenzt, daneben im All langsam nach Höhe).
   Mausrad auf der ganzen Bühne (vorher schluckten Schilder es).
+- **GPU-Last der Karte (15.11.2026, Nutzermeldung „Zoomen mit Karte kaum benutzbar“):** Chrome-Trace beim Zoomen mit Straßenkarte: Hauptthread fast leer, GPU-Prozess 9 s lang
+  zu 100 % belegt (GPU-Aufgaben bis ~90 ms, nur ~4 Bilder/s, 316 Kachelabrufe). Ursache: je Bild bis zu ~9 Ansichtsflächen gezeichnet (Erdbild Tag/Nachtsicht, Nachtseite über
+  Zwischenfläche + Maske + Rückkopie, dann deckende Kacheln mit bikubischem Filter darüber) und Grenzringe ganzer Kontinente mit Koordinaten bis in Millionen Pixel als ein Pfad.
+  Jetzt: `tilePlan` prüft vorab, ob Kacheln/Platzhalter die Ansicht deckend füllen → Erdbild und Nachtseite entfallen (`state().flat.under`); Nachtdurchgänge nur, wenn die
+  Maske im Ausschnitt Nacht enthält; Kacheln mit Standardfilter (≈ 1:1); Grenzen nur als Teilstücke, die die Ansicht berühren. Messung (1936 × 1277, Software-Rendering,
+  Kachel-Attrappen): gezeichnete Fläche je Bild mit Karte 8,6–9 → 1,5–1,9 Ansichtsflächen, Pfadpunkte 1 633 → 162; ohne Karte am Tag 7 → 3 (nachts unverändert).
 - **Ebenen in der Karte:** Erdbild in drei vorab berechneten Fassungen (Tag, Nacht, Nachtsicht – Formeln wie `EARTH_FS`), in 48 Streifen von der Plattkarte nach Mercator; Nachtmaske
   72 × 48 aus der Sonnenrichtung (`destination-in`). Grenzen als Pfade (Ringe nach Umriss-Rechteck verworfen), Heatmap als scharfe Zellen (Farbe/Durchsicht wie `HEAT_FS`; fein ab 1,5 px/km
   eingeblendet, voll ab 6 px/km, grob dann 40 %), Orte, Ort je Nacht (Ring), Vorschläge mit Ellipse, Teleskopstandorte (Quadrat). **Satellitenbahnen nicht** – Bahnen im Raum
