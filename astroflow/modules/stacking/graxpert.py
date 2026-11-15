@@ -298,6 +298,16 @@ def dust_reason(m: dict) -> str:
     return s
 
 
+def dust_better(m0: dict, m1: dict) -> bool:
+    """Gegenprobe: die höhere Glättung muss den auslösenden Anteil (gesamt und/oder sternarm) um DUST_GAIN senken und darf
+    keinen der beiden um mehr als DUST_GAIN erhöhen (ein sinkender Gesamtanteil darf keine schlechteren Dunkelzonen verdecken)."""
+    d0, d1 = m0.get("dark"), m1.get("dark")
+    better = ((m0["share"] >= DUST_ALL and m1["share"] <= m0["share"] - DUST_GAIN)
+              or (d0 is not None and d0 >= DUST_DARK and d1 is not None and d1 <= d0 - DUST_GAIN))
+    worse = m1["share"] > m0["share"] + DUST_GAIN or (d0 is not None and d1 is not None and d1 > d0 + DUST_GAIN)
+    return better and not worse
+
+
 def _dust_guard(exe: str, x0: np.ndarray, x: np.ndarray, hole: np.ndarray, smoothing: float, gpu: bool, info: dict, log) -> np.ndarray:
     """Staubwächter nach dem ersten Hintergrundlauf: nimmt das Modell zu viel großflächige Struktur mit, mit höherer Glättung
     neu rechnen (GraXpert-GPU ~4 s) und das nur übernehmen, wenn es messbar weniger mitnimmt (1,0 zu viel → 0,5 versuchen).
@@ -318,7 +328,7 @@ def _dust_guard(exe: str, x0: np.ndarray, x: np.ndarray, hole: np.ndarray, smoot
             m1 = dust_measure(x0, y, hole, stars)
             m1.pop("_stars", None)
             dust.setdefault("tried", []).append({"smoothing": t, "share": m1["share"], "dark": m1["dark"]})
-            if m1["share"] <= m0["share"] - DUST_GAIN:
+            if dust_better(m0, m1):
                 dust["to"] = t
                 info["smoothing"] = round(t, 2)
                 return y

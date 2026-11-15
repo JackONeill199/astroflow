@@ -155,7 +155,7 @@ Schritte 11–13 (Speicher, volles Laufwerk, Aufräumen): `daten-server.md`.
      `dust_measure` auf Kacheln (12 über die kürzere Seite, äußerer Ring aus), welchen Anteil der großflächigen Bildstruktur (Kachelmediane
      minus Fläche 2. Grades) das abgezogene Modell mitnimmt – gesamt und in sternarmen Kacheln (< 55 % der mittleren Sternzahl, nur ab
      4 Sternen je Kachel). Ab 0,35 gesamt bzw. 0,30 sternarm wird mit 0,5 (ab 0,45: 1,0) neu gerechnet (~4 s GPU), übernommen nur, wenn
-     der Anteil um ≥ 0,03 sinkt (1,0 erfolglos → 0,5). Nie nach unten; Profil-Schalter `dust_guard`. Ergebnis und Begründung in
+     der auslösende Anteil (gesamt bzw. sternarm) um ≥ 0,03 sinkt und keiner um mehr steigt (`dust_better`; 1,0 erfolglos → 0,5). Nie nach unten; Profil-Schalter `dust_guard`. Ergebnis und Begründung in
      `stats.graxpert.dust` (`from`, `to`, `reason`, `before`, `tried`, `kept`), Anzeige unter „GraXpert-KI“; `smoothing` ist die wirksame
      Glättung (→ `_ai`, Randglühen ab 0,5). Cacheschlüssel: angefragte Glättung + `GRAXPERT_VERSION` 3 (Wächter ist deterministisch).
      Eichung an 14 echten Stacks (0,1 → gesamt/sternarm): NGC 7000 0,57/0,61 → 1,0 (0,41), NGC 7023 0,40/0,47 (2 statt 8 Sterne je

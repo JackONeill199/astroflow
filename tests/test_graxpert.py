@@ -316,3 +316,14 @@ def test_dust_guard_keeps_result_when_higher_smoothing_does_not_help(tmp_path, m
     _, info = graxpert.apply(mean, cov, "bge", exe=exe)
     assert info["smoothing"] == 0.1 and info["dust"]["kept"] and "to" not in info["dust"]
     assert len(info["dust"]["tried"]) >= 1
+
+
+def test_dust_better_checks_the_triggering_share():
+    """Gegenprobe am auslösenden Anteil: nur sternarm ausgelöst → Besserung dort zählt; schlechtere Dunkelzonen werden nicht
+    durch einen sinkenden Gesamtanteil verdeckt; Randglühen (Gesamtanteil steigt) bleibt abgelehnt."""
+    b = graxpert.dust_better
+    assert b({"share": 0.20, "dark": 0.60}, {"share": 0.20, "dark": 0.10})
+    assert not b({"share": 0.50, "dark": 0.20}, {"share": 0.30, "dark": 0.40})
+    assert not b({"share": 0.44, "dark": None}, {"share": 0.56, "dark": None})
+    assert b({"share": 0.57, "dark": 0.61}, {"share": 0.41, "dark": 0.49})
+    assert not b({"share": 0.24, "dark": 0.40}, {"share": 0.23, "dark": 0.38})
