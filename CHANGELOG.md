@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.78.1 – 15.11.2026
+
+### Behoben
+- **SkyTrace – Karte beim Zoomen flüssig:** Mit eingeschalteter Straßenkarte war das Hineinzoomen auf schwächeren Grafikkarten kaum benutzbar (nur wenige Bilder pro Sekunde). Unter deckenden Kartenkacheln werden Erdbild und Nachtseite nicht mehr mitgezeichnet, und von den Ländergrenzen nur noch der sichtbare Teil; die Grafikkarte hat je Bild etwa ein Fünftel der Arbeit. Sichtbar ändert sich nichts.
+
 ## 0.78.0 – 15.11.2026
 
 ### Neu
