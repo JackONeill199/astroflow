@@ -57,6 +57,7 @@ const ramp = (id, d, g, cls, op) => `<linearGradient id="${id}" x1="0" x2="1" y1
   return `<stop offset="${((g.X(t) - g.L) / g.PW).toFixed(4)}" class="${cls}" stop-opacity="${o == null || isNaN(o) ? 0 : clamp(o).toFixed(3)}"/>`;
 }).join('')}</linearGradient>`;
 let chartSeq = 0;
+const hasRain = d => !!d.rain?.some(Boolean);
 
 // Teilpfade, wo a[i] ≥ lim[i] (Ziel über Mindesthöhe und Horizontmaske)
 function segments(a, lim, X, Y, times) {
@@ -92,6 +93,16 @@ function chart(d, W, H, selected, hidden) {
   if (d.cloud) {
     defs += ramp(`${id}cl`, d, g, 'tn-st-veil', i => d.cloud[i] == null ? 0 : d.cloud[i] / 100 * .38);
     sky += `<rect x="${L}" y="${T}" width="${PW}" height="${PH}" fill="url(#${id}cl)"/>`;
+  }
+  // Regen: schräge Striche, nur in Regenstunden, Stärke nach Regenwahrscheinlichkeit; fallen per CSS (Ausstieg bei reduzierter Bewegung)
+  if (hasRain(d)) {
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16, tw = 22 / 16 * rem, th = 30 / 16 * rem;   // Kachel in rem, passt zur CSS-Fallstrecke 1,875rem
+    defs += ramp(`${id}rm`, d, g, 'tn-st-white', i => !d.rain[i] ? 0 : (d.rain_p?.[i] != null ? .3 + .5 * d.rain_p[i] / 100 : .6))
+      + `<pattern id="${id}rp" width="${tw.toFixed(1)}" height="${th.toFixed(1)}" viewBox="0 0 22 30" patternUnits="userSpaceOnUse"><path class="tn-rain-drop" d="M7 2l-2.5 8M18 17l-2.5 8"/></pattern>
+         <linearGradient id="${id}rv" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".8" stop-color="#fff" stop-opacity="0"/></linearGradient>
+         <mask id="${id}rk"><rect x="${L}" y="${T}" width="${PW}" height="${PH}" fill="url(#${id}rm)"/></mask>
+         <mask id="${id}rf"><rect x="${L}" y="${T}" width="${PW}" height="${PH}" fill="url(#${id}rv)"/></mask>`;
+    sky += `<g mask="url(#${id}rf)"><g mask="url(#${id}rk)"><rect class="tn-rain" x="${L}" y="${T - th}" width="${PW}" height="${PH + th}" fill="url(#${id}rp)"><title>Regen laut Vorhersage</title></rect></g></g>`;
   }
   let out = `<g clip-path="url(#${id}c)">${sky}`;
   // unter der Mindesthöhe: leicht abgedunkelt
@@ -177,9 +188,17 @@ customElements.define('af-tonight-chart', class extends HTMLElement {
         const visible = this.plan.recommendations.map((o, k) => ({o, k})).filter(x => !this.hiddenTargets.has(x.k));
         visible.sort((x, y) => Math.abs(x.o.alt[this.index] - a) - Math.abs(y.o.alt[this.index] - a));
         if (visible.length) this.selected = visible[0].k;
+        // Maus: Klick heftet an, zweiter Klick löst; Touch: Antippen zeigt immer an der Stelle (Schließen = außerhalb tippen)
+        if (this.pinned && e.pointerType !== 'touch') { this.unpin(); this.draw(); return; }
         this.pinned = true; this.draw(); this.inspect();
       }
     };
+    // außerhalb des Diagramms/Reglers klicken oder Escape löst den angehefteten Tooltip
+    this.outside = e => { if (this.pinned && !e.target.closest?.('svg.tn-chart, .tn-scrub') ) this.unpin(); };
+    this.escape = e => { if (e.key === 'Escape' && this.pinned) this.unpin(); };
+    document.addEventListener('click', this.outside);
+    document.addEventListener('keydown', this.escape);
+    this.onfocusout = e => { if (e.target.matches?.('.tn-time')) this.unpin(); };
     this.onchange = e => {
       if (!e.target.matches('[data-visible]')) return;
       const k = +e.target.dataset.visible;
@@ -195,6 +214,10 @@ customElements.define('af-tonight-chart', class extends HTMLElement {
       if (svg && e.pointerType !== 'touch') { this.point(e, svg); this.inspect(); }
     };
     this.onpointerleave = () => { if (!this.pinned) { this.querySelector('.tn-tooltip')?.setAttribute('hidden', ''); this.querySelector('.tn-cursor')?.replaceChildren(); } };
+  }
+  unpin() {
+    this.pinned = false;
+    this.querySelector('.tn-tooltip')?.setAttribute('hidden', ''); this.querySelector('.tn-cursor')?.replaceChildren();
   }
   point(e, svg) {
     const g = geom(this.plan, this.width, this.height), r = svg.getBoundingClientRect(), f = clamp((e.clientX - r.left - g.L) / g.PW);
@@ -231,7 +254,7 @@ customElements.define('af-tonight-chart', class extends HTMLElement {
     slider.value = i; slider.setAttribute('aria-valuetext', hm(d.times[i]));
     this.querySelector('.tn-clock').textContent = hm(d.times[i]);
   }
-  disconnectedCallback() { this.observer?.disconnect(); window.removeEventListener('resize', this.resizeChart); }
+  disconnectedCallback() { this.observer?.disconnect(); document.removeEventListener('click', this.outside); document.removeEventListener('keydown', this.escape); window.removeEventListener('resize', this.resizeChart); }
 });
 const graph = (d, initial_target) => `<af-tonight-chart>${esc(JSON.stringify({...d, initial_target, now: Math.floor(d.now / 300) * 300}))}</af-tonight-chart>`;
 // Nachführung laut Geräte-Tabelle (devices.json): wie die Bildfelddrehung in die Rangfolge eingeht
@@ -295,6 +318,7 @@ function legend(d) {
     d.horizon ? item('<path class="tn-lg-hz" d="M0 12V7l3-3 2 3h3V5h3l2 3 2-2 3 3v4z"/>', 'Horizont', 'Horizontmaske des Standorts (Einstellungen → Standorte): hinter Bäumen und Häusern blass gezeichnet') : '',
     item(`<g transform="translate(3 0)">${moonIcon(6, 6, 5, Math.max(d.moon.illum, 30), d.moon.waxing, d.site?.[0] < 0)}</g>`, 'Mond', 'Mondbahn; die Fläche ist umso heller, je voller der Mond'),
     d.cloud ? item('<rect class="tn-lg-cloud" width="18" height="3.5" rx="1"/><rect class="tn-lg-cloud" y="4.25" width="18" height="3.5" rx="1" opacity=".6"/><rect class="tn-lg-cloud" y="8.5" width="18" height="3.5" rx="1" opacity=".3"/>', 'Wolken', 'Band oben: hohe, mittlere und tiefe Wolken; Schleier im Diagramm: Gesamtbewölkung') : '',
+    hasRain(d) ? item('<path class="tn-rain-drop" d="M5 1L3 6M10 1L8 6M7 6L5 11M13 6l-2 5"/>', 'Regen', 'Schräge Striche im Diagramm: Regenstunden laut Vorhersage (kräftiger = wahrscheinlicher), die Zeit gilt als unbrauchbar') : '',
     d.wind?.some(v => v != null) ? item('<path class="tn-wind-ico" d="M1 4h9a2 2 0 1 0-2-2M1 8h12a2 2 0 1 1-2 2"/>', 'Wind', 'Streifen unter den Wolken: kräftiger = mehr Wind (bei Böen wackelt das Bild)') : '',
   ].join('')}</ul>`;
 }

@@ -3,6 +3,14 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.80.0 – 15.11.2026
+
+### Neu
+- **Heute Nacht – Regen im Diagramm:** Regenstunden laut Vorhersage erscheinen im Nachtdiagramm als dezente, fallende Regenstriche (kräftiger bei höherer Regenwahrscheinlichkeit). Die Legende zeigt „Regen“ nur, wenn Regen vorkommt; bei reduzierter Bewegung stehen die Striche still.
+
+### Behoben
+- **Heute Nacht – Tooltip hängt nicht mehr:** Der Tooltip im Nachtdiagramm folgt der Maus und verschwindet beim Verlassen. Ein Klick heftet ihn an; ein zweiter Klick, ein Klick daneben oder Escape löst ihn. Am Handy zeigt Antippen ihn, Antippen daneben schließt ihn.
+
 ## 0.79.0 – 15.11.2026
 
 ### Neu

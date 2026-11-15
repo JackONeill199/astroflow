@@ -999,3 +999,92 @@ def test_update_details_bei_abgeschalteter_pruefung(server, browser):
     assert page.evaluate("AF.app.update && AF.app.update.latest") == "99.1.0"
     page.close()
     assert not errors, errors
+
+
+@pytest.mark.parametrize('scheme', ['light', 'dark'])
+@pytest.mark.parametrize('size', ['handy', 'schmal', 'desktop'])
+def test_tonight_rain_layer(server, browser, size, scheme, tmp_path, monkeypatch):
+    """Regen im Nachtdiagramm: Ebene + Legende nur bei Regenstunden, Animation endet bei reduzierter Bewegung."""
+    from pathlib import Path
+    from astroflow.modules.stacking import tonight
+    from tests.test_tonight import SITE, EVENING, M31
+    t0 = tonight._window(EVENING, SITE['lon'])[0]
+    dev = {'name': 'Testgerät', 'fov': [1, .7], 'source': 'Testmessung'}
+
+    def make(rainy):
+        hours = [{'t': t0 + 3600 * i, 'cloud': 40, 'low': 20, 'mid': 30, 'high': 10, 'wind': 12,
+                  'rain': 100 if rainy and 3 <= i <= 6 else 0, 'rain_p': 85 if rainy and 3 <= i <= 6 else 5} for i in range(24)]
+        monkeypatch.setattr(tonight, '_forecast', lambda *a, **k: {'hours': hours, 'later': [], 'source': 'Test'})
+        tonight._cache.clear()
+        return tonight.plan([{**M31, 'exposure': 1800}], {**SITE, 'weather': True}, Path(tmp_path), EVENING, dev, night=0)
+    plans = {'rain': make(True), 'dry': make(False)}
+    base, _ = server
+    w, h = SIZES[size]
+    page = browser.new_page(viewport={'width': w, 'height': h}, color_scheme=scheme)
+    errors = []
+    page.on('pageerror', lambda e: errors.append(str(e)))
+    state = {'p': 'rain'}
+    page.route('**/api/stacking/tonight*', lambda route: route.fulfill(json=plans[state['p']]))
+    page.goto(base + '/#/nacht')
+    page.wait_for_selector('af-tonight-chart svg')
+    assert page.locator('.tn-chart rect.tn-rain').count() == 1
+    assert 'Regen' in page.locator('.tn-legend').inner_text()
+    assert page.evaluate("getComputedStyle(document.querySelector('rect.tn-rain')).animationName") == 'tn-rain-fall'
+    assert not page.evaluate(FIND_OVERFLOW)
+    page.screenshot(path=str(tmp_path / f'regen-{size}-{scheme}.png'))
+    page.emulate_media(reduced_motion='reduce')
+    assert page.evaluate("getComputedStyle(document.querySelector('rect.tn-rain')).animationName") == 'none'
+    state['p'] = 'dry'
+    page.goto(base + '/#/')
+    page.goto(base + '/#/nacht')
+    page.wait_for_function("document.querySelector('af-tonight-chart svg') && !document.querySelector('rect.tn-rain')")
+    assert 'Regen' not in page.locator('.tn-legend').inner_text()
+    page.close()
+    assert not errors, errors
+
+
+def test_tonight_tooltip_not_sticky(server, browser, tmp_path, monkeypatch):
+    """Tooltip im Nachtdiagramm: folgt der Maus, verschwindet beim Verlassen; Klick heftet an, 2. Klick/Klick daneben/Escape löst; Touch: Tippen zeigt, Tippen daneben schließt."""
+    from pathlib import Path
+    from astroflow.modules.stacking import tonight
+    from tests.test_tonight import SITE, EVENING, M31
+    t0 = tonight._window(EVENING, SITE['lon'])[0]
+    hours = [{'t': t0 + 3600 * i, 'cloud': 30, 'low': 10, 'mid': 10, 'high': 10, 'wind': 10} for i in range(24)]
+    monkeypatch.setattr(tonight, '_forecast', lambda *a, **k: {'hours': hours, 'later': [], 'source': 'Test'})
+    tonight._cache.clear()
+    plan = tonight.plan([{**M31, 'exposure': 1800}], {**SITE, 'weather': True}, Path(tmp_path), EVENING, {'name': 'T', 'fov': [1, .7], 'source': 'T'}, night=0)
+    base, _ = server
+    errors = []
+
+    def open_page(**kw):
+        page = browser.new_page(viewport={'width': 1200, 'height': 900}, **kw)
+        page.on('pageerror', lambda e: errors.append(str(e)))
+        page.route('**/api/stacking/tonight*', lambda route: route.fulfill(json=plan))
+        page.goto(base + '/#/nacht')
+        page.wait_for_selector('af-tonight-chart svg')
+        return page
+    page = open_page()
+    shown = lambda: page.locator('.tn-tooltip').is_visible()
+    box = page.locator('svg.tn-chart').bounding_box()
+    mid = (box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
+    away = (box['x'] + box['width'] / 2, 130)                  # leere Fläche über dem Diagramm
+    page.mouse.move(*mid); page.wait_for_selector('.tn-tooltip:not([hidden])')
+    page.mouse.move(*away)                                      # Hover verlassen
+    page.wait_for_selector('.tn-tooltip', state='hidden')
+    page.mouse.move(*mid); page.mouse.click(*mid)             # Klick heftet an …
+    page.mouse.move(*away); assert shown()                      # … und bleibt beim Verlassen
+    page.mouse.click(*away); page.wait_for_selector('.tn-tooltip', state='hidden')    # Klick daneben löst
+    page.mouse.move(*mid); page.mouse.click(*mid); page.mouse.click(*mid)             # zweiter Klick löst
+    page.mouse.move(*away); assert not shown()
+    page.mouse.move(*mid); page.mouse.click(*mid); page.keyboard.press('Escape')      # Escape löst
+    page.mouse.move(*away); assert not shown()
+    page.locator('.tn-time').focus(); page.keyboard.press('ArrowRight')               # Regler zeigt …
+    assert shown()
+    page.mouse.click(*away); assert not shown()                 # … Klick daneben schließt
+    page.close()
+    page = open_page(has_touch=True)
+    page.touchscreen.tap(*mid); page.wait_for_selector('.tn-tooltip:not([hidden])')
+    page.touchscreen.tap(mid[0] + 80, mid[1]); assert page.locator('.tn-tooltip').is_visible()   # woanders im Diagramm: bleibt, folgt
+    page.touchscreen.tap(*away); page.wait_for_selector('.tn-tooltip', state='hidden')
+    page.close()
+    assert not errors, errors
