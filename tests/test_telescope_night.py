@@ -251,3 +251,28 @@ def test_planer_haelt_ueberhang_und_hoechstzahl(tmp_path):
     roof = planner.plan([], lambda n: {**site, "top": [45.0] * 36}, w, [dev], tmp_path, now=_at(17), max_targets=4)
     blocks = roof["nights"][0]["blocks"]
     assert blocks and all(b["max_alt"] < 45 for b in blocks)
+
+
+def test_not_aus_waehrend_frist_startet_nicht():
+    """Review PR #145: „Sofort einklappen“ während der Frist – der Entwurf startet danach nicht von selbst."""
+    p, d, clock = make(cfg={"night_autostart": True}, t0=_at(20))
+    p.plan_night(clock.now(), autostart=True)
+    p.emergency(clock.now())
+    assert p.auto["deadline"] is None
+    p.auto["deadline"] = time.time() - 1                                     # auch eine schon abgelaufene Frist startet nicht
+    run(p, clock, _at(20, 30))
+    assert p.auto["state"] == "entwurf" and p.mode == "aus"
+    assert not [c for c in d.commands if c.split(":")[0] in ("open", "init")]
+
+
+def test_hoechstzahl_gilt_auch_beim_neuplanen():
+    """Review PR #145: schon N Ziele beobachtet → Neuplanung nimmt keine neuen mehr dazu (bisherige dürfen weiterlaufen)."""
+    fp = FakePlanner(plan=[("M45", 56.75, 24.12, _at(20), _at(23)), ("M1", 83.63, 22.01, _at(20), _at(23))])
+    p, d, clock = make(planner=fp, cfg={"night_max_targets": 1}, t0=_at(20))
+    p.plan_night(clock.now())
+    p.auto["state"] = "laeuft"
+    done = ap.Item("M33", "M33", 23.46, 30.66, _at(18), _at(20), auto=True, status="fertig", real_start=_at(18), stacked=50)
+    p.items.append(done)
+    assert p._replan(clock.now(), "Test", force=True)
+    assert not [i for i in p.items if i.status == "geplant" and i.id not in ("M33",)]
+    assert fp.calls[-1]["opts"]["max_targets"] == 1

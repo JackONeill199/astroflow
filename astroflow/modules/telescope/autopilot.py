@@ -387,6 +387,8 @@ class Autopilot:
         """Not-Aus: ohne Warteschlange, ohne auf den Takt zu warten. Stoppt alles und klappt ein."""
         self.estop.set()
         self.mode = "aus"
+        if self.auto and self.auto.get("deadline"):          # „gleich starten“: Frist verfällt, Start nur noch per Klick
+            self.auto["deadline"] = None
         self._scan_abort(why, now)
         self.scan_only = False
         self.log(f"{why}: stoppe und klappe ein.", "bad", now)
@@ -429,7 +431,7 @@ class Autopilot:
         now = self._now() if now is None else now
         with self.lock:
             a = self.auto
-            if a and a["state"] == "entwurf" and a.get("deadline") and time.time() >= a["deadline"]:
+            if a and a["state"] == "entwurf" and a.get("deadline") and time.time() >= a["deadline"] and not self.estop.is_set():
                 self.night_go(now)                # „gleich starten“: Frist abgelaufen, niemand hat abgebrochen
             try:
                 self._tick(now)
@@ -1399,7 +1401,8 @@ class Autopilot:
             if i.stacked:
                 have[i.id] = have.get(i.id, 0.0) + i.stacked * exp / 3600
         used = {i.id for i in self.items if i.real_start and i.stacked and not i.manual}
-        opts = {"max_targets": max(1, int(self.cfg["night_max_targets"]) - len(used)), "have_add": have,
+        left = int(self.cfg["night_max_targets"]) - len(used)        # so viele neue Ziele dürfen noch dazukommen
+        opts = {"max_targets": left if left > 0 else max(1, len(used)), "have_add": have,
                 "top": list(self.horizon()["top"]),
                 "exclude": sorted({i.id for i in self.items if i.status == "verdeckt"})}     # heute verdeckt: nicht wieder wählen
         try:
@@ -1420,6 +1423,9 @@ class Autopilot:
         new = [Item(str(b["id"]), b["name"], float(b["ra"]), float(b["dec"]), max(now, float(b["start"])), float(b["end"]),
                     hours=float(b.get("hours") or 0), auto=True, reason=b.get("reason") or "", category=b.get("category") or "")
                for b in res.get("blocks") or [] if float(b["end"]) > now + 600 and (end is None or float(b["start"]) < end)]
+        fresh = list(dict.fromkeys(i.id for i in new if i.id not in used))
+        allowed = used | set(fresh[:max(0, left)])                  # Höchstzahl je Nacht gilt auch nach Neuplanungen
+        new = [i for i in new if i.id in allowed]
         keep = []
         for i in self.items:
             if i.status == "aktiv" or (i.manual and i.status == "geplant"):
