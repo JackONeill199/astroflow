@@ -133,3 +133,20 @@ def test_weather_rain_service_and_telescope_sky(tmp_path, monkeypatch):
         assert client.get("/api/stacking/tonight").json()["telescope_sky"] is None
         ctx.services["telescope_sky"] = lambda: 1 / 0                      # defekter Dienst stört nicht
         assert client.get("/api/stacking/tonight").status_code == 200
+
+
+def test_precipitation_belongs_to_preceding_hour(tmp_path, monkeypatch):
+    """Regen mit Zeitstempel t gilt für (t−1 h, t]: er landet in der Stunde davor; ein kurzes Fenster davor sieht ihn."""
+    t0 = 1_000_000 // 3600 * 3600
+    times = [dt.datetime.fromtimestamp(t0 + 3600 * i, dt.timezone.utc).strftime("%Y-%m-%dT%H:%M") for i in range(10)]
+    wet = [0] * 10
+    wet[5] = 90                                                            # Wert für 04:00–05:00 (Stempel 05:00)
+    h = {"time": times, "cloud_cover_best_match": [0] * 10, "precipitation_probability_best_match": wet, "precipitation_best_match": [0.0] * 10}
+    import httpx
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _Resp(h))
+    fc = tonight._forecast([50.0, 10.0], tmp_path, t0, t0 + 9 * 3600)
+    rainy = [x["t"] - t0 for x in fc["hours"] if x["rain"]]
+    assert rainy == [4 * 3600]                                             # Stunde ab 4 h, nicht ab 5 h
+    now = t0 + 4 * 3600 - 15 * 60                                          # 15 min davor
+    assert tonight.rain_soon(fc, now, 20) == {"rain": True, "in_minutes": 15, "probability": 90, "precip": 0.0}
+    assert tonight.rain_soon(fc, t0 + 5 * 3600 + 60, 20)["rain"] is False  # danach vorbei

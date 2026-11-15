@@ -227,7 +227,9 @@ def _forecast(site, cache: Path, t0: float, t1: float, timeout: float = 10.0) ->
         cover = effective_cover(g("cloud_cover_low"), g("cloud_cover_mid"), g("cloud_cover_high"), total)
         # ECMWF liefert nur dort Schichten, wo sie vorhanden sind; Regen zählt nur vom Hauptmodell (Wahrscheinlichkeit gibt es nur dort)
         cover_alt = effective_cover(g("cloud_cover_low", alt), g("cloud_cover_mid", alt), g("cloud_cover_high", alt), g("cloud_cover", alt))
-        rain_p, mm = g("precipitation_probability"), g("precipitation")
+        # Open-Meteo: Niederschlag/-wahrscheinlichkeit mit Zeitstempel t gelten für die VORANGEHENDE Stunde (t−1 h, t] –
+        # für die Stunde ab t also der Wert des nächsten Zeitstempels
+        rain_p, mm = _pick(data, "precipitation_probability", main, i + 1), _pick(data, "precipitation", main, i + 1)
         rainy = is_rainy(rain_p, mm)
         cloud = None if cover is None else (100.0 if rainy else cover)
         if t1 + 1800 < ts <= t1 + 48 * 3600 and cloud is not None:
