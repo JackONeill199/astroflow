@@ -110,7 +110,7 @@ def _from_dir(d: Path) -> PluginInfo | None:
                       family=str(meta.get("family") or "")[:40], models=[str(m)[:40] for m in meta.get("models") or []][:20],
                       contract=contract, path=str(d), module=str(meta.get("module") or "driver.py"), cls=str(meta.get("class") or ""),
                       requires=[str(m) for m in meta.get("requires") or []][:20],
-                      options=[o for o in meta.get("options") or [] if isinstance(o, dict) and o.get("key")][:20])
+                      options=_options(meta.get("options")))
     info.vendor = [str((d / v).resolve()) for v in VENDOR_DIRS if (d / v).is_dir()]
     info.private = [str((d / str(x)).resolve()) for x in (meta.get("private") or [])[:5] if str(x).strip()]
     mod = (d / info.module).resolve()
@@ -123,7 +123,26 @@ def _from_dir(d: Path) -> PluginInfo | None:
     return _check(info)
 
 
-def _entry_points() -> list[PluginInfo]:
+def _options(raw) -> list:
+    """Optionsfelder aus der Plugin-Beschreibung (gleiche Regeln für Ordner- und Paket-Plugins)."""
+    return [o for o in (raw if isinstance(raw, list) else []) if isinstance(o, dict) and o.get("key")][:20]
+
+
+def _apply_meta(info: PluginInfo, cls) -> PluginInfo:
+    """Beschreibung eines Paket-Plugins aus dem Klassenattribut `plugin` übernehmen (Vertrag, Pakete, Optionsfelder)."""
+    meta = getattr(cls, "plugin", {}) or {}
+    if not isinstance(meta, dict):
+        meta = {}
+    info.contract = meta.get("contract")
+    info.requires = [str(m) for m in meta.get("requires") or []][:20]
+    info.options = _options(meta.get("options"))
+    info.error = None
+    return _check(info)
+
+
+def _entry_points(enabled: set | None = None) -> list[PluginInfo]:
+    """Installierte Paket-Plugins. Nur bei aktivierten (`enabled`) wird die Klasse geladen, um Optionsfelder und Vertrag zu
+    zeigen – sonst würden deren Einstellungen nie angeboten bzw. beim Speichern verworfen (Review PR #119)."""
     out = []
     try:
         from importlib.metadata import entry_points
@@ -133,12 +152,23 @@ def _entry_points() -> list[PluginInfo]:
     for ep in list(eps)[:MAX_PLUGINS]:
         # Nichts importieren: Paket-Code läuft erst, wenn der Nutzer das Plugin aktiviert und gewählt hat (`load`).
         # Vertragsversion und Pakete prüft dann `load` aus dem Klassenattribut `plugin`.
-        out.append(PluginInfo(id=_pid(ep.name, f"ep:{ep.value}"), name=ep.name[:80], path=f"Paket ({ep.value})", entry=ep))
+        info = PluginInfo(id=_pid(ep.name, f"ep:{ep.value}"), name=ep.name[:80], path=f"Paket ({ep.value})", entry=ep)
+        if enabled and info.id in enabled:
+            try:
+                _apply_meta(info, ep.load())
+            except BaseException as e:                  # auch SystemExit beim Import: Plugin defekt, AstroFlow läuft weiter
+                if isinstance(e, KeyboardInterrupt):
+                    raise
+                traceback.print_exc()
+                info.error = "Das Plugin lässt sich nicht laden – Details im Protokoll."
+        out.append(info)
     return out
 
 
-def discover(data_dir: Path, extra: list[str] | None = None, entry_points: bool = True) -> list[PluginInfo]:
-    """Alle Plugins (auch defekte, mit Meldung). Nichts wird ausgeführt."""
+def discover(data_dir: Path, extra: list[str] | None = None, entry_points: bool = True,
+             enabled: set | None = None) -> list[PluginInfo]:
+    """Alle Plugins (auch defekte, mit Meldung). Ausgeführt wird nichts – außer dem Laden der Klasse eines vom Nutzer
+    aktivierten Paket-Plugins (`enabled`), dessen Beschreibung erst dort steht."""
     roots: list[Path] = [Path(data_dir) / "plugins"] + [Path(p) for p in (extra or []) if str(p).strip()]
     found, seen = [], set()
     for root in roots:
@@ -152,7 +182,7 @@ def discover(data_dir: Path, extra: list[str] | None = None, entry_points: bool 
             if info:
                 found.append(info)
     if entry_points:
-        found += _entry_points()
+        found += _entry_points(enabled)
     return found[:MAX_PLUGINS]
 
 
@@ -191,10 +221,7 @@ def load(info: PluginInfo, options: dict | None = None) -> Driver:
     try:
         if info.entry is not None:
             cls = info.entry.load()
-            meta = getattr(cls, "plugin", {}) or {}
-            info.contract = meta.get("contract")
-            info.requires = list(meta.get("requires") or [])
-            if _check(info).error:
+            if _apply_meta(info, cls).error:
                 raise DriverError(info.error)
         else:
             name = f"astroflow_tplugin_{info.id.replace('-', '_')}"

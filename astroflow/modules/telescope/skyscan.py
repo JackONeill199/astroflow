@@ -153,19 +153,29 @@ class Scan:
             return self._close("Zeit- bzw. Punktgrenze erreicht – Karte aus den bisherigen Punkten.")
         if self.ref and (self.since_ref >= REF_EVERY or len(self.streak) >= STREAK or self.wait_until):
             self.wait_until = 0.0
-            return self._take({**self._ref_near(), "why": "gegenprobe"})
+            ref = self._ref_near(avoid)
+            if ref is not None:
+                return self._take({**ref, "why": "gegenprobe"})
+            # alle freien Referenzen am Mond: keine Gegenprobe (die verdeckten Punkte bleiben unbestätigt) statt am Mond zu
+            # scheitern und den Scan als „Wolken“ zu beenden (Review PR #143)
+            self.since_ref, self.streak = 0, set()
         cols = {round(p["az"] % 360) for p in self._measured() if p["why"] == "raster"}
         if self.ref is None and len(cols) >= NOFREE_COLS * (self.steep + 1) and self.steep < len(STEEP)                 and not any(p["res"] == "frei" for p in self.done):
             # keine Sterne in mehreren Richtungen: weit weg davon steil prüfen – Hauswand oder Wolken?
             off, alt = STEEP[self.steep]
             self.steep += 1
-            return self._take({"az": round((self.done[-1]["az"] + off) % 360, 1), "alt": alt, "why": "gegenprobe"})
+            base = self.done[-1]["az"] + off
+            for d in (0.0, 45.0, -45.0, 90.0, -90.0):           # Richtung am Mond: daneben prüfen
+                az = round((base + d) % 360, 1)
+                if not (avoid and avoid(az, alt)):
+                    return self._take({"az": az, "alt": alt, "why": "gegenprobe"})
         while True:
             if not self.queue:
                 self.queue = self._next_batch()
                 if not self.queue:
-                    if self.unconfirmed and self.ref:      # Schluss-Gegenprobe für die letzten verdeckten Punkte
-                        return self._take({**self._ref_near(), "why": "gegenprobe"})
+                    ref = self._ref_near(avoid) if self.unconfirmed and self.ref else None
+                    if ref is not None:                    # Schluss-Gegenprobe für die letzten verdeckten Punkte
+                        return self._take({**ref, "why": "gegenprobe"})
                     return self._close("")
             p = self.queue.pop(0)
             why = avoid(p["az"], p["alt"]) if avoid else None
@@ -178,10 +188,15 @@ class Scan:
                 continue
             return self._take(p)
 
-    def _ref_near(self) -> dict:
-        """Gegenprobe: der nächstgelegene schon freie Punkt (kurzer Schwenk), mindestens 20° hoch."""
+    def _ref_near(self, avoid=None) -> dict | None:
+        """Gegenprobe: der nächstgelegene schon freie Punkt (kurzer Schwenk), mindestens 20° hoch und nicht am Mond
+        (`avoid`). None = keiner geht gerade."""
         last = self.done[-1] if self.done else self.ref
         free = [p for p in self.done if p.get("res") == "frei" and p["alt"] >= 20] or [self.ref]
+        if avoid:
+            free = [p for p in free if not avoid(p["az"], p["alt"])]
+        if not free:
+            return None
         best = min(free, key=lambda p: (abs(((p["az"] - last["az"] + 540) % 360) - 180) + abs(p["alt"] - last["alt"])))
         return {"az": best["az"], "alt": best["alt"]}
 

@@ -137,7 +137,8 @@ Abweichungen (z. B. „Befehl gesendet, Gerät bewegt sich nach 30 s nicht“) i
    `tonight._limit` + astronomisch dunkel + Horizontmaske + verdeckte Richtungen dieser Nacht).
 3. **Wächter** (alle 30 s, jeder mit klarer Begründung im Protokoll):
    - **Dämmerung:** `core/sites.sun_alt` – abends erst ab Sonne < −12° (einstellbar) starten, morgens bei Sonne > −12°
-     einklappen. Nachtdatum nur über `sites.night_of`.
+     einklappen. Nachtdatum nur über `sites.night_of`; der Takt lädt den Plan neu, sobald sich das Nachtdatum ändert (Mittag) –
+     auch nach einer ganz bewölkten Nacht, in der er den Tag über „wartet“. Bewegt wird danach erst mit der Bestätigung der neuen Nacht.
    - **Wetter:** Vorhersage (Wolken gesamt/tief, Wind/Böen gegen `devices.json` → `gust`, Regenwahrscheinlichkeit, falls in
      `HOURLY` ergänzt) für die nächsten 30–60 min; über der Grenze → einklappen, bei Besserung wieder öffnen (höchstens n-mal je Nacht).
    - **Tau:** Taupunktabstand aus der Vorhersage (`dew_spread`) und – wo vorhanden – Gerätesensor. Stellina: Warnung < 3 °C,
@@ -286,6 +287,9 @@ Gebaut nach Abschnitt 4–7; Abweichungen und Details:
 - **Live-Bilder** (`frames.py`): eigener Thread alle 20 s während `capture`; jüngster Bilderordner, der nach dem Zielstart geändert
   wurde; Datei erst holen, wenn ihre Größe zwischen zwei Blicken gleich bleibt (am Zielende alles); `.part` → umbenennen.
   Ablage `input/Teleskop/<Gerät>/<Nacht>/<Ziel>/` (Pipeline-Überwachung des Eingangsordners stackt mit). Nur Vaonis-Adapter.
+  Beobachtung ohne Ziel des Autopiloten (in der App gestartet, Treiber „nur Status und Bilder“; Autopilot nicht „läuft/wartet“):
+  bei `capture` der neueste Beobachtungsordner (mit oder ohne Plan-Ebene) als eigener Versuch (`frames._Extern`), Name = Ziel am Gerät.
+  Ein Neustart nach Stillstand (`_stalled`, nur gezählt, wenn das Gerät ihn annimmt) ist ein neuer Versuch (`real_start` neu).
 - **Ausrichtung in der Bühne** (Nutzerentscheidung 14.11.2026: abstrakt, kein Modell je Teleskop): Viertelkreis Horizont–Zenit mit Skala
   0/30/60/90°, grüner Bogen = frei ab Mindesthöhe, Zeiger + schmaler Blickfeld-Keil = gemeldete Höhe (auf 0–90° begrenzt), Wert an der Spitze, Kompassrose für den Azimut, Phase darunter. Eingeklappt:
   Zeiger eingefahren und grau (`parked`, unabhängig davon, ob ein Gerät dabei −90° oder 0° meldet). Simulator: Vaonis klappt auf −90°
@@ -367,7 +371,8 @@ das Steuern. Darum:
 - **Plugins** (`plugins.py`): Ordner mit `plugin.json` (`name`, `family`, `models`, `contract`, `module`, `class`, `requires`,
   `options[{key,label,hint,type}]`) und Treiberdatei im selben Ordner. Gesucht in `<daten>/plugins/*`, in den Ordnern aus
   `telescope.plugin_paths` und über den Entry Point `astroflow.telescope_drivers`. `discover` führt nichts aus; geprüft werden
-  Vertragsversion, fehlende Pakete (`requires`), Datei im Ordner. Kennung = Name + Hash des Ortes.
+  Vertragsversion, fehlende Pakete (`requires`), Datei im Ordner. Kennung = Name + Hash des Ortes. Ausnahme: ein **aktiviertes**
+  Paket-Plugin wird beim Entdecken geladen, damit Vertrag, Pakete und `options` aus dem Klassenattribut `plugin` gelten.
 - **Aktivieren** (`POST /plugins/enable`), Plugin-Ordner (`/plugins/paths`), Geräteadresse, Plugin-Optionen und jede Steuerung außer
   dem Simulator nur am Rechner selbst (`require_local`); Hinweis „fremder Code“ beim Aktivieren. Nur aktivierte, nutzbare Plugins sind
   als Steuerung wählbar; Deaktivieren schaltet auf den Simulator zurück. Defektes/unpassendes Plugin → feste deutsche Meldung
@@ -414,13 +419,15 @@ Punkte und `SCAN_MAX_S` (25 min). Simulator „Balkon“ (3°/s, 15 s Lagebestim
 bekannter Aufstellung braucht wenige Minuten. Am echten Gerät hängt die Dauer an Schwenk und Plate-Solving (noch nicht gemessen).
 Wolken: Start nur ohne Wolkenvorhersage ≥ 60 %; der nächstgelegene freie Punkt dient als **Gegenprobe**, alle 8 Punkte bzw. nach verdeckten Punkten in drei
 Spalten ohne freien dazwischen. Ohne jeden freien Punkt nach drei Spalten: steil in anderer Richtung prüfen (Hauswand oder Wolken?). Scheitert sie, werden die verdeckten Punkte seit der letzten guten Gegenprobe zu Zweifeln
-(später wiederholt); scheitert sie zweimal, ist es Wolke → Scan endet, Wolkenwächter klappt ein. Verdeckt ist nur „sicher“, wenn
+(später wiederholt); scheitert sie zweimal, ist es Wolke → Scan endet, Wolkenwächter klappt ein. Auch Gegenproben halten den
+Mondabstand: Referenzen am Mond fallen weg, die steile Probe weicht seitlich aus; geht keine, bleiben die Punkte unbestätigt. Verdeckt ist nur „sicher“, wenn
 die Gegenprobe davor und danach frei war. Regen, Beschlag, Akku und Dämmerung haben Vorrang (der Takt prüft sie vor dem Scan);
 ein Abbruch behält die bisherigen Punkte. Danach klappt der Autopilot ein (nur Scan) bzw. setzt den Plan fort.
 
 **Aufstellungen** (`skymap.setups`): Jede Nacht (Scan-Punkte, Ergebnisse der Ziele, frühere Aufnahmen über den Dienst
 `frame_sky_points` des Bilder-Moduls) wird zu einer Karte. Zwei Nächte gehören zur selben Aufstellung, wenn sie in genügend
-Stützstellen Auskunft geben und sich nirgends widersprechen (frei in der einen deutlich unter verdeckt in der anderen).
+Stützstellen Auskunft geben und sich nirgends widersprechen (frei in der einen deutlich unter verdeckt in der anderen bzw. frei
+in der einen auf/über einem Überhang der anderen – Dachüberstand nur in einer Aufstellung).
 Ein Hindernis wiederholt sich: verdeckt aus Aufnahmen/Zielen zählt erst ab zwei Nächten als sicher, Wolken wandern und fallen so
 heraus. Was in allen Aufstellungen gleich ist (ferne Hindernisse), gilt für den ganzen Standort.
 Zu Beginn der Nacht (`scan_auto`, nur mit gelernten Aufstellungen) fährt der Autopilot wenige **Erkennungspunkte**, die die
@@ -443,7 +450,8 @@ Bestätigung je Nacht wie Start) bzw. mit Einstellung `night_autostart` nach `AU
 voller Scan; schon vermessen oder laut Vorhersage bewölkt → übersprungen → **neu planen** mit der gemessenen Grenze →
 **beobachten** mit allen Wächtern. Rest der Nacht neu geplant (`_replan`) nach: Ziel verdeckt (`_failure`, sofort), Ziel verlässt
 den freien Bereich (höchstens alle `REPLAN_EVERY` = 10 min), Wiederöffnen nach Wetter/Wolken/Beschlag/Regen, Plan früh erledigt
-bei ≥ 1 h Dunkelheit (`REFILL_MIN_S`). Für die Neuplanung zählen: gemessene Grenze + Überhang (`top`), gesperrte Richtungen
+bei ≥ 1 h Dunkelheit (`REFILL_MIN_S`; werden die neuen Ziele erst später frei, wartet er auf sie statt einzuklappen). Der normale
+„Start“ bei offenem Entwurf (`POST /start`) startet die Nacht wie „Nacht starten“. Für die Neuplanung zählen: gemessene Grenze + Überhang (`top`), gesperrte Richtungen
 (+5°, ±10°), heute verdeckte Ziele ausgeschlossen, heute gesammelte Belichtung (`have_add`). Morgendämmerung → einklappen →
 **Nachtbilanz** (`_finish_auto`, Protokoll + Ansicht). `load_night` behält den automatischen Plan derselben Nacht.
 **Zielwahl** (Dienst `night_autoplan` des Bilder-Moduls → `stacking/autoplan.py` → `planner.plan` mit 1 Nacht, 1 Gerät, „Mischung“):
