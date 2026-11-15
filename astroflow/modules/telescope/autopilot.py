@@ -39,6 +39,7 @@ WEATHER_EVERY = 900          # s zwischen zwei Wetterabfragen
 RAIN_EVERY = 600             # s zwischen zwei Regenabfragen (Dienst `weather_rain`)
 RAIN_PARK_MIN = 30           # Regen in so vielen Minuten erwartet → laufende Beobachtung beenden, einklappen
 RAIN_START_MIN = 60          # … in so vielen Minuten → kein neues Ziel, nicht öffnen
+RAIN_PLAN_GUARD_S = 60       # Geräte-Plan: so viele s vor Blockende einklappen, bevor das Gerät selbst zum nächsten Ziel schwenkt
 RECONNECT_EVERY = 30
 PARK_CONFIRM_S = 150         # so lange darf Einklappen dauern (Probe 3: ~47 s, plus evtl. laufendes Öffnen ~49 s)
 PARK_TRIES = 3
@@ -646,6 +647,11 @@ class Autopilot:
                 self._cmd("stop", self.driver.stop, now=now)
                 self._end_item(cur, "fertig" if cur.stacked else "uebersprungen", vis[1], now)
                 self.log(f"{cur.name} verlässt den freien Bereich ({vis[1]}) – beende und wechsle zum nächsten Ziel.", "warn", now)
+            elif (s.device_plan and now >= cur.end - RAIN_PLAN_GUARD_S and (rain := self.rain_in(now)) is not None
+                  and rain <= RAIN_START_MIN):
+                # der Geräte-Plan schwenkt am Blockende selbst zum nächsten Ziel – vorher einklappen (wie `_start_item`)
+                self._end_item(cur, "fertig", "", now)
+                return self._hold(Hold("rain", f"{self._rain_text(rain)} – kein Zielwechsel mehr, Teleskop wird eingeklappt."), now)
             elif now >= cur.end:
                 self._end_item(cur, "fertig", "", now)
             else:

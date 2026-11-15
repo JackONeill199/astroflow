@@ -1237,6 +1237,21 @@ def test_regen_bald_kein_neues_ziel_und_nicht_oeffnen():
     assert d2.state().parked and "open" not in d2.commands and p2.hold.kind == "rain"
 
 
+def test_regen_bald_geraeteplan_wechselt_nicht_selbst():
+    """Mit Geräte-Plan (Rückfall an) schwenkt das Gerät am Blockende selbst weiter – bei Regen in ≤ 60 min vorher einklappen."""
+    p, d, clock = make([item(M31, 0.0, 0.5), item(M15, 0.5, 3.0)])
+    p.env.rain = _rain_at(clock, T0 + 1.3 * H, T0 + 3.0 * H)
+    seen = set()
+    for _ in range(int(0.7 * H / 20)):
+        p.tick(clock.now())
+        clock.advance(20)
+        if (t := d.state().target):
+            seen.add(t.get("id"))
+    assert any(c.startswith("plan:") for c in d.commands)                    # Geräte-Plan war wirklich aktiv
+    assert "M15" not in seen and p.hold.kind == "rain" and d.state().parked
+    assert "kein Zielwechsel mehr" in texts(p)
+
+
 def test_regen_unbekannt_oder_ohne_dienst_wie_bisher():
     p, d, clock = make([item(M31, 0.0, 1.0)], cfg={"fallback": False})
     p.env.rain = lambda site, minutes: {"rain": None, "in_minutes": None, "probability": None, "precip": None}
