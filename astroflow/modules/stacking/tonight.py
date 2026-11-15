@@ -251,7 +251,7 @@ def rain_soon(fc: dict | None, now: float, minutes: float) -> dict:
     if not fc or not fc.get("hours"):
         return {"rain": None, "in_minutes": None, "probability": None, "precip": None}
     end = now + minutes * 60
-    hh = [h for h in fc["hours"] if h["t"] + 3600 > now and h["t"] <= end]      # Stunde zählt, solange sie noch läuft
+    hh = [h for h in fc["hours"] if not h.get("hold") and h["t"] + 3600 > now and h["t"] <= end]      # Stunde zählt, solange sie noch läuft
     if not hh:
         return {"rain": None, "in_minutes": None, "probability": None, "precip": None}
     wet = [h for h in hh if h.get("rain")]
