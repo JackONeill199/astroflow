@@ -185,9 +185,17 @@ customElements.define('af-tonight-chart', class extends HTMLElement {
         const visible = this.plan.recommendations.map((o, k) => ({o, k})).filter(x => !this.hiddenTargets.has(x.k));
         visible.sort((x, y) => Math.abs(x.o.alt[this.index] - a) - Math.abs(y.o.alt[this.index] - a));
         if (visible.length) this.selected = visible[0].k;
+        // Maus: Klick heftet an, zweiter Klick löst; Touch: Antippen zeigt immer an der Stelle (Schließen = außerhalb tippen)
+        if (this.pinned && e.pointerType !== 'touch') { this.unpin(); this.draw(); return; }
         this.pinned = true; this.draw(); this.inspect();
       }
     };
+    // außerhalb des Diagramms/Reglers klicken oder Escape löst den angehefteten Tooltip
+    this.outside = e => { if (this.pinned && !e.target.closest?.('svg.tn-chart, .tn-scrub') ) this.unpin(); };
+    this.escape = e => { if (e.key === 'Escape' && this.pinned) this.unpin(); };
+    document.addEventListener('click', this.outside);
+    document.addEventListener('keydown', this.escape);
+    this.onfocusout = e => { if (e.target.matches?.('.tn-time')) this.unpin(); };
     this.onchange = e => {
       if (!e.target.matches('[data-visible]')) return;
       const k = +e.target.dataset.visible;
@@ -203,6 +211,10 @@ customElements.define('af-tonight-chart', class extends HTMLElement {
       if (svg && e.pointerType !== 'touch') { this.point(e, svg); this.inspect(); }
     };
     this.onpointerleave = () => { if (!this.pinned) { this.querySelector('.tn-tooltip')?.setAttribute('hidden', ''); this.querySelector('.tn-cursor')?.replaceChildren(); } };
+  }
+  unpin() {
+    this.pinned = false;
+    this.querySelector('.tn-tooltip')?.setAttribute('hidden', ''); this.querySelector('.tn-cursor')?.replaceChildren();
   }
   point(e, svg) {
     const g = geom(this.plan, this.width, this.height), r = svg.getBoundingClientRect(), f = clamp((e.clientX - r.left - g.L) / g.PW);
@@ -239,7 +251,7 @@ customElements.define('af-tonight-chart', class extends HTMLElement {
     slider.value = i; slider.setAttribute('aria-valuetext', hm(d.times[i]));
     this.querySelector('.tn-clock').textContent = hm(d.times[i]);
   }
-  disconnectedCallback() { this.observer?.disconnect(); window.removeEventListener('resize', this.resizeChart); }
+  disconnectedCallback() { this.observer?.disconnect(); document.removeEventListener('click', this.outside); document.removeEventListener('keydown', this.escape); window.removeEventListener('resize', this.resizeChart); }
 });
 const graph = (d, initial_target) => `<af-tonight-chart>${esc(JSON.stringify({...d, initial_target, now: Math.floor(d.now / 300) * 300}))}</af-tonight-chart>`;
 // Nachführung laut Geräte-Tabelle (devices.json): wie die Bildfelddrehung in die Rangfolge eingeht

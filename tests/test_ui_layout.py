@@ -1041,3 +1041,50 @@ def test_tonight_rain_layer(server, browser, size, scheme, tmp_path, monkeypatch
     assert 'Regen' not in page.locator('.tn-legend').inner_text()
     page.close()
     assert not errors, errors
+
+
+def test_tonight_tooltip_not_sticky(server, browser, tmp_path, monkeypatch):
+    """Tooltip im Nachtdiagramm: folgt der Maus, verschwindet beim Verlassen; Klick heftet an, 2. Klick/Klick daneben/Escape löst; Touch: Tippen zeigt, Tippen daneben schließt."""
+    from pathlib import Path
+    from astroflow.modules.stacking import tonight
+    from tests.test_tonight import SITE, EVENING, M31
+    t0 = tonight._window(EVENING, SITE['lon'])[0]
+    hours = [{'t': t0 + 3600 * i, 'cloud': 30, 'low': 10, 'mid': 10, 'high': 10, 'wind': 10} for i in range(24)]
+    monkeypatch.setattr(tonight, '_forecast', lambda *a, **k: {'hours': hours, 'later': [], 'source': 'Test'})
+    tonight._cache.clear()
+    plan = tonight.plan([{**M31, 'exposure': 1800}], {**SITE, 'weather': True}, Path(tmp_path), EVENING, {'name': 'T', 'fov': [1, .7], 'source': 'T'}, night=0)
+    base, _ = server
+    errors = []
+
+    def open_page(**kw):
+        page = browser.new_page(viewport={'width': 1200, 'height': 900}, **kw)
+        page.on('pageerror', lambda e: errors.append(str(e)))
+        page.route('**/api/stacking/tonight*', lambda route: route.fulfill(json=plan))
+        page.goto(base + '/#/nacht')
+        page.wait_for_selector('af-tonight-chart svg')
+        return page
+    page = open_page()
+    shown = lambda: page.locator('.tn-tooltip').is_visible()
+    box = page.locator('svg.tn-chart').bounding_box()
+    mid = (box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
+    away = (box['x'] + box['width'] / 2, 130)                  # leere Fläche über dem Diagramm
+    page.mouse.move(*mid); page.wait_for_selector('.tn-tooltip:not([hidden])')
+    page.mouse.move(*away)                                      # Hover verlassen
+    page.wait_for_selector('.tn-tooltip', state='hidden')
+    page.mouse.move(*mid); page.mouse.click(*mid)             # Klick heftet an …
+    page.mouse.move(*away); assert shown()                      # … und bleibt beim Verlassen
+    page.mouse.click(*away); page.wait_for_selector('.tn-tooltip', state='hidden')    # Klick daneben löst
+    page.mouse.move(*mid); page.mouse.click(*mid); page.mouse.click(*mid)             # zweiter Klick löst
+    page.mouse.move(*away); assert not shown()
+    page.mouse.move(*mid); page.mouse.click(*mid); page.keyboard.press('Escape')      # Escape löst
+    page.mouse.move(*away); assert not shown()
+    page.locator('.tn-time').focus(); page.keyboard.press('ArrowRight')               # Regler zeigt …
+    assert shown()
+    page.mouse.click(*away); assert not shown()                 # … Klick daneben schließt
+    page.close()
+    page = open_page(has_touch=True)
+    page.touchscreen.tap(*mid); page.wait_for_selector('.tn-tooltip:not([hidden])')
+    page.touchscreen.tap(mid[0] + 80, mid[1]); assert page.locator('.tn-tooltip').is_visible()   # woanders im Diagramm: bleibt, folgt
+    page.touchscreen.tap(*away); page.wait_for_selector('.tn-tooltip', state='hidden')
+    page.close()
+    assert not errors, errors
