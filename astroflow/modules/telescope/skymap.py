@@ -47,7 +47,8 @@ def bin_of(az: float) -> int:
 
 
 def columns(points: list[dict]) -> list[dict]:
-    """Je Stützstelle {lo, hi, top, nb, nf, sure}. `sure` = es gibt einen sicheren verdeckten Punkt bzw. nur freie Punkte."""
+    """Je Stützstelle {lo, hi, top, top_at, hf, nb, nf, sure}. `sure` = es gibt einen sicheren verdeckten Punkt bzw. nur freie
+    Punkte. `top_at` = gemessene Höhe des Überhangs (`top` ist die geschätzte Grenze darunter), `hf` = höchster freier Punkt."""
     out = []
     for i in range(N):
         az = _bin_az(i)
@@ -74,11 +75,13 @@ def columns(points: list[dict]) -> list[dict]:
             if any(bin_of(q["az"]) == bin_of(p["az"]) and q.get("res") == "frei" and q["alt"] < p["alt"] for q in points):
                 continue                                         # beim Nachbarn selbst ein Überhang
             lo = p["alt"] if lo is None else max(lo, p["alt"])
+        top_at = top
         if top is not None:                                      # Überhang: Mitte zwischen höchstem freien Punkt darunter und ihm
             below = max(f for f in free if f < top)
             top = round(below + (top - below) / 2, 1)
         nb = sum(1 for p in own if p["res"] == "verdeckt")
-        out.append({"az": az, "lo": lo, "hi": hi, "top": top, "nb": nb, "nf": len(free),
+        out.append({"az": az, "lo": lo, "hi": hi, "top": top, "top_at": top_at, "hf": free[-1] if free else None,
+                    "nb": nb, "nf": len(free),
                     "sure": sure or (lo is None and bool(free))})
     return out
 
@@ -126,9 +129,17 @@ def _conflicts(a: list[dict], b: list[dict]) -> tuple[int, int]:
             continue
         common += 1
         if (x["lo"] is not None and y["hi"] is not None and y["hi"] < x["lo"] - CONFLICT_TOL) or \
-           (y["lo"] is not None and x["hi"] is not None and x["hi"] < y["lo"] - CONFLICT_TOL):
+           (y["lo"] is not None and x["hi"] is not None and x["hi"] < y["lo"] - CONFLICT_TOL) or \
+           _over(x, y) or _over(y, x):
             bad += 1
     return bad, common
+
+
+def _over(x: dict, y: dict) -> bool:
+    """Überhang: frei in `y` auf bzw. über der Höhe, in der `x` einen Überhang gemessen hat – z. B. Dachüberstand nur in einer
+    der beiden Aufstellungen (Review PR #143). Sonst würden beide vereinigt und die freie Richtung gälte als verdeckt."""
+    at = x.get("top_at", x.get("top"))
+    return at is not None and y.get("hf") is not None and y["hf"] >= at
 
 
 def _usable(points: list[dict]) -> list[dict]:

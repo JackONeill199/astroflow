@@ -490,7 +490,9 @@ class Autopilot:
             return
         if self.mode not in ("laeuft", "wartet") or self.estop.is_set():
             return
-        if self.night is None or (self.dark and now > self.dark["end"] + 3600):
+        if self.night is None or self.night != self.current_night(now):
+            # Nachtwechsel (Mittag, `core/sites.night_of`): auch nach einer ganz bewölkten Nacht, in der der Autopilot den Tag
+            # über „wartet“, gilt ab dann der Plan der neuen Nacht (Bewegen erst nach neuer Bestätigung, `_cmd`)
             self.load_night(now)
         self._refresh_weather(now)
         self._refresh_rain(now)
@@ -759,8 +761,8 @@ class Autopilot:
                 and now - a.get("refill", 0.0) >= REFILL_MIN_S:
             # Plan früh erledigt (Bedarf gedeckt, Ziele ausgefallen): Rest der Nacht neu füllen statt einzuklappen
             a["refill"] = now
-            if self._replan(now, "Plan erledigt, die Nacht ist noch lang", force=True) and self._anything_free(now):
-                return
+            if self._replan(now, "Plan erledigt, die Nacht ist noch lang", force=True) and                     any(i.status in OPEN and i.end > now for i in self.items):
+                return                            # neue Ziele (auch erst später frei): warten statt einklappen (Review PR #145)
         if not self.items and not a:
             return
         if not self.state.parked and not self.park_pending:
@@ -976,10 +978,15 @@ class Autopilot:
         if s.astrometry_failed:
             return self._failure(it, s, now)
         if it.restarts < 1 and it.end - now > 10 * 60:
-            it.restarts += 1
-            it.seen = False
-            self.log(f"{it.name}: Die Beobachtung läuft am Teleskop nicht{reason} – starte sie einmal neu.", "warn", now)
-            self._cmd("observe", self.driver.observe, it.target, float(self.cfg["exposure"]), now=now)
+            # gezählt wird nur ein angenommener Neustart (abgelehnt/beschäftigt → beim nächsten Stillstand noch einmal);
+            # neuer Versuch = neuer Ordner am Gerät: `real_start` neu, damit `frames.Collector` ihn abholt (Review PR #126)
+            if self._cmd("observe", self.driver.observe, it.target, float(self.cfg["exposure"]), now=now):
+                it.restarts += 1
+                it.seen = False
+                it.real_start = now
+                self.samples.clear()
+                self.bad_since = None
+                self.log(f"{it.name}: Die Beobachtung läuft am Teleskop nicht{reason} – starte sie einmal neu.", "warn", now)
             return
         elif it.stacked:
             self._end_item(it, "fertig", "Gerät hat die Beobachtung beendet", now)

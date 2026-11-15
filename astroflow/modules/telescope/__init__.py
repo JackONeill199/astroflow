@@ -219,7 +219,8 @@ class Module(BaseModule):
 
     def plugins(self):
         from . import plugins
-        return plugins.discover(self.ctx.data_dir, settings(self.ctx.store)["plugin_paths"])
+        cfg = settings(self.ctx.store)
+        return plugins.discover(self.ctx.data_dir, cfg["plugin_paths"], enabled=set(cfg["plugins_enabled"] or []))
 
     def site(self, night):
         book = self.ctx.service("sites")

@@ -129,6 +129,17 @@ class FtpFrames:
         return folder, got
 
 
+class _Extern:
+    """Beobachtung, die nicht der Autopilot gestartet hat (z. B. in der Vaonis-App, Treiber „nur Status und Bilder“): ein
+    eigener Versuch ohne Ziel im Plan. `real_start` = erster Blick darauf (nur Schlüssel des Versuchs)."""
+    extern = True
+
+    def __init__(self, target: dict | None, now: float):
+        self.id = str((target or {}).get("id") or "")
+        self.name = str((target or {}).get("name") or "") or "Teleskop-App"
+        self.real_start = now
+
+
 class Collector:
     """Holt während der Aufnahme regelmäßig neue Bilder (eigener Thread, der Takt des Autopiloten wartet nie auf FTP)."""
     EVERY = 20.0
@@ -138,6 +149,7 @@ class Collector:
         self.ftp = FtpFrames(host)
         self.folders: dict[tuple, str] = {}        # (id(Item), Start dieses Versuchs) → Ordner am Gerät
         self.attempt: tuple | None = None          # laufender Versuch (Item, Startzeit)
+        self.extern: _Extern | None = None         # laufende Beobachtung ohne Ziel des Autopiloten
         self.pending: list[tuple] = []             # beendete Versuche, deren Abschlussabruf noch aussteht
         self.count = 0
         self.last: Path | None = None              # zuletzt geholte Rohbild-Datei (Quelle der Vorschau)
@@ -167,7 +179,7 @@ class Collector:
         """Ein Durchgang (auch für Tests). Ein *Versuch* = (Ziel, Startzeit). Endet er – fertig, verdeckt, Pause, Wetterpause,
         neuer Versuch –, wird sein Ordner einmal vollständig abgeholt, auch die zuletzt geschriebenen Bilder."""
         p = self.unit.pilot
-        cur = p._current()
+        cur = p._current() or self._extern(p)
         done = self.attempt
         if done and not (cur is done[0] and cur.real_start == done[1]):
             self.attempt = None
@@ -191,6 +203,19 @@ class Collector:
         if ok:
             self.error = None
 
+    def _extern(self, p) -> _Extern | None:
+        """Aufnahme am Gerät, ohne dass der Autopilot ein Ziel steuert (in der App gestartet; beim Treiber „nur Status und
+        Bilder“ immer so): den neuesten Beobachtungsordner als eigenen Versuch abholen (Review PR #119). Ein anderes Ziel am
+        Gerät = neuer Versuch."""
+        st = p.state
+        if st.step != "capture" or getattr(p, "mode", "aus") in ("laeuft", "wartet"):
+            self.extern = None
+            return None
+        tid = str((st.target or {}).get("id") or "")
+        if self.extern is None or self.extern.id != tid:
+            self.extern = _Extern(st.target, time.time())
+        return self.extern
+
     def _failed(self, p):
         if self.error is None:                      # nur beim ersten Fehler protokollieren, nicht bei jeder Wiederholung
             traceback.print_exc()
@@ -202,14 +227,21 @@ class Collector:
         key = (id(item), start)                     # neuer Versuch desselben Ziels (Weiter, Wiederöffnen) → neuer Ordner am Gerät
         if final and key not in self.folders:
             return                                  # von diesem Versuch nie einen Ordner gesehen – nichts Fremdes holen
-        folder, got = self.ftp.fetch(lambda fo: self.dest(item, fo), self.folders.get(key), final=final, since=start)
+        ext = getattr(item, "extern", False)          # fremde Beobachtung: neuester Ordner (Start am Gerät unbekannt)
+        old = self.folders.get(key)
+        # fremde Beobachtung: während der Aufnahme jedes Mal den neuesten Ordner suchen – dasselbe Ziel in der App neu gestartet
+        # = neuer Ordner am Gerät bei gleicher Ziel-ID (Review PR #148); der alte wird dann einmal vollständig abgeholt
+        folder, got = self.ftp.fetch(lambda fo: self.dest(item, fo), None if ext and not final else old, final=final,
+                                     since=None if ext else start)
+        if ext and not final and folder and old and folder != old:
+            got = self.ftp.fetch(lambda fo: self.dest(item, fo), old, final=True)[1] + got
         if folder:
             self.folders[key] = folder
         if got:
             self.last = max(got, key=lambda p: p.name)
             self.count += len(got)
             self.unit.pilot.frames_fetched = self.count
-            if not final and hasattr(self.unit, "measure_frames"):
+            if not final and not ext and hasattr(self.unit, "measure_frames"):
                 self.unit.measure_frames(got, item, start)   # Beschlag-Erkennung (nur solange dieser Versuch läuft)
             if self.count == len(got) or final:
                 self.unit.pilot.log(f"{len(got)} Rohbilder von {item.name} geholt ({self.count} in dieser Nacht).", "ok")

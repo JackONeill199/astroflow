@@ -115,7 +115,14 @@ def build_router(mod) -> APIRouter:
                 link(u)
             except DriverError as e:
                 fail(e)
-        p.start(now)
+        if p.auto and p.auto.get("state") == "entwurf":
+            # offener Entwurf von „Plane meine Nacht“: wie „Nacht starten“ (erst vermessen, dann neu planen) – sonst würden
+            # die Entwurfsziele ohne Vermessung angefahren (Review PR #145)
+            why = p.night_go(now)
+            if why:
+                raise HTTPException(409, why)
+        else:
+            p.start(now)
         threading.Thread(target=p.tick, args=(u.now(),), daemon=True).start()
         return {"ok": True}
 

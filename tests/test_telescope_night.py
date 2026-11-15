@@ -324,3 +324,39 @@ def test_pause_bewahrt_gesammelte_bilder_beim_neuplanen():
     assert [i for i in p.items if i.stacked == 100] and fp.calls[-1]["opts"]["have_add"]["M45"] > 0
     p._finish_auto(clock.now())
     assert p.auto["summary"]["frames"] == 100
+
+
+def test_nachfuellen_mit_spaeteren_zielen_wartet_statt_einzuklappen():
+    """Review PR #145: Plan früh erledigt, die Neuplanung liefert nur ein Ziel, das erst später frei wird (M44 geht erst nach
+    Mitternacht hoch) – der Autopilot wartet und beobachtet es dann, statt die Nacht zu beenden."""
+    t0 = _at(20)
+
+    class Later(FakePlanner):
+        def __call__(self, night, horizon, now, opts):
+            self.plan = [("M45", 56.75, 24.12, t0, _at(21))] if now < _at(21) else [("M44", 130.1, 19.67, _at(1, 30), _at(5))]
+            return super().__call__(night, horizon, now, opts)
+    p, d, clock = make(planner=Later(), t0=t0, cfg={"scan_auto": False})
+    p.night_points = [{"az": 180, "alt": 40, "res": "frei", "sure": True, "src": "scan", "t": t0}]       # „schon vermessen“
+    p.plan_night(clock.now())
+    p.night_go(clock.now())
+    run(p, clock, _at(22))
+    assert "Plan neu berechnet (Plan erledigt" in texts(p)
+    assert not p.free(130.1, 19.67, clock.now())[0]                     # M44 jetzt noch nicht frei
+    assert p.mode in ("laeuft", "wartet") and p.auto["state"] == "laeuft"
+    assert any(i.name == "M44" and i.status == "geplant" for i in p.items)
+    run(p, clock, _at(3))
+    assert any(i.name == "M44" and i.stacked > 0 for i in p.items)
+
+
+def test_api_start_bei_entwurf_startet_die_nacht(tmp_path, monkeypatch):
+    """Review PR #145: Der normale Start bei offenem Entwurf fährt die Entwurfsziele nicht ohne Vermessung an, sondern
+    startet die Nacht wie „Nacht starten“."""
+    app = _app(tmp_path, monkeypatch)
+    with _client(app) as c:
+        p = app.state.modules["telescope"].unit.pilot
+        assert c.post("/api/telescope/night/plan", json={}).status_code == 200
+        assert p.auto["state"] == "entwurf"
+        assert c.post("/api/telescope/start", json={}).status_code == 200
+        assert p.auto["state"] in ("vermessen", "laeuft") and p.scan_auto_night == p.night
+        assert "Plane meine Nacht läuft" in texts(p)
+        assert c.post("/api/telescope/park").status_code == 200

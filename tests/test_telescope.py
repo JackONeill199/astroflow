@@ -1306,3 +1306,126 @@ def test_regen_dienst_im_modul(tmp_path, monkeypatch):
     assert env.rain(SITE, 60) == {"rain": False} and calls == [(60, {"lat": 50.0, "lon": 10.0})]
     app.state.ctx.services.pop("weather_rain")
     assert env.rain(SITE, 60) is None                                     # Dienst fehlt → kein Regenwächter
+
+
+def test_neustart_nach_stillstand_zaehlt_nur_angenommen_und_neuer_versuch():
+    """Review PR #126: Ein abgelehnter Neustart zählt nicht (nächster Stillstand → neuer Versuch); ein angenommener setzt
+    `real_start` neu, damit die Live-Bilder den neuen Ordner am Gerät abholen."""
+    p, d, clock = make([item(M31, 0.0, 3.0)], sim.Scenario(stop_silently_at=T0 + 0.5 * H), cfg={"fallback": False})
+    real_observe, refused = d.observe, []
+
+    def observe(*a, **k):
+        if not refused:
+            refused.append(clock.now())
+            raise DriverError("Teleskop ist beschäftigt.")
+        return real_observe(*a, **k)
+    run(p, clock, 0.4, step=10)
+    m31 = p.items[0]
+    first = m31.real_start
+    assert m31.status == "aktiv" and first
+    d.observe = observe
+    while not refused and clock.now() < T0 + H:
+        run(p, clock, 10 / H, step=10)
+    assert refused and m31.status == "aktiv" and m31.restarts == 0 and m31.real_start == first
+    run(p, clock, 0.2, step=10)
+    assert m31.restarts == 1 and m31.real_start > first and "starte sie einmal neu" in texts(p)
+
+
+def test_live_bilder_von_beobachtung_aus_der_app(tmp_path):
+    """Review PR #119: Treiber „nur Status und Bilder“ – die Beobachtung läuft aus der Vaonis-App, der Autopilot hat kein
+    Ziel. Bei `capture` wird der neueste Beobachtungsordner (mit und ohne Plan-Ebene) als eigener Versuch abgeholt."""
+    from astroflow.modules.telescope import frames
+    imgs = {"_m": "20261120183000", "img-0001.fits": b"A" * 8}
+    tree = {"user": {"2026-11-20_19-30-00_observation_M1": {"_m": "20261120183000", "01-images-initial": imgs}}}
+    pilot = type("P", (), {"night": "2026-11-20", "log": lambda *a, **k: None, "frames_fetched": 0, "mode": "aus",
+                           "state": TelescopeState(step="capture", target={"id": "M1", "name": "M1"}),
+                           "_current": lambda self: None})()
+
+    class U:
+        cfg = {"model": "vespera"}
+    U.pilot = pilot
+    col = frames.Collector(U(), tmp_path, "10.0.0.1")
+    col.ftp = frames.FtpFrames("x", ftp_factory=lambda: FakeFtp(tree))
+    col.step()
+    col.step()
+    out = tmp_path / "Teleskop" / "vespera" / "2026-11-20" / "M1"
+    assert [x.name for x in out.rglob("*.fits")] == ["img-0001.fits"]
+    imgs["img-0002.fits"] = b"B" * 8                       # gerade geschrieben, dann am Gerät beendet → Rest abholen
+    pilot.state = TelescopeState(step="idle")
+    col.step()
+    assert sorted(x.name for x in out.rglob("*.fits")) == ["img-0001.fits", "img-0002.fits"]
+    tree["user"]["plan"] = {"_m": "20261120210000", "obs-m42": {"_m": "20261120210000", "01-images-initial": {"img-0001.fits": b"C" * 8}}}
+    pilot.state = TelescopeState(step="capture", target={"id": "M42", "name": "M42"})        # Plan aus der App: neues Ziel
+    col.step()
+    pilot.state = TelescopeState(step="idle")
+    col.step()
+    assert (tmp_path / "Teleskop" / "vespera" / "2026-11-20" / "M42" / "obs-m42" / "img-0001.fits").read_bytes() == b"C" * 8
+    # Review PR #148: dasselbe Ziel in der App neu gestartet (zwischen zwei Abfragen) → neuer Ordner, Rest des alten kommt mit
+    pilot.state = TelescopeState(step="capture", target={"id": "M42", "name": "M42"})
+    col.step()
+    col.step()
+    first = tree["user"]["plan"]["obs-m42"]["01-images-initial"]
+    first["img-0002.fits"] = b"D" * 8
+    tree["user"]["plan"]["obs-m42b"] = {"_m": "20261120220000", "01-images-initial": {"img-0001.fits": b"E" * 8}}
+    col.step()
+    col.step()
+    m42 = tmp_path / "Teleskop" / "vespera" / "2026-11-20" / "M42"
+    assert (m42 / "obs-m42" / "img-0002.fits").read_bytes() == b"D" * 8
+    assert (m42 / "obs-m42b" / "img-0001.fits").read_bytes() == b"E" * 8
+    pilot.state = TelescopeState(step="idle")
+    col.step()
+    pilot.mode = "laeuft"                                  # Autopilot steuert, nur zwischen zwei Zielen: nichts Fremdes holen
+    pilot.state = TelescopeState(step="capture", target={"id": "M42", "name": "M42"})
+    n = col.count
+    col.step()
+    col.step()
+    assert col.count == n and col.attempt is None
+
+
+def test_entry_point_plugin_optionen_nach_aktivierung(monkeypatch):
+    """Review PR #119: Optionsfelder eines installierten Plugins (Klassenattribut `plugin`) erscheinen nach der Aktivierung
+    wie bei Ordner-Plugins – vorher wird nichts importiert."""
+    import importlib.metadata as md
+    calls = []
+
+    class Treiber(sim.SimDriver):
+        plugin = {"name": "Paket-Treiber", "contract": 1, "options": [{"key": "ip", "label": "Adresse"}, {"label": "ohne Schlüssel"}]}
+
+        def __init__(self, options):
+            super().__init__(sim.ManualClock(0))
+            self.options = options
+
+    class EP:
+        name, value = "paket", "paket.modul:Treiber"
+
+        def load(self):
+            calls.append("load")
+            return Treiber
+    monkeypatch.setattr(md, "entry_points", lambda group=None: [EP()] if group == plugins.GROUP else [])
+    pid = plugins._entry_points()[0].id
+    assert calls == [] and plugins._entry_points()[0].options == []
+    info = plugins._entry_points({pid})[0]
+    assert calls == ["load"] and [o["key"] for o in info.options] == ["ip"] and info.error is None
+    assert plugins.load(plugins._entry_points()[0], {"ip": "10.0.0.2"}).options == {"ip": "10.0.0.2"}
+    info2 = plugins._entry_points()[0]
+    plugins.load(info2)
+    assert [o["key"] for o in info2.options] == ["ip"]
+
+
+def test_nach_bewoelkter_nacht_gilt_ab_mittag_die_neue_nacht():
+    """Review PR #119: Ganz bewölkte Nacht, kein Ziel gestartet – der Autopilot wartet den Tag über. Ab dem Nachtwechsel
+    (Mittag, `core/sites.night_of`) gilt der Plan der neuen Nacht, nicht noch einmal der alte."""
+    asked = []
+
+    def forecast(site, a, b):
+        return {"hours": [{"t": T0 + k * 1800, "cloud": 95, "wind": 5, "dew_spread": 8} for k in range(-4, 80)]}
+    p, d, clock = make([item(M31, 0.0, 3.0)], forecast=forecast)
+    plan = p.env.plan
+    p.env.plan = lambda n, m: asked.append(n) or plan(n, m)
+    run(p, clock, 2.0, step=60)
+    first = p.night
+    assert p.mode == "wartet" and p.hold.kind == "weather" and not p._started_tonight()
+    run(p, clock, 16.0, step=120)                          # bis 09 Uhr UTC: noch dieselbe Nacht (Mittag-zu-Mittag)
+    assert p.night == first and p.mode == "wartet"
+    run(p, clock, 4.0, step=120)                           # über Mittag: neue Nacht
+    assert p.night != first and asked and asked[-1] == p.night and p.mode == "wartet"

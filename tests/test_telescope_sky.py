@@ -367,3 +367,43 @@ def test_unsicherer_punkt_waehlt_keine_aufstellung():
     p.setup = p._which_setup()
     p._hz_cache = None
     assert p.setup is None and p.horizon()["horizon"][0] == 0.0
+
+
+def test_ueberhang_trennt_aufstellungen():
+    """Review PR #143: Zwei Nächte, die sich nur im Dachüberstand unterscheiden (180°: 70° verdeckt bzw. frei), sind zwei
+    Aufstellungen – sonst gälte die freie Richtung der zweiten Nacht als verdeckt."""
+    def night(roof):
+        p = [{"az": az, "alt": 30, "res": "frei", "sure": True, "src": "scan"} for az in range(0, 360, 30)]
+        p.append({"az": 180, "alt": 70, "res": "verdeckt" if roof else "frei", "sure": True, "src": "scan"})
+        return p
+    g = skymap.setups({"2026-11-01": night(True), "2026-11-02": night(False)})
+    assert len(g) == 2
+    assert skymap.state_at(g[1]["cols"], 180, 70) == "frei" and skymap.state_at(g[0]["cols"], 180, 70) == "verdeckt"
+    assert len(skymap.setups({"2026-11-01": night(True), "2026-11-03": night(True)})) == 1     # gleicher Überhang: eine
+
+
+def test_gegenproben_halten_mondabstand():
+    """Review PR #143: Auch Gegenproben (regelmäßig, steil, Schluss) laufen nicht in den Mond – eine freie Referenz am Mond
+    darf den Scan nicht als „Wolken“ beenden."""
+    from astroflow.modules.telescope import skyscan
+    moon = (180.0, 40.0)
+
+    def avoid(az, alt):
+        return "Mond" if abs((az - moon[0] + 540) % 360 - 180) < 20 and abs(alt - moon[1]) < 20 else None
+    sc = skyscan.Scan("voll", T0)
+    sc.ref = {"az": 180.0, "alt": 40.0}                     # einzige freie Referenz liegt am Mond
+    sc.done = [{"az": 180.0, "alt": 40.0, "res": "frei", "why": "raster"},
+               {"az": 30.0, "alt": 25.0, "res": "verdeckt", "why": "raster"}]
+    sc.since_ref = skyscan.REF_EVERY
+    p = sc.next_probe(T0, avoid)
+    assert p is not None and p["why"] != "gegenprobe" and not avoid(p["az"], p["alt"])
+    sc.cur = None
+    sc.done.append({"az": 120.0, "alt": 40.0, "res": "frei", "why": "raster"})     # andere freie Referenz
+    sc.since_ref = skyscan.REF_EVERY
+    p = sc.next_probe(T0, avoid)
+    assert p["why"] == "gegenprobe" and (p["az"], p["alt"]) == (120.0, 40.0)
+    st = skyscan.Scan("voll", T0)                           # steile Gegenprobe zeigte genau auf den Mond
+    st.done = [{"az": 60.0, "alt": 25.0, "res": "verdeckt", "why": "raster"}, {"az": 30.0, "alt": 25.0, "res": "verdeckt", "why": "raster"},
+               {"az": 0.0, "alt": 25.0, "res": "verdeckt", "why": "raster"}]
+    p = st.next_probe(T0, lambda az, alt: "Mond" if abs((az - 180 + 540) % 360 - 180) < 20 else None)
+    assert p["why"] == "gegenprobe" and abs((p["az"] - 180 + 540) % 360 - 180) >= 20
