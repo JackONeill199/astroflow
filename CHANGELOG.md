@@ -3,6 +3,14 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.78.0 – 15.11.2026
+
+### Neu
+- **Teleskop – Regenschutz:** Der Autopilot fragt die Regenvorhersage ab. Ist in den nächsten 30 Minuten Regen zu erwarten, beendet er die laufende Aufnahme und klappt das Teleskop vorsorglich ein; in der nächsten Stunde fährt er kein neues Ziel mehr an. Bleibt die Vorhersage danach trocken, macht er weiter. Bei den Bedingungen steht „Regen in ca. … min“.
+
+### Behoben
+- **Teleskop – Einzelbeobachtungen:** Aufnahmen, die der Autopilot als einzelne Beobachtung (ohne Plan) startet, fehlten im Import „Vom Teleskop“ und lieferten keine Live-Bilder. Sie werden jetzt gefunden, mit lesbarem Namen angezeigt und ohne leere Plan-Ebene importiert.
+
 ## 0.77.0 – 15.11.2026
 
 ### Neu
