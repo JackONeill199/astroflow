@@ -177,6 +177,7 @@ ALT_LABEL = "ECMWF"
 HIGH_WEIGHT = 0.35
 RAIN_P = 40           # ab so viel Regenwahrscheinlichkeit (%) gilt die Stunde als Regenstunde …
 RAIN_MM = 0.2         # … oder ab so viel Niederschlag (mm/h): unbrauchbar, egal wie die Wolkenzahl aussieht
+HOLD_S = 3599         # Abstand des Halte-Stützpunkts am Ende einer Regenstunde
 DISAGREE = 35         # mittlere Abweichung der Modelle (Prozentpunkte) ab der „Vorhersage unsicher“ erscheint
 
 
@@ -240,6 +241,8 @@ def _forecast(site, cache: Path, t0: float, t1: float, timeout: float = 10.0) ->
                           "rain": 100 if rainy else 0, "rain_p": rain_p, "precip": mm,
                           "wind": g("wind_speed_10m"), "humidity": g("relative_humidity_2m"),
                           "dew_spread": None if g("temperature_2m") is None or g("dew_point_2m") is None else round(g("temperature_2m") - g("dew_point_2m"), 1)})
+            if rainy:               # Regen ist ein Intervall: zweiter Stützpunkt am Stundenende, damit jede Interpolation (np.interp, Autopilot) 100 hält
+                hours.append({**hours[-1], "t": ts + HOLD_S, "hold": True})
     return {"hours": hours, "later": later, "source": f"Open-Meteo-Vorhersage (Raster ~10 km, Gegenprobe {ALT_LABEL})"} if hours else None
 
 

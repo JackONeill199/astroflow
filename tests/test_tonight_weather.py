@@ -145,8 +145,32 @@ def test_precipitation_belongs_to_preceding_hour(tmp_path, monkeypatch):
     import httpx
     monkeypatch.setattr(httpx, "get", lambda *a, **k: _Resp(h))
     fc = tonight._forecast([50.0, 10.0], tmp_path, t0, t0 + 9 * 3600)
-    rainy = [x["t"] - t0 for x in fc["hours"] if x["rain"]]
+    rainy = [x["t"] - t0 for x in fc["hours"] if x["rain"] and not x.get("hold")]
     assert rainy == [4 * 3600]                                             # Stunde ab 4 h, nicht ab 5 h
     now = t0 + 4 * 3600 - 15 * 60                                          # 15 min davor
     assert tonight.rain_soon(fc, now, 20) == {"rain": True, "in_minutes": 15, "probability": 90, "precip": 0.0}
     assert tonight.rain_soon(fc, t0 + 5 * 3600 + 60, 20)["rain"] is False  # danach vorbei
+
+
+def test_rain_hour_is_held_in_planning_and_autopilot(tmp_path, monkeypatch):
+    """Mitte der Regenstunde neben einer klaren Stunde bleibt gesperrt – Nachtplanung (np.interp) und Autopilot.weather_now."""
+    import types
+    import httpx
+    from astroflow.modules.telescope.autopilot import Autopilot
+    t0 = 1_000_000 // 3600 * 3600
+    n = 10
+    times = [dt.datetime.fromtimestamp(t0 + 3600 * i, dt.timezone.utc).strftime("%Y-%m-%dT%H:%M") for i in range(n)]
+    wet = [0] * n
+    wet[5] = 90                                                            # Regen in der Stunde ab t0+4h, davor/danach klar
+    h = {"time": times, "cloud_cover_best_match": [0] * n, "precipitation_probability_best_match": wet, "precipitation_best_match": [0.0] * n}
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _Resp(h))
+    fc = tonight._forecast([50.0, 10.0], tmp_path, t0, t0 + 9 * 3600)
+    mid = t0 + 4 * 3600 + 1800
+    ap = types.SimpleNamespace(weather=fc)
+    assert Autopilot.weather_now(ap, mid)["cloud"] == 100                  # nicht „halb klar“
+    assert Autopilot.weather_now(ap, t0 + 5 * 3600 - 30)["cloud"] == 100   # bis kurz vor dem Stundenende
+    assert Autopilot.weather_now(ap, t0 + 6 * 3600)["cloud"] == 0          # danach wieder klar
+    import numpy as np
+    ts = np.array([mid, t0 + 6 * 3600], dtype=float)
+    cl = tonight._series(ts, fc["hours"], "cloud")
+    assert cl[0] == 100 and cl[1] == 0
