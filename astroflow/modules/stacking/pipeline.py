@@ -70,6 +70,39 @@ def frame_time(r: dict) -> float | None:
     return d.timestamp() + 0.5 * float(i.get("exptime") or 0)
 
 
+def glow_sample(have: list, n: int = GLOW_SAMPLE) -> list | None:
+    """Stichprobe für die Glühmessung einer Nacht, zeitlich über die Serie verteilt (je Zeitabschnitt ein Frame), oder None,
+    wenn sie kein ortsfestes Glühen von stehendem Himmelslicht trennen kann: Spanne < GLOW_MIN_SPAN_S oder die mittlere Hälfte
+    der Stichprobe < GLOW_MIN_SPAN_S / 2 (sonst bestimmte ein kurzer Block den Median – Review PR #140: 30 Frames in 5 min
+    plus einer 25 min später). Ohne Aufnahmezeiten wie bisher jeder k-te Frame."""
+    timed = sorted(((t, ri) for ri in have if (t := frame_time(ri[0])) is not None), key=lambda x: x[0])
+    if len(timed) < len(have) / 2:
+        return have[:: max(1, len(have) // n)][:n]
+    t0, t1 = timed[0][0], timed[-1][0]
+    if t1 - t0 < calibration.GLOW_MIN_SPAN_S:
+        return None
+    bins: dict = {}
+    for t, ri in timed:
+        bins.setdefault(min(n - 1, int((t - t0) / (t1 - t0) * n)), (t, ri))
+    pick = list(bins.values())
+    if len(pick) < calibration.GLOW_MIN_FRAMES:                     # Lücken: mit den übrigen gleichmäßig auffüllen
+        rest = [x for x in timed if x not in pick]
+        pick += rest[:: max(1, len(rest) // (calibration.GLOW_MIN_FRAMES - len(pick)))][: calibration.GLOW_MIN_FRAMES - len(pick)]
+    q1, q3 = np.percentile([t for t, _ in pick], [25, 75])
+    if q3 - q1 < calibration.GLOW_MIN_SPAN_S / 2:
+        return None
+    return [ri for _, ri in sorted(pick, key=lambda x: x[0])]
+
+
+def _glow_changed(old, new) -> bool:
+    """Glühamplitude (ADU) so verschieden, dass die alte Analyse nicht mehr gilt (Faktor 2 und mindestens 20 ADU)."""
+    try:
+        a, b = float(old), float(new)
+    except (TypeError, ValueError):
+        return False
+    return abs(a - b) >= 20 and max(a, b) >= 2 * max(min(a, b), 1.0)
+
+
 def stage_dir(wd: Path, band: str | None) -> Path:
     return wd / ("stufen" if band is None else f"stufen_{band}")
 
@@ -467,9 +500,13 @@ class Pipeline:
         for (key, night), items in groups.items():
             have = [(r, i) for r, i in items if not r["deleted"] and Path(r["path"]).exists()]
             need_glow = glow and night not in glib.nights(key, with_map=True) and len(have) >= calibration.GLOW_MIN_FRAMES
+            gsample = glow_sample(have) if need_glow else None
+            need_glow = gsample is not None                # zu kurze Serie: Bibliothek der Kamera bzw. (erste Nacht) kein Modell
             need_bad = night not in dlib.nights(key) and len(have) >= calibration.DEFECT_MIN_FRAMES
             if need_glow or need_bad:
-                sample = have[:: max(1, len(have) // GLOW_SAMPLE)][:GLOW_SAMPLE]
+                dsample = have[:: max(1, len(have) // GLOW_SAMPLE)][:GLOW_SAMPLE] if need_bad else []
+                gids, dids = {r["id"] for r, _ in gsample or []}, {r["id"] for r, _ in dsample}
+                sample = list({r["id"]: (r, i) for r, i in dsample + (gsample or [])}.values())   # jede Datei einmal lesen
                 what = " und ".join(t for t, n in (("Sensorglühen", need_glow), ("Hotpixel", need_bad)) if n)
                 progress(0.02, "Analyse", f"{what} messen ({night}, {len(sample)} Aufnahmen)")
 
@@ -477,9 +514,9 @@ class Pipeline:
                     r, i = ri
                     raw, m = self._load(r["path"], i, lib, night, cache)
                     cfa = bool(i["bayerpat"]) and raw.ndim == 2
-                    g = calibration.glow_profiles(raw, cfa) if need_glow and m.dark is None else None
+                    g = calibration.glow_profiles(raw, cfa) if r["id"] in gids and m.dark is None else None
                     fix = cache.get(("cosmetic", r["path"]))
-                    c = calibration.defect_candidates(raw, cfa, fixed=fix[1] if fix else None) if need_bad else None
+                    c = calibration.defect_candidates(raw, cfa, fixed=fix[1] if fix else None) if r["id"] in dids else None
                     return g, c, raw.size
 
                 with ThreadPoolExecutor(self.s.threads) as ex:
@@ -489,7 +526,7 @@ class Pipeline:
                     if med:
                         glib.add(key, night, med)
                 if need_bad:
-                    bad = calibration.defect_map([c for _, c, _ in res], res[0][2])
+                    bad = calibration.defect_map([c for _, c, _ in res if c is not None], res[0][2])
                     dlib.add(key, night, bad if bad is not None else np.zeros(0, np.int64))
             if glow:
                 med, src = glib.medians(key, night)
@@ -578,7 +615,16 @@ class Pipeline:
 
         # --- 0. Sensorglühen (vor Analyse und Registrierung, in Sensorkoordinaten) --
         # (dazu ortsfeste Sensorfehler: Hotpixel-Paare/-Grüppchen, die die Einzelbild-Kosmetik als Stern schützt)
+        popt = json.loads(proj["options"] or "{}")
+        old_glow = popt.get("glow_info") or {}
         glow, bad = self._sensor_maps(rows, lib, cache, progress, glow=opt.get("sensor_glow", True))
+        # Glühmodell einer Nacht deutlich anders als bei der letzten Analyse (z. B. unplausible Messung verworfen): deren
+        # Aufnahmen neu analysieren (Messwerte, Vorschau) und neu stacken – der alte Abzug steckt in beiden. Die Nacht bleibt
+        # in `glow_pending` vorgemerkt, bis das wirklich geschehen ist (Rohbilder auf abgesteckter Platte: nächster Lauf).
+        reglow = {n for n, v in (glow or {}).items() if n in old_glow and _glow_changed(old_glow[n].get("adu"), v.get("adu"))}
+        reglow |= set(popt.get("glow_pending") or [])
+        if reglow:
+            self._glow_pending(project_id, reglow)
         for k, v in (("glow_info", glow), ("defect_info", bad)):
             if v:
                 self.db.x(f"UPDATE projects SET options=json_set(COALESCE(options,'{{}}'),'$.{k}',json(?)) WHERE id=?",
@@ -591,7 +637,7 @@ class Pipeline:
         offline = self.offline(rows)
         lights = rows
         todo = [r for r in rows if not r["deleted"] and r["id"] not in offline and
-                (not r["metrics"] or json.loads(r["metrics"]).get("mv", 1) < quality.METRICS_VERSION)]
+                (not r["metrics"] or json.loads(r["metrics"]).get("mv", 1) < quality.METRICS_VERSION or r["night"] in reglow)]
         if any(r["metrics"] and r["stacked"] for r in todo) and not any((r["deleted"] or r["id"] in offline) and r["stacked"] for r in rows):
             self.db.x("UPDATE projects SET restack=1 WHERE id=?", (project_id,))
             proj["restack"] = 1
@@ -721,7 +767,19 @@ class Pipeline:
                         lambda f, stage, msg="": full(0.60 + 0.24 * f, stage, msg))
         else:
             (wd / "comet.json").unlink(missing_ok=True)
+        if reglow:
+            # erledigt, wenn alle Rohbilder der Nacht neu analysiert sind und der Stack neu aufgebaut werden konnte; gelöschte
+            # Rohbilder lassen sich nie wiederholen (bleibt nicht vorgemerkt), nicht erreichbare schon
+            blocked = any(r["id"] in offline and r["stacked"] for r in lights)
+            self._glow_pending(project_id, {n for n in reglow if blocked or any(r["night"] == n and r["id"] in offline for r in lights)})
         return states
+
+    def _glow_pending(self, project_id: int, nights: set) -> None:
+        if nights:
+            self.db.x("UPDATE projects SET options=json_set(COALESCE(options,'{}'),'$.glow_pending',json(?)) WHERE id=?",
+                      (json.dumps(sorted(nights)), project_id))
+        else:
+            self.db.x("UPDATE projects SET options=json_remove(COALESCE(options,'{}'),'$.glow_pending') WHERE id=?", (project_id,))
 
     # ============================================================ Kometen #
     def _comet(self, proj, opt, states, by_band, lib, cache, scale, offline, progress) -> None:

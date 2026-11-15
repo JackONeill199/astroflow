@@ -42,6 +42,18 @@ Ausbauplan, Lücken und Risiken: `docs/PLAN.md`.
    ≥ 50 % der Sterne, ≥ 3 Bildviertel. Felder `tail_profile_*` in `frames.metrics` sind eine **Zusatzmetrik ohne `METRICS_VERSION`**
    (nur neu analysierte Frames; `select_frames` prüft nur Frames, die sie haben), Grenze höchstens ⅓ dieser Frames
    wie bei `ecc`. Gemessen an einer Stellina-Serie (931 × 10 s): gute Bilder 0,4–2,2 %, Schweifbilder 4–29 %. Test `test_star_tails.py`.
+   **Beschlagene Optik** (seit 14./15.11.2026, `quality.veil_metrics`/`_veiled`): `veil` = Spannweite des Hintergrunds (48-px-Kacheln) nach
+   Abzug einer robusten Ebene mit radialem Term (Lichtverschmutzung, Mond, Vignettierung), ohne Bildmitte (`VEIL_CENTRE` 0,35, Objekt
+   samt Halo) und äußersten Rand, in Rauscheinheiten eines Pixels; `veil_map` (6×10) = grober Rest. Verworfen mit „Optik beschlagen?
+   (heller Schleier im Bild)“, wenn ≥ `VEIL_MIN_FRAMES` (5) Frames `veil` ≥ `VEIL_MIN` (3,0) haben **und** ihr Muster ortsfest ist
+   (Korrelation ≥ 0,6 zum Median-Muster; wandernde Wolken nicht). Absolut, nicht relativ: bei M 35 war die ganze Serie beschlagen.
+   Nur wenn `veil_edge`: der helle Rand (98. Perzentil) überragt den Median des Kerns (innere 30 %) – eine große, helle Galaxie bei
+   wenig Rauschen ist im Kern am hellsten (CI: Mono-Demo M 31 wurde sonst ganz verworfen; M 35 Rand 1,9–2,4 / Kern 0,8–1,1).
+   Gemessen an Rohbildern: klare Vespera-/Stellina-Nächte 0,1–1,3 (M 33, NGC 6992, M 27, IC 59), beschlagene Vespera (M 35) 4,5–5,1.
+   Eine volle quadratische Fläche schluckte den Beschlag (→ 1,6–2,4), nur die Ebene ließ die starke Demo-Vignettierung stehen;
+   Bilder < 6 Kacheln je Richtung (Demo) bekommen keinen Wert. **Zusatzmetrik ohne `METRICS_VERSION`** (Neu-Analyse aller Frames wäre
+   teuer und brächte bei bisherigen Daten nichts; nur neu analysierte Frames, ältere bleiben unberührt). Dienst `frame_quick_metrics`
+   (Sterne, FWHM, `veil` eines Rohbilds ohne Kalibrierung) für den Teleskop-Autopiloten. Test `test_beschlag.py`.
 4. **Kalibrierung** (`calibration.py`): Master-Dark/Flat/Bias passend nach Größe/Gain/Belichtung/Filter/Nacht, gecacht in `work/calibration`.
    Danach immer `cosmetic()`: Hot-/Cold-Pixel je CFA-Farbebene durch Nachbar-Median ersetzen (Sterne geschützt: hellster Nachbar muss dunkel sein).
    Grund: Ohne Darks richtete die Registrierung Stellina-Aufnahmen an den ortsfesten Hotpixeln aus → Sterne mehrfach im Stack (behoben, Test `test_hotpixels.py`).
@@ -213,6 +225,15 @@ Stand im alten Text unter Schritt 7 eingeordnet; gehören technisch zu `Pipeline
    bleibt nach dem Löschen der Rohbilder). Abzug in `_load` nur in den Randbändern (`GLOW_BAND` 25 %, Mitte unberührt), nur ohne
    echte Darks. Nacht mit < 12 Frames → Median aller Nächte der Kamera. Info je Nacht in `projects.options.glow_info`;
    abschaltbar per Projektoption `sensor_glow`. Gemessen (135 IC-405-Frames): Randglühen im Stack 5,9σ/3,6σ → 0,1σ/0,6σ.
+   **Schutz vor gelerntem Himmelslicht** (14./15.11.2026, Vespera): 15 beschlagene M-35-Frames aus 3 Minuten wurden als Glühen der Nacht
+   gelernt (312 ADU statt 2–9 ADU), der Abzug prägte C 51 und M 1 derselben Nacht einen dunklen Fleck mit Kante auf (`grad` 0,5 → 14) –
+   im Rohbild waren beide sauber. Seitdem: (1) Stichprobe zeitlich verteilt (`pipeline.glow_sample`: je Zeitabschnitt ein Frame);
+   gemessen wird nur, wenn sie ≥ `GLOW_MIN_SPAN_S` (20 min) umfasst und ihre mittlere Hälfte ≥ 10 min (sonst bestimmt ein kurzer Block
+   mit stehendem Feld den Median – Review: 30 Frames in 5 min + 1 Frame 25 min später), sonst Bibliothek bzw. kein Modell; (2) `GlowLibrary.implausible`: Nacht > max(4 × Median der übrigen
+   Nächte, +40 ADU) zählt weder für sich noch für den Bibliotheksmedian (Quelle „… eigene Messung unplausibel“); (3) weicht die
+   Glühamplitude einer Nacht stark von `glow_info` der letzten Analyse ab (`pipeline._glow_changed`: Faktor 2 und ≥ 20 ADU), werden
+   deren Frames neu analysiert (Messwerte, Vorschau) und neu gestackt; die Nacht bleibt in `projects.options.glow_pending`, bis das
+   für alle Rohbilder geschehen ist (nicht erreichbare Platte → nächster Lauf; gelöschte Rohbilder zählen nicht).
    **2D-Restkarte** (seit 2026-10-30, NGC 4490: Profile ließen Ecke +18 ADU und eine Seite −7 ADU übrig ≈ Stack-Rauschen →
    Flecken + violettes Eckglühen): je Ebene zusätzlich 30-%-Perzentil in Kacheln `GLOW_BIN` 32 px des Rests nach den Profilen
    (Achse 2 im `.npz`). `model_from` → `_rest_map`: Gesamtmuster minus *ausgeblendet* abgezogene Profile (sonst bleibt, was die

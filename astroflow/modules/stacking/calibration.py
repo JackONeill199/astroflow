@@ -401,6 +401,11 @@ GLOW_MIN_FRAMES = 12
 # dort steht das Objekt, das sich bei der Feldrotation kaum bewegt und sonst als „Glühen“ abgezogen würde.
 GLOW_BIN = 32
 GLOW_MAP_FULL, GLOW_MAP_BAND = 0.18, 0.35
+# Glühen ist ortsfest im Sensor – der Himmel nur, wenn sich das Feld nicht dreht/wandert. Eine Nacht wird deshalb nur gemessen,
+# wenn die Stichprobe mindestens GLOW_MIN_SPAN_S umfasst (sonst gilt die Bibliothek der Kamera, falls vorhanden), und eine
+# gemessene Nacht gilt nur, wenn sie nicht weit über den übrigen Nächten der Kamera liegt (`GlowLibrary.implausible`).
+GLOW_MIN_SPAN_S = 20 * 60
+GLOW_JUMP, GLOW_JUMP_ADU = 4.0, 40.0
 
 
 def _planes(raw: np.ndarray, bayer: bool) -> list[tuple]:
@@ -559,21 +564,46 @@ class GlowLibrary:
         np.savez_compressed(tmp, **arrays)
         os.replace(tmp, self._file(key))
 
+    @staticmethod
+    def implausible(data: dict) -> set[str]:
+        """Nächte, deren „Glühen“ weit über dem der übrigen Nächte derselben Kamera liegt – dann stand in der Stichprobe
+        kein Sensorglühen, sondern ortsfestes Licht im Bild (beschlagene Optik, Streulicht). Echtbetrieb 14.11.2026
+        (Vespera): 15 beschlagene M-35-Aufnahmen aus 3 Minuten ergaben 312 ADU statt 2–9 ADU der anderen Nächte; der Abzug
+        prägte allen Objekten der Nacht (C 51, M 1) einen dunklen Fleck mit Kante auf."""
+        amps = {}
+        for n, planes in data.items():
+            try:
+                amps[n] = glow_amplitude(model_from(planes))
+            except (ValueError, IndexError):
+                amps[n] = None
+        out = set()
+        for n, a in amps.items():
+            others = [v for m, v in amps.items() if m != n and v is not None]
+            if a is None or not others:
+                continue
+            ref = float(np.median(others))
+            if a > max(GLOW_JUMP * ref, ref + GLOW_JUMP_ADU):
+                out.add(n)
+        return out
+
     def medians(self, key: str, night: str) -> tuple[list | None, str]:
-        """(Medianprofile, Quelle) – eigene Nacht, sonst Median aller Nächte der Kamera."""
+        """(Medianprofile, Quelle) – eigene Nacht, sonst Median aller Nächte der Kamera. Unplausible Nächte (`implausible`)
+        zählen weder für sich noch für den Median."""
         data = self._read(key)
-        if night in data:
+        bad = self.implausible(data) if len(data) > 1 else set()
+        if night in data and night not in bad:
             return data[night], "nacht"
-        if not data:
+        planes = [p for n, p in data.items() if n not in bad]
+        if not planes:
             return None, ""
-        planes = list(data.values())
         try:
             prof = [[np.median([p[k][ax] for p in planes], axis=0) for ax in (0, 1)] for k in range(len(planes[0]))]
             maps = [p for p in planes if len(p[0]) > 2]
             if maps:
                 for k, pl in enumerate(prof):
                     pl.append(np.median([p[k][2] for p in maps], axis=0))
-            return [tuple(pl) for pl in prof], f"bibliothek ({len(planes)} Nächte)"
+            note = "; eigene Messung unplausibel" if night in bad else ""
+            return [tuple(pl) for pl in prof], f"bibliothek ({len(planes)} Nächte{note})"
         except ValueError:                                # uneinheitliche Formate
             return None, ""
 

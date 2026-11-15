@@ -1,7 +1,8 @@
 """Autopilot: arbeitet den Plan der Nacht ab und passt auf das Teleskop auf.
 
 `tick(now)` ist ein Takt (alle paar Sekunden aus dem Thread der Einheit, in Tests mit virtueller Uhr). Reihenfolge je Takt:
-Zustand lesen → Verbindung/Kontrolle → Einklappen bestätigt? → Wächter (Dämmerung, Wetter, Tau, Akku, Wolken im Bild) →
+Zustand lesen → Verbindung/Kontrolle → Einklappen bestätigt? → Wächter (Dämmerung, Wetter, Tau, Akku, Wolken im Bild,
+beschlagene Optik) →
 öffnen/ausrichten → aktuelles Ziel prüfen (Hindernis? Ende?) → nächstes freies Ziel starten.
 
 Hindernis oder Wolke: Scheitert ein Ziel (Astrometrie oder fast nur verworfene Bilder), während ein Ziel in deutlich anderer
@@ -18,7 +19,7 @@ from collections import deque
 from dataclasses import dataclass, field
 
 from ...core import sites
-from . import sky
+from . import fog, sky
 from .battery import BatteryEta, fmt_left
 from .driver import DriverBusy, DriverError, PlanItem, Target, TelescopeState
 from .machine import Machine
@@ -59,6 +60,7 @@ CLOUDY = 60                  # % Bewölkung laut Wetterdaten: dann nie „sicher
 SKY_FRESH_S = 15 * 60        # Dienst `telescope_sky`: so alt darf die Messung höchstens sein
 SKY_MIN_FRAMES = 5           # … und so viele Bilder umfassen
 SKY_CLEAR = 0.5              # Anteil guter Bilder, ab dem der Himmel „klar“ heißt
+FOG_PAUSE_S = 60 * 60        # beschlagene Optik: so lange eingeklappt warten (oder bis „Weiter“/„Start“)
 OK_MEMORY = 20 * 60          # Erfolg in anderer Richtung gilt so lange als Beleg „kein Wolkenhimmel“
 OTHER_DIR = 20.0             # Grad Abstand = andere Richtung
 BLOCK_AZ = 10.0              # gesperrte Richtung: ±Azimut …
@@ -112,7 +114,7 @@ class Item:
 
 @dataclass
 class Hold:
-    kind: str        # twilight | weather | dew | battery | clouds | control
+    kind: str        # twilight | weather | dew | battery | clouds | fog | control
     text: str
 
 
@@ -158,6 +160,8 @@ class Autopilot:
         self.rain_t = 0.0
         self.good_since: float | None = None
         self.clouds_at: float | None = None
+        self.fog = fog.FogWatch()                    # Messwerte je Rohbild (Beschlag-Erkennung, `fog.py`)
+        self.fog_at: float | None = None
         self.park_pending: dict | None = None
         self.alarm: str | None = None
         self.estop = threading.Event()
@@ -317,6 +321,7 @@ class Autopilot:
             self.mode = "laeuft"
             self.hold = None
             self.retry = {}
+            self.fog_at = None                   # Nutzer hat die Optik geprüft
             self.log("Autopilot gestartet." + (f" {len(self.items)} Ziele für diese Nacht." if self.items else " Noch keine Ziele – im Planer planen oder Ziele hinzufügen."), "info", now)
 
     def pause(self, now: float):
@@ -333,6 +338,7 @@ class Autopilot:
         with self.lock:
             if self.mode == "pausiert":
                 self.mode = "laeuft"
+                self.fog_at = None
                 self.log("Weiter geht's.", "info", now)
 
     def emergency(self, now: float, why: str = "Sofort einklappen"):
@@ -573,6 +579,9 @@ class Autopilot:
             observing = self._current() is not None and not s.parked
             if rain <= (RAIN_PARK_MIN if observing else RAIN_START_MIN):
                 out.append(Hold("rain", f"{self._rain_text(rain)} – Teleskop wird eingeklappt."))
+        if self.fog_at is not None and now - self.fog_at < FOG_PAUSE_S:
+            out.append(Hold("fog", "Optik vermutlich beschlagen – Teleskop bleibt eingeklappt. Optik prüfen und mit „Weiter“ "
+                                   f"fortsetzen, sonst neuer Versuch nach {FOG_PAUSE_S // 60} min."))
         if self.clouds_at is not None and now - self.clouds_at < self.cfg["reopen_min"] * 60:
             out.append(Hold("clouds", "Wolken im Bild gemessen (mehrere Richtungen ohne Sterne)."))
         if s.battery is not None and not s.charging and s.battery < self.cfg["battery_min"]:
@@ -638,6 +647,8 @@ class Autopilot:
             self.idle_since = None if working else (self.idle_since or now)
             if s.target and s.target.get("id") != cur.id and not s.device_plan:
                 self._end_item(cur, "abgebrochen", "anderes Ziel am Gerät", now)
+            elif (fg := self._fogged(cur, now)) is not None:
+                return self._fog_end(cur, fg, now)
             elif self._failed(cur, s, now):
                 return self._failure(cur, s, now)
             elif self.idle_since is not None and now - self.idle_since >= (STALL_S if cur.seen else 2 * STALL_S):
@@ -793,6 +804,52 @@ class Autopilot:
         cur.frames, cur.stacked, cur.rejected = s.frames, s.stacked, s.rejected
         if not self.samples or self.samples[-1][0] != s.frames:
             self.samples.append((s.frames, s.rejected, now))
+        pull = getattr(self.driver, "frame_metrics", None)       # Simulator liefert Messwerte je Bild selbst
+        if callable(pull):
+            for t, m in pull():
+                self.fog.add(t, m)
+
+    def frame_seen(self, t: float, m: dict, item: Item | None = None, start: float | None = None) -> bool:
+        """Messwerte eines gerade geholten Rohbilds (Live-Bilder, Dienst `frame_quick_metrics`). Mit `item`/`start` nur, wenn
+        dieser Versuch noch läuft; False = verworfen (Ziel inzwischen gewechselt)."""
+        with self.lock:
+            if item is not None and (self._current() is not item or item.real_start != start):
+                return False
+            self.fog.add(t, m)
+            return True
+
+    def _fogged(self, it: Item, now: float) -> dict | None:
+        """Beschlag am laufenden Ziel? Nur bei bekannter klarer Vorhersage (Wolkenwert vorhanden und unter CLOUDY) – sonst
+        sind es eher Wolken bzw. es lässt sich nicht unterscheiden; dann kein Abbruch (übrige Wächter)."""
+        r = self.fog.check(now, it.real_start or 0.0)
+        if r is None:
+            return None
+        h = self.weather_now(now)
+        if h is None or h.get("cloud") is None:
+            self._once(f"fog-unknown-{it.id}", f"{it.name}: Bilder werden stetig schlechter – ohne aktuelle Wettervorhersage "
+                       "lässt sich Beschlag nicht von Wolken unterscheiden, das Ziel läuft weiter.", "info", now)
+            return None
+        if h["cloud"] >= CLOUDY:
+            self._once(f"fog-cloudy-{it.id}", f"{it.name}: Bilder werden stetig schlechter, laut Vorhersage aber bewölkt – "
+                       "eher Wolken als beschlagene Optik.", "info", now)
+            return None
+        r["dew_spread"] = h.get("dew_spread")
+        return r
+
+    def _fog_end(self, it: Item, r: dict, now: float):
+        """Optik beschlagen: Protokoll und Warnung, Ziel beenden (statt weiter unbrauchbare Bilder zu sammeln), einklappen."""
+        hint = (f" Taupunktabstand laut Vorhersage {r['dew_spread']:.1f} °C.".replace(".", ",", 1)
+                if r.get("dew_spread") is not None else "")
+        self.log(fog.describe(it.name, r) + " bei klarer Vorhersage." + hint + " Ziel beendet – weitere Bilder wären unbrauchbar.",
+                 "bad", now)
+        self._cmd("stop", self.driver.stop, now=now)
+        self._end_item(it, "abgebrochen", "Optik beschlagen?", now)
+        self.fog_at = now
+        self.fog.clear()
+        self.samples.clear()
+        self.bad_since = None
+        h = self.conditions(now)
+        return self._hold(next(x for x in h if x.kind == "fog"), now)
 
     def _failed(self, it: Item, s: TelescopeState, now: float) -> bool:
         if s.target and s.target.get("id") != it.id:

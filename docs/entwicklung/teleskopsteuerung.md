@@ -143,6 +143,13 @@ Abweichungen (z. B. „Befehl gesendet, Gerät bewegt sich nach 30 s nicht“) i
    - **Tau:** Taupunktabstand aus der Vorhersage (`dew_spread`) und – wo vorhanden – Gerätesensor. Stellina: Warnung < 3 °C,
      einklappen < 1,5 °C (trotz Heizung, Erfahrung des Nutzers); Vespera ohne Heizung: Warnung früher. Zusätzlich Messung im
      Bild: gleichmäßig sinkende Sternzahl/steigende FWHM über alle Richtungen bei klarer Vorhersage → „Beschlag?“.
+     **Umgesetzt (15.11.2026, `fog.py`):** Messwerte je Rohbild (Live-Bilder → Dienst `frame_quick_metrics` des Bilder-Moduls;
+     Simulator: `SimDriver.frame_metrics`) in `FogWatch`. Beschlag, wenn ab ≥ 12 Bildern über ≥ 5 min (a) ≥ 80 % der Bilder der
+     letzten 5 min einen hellen Schleier zeigen (`veil` ≥ 3) oder (b) Sternzahl (Median) ≥ 35 % unter bzw. FWHM ≥ 30 % über den
+     ersten 6 Bildern des Ziels liegt und ≥ 80 % der Bilder im Fenster einzeln schlechter sind (Wolkenzüge lassen Lücken). Nur bei
+     bekannter Vorhersage < 60 % Wolken (bewölkt: Protokoll „eher Wolken“; keine/abgelaufene Vorhersage: Hinweis, kein Abbruch). Reaktion: Protokoll mit Sternen/FWHM/Schleier und Taupunktabstand
+     der Vorhersage, Ziel „abgebrochen – Optik beschlagen?“, Hold `fog` → einklappen; „Weiter“/„Start“ (Optik geprüft) hebt ihn auf,
+     sonst neuer Versuch nach `FOG_PAUSE_S` (60 min). Läuft vor dem Hindernis-Kriterium. Ohne Live-Bilder keine Erkennung.
    - **Hindernis** (`obstacles.py`): Astrometrie scheitert, Sterne fehlen oder der Hintergrund ist auffällig hell (Laterne),
      während **ein anderes Ziel in anderer Richtung** in derselben Viertelstunde gut läuft → Richtung (Az/Höhe) als „verdeckt“
      für diese Nacht merken, Ziel überspringen. Scheitern alle Richtungen → Wolken, nicht Hindernis. Am Morgen: Vorschlag

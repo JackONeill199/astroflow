@@ -47,6 +47,7 @@ class Module(BaseModule):
         ctx.services["scan_input"] = lambda: self.eng.scan_and_queue()        # Teleskop: nach dem Import vom Gerät einlesen
         ctx.services["weather_forecast"] = self.weather_forecast    # Teleskop: Open-Meteo-Vorhersage (gleiche Schicht und Rundung wie Heute Nacht)
         ctx.services["weather_rain"] = self.weather_rain          # Teleskop-Autopilot: „Regen in den nächsten N Minuten erwartet?“
+        ctx.services["frame_quick_metrics"] = frame_quick_metrics  # Teleskop-Autopilot: beschlagene Optik während der Aufnahme
         if isinstance(ctx.services.get("night_sources"), list):   # Einstellungen → Standorte: Nachtliste
             ctx.services["night_sources"].append(self.nights)
 
@@ -249,3 +250,24 @@ def catalog_objects() -> list[dict]:
     from . import objects
     return [{"id": c.id, "display": c.display, "ra": c.ra, "dec": c.dec, "kind": c.kind, "size": c.size,
              "kind_label": objects.KIND_LABEL.get(c.kind, "")} for c in objects.CATALOG]
+
+
+def frame_quick_metrics(path: str) -> dict:
+    """Schnelle Messung eines frisch geholten Rohbilds für den Teleskop-Autopiloten (ohne Kalibrierung, ohne Datenbank):
+    Sternzahl, FWHM (Vollauflösungs-Pixel), `veil` (heller Schleier, `quality.veil_metrics`) und `veiled` (über der Grenze)."""
+    import numpy as np
+
+    from . import calibration, quality
+    from .fits_io import read_data, read_info
+    info = read_info(path)
+    raw = read_data(path)
+    bayer = bool(info.bayerpat) and raw.ndim == 2
+    img, s = quality.analysis_image(calibration.cosmetic(raw, bayer), bayer)
+    st = quality.detect_stars(img)
+    top = slice(0, min(len(st), 60))
+    vm = quality.veil_metrics(img)
+    v = vm.get("veil")
+    if v is not None and not vm.get("veil_edge", True):
+        v = 0.0                                        # hellster Rest in der Bildmitte: Objekt, kein Schleier
+    return {"n_stars": len(st), "fwhm": round(float(np.median(st.fwhm[top]) * s), 2) if len(st) else None,
+            "veil": v, "veiled": v is not None and v >= quality.VEIL_MIN}

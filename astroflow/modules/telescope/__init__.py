@@ -3,7 +3,8 @@
 Treiber: Simulator (immer da), „Vaonis (nur Status)“ ohne Schlüssel (`vaonis_read`) oder ein Treiber-Plugin (`plugins.py`,
 fremder Code, nur am Rechner selbst aktivierbar). Im Repo steht keine Anmelde- oder Befehlslogik für Vaonis. Eine „Einheit“ = Treiber + Autopilot + Takt-Thread; die Architektur erlaubt mehrere
 Einheiten (zwei Teleskope, je Adapter eine Verbindung), eingerichtet ist vorerst eine.
-Dienste: `sites` (Ort/Horizont der Nacht), `weather_forecast` (Bilder-Modul), `catalog_resolve`/`catalog_objects` – fehlt
+Dienste: `sites` (Ort/Horizont der Nacht), `weather_forecast` (Bilder-Modul), `frame_quick_metrics` (Bilder-Modul: Messwerte je
+Live-Rohbild für die Beschlag-Erkennung), `catalog_resolve`/`catalog_objects` – fehlt
 einer, läuft das Modul trotzdem (ohne Wetter bzw. ohne Zielsuche).
 """
 from __future__ import annotations
@@ -99,6 +100,22 @@ class Unit:
                 return None
             return fn(minutes=minutes, site={"lat": site["lat"], "lon": site["lon"]})
         return ap.Env(site=mod.site, forecast=forecast, plan=plan, rain=rain)
+
+    def measure_frames(self, paths, item=None, start: float | None = None, most: int = 12):
+        """Frisch geholte Rohbilder messen (Dienst `frame_quick_metrics`) und dem Autopiloten melden; fehlt der Dienst
+        (Bilder-Modul aus), gibt es keine Beschlag-Erkennung. Nach einer Lücke nur die neuesten `most` Bilder.
+        `item`/`start` = Versuch, zu dem die Bilder gehören: ist er nicht mehr der laufende (Zielwechsel während des Holens
+        oder Messens), werden die Messwerte verworfen – sonst würden sie zum Bezug des neuen Ziels (Review PR #140)."""
+        fn = self.mod.ctx.service("frame_quick_metrics")
+        if not fn:
+            return
+        for p in sorted(paths, key=lambda p: p.name)[-most:]:
+            try:
+                m = fn(str(p))
+                if not self.pilot.frame_seen(self.now(), m, item, start):
+                    return
+            except Exception:
+                traceback.print_exc()
 
     @property
     def simulated(self) -> bool:

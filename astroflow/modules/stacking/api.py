@@ -790,7 +790,7 @@ def build_router(eng: Engine) -> APIRouter:
                 "manual": x["manual"], "stacked": x["stacked"], "deleted": x["deleted"], "score": r2(x["score"] or 0, 3),
                 "date": i.get("date_obs"), "exptime": i.get("exptime"), "filter": i.get("filter"), "shape": i.get("shape"),
                 "n_stars": m.get("n_stars"), "star_cap": quality.MAX_STARS, "fwhm": r2(m.get("fwhm")), "ecc": r2(m.get("ecc")),
-                "bg": r2(m.get("bg"), 1), "sky": r2(m.get("sky")), "snr": m.get("snr"), "grad": m.get("grad"), "trails": m.get("trails"),
+                "bg": r2(m.get("bg"), 1), "sky": r2(m.get("sky")), "snr": m.get("snr"), "grad": m.get("grad"), "veil": m.get("veil"), "trails": m.get("trails"),
                 "stars": m.get("stars") or []}
 
     @r.get("/frames/{fid}/preview")
