@@ -1444,7 +1444,9 @@ class Autopilot:
         for i in self.items:
             if i.status == "aktiv" or (i.manual and i.status == "geplant"):
                 keep.append(i)
-            elif i.real_start or (i.status in ("verdeckt", "uebersprungen") and a["state"] != "entwurf"):
+            elif i.real_start or i.stacked or (i.status in ("verdeckt", "uebersprungen") and a["state"] != "entwurf"):
+                if i.status == "geplant" and i.stacked:   # durch eine Pause unterbrochen: Bilder bleiben Verlauf (Review PR #145)
+                    i.status, i.why = "abgebrochen", "unterbrochen"
                 if i.status in OPEN:                  # Verlauf bleibt sichtbar, wird aber nicht mehr angefahren
                     i.end = max(i.start, min(i.end, now))
                 keep.append(i)
@@ -1480,11 +1482,11 @@ class Autopilot:
         exp = float(self.cfg["exposure"])
         seen: dict[str, dict] = {}
         for i in self.items:
-            if not i.real_start:
+            if not i.real_start and not i.stacked:
                 continue
             x = seen.setdefault(i.name, {"name": i.name, "stacked": 0, "status": i.status, "minutes": 0})
             x["stacked"] += i.stacked
-            x["minutes"] += round(((i.real_end or now) - i.real_start) / 60)
+            x["minutes"] += round(((i.real_end or now) - i.real_start) / 60) if i.real_start else round(i.stacked * float(self.cfg["exposure"]) / 60)
             if i.status == "fertig" or x["status"] != "fertig":
                 x["status"] = i.status
         rows = list(seen.values())
