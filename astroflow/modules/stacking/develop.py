@@ -405,7 +405,8 @@ def hints(qc: dict, ctx: dict) -> list[str]:
 
 # --------------------------------------------------------------- entwickeln #
 def develop(mean: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool, palette: str | None,
-            ctx: dict | None = None, fixed: dict | None = None, log=lambda m: None, render_log=lambda m: None, on_preview=None):
+            ctx: dict | None = None, fixed: dict | None = None, log=lambda m: None, render_log=lambda m: None, on_preview=None,
+            live_run=None):
     """Gibt (rgb, stats, params, qc_verlauf) zurück. ctx: exposure_s, has_flats, rejected_pct, neutral_sky.
     fixed: vom Nutzer gesetzte Parameter – werden weder angepasst noch nachgeregelt."""
     ctx = ctx or {}
@@ -417,13 +418,15 @@ def develop(mean: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool, p
     params.update(fixed)
     history = [{"round": 0, "measure": m, "adapt": why, "params": dict(params)}]
 
-    def render(p, a, c, lg):
-        return processing.process(a, c, p, narrowband=narrowband, palette=palette, log=lg, want_before=True, preview=on_preview)
+    def render(p, a, c, lg, run=None):
+        return processing.process(a, c, p, narrowband=narrowband, palette=palette, log=lg, want_before=True, preview=on_preview,
+                                  live_run=run)
 
     # Kontrolle in voller Auflösung: Entrauschen und Farbe wirken pixelbezogen, eine Vorschau bewertet sie falsch
     for rnd in range(1, QC_ROUNDS + 1):
         log(f"Entwicklung und Qualitätskontrolle {rnd}")
-        rgb, stats = render(params, mean, cov, render_log)
+        # Live-Einblicke (Hintergrund, Stretch, Sterne) nur in der ersten Runde – spätere wiederholen dieselben Schritte
+        rgb, stats = render(params, mean, cov, render_log, live_run if rnd == 1 else None)
         render_log(f"Qualitätsprüfung {rnd}")
         qc = assess(rgb, mono=mean.shape[0] == 1, neutral_sky=ctx.get("neutral_sky", True))
         adj = {k: v for k, v in corrections(qc, params).items() if k not in fixed} if rnd < QC_ROUNDS else {}

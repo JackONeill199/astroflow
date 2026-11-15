@@ -65,11 +65,13 @@ EDGE_EXCLUDE = 0.12
 HDR_KNEE = 0.5            # compress_highlights: darunter (Himmel, schwacher Nebel) bleibt das Bild unverändert
 
 
-def remove_gradient(img: np.ndarray, degree: int = 3, grid: int = 16, edge_exclude: float = 0.0) -> np.ndarray:
+def remove_gradient(img: np.ndarray, degree: int = 3, grid: int = 16, edge_exclude: float = 0.0,
+                    info: dict | None = None) -> np.ndarray:
     """Additive Hintergrundextraktion per Polynom-Fit auf Hintergrundkacheln.
     edge_exclude: Randanteil, dessen Kacheln nicht in den Fit eingehen – steiles Randglühen (Stellina ohne Darks)
     zieht das Polynom sonst nach außen und erzeugt Über-/Unterschwinger als helle/dunkle Bänder im Bild.
-    Die Ränder korrigiert danach remove_edge_glow."""
+    Die Ränder korrigiert danach remove_edge_glow.
+    info: wird (falls übergeben) mit den Stützkacheln gefüllt – pts (y, x in −1…1), use (in den Fit eingegangen), Grad."""
     C, H, W = img.shape
     L = luminance(img)
     mask = _star_mask(L)
@@ -107,6 +109,8 @@ def remove_gradient(img: np.ndarray, degree: int = 3, grid: int = 16, edge_exclu
         if new.sum() < nterm + 2 or (new == use).all():
             break
         use = new
+    if info is not None:
+        info.update(pts=pts, use=use.copy(), degree=degree)
     h, w = max(8, H // 8), max(8, W // 8)
     yy, xx = np.meshgrid(np.linspace(-1, 1, h), np.linspace(-1, 1, w), indexing="ij")
     low = basis(yy, xx) @ coef                   # (h,w,C)
@@ -548,6 +552,7 @@ def channel_curve(ref: np.ndarray, target_bg: float, asinh_k: float, white_pct: 
     def curve(img):
         x = np.clip((img - black) / (white - black), 0, None)
         return mtf(np.clip(np.arcsinh(asinh_k * x) / np.arcsinh(asinh_k), 0, 1), m).astype(np.float32)
+    curve.black, curve.white, curve.params = black, white, {'asinh': round(float(asinh_k), 2), 'mittelton': round(m, 4)}
     return curve
 
 
@@ -901,12 +906,15 @@ def auto_stretch(img: np.ndarray, target: float = 0.2) -> np.ndarray:
 
 
 def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool = False, palette: str | None = None,
-            log=lambda m: None, want_before: bool = False, crop: list | None = None, preview=None):
+            log=lambda m: None, want_before: bool = False, crop: list | None = None, preview=None, live_run=None):
     """stack (C,H,W) linear, cov (H,H) 0..1. Gibt (rgb float32 (3,H,W) 0..1, Statistik).
     want_before: stats["before"] = derselbe Ausschnitt nur linear gestreckt (Vorher-Nachher-Vergleich).
     crop: fester Ausschnitt (y0, y1, x0, x1) statt aus der Abdeckung – stats["crop"] eines früheren Laufs
-    (Stacking-Stufen haben so exakt den Ausschnitt des fertigen Bildes)."""
+    (Stacking-Stufen haben so exakt den Ausschnitt des fertigen Bildes).
+    live_run: laufende Live-Ansicht – Einblicke (Hintergrundmodell, Stretch-Kurve, Sternebene) aus den echten Zwischenständen."""
     p = dict(params)
+    from . import live, live_insight
+    insight = live_run is not None and bool(live.optional(live_run.wants))
     def show(a, linear=True):
         if preview:
             from .live import optional
@@ -943,10 +951,11 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
     edge_glow = (lambda a: a) if p.get("_mosaic") else remove_edge_glow
     if not ai.get("bge"):
         log("Hintergrundgradient entfernen")
+        bg_before, bg_info = (img, {}) if insight else (None, None)
         if p.get("background", "poly") != "sky":
             # Standard: Polynom ohne Ränder → Randglühen → Grad 2. Am ebensten bei Galaxien/Haufen (Messung 10.11.2026,
             # 11 Fälle); sky_background war bei M17/M45 besser, bei NGC 6888/M3/M101 schlechter (Randbänder) → nur Option
-            img = remove_gradient(img, int(p["gradient_degree"]), edge_exclude=EDGE_EXCLUDE)
+            img = remove_gradient(img, int(p["gradient_degree"]), edge_exclude=EDGE_EXCLUDE, info=bg_info)
             img = edge_glow(img)                     # steiles Randglühen, das das Polynom nicht erfasst
             img = remove_gradient(img, 2)            # Restneigung nach der Randkorrektur
         else:                                        # Option: Himmels-Stützpunkte + Abdeckungsstufe (Staub-/Nebelfelder)
@@ -957,6 +966,10 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
             img = img - model
             stats["background"] = binfo
             del model
+        if bg_before is not None:                    # Einblick: abgezogenes Modell (vorher − nachher) + echte Stützkacheln
+            sup = live_insight.support_points(bg_info["pts"], bg_info["use"], bg_info["degree"]) if bg_info.get("pts") is not None else None
+            live.offer(live_run, live_insight.background, bg_before, img, "himmel" if p.get("background") == "sky" else "polynom", sup)
+            del bg_before
     elif float(ai.get("smoothing", 0.1)) >= 0.5:
         # GraXpert mit hoher Glättung (Staubprofile) lässt steiles Randglühen (Stellina ohne Darks) stehen
         log("Randglühen entfernen")
@@ -1052,13 +1065,24 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
             Tc = channel_curve(img, float(p["target_bg"]), float(p["asinh"]), float(p.get("white_pct", 99.9)), white)
             img = (w * T(starless) + (1 - w) * Tc(starless)).astype(np.float32)
             stats["ghs_mix"] = w
+            fn = lambda a, w=w, Tc=Tc: w * T(a) + (1 - w) * Tc(a)
         else:
             img = T(starless)
+            fn = T
         stats["ghs"] = T.steps
+        if insight:                                  # Einblick: echte GHS-Kurve, Histogramme, Sternebene
+            ghs_p = {'durchgaenge': [{'D': d, 'b': b, 'SP': sp} for d, b, sp, *_ in T.steps], 'mittelton': T.mtf,
+                     **({'ghs_anteil': stats['ghs_mix']} if 'ghs_mix' in stats else {})}
+            live.offer(live_run, live_insight.stretch, starless, img, fn, T.black, T.white, 'ghs', ghs_p)
+            live.offer(live_run, live_insight.stars, img, stars_s, how, stats.get("stars"))
         del starless
     else:                                                  # ohne Trennung (Sternhaufen): knackige Kanalkurve
         log("Stretch")
-        img = channel_curve(img, float(p["target_bg"]), float(p["asinh"]), float(p.get("white_pct", 99.9)))(img)
+        cc = channel_curve(img, float(p["target_bg"]), float(p["asinh"]), float(p.get("white_pct", 99.9)))
+        lin, img = img, cc(img)
+        if insight:
+            live.offer(live_run, live_insight.stretch, lin, img, cc, cc.black, cc.white, 'kurve', cc.params)
+        del lin
     show(img, linear=False)
     L = luminance(img)
     star = np.clip(ndi.gaussian_filter(ndi.binary_dilation(L > 0.7, iterations=2).astype(np.float32), 1.5) * 2, 0, 1)

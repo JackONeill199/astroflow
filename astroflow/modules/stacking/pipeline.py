@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from . import calibration, channels, comet, develop, frame_preview, stackfix, gpu, graxpert, live, mosaic, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner, stars, trails, tutor
+from . import calibration, channels, comet, develop, frame_preview, stackfix, gpu, graxpert, live, live_insight, mosaic, objects, photometry, platesolve, processing, quality, registration, reviewer, scanner, stars, trails, tutor
 from ...core.config import Settings, free_ram_mb
 from ...core.errors import user_message
 from . import diskspace
@@ -486,7 +486,7 @@ class Pipeline:
             raw = calibration.remove_glow(raw, bool(info["bayerpat"]) and raw.ndim == 2, glow)
         return raw, m
 
-    def _sensor_maps(self, rows: list[dict], lib, cache: dict, progress, glow: bool = True) -> tuple[dict, dict]:
+    def _sensor_maps(self, rows: list[dict], lib, cache: dict, progress, glow: bool = True, run=None) -> tuple[dict, dict]:
         """Glühmodelle und Karten ortsfester Sensorfehler je Kamera und Nacht in den Cache legen. Nächte mit genug
         vorhandenen Rohbildern werden an einer gemeinsamen Stichprobe gemessen (jede Datei nur einmal gelesen) und in
         die Bibliotheken der Kamera aufgenommen; sonst gelten die bisher gemessenen Nächte."""
@@ -538,6 +538,10 @@ class Pipeline:
             if bad is not None and len(bad):
                 cache[("defects", key, night)] = bad
                 bad_used[night] = {"quelle": src, "pixel": int(len(bad))}
+            if (bad is not None and len(bad)) or cache.get(("glow", key, night)):
+                # Einblick: die tatsächlich gefundenen Sensorfehler (und das Glühmodell) dieser Kamera/Nacht
+                live.offer(run, live_insight.defects, bad if bad is not None else np.zeros(0, np.int64),
+                           tuple(items[0][1].get("shape") or ()), cache.get(("glow", key, night)), night or "", src)
         return used, bad_used
 
     _hint_cache: dict = {}
@@ -600,7 +604,7 @@ class Pipeline:
     def stack(self, project_id: int, extra: dict | None = None, progress=lambda p, stage, msg="": None) -> dict:
         """Analyse -> Auswahl -> Kalibrierung/Registrierung -> gewichtetes Sigma-Clip-Stacking.
         Ergebnis ist der lineare Master-Stack je Filter in work/p<id>/ (inkrementell, mit Checkpoints)."""
-        _, progress = self._track_live(project_id, progress)
+        lrun, progress = self._track_live(project_id, progress)
         proj = self.db.one("SELECT * FROM projects WHERE id=?", (project_id,))
         if not proj:
             raise ValueError("Projekt nicht gefunden")
@@ -617,7 +621,7 @@ class Pipeline:
         # (dazu ortsfeste Sensorfehler: Hotpixel-Paare/-Grüppchen, die die Einzelbild-Kosmetik als Stern schützt)
         popt = json.loads(proj["options"] or "{}")
         old_glow = popt.get("glow_info") or {}
-        glow, bad = self._sensor_maps(rows, lib, cache, progress, glow=opt.get("sensor_glow", True))
+        glow, bad = self._sensor_maps(rows, lib, cache, progress, glow=opt.get("sensor_glow", True), run=lrun)
         # Glühmodell einer Nacht deutlich anders als bei der letzten Analyse (z. B. unplausible Messung verworfen): deren
         # Aufnahmen neu analysieren (Messwerte, Vorschau) und neu stacken – der alte Abzug steckt in beiden. Die Nacht bleibt
         # in `glow_pending` vorgemerkt, bis das wirklich geschehen ist (Rohbilder auf abgesteckter Platte: nächster Lauf).
@@ -1060,7 +1064,7 @@ class Pipeline:
         states = {b: StackState.load(stack_dir(wd, b)) for b in bands}
         return {b: st for b, st in states.items() if st is not None}
 
-    def _photometric(self, proj: dict, states: dict, mean: np.ndarray, cov: np.ndarray, log) -> dict | None:
+    def _photometric(self, proj: dict, states: dict, mean: np.ndarray, cov: np.ndarray, log, run=None) -> dict | None:
         """Weißabgleich über Gaia-Sternfarben (PCC). Stack-WCS wird je Referenzbild gecacht. None -> Sternfarben-Mittel."""
         if not self.s.gaia:
             return None
@@ -1075,7 +1079,10 @@ class Pipeline:
             log("Gaia-Sternfarben abfragen")
             cat = photometry.gaia_stars(ra, dec, 0.5 * scale * math.hypot(W, H), self.s.work_dir / "gaia")
             st = next(iter(states.values())).meta
-            gains, info = photometry.pcc_gains(mean, cov, hdr, cat, float(st.get("ref_fwhm") or 3.0))
+            sample = {} if run is not None and live.optional(run.wants) else None
+            gains, info = photometry.pcc_gains(mean, cov, hdr, cat, float(st.get("ref_fwhm") or 3.0), sample=sample)
+            if sample:                            # Einblick: zugeordnete Gaia-Sterne, gemessene Farben, Ausgleichsgeraden
+                live.offer(run, live_insight.color, mean, sample, gains)
             return {"gains": gains, **info}
         except Exception as e:                    # Netz weg, Solver scheitert, zu wenige Sterne -> bisheriges Verfahren
             return {"fallback": str(e)[:200]}
@@ -1122,7 +1129,9 @@ class Pipeline:
         if palette == "OSC" and mean.shape[0] == 3 and None in states and not states[None].meta.get("defects"):
             # Stack von vor der Fehlerkarte: Hotpixel-Punkte direkt im linearen Stack entfernen (Rohbilder oft gelöscht)
             prog(0.01, "Bearbeitung", "Hotpixel-Punkte im Stack suchen")
-            mean, hotfix = stackfix.repair(mean, cov)
+            found, fmed, fsig = stackfix.find(mean, cov)
+            live.offer(run, live_insight.hotfix, found, mean)        # Einblick: gefundene Punkte im unreparierten Stack
+            mean, hotfix = stackfix.repair(mean, cov, found, fmed, fsig)
         kind = proj["kind"]
         if kind in (None, "generic") and (k := objects.kind_of(proj["obj_id"] or proj["name"])) and k != kind:
             kind = k              # ältere Projekte bzw. Messier-Objekte, die nur ASTAP (ohne Art) kannte: Typ nachträglich setzen
@@ -1152,6 +1161,7 @@ class Pipeline:
         if is_comet:                                    # KI-Hintergrund könnte den schwachen Schweif abtragen
             gmode = {"bge": "off", "all": "denoise"}.get(gmode, gmode)
         if gmode != "off" and (exe := graxpert.graxpert_path()):
+            gx_before = mean
             # einmal je Entwicklung auf dem linearen Stack (gecacht) – vor der Farbkalibrierung, damit die
             # Sternfotometrie auf verlaufsfreiem Himmel misst
             mean, gx = graxpert.apply(mean, cov, gmode, float(params.get("ai_denoise", graxpert.DEFAULT_STRENGTH)),
@@ -1162,8 +1172,10 @@ class Pipeline:
                                                                f"mosaic:{mos_info['min_depth']}" if mos_info else "") if t),
                                       smoothing=float(params.get("bge_smoothing", graxpert.DEFAULT_SMOOTHING)))
             params["_ai"] = {k: v for k, v in gx.items() if k in ("bge", "denoise", "smoothing")}
+            if gx.get("bge"):                           # Einblick: abgezogenes Hintergrundmodell (vorher − nachher)
+                live.offer(run, live_insight.background, gx_before, mean, "graxpert")
         if mean.shape[0] == 3 and not narrow and params.get("color_calibration", True) and "wb_gains" not in user:
-            pcc = self._photometric(proj, states, mean, cov, lambda m: prog(0.1, "Farbkalibrierung", m))
+            pcc = self._photometric(proj, states, mean, cov, lambda m: prog(0.1, "Farbkalibrierung", m), run)
             if pcc:
                 params["_pcc"] = pcc
                 if "gains" in pcc:
@@ -1176,7 +1188,8 @@ class Pipeline:
                "neutral_sky": tutor.neutral_sky(proj["ra"], proj["dec"], kind)}
         rgb, stats, params, _ = develop.develop(
             mean, cov, params, narrow, palette, ctx, fixed=user,
-            log=lambda m: prog(0.3, "Bearbeitung", m), render_log=lambda m: prog(0.5, "Bearbeitung", m), on_preview=view)
+            log=lambda m: prog(0.3, "Bearbeitung", m), render_log=lambda m: prog(0.5, "Bearbeitung", m), on_preview=view,
+            live_run=run)
 
         review_hist = []
         if opt.get("review", True) and self.review_cfg.enabled:

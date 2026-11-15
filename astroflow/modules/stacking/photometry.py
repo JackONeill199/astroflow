@@ -193,8 +193,10 @@ def _fluxes(img: np.ndarray, x: np.ndarray, y: np.ndarray, r: float):
     return out, peak
 
 
-def pcc_gains(img: np.ndarray, cov: np.ndarray, header: dict, cat: np.ndarray, fwhm: float) -> tuple[list[float], dict]:
-    """Verstärkungen [R, G, B] (G = 1), so dass G2V-Sterne weiß sind. Wirft ValueError bei zu wenig Sternen."""
+def pcc_gains(img: np.ndarray, cov: np.ndarray, header: dict, cat: np.ndarray, fwhm: float,
+              sample: dict | None = None) -> tuple[list[float], dict]:
+    """Verstärkungen [R, G, B] (G = 1), so dass G2V-Sterne weiß sind. Wirft ValueError bei zu wenig Sternen.
+    sample: wird (falls übergeben) mit den Messpunkten gefüllt – Stackpixel, BP−RP, ln(R/G), ln(B/G), Geraden (Live-Einblick)."""
     from scipy.spatial import cKDTree
 
     from .quality import detect_stars
@@ -221,7 +223,7 @@ def pcc_gains(img: np.ndarray, cov: np.ndarray, header: dict, cat: np.ndarray, f
     if good.sum() < MIN_STARS:
         raise ValueError(f"nur {int(good.sum())} brauchbare Sterne für die Farbmessung")
     fl, bprp = fl[good], bprp[good]
-    gains, fits_ = [1.0, 1.0, 1.0], {}
+    gains, fits_, lines = [1.0, 1.0, 1.0], {}, {}
     for c, name in ((0, "R"), (2, "B")):
         yv = np.log(fl[:, c] / fl[:, 1])
         use = np.ones(len(yv), bool)
@@ -235,5 +237,9 @@ def pcc_gains(img: np.ndarray, cov: np.ndarray, header: dict, cat: np.ndarray, f
             use = new
         gains[c] = float(np.exp(-(a * G2V_BP_RP + b)))
         fits_[name] = {"steigung": round(float(a), 3), "streuung": round(float(s), 3)}
+        lines[name] = ({"a": float(a), "b": float(b)}, yv, use)
     gains = [float(np.clip(g, 0.25, 4.0)) for g in gains]
+    if sample is not None:
+        sample.update(x=xs[good], y=ys[good], bprp=bprp, r=lines["R"][1], b=lines["B"][1], use_r=lines["R"][2],
+                      use_b=lines["B"][2], fit={k: v[0] for k, v in lines.items()}, g2v=G2V_BP_RP)
     return gains, {"sterne": int(len(fl)), "fit": fits_}

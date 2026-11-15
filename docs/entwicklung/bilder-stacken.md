@@ -251,6 +251,21 @@ Stand im alten Text unter Schritt 7 eingeordnet; gehören technisch zu `Pipeline
    `_track_live` protokolliert echte Schritte, Vorschau-Hooks in GraXpert/Processing, höchstens alle 4 s plus Endergebnis.
    `/projects/{pid}` liefert `live` nur für den neuesten Auftrag; `/projects/{pid}/live/{name}` liefert streng geprüfte JPG-Namen.
    `static/live.js|css`: Bildwechsel auf zwei Ebenen, kompakte Statuszeile mit aufklappbarem Ablauf; reduzierte Bewegung beachtet.
+   **Einblicke in die Bearbeitung** (Nutzerwunsch 15.11.2026: „wissenschaftlich, ohne was zu erfinden“): `live_insight.py` legt kleine
+   Auszüge **echter** Zwischenergebnisse als `live/<run>-i<n>.json` ab (nie in `state.json`, dort nur Verweise `insights`, höchstens
+   `INSIGHTS_KEEP` 6; Bilder dazu `…-s<n>.jpg` per `LiveRun.snap`, gelöscht mit ihrem Einblick). Gerechnet wird nur über
+   `live.offer(run, fn, …)` und nur, wenn die Objektseite in den letzten `WATCH_S` 20 s abgefragt wurde (`live.touch` in `GET /projects/{pid}`)
+   – ohne offenen Browser kein Mehraufwand, Fehler folgenlos. Koordinaten: Bruchteile `[u, v]` des zugehörigen Bildes in Anzeigeausrichtung
+   (senkrecht gespiegelt wie die Vorschau, `live.uv`); Karten als Blockmittel ≤ 48 Felder (`grid_of`), Kurven 256 Stellen, ≤ 500 Punkte.
+   Arten: `defects` (`_sensor_maps`: Hotpixel-Indizes der Nacht, Spalten ab ¼ Sensorhöhe, Glühmodell in ADU; kein Bild – Sensorfeld),
+   `hotfix` (`stackfix.find` vor der Reparatur), `background` (vorher − nachher; GraXpert oder `remove_gradient` mit echten Stützkacheln
+   `info=`), `color` (`pcc_gains(sample=)`: Sterne, BP−RP, ln(R/G), ln(B/G), Ausgleichsgeraden, Faktoren), `stretch` (die angewandte
+   Kurve an 256 Stellen zwischen Schwarz- und Weißpunkt, Histogramme vorher/nachher; Vorher-Bild = lineare Darstellung ohne Kurve),
+   `stars` (gestrecktes sternloses Bild + Sternebene). Nur in der ersten QC-Runde. Dazu `state.noise_curve`: gemessenes Rauschen je N
+   (`noise_of`), der Browser zeichnet 1/√N ab dem ersten Punkt gestrichelt als „erwartet“. Frontend `static/insight.js`
+   (`createInsight`, Canvas über `.sl-picture`, einmal abspielen, dann Standbild; `prefers-reduced-motion` = sofort Standbild).
+   Bewusst ohne Einblick: Registrierung (Sternpaare werden nicht mitgeschrieben), Clipping-/Spurmasken, Plate-Solving-Beschriftung,
+   Entfaltung/Rauschreduzierung – dort bleibt die neutrale Fortschrittsanzeige.
    **„Das Bild entsteht aus dem Rauschen“** (seit 0.47.0, Nutzerwunsch; vorher verworfen: Sternmuster-Overlays und 3D-Ebenen – zu dominant):
    Beim Stacken echte Zwischenstände des Stacks nach `live.SCHEDULE` (1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 19, 24, 30, dann je ×1,5) plus
    höchstens alle `INTERVAL` 4 s am Stapelende. Innerhalb eines Stapels (nur bis `EARLY` 80 Aufnahmen) über `mini_inputs` (verkleinerte
