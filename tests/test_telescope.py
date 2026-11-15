@@ -1000,3 +1000,12 @@ def test_alter_astrometriefehler_trifft_neues_ziel_nicht():
     assert p._failed(cur, s, clock.now()) is False
     cur.seen = True
     assert p._failed(cur, s, clock.now()) is True
+
+
+def test_verbindung_weg_ohne_geraeteplan_kein_falscher_hinweis(monkeypatch):
+    """Kann der Treiber keinen Geräte-Plan, darf das Protokoll beim Verbindungsverlust nicht behaupten, der Plan laufe weiter."""
+    monkeypatch.setattr(sim.SimDriver, "capabilities", frozenset({"focus"}))
+    sc = sim.Scenario(offline=[(T0 + 0.5 * H, T0 + 0.6 * H)])
+    p, d, clock = make([item(M31, 0.0, 1.0)], sc)
+    run(p, clock, 0.55)
+    assert "Verbindung zum Teleskop verloren" in texts(p) and "Plan im Gerät" not in texts(p)

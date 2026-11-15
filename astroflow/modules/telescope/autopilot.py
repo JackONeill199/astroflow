@@ -425,7 +425,9 @@ class Autopilot:
     def _offline(self, prev: TelescopeState, now: float):
         if self.lost_at is None and self.mode in ("laeuft", "wartet", "pausiert"):
             self.lost_at = now
-            fb = prev.device_plan or (self.cfg["fallback"] and any(i.status == "aktiv" for i in self.items))
+            # nur melden, wenn wirklich ein Plan im Gerät läuft (Treiber ohne `device_plan`: nur die eine Beobachtung)
+            fb = prev.device_plan or (self.cfg["fallback"] and "device_plan" in getattr(self.driver, "capabilities", frozenset())
+                                      and any(i.status == "aktiv" for i in self.items))
             self.log("Verbindung zum Teleskop verloren." + (" Der Plan im Gerät arbeitet weiter und klappt am Ende ein." if fb else ""), "bad", now)
         if self.mode in ("laeuft", "wartet") and now - self.last_connect >= RECONNECT_EVERY:
             self.last_connect = now
