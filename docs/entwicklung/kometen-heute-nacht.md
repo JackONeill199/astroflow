@@ -54,6 +54,13 @@
   `work/tutor/vorhersage8_<lat>_<lon>.json`); jetzt `FORECAST_DAYS` = 8 Tage und zusätzlich `cloud_cover_low/mid/high`, `wind_speed_10m`.
   `plan` fragt einmal über alle Nächte ab und schneidet die gewählte heraus (Tests patchen `_forecast` weiter mit `hours`/`later`).
   Antwort: `cloud` (gesamt), `clouds.{low,mid,high}`, `wind` je Zeitschritt, `forecast {covered, uncertain}`.
+- **Vorhersage seit 15.11.2026 (Anlass: 14./15.11.2026 „100 % Wolken“ bei freiem Himmel):** Abfrage mit `models=best_match,ecmwf_ifs025` (Felder
+  `<größe>_<modell>`, Cache `vorhersage8m_…`). `cloud` = **nutzbare** Bedeckung: wirksam aus Schichten `1−(1−tief)(1−mittel)(1−0,35·hoch)`
+  (`HIGH_WEIGHT`, Begründung im Code), bei Regenstunde 100. Regenstunde = `precipitation_probability` ≥ 40 % oder ≥ 0,2 mm/h
+  (`RAIN_P`/`RAIN_MM`) → alle Auswertungen (`clear`, Nachtnote, `_sky`, Fenster, Planer) sehen 100. Zusatzfelder je Stunde: `cover`, `total`,
+  `cover_alt` (ECMWF), `rain`, `rain_p`, `precip`; Antwort: `rain`, `rain_p`, `cover`, `total`, `forecast.models {main, alt, disagree, veil}`
+  (`disagree` ab 35 Punkten Unterschied → „Vorhersage unsicher“ mit beiden Werten), `sky.rain_hours`, `telescope_sky` (nur Nacht 0, optionaler
+  Dienst, frische Messung ≤ 30 min). Dienst `weather_rain` (Bilder-Modul) = `tonight.rain_soon`.
 - **Diagramm** (`tonight.js`, `chart`/`geom`): Himmel immer dunkel; Dämmerung als weiche horizontale Verläufe aus der Sonnenhöhe je Schritt
   (bürgerlich/nautisch/astronomisch, Horizontglühen), Sterne nur über astronomisch dunklen Spannen (`AFdeco.draw('stars', {spans})`),
   Wolkenband oben (hohe/mittlere/tiefe Wolken übereinander, darunter Wind), Gesamtbewölkung als Schleier, Mondbahn mit Fläche (heller je voller)

@@ -166,37 +166,99 @@ def _spans(t: np.ndarray, ok: np.ndarray) -> list[list[float]]:
     return out
 
 
-HOURLY = "cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,wind_speed_10m,relative_humidity_2m,temperature_2m,dew_point_2m"
+HOURLY = ("cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,wind_speed_10m,relative_humidity_2m,temperature_2m,dew_point_2m,"
+          "precipitation_probability,precipitation")
+MODELS = ("best_match", "ecmwf_ifs025")       # Hauptmodell (in Mitteleuropa ICON-D2/EU) + ECMWF als Gegenprobe
+ALT_LABEL = "ECMWF"
+# Gewichte der Wolkenschichten für die wirksame Bedeckung. Tiefe und mittlere Wolken sind optisch dicht und nehmen die Sterne
+# ganz; hohe Cirren/Schleier (Eis, > 6 km) sind meist dünn – Sterne bleiben sichtbar, Smart-Teleskope belichten dadurch
+# oft noch gut (14./15.11.2026: hoch 100 %, Himmel frei). Darum zählen hohe Wolken nur zu 35 %. Die Schichten überlagern sich
+# (zufällige Überlappung): wirksam = 1 − (1−tief)(1−mittel)(1−0,35·hoch).
+HIGH_WEIGHT = 0.35
+RAIN_P = 40           # ab so viel Regenwahrscheinlichkeit (%) gilt die Stunde als Regenstunde …
+RAIN_MM = 0.2         # … oder ab so viel Niederschlag (mm/h): unbrauchbar, egal wie die Wolkenzahl aussieht
+HOLD_S = 3599         # Abstand des Halte-Stützpunkts am Ende einer Regenstunde
+DISAGREE = 35         # mittlere Abweichung der Modelle (Prozentpunkte) ab der „Vorhersage unsicher“ erscheint
+
+
+def effective_cover(low, mid, high, total) -> float | None:
+    """Wirksame Bedeckung in % aus den Schichten (Gewichte s. HIGH_WEIGHT); fehlen Schichten, gilt die Gesamtzahl."""
+    if low is None or mid is None or high is None:
+        return None if total is None else float(total)
+    clear = (1 - low / 100) * (1 - mid / 100) * (1 - HIGH_WEIGHT * high / 100)
+    return round(100 * (1 - clear), 1)
+
+
+def is_rainy(prob, mm) -> bool:
+    return bool((prob is not None and prob >= RAIN_P) or (mm is not None and mm >= RAIN_MM))
+
+
+def _pick(data: dict, key: str, model: str | None, i: int):
+    """Wert aus der Open-Meteo-Antwort: bei mehreren Modellen heißen die Felder `<größe>_<modell>`."""
+    arr = data.get(f"{key}_{model}") if model else None
+    if arr is None:
+        arr = data.get(key)
+    return arr[i] if arr is not None and i < len(arr) else None
 
 
 def _forecast(site, cache: Path, t0: float, t1: float, timeout: float = 10.0) -> dict | None:
     """Stündliche Vorhersage für [t0, t1] (hours) und die 48 h danach (later, nur Wolken). Ort auf 0,1° gerundet; dieselbe
-    Abfrage (höchstens eine je Stunde und Ort) deckt alle vorblätterbaren Nächte ab."""
+    Abfrage (höchstens eine je Stunde und Ort) deckt alle vorblätterbaren Nächte ab. `cloud` = nutzbare Bedeckung (wirksame
+    Bedeckung, bei Regen 100), `cover` nur die gewichtete Bedeckung, `total` die Gesamtzahl des Modells, `cover_alt` ECMWF."""
     import httpx
     lat, lon = round(site[0], 1), round(site[1], 1)
     cache.mkdir(parents=True, exist_ok=True)
-    f = cache / f"vorhersage{FORECAST_DAYS}_{lat}_{lon}.json"
+    f = cache / f"vorhersage{FORECAST_DAYS}m_{lat}_{lon}.json"
     data = None
     if f.exists() and time.time() - f.stat().st_mtime < 3600:
         data = json.loads(f.read_text(encoding="utf-8"))
     else:
-        r = httpx.get(FORECAST_URL, params={"latitude": lat, "longitude": lon, "hourly": HOURLY,
+        r = httpx.get(FORECAST_URL, params={"latitude": lat, "longitude": lon, "hourly": HOURLY, "models": ",".join(MODELS),
                                             "forecast_days": FORECAST_DAYS, "timezone": "UTC"}, timeout=timeout)
         r.raise_for_status()
         data = r.json().get("hourly") or {}
         if data.get("time"):
             f.write_text(json.dumps(data), encoding="utf-8")
+    main, alt = MODELS
     hours, later = [], []
     for i, s in enumerate(data.get("time") or []):
         ts = dt.datetime.fromisoformat(s).replace(tzinfo=dt.timezone.utc).timestamp()
-        g = lambda k: (data.get(k) or [None] * (i + 1))[i]
-        if t1 + 1800 < ts <= t1 + 48 * 3600 and g("cloud_cover") is not None:
-            later.append({"t": ts, "cloud": g("cloud_cover")})
+        g = lambda k, m=main: _pick(data, k, m, i)
+        total = g("cloud_cover")
+        cover = effective_cover(g("cloud_cover_low"), g("cloud_cover_mid"), g("cloud_cover_high"), total)
+        # ECMWF liefert nur dort Schichten, wo sie vorhanden sind; Regen zählt nur vom Hauptmodell (Wahrscheinlichkeit gibt es nur dort)
+        cover_alt = effective_cover(g("cloud_cover_low", alt), g("cloud_cover_mid", alt), g("cloud_cover_high", alt), g("cloud_cover", alt))
+        # Open-Meteo: Niederschlag/-wahrscheinlichkeit mit Zeitstempel t gelten für die VORANGEHENDE Stunde (t−1 h, t] –
+        # für die Stunde ab t also der Wert des nächsten Zeitstempels
+        rain_p, mm = _pick(data, "precipitation_probability", main, i + 1), _pick(data, "precipitation", main, i + 1)
+        rainy = is_rainy(rain_p, mm)
+        cloud = None if cover is None else (100.0 if rainy else cover)
+        if t1 + 1800 < ts <= t1 + 48 * 3600 and cloud is not None:
+            later.append({"t": ts, "cloud": cloud})
         if t0 - 1800 <= ts <= t1 + 1800:
-            hours.append({"t": ts, "cloud": g("cloud_cover"), "low": g("cloud_cover_low"), "mid": g("cloud_cover_mid"), "high": g("cloud_cover_high"),
+            hours.append({"t": ts, "cloud": cloud, "cover": cover, "total": total, "cover_alt": cover_alt,
+                          "low": g("cloud_cover_low"), "mid": g("cloud_cover_mid"), "high": g("cloud_cover_high"),
+                          "rain": 100 if rainy else 0, "rain_p": rain_p, "precip": mm,
                           "wind": g("wind_speed_10m"), "humidity": g("relative_humidity_2m"),
                           "dew_spread": None if g("temperature_2m") is None or g("dew_point_2m") is None else round(g("temperature_2m") - g("dew_point_2m"), 1)})
-    return {"hours": hours, "later": later, "source": "Open-Meteo-Vorhersage (Raster ~10 km)"} if hours else None
+            if rainy:               # Regen ist ein Intervall: zweiter Stützpunkt am Stundenende, damit jede Interpolation (np.interp, Autopilot) 100 hält
+                hours.append({**hours[-1], "t": ts + HOLD_S, "hold": True})
+    return {"hours": hours, "later": later, "source": f"Open-Meteo-Vorhersage (Raster ~10 km, Gegenprobe {ALT_LABEL})"} if hours else None
+
+
+def rain_soon(fc: dict | None, now: float, minutes: float) -> dict:
+    """Regen in den nächsten `minutes` Minuten laut Vorhersage? {rain, in_minutes, probability, precip}; ohne Daten rain=None."""
+    if not fc or not fc.get("hours"):
+        return {"rain": None, "in_minutes": None, "probability": None, "precip": None}
+    end = now + minutes * 60
+    hh = [h for h in fc["hours"] if not h.get("hold") and h["t"] + 3600 > now and h["t"] <= end]      # Stunde zählt, solange sie noch läuft
+    if not hh:
+        return {"rain": None, "in_minutes": None, "probability": None, "precip": None}
+    wet = [h for h in hh if h.get("rain")]
+    first = min((max(0, round((h["t"] - now) / 60)) for h in wet), default=None)
+    return {"rain": bool(wet), "in_minutes": first,
+            "probability": max((h["rain_p"] for h in hh if h.get("rain_p") is not None), default=None),
+            "precip": max((h["precip"] for h in hh if h.get("precip") is not None), default=None)}
 
 
 def _series(ts: np.ndarray, hours: list[dict], key: str) -> np.ndarray | None:
@@ -399,6 +461,11 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
     eff = weight.sum(axis=1) * STEP_MIN / 60                                 # nutzbare Stunden
     eff_clear = (good * w_moon * w_zen).sum(axis=1) * STEP_MIN / 60          # dieselben Stunden bei klarem Himmel (ohne Wetter)
     sky = _sky(cloud, dark & (ts >= ref), weather, ts, sun, t0, ref)
+    rain = _series(ts, weather["hours"], "rain") if weather else None
+    if sky is not None and rain is not None:
+        m = dark & (ts >= ref) & ~np.isnan(rain)
+        sky["rain_hours"] = round(float((rain[m] >= 50).sum() * STEP_MIN / 60), 1)
+    models = _models(ts, weather, sel & dark) if weather else None
     raw = good.sum(axis=1) * STEP_MIN / 60
     zen_h = (good & (w_zen < ROT_REDUCED)).sum(axis=1) * STEP_MIN / 60                # Stunden mit Abschlag durch Drehung/Zenit
     jmax = np.argmax(np.where(dark[None, :] & future[None, :], alt, -90), axis=1) if len(alt) else np.zeros(0, int)
@@ -487,8 +554,11 @@ def plan(projects: list[dict], cfg: dict, cache: Path, now: float | None = None,
            "sun": [round(float(v), 1) for v in sun[sel]], "cloud": _rounded(cloud, sel),
            "clouds": {k: _rounded(_series(ts, weather["hours"], k), sel) for k in ("low", "mid", "high")} if weather else None,
            "wind": _rounded(_series(ts, weather["hours"], "wind"), sel) if weather else None,
+           "rain": _rounded(rain, sel), "rain_p": _rounded(_series(ts, weather["hours"], "rain_p"), sel) if weather else None,
+           "cover": _rounded(_series(ts, weather["hours"], "cover"), sel) if weather else None,
+           "total": _rounded(_series(ts, weather["hours"], "total"), sel) if weather else None,
            "night_index": night, "nights": _strip(night_sites, site, base0, all_hours, now, cache, bool(cfg.get("weather"))),
-           "forecast": {"covered": cloud is not None and bool(np.isfinite(cloud[sel]).any()), "uncertain": night >= UNCERTAIN_FROM},
+           "forecast": {"covered": cloud is not None and bool(np.isfinite(cloud[sel]).any()), "uncertain": night >= UNCERTAIN_FROM, "models": models},
            "weather": weather, "weather_error": weather_error, "weather_on": bool(cfg.get("weather")), "min_alt": MIN_ALT,
            "horizon": horizon,
            "catalog": {"candidates": len(cands), "messier": sum(c.source == "messier" for c in cands), "astap": sum(c.source == "astap" for c in cands),
@@ -598,6 +668,27 @@ def _clear_window(weather: dict | None, ts: np.ndarray, sun: np.ndarray, t0: flo
         if u is not None:
             run.append(u)
     return None
+
+
+def _models(ts: np.ndarray, weather: dict, mask: np.ndarray) -> dict | None:
+    """Gegenprobe: mittlere wirksame Bedeckung der dunklen Zeit je Modell, `disagree` ab DISAGREE Prozentpunkten Unterschied.
+    `veil`: Gesamtbewölkung hoch, aber überwiegend hohe Schleierwolken (wirksam deutlich weniger)."""
+    cover, alt, total = (_series(ts, weather["hours"], k) for k in ("cover", "cover_alt", "total"))
+    if cover is None:
+        return None
+    m = mask & ~np.isnan(cover)
+    if not m.any():
+        return None
+    main = float(cover[m].mean())
+    out = {"main": round(main), "alt": None, "alt_label": ALT_LABEL, "disagree": False, "veil": False}
+    if total is not None and (mt := mask & ~np.isnan(total)).any():
+        out["total"] = round(float(total[mt].mean()))
+        out["veil"] = bool(out["total"] >= 80 and main <= out["total"] - 25)
+    if alt is not None and (ma := m & ~np.isnan(alt)).any():
+        out["alt"] = round(float(alt[ma].mean()))
+        out["main_cmp"] = round(float(cover[ma].mean()))
+        out["disagree"] = abs(out["alt"] - out["main_cmp"]) >= DISAGREE
+    return out
 
 
 def _sky(cloud, mask: np.ndarray, weather, ts, sun, t0, now) -> dict | None:
