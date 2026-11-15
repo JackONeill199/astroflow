@@ -1132,6 +1132,7 @@ class Pipeline:
             found, fmed, fsig = stackfix.find(mean, cov)
             live.offer(run, live_insight.hotfix, found, mean)        # Einblick: gefundene Punkte im unreparierten Stack
             mean, hotfix = stackfix.repair(mean, cov, found, fmed, fsig)
+            del found, fmed, fsig                       # Vollbild-Median nicht durch die weitere Entwicklung tragen
         kind = proj["kind"]
         if kind in (None, "generic") and (k := objects.kind_of(proj["obj_id"] or proj["name"])) and k != kind:
             kind = k              # ältere Projekte bzw. Messier-Objekte, die nur ASTAP (ohne Art) kannte: Typ nachträglich setzen
@@ -1174,6 +1175,7 @@ class Pipeline:
             params["_ai"] = {k: v for k, v in gx.items() if k in ("bge", "denoise", "smoothing")}
             if gx.get("bge"):                           # Einblick: abgezogenes Hintergrundmodell (vorher − nachher)
                 live.offer(run, live_insight.background, gx_before, mean, "graxpert")
+            del gx_before                               # Stack vor GraXpert nur für den Einblick (raw_mean hält ihn ohnehin)
         if mean.shape[0] == 3 and not narrow and params.get("color_calibration", True) and "wb_gains" not in user:
             pcc = self._photometric(proj, states, mean, cov, lambda m: prog(0.1, "Farbkalibrierung", m), run)
             if pcc:
