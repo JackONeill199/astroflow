@@ -127,3 +127,64 @@ def test_api_serves_insights_only_with_pattern(tmp_path, monkeypatch):
     assert c.get(f"/api/stacking/projects/{pid}").status_code == 200   # Objektseite abgefragt = Live-Ansicht offen
     assert live.watched(pid)
     c.close()
+
+
+def test_browser_plays_real_insights_through_server(tmp_path, monkeypatch, browser):
+    """Ende-zu-Ende ohne Attrappen: echter Server, echte Einblick-Dateien aus processing.process, echte live.js –
+    die Einblick-JSONs laden ohne 404, die Zeichenfläche erscheint, neue Einblicke werden danach abgespielt."""
+    import threading
+    import uvicorn
+    from astroflow.modules.stacking import demo, objects
+    from astroflow.modules.stacking.pipeline import Pipeline
+    from astroflow.modules.stacking.reviewer import ReviewerConfig
+    from astroflow.modules.stacking.stacking import StackState
+    from test_ui_layout import _free_port
+
+    for k, v in {"ASTROFLOW_MODULES": "stacking", "ASTROFLOW_AUTO": "0", "ASTROFLOW_GAIA": "0", "ASTROFLOW_GRAXPERT": "0"}.items():
+        monkeypatch.setenv(k, v)
+    s = load_settings(tmp_path / "data")
+    s.auto = False
+    db = DB(s.db_path)
+    demo.generate(s.input_dir / "demo", n_lights=10, n_darks=0, n_flats=0)
+    pl = Pipeline(s, db, ReviewerConfig())
+    pl.scan()
+    pid = db.one("SELECT project_id FROM frames WHERE kind='light' GROUP BY project_id ORDER BY COUNT(*) DESC")["project_id"]
+    pl.process(pid)
+    port = _free_port()
+    srv = uvicorn.Server(uvicorn.Config(create_app(s), host="127.0.0.1", port=port, log_level="warning"))
+    th = threading.Thread(target=srv.run, daemon=True)
+    th.start()
+    for _ in range(200):
+        if srv.started:
+            break
+        time.sleep(0.05)
+    try:
+        jid = db.x("INSERT INTO jobs(project_id,state,created,stage,message,progress) VALUES(?,'running',?,'Bearbeitung','Stretch',0.9)",
+                   (pid, time.time()))
+        run = live.LiveRun(s.work_dir, pid, job=jid)
+        monkeypatch.setitem(live._watch, pid, time.monotonic() + 3600)
+        mean, cov = StackState.load(s.work_dir / f"p{pid}" / "stack").result()
+        processing.process(mean, cov, {**objects.profile_for("galaxy"), "star_separation": "off"}, live_run=run)
+        run.event("Bearbeitung", "Stretch")
+        kinds = [i["kind"] for i in run.data["insights"]]
+        assert kinds == ["background", "stretch"]
+        ctx = browser.new_context(viewport={"width": 1280, "height": 900})
+        page = ctx.new_page()
+        bad, errors = [], []
+        page.on("response", lambda r: bad.append(r.url) if "/live/" in r.url and r.status >= 400 else None)
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(f"http://127.0.0.1:{port}/#/p/{pid}")
+        page.wait_for_selector(".sl-ins.on", timeout=20000)          # jüngste Einblicke: Hintergrund, dann Stretch
+        page.wait_for_function("document.querySelector('.sl-ins-cap b')?.textContent.startsWith('Hintergrund')", timeout=10000)
+        page.wait_for_function("document.querySelector('.sl-ins-cap b')?.textContent.startsWith('Strecken')", timeout=15000)
+        assert page.evaluate("getComputedStyle(document.querySelector('.sl-ins')).display") != "none"
+        # ein neuer Einblick im laufenden Lauf wird beim nächsten Abruf geladen und abgespielt
+        found = [(0, 30, 40, 9.0), (2, 50, 60, 8.0)]
+        live.offer(run, live_insight.hotfix, found, mean)
+        page.wait_for_function("document.querySelector('.sl-ins-cap b')?.textContent.startsWith('Hotpixel')", timeout=25000)
+        assert not bad, bad
+        assert not errors, errors
+        ctx.close()
+    finally:
+        srv.should_exit = True
+        th.join(10)

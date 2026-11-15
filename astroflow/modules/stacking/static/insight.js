@@ -111,9 +111,9 @@ function createInsight(host) {
     ctx.font = `${size * rem}px ${css.getPropertyValue('--sans') || 'sans-serif'}`; ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'top';
     ctx.fillText(text, x, y);
   }
-  function sides(R, wx, wipe, before, after) {     // Beschriftung beiderseits der Wischkante (Bildmitte senkrecht)
+  function sides(R, wx, wipe, before, after) {     // Beschriftung beiderseits der Wischkante (oberes Drittel, frei vom Diagramm)
     if (wipe <= 0 || wipe >= 1) return;
-    const y = R.y + R.h / 2 - .4 * rem;
+    const y = R.y + R.h * .3;                       // über dem Diagramm unten rechts
     label(after, wx - .4 * rem, y, C.fg, 'right'); label(before, wx + .4 * rem, y, C.fg);
   }
   const panelW = () => Math.min(small() ? W * .5 : W * .38, 18 * rem);

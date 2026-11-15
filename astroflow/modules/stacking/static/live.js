@@ -30,7 +30,7 @@ function createStackLive(host, pid) {
   /* Einblicke (live.insights, insight.js): echte Zwischenergebnisse eines Schritts, passgenau über dem Bild. Neue werden
      nacheinander abgespielt (höchstens 3 warten), danach bleibt das Standbild, bis ein neueres Live-Bild erscheint. */
   const ins = typeof createInsight === 'function' ? createInsight(find('.sl-picture')) : null;
-  let insSeen = 0, insQueue = [], insBusy = false, insEnd = 0, insShown = '';
+  let holdSince = 0, insSeen = 0, insInit = false, insQueue = [], insBusy = false, insEnd = 0, insShown = '';
   const inum = i => +(/-i(\d+)\.json$/.exec(i?.name || '')?.[1] || 0);
   const liveSrc = name => `/api/stacking/projects/${pid}/live/${encodeURIComponent(name)}`;
   async function insPump() {
@@ -44,11 +44,12 @@ function createStackLive(host, pid) {
     const atStart = shown;                               // Bildstand beim Start: ein Wechsel während der Wiedergabe räumt danach ab
     ins.play(data, liveSrc, () => { insBusy = false; insEnd = Date.now(); insShown = atStart; insPump(); });
   }
-  function insights(live, steps) {
+  function insights(live) {
     if (!ins) return;
     const list = live.insights || [];
     let fresh = list.filter(i => inum(i) > insSeen);
-    if (!insSeen) fresh = fresh.slice(-1).filter(i => i.step >= steps - 1);   // neu geöffnet: nur der Einblick des laufenden Schritts
+    if (!insInit) fresh = fresh.slice(-3);                 // erster Abruf des Laufs: die jüngsten Einblicke (höchstens 3) zeigen
+    insInit = true;
     if (list.length) insSeen = Math.max(insSeen, ...list.map(inum));
     if (fresh.length) { insQueue = insQueue.concat(fresh).slice(-3); insPump(); }
     // Standbild ausblenden, sobald ein neueres Live-Bild sichtbar ist (und das Standbild kurz gestanden hat)
@@ -132,7 +133,7 @@ function createStackLive(host, pid) {
       find('.sl-track i').style.width = (percent ?? 28) + '%';
       if (live.run !== run) {
         run = live.run; seen = 0; failed.clear(); queue = []; clearTimeout(timer); timer = 0; visible = null;
-        insSeen = 0; insQueue = []; if (ins?.active) ins.clear();
+        insSeen = 0; insInit = false; insQueue = []; if (ins?.active) ins.clear();
       }
       if (live.preview) {                                          // Endbearbeitung: deren Vorschau hat Vorrang
         if (live.preview !== preview) {
@@ -144,13 +145,20 @@ function createStackLive(host, pid) {
       } else frames(live.frames);
       if (!shown && !live.preview && !live.frames?.length && p.results?.[0]) show(`/api/stacking/results/${p.results[0].id}/jpg`, true);
       caption(live.preview ? null : visible);              // Beschriftung nur für den tatsächlich gezeigten Stand
-      insights(live, live.steps?.length || 0);
+      insights(live);
       const steps = live.steps?.length ? live.steps : [{ stage: j.stage || 'Vorbereitung', label: j.message || 'Verarbeitung wird vorbereitet', done: false }];
       const sig = JSON.stringify(steps);
       if (sig !== stepSig) {
         stepSig = sig;
         find('.sl-pop ol').innerHTML = steps.map(s => `<li class="${s.done ? 'done' : 'current'}"><span aria-hidden="true">${s.done ? '✓' : '·'}</span><div><small>${esc(s.stage)}</small><span>${esc(s.label)}</span></div></li>`).join('');
       }
+    },
+    // Auftrag fertig, aber Einblicke laufen noch bzw. warten: die Objektseite wartet damit (höchstens 20 s), das Ergebnis zu zeigen
+    pending() {
+      const busy = !!ins && !destroyed && (insBusy || insQueue.length > 0);
+      if (!busy) { holdSince = 0; return false; }
+      holdSince ||= Date.now();
+      return Date.now() - holdSince < 20000;
     },
     destroy() { destroyed = true; clearTimeout(timer); viz?.destroy(); ins?.destroy(); images.forEach(img => { img.onload = img.onerror = null; }); },
   };
