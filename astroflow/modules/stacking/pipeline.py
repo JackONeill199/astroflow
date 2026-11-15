@@ -70,6 +70,15 @@ def frame_time(r: dict) -> float | None:
     return d.timestamp() + 0.5 * float(i.get("exptime") or 0)
 
 
+def _glow_changed(old, new) -> bool:
+    """Glühamplitude (ADU) so verschieden, dass die alte Analyse nicht mehr gilt (Faktor 2 und mindestens 20 ADU)."""
+    try:
+        a, b = float(old), float(new)
+    except (TypeError, ValueError):
+        return False
+    return abs(a - b) >= 20 and max(a, b) >= 2 * max(min(a, b), 1.0)
+
+
 def stage_dir(wd: Path, band: str | None) -> Path:
     return wd / ("stufen" if band is None else f"stufen_{band}")
 
@@ -467,6 +476,11 @@ class Pipeline:
         for (key, night), items in groups.items():
             have = [(r, i) for r, i in items if not r["deleted"] and Path(r["path"]).exists()]
             need_glow = glow and night not in glib.nights(key, with_map=True) and len(have) >= calibration.GLOW_MIN_FRAMES
+            if need_glow:
+                # kurze Serie (Feld steht still): Himmelslicht/Schleier bliebe als „Glühen“ im Median – dann gilt die
+                # Bibliothek der Kamera bzw. (erste Nacht) kein Modell, bis eine längere Serie kommt
+                ts = [t for t in (frame_time(r) for r, _ in have) if t is not None]
+                need_glow = not ts or max(ts) - min(ts) >= calibration.GLOW_MIN_SPAN_S
             need_bad = night not in dlib.nights(key) and len(have) >= calibration.DEFECT_MIN_FRAMES
             if need_glow or need_bad:
                 sample = have[:: max(1, len(have) // GLOW_SAMPLE)][:GLOW_SAMPLE]
@@ -578,7 +592,11 @@ class Pipeline:
 
         # --- 0. Sensorglühen (vor Analyse und Registrierung, in Sensorkoordinaten) --
         # (dazu ortsfeste Sensorfehler: Hotpixel-Paare/-Grüppchen, die die Einzelbild-Kosmetik als Stern schützt)
+        old_glow = json.loads(proj["options"] or "{}").get("glow_info") or {}
         glow, bad = self._sensor_maps(rows, lib, cache, progress, glow=opt.get("sensor_glow", True))
+        # Glühmodell einer Nacht deutlich anders als bei der letzten Analyse (z. B. unplausible Messung verworfen): deren
+        # Aufnahmen neu analysieren (Messwerte, Vorschau) und neu stacken – der alte Abzug steckt in beiden
+        reglow = {n for n, v in glow.items() if n in old_glow and _glow_changed(old_glow[n].get("adu"), v.get("adu"))}
         for k, v in (("glow_info", glow), ("defect_info", bad)):
             if v:
                 self.db.x(f"UPDATE projects SET options=json_set(COALESCE(options,'{{}}'),'$.{k}',json(?)) WHERE id=?",
@@ -591,7 +609,7 @@ class Pipeline:
         offline = self.offline(rows)
         lights = rows
         todo = [r for r in rows if not r["deleted"] and r["id"] not in offline and
-                (not r["metrics"] or json.loads(r["metrics"]).get("mv", 1) < quality.METRICS_VERSION)]
+                (not r["metrics"] or json.loads(r["metrics"]).get("mv", 1) < quality.METRICS_VERSION or r["night"] in reglow)]
         if any(r["metrics"] and r["stacked"] for r in todo) and not any((r["deleted"] or r["id"] in offline) and r["stacked"] for r in rows):
             self.db.x("UPDATE projects SET restack=1 WHERE id=?", (project_id,))
             proj["restack"] = 1

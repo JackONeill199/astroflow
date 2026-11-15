@@ -28,4 +28,5 @@ Konzept, Protokoll, Lizenzfrage und offene Proben: `docs/entwicklung/teleskopste
 `autopilot.py` Takt, Wächter, Hindernis/Wolke, Plan aus dem Planer · `plugins.py` Treiber-Plugins · `vaonis_read.py` Status ohne
 Anmeldung · `frames.py` Live-Rohbilder per FTP · `captures.py` Import vom Teleskop ·
 `api.py` `/api/telescope/*` · `static/telescope.js|css` Ansicht `#/teleskop` + Einstellungen. Tests: `tests/test_telescope.py`.
-Dienste: `sites`, `weather_forecast`, `scan_input` (Bilder-Modul, neu), `catalog_resolve`, `catalog_objects` – alle optional.
+Dienste: `sites`, `weather_forecast`, `scan_input` (Bilder-Modul, neu), `frame_quick_metrics` (Bilder-Modul: Messwerte je Live-Rohbild
+für die Beschlag-Erkennung `fog.py`), `catalog_resolve`, `catalog_objects` – alle optional.

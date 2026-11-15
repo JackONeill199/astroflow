@@ -14,6 +14,16 @@ ECC_MAX_REJECT = 1 / 3
 # Obergrenze der Sternerkennung je Aufnahme: bei sternreichen Feldern steht `n_stars` fast immer genau hier
 # (Diagramm „Qualität je Aufnahme“ zeigt dann statt der Sternzahl den Himmelshintergrund)
 MAX_STARS = 150
+# Beschlagene Optik (`veil_metrics`, Zusatzmetrik ohne METRICS_VERSION): heller, ortsfester Schleier, den weder Ebene noch
+# Vignettierung erklären. Gemessen an Rohbildern (10 s, Rauscheinheiten eines Pixels): klare Nächte Vespera/Stellina 0,1–1,3
+# (auch M 33, NGC 6992, M 27, IC 59), beschlagene Vespera (M 35, 14.11.2026) 4,5–5,1.
+VEIL_MIN = 3.0
+VEIL_CENTRE = 0.35         # halbe Breite/Höhe der Bildmitte, die nicht zählt (Objekt samt Halo)
+VEIL_MIN_TILES = 6         # so viele 48-px-Kacheln je Richtung braucht die Messung mindestens
+VEIL_GRID = (6, 10)
+VEIL_MIN_FRAMES = 5
+VEIL_CORR = 0.6
+VEIL_REASON = "Optik beschlagen? (heller Schleier im Bild)"
 
 
 @dataclass
@@ -151,11 +161,61 @@ def analyze_frame(raw: np.ndarray, bayer: bool) -> dict:
     from .skyquality import bg_plane
     m.update(bg_plane(luma, s))
     m.update(shape_metrics(stars, luma.shape, s))      # Gerätediagnose (diagnose.py), ebenfalls ohne Versionserhöhung
+    m.update(veil_metrics(luma, m["noise"]))           # beschlagene Optik – Zusatzmetrik ohne Versionserhöhung (s. VEIL_MIN)
     # Mittleres Sternprofil: runder Kern + schwacher gleichgerichteter Schweif (Ruck der Montierung, core/star_tails.py).
     # Zusatzmetrik ohne Erhöhung von METRICS_VERSION (Entscheidung beim Master) – select_frames prüft nur Frames, die sie haben.
     from ...core.star_tails import tail_profile
     m.update(tail_profile(luma))
     return m
+
+
+def veil_metrics(img: np.ndarray, noise: float | None = None, box: int = 48) -> dict:
+    """Heller Schleier im Hintergrund (beschlagene Optik, Streulicht auf der Linse).
+
+    `veil` = Spannweite (2.–98. Perzentil) des Hintergrunds nach Abzug einer robust angepassten Ebene mit radialem Term,
+    in Rauscheinheiten eines Pixels (wie `grad`). Die Bildmitte (Objekt samt Halo) und der äußerste Rand (Glühen) zählen
+    nicht; Lichtverschmutzung und Mond (fast eben) sowie Vignettierung (radial) fallen heraus. `veil_map` = grober Rest
+    (VEIL_GRID, Zeile 0 oben) für die Prüfung, ob der Schleier über die Serie ortsfest im Sensor sitzt (Optik) oder
+    wandert (Wolken). Leer bei Bildern mit weniger als VEIL_MIN_TILES Kacheln je Richtung."""
+    from .skyquality import _clip_fit
+    h, w = img.shape
+    bh, bw = h // box, w // box
+    if bh < VEIL_MIN_TILES or bw < VEIL_MIN_TILES:
+        return {}                                      # zu kleines Bild für eine Aussage (z. B. Demo-Daten)
+    ch, cw = h // bh, w // bw
+    med = np.median(img[: bh * ch, : bw * cw].reshape(bh, ch, bw, cw).swapaxes(1, 2).reshape(bh, bw, -1), axis=2)
+    yc, xc = (np.arange(bh) + 0.5) * ch - h / 2, (np.arange(bw) + 0.5) * cw - w / 2
+    Y, X = np.meshgrid(yc, xc, indexing="ij")
+    keep = (np.abs(X) < w * 0.44) & (np.abs(Y) < h * 0.44) & ~((np.abs(X) < w * VEIL_CENTRE) & (np.abs(Y) < h * VEIL_CENTRE))
+    # Ebene + radialer Term; ein Schleier von einer Seite bleibt übrig. Eine volle quadratische Fläche schluckte auch den
+    # Beschlag (M 35: → 1,6–2,4), nur die Ebene ließ starke Vignettierung als „Schleier“ stehen (Demo-Daten: bis 6,7).
+    x, y = X / w, Y / h
+    terms = [np.ones_like(x), x, y, x * x + y * y]
+    coef, _ = _clip_fit(np.stack([t[keep] for t in terms], 1), med[keep].astype(float))
+    res = (med - sum(c * t for c, t in zip(coef, terms))) / (noise or noise_sigma(img))
+    r = res[keep]
+    grid = ndi.zoom(res, (VEIL_GRID[0] / bh, VEIL_GRID[1] / bw), order=1, mode="nearest", grid_mode=True)
+    return {"veil": round(float(np.percentile(r, 98) - np.percentile(r, 2)), 2),
+            "veil_map": [[round(float(v), 1) for v in row] for row in grid[: VEIL_GRID[0], : VEIL_GRID[1]]]}
+
+
+def _veiled(metrics: dict[str, dict]) -> set:
+    """Frames, deren Schleier über der Grenze liegt und ortsfest im Sensor sitzt (beschlagene Optik) – mindestens
+    VEIL_MIN_FRAMES solcher Frames in der Serie, jeder ähnlich zum mittleren Schleiermuster (Korrelation ≥ VEIL_CORR).
+    Wandernde Schleier (Wolken) bleiben den übrigen Regeln überlassen."""
+    cand = {k: np.asarray(m["veil_map"], float) for k, m in metrics.items()
+            if m.get("veil", 0) >= VEIL_MIN and np.shape(m.get("veil_map")) == VEIL_GRID}
+    if len(cand) < VEIL_MIN_FRAMES:
+        return set()
+    ref = np.median(np.stack(list(cand.values())), axis=0).ravel()
+    ref = ref - ref.mean()
+    out = set()
+    for k, a in cand.items():
+        a = a.ravel() - a.mean()
+        den = float(np.linalg.norm(a) * np.linalg.norm(ref))
+        if den > 0 and float(a @ ref) / den >= VEIL_CORR:
+            out.add(k)
+    return out if len(out) >= VEIL_MIN_FRAMES else set()
 
 
 def shape_metrics(stars: Stars, shape: tuple, s: int = 1, grid: int = 3) -> dict:
@@ -225,6 +285,7 @@ def select_frames(metrics: dict[str, dict], keep_percent: float | None = None) -
             fr = np.array([m.get("tail_profile_fraction", 0.0) for m in measured.values()], float)
             t_lim = max(t_lim, float(np.quantile(fr, 1 - ECC_MAX_REJECT)) + 1e-9)
         tailed = {k for k, m in measured.items() if star_tails.has_tail(m, t_lim)}
+    veiled = _veiled(ok)
     scores = {}
     for k, m in ok.items():
         sc = (m["n_stars"] / n_med) ** 0.5 / ((m["fwhm"] / f_med) ** 1.5 * (1 + 2 * (m["ecc"] - e_med)))
@@ -232,7 +293,9 @@ def select_frames(metrics: dict[str, dict], keep_percent: float | None = None) -
             sc *= (max(m["snr"], 0.1) / snr_med) ** 0.3 / (1 + 0.3 * max(0.0, m["grad"] / g_med - 1.5))
         scores[k] = float(sc)
         reason = ""
-        if m["n_stars"] < 0.5 * n_med:
+        if k in veiled:
+            reason = VEIL_REASON
+        elif m["n_stars"] < 0.5 * n_med:
             reason = "wenige Sterne (Wolken/Dunst)"
         elif m["fwhm"] > f_lim:
             reason = "unscharf (Seeing/Fokus)"

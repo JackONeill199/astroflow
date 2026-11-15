@@ -18,6 +18,8 @@ OPEN_S = 8.0              # Arm öffnen / einklappen
 INIT_S = 75.0             # Auto-Init inkl. Fokus
 ASTROMETRY_S = 15.0
 PARK_AZ = 0.0
+SIM_FWHM = 3.8            # px, gutes Bild
+DEW_RAMP_S = 20 * 60      # so lange dauert es, bis die Optik ganz beschlagen ist
 OPEN_ALT = 10.0           # nach dem Öffnen steht der Tubus knapp über dem Horizont
 
 
@@ -60,7 +62,7 @@ class Scenario:
     """Zeiten absolut (Unix-Sekunden). Hindernis: {az0, az1, alt} – verdeckt alles unterhalb `alt` im Azimutbereich."""
     clouds: list[tuple[float, float]] = field(default_factory=list)
     obstacles: list[dict] = field(default_factory=list)
-    dew_from: float | None = None
+    dew_from: float | None = None      # Optik beschlägt ab hier, schleichend über DEW_RAMP_S (Sterne weniger, FWHM, Schleier)
     battery: float = 100.0
     battery_per_h: float = 6.0
     offline: list[tuple[float, float]] = field(default_factory=list)     # Verbindung weg
@@ -108,6 +110,7 @@ class SimDriver(Driver):
         self.exposure = 10.0
         self.frames = self.stacked = self.rejected = 0
         self.frame_t = 0.0
+        self.measured: list = []               # (Zeit, Messwerte) je Bild, für `frame_metrics`
         self.stars: int | None = None
         self.astrometry_failed = False
         self.error: str | None = None
@@ -193,18 +196,34 @@ class SimDriver(Driver):
             while self.frame_t <= t:
                 self.frames += 1
                 why = self.blocked(self.frame_t, self.az, self.alt)
-                dew = self.sc.dew_from is not None and self.frame_t >= self.sc.dew_from
-                if why or (dew and self.frames % 4 != 0):
+                fog = self.fogged(self.frame_t)
+                if why or (fog > 0.5 and self.frames % 4 != 0):
                     self.rejected += 1
-                    self.stars = 0 if why == "obstacle" else 4 if why else max(8, self.sc.stars // 6)
+                    self.stars = 0 if why == "obstacle" else 4 if why else max(8, round(self.sc.stars * (1 - 0.8 * fog)))
                 else:
                     self.stacked += 1
-                    self.stars = self.sc.stars
+                    self.stars = round(self.sc.stars * (1 - 0.8 * fog))
+                if not why:                                   # Messwerte je Bild wie vom Dienst `frame_quick_metrics`
+                    self.measured.append((self.frame_t, {"n_stars": self.stars, "fwhm": round(SIM_FWHM * (1 + fog), 2),
+                                                         "veil": round(0.5 + 6 * fog, 2)}))
+                    del self.measured[:-200]
                 self.frame_t += self.exposure
             if self.plan and t >= self.plan[0].end:
                 self._plan_next(t)
         if self.plan and self.step == "idle" and not self.parked and self.initialized:
             self._plan_next(t)
+
+    def fogged(self, t: float) -> float:
+        """0 = klare Optik … 1 = voll beschlagen."""
+        if self.sc.dew_from is None or t < self.sc.dew_from:
+            return 0.0
+        return min(1.0, (t - self.sc.dew_from) / DEW_RAMP_S)
+
+    def frame_metrics(self) -> list[tuple[float, dict]]:
+        """Messwerte der seit dem letzten Abruf aufgenommenen Bilder (holt der Autopilot je Takt ab)."""
+        with self._lock:
+            out, self.measured = self.measured, []
+            return out
 
     def _plan_next(self, t: float):
         """Geräte-Plan: arbeitet weiter, auch wenn AstroFlow nicht verbunden ist (Rückfall)."""
