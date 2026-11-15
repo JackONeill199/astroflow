@@ -3,6 +3,17 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.81.1 – 15.11.2026
+
+### Behoben
+- **Teleskop – Nacht zu Ende planen:** Ist der Plan früh erledigt und gehen neue Ziele erst später auf, wartet der Autopilot auf sie, statt einzuklappen. „Start“ bei offenem Nachtentwurf startet die ganze Nacht mit Vermessung und Neuplanung.
+- **Teleskop – Himmelsscan genauer:** Überhänge (z. B. Dach) trennen Aufstellungen richtig, und auch die Gegenproben halten Abstand zum Mond.
+- **Teleskop – Neustart und Live-Bilder:** Ein abgelehnter Neustart nach Stillstand beendet das Ziel nicht mehr vorzeitig; nach einem Neustart kommen die neuen Bilder automatisch. Wird die Aufnahme in der Vaonis-App gestartet, holt AstroFlow die Live-Bilder trotzdem ab.
+- **Teleskop – Nachtwechsel:** Nach einer ganz bewölkten Nacht lädt der Autopilot ab Mittag den Plan der neuen Nacht. Einstellungen von als Paket installierten Teleskop-Plugins werden angezeigt.
+- **Update-Hinweis:** Schaltet man „Nach Updates suchen“ wieder ein, erscheinen neue Versionen wieder.
+- **SkyTrace – Geschwindigkeit von Punktbewegern:** wird aus den echten Aufnahmezeiten berechnet; fehlende Aufnahmen verfälschen sie nicht mehr.
+- **Bilder – schnellerer Scan:** Neue Aufnahmen werden gebündelt eingetragen; große Uploads sind deutlich schneller eingelesen.
+
 ## 0.81.0 – 15.11.2026
 
 ### Neu
