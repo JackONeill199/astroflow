@@ -159,6 +159,7 @@ class Module(BaseModule):
             ctx.services["report_private_dirs"].append(self.private_dirs)
         from .captures import CaptureImport
         self.captures = CaptureImport(self)                 # Importansicht: vorhandene Aufnahmen vom Teleskop holen
+        ctx.services["telescope_sky"] = self.sky             # „Heute Nacht“: klar/bewölkt laut Teleskop
 
     def private_dirs(self) -> list[str]:
         from . import plugins
@@ -174,6 +175,18 @@ class Module(BaseModule):
         try:
             return book.site_for(night=night) if book else None
         except Exception:
+            return None
+
+    def sky(self) -> dict | None:
+        """Himmel laut Teleskop: {clear, ratio, t, why, source} oder None (nichts Frisches; im Simulator nie – erfundener Himmel)."""
+        try:
+            u = self.unit
+            if u.simulated:
+                return None
+            v = u.pilot.sky_now(u.now())
+            return {**v, "source": MODELS.get(u.cfg["model"], u.cfg["model"])} if v else None
+        except Exception:
+            traceback.print_exc()
             return None
 
     @property

@@ -43,9 +43,12 @@ PARK_TRIES = 3
 # nimmt das Gerät weiter auf (ein Wolkenzug ist meist vorher durch).
 WINDOW_FRAMES = 10
 BAD_RATIO = 0.8
-TOTAL_BAD = 0.5
+TOTAL_BAD = 0.8                # insgesamt so viel verworfen → nie Sterne gesehen, sofort verdeckt
 BAD_GRACE_S = 10 * 60
 CLOUDY = 60                  # % Bewölkung laut Wetterdaten: dann nie „sicher“ ein Hindernis
+SKY_FRESH_S = 15 * 60        # Dienst `telescope_sky`: so alt darf die Messung höchstens sein
+SKY_MIN_FRAMES = 5           # … und so viele Bilder umfassen
+SKY_CLEAR = 0.5              # Anteil guter Bilder, ab dem der Himmel „klar“ heißt
 OK_MEMORY = 20 * 60          # Erfolg in anderer Richtung gilt so lange als Beleg „kein Wolkenhimmel“
 OTHER_DIR = 20.0             # Grad Abstand = andere Richtung
 BLOCK_AZ = 10.0              # gesperrte Richtung: ±Azimut …
@@ -134,7 +137,7 @@ class Autopilot:
         self.proposals: list[dict] = []   # Vorschläge für die Horizontmaske (bis zur Rückfrage)
         self.ok_marks: deque = deque(maxlen=200)     # (t, az, alt) gute Bilder
         self.fail_marks: deque = deque(maxlen=50)    # (t, az, alt)
-        self.samples: deque = deque(maxlen=60)       # (frames, rejected) des aktiven Ziels
+        self.samples: deque = deque(maxlen=60)       # (frames, rejected, t) des aktiven Ziels
         self.bad_since: float | None = None          # seit wann das Fenster fast nur verworfene Bilder zeigt
         self.weather: dict | None = None
         self.weather_t = 0.0
@@ -699,7 +702,7 @@ class Autopilot:
             self.ok_marks.append((now, s.az, s.alt))
         cur.frames, cur.stacked, cur.rejected = s.frames, s.stacked, s.rejected
         if not self.samples or self.samples[-1][0] != s.frames:
-            self.samples.append((s.frames, s.rejected))
+            self.samples.append((s.frames, s.rejected, now))
 
     def _failed(self, it: Item, s: TelescopeState, now: float) -> bool:
         if s.target and s.target.get("id") != it.id:
@@ -758,6 +761,7 @@ class Autopilot:
         clear_forecast = h is not None and h.get("cloud") is not None and h["cloud"] < 30
         cloudy = h is not None and h.get("cloud") is not None and h["cloud"] >= CLOUDY
         self.bad_since = None
+        self.samples.clear()                         # die Messung galt dieser Richtung, nicht dem Himmel (→ `sky_now`)
         self._cmd("stop", self.driver.stop, now=now)
         if other_fail and not elsewhere_ok and not clear_forecast:
             self._end_item(it, "geplant", "", now)
@@ -797,6 +801,26 @@ class Autopilot:
         nxt = self._next_free(now)
         if nxt:
             self._start_item(nxt, now)
+
+    def sky_now(self, now: float) -> dict | None:
+        """Was das Teleskop gerade über den Himmel misst (Dienst `telescope_sky`): Anteil guter Bilder in den letzten
+        `WINDOW_FRAMES` Bildern des laufenden Ziels, bzw. „bewölkt“, wenn der Autopilot eben Wolken erkannt hat.
+        None ohne frische Messung (älter als `SKY_FRESH_S`, zu wenig Bilder, getrennt/eingeklappt) oder nach einem
+        Hindernis (die verworfenen Bilder gehören dann zur Richtung, nicht zum Himmel)."""
+        with self.lock:
+            if self.clouds_at is not None and now - self.clouds_at <= SKY_FRESH_S:
+                return {"clear": False, "ratio": 0.0, "t": self.clouds_at, "why": "Wolken erkannt"}
+            s = self.state
+            if not s.connected or s.parked or not self.samples or self._current() is None:
+                return None
+            f1, r1, t1 = self.samples[-1]
+            if now - t1 > SKY_FRESH_S:
+                return None
+            f0, r0, _ = next((x for x in reversed(self.samples) if x[0] <= f1 - WINDOW_FRAMES), self.samples[0])
+            if f1 - f0 < SKY_MIN_FRAMES:
+                return None
+            ratio = round(1.0 - (r1 - r0) / (f1 - f0), 2)
+            return {"clear": ratio >= SKY_CLEAR, "ratio": ratio, "t": t1, "why": "Anteil guter Bilder"}
 
     # ------------------------------------------------------------ Ansicht --- #
     def add_target(self, t: Target, now: float, hours: float = 1.0) -> Item:

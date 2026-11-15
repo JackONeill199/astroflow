@@ -1009,3 +1009,66 @@ def test_verbindung_weg_ohne_geraeteplan_kein_falscher_hinweis(monkeypatch):
     p, d, clock = make([item(M31, 0.0, 1.0)], sc)
     run(p, clock, 0.55)
     assert "Verbindung zum Teleskop verloren" in texts(p) and "Plan im Gerät" not in texts(p)
+
+
+@pytest.mark.parametrize("name,frames,bad", [("C 51", 75, 25), ("M1", 71, 23)])
+def test_echtbetrieb_drittel_verworfen_ist_nicht_verdeckt(name, frames, bad):
+    """Echtbetrieb 14.11.2026: C 51 (75 Bilder, 25 verworfen) und M1 (71 Bilder, 23 verworfen, Taupunktabstand 1 °C) wurden als
+    „verdeckt“ abgebrochen. Verworfene Bilder in Schüben von bis zu 7 am Stück (Wolkenzug, 10 s je Bild) – nie verdeckt."""
+    p, d, clock = make([item(M31, 0.0, 3.0)], cfg={"fallback": False})
+    cur = p.items[0]
+    cur.status, cur.seen = "aktiv", True
+    pattern = ([False] * 4 + [True] * 7) * 3                       # 33 Bilder mit 3 Schüben zu je 7 verworfenen
+    pattern = (pattern + [False] * frames)[:frames]
+    while sum(pattern) < bad:                                      # restliche Verwürfe einzeln verteilen
+        k = pattern.index(False, len(pattern) - 3 * (bad - sum(pattern)))
+        pattern[k] = True
+    rej, t = 0, clock.now()
+    for n, is_bad in enumerate(pattern, 1):
+        rej += is_bad
+        s = TelescopeState(connected=True, parked=False, target={"id": cur.id}, step="capture", frames=n, stacked=n - rej, rejected=rej)
+        t += 10
+        p._track(s, t)
+        assert not p._failed(cur, s, t), f"{name}: nach {n} Bildern ({rej} verworfen) fälschlich verdeckt"
+    assert rej == bad
+
+
+def test_dauerhaft_verworfen_ist_verdeckt():
+    """Gute Bilder, dann kippt alles (Ziel sinkt hinter einen Baum): nach `BAD_GRACE_S` am Stück verdeckt."""
+    p, d, clock = make([item(M31, 0.0, 3.0)], cfg={"fallback": False})
+    cur = p.items[0]
+    cur.status, cur.seen = "aktiv", True
+    t, n, rej, hit = clock.now(), 0, 0, None
+    for k in range(200):
+        n += 1
+        rej += k >= 60
+        s = TelescopeState(connected=True, parked=False, target={"id": cur.id}, step="capture", frames=n, stacked=n - rej, rejected=rej)
+        t += 10
+        p._track(s, t)
+        if p._failed(cur, s, t):
+            hit = k
+            break
+    assert hit is not None and 60 + ap.BAD_GRACE_S / 10 <= hit <= 60 + ap.BAD_GRACE_S / 10 + ap.WINDOW_FRAMES
+
+
+def test_dienst_telescope_sky():
+    p, d, clock = make([item(M31, 0.0, 3.0)], cfg={"fallback": False})
+    assert p.sky_now(clock.now()) is None                          # noch eingeklappt/keine Bilder
+    run(p, clock, 0.3)
+    v = p.sky_now(clock.now())
+    assert v["clear"] and v["ratio"] >= 0.9 and clock.now() - v["t"] < 120
+    assert p.sky_now(clock.now() + ap.SKY_FRESH_S + 300) is None   # zu alt
+    d.sc.clouds = [(clock.now(), clock.now() + 2 * H)]
+    run(p, clock, 0.05)
+    v = p.sky_now(clock.now())
+    assert v and not v["clear"] and v["ratio"] < 0.5                # Wolkenzug: laut Teleskop bewölkt
+
+
+def test_dienst_telescope_sky_im_modul(tmp_path, monkeypatch):
+    app = _app(tmp_path, monkeypatch)
+    fn = app.state.ctx.services["telescope_sky"]
+    assert fn() is None                                            # Simulator: nie ein erfundener Himmel
+    mod = app.state.modules["telescope"]
+    monkeypatch.setattr(type(mod.unit), "simulated", property(lambda self: False))
+    monkeypatch.setattr(mod.unit.pilot, "sky_now", lambda now: {"clear": True, "ratio": 0.9, "t": now, "why": "x"})
+    assert fn()["clear"] and fn()["source"] == "Vaonis Vespera"
