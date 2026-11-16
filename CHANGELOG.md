@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.82.0 – 16.11.2026
+
+### Neu
+- **Bilder – lineare TIFF/PNG entwickeln:** Ungestreckte 16/32-bit-Bilder (z. B. ein DeepSkyStacker-Stack oder ein Stellina-TIFF) erscheinen beim Import nicht mehr fast schwarz: AstroFlow erkennt sie als „Linear“, zeigt eine gestreckte Vorschau und entwickelt sie auf Knopfdruck wie einen eigenen Stack – mit GraXpert, Plate-Solving, Gaia-Farbkalibrierung, Stretch und Sternentrennung. Einzelbilder mit Bayer-Muster werden debayert. Das Original bleibt als eigene Version erhalten.
+
 ## 0.81.1 – 15.11.2026
 
 ### Behoben
