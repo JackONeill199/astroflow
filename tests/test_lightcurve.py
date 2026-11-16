@@ -285,3 +285,16 @@ def test_common_pattern_is_artifact():
     mag = np.c_[13 + step + rng.normal(0, 0.03, nf), 12.5 + step + rng.normal(0, 0.03, nf),
                 12 + 0.3 * np.sin(np.arange(nf) / 6) + rng.normal(0, 0.03, nf)]
     assert lightcurve.common_pattern([0, 1, 2], mag) == {0, 1}
+
+
+def test_independent_eclipses_are_not_common():
+    """Zwei unabhängige Bedeckungsveränderliche (je ~45 % der Zeit 0,5 mag schwächer, zufällig ~20 % gemeinsam) sind kein
+    Gleichtakt – die frühere Median-Zentrierung hielt sie dafür (Codex-Review PR #152)."""
+    rng = np.random.default_rng(11)
+    nf = 400
+    a = np.zeros(nf)
+    b = np.zeros(nf)
+    a[rng.permutation(nf)[: int(0.45 * nf)]] = 0.5
+    b[rng.permutation(nf)[: int(0.45 * nf)]] = 0.5
+    mag = np.c_[12 + a + rng.normal(0, 0.005, nf), 13 + b + rng.normal(0, 0.005, nf)]
+    assert lightcurve.common_pattern([0, 1], mag) == set()

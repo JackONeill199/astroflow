@@ -547,17 +547,15 @@ def common_pattern(idx: list[int], mag: np.ndarray, r_min: float = 0.7) -> set[i
     Bildfehler statt eines Veränderlichen. Echte Veränderliche schwanken unabhängig voneinander."""
     if len(idx) == 0:
         return set()
-
-    def norm(a):
-        a = a - np.nanmedian(a)
-        return a / (np.nanstd(a) or 1.0)
-    curves = {i: norm(mag[:, i]) for i in idx}
     out = set()
     for a_ in range(len(idx)):
         for b_ in range(a_ + 1, len(idx)):
-            x, y = curves[idx[a_]], curves[idx[b_]]
+            x, y = mag[:, idx[a_]], mag[:, idx[b_]]
             ok = np.isfinite(x) & np.isfinite(y)
-            if ok.sum() >= MIN_FRAMES and float(np.mean(x[ok] * y[ok])) / max(float(np.std(x[ok]) * np.std(y[ok])), 1e-9) > r_min:
+            if ok.sum() < MIN_FRAMES or np.std(x[ok]) == 0 or np.std(y[ok]) == 0:
+                continue
+            # Pearson auf den gemeinsam gültigen Messungen (je Reihe um ihren eigenen Mittelwert zentriert)
+            if float(np.corrcoef(x[ok], y[ok])[0, 1]) > r_min:
                 out |= {idx[a_], idx[b_]}
     return out
 
