@@ -97,6 +97,11 @@ Der Reiter **Analyse** zeigt für importierte Bilder die Objekte im Bild (auch a
 Ausrichtung, eine grobe Einordnung der Bildqualität (Sternschärfe, Sternform, Rauschen, Farbstich) und deine eigenen Aufnahmen desselben Objekts.
 Messungen, die lineare Rohdaten brauchen (Grenzgröße, HR-Diagramm, Farbkalibrierung), gibt es für fertige Bilder bewusst nicht – ehrlich statt geschätzt.
 
+**Lineare TIFFs/PNGs** (16 oder 32 bit, ungestreckt – etwa ein Stack aus DeepSkyStacker, Siril oder der Teleskop-App) wirken sonst fast schwarz.
+AstroFlow erkennt sie beim Import, zeigt eine automatisch gestreckte Vorschau und bietet **Entwickeln** an: Das Bild läuft dann wie ein eigener Stack
+durch Hintergrund (GraXpert), Plate-Solving mit Gaia-Farbkalibrierung, Stretch und Sternentrennung; das Original bleibt als eigene Version erhalten.
+Ein einzelnes, noch nicht debayertes Bild wird debayert – für ein gutes Ergebnis aber besser die Rohbilder als FITS importieren.
+
 ## Analyse: Was dein Bild zeigt
 
 Im Reiter **Analyse** jedes Objekts misst AstroFlow aus dem plate-gelösten Bild die **Grenzgröße**, die erfassten Sterne, den nächsten und fernsten Stern

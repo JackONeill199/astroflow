@@ -48,6 +48,162 @@ def telescope_series(filename: str, exif) -> dict | None:
             "sequence": int(match[1])}
 
 
+# ------------------------------------------------------------------ lineare Bilder (TIFF/PNG mit 16/32 bit) #
+# Stacks aus DeepSkyStacker/Siril/Smart-Teleskop-Apps und Einzelbilder kommen oft ungestreckt: der Himmel liegt bei
+# wenigen Prozent des Wertebereichs, als fertiges Bild angezeigt ist alles fast schwarz. Solche Bilder strecken wir für
+# die Vorschau und bieten an, sie wie einen Master-Stack zu entwickeln (Pipeline.develop).
+LINEAR_MEDIAN = 0.1        # Median der Helligkeit unter 10 % des Wertebereichs …
+LINEAR_TOP = 0.25          # … und 99,5-%-Wert unter 25 % (keine Gamma-Kurve, Sterne/Nebel nicht hochgezogen)
+LINEAR_SPREAD = 8.0        # oder: 99,5-%-Wert höchstens 8× Median (heller Nebel füllt das Feld)
+
+
+def normalized(a: np.ndarray) -> np.ndarray:
+    """Ganzzahl → 0..1 nach Bit-Tiefe; Float: 0..1, Werte über 1,5 (DSS/Siril speichern ADU) auf 65535 bzw. den Höchstwert."""
+    if np.issubdtype(a.dtype, np.integer):
+        return a.astype(np.float32) / np.float32(np.iinfo(a.dtype).max)
+    a = np.nan_to_num(a.astype(np.float32), nan=0, posinf=0, neginf=0)
+    mx = float(a.max()) if a.size else 0.0
+    return a / np.float32(65535.0 if mx <= 65535 else mx) if mx > 1.5 else a
+
+
+def _sample(a: np.ndarray, n: int = 1_000_000) -> np.ndarray:
+    step = max(1, int(np.sqrt(a.shape[0] * a.shape[1] / n)))
+    return a[::step, ::step]
+
+
+def bayer_pattern(a: np.ndarray) -> str | None:
+    """Undebayertes Einzelbild (2D)? Die vier 2×2-Teilgitter einer Farbmaske haben deutlich verschiedene Mediane,
+    die beiden Grün-Pixel (eine Diagonale) aber fast gleiche. Rot und Blau lassen sich nicht sicher unterscheiden –
+    angenommen wird Rot in der ersten Zeile (RGGB bzw. GRBG, die häufigsten Sensoren)."""
+    if a.ndim != 2 or min(a.shape) < 16:
+        return None
+    m = {(i, j): float(np.median(a[i::2, j::2])) for i in (0, 1) for j in (0, 1)}
+    ref = float(np.median(list(m.values()))) + 1e-9
+    spread = (max(m.values()) - min(m.values())) / ref
+    main, anti = abs(m[0, 0] - m[1, 1]) / ref, abs(m[0, 1] - m[1, 0]) / ref
+    if spread < 0.05 or min(main, anti) > 0.25 * spread:
+        return None                          # Graustufen/Mono oder keine klare Grün-Diagonale
+    return "RGGB" if main > anti else "GRBG"     # Grün auf der Nebendiagonale (0,1)/(1,0) → RGGB
+
+
+def linear_info(a: np.ndarray, bit_depth: int) -> dict | None:
+    """a: Werte 0..1 (H,W) oder (H,W,C). Kennzahlen, wenn das Bild linear (ungestreckt) ist, sonst None.
+    8-bit-Bilder gelten immer als fertig."""
+    if bit_depth < 16:
+        return None
+    bayer = bayer_pattern(a)
+    if bayer:                                # Farbmaske: Mittel je 2×2-Block statt einzelner Farbpixel
+        H, W = a.shape[0] // 2 * 2, a.shape[1] // 2 * 2
+        L = _sample(a[:H, :W].reshape(H // 2, 2, W // 2, 2).mean((1, 3)))
+    else:
+        L = _sample(a if a.ndim == 2 else a[..., :3].mean(-1))
+    med, top = (float(v) for v in np.percentile(L, (50, 99.5)))
+    if med >= LINEAR_MEDIAN or not (top < LINEAR_TOP or (med > 0.002 and top < LINEAR_SPREAD * med)):
+        return None
+    out = {"median": round(med, 4), "p995": round(top, 4), "channels": 1 if a.ndim == 2 else 3}
+    if bayer:
+        out.update(bayer=bayer, single=True, channels=3)
+    return out
+
+
+def to_channels(a: np.ndarray, bayer: str | None) -> np.ndarray:
+    """(H,W[,C]) 0..1 in Bildorientierung → (C,H,W) float32; Farbmaske debayert, Alphakanal verworfen."""
+    if a.ndim == 3:
+        return np.ascontiguousarray(np.moveaxis(a[..., :3], -1, 0), dtype=np.float32)
+    if bayer:
+        from .fits_io import debayer
+        H, W = a.shape[0] // 2 * 2, a.shape[1] // 2 * 2
+        return debayer(np.ascontiguousarray(a[:H, :W], dtype=np.float32), bayer)
+    return a[None].astype(np.float32)
+
+
+def stretched_preview(a: np.ndarray, bayer: str | None = None) -> np.ndarray:
+    """Automatisch gestreckte Anzeige (H,W,3) uint8 eines linearen Bildes. Je Kanal eigener Schwarzpunkt und
+    Mittelton (wie die Autostretch-Ansicht in Siril/PixInsight): ungestreckte Stacks haben oft einen kräftigen
+    Farbstich im Himmel, verknüpft gestreckt wäre die Vorschau einfarbig. Die echte Farbe macht erst die Entwicklung."""
+    from .processing import mtf
+    img = to_channels(a, bayer)
+    out = np.empty((3,) + img.shape[1:], np.uint8)
+    for c in range(3):
+        x = img[min(c, img.shape[0] - 1)]
+        s = _sample(x)
+        med = float(np.median(s))
+        sig = 1.4826 * float(np.median(np.abs(s - med))) + 1e-9
+        lo, hi = med - 2.8 * sig, max(float(np.percentile(s, 99.95)), med + 10 * sig)
+        y = np.clip((x - lo) / (hi - lo), 0, 1)
+        m0 = float(np.clip((med - lo) / (hi - lo), 1e-5, 0.9))
+        t = 0.15
+        m = float(np.clip(m0 * (t - 1) / (2 * t * m0 - t - m0), 1e-4, 0.999))
+        out[c] = (np.clip(mtf(y, m), 0, 1) * 255 + .5).astype(np.uint8)
+    return np.ascontiguousarray(np.moveaxis(out, 0, -1))
+
+
+def read_linear(path: str | Path, info: dict) -> np.ndarray:
+    """Original eines linearen Imports als Master-Stack (C,H,W) float32 in ADU (0..65535), FITS-Orientierung
+    (Zeile 0 unten, wie Pipeline._save es zurückdreht) – Pipeline.develop rechnet damit wie mit einem eigenen Stack."""
+    path = Path(path)
+    if path.suffix.lower() in (".tif", ".tiff"):
+        import tifffile
+        with tifffile.TiffFile(path) as t:
+            page = t.pages[0]
+            a = page.asarray()
+            if a.ndim == 3 and a.shape[0] in (3, 4) and a.shape[-1] not in (3, 4):
+                a = np.moveaxis(a, 0, -1)         # planar gespeichert (C,H,W)
+    else:
+        with Image.open(path) as im:
+            a = np.asarray(im)
+    img = to_channels(normalized(a), (info.get("linear") or {}).get("bayer"))
+    img *= np.float32(65535)
+    return np.ascontiguousarray(img[:, ::-1])
+
+
+class PictureMaster:
+    """Ersatz für StackState bei importierten linearen Bildern: ein Bild, volle Abdeckung, keine Rohframes."""
+
+    def __init__(self, mean: np.ndarray, key: str):
+        self.mean = mean
+        self.meta = {"frames": {}, "ref_fid": f"picture:{key}", "scale": 1, "picture": True}
+
+    def result(self) -> tuple[np.ndarray, np.ndarray]:
+        return self.mean, edge_coverage(self.mean)
+
+
+def edge_coverage(mean: np.ndarray, limit: float = 0.15) -> np.ndarray:
+    """Abdeckung (H,W) 0/1 eines fremden Stacks schätzen: Randzeilen/-spalten, die nur von wenigen Aufnahmen gedeckt
+    sind (Versatz beim Registrieren in DSS/Siril), rauschen viel stärker oder sind leer. Höchstens `limit` je Seite."""
+    L = mean.mean(0)
+    H, W = L.shape
+    cov = np.ones((H, W), np.float32)
+
+    def bad(lines: np.ndarray) -> np.ndarray:            # je Zeile: Pixelrauschen (Nachbardifferenz) bzw. leer
+        noise = np.median(np.abs(np.diff(lines, axis=1)), axis=1)
+        ref = float(np.median(noise)) + 1e-9
+        return (noise > 3 * ref) | (np.median(lines, axis=1) <= 0)
+
+    for axis, n in ((0, H), (1, W)):
+        b = bad(L if axis == 0 else L.T)
+        k = int(limit * n)
+        top = next((i for i in range(k) if not b[i]), k)
+        bottom = next((i for i in range(k) if not b[n - 1 - i]), k)
+        if axis == 0:
+            cov[:top], cov[n - bottom:] = 0, 0
+        else:
+            cov[:, :top], cov[:, n - bottom:] = 0, 0
+    return cov
+
+
+def linear_source(db, project_id: int) -> dict | None:
+    """Neuester importierter Stand eines Projekts, der linear ist und dessen Original noch existiert:
+    {"rid", "path", "info"} – sonst None."""
+    for r in db.q("SELECT id, files, stats FROM results WHERE project_id=? AND json_extract(stats,'$.imported.linear') IS NOT NULL "
+                  "AND json_extract(stats,'$.developed') IS NULL "
+                  "ORDER BY COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC, id DESC", (project_id,)):
+        f = json.loads(r["files"] or "{}").get("original")
+        if f and Path(f).exists():
+            return {"rid": r["id"], "path": f, "info": json.loads(r["stats"])["imported"]}
+    return None
+
+
 def attach_previews(eng):
     """Teleskop-Verläufe neben den Rohdaten einordnen, auch wenn der Scan erst nach dem Upload fertig wird."""
     def object_key(name):
@@ -117,7 +273,7 @@ def import_picture(eng, stream, filename: str, notify: bool = True) -> dict:
                 series = telescope_series(filename, exif)
                 observed = exif.get(36867) or exif.get(306)
                 observed = observed if isinstance(observed, str) else None
-                bit_depth = 8
+                bit_depth, raw = 8, None
                 if fmt == "TIFF":
                     import tifffile
                     a = tifffile.imread(src)
@@ -126,26 +282,31 @@ def import_picture(eng, stream, filename: str, notify: bool = True) -> dict:
                     if a.ndim not in (2, 3) or (a.ndim == 3 and a.shape[-1] not in (3, 4)):
                         raise ValueError(MSG_TIFF)
                     bit_depth = a.dtype.itemsize * 8
-                    if np.issubdtype(a.dtype, np.integer):
-                        a = a.astype(np.float32) / np.iinfo(a.dtype).max
-                    else:                         # Float-TIFF: Anzeigewerte 0..1, kein automatischer Stretch
-                        a = np.nan_to_num(a, nan=0, posinf=1, neginf=0)
-                    preview = Image.fromarray((np.clip(a, 0, 1) * 255 + .5).astype(np.uint8))
+                    raw = a
+                elif im.mode.startswith("I;16") or im.mode == "I":
+                    raw, bit_depth = np.clip(np.asarray(im), 0, 65535).astype(np.uint16), 16   # PNG 16 bit (Modus I;16 bzw. I)
+                linear = None
+                if raw is not None:
+                    a = normalized(raw)
+                    linear = linear_info(a, bit_depth)
+                    if linear:                    # lineares Bild (Stack/Einzelbild): Vorschau strecken, sonst fast schwarz
+                        linear["software"] = str(exif.get(305) or "").strip()[:60] or None
+                        preview = Image.fromarray(stretched_preview(a, linear.get("bayer")))
+                    else:                         # schon gestreckt: Anzeigewerte 0..1 unverändert
+                        preview = Image.fromarray((np.clip(a[..., :3] if a.ndim == 3 else a, 0, 1) * 255 + .5).astype(np.uint8))
+                    del raw, a
                     orientation = exif.get(274)
                     if orientation:
                         preview.getexif()[274] = orientation
                     preview = ImageOps.exif_transpose(preview).convert("RGB")
                 else:
-                    if im.mode.startswith("I;16") or im.mode == "I":
-                        a = np.asarray(ImageOps.exif_transpose(im), dtype=np.float32)
-                        bit_depth = 16
-                        preview = Image.fromarray((np.clip(a / 65535, 0, 1) * 255 + .5).astype(np.uint8)).convert("RGB")
-                    else:
-                        preview = ImageOps.exif_transpose(im).convert("RGB")
+                    preview = ImageOps.exif_transpose(im).convert("RGB")
                 preview.load()
             info = {"filename": filename, "format": fmt, "bit_depth": bit_depth,
                     "width": preview.width, "height": preview.height, "date_obs": observed,
                     "sha256": digest.hexdigest()}
+            if linear:
+                info["linear"] = linear
             for tag, k in ((271, "make"), (272, "model")):   # Gerät hilft beim Plate-Solving (Bildfeld des Smart-Teleskops)
                 if isinstance(exif.get(tag), str) and exif[tag].strip():
                     info[k] = exif[tag].strip()[:60]

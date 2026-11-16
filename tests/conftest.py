@@ -151,6 +151,23 @@ def _import_solved_picture(app, port: int):
     app.state.modules["stacking"].eng.picture_solve._apply(pid, sol)
 
 
+def _import_linear_pictures(app, port: int):
+    """Zwei lineare 16-bit-TIFFs (wie ein DSS-Stack): eines entwickelt (zwei Versionen), eines noch nicht."""
+    import io
+    import httpx
+    import numpy as np
+    import tifffile
+    from test_picture_linear import star_field
+    base = f"http://127.0.0.1:{port}"
+    ids = []
+    for seed, name in ((3, "Stacked 155 Frames.tif"), (4, "Linear neu.tif")):
+        buf = io.BytesIO()
+        tifffile.imwrite(buf, star_field(seed=seed).astype(np.uint16), photometric="rgb")
+        ids.append(httpx.post(f"{base}/api/stacking/upload", files={"files": (name, buf.getvalue())}, headers={"Origin": base},
+                              timeout=60).json()["pictures"][0]["id"])
+    app.state.modules["stacking"].eng.pl.develop(ids[0], {"mode": "develop"}, start=0.05)
+
+
 @pytest.fixture(scope="session")
 def server(tmp_path_factory):
     """Testserver für die Oberflächentests (alle Module, Demodaten) – je Prozess/Worker einmal, auf freiem Port."""
@@ -203,6 +220,7 @@ def server(tmp_path_factory):
                 break
             time.sleep(0.05)
         _import_solved_picture(app, port)
+        _import_linear_pictures(app, port)
         yield f"http://127.0.0.1:{port}", pid
         srv.should_exit = True
         th.join(10)

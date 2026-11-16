@@ -178,7 +178,45 @@ ROUTES = ["#/", "#/nacht", "#/observatorium", "#/observatorium/plan", "#/observa
 def _imported_pid(base: str) -> int:
     """Das im Server-Fixture importierte, gelöste fertige Bild (Reiter „Analyse“ für fertige Bilder)."""
     import httpx
-    return next(p["id"] for p in httpx.get(f"{base}/api/stacking/projects").json() if p.get("imported"))
+    return next(p["id"] for p in httpx.get(f"{base}/api/stacking/projects").json()
+                if p.get("imported") and not p["options"]["imported"].get("linear"))
+
+
+def _linear_pids(base: str) -> tuple[int, int]:
+    """Lineare TIFF-Importe aus dem Server-Fixture: (entwickelt, noch nicht entwickelt)."""
+    import httpx
+    lin = {p["options"]["imported"]["filename"]: p["id"] for p in httpx.get(f"{base}/api/stacking/projects").json()
+           if p.get("imported") and p["options"]["imported"].get("linear")}
+    return lin["Stacked 155 Frames.tif"], lin["Linear neu.tif"]
+
+
+@pytest.mark.parametrize("size", list(SIZES))
+def test_linear_picture_views(server, browser, size):
+    """Lineare TIFFs: Hinweis + „Entwickeln“ vor, „Neu entwickeln“ und Versionen nach der Entwicklung; nichts ragt über."""
+    base, _ = server
+    dev, new = _linear_pids(base)
+    w, h = SIZES[size]
+    page = browser.new_page(viewport={"width": w, "height": h})
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    problems = {}
+    for route in (f"#/p/{new}/bild", f"#/p/{dev}/bild", f"#/p/{dev}/versionen", f"#/p/{dev}/analyse"):
+        page.goto(f"{base}/{route}")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(600)
+        if found := page.evaluate(FIND_OVERFLOW):
+            problems[route] = found
+        if route.endswith(f"{new}/bild"):
+            assert "Lineares Bild erkannt" in page.inner_text("#tab")
+            assert page.locator("#devPic").inner_text().strip() == "Entwickeln" and page.locator("#noteDev").count() == 1
+        elif route.endswith(f"{dev}/bild"):
+            assert "Aus dem importierten Bild entwickelt" in page.inner_text("#tab")
+            assert page.locator("#devPic").inner_text().strip() == "Neu entwickeln"
+        elif route.endswith("versionen"):
+            assert page.locator(".ver").count() == 2 and "Entwickelt · Stacked 155 Frames.tif" in page.inner_text("#tab")
+    page.close()
+    assert not errors, errors
+    assert not problems, "\n".join(f"{r}:\n  " + "\n  ".join(p) for r, p in problems.items())
 
 
 @pytest.mark.parametrize("size", list(SIZES))

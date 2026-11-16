@@ -653,6 +653,10 @@ def build_router(eng: Engine) -> APIRouter:
                          "views": [k for k in ("stars", "comet") if k in json.loads(x["files"] or "{}")]}
                         for x in db.q("SELECT * FROM results WHERE project_id=? ORDER BY COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC,id DESC", (pid,))]
         v["hotpixel_hint"] = not v.get("imported") and eng.pl.hotpixel_hint(pid)
+        if v.get("imported"):                            # lineares TIFF/PNG mit Original: „Entwickeln“ anbieten
+            from .picture_import import linear_source
+            src = linear_source(db, pid)
+            v["linear"] = {"rid": src["rid"], **src["info"]["linear"]} if src else None
         # Verzerrungskorrektur: globaler Modus (für „Wie global“) und Modus, mit dem der Stack aufgebaut wurde
         v["distortion"] = {"global": registration.distortion_mode(None), "stack": eng.pl.distortion_state(pid)}
         v["mosaic"] = eng.pl.mosaic_state(pid)          # Mosaik-Stack (Fläche, Streuung) | False | None = noch kein Stack
@@ -731,7 +735,11 @@ def build_router(eng: Engine) -> APIRouter:
         if not p:
             raise HTTPException(404)
         if json.loads(p["options"] or "{}").get("input_type") == "picture":
-            raise HTTPException(409, "Dieses Bild wurde fertig importiert. Zum Stacken oder Neu-Entwickeln sind Rohaufnahmen erforderlich.")
+            from .picture_import import linear_source
+            if body.get("mode") != "develop" or body.get("restack") or not linear_source(db, pid):
+                raise HTTPException(409, "Dieses Bild wurde fertig importiert und ist schon gestreckt. Zum Stacken oder "
+                                         "Entwickeln sind Rohaufnahmen oder ein lineares Bild (16/32 bit) erforderlich.")
+            return {"job": eng.enqueue(pid, {"mode": "develop"})}
         if body.get("restack"):
             if db.one("SELECT id FROM frames WHERE project_id=? AND deleted=1 AND stacked=1 LIMIT 1", (pid,)):
                 raise HTTPException(409, "Komplett neu stacken ist nicht möglich: die hochgeladenen Einzelbilder wurden "

@@ -1105,6 +1105,16 @@ class Pipeline:
             raise ValueError("Projekt nicht gefunden")
         opt = self._options(proj, extra)
         states = self._master(project_id)
+        source = None
+        if not states and opt.get("input_type") == "picture":
+            # importiertes lineares Bild (TIFF/PNG aus DSS, Siril, Smart-Teleskop-App): wie einen Master-Stack entwickeln
+            from . import picture_import
+            source = picture_import.linear_source(self.db, project_id)
+            if not source:
+                raise ValueError("Dieses Bild ist nicht linear oder das Original fehlt – es lässt sich nicht neu entwickeln.")
+            progress(start, "Bearbeitung", "Original einlesen")
+            states = {None: picture_import.PictureMaster(picture_import.read_linear(source["path"], source["info"]),
+                                                         source["info"]["sha256"])}
         if not states:
             raise ValueError("Noch kein Master-Stack vorhanden – bitte zuerst verarbeiten.")
         prog = lambda f, stage, msg="": progress(start + (1 - start) * f, stage, msg)
@@ -1144,7 +1154,7 @@ class Pipeline:
         if kind in (None, "generic") and (k := objects.kind_of(proj["obj_id"] or proj["name"])) and k != kind:
             kind = k              # ältere Projekte bzw. Messier-Objekte, die nur ASTAP (ohne Art) kannte: Typ nachträglich setzen
             self.db.x("UPDATE projects SET kind=? WHERE id=?", (kind, project_id))
-        is_comet = comet.active(proj, opt)
+        is_comet = comet.active(proj, opt) and source is None
         pname = opt["profile"] if opt["profile"] != "auto" else ("comet" if is_comet else (kind or "generic"))
         user = opt.get("params") or {}
         params = {**objects.profile_for(pname), **user}
@@ -1230,6 +1240,10 @@ class Pipeline:
         stats.update({"profile": pname, "narrowband": narrow, "frames": len(stacked), "exposure_s": exposure,
                       "palette": palette, "bands": band_stats,
                       "nights": sorted({r["night"] for r in stacked if r["night"]})})   # Bild-Tutor: nur Nächte dieses Ergebnisses
+
+        if source is not None:                         # Herkunft: Oberfläche zeigt Dateiname/Format wie beim Import
+            stats["imported"] = source["info"]
+            stats["developed"] = {"from": source["rid"], "single": bool(source["info"]["linear"].get("single"))}
 
         # --- Ausgabe ----------------------------------------------------------
         prog(0.85, "Speichern")

@@ -52,6 +52,10 @@ class Insights:
         bei Sternhaufen danach auch das HR-Diagramm."""
         from .hrd import is_cluster
         cfg = self.settings()
+        row = self.eng.db.one("SELECT json_extract(p.options,'$.input_type') it FROM results r JOIN projects p ON p.id=r.project_id "
+                              "WHERE r.id=?", (rid,)) if rid else None
+        if row and row["it"] == "picture":               # entwickeltes Fremdbild: keine Rohdaten/Stack für Tiefe und Diagnose
+            return
         if rid and cfg["auto_depth"] and cfg["gaia"]:
             row = self.eng.db.one("SELECT r.project_id, p.kind, p.name FROM results r JOIN projects p ON p.id=r.project_id WHERE r.id=?", (rid,))
             if row and (self.eng.s.work_dir / f"p{row['project_id']}" / "wcs.json").exists():
