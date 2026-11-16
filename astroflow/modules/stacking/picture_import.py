@@ -66,6 +66,12 @@ def normalized(a: np.ndarray) -> np.ndarray:
     return a / np.float32(65535.0 if mx <= 65535 else mx) if mx > 1.5 else a
 
 
+def png_pixels(im) -> np.ndarray:
+    """16-bit-PNG als uint16. Pillow liefert Graustufen je nach Fassung als Modus I;16 (uint16) oder I (int32) –
+    der Wertebereich ist in beiden Fällen 0..65535, nicht der des Datentyps (int32 hieße ~32 000× zu dunkel)."""
+    return np.clip(np.asarray(im), 0, 65535).astype(np.uint16)
+
+
 def _sample(a: np.ndarray, n: int = 1_000_000) -> np.ndarray:
     step = max(1, int(np.sqrt(a.shape[0] * a.shape[1] / n)))
     return a[::step, ::step]
@@ -153,7 +159,7 @@ def read_linear(path: str | Path, info: dict) -> np.ndarray:
             orientation = im.getexif().get(274)
     else:
         with Image.open(path) as im:
-            a = np.asarray(im)
+            a = png_pixels(im) if im.mode.startswith("I") else np.asarray(im)
             orientation = im.getexif().get(274)
     img = oriented(to_channels(normalized(a), (info.get("linear") or {}).get("bayer")), orientation)
     img *= np.float32(65535)
@@ -296,7 +302,7 @@ def import_picture(eng, stream, filename: str, notify: bool = True) -> dict:
                     bit_depth = a.dtype.itemsize * 8
                     raw = a
                 elif im.mode.startswith("I;16") or im.mode == "I":
-                    raw, bit_depth = np.clip(np.asarray(im), 0, 65535).astype(np.uint16), 16   # PNG 16 bit (Modus I;16 bzw. I)
+                    raw, bit_depth = png_pixels(im), 16
                 linear = None
                 if raw is not None:
                     a = normalized(raw)

@@ -192,3 +192,27 @@ def test_original_keeps_object_labels_after_develop(tmp_path):
         (eng.s.work_dir / f"p{p['id']}" / "wcs.json").write_text('{"key": "x", "wcs": {}}')     # wie nach Gaia-Kalibrierung
         objs = c.get(f"/api/stacking/results/{p['result']['id']}/objects").json()
         assert [o["name"] for o in objs["objects"]] == ["M81"]
+
+
+def test_16bit_png_as_int32_keeps_adu(tmp_path, monkeypatch):
+    """Pillow liefert 16-bit-Graustufen-PNGs teils als Modus I (int32): Werte bleiben ADU 0..65535 (nicht /2³¹)."""
+    g = star_field()[..., 1].astype(np.uint16)
+    f = tmp_path / "M81.png"
+    Image.fromarray(g).save(f)
+    real_open = Image.open
+
+    def as_int32(fp, *a, **kw):                               # ältere/neuere Pillow-Fassung nachstellen
+        im = real_open(fp, *a, **kw)
+        if im.mode.startswith("I;16"):
+            im.load()
+            out = im.convert("I")
+            out.info, out.getexif = im.info, im.getexif
+            return out
+        return im
+
+    monkeypatch.setattr(pi.Image, "open", as_int32)
+    with pi.Image.open(f) as im:
+        assert im.mode == "I" and np.asarray(im).dtype == np.int32
+    m = pi.read_linear(f, {})
+    assert abs(float(np.median(m)) - float(np.median(g))) < 2      # ADU erhalten, nicht ~32 000× dunkler
+    assert pi.linear_info(pi.normalized(pi.png_pixels(Image.fromarray(g.astype(np.int32)))), 16)["median"] > 0.01
