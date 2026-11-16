@@ -502,13 +502,16 @@ async function projectView(el, id, tab = 'bild') {
 
   // Fertig importiertes Bild: Objekt per Plate-Solving (Hintergrund) bzw. von Hand über den Namen
   const solving = () => ['queued', 'running'].includes(p.options?.picture_solve?.state);
+  // Erfolgshinweis nach dem Plate-Solving: einmal gelesen, je Projekt ausblendbar (Umbenennen bleibt unter „Mehr“/Titel)
+  const psSeen = () => { const v = store.get('bild.psSeen', []); return Array.isArray(v) ? v : []; };
   function pictureSolveNotice() {
     const ps = p.options?.picture_solve || {};
     if (solving()) return `<div class="notice" id="psNote">${icon('star')}<div><b>Objekt wird bestimmt …</b><div class="mut sm">${ps.state === 'queued' ? 'Wartet auf das Plate-Solving.'
       : 'ASTAP sucht das Sternmuster am Himmel – blind kann das ein bis fünf Minuten dauern.'} Das Original bleibt unverändert.</div></div><span class="badge-dot run">läuft</span></div>`;
-    if (ps.state === 'done' && ps.object && !p.can_solve) return `<div class="notice" id="psNote">${icon('star')}<div><b>Objekt per Plate-Solving bestimmt: ${esc(ps.object)}</b>
+    if (ps.state === 'done' && ps.object && !p.can_solve) return psSeen().includes(p.id) ? '' : `<div class="notice" id="psNote">${icon('star')}<div><b>Objekt per Plate-Solving bestimmt: ${esc(ps.object)}</b>
       <div class="mut sm">Bildfeld ${(+ps.solution?.fov_w).toFixed(2)}° × ${(+ps.solution?.fov_h).toFixed(2)}° · ${(+ps.solution?.scale).toFixed(1)}″/px. Stimmt etwas nicht? Über „Namen setzen“ korrigieren.</div></div>
-      <span class="grow"></span><button class="btn ghost sm" id="psName">Namen setzen</button></div>`;
+      <span class="grow"></span><button class="btn ghost sm" id="psName">Namen setzen</button>
+      <button class="tbtn" id="psHide" title="Hinweis ausblenden" aria-label="Hinweis ausblenden">${icon('x')}</button></div>`;
     if (!p.can_solve) return '';
     const msg = ps.state === 'failed' ? ps.message : ps.state === 'done' ? ps.message
       : 'Weder Dateiname noch Metadaten nennen ein Himmelsobjekt. Plate-Solving sucht das Sternmuster am Himmel; alternativ den Namen selbst setzen (z. B. „IC 1805“).';
@@ -582,6 +585,10 @@ async function projectView(el, id, tab = 'bild') {
     };
     $('#solveBtn')?.addEventListener('click', solve);
     $('#psName')?.addEventListener('click', rename);
+    $('#psHide')?.addEventListener('click', () => {
+      store.set('bild.psSeen', [...psSeen().filter(i => i !== p.id), p.id].slice(-500));
+      $('#psNote')?.remove();
+    });
     drawTab(false);
   }
   // Kontextpanel „Session“: Aufnahmen, Belichtung, Nächte, Status, Himmelsposition (aktualisiert sich mit dem Auftrag)

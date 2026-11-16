@@ -1133,3 +1133,25 @@ def test_tonight_tooltip_not_sticky(server, browser, tmp_path, monkeypatch):
     page.touchscreen.tap(*away); page.wait_for_selector('.tn-tooltip', state='hidden')
     page.close()
     assert not errors, errors
+
+
+def test_plate_solving_hinweis_ausblenden(server, browser):
+    """Der Erfolgshinweis nach dem Plate-Solving lässt sich je Projekt schließen und bleibt nach dem Neuladen weg."""
+    import httpx
+    base, _ = server
+    pid = next(p["id"] for p in httpx.get(f"{base}/api/stacking/projects").json()
+               if p.get("imported") and (p["options"].get("picture_solve") or {}).get("state") == "done")
+    page = browser.new_page(viewport={"width": 1440, "height": 900})
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{base}/#/p/{pid}/bild")
+    page.wait_for_selector("#psNote #psHide")
+    page.click("#psHide")
+    assert page.locator("#psNote").count() == 0
+    page.reload()
+    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(600)
+    assert page.locator("#psNote").count() == 0 and page.locator("#rename").count() == 1
+    page.evaluate("localStorage.clear()")
+    page.close()
+    assert not errors, errors
