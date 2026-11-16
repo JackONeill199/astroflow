@@ -628,6 +628,22 @@ def _state_meta(pl, pid: int) -> tuple[dict, str | None]:
     return best[1], band
 
 
+NARROW_RE = re.compile(r"\bh\s*-?a(lpha)?\b|hα|\bo\s*-?iii\b|\bo3\b|\bs\s*-?ii\b|\bs2\b|duo|dual|\bnb\b|enhance|extreme|narrow", re.I)
+
+
+def narrowband(band: str | None, filt: str | None) -> bool:
+    """Schmalband (Ha/OIII/SII als Mono-Band oder Dual-/Schmalbandfilter vor der Farbkamera): keine V-Fotometrie."""
+    from .channels import NARROW
+    return band in NARROW or bool(NARROW_RE.search(filt or ""))
+
+
+NARROW_EXPORT = "Schmalband-Aufnahmen sind keine V-Fotometrie – ein AAVSO-Export ist dafür gesperrt (CSV geht)."
+
+
+class ExportError(ValueError):
+    """Export nicht möglich – feste Meldung für die Oberfläche."""
+
+
 def filter_code(band: str | None, color: bool) -> str:
     """AAVSO-Filterkürzel der Messung: Farbkamera → grüne Pixel (TG), Mono ohne Filter/L → CV, sonst Tricolor-Kürzel."""
     if color:
@@ -712,8 +728,9 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
     sel = np.nonzero(snr >= need)[0][:MAX_STARS]
     gi = gi[sel]
     # bekannte Veränderliche ↔ Gaia (nächster gemessener Stern innerhalb MATCH_AS), sonst eigene Position
+    from .hrd import dra                            # RA um die Feldmitte entfalten (Felder über 0°/360°)
     cosd = math.cos(math.radians(dec0))
-    gtree = cKDTree(np.c_[cat["ra"][gi] * cosd, cat["dec"][gi]]) if len(gi) else None
+    gtree = cKDTree(np.c_[dra(cat["ra"][gi], ra0) * cosd, cat["dec"][gi]]) if len(gi) else None
     targets: dict[int, dict] = {}
     extra = []                                      # Veränderliche ohne gemessenen Gaia-Partner: an der Katalogposition messen
     kx, ky = wcs.world_to_pixel_values(np.array([k["ra"] for k in known] or [0.0]), np.array([k["dec"] for k in known] or [0.0]))
@@ -725,8 +742,8 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
             # im Umkreis der Gaia-Stern mit passender Helligkeit (Katalog: Maximum + halbe Amplitude), sonst der nächste
             ref_mag = kv["max"] + (kv.get("amp") or 0) / 2 if kv.get("max") is not None else None
             best = None
-            for cand in gtree.query_ball_point([kv["ra"] * cosd, kv["dec"]], MATCH_AS / 3600):
-                dpos = math.hypot((cat["ra"][gi[cand]] - kv["ra"]) * cosd, cat["dec"][gi[cand]] - kv["dec"]) * 3600
+            for cand in gtree.query_ball_point([float(dra(kv["ra"], ra0)) * cosd, kv["dec"]], MATCH_AS / 3600):
+                dpos = math.hypot(float(dra(cat["ra"][gi[cand]], kv["ra"])) * cosd, cat["dec"][gi[cand]] - kv["dec"]) * 3600
                 score = abs(cat["g"][gi[cand]] - ref_mag) + 0.2 * dpos if ref_mag is not None else dpos
                 if ref_mag is not None and abs(cat["g"][gi[cand]] - ref_mag) > 2.5:
                     continue                          # ganz andere Helligkeit: anderer Stern
@@ -811,6 +828,7 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
             out["shape"] = img.shape[-2:]
             out["color"] = bool(bayer) or raw.ndim == 3
             out["exptime"] = float(info.get("exptime") or 0)
+            out["filter"] = str(info.get("filter") or "")
             return row, out, None
         except Exception as e:                      # nie den ganzen Lauf verlieren
             return row, None, f"Fehler: {str(e)[:80]}"
@@ -995,7 +1013,12 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
         hinweise.append(f"{n_crowd} bekannte Veränderliche liegen im Gedränge (heller Nachbar in der Apertur) – bei dieser Auflösung "
                         "nicht vom Nachbarlicht zu trennen, ihre Kurven zeigen vor allem Rauschen.")
     span_h = float((unix.max() - unix.min()) / 3600)
+    filt = next((o["filter"] for _, o in meas if o.get("filter")), "")
+    schmal = narrowband(band, filt)
     fcode = filter_code(band, bool(color))
+    if schmal:
+        hinweise.append(f"Schmalband-Aufnahmen ({band or filt}): Die Helligkeiten sind an Gaia-V angehängt, aber keine V-Messung – "
+                        "Amplituden weichen ab, ein AAVSO-Export ist gesperrt.")
     best = min(acc.items(), key=lambda kv: kv[1]) if acc else None
     return {"v": LC_VERSION, "ok": True, "datei": datei, "sterne": stars,
             "aufnahmen": {"n": len(meas), "gut": int(fok.sum()), "markiert": n_flag, "naechte": uniq,
@@ -1005,7 +1028,8 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
                          "systematik": round(float(math.sqrt(d["sys"])) * 1.0857, 4), "je": N_COMP},
             "genauigkeit": [{"v": v, "rms": a} for v, a in sorted(acc.items())],
             "beste_genauigkeit": best and {"v": best[0], "rms": best[1]},
-            "filter": fcode, "skala": "V (aus Gaia G, BP−RP)", "n_gemessen": ns, "n_bekannt_feld": len(known),
+            "filter": fcode, "filter_name": filt or band, "schmalband": schmal,
+            "skala": "relativ (Schmalband, an Gaia-V angehängt)" if schmal else "V (aus Gaia G, BP−RP)", "n_gemessen": ns, "n_bekannt_feld": len(known),
             "katalog": known[0]["quelle"] if known else None, "pruefstern": check,
             "mitte": {"ra": round(ra0, 4), "dec": round(dec0, 4)}, "hinweise": hinweise,
             "bild": {"w": geo["view"][0], "h": geo["view"][1]} if geo["offset"] is not None else None,
@@ -1078,7 +1102,8 @@ WARN = "NICHT GEPRÜFT – automatisch erzeugt. Vor dem Einreichen jede Zeile ko
 def export_csv(summary: dict, curves: dict, ids: list[int], bin_n: int = 1) -> str:
     fr = curves["frames"]
     lines = [f"# AstroFlow Lichtkurven – {WARN}",
-             f"# Skala: {summary.get('skala')}; Filter {summary.get('filter')}; Ensemble aus Gaia DR3 ({summary['ensemble']['n']} Vergleichssterne)",
+             f"# Skala: {summary.get('skala')}; Filter {summary.get('filter_name') or summary.get('filter')}"
+             f"{' (Schmalband)' if summary.get('schmalband') else ''}; Ensemble aus Gaia DR3 ({summary['ensemble']['n']} Vergleichssterne)",
              "# Zeit: Belichtungsmitte; BJD_TDB und HJD_UTC für die Feldmitte (geozentrisch)",
              "stern,bjd_tdb,hjd_utc,jd_utc,mag,fehler,nacht,markierung"]
     for i in ids:
@@ -1106,6 +1131,8 @@ def export_csv(summary: dict, curves: dict, ids: list[int], bin_n: int = 1) -> s
 def export_aavso(summary: dict, curves: dict, ids: list[int], version: str, bin_n: int = 1) -> str:
     """AAVSO Extended File Format (Ensemble-Fotometrie, Vergleichssterne aus Gaia DR3 statt AAVSO-Karte). Beobachterkürzel
     bleibt ein Platzhalter. Ausgelassene Aufnahmen (Wolken, Ausreißer) fehlen."""
+    if summary.get("schmalband"):
+        raise ExportError(NARROW_EXPORT)
     fr = curves["frames"]
     ck = summary.get("pruefstern")
     ck_e = next((s for s in summary["sterne"] if s["i"] == ck), None) if ck is not None else None

@@ -287,6 +287,26 @@ def test_common_pattern_is_artifact():
     assert lightcurve.common_pattern([0, 1, 2], mag) == {0, 1}
 
 
+def test_narrowband_blocks_aavso(result, env):
+    """Schmalband (Ha/OIII/SII bzw. Dualband-Filter): AAVSO-Export gesperrt, CSV mit Filterangabe (Hauptchat PR #152)."""
+    s, db, pl, p, rid, truth, cat, vsx, geo = env
+    assert lightcurve.narrowband("Ha", "") and lightcurve.narrowband(None, "L-eXtreme") and lightcurve.narrowband("OIII", None)
+    assert not lightcurve.narrowband(None, "") and not lightcurve.narrowband("L", "UV/IR Cut") and not lightcurve.narrowband("G", "Green")
+    curves = lightcurve.load_curves(s.work_dir, result)
+    ha = {**result, "schmalband": True, "filter_name": "Ha"}
+    ids = [e["i"] for e in result["sterne"]]
+    with pytest.raises(lightcurve.ExportError):
+        lightcurve.export_aavso(ha, curves, ids, "0.0.0")
+    assert "Filter Ha (Schmalband)" in lightcurve.export_csv(ha, curves, ids)
+    assert not result["schmalband"] and "#TYPE=EXTENDED" in lightcurve.export_aavso(result, curves, ids, "0.0.0")
+
+
+def test_ra_wraps_at_zero():
+    """VSX ↔ Gaia über RA 0°/360°: 359,9999° und 0,0001° liegen 0,72″ auseinander (Codex-Review PR #152)."""
+    from astroflow.modules.stacking.hrd import dra
+    assert abs(float(dra(359.9999, 0.0)) - float(dra(0.0001, 0.0))) * 3600 < 1.0
+
+
 def test_independent_eclipses_are_not_common():
     """Zwei unabhängige Bedeckungsveränderliche (je ~45 % der Zeit 0,5 mag schwächer, zufällig ~20 % gemeinsam) sind kein
     Gleichtakt – die frühere Median-Zentrierung hielt sie dafür (Codex-Review PR #152)."""

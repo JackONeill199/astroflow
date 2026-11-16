@@ -1404,7 +1404,7 @@ def build_router(eng: Engine) -> APIRouter:
     @r.get("/results/{rid}/lightcurves/export")
     def export_lightcurves(rid: int, fmt: str = "csv", star: str = "alle", bin: int = 1):
         from ... import __version__
-        from .lightcurve import export_aavso, export_csv
+        from .lightcurve import NARROW_EXPORT, ExportError, export_aavso, export_csv
         if fmt not in ("csv", "aavso"):
             raise HTTPException(400, "Unbekanntes Format")
         summ, curves = _lc_ctx(rid)
@@ -1415,7 +1415,10 @@ def build_router(eng: Engine) -> APIRouter:
         else:
             raise HTTPException(400, "Unbekannter Stern")
         n = max(1, min(int(bin), 20))
-        body = export_aavso(summ, curves, ids, __version__, n) if fmt == "aavso" else export_csv(summ, curves, ids, n)
+        try:
+            body = export_aavso(summ, curves, ids, __version__, n) if fmt == "aavso" else export_csv(summ, curves, ids, n)
+        except ExportError:                              # feste Meldung, kein Ausnahmetext
+            raise HTTPException(409, NARROW_EXPORT)
         name = f"lichtkurven_r{rid}{'_aavso' if fmt == 'aavso' else ''}.{'txt' if fmt == 'aavso' else 'csv'}"
         return Response(body.encode("utf-8"), media_type="text/csv" if fmt == "csv" else "text/plain",
                         headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})

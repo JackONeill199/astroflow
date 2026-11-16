@@ -49,7 +49,7 @@ function lightcurvePanel(host, r, opts = {}) {
     const list = [...clean, ...maybe, ...st.filter(s => s.pruefstern), ...crowd];
     if (sel == null || !list.some(s => s.i === sel)) sel = (varKnown[0] || maybe[0] || clean[0] || list[0])?.i ?? null;
     const flagged = Object.values(au.markiert || {}).reduce((a, b) => a + b, 0);
-    host.innerHTML = head('<span class="chip">eigene Messung · Gaia DR3' + (d.katalog ? ` · ${esc(d.katalog)}` : '') + '</span>') + `
+    host.innerHTML = head((d.schmalband ? `<span class="chip lc-maybe">Schmalband ${esc(d.filter_name || '')} – keine V-Messung</span>` : '') + '<span class="chip">eigene Messung · Gaia DR3' + (d.katalog ? ` · ${esc(d.katalog)}` : '') + '</span>') + `
       <div class="depth-kpis lc-kpis">
         <div><small>Bekannte Veränderliche</small><b class="tnum">${nf.format(clean.length)}</b><span>gemessen · ${nf.format(varKnown.length)} schwanken messbar${crowd.length ? ` · ${nf.format(crowd.length)} im Gedränge` : ''} · ${nf.format(d.n_bekannt_feld || 0)} im Katalog</span></div>
         <div><small>Mögliche Veränderliche</small><b class="tnum">${nf.format(maybe.length)}</b><span>nicht im Katalog – keine Entdeckung, nur auffällig</span></div>
@@ -74,7 +74,7 @@ function lightcurvePanel(host, r, opts = {}) {
       </div>
       <div class="lc-export">
         <p class="lc-warn sm">${icon('alert')}<span><b>Nicht geprüft.</b> Die Messung ist automatisch. Vor dem Einreichen bei der AAVSO jede Zeile kontrollieren – Vergleichssterne stammen aus Gaia, nicht aus einer AAVSO-Sequenz; Beobachterkürzel eintragen.</span></p>
-        <div class="row"><a class="btn sm" data-lc-x="csv1">CSV (dieser Stern)</a><a class="btn sm" data-lc-x="csv">CSV (alle)</a><a class="btn sm" data-lc-x="aavso">AAVSO-Format (bekannte)</a></div>
+        <div class="row"><a class="btn sm" data-lc-x="csv1">CSV (dieser Stern)</a><a class="btn sm" data-lc-x="csv">CSV (alle)</a>${d.schmalband ? `<span class="btn sm" aria-disabled="true" title="Schmalband-Aufnahmen sind keine V-Fotometrie">AAVSO-Format gesperrt (Schmalband)</span>` : '<a class="btn sm" data-lc-x="aavso">AAVSO-Format (bekannte)</a>'}</div>
       </div>
       ${d.genauigkeit?.length ? `<p class="dim sm lc-acc">Genauigkeit je Aufnahme (Streuung konstanter Sterne): ${d.genauigkeit.map(a => `V ${a.v}: ±${de1(a.rms, 3)}`).join(' · ')} mag. Skala ${esc(d.skala || '')}, Filter ${esc(d.filter || '')}.</p>` : ''}
       ${(d.hinweise || []).map(h => `<p class="dim sm depth-note">${esc(h)}</p>`).join('')}
