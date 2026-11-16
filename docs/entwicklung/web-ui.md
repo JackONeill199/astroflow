@@ -73,6 +73,14 @@ und optionalem SVG-Overlay in Bildpixeln (Sage-Objektmarken). Achtung: in `creat
 Globale Auftragsanzeige oben (`showJobPill` aus `/api/activity`, alle Module) + Toast beim Fertigwerden. Dateien überall ablegen: zentraler Bilder-Import für FITS und JPG/PNG/TIFF.
 Fertige Bilder: `modules/stacking/picture_import.py`, Projektoption `input_type='picture'`, Original + Vorschauen als Ergebnis ohne Rohframes/Stack;
 SHA256 gegen doppelte Uploads, eigenes Ereignis `stacking.imported` → Sage (kein SkyTrace). Keine erfundenen Belichtungs-/Frame- oder Qualitätswerte.
+**Lineare TIFF/PNG** (16/32 bit, seit 16.11.2026; Anlass: DSS-Stack und Stellina-TIFF erschienen schwarz): `picture_import.linear_info` erkennt
+ungestreckte Bilder (Median < 10 % und 99,5-%-Wert < 25 % bzw. ≤ 8× Median; 8 bit nie) → `imported.linear` {median, p995, channels, software,
+bei Farbmaske `bayer` + `single`}. Undebayerte 2D-Bilder: `bayer_pattern` (Grün = Diagonale mit gleichen Medianen, Rot in Zeile 1 angenommen).
+Vorschau je Kanal gestreckt (`stretched_preview`, sonst einfarbig durch den Farbstich ungestreckter Stacks). „Entwickeln“ (`POST process {mode:'develop'}`,
+nur mit Original) → `Pipeline.develop` nimmt ohne Master-Stack `picture_import.PictureMaster` aus `read_linear` (ADU 0..65535, FITS-Orientierung,
+Abdeckung aus verrauschten Rändern `edge_coverage`) – GraXpert, Plate-Solving + Gaia, Profil, Sternentrennung wie beim Stack, kein Kometenmodus.
+Ergebnis trägt `stats.imported` (Kopie) + `stats.developed {from, single}`; Projektansicht `linear` (Quelle) und `pic(r)` im Frontend für die Exportliste.
+Insights (Tiefe/Diagnose) laufen für entwickelte Fremdbilder nicht.
 Stellina-Verlaufsbilder: EXIF Make/Model/ImageDescription/DateTime + `img-…-output` → `imported.series`, ein Projekt je Objekt/Gerät/Nacht mit geordneten Versionen.
 `picture_import.attach_previews` ordnet diese bei passenden Rohdaten per `options.gallery_parent` zu (nach Upload und Scan); Hauptgalerie/Statistik/Sage-Auswahl zeigen nur eigenständige Projekte.
 Objekt fertiger Bilder (`picture_solve.py`, seit 11.11.2026): ohne erkanntes Objekt (`obj_id` leer) löst ein eigener Thread (`eng.picture_solve`,

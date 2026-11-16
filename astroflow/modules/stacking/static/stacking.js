@@ -516,6 +516,9 @@ async function projectView(el, id, tab = 'bild') {
       <button class="btn sm" id="solveBtn">${ps.state === 'failed' ? 'Erneut versuchen' : 'Objekt bestimmen'}</button><button class="btn ghost sm" id="psName">Namen setzen</button></div>`;
   }
 
+  // Importiertes Bild: pic(r) = Version ist der unveränderte Import, devd() = mindestens eine entwickelte Version
+  const pic = (r) => p.imported && !r?.stats?.developed;
+  const devd = () => p.results.some(x => x.stats?.developed);
   function head() {
     const r = p.result, busy = running(p.job);
     return `<div class="pagehead"><div style="min-width:0">
@@ -523,20 +526,21 @@ async function projectView(el, id, tab = 'bild') {
         <div class="row" style="margin-top:6px"><span class="chip">${esc(p.kind_label || 'Allgemein')}</span>
           ${p.device ? `<span class="chip" title="Aufnahmegerät">${esc(p.device)}</span>` : ''}
           ${r?.stats?.palette ? `<span class="chip acc">${esc(PALETTE_LABEL[r.stats.palette] || r.stats.palette)}</span>` : ''}
-          ${p.imported ? '<span class="chip acc">Fertiges Bild · importiert</span>' : `<span class="chip">${p.total} Aufnahmen</span><span class="chip">${p.nights.length} ${p.nights.length === 1 ? 'Nacht' : 'Nächte'}</span>`}
+          ${p.imported ? `<span class="chip acc">Fertiges Bild · importiert</span>${p.linear ? `<span class="chip" title="Ungestreckte Helligkeitswerte (${p.linear.bayer ? 'Einzelbild mit Farbmaske' : 'z. B. Stack aus DeepSkyStacker, Siril oder der Teleskop-App'}) – lässt sich wie ein eigener Stack entwickeln">Linear${p.linear.single ? ' · Einzelbild' : ''}</span>` : ''}` : `<span class="chip">${p.total} Aufnahmen</span><span class="chip">${p.nights.length} ${p.nights.length === 1 ? 'Nacht' : 'Nächte'}</span>`}
           ${r && !p.imported ? `<span class="chip">${dur(r.exposure)} integriert</span>` : ''}
           ${p.coords?.source === 'solve' ? `<span class="chip acc" title="Koordinaten per Plate-Solving bestimmt">${icon('star')}Plate-Solved</span>` : ''}
           ${p.comet ? '<span class="chip acc" title="Zwei Stacks: auf die Sterne und auf den Kometenkern">Kometenmodus</span>' : ''}</div>
         ${(p.other_devices || []).length ? `<div class="dim sm other-dev" style="margin-top:0.375rem">Auch mit ${(p.other_devices || []).map(o => `<a href="#/p/${o.id}">${esc(o.device)}</a>`).join(', ')} aufgenommen →</div>` : ''}</div>
-      <div class="page-actions">${p.imported ? '' : `<button class="btn" id="run" ${busy ? 'disabled' : ''} title="${r ? 'Neue Aufnahmen und Nächte nachstacken – der bisherige Stack bleibt erhalten' : ''}">${icon(busy ? 'refresh' : 'play')}${busy ? 'Läuft …' : r ? 'Nachstacken' : 'Verarbeiten'}</button>`}
+      <div class="page-actions">${p.imported ? (p.linear ? `<button class="btn" id="devPic" ${busy ? 'disabled' : ''} title="Wie einen Stack entwickeln: Hintergrund, Farbkalibrierung, Stretch, Sternentrennung – das Original bleibt unverändert">${icon(busy ? 'refresh' : 'play')}${busy ? 'Läuft …' : devd() ? 'Neu entwickeln' : 'Entwickeln'}</button>` : '') : `<button class="btn" id="run" ${busy ? 'disabled' : ''} title="${r ? 'Neue Aufnahmen und Nächte nachstacken – der bisherige Stack bleibt erhalten' : ''}">${icon(busy ? 'refresh' : 'play')}${busy ? 'Läuft …' : r ? 'Nachstacken' : 'Verarbeiten'}</button>`}
         ${r ? `<div class="menu" id="dl"><button class="btn ghost">${icon('down')}Export${icon('chev')}</button><div class="pop">
           <a href="#" data-act="share">Teilen-Karte <small>Bild mit Infos für Foren &amp; Co.</small></a>
-          ${p.imported ? `<a href="/api/stacking/results/${r.id}/original">Originaldatei <small>unverändert · ${esc(r.stats.imported.format)}</small></a>` : `<a href="/api/stacking/results/${r.id}/tif">TIFF 16-bit <small>Druck/Bearbeitung</small></a>`}<a href="/api/stacking/results/${r.id}/png">PNG <small>${p.imported ? 'Anzeigeversion' : 'verlustfrei'}</small></a>
-          <a href="/api/stacking/results/${r.id}/jpg" download>JPEG <small>zum Teilen</small></a>${p.imported ? '' : `<a href="/api/stacking/results/${r.id}/fits">FITS linear <small>unbearbeiteter Stack · für Siril/PixInsight</small></a>${(r.formats || []).includes('fits_graxpert') ? `<a href="/api/stacking/results/${r.id}/fits_graxpert">FITS linear (GraXpert) <small>Hintergrund/Rauschen schon bearbeitet</small></a>` : ''}`}</div></div>` : ''}
+          ${pic(r) ? `<a href="/api/stacking/results/${r.id}/original">Originaldatei <small>unverändert · ${esc(r.stats.imported.format)}</small></a>` : `<a href="/api/stacking/results/${r.id}/tif">TIFF 16-bit <small>Druck/Bearbeitung</small></a>`}<a href="/api/stacking/results/${r.id}/png">PNG <small>${pic(r) ? 'Anzeigeversion' : 'verlustfrei'}</small></a>
+          <a href="/api/stacking/results/${r.id}/jpg" download>JPEG <small>zum Teilen</small></a>${pic(r) ? '' : `<a href="/api/stacking/results/${r.id}/fits">FITS linear <small>unbearbeiteter Stack · für Siril/PixInsight</small></a>${(r.formats || []).includes('fits_graxpert') ? `<a href="/api/stacking/results/${r.id}/fits_graxpert">FITS linear (GraXpert) <small>Hintergrund/Rauschen schon bearbeitet</small></a>` : ''}`}</div></div>` : ''}
         ${r ? `<button class="btn ghost" data-ctx-toggle title="Bild-Details, Bild-Tutor und Himmelsposition ein-/ausblenden">${icon('panel')}Details</button>` : ''}
         <div class="menu" id="more"><button class="btn ghost">Mehr${icon('chev')}</button><div class="pop">
           ${r && !p.imported ? `<a href="#" data-act="develop">Neu entwickeln <small>${p.hotpixel_hint ? 'entfernt Hotpixel-Punkte' : 'ohne Stacking'}</small></a>` : ''}
-          ${p.imported ? '<span class="pop-note">Fertig importiert · keine Rohaufnahmen vorhanden</span>' : p.deleted?.can_restack === false ? `<span class="pop-note">Komplett neu stacken nicht möglich – Einzelbilder nach dem Stacking gelöscht</span>`
+          ${p.imported && p.linear && !busy ? `<a href="#" data-act="develop">${devd() ? 'Neu entwickeln' : 'Entwickeln'} <small>lineares Bild wie einen Stack</small></a>` : ''}
+          ${p.imported ? `<span class="pop-note">Fertig importiert · keine Rohaufnahmen vorhanden${p.linear ? '' : ' · schon gestreckt'}</span>` : p.deleted?.can_restack === false ? `<span class="pop-note">Komplett neu stacken nicht möglich – Einzelbilder nach dem Stacking gelöscht</span>`
             : `<a href="#" data-act="restack">Komplett neu stacken <small>alle Aufnahmen</small></a>`}
           ${p.can_solve && !solving() ? `<a href="#" data-act="solve">Objekt per Plate-Solving bestimmen <small>Sternmuster</small></a>` : ''}
           ${r && AF.on('sage') ? `<a href="#" data-act="story">Geschichte erzählen <small>Sage · Objekte im Bild + KI</small></a>` : ''}
@@ -563,6 +567,7 @@ async function projectView(el, id, tab = 'bild') {
     el.innerHTML = head();
     $('#rename').onclick = rename;
     $('#run')?.addEventListener('click', () => run(false));
+    $('#devPic')?.addEventListener('click', develop);
     $$('.menu', el).forEach(m => {
       $('button', m).onclick = (e) => { e.stopPropagation(); $$('.menu.open').forEach(o => o !== m && o.classList.remove('open')); m.classList.toggle('open'); };
     });
@@ -632,9 +637,18 @@ async function projectView(el, id, tab = 'bild') {
     if (animate) { void t.offsetWidth; t.classList.add('enter'); }
   }
 
+  function importNote(r) {
+    const s = r.stats || {};
+    if (s.developed) return `<b>Aus dem importierten Bild entwickelt</b><div class="mut sm">Hintergrund, Farbkalibrierung, Stretch und Sternentrennung wie bei einem eigenen Stack. Das Original bleibt als eigene Version erhalten.${s.developed.single ? ' Das war ein Einzelbild – für ein deutlich besseres Ergebnis die Rohbilder als FITS importieren und stacken lassen.' : ''}</div>`;
+    if (p.linear) return `<b>Lineares Bild erkannt</b><div class="mut sm">Die Datei enthält ungestreckte Helligkeitswerte${p.linear.bayer ? ' eines einzelnen, noch nicht debayerten Bildes' : ' (z. B. ein Stack aus DeepSkyStacker, Siril oder der Teleskop-App)'} – darum wirkte sie fast schwarz. Die Vorschau ist automatisch gestreckt.
+      „Entwickeln“ bearbeitet sie wie einen eigenen Stack: Hintergrund, Farbkalibrierung, Stretch, Sternentrennung.${p.linear.single ? ' Für ein gutes Ergebnis besser die Rohbilder als FITS importieren.' : ''}</div>
+      ${!running(p.job) ? `<button class="btn sm" id="noteDev" style="margin-top:8px">${icon('play')}${devd() ? 'Neu entwickeln' : 'Entwickeln'}</button>` : ''}`;
+    return '<b>Fertig importiertes Bild</b><div class="mut sm">Das Original bleibt unverändert. Das Bild ist schon gestreckt – AstroFlow führt kein erneutes Stacking und keine automatische Entwicklung durch.</div>';
+  }
+
   // ---- Tab: Bild ----
   function tabImage(t) {
-    if (running(p.job) && !p.imported && typeof createStackLive === 'function') {
+    if (running(p.job) && (!p.imported || p.linear) && typeof createStackLive === 'function') {
       liveView = createStackLive(t, id);
       liveView.update(p);
       return;
@@ -670,13 +684,13 @@ async function projectView(el, id, tab = 'bild') {
           ${before ? '<span class="mut sm">Links der unbearbeitete Master-Stack, rechts das entwickelte Bild – Trennlinie ziehen</span>' : ''}</div>` : ''}
         ${r.id !== p.results[0].id || c ? `<div class="row sm mut" style="margin-top:8px">${c ? `Vergleich: links Version vom ${fdate(c.created)}, rechts ${fdate(r.created)}` : `Ältere Version vom ${fdate(r.created)}`}
           <span class="grow"></span><button class="linkbtn" id="latest">Neueste Version zeigen</button></div>` : ''}
-        ${p.imported ? `<div class="notice" style="margin-top:14px"><div><b>Fertig importiertes Bild</b><div class="mut sm">Das Original bleibt unverändert. AstroFlow führt kein erneutes Stacking und keine automatische Entwicklung durch.</div>
+        ${p.imported ? `<div class="notice" style="margin-top:14px"><div>${importNote(r)}
           ${AF.on('sage') ? '<button class="btn ghost sm" id="importedSage" style="margin-top:8px">Mit Sage bestimmen und erzählen</button>' : ''}</div></div>` : ''}
 </div><aside class="img-side" id="imgSide" aria-label="Bild-Details"></aside></div>`;
     // Bild-Details neben dem Bild: Kennzahlen, Objektwissen, Kanäle, Bild-Tutor, Details, Himmelsposition, KI-Prüfung
     $('#imgSide', t).innerHTML = `<div class="row ctx-acts"><button class="btn ghost sm" id="ctxShare" title="Gestaltete Bildkarte für Foren &amp; Co. herunterladen">${icon('share')}Teilen</button><a class="btn ghost sm" href="/api/stacking/results/${r.id}/jpg" download>${icon('down')}JPEG</a>
         ${AF.on('sage') ? `<button class="btn ghost sm" id="ctxStory" title="Sage nutzt die vorhandene Plate-Solving-Lösung und die erkannten Objekte">${icon('book')}Geschichte erzählen</button>` : ''}
-        ${!p.imported && !running(p.job) ? `<button class="btn ghost sm" id="ctxDev">${icon('refresh')}Neu entwickeln</button>` : ''}</div>
+        ${(!p.imported || p.linear) && !running(p.job) ? `<button class="btn ghost sm" id="ctxDev">${icon('refresh')}${p.imported && !devd() ? 'Entwickeln' : 'Neu entwickeln'}</button>` : ''}</div>
       ${p.imported ? '' : `<div class="stats">
           <div class="stat"><small>Integration</small><b>${dur(r.exposure)}</b></div>
           <div class="stat"><small>Gestackt</small><b class="tnum">${r.n_frames}</b></div>
@@ -690,7 +704,8 @@ async function projectView(el, id, tab = 'bild') {
         <div class="panel"><h2 style="margin-bottom:12px">Details</h2><dl class="kv">
           <dt>Erstellt</dt><dd>${fdate(r.created)}</dd>
           ${p.imported ? `<dt>Dateiname</dt><dd>${esc(s.imported.filename)}</dd><dt>Format</dt><dd>${esc(s.imported.format)} · ${s.imported.bit_depth} Bit</dd>
-          <dt>Auflösung</dt><dd>${s.shape[1]} × ${s.shape[0]} px</dd>${s.imported.date_obs ? `<dt>Aufnahmezeit (Dateimetadaten)</dt><dd>${esc(s.imported.date_obs)}</dd>` : ''}` : `<dt>Bearbeitungsprofil</dt><dd>${esc(PROFILE_LABEL[s.profile] || s.profile || '–')}</dd>
+          <dt>Auflösung</dt><dd>${s.shape[1]} × ${s.shape[0]} px</dd>${s.imported.date_obs ? `<dt>Aufnahmezeit (Dateimetadaten)</dt><dd>${esc(s.imported.date_obs)}</dd>` : ''}
+          ${s.imported.linear ? `<dt>Helligkeitswerte</dt><dd>linear (ungestreckt)${s.imported.linear.bayer ? ` · Farbmaske ${esc(s.imported.linear.bayer)} debayert` : ''}${s.imported.linear.software ? `<div class="dim sm">${esc(s.imported.linear.software)}</div>` : ''}</dd>` : ''}` : ''}${pic(r) ? '' : `<dt>Bearbeitungsprofil</dt><dd>${esc(PROFILE_LABEL[s.profile] || s.profile || '–')}</dd>
           ${p.device ? `<dt>Gerät</dt><dd>${esc(p.device)}</dd>` : ''}<dt>Aufnahmetyp</dt><dd>${s.palette === 'OSC' || !s.palette ? 'Farbkamera' : 'Mono + Filter'}${s.narrowband ? ' · Schmalband' : ''}</dd>
           <dt>Sterne erkannt</dt><dd class="tnum">${s.stars ?? '–'}</dd>
           ${s.graxpert ? `<dt>GraXpert-KI</dt><dd>${[s.graxpert.bge && 'Hintergrund', s.graxpert.denoise && `Entrauschen ${s.graxpert.denoise}`].filter(Boolean).join(' · ') || 'nicht angewendet'}${s.graxpert.error ? `<div class="dim sm">${esc(s.graxpert.error)}</div>` : ''}${s.graxpert.retried_cpu && !s.graxpert.error ? `<div class="dim sm">GraXpert auf der Grafikkarte lieferte ungültige Werte – ohne Grafikkarte wiederholt</div>` : ''}${s.graxpert.nonfinite_repaired ? `<div class="dim sm">${s.graxpert.nonfinite_pct != null ? String(s.graxpert.nonfinite_pct).replace('.', ',') + ' % ' : ''}ungültige Pixel aus dem Original ersetzt</div>` : ''}</dd>` : ''}
@@ -701,7 +716,7 @@ async function projectView(el, id, tab = 'bild') {
           ${s.color_cal ? `<dt>Farbkalibrierung</dt><dd>${s.color_cal.verfahren === 'gaia' ? `fotometrisch (Gaia, ${s.color_cal.sterne} Sterne)`
             : s.color_cal.verfahren === 'manuell' ? 'manuell' : `Sternfarben-Mittel${s.color_cal.grund ? `<div class="dim sm">${esc(s.color_cal.grund)}</div>` : ''}`}</dd>` : ''}
           ${s.comet?.active ? `<dt>Kometenmodus</dt><dd>${s.comet.composite ? `zwei Stacks zusammengesetzt (${s.comet.frames_comet} Aufnahmen auf den Kern)` : 'nur Sterne-Stack'}${s.comet.source ? `<div class="dim sm">Bahn: ${esc(COMET_SOURCE[s.comet.source] || s.comet.source)}${s.comet.designation ? ` · ${esc(s.comet.designation)}` : ''}${s.comet.motion_px ? ` · ${String(s.comet.motion_px).replace('.', ',')} px Bewegung` : ''}</div>` : ''}${s.comet.ephemeris_error && s.comet.source === 'bild' && s.comet.designation ? `<div class="dim sm">Ephemeride: ${esc(s.comet.ephemeris_error)}</div>` : ''}</dd>` : ''}
-          <dt>Nächte</dt><dd>${p.nights.map(fnight).join(', ') || '–'}</dd>`}
+          ${p.imported ? '' : `<dt>Nächte</dt><dd>${p.nights.map(fnight).join(', ') || '–'}</dd>`}`}
           ${p.deleted?.frames ? `<dt>Einzelbilder</dt><dd>${p.deleted.frames} gelöscht · ${fmb(p.deleted.bytes)} frei</dd>` : ''}
         </dl></div>
         ${AF.on('sage') ? '<section class="panel ctx-know" id="ctxKnow"></section>' : ''}
@@ -716,6 +731,7 @@ async function projectView(el, id, tab = 'bild') {
     $('#ctxShare')?.addEventListener('click', () => shareDialog(r.id));
     objectKnowledge($('#ctxKnow'), p.name);
     $('#ctxDev')?.addEventListener('click', develop);
+    $('#noteDev')?.addEventListener('click', develop);
     if (s.quality && p.imported) tutorPanel($('#tutorBox'), r);
     if (!p.imported && typeof analysisSummary === 'function') analysisSummary($('#anSum'), r, p.id);   // Kernzahlen + „Mehr in der Analyse“
     const ph = !c && !before && livePoster ? livePoster : `/api/stacking/results/${r.id}/thumb`;
@@ -926,7 +942,7 @@ ${capped ? `Hintergrund ${f.bg}` : `${f.n_stars} Sterne`} · FWHM ${f.fwhm ?? '�
     t.innerHTML = `<div class="row mut sm" style="margin-bottom:14px">Klick zeigt eine Version. Mit ${icon('compare')} zwei Versionen nebeneinander vergleichen (Schieberegler).</div>
       <div class="versions">${p.results.map((r, i) => `<div class="ver ${r.id === cur ? 'on' : ''} ${r.id === cmp ? 'cmp' : ''}" data-id="${r.id}" role="button" tabindex="0">
         <img src="/api/stacking/results/${r.id}/thumb" alt="" loading="lazy"><div><b>${i === 0 ? 'Aktuell' : fdate(r.created)}</b>
-        <span class="mut">${r.stats?.imported ? esc(r.stats.imported.filename) : `${r.n_frames} Aufnahmen · ${dur(r.exposure)}`}</span>
+        <span class="mut">${r.stats?.imported ? (r.stats.developed ? 'Entwickelt · ' : '') + esc(r.stats.imported.filename) : `${r.n_frames} Aufnahmen · ${dur(r.exposure)}`}</span>
         <span class="row" style="justify-content:space-between"><span class="dim">${esc(PROFILE_LABEL[r.stats?.profile] || r.stats?.profile || '')}</span>
         <span class="ver-act">${r.id !== cur ? `<button class="linkbtn" data-cmp="${r.id}" title="Mit angezeigter Version vergleichen">${icon('compare')}</button>` : ''}
         ${p.results.length > 1 ? `<button class="linkbtn danger" data-del="${r.id}" title="Diese Version löschen">${icon('trash')}</button>` : ''}</span></span></div></div>`).join('')}</div>`;
@@ -1088,7 +1104,7 @@ ${capped ? `Hintergrund ${f.bg}` : `${f.n_stars} Sterne`} · FWHM ${f.fwhm ?? '�
       toast(e.message, 'err');
       return;
     }
-    toast('Wird aus dem Master-Stack neu entwickelt.');
+    toast(p.imported ? 'Wird aus dem linearen Original entwickelt – das Original bleibt erhalten.' : 'Wird aus dem Master-Stack neu entwickelt.');
     await refresh(true);
   }
   async function story() {
