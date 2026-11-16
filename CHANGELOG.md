@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.82.2 – 16.11.2026
+
+### Behoben
+- **Teleskop – aufgeräumter Status:** „Nicht verbunden“ steht nur noch einmal (im Statuskasten) statt viermal, und die Hauptknöpfe haben dieselbe Größe wie die übrigen Knöpfe.
+
 ## 0.82.1 – 16.11.2026
 
 ### Behoben
