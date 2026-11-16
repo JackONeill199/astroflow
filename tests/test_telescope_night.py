@@ -218,7 +218,7 @@ def test_api_echte_zielwahl_mit_begruendung(tmp_path, monkeypatch):
 
 
 def test_api_planer_plan_hat_vorrang_bis_zur_rueckfrage(tmp_path, monkeypatch):
-    app = _app(tmp_path, monkeypatch)
+    app = _app(tmp_path, monkeypatch, sim_start="night")                        # Simulator ab Dämmerung, unabhängig von der echten Uhrzeit
     with _client(app) as c:
         mod = app.state.modules["telescope"]
         night = mod.unit.pilot.current_night(mod.unit.now())
@@ -351,7 +351,7 @@ def test_nachfuellen_mit_spaeteren_zielen_wartet_statt_einzuklappen():
 def test_api_start_bei_entwurf_startet_die_nacht(tmp_path, monkeypatch):
     """Review PR #145: Der normale Start bei offenem Entwurf fährt die Entwurfsziele nicht ohne Vermessung an, sondern
     startet die Nacht wie „Nacht starten“."""
-    app = _app(tmp_path, monkeypatch)
+    app = _app(tmp_path, monkeypatch, sim_start="night")                        # Simulator ab Dämmerung, unabhängig von der echten Uhrzeit
     with _client(app) as c:
         p = app.state.modules["telescope"].unit.pilot
         assert c.post("/api/telescope/night/plan", json={}).status_code == 200
