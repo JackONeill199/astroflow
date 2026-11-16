@@ -1368,11 +1368,11 @@ def build_router(eng: Engine) -> APIRouter:
     # ---- Lichtkurven veränderlicher Sterne (lightcurve.py): Einzelbilder, nur auf Wunsch ----------------
     def _lc_ctx(rid: int):
         from .lightcurve import LC_VERSION, load_curves
-        x = db.one("SELECT project_id, stats FROM results WHERE id=?", (rid,))
+        x = db.one("SELECT stats FROM results WHERE id=?", (rid,))
         if not x:
             raise HTTPException(404)
         summ = json.loads(x["stats"] or "{}").get("lightcurves") or {}
-        curves = load_curves(eng.s.work_dir, x["project_id"], rid) if summ.get("ok") and summ.get("v") == LC_VERSION else None
+        curves = load_curves(eng.s.work_dir, summ) if summ.get("ok") and summ.get("v") == LC_VERSION else None
         if curves is None:
             raise HTTPException(404, "Noch keine Lichtkurven gemessen.")
         return summ, curves

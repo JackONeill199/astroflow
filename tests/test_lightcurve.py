@@ -95,6 +95,11 @@ def _by_gaia(out, sid):
     return next((e for e in out["sterne"] if e.get("gaia") == f"Gaia DR3 {sid}"), None)
 
 
+def test_curve_file_name_only_from_pattern(tmp_path):
+    assert lightcurve.load_curves(tmp_path, {"datei": "../x.json"}) is None
+    assert lightcurve.load_curves(tmp_path, {"datei": "p1/lichtkurven_r2.json"}) is None      # gibt es nicht
+
+
 def test_known_variable_amplitude_and_period(env, result):
     s, db, pl, p, rid, truth, cat, vsx, geo = env
     out = result
@@ -107,7 +112,7 @@ def test_known_variable_amplitude_and_period(env, result):
     assert e["eigene_periode"]["periode"] == pytest.approx(true["period"], rel=0.03)
     assert e["genauigkeit"] < 0.03
     # Zeiten: BJD liegt höchstens ~8,3 min neben JD, Phase passt zur Katalogepoche
-    curves = lightcurve.load_curves(s.work_dir, p["id"], rid)
+    curves = lightcurve.load_curves(s.work_dir, result)
     f0 = curves["frames"][0]
     assert abs(f0["bjd"] - f0["jd"]) < 0.0058 and abs(f0["hjd"] - f0["jd"]) < 0.0058
 
@@ -141,7 +146,7 @@ def test_saturated_and_cloud(env, result):
         e = _by_gaia(result, 1000 + j)
         assert e is None or e["gesaettigt"]
     # Wolkenaufnahme: entweder schon bei der Auswahl verworfen oder hier als Lichtverlust markiert
-    curves = lightcurve.load_curves(s.work_dir, p["id"], rid)
+    curves = lightcurve.load_curves(s.work_dir, result)
     fl = [f["flag"] for f in curves["frames"]]
     stacked = {r["id"] for r in db.q("SELECT id FROM frames WHERE stacked=1")}
     cloud_id = db.q("SELECT id FROM frames WHERE kind='light' ORDER BY path")[truth["cloud"]]["id"]

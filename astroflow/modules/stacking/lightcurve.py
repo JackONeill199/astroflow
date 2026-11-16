@@ -25,6 +25,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -959,7 +960,8 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
                    "nacht": night_names[f], "flag": flags[f], "verlust": round(float(d["loss"][f]), 3),
                    "streuung": None if not np.isfinite(d["scatter"][f]) else round(float(d["scatter"][f]), 4),
                    "belichtung": meas[f][1]["exptime"], "id": meas[f][0]["id"]} for f in range(len(meas))]
-    path = wd / f"p{pid}" / f"lichtkurven_r{rid}.json"
+    datei = f"p{int(pid)}/lichtkurven_r{int(rid)}.json"
+    path = wd / datei
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"v": LC_VERSION, "frames": frames_out, "curves": curves}), encoding="utf-8")
 
@@ -977,7 +979,7 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
     span_h = float((unix.max() - unix.min()) / 3600)
     fcode = filter_code(band, bool(color))
     best = min(acc.items(), key=lambda kv: kv[1]) if acc else None
-    return {"v": LC_VERSION, "ok": True, "sterne": stars,
+    return {"v": LC_VERSION, "ok": True, "datei": datei, "sterne": stars,
             "aufnahmen": {"n": len(meas), "gut": int(fok.sum()), "markiert": n_flag, "naechte": uniq,
                           "spanne_h": round(span_h, 2), "belichtung": round(float(np.median([o["exptime"] for _, o in meas])), 1)},
             "ensemble": {"n": d["n_comp_used"], "verworfen": d["n_comp_rejected"], "farbterm": round(d["k"], 3),
@@ -1002,8 +1004,16 @@ def services_pos(geo, x, y) -> dict:
 
 
 # ------------------------------------------------------------- Ausgabe -- #
-def load_curves(work_dir: Path, pid: int, rid: int) -> dict | None:
-    f = Path(work_dir) / f"p{pid}" / f"lichtkurven_r{rid}.json"
+_CURVE_FILE = re.compile(r"p[0-9]{1,9}/lichtkurven_r[0-9]{1,9}\.json")
+
+
+def load_curves(work_dir: Path, summary: dict) -> dict | None:
+    """Kurven zur gespeicherten Zusammenfassung. Der Dateiname kommt aus der Datenbank (`summary["datei"]`, von compute
+    geschrieben), nie aus der Anfrage, und muss dem festen Muster entsprechen."""
+    name = str(summary.get("datei") or "")
+    if not _CURVE_FILE.fullmatch(name):
+        return None
+    f = Path(work_dir) / name
     try:
         d = json.loads(f.read_text(encoding="utf-8"))
     except (OSError, ValueError):
