@@ -160,6 +160,27 @@ Schritte 11–13 (Speicher, volles Laufwerk, Aufräumen): `daten-server.md`.
    - Ausgabe: `_linear.fits` = unbearbeiteter Stack (bis 0.55 stand dort das GraXpert-Ergebnis), mit GraXpert zusätzlich `_linear_graxpert.fits`
      (`files.fits_graxpert`, Export-Menü).
    - Messwerkzeug: Skripte im privaten Recherche-Ordner bzw. PR-Beschreibung (Kennzahlen am fertigen Bild, Himmel = dunkelste 12 %).
+   **Klassische Mono-Kamera mit RGB-Filtern (Sh2 101, 16.11.2026;** Fremd-Datensatz, 78 × 120 s, R 23 / G 27 / B 28, 0,59″/px,
+   ohne Darks/Flats, Vergleich mit einer Handbearbeitung und mit Stellina SH2-101 aus der Arbeitsinstanz, nur gelesen):
+   - **„Satellitenspur“** ist ein Beugungsstrahl von η Cygni (3,9 mag, ~50′ außerhalb des Felds; die verlängerte Linie läuft
+     ~50 px an seiner WCS-Position vorbei). Er wandert mit den Sternen (Sternversatz und Linienversatz gleich, ~35 px über die
+     Nacht), steht also am Himmel fest: Clipping kann ihn nicht entfernen, `trails.confirm` hält ihn zu Recht für ortsfest
+     (`stats.trails.kept` 26–30, `lines` 0). Entfernen bräuchte einen Katalog heller Sterne außerhalb des Felds – offen.
+   - **Streifen rechts / Flecken**: gelerntes „Sensorglühen“ bei stillstehendem Feld (`bilder-stacken.md`, Sensorglühen), nicht
+     ungleiche Abdeckung (alle drei Bänder am rechten Rand ≈ 1,0) und nicht GraXpert (Glättung 0,5/1,0 machte den Himmel unebener:
+     0,0097 → 0,013/0,017; KI- gegen CPU-Entrauschen gleich).
+   - **Rot**: Der dunkelste Himmel ist neutral (0,021/0,019/0,019); rot sind die Mitteltöne. Gleiche Himmelsstellen per WCS gegen
+     Stellina (linear, Gaia-kalibriert, Himmel je Kanal 0): schwache diffuse Bereiche mono R/G 2,2–3,3 gegen 1,6–2,2, Korrelation R 0,77
+     – das diffuse Hα im Schwan ist echt; Mono-Filter zeigen es reiner rot, weil G/B 656 nm sperren (Bayer-G/B lassen etwas durch).
+     Gaia-Kalibrierung plausibel (493 bzw. 186 Sterne, Streuung 0,015; Steigung B −0,53 gegen −0,2 bei Stellina = steilere Filterkanten).
+   - **Sättigung**: `adapt` setzt bei hohem Objekt-SNR den Startwert hoch (1,5 → 1,575), die Kontrolle senkt in Schritten von 0,15.
+     Das Sättigungsmaß ändert sich nur um ~0,18 je Einheit (Sh2 101 0,548 → 0,646 bei 1,0 → 1,575; Stellina M 17 0,506 → 0,619) –
+     bei Eigenfarbe nahe 0,55 erreichen drei Runden das Ziel nicht (M 17 endet bei 1,275 „übersättigt“). Mit sauberem Stack reicht
+     Sh2 101 schon 1,425. Begründungstext korrigiert („erhöht (wenig Farbrauschen, Objekt-SNR …)“); ein proportionaler Schritt
+     würde Stellina M 17 ändern (≈ 1,13) – Nutzerentscheidung offen.
+   - **Helligkeit**: Direkt vor `darken_background` liegen Sh2 101 und Stellina SH2-101 gleich (Himmel 0,070/0,072, dunkelste 2 %
+     0,050/0,050). Das dunkle Bild ist der gewollte Look (Himmel ~0,03); die Handbearbeitung hebt den Himmel auf ~0,10 –
+     Stilfrage, kein Fehler. Per Objekt über `params.bg_dark` einstellbar.
 8. **Bild-Tutor** (`tutor.py`, seit 01.11.2026, Nutzerwunsch „Tutor für Anfänger, Hinweise passend zum Instrument, Mond/Wetter der Nacht“):
    `build_report` (API `GET /results/{id}/tutor`, Cache in `results.stats.tutor` mit `TUTOR_VERSION`) = Gerät (`detect_device`:
    INSTRUME/TELESCOP, Rückfall Bildformat; Vespera-Modell nur aus ganzen Wörtern „II“/„2“/„Pro“, sonst Bildformat

@@ -159,10 +159,12 @@ def adapt(params: dict, m: dict, mono: bool = False) -> tuple[dict, list[str]]:
         p["target_bg"] = round(max(0.05, p["target_bg"] - 0.015), 3)
         why.append("dunklerer Hintergrund wegen schwachem Signal")
     if not mono:
+        # Startwert vor der ersten Kontrolle: viel Signal -> wenig Farbrauschen, Farbe verträgt mehr Sättigung. Ob das Bild
+        # dann übersättigt ist, entscheidet erst assess() am Ergebnis (corrections nimmt es zurück).
         g = float(np.clip(snr / 10, 0.5, 1.15))
         if abs(g - 1) > 0.05:
             p["saturation"] = round(1 + (p["saturation"] - 1) * g, 3)
-            why.append(f"Sättigung {'erhöht' if g > 1 else 'gedämpft'} (Farbrauschen)")
+            why.append(f"Sättigung {'erhöht (wenig Farbrauschen' if g > 1 else 'gedämpft (Farbrauschen'}, Objekt-SNR {snr:.0f})")
     # hohe Dynamik (helle Kerne/Sterne neben schwachem Nebel): mehr Highlight-Kompression
     if m["dynamic"] > 40:
         k = float(np.clip((m["dynamic"] / 40) ** 0.5, 1.0, 2.5))

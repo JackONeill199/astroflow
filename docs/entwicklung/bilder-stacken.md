@@ -234,6 +234,20 @@ Stand im alten Text unter Schritt 7 eingeordnet; gehören technisch zu `Pipeline
    Glühamplitude einer Nacht stark von `glow_info` der letzten Analyse ab (`pipeline._glow_changed`: Faktor 2 und ≥ 20 ADU), werden
    deren Frames neu analysiert (Messwerte, Vorschau) und neu gestackt; die Nacht bleibt in `projects.options.glow_pending`, bis das
    für alle Rohbilder geschehen ist (nicht erreichbare Platte → nächster Lauf; gelöschte Rohbilder zählen nicht).
+   **Nur bei bewegtem Himmel** (16.11.2026, Anlass Sh2 101 – klassische Mono-Kamera mit RGB-Filtern auf EQ-Montierung, 78 × 120 s,
+   ohne Darks und ohne Dithering): Das Feld wanderte in 3,5 h nur ~35 px; Profile und 2D-Restkarte lernten Milchstraße und
+   Sternwolken der Randzonen als „Glühen“ (75–112 ADU je Filter, fast nur aus der Karte; echtes Stellina-Glühen sitzt mit 150–190 ADU
+   in den Randprofilen) und zogen sie ab → senkrechte Streifen in den Randbändern und rot-violette Flecken. Jetzt misst
+   `_sensor_maps` in der Glüh-Stichprobe zusätzlich die Sterne (`quality.dense_stars`, hellste 100) und `pipeline.glow_motion`
+   die Himmelsbewegung: 8 Punkte in der Mitte der Randbänder, je Aufnahme über die Ähnlichkeit zur mittleren Aufnahme, Median
+   des mittleren Abstands zur mittleren Lage. Unter `calibration.GLOW_MIN_MOTION_PX` (12 px) wird die Nacht nicht gelernt
+   (Bibliothek bzw. kein Modell, `glow_info` „keine – Himmel stand still“ mit `bewegung_px`); die Bewegung steht je Nacht in
+   `work/glow/<key>.json`. Gemessen: Sh2 101 R/G/B 5,7/8,8/9,3 px; Stellina 110 Nächte 8,9–840 px (5-%-Quantil 18, Median 34,
+   nur M 82 2022-05-13 mit 8,9 darunter → Bibliothek), Vespera 194–322 px; Demo-Daten (kleines Bild) 7–12 px. Mono-Nächte, die
+   vor der Prüfung gelernt wurden (kein Vermerk), werden einmal neu gemessen; Farbkameras behalten ihre Nächte (keine Änderung
+   bestehender Stellina-/Vespera-Stacks). Wirkung Sh2 101 (gleiche Entwicklung): grobe Farbflecken 12–48 px 0,0079 → 0,0036,
+   Farbrauschen 0,0057 → 0,0045, Bildmittel R/G 1,97 → 1,69, QC-Score 9 → 10 („übersättigt“ entfällt, Sättigung bleibt 1,425).
+   Tests `test_glow_bewegung.py`.
    **2D-Restkarte** (seit 2026-10-30, NGC 4490: Profile ließen Ecke +18 ADU und eine Seite −7 ADU übrig ≈ Stack-Rauschen →
    Flecken + violettes Eckglühen): je Ebene zusätzlich 30-%-Perzentil in Kacheln `GLOW_BIN` 32 px des Rests nach den Profilen
    (Achse 2 im `.npz`). `model_from` → `_rest_map`: Gesamtmuster minus *ausgeblendet* abgezogene Profile (sonst bleibt, was die
