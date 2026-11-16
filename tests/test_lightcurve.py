@@ -175,6 +175,26 @@ def test_differential_flags_clouds_and_variable_comps():
     assert np.nanmedian(d["mag"][ok][:, 10]) == pytest.approx(v[10], abs=0.02)
 
 
+def test_minimum_comparison_stars_and_finite_json(result):
+    """Genau 5 Vergleichssterne: klare Meldung statt NaN-Statistiken (Codex-Review PR #152); mit 6 bleibt alles endlich, und
+    die gespeicherte Zusammenfassung ist gültiges JSON ohne NaN."""
+    rng = np.random.default_rng(8)
+    nf = 30
+
+    def run(n):
+        v = rng.uniform(10, 12, n)
+        col = rng.uniform(0.3, 1.5, n)
+        F = 10 ** (-0.4 * (v - 20)) * (1 + rng.normal(0, 0.005, (nf, n)))
+        return lightcurve.differential(F, np.ones((nf, n)), lightcurve.gaia_v(_g_from_v(v, col), col), col, rng.uniform(0, 900, (n, 2)),
+                                       np.ones(n, bool), np.zeros(nf, int), np.zeros((nf, n), bool))
+    with pytest.raises(lightcurve.LightcurveError, match="Vergleichssterne"):
+        run(5)
+    d = run(6)
+    assert np.isfinite(d["mag"][:, d["comp"]]).all() and np.isfinite(d["rms"][d["comp"]]).all()
+    json.dumps(result, allow_nan=False)                 # wirft bei NaN/Inf
+    assert all(math.isfinite(e["erwartet"]) for e in result["sterne"])
+
+
 def test_short_exposure_is_not_a_cloud():
     """Halb so lange Belichtung = halber Fluss, aber kein Lichtverlust (Codex-Review PR #152)."""
     rng = np.random.default_rng(4)

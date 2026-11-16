@@ -373,7 +373,7 @@ def _differential(F: np.ndarray, VB: np.ndarray, vcat: np.ndarray, col: np.ndarr
         m_inst = np.where(valid, -2.5 * np.log10(np.where(valid, F, 1.0)), np.nan)
     c_fill = np.where(np.isfinite(col), col, np.nanmedian(col[comp_ok]) if comp_ok.any() else 0.8)
     comp = comp_ok & np.isfinite(vcat) & (valid.mean(0) > 0.8)
-    if comp.sum() < MIN_COMP:
+    if comp.sum() < MIN_COMP + 1:                      # je Stern bleiben nach Selbstausschluss MIN_COMP Nachbarn
         raise LightcurveError(f"Nur {int(comp.sum())} brauchbare Vergleichssterne mit Gaia-Helligkeit – zu wenige für eine Eichung.")
     # Farbterm aus dem mittleren Bild: V − m_inst = Z + k·c
     med_inst = np.nanmedian(m_inst, axis=0)
@@ -871,7 +871,13 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
     st = [curve_stats(bjd[fok], mag[fok, i], err[fok, i]) for i in range(ns)]
     vm = np.array([s["mittel"] if s else np.nan for s in st])
     rms = np.array([s["rms"] if s else np.nan for s in st])
-    ref = _running_median(vm[d["comp"]], rms[d["comp"]])
+    _ref = _running_median(vm[d["comp"]], rms[d["comp"]])
+    fin = rms[np.isfinite(rms)]
+    fallback = float(np.median(fin)) if len(fin) else 0.05
+
+    def ref(q):                                      # erwartete Streuung immer endlich (JSON ohne NaN, auch im Grenzfall)
+        v = np.asarray(_ref(q), float)
+        return np.where(np.isfinite(v), v, fallback)
     acc = {}
     for v in range(6, 20):
         sel_v = d["comp"] & (np.abs(vm - v) < 0.5)
