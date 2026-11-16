@@ -40,7 +40,7 @@ MAX_STARS = 2500                   # gemessene Gaia-Sterne (hellste zuerst)
 MAX_CANDIDATES = 40                # „mögliche Veränderliche“ höchstens
 MAX_KNOWN = 400                    # bekannte Veränderliche, deren Kurven gespeichert werden
 SNR_FRAME = 4.0                    # Mindest-SNR je Aufnahme (aus dem Stack-SNR / √N abgeschätzt)
-APER = 1.5                         # Aperturradius in FWHM der Aufnahme
+APER = 1.0                         # Aperturradius in FWHM der Aufnahme (Hintergrund-begrenzt: kleiner = besseres SNR; Stellina M3 gemessen)
 N_COMP = 15                        # Vergleichssterne je Ensemble
 MIN_COMP = 5
 CLOUD_DMAG = 0.4                   # mag Lichtverlust gegenüber dem Median der Nacht → Wolken/Dunst
@@ -89,7 +89,7 @@ def vsx_field(ra: float, dec: float, radius: float, cache_dir: Path, timeout: fl
     """Bekannte Veränderliche im Feld aus AAVSO VSX (VizieR B/vsx). Gesendet werden nur Feldmitte und Radius."""
     import httpx
 
-    key = hashlib.sha1(f"vsx1|{ra:.3f}|{dec:.3f}|{radius:.3f}".encode()).hexdigest()[:16]
+    key = hashlib.sha1(f"vsx2|{ra:.3f}|{dec:.3f}|{radius:.3f}".encode()).hexdigest()[:16]
     f = Path(cache_dir) / f"vsx_{key}.json"
     if f.exists():
         return json.loads(f.read_text(encoding="utf-8"))
@@ -123,7 +123,8 @@ def vsx_field(ra: float, dec: float, radius: float, cache_dir: Path, timeout: fl
         if ra_ is None or de_ is None:
             continue
         mx, mn = _f(d["max"]), _f(d["min"])
-        amp = mn if d.get("f_min") == "(" else (mn - mx if mx is not None and mn is not None else None)  # „(“ = Amplitude statt Minimum
+        is_amp = d.get("f_min") in ("(", "Y")              # VizieR: „Y“ (VSX: „(“) = Spalte min ist eine Amplitude
+        amp = mn if is_amp else (mn - mx if mx is not None and mn is not None else None)
         out.append({"name": " ".join(d["Name"].split()), "ra": ra_, "dec": de_, "type": d["Type"], "max": mx,
                     "band": d.get("n_max") or "", "amp": None if amp is None else round(abs(amp), 3),
                     "period": _f(d["Period"]), "epoch": _f(d["Epoch"]), "oid": int(d["OID"]), "quelle": "VSX"})
@@ -308,10 +309,11 @@ def green_weights(shape: tuple[int, int], bayerpat: str | None) -> np.ndarray | 
     return w
 
 
-def measure_frame(img: np.ndarray, w: np.ndarray | None, pred: np.ndarray, fwhm: float, bright: np.ndarray) -> dict:
+def measure_frame(img: np.ndarray, w: np.ndarray | None, pred: np.ndarray, fwhm: float, bright: np.ndarray,
+                  r: float | None = None) -> dict:
     """Ein Bild vermessen: vorhergesagte Positionen `pred` (N,2) → Feinanpassung an hellen Sternen → Aperturfotometrie.
     bright: Maske der Sterne, die für die Feinanpassung taugen. Rückgabe dict (flux, var_bg, peak, n, shift)."""
-    r = float(np.clip(APER * (fwhm or 3.0), 2.0, 18.0))
+    r = float(r or np.clip(APER * (fwhm or 3.0), 2.0, 18.0))
     x, y = pred[:, 0].copy(), pred[:, 1].copy()
     first = aperture(img, x[bright], y[bright], r, w)
     good = np.isfinite(first["cx"]) & (np.hypot(first["cx"] - x[bright], first["cy"] - y[bright]) < max(3.0, 1.5 * (fwhm or 3)))
@@ -348,7 +350,15 @@ def _running_median(mag: np.ndarray, val: np.ndarray, width: float = 0.75) -> ca
     return lambda q: np.interp(q, grid, gv)
 
 
-def differential(F: np.ndarray, VB: np.ndarray, vcat: np.ndarray, col: np.ndarray, xy: np.ndarray, comp_ok: np.ndarray,
+def differential(*a, **k) -> dict:
+    """Differenzfotometrie (siehe _differential); leere Spalten (Stern in keiner Aufnahme messbar) sind erlaubt."""
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        return _differential(*a, **k)
+
+
+def _differential(F: np.ndarray, VB: np.ndarray, vcat: np.ndarray, col: np.ndarray, xy: np.ndarray, comp_ok: np.ndarray,
                  nights: np.ndarray, sat: np.ndarray, log=lambda m: None) -> dict:
     """F: Fluss (Aufnahmen × Sterne), VB: Hintergrundvarianz, vcat: Katalog-V (NaN = unbekannt), col: BP−RP, xy: Pixelorte
     (für die Nähe), comp_ok: taugt als Vergleichsstern, nights: Nacht-Index je Aufnahme, sat: übersättigt (Aufnahmen × Sterne).
@@ -676,9 +686,16 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
             continue
         hit = None
         if gtree is not None:
-            for cand in sorted(gtree.query_ball_point([kv["ra"] * cosd, kv["dec"]], MATCH_AS / 3600)):
-                if hit is None or cat["g"][gi[cand]] < cat["g"][gi[hit]]:
-                    hit = cand
+            # im Umkreis der Gaia-Stern mit passender Helligkeit (Katalog: Maximum + halbe Amplitude), sonst der nächste
+            ref_mag = kv["max"] + (kv.get("amp") or 0) / 2 if kv.get("max") is not None else None
+            best = None
+            for cand in gtree.query_ball_point([kv["ra"] * cosd, kv["dec"]], MATCH_AS / 3600):
+                dpos = math.hypot((cat["ra"][gi[cand]] - kv["ra"]) * cosd, cat["dec"][gi[cand]] - kv["dec"]) * 3600
+                score = abs(cat["g"][gi[cand]] - ref_mag) + 0.2 * dpos if ref_mag is not None else dpos
+                if ref_mag is not None and abs(cat["g"][gi[cand]] - ref_mag) > 2.5:
+                    continue                          # ganz andere Helligkeit: anderer Stern
+                if best is None or score < best:
+                    hit, best = cand, score
         if hit is not None and hit not in targets:
             targets[hit] = kv
         elif hit is None:
@@ -696,7 +713,7 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
     ns = len(sx)
     vcat = gaia_v(g, col)
     vcat[~np.isfinite(col)] = np.nan
-    # Nachbarn: Mischlicht in der Apertur bzw. heller Stern im Hintergrundring (Stack-Pixel; Apertur ~ 1,5 FWHM)
+    # Nachbarn: Mischlicht in der Apertur bzw. heller Stern im Umfeld (Stack-Pixel; Apertur = APER × FWHM)
     ap_st = APER * fw_stack
     allx, ally = px[inside], py[inside]
     allg = cat["g"][inside]
@@ -845,10 +862,15 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
             e["zyklen"] = round(span / p_cat, 2)
             if cover >= 0.6:
                 e["amp_fit"] = round(amp, 3)
-        ps = period_search(t_ok, m_ok, e_ok)
-        if ps:
+        # Gedränge: Mischlicht in der Apertur oder (bekannter Stern) deutlich heller gemessen als der Katalog erlaubt –
+        # dann misst die Apertur vor allem Nachbarn; Schwankungen sind dort nicht dem Stern zuzuordnen
+        cat_hi = kv.get("max") if kv else None
+        e["gedraenge"] = bool(blend[i] or (cat_hi is not None and kv.get("band") in ("V", "G", "CV", "g", "TG", "Vis", "")
+                                         and s["mittel"] < cat_hi - 0.75))
+        e["signifikant"] = bool(s["rms"] > VAR_RATIO * e["erwartet"] and s["chi2"] > VAR_CHI2 and not e["gedraenge"])
+        # eigene Periode nur bei nachweislicher Schwankung – sonst findet Lomb-Scargle in zeitlich korreliertem Rauschen „Perioden“
+        if e["signifikant"] and (ps := period_search(t_ok, m_ok, e_ok)):
             e["eigene_periode"] = ps
-        e["signifikant"] = bool(s["rms"] > VAR_RATIO * e["erwartet"] and s["chi2"] > VAR_CHI2)
         return e
 
     log("Veränderliche auswerten")
@@ -906,8 +928,10 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
         hinweise.append(f"{d['n_comp_rejected']} Vergleichssterne schwankten selbst und wurden verworfen.")
     if len(uniq) > 1:
         hinweise.append(f"{len(uniq)} Nächte zusammengeführt – jede Aufnahme ist einzeln an den Vergleichssternen geeicht.")
-    if any(e.get("mischlicht") for e in stars):
-        hinweise.append("Sterne mit Mischlicht (heller Nachbar in der Apertur) zeigen eine verdünnte Amplitude.")
+    n_crowd = sum(1 for e in stars if e.get("gedraenge"))
+    if n_crowd:
+        hinweise.append(f"{n_crowd} bekannte Veränderliche liegen im Gedränge (heller Nachbar in der Apertur) – bei dieser Auflösung "
+                        "nicht vom Nachbarlicht zu trennen, ihre Kurven zeigen vor allem Rauschen.")
     span_h = float((unix.max() - unix.min()) / 3600)
     fcode = filter_code(band, bool(color))
     best = min(acc.items(), key=lambda kv: kv[1]) if acc else None

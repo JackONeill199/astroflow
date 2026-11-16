@@ -44,20 +44,23 @@ function lightcurvePanel(host, r, opts = {}) {
     }
     const st = d.sterne || [], au = d.aufnahmen || {}, ens = d.ensemble || {};
     const known = st.filter(s => s.bekannt), maybe = st.filter(s => s.moeglich);
-    const varKnown = known.filter(s => s.signifikant);
+    const varKnown = known.filter(s => s.signifikant), crowd = known.filter(s => s.gedraenge), clean = known.filter(s => !s.gedraenge);
     const best = d.beste_genauigkeit;
-    const list = [...known, ...maybe, ...st.filter(s => s.pruefstern)];
-    if (sel == null || !list.some(s => s.i === sel)) sel = (varKnown[0] || maybe[0] || known[0] || list[0])?.i ?? null;
+    const list = [...clean, ...maybe, ...st.filter(s => s.pruefstern), ...crowd];
+    if (sel == null || !list.some(s => s.i === sel)) sel = (varKnown[0] || maybe[0] || clean[0] || list[0])?.i ?? null;
     const flagged = Object.values(au.markiert || {}).reduce((a, b) => a + b, 0);
     host.innerHTML = head('<span class="chip">eigene Messung · Gaia DR3' + (d.katalog ? ` · ${esc(d.katalog)}` : '') + '</span>') + `
       <div class="depth-kpis lc-kpis">
-        <div><small>Bekannte Veränderliche</small><b class="tnum">${nf.format(known.length)}</b><span>${nf.format(varKnown.length)} mit messbarer Schwankung · ${nf.format(d.n_bekannt_feld || 0)} im Katalog</span></div>
+        <div><small>Bekannte Veränderliche</small><b class="tnum">${nf.format(clean.length)}</b><span>gemessen · ${nf.format(varKnown.length)} schwanken messbar${crowd.length ? ` · ${nf.format(crowd.length)} im Gedränge` : ''} · ${nf.format(d.n_bekannt_feld || 0)} im Katalog</span></div>
         <div><small>Mögliche Veränderliche</small><b class="tnum">${nf.format(maybe.length)}</b><span>nicht im Katalog – keine Entdeckung, nur auffällig</span></div>
         <div><small>Aufnahmen</small><b class="tnum">${nf.format(au.gut || 0)}</b><span>von ${nf.format(au.n || 0)} · ${de1(au.spanne_h || 0, 1)} h${(au.naechte || []).length > 1 ? ` · ${au.naechte.length} Nächte` : ''}${flagged ? ` · ${flagged} ausgelassen` : ''}</span></div>
         <div><small>Genauigkeit</small><b class="tnum">${best ? `±${de1(best.rms, 3)} mag` : '–'}</b><span>${best ? `je Aufnahme bei V ${best.v} · ${nf.format(ens.n || 0)} Vergleichssterne` : 'zu wenige konstante Sterne'}</span></div>
       </div>
       <div class="lc-wrap">
-        <div class="lc-list" role="listbox" aria-label="Sterne mit Lichtkurve">${list.length ? list.map(s => row(s)).join('') : '<p class="mut sm">Keine Veränderlichen im Feld gemessen.</p>'}</div>
+        <div class="lc-list" role="listbox" aria-label="Sterne mit Lichtkurve">${list.length ? [...clean, ...maybe, ...st.filter(s => s.pruefstern)].map(s => row(s)).join('')
+          + (crowd.length ? `<details class="lc-crowd"${!clean.length && !maybe.length ? ' open' : ''}><summary class="sm">${nf.format(crowd.length)} im Gedränge – nicht trennbar</summary>
+              <p class="dim sm">Ein heller Nachbar liegt mit in der Messblende (z. B. im Kern eines Sternhaufens). Was schwankt, ist vor allem Rauschen und Nachbarlicht.</p>${crowd.map(s => row(s)).join('')}</details>` : '')
+          : '<p class="mut sm">Keine Veränderlichen im Feld gemessen.</p>'}</div>
         <div class="lc-main">
           <div class="row lc-tools">
             <div class="seg" data-lc-mode><button data-m="zeit"${LC_VIEW.mode === 'zeit' ? ' class="on"' : ''}>Zeit</button><button data-m="phase"${LC_VIEW.mode === 'phase' ? ' class="on"' : ''}>Phase</button></div>
@@ -110,14 +113,14 @@ function lightcurvePanel(host, r, opts = {}) {
     curve();
   }
   function row(s) {
-    const tag = s.pruefstern ? '<span class="chip">Prüfstern</span>' : s.moeglich ? '<span class="chip lc-maybe">möglicher Veränderlicher</span>'
+    const tag = s.pruefstern ? '<span class="chip">Prüfstern</span>' : s.gedraenge ? `<span class="chip">${esc(s.typ || 'VAR')}</span>` : s.moeglich ? '<span class="chip lc-maybe">möglicher Veränderlicher</span>'
       : `<span class="chip${s.signifikant ? ' acc' : ''}">${esc(s.typ || 'VAR')}</span>`;
     const name = s.name || s.gaia || `Stern ${s.i}`;
     const per = s.katalog_periode || s.eigene_periode?.periode;
     const amp = s.amp_fit ?? s.amp;
     return `<button class="lc-row" data-i="${s.i}" role="option" aria-selected="${s.i === sel}">
       <span class="lc-n"><b>${esc(name)}</b>${tag}</span>
-      <span class="lc-m dim sm">V ${lcNum(s.mittel, 2)} · Δ ${lcNum(amp, 2)} mag · ${per ? `P ${lcPeriod(per)}` : 'ohne Periode'} · ±${lcNum(s.genauigkeit, 3)}${s.mischlicht ? ' · Mischlicht' : ''}${s.gesaettigt ? ' · übersättigt' : ''}</span></button>`;
+      <span class="lc-m dim sm">V ${lcNum(s.mittel, 2)} · Δ ${lcNum(amp, 2)} mag · ${per ? `P ${lcPeriod(per)}` : 'ohne Periode'} · ±${lcNum(s.genauigkeit, 3)}${s.gedraenge ? ' · Gedränge' : ''}${s.gesaettigt ? ' · übersättigt' : ''}</span></button>`;
   }
   function links() {
     const base = `/api/stacking/results/${r.id}/lightcurves/export?bin=${LC_VIEW.bin}`;

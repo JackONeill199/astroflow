@@ -20,7 +20,7 @@ unter einer Oberfläche (einzeln abschaltbar unter Einstellungen → Module & Sy
 
 | Modul | Was es tut |
 |---|---|
-| **Bilder** | FITS-Aufnahmen automatisch sortieren, kalibrieren, stacken und entwickeln; neue Nächte werden nachgestackt. Dazu Analysen (Tiefe, Vergleich, Himmelsqualität, Gerätediagnose, Asteroiden, HR-Diagramm), Bild-Tutor, „Heute Nacht“, **Observatorium** (Himmelsatlas mit deinen Fotos), Kometenmodus |
+| **Bilder** | FITS-Aufnahmen automatisch sortieren, kalibrieren, stacken und entwickeln; neue Nächte werden nachgestackt. Dazu Analysen (Tiefe, Vergleich, Himmelsqualität, Gerätediagnose, Asteroiden, HR-Diagramm, Lichtkurven), Bild-Tutor, „Heute Nacht“, **Observatorium** (Himmelsatlas mit deinen Fotos), Kometenmodus |
 | **SkyTrace** | Bildfolgen auf Lichtspuren und bewegte Objekte untersuchen; Abgleich mit Satelliten (historische Bahndaten), Meteoren und Flugzeugen zur Aufnahmezeit, 3D-Erde, Standort- und Uhrsuche, Statistik, Erfolge |
 | **Sage** | Lebende Astronomie-Enzyklopädie: Objekte im Bild bestimmen, aus Fachkatalogen recherchieren (mit Quellen), Geschichten erzählen und vorlesen, Entdeckungen, Wissensnetz, Sammlung mit Erfolgen |
 | **Teleskop** (optional, standardmäßig aus) | Smart-Teleskop den Plan der Nacht selbst abarbeiten lassen: Simulator, Autopilot mit Wetter, Dämmerung und Hinderniserkennung, Live-Ansicht; echte Geräte über Treiber-Plugins. Vaonis ohne Plugin: Status lesen, Aufnahmen vom Teleskop importieren, Rohbilder live abholen |
@@ -33,7 +33,7 @@ Jedes Modul hat eine eigene Seite mit allen Funktionen, Bildern und Videos.
 ### Bilder – vom Rohbild zum fertigen Foto
 
 FITS-Aufnahmen werden automatisch sortiert, kalibriert, gestackt und entwickelt; neue Nächte werden nachgestackt, aussortierte Aufnahmen kommen mit Begründung.
-Dazu Analysen (Tiefe, Vergleich, HR-Diagramm, Asteroiden, Gerätediagnose), „Heute Nacht“ und das **Observatorium**: deine Fotos am Himmel,
+Dazu Analysen (Tiefe, Vergleich, HR-Diagramm, Lichtkurven, Asteroiden, Gerätediagnose), „Heute Nacht“ und das **Observatorium**: deine Fotos am Himmel,
 der Himmel „von hier“ mit Zeitregler und ein Beobachtungsplaner über mehrere Nächte.
 
 ![Live-Ansicht beim Stacken](docs/media/stacking-live.webp)

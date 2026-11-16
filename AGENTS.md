@@ -29,7 +29,7 @@ Stack: Python 3.12+ · numpy/scipy/astropy · FastAPI + uvicorn · SQLite · Van
 | Observatorium: Himmelsatlas mit eigenen Fotos (`observatory`), später Horizontmaske und Mehrnächte-Planung | `docs/entwicklung/observatorium.md` |
 | Belichtungsbedarf je Ziel und Gerät (`need`, Planer, Heute Nacht), Eichung aus eigenen Stacks | `docs/entwicklung/belichtungsbedarf.md` |
 | Tiefe, Vergleich (Grenzgröße, helle Nachbarn, Hotpixel-Reste) | `docs/entwicklung/analyse-tiefe-vergleich.md` |
-| HR-Diagramm, Asteroiden, Gerätediagnose, Analyse-Dashboard | `docs/entwicklung/analyse-auswertungen.md` |
+| HR-Diagramm, Lichtkurven veränderlicher Sterne, Asteroiden, Gerätediagnose, Analyse-Dashboard | `docs/entwicklung/analyse-auswertungen.md` |
 | Web-UI: Routing, Designsystem, Look, Seitenwechsel, Viewer, 3D, Frontend-Helfer (`folderDialog`, `picker` …), Import fertiger Bilder | `docs/entwicklung/web-ui.md` |
 | Langfassung Architektur (Dienstliste), Sicherheit (CodeQL-Begründungen), Tests (Historie) | `docs/entwicklung/architektur-sicherheit-tests.md` |
 | SkyTrace (Überblick, feste Regeln, Architektur) | `astroflow/modules/skytrace/AGENTS.md` |
@@ -91,9 +91,9 @@ Schlüssel stehen im Klartext in `data/settings.json`. Tests: `tests/test_securi
 ## Wenn du … änderst (Pflichtregeln, Details in der jeweiligen Datei)
 - **Frame-Analyse oder Kosmetik** (`quality.py`, `calibration.cosmetic`): `quality.METRICS_VERSION` erhöhen (löst Neu-Analyse + Neu-Stacken aus).
   Ausnahmen bewusst ohne Erhöhung: neue Zusatzmetriken (`sky`, `bgplane`, `ecc_pa`, `tiles`, `trail_lines`) und Sensorfehlerkarten – nur nach Nutzerentscheidung.
-- **`develop.assess`**: `QC_VERSION` erhöhen. **Tutor-Bericht**: `TUTOR_VERSION`. **Tiefe/Vergleich/HR-Diagramm/Asteroiden/Gerätediagnose**:
-  `DEPTH_/COMPARE_/HRD_/ASTEROID_/DIAG_VERSION` erhöhen, wenn alte Ergebnisse falsch wären. **`stackfix`**: `stackfix.VERSION`.
-- **Große Ergebnisse** (Tiefe, Vergleich, HRD, Asteroiden) nie in die gepollte Projektansicht (`_slim`), sondern eigene Endpunkte.
+- **`develop.assess`**: `QC_VERSION` erhöhen. **Tutor-Bericht**: `TUTOR_VERSION`. **Tiefe/Vergleich/HR-Diagramm/Lichtkurven/Asteroiden/Gerätediagnose**:
+  `DEPTH_/COMPARE_/HRD_/LC_/ASTEROID_/DIAG_VERSION` erhöhen, wenn alte Ergebnisse falsch wären. **`stackfix`**: `stackfix.VERSION`.
+- **Große Ergebnisse** (Tiefe, Vergleich, HRD, Lichtkurven, Asteroiden) nie in die gepollte Projektansicht (`_slim`), sondern eigene Endpunkte.
 - **Neue DB-Spalte**: in `db.MIGRATIONS` eintragen; sonst lieber ins JSON (`frames.info`/`metrics`, `results.stats`, `projects.options`).
 - **Neuer gefährlicher Endpunkt / Pfad vom Client**: Sicherheit 4 und 6; Fehlertexte nach 7.
 - **Netzabfragen** (Gaia, SIMBAD, JPL, Horizons …): gemeinsame Schichten und Caches nutzen (`photometry.gaia_stars/gaia_field`, `compare.small_bodies`,

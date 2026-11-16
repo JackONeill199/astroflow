@@ -1,4 +1,4 @@
-# Analyse – HR-Diagramm, Asteroiden, Gerätediagnose, Dashboard
+# Analyse – HR-Diagramm, Lichtkurven, Asteroiden, Gerätediagnose, Dashboard
 
 > Ausgelagert aus `AGENTS.md` am 09.11.2026, Text unverändert übernommen. Regeln, die beim Ändern von Code gelten,
 > stehen zusätzlich in Kurzform in `AGENTS.md` → „Wenn du … änderst“. Neue Befunde hier ergänzen, nicht in `AGENTS.md`.
@@ -34,6 +34,44 @@
   Zeilen, Rekord `oldest_cluster` „Ältester Sternhaufen“ (nur offene Haufen mit erkanntem Haufen). Diagramm kompakt (SVG 680×340, Fuß mit Erklärung + „Neu messen“ in einer Zeile).
 - Tests: `tests/test_hrd.py` (synthetischer Haufen 500 pc, E 0,2, Abknickpunkt M_G 1,3 im erfundenen Feld, Gaia-Attrappe; Feld ohne Haufen;
   alter Gaia-Zwischenspeicher; API/Insights/Dashboard).
+
+## Lichtkurven veränderlicher Sterne (`modules/stacking/lightcurve.py`, `static/lightcurve.js|css`; Wunsch 8)
+- **Ablauf** über `insights.py` (Art `lightcurves`, **nur auf Wunsch**, nicht in `after_develop` – liest alle Rohbilder). Zusammenfassung
+  `results.stats.lightcurves` (`v` = `LC_VERSION`, nicht in `_slim`/`_SLIM_SQL`/`_LIST_SQL`), Kurven in `work/p<id>/lichtkurven_r<rid>.json`
+  (nur bekannte Veränderliche, mögliche Veränderliche, Prüfstern). Endpunkte `GET|POST /results/{id}/lightcurves` (GET zusätzlich `rohbilder` =
+  vorhandene gestackte Rohdateien), `GET …/lightcurves/star/{i}?bin=n` (Punkte, gebinnt, phasengefaltet mit Fourier-Modell), `GET …/lightcurves/export
+  ?fmt=csv|aavso&star=alle|<i>&bin=n` (Kopf mit „NICHT GEPRÜFT“; AAVSO Extended, `CNAME=ENSEMBLE`, `CHART=na`, `OBSCODE=XXXXX` als Platzhalter,
+  nur Katalogsterne, ausgelassene Aufnahmen fehlen). Einstellung: Gaia (`storage.gaia`) Pflicht, Katalogabgleich hängt an `insights.simbad`.
+- **Frames:** Stack-Zustand mit den meisten Aufnahmen (`state.json`, Mono bevorzugt L/ohne Filter/G), gestackte, nicht gelöschte, vorhandene Lights.
+  Kometen-Stacks abgelehnt. Positionen Gaia → Stack-WCS → Referenzbild (`(x+0,5)/scale − 0,5 + Mosaik-Ursprung`) → Aufnahme über die Umkehrung von
+  `registration.find_transform(ref_stars, frame_stars)`, danach affine Feinanpassung an hellen Sternen (`measure_frame`).
+- **Laden:** `load_calibrated` = Dark/Flat wie `Pipeline._load`, Hotpixel-Kosmetik nur abseits der Sterne – `calibration.cosmetic` stutzte
+  synthetisch ~40 Sternspitzen je Aufnahme (einige Prozent Fluss, Prüfstern-χ² 5,6 → 0,7 nach der Änderung).
+- **Fotometrie (`aperture`):** Subpixel-Mitte, weicher Rand, Ring 2–3 r (Median), Bayer: nur grüne Pixel (`green_weights`, Filter `TG`), Mono `CV`.
+  Radius `APER` = 1,0 × FWHM der Aufnahme: Stellina-Einzelbilder sind hintergrundbegrenzt (M3, 10 s, FWHM 7–9 px: V-11-Stern allein durch den
+  Hintergrund ±0,15 mag bei 1,5 FWHM) – kleiner = besseres SNR, der Seeing-Verlust kürzt sich in der Differenz. Übersättigt: Spitze > 0,6 × hellste
+  Spitze und Spitze/Fluss < 0,7 × Median (in > 20 % der Aufnahmen → ganzer Stern).
+- **Differenzfotometrie (`differential`):** V der Vergleichssterne aus Gaia (Riello et al. 2021), Farbterm aus dem mittleren Bild; globales
+  Ensemble, schwankende Vergleichssterne (Streuung > 2,5 × laufender Median) iterativ verworfen; Fehlermodell VB + a·F + b·F² (NNLS an den
+  konstanten Sternen, a = 1/Verstärkung, b = Systematik); Markierungen je Aufnahme `wolke` (> 0,4 mag Lichtverlust gegen die Nacht),
+  `ausreisser` (Ensemble-Streuung > 3 × Median), `wenig`. Danach je Stern eigenes Ensemble (15 nächste in Helligkeit/Farbe/Ort, kd-Baum).
+- **Bewertung:** `curve_stats` (robuste Streuung, χ², von-Neumann η, Amplitude 2,5–97,5 % der geglätteten Kurve), erwartete Streuung = laufender
+  Median der Vergleichssterne. `signifikant` = Streuung > 2,5 × erwartet und χ² > 4 und nicht `gedraenge` (Mischlicht oder gemessen > 0,75 mag
+  heller als Katalog-Maximum). „Möglicher Veränderlicher“ zusätzlich η < 1,2, Amplitude > 4 × Fehler, kein Katalogeintrag – nie „Entdeckung“.
+  Eigene Periode (`period_search`, Lomb-Scargle auf relativer Zeit – bei JD ~2,46·10⁶ verliert die schnelle Methode sonst das Signal) nur für
+  signifikante Sterne, ≥ 1,5 Zyklen, FAP < 0,1 %, Gipfel nicht am langen Rand; `alias` bei zweitem Gipfel > 85 %.
+- **Kataloge:** `vsx_field` (VizieR B/vsx, Spiegel Harvard zuerst – CDS ist beim Nutzer nicht erreichbar; AAVSO-API blockt Automaten),
+  VizieR markiert „min ist Amplitude“ mit `Y` (VSX: `(`); Rückfall `simbad_variables` (Typen aus `compare.VARIABLE`, ohne Periode). Zuordnung
+  VSX ↔ Gaia im Umkreis 3″ nach passender Helligkeit, sonst an der Katalogposition messen. Zeiten: Belichtungsmitte → BJD_TDB/HJD (`barycentric`,
+  geozentrisch, ΔUT1 = 0 – keine IERS-Downloads), Feldmitte.
+- **Echte Daten (16.11.2026):** M3, Stellina 10 s, 124 Aufnahmen über 28 min: ±0,033 mag je Aufnahme bei V 11, ±0,077 bei V 12, ±0,17 bei V 13.
+  RR-Lyrae-Sterne (V ≈ 15,6) sind in Einzelbildern unter dem Rauschen, 107 von 125 Katalogsternen im Gedränge des Kerns – korrekt keine
+  „Schwankung“ und keine falschen Kandidaten.
+- **UI** (`lightcurvePanel` in `analysisTab`, Abschnitt `#anLc`): Kennzahlen, Liste (bekannt · möglich · Prüfstern, Gedränge eingeklappt),
+  SVG Zeit/Phase (`lcTimeSvg`/`lcPhaseSvg`, Nächte farbig, ausgelassene Aufnahmen hohl), Binning 1/3/5/10 (localStorage), Export mit Warnhinweis.
+  Ohne Rohbilder: Erklärung statt Knopf.
+- Tests: `tests/test_lightcurve.py` (`demo.generate_variable`: bekannter + unbekannter Veränderlicher mit fester Amplitude/Periode, Wolkenbild,
+  übersättigte Sterne; Gaia/VSX als Attrappen; API, Export, ohne Katalog).
 
 ## Asteroiden im Bild (`modules/stacking/asteroids.py`, `static/asteroids.js|css`; seit 0.42.0 – Wunsch 10)
 Ziel: „Du hast 9 Asteroiden fotografiert, der schwächste 16,2 mag“. Läuft als vierte Art in `insights.Insights` (`kind="asteroids"`,
