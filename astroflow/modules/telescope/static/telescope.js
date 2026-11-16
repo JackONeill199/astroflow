@@ -213,7 +213,7 @@
         g.fillText(data.current?.name || '', mx + 16, my - 14);
       }
       // Teleskop (Seitenansicht, Tubuswinkel = gemeldete Höhe)
-      const front = drawGauge(g, Math.max(30, W * 0.06), hy, Math.min(120, hy * 0.5), shown.alt, shown.az, shown.open, data.min_alt || 30, capture, data.phase_label || '', t, col);
+      const front = drawGauge(g, Math.max(30, W * 0.06), hy, Math.min(120, hy * 0.5), shown.alt, shown.az, shown.open, data.min_alt || 30, capture, data.current ? data.phase_label || '' : '', t, col);   // ohne Ziel steht der Zustand schon rechts daneben
       if (capture && !reduced()) {                 // Licht fällt genau entlang der Blickrichtung in die Öffnung
         const [fx, fy, ux, uy] = front, D = Math.min(170, W * 0.3);
         for (let i = 0; i < 12; i++) {
@@ -456,6 +456,7 @@
 
   function currentHtml(d) {
     const c = d.current, s = d.state || {};
+    if (!c && !s.connected) return `<div class="tel-cur"><div class="tel-cur-name">Keine Aufnahme</div></div>`;   // „nicht verbunden“ steht schon oben im Status
     if (!c) return `<div class="tel-cur"><div class="mut sm">Gerade keine Aufnahme</div><div class="tel-cur-name">${esc(d.phase_label || '–')}</div></div>`;
     const p = Math.max(0, Math.min(1, (d.now - (c.real_start || c.start)) / Math.max(60, c.end - (c.real_start || c.start))));
     return `<div class="tel-cur"><div class="mut sm">Aktuelles Ziel${c.substitute_for ? ` · Ersatz für ${esc(c.substitute_for)}` : ''}</div>
@@ -616,7 +617,8 @@
       const u = d.unit || {}, s = d.state || {};
       sv.set(d); dv.set(d);
       const conn = !s.connected ? 'nicht verbunden' : s.master === 'us' ? 'verbunden' : s.master === 'other' ? 'App steuert' : 'verbunden, ohne Kontrolle';
-      put('line', `<span class="tel-dot ${s.connected ? 'ok' : 'warn'}"></span><span>${esc(conn)}</span>${u.model_name ? `<span>${esc(u.model_name)}</span>` : ''}${u.simulated ? `<span class="acc">Simulation${u.speed > 1 ? ' ×' + Math.round(u.speed) : ''}</span>` : ''}`, '.tel-line');
+      // ohne Verbindung sagt das schon der Statuskasten darunter – hier nur der Punkt (Text als Tooltip)
+      put('line', `<span class="tel-dot ${s.connected ? 'ok' : 'warn'}" title="${esc(conn)}" aria-label="${esc(conn)}"></span>${s.connected ? `<span>${esc(conn)}</span>` : ''}${u.model_name ? `<span>${esc(u.model_name)}</span>` : ''}${u.simulated ? `<span class="acc">Simulation${u.speed > 1 ? ' ×' + Math.round(u.speed) : ''}</span>` : ''}`, '.tel-line');
       const notes = [];
       if (u.error) notes.push(`<div class="notice err">${icon('alert')}<div><b>Teleskop-Treiber nicht bereit</b><div class="mut sm">${esc(u.error)} – solange läuft der Simulator.</div></div><span class="grow"></span><a class="btn sm ghost" href="#/settings/telescope">Einstellungen</a></div>`);
       if (s.raw_enabled === false) notes.push(`<div class="notice">${icon('camera')}<div><b>Rohbilder am Teleskop aus</b><div class="mut sm">Für die AstroFlow-Pipeline in der Vaonis-App „Rohbilder speichern“ einschalten.</div></div></div>`);
