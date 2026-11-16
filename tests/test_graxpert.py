@@ -234,25 +234,30 @@ d = fits.getdata(src).astype(np.float32)
 d3 = d if d.ndim == 3 else d[None]
 if s < 0.5 or os.environ.get("GX_FAKE_SAME"):
     model = np.stack([ndi.gaussian_filter(ndi.median_filter(c, 9), 12) for c in d3])
-else:
+elif os.environ.get("GX_FAKE_KEEPGRAD"):                  # glättet so stark, dass der Himmelsverlauf stehen bleibt
     model = np.stack([np.full_like(c, np.median(c)) for c in d3])
+else:                                                     # zieht nur eine Ebene ab (Lichtverschmutzungsverlauf)
+    hh, ww = d3.shape[1:]
+    yy, xx = np.mgrid[0:hh, 0:ww]
+    A = np.stack([np.ones(hh * ww), xx.ravel(), yy.ravel()], 1).astype(np.float64)
+    model = np.stack([(A @ np.linalg.lstsq(A[::7], np.asarray(ndi.median_filter(c, 9), np.float64).ravel()[::7], rcond=None)[0]).reshape(hh, ww) for c in d3])
 y = d3 - model + np.median(model)
 fits.PrimaryHDU(y.astype(np.float32)).writeto(src.with_name(out + ".fits"))
 '''
 
 
 def _dust_sky(cloud: bool, seed=3):
-    """Himmel mit Verlauf und gleichmäßig verteilten Sternen; mit Dunkelwolke: Ellipse dunkler und mit 30 % der Sterne."""
+    """Himmel mit Verlauf und gleichmäßig verteilten Sternen; mit Dunkelwolke: Ellipse (abseits der Bildmitte, deren Pegel remove_edge_glow als Bezug nimmt) dunkler und mit 30 % der Sterne."""
     rng = np.random.default_rng(seed)
-    H, W = 384, 576
+    H, W = 480, 720
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
     img = 1000 + 80 * xx / W + rng.normal(0, 4, (H, W)).astype(np.float32)
-    inside = ((xx - 300) / 150) ** 2 + ((yy - 190) / 90) ** 2 < 1
+    inside = ((xx - 200) / 90) ** 2 + ((yy - 130) / 55) ** 2 < 1
     if cloud:
-        img -= 60 * np.exp(-(((xx - 300) / 150) ** 2 + ((yy - 190) / 90) ** 2) * 1.5) * inside
+        img -= 60 * np.exp(-(((xx - 200) / 90) ** 2 + ((yy - 130) / 55) ** 2) * 1.5) * inside
     k = np.arange(-4, 5)
     psf = np.exp(-(k[:, None] ** 2 + k[None] ** 2) / (2 * 1.3 ** 2))
-    for _ in range(1600):
+    for _ in range(3000):
         y, x = int(rng.integers(6, H - 6)), int(rng.integers(6, W - 6))
         if cloud and inside[y, x] and rng.random() > 0.3:
             continue
@@ -279,7 +284,7 @@ def test_dust_guard_raises_smoothing_for_dark_cloud(tmp_path, monkeypatch):
     assert "Sterne je Kachel" in d["reason"] and "_stars" not in d["before"]
     assert (tmp_path / "s.txt").read_text().split()[0] == "0.1" and len((tmp_path / "s.txt").read_text().split()) == 2
     json.dumps(info)                                            # landet in stats.graxpert
-    inside = (slice(160, 220), slice(260, 340))                 # Wolke bleibt dunkler als die Umgebung
+    inside = (slice(118, 142), slice(180, 220))                 # Wolke bleibt dunkler als die Umgebung
     assert np.median(out[0][inside]) < np.median(out[0][:, :80]) - 20
     _, info2 = graxpert.apply(mean, cov, "bge", cache_dir=tmp_path / "c", exe=exe)
     assert info2.get("cache") and info2["dust"]["to"] == d["to"]
@@ -378,3 +383,24 @@ def test_dust_guard_run_state_belongs_to_accepted_try(tmp_path, monkeypatch):
     _, info = graxpert.apply(mean, cov, "bge", exe=exe)
     assert info["dust"]["to"] == 0.5 and info["smoothing"] == 0.5
     assert "retried_cpu" not in info and "nonfinite_repaired" not in info
+
+
+def test_dust_guard_flatness_check_keeps_first_result(tmp_path, monkeypatch):
+    """Höhere Glättung nimmt weniger Wolke mit, lässt aber den Himmelsverlauf stehen (wie M3/NGC 7023 bei 1,0) →
+    Ebenheits-Gegenprobe verwirft beide Stufen, Glättung bleibt 0,1, Begründung für den Nutzer."""
+    exe = _dust_fake(tmp_path)
+    monkeypatch.setenv("GX_FAKE_KEEPGRAD", "1")
+    mean, cov = _dust_sky(cloud=True)
+    _, info = graxpert.apply(mean, cov, "bge", exe=exe)
+    d = info["dust"]
+    assert info["smoothing"] == 0.1 and d["kept"] and "to" not in d
+    assert all("flat" in t.get("sky_worse", []) for t in d["tried"]) and "unebener Himmel" in d["why_kept"]
+    assert d["sky_before"]["flat"] < d["tried"][0]["sky"]["flat"]
+    json.dumps(info)
+
+
+def test_sky_worse_thresholds():
+    s0 = {"flat": 0.2, "edge": 0.5, "color": 0.6}
+    assert graxpert.sky_worse(s0, {"flat": 0.39, "edge": 0.84, "color": 0.99}) == []
+    assert graxpert.sky_worse(s0, {"flat": 0.51, "edge": 0.5, "color": 1.1}) == ["flat", "color"]
+    assert graxpert.sky_worse(None, s0) == []

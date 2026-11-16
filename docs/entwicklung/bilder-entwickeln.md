@@ -160,7 +160,16 @@ Schritte 11–13 (Speicher, volles Laufwerk, Aufräumen): `daten-server.md`.
      Glättung (→ `_ai`, Randglühen ab 0,5). Cacheschlüssel: angefragte Glättung + `GRAXPERT_VERSION` 3 (Wächter ist deterministisch).
      Eichung an 14 echten Stacks (0,1 → gesamt/sternarm): NGC 7000 0,57/0,61 → 1,0 (0,41), NGC 7023 0,40/0,47 (2 statt 8 Sterne je
      Kachel) → 1,0 (0,25), IC 1396 0,43 → 0,5 (0,35), IC 1805 0,21/0,32 → 0,5 (0,15); Galaxien/Haufen ≤ 0,04 bleiben. NGC 6888 (0,44)
-     ist Randglühen – 0,5/1,0 nehmen mehr mit (0,56/0,75), daher die Gegenprobe. Bei Hα-Objekten mit 1,0 auf Rotstich achten
+     ist Randglühen – 0,5/1,0 nehmen mehr mit (0,56/0,75), daher die Gegenprobe.
+     **Ebenheits-Gegenprobe** (`sky_measure`/`sky_worse`, 16.11.2026 nach unabhängiger Prüfung im Hauptchat: höhere Glättung ließ
+     vor der Bearbeitung mehr Verlauf stehen): anderes Maß als die Entscheidung, gemessen so, wie die Bearbeitung den Himmel danach
+     sieht (ab 0,5 `remove_edge_glow`, nicht bei Mosaiken → `apply(edge_glow=…)`), auf 2× gebinnten Kacheln: Streuung der
+     nebelfreien Kacheln (normale Sterndichte, 3×3 gemittelt, und dunkelste 30 % nach Fläche 2. Grades), Randring, Farbstreuung
+     (R−G, B−G). Schlechter als 1,5 × (erstes Ergebnis) + 0,1 → Stufe verworfen (1,0 → 0,5 → bleibt), Begründung `dust.why_kept`,
+     Messwerte `dust.sky_before`, `tried[].sky`. Echte Läufe: NGC 7000 bleibt 1,0 (Ebenheit 2,16 → 1,26), IC 1396/IC 1805 0,5 (kaum
+     Änderung), NGC 7023 ohne Staubprofil 1,0 verworfen (0,20 → 0,47) → 0,5. Absolute Himmelsfarbe prüft sie nicht (Farbkalibrierung).
+     Große Dunkelwolke in der Bildmitte: `remove_edge_glow` nimmt das mittlere Drittel als Bezug und verschiebt dann die Ränder –
+     die Gegenprobe verwirft das. Bei Hα-Objekten mit 1,0 auf Rotstich achten
      (`continuum_color` gilt nur für reflection).
    - Staubfarbe (`continuum_color`, Profil reflection 1,0, seit 13.11.2026): Glättung 1,0 lässt bei Stellina rotes Sensor-/IR-Glühen
      stehen (NGC 7023: Anteil 1,0 − 0,1 hat R:G:B ≈ 1,8 : 0,3 : 0,15, am stärksten an den Rändern) – nach Sättigung/Vibrance ein fleckiger

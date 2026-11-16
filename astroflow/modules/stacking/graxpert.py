@@ -308,7 +308,88 @@ def dust_better(m0: dict, m1: dict) -> bool:
     return better and not worse
 
 
-def _dust_guard(exe: str, x0: np.ndarray, x: np.ndarray, hole: np.ndarray, smoothing: float, gpu: bool, info: dict, log) -> np.ndarray:
+# Ebenheits-Gegenprobe (16.11.2026, unabhängige Prüfung im Hauptchat: höhere Glättung ließ bei NGC 7000 vor der Bearbeitung
+# mehr Verlauf stehen, bei M3 30×): mit einem anderen Maß als dem Entscheidungsmaß wird der Himmel so verglichen, wie ihn die
+# Bearbeitung danach sieht – ab Glättung 0,5 räumt processing.remove_edge_glow die Randbänder, sonst nichts. Gemessen auf 2×
+# gebinnten Kacheln (25-%-Perzentil, robust gegen Sterne) in Einheiten des Pixelrauschens: Streuung der nebelfreien Kacheln
+# (normale Sterndichte – keine Dunkelwolke – und unter den dunkelsten 30 % des Stacks nach Abzug einer Fläche 2. Grades – kein
+# heller Nebel), Abstand des Randrings dazu und Streuung der Farbe (R−G, B−G) dort.
+# Echte Läufe 16.11.2026 (Ebenheit 0,1 → gewählte Stufe): NGC 7000 2,16 → 1,26 (1,0 bleibt), IC 1396 0,17 → 0,21 und
+# IC 1805 0,23 → 0,24 (0,5), NGC 7023 bei 1,0 0,20 → 0,47 verworfen → 0,5 (0,29). Ohne den Randglüh-Schritt wäre NGC 7000 bei 1,0
+# unebener – ihn macht die Bearbeitung ab 0,5 aber immer. Eine große Dunkelwolke in der Bildmitte verschiebt den Bezug von
+# remove_edge_glow (mittleres Drittel); auch das fängt die Gegenprobe ab. Die absolute Himmelsfarbe gleicht die Farbkalibrierung an.
+SKY_FACTOR = 1.5                     # unebener als 1,5 × (0,1-Ergebnis) + SKY_SLACK → höhere Glättung verworfen
+SKY_SLACK = 0.1
+
+
+def _bin2(a: np.ndarray) -> np.ndarray:
+    C, H, W = a.shape
+    return a[:, : H // 2 * 2, : W // 2 * 2].reshape(C, H // 2, 2, W // 2, 2).mean((2, 4))
+
+
+SKY_STARS = 0.8                      # nebelfrei nur mit mindestens 80 % der mittleren Sternzahl je Kachel
+
+
+def sky_measure(x0: np.ndarray, y: np.ndarray, hole: np.ndarray | None, glow: bool, sel: dict | None = None) -> dict | None:
+    """Himmel des Ergebnisses `y` (normiert, (C,H,W)) nach dem, was die Bearbeitung noch tut (`glow`: Randglühen ab 0,5).
+    Gibt {flat, edge, color} in Einheiten des Pixelrauschens oder None (zu klein). `sel` merkt sich die Kachelauswahl
+    (hängt nur am Stack x0) zwischen den Aufrufen."""
+    from .processing import remove_edge_glow
+    xb, yb = _bin2(x0), _bin2(y)
+    if glow:
+        yb = remove_edge_glow(yb)
+    C, H, W = yb.shape
+    T = max(16, min(H, W) // 16)
+    ty, tx = H // T, W // T
+    if ty < 4 or tx < 4:
+        return None
+
+    def tiles(a):
+        t = a[:, : ty * T, : tx * T].reshape(a.shape[0], ty, T, tx, T).swapaxes(2, 3).reshape(a.shape[0], ty, tx, -1)
+        return np.percentile(t, 25, axis=3)
+
+    sel = {} if sel is None else sel
+    if "sky" not in sel:
+        ok = np.ones((ty, tx), bool)
+        if hole is not None and hole.any():
+            hb = hole[: H * 2 : 2, : W * 2 : 2][:H, :W].astype(np.float32)
+            ok &= tiles(hb[None])[0] < 0.5
+        ring = np.zeros_like(ok)
+        ring[[0, -1], :] = True
+        ring[:, [0, -1]] = True
+        inner = ok & ~ring
+        if inner.sum() < 6:
+            return None
+        from scipy import ndimage as ndi
+        n, _ = _dust_stars(x0.mean(0), 2 * T, ty, tx)            # Sterne je Kachel in voller Auflösung,
+        n = ndi.uniform_filter(n, 3, mode="nearest")                # über 3×3 gemittelt (Dunkelwolken sind zusammenhängend)
+        cand = inner & (n >= SKY_STARS * float(np.median(n[inner])))
+        if cand.sum() < 6:
+            cand = inner
+        r0 = _minus_plane2(tiles(xb).mean(0), ok)
+        sel.update(sky=cand & (r0 <= np.percentile(r0[cand], 30)), ring=ring & ok)
+    sky, ring = sel["sky"], sel["ring"]
+    t = tiles(yb)
+    L = t.mean(0)
+    lum = yb.mean(0)
+    sig = 1.4826 * float(np.median(np.abs(np.diff(lum, axis=1)))) / float(np.sqrt(2)) + 1e-12
+    edge = float(np.abs(L[ring] - np.median(L[sky])).mean()) / sig if ring.any() else 0.0
+    color = float(np.std(t[0][sky] - t[1][sky]) + np.std(t[2][sky] - t[1][sky])) / sig if C == 3 else 0.0
+    return {"flat": round(float(L[sky].std()) / sig, 3), "edge": round(float(edge), 3), "color": round(float(color), 3)}
+
+
+def sky_worse(s0: dict | None, s1: dict | None) -> list[str]:
+    """Kennzahlen, in denen der Himmel mit höherer Glättung messbar schlechter ist als mit dem ersten Ergebnis."""
+    if not s0 or not s1:
+        return []
+    return [k for k in ("flat", "edge", "color") if s1[k] > SKY_FACTOR * s0[k] + SKY_SLACK]
+
+
+SKY_WORDS = {"flat": "unebener Himmel", "edge": "hellere/dunklere Ränder", "color": "Farbverlauf im Himmel"}
+
+
+def _dust_guard(exe: str, x0: np.ndarray, x: np.ndarray, hole: np.ndarray, smoothing: float, gpu: bool, info: dict, log,
+                edge_glow: bool = True) -> np.ndarray:
     """Staubwächter nach dem ersten Hintergrundlauf: nimmt das Modell zu viel großflächige Struktur mit, mit höherer Glättung
     neu rechnen (GraXpert-GPU ~4 s) und das nur übernehmen, wenn es messbar weniger mitnimmt (1,0 zu viel → 0,5 versuchen).
     Fehler beim Messen/Nachrechnen lassen das erste Ergebnis stehen; Abbruch und Speichermangel werden weitergeworfen.
@@ -332,6 +413,7 @@ def _dust_guard(exe: str, x0: np.ndarray, x: np.ndarray, hole: np.ndarray, smoot
             return x
         stars = m0.pop("_stars")
         dust = {"from": round(smoothing, 2), "reason": dust_reason(m0), "before": m0}
+        sky_sel: dict = {}
         info["dust"] = dust
         for t in dict.fromkeys((target, 0.5)):
             if t <= smoothing + 1e-6:
@@ -341,12 +423,25 @@ def _dust_guard(exe: str, x0: np.ndarray, x: np.ndarray, hole: np.ndarray, smoot
             y = _run_safe(exe, x0, "background-extraction", ["-correction", "Subtraction", "-smoothing", f"{t:g}"], gpu, info, log)
             m1 = dust_measure(x0, y, hole, stars)
             m1.pop("_stars", None)
-            dust.setdefault("tried", []).append({"smoothing": t, "share": m1["share"], "dark": m1["dark"]})
-            if dust_better(m0, m1):
-                dust["to"] = t
-                info["smoothing"] = round(t, 2)
-                return y
-        dust["kept"] = True                     # höhere Glättung nahm nicht weniger mit (z. B. Randglühen statt Nebel)
+            tried = {"smoothing": t, "share": m1["share"], "dark": m1["dark"]}
+            dust.setdefault("tried", []).append(tried)
+            if not dust_better(m0, m1):
+                continue
+            # Ebenheits-Gegenprobe: Himmel nach der Bearbeitung nicht messbar unebener/farbstichiger als mit dem ersten Ergebnis
+            if "sky_before" not in dust:
+                dust["sky_before"] = sky_measure(x0, x, hole, edge_glow and smoothing >= 0.5, sky_sel)
+            tried["sky"] = s1 = sky_measure(x0, y, hole, edge_glow, sky_sel)
+            if bad := sky_worse(dust["sky_before"], s1):
+                tried["sky_worse"] = bad
+                log(f"Staubwächter: Glättung {t:.1f} ließ den Himmel schlechter ({', '.join(SKY_WORDS[k] for k in bad)})".replace(".", ","))
+                continue
+            dust["to"] = t
+            info["smoothing"] = round(t, 2)
+            return y
+        dust["kept"] = True                     # höhere Glättung nahm nicht weniger mit (z. B. Randglühen statt Nebel) …
+        bad = sorted({k for tr in dust.get("tried", []) for k in tr.get("sky_worse", [])})
+        if bad:                                 # … oder ließ mehr Verlauf/Farbstich im Himmel stehen
+            dust["why_kept"] = "höhere Glättung ließ " + " und ".join(SKY_WORDS[k] for k in bad) + " zurück"
         discard()
         log("Staubwächter: höhere Glättung brachte nichts – bleibt bei " + f"{smoothing:.1f}".replace(".", ","))
     except (InterruptedError, MemoryError):
@@ -361,18 +456,20 @@ def _dust_guard(exe: str, x0: np.ndarray, x: np.ndarray, hole: np.ndarray, smoot
 
 def apply(mean: np.ndarray, cov: np.ndarray, mode: str, strength: float = 0.5, cache_dir: Path | None = None,
           exe: str | None = None, log=lambda m: None, preview=None, tag: str = "",
-          smoothing: float = DEFAULT_SMOOTHING, dust_guard: bool = True) -> tuple[np.ndarray, dict]:
+          smoothing: float = DEFAULT_SMOOTHING, dust_guard: bool = True,
+          edge_glow: bool = True) -> tuple[np.ndarray, dict]:
     """Linearen Stack (C,H,W) mit GraXpert bearbeiten. Gibt (Stack, Info). Info leer = nichts gemacht.
     Nicht abgedeckte Ränder (cov ≤ 0,5) werden vorher mit dem Himmelswert gefüllt, damit die KI keine
     harten Kanten als Hintergrund deutet, und nachher wieder eingesetzt. `dust_guard`: Staubwächter (hebt die Glättung,
-    wenn das Modell Nebel/Dunkelwolken mitnimmt – Begründung in info["dust"])."""
+    wenn das Modell Nebel/Dunkelwolken mitnimmt – Begründung in info["dust"]); `edge_glow`: entfernt die Bearbeitung danach das Randglühen (nicht bei Mosaiken) – für die
+    Ebenheits-Gegenprobe)."""
     exe = exe or graxpert_path()
     if mode == "off" or not exe:
         return mean, {}
     gpu = bool(GRAXPERT.gpu)
     smoothing = float(np.clip(smoothing, 0.0, 1.0))
     key = _cache_key(mean, mode, strength, gpu, tag + ("|cpu_denoise" if GRAXPERT.cpu_denoise else "")
-                     + ("" if dust_guard else "|ohne_staubwaechter"), smoothing)
+                     + ("" if dust_guard else "|ohne_staubwaechter") + ("" if edge_glow else "|ohne_randgluehen"), smoothing)
     if cache_dir is not None:
         f = cache_dir / f"{key}.npy"
         meta = cache_dir / f"{key}.json"
@@ -415,7 +512,7 @@ def apply(mean: np.ndarray, cov: np.ndarray, mode: str, strength: float = 0.5, c
             info["bge"] = True
             info["smoothing"] = round(smoothing, 2)
             if dust_guard:
-                x = _dust_guard(exe, x0, x, hsub, smoothing, gpu, info, log)
+                x = _dust_guard(exe, x0, x, hsub, smoothing, gpu, info, log, edge_glow)
             del x0
             if preview:
                 from .live import optional, sample
