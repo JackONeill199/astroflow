@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.82.1 – 16.11.2026
+
+### Behoben
+- **Bilder – Plate-Solving-Hinweis:** Der Hinweis „Objekt per Plate-Solving bestimmt“ bei importierten Bildern lässt sich jetzt mit × schließen und bleibt für dieses Bild ausgeblendet.
+
 ## 0.82.0 – 16.11.2026
 
 ### Neu
