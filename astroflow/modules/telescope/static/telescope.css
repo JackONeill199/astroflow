@@ -33,7 +33,6 @@
 .tel-hero-next { margin: 0.375rem 0 0 }
 .tel-hero-act { flex: 0 1 auto; display: grid; gap: 0.75rem; justify-items: end; min-width: 0 }
 .tel-hero-btns { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end }
-.tel-hero-btns .btn { height: 2.5rem; padding: 0 1rem; font-size: 0.875rem }
 .tel-always-row { max-width: 22rem; margin: 0 }
 .tel-hero .notice { margin: 0.5rem 0 0 }
 .tel-hero p.mut { margin: 0.375rem 0 0 }
