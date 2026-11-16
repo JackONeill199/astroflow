@@ -93,3 +93,34 @@ def test_mono_night_from_before_motion_check_is_remeasured(tmp_path):
     assert lib.nights(key) == [] and lib.motion(key, night) is not None
     assert lib.motion(key, night) < calibration.GLOW_MIN_MOTION_PX
     assert _opts(db, pid)["glow_info"][night]["quelle"].startswith("keine")
+
+
+def test_second_project_same_night_gets_still_decision(tmp_path):
+    """Zwei Projekte, gleiche Mono-Kamera/Nacht, beide mit alter (falscher) Glühmessung: das erste nimmt die Nacht aus der
+    Bibliothek und vermerkt die Bewegung; auch das zweite muss „keine – Himmel stand still“ melden (Review PR #157), damit
+    `_glow_changed` seine Neu-Analyse auslöst."""
+    s = load_settings(tmp_path / "data")
+    db = DB(s.db_path)
+    pl = Pipeline(s, db, ReviewerConfig())
+    demo.generate_mono(s.input_dir / "a", bands=("L",), per_band=14, obj="M 31")
+    demo.generate_mono(s.input_dir / "b", bands=("L",), per_band=14, obj="M 33", seed=3)
+    pl.scan()
+    pids = [r["id"] for r in db.q("SELECT id FROM projects ORDER BY id")]
+    assert len(pids) == 2
+    r = db.one("SELECT info, night FROM frames WHERE project_id=? LIMIT 1", (pids[0],))
+    info, night = json.loads(r["info"]), r["night"]
+    lib = calibration.GlowLibrary(s.work_dir / "glow")
+    key = lib.key(info)
+    h, w = info["shape"][-2:]
+    lib.add(key, night, [(np.full(h, 5, np.float32), np.linspace(0, 80, w).astype(np.float32),
+                          np.zeros((h // calibration.GLOW_BIN, w // calibration.GLOW_BIN), np.float32))])
+    for pid in pids:                                         # „alte“ Analyse mit dem falschen Modell
+        db.x("UPDATE projects SET options=json_set(COALESCE(options,'{}'),'$.glow_info',json(?)) WHERE id=?",
+             (json.dumps({night: {"quelle": "nacht", "adu": 80.0}}), pid))
+    calls = []
+    orig = pl._glow_pending
+    pl._glow_pending = lambda p, n: (calls.append(p), orig(p, n))[1]
+    for pid in pids:
+        pl.stack(pid)
+        assert _opts(db, pid)["glow_info"][night]["quelle"].startswith("keine")
+    assert set(calls) == set(pids)                            # beide Projekte werden neu analysiert/gestackt

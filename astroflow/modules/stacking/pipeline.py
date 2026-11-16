@@ -586,8 +586,11 @@ class Pipeline:
                 if model:
                     cache[("glow", key, night)] = model
                     used[night] = {"quelle": src, "adu": round(calibration.glow_amplitude(model), 1)}
-                elif night in still:                  # sichtbar machen, warum kein Glühen abgezogen wird
-                    used[night] = {"quelle": "keine – Himmel stand still", "adu": 0.0, "bewegung_px": still[night]}
+                elif (mv := still.get(night, glib.motion(key, night))) is not None and 0 <= mv < calibration.GLOW_MIN_MOTION_PX:
+                    # sichtbar machen, warum kein Glühen abgezogen wird – auch aus dem gespeicherten Vermerk, wenn ein anderes
+                    # Projekt dieselbe Kamera/Nacht schon entschieden hat (sonst sähe stack() die Änderung gegenüber einem
+                    # alten glow_info nicht und würde nicht neu analysieren/stacken)
+                    used[night] = {"quelle": "keine – Himmel stand still", "adu": 0.0, "bewegung_px": round(mv, 1)}
             bad, src = dlib.get(key, night)
             if bad is not None and len(bad):
                 cache[("defects", key, night)] = bad
