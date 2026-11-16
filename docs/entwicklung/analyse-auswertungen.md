@@ -64,9 +64,16 @@
   VizieR markiert „min ist Amplitude“ mit `Y` (VSX: `(`); Rückfall `simbad_variables` (Typen aus `compare.VARIABLE`, ohne Periode). Zuordnung
   VSX ↔ Gaia im Umkreis 3″ nach passender Helligkeit, sonst an der Katalogposition messen. Zeiten: Belichtungsmitte → BJD_TDB/HJD (`barycentric`,
   geozentrisch, ΔUT1 = 0 – keine IERS-Downloads), Feldmitte.
-- **Echte Daten (16.11.2026):** M3, Stellina 10 s, 124 Aufnahmen über 28 min: ±0,033 mag je Aufnahme bei V 11, ±0,077 bei V 12, ±0,17 bei V 13.
-  RR-Lyrae-Sterne (V ≈ 15,6) sind in Einzelbildern unter dem Rauschen, 107 von 125 Katalogsternen im Gedränge des Kerns – korrekt keine
-  „Schwankung“ und keine falschen Kandidaten.
+- **Fehlalarme abfangen (an echten Daten gefunden):** Messungen näher als `EDGE` (6 % der kurzen Bildseite) am Rand fallen weg – ohne Flats ist
+  die Ausleuchtung dort bis Faktor 3 schwächer, und ein über den Sensor wanderndes Feld (Stellina-Drift) lässt Randsterne „schwanken“.
+  Kandidaten im Gleichtakt (`common_pattern`, Korrelation > 0,7) = Bildfehler. Mittleres V mehr als 0,75 mag neben Gaia = fremdes Licht →
+  `gedraenge`, nie Kandidat. Eine Ausleuchtungskorrektur aus den Vergleichssternen (2D-Polynom über Sensorkoordinaten) wurde probiert und
+  wieder entfernt: an M3/M39 keine Verbesserung (Vergleichssterne liegen im gut ausgeleuchteten Inneren).
+- **Echte Daten (16.11.2026):** M3, Stellina 10 s, 124 Aufnahmen über 28 min: ±0,031 mag je Aufnahme bei V 11, ±0,066 bei V 12, ±0,17 bei V 13.
+  RR-Lyrae-Sterne (V ≈ 15,6) sind in Einzelbildern unter dem Rauschen, 107 von 124 Katalogsternen im Gedränge des Kerns – korrekt keine
+  „Schwankung“ und keine falschen Kandidaten. M39, Stellina 10 s, 731 Aufnahmen über 2,7 h: ±0,019 mag bei V 9, ±0,035 bei V 11, ±0,056 bei
+  V 12 je Aufnahme (10er-Binning ~ ⅓ davon); HADS-Stern ASASSN-V J213106.58+484804.7 (g-Amplitude 0,25, P 2,8 h) nur in drei Abschnitten
+  messbar (Feldrand), Schwankung ~0,1 mag angedeutet, aber nicht signifikant; vor den Schutzregeln 7 Fehlalarme, danach 0.
 - **UI** (`lightcurvePanel` in `analysisTab`, Abschnitt `#anLc`): Kennzahlen, Liste (bekannt · möglich · Prüfstern, Gedränge eingeklappt),
   SVG Zeit/Phase (`lcTimeSvg`/`lcPhaseSvg`, Nächte farbig, ausgelassene Aufnahmen hohl), Binning 1/3/5/10 (localStorage), Export mit Warnhinweis.
   Ohne Rohbilder: Erklärung statt Knopf.

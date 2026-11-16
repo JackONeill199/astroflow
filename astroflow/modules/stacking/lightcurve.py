@@ -49,6 +49,7 @@ SYS_FLOOR = 0.002                  # mag: Untergrenze je Messpunkt (Flat, Szinti
 VAR_RATIO = 2.5                    # Streuung / erwartete Streuung bei dieser Helligkeit
 VAR_CHI2 = 4.0
 VAR_ETA = 1.2                      # von-Neumann-Verhältnis: ~2 = Rauschen, ≪ 2 = glatter Verlauf
+EDGE = 0.06                        # Randstreifen (Anteil der kurzen Bildseite) ohne Messung
 MATCH_AS = 3.0                     # Bogensekunden: VSX ↔ Gaia
 VSX_TAP = ("https://vizier.cfa.harvard.edu/viz-bin/asu-tsv", "https://vizier.cds.unistra.fr/viz-bin/asu-tsv")
 FLAG_TEXT = {"wolke": "Lichtverlust (Wolken/Dunst)", "ausreisser": "Ausreißer im Ensemble", "wenig": "zu wenige Vergleichssterne"}
@@ -328,7 +329,7 @@ def measure_frame(img: np.ndarray, w: np.ndarray | None, pred: np.ndarray, fwhm:
         d = np.median(np.c_[first["cx"] - x[bright], first["cy"] - y[bright]][good], axis=0)
         x, y, shift = x + d[0], y + d[1], float(np.hypot(*d))
     out = aperture(img, x, y, r, w)
-    out["r"], out["shift"] = r, shift
+    out["r"], out["shift"], out["x"], out["y"] = r, shift, x, y
     return out
 
 
@@ -359,7 +360,7 @@ def differential(*a, **k) -> dict:
 
 
 def _differential(F: np.ndarray, VB: np.ndarray, vcat: np.ndarray, col: np.ndarray, xy: np.ndarray, comp_ok: np.ndarray,
-                 nights: np.ndarray, sat: np.ndarray, log=lambda m: None) -> dict:
+                  nights: np.ndarray, sat: np.ndarray, log=lambda m: None) -> dict:
     """F: Fluss (Aufnahmen × Sterne), VB: Hintergrundvarianz, vcat: Katalog-V (NaN = unbekannt), col: BP−RP, xy: Pixelorte
     (für die Nähe), comp_ok: taugt als Vergleichsstern, nights: Nacht-Index je Aufnahme, sat: übersättigt (Aufnahmen × Sterne).
     Rückgabe: mag/err (Aufnahmen × Sterne, NaN = keine Messung), Aufnahme-Markierungen, Kennzahlen."""
@@ -378,18 +379,21 @@ def _differential(F: np.ndarray, VB: np.ndarray, vcat: np.ndarray, col: np.ndarr
     k = float(np.clip(fit[0], -0.5, 0.5)) if fit else 0.0
     dz = vcat - k * c_fill                             # Katalogwert ohne Farbanteil
     # 1. globales Ensemble, schwankende Vergleichssterne iterativ verwerfen
-    use = comp.copy()
-    s_int = np.zeros(ns)
-    for it in range(4):
-        res = dz[None, :] - m_inst                     # = Z_f je Stern
-        Z = np.nanmedian(np.where(use[None, :], res, np.nan), axis=1)
-        r = res - Z[:, None]
-        rms = _robust_std(r, axis=0)
-        ref = _running_median(med_inst[use], rms[use])
-        bad = use & (rms > 2.5 * ref(med_inst)) & (rms > 0.01)
-        if not bad.any() or (use & ~bad).sum() < MIN_COMP:
-            break
-        use &= ~bad
+    def glob(m_inst):
+        use = comp.copy()
+        for it in range(4):
+            res = dz[None, :] - m_inst                 # = Z_f je Stern
+            Z = np.nanmedian(np.where(use[None, :], res, np.nan), axis=1)
+            r = res - Z[:, None]
+            rms = _robust_std(r, axis=0)
+            ref = _running_median(med_inst[use], rms[use])
+            bad = use & (rms > 2.5 * ref(med_inst)) & (rms > 0.01)
+            if not bad.any() or (use & ~bad).sum() < MIN_COMP:
+                break
+            use &= ~bad
+        return use, Z, r, rms
+
+    use, Z, r, rms = glob(m_inst)
     s_int = np.where(np.isfinite(rms), rms, np.nan)
     # Fehlermodell aus den konstanten Sternen: Varianz = Hintergrundanteil + a·F (Photonen, a = 1/Verstärkung) + b·F²
     # (Flat, Szintillation, Unschärfe der Positionen) – a, b ≥ 0 über NNLS, relativ gewichtet
@@ -527,6 +531,26 @@ def period_search(t, m, e) -> dict | None:
     far = np.abs(freq - freq[i]) > 0.05 * freq[i]
     alias = bool(far.any() and pw[far].max() > 0.85 * pw[i])
     return {"periode": round(p, 6), "fap": float(f"{fap:.2g}"), "zyklen": round(span / p, 1), "alias": alias}
+
+
+def common_pattern(idx: list[int], mag: np.ndarray, r_min: float = 0.7) -> set[int]:
+    """Kandidaten, deren Verlauf mit dem eines anderen Kandidaten stark übereinstimmt (Korrelation > r_min): gemeinsamer
+    Bildfehler statt eines Veränderlichen. Echte Veränderliche schwanken unabhängig voneinander."""
+    if len(idx) == 0:
+        return set()
+
+    def norm(a):
+        a = a - np.nanmedian(a)
+        return a / (np.nanstd(a) or 1.0)
+    curves = {i: norm(mag[:, i]) for i in idx}
+    out = set()
+    for a_ in range(len(idx)):
+        for b_ in range(a_ + 1, len(idx)):
+            x, y = curves[idx[a_]], curves[idx[b_]]
+            ok = np.isfinite(x) & np.isfinite(y)
+            if ok.sum() >= MIN_FRAMES and float(np.mean(x[ok] * y[ok])) / max(float(np.std(x[ok]) * np.std(y[ok])), 1e-9) > r_min:
+                out |= {idx[a_], idx[b_]}
+    return out
 
 
 def bin_points(t, m, e, flags, n: int, gap: float = 0.02) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -772,6 +796,7 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
                 img, wmap = raw, green_weights(raw.shape, bayer)
             out = measure_frame(img.astype(np.float32, copy=False), wmap, pred, float(m.get("fwhm") or 3.0), bright)
             out["t"] = frame_time(row)
+            out["shape"] = img.shape[-2:]
             out["color"] = bool(bayer) or raw.ndim == 3
             out["exptime"] = float(info.get("exptime") or 0)
             return row, out, None
@@ -798,6 +823,13 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
     VB = np.array([o["var_bg"] for _, o in meas])
     PK = np.array([o["peak"] for _, o in meas])
     BG = np.array([o["bg"] for _, o in meas])
+    # Bildrand: ohne Flats ist die Ausleuchtung dort am schwächsten – wandert das Feld (Drift, Nachzentrieren), „schwankt“ ein
+    # Stern am Rand nur scheinbar (M39, Stellina: bis Faktor 3). Messungen näher als EDGE × kurze Bildseite fallen weg.
+    for f, (_, o) in enumerate(meas):
+        h_, w_ = o["shape"]
+        m_ = EDGE * min(h_, w_)
+        near = ~((o["x"] >= m_) & (o["x"] < w_ - m_) & (o["y"] >= m_) & (o["y"] < h_ - m_))
+        F[f, near] = np.nan
     unix = np.array([o["t"] for _, o in meas])
     night_names = [row["night"] or "" for row, _ in meas]
     uniq = sorted(set(night_names))
@@ -865,8 +897,10 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
         # Gedränge: Mischlicht in der Apertur oder (bekannter Stern) deutlich heller gemessen als der Katalog erlaubt –
         # dann misst die Apertur vor allem Nachbarn; Schwankungen sind dort nicht dem Stern zuzuordnen
         cat_hi = kv.get("max") if kv else None
-        e["gedraenge"] = bool(blend[i] or (cat_hi is not None and kv.get("band") in ("V", "G", "CV", "g", "TG", "Vis", "")
-                                         and s["mittel"] < cat_hi - 0.75))
+        # ohne Katalogstern: gegen Gaia (mittleres V) – deutlich anders gemessen = fremdes Licht in der Apertur
+        off_gaia = not kv and bool(np.isfinite(vcat[i])) and abs(s["mittel"] - vcat[i]) > 0.75
+        e["gedraenge"] = bool(blend[i] or off_gaia or (cat_hi is not None and kv.get("band") in ("V", "G", "CV", "g", "TG", "Vis", "")
+                                                       and s["mittel"] < cat_hi - 0.75))
         e["signifikant"] = bool(s["rms"] > VAR_RATIO * e["erwartet"] and s["chi2"] > VAR_CHI2 and not e["gedraenge"])
         # eigene Periode nur bei nachweislicher Schwankung – sonst findet Lomb-Scargle in zeitlich korreliertem Rauschen „Perioden“
         if e["signifikant"] and (ps := period_search(t_ok, m_ok, e_ok)):
@@ -887,10 +921,18 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
         if s is None or is_target[i] or blend[i] or sat_star[i]:
             continue
         exp_ = float(ref(s["mittel"]))
+        if np.isfinite(vcat[i]) and abs(s["mittel"] - vcat[i]) > 0.75:
+            continue                                    # Helligkeit passt nicht zu Gaia: Nachbarlicht/Artefakt, kein Kandidat
         if s["rms"] > VAR_RATIO * exp_ and s["chi2"] > VAR_CHI2 and s["eta"] < VAR_ETA and s["n"] >= 0.6 * fok.sum() \
                 and s["amp"] > 4 * s["fehler"] and s["rms"] > 0.01:
             cand.append((s["rms"] / exp_, i))
     cand.sort(reverse=True)
+    cand = cand[: 3 * MAX_CANDIDATES]
+    shared = common_pattern([i for _, i in cand], mag[fok])
+    if shared:
+        hinweise.append(f"{len(shared)} auffällige Sterne schwankten im Gleichtakt mit anderen Sternen – das ist ein Bildfehler "
+                        "(Ausleuchtung, Tau, Nachführung), kein Veränderlicher; sie werden nicht gezeigt.")
+    cand = [(q, i) for q, i in cand if i not in shared]
     for _, i in cand[:MAX_CANDIDATES]:
         e = entry(i)
         if e:
@@ -948,6 +990,10 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
             "mitte": {"ra": round(ra0, 4), "dec": round(dec0, 4)}, "hinweise": hinweise,
             "bild": {"w": geo["view"][0], "h": geo["view"][1]} if geo["offset"] is not None else None,
             "erstellt": time.time()}
+
+
+def de_num(v: float, nd: int = 2) -> str:
+    return f"{v:.{nd}f}".replace(".", ",")
 
 
 def services_pos(geo, x, y) -> dict:

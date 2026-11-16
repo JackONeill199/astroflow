@@ -227,3 +227,13 @@ def test_queue_job_and_errors(env, fakes, monkeypatch):
     monkeypatch.setattr(lightcurve, "MIN_FRAMES", 10_000)
     with pytest.raises(lightcurve.LightcurveError, match="Rohbilder"):
         lightcurve.compute(pl, rid)
+
+
+def test_common_pattern_is_artifact():
+    """Zwei „Kandidaten“ mit demselben Sprung (Ausleuchtung am Rand) sind ein Bildfehler, ein unabhängiger Veränderlicher nicht."""
+    rng = np.random.default_rng(5)
+    nf = 80
+    step = np.where(np.arange(nf) > 50, -1.2, 0.0)
+    mag = np.c_[13 + step + rng.normal(0, 0.03, nf), 12.5 + step + rng.normal(0, 0.03, nf),
+                12 + 0.3 * np.sin(np.arange(nf) / 6) + rng.normal(0, 0.03, nf)]
+    assert lightcurve.common_pattern([0, 1, 2], mag) == {0, 1}
