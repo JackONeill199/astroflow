@@ -175,6 +175,29 @@ def test_differential_flags_clouds_and_variable_comps():
     assert np.nanmedian(d["mag"][ok][:, 10]) == pytest.approx(v[10], abs=0.02)
 
 
+def test_short_exposure_is_not_a_cloud():
+    """Halb so lange Belichtung = halber Fluss, aber kein Lichtverlust (Codex-Review PR #152)."""
+    rng = np.random.default_rng(4)
+    nf, ns = 30, 50
+    v = rng.uniform(10, 13, ns)
+    col = rng.uniform(0.3, 1.5, ns)
+    t = np.full(nf, 10.0)
+    t[::3] = 5.0
+    F = 10 ** (-0.4 * (v - 20)) * (t / 10)[:, None] * (1 + rng.normal(0, 0.004, (nf, ns)))
+    d = lightcurve.differential(F, np.ones((nf, ns)), lightcurve.gaia_v(_g_from_v(v, col), col), col, rng.uniform(0, 900, (ns, 2)),
+                                np.ones(ns, bool), np.zeros(nf, int), np.zeros((nf, ns), bool), exptime=t)
+    assert (d["flags"] == "").all() and np.nanstd(d["mag"][:, 5]) < 0.02
+
+
+def test_binned_export_times_per_group():
+    t = np.array([0.0, 0.001, 1.0, 1.001])
+    m = np.full(4, 12.0)
+    e = np.full(4, 0.01)
+    jd = t - np.array([0.002, 0.002, 0.004, 0.004])
+    bt, bm, be, bj = lightcurve.bin_points(t, m, e, [""] * 4, 2, also=(jd,))
+    assert np.allclose(bt - bj, [0.002, 0.004])
+
+
 def test_binning_and_periodless():
     t = np.linspace(0, 0.1, 60)
     m = 12 + np.random.default_rng(1).normal(0, 0.02, 60)

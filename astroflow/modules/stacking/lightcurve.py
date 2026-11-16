@@ -174,15 +174,17 @@ def simbad_variables(ra: float, dec: float, radius: float, cache_dir: Path, time
 
 def known_variables(ra, dec, radius, cache_dir, log=lambda m: None) -> tuple[list[dict], str | None]:
     """VSX, sonst SIMBAD. Rückgabe (Liste, Hinweis bei Fehlschlag). Ohne Netz läuft alles mit leerer Liste weiter."""
+    import traceback
     try:
         return vsx_field(ra, dec, radius, cache_dir), None
-    except Exception as e:
+    except Exception:
+        traceback.print_exc()                           # Details nur ins Protokoll, nie an den Browser
         log("VSX nicht erreichbar – versuche SIMBAD")
-        err = str(e)
     try:
         return simbad_variables(ra, dec, radius, cache_dir), "AAVSO VSX nicht erreichbar – Veränderliche nur aus SIMBAD (ohne Perioden)."
     except Exception:
-        return [], f"Kein Veränderlichen-Katalog erreichbar ({err[:80]}) – nur die eigene Erkennung."
+        traceback.print_exc()
+        return [], "Kein Veränderlichen-Katalog erreichbar – nur die eigene Erkennung."
 
 
 # ----------------------------------------------------------------- Zeit -- #
@@ -361,7 +363,7 @@ def differential(*a, **k) -> dict:
 
 
 def _differential(F: np.ndarray, VB: np.ndarray, vcat: np.ndarray, col: np.ndarray, xy: np.ndarray, comp_ok: np.ndarray,
-                  nights: np.ndarray, sat: np.ndarray, log=lambda m: None) -> dict:
+                  nights: np.ndarray, sat: np.ndarray, log=lambda m: None, exptime: np.ndarray | None = None) -> dict:
     """F: Fluss (Aufnahmen × Sterne), VB: Hintergrundvarianz, vcat: Katalog-V (NaN = unbekannt), col: BP−RP, xy: Pixelorte
     (für die Nähe), comp_ok: taugt als Vergleichsstern, nights: Nacht-Index je Aufnahme, sat: übersättigt (Aufnahmen × Sterne).
     Rückgabe: mag/err (Aufnahmen × Sterne, NaN = keine Messung), Aufnahme-Markierungen, Kennzahlen."""
@@ -419,9 +421,15 @@ def _differential(F: np.ndarray, VB: np.ndarray, vcat: np.ndarray, col: np.ndarr
     # Aufnahmen markieren: Lichtverlust gegenüber der Nacht, Ensemble-Streuung, zu wenige Vergleichssterne
     flags = np.array([""] * nf, dtype=object)
     loss = np.zeros(nf)
+    # Nullpunkt je Belichtungssekunde: kürzere Aufnahmen sind kein Lichtverlust
+    Zn = Z.copy()
+    if exptime is not None:
+        t_ = np.asarray(exptime, float)
+        ok_t = np.isfinite(t_) & (t_ > 0)
+        Zn[ok_t] = Z[ok_t] - 2.5 * np.log10(t_[ok_t] / np.median(t_[ok_t]))
     for n in np.unique(nights):
         sel = nights == n
-        loss[sel] = np.nanmedian(Z[sel]) - Z[sel]          # Z = V − m_inst sinkt, wenn Licht fehlt
+        loss[sel] = np.nanmedian(Zn[sel]) - Zn[sel]        # Z = V − m_inst sinkt, wenn Licht fehlt
     scat = _robust_std(np.where(use[None, :] & (med_inst < np.nanpercentile(med_inst[use], 60))[None, :], r, np.nan), axis=1)
     n_c = (np.isfinite(r) & use[None, :]).sum(1)
     flags[loss > CLOUD_DMAG] = "wolke"
@@ -554,14 +562,17 @@ def common_pattern(idx: list[int], mag: np.ndarray, r_min: float = 0.7) -> set[i
     return out
 
 
-def bin_points(t, m, e, flags, n: int, gap: float = 0.02) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Je n aufeinanderfolgende gute Messungen mitteln (gewichtet), nicht über Lücken > gap Tage (Nachtwechsel, Pausen)."""
+def bin_points(t, m, e, flags, n: int, gap: float = 0.02, also=()):
+    """Je n aufeinanderfolgende gute Messungen mitteln (gewichtet), nicht über Lücken > gap Tage (Nachtwechsel, Pausen).
+    also: weitere Zeitachsen (z. B. JD, HJD), die über dieselben Gruppen gemittelt und zusätzlich zurückgegeben werden."""
     ok = np.isfinite(m) & np.isfinite(e) & (e > 0) & (np.asarray(flags) == "")
     t, m, e = np.asarray(t)[ok], m[ok], e[ok]
+    also = [np.asarray(a, float)[ok] for a in also]
     if n <= 1 or len(t) == 0:
-        return t, m, e
+        return (t, m, e, *also)
     o = np.argsort(t)
     t, m, e = t[o], m[o], e[o]
+    also = [a[o] for a in also]
     groups, cur = [], [0]
     for j in range(1, len(t)):
         if len(cur) >= n or t[j] - t[j - 1] > gap:
@@ -577,7 +588,7 @@ def bin_points(t, m, e, flags, n: int, gap: float = 0.02) -> tuple[np.ndarray, n
         # Fehler: Mittelwertfehler, mindestens die Streuung der Gruppe / √n
         sd = float(np.std(m[g]) / math.sqrt(len(g))) if len(g) > 2 else 0.0
         be.append(max(float(math.sqrt(1 / w.sum())), sd))
-    return np.array(bt), np.array(bm), np.array(be)
+    return (np.array(bt), np.array(bm), np.array(be), *[np.array([float(np.mean(a[g])) for g in groups]) for a in also])
 
 
 # --------------------------------------------------------- Gesamtablauf -- #
@@ -671,8 +682,10 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
     log("Gaia-Sterne im Feld abfragen")
     try:
         cat = photometry.gaia_field(ra0, dec0, radius, wd / "gaia")
-    except Exception as e:
-        raise LightcurveError(f"Gaia-Katalog nicht erreichbar – ohne Vergleichssterne keine Lichtkurven ({str(e)[:120]}).")
+    except Exception:
+        import traceback
+        traceback.print_exc()                           # Details nur ins Protokoll
+        raise LightcurveError("Gaia-Katalog nicht erreichbar – ohne Vergleichssterne keine Lichtkurven.")
     known, why = ([], None)
     if catalogs:
         log("Bekannte Veränderliche im Feld suchen (VSX)")
@@ -848,7 +861,8 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
     comp_ok &= ~sat_star
 
     log("Differenzfotometrie mit Gaia-Vergleichssternen")
-    d = differential(F, VB, vcat, col, np.c_[sx, sy], comp_ok, nights, sat, log)
+    d = differential(F, VB, vcat, col, np.c_[sx, sy], comp_ok, nights, sat, log,
+                     exptime=np.array([o["exptime"] for _, o in meas]))
     mag, err, flags = d["mag"], d["err"], d["flags"]
     fok = flags == ""
     jd, bjd, hjd = barycentric(unix, ra0, dec0)
@@ -1073,12 +1087,10 @@ def export_csv(summary: dict, curves: dict, ids: list[int], bin_n: int = 1) -> s
             t = np.array([f["bjd"] for f in fr])
             m = np.array([np.nan if v[0] is None else v[0] for v in c])
             er = np.array([np.nan if v[1] is None else v[1] for v in c])
-            bt, bm, be = bin_points(t, m, er, [f["flag"] for f in fr], bin_n)
-            dt_h = np.array([f["hjd"] - f["bjd"] for f in fr])
-            dt_j = np.array([f["jd"] - f["bjd"] for f in fr])
-            off_h, off_j = float(np.median(dt_h)), float(np.median(dt_j))
-            for a, b, cc in zip(bt, bm, be):
-                lines.append(f"{name},{a:.6f},{a + off_h:.6f},{a + off_j:.6f},{b:.4f},{cc:.4f},,gebinnt {bin_n}")
+            bt, bm, be, bh, bj = bin_points(t, m, er, [f["flag"] for f in fr], bin_n,
+                                            also=([f["hjd"] for f in fr], [f["jd"] for f in fr]))
+            for a, b, cc, h, j in zip(bt, bm, be, bh, bj):     # JD/HJD aus denselben Aufnahmen gemittelt wie BJD
+                lines.append(f"{name},{a:.6f},{h:.6f},{j:.6f},{b:.4f},{cc:.4f},,gebinnt {bin_n}")
             continue
         for f, v in zip(fr, c):
             if v[0] is None:
