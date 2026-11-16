@@ -161,3 +161,34 @@ def test_edge_coverage_cuts_noisy_border():
     m[:, -12:] = rng.uniform(0, 65535, (3, 12, W))              # DSS-Rand: nur von wenigen Aufnahmen gedeckt
     cov = pi.edge_coverage(m)
     assert cov[: H - 12].all() and not cov[H - 12:].any()
+
+
+@pytest.mark.parametrize("orientation", range(1, 9))
+def test_read_linear_follows_exif_orientation(tmp_path, orientation):
+    """Entwickeln nutzt dieselbe Ausrichtung wie die Vorschau (ImageOps.exif_transpose)."""
+    from PIL import ImageOps
+    a = (np.arange(6 * 10, dtype=np.uint16).reshape(6, 10) * 1000)
+    f = tmp_path / "bild.png"
+    im = Image.fromarray(a)
+    ex = im.getexif()
+    ex[274] = orientation
+    im.save(f, exif=ex.tobytes())
+    want = np.asarray(ImageOps.exif_transpose(Image.open(f)), np.float32)
+    got = pi.read_linear(f, {})[0, ::-1]                      # zurück in Bildorientierung
+    assert got.shape == want.shape and np.allclose(got / 65535, want / 65535, atol=1e-4)
+
+
+def test_original_keeps_object_labels_after_develop(tmp_path):
+    """Die Stack-WCS einer entwickelten Version darf die Objektnamen des Originals (Lösung der Anzeigeversion) nicht verdrängen."""
+    app = app_at(tmp_path)
+    eng = app.state.modules["stacking"].eng
+    with TestClient(app) as c:
+        p = upload(c, "M81.tif", tiff_bytes(star_field().astype(np.uint16), photometric="rgb"))
+        sol = {"ra": 148.9, "dec": 69.07, "fov_w": 0.4, "fov_h": 0.3, "scale": 4.0, "rotation": 0.0, "width": W, "height": H,
+               "solver": "astap", "seconds": 1.0, "objects": [{"name": "M81", "id": "M81", "kind": "galaxy", "kind_label": "Galaxie",
+                                                               "size": 20.0, "x": 160.0, "y": 120.0, "radius": 30.0}]}
+        eng.picture_solve._apply(p["id"], sol)
+        eng.pl.develop(p["id"], {"mode": "develop"}, start=0.05)
+        (eng.s.work_dir / f"p{p['id']}" / "wcs.json").write_text('{"key": "x", "wcs": {}}')     # wie nach Gaia-Kalibrierung
+        objs = c.get(f"/api/stacking/results/{p['result']['id']}/objects").json()
+        assert [o["name"] for o in objs["objects"]] == ["M81"]

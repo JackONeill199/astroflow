@@ -1286,11 +1286,14 @@ def build_router(eng: Engine) -> APIRouter:
         if not x:
             raise HTTPException(404)
         pid, files = x["project_id"], json.loads(x["files"] or "{}")
+        st = json.loads(x.get("stats") or "{}")
         wcs = eng.s.work_dir / f"p{pid}" / "wcs.json"
-        if not wcs.exists():
+        if not wcs.exists() or (st.get("imported") and not st.get("developed")):
+            # fertig importiertes Bild: Lösung der Anzeigeversion – auch, wenn eine daraus entwickelte Version schon
+            # eine Stack-WCS angelegt hat (der Import selbst hat keinen linearen Stack)
             from .picture_solve import stored_solution
-            sol = stored_solution(eng.s.work_dir, pid)         # fertig importiertes Bild: Lösung der Anzeigeversion
-            if sol and sol.get("width") and (json.loads(x.get("stats") or "{}").get("shape") or [0, 0])[::-1] == [sol["width"], sol["height"]]:
+            sol = stored_solution(eng.s.work_dir, pid)
+            if sol and sol.get("width") and (st.get("shape") or [0, 0])[::-1] == [sol["width"], sol["height"]]:
                 return {"width": sol["width"], "height": sol["height"], "objects": [o for o in sol["objects"] if o.get("x") is not None]}
             return {"objects": [], "reason": "nicht per Plate-Solving gelöst"}
         cache = eng.s.work_dir / f"p{pid}" / f"objekte_r{rid}.json"

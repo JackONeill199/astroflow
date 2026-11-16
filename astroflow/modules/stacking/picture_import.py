@@ -149,12 +149,24 @@ def read_linear(path: str | Path, info: dict) -> np.ndarray:
             a = page.asarray()
             if a.ndim == 3 and a.shape[0] in (3, 4) and a.shape[-1] not in (3, 4):
                 a = np.moveaxis(a, 0, -1)         # planar gespeichert (C,H,W)
+        with Image.open(path) as im:
+            orientation = im.getexif().get(274)
     else:
         with Image.open(path) as im:
             a = np.asarray(im)
-    img = to_channels(normalized(a), (info.get("linear") or {}).get("bayer"))
+            orientation = im.getexif().get(274)
+    img = oriented(to_channels(normalized(a), (info.get("linear") or {}).get("bayer")), orientation)
     img *= np.float32(65535)
     return np.ascontiguousarray(img[:, ::-1])
+
+
+def oriented(img: np.ndarray, orientation) -> np.ndarray:
+    """EXIF-Ausrichtung auf (C,H,W) anwenden – wie ImageOps.exif_transpose für die Vorschau (nach dem Debayern)."""
+    hw = lambda a: a.swapaxes(1, 2)                          # Transponieren (Zeilen ↔ Spalten)
+    ops = {2: lambda a: a[:, :, ::-1], 3: lambda a: a[:, ::-1, ::-1], 4: lambda a: a[:, ::-1],
+           5: hw, 6: lambda a: np.rot90(a, -1, axes=(1, 2)), 7: lambda a: hw(a[:, ::-1, ::-1]),
+           8: lambda a: np.rot90(a, 1, axes=(1, 2))}
+    return ops[orientation](img) if orientation in ops else img
 
 
 class PictureMaster:
