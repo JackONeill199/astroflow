@@ -526,7 +526,10 @@
     const b = [];
     const plan = `<button class="btn${s.connected || run ? '' : ' ghost'}" data-act="night" title="Ziele und Zeitplan dieser Nacht automatisch wählen – danach vermisst der Autopilot den Himmel und beobachtet bis zum Morgen">${icon('sparkle')}<span>${a && a.state !== 'fertig' ? 'Neu planen' : 'Plane meine Nacht'}</span></button>`;
     if (draft) b.push(`<button class="btn" data-act="night-start">${icon('play')}<span>Nacht starten</span></button>`, `<button class="btn ghost" data-act="night-cancel">Verwerfen</button>`);
-    else if (run) b.push(`<button class="btn ghost" data-act="pause">${icon('pause')}<span>Pause</span></button>`);
+    else if (run) {
+      if (d.mode === 'wartet' && ['clouds', 'fog'].includes(d.hold?.kind)) b.push(`<button class="btn" data-act="retry" title="Wartezeit beenden: Teleskop öffnen und es gleich wieder versuchen">${icon('refresh')}<span>Erneut versuchen</span></button>`);
+      b.push(`<button class="btn ghost" data-act="pause">${icon('pause')}<span>Pause</span></button>`);
+    }
     else if (d.mode === 'pausiert') b.push(`<button class="btn" data-act="go">${icon('play')}<span>Weiter</span></button>`);
     else {
       if (!s.connected) b.push(`<button class="btn" data-act="connect" title="Nur verbinden: Status, Akku und Speicher ansehen. Das Teleskop bewegt sich dabei nicht.">${icon('check')}<span>Verbinden</span></button>`);
@@ -702,9 +705,9 @@
       if (!b) return;
       const act = b.dataset.act;
       try {
-        if (act === 'go') {
+        if (act === 'go' || act === 'retry') {
           askNotify();
-          const url = T + (d.mode === 'pausiert' ? '/resume' : '/start');
+          const url = T + (act === 'retry' ? '/retry' : d.mode === 'pausiert' ? '/resume' : '/start');
           const ask = () => confirmDlg('Teleskop bewegen?', 'Der Autopilot öffnet das Teleskop, richtet es aus und schwenkt zu den Zielen. Steht es frei, sodass sich der Arm ungehindert bewegen kann?', 'Ja, starten');
           let confirm = false;
           if (d.requires_confirm && !d.confirmed) { if (!(confirm = await ask())) return; }

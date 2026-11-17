@@ -271,7 +271,7 @@ Gebaut nach Abschnitt 4–7; Abweichungen und Details:
   **und** eine andere Richtung (≥ 20°) in den letzten 20 min gute Bilder lieferte, die dort nicht durch späteres Scheitern überholt
   sind, oder die Vorhersage klar ist – nie bei ≥ 60 % Bewölkung laut Wetterdaten (`CLOUDY`). Nur dann ein Vorschlag für die
   Horizontmaske. Sonst „vielleicht“ (Sperre läuft nach 20 min ab, dann neuer Versuch). Scheitert danach eine
-  andere Richtung ohne Erfolg dazwischen → Wolken: einklappen, Vermutungen zurücknehmen, nach 20 stabilen Minuten wieder öffnen.
+  andere Richtung ohne Erfolg dazwischen → Wolken: einklappen, Vermutungen zurücknehmen, nach `reopen_min` (20 min) wieder öffnen – ohne zweites Warten auf „stabil gut“ (seit 17.11.2026; gilt auch nach beschlagener Optik). Knopf „Erneut versuchen“ (`POST /retry`, `Autopilot.retry_now`) hebt diese gemessenen Sperren sofort auf; Vorhersage-, Regen-, Akku- und Dämmerungssperren nicht.
   Gesperrt wird ±10° Azimut bis 5° über die gescheiterte Höhe; Vorschläge je Richtung zusammengefasst, Übernahme in die Horizontmaske
   nur per Knopf mit Rückfrage (`horizon_with`: Stützstelle ± Nachbarn auf Höhe + 2°, nie absenken).
 - **Wetter** linear zwischen den Stundenwerten; im Zeitraffer-Simulator keine echte Vorhersage (passt nicht zur virtuellen Zeit).

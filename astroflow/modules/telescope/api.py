@@ -191,6 +191,16 @@ def build_router(mod) -> APIRouter:
         u.pilot.resume(u.now())
         return {"ok": True}
 
+    @r.post("/retry")
+    def retry(body: dict = Body(default={})):
+        """„Erneut versuchen“ nach Wolken im Bild / beschlagener Optik – bewegt das Teleskop (Bestätigung je Nacht wie Weiter)."""
+        u = unit()
+        night_and_confirm(u, body)
+        if not u.pilot.retry_now(u.now()):
+            raise HTTPException(409, "Gerade gibt es keine Wartezeit, die sich aufheben lässt.")
+        threading.Thread(target=u.pilot.tick, args=(u.now(),), daemon=True).start()
+        return {"ok": True}
+
     @r.post("/park")
     def park():
         """Not-Aus: sofort stoppen und einklappen – ohne Warteschlange, immer erlaubt."""

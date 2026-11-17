@@ -2,9 +2,11 @@
    Rangfolge: Kopf (Status, Not-Aus) → großer Status mit Hauptknopf → Jetzt + Bedingungen → Plan der Nacht → Freier Himmel → zugeklappt Protokoll/Gerät. */
 .tel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem }
 .tel > .panel + .panel, .tel-grid > .panel + .panel { margin-top: 0 }
-/* Kopf klebt unter der App-Leiste: volle Breite des Inhaltsbereichs, gleicher Ton wie die Leiste, Trennlinie – Not-Aus bleibt erreichbar */
-.tel-head { display: flex; align-items: center; gap: 0.5rem 1rem; flex-wrap: wrap; margin: -1.75rem calc(-1 * var(--pad)) -0.25rem;
-  position: sticky; top: var(--top-h); z-index: 5; padding: 0.625rem var(--pad); background: var(--sidebar); border-bottom: 1px solid var(--border-soft) }
+/* Kopf klebt unter der App-Leiste – Not-Aus bleibt erreichbar. Breite wie der Inhalt (die Seite ist auf --page-max begrenzt und
+   zentriert; ein über den Rand gezogenes Band endete auf breiten Fenstern mitten im Raum), Hintergrund wie die Seite.
+   Innen so eingerückt wie Karten (.panel), damit Titel und Not-Aus mit Text und Knöpfen darunter fluchten */
+.tel-head { display: flex; align-items: center; gap: 0.5rem 1rem; flex-wrap: wrap; margin: -1.75rem 0 -0.25rem;
+  position: sticky; top: var(--top-h); z-index: 5; padding: 0.875rem 1.25rem 0.625rem; background-color: var(--bg); border-bottom: 1px solid var(--border-soft) }
 .tel-title { flex: 1 1 12rem; min-width: 0 }
 .tel-title h1 { margin: 0 }
 .tel-line { gap: 0.25rem 0; margin-top: 0.125rem; color: var(--mut); align-items: center }
@@ -162,7 +164,7 @@
 .tel-imp-off > svg { width: 1rem; height: 1rem; color: var(--dim) }
 
 @media (max-width: 1100px) { .tel-grid { grid-template-columns: minmax(0, 1fr) } }
-@media (max-width: 860px) { .tel-head { margin: -0.875rem -1rem -0.25rem; padding: 0.5rem 1rem } }   /* main hat hier 0.875rem 1rem Polster */
+@media (max-width: 860px) { .tel-head { margin: -0.875rem 0 -0.25rem; padding: 0.5rem 1.25rem } }   /* main hat hier 0.875rem 1rem Polster */
 @media (max-width: 720px) {
   .tel-now-grid { grid-template-columns: minmax(0, 1fr) }
   .tel-hero-act { justify-items: stretch; flex: 1 1 100% }
