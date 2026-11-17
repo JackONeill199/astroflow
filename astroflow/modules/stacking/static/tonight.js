@@ -9,7 +9,7 @@ const HID = 'af.tonight.hidden';        // „nicht interessiert“: nur lokal i
 const hiddenIds = () => { try { const a = JSON.parse(localStorage.getItem(HID) || '[]'); return Array.isArray(a) ? a.map(String) : []; } catch { return []; } };
 const setHidden = a => { try { localStorage.setItem(HID, JSON.stringify([...new Set(a)])); } catch {} };
 // Gewählte Nacht (0 = heute, bis tonight.NIGHTS-1); bleibt beim Neuladen der Ansicht, verlässt man „Heute Nacht“, gilt wieder heute
-let nightIx = 0, nightReq = 0;
+let nightIx = 0, nightReq = 0, swapDir = 0, quickRender = false;   // swapDir: Richtung des letzten Nachtwechsels; quickRender: Diagramm ohne Auftritt
 const query = (night = 0) => {
   const h = hiddenIds(), q = [h.length ? 'hide=' + encodeURIComponent(h.join(',')) : '', night ? 'night=' + night : ''].filter(Boolean);
   return q.length ? '?' + q.join('&') : '';
@@ -21,6 +21,37 @@ const dateDM = n => nightDate(n).toLocaleDateString('de-DE', {day: '2-digit', mo
 const nightName = (n, k) => k === 0 ? 'Heute Nacht' : k === 1 ? 'Morgen Nacht' : `${shortDay(n)} ${dateDM(n)}`;
 const curName = d => d.nights?.[d.night_index || 0] ? nightName(d.nights[d.night_index || 0], d.night_index || 0) : 'Heute Nacht';
 const num = v => String(v).replace('.', ',');
+// Bewegung (Nutzerwunsch 17.11.2026: „mehr Animationen, richtig polished“): Abschnitte blenden ein, Zahlen zählen hoch,
+// Kurven zeichnen sich – alles aus bei prefers-reduced-motion
+const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+function countUp(root, ms = 900) {
+  if (reduced()) return;
+  for (const b of root.querySelectorAll('[data-count]:not([data-counted])')) {
+    b.dataset.counted = '1';
+    const text = b.textContent, m = text.match(/\d+(?:,\d+)?/);
+    if (!m) continue;
+    const dec = (m[0].split(',')[1] || '').length, val = parseFloat(m[0].replace(',', '.')), t0 = performance.now();
+    if (!isFinite(val) || !val) continue;
+    const pre = text.slice(0, m.index), post = text.slice(m.index + m[0].length);
+    const step = now => {
+      if (!b.isConnected) return;
+      const k = Math.min(1, (now - t0) / ms), e = 1 - (1 - k) ** 3;
+      b.textContent = pre + (val * e).toFixed(dec).replace('.', ',') + post;
+      if (k < 1) requestAnimationFrame(step); else b.textContent = text;
+    };
+    requestAnimationFrame(step);
+  }
+}
+// Abschnitte (.tn-rv) erscheinen, sobald sie ins Bild kommen; Rückfall nach kurzer Zeit, falls kein Schnitt gemeldet wird
+function reveal(root, instant) {
+  const secs = [...root.querySelectorAll('.tn-rv:not(.in)')];
+  const show = s => { s.classList.add('in'); if (!instant) countUp(s); };
+  if (instant || reduced() || !('IntersectionObserver' in window)) { secs.forEach(show); return; }
+  let heard = false;
+  const io = new IntersectionObserver(es => { heard = true; es.forEach(e => { if (e.isIntersecting) { io.unobserve(e.target); show(e.target); } }); }, {rootMargin: '0px 0px -8% 0px'});
+  secs.forEach(s => io.observe(s));
+  setTimeout(() => { if (!heard) { io.disconnect(); secs.forEach(s => s.isConnected && show(s)); } }, 1500);
+}
 const noSite = () => `<p>Für die Nachtplanung fehlt dein Beobachtungsort.</p><a class="btn ghost sm" href="#/settings/standorte">Standort eintragen</a>`;
 // „Heute bin ich in …“: Ort für die heutige Nacht wählen (gemeinsame Ortsliste, /api/sites/night)
 function sitePicker(sites, d) {
@@ -124,11 +155,11 @@ function chart(d, W, H, selected, hidden) {
   // Zielkurven: blass unter der Mindesthöhe, kräftig darüber; die gewählte zuletzt (oben) mit Leuchten
   const order = d.recommendations.map((o, k) => k).filter(k => !hidden.has(k) && k !== selected);
   if (!hidden.has(selected) && d.recommendations[selected]) order.push(selected);
-  for (const k of order) {
+  for (const [n, k] of order.entries()) {
     const o = d.recommendations[k], p = path(o.alt), dash = o.weather_blocked ? ' stroke-dasharray="7 5"' : '';
     // mit Horizontmaske: kräftig nur, wo das Ziel über Mindesthöhe und Maske steht (lim je Schritt), sonst wie bisher per Clip
     const high = o.lim ? `<path class="tn-high" d="${segments(o.alt, o.lim, X, Y, d.times)}"${dash}/>` : `<path class="tn-high" d="${p}" clip-path="url(#${id}u)"${dash}/>`;
-    out += `<g class="tn-series${k === selected ? ' sel' : ''}${o.weather_blocked ? ' blocked' : ''}" data-target="${k}" style="--target:${COLORS[k]}"><path class="tn-low" d="${p}"${dash}/>${high}<title>${esc(o.name)}</title></g>`;
+    out += `<g class="tn-series${k === selected ? ' sel' : ''}${o.weather_blocked ? ' blocked' : ''}" data-target="${k}" style="--target:${COLORS[k]};--k:${n}"><path class="tn-low" d="${p}"${dash}/>${high}<title>${esc(o.name)}</title></g>`;
   }
   const so = d.recommendations[selected];
   if (so && !hidden.has(selected)) {
@@ -171,6 +202,8 @@ customElements.define('af-tonight-chart', class extends HTMLElement {
     this.hiddenTargets ??= new Set();
     this.index ??= Math.max(0, this.plan.times.findIndex(t => t >= this.plan.now));
     this.textContent = '';
+    // Auftritt: Kurven zeichnen sich einmal von links nach rechts (nur beim ersten Zeichnen, nicht bei Auswahl oder Größenänderung)
+    if (this.intro == null && !reduced() && !quickRender) { this.intro = true; this.classList.add('tn-intro'); setTimeout(() => { this.intro = false; this.classList.remove('tn-intro'); }, 2600); }
     this.resizeChart = () => {
       const w = Math.round(this.clientWidth), h = Math.round(Math.min(480, Math.max(340, innerHeight * .38)));
       if (w >= 100 && (w !== this.width || h !== this.height)) { this.width = w; this.height = h; this.draw(); }
@@ -180,7 +213,7 @@ customElements.define('af-tonight-chart', class extends HTMLElement {
     window.addEventListener('resize', this.resizeChart);
     this.onclick = e => {
       const choice = e.target.closest('[data-select]');
-      if (choice) { this.selected = +choice.dataset.select; this.hiddenTargets.delete(this.selected); this.draw(); this.querySelector(`[data-select="${this.selected}"]`).focus({preventScroll: true}); }
+      if (choice) { this.selAnim = this.selected !== +choice.dataset.select; this.selected = +choice.dataset.select; this.hiddenTargets.delete(this.selected); this.draw(); this.querySelector(`[data-select="${this.selected}"]`).focus({preventScroll: true}); }
       const svg = e.target.closest('svg.tn-chart');
       if (svg) {
         this.point(e, svg);
@@ -229,10 +262,11 @@ customElements.define('af-tonight-chart', class extends HTMLElement {
     this.innerHTML = `<div class="tn-stage">${chart(d, this.width, this.height, this.selected, this.hiddenTargets)}<div class="tn-tooltip" hidden></div></div>${legend(d)}
       <div class="tn-scrub"><output class="tn-clock">${hm(d.times[this.index])}</output><input class="tn-time" type="range" min="0" max="${d.times.length - 1}" value="${this.index}" aria-label="Uhrzeit im Höhenverlauf" aria-valuetext="${hm(d.times[this.index])}"><span class="mut sm">${Math.round(+d.moon.illum)} % Mond</span></div>
       <div class="tn-choices">${d.recommendations.map((x, k) => `<div class="tn-choice" style="--target:${COLORS[k]}"><input type="checkbox" data-visible="${k}" ${this.hiddenTargets.has(k) ? '' : 'checked'} aria-label="Kurve ${esc(x.name)} anzeigen"><button type="button" data-select="${k}" aria-pressed="${this.selected === k}">${esc(x.name)}<small>${x.category === 'more' ? 'Mehr Zeit' : 'Neu'}${x.weather_blocked ? ' · bei klarem Himmel' : ''}${x.season?.kind === 'last' ? ' · letzte Chance' : ''}</small></button></div>`).join('')}</div>
-      ${o ? `<div class="tn-selection"><a ${targetLink(o)}>Objekt öffnen ${icon('arrow')}</a><span class="mut sm">${o.good.map(period).join(', ')} · max. ${Math.round(o.max_alt)}°${o.exposure ? ' · bisher ' + dur(o.exposure) : ''}</span>${o.need ? `<span class="chip tn-need" title="${esc('Geschätzter Bedarf ~' + dur(o.need.hours * 3600) + ': ' + o.need.why + (o.need.assumed?.length ? ' – ' + o.need.assumed.join('; ') : ''))}">${esc(o.need.text)}</span>` : ''}
+      ${o ? `<div class="tn-selection${this.selAnim ? ' tn-pop' : ''}" style="--target:${COLORS[this.selected]}"><a ${targetLink(o)}>Objekt öffnen ${icon('arrow')}</a><span class="mut sm">${o.good.map(period).join(', ')} · max. ${Math.round(o.max_alt)}°${o.exposure ? ' · bisher ' + dur(o.exposure) : ''}</span>${o.need ? `<span class="chip tn-need" title="${esc('Geschätzter Bedarf ~' + dur(o.need.hours * 3600) + ': ' + o.need.why + (o.need.assumed?.length ? ' – ' + o.need.assumed.join('; ') : ''))}">${esc(o.need.text)}</span>` : ''}
         <button type="button" class="tn-hide" data-tn-hide="${esc(o.id)}" title="Dieses Ziel nicht mehr vorschlagen">Nicht interessiert</button>
         ${o.weather_blocked ? '<p class="tn-tag soon">Laut Vorhersage zu bewölkt – dieses Ziel gilt bei klarem Himmel.</p>' : ''}${o.category === 'more' && o.gain ? `<p class="tn-gain">${esc(o.gain.text)}</p>` : ''}${o.season ? `<p class="tn-tag ${o.season.kind}">${esc(o.season.text)}</p>` : ''}
         <details class="tn-target" ${open ? 'open' : ''}><summary>${o.category === 'more' ? 'Warum mehr Belichtung?' : 'Warum dieses Ziel?'}</summary><ul class="tn-why">${o.reasons.filter(r => r !== o.season?.text).map(r => `<li>${esc(r)}</li>`).join('')}</ul>${o.category === 'new' ? `<p class="mut sm">${esc(o.benefit)}</p>` : ''}${o.moon_warning ? '<p class="warn sm">Mond zeitweise näher als 40°: schwache Details können leiden.</p>' : ''}</details></div>` : ''}`;
+    this.selAnim = false;
     if (this.pinned) this.inspect();
   }
   inspect() {
@@ -266,25 +300,35 @@ const planList = (d, full) => d.plan?.length ? `<div class="tn-plan"><h3>Nachtpl
 const day = (t, tonight) => (tonight ? 'heute Nacht' : 'in der folgenden Nacht') + ` ${hm(t.start)} – ${hm(t.end)}`;
 // Meldung zur Lage – getrennt nach Ursache (bedeckt / teils bewölkt / Höhe / Nacht vorbei / keine Dunkelheit)
 // Wetterhinweise: Regen (Warnung), Modelle uneinig, hohe Schleierwolken, Messung des Teleskops
+// Hinweise als ruhige Meldungen (Nutzerwunsch 17.11.2026: keine Textbalken): Symbol, kurzer Titel, eine Zeile Erklärung
+const NOTE_ICO = {
+  rain: '<path d="M6 13.5h11a3.5 3.5 0 0 0 0-7 5.5 5.5 0 0 0-10.4 1.4A2.9 2.9 0 0 0 6 13.5z"/><path class="tn-kpi-drop" d="M8.5 16l-1 3M12.5 16l-1 3M16.5 16l-1 3"/>',
+  cloudy: '<path d="M5.5 18h12a4 4 0 0 0 0-8 6 6 0 0 0-11.3 1.6A3.2 3.2 0 0 0 5.5 18z"/>',
+  unsure: '<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.4"/><circle cx="12" cy="16.8" r=".4"/>',
+  veil: '<path d="M4 8h12M7 12h13M4 16h10"/>',
+  fine: '<path d="M12 3l1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6z"/>',
+  info: '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/>'};
+const note = (cls, title, text, alert) => `<div class="tn-note ${cls}"${alert ? ' role="alert"' : ''}><i class="tn-note-ico" aria-hidden="true"><svg viewBox="0 0 24 24">${NOTE_ICO[cls.split(' ').pop()] || NOTE_ICO.info}</svg></i><p><b>${title}</b><span>${text}</span></p></div>`;
 function weatherNotes(d) {
   const out = [], sky = d.sky, m = d.forecast?.models, ts = d.telescope_sky;
-  if (sky?.rain_hours > 0) out.push(`<p class="tn-note rain" role="alert"><b>Regen erwartet</b> – etwa ${String(sky.rain_hours).replace('.', ',')} h der dunklen Zeit gelten als unbrauchbar, egal wie die Wolkenzahl aussieht.</p>`);
-  if (m?.disagree) out.push(`<p class="tn-note unsure"><b>Vorhersage unsicher:</b> Hauptmodell ${m.main_cmp} % Bewölkung, ${esc(m.alt_label)} ${m.alt} % – die Modelle sind uneinig.</p>`);
-  if (m?.veil && !sky?.rain_hours) out.push(`<p class="tn-note veil">Meist <b>hohe Schleierwolken</b> (gesamt ${m.total} %, wirksam etwa ${m.main} %) – Sterne evtl. sichtbar. Hohe Wolken zählen in der Bewertung nur schwach.</p>`);
-  if (ts) out.push(`<p class="tn-note scope ${ts.clear ? 'fine' : 'cloudy'}"><b>Laut ${esc(ts.source)} ${ts.clear ? 'klar' : 'bewölkt'}</b> (Messung ${hm(ts.t)} Uhr)${d.cloud?.length ? ' – Messung vor Vorhersage.' : '.'}</p>`);
+  if (sky?.rain_hours > 0) out.push(note('rain', 'Regen erwartet', `Etwa ${num(sky.rain_hours)} h der dunklen Zeit sind unbrauchbar – egal wie die Wolkenzahl aussieht.`, true));
+  if (m?.disagree) out.push(note('unsure', 'Vorhersage unsicher', `Hauptmodell ${m.main_cmp} % Bewölkung, ${esc(m.alt_label)} ${m.alt} % – die Modelle sind uneinig.`));
+  if (m?.veil && !sky?.rain_hours) out.push(note('veil', 'Meist hohe Schleierwolken', `Gesamt ${m.total} %, wirksam etwa ${m.main} % – Sterne evtl. sichtbar; hohe Wolken zählen nur schwach.`));
+  if (ts) out.push(note(`scope ${ts.clear ? 'fine' : 'cloudy'}`, `Laut ${esc(ts.source)} ${ts.clear ? 'klar' : 'bewölkt'}`, `Messung ${hm(ts.t)} Uhr${d.cloud?.length ? ' – die Messung geht vor die Vorhersage.' : '.'}`));
   return out.join('');
 }
 function statusNote(d) {
-  return weatherNotes(d) + statusNote1(d);
+  const all = weatherNotes(d) + statusNote1(d);
+  return all ? `<div class="tn-notes-row">${all}</div>` : '';
 }
 function statusNote1(d) {
   const sky = d.sky, st = d.status?.code, nc = sky?.next_clear;
-  const next = nc ? `Nächstes klares Fenster: ${day(nc, nc.tonight)}.` : 'In den nächsten 48 Stunden zeigt die Vorhersage kein klares Fenster.';
-  if (st === 'no_dark') return '<p class="tn-note">In dieser Nacht gibt es hier keine astronomisch dunkle Zeit.</p>';
-  if (st === 'over') return '<p class="tn-note">Die dunkle Zeit ist vorbei (Dämmerung bzw. Tag). Empfehlungen gelten wieder ab dem Abend.</p>';
-  if (st === 'overcast') return `<p class="tn-note cloudy"><b>${esc(curName(d))} bedeckt</b> (${sky.mean} % Bewölkung laut Vorhersage). ${esc(next)} Die Ziele darunter gelten bei klarem Himmel.</p>`;
-  if (sky?.state === 'partly') return `<p class="tn-note"><b>Teils bewölkt</b> (${sky.mean} % im Mittel, etwa ${String(sky.usable_hours).replace('.', ',')} h klar nutzbar). Ziele in klaren Stunden stehen vorn; gestrichelte gelten bei klarem Himmel.</p>`;
-  if (st === 'low_alt') return `<p class="tn-note">Für den verbleibenden Teil der Nacht steht kein passendes Ziel höher als ${d.min_alt}° (Höhe, nicht Wetter).</p>`;
+  const next = nc ? `Nächstes klares Fenster ${day(nc, nc.tonight)}.` : 'Die nächsten 48 Stunden zeigen kein klares Fenster.';
+  if (st === 'no_dark') return note('info', 'Keine dunkle Zeit', 'In dieser Nacht wird es hier nicht astronomisch dunkel.');
+  if (st === 'over') return note('info', 'Dunkle Zeit vorbei', 'Dämmerung bzw. Tag – Empfehlungen gelten wieder ab dem Abend.');
+  if (st === 'overcast') return note('cloudy', `${esc(curName(d))} bedeckt`, `${sky.mean} % Bewölkung laut Vorhersage. ${esc(next)} Die Ziele gelten bei klarem Himmel.`);
+  if (sky?.state === 'partly') return note('partly cloudy', 'Teils bewölkt', `${sky.mean} % im Mittel, etwa ${num(sky.usable_hours)} h klar nutzbar. Gestrichelte Ziele gelten bei klarem Himmel.`);
+  if (st === 'low_alt') return note('info', 'Kein Ziel hoch genug', `Für den Rest der Nacht steht kein passendes Ziel höher als ${d.min_alt}° (Höhe, nicht Wetter).`);
   return '';
 }
 // Blättern durch die Nächte: ‹ Name › und eine Leiste mit Mond und Bewölkung je Nacht
@@ -298,7 +342,7 @@ function nightNav(d) {
   const cell = n => {
     const cl = n.cloud == null ? null : Math.round(+n.cloud), moon = Math.round(+n.moon) || 0;
     const cloud = cl == null ? "" : ` · ${cl} % Wolken${n.uncertain ? " (unsicher)" : ""}`;
-    return `<button type="button" role="tab" aria-selected="${n.index === k}" data-tn-night="${+n.index}" title="${esc(nightName(n, n.index))}: ${num(+n.dark_hours)} h dunkel · Mond ${moon} %${cloud}">
+    return `<button type="button" role="tab" aria-selected="${n.index === k}" data-tn-night="${+n.index}" style="--n:${+n.index}" title="${esc(nightName(n, n.index))}: ${num(+n.dark_hours)} h dunkel · Mond ${moon} %${cloud}">
       <small>${n.index === 0 ? 'Heute' : esc(shortDay(n))}</small><span class="tn-d">${esc(dateDM(n).slice(0, 2))}</span>
       <svg viewBox="0 0 16 16" aria-hidden="true">${moonIcon(8, 8, 6, moon, n.waxing, south)}</svg>
       <i class="tn-cl${cl == null ? " none" : ""}${n.uncertain ? " unsure" : ""}" style="--c:${cl ?? 0}"></i></button>`;
@@ -322,10 +366,78 @@ function legend(d) {
     d.wind?.some(v => v != null) ? item('<path class="tn-wind-ico" d="M1 4h9a2 2 0 1 0-2-2M1 8h12a2 2 0 1 1-2 2"/>', 'Wind', 'Streifen unter den Wolken: kräftiger = mehr Wind (bei Böen wackelt das Bild)') : '',
   ].join('')}</ul>`;
 }
+// Kennzahlen der Detailseite: große Werte mit Symbol, darunter eine Zeile Erläuterung
+const SKY_ICO = {
+  clear: '<path d="M12 3l1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6z"/><circle cx="19" cy="18" r="1.2"/><circle cx="5" cy="19" r=".9"/>',
+  partly: '<path d="M16 4.5l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/><path d="M6 19h10a3.5 3.5 0 0 0 0-7 5 5 0 0 0-9.5 1.4A2.9 2.9 0 0 0 6 19z"/>',
+  overcast: '<path d="M5.5 18.5h12a4 4 0 0 0 0-8 6 6 0 0 0-11.3 1.6A3.3 3.3 0 0 0 5.5 18.5z"/>',
+  rain: '<path d="M5.5 14.5h12a4 4 0 0 0 0-8 6 6 0 0 0-11.3 1.6A3.3 3.3 0 0 0 5.5 14.5z"/><path class="tn-kpi-drop" d="M8 17l-1 3M12.5 17l-1 3M17 17l-1 3"/>'};
+function kpis(d) {
+  const dev = d.device, tw = d.twilight || {}, mi = Math.round(+d.moon.illum) || 0, sky = d.sky, south = d.site?.[0] < 0;
+  const moonSub = [d.moon.waxing ? 'zunehmend' : 'abnehmend', d.moon.rise ? `geht ${hm(d.moon.rise)} auf` : '', d.moon.set ? `geht ${hm(d.moon.set)} unter` : ''].filter(Boolean).join(' · ');
+  const kind = !d.weather_on || !sky?.state ? null : sky.rain_hours > 0 ? 'rain' : d.status?.code === 'overcast' ? 'overcast' : sky.state === 'partly' ? 'partly' : 'clear';
+  const wxText = {rain: 'Regen', overcast: 'Bedeckt', partly: 'Teils bewölkt', clear: 'Klar'}[kind];
+  const wxSub = kind ? [`${sky.mean} % Wolken`, sky.rain_hours > 0 ? `${num(sky.rain_hours)} h Regen` : sky.usable_hours != null ? `${num(sky.usable_hours)} h klar` : ''].filter(Boolean).join(' · ') : '';
+  const tile = (cls, ico, label, value, sub, attrs = '') => `<div class="tn-kpi ${cls}"${attrs}>${ico ? `<i class="tn-kpi-ico" aria-hidden="true">${ico}</i>` : ''}<small>${label}</small><b data-count>${value}</b>${sub ? `<span class="tn-kpi-sub">${sub}</span>` : ''}</div>`;
+  return `<div class="tn-kpis">
+    ${tile('dark', '<svg viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></svg>', 'Dunkle Zeit', esc(dur(d.dark_hours * 3600)), tw.dark_start ? esc(period([tw.dark_start, tw.dark_end])) : '')}
+    ${tile('moon', `<svg viewBox="0 0 24 24">${moonIcon(12, 12, 9, mi, d.moon.waxing, south)}</svg>`, 'Mond', `${mi} %`, esc(moonSub))}
+    ${kind ? tile(`wx ${kind}`, `<svg viewBox="0 0 24 24">${SKY_ICO[kind]}</svg>`, 'Wetter', wxText, esc(wxSub)) : ''}
+    ${d.sky_quality?.sqm ? tile('sqm', '', 'Himmel hier', `${num((+d.sky_quality.sqm).toFixed(1))} mag/″²`, d.sky_quality.bortle ? esc(d.sky_quality.bortle.text) : '', ` title="Gemessen an deinen Aufnahmen an diesem Ort (${+d.sky_quality.n_site_nights || 0} Nächte)"`) : ''}
+    ${tile('dev', '', 'Dein Gerät', esc(dev.name), dev.fov ? 'Bildfeld ' + dev.fov.map(v => num(v.toFixed(2)) + '°').join(' × ') : '')}
+  </div>`;
+}
+// Zeitleiste Sonnenuntergang → Sonnenaufgang: Dämmerung als Verlauf, darunter Mond über dem Horizont, hervorgehoben die Zeit ohne Mond
+function twilightBar(d) {
+  const tw = d.twilight || {}, a = tw.sunset || d.times[0], b = tw.sunrise || d.times[d.times.length - 1];
+  if (!(b > a)) return '';
+  const pc = t => clamp((t - a) / (b - a)) * 100, f = t => pc(t).toFixed(2) + '%';
+  const stops = [['var(--tn-day)', a], ['var(--tn-glow)', a + (b - a) * .015], ['var(--tn-twi)', tw.civil], ['color-mix(in srgb, var(--tn-twi) 45%, var(--tn-sky))', tw.nautical],
+    ['var(--tn-sky)', tw.dark_start], ['var(--tn-sky)', tw.dark_end], ['color-mix(in srgb, var(--tn-twi) 45%, var(--tn-sky))', tw.nautical_end], ['var(--tn-glow)', b - (b - a) * .015], ['var(--tn-day)', b]]
+    .filter(([, t]) => t != null).map(([c, t]) => `${c} ${f(t)}`).join(', ');
+  // Mond über dem Horizont als Abschnitte aus der Höhenreihe
+  const up = [];
+  d.times.forEach((t, i) => {
+    if (t < a || t > b || !(d.moon.alt[i] > 0)) return;
+    const last = up[up.length - 1];
+    if (last && t - last[1] <= (d.step || 600) * 1.5) last[1] = t; else up.push([t, t]);
+  });
+  const mi = Math.round(+d.moon.illum) || 0;
+  const ticks = [];
+  for (let t = Math.ceil(a / 7200) * 7200; t < b; t += 7200) if (pc(t) > 5 && pc(t) < 95) ticks.push(`<span style="left:${f(t)}">${hm(t)}</span>`);
+  const now = d.now > a && d.now < b ? `<i class="tn-tl-now" style="left:${f(d.now)}" title="Jetzt ${hm(d.now)}"></i>` : '';
+  const span = ([s, e], cls, title, style = '') => `<i class="${cls}" style="left:${f(s)};width:${(pc(e) - pc(s)).toFixed(2)}%;${style}" title="${esc(title)}"></i>`;
+  const fact = (cls, label, value) => `<div class="tn-tl-fact ${cls}"><i aria-hidden="true"></i><span>${label}</span><b>${value}</b></div>`;
+  return `<div class="tn-tl">
+      <div class="tn-tl-row"><span class="tn-tl-lab">Sonne</span><div class="tn-tl-bar" style="background:linear-gradient(90deg, ${stops})">${(d.moon.moonless || []).map(p => span(p, 'tn-tl-best', `Dunkel ohne Mond ${period(p)}`)).join('')}${now}</div></div>
+      <div class="tn-tl-row"><span class="tn-tl-lab">Mond</span>${up.length ? `<div class="tn-tl-moon">${up.map(p => span(p, 'tn-tl-up', `Mond über dem Horizont ${period(p)} (${mi} % beleuchtet)`, `--m:${(.3 + .6 * mi / 100).toFixed(2)}`)).join('')}</div>` : '<span class="tn-tl-none">in dieser Nacht nicht über dem Horizont</span>'}</div>
+      <div class="tn-tl-ticks" aria-hidden="true">${ticks.join('')}</div>
+    </div>
+    <div class="tn-tl-facts">
+      ${fact('sun', 'Sonnenuntergang', hm(tw.sunset))}${fact('naut', 'Nautische Dämmerung', hm(tw.nautical))}
+      ${fact('dark', 'Astronomisch dunkel', period([tw.dark_start, tw.dark_end]))}${fact('sun', 'Sonnenaufgang', hm(tw.sunrise))}
+      ${fact('moon', 'Mondaufgang', hm(d.moon.rise))}${fact('moon', 'Monduntergang', hm(d.moon.set))}
+      ${fact('best', 'Dunkel ohne Mond', d.moon.moonless.length ? d.moon.moonless.map(period).join(', ') : 'keine Zeit')}
+    </div>`;
+}
+// Wetter je Stunde als Säulen: Höhe = wirksame Bewölkung, Regenstunden blau mit fallenden Tropfen, dunkle Zeit hinterlegt
+function weatherBars(d) {
+  const hrs = (d.weather?.hours || []).filter(h => !h.hold), tw = d.twilight || {};
+  if (!hrs.length) return '';
+  return `<div class="tn-wx" role="list">${hrs.map((h, i) => {
+    const c = h.cloud == null ? null : Math.round(h.cloud), dark = tw.dark_start && h.t >= tw.dark_start - 1800 && h.t < tw.dark_end;
+    const veil = !h.rain && h.total != null && h.cover != null && h.total - h.cover >= 25;
+    const title = `${hm(h.t)}: ${h.rain ? 'Regen' + (h.rain_p != null ? ` (${Math.round(h.rain_p)} %)` : '') : c == null ? 'keine Angabe' : c + ' % Wolken'}${veil ? `, gesamt ${Math.round(h.total)} % (hoch ${Math.round(h.high ?? 0)} %)` : ''}${h.wind != null ? `, Wind ${Math.round(h.wind)} km/h` : ''}`;
+    return `<div class="tn-wx-col${h.rain ? ' rain' : ''}${dark ? ' dark' : ''}${c == null && !h.rain ? ' none' : ''}" role="listitem" style="--v:${h.rain ? 100 : c ?? 0};--i:${i}" title="${esc(title)}">
+      <span class="tn-wx-val">${h.rain ? '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2L2.5 6M8 4L6.5 8M6 7L4.5 11"/></svg>' : c == null ? '–' : c + '%'}</span>
+      <span class="tn-wx-bar"><i></i></span><span class="tn-wx-h">${hm(h.t).slice(0, 2)}</span></div>`;
+  }).join('')}</div>
+  <ul class="tn-wx-leg"><li><i class="tn-lg-sw cl" aria-hidden="true"></i>Wolken (Säulenhöhe)</li><li><i class="tn-lg-sw rn" aria-hidden="true"></i>Regen</li><li><i class="tn-lg-sw dk" aria-hidden="true"></i>astronomisch dunkel</li></ul>`;
+}
 function content(d, initial_target, full) {
   if (!d.site) return `<div class="tn-empty">${noSite()}</div>`;
   const dev = d.device;
-  return `${full ? nightNav(d) : ''}<div class="tn-overview"><div><small>Dunkle Zeit</small><b>${dur(d.dark_hours * 3600)}</b></div><div><small>Mond beleuchtet</small><b>${d.moon.illum} %</b></div><div><small>Dein Gerät</small><b>${esc(dev.name)}</b></div>${window.AFsky?.tonightTile(d) || ''}</div>
+  return `${full ? `<div class="tn-head"><div class="tn-head-sky" aria-hidden="true"></div>${nightNav(d)}${kpis(d)}</div>` : `<div class="tn-overview"><div><small>Dunkle Zeit</small><b>${dur(d.dark_hours * 3600)}</b></div><div><small>Mond beleuchtet</small><b>${d.moon.illum} %</b></div><div><small>Dein Gerät</small><b>${esc(dev.name)}</b></div>${window.AFsky?.tonightTile(d) || ''}</div>`}
     ${statusNote(d)}
     ${graph(d, initial_target)}
     ${planList(d, full)}
@@ -358,31 +470,54 @@ async function featured() {
   catch (e) { body = `<p class="mut">Nachtplanung gerade nicht verfügbar: ${esc(e.message)}</p>`; }
   return `<div class="tn-home"><div class="hhead">${icon('star')}<div><h2>Heute Nacht</h2></div><span class="grow"></span><a class="linkbtn" href="#/nacht">Volle Planung ${icon('arrow')}</a></div>${body}</div>`;
 }
+// Blättern soll sich sofort anfühlen (Nutzerbefund 17.11.2026: „etwas langsam“): Nächte werden 5 min gemerkt und die Nachbarnächte
+// im Hintergrund vorgeladen; Ortsliste und Plan ändern sich beim Blättern nicht und werden je Besuch nur einmal geholt.
+const nightCache = new Map(), NIGHT_TTL = 300000;   // Abfrage → {t, p}
+const cachedNight = k => { const h = nightCache.get(query(k)); return h && Date.now() - h.t < NIGHT_TTL ? h : null; };
+function fetchNight(k) {
+  const hit = cachedNight(k);
+  if (hit) return hit.p;
+  const q = query(k), p = api('/stacking/tonight' + q);
+  nightCache.set(q, {t: Date.now(), p});
+  p.catch(() => nightCache.delete(q));
+  return p;
+}
+let sitesP = null, planP = null;
+const forgetNights = () => { nightCache.clear(); sitesP = planP = null; };
 async function nightView(el, catalogId) {
   crumbs([['Übersicht', '#/'], ['Heute Nacht']]);
-  const req = ++nightReq;
-  el.querySelector('.tn-main')?.classList.add('tn-loading');
-  const [d, sites, plan] = await Promise.all([api('/stacking/tonight' + query(nightIx)), api('/sites?nights=false').catch(() => null),
-    window.AFplan ? api('/stacking/plan').then(r => r.plan).catch(() => null) : null]);
+  const req = ++nightReq, quick = !!swapDir;
+  if (!cachedNight(nightIx)) el.querySelector('.tn-main')?.classList.add('tn-loading');
+  sitesP ??= api('/sites?nights=false').catch(() => null);
+  planP ??= window.AFplan ? api('/stacking/plan').then(r => r.plan).catch(() => null) : Promise.resolve(null);
+  let d, sites, plan;
+  try { [d, sites, plan] = await Promise.all([fetchNight(nightIx), sitesP, planP]); }
+  catch (err) { el.querySelector('.tn-main')?.classList.remove('tn-loading'); throw err; }
   if (!el.isConnected || req !== nightReq) return;
-  nightView.el = el; nightView.catalogId = catalogId;
+  nightView.el = el; nightView.catalogId = catalogId; nightView.d = d;
   const selected = catalogId && [...(d.recommendations || []), ...(d.suggestions || []), ...(d.soon || [])].find(x => x.id === catalogId);
-  const tw = d.twilight;
-  el.innerHTML = `<div class="pagehead"><div><h1>Heute Nacht</h1><p class="mut">Empfehlungen aus deiner Bibliothek und dem zuletzt verwendeten Gerät.</p></div>${sitePicker(sites, d)}</div>
-    ${selected ? `<section class="panel"><h2>${esc(selected.name)}</h2><p>${esc(selected.kind_label)} · Durchmesser ca. ${num(selected.size)}′${selected.mag != null ? ' · ' + num(selected.mag) + ' mag' : ''} ${selected.max_alt != null ? ' · max. ' + Math.round(selected.max_alt) + '°' : ''}</p>${selected.good?.length ? `<p>${selected.good.map(period).join(', ')} über ${d.min_alt}°</p>` : ''}<ul class="tn-why">${(selected.reasons || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>${AF.on('sage') ? `<a href="#/sage/wiki">In der Enzyklopädie recherchieren</a>` : ''}</section>` : ''}
-    <section class="panel tn-main">${content(d, catalogId, true)}</section>
+  quickRender = quick;     // beim Blättern: kurzes Überblenden statt der Einblend-Show (liest af-tonight-chart beim Einhängen)
+  el.innerHTML = `<div class="tn-page${quick ? ' tn-quick' : ''}"><div class="pagehead"><div><h1>Heute Nacht</h1><p class="mut">Empfehlungen aus deiner Bibliothek und dem zuletzt verwendeten Gerät.</p></div>${sitePicker(sites, d)}</div>
+    ${selected ? `<section class="panel tn-rv"><h2>${esc(selected.name)}</h2><p>${esc(selected.kind_label)} · Durchmesser ca. ${num(selected.size)}′${selected.mag != null ? ' · ' + num(selected.mag) + ' mag' : ''} ${selected.max_alt != null ? ' · max. ' + Math.round(selected.max_alt) + '°' : ''}</p>${selected.good?.length ? `<p>${selected.good.map(period).join(', ')} über ${d.min_alt}°</p>` : ''}<ul class="tn-why">${(selected.reasons || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>${AF.on('sage') ? `<a href="#/sage/wiki">In der Enzyklopädie recherchieren</a>` : ''}</section>` : ''}
+    <section class="panel tn-main tn-rv${swapDir ? ` tn-swap ${swapDir > 0 ? 'next' : 'prev'}` : ''}">${content(d, catalogId, true)}</section>
     ${window.AFplan?.nightSection(plan, d.night) || ''}
-    ${d.soon?.length ? `<section class="panel"><h2>Bald gut sichtbar</h2><ul class="tn-why">${d.soon.map(x => `<li><a ${targetLink({...x, category: 'new'})}>${esc(x.name)}</a> <span class="mut sm">${esc(x.kind_label)}${x.mag != null ? ' · ' + num(x.mag) + ' mag' : ''} · ab etwa ${esc(x.season.from)}</span></li>`).join('')}</ul><p class="mut sm">Stehen heute zu kurz im Dunkeln, werden aber in den nächsten Wochen besser.</p></section>` : ''}
     ${hiddenIds().length ? `<p class="mut sm">${hiddenIds().length} Ziel(e) ausgeblendet. <button type="button" class="tn-hide" data-tn-reset>Alle wieder zeigen</button></p>` : ''}
-    ${d.site ? `<section class="panel"><div class="panel-h"><h2>Dämmerung und Mond</h2><span class="grow"></span><a class="linkbtn" href="#/observatorium?blick=hier&date=${encodeURIComponent(d.night || '')}" title="Bahnen über deinem Horizont im Atlas">Bahnen im Atlas ${icon('arrow')}</a></div><div class="tn-facts"><p>Sonnenuntergang: ${hm(tw.sunset)}<br>Nautische Dämmerung: ${hm(tw.nautical)}<br>Astronomisch dunkel: ${period([tw.dark_start, tw.dark_end])}<br>Sonnenaufgang: ${hm(tw.sunrise)}</p>
-      <p>Mondaufgang: ${hm(d.moon.rise)}<br>Monduntergang: ${hm(d.moon.set)}<br>Dunkel ohne Mond: ${d.moon.moonless.length ? d.moon.moonless.map(period).join(', ') : 'keine Zeit'}</p></div></section>
-      <section class="panel"><h2>Wetter</h2>${d.weather?.hours?.length ? `<p class="mut sm">${esc(d.weather.source)}</p><div class="tn-weather">${d.weather.hours.filter(h => !h.hold).map(h => `<span${h.rain ? ' class="rainy"' : ''}>${hm(h.t)}<br>${h.rain ? '🌧 Regen' : `${h.cloud != null ? Math.round(h.cloud) : '–'} % Wolken`}${!h.rain && h.total != null && h.cover != null && h.total - h.cover >= 25 ? `<br><small class="mut">gesamt ${Math.round(h.total)} %, hoch ${Math.round(h.high ?? 0)} %</small>` : ''}</span>`).join('')}</div>` : `<p class="mut">${esc(d.weather_error || (d.weather_on ? 'Keine Vorhersage für diese Nacht.' : 'Wettervorhersage ist aus. Unter Einstellungen → Bilder → Bild-Tutor → Wetter einschalten.'))}</p>`}</section>` : ''}`;
+    ${d.site ? `<section class="panel tn-rv tn-wx-sec"><div class="panel-h"><h2>Wetter</h2>${d.weather?.hours?.length ? `<span class="mut sm">${esc(d.weather.source)}</span>` : ''}</div>${weatherBars(d) || `<p class="mut">${esc(d.weather_error || (d.weather_on ? 'Keine Vorhersage für diese Nacht.' : 'Wettervorhersage ist aus. Unter Einstellungen → Bilder → Bild-Tutor → Wetter einschalten.'))}</p>`}</section>
+      <div class="tn-duo${d.soon?.length ? '' : ' one'}">
+        <section class="panel tn-rv"><div class="panel-h"><h2>Dämmerung und Mond</h2><span class="grow"></span><a class="linkbtn" href="#/observatorium?blick=hier&date=${encodeURIComponent(d.night || '')}" title="Bahnen über deinem Horizont im Atlas">Bahnen im Atlas ${icon('arrow')}</a></div>${twilightBar(d)}</section>
+        ${d.soon?.length ? `<section class="panel tn-rv"><div class="panel-h"><h2>Bald gut sichtbar</h2></div><ul class="tn-soon">${d.soon.map((x, i) => `<li style="--i:${i}"><a ${targetLink({...x, category: 'new'})}><b>${esc(x.name)}</b><small>${esc(x.kind_label)}${x.mag != null ? ' · ' + num(x.mag) + ' mag' : ''}</small><span class="tn-soon-from">ab ${esc(x.season.from)}</span></a></li>`).join('')}</ul><p class="mut sm">Stehen heute zu kurz im Dunkeln, werden aber in den nächsten Wochen besser.</p></section>` : ''}
+      </div>` : ''}</div>`;
+  quickRender = false; swapDir = 0;
+  reveal(el, quick);
+  // Nachbarnächte vorladen, damit der nächste Klick sofort da ist
+  setTimeout(() => { if (req === nightReq) [nightIx + 1, nightIx - 1].filter(k => k >= 0 && k < (d.nights?.length || 0)).forEach(k => fetchNight(k).catch(() => {})); }, 250);
 }
 document.addEventListener('change', async e => {
   if (e.target.id !== 'tnSite') return;
   const sel = e.target;
   try {
     await send('/sites/night', { night: sel.dataset.night, site_id: sel.value || null, nights: false });
+    forgetNights();      // anderer Ort: gemerkte Nächte und Ortsliste gelten nicht mehr
     toast(sel.value ? `${sel.getAttribute('aria-label').replace('Standort für ', '')}: ${sel.selectedOptions[0].textContent}` : 'Ort für diese Nacht wieder automatisch.', 'ok');
     if (typeof route === 'function') route(); else dispatchEvent(new HashChangeEvent('hashchange'));
   } catch (err) { toast(err.message, 'err'); }
@@ -391,12 +526,27 @@ document.addEventListener('change', async e => {
 function goNight(k, focus) {
   const el = nightView.el;
   if (!el?.isConnected || !Number.isFinite(k) || k < 0 || k >= 14 || k === nightIx) return;
+  const prev = nightIx;
+  swapDir = k > nightIx ? 1 : -1;
   nightIx = k;
+  // sofortige Rückmeldung, noch bevor der Server antwortet: Tag vormerken, Name umstellen
+  el.querySelectorAll('.tn-strip [data-tn-night]').forEach(b => b.classList.toggle('tn-pending', +b.dataset.tnNight === k));   // aria-selected erst, wenn die Nacht steht
+  const ns = nightView.d?.nights, nm = el.querySelector('.tn-nav-name');
+  const label = i => `${esc(nightName(ns[i], i))}${i < 2 ? ` <small>${esc(shortDay(ns[i]))} ${esc(dateDM(ns[i]))}</small>` : ''}`;
+  if (ns?.[k] && nm) nm.innerHTML = label(k);
   nightView(el, nightView.catalogId).then(() => {
     const b = el.querySelector('.tn-strip [aria-selected="true"]');
     b?.scrollIntoView({block: 'nearest', inline: 'nearest'});
     if (focus) el.querySelector(focus)?.focus({preventScroll: true});
-  }).catch(err => toast(err.message, 'err'));
+  }).catch(err => {
+    // Laden gescheitert: Vormerkung zurücknehmen, damit Kopf und Inhalt wieder zusammenpassen und ein neuer Klick erneut lädt
+    if (nightIx === k) {
+      nightIx = prev; swapDir = 0;
+      el.querySelectorAll('.tn-strip .tn-pending').forEach(b => b.classList.remove('tn-pending'));
+      if (ns?.[prev] && nm?.isConnected) nm.innerHTML = label(prev);
+    }
+    toast(err.message, 'err');
+  });
 }
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-tn-night]');
@@ -409,11 +559,12 @@ document.addEventListener('keydown', e => {
   goNight(nightIx + (e.key === 'ArrowRight' ? 1 : -1), e.target.closest?.('.tn-strip') ? '.tn-strip [aria-selected="true"]' : null);
 });
 // Ziel des Ereignisses (newURL), nicht location.hash: bei schnellen Seitenwechseln steht die Adresse beim Eintreffen schon weiter
-addEventListener('hashchange', e => { if (!/#\/nacht/.test(e.newURL || location.href)) nightIx = 0; });
+addEventListener('hashchange', e => { if (!/#\/nacht/.test(e.newURL || location.href)) { nightIx = 0; forgetNights(); } });   // gemerkt wird nur während des Blätterns
 document.addEventListener('click', e => {
   const hide = e.target.closest('[data-tn-hide]'), reset = e.target.closest('[data-tn-reset]');
   if (!hide && !reset) return;
   setHidden(hide ? [...hiddenIds(), hide.dataset.tnHide] : []);
+  nightCache.clear();
   if (typeof route === 'function') route(); else dispatchEvent(new HashChangeEvent('hashchange'));
   if (hide) toast('Ausgeblendet – unter „Heute Nacht“ wieder einblendbar.');
 });
