@@ -720,6 +720,12 @@ STAR_HALO = 0.3           # Anteil der ursprünglichen Flanken, der als weicher 
 STAR_GMAX = 8.0           # Obergrenze g = 1 + STAR_GMAX·amount (≤ 5)
 
 
+def shrink_stars_classic(stars: np.ndarray, amount: float) -> np.ndarray:
+    """Bisherige Sternverkleinerung (bis 0.84, Einstellung „Sterne verkleinern“ aus): Grauwert-Erosion 3×3 und etwas dunkler."""
+    er = np.stack([ndi.grey_erosion(c, size=(3, 3)) for c in stars])
+    return (stars * (1 - amount) + er * amount).astype(np.float32)
+
+
 def shrink_stars(stars: np.ndarray, amount: float, fwhm: float = 3.0) -> tuple[np.ndarray, dict]:
     """Sternebene verkleinern, ohne Sterne abzudunkeln: Profil je Stern schärfen – Helligkeit relativ zum örtlichen
     Maximum (Fenster 3 × FWHM) hoch (g − 1) als Faktor, davon bleibt `STAR_HALO` der Flanken als weicher Halo stehen.
@@ -1143,7 +1149,10 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
     if stars_s is not None:
         log("Sterne einsetzen")
         if p["star_reduction"] > 0:                          # Sterne kleiner: nur die Sternebene, Nebel unberührt
-            stars_s, stats["star_shrink"] = shrink_stars(stars_s, float(p["star_reduction"]), fwhm)
+            if p.get("star_shrink", True):
+                stars_s, stats["star_shrink"] = shrink_stars(stars_s, float(p["star_reduction"]), fwhm)
+            else:
+                stars_s = shrink_stars_classic(stars_s, float(p["star_reduction"]))
         if not mono:
             # kleinere Halos tragen weniger Farbe (Kerne sind weiß) – Sternsättigung mit der Verkleinerung etwas anheben
             # (IC 405/M17: sichtbare Sternfarbe sonst −15…20 %)

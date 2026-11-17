@@ -1214,6 +1214,8 @@ class Pipeline:
             params["_mosaic"] = True                     # processing: kein Randglühen an den Mosaikrändern (Einzelfeld: Sensorränder)
         if params.get("star_separation") == "starnet" and not stars.starnet_path():
             params["star_separation"] = "off"           # Profil „nur StarNet“: ohne StarNet keine eigene Trennung
+        if "star_shrink" not in user:                   # Einstellungen → Bilder: neue Sternverkleinerung an/aus
+            params["star_shrink"] = bool(getattr(self.s, "star_shrink", True))
         gx: dict = {}
         if run:
             run.data.update(n=len(stacked), exposure=exposure, band=None)

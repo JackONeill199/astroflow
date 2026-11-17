@@ -82,7 +82,11 @@ Schritte 11–13 (Speicher, volles Laufwerk, Aufräumen): `daten-server.md`.
    140 → 77 px (g 3,8), M17 Stellina 137 → 72 (3,8), IC 443 Vespera 57 → 33 (3,8), Sh2-142 Seestar S50 60 → 31 (3,8), M31
    35 → 27 (1,7, Kern unverändert), C51 Vespera 14 → 12 (1,7). Spitzenhelligkeit gleich; von den Sternen des alten Bildes
    (Top-Hat > 0,05) bleiben 97–100 % über 0,05 und 100 % über 0,025. Sternfarbe gleich bis höher, Sh2-142 −16 % (dort saß
-   die Farbe im blauen Halo). Sternhaufen (Profile ohne
+   die Farbe im blauen Halo). Schalter Einstellungen → Bilder → Sternentrennung „Sterne verkleinern“ (Nutzerwunsch, Standard an;
+   `Settings.star_shrink`, `settings.json` → `storage.star_shrink`, `POST /stacking/storage`): `Pipeline.develop` schreibt ihn als
+   Parameter `star_shrink` (steht damit in `stats.params`, Stufenbilder rechnen gleich); aus → `shrink_stars_classic` (alte
+   3×3-Erosion, Sternsättigung ohne Anhebung). Kein Cache betroffen (GraXpert/StarNet laufen vorher), wirkt beim nächsten
+   Entwickeln. Sternhaufen (Profile ohne
    Trennung, `star_reduction` 0) unverändert; ohne StarNet läuft weiter `reduce_stars` (Erosion an erkannten Sternen).
    **Heutiger Stand (Profile `objects.PROFILES`):** Nebel (emission/reflection/snr) `starnet` = nur echtes StarNet, ohne StarNet keine Trennung
    (`Pipeline.develop` setzt dann `off`); alle übrigen Profile (Galaxie, Haufen, Planetarisch, Komet, generic) `off`. Anlass (NGC 7000, 01.11.2026): mit
