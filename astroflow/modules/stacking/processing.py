@@ -711,10 +711,34 @@ def protect_core(img: np.ndarray, starless: np.ndarray, lo: float = 0.35, hi: fl
     return (starless + m[None] * (img - starless)).astype(np.float32), float(m.mean())
 
 
-def shrink_stars(stars: np.ndarray, amount: float) -> np.ndarray:
-    """Sternebene verkleinern: Grauwert-Erosion (Ränder nach innen) und etwas dunkler – wirkt nur auf Sterne."""
-    er = np.stack([ndi.grey_erosion(c, size=(3, 3)) for c in stars])
-    return (stars * (1 - amount) + er * amount).astype(np.float32)
+STAR_COVER = 1.5          # Ziel: Anteil der Bildfläche (%), den die eingesetzten Sterne deutlich aufhellen (Sternebene > 0,1)
+STAR_LEVEL = 0.1          # ab dieser Helligkeit der Sternebene gilt ein Pixel als „Stern“ (gestreckte Werte 0..1)
+STAR_SAT_GAIN = 0.08      # Sternsättigung × (1 + 0,08·(g − 1)) als Ausgleich für die kleineren, farbtragenden Halos
+
+
+def shrink_stars(stars: np.ndarray, amount: float, fwhm: float = 3.0) -> tuple[np.ndarray, dict]:
+    """Sternebene verkleinern, ohne Sterne abzudunkeln: Profil je Stern schärfen – Helligkeit relativ zum örtlichen
+    Maximum (Fenster 3 × FWHM) hoch (g − 1) als Faktor. Die Spitze bleibt, Flanken und Halos fallen steiler ab (Gauß:
+    Durchmesser × 1/√g), Sternfarbe bleibt (gleicher Faktor für alle Kanäle). Vorher machte die harte Kanalkurve aus den
+    Flanken große Scheiben (IC 405: halbe Höhe 59 px Fläche bei FWHM 5 linear ≈ 20 px), die 3×3-Erosion nahm nur 1 px.
+    Stärke datengetrieben: g mindestens 1 + 2·amount, höher, bis die Sterne höchstens `STAR_COVER` % der Fläche
+    bedecken (dichte Milchstraßenfelder von Smart-Teleskopen: IC 443 Vespera 8 %), höchstens 1 + 8·amount (≤ 5)."""
+    if amount <= 0:
+        return stars, {}
+    Ls = luminance(stars)
+    size = max(3, int(round(3 * max(fwhm, 1.0))) | 1)
+    pk = np.maximum(ndi.maximum_filter(Ls, size=size), 1e-4)
+    p = np.clip(Ls / pk, 0, 1)
+    sub = (slice(None, None, 2), slice(None, None, 2))          # Bedeckung auf jedem 2. Pixel reicht
+    Lq, pq = Ls[sub], np.maximum(p[sub], 1e-6)
+    cover = lambda g: float((Lq * pq ** (g - 1) > STAR_LEVEL).mean() * 100)
+    g0, g1 = 1 + 2 * amount, min(5.0, 1 + 8 * amount)
+    g = g0
+    while g < g1 and cover(g) > STAR_COVER:
+        g = min(g1, g + 0.25)
+    k = np.where(Ls > 1e-6, np.maximum(p, 1e-6) ** (g - 1), 1.0).astype(np.float32)
+    info = {"gamma": round(g, 2), "cover": round(cover(1.0), 2), "cover_after": round(cover(g), 2)}
+    return (stars * k[None]).astype(np.float32), info
 
 
 def reduce_stars(img: np.ndarray, amount: float, fwhm: float) -> np.ndarray:
@@ -1110,9 +1134,12 @@ def process(stack: np.ndarray, cov: np.ndarray, params: dict, narrowband: bool =
     if stars_s is not None:
         log("Sterne einsetzen")
         if p["star_reduction"] > 0:                          # Sterne kleiner: nur die Sternebene, Nebel unberührt
-            stars_s = shrink_stars(stars_s, float(p["star_reduction"]))
+            stars_s, stats["star_shrink"] = shrink_stars(stars_s, float(p["star_reduction"]), fwhm)
         if not mono:
-            stars_s = saturate(stars_s, float(p.get("star_saturation", 1.2)))
+            # kleinere Halos tragen weniger Farbe (Kerne sind weiß) – Sternsättigung mit der Verkleinerung etwas anheben
+            # (IC 405/M17: sichtbare Sternfarbe sonst −15…20 %)
+            gam = (stats.get("star_shrink") or {}).get("gamma", 1.0)
+            stars_s = saturate(stars_s, float(p.get("star_saturation", 1.2)) * (1 + STAR_SAT_GAIN * (gam - 1)))
         img = starsep.screen(img, np.clip(stars_s * float(p.get("star_brightness", 0.85)), 0, 1))
         del stars_s
     elif not mono:

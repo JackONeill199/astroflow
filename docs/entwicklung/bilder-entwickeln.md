@@ -68,6 +68,18 @@ Schritte 11–13 (Speicher, volles Laufwerk, Aufräumen): `daten-server.md`.
    Quellen, Füllen per Öffnung + Versatzausgleich, nie heller als das Original, sternlos + Sterne = Original). Sternlos: `Stretch` =
    automatische GHS-Folge (3 Durchgänge, SP am Himmelshintergrund, D ≤ 25, Rest per MTF; Weißpunkt vom Bild **mit** Sternen).
    Sterne: `channel_curve(img) − channel_curve(sternlos)` (knackig, Kerne weiß), sättigen, × `star_brightness`, Screen-Mischung.
+   **Sternverkleinerung** (`processing.shrink_stars`, Profilwert `star_reduction`, seit 17.11.2026; Anlass Seestar S50 Sh2-142, Nutzer:
+   „die könnten echt kleiner sein“): Die harte Kanalkurve hebt die Sternflanken weit an – halbe Höhe im fertigen Bild ≈ 3× die lineare
+   Fläche (IC 405: 59 px bei FWHM 5), die alte 3×3-Erosion nahm nur 1 px und dunkelte ab. Jetzt Profil schärfen ohne Abdunkeln:
+   Faktor (L / örtliches Maximum im Fenster 3 × FWHM)^(g − 1) für alle Kanäle – Spitze bleibt, Flanken fallen steiler, Farbverhältnis
+   bleibt. Stärke datengetrieben über die **Sternbedeckung** (Anteil der Fläche mit Sternebene > 0,1): g ab 1 + 2·amount, steigt in
+   0,25-Schritten, bis höchstens `STAR_COVER` 1,5 % bedeckt sind, Obergrenze 1 + 8·amount (≤ 5); Ergebnis `stats.star_shrink`
+   (`gamma`, `cover`, `cover_after`). Sternsättigung × (1 + 0,08·(g − 1)), weil kleinere Halos weniger Farbe tragen. Nebel und
+   Hintergrund bleiben unberührt (wirkt nur auf die Sternebene). Gemessen (Profil 0,35): IC 405 Stellina Bedeckung 5,0 → 1,5 %
+   (g 3,45), M17 Stellina 4,5 → 1,4 % (2,95), IC 443 Vespera 8,6 → 2,5 % (3,8, Obergrenze), M31/C51 0,75/1,5 % → g 1,7.
+   Sichtbare Sternfläche (> Himmel + 0,1) −55…−60 % bei Nebeln, −38 % M31; Spitzenhelligkeit gleich, Sternfarbe gleich bis höher –
+   nur der blaue Halo heller Sterne (Blauschleier des Objektivs) wird kleiner, sie wirken weißer. Sternhaufen (Profile ohne
+   Trennung, `star_reduction` 0) unverändert; ohne StarNet läuft weiter `reduce_stars` (Erosion an erkannten Sternen).
    **Heutiger Stand (Profile `objects.PROFILES`):** Nebel (emission/reflection/snr) `starnet` = nur echtes StarNet, ohne StarNet keine Trennung
    (`Pipeline.develop` setzt dann `off`); alle übrigen Profile (Galaxie, Haufen, Planetarisch, Komet, generic) `off`. Anlass (NGC 7000, 01.11.2026): mit
    StarNet + GraXpert deutlich besser (Nebel ohne Sterne gestreckt, Sterne kleiner), während die eigene Trennung (`intern`) matschiger und

@@ -50,3 +50,37 @@ def test_stretch_reaches_target_and_process_with_separation():
     assert st["star_separation"] == "intern" and st["ghs"] and out.shape[0] == 3 and np.isfinite(out).all()
     out2, st2 = processing.process(img, cov, {**p, "star_separation": "off"})
     assert "star_separation" not in st2
+
+
+def _star_layer(n, H=240, W=320, sigma=1.5, seed=3):
+    """Gestreckte Sternebene: runde Sterne mit harter Kurve (Kerne weiß, breite Flanken) und etwas Farbe."""
+    rng = np.random.default_rng(seed)
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    L = np.zeros((H, W), np.float32)
+    pos = []
+    for _ in range(n):
+        x, y = rng.uniform(8, W - 8), rng.uniform(8, H - 8)
+        pos.append((int(round(y)), int(round(x))))
+        L = np.maximum(L, rng.uniform(0.3, 1.0) * np.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * sigma ** 2)))
+    L = np.arcsinh(20 * L) / np.arcsinh(20)                          # Flanken angehoben wie nach dem Stretch
+    rgb = np.stack([L, 0.9 * L, 0.7 * L]).astype(np.float32)
+    return rgb, pos
+
+
+def test_shrink_stars_keeps_peaks_and_shrinks_more_in_dense_fields():
+    sparse, pos = _star_layer(20)
+    dense, _ = _star_layer(400)
+    out, info = processing.shrink_stars(sparse, 0.35, fwhm=3.5)
+    assert info["gamma"] == 1.7                                       # wenige Sterne: Grundstärke 1 + 2·0,35
+    lv = lambda a: 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2]
+    peak = lambda a: np.array([lv(a)[y - 1:y + 2, x - 1:x + 2].max() for y, x in pos])
+    assert np.mean(peak(out) >= 0.97 * peak(sparse)) >= 0.9           # Spitzen bleiben hell (außer neben helleren Nachbarn)
+    assert (lv(out) > 0.1).sum() < 0.75 * (lv(sparse) > 0.1).sum()   # sichtbare Sternfläche kleiner
+    assert np.all(out <= sparse + 1e-6)                              # nie heller als vorher
+    r = out[0][out[1] > 0.05] / out[1][out[1] > 0.05]                # Farbe (Kanalverhältnis) bleibt
+    assert np.allclose(r, 1 / 0.9, rtol=1e-3)
+    out_d, info_d = processing.shrink_stars(dense, 0.35, fwhm=3.5)
+    assert info_d["gamma"] > info["gamma"] and info_d["cover_after"] < info_d["cover"]   # dichtes Feld: stärker
+    assert info_d["gamma"] <= 1 + 8 * 0.35
+    same, none = processing.shrink_stars(sparse, 0.0, fwhm=3.5)
+    assert same is sparse and none == {}
