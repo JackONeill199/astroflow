@@ -72,6 +72,10 @@ class Scenario:
     setup_busy_s: float = 0.0          # nach dem Öffnen so lange „beschäftigt“ (Gerät richtet sich selbst ein) → DriverBusy
     stop_silently_at: float | None = None   # Gerät beendet die Beobachtung einmal ohne Fehler und ohne Bilder (Stillstand)
     init_rejected: bool = False        # Ausrichten wird immer abgelehnt (z. B. falsche Geräte-Uhr) → DriverError
+    # wie die Vespera (Echtbetrieb 17.11.2026): mehrere Lagebestimmungen hintereinander, dann Abbruch der Beobachtung mit
+    # TOO_MANY_ASTROMETRY_FAILED – das Ziel verschwindet dabei aus dem Status
+    astrometry_tries: int = 1
+    drop_target_on_fail: bool = False
 
     @classmethod
     def demo(cls, start: float) -> "Scenario":
@@ -198,9 +202,16 @@ class SimDriver(Driver):
                 self.step, self.step_until = "astrometry", t + ASTROMETRY_S
         elif s == "astrometry" and t >= self.step_until:
             why = self.blocked(t, self.az, self.alt)
-            if why:
-                self.astrometry_failed, self.error, self.step = True, "ASTROMETRY.FAILED", "idle"
+            if why and self.tries < self.sc.astrometry_tries:
+                self.tries += 1                                # nächster Versuch, Status bleibt „astrometry“ ohne Fehler
+                self.step_until = t + ASTROMETRY_S
+            elif why:
+                self.astrometry_failed, self.step = True, "idle"
+                self.error = ("GENERAL.POINTING_STOPPED ← GENERAL.TOO_MANY_ASTROMETRY_FAILED" if self.sc.astrometry_tries > 1
+                              else "ASTROMETRY.FAILED")
                 self.stars = 0 if why != "clouds" else 3
+                if self.sc.drop_target_on_fail:
+                    self.target, self.goal = None, None
             else:
                 self.step, self.frame_t = "capture", t + self.exposure
         elif s == "capture":
@@ -254,6 +265,7 @@ class SimDriver(Driver):
         self.target = target
         self.frames = self.stacked = self.rejected = 0
         self.astrometry_failed, self.error, self.stars = False, None, None
+        self.tries = 1
         self.step = "goto"
         self.goal = self._target_altaz(t)
 

@@ -30,9 +30,12 @@ STREAK = 3                 # verdeckte Punkte in so vielen Spalten ohne freien d
 REF_FAILS = 2
 CLOUD_WAIT_S = 180         # Gegenprobe gescheitert: so lange warten, dann noch einmal
 MAX_PROBES = 48
-SCAN_MAX_S = 25 * 60       # danach Karte aus den bisherigen Punkten (Simulator: voller Balkon-Scan ≈ 20 min)
+# danach Karte aus den bisherigen Punkten. Simulator: voller Balkon-Scan ≈ 20 min; Vespera (17.11.2026): ein verdeckter Punkt
+# kostet ~1 min (drei Lagebestimmungen, dann Abbruch durch das Gerät) – daher mehr Luft
+SCAN_MAX_S = 40 * 60
 SHORT_MAX_S = 8 * 60
-PROBE_TIMEOUT_S = 150      # Schwenk + Lagebestimmung; danach gilt der Punkt als Zweifel
+PROBE_TIMEOUT_S = 150      # so lange darf das Gerät brauchen, bis es sichtbar an dem Punkt arbeitet; sonst Zweifel
+PROBE_MAX_S = 6 * 60       # harte Obergrenze je Punkt, auch wenn das Gerät noch arbeitet (Vespera: mehrere Lagebestimmungen)
 STALE_S = 20               # „Lage nicht bestimmt“ ohne gesehenen Schwenk erst nach so langer Zeit glauben (alter Fehler?)
 EXPOSURE_S = 5.0
 STARS_SOME = 3             # so viele Sterne ohne Lagebestimmung → Zweifel (eher dünne Wolke), darunter verdeckt

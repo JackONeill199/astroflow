@@ -407,3 +407,30 @@ def test_gegenproben_halten_mondabstand():
                {"az": 0.0, "alt": 25.0, "res": "verdeckt", "why": "raster"}]
     p = st.next_probe(T0, lambda az, alt: "Mond" if abs((az - 180 + 540) % 360 - 180) < 20 else None)
     assert p["why"] == "gegenprobe" and abs((p["az"] - 180 + 540) % 360 - 180) >= 20
+
+
+def test_scan_wie_vespera_ziel_verschwindet_nach_fehlversuchen():
+    """Echtbetrieb 17.11.2026: Die Vespera versucht die Lagebestimmung mehrmals, bricht dann mit TOO_MANY_ASTROMETRY_FAILED ab
+    und meldet kein Ziel mehr. Das ist trotzdem „verdeckt“ für diesen Punkt – nicht „unklar“ nach Zeitgrenze."""
+    sc = sim.Scenario.balcony(T0)
+    sc.astrometry_tries, sc.drop_target_on_fail = 3, True             # wie gemessen: ~3 Versuche, dann Abbruch
+    p, d, clock = make(sc)
+    p.start_scan(clock.now())
+    scan_until_done(p, clock, limit_s=3 * H)
+    pts = [x for x in p.last_scan["points"] if x["res"] in ("frei", "verdeckt", "zweifel")]
+    assert pts and not any(x["res"] == "zweifel" for x in pts)
+    north = [x for x in pts if x["az"] == 0 and x["alt"] == 25]
+    assert north and north[0]["res"] == "verdeckt"
+    assert p.horizon()["horizon"][bin_(0)] >= 50 and p.horizon()["horizon"][bin_(180)] <= 25
+
+
+def test_scan_punkt_ohne_antwort_wird_zweifel_aber_nicht_vorzeitig():
+    """Arbeitet das Gerät noch sichtbar am Punkt (lange Lagebestimmung), läuft die Zeitgrenze nicht ab; erst die harte
+    Obergrenze bzw. Stillstand macht einen Zweifel daraus."""
+    sc = sim.Scenario.balcony(T0)
+    sc.astrometry_tries = 12                             # 12 × 15 s = 3 min Lagebestimmung > PROBE_TIMEOUT_S
+    p, d, clock = make(sc)
+    p.start_scan(clock.now())
+    scan_until_done(p, clock, limit_s=3 * H)
+    first = p.last_scan["points"][0]
+    assert first["az"] == 0 and first["res"] == "verdeckt"

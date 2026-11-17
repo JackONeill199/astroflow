@@ -1252,16 +1252,22 @@ class Autopilot:
                 return self._scan_done(sc, now)
             return self._scan_goto(p, now)
         same = bool(s.target) and s.target.get("id") == p["tid"]
-        if same and s.step in ("goto", "astrometry"):
-            p["seen"] = True
+        working = same and s.step in ("goto", "astrometry")
+        if working:
+            p["seen"], p["busy_t"] = True, now
+        # Die Vespera bricht nach mehreren gescheiterten Lagebestimmungen die Beobachtung selbst ab und meldet danach kein
+        # Ziel mehr (Echtbetrieb 17.11.2026) – das Scheitern gehört trotzdem zu diesem Punkt, wenn es vorher daran gearbeitet hat
+        dropped = not s.target and s.step == "idle" and p.get("seen")
         if same and (s.step == "capture" or s.frames > 0):
             res, solved = "frei", True
-        elif same and s.astrometry_failed and (p.get("seen") or now - p["since"] >= skyscan.STALE_S):
+        elif s.astrometry_failed and ((same and (p.get("seen") or now - p["since"] >= skyscan.STALE_S)) or dropped):
             res, solved = ("zweifel" if (s.stars or 0) >= skyscan.STARS_SOME else "verdeckt"), False
-        elif now - p["since"] > skyscan.PROBE_TIMEOUT_S:
-            res, solved = "zweifel", False
+        elif now - p["since"] > skyscan.PROBE_MAX_S or (now - p.get("busy_t", p["since"]) > skyscan.PROBE_TIMEOUT_S):
+            res, solved = "zweifel", False                # keine Antwort (bzw. arbeitet nicht mehr daran)
         else:
             return
+        if res != "frei" and s.target and same:
+            self._cmd("stop", self.driver.stop, now=now)    # weitere Versuche am Gerät abbrechen, nächster Punkt
         sc.result(res, now, s.stars, solved)
         if p["why"] == "gegenprobe" and res != "frei" and sc.state == "laeuft":
             self.log("Gegenprobe ohne Sterne – vielleicht eine Wolke. Prüfe die letzten Punkte später noch einmal.", "warn", now)
