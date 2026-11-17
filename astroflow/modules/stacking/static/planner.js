@@ -129,7 +129,7 @@ async function planView(el) {
   // Ort je Nacht (gemeinsame Ortsliste, /api/sites/night wie „Heute Nacht“); Änderung → Plan veraltet, „Neu berechnen“
   function siteRows(p) {
     if (!sites?.list?.length) return '';
-    const hz = (n, ch) => ch ? 'gilt nach dem Neuberechnen' : n.site?.horizon ? (n.site.horizon_src || 'Horizont des Ortes') : 'kein Horizont hinterlegt';
+    const hz = (n, ch) => ch ? 'gilt nach dem Neuberechnen' : n.site?.horizon === undefined ? 'Horizont erst nach „Neu planen“ bekannt' : n.site?.horizon ? (n.site.horizon_src || 'Horizont des Ortes') : 'kein Horizont hinterlegt';
     const rows = p.nights.map(n => {
       const fixed = sites.periods.find(x => x.from === n.night && x.to === n.night), ch = changed.has(n.night);
       const opts = (fixed ? '' : `<option value="">${esc(ch ? 'Automatisch' : (n.site?.name || 'Standard-Ort') + ' (automatisch)')}</option>`)
