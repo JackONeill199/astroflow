@@ -7,6 +7,52 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const icon = (n) => `<svg><use href="#i-${n}"/></svg>`;
+// Statistik-Baukasten (Nutzerwunsch 17.11.2026 „Statistikseiten hübscher“, Vorbild Heute Nacht; Stile .st-* in style.css):
+// Kennzahl mit Symbol im leuchtenden Kreis, ruhiger Hinweis mit Symbol, Abschnitte (.st-rv) blenden beim Hineinscrollen ein,
+// Zahlen ([data-count]) zählen dabei hoch. Neu zeichnen (Jahr gewechselt) = nur kurz überblenden. Alles aus bei reduzierter Bewegung.
+const motionOff = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const statKpi = ({ ico, label, value, sub = '', cls = '', title = '' }) => `<div class="st-kpi${cls ? ' ' + cls : ''}"${title ? ` title="${esc(title)}"` : ''}>${ico ? `<i class="st-kpi-ico" aria-hidden="true">${icon(ico)}</i>` : ''}<small>${label}</small><b class="tnum" data-count>${value}</b>${sub ? `<span class="st-kpi-sub">${sub}</span>` : ''}</div>`;
+const statNote = (ico, title, text, cls = '') => `<div class="st-note${cls ? ' ' + cls : ''}"><i class="st-note-ico" aria-hidden="true">${icon(ico)}</i><p>${title ? `<b>${title}</b>` : ''}<span>${text}</span></p></div>`;
+// Erklärung zum Zählen: eingeklappt, nur ein kleiner Link – erst auf Klick sichtbar (Nutzerwunsch 17.11.2026: nicht dauerhaft stehen lassen)
+const statInfo = (title, text) => `<details class="st-info"><summary>${icon('book')}${title}</summary><div class="st-info-body">${text}</div></details>`;
+function statCount(root, ms = 900) {
+  if (motionOff()) return;
+  for (const b of root.querySelectorAll('[data-count]:not([data-counted])')) {
+    b.dataset.counted = '1';
+    const text = b.textContent, m = text.match(/\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?/);
+    if (!m) continue;
+    const dec = (m[0].split(',')[1] || '').length, val = parseFloat(m[0].replace(/\./g, '').replace(',', '.'));
+    if (!isFinite(val) || val === 0) continue;
+    const pre = text.slice(0, m.index), post = text.slice(m.index + m[0].length), t0 = performance.now();
+    const step = (now) => {
+      if (!b.isConnected) return;
+      const k = Math.min(1, (now - t0) / ms), e = 1 - (1 - k) ** 3;
+      b.textContent = pre + (val * e).toLocaleString('de-DE', { minimumFractionDigits: dec, maximumFractionDigits: dec }) + post;
+      if (k < 1) requestAnimationFrame(step); else b.textContent = text;
+    };
+    requestAnimationFrame(step);
+  }
+}
+// quick = Inhalt steht sofort (Neuzeichnen nach Filterwechsel), nur kurzes Überblenden ohne Einblend-Show
+// Gibt eine Aufräumfunktion zurück; ein neuer Aufruf für denselben Behälter trennt den vorigen Beobachter (Ansicht neu gezeichnet).
+const statObservers = new WeakMap();
+function statReveal(root, quick = false) {
+  statObservers.get(root)?.disconnect();
+  statObservers.delete(root);
+  const secs = [...root.querySelectorAll('.st-rv:not(.in)')];
+  const show = (s) => { s.classList.add('in'); if (quick) s.classList.add('st-quick'); else statCount(s); };
+  if (quick || motionOff() || !('IntersectionObserver' in window)) { secs.forEach(show); return; }
+  let heard = false;
+  const io = new IntersectionObserver((es) => {
+    heard = true;
+    es.forEach(e => { if (e.isIntersecting) { io.unobserve(e.target); show(e.target); } });
+    if (secs.every(s => s.classList.contains('in') || !s.isConnected)) io.disconnect();      // alles gezeigt oder Ansicht weg
+  }, { rootMargin: '0px 0px -6% 0px' });
+  secs.forEach(s => io.observe(s));
+  statObservers.set(root, io);
+  setTimeout(() => { if (!heard) { io.disconnect(); if (root.isConnected) secs.forEach(show); } }, 1500);   // Rückfall, falls der Beobachter nie meldet (nie unsichtbar bleiben)
+  return () => { io.disconnect(); statObservers.delete(root); };
+}
 // Kleine Bildfolge: vergleichen → Spur finden → Bahn darüberlegen (symbolisch, kein Fortschrittsmaß).
 const sequenceLoader = () => '<span class="sequence-loader" aria-hidden="true"><em class="seq-back seq-back-two"></em><em class="seq-back seq-back-one"></em><em class="seq-image"><em class="seq-scan"></em><em class="seq-trail"></em><em class="seq-path"></em><em class="seq-object"></em></em></span>';
 // Ladezustand am Knopf: der zuletzt gedrückte Knopf (≤ 0,6 s) bekommt während einer schreibenden Anfrage .pending (style.css)

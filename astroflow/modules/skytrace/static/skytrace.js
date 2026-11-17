@@ -934,9 +934,10 @@ async function statsView(el) {
   const body = $('#sts-body', el), select = $('#sts-year', el);
   rematchPanel($('#sts-rematch', el));
   select.onchange = () => { year = select.value; draw(); };
+  // Gestaltung wie „Heute Nacht“ (Statistik-Baukasten in app.js): Balken wachsen beim Einblenden, stärkster Wert leuchtet
   function bars(rows) {
     const max = Math.max(1, ...rows.map(r => r.n));
-    return `<div class="sts-bars">${rows.map(r => `<div class="sts-bar" title="${esc(r.title || '')}"><span>${esc(r.label)}</span>
+    return `<div class="sts-bars">${rows.map((r, i) => `<div class="sts-bar${r.n && r.n === max ? ' peak' : ''}" style="--i:${i}" title="${esc(r.title || '')}"><span>${esc(r.label)}</span>
       <div class="sts-track"><div class="sts-fill" style="width:${100 * r.n / max}%;${r.n ? '' : 'min-width:0'}"></div></div><span class="tnum">${nf.format(r.n)}</span></div>`).join('')}</div>`;
   }
   function draw() {
@@ -976,31 +977,38 @@ async function statsView(el) {
     const top = sessions.filter(s => s.candidate_count).sort((a, b) => b.candidate_count - a.candidate_count || b.frames - a.frames).slice(0, 8);
     const s = JSON.stringify([year, sessions.length, cands.length, data.repeated, frames]);
     if (s === sig) return;
+    const quick = !!body.firstChild;             // erste Füllung mit Einblendung, danach (Jahr, neue Analyse) nur kurz überblenden
     sig = s;
-    body.innerHTML = `<div class="hstats sts-summary"><div><b class="tnum">${nf.format(sessions.length)}</b><small>Beobachtungen</small></div>
-        <div><b class="tnum">${nf.format(frames)}</b><small>Aufnahmen analysiert</small></div><div><b class="tnum">${nf.format(cands.length)}</b><small>Kandidaten</small></div>
-        <div><b class="tnum">${nf.format(sats.length)}</b><small>Satelliten zugeordnet</small></div></div>
-      <p class="mut sm">${frames ? `${pct(excluded, frames + excluded)} der Aufnahmen waren unscharf und wurden ausgelassen · ${(1000 * cands.length / frames).toLocaleString('de-DE', { maximumFractionDigits: 1 })} Kandidaten je 1 000 Aufnahmen · ` : ''}
-        ${cands.length ? `${pct(sats.length, cands.length)} der Spuren passen zu einer bekannten Satellitenbahn. ` : ''}
-        Mehrfach analysierte Beobachtungen zählen nur einmal (neueste vollständige Analyse)${data.repeated ? ` – ${nf.format(data.repeated)} ältere Auswertung${data.repeated === 1 ? '' : 'en'} nicht mitgezählt` : ''}.
-        Ein Kandidat ist kein bestätigtes Objekt, eine Katalogzuordnung bleibt ein geometrischer Hinweis.</p>
+    const nights = new Set(sessions.map(x => x.night).filter(Boolean)).size, satMax = Math.max(1, ...topSats.map(e => e.n));
+    const peakHour = timed ? hours.indexOf(maxHour) : -1, hh = (h) => String(h).padStart(2, '0');
+    const rank = (i) => `<span class="sts-medal">${i + 1}</span>`;
+    body.innerHTML = `<section class="st-head st-rv"><div class="st-kpis">
+        ${statKpi({ ico: 'layers', label: 'Beobachtungen', value: nf.format(sessions.length), sub: nights ? `aus ${nf.format(nights)} ${nights === 1 ? 'Nacht' : 'Nächten'}` : '' })}
+        ${statKpi({ ico: 'camera', cls: 'violet', label: 'Aufnahmen analysiert', value: nf.format(frames), sub: frames ? `${pct(excluded, frames + excluded)} unscharf ausgelassen` : '' })}
+        ${statKpi({ ico: 'sparkle', cls: 'orange', label: 'Kandidaten', value: nf.format(cands.length), sub: frames ? `${(1000 * cands.length / frames).toLocaleString('de-DE', { maximumFractionDigits: 1 })} je 1 000 Aufnahmen` : '' })}
+        ${statKpi({ ico: 'orbit', cls: 'teal', label: 'Satelliten zugeordnet', value: nf.format(sats.length), sub: cands.length ? `${pct(sats.length, cands.length)} der Spuren passen zu einer Bahn` : '' })}
+      </div></section>
+      <div class="st-notes st-rv">${statInfo('So wird gezählt', `Mehrfach analysierte Beobachtungen zählen nur einmal (neueste vollständige Analyse)${data.repeated ? ` – ${nf.format(data.repeated)} ältere Auswertung${data.repeated === 1 ? '' : 'en'} nicht mitgezählt` : ''}. Ein Kandidat ist kein bestätigtes Objekt, eine Katalogzuordnung bleibt ein geometrischer Hinweis.`)}</div>
       ${sessions.length ? `<div class="sts-grid">
-        <section class="panel"><h2>Kandidaten nach Objektart</h2>${bars(STAT_KINDS.map(([k, l]) => ({ label: l, n: cands.filter(c => c.cls.kind === k).length })))}</section>
-        <section class="panel"><h2>Häufigste Satelliten</h2>${Object.keys(types).length ? `<div class="row sts-types">${Object.entries(types).sort((a, b) => b[1] - a[1]).map(([t, n]) => `<span class="chip">${esc(t)} · ${nf.format(n)}</span>`).join('')}</div>` : ''}
-          ${topSats.length ? topSats.map(e => `<div class="sts-row"><b>${esc(e.name)}</b><span class="mut sm">${e.norad != null && !e.name.includes(String(e.norad)) ? 'NORAD ' + esc(e.norad) : ''}</span><span class="grow"></span><span class="tnum">${nf.format(e.n)}×</span></div>`).join('')
+        <section class="panel st-rv"><h2>Kandidaten nach Objektart</h2>${bars(STAT_KINDS.map(([k, l]) => ({ label: l, n: cands.filter(c => c.cls.kind === k).length })))}</section>
+        <section class="panel st-rv"><h2>Häufigste Satelliten</h2>${Object.keys(types).length ? `<div class="row sts-types">${Object.entries(types).sort((a, b) => b[1] - a[1]).map(([t, n]) => `<span class="chip">${esc(t)} · ${nf.format(n)}</span>`).join('')}</div>` : ''}
+          ${topSats.length ? `<ol class="sts-rank">${topSats.map((e, i) => `<li class="sts-row" style="--i:${i}">${rank(i)}<span class="sts-name"><b>${esc(e.name)}</b><small class="mut">${e.norad != null && !e.name.includes(String(e.norad)) ? 'NORAD ' + esc(e.norad) : esc(e.type)}</small>
+            <span class="sts-track"><span class="sts-fill" style="width:${100 * e.n / satMax}%"></span></span></span><span class="tnum">${nf.format(e.n)}×</span></li>`).join('')}</ol>`
             : '<p class="mut sm">Noch keine Spur einer Satellitenbahn zugeordnet. Mit Standort und Plate Solving prüft SkyTrace historische Bahnen zur Aufnahmezeit.</p>'}</section>
-        <section class="panel sts-wide"><h2>Katalogabgleich je Quelle</h2><div class="row sts-legend">${CAT_PARTS.map(([k, l]) => `<span><i class="sts-${k}"></i>${l}</span>`).join('')}</div>
-          ${cat.length ? cat.map(r => `<div class="sts-cat"><span>${esc(providerNames[r.p])}</span><div class="sts-stack" title="${esc(Object.entries(r.reasons).map(([k, n]) => `${k}: ${n}`).join(' · ') || 'alle Kandidaten geprüft')}">
+        <section class="panel sts-wide st-rv"><h2>Katalogabgleich je Quelle</h2><div class="row sts-legend">${CAT_PARTS.map(([k, l]) => `<span><i class="sts-${k}"></i>${l}</span>`).join('')}</div>
+          ${cat.length ? cat.map((r, i) => `<div class="sts-cat" style="--i:${i}"><span>${esc(providerNames[r.p])}</span><div class="sts-stack" title="${esc(Object.entries(r.reasons).map(([k, n]) => `${k}: ${n}`).join(' · ') || 'alle Kandidaten geprüft')}">
             ${CAT_PARTS.map(([k, l]) => r.parts[k] ? `<i class="sts-${k}" style="flex:${r.parts[k]}" title="${l}: ${r.parts[k]}"></i>` : '').join('')}</div>
-            <span class="tnum sm">${nf.format(r.parts.hit)} / ${nf.format(r.total)}</span></div>`).join('') : '<p class="mut sm">Noch keine Katalogabgleiche gespeichert.</p>'}
-          <p class="dim sm" style="margin:12px 0 0">„Nicht prüfbar“ heißt: Archivdaten, Zugang oder Standort fehlten – nicht, dass dort kein Objekt war. Gründe im Tooltip.</p></section>
-        <section class="panel sts-wide"><h2>Uhrzeit der Kandidaten (UTC)</h2>${timed ? `<div class="sts-hours">${hours.map((n, h) => `<div class="sts-hour" title="${String(h).padStart(2, '0')}:00–${String(h).padStart(2, '0')}:59 UTC · ${nf.format(n)} Kandidaten"><i style="height:${100 * n / maxHour}%"></i><small>${h}</small></div>`).join('')}</div>`
+            <span class="tnum sm"><b>${nf.format(r.parts.hit)}</b> / ${nf.format(r.total)}</span></div>`).join('') : '<p class="mut sm">Noch keine Katalogabgleiche gespeichert.</p>'}
+          <p class="dim sm sts-foot">„Nicht prüfbar“ heißt: Archivdaten, Zugang oder Standort fehlten – nicht, dass dort kein Objekt war. Gründe im Tooltip.</p></section>
+        <section class="panel sts-wide st-rv"><div class="panel-h"><h2>Uhrzeit der Kandidaten (UTC)</h2><span class="grow"></span>${timed ? `<span class="mut sm">am meisten <b>${hh(peakHour)}:00–${hh(peakHour)}:59</b></span>` : ''}</div>
+          ${timed ? `<div class="sts-hours">${hours.map((n, h) => `<div class="sts-hour${h === peakHour ? ' peak' : ''}${n ? '' : ' none'}" style="--i:${h}" title="${hh(h)}:00–${hh(h)}:59 UTC · ${nf.format(n)} Kandidaten">${h === peakHour ? `<em class="tnum">${nf.format(n)}</em>` : ''}<i style="height:${100 * n / maxHour}%"></i><small>${h}</small></div>`).join('')}</div>`
           : '<p class="mut sm">Keine Kandidaten mit Aufnahmezeit.</p>'}</section>
-        <section class="panel"><h2>Kandidaten je Monat</h2>${Object.keys(months).length ? bars(Object.entries(months).sort().map(([k, m]) => ({ label: month(k), n: m.n, title: `${m.obs} Beobachtung${m.obs === 1 ? '' : 'en'} · ${nf.format(m.frames)} Aufnahmen` })))
+        <section class="panel st-rv"><h2>Kandidaten je Monat</h2>${Object.keys(months).length ? bars(Object.entries(months).sort().map(([k, m]) => ({ label: month(k), n: m.n, title: `${m.obs} Beobachtung${m.obs === 1 ? '' : 'en'} · ${nf.format(m.frames)} Aufnahmen` })))
           : '<p class="mut sm">Keine Beobachtungsnächte bekannt.</p>'}</section>
-        <section class="panel"><h2>Ergiebigste Beobachtungen</h2>${top.length ? top.map(x => `<a class="sts-row" href="#/skytrace/${encodeURIComponent(x.run)}/kandidaten"><span class="sts-name"><b>${esc(shortName(x.session))}</b><small class="mut">${esc(date(x.night))} · ${nf.format(x.frames)} Aufnahmen</small></span>
-            <span class="grow"></span><span class="tnum">${nf.format(x.candidate_count)}</span>${icon('arrow')}</a>`).join('') : '<p class="mut sm">Noch keine Kandidaten.</p>'}</section></div>`
-        : `<div class="empty">${icon('orbit')}<h2>${data.sessions.length ? 'Keine Beobachtungen in diesem Jahr' : 'Noch keine Analysen'}</h2>${data.sessions.length ? '' : 'Sobald Bildfolgen analysiert sind, entsteht hier die Statistik.'}</div>`}`;
+        <section class="panel st-rv"><h2>Ergiebigste Beobachtungen</h2>${top.length ? `<ol class="sts-rank">${top.map((x, i) => `<li style="--i:${i}"><a class="sts-row" href="#/skytrace/${encodeURIComponent(x.run)}/kandidaten">${rank(i)}<span class="sts-name"><b>${esc(shortName(x.session))}</b><small class="mut">${esc(date(x.night))} · ${nf.format(x.frames)} Aufnahmen</small></span>
+            <span class="tnum">${nf.format(x.candidate_count)}</span>${icon('arrow')}</a></li>`).join('')}</ol>` : '<p class="mut sm">Noch keine Kandidaten.</p>'}</section></div>`
+        : `<div class="empty st-rv">${icon('orbit')}<h2>${data.sessions.length ? 'Keine Beobachtungen in diesem Jahr' : 'Noch keine Analysen'}</h2>${data.sessions.length ? '' : 'Sobald Bildfolgen analysiert sind, entsteht hier die Statistik.'}</div>`}`;
+    statReveal(body, quick);
   }
   async function load() {
     try { data = await api(T + '/statistics'); }
@@ -1021,6 +1029,7 @@ async function statsView(el) {
       if (wasRunning && !r) await load();
       wasRunning = r;
     },
+    destroy: () => statObservers.get(body)?.disconnect(),
   };
 }
 

@@ -106,41 +106,79 @@
 .card-del:hover { color: #fff; background: var(--bad); border-color: var(--bad) }
 @media (hover: none) { .card-del { opacity: 1 } }
 
-/* Statistik */
-.sts-summary { grid-template-columns: repeat(4, minmax(0, 1fr)) }
-.sts-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem }
+/* Statistik (statsView, Präfix sts-). Kopfband/Hinweise/Einblenden: Statistik-Baukasten in style.css (.st-*); Bewegung hängt an .st-rv.in,
+   .st-quick (Jahr gewechselt, neue Analyse) ohne Einblend-Show, aus bei prefers-reduced-motion. */
+.sts-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem }
 .sts-grid .panel { margin: 0; min-width: 0 }
 .sts-grid .sts-wide { grid-column: 1/-1 }
-.sts-bars { display: grid; grid-template-columns: auto minmax(2.5rem, 1fr) auto; gap: 0.5rem 0.75rem; margin-top: 1.125rem }
+.sts-grid .panel-h { gap: 0.25rem 0.75rem; flex-wrap: wrap }
+.sts-grid .panel-h .sm b { color: var(--fg); font-weight: 600 }
+.sts-bars { display: grid; grid-template-columns: auto minmax(2.5rem, 1fr) auto; gap: 0.5rem 0.75rem; margin-top: 1rem }
 .sts-bar { display: grid; grid-column: 1/-1; grid-template-columns: subgrid; align-items: center; font-size: 0.8125rem }
+.sts-bar > span:first-child { color: var(--mut) }
+.sts-bar.peak > span:first-child { color: var(--fg); font-weight: 600 }
 .sts-bar .tnum { text-align: right }
 .sts-cat > span:first-child { min-width: 0; overflow-wrap: anywhere }
-.sts-track { height: 0.75rem; background: var(--bg); border-radius: 0.375rem; overflow: hidden }
-.sts-fill { height: 100%; background: var(--acc); border-radius: 0.375rem; min-width: 2px }
+.sts-track { display: block; height: 0.625rem; background-color: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: 1rem; overflow: hidden }
+.sts-fill { display: block; height: 100%; min-width: 2px; border-radius: inherit; transform-origin: left;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--acc) 55%, transparent), var(--acc)) }
+.sts-bar.peak .sts-fill, .sts-rank li:first-child .sts-fill { background: linear-gradient(90deg, var(--acc), var(--st-violet)); box-shadow: 0 0 0.75rem -0.125rem color-mix(in srgb, var(--st-violet) 70%, transparent) }
+.st-rv.in .sts-fill { animation: st-grow-x .8s var(--ease) both; animation-delay: calc(min(var(--i, 0), 14) * 45ms + .15s) }
 .sts-types { gap: 0.375rem; margin: 0.75rem 0 0.375rem }
 .sts-row { display: flex; align-items: center; gap: 0.625rem; padding: 0.5625rem 0; border-bottom: 1px solid var(--border-soft); color: inherit; text-decoration: none; min-width: 0 }
 .sts-row:last-child { border-bottom: 0 }
 .sts-row b { overflow-wrap: anywhere }
-.sts-row svg { width: 0.875rem; height: 0.875rem; color: var(--mut); flex: none }
+.sts-row svg { width: 0.875rem; height: 0.875rem; color: var(--mut); flex: none; transition: transform var(--t) var(--ease), color var(--t) }
 a.sts-row:hover b { color: var(--acc) }
+a.sts-row:hover svg { color: var(--acc); transform: translateX(0.125rem) }
 .sts-name { display: flex; flex-direction: column; min-width: 0 }
+/* Ranglisten (Satelliten, ergiebigste Beobachtungen): Plakette, Name, Balken bzw. Pfeil */
+.sts-rank { list-style: none; margin: 0.25rem 0 0; padding: 0; display: grid; gap: 0.125rem }
+.sts-rank .sts-row { border-bottom: 0; padding: 0.4375rem 0.5rem; border-radius: var(--r); transition: background-color var(--t) }
+.sts-rank .sts-row:hover { background-color: color-mix(in srgb, var(--fg) 4%, transparent) }
+.sts-rank .sts-name { flex: 1; gap: 0.0625rem }
+.sts-rank .sts-name .sts-track { height: 0.375rem; margin-top: 0.3125rem }
+.sts-medal { display: grid; place-items: center; flex: none; width: 1.5rem; height: 1.5rem; border-radius: 50%; font-weight: 700; font-size: 0.6875rem; color: var(--mut); background-color: var(--surface-3) }
+.sts-rank li:nth-child(1) .sts-medal { background: var(--st-medal-1); color: var(--st-medal-1-fg); box-shadow: 0 0 0.875rem -0.125rem var(--st-medal-glow) }
+.sts-rank li:nth-child(2) .sts-medal { background: var(--st-medal-2); color: var(--st-medal-2-fg) }
+.sts-rank li:nth-child(3) .sts-medal { background: var(--st-medal-3); color: var(--st-medal-3-fg) }
+.st-rv.in .sts-rank li { animation: st-rise .5s var(--ease) both; animation-delay: calc(min(var(--i, 0), 10) * 55ms + .1s) }
+.st-rv.in .sts-rank .sts-fill { animation-delay: calc(min(var(--i, 0), 10) * 55ms + .25s) }
+/* Katalogabgleich: gestapelte Balken wischen von links ein */
 .sts-legend { gap: 0.375rem 1rem; margin: 0.75rem 0 0.875rem; font-size: 0.75rem; color: var(--mut) }
-.sts-legend i { display: inline-block; width: 0.625rem; height: 0.625rem; border-radius: 0.1875rem; margin-right: 0.375rem; vertical-align: -1px }
+.sts-legend i { display: inline-block; width: 0.625rem; height: 0.625rem; border-radius: 50%; margin-right: 0.375rem; vertical-align: -1px }
 .sts-cat { display: grid; grid-template-columns: 13.75rem minmax(0, 1fr) 5rem; align-items: center; gap: 0.75rem; font-size: 0.8125rem; padding: 0.3125rem 0 }
-.sts-cat .tnum { text-align: right }
-.sts-stack { display: flex; height: 0.75rem; border-radius: 0.375rem; overflow: hidden; background: var(--bg); gap: 2px }
+.sts-cat .tnum { text-align: right; color: var(--mut) }
+.sts-cat .tnum b { color: var(--fg); font-weight: 600 }
+.sts-stack { display: flex; height: 0.625rem; border-radius: 1rem; overflow: hidden; background-color: color-mix(in srgb, var(--fg) 6%, transparent); gap: 2px }
 .sts-stack i { min-width: 0.1875rem }
 .sts-hit { background: var(--ok) } .sts-hint { background: var(--data-3) } .sts-none { background: var(--acc) } .sts-open { background: var(--border) }
-.sts-hours { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); align-items: end; height: 9.375rem; gap: 0.3125rem; margin: 1.375rem 0 1.875rem }
-.sts-hour { height: 100%; display: flex; flex-direction: column; justify-content: flex-end; position: relative }
-.sts-hour i { display: block; background: var(--acc); border-radius: 0.25rem 0.25rem 0 0; min-height: 2px }
-.sts-hour small { position: absolute; top: calc(100% + 0.5rem); font-size: 0.625rem; width: 100%; text-align: center; color: var(--mut) }
+.sts-stack .sts-hit { box-shadow: 0 0 0.75rem -0.125rem var(--ok) }
+.st-rv.in .sts-stack { animation: sts-wipe 1s var(--ease) both; animation-delay: calc(var(--i, 0) * 120ms + .15s) }
+@keyframes sts-wipe { from { clip-path: inset(0 100% 0 0 round 1rem) } to { clip-path: inset(0 0 0 0 round 1rem) } }
+.sts-foot { margin: 0.75rem 0 0 }
+/* Uhrzeit: Säulen wachsen nacheinander, die stärkste Stunde trägt ihren Wert */
+.sts-hours { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); align-items: end; height: 9.375rem; gap: 0.3125rem; margin: 1.5rem 0 1.75rem }
+.sts-hour { height: 100%; display: flex; flex-direction: column; justify-content: flex-end; position: relative; border-radius: 0.25rem; transition: background-color var(--t) }
+.sts-hour:hover { background-color: color-mix(in srgb, var(--fg) 5%, transparent) }
+.sts-hour i { display: block; min-height: 2px; border-radius: 0.3125rem 0.3125rem 0.125rem 0.125rem; transform-origin: bottom;
+  background: linear-gradient(180deg, var(--acc), color-mix(in srgb, var(--acc) 35%, transparent)) }
+.sts-hour.none i { background: color-mix(in srgb, var(--fg) 10%, transparent) }
+.sts-hour.peak i { background: linear-gradient(180deg, var(--st-violet), color-mix(in srgb, var(--acc) 50%, transparent)); box-shadow: 0 0 1rem -0.25rem var(--st-violet) }
+.sts-hour em { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(100% + 0.125rem); font-style: normal; font-size: 0.6875rem; font-weight: 600; color: var(--st-violet); white-space: nowrap }
+.sts-hour small { position: absolute; top: calc(100% + 0.5rem); font-size: 0.625rem; width: 100%; text-align: center; color: var(--dim) }
+.sts-hour.peak small { color: var(--fg) }
+.st-rv.in .sts-hour i { animation: st-grow-y .8s var(--ease) both; animation-delay: calc(var(--i, 0) * 30ms + .1s) }
+.st-rv.in .sts-hour em { animation: st-fade .5s ease both 1s }
+.st-rv.in.st-quick :is(.sts-fill, .sts-stack, .sts-hour i, .sts-hour em, .sts-rank li) { animation: none }
 @media (max-width: 700px) {
-  .sts-summary { grid-template-columns: repeat(2, minmax(0, 1fr)) }
   .sts-grid { grid-template-columns: 1fr }
   .sts-bars { column-gap: 0.5rem }
   .sts-cat { grid-template-columns: minmax(0, 1fr) 4rem; gap: 0.25rem 0.5rem } .sts-cat .sts-stack { grid-column: 1/-1; grid-row: 2 }
   .sts-hours { gap: 2px } .sts-hour small { font-size: 0.5625rem } .sts-hour:nth-child(odd) small { visibility: hidden }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sts-fill, .sts-stack, .sts-hour i, .sts-hour em, .sts-rank li { animation: none !important }
 }
 #analysisMenu .pop { min-width: 17.5rem }
 #analysisMenu .pop a { align-items: center }

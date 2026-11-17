@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.87.0 – 18.11.2026
+
+### Neu
+- **Statistik neu gestaltet (Bilder und SkyTrace):** Kennzahlen mit Symbol, die beim Öffnen hochzählen, Balken, die wachsen, und der stärkste Monat, Wochentag und die stärkste Stunde leuchten. Die aktivsten Nächte bzw. Satelliten und ergiebigsten Beobachtungen stehen als Rangliste mit Plaketten. „So wird gezählt“ ist eingeklappt. Daten und Zählweise bleiben gleich; bei reduzierter Bewegung bleibt alles still.
+
 ## 0.86.0 – 17.11.2026
 
 ### Neu

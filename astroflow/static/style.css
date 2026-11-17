@@ -888,3 +888,77 @@ input:focus-visible + .switch { outline: 2px solid var(--acc); outline-offset: 2
 .btn.pending::after { content: ""; position: absolute; inset: -1px; border-radius: inherit; background: inherit; animation: fadeIn 120ms 150ms both }
 .btn.pending::before { content: ""; position: absolute; z-index: 1; left: 50%; top: 50%; width: 0.875rem; height: 0.875rem; margin: -0.4375rem 0 0 -0.4375rem; border-radius: 50%;
   border: 2px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; animation: fadeIn 120ms 150ms both, var(--spin) }
+
+/* ---- Statistik-Baukasten (app.js statKpi/statNote/statReveal; Nutzerwunsch 17.11.2026, Vorbild „Heute Nacht“) ----
+   Kopfband mit Kennzahlen (Symbol im leuchtenden Kreis, großer Wert, eine Zeile Erklärung), ruhige Hinweise mit Symbol statt Textbalken,
+   Abschnitte .st-rv blenden beim Hineinscrollen ein; .st-quick = nach Filterwechsel nur kurz überblenden. Bewegung nur transform/opacity/clip-path. */
+:root { --st-violet: #b39cf5; --st-orange: #e7ac66; --st-star: color-mix(in srgb, var(--fg) 70%, transparent) }
+/* Rangplaketten (Gold, Silber, Bronze) für Ranglisten der Statistikseiten */
+:root { --st-medal-1: linear-gradient(135deg, #ffd27a, #c9902e); --st-medal-1-fg: #1b1408; --st-medal-glow: #ffd27a80;
+  --st-medal-2: linear-gradient(135deg, #e8edf5, #9aa6b8); --st-medal-2-fg: #14171c; --st-medal-3: linear-gradient(135deg, #e7b28a, #9a5b34); --st-medal-3-fg: #1b1008 }
+.st-rv { opacity: 0; transform: translateY(0.75rem) }
+.st-rv.in { opacity: 1; transform: none; transition: opacity .55s var(--ease), transform .55s var(--ease) }
+.st-rv.in.st-quick { transition: none; animation: st-swap .22s ease-out }
+@keyframes st-swap { from { opacity: .4 } }
+@keyframes st-rise { from { opacity: 0; transform: translateY(0.5rem) } }
+@keyframes st-fade { from { opacity: 0 } }
+@keyframes st-grow-x { from { transform: scaleX(0) } }
+@keyframes st-grow-y { from { transform: scaleY(0) } }
+/* Kopfband: Kennzahlen frei auf der Seite, ohne Kasten (Nutzerwunsch 17.11.2026 – Rahmen mit Verlauf und Sternen gefiel nicht) */
+.st-head { margin: 0.25rem 0 1.25rem }
+.st-head > p { margin: 0.875rem 0 0; font-size: 0.8125rem; color: var(--mut) }
+.st-head > p b { color: var(--fg); font-weight: 600 }
+/* Kennzahlen: eine ruhige Leiste aus Feldern mit feinen Trennlinien (Nutzerwunsch 17.11.2026 „anders designen“ – keine Kreise, kein Kasten mit Sternen).
+   Je Feld: kleines Symbol + Beschriftung, großer Wert, eine Zeile Erklärung; oben eine dünne Linie in der Feldfarbe, die beim Einblenden wächst. */
+.st-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 1px; border-radius: var(--r-lg); overflow: hidden;
+  background-color: var(--border-soft); box-shadow: inset 0 0 0 1px var(--border-soft) }
+.st-kpi { --kc: var(--acc); position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 0.4375rem; align-content: start;
+  min-width: 0; padding: 0.875rem 1.125rem 1rem; background-color: var(--surface);
+  background-image: radial-gradient(90% 120% at 0% 0%, color-mix(in srgb, var(--kc) 9%, transparent), transparent 70%) }
+.st-kpi::before { content: ''; position: absolute; inset: 0 0 auto; height: 2px; transform-origin: left;
+  background: linear-gradient(90deg, var(--kc), color-mix(in srgb, var(--kc) 10%, transparent)) }
+.st-kpi > :not(.st-kpi-ico, small) { grid-column: 1 / -1; min-width: 0 }
+.st-kpi:not(:has(.st-kpi-ico)) small { grid-column: 1 / -1 }
+.st-kpi-ico { display: grid; place-items: center; color: var(--kc) }
+.st-kpi-ico svg { width: 0.9375rem; height: 0.9375rem }
+.st-kpi small { color: var(--mut); font-size: 0.6875rem; text-transform: uppercase; letter-spacing: .07em; font-weight: 600; overflow-wrap: anywhere }
+.st-kpi b { margin-top: 0.375rem; font-size: 1.625rem; font-weight: 650; line-height: 1.15; letter-spacing: -.015em; overflow-wrap: anywhere }
+.st-kpi-sub { margin-top: 0.1875rem; color: var(--mut); font-size: 0.75rem; overflow-wrap: anywhere }
+.st-kpi.violet { --kc: var(--st-violet) } .st-kpi.orange { --kc: var(--st-orange) } .st-kpi.ok { --kc: var(--ok) } .st-kpi.teal { --kc: var(--data-3) }
+.st-rv.in .st-kpi { animation: st-rise .6s var(--ease) both }
+.st-rv.in .st-kpi::before { animation: st-grow-x .9s var(--ease) both .2s }
+.st-rv.in .st-kpi:nth-child(2), .st-rv.in .st-kpi:nth-child(2)::before { animation-delay: 70ms }
+.st-rv.in .st-kpi:nth-child(3), .st-rv.in .st-kpi:nth-child(3)::before { animation-delay: 140ms }
+.st-rv.in .st-kpi:nth-child(4), .st-rv.in .st-kpi:nth-child(4)::before { animation-delay: 210ms }
+.st-rv.in .st-kpi:nth-child(5), .st-rv.in .st-kpi:nth-child(5)::before { animation-delay: 280ms }
+/* Hinweise: Symbol im getönten Kreis, kurzer Titel, Erklärung – kein Farbbalken links */
+.st-notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 0.625rem; margin: -0.5rem 0 1rem }
+.st-note { --nc: var(--acc); display: flex; align-items: center; gap: 0.75rem; min-width: 0; padding: 0.625rem 0.875rem 0.625rem 0.625rem; border-radius: var(--r-lg);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--nc) 10%, transparent), color-mix(in srgb, var(--nc) 2%, transparent) 75%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nc) 18%, transparent) }
+.st-note.violet { --nc: var(--st-violet) } .st-note.warn { --nc: var(--warn) } .st-note.ok { --nc: var(--ok) }
+.st-note-ico { flex: none; width: 2.125rem; height: 2.125rem; border-radius: 50%; display: grid; place-items: center; color: var(--nc);
+  background: color-mix(in srgb, var(--nc) 16%, transparent); box-shadow: 0 0 1rem -0.25rem color-mix(in srgb, var(--nc) 55%, transparent) }
+.st-note-ico svg { width: 1.0625rem; height: 1.0625rem }
+.st-note p { margin: 0; min-width: 0; display: grid; gap: 0.0625rem }
+.st-note b { font-size: 0.8125rem; font-weight: 600; color: color-mix(in srgb, var(--nc) 45%, var(--fg)); overflow-wrap: anywhere }
+.st-note span { font-size: 0.75rem; line-height: 1.45; color: var(--mut); overflow-wrap: anywhere }
+.st-rv.in .st-note { animation: st-rise .5s var(--ease) both .15s }
+.st-rv.in .st-note + .st-note { animation-delay: .25s }
+/* Eingeklappte Erklärung: kleiner Link, Inhalt erst auf Klick */
+.st-notes > .st-info { grid-column: 1 / -1 }
+.st-info summary { display: inline-flex; align-items: center; gap: 0.375rem; list-style: none; cursor: pointer; font-size: 0.75rem; color: var(--mut); border-radius: var(--r-sm); transition: color var(--t) }
+.st-info summary::-webkit-details-marker { display: none }
+.st-info summary:hover, .st-info[open] summary { color: var(--fg) }
+.st-info summary svg { width: 0.875rem; height: 0.875rem; color: var(--acc) }
+.st-info-body { margin-top: 0.5rem; max-width: var(--read); font-size: 0.75rem; line-height: 1.5; color: var(--mut); animation: st-rise .22s var(--ease) }
+.st-rv.in.st-quick :is(.st-kpi, .st-note), .st-rv.in.st-quick .st-kpi::before { animation: none }
+@media (max-width: 600px) {
+    .st-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+  .st-kpi { padding: 0.75rem 0.875rem 0.875rem }
+  .st-kpi b { font-size: 1.3125rem }
+}
+@media (prefers-reduced-motion: reduce) {
+  .st-rv, .st-rv.in { opacity: 1; transform: none; transition: none; animation: none }
+  .st-kpi, .st-kpi::before, .st-note, .st-info-body { animation: none !important }
+}
