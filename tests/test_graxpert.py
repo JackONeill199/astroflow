@@ -216,3 +216,191 @@ def test_large_gaps_cropped_and_noise_filled_no_nan(tmp_path):
     assert "error" not in info and info["bge"] and np.isfinite(out).all()
     assert out.shape == mean.shape and np.allclose(out[:, cov == 0], 0)      # Lücken bleiben unverändert
     assert graxpert.GRAXPERT_VERSION >= 2
+
+
+# Staubwächter: Attrappe, die mit kleiner Glättung großflächige Struktur (Dunkelwolke) als Hintergrund „frisst“ und mit
+# Glättung ≥ 0,5 nur eine Ebene abzieht (GX_FAKE_SAME: frisst immer – höhere Glättung hilft nicht)
+FAKE_DUST = r'''
+import os, sys, numpy as np
+from pathlib import Path
+from astropy.io import fits
+from scipy import ndimage as ndi
+a = sys.argv[1:]
+src = Path(a[0]); out = a[a.index("-output") + 1]
+s = float(a[a.index("-smoothing") + 1])
+if os.environ.get("GX_FAKE_LOG"):
+    with open(os.environ["GX_FAKE_LOG"], "a") as f: f.write(f"{s:g}\n")
+d = fits.getdata(src).astype(np.float32)
+d3 = d if d.ndim == 3 else d[None]
+if s < 0.5 or os.environ.get("GX_FAKE_SAME"):
+    model = np.stack([ndi.gaussian_filter(ndi.median_filter(c, 9), 12) for c in d3])
+elif os.environ.get("GX_FAKE_KEEPGRAD"):                  # glättet so stark, dass der Himmelsverlauf stehen bleibt
+    model = np.stack([np.full_like(c, np.median(c)) for c in d3])
+else:                                                     # zieht nur eine Ebene ab (Lichtverschmutzungsverlauf)
+    hh, ww = d3.shape[1:]
+    yy, xx = np.mgrid[0:hh, 0:ww]
+    A = np.stack([np.ones(hh * ww), xx.ravel(), yy.ravel()], 1).astype(np.float64)
+    model = np.stack([(A @ np.linalg.lstsq(A[::7], np.asarray(ndi.median_filter(c, 9), np.float64).ravel()[::7], rcond=None)[0]).reshape(hh, ww) for c in d3])
+y = d3 - model + np.median(model)
+fits.PrimaryHDU(y.astype(np.float32)).writeto(src.with_name(out + ".fits"))
+'''
+
+
+def _dust_sky(cloud: bool, seed=3):
+    """Himmel mit Verlauf und gleichmäßig verteilten Sternen; mit Dunkelwolke: Ellipse (abseits der Bildmitte, deren Pegel remove_edge_glow als Bezug nimmt) dunkler und mit 30 % der Sterne."""
+    rng = np.random.default_rng(seed)
+    H, W = 480, 720
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    img = 1000 + 80 * xx / W + rng.normal(0, 4, (H, W)).astype(np.float32)
+    inside = ((xx - 200) / 90) ** 2 + ((yy - 130) / 55) ** 2 < 1
+    if cloud:
+        img -= 60 * np.exp(-(((xx - 200) / 90) ** 2 + ((yy - 130) / 55) ** 2) * 1.5) * inside
+    k = np.arange(-4, 5)
+    psf = np.exp(-(k[:, None] ** 2 + k[None] ** 2) / (2 * 1.3 ** 2))
+    for _ in range(3000):
+        y, x = int(rng.integers(6, H - 6)), int(rng.integers(6, W - 6))
+        if cloud and inside[y, x] and rng.random() > 0.3:
+            continue
+        img[y - 4:y + 5, x - 4:x + 5] += float(rng.uniform(80, 600)) * psf
+    return np.stack([img, img, img]).astype(np.float32), np.ones((H, W), np.float32)
+
+
+def _dust_fake(tmp_path) -> str:
+    p = tmp_path / "graxpert_dust.py"
+    p.write_text(FAKE_DUST, encoding="utf-8")
+    return str(p)
+
+
+def test_dust_guard_raises_smoothing_for_dark_cloud(tmp_path, monkeypatch):
+    """Dunkelwolke (weniger Sterne, dunkler), die die Attrappe bei 0,1 wegrechnet → Wächter hebt die Glättung, Begründung in info."""
+    exe = _dust_fake(tmp_path)
+    monkeypatch.setenv("GX_FAKE_LOG", str(tmp_path / "s.txt"))
+    mean, cov = _dust_sky(cloud=True)
+    out, info = graxpert.apply(mean, cov, "bge", cache_dir=tmp_path / "c", exe=exe)
+    d = info["dust"]
+    assert d["from"] == 0.1 and d["to"] in (0.5, 1.0) and info["smoothing"] == d["to"]
+    assert d["before"]["dark"] >= graxpert.DUST_DARK and d["before"]["stars"][0] < d["before"]["stars"][1]
+    assert d["tried"][-1]["share"] < d["before"]["share"]
+    assert "Sterne je Kachel" in d["reason"] and "_stars" not in d["before"]
+    assert (tmp_path / "s.txt").read_text().split()[0] == "0.1" and len((tmp_path / "s.txt").read_text().split()) == 2
+    json.dumps(info)                                            # landet in stats.graxpert
+    inside = (slice(118, 142), slice(180, 220))                 # Wolke bleibt dunkler als die Umgebung
+    assert np.median(out[0][inside]) < np.median(out[0][:, :80]) - 20
+    _, info2 = graxpert.apply(mean, cov, "bge", cache_dir=tmp_path / "c", exe=exe)
+    assert info2.get("cache") and info2["dust"]["to"] == d["to"]
+
+
+def test_dust_guard_quiet_without_cloud(tmp_path, monkeypatch):
+    exe = _dust_fake(tmp_path)
+    monkeypatch.setenv("GX_FAKE_LOG", str(tmp_path / "s.txt"))
+    mean, cov = _dust_sky(cloud=False)
+    _, info = graxpert.apply(mean, cov, "bge", exe=exe)
+    assert "dust" not in info and info["smoothing"] == 0.1
+    assert (tmp_path / "s.txt").read_text().split() == ["0.1"]
+
+
+def test_dust_guard_only_upwards_and_switchable(tmp_path, monkeypatch):
+    exe = _dust_fake(tmp_path)
+    monkeypatch.setenv("GX_FAKE_LOG", str(tmp_path / "s.txt"))
+    mean, cov = _dust_sky(cloud=True)
+    _, i1 = graxpert.apply(mean, cov, "bge", exe=exe, smoothing=1.0)          # Staubprofil: schon ganz oben
+    _, i2 = graxpert.apply(mean, cov, "bge", exe=exe, dust_guard=False)
+    assert "dust" not in i1 and "dust" not in i2 and i2["smoothing"] == 0.1
+    assert (tmp_path / "s.txt").read_text().split() == ["1", "0.1"]
+    assert graxpert.dust_target({"share": 0.5, "dark": None}, 0.5) == 1.0
+    assert graxpert.dust_target({"share": 0.4, "dark": None}, 0.1) == 0.5
+    assert graxpert.dust_target({"share": 0.1, "dark": 0.2}, 0.1) is None
+
+
+def test_dust_guard_keeps_result_when_higher_smoothing_does_not_help(tmp_path, monkeypatch):
+    """Wie NGC 6888 (Randglühen statt Nebel): höhere Glättung nimmt nicht weniger mit → erstes Ergebnis, Glättung bleibt."""
+    exe = _dust_fake(tmp_path)
+    monkeypatch.setenv("GX_FAKE_LOG", str(tmp_path / "s.txt"))
+    monkeypatch.setenv("GX_FAKE_SAME", "1")
+    mean, cov = _dust_sky(cloud=True)
+    _, info = graxpert.apply(mean, cov, "bge", exe=exe)
+    assert info["smoothing"] == 0.1 and info["dust"]["kept"] and "to" not in info["dust"]
+    assert len(info["dust"]["tried"]) >= 1
+
+
+def test_dust_better_checks_the_triggering_share():
+    """Gegenprobe am auslösenden Anteil: nur sternarm ausgelöst → Besserung dort zählt; schlechtere Dunkelzonen werden nicht
+    durch einen sinkenden Gesamtanteil verdeckt; Randglühen (Gesamtanteil steigt) bleibt abgelehnt."""
+    b = graxpert.dust_better
+    assert b({"share": 0.20, "dark": 0.60}, {"share": 0.20, "dark": 0.10})
+    assert not b({"share": 0.50, "dark": 0.20}, {"share": 0.30, "dark": 0.40})
+    assert not b({"share": 0.44, "dark": None}, {"share": 0.56, "dark": None})
+    assert b({"share": 0.57, "dark": 0.61}, {"share": 0.41, "dark": 0.49})
+    assert not b({"share": 0.24, "dark": 0.40}, {"share": 0.23, "dark": 0.38})
+
+
+def test_dust_guard_discarded_try_leaves_no_run_state_and_abort_propagates(tmp_path, monkeypatch):
+    """Verworfener Versuch: LAST_LOG/Wiederholungsangaben vom ersten Lauf; Abbruch aus dem Fortschritt wird weitergeworfen."""
+    import pytest
+    exe = _dust_fake(tmp_path)
+    monkeypatch.setenv("GX_FAKE_SAME", "1")
+    mean, cov = _dust_sky(cloud=True)
+    real_run = graxpert._run_safe
+
+    def run(exe_, x, cmd, args, gpu, info, log):
+        y = real_run(exe_, x, cmd, args, gpu, info, log)
+        s = args[args.index("-smoothing") + 1]
+        graxpert.LAST_LOG = f"Lauf {s}"
+        if s != "0.1":
+            info["retried_cpu"] = True
+        return y
+
+    monkeypatch.setattr(graxpert, "_run_safe", run)
+    _, info = graxpert.apply(mean, cov, "bge", exe=exe)
+    assert info["dust"]["kept"] and graxpert.LAST_LOG == "Lauf 0.1" and "retried_cpu" not in info
+
+    def stop(msg):
+        if msg.startswith("Staubwächter"):
+            raise InterruptedError("angehalten")
+
+    with pytest.raises(InterruptedError):
+        graxpert.apply(mean, cov, "bge", cache_dir=tmp_path / "c", exe=exe, log=stop)
+    assert not (tmp_path / "c").exists()                     # kein ungeprüftes Ergebnis im Cache
+
+
+def test_dust_guard_run_state_belongs_to_accepted_try(tmp_path, monkeypatch):
+    """1,0 verworfen (mit CPU-Wiederholung), 0,5 übernommen → keine Wiederholungsangabe des verworfenen Versuchs."""
+    exe = _dust_fake(tmp_path)
+    mean, cov = _dust_sky(cloud=True)
+    real_run = graxpert._run_safe
+
+    def run(exe_, x, cmd, args, gpu, info, log):
+        y = real_run(exe_, x, cmd, args, gpu, info, log)
+        if args[args.index("-smoothing") + 1] == "1":
+            info["retried_cpu"] = True
+            info["nonfinite_repaired"] = True
+        return y
+
+    calls = []
+    monkeypatch.setattr(graxpert, "_run_safe", run)
+    monkeypatch.setattr(graxpert, "dust_target", lambda m, s: 1.0)
+    monkeypatch.setattr(graxpert, "dust_better", lambda m0, m1: calls.append(1) or len(calls) == 2)
+    _, info = graxpert.apply(mean, cov, "bge", exe=exe)
+    assert info["dust"]["to"] == 0.5 and info["smoothing"] == 0.5
+    assert "retried_cpu" not in info and "nonfinite_repaired" not in info
+
+
+def test_dust_guard_flatness_check_keeps_first_result(tmp_path, monkeypatch):
+    """Höhere Glättung nimmt weniger Wolke mit, lässt aber den Himmelsverlauf stehen (wie M3/NGC 7023 bei 1,0) →
+    Ebenheits-Gegenprobe verwirft beide Stufen, Glättung bleibt 0,1, Begründung für den Nutzer."""
+    exe = _dust_fake(tmp_path)
+    monkeypatch.setenv("GX_FAKE_KEEPGRAD", "1")
+    mean, cov = _dust_sky(cloud=True)
+    _, info = graxpert.apply(mean, cov, "bge", exe=exe)
+    d = info["dust"]
+    assert info["smoothing"] == 0.1 and d["kept"] and "to" not in d
+    assert all("flat" in t.get("sky_worse", []) for t in d["tried"]) and "unebener Himmel" in d["why_kept"]
+    assert d["sky_before"]["flat"] < d["tried"][0]["sky"]["flat"]
+    json.dumps(info)
+
+
+def test_sky_worse_thresholds():
+    s0 = {"flat": 0.2, "edge": 0.5, "color": 0.6}
+    assert graxpert.sky_worse(s0, {"flat": 0.39, "edge": 0.84, "color": 0.99}) == []
+    assert graxpert.sky_worse(s0, {"flat": 0.51, "edge": 0.5, "color": 1.1}) == ["flat", "color"]
+    assert graxpert.sky_worse(None, s0) == []

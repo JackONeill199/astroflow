@@ -260,6 +260,8 @@ def nearest_extended(ra: float, dec: float, radius_deg: float = 0.3, min_size: f
 # bge_smoothing : Glättung des GraXpert-KI-Hintergrunds 0..1 (Standard graxpert.DEFAULT_SMOOTHING 0,1). Reflexions-/Staubnebel 1,0:
 #                 mit 0,1 nahm GraXpert bei NGC 7023 die Hälfte des echten Staubs mit (Dunkelwolken = sternarme Zonen), 1,0 lässt
 #                 ihn stehen; danach läuft remove_edge_glow (processing.process ab Glättung 0,5)
+# dust_guard    : Staubwächter (graxpert._dust_guard, Standard an): hebt die Glättung auf 0,5/1,0, wenn das KI-Modell Nebel oder
+#                 Dunkelwolken mitnimmt (Emissionsnebel mit Staub: IC 1396, NGC 7000, IC 1805) – nie nach unten
 # background    : Hintergrund ohne GraXpert: „poly“ (Standard) oder „sky“ (processing.sky_background, DBE-artig mit Objektschutz und
 #                 Abdeckungsstufe – je Objekt als Option; besser bei M17/M45, schlechter bei NGC 6888/M3, gemessen 10.11.2026)
 # cpu_denoise   : lineares Wavelet-Entrauschen ohne GraXpert (processing.denoise_multiscale), Standard = ai_denoise bzw. 0,5
