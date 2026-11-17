@@ -19,6 +19,7 @@ class Settings:
     batch_mb: int = 700        # RAM-Budget pro Stacking-Stapel (Standard aus load_settings: 1/8 des RAM)
     delete_uploads: bool = True  # hochgeladene Einzelbilder nach erfolgreichem Stacking löschen (Speicher)
     gaia: bool = True            # Farbkalibrierung über Gaia-Sternfarben (online, nur Feldkoordinaten werden gesendet)
+    star_shrink: bool = True     # Sterne verkleinern (Profil schärfen, Stärke aus der Sternbedeckung); aus = alte Erosion
 
     @property
     def uploads_dir(self) -> Path:

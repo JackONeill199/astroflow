@@ -61,7 +61,7 @@ def ki_error(e: Exception) -> str:
 # In der Web-App geänderte Einstellungen überleben einen Neustart (Vorrang vor Umgebungsvariablen)
 PERSIST = {"reviewer": ("provider", "base_url", "model", "api_key", "max_rounds"),
            "solver": ("backend", "astap", "astap_db", "nova_key", "timeout"),
-           "storage": ("delete_uploads", "gaia"),
+           "storage": ("delete_uploads", "gaia", "star_shrink"),
            "starnet": ("path",),
            "graxpert": ("path", "mode", "gpu", "cpu_denoise"),
            "gpu": ("mode",),
@@ -369,7 +369,7 @@ class Engine:
                 + self.dashboard.batch.busy() + self.picture_solve.busy(), "disk": disk,
                 "hold": self.hold(), "paused": bool(self.paused),
                 "projects": n_proj, "finished": n_res,
-                "delete_uploads": self.s.delete_uploads, "gaia": self.s.gaia,
+                "delete_uploads": self.s.delete_uploads, "gaia": self.s.gaia, "star_shrink": self.s.star_shrink,
                 "reviewer": {"enabled": self.review_cfg.enabled, "provider": self.review_cfg.provider, "model": self.review_cfg.model},
                 "solver": {"enabled": bool(chain := self.pl.solver_cfg.chain(wait=False)), "active": chain}}
 
@@ -546,11 +546,11 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.post("/storage")
     def set_storage(body: dict = Body(...)):
-        for k in ("delete_uploads", "gaia"):
+        for k in ("delete_uploads", "gaia", "star_shrink"):
             if k in body:
                 setattr(eng.s, k, bool(body[k]))
         eng.save_settings()
-        return {"delete_uploads": eng.s.delete_uploads, "gaia": eng.s.gaia}
+        return {"delete_uploads": eng.s.delete_uploads, "gaia": eng.s.gaia, "star_shrink": eng.s.star_shrink}
 
     @r.get("/housekeeping")
     def housekeeping_scan(keep: int = 2):
