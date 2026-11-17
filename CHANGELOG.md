@@ -3,6 +3,14 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.84.0 – 17.11.2026
+
+### Neu
+- **Bilder – Staubwächter für GraXpert:** Bei Emissionsnebeln mit Dunkelwolken (z. B. Nordamerikanebel, Elefantenrüssel, Herznebel) erkennt AstroFlow, wenn die KI-Hintergrundentfernung Nebel und Staub mit wegrechnen würde, und erhöht die Glättung automatisch auf 0,5 bzw. 1,0. Eine Gegenprobe stellt sicher, dass der nebelfreie Himmel dabei nicht unebener oder farbstichiger wird; sonst bleibt es bei 0,1. Begründung und Messwerte stehen unter „Details → GraXpert-KI“.
+
+### Behoben
+- **Bilder – Sensorglühen bei stillstehendem Himmel:** Wandert das Feld während einer Nacht kaum über den Sensor (z. B. EQ-Montierung ohne Dithering), lernt AstroFlow daraus kein Glühen mehr. Bisher wurden Milchstraße und Sternwolken am Rand als Glühen abgezogen, was Streifen und Farbflecken ergab. Die Details zeigen dann „keine – Himmel stand still“. Ergebnisse von Smart-Teleskopen bleiben unverändert.
+
 ## 0.83.0 – 17.11.2026
 
 ### Neu
