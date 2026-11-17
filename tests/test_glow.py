@@ -93,7 +93,9 @@ def test_library_grows_per_night_and_falls_back(tmp_path):
     assert lib.key({**info, "instrument": "Seestar"}) != key      # jedes Teleskop hat seinen eigenen Datensatz
 
 
-def test_pipeline_builds_library_and_skips_with_darks(tmp_path):
+def test_pipeline_builds_library_and_skips_with_darks(tmp_path, monkeypatch):
+    # Demo-Feld wandert nur 7–12 px (kleines Bild) – hier geht es um die Bibliothek, nicht um die Bewegungsprüfung
+    monkeypatch.setattr(calibration, "GLOW_MIN_MOTION_PX", 0.0)
     s = load_settings(tmp_path / "data")
     s.delete_uploads = True
     db = DB(s.db_path)

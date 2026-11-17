@@ -94,6 +94,30 @@ def glow_sample(have: list, n: int = GLOW_SAMPLE) -> list | None:
     return [ri for _, ri in sorted(pick, key=lambda x: x[0])]
 
 
+def glow_motion(star_lists: list, shape) -> float | None:
+    """Wie weit wandert der Himmel während der Glüh-Stichprobe über die Randbänder des Sensors? Je Aufnahme die Lage
+    (Ähnlichkeit zur mittleren Aufnahme) von 8 Punkten in der Mitte der Randbänder; Ergebnis = Median über die Punkte des
+    mittleren Abstands ihres Himmelsorts zur mittleren Lage (px). None = zu wenige Aufnahmen zuzuordnen (unbekannt)."""
+    h, w = (float(v) for v in shape[-2:])
+    f = calibration.GLOW_BAND / 2
+    P = np.array([(x, y) for x in (f * w, 0.5 * w, (1 - f) * w) for y in (f * h, 0.5 * h, (1 - f) * h)
+                  if not (x == 0.5 * w and y == 0.5 * h)])
+    lists = [np.asarray(s, float).reshape(-1, 3)[:, :2] if len(s) else np.zeros((0, 2)) for s in star_lists]
+    if len(lists) < 5:
+        return None
+    ref = lists[len(lists) // 2]
+    pos = []
+    for st in lists:
+        res = registration.find_transform(ref, st)
+        if res is not None:
+            M = res[0]
+            pos.append(P @ M[:2, :2].T + M[:2, 2])
+    if len(pos) < 5:
+        return None
+    pos = np.array(pos)
+    return float(np.median(np.median(np.linalg.norm(pos - np.median(pos, 0), axis=2), 0)))
+
+
 def _glow_changed(old, new) -> bool:
     """Glühamplitude (ADU) so verschieden, dass die alte Analyse nicht mehr gilt (Faktor 2 und mindestens 20 ADU)."""
     try:
@@ -503,10 +527,19 @@ class Pipeline:
         for r in rows:
             info = json.loads(r["info"])
             groups.setdefault((glib.key(info), r["night"]), []).append((r, info))
-        used, bad_used = {}, {}
+        used, bad_used, still = {}, {}, {}
         for (key, night), items in groups.items():
             have = [(r, i) for r, i in items if not r["deleted"] and Path(r["path"]).exists()]
-            need_glow = glow and night not in glib.nights(key, with_map=True) and len(have) >= calibration.GLOW_MIN_FRAMES
+            info0 = items[0][1]
+            # Mono-Kameras: Nächte aus der Zeit vor der Bewegungsprüfung (ohne Vermerk) einmal neu messen – dort hat ein
+            # stehendes Feld Himmel als Glühen gelernt. Farbkameras (Stellina/Vespera: Feld dreht/wandert) bleiben, wie sie sind.
+            mono = not info0.get("bayerpat") and len(info0.get("shape") or []) == 2
+            # Nacht mit Bewegungsvermerk ist entschieden (auch „stand still“) – sonst würde sie bei jedem Lauf neu gemessen und
+            # könnte mit hinzugekommenen Aufnahmen kippen (Neu-Analyse der ganzen Nacht)
+            judged = glib.motion(key, night) is not None
+            stale = mono and night in glib.nights(key) and not judged
+            need_glow = (glow and not judged and (night not in glib.nights(key, with_map=True) or stale)
+                         and len(have) >= calibration.GLOW_MIN_FRAMES)
             gsample = glow_sample(have) if need_glow else None
             need_glow = gsample is not None                # zu kurze Serie: Bibliothek der Kamera bzw. (erste Nacht) kein Modell
             need_bad = night not in dlib.nights(key) and len(have) >= calibration.DEFECT_MIN_FRAMES
@@ -522,16 +555,28 @@ class Pipeline:
                     raw, m = self._load(r["path"], i, lib, night, cache)
                     cfa = bool(i["bayerpat"]) and raw.ndim == 2
                     g = calibration.glow_profiles(raw, cfa) if r["id"] in gids and m.dark is None else None
+                    # Sterne für die Bewegungsprüfung (dieselbe Erkennung wie die Analyse, hellste 100)
+                    st = quality.dense_stars(raw, cfa, 100) if g is not None else None
                     fix = cache.get(("cosmetic", r["path"]))
                     c = calibration.defect_candidates(raw, cfa, fixed=fix[1] if fix else None) if r["id"] in dids else None
-                    return g, c, raw.size
+                    return (g, st), c, raw.size
 
                 with ThreadPoolExecutor(self.s.threads) as ex:
                     res = list(ex.map(prof, sample))
                 if need_glow:
-                    med = calibration.median_profiles([g for g, _, _ in res if g is not None])
-                    if med:
-                        glib.add(key, night, med)
+                    got = [gs for gs, _, _ in res if gs[0] is not None]
+                    mot = glow_motion([s for _, s in got], info0.get("shape") or ()) if got else None
+                    if mot is not None and mot < calibration.GLOW_MIN_MOTION_PX:
+                        # Himmel stand still: Glühen und Himmel lassen sich nicht trennen -> nicht lernen (Bibliothek bzw.
+                        # kein Modell); eine früher so gelernte Nacht fällt aus der Bibliothek
+                        glib.drop(key, night)
+                        still[night] = round(mot, 1)
+                    else:
+                        med = calibration.median_profiles([g for g, _ in got])
+                        if med:
+                            glib.add(key, night, med)
+                    if got:
+                        glib.set_motion(key, night, -1.0 if mot is None else mot)     # -1: gemessen, Bewegung unbekannt
                 if need_bad:
                     bad = calibration.defect_map([c for _, c, _ in res if c is not None], res[0][2])
                     dlib.add(key, night, bad if bad is not None else np.zeros(0, np.int64))
@@ -541,6 +586,11 @@ class Pipeline:
                 if model:
                     cache[("glow", key, night)] = model
                     used[night] = {"quelle": src, "adu": round(calibration.glow_amplitude(model), 1)}
+                elif (mv := still.get(night, glib.motion(key, night))) is not None and 0 <= mv < calibration.GLOW_MIN_MOTION_PX:
+                    # sichtbar machen, warum kein Glühen abgezogen wird – auch aus dem gespeicherten Vermerk, wenn ein anderes
+                    # Projekt dieselbe Kamera/Nacht schon entschieden hat (sonst sähe stack() die Änderung gegenüber einem
+                    # alten glow_info nicht und würde nicht neu analysieren/stacken)
+                    used[night] = {"quelle": "keine – Himmel stand still", "adu": 0.0, "bewegung_px": round(mv, 1)}
             bad, src = dlib.get(key, night)
             if bad is not None and len(bad):
                 cache[("defects", key, night)] = bad

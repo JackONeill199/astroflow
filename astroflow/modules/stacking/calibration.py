@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import threading
 import warnings
@@ -406,6 +407,14 @@ GLOW_MAP_FULL, GLOW_MAP_BAND = 0.18, 0.35
 # gemessene Nacht gilt nur, wenn sie nicht weit über den übrigen Nächten der Kamera liegt (`GlowLibrary.implausible`).
 GLOW_MIN_SPAN_S = 20 * 60
 GLOW_JUMP, GLOW_JUMP_ADU = 4.0, 40.0
+# Zeitliche Spanne allein reicht nicht: Ohne Feldrotation und Dithering (EQ-Montierung, klassische Kamera) steht der Himmel
+# stundenlang an derselben Sensorstelle – Median und Perzentil lernen dann Milchstraße, Sternwolken und Nebel als „Glühen“
+# und ziehen sie in den Randbändern ab (Sh2 101, Mono-RGB, 3,5 h: 75–112 ADU „Glühen“ fast nur aus der 2D-Restkarte, senkrechte
+# Streifen und Flecken am Rand). Gemessen wird deshalb nur, wenn der Himmel über die Randbänder wandert: Median über 8
+# Randpunkte des mittleren Abstands ihres Himmelsorts zur mittleren Lage (`pipeline.glow_motion`). Gemessen 16.11.2026:
+# Sh2 101 (R/G/B) 5,7–9,3 px; Stellina 110 Nächte 8,9–840 px (5-%-Quantil 18, Median 34; nur eine Nacht < 12),
+# Vespera 194–322 px. Darunter gilt wie bei zu kurzer Serie die Bibliothek der Kamera bzw. kein Modell.
+GLOW_MIN_MOTION_PX = 12.0
 
 
 def _planes(raw: np.ndarray, bayer: bool) -> list[tuple]:
@@ -555,9 +564,43 @@ class GlowLibrary:
         """Gemessene Nächte; with_map: nur solche mit 2D-Restkarte (ältere werden bei vorhandenen Rohbildern neu gemessen)."""
         return sorted(n for n, planes in self._read(key).items() if not with_map or len(planes[0]) > 2)
 
+    def _motion_file(self, key: str) -> Path:
+        return self.root / f"{key}.json"
+
+    def motion(self, key: str, night: str) -> float | None:
+        """Gemessene Himmelsbewegung der Stichprobe (px, -1 = unbekannt); None = Nacht ohne Vermerk (vor 16.11.2026)."""
+        try:
+            v = json.loads(self._motion_file(key).read_text(encoding="utf-8")).get(night)
+        except (OSError, ValueError):
+            return None
+        return float(v) if isinstance(v, (int, float)) else None
+
+    def set_motion(self, key: str, night: str, px: float) -> None:
+        f = self._motion_file(key)
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = {}
+        data[night] = round(float(px), 1)
+        self.root.mkdir(parents=True, exist_ok=True)
+        tmp = f.with_suffix(".tmp.json")
+        tmp.write_text(json.dumps(data), encoding="utf-8")
+        os.replace(tmp, f)
+
+    def drop(self, key: str, night: str) -> None:
+        """Nacht aus der Bibliothek nehmen (früher gelernt, Messung nicht mehr gültig)."""
+        data = self._read(key)
+        if night not in data:
+            return
+        del data[night]
+        self._write(key, data)
+
     def add(self, key: str, night: str, medians: list[tuple[np.ndarray, ...]]) -> None:
         data = self._read(key)
         data[night] = medians
+        self._write(key, data)
+
+    def _write(self, key: str, data: dict) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
         arrays = {f"n{n}_{k}_{ax}": a for n, planes in data.items() for k, pl in enumerate(planes) for ax, a in enumerate(pl)}
         tmp = self._file(key).with_suffix(".tmp.npz")

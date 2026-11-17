@@ -146,6 +146,9 @@ def test_incremental_onto_old_stack_without_map(tmp_path, monkeypatch):
     for f in files[:12]:
         shutil.copy(f, dst / f.name)
     monkeypatch.setattr(calibration, "DEFECT_MIN_FRAMES", 10 ** 6)     # Stand vor der Fehlerkarte
+    # Demo-Feld wandert nur ~8 px: ohne diese Zeile kein Glühmodell, die Auswahl verwirft dann 3 Aufnahmen als
+    # „verzogen“ – hier geht es um die Fehlerkarte, nicht um die Bewegungsprüfung (test_glow_bewegung.py)
+    monkeypatch.setattr(calibration, "GLOW_MIN_MOTION_PX", 0.0)
     pl.scan()
     pid = db.one("SELECT id FROM projects")["id"]
     pl.stack(pid)
