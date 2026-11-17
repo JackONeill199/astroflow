@@ -3,6 +3,16 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.83.0 – 17.11.2026
+
+### Neu
+- **Teleskop – „Erneut versuchen“:** Wartet der Autopilot wegen Wolken im Bild oder beschlagener Optik, lässt er sich im Statuskasten sofort wieder starten. Regen, Akku, Dämmerung und Wettervorhersage hebt der Knopf nicht auf.
+
+### Behoben
+- **Teleskop – Himmels-Scan an der Vespera:** Verdeckte Richtungen werden jetzt als verdeckt erkannt statt als „unklar“. Die Vespera bricht eine gescheiterte Lagebestimmung selbst ab und verwirft das Ziel; das wertet der Scan nun richtig, und ein Scan darf bis zu 40 Minuten dauern.
+- **Teleskop – Wolken im Bild:** Nach Wolken oder Beschlag wartet der Autopilot nur noch die Sperre ab, nicht zusätzlich auf stabil gute Bedingungen.
+- **Teleskop – Kopfzeile:** „Sofort einklappen“ sitzt bündig mit den Karten darunter statt am Rand.
+
 ## 0.82.2 – 16.11.2026
 
 ### Behoben
