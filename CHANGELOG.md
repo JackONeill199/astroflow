@@ -3,6 +3,12 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.86.0 – 17.11.2026
+
+### Neu
+- **Bilder – kleinere Sterne:** Sterne im fertigen Bild sind etwa halb so groß und weniger dominant, besonders in dichten Milchstraßenfeldern von Smart-Teleskopen (Seestar, Stellina, Vespera). Nebel und Galaxien treten dadurch stärker hervor. Ein weicher Halo bleibt, schwache Sterne bleiben erhalten, Sternhaufen sind unverändert. Die Stärke richtet sich nach der Sterndichte des Bildes.
+- **Bilder – Schalter „Sterne verkleinern“:** Unter Einstellungen → Bilder → Sternentrennung (Standard an). Ausgeschaltet gilt die bisherige Sternverkleinerung; die Änderung wirkt beim nächsten Entwickeln.
+
 ## 0.85.0 – 17.11.2026
 
 ### Neu
