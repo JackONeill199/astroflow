@@ -74,11 +74,14 @@ Schritte 11–13 (Speicher, volles Laufwerk, Aufräumen): `daten-server.md`.
    Faktor (L / örtliches Maximum im Fenster 3 × FWHM)^(g − 1) für alle Kanäle – Spitze bleibt, Flanken fallen steiler, Farbverhältnis
    bleibt. Stärke datengetrieben über die **Sternbedeckung** (Anteil der Fläche mit Sternebene > 0,1): g ab 1 + 2·amount, steigt in
    0,25-Schritten, bis höchstens `STAR_COVER` 1,5 % bedeckt sind, Obergrenze 1 + 8·amount (≤ 5); Ergebnis `stats.star_shrink`
-   (`gamma`, `cover`, `cover_after`). Sternsättigung × (1 + 0,08·(g − 1)), weil kleinere Halos weniger Farbe tragen. Nebel und
-   Hintergrund bleiben unberührt (wirkt nur auf die Sternebene). Gemessen (Profil 0,35): IC 405 Stellina Bedeckung 5,0 → 1,5 %
-   (g 3,45), M17 Stellina 4,5 → 1,4 % (2,95), IC 443 Vespera 8,6 → 2,5 % (3,8, Obergrenze), M31/C51 0,75/1,5 % → g 1,7.
-   Sichtbare Sternfläche (> Himmel + 0,1) −55…−60 % bei Nebeln, −38 % M31; Spitzenhelligkeit gleich, Sternfarbe gleich bis höher –
-   nur der blaue Halo heller Sterne (Blauschleier des Objektivs) wird kleiner, sie wirken weißer. Sternhaufen (Profile ohne
+   (`gamma`, `cover`, `cover_after`). Schwache Sterne (örtliches Maximum < 0,5) bekommen weniger Stärke (`STAR_FAINT`: linear
+   bis 25 % bei 0,1) – voll geschärft wurden sie zu Einzelpixeln und fielen nicht mehr auf (IC 443 Vespera). Sternsättigung
+   × (1 + 0,08·(g − 1)), weil kleinere Halos weniger Farbe tragen. Nebel und Hintergrund bleiben unberührt (wirkt nur auf die
+   Sternebene). Gemessen (Profil 0,35, sichtbare Sternfläche > Himmel + 0,1): IC 405 Stellina 140 → 51 px (g 3,8), M17 Stellina
+   137 → 53 (3,45), IC 443 Vespera 57 → 23 (3,8, Bedeckung 8,6 → 2,8 %), Sh2-142 Seestar S50 60 → 20 (3,8, 6,8 → 2,2 %),
+   M31 35 → 23 (1,7, Kern unverändert), C51 Vespera 14 → 10 (1,7). Spitzenhelligkeit gleich; von den Sternen des alten Bildes
+   (Top-Hat > 0,05) bleiben 99,5–100 % über 0,025. Sternfarbe gleich bis höher, nur Sh2-142 −19 % – der blaue Halo heller
+   Sterne (Blauschleier) wird kleiner, sie wirken weißer. Sternhaufen (Profile ohne
    Trennung, `star_reduction` 0) unverändert; ohne StarNet läuft weiter `reduce_stars` (Erosion an erkannten Sternen).
    **Heutiger Stand (Profile `objects.PROFILES`):** Nebel (emission/reflection/snr) `starnet` = nur echtes StarNet, ohne StarNet keine Trennung
    (`Pipeline.develop` setzt dann `off`); alle übrigen Profile (Galaxie, Haufen, Planetarisch, Komet, generic) `off`. Anlass (NGC 7000, 01.11.2026): mit
