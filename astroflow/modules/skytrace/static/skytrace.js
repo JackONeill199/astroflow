@@ -1029,6 +1029,7 @@ async function statsView(el) {
       if (wasRunning && !r) await load();
       wasRunning = r;
     },
+    destroy: () => statObservers.get(body)?.disconnect(),
   };
 }
 

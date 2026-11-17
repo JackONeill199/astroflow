@@ -1901,7 +1901,7 @@ async function statisticsView(el) {
     } catch (e) { if (current === ticket && el.isConnected) body.innerHTML = `<div class="panel">${esc(e.message)}</div>`; }
   }
   await load();
-  return { update: load, destroy: () => { ticket++; } };
+  return { update: load, destroy: () => { ticket++; statObservers.get(body)?.disconnect(); } };
 }
 
 // ---------------------------------------------------------- Registrierung --- //

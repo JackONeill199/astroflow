@@ -139,9 +139,9 @@ a.sts-row:hover svg { color: var(--acc); transform: translateX(0.125rem) }
 .sts-rank .sts-name { flex: 1; gap: 0.0625rem }
 .sts-rank .sts-name .sts-track { height: 0.375rem; margin-top: 0.3125rem }
 .sts-medal { display: grid; place-items: center; flex: none; width: 1.5rem; height: 1.5rem; border-radius: 50%; font-weight: 700; font-size: 0.6875rem; color: var(--mut); background-color: var(--surface-3) }
-.sts-rank li:nth-child(1) .sts-medal { background: linear-gradient(135deg, #ffd27a, #c9902e); color: #1b1408; box-shadow: 0 0 0.875rem -0.125rem #ffd27a80 }
-.sts-rank li:nth-child(2) .sts-medal { background: linear-gradient(135deg, #e8edf5, #9aa6b8); color: #14171c }
-.sts-rank li:nth-child(3) .sts-medal { background: linear-gradient(135deg, #e7b28a, #9a5b34); color: #1b1008 }
+.sts-rank li:nth-child(1) .sts-medal { background: var(--st-medal-1); color: var(--st-medal-1-fg); box-shadow: 0 0 0.875rem -0.125rem var(--st-medal-glow) }
+.sts-rank li:nth-child(2) .sts-medal { background: var(--st-medal-2); color: var(--st-medal-2-fg) }
+.sts-rank li:nth-child(3) .sts-medal { background: var(--st-medal-3); color: var(--st-medal-3-fg) }
 .st-rv.in .sts-rank li { animation: st-rise .5s var(--ease) both; animation-delay: calc(min(var(--i, 0), 10) * 55ms + .1s) }
 .st-rv.in .sts-rank .sts-fill { animation-delay: calc(min(var(--i, 0), 10) * 55ms + .25s) }
 /* Katalogabgleich: gestapelte Balken wischen von links ein */

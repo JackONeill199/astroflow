@@ -893,6 +893,9 @@ input:focus-visible + .switch { outline: 2px solid var(--acc); outline-offset: 2
    Kopfband mit Kennzahlen (Symbol im leuchtenden Kreis, großer Wert, eine Zeile Erklärung), ruhige Hinweise mit Symbol statt Textbalken,
    Abschnitte .st-rv blenden beim Hineinscrollen ein; .st-quick = nach Filterwechsel nur kurz überblenden. Bewegung nur transform/opacity/clip-path. */
 :root { --st-violet: #b39cf5; --st-orange: #e7ac66; --st-star: color-mix(in srgb, var(--fg) 70%, transparent) }
+/* Rangplaketten (Gold, Silber, Bronze) für Ranglisten der Statistikseiten */
+:root { --st-medal-1: linear-gradient(135deg, #ffd27a, #c9902e); --st-medal-1-fg: #1b1408; --st-medal-glow: #ffd27a80;
+  --st-medal-2: linear-gradient(135deg, #e8edf5, #9aa6b8); --st-medal-2-fg: #14171c; --st-medal-3: linear-gradient(135deg, #e7b28a, #9a5b34); --st-medal-3-fg: #1b1008 }
 .st-rv { opacity: 0; transform: translateY(0.75rem) }
 .st-rv.in { opacity: 1; transform: none; transition: opacity .55s var(--ease), transform .55s var(--ease) }
 .st-rv.in.st-quick { transition: none; animation: st-swap .22s ease-out }

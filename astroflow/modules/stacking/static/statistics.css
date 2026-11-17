@@ -40,9 +40,9 @@
 .obs-rank li:hover { background-color: color-mix(in srgb, var(--fg) 4%, transparent) }
 .obs-rank .tnum { text-align: right; white-space: nowrap }
 .obs-medal { display: grid; place-items: center; width: 1.5rem; height: 1.5rem; border-radius: 50%; font-weight: 700; font-size: 0.6875rem; color: var(--mut); background-color: var(--surface-3) }
-.obs-rank li:nth-child(1) .obs-medal { background: linear-gradient(135deg, #ffd27a, #c9902e); color: #1b1408; box-shadow: 0 0 0.875rem -0.125rem #ffd27a80 }
-.obs-rank li:nth-child(2) .obs-medal { background: linear-gradient(135deg, #e8edf5, #9aa6b8); color: #14171c }
-.obs-rank li:nth-child(3) .obs-medal { background: linear-gradient(135deg, #e7b28a, #9a5b34); color: #1b1008 }
+.obs-rank li:nth-child(1) .obs-medal { background: var(--st-medal-1); color: var(--st-medal-1-fg); box-shadow: 0 0 0.875rem -0.125rem var(--st-medal-glow) }
+.obs-rank li:nth-child(2) .obs-medal { background: var(--st-medal-2); color: var(--st-medal-2-fg) }
+.obs-rank li:nth-child(3) .obs-medal { background: var(--st-medal-3); color: var(--st-medal-3-fg) }
 .obs-rank li:first-child .obs-fill { background: linear-gradient(90deg, var(--acc), var(--st-violet)) }
 .st-rv.in .obs-rank li { animation: st-rise .5s var(--ease) both; animation-delay: calc(min(var(--i, 0), 10) * 55ms + .1s) }
 .st-rv.in .obs-rank .obs-fill { animation-delay: calc(min(var(--i, 0), 10) * 55ms + .25s) }

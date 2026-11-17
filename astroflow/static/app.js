@@ -34,14 +34,24 @@ function statCount(root, ms = 900) {
   }
 }
 // quick = Inhalt steht sofort (Neuzeichnen nach Filterwechsel), nur kurzes Überblenden ohne Einblend-Show
+// Gibt eine Aufräumfunktion zurück; ein neuer Aufruf für denselben Behälter trennt den vorigen Beobachter (Ansicht neu gezeichnet).
+const statObservers = new WeakMap();
 function statReveal(root, quick = false) {
+  statObservers.get(root)?.disconnect();
+  statObservers.delete(root);
   const secs = [...root.querySelectorAll('.st-rv:not(.in)')];
   const show = (s) => { s.classList.add('in'); if (quick) s.classList.add('st-quick'); else statCount(s); };
   if (quick || motionOff() || !('IntersectionObserver' in window)) { secs.forEach(show); return; }
   let heard = false;
-  const io = new IntersectionObserver((es) => { heard = true; es.forEach(e => { if (e.isIntersecting) { io.unobserve(e.target); show(e.target); } }); }, { rootMargin: '0px 0px -6% 0px' });
+  const io = new IntersectionObserver((es) => {
+    heard = true;
+    es.forEach(e => { if (e.isIntersecting) { io.unobserve(e.target); show(e.target); } });
+    if (secs.every(s => s.classList.contains('in') || !s.isConnected)) io.disconnect();      // alles gezeigt oder Ansicht weg
+  }, { rootMargin: '0px 0px -6% 0px' });
   secs.forEach(s => io.observe(s));
-  setTimeout(() => { if (!heard) { io.disconnect(); secs.forEach(show); } }, 1500);   // Rückfall, falls der Beobachter nie meldet (nie unsichtbar bleiben)
+  statObservers.set(root, io);
+  setTimeout(() => { if (!heard) { io.disconnect(); if (root.isConnected) secs.forEach(show); } }, 1500);   // Rückfall, falls der Beobachter nie meldet (nie unsichtbar bleiben)
+  return () => { io.disconnect(); statObservers.delete(root); };
 }
 // Kleine Bildfolge: vergleichen → Spur finden → Bahn darüberlegen (symbolisch, kein Fortschrittsmaß).
 const sequenceLoader = () => '<span class="sequence-loader" aria-hidden="true"><em class="seq-back seq-back-two"></em><em class="seq-back seq-back-one"></em><em class="seq-image"><em class="seq-scan"></em><em class="seq-trail"></em><em class="seq-path"></em><em class="seq-object"></em></em></span>';
