@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from astroflow.core import security
 from astroflow.core.config import load_settings
-from astroflow.modules.telescope import autopilot as ap, sim, skymap
+from astroflow.modules.telescope import autopilot as ap, sim, skymap, skyscan
 from astroflow.server import create_app
 
 SITE = {"id": "t1", "name": "Testbalkon", "lat": 50.0, "lon": 10.0, "horizon": None}
@@ -108,8 +108,10 @@ def test_ganze_nacht_im_simulator():
     assert '"lat"' not in json.dumps(p.view(clock.now()))
 
 
-def test_verdeckt_plant_rest_neu_und_hebt_grenze_an():
+def test_verdeckt_plant_rest_neu_und_hebt_grenze_an(monkeypatch):
     """Ohne Vermessung läuft ein Ziel in ein Hindernis: verdeckt → Rest neu geplant, die Richtung ist für die Planung gesperrt."""
+    # Scan nur kurz (Richtung von M31 bleibt ungemessen) – ein vollständiger Scan würde M31 schon vorher als zu tief überspringen
+    monkeypatch.setattr(skyscan, "MAX_PROBES", 6)
     t0 = _at(23, 50)
     fp = FakePlanner(plan=[("M31", 10.68, 41.27, t0, _at(2)), ("M44", 130.1, 19.67, _at(2), _at(5))])
     p, d, clock = make(planner=fp, t0=t0, cfg={"scan_auto": False})
