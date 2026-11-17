@@ -528,8 +528,8 @@ function goNight(k, focus) {
   if (!el?.isConnected || !Number.isFinite(k) || k < 0 || k >= 14 || k === nightIx) return;
   swapDir = k > nightIx ? 1 : -1;
   nightIx = k;
-  // sofortige Rückmeldung, noch bevor der Server antwortet: Tag markieren, Name umstellen
-  el.querySelectorAll('.tn-strip [data-tn-night]').forEach(b => b.setAttribute('aria-selected', String(+b.dataset.tnNight === k)));
+  // sofortige Rückmeldung, noch bevor der Server antwortet: Tag vormerken, Name umstellen
+  el.querySelectorAll('.tn-strip [data-tn-night]').forEach(b => b.classList.toggle('tn-pending', +b.dataset.tnNight === k));   // aria-selected erst, wenn die Nacht steht
   const ns = nightView.d?.nights, nm = el.querySelector('.tn-nav-name');
   if (ns?.[k] && nm) nm.innerHTML = `${esc(nightName(ns[k], k))}${k < 2 ? ` <small>${esc(shortDay(ns[k]))} ${esc(dateDM(ns[k]))}</small>` : ''}`;
   nightView(el, nightView.catalogId).then(() => {
@@ -549,7 +549,7 @@ document.addEventListener('keydown', e => {
   goNight(nightIx + (e.key === 'ArrowRight' ? 1 : -1), e.target.closest?.('.tn-strip') ? '.tn-strip [aria-selected="true"]' : null);
 });
 // Ziel des Ereignisses (newURL), nicht location.hash: bei schnellen Seitenwechseln steht die Adresse beim Eintreffen schon weiter
-addEventListener('hashchange', e => { if (!/#\/nacht/.test(e.newURL || location.href)) { nightIx = 0; sitesP = planP = null; } });
+addEventListener('hashchange', e => { if (!/#\/nacht/.test(e.newURL || location.href)) { nightIx = 0; forgetNights(); } });   // gemerkt wird nur während des Blätterns
 document.addEventListener('click', e => {
   const hide = e.target.closest('[data-tn-hide]'), reset = e.target.closest('[data-tn-reset]');
   if (!hide && !reset) return;

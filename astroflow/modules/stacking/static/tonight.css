@@ -168,6 +168,8 @@ svg .tn-peak { fill: var(--target); font-size: 0.6875rem; font-weight: 600; pain
 .tn-strip button { transition: border-color var(--t), background-color var(--t), transform var(--t) var(--ease), box-shadow var(--t) }
 .tn-strip button:not([aria-selected=true]):hover { transform: translateY(-2px); background-color: color-mix(in srgb, var(--fg) 4%, transparent) }
 .tn-strip button[aria-selected=true] { box-shadow: 0 0.5rem 1.25rem -0.75rem var(--acc), inset 0 0 0 1px var(--acc) }
+.tn-strip:has(.tn-pending) button[aria-selected=true]:not(.tn-pending) { border-color: var(--border-soft); background-color: transparent; box-shadow: none }
+.tn-strip button.tn-pending { border-color: var(--acc); background-color: var(--acc-soft); box-shadow: 0 0.5rem 1.25rem -0.75rem var(--acc), inset 0 0 0 1px var(--acc) }
 .tn-rv.in .tn-strip .tn-cl { transform-origin: left; animation: tn-grow-x .6s var(--ease) both; animation-delay: calc(var(--n, 0) * 35ms + .2s) }
 @keyframes tn-grow-x { from { transform: scaleX(0) } }
 
