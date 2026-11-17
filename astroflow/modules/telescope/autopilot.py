@@ -81,6 +81,7 @@ EXPECT_S = {"oeffnet": 50.0, "richtet_aus": 240.0, "klappt_ein": 50.0}
 STALL_S = 90                # Ziel aktiv, Gerät tut nichts (kein GoTo/Astrometrie/Aufnahme) → nach … s handeln
 SUB_MAX = 1800              # Ersatzziel höchstens so lange am Stück
 OPEN = ("geplant", "verdeckt", "uebersprungen")     # noch nicht erledigt (verdeckt/übersprungen: neuer Versuch, sobald frei)
+RETRY_HOLDS = ("clouds", "fog")   # gemessene Sperren, die „Erneut versuchen“ aufheben darf
 FREE_EVERY = 10 * 60        # gutes Bild eines Ziels: höchstens so oft ein freier Punkt für die Himmelskarte
 AUTO_GRACE_S = 60           # „Plane meine Nacht“ mit „gleich starten“: so viele echte Sekunden Frist zum Abbrechen
 REPLAN_EVERY = 10 * 60      # Rest der Nacht höchstens so oft neu planen (Ausfall, Wiederöffnen)
@@ -386,6 +387,20 @@ class Autopilot:
                 self.fog_at = None
                 self.log("Weiter geht's.", "info", now)
 
+    def retry_now(self, now: float) -> bool:
+        """„Erneut versuchen“: Sperre nach Wolken im Bild bzw. beschlagener Optik aufheben und gleich weitermachen. Gilt eine
+        andere Grenze (Vorhersage, Regen, Akku, Dämmerung), greift sie im nächsten Takt wieder. False = nichts aufzuheben."""
+        with self.lock:
+            if self.mode != "wartet" or not self.hold or self.hold.kind not in RETRY_HOLDS:
+                return False
+            self.clouds_at = self.fog_at = None
+            self.good_since = None
+            self.fail_marks.clear()                       # neuer Versuch: frühere Fehlschläge nicht als „Wolken“ mitzählen
+            self.blocked = [b for b in self.blocked if b["sure"]]
+            self.mode, self.hold = "laeuft", None
+            self.log("Erneuter Versuch auf Wunsch – öffne wieder.", "info", now)
+            return True
+
     def emergency(self, now: float, why: str = "Sofort einklappen"):
         """Not-Aus: ohne Warteschlange, ohne auf den Takt zu warten. Stoppt alles und klappt ein."""
         self.estop.set()
@@ -681,7 +696,10 @@ class Autopilot:
         return any(i.real_start for i in self.items)
 
     def _may_reopen(self, now: float) -> bool:
-        if self.hold and self.hold.kind in ("twilight",):
+        # Dämmerung: sofort. Wolken im Bild / beschlagene Optik: die Sperre selbst ist schon die Wartezeit (`reopen_min` bzw.
+        # FOG_PAUSE_S) – nicht noch einmal so lange auf „stabil gut“ warten (Nutzerwunsch 17.11.2026). Nur Vorhersage-Wächter
+        # (Wetter, Tau, Regen) warten danach, ob es so bleibt.
+        if self.hold and self.hold.kind in ("twilight", "clouds", "fog"):
             return True
         if self.good_since is None:
             self.good_since = now

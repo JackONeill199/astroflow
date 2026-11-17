@@ -132,6 +132,27 @@ def test_wolken_sind_kein_hindernis():
     assert p.mode == "laeuft" and any(i.status == "aktiv" for i in p.items)
 
 
+def test_wolken_im_bild_nur_einmal_warten_und_erneut_versuchen():
+    """Nach „Wolken im Bild“ gilt nur die Sperre (`reopen_min`), kein zweites Warten auf „stabil gut“ (Nutzerwunsch
+    17.11.2026); „Erneut versuchen“ hebt die Sperre sofort auf."""
+    sc = sim.Scenario(clouds=[(T0 + 1.0 * H, T0 + 1.3 * H)])
+    p, d, clock = make([item(M31, 0.2, 1.3), item(M15, 1.3, 4.0)], sc)
+    run(p, clock, 1.4)
+    assert p.mode == "wartet" and p.hold.kind == "clouds"
+    since = p.clouds_at
+    while p.mode == "wartet" and clock.now() < since + 2 * 20 * 60:
+        p.tick(clock.now())
+        clock.advance(20)
+    assert p.mode == "laeuft" and clock.now() - since <= 20 * 60 + 60       # nach einer Wartezeit, nicht nach zweien
+    assert "ob es so bleibt" not in texts(p)
+    # zweite Sperre: per Knopf sofort weiter
+    p.clouds_at, p.mode, p.hold = clock.now(), "wartet", ap.Hold("clouds", "Wolken")
+    assert p.retry_now(clock.now()) and p.mode == "laeuft" and p.clouds_at is None and p.hold is None
+    assert not p.retry_now(clock.now())                                        # nichts mehr aufzuheben
+    p.mode, p.hold = "wartet", ap.Hold("rain", "Regen")
+    assert not p.retry_now(clock.now())                                        # Regen hebt der Knopf nicht auf
+
+
 def test_kurzer_wolkenzug_sperrt_keine_richtung():
     """Ein paar Minuten Wolke mitten in einer guten Aufnahme → weiter aufnehmen, keine Sperre, kein Vorschlag."""
     sc = sim.Scenario(clouds=[(T0 + 1.0 * H, T0 + 1.0 * H + 3 * 60)])
