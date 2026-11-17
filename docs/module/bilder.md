@@ -27,6 +27,8 @@ zusammengesetzt. Eine Grafikkarte oder Zusatzprogramme braucht es dafür nicht. 
 
 Der **Stacking-Verlauf** zeigt, was 1, 3, 10, 30, 100 … Aufnahmen ausmachen, und **Vorher/Nachher** vergleicht den linearen Stack mit dem entwickelten Bild
 (Gradienten, Gaia-Farbkalibrierung, optional GraXpert und StarNet).
+Bei Nebeln und Galaxien mit Sternentrennung macht AstroFlow die Sterne kleiner, damit das Objekt besser hervortritt. In dichten
+Sternfeldern wirkt das stärker. Abschalten lässt es sich unter Einstellungen → Bilder → Sternentrennung („Sterne verkleinern“).
 
 | | |
 |---|---|

@@ -118,9 +118,12 @@ def test_settings_survive_restart(tmp_path):
     with TestClient(create_app(s)) as c:
         c.post("/api/stacking/reviewer", json={"provider": "lmstudio", "model": "bonsai", "max_rounds": 2})
         c.post("/api/stacking/storage", json={"delete_uploads": False})
+        assert c.get("/api/stacking/status").json()["star_shrink"] is True            # Standard: Sterne verkleinern an
+        assert c.post("/api/stacking/storage", json={"star_shrink": False}).json()["star_shrink"] is False
     s2 = load_settings(tmp_path / "d")
     s2.auto = False
     with TestClient(create_app(s2)) as c:
         r = c.get("/api/stacking/reviewer").json()
         assert (r["provider"], r["model"], r["max_rounds"]) == ("lmstudio", "bonsai", 2)
-        assert c.get("/api/stacking/status").json()["delete_uploads"] is False
+        st = c.get("/api/stacking/status").json()
+        assert st["delete_uploads"] is False and st["star_shrink"] is False

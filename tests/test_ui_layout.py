@@ -654,7 +654,7 @@ def test_tonight_browse_nights(server, browser, size, tmp_path, monkeypatch):
         import urllib.parse as up
         k = int(up.parse_qs(up.urlparse(route.request.url).query).get('night', ['0'])[0])
         asked.append(k)
-        route.fulfill(json=plans[k])
+        route.fulfill(json=plans.get(k, plans[9]))                            # Nachbarnächte werden vorgeladen
     base, _ = server
     w, h = SIZES[size]
     page = browser.new_page(viewport={'width': w, 'height': h}, has_touch=size == 'handy')
@@ -672,7 +672,7 @@ def test_tonight_browse_nights(server, browser, size, tmp_path, monkeypatch):
     assert not page.evaluate(FIND_OVERFLOW)
     page.locator('.tn-step.next').click()
     page.wait_for_selector('.tn-strip [data-tn-night="1"][aria-selected=true]')
-    assert page.locator('.tn-nav-name').inner_text().startswith('Morgen Nacht') and asked[-1] == 1
+    assert page.locator('.tn-nav-name').inner_text().startswith('Morgen Nacht') and 1 in asked
     page.locator('.tn-nav-name').click()                                      # Fokus aus dem Eingabefeld
     page.keyboard.press('ArrowRight')
     page.wait_for_selector('.tn-strip [data-tn-night="2"][aria-selected=true]')

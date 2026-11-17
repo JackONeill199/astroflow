@@ -1686,6 +1686,8 @@ async function stackingSettings(el) {
           sondern ruft es nur auf – mit dem Herunterladen akzeptierst du die Bedingungen des Autors.</p>
         <details style="margin-top:10px"><summary class="sm mut" style="cursor:pointer">Schon installiert? Pfad angeben</summary>
           <form id="snpath" class="row" style="margin-top:8px" data-local-only><input name="path" placeholder="z. B. C:\\starnet\\starnet2.exe" style="flex:1"><button class="btn sm">Übernehmen</button></form></details>`}
+      <label class="modrow opt" style="margin-top:0.75rem"><div><b>Sterne verkleinern</b><div class="mut sm">Macht die Sterne kleiner, damit Nebel und Galaxien besser hervortreten. Die Sterne behalten ihre Helligkeit, ihre Farbe und einen weichen Halo, schwache Sterne bleiben sichtbar.
+        In dichten Sternfeldern wirkt es stärker. Gilt beim nächsten Entwickeln; fertige Bilder bleiben, bis du sie neu entwickelst. Aus: die bisherige, schwächere Verkleinerung.</div></div><input type="checkbox" id="starShrink" ${st.star_shrink !== false ? 'checked' : ''}><span class="switch"></span></label>
     </div>
     <form class="panel" id="gxp">
       <div class="panel-h"><h2>GraXpert (KI)</h2><span class="grow"></span>
@@ -1737,6 +1739,12 @@ async function stackingSettings(el) {
       <p class="mut sm" style="margin:14px 0 0">Tipp: Im Browser-Menü „App installieren“ wählen – AstroFlow läuft dann wie eine eigene App.</p></div></div></div>`;
   if (!el.isConnected) return;      // inzwischen weiternavigiert – die Abfragen unten gingen ins Leere
   housekeeping($('#hk', el));
+  $('#starShrink').onchange = async (e) => {
+    try {
+      const r = await send('/stacking/storage', { star_shrink: e.target.checked });
+      toast(r.star_shrink ? 'Sterne werden verkleinert (gilt beim nächsten Entwickeln).' : 'Bisherige Sternverkleinerung (gilt beim nächsten Entwickeln).', 'ok');
+    } catch (err) { toast('Fehler: ' + err.message, 'err'); }
+  };
   $('#stf [name=gaia]').onchange = async (e) => {
     try {
       const r = await send('/stacking/storage', { gaia: e.target.checked });
