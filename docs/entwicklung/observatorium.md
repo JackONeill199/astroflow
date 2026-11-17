@@ -52,6 +52,7 @@ Etappen: 1 Atlas (dieser Stand) · 2 Horizontmaske je Standort + Ansicht „Von 
 - **Oberfläche** `static/planner.js|css`: Reiter Atlas | Planung (`AFplan.tabs`), Assistent mit Chips, Zeitleiste (Breite = Panel, schmal kürzere
   Ränder), Zielliste mit Fortschritt (10 sichtbar, Rest aufklappbar), Klick auf einen Block → Kontextpanel mit „Im Atlas“.
   Atlas: Ebene „Plan“ (gestrichelte Ringe, „geplant · Tag“). Heute Nacht: Abschnitt „Dein Plan für diese Nacht“ (`AFplan.nightSection`).
+- **Ort je Nacht** (17.11.2026): `plan.nights[].site` = `{id, name, horizon, horizon_src}` (Maske des Ortes bzw. vom Teleskop gemessen, `planner._has_horizon`), `plan.horizon_nights` = `{with, of, sites, sites_with}` für die Kopfzeile. Abschnitt „Ort je Nacht“ unter der Zeitleiste: Auswahl je Nacht über `POST /api/sites/night` (dieselbe Zuordnung wie „Heute Nacht“), danach Hinweis „Ort geändert“ + Knopf „Neu berechnen“ (rechnet mit den Wünschen des Plans neu).
 - Tests: `tests/test_planner.py`.
 
 ## Schritt 3: „Von hier“ und Feinschliff (12.11.2026)

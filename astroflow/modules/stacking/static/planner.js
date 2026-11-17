@@ -53,6 +53,14 @@ function timeline(plan, width = 760) {
   return `<svg class="pl-tl" viewBox="0 0 ${W} ${H}" role="img" aria-label="Plan je Nacht">${g}</svg>
     ${devs.length > 1 ? `<p class="mut sm pl-lanes">Je Nacht oben ${esc(devs[0].name)}, unten ${esc(devs[1].name)}.</p>` : ''}`;
 }
+// Kopfzeile: „Horizont an 3 von 5 Nächten“ bzw. „mit Horizont“ (alle Nächte), „ohne Horizont“
+function horizonText(p) {
+  const h = p.horizon_nights;
+  if (!h) return p.site?.horizon ? ' · mit Horizont' : '';
+  if (!h.with) return ' · ohne Horizont';
+  if (h.with === h.of) return h.of === 1 ? ' · mit Horizont' : ` · Horizont an allen ${h.of} Nächten`;
+  return ` · Horizont an ${h.with} von ${h.of} Nächten`;
+}
 const short = (name, px) => { const n = String(name).replace(/^(C \d+) \((NGC|IC) \d+\) /, '$1 '), max = Math.max(3, Math.floor(px / 6.2)); return n.length > max ? n.slice(0, max - 1) + '…' : n; };
 
 // „~30 min“, „~5 h über 3 Nächte“, „~8 h über 2 Nächte · noch ~2 Nächte“ (nach dem Plan)
@@ -87,6 +95,9 @@ async function planView(el) {
   w.devices = w.devices.filter(id => d.devices.some(o => o.id === id));
   if (!w.devices.length) w.devices = [d.devices[0].id];
   let wizard = !d.plan;
+  let sites = null, stale = false;
+  const changed = new Set();
+  api('/sites?nights=false').then(s => { sites = s; if (d.plan && !wizard) draw(); }).catch(() => {});
 
   const chips = (key, list, multi) => list.map(([v, l]) => {
     const on = multi ? w[key].includes(v) : w[key] === v;
@@ -115,6 +126,20 @@ async function planView(el) {
       <input type="checkbox" data-eq="${esc(o.id)}" ${w.eq.includes(o.id) ? 'checked' : ''}><span class="switch"></span></label>`).join('');
   }
   const nameOf = (id) => catalog.find(o => o.id === id)?.name || id;
+  // Ort je Nacht (gemeinsame Ortsliste, /api/sites/night wie „Heute Nacht“); Änderung → Plan veraltet, „Neu berechnen“
+  function siteRows(p) {
+    if (!sites?.list?.length) return '';
+    const hz = (n, ch) => ch ? 'gilt nach dem Neuberechnen' : n.site?.horizon ? (n.site.horizon_src || 'Horizont des Ortes') : 'kein Horizont hinterlegt';
+    const rows = p.nights.map(n => {
+      const fixed = sites.periods.find(x => x.from === n.night && x.to === n.night), ch = changed.has(n.night);
+      const opts = (fixed ? '' : `<option value="">${esc(ch ? 'Automatisch' : (n.site?.name || 'Standard-Ort') + ' (automatisch)')}</option>`)
+        + sites.list.map(s => `<option value="${esc(s.id)}" ${fixed && fixed.site_id === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')
+        + (fixed ? '<option value="">Automatisch (Zeitraum bzw. Standard-Ort)</option>' : '');
+      return `<li><label for="plS${esc(n.night)}">${esc(dayName(n.night))}</label><select id="plS${esc(n.night)}" data-site-night="${esc(n.night)}" aria-label="Standort für ${esc(dayName(n.night))}">${opts}</select>
+        <span class="pl-hz ${!ch && n.site?.horizon ? 'on' : 'dim'} sm" title="${n.site?.horizon_src ? 'Freier Himmel, den das Teleskop in dieser Nacht gemessen hat' : 'Horizontmaske des Ortes (Einstellungen → Standorte)'}">${icon('pin')}${esc(hz(n, ch))}</span></li>`;
+    }).join('');
+    return `<div class="pl-sites"><h3 class="sm">Ort je Nacht</h3>${stale ? `<div class="notice pl-stale">${icon('alert')}<div>Ort geändert – der Plan stammt noch vom alten Ort.</div><button type="button" class="btn sm" data-act="rerun">${icon('refresh')}Neu berechnen</button></div>` : ''}<ul class="pl-site-list">${rows}</ul></div>`;
+  }
   function planHtml(p) {
     const total = p.nights.reduce((s, n) => s + n.blocks.reduce((t, b) => t + b.hours, 0), 0);
     const fc = p.nights.filter(n => n.weather !== 'none').length;
@@ -123,9 +148,10 @@ async function planView(el) {
       <div class="pl-sum"><span><b class="tnum">${p.targets.length}</b> Ziele</span><span><b class="tnum">${hours(total)}</b> geplant</span>
         <span><b class="tnum">${p.targets.filter(t => t.done).length}</b> ${p.wishes.min_hours != null && !p.wishes.depth ? `erreichen ${hours(p.wishes.min_hours)}` : 'erreichen ihren Bedarf'}</span>
         ${p.wishes.depth ? `<span class="dim" title="${esc([p.sky ? '' : 'Ohne Messwert für den Himmel ist ein Vorortshimmel angenommen.', ...p.devices.map(x => x.calibration ? `${x.name}: ${x.calibration}` : '')].filter(Boolean).join(' · ') || 'Bedarf je Ziel aus Objektart, Helligkeit, Gerät und Himmel')}">${esc((DEPTHS.find(x => x[0] === p.wishes.depth) || ['', ''])[1])} · ${p.sky ? `Himmel SQM ${de(p.sky.sqm)}` : 'Himmel geschätzt'}</span>` : ''}
-        <span class="dim">${p.weather_on ? (fc ? `Wetter für ${fc} ${fc === 1 ? 'Nacht' : 'Nächte'}` : 'keine Vorhersage') : 'ohne Wetter'}${p.site?.horizon ? ' · mit Horizont' : ''}</span></div>
+        <span class="dim">${p.weather_on ? (fc ? `Wetter für ${fc} ${fc === 1 ? 'Nacht' : 'Nächte'}` : 'keine Vorhersage') : 'ohne Wetter'}${horizonText(p)}</span></div>
       ${p.watch_missing?.length ? `<p class="sm warn">Nicht unterzubringen: ${p.watch_missing.map(esc).join(', ')}</p>` : ''}
-      <div id="plTl">${timeline(p, $('#plBody', el)?.clientWidth - 32 || 760)}</div></section>
+      <div id="plTl">${timeline(p, $('#plBody', el)?.clientWidth - 32 || 760)}</div>
+      ${siteRows(p)}</section>
       <section class="panel pl-goals"><h2>Ziele</h2>${progress(p)}<p class="dim sm pl-foot">Berechnet ${new Date(p.created * 1000).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })} · Wetter und Fortschritt ändern sich – bei Bedarf „Neu planen“.</p></section>`;
   }
   // Neu zeichnen; `fresh` = Abschnitte, die neu erscheinen (Selektor) – nur die blenden ein, Zeitleiste wächst dann von links
@@ -179,14 +205,23 @@ async function planView(el) {
     if (a === 'del' && await confirmDlg('Plan löschen?', 'Der gespeicherte Plan wird entfernt. Atlas und „Heute Nacht“ zeigen ihn dann nicht mehr.', 'Löschen', true)) {
       try { d.plan = (await send('/stacking/plan', null, 'DELETE')).plan; wizard = true; draw('#plBody > section'); } catch (err) { toast(err.message, 'err'); }
     }
-    if (a === 'run') {
+    if (a === 'run' || a === 'rerun') {
       const b = e.target.closest('button'); b.disabled = true; b.classList.add('pending');
-      try { d.plan = (await send('/stacking/plan', w)).plan; wizard = false; draw('#plBody > section'); toast('Plan berechnet.', 'ok'); }
+      try { d.plan = (await send('/stacking/plan', w)).plan; wizard = false; stale = false; changed.clear(); draw(a === 'run' ? '#plBody > section' : null); toast('Plan berechnet.', 'ok'); }
       catch (err) { toast(err.message, 'err'); b.disabled = false; b.classList.remove('pending'); }
     }
   });
   body.addEventListener('keydown', (e) => { const blk = e.target.closest?.('.pl-block'); if (blk && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); showBlock(+blk.dataset.n, +blk.dataset.k); } });
-  body.addEventListener('change', (e) => {
+  body.addEventListener('change', async (e) => {
+    const sn = e.target.dataset?.siteNight;
+    if (sn) {
+      try {
+        sites = await send('/sites/night', { night: sn, site_id: e.target.value || null, nights: false });
+        changed.add(sn); stale = true; draw();
+        $(`[data-site-night="${sn}"]`, el)?.focus();
+      } catch (err) { toast(err.message, 'err'); draw(); }
+      return;
+    }
     const eq = e.target.dataset?.eq;
     if (eq) { w.eq = e.target.checked ? [...new Set([...w.eq, eq])] : w.eq.filter(x => x !== eq); return; }
     if (e.target.id !== 'plWatch') return;

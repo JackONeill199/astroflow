@@ -189,6 +189,14 @@ def needs(tg: list[dict], devices: list[dict], wishes: dict, sky: tuple | None, 
     return out, why, cal
 
 
+def _has_horizon(site: dict | None) -> bool:
+    """Gilt für diesen Ort/diese Nacht eine Horizontgrenze (gespeicherte Maske oder vom Teleskop gemessen)?"""
+    try:
+        return any(float(v) > 0 for v in (site or {}).get("horizon") or [])
+    except (TypeError, ValueError):
+        return False
+
+
 def plan(projects: list[dict], site_for, wishes: dict, devices: list[dict], cache: Path, now: float | None = None,
          weather: bool = False, sky=None, calib_rows: list[dict] | None = None, *, max_targets: int | None = None,
          extra: list[dict] | None = None, have_add: dict | None = None, collection: dict | None = None,
@@ -329,7 +337,8 @@ def plan(projects: list[dict], site_for, wishes: dict, devices: list[dict], cach
                 m["max_alt"] = max(m["max_alt"] or 0, bl["max_alt"] or 0)
             else:
                 merged.append(dict(bl))
-        nights.append({"night": night, "site": {"id": site.get("id"), "name": site.get("name")}, **info,
+        nights.append({"night": night, "site": {"id": site.get("id"), "name": site.get("name"), "horizon": _has_horizon(site),
+                                                "horizon_src": site.get("horizon_src")}, **info,
                        "blocks": sorted(merged, key=lambda x: x["start"])})
     used = [i for i in range(len(tg)) if got[i] > 0]
     targets = []
@@ -348,6 +357,9 @@ def plan(projects: list[dict], site_for, wishes: dict, devices: list[dict], cach
     return {"created": now, "wishes": wishes,
             "devices": [{**{k: d.get(k) for k in ("id", "name", "fov", "alt_az", "eq_mode", "eq")}, "tracking": devtab.profile(d)["label"],
                          **({"calibration": c["text"]} if c.get("text") else {})} for d, c in zip(devices, cal)],
-            "site": {"id": first.get("id"), "name": first.get("name"), "horizon": bool(first.get("horizon"))},
+            "site": {"id": first.get("id"), "name": first.get("name"), "horizon": _has_horizon(first)},
+            "horizon_nights": {"with": sum(1 for n in nights if n["site"]["horizon"]), "of": len(nights),
+                               "sites": len({n["site"]["id"] or n["site"]["name"] for n in nights}),
+                               "sites_with": len({n["site"]["id"] or n["site"]["name"] for n in nights if n["site"]["horizon"]})},
             "sky": {"sqm": sky_val[0], "source": sky_val[1]} if sky_val and sky_val[0] is not None else None,
             "weather_on": bool(weather), "nights": nights, "targets": targets, "watch_missing": missing}
