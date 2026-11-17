@@ -952,7 +952,7 @@ input:focus-visible + .switch { outline: 2px solid var(--acc); outline-offset: 2
 .st-info summary:hover, .st-info[open] summary { color: var(--fg) }
 .st-info summary svg { width: 0.875rem; height: 0.875rem; color: var(--acc) }
 .st-info-body { margin-top: 0.5rem; max-width: var(--read); font-size: 0.75rem; line-height: 1.5; color: var(--mut); animation: st-rise .22s var(--ease) }
-.st-quick .st-kpi, .st-quick .st-kpi::before, .st-quick .st-note { animation: none }
+.st-rv.in.st-quick :is(.st-kpi, .st-note), .st-rv.in.st-quick .st-kpi::before { animation: none }
 @media (max-width: 600px) {
     .st-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) }
   .st-kpi { padding: 0.75rem 0.875rem 0.875rem }

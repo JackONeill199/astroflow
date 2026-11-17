@@ -47,7 +47,7 @@
 .st-rv.in .obs-rank li { animation: st-rise .5s var(--ease) both; animation-delay: calc(min(var(--i, 0), 10) * 55ms + .1s) }
 .st-rv.in .obs-rank .obs-fill { animation-delay: calc(min(var(--i, 0), 10) * 55ms + .25s) }
 
-.st-quick :is(.obs-fill, .obs-hour i, .obs-hour em, .obs-rank li) { animation: none }
+.st-rv.in.st-quick :is(.obs-fill, .obs-hour i, .obs-hour em, .obs-rank li) { animation: none }
 @media (max-width: 700px) {
   .obs-stats { grid-template-columns: minmax(0, 1fr) }
   .obs-bar { grid-template-columns: 4.6875rem minmax(0, 1fr) 2.75rem; gap: 0.5rem }

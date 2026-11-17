@@ -170,7 +170,7 @@ a.sts-row:hover svg { color: var(--acc); transform: translateX(0.125rem) }
 .sts-hour.peak small { color: var(--fg) }
 .st-rv.in .sts-hour i { animation: st-grow-y .8s var(--ease) both; animation-delay: calc(var(--i, 0) * 30ms + .1s) }
 .st-rv.in .sts-hour em { animation: st-fade .5s ease both 1s }
-.st-quick :is(.sts-fill, .sts-stack, .sts-hour i, .sts-hour em, .sts-rank li) { animation: none }
+.st-rv.in.st-quick :is(.sts-fill, .sts-stack, .sts-hour i, .sts-hour em, .sts-rank li) { animation: none }
 @media (max-width: 700px) {
   .sts-grid { grid-template-columns: 1fr }
   .sts-bars { column-gap: 0.5rem }
