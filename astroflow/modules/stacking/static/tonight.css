@@ -42,11 +42,6 @@ af-tonight-chart { display: block; width: 100%; min-width: 0; margin-top: 0.625r
 .tn-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.125rem }
 .tn-weather { display: flex; flex-wrap: wrap; gap: 0.875rem; font-size: 0.8125rem }
 .tn-empty { padding: 0.75rem 0 }
-.tn-note { margin: 0.625rem 0 0; padding: 0.5rem 0.625rem; border-left: 0.1875rem solid var(--tn-blue); background: color-mix(in srgb, var(--tn-blue) 8%, transparent); border-radius: 0.375rem; font-size: 0.8125rem; overflow-wrap: anywhere }
-.tn-note.cloudy { border-left-color: var(--tn-orange); background: color-mix(in srgb, var(--tn-orange) 9%, transparent) }
-.tn-note.rain { border-left-color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); font-weight: 600 }
-.tn-note.unsure { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 9%, transparent) }
-.tn-note.scope.fine { border-left-color: var(--ok); background: color-mix(in srgb, var(--ok) 9%, transparent) }
 .tn-weather .rainy { color: var(--bad); font-weight: 600 }
 .tn-plan { margin-top: 0.75rem }
 .tn-plan h3 { margin: 0 0 0.25rem; font-size: 0.8125rem }
@@ -214,7 +209,8 @@ svg .tn-peak { fill: var(--target); font-size: 0.6875rem; font-weight: 600; pain
 @keyframes tn-drop { to { stroke-dashoffset: -6 } }
 
 /* Hinweise mit sanftem Auftritt */
-.tn-main > .tn-note { animation: tn-rise .5s var(--ease) both .25s }
+.tn-notes-row > .tn-note { animation: tn-rise .5s var(--ease) both .25s }
+.tn-notes-row > .tn-note + .tn-note { animation-delay: .35s }
 
 /* Diagramm: Kurven zeichnen sich nacheinander, Mond und Beschriftung blenden ein, „jetzt“ pulsiert, Sterne funkeln, gewählte Kurve glimmt */
 .tn-intro .tn-series { animation: tn-draw 1.5s var(--ease) backwards; animation-delay: calc(var(--k, 0) * 110ms + .15s) }
@@ -317,6 +313,25 @@ svg .tn-peak { fill: var(--target); font-size: 0.6875rem; font-weight: 600; pain
 .tn-soon-from { grid-column: 2; grid-row: 1 / span 2; font-size: 0.6875rem; color: var(--tn-blue); white-space: nowrap; padding: 0.125rem 0.5rem; border-radius: 1rem; border: 1px solid color-mix(in srgb, var(--tn-blue) 40%, transparent) }
 .tn-rv.in .tn-soon li { animation: tn-rise .5s var(--ease) both; animation-delay: calc(var(--i, 0) * 60ms + .15s) }
 
+
+/* Hinweise (Regen, bedeckt, unsicher …) als ruhige Meldungen nebeneinander: Symbol im getönten Kreis, kurzer Titel, eine Zeile Erklärung
+   (Nutzerwunsch 17.11.2026: „diese Textboxen gefallen mir nicht“ – vorher volle Breite mit Farbbalken links) */
+.tn-notes-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 0.625rem; margin-top: 0.875rem }
+.tn-note { --nc: var(--tn-blue); display: flex; align-items: center; gap: 0.75rem; min-width: 0; padding: 0.625rem 0.875rem 0.625rem 0.625rem; border-radius: var(--r-lg);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--nc) 11%, transparent), color-mix(in srgb, var(--nc) 2%, transparent) 75%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nc) 20%, transparent) }
+.tn-note.rain { --nc: var(--tn-rain) }
+.tn-note.cloudy { --nc: var(--tn-orange) }
+.tn-note.unsure { --nc: var(--warn) }
+.tn-note.veil { --nc: var(--tn-cloud) }
+.tn-note.fine { --nc: var(--ok) }
+.tn-note.info { --nc: var(--tn-violet) }
+.tn-note-ico { flex: none; width: 2.125rem; height: 2.125rem; border-radius: 50%; display: grid; place-items: center; color: var(--nc);
+  background: color-mix(in srgb, var(--nc) 16%, transparent); box-shadow: 0 0 1rem -0.25rem color-mix(in srgb, var(--nc) 55%, transparent) }
+.tn-note-ico svg { width: 1.125rem; height: 1.125rem; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round }
+.tn-note p { margin: 0; min-width: 0; display: grid; gap: 0.0625rem }
+.tn-note b { font-size: 0.8125rem; font-weight: 600; color: color-mix(in srgb, var(--nc) 45%, var(--fg)); overflow-wrap: anywhere }
+.tn-note span { font-size: 0.75rem; line-height: 1.4; color: var(--mut); overflow-wrap: anywhere }
 @media (max-width: 600px) {
   .tn-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.875rem 1rem }
   .tn-kpi b { font-size: 1.125rem }
@@ -327,6 +342,6 @@ svg .tn-peak { fill: var(--target); font-size: 0.6875rem; font-weight: 600; pain
   .tn-rv, .tn-rv.in { opacity: 1; transform: none; transition: none; animation: none }
   .tn-head-sky::before, .tn-head-sky::after, .tn-kpi, .tn-kpi-ico, .tn-kpi-ico svg, .tn-kpi-drop, .tn-now, .tn-chart .cd-star circle, .tn-series.sel .tn-high,
   .tn-series, .tn-tooltip, .tn-choice, .tn-selection, .tn-wx-bar i, .tn-wx-val svg, .tn-tl-bar, .tn-tl-up, .tn-tl-best, .tn-tl-now, .tn-soon li, .tn-strip .tn-cl,
-  .tn-main > .tn-note { animation: none !important }
+  .tn-notes-row > .tn-note { animation: none !important }
   .tn-strip button, .tn-choice, .tn-soon a { transition: none }
 }

@@ -300,25 +300,35 @@ const planList = (d, full) => d.plan?.length ? `<div class="tn-plan"><h3>Nachtpl
 const day = (t, tonight) => (tonight ? 'heute Nacht' : 'in der folgenden Nacht') + ` ${hm(t.start)} – ${hm(t.end)}`;
 // Meldung zur Lage – getrennt nach Ursache (bedeckt / teils bewölkt / Höhe / Nacht vorbei / keine Dunkelheit)
 // Wetterhinweise: Regen (Warnung), Modelle uneinig, hohe Schleierwolken, Messung des Teleskops
+// Hinweise als ruhige Meldungen (Nutzerwunsch 17.11.2026: keine Textbalken): Symbol, kurzer Titel, eine Zeile Erklärung
+const NOTE_ICO = {
+  rain: '<path d="M6 13.5h11a3.5 3.5 0 0 0 0-7 5.5 5.5 0 0 0-10.4 1.4A2.9 2.9 0 0 0 6 13.5z"/><path class="tn-kpi-drop" d="M8.5 16l-1 3M12.5 16l-1 3M16.5 16l-1 3"/>',
+  cloudy: '<path d="M5.5 18h12a4 4 0 0 0 0-8 6 6 0 0 0-11.3 1.6A3.2 3.2 0 0 0 5.5 18z"/>',
+  unsure: '<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.4"/><circle cx="12" cy="16.8" r=".4"/>',
+  veil: '<path d="M4 8h12M7 12h13M4 16h10"/>',
+  fine: '<path d="M12 3l1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6z"/>',
+  info: '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/>'};
+const note = (cls, title, text, alert) => `<div class="tn-note ${cls}"${alert ? ' role="alert"' : ''}><i class="tn-note-ico" aria-hidden="true"><svg viewBox="0 0 24 24">${NOTE_ICO[cls.split(' ').pop()] || NOTE_ICO.info}</svg></i><p><b>${title}</b><span>${text}</span></p></div>`;
 function weatherNotes(d) {
   const out = [], sky = d.sky, m = d.forecast?.models, ts = d.telescope_sky;
-  if (sky?.rain_hours > 0) out.push(`<p class="tn-note rain" role="alert"><b>Regen erwartet</b> – etwa ${String(sky.rain_hours).replace('.', ',')} h der dunklen Zeit gelten als unbrauchbar, egal wie die Wolkenzahl aussieht.</p>`);
-  if (m?.disagree) out.push(`<p class="tn-note unsure"><b>Vorhersage unsicher:</b> Hauptmodell ${m.main_cmp} % Bewölkung, ${esc(m.alt_label)} ${m.alt} % – die Modelle sind uneinig.</p>`);
-  if (m?.veil && !sky?.rain_hours) out.push(`<p class="tn-note veil">Meist <b>hohe Schleierwolken</b> (gesamt ${m.total} %, wirksam etwa ${m.main} %) – Sterne evtl. sichtbar. Hohe Wolken zählen in der Bewertung nur schwach.</p>`);
-  if (ts) out.push(`<p class="tn-note scope ${ts.clear ? 'fine' : 'cloudy'}"><b>Laut ${esc(ts.source)} ${ts.clear ? 'klar' : 'bewölkt'}</b> (Messung ${hm(ts.t)} Uhr)${d.cloud?.length ? ' – Messung vor Vorhersage.' : '.'}</p>`);
+  if (sky?.rain_hours > 0) out.push(note('rain', 'Regen erwartet', `Etwa ${num(sky.rain_hours)} h der dunklen Zeit sind unbrauchbar – egal wie die Wolkenzahl aussieht.`, true));
+  if (m?.disagree) out.push(note('unsure', 'Vorhersage unsicher', `Hauptmodell ${m.main_cmp} % Bewölkung, ${esc(m.alt_label)} ${m.alt} % – die Modelle sind uneinig.`));
+  if (m?.veil && !sky?.rain_hours) out.push(note('veil', 'Meist hohe Schleierwolken', `Gesamt ${m.total} %, wirksam etwa ${m.main} % – Sterne evtl. sichtbar; hohe Wolken zählen nur schwach.`));
+  if (ts) out.push(note(`scope ${ts.clear ? 'fine' : 'cloudy'}`, `Laut ${esc(ts.source)} ${ts.clear ? 'klar' : 'bewölkt'}`, `Messung ${hm(ts.t)} Uhr${d.cloud?.length ? ' – die Messung geht vor die Vorhersage.' : '.'}`));
   return out.join('');
 }
 function statusNote(d) {
-  return weatherNotes(d) + statusNote1(d);
+  const all = weatherNotes(d) + statusNote1(d);
+  return all ? `<div class="tn-notes-row">${all}</div>` : '';
 }
 function statusNote1(d) {
   const sky = d.sky, st = d.status?.code, nc = sky?.next_clear;
-  const next = nc ? `Nächstes klares Fenster: ${day(nc, nc.tonight)}.` : 'In den nächsten 48 Stunden zeigt die Vorhersage kein klares Fenster.';
-  if (st === 'no_dark') return '<p class="tn-note">In dieser Nacht gibt es hier keine astronomisch dunkle Zeit.</p>';
-  if (st === 'over') return '<p class="tn-note">Die dunkle Zeit ist vorbei (Dämmerung bzw. Tag). Empfehlungen gelten wieder ab dem Abend.</p>';
-  if (st === 'overcast') return `<p class="tn-note cloudy"><b>${esc(curName(d))} bedeckt</b> (${sky.mean} % Bewölkung laut Vorhersage). ${esc(next)} Die Ziele darunter gelten bei klarem Himmel.</p>`;
-  if (sky?.state === 'partly') return `<p class="tn-note"><b>Teils bewölkt</b> (${sky.mean} % im Mittel, etwa ${String(sky.usable_hours).replace('.', ',')} h klar nutzbar). Ziele in klaren Stunden stehen vorn; gestrichelte gelten bei klarem Himmel.</p>`;
-  if (st === 'low_alt') return `<p class="tn-note">Für den verbleibenden Teil der Nacht steht kein passendes Ziel höher als ${d.min_alt}° (Höhe, nicht Wetter).</p>`;
+  const next = nc ? `Nächstes klares Fenster ${day(nc, nc.tonight)}.` : 'Die nächsten 48 Stunden zeigen kein klares Fenster.';
+  if (st === 'no_dark') return note('info', 'Keine dunkle Zeit', 'In dieser Nacht wird es hier nicht astronomisch dunkel.');
+  if (st === 'over') return note('info', 'Dunkle Zeit vorbei', 'Dämmerung bzw. Tag – Empfehlungen gelten wieder ab dem Abend.');
+  if (st === 'overcast') return note('cloudy', `${esc(curName(d))} bedeckt`, `${sky.mean} % Bewölkung laut Vorhersage. ${esc(next)} Die Ziele gelten bei klarem Himmel.`);
+  if (sky?.state === 'partly') return note('partly cloudy', 'Teils bewölkt', `${sky.mean} % im Mittel, etwa ${num(sky.usable_hours)} h klar nutzbar. Gestrichelte Ziele gelten bei klarem Himmel.`);
+  if (st === 'low_alt') return note('info', 'Kein Ziel hoch genug', `Für den Rest der Nacht steht kein passendes Ziel höher als ${d.min_alt}° (Höhe, nicht Wetter).`);
   return '';
 }
 // Blättern durch die Nächte: ‹ Name › und eine Leiste mit Mond und Bewölkung je Nacht
