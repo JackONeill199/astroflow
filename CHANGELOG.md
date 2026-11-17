@@ -3,6 +3,14 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.85.0 – 17.11.2026
+
+### Neu
+- **Heute Nacht – neue Gestaltung:** Oben ein Nachthimmel mit großen Kennzahlen (Dunkle Zeit, Mond mit Phase, Wetter, Gerät), Hinweise als ruhige Meldungen mit Symbol statt Textbalken, das Wetter je Stunde als Säulen (Regen blau, dunkle Zeit hinterlegt) und Dämmerung und Mond als Zeitleiste mit der besten Zeit ohne Mond. „Bald gut sichtbar“ steht daneben. Beim ersten Öffnen zeichnen sich die Kurven, Zahlen zählen hoch und Abschnitte blenden ein – bei reduzierter Bewegung bleibt alles still.
+
+### Behoben
+- **Heute Nacht – Blättern schneller:** Ein Klick auf einen anderen Tag zeigt die Nacht sofort; die Nachbarnächte werden im Hintergrund vorgeladen, und statt der Einblend-Animationen wird nur kurz überblendet.
+
 ## 0.84.0 – 17.11.2026
 
 ### Neu
