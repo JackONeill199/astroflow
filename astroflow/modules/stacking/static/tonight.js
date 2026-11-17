@@ -526,17 +526,27 @@ document.addEventListener('change', async e => {
 function goNight(k, focus) {
   const el = nightView.el;
   if (!el?.isConnected || !Number.isFinite(k) || k < 0 || k >= 14 || k === nightIx) return;
+  const prev = nightIx;
   swapDir = k > nightIx ? 1 : -1;
   nightIx = k;
   // sofortige Rückmeldung, noch bevor der Server antwortet: Tag vormerken, Name umstellen
   el.querySelectorAll('.tn-strip [data-tn-night]').forEach(b => b.classList.toggle('tn-pending', +b.dataset.tnNight === k));   // aria-selected erst, wenn die Nacht steht
   const ns = nightView.d?.nights, nm = el.querySelector('.tn-nav-name');
-  if (ns?.[k] && nm) nm.innerHTML = `${esc(nightName(ns[k], k))}${k < 2 ? ` <small>${esc(shortDay(ns[k]))} ${esc(dateDM(ns[k]))}</small>` : ''}`;
+  const label = i => `${esc(nightName(ns[i], i))}${i < 2 ? ` <small>${esc(shortDay(ns[i]))} ${esc(dateDM(ns[i]))}</small>` : ''}`;
+  if (ns?.[k] && nm) nm.innerHTML = label(k);
   nightView(el, nightView.catalogId).then(() => {
     const b = el.querySelector('.tn-strip [aria-selected="true"]');
     b?.scrollIntoView({block: 'nearest', inline: 'nearest'});
     if (focus) el.querySelector(focus)?.focus({preventScroll: true});
-  }).catch(err => toast(err.message, 'err'));
+  }).catch(err => {
+    // Laden gescheitert: Vormerkung zurücknehmen, damit Kopf und Inhalt wieder zusammenpassen und ein neuer Klick erneut lädt
+    if (nightIx === k) {
+      nightIx = prev; swapDir = 0;
+      el.querySelectorAll('.tn-strip .tn-pending').forEach(b => b.classList.remove('tn-pending'));
+      if (ns?.[prev] && nm?.isConnected) nm.innerHTML = label(prev);
+    }
+    toast(err.message, 'err');
+  });
 }
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-tn-night]');
