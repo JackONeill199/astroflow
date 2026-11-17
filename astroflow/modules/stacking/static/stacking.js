@@ -1860,34 +1860,45 @@ async function statisticsView(el) {
     <select id="obs-year" aria-label="Beobachtungsjahr"><option value="">Alle Jahre</option></select></div><div id="obs-body"></div>`;
   const body = el.querySelector('#obs-body'), select = el.querySelector('#obs-year');
   select.onchange = () => { year = select.value; signature = ''; load(); };
+  // Gestaltung wie „Heute Nacht“ (Statistik-Baukasten in app.js): Kopfband mit Kennzahlen, Balken wachsen beim Einblenden, stärkster Wert leuchtet
   function bars(rows, label) {
     const max = Math.max(1, ...rows.map(b => b.frames));
-    return `<div class="obs-bars">${rows.map(b => `<div class="obs-bar" title="${nf.format(b.frames)} Aufnahmen · ${dur(b.exposure)} Belichtung">
+    return `<div class="obs-bars">${rows.map((b, i) => `<div class="obs-bar${b.frames && b.frames === max ? ' peak' : ''}" style="--i:${i}" title="${nf.format(b.frames)} Aufnahmen · ${dur(b.exposure)} Belichtung">
       <span>${esc(label(b.key))}</span><div class="obs-track"><div class="obs-fill" style="width:${100 * b.frames / max}%;${b.frames ? '' : 'min-width:0'}"></div></div><span class="tnum">${nf.format(b.frames)}</span></div>`).join('')}</div>`;
   }
+  const hourLabel = (h) => `${String(h).padStart(2, '0')}:00–${String(h).padStart(2, '0')}:59 UTC`;
   async function load() {
     const current = ++ticket;
     try {
       const d = await api('/stacking/statistics' + (year ? '?year=' + year : ''));
-      if (current !== ticket) return;
+      if (current !== ticket || !el.isConnected) return;
       const sig = JSON.stringify(d);
       if (sig === signature) return;
+      const quick = !!body.firstChild;          // erste Füllung mit Einblendung, danach (Jahr, neue Daten) nur kurz überblenden
       signature = sig;
       select.innerHTML = '<option value="">Alle Jahre</option>' + d.years.map(y => `<option value="${y}">${y}</option>`).join('');
       select.value = year;
-      const maxHour = Math.max(1, ...d.hours.map(b => b.frames));
-      body.innerHTML = `<div class="hstats obs-summary"><div><b class="tnum">${nf.format(d.frames)}</b><small>Aufnahmen</small></div><div><b class="tnum">${d.nights}</b><small>Beobachtungsnächte</small></div>
-        <div><b class="tnum">${dur(d.exposure)}</b><small>Belichtung</small></div><div><b class="tnum">${d.objects}</b><small>Objekte</small></div></div>
-        <p class="mut sm">Aufnahmezeit aus FITS (UTC), nicht der Uploadzeitpunkt. Nächte zählen von 12 bis 12 Uhr UTC; Monate und Wochentage gehören zum Nachtbeginn.
-        Gezählt werden alle importierten Light-Aufnahmen, einschließlich verworfener und inzwischen gelöschter Originale. Duplikate und Bildversionen zählen nicht.
-        ${d.missing_dates ? `${nf.format(d.missing_dates)} Aufnahmen ohne gültigen Aufnahmezeitpunkt sind ausgeschlossen (über alle Jahre).` : ''}</p>
-        ${d.frames ? `<p class="mut">${date(d.first)} – ${date(d.last)} · Aktivster Monat: <b>${esc(month(d.top_month.key))}</b> (${nf.format(d.top_month.frames)} Aufnahmen)</p>
-        <div class="obs-stats"><section class="panel"><h2>Aufnahmen je Monat</h2>${bars(d.months, month)}</section>
-        <section class="panel"><h2>Wochentage der Beobachtungsnächte</h2>${bars(d.weekdays, k => weekdays[k])}</section>
-        <section class="panel obs-wide"><h2>Aufnahmezeiten (UTC)</h2><div class="obs-hours">${d.hours.map(b => `<div class="obs-hour" title="${String(b.key).padStart(2, '0')}:00–${String(b.key).padStart(2, '0')}:59 UTC · ${nf.format(b.frames)} Aufnahmen · ${dur(b.exposure)}"><i style="height:${100 * b.frames / maxHour}%"></i><small>${b.key}</small></div>`).join('')}</div></section>
-        <section class="panel obs-wide"><h2>Deine aktivsten Nächte</h2><p class="mut sm">Nach Anzahl der Aufnahmen · Belichtung rechts</p>${d.top_nights.map(b => `<div class="obs-night"><b>${date(b.key)}</b><span class="tnum">${nf.format(b.frames)} Aufnahmen · ${dur(b.exposure)}</span></div>`).join('')}</section></div>`
-          : '<div class="empty"><h2>Noch keine Aufnahmezeitpunkte</h2>Für diesen Zeitraum liegen keine passenden FITS-Metadaten vor.</div>'}`;
-    } catch (e) { if (current === ticket) body.innerHTML = `<div class="panel">${esc(e.message)}</div>`; }
+      const maxHour = Math.max(1, ...d.hours.map(b => b.frames)), maxNight = Math.max(1, ...d.top_nights.map(b => b.frames));
+      const topHour = d.hours.find(b => b.frames === maxHour && b.frames);
+      body.innerHTML = `<section class="st-head st-rv"><div class="st-kpis">
+          ${statKpi({ ico: 'camera', label: 'Aufnahmen', value: nf.format(d.frames), sub: d.frames ? `${date(d.first)} – ${date(d.last)}` : 'noch keine' })}
+          ${statKpi({ ico: 'star', cls: 'violet', label: 'Nächte', value: nf.format(d.nights), sub: d.top_month ? `am meisten im ${esc(month(d.top_month.key))}` : '' })}
+          ${statKpi({ ico: 'sparkle', cls: 'orange', label: 'Belichtung', value: dur(d.exposure), sub: d.nights ? `≈ ${dur(d.exposure / d.nights)} je Nacht` : '' })}
+          ${statKpi({ ico: 'orbit', cls: 'teal', label: 'Objekte', value: nf.format(d.objects), sub: 'verschiedene Ziele' })}
+        </div></section>
+        <div class="st-notes st-rv">${statInfo('So wird gezählt', `Aufnahmezeit aus FITS (UTC), nicht der Uploadzeitpunkt. Nächte zählen von 12 bis 12 Uhr UTC; Monate und Wochentage gehören zum Nachtbeginn.
+          Gezählt werden alle importierten Light-Aufnahmen, einschließlich verworfener und inzwischen gelöschter Originale. Duplikate und Bildversionen zählen nicht.`)}
+          ${d.missing_dates ? statNote('alert', 'Ohne Aufnahmezeit', `${nf.format(d.missing_dates)} Aufnahmen ohne gültigen Aufnahmezeitpunkt sind ausgeschlossen (über alle Jahre).`, 'warn') : ''}</div>
+        ${d.frames ? `<div class="obs-stats"><section class="panel st-rv"><div class="panel-h"><h2>Aufnahmen je Monat</h2><span class="grow"></span><span class="mut sm">aktivster: <b>${esc(month(d.top_month.key))}</b> · ${nf.format(d.top_month.frames)}</span></div>${bars(d.months, month)}</section>
+        <section class="panel st-rv"><div class="panel-h"><h2>Wochentage der Beobachtungsnächte</h2></div>${bars(d.weekdays, k => weekdays[k])}</section>
+        <section class="panel obs-wide st-rv"><div class="panel-h"><h2>Aufnahmezeiten (UTC)</h2><span class="grow"></span><span class="mut sm">Aufnahmen je Stunde${topHour ? ` · am meisten <b>${hourLabel(topHour.key).replace(' UTC', '')}</b>` : ''}</span></div>
+          <div class="obs-hours">${d.hours.map(b => `<div class="obs-hour${b === topHour ? ' peak' : ''}${b.frames ? '' : ' none'}" style="--i:${b.key}" title="${hourLabel(b.key)} · ${nf.format(b.frames)} Aufnahmen · ${dur(b.exposure)}">${b === topHour ? `<em class="tnum">${nf.format(b.frames)}</em>` : ''}<i style="height:${100 * b.frames / maxHour}%"></i><small>${b.key}</small></div>`).join('')}</div></section>
+        <section class="panel obs-wide st-rv"><div class="panel-h"><h2>Deine aktivsten Nächte</h2><span class="grow"></span><span class="mut sm">nach Anzahl der Aufnahmen</span></div>
+          <ol class="obs-rank">${d.top_nights.map((b, i) => `<li style="--i:${i}"><span class="obs-medal">${i + 1}</span><b>${date(b.key)}</b><span class="obs-track"><span class="obs-fill" style="width:${100 * b.frames / maxNight}%"></span></span>
+            <span class="tnum">${nf.format(b.frames)} Aufnahmen<small class="mut"> · ${dur(b.exposure)}</small></span></li>`).join('')}</ol></section></div>`
+          : `<div class="empty st-rv">${icon('camera')}<h2>Noch keine Aufnahmezeitpunkte</h2>Für diesen Zeitraum liegen keine passenden FITS-Metadaten vor.</div>`}`;
+      statReveal(body, quick);
+    } catch (e) { if (current === ticket && el.isConnected) body.innerHTML = `<div class="panel">${esc(e.message)}</div>`; }
   }
   await load();
   return { update: load, destroy: () => { ticket++; } };
