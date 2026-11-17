@@ -127,7 +127,7 @@ svg .tn-peak { fill: var(--target); font-size: 0.6875rem; font-weight: 600; pain
 .tn-cl.none { background-color: var(--border) }
 .tn-cl.unsure { opacity: .55 }
 .tn-main { transition: opacity var(--t) }
-.tn-loading { opacity: .55 }
+.tn-loading { opacity: .75 }
 @media (prefers-reduced-motion: reduce) { .tn-main { transition: none } }
 
 /* ───── Detailseite „Heute Nacht“ (Nutzerwunsch 17.11.2026: aufgeräumt, polished, mit Bewegung und „Wow“) ─────
@@ -135,13 +135,11 @@ svg .tn-peak { fill: var(--target); font-size: 0.6875rem; font-weight: 600; pain
    Bewegung nur über transform/opacity/clip-path, alles aus bei prefers-reduced-motion (Block am Ende). */
 :root { --tn-meteor: color-mix(in srgb, var(--fg) 85%, transparent); --tn-starlight: color-mix(in srgb, var(--fg) 70%, transparent) }
 
-/* Abschnitte erscheinen beim Hineinscrollen; Nachtwechsel lässt den Hauptteil aus der Blätterrichtung aufziehen (Skalierung statt Verschieben: nichts ragt über die Seite) */
+/* Abschnitte erscheinen beim Hineinscrollen; beim Blättern nur kurzes Überblenden (.tn-quick, siehe unten) */
 .tn-rv { opacity: 0; transform: translateY(0.75rem) }
 .tn-rv.in { opacity: 1; transform: none; transition: opacity .55s var(--ease), transform .55s var(--ease) }
-.tn-rv.in.tn-swap.next { transform-origin: 100% 0; animation: tn-swap-next .45s var(--ease) }
-.tn-rv.in.tn-swap.prev { transform-origin: 0 0; animation: tn-swap-prev .45s var(--ease) }
-@keyframes tn-swap-next { from { opacity: .35; transform: scale(.985) } }
-@keyframes tn-swap-prev { from { opacity: .35; transform: scale(.985) } }
+.tn-rv.in.tn-swap { animation: tn-swap .22s ease-out }
+@keyframes tn-swap { from { opacity: .4 } }
 @keyframes tn-rise { from { opacity: 0; transform: translateY(0.5rem) } }
 @keyframes tn-fade { from { opacity: 0 } }
 
@@ -332,6 +330,15 @@ svg .tn-peak { fill: var(--target); font-size: 0.6875rem; font-weight: 600; pain
 .tn-note p { margin: 0; min-width: 0; display: grid; gap: 0.0625rem }
 .tn-note b { font-size: 0.8125rem; font-weight: 600; color: color-mix(in srgb, var(--nc) 45%, var(--fg)); overflow-wrap: anywhere }
 .tn-note span { font-size: 0.75rem; line-height: 1.4; color: var(--mut); overflow-wrap: anywhere }
+/* Blättern zwischen Nächten (.tn-quick): Inhalt steht sofort, nur kurzes Überblenden – keine Einblend-Show, laufende Effekte (Regen, Mond) bleiben */
+.tn-quick .tn-rv.in { transition: none }
+.tn-quick .tn-rv.in :is(.tn-kpi, .tn-strip .tn-cl, .tn-wx-bar i, .tn-tl-bar, .tn-tl-up, .tn-tl-best, .tn-soon li, .tn-notes-row > .tn-note) { animation: none }
+.tn-quick .tn-rv.in .tn-wx-col.rain .tn-wx-bar i { animation: tn-rainbar .7s linear infinite }
+/* Warten auf den Server: Diagramm schimmert, statt nur blasser zu werden */
+.tn-loading af-tonight-chart { position: relative }
+.tn-loading af-tonight-chart::after { content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: var(--r);
+  background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--fg) 8%, transparent) 50%, transparent 70%); background-size: 250% 100%; animation: tn-shimmer 1.1s linear infinite }
+@keyframes tn-shimmer { from { background-position: 100% 0 } to { background-position: -150% 0 } }
 @media (max-width: 600px) {
   .tn-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.875rem 1rem }
   .tn-kpi b { font-size: 1.125rem }
@@ -342,6 +349,6 @@ svg .tn-peak { fill: var(--target); font-size: 0.6875rem; font-weight: 600; pain
   .tn-rv, .tn-rv.in { opacity: 1; transform: none; transition: none; animation: none }
   .tn-head-sky::before, .tn-head-sky::after, .tn-kpi, .tn-kpi-ico, .tn-kpi-ico svg, .tn-kpi-drop, .tn-now, .tn-chart .cd-star circle, .tn-series.sel .tn-high,
   .tn-series, .tn-tooltip, .tn-choice, .tn-selection, .tn-wx-bar i, .tn-wx-val svg, .tn-tl-bar, .tn-tl-up, .tn-tl-best, .tn-tl-now, .tn-soon li, .tn-strip .tn-cl,
-  .tn-notes-row > .tn-note { animation: none !important }
+  .tn-notes-row > .tn-note, .tn-rv.in.tn-swap, .tn-loading af-tonight-chart::after { animation: none !important }
   .tn-strip button, .tn-choice, .tn-soon a { transition: none }
 }

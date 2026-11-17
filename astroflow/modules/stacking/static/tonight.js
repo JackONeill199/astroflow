@@ -9,7 +9,7 @@ const HID = 'af.tonight.hidden';        // „nicht interessiert“: nur lokal i
 const hiddenIds = () => { try { const a = JSON.parse(localStorage.getItem(HID) || '[]'); return Array.isArray(a) ? a.map(String) : []; } catch { return []; } };
 const setHidden = a => { try { localStorage.setItem(HID, JSON.stringify([...new Set(a)])); } catch {} };
 // Gewählte Nacht (0 = heute, bis tonight.NIGHTS-1); bleibt beim Neuladen der Ansicht, verlässt man „Heute Nacht“, gilt wieder heute
-let nightIx = 0, nightReq = 0, swapDir = 0;   // swapDir: Richtung des letzten Nachtwechsels (Einschub von rechts/links)
+let nightIx = 0, nightReq = 0, swapDir = 0, quickRender = false;   // swapDir: Richtung des letzten Nachtwechsels; quickRender: Diagramm ohne Auftritt
 const query = (night = 0) => {
   const h = hiddenIds(), q = [h.length ? 'hide=' + encodeURIComponent(h.join(',')) : '', night ? 'night=' + night : ''].filter(Boolean);
   return q.length ? '?' + q.join('&') : '';
@@ -43,10 +43,10 @@ function countUp(root, ms = 900) {
   }
 }
 // Abschnitte (.tn-rv) erscheinen, sobald sie ins Bild kommen; Rückfall nach kurzer Zeit, falls kein Schnitt gemeldet wird
-function reveal(root) {
+function reveal(root, instant) {
   const secs = [...root.querySelectorAll('.tn-rv:not(.in)')];
-  const show = s => { s.classList.add('in'); countUp(s); };
-  if (reduced() || !('IntersectionObserver' in window)) { secs.forEach(show); return; }
+  const show = s => { s.classList.add('in'); if (!instant) countUp(s); };
+  if (instant || reduced() || !('IntersectionObserver' in window)) { secs.forEach(show); return; }
   let heard = false;
   const io = new IntersectionObserver(es => { heard = true; es.forEach(e => { if (e.isIntersecting) { io.unobserve(e.target); show(e.target); } }); }, {rootMargin: '0px 0px -8% 0px'});
   secs.forEach(s => io.observe(s));
@@ -203,7 +203,7 @@ customElements.define('af-tonight-chart', class extends HTMLElement {
     this.index ??= Math.max(0, this.plan.times.findIndex(t => t >= this.plan.now));
     this.textContent = '';
     // Auftritt: Kurven zeichnen sich einmal von links nach rechts (nur beim ersten Zeichnen, nicht bei Auswahl oder Größenänderung)
-    if (this.intro == null && !reduced()) { this.intro = true; this.classList.add('tn-intro'); setTimeout(() => { this.intro = false; this.classList.remove('tn-intro'); }, 2600); }
+    if (this.intro == null && !reduced() && !quickRender) { this.intro = true; this.classList.add('tn-intro'); setTimeout(() => { this.intro = false; this.classList.remove('tn-intro'); }, 2600); }
     this.resizeChart = () => {
       const w = Math.round(this.clientWidth), h = Math.round(Math.min(480, Math.max(340, innerHeight * .38)));
       if (w >= 100 && (w !== this.width || h !== this.height)) { this.width = w; this.height = h; this.draw(); }
@@ -470,16 +470,34 @@ async function featured() {
   catch (e) { body = `<p class="mut">Nachtplanung gerade nicht verfügbar: ${esc(e.message)}</p>`; }
   return `<div class="tn-home"><div class="hhead">${icon('star')}<div><h2>Heute Nacht</h2></div><span class="grow"></span><a class="linkbtn" href="#/nacht">Volle Planung ${icon('arrow')}</a></div>${body}</div>`;
 }
+// Blättern soll sich sofort anfühlen (Nutzerbefund 17.11.2026: „etwas langsam“): Nächte werden 5 min gemerkt und die Nachbarnächte
+// im Hintergrund vorgeladen; Ortsliste und Plan ändern sich beim Blättern nicht und werden je Besuch nur einmal geholt.
+const nightCache = new Map(), NIGHT_TTL = 300000;   // Abfrage → {t, p}
+const cachedNight = k => { const h = nightCache.get(query(k)); return h && Date.now() - h.t < NIGHT_TTL ? h : null; };
+function fetchNight(k) {
+  const hit = cachedNight(k);
+  if (hit) return hit.p;
+  const q = query(k), p = api('/stacking/tonight' + q);
+  nightCache.set(q, {t: Date.now(), p});
+  p.catch(() => nightCache.delete(q));
+  return p;
+}
+let sitesP = null, planP = null;
+const forgetNights = () => { nightCache.clear(); sitesP = planP = null; };
 async function nightView(el, catalogId) {
   crumbs([['Übersicht', '#/'], ['Heute Nacht']]);
-  const req = ++nightReq;
-  el.querySelector('.tn-main')?.classList.add('tn-loading');
-  const [d, sites, plan] = await Promise.all([api('/stacking/tonight' + query(nightIx)), api('/sites?nights=false').catch(() => null),
-    window.AFplan ? api('/stacking/plan').then(r => r.plan).catch(() => null) : null]);
+  const req = ++nightReq, quick = !!swapDir;
+  if (!cachedNight(nightIx)) el.querySelector('.tn-main')?.classList.add('tn-loading');
+  sitesP ??= api('/sites?nights=false').catch(() => null);
+  planP ??= window.AFplan ? api('/stacking/plan').then(r => r.plan).catch(() => null) : Promise.resolve(null);
+  let d, sites, plan;
+  try { [d, sites, plan] = await Promise.all([fetchNight(nightIx), sitesP, planP]); }
+  catch (err) { el.querySelector('.tn-main')?.classList.remove('tn-loading'); throw err; }
   if (!el.isConnected || req !== nightReq) return;
-  nightView.el = el; nightView.catalogId = catalogId;
+  nightView.el = el; nightView.catalogId = catalogId; nightView.d = d;
   const selected = catalogId && [...(d.recommendations || []), ...(d.suggestions || []), ...(d.soon || [])].find(x => x.id === catalogId);
-  el.innerHTML = `<div class="pagehead"><div><h1>Heute Nacht</h1><p class="mut">Empfehlungen aus deiner Bibliothek und dem zuletzt verwendeten Gerät.</p></div>${sitePicker(sites, d)}</div>
+  quickRender = quick;     // beim Blättern: kurzes Überblenden statt der Einblend-Show (liest af-tonight-chart beim Einhängen)
+  el.innerHTML = `<div class="tn-page${quick ? ' tn-quick' : ''}"><div class="pagehead"><div><h1>Heute Nacht</h1><p class="mut">Empfehlungen aus deiner Bibliothek und dem zuletzt verwendeten Gerät.</p></div>${sitePicker(sites, d)}</div>
     ${selected ? `<section class="panel tn-rv"><h2>${esc(selected.name)}</h2><p>${esc(selected.kind_label)} · Durchmesser ca. ${num(selected.size)}′${selected.mag != null ? ' · ' + num(selected.mag) + ' mag' : ''} ${selected.max_alt != null ? ' · max. ' + Math.round(selected.max_alt) + '°' : ''}</p>${selected.good?.length ? `<p>${selected.good.map(period).join(', ')} über ${d.min_alt}°</p>` : ''}<ul class="tn-why">${(selected.reasons || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>${AF.on('sage') ? `<a href="#/sage/wiki">In der Enzyklopädie recherchieren</a>` : ''}</section>` : ''}
     <section class="panel tn-main tn-rv${swapDir ? ` tn-swap ${swapDir > 0 ? 'next' : 'prev'}` : ''}">${content(d, catalogId, true)}</section>
     ${window.AFplan?.nightSection(plan, d.night) || ''}
@@ -488,15 +506,18 @@ async function nightView(el, catalogId) {
       <div class="tn-duo${d.soon?.length ? '' : ' one'}">
         <section class="panel tn-rv"><div class="panel-h"><h2>Dämmerung und Mond</h2><span class="grow"></span><a class="linkbtn" href="#/observatorium?blick=hier&date=${encodeURIComponent(d.night || '')}" title="Bahnen über deinem Horizont im Atlas">Bahnen im Atlas ${icon('arrow')}</a></div>${twilightBar(d)}</section>
         ${d.soon?.length ? `<section class="panel tn-rv"><div class="panel-h"><h2>Bald gut sichtbar</h2></div><ul class="tn-soon">${d.soon.map((x, i) => `<li style="--i:${i}"><a ${targetLink({...x, category: 'new'})}><b>${esc(x.name)}</b><small>${esc(x.kind_label)}${x.mag != null ? ' · ' + num(x.mag) + ' mag' : ''}</small><span class="tn-soon-from">ab ${esc(x.season.from)}</span></a></li>`).join('')}</ul><p class="mut sm">Stehen heute zu kurz im Dunkeln, werden aber in den nächsten Wochen besser.</p></section>` : ''}
-      </div>` : ''}`;
-  swapDir = 0;
-  reveal(el);
+      </div>` : ''}</div>`;
+  quickRender = false; swapDir = 0;
+  reveal(el, quick);
+  // Nachbarnächte vorladen, damit der nächste Klick sofort da ist
+  setTimeout(() => { if (req === nightReq) [nightIx + 1, nightIx - 1].filter(k => k >= 0 && k < (d.nights?.length || 0)).forEach(k => fetchNight(k).catch(() => {})); }, 250);
 }
 document.addEventListener('change', async e => {
   if (e.target.id !== 'tnSite') return;
   const sel = e.target;
   try {
     await send('/sites/night', { night: sel.dataset.night, site_id: sel.value || null, nights: false });
+    forgetNights();      // anderer Ort: gemerkte Nächte und Ortsliste gelten nicht mehr
     toast(sel.value ? `${sel.getAttribute('aria-label').replace('Standort für ', '')}: ${sel.selectedOptions[0].textContent}` : 'Ort für diese Nacht wieder automatisch.', 'ok');
     if (typeof route === 'function') route(); else dispatchEvent(new HashChangeEvent('hashchange'));
   } catch (err) { toast(err.message, 'err'); }
@@ -507,6 +528,10 @@ function goNight(k, focus) {
   if (!el?.isConnected || !Number.isFinite(k) || k < 0 || k >= 14 || k === nightIx) return;
   swapDir = k > nightIx ? 1 : -1;
   nightIx = k;
+  // sofortige Rückmeldung, noch bevor der Server antwortet: Tag markieren, Name umstellen
+  el.querySelectorAll('.tn-strip [data-tn-night]').forEach(b => b.setAttribute('aria-selected', String(+b.dataset.tnNight === k)));
+  const ns = nightView.d?.nights, nm = el.querySelector('.tn-nav-name');
+  if (ns?.[k] && nm) nm.innerHTML = `${esc(nightName(ns[k], k))}${k < 2 ? ` <small>${esc(shortDay(ns[k]))} ${esc(dateDM(ns[k]))}</small>` : ''}`;
   nightView(el, nightView.catalogId).then(() => {
     const b = el.querySelector('.tn-strip [aria-selected="true"]');
     b?.scrollIntoView({block: 'nearest', inline: 'nearest'});
@@ -524,11 +549,12 @@ document.addEventListener('keydown', e => {
   goNight(nightIx + (e.key === 'ArrowRight' ? 1 : -1), e.target.closest?.('.tn-strip') ? '.tn-strip [aria-selected="true"]' : null);
 });
 // Ziel des Ereignisses (newURL), nicht location.hash: bei schnellen Seitenwechseln steht die Adresse beim Eintreffen schon weiter
-addEventListener('hashchange', e => { if (!/#\/nacht/.test(e.newURL || location.href)) nightIx = 0; });
+addEventListener('hashchange', e => { if (!/#\/nacht/.test(e.newURL || location.href)) { nightIx = 0; sitesP = planP = null; } });
 document.addEventListener('click', e => {
   const hide = e.target.closest('[data-tn-hide]'), reset = e.target.closest('[data-tn-reset]');
   if (!hide && !reset) return;
   setHidden(hide ? [...hiddenIds(), hide.dataset.tnHide] : []);
+  nightCache.clear();
   if (typeof route === 'function') route(); else dispatchEvent(new HashChangeEvent('hashchange'));
   if (hide) toast('Ausgeblendet – unter „Heute Nacht“ wieder einblendbar.');
 });
