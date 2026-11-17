@@ -715,16 +715,19 @@ STAR_COVER = 1.5          # Ziel: Anteil der Bildfläche (%), den die eingesetzt
 STAR_LEVEL = 0.1          # ab dieser Helligkeit der Sternebene gilt ein Pixel als „Stern“ (gestreckte Werte 0..1)
 STAR_SAT_GAIN = 0.08      # Sternsättigung × (1 + 0,08·(g − 1)) als Ausgleich für die kleineren, farbtragenden Halos
 STAR_FAINT = (0.1, 0.5, 0.25)   # schwache Sterne (Spitze < 0,5) weniger schärfen: Anteil der Stärke linear bis 0,1 → 25 %
+STAR_HALO = 0.3           # Anteil der ursprünglichen Flanken, der als weicher Halo bleibt – ganz ohne wirkten die Sterne
+                          # wie ausgestanzte Scheiben (Nutzer: „unnatürlich, der Halo ist weg“)
+STAR_GMAX = 8.0           # Obergrenze g = 1 + STAR_GMAX·amount (≤ 5)
 
 
 def shrink_stars(stars: np.ndarray, amount: float, fwhm: float = 3.0) -> tuple[np.ndarray, dict]:
     """Sternebene verkleinern, ohne Sterne abzudunkeln: Profil je Stern schärfen – Helligkeit relativ zum örtlichen
-    Maximum (Fenster 3 × FWHM) hoch (g − 1) als Faktor. Die Spitze bleibt, Flanken und Halos fallen steiler ab (Gauß:
-    Durchmesser × 1/√g), Sternfarbe bleibt (gleicher Faktor für alle Kanäle); schwache Sterne (örtliches Maximum < 0,5)
+    Maximum (Fenster 3 × FWHM) hoch (g − 1) als Faktor, davon bleibt `STAR_HALO` der Flanken als weicher Halo stehen.
+    Die Spitze bleibt, Flanken fallen steiler ab (Gauß: Durchmesser × 1/√g), Sternfarbe bleibt (gleicher Faktor für alle Kanäle); schwache Sterne (örtliches Maximum < 0,5)
     mit weniger Stärke (`STAR_FAINT`), damit sie nicht zu Einzelpixeln werden. Vorher machte die harte Kanalkurve aus den
     Flanken große Scheiben (IC 405: halbe Höhe 59 px Fläche bei FWHM 5 linear ≈ 20 px), die 3×3-Erosion nahm nur 1 px.
     Stärke datengetrieben: g mindestens 1 + 2·amount, höher, bis die Sterne höchstens `STAR_COVER` % der Fläche
-    bedecken (dichte Milchstraßenfelder von Smart-Teleskopen: IC 443 Vespera 8 %), höchstens 1 + 8·amount (≤ 5)."""
+    bedecken (dichte Milchstraßenfelder von Smart-Teleskopen: IC 443 Vespera 8 %), höchstens 1 + `STAR_GMAX`·amount."""
     if amount <= 0:
         return stars, {}
     Ls = luminance(stars)
@@ -736,12 +739,13 @@ def shrink_stars(stars: np.ndarray, amount: float, fwhm: float = 3.0) -> tuple[n
     w = np.clip((pk - lo) / (hi - lo), floor, 1.0).astype(np.float32)
     sub = (slice(None, None, 2), slice(None, None, 2))          # Bedeckung auf jedem 2. Pixel reicht
     Lq, pq, wq = Ls[sub], np.maximum(p[sub], 1e-6), w[sub]
-    cover = lambda g: float((Lq * pq ** ((g - 1) * wq) > STAR_LEVEL).mean() * 100)
-    g0, g1 = 1 + 2 * amount, min(5.0, 1 + 8 * amount)
+    h = STAR_HALO
+    cover = lambda g: float((Lq * (h + (1 - h) * pq ** ((g - 1) * wq)) > STAR_LEVEL).mean() * 100)
+    g0, g1 = 1 + 2 * amount, min(5.0, 1 + STAR_GMAX * amount)
     g = g0
     while g < g1 and cover(g) > STAR_COVER:
         g = min(g1, g + 0.25)
-    k = np.where(Ls > 1e-6, np.maximum(p, 1e-6) ** ((g - 1) * w), 1.0).astype(np.float32)
+    k = np.where(Ls > 1e-6, h + (1 - h) * np.maximum(p, 1e-6) ** ((g - 1) * w), 1.0).astype(np.float32)
     info = {"gamma": round(g, 2), "cover": round(cover(1.0), 2), "cover_after": round(cover(g), 2)}
     return (stars * k[None]).astype(np.float32), info
 

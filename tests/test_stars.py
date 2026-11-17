@@ -75,8 +75,9 @@ def test_shrink_stars_keeps_peaks_and_shrinks_more_in_dense_fields():
     lv = lambda a: 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2]
     peak = lambda a: np.array([lv(a)[y - 1:y + 2, x - 1:x + 2].max() for y, x in pos])
     assert np.mean(peak(out) >= 0.97 * peak(sparse)) >= 0.9           # Spitzen bleiben hell (außer neben helleren Nachbarn)
-    assert (lv(out) > 0.1).sum() < 0.75 * (lv(sparse) > 0.1).sum()   # sichtbare Sternfläche kleiner
+    assert (lv(out) > 0.1).sum() < 0.9 * (lv(sparse) > 0.1).sum()    # sichtbare Sternfläche kleiner
     assert np.all(out <= sparse + 1e-6)                              # nie heller als vorher
+    assert np.all(out >= processing.STAR_HALO * sparse - 1e-6)       # weicher Halo bleibt (sonst „ausgestanzt“)
     r = out[0][out[1] > 0.05] / out[1][out[1] > 0.05]                # Farbe (Kanalverhältnis) bleibt
     assert np.allclose(r, 1 / 0.9, rtol=1e-3)
     out_d, info_d = processing.shrink_stars(dense, 0.35, fwhm=3.5)
