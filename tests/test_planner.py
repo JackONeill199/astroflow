@@ -187,3 +187,19 @@ def test_horizon_per_night_and_header(tmp_path):
     assert flags.count(True) == p["horizon_nights"]["with"] and p["horizon_nights"]["of"] == 3
     assert p["nights"][-1]["site"]["horizon"] and p["nights"][-1]["site"]["horizon_src"] == "gemessen vom Teleskop"
     assert not p["nights"][0]["site"]["horizon"] and p["horizon_nights"]["sites"] == 2
+
+
+def test_plan_api_reports_moved_nights(tmp_path):
+    """Ort einer Nacht nach der Berechnung geändert → GET /plan nennt die Nacht in stale_nights (Plan veraltet)."""
+    s = load_settings(tmp_path / "d")
+    s.auto = False
+    store = SettingsStore(s.data_dir / "settings.json")
+    other = {**SITE, "id": "s2", "name": "Zweit", "alt_m": 0, "accuracy_m": 2000}
+    store.update("sites", {"list": [{**SITE, "alt_m": 0, "accuracy_m": 2000}, other], "default": "s1", "periods": []})
+    with TestClient(create_app(s)) as c:
+        DB(s.db_path)
+        r = c.post("/api/stacking/plan", json={"nights": 2, "devices": ["stellina"], "mode": "new"})
+        night = r.json()["plan"]["nights"][1]["night"]
+        assert c.get("/api/stacking/plan").json()["stale_nights"] == []
+        c.post("/api/sites/night", json={"night": night, "site_id": "s2", "nights": False})
+        assert c.get("/api/stacking/plan").json()["stale_nights"] == [night]

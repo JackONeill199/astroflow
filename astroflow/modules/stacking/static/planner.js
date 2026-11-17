@@ -95,8 +95,8 @@ async function planView(el) {
   w.devices = w.devices.filter(id => d.devices.some(o => o.id === id));
   if (!w.devices.length) w.devices = [d.devices[0].id];
   let wizard = !d.plan;
-  let sites = null, stale = false;
-  const changed = new Set();
+  const changed = new Set(d.stale_nights || []);        // Ort seit der Berechnung geändert (auch nach Seitenwechsel)
+  let sites = null, stale = changed.size > 0;
   api('/sites?nights=false').then(s => { sites = s; if (d.plan && !wizard) draw(); }).catch(() => {});
 
   const chips = (key, list, multi) => list.map(([v, l]) => {
