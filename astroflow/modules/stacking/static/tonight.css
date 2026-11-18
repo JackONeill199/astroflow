@@ -191,6 +191,17 @@ svg .tn-peak { fill: var(--target); font-size: 0.6875rem; font-weight: 600; pain
 .tn-kpi:not(:has(.tn-kpi-ico)) small { grid-column: 1 / span 2 }
 .tn-kpi:not(:has(.tn-kpi-ico)) b { grid-column: 1 }
 .tn-kpi:not(:has(.tn-kpi-ico)) .tn-kpi-sub { grid-column: 2 }
+/* Wetterfeld mit Erklärung: aufklappbar statt nur Tooltip (Tastatur, Touch) – die Erklärung erscheint direkt darunter */
+details.tn-kpi { display: block }
+details.tn-kpi > summary { display: inline-grid; grid-template-columns: auto auto minmax(0, auto) auto; column-gap: 0.5rem; align-items: baseline; list-style: none; cursor: pointer; border-radius: var(--r-sm) }
+details.tn-kpi > summary::-webkit-details-marker { display: none }
+details.tn-kpi > summary:focus-visible { outline: 2px solid var(--acc); outline-offset: 0.25rem }
+.tn-kpi-more { grid-column: 4; grid-row: 2; align-self: center; color: var(--dim); transition: transform var(--t) var(--ease), color var(--t) }
+.tn-kpi-more svg { width: 0.75rem; height: 0.75rem; display: block }
+details.tn-kpi > summary:hover .tn-kpi-more { color: var(--fg) }
+details.tn-kpi[open] .tn-kpi-more { transform: rotate(180deg) }
+.tn-kpi-pop { margin: 0.375rem 0 0; max-width: 24rem; font-size: 0.75rem; line-height: 1.45; color: var(--mut); animation: tn-rise .2s var(--ease) }
+@media (prefers-reduced-motion: reduce) { .tn-kpi-pop, .tn-kpi-more { animation: none; transition: none } }
 .tn-kpi.dark { --kc: var(--tn-violet) }
 .tn-kpi.moon { --kc: var(--tn-moon) }
 .tn-kpi.wx.clear { --kc: var(--ok) }
