@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.87.1 – 18.11.2026
+
+### Behoben
+- **Heute Nacht – kompakter Kopf:** Die Kennzahlen (Dunkle Zeit, Mond, Wetter, Gerät) stehen in einer schmalen Zeile, und Regen bzw. Bewölkung erscheinen nicht mehr doppelt als eigene Meldung – die Erklärung samt nächstem klarem Fenster steht im Tooltip des Wetterfelds. Das Diagramm rückt dadurch nach oben.
+
 ## 0.87.0 – 18.11.2026
 
 ### Neu
