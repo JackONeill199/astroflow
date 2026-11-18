@@ -99,6 +99,54 @@ function segments(a, lim, X, Y, times) {
   return out || 'M0 0';
 }
 
+// Regen im Diagramm (Nutzerwunsch 18.11.2026: „Regen soll nach Regen aussehen“, ruhig statt mechanisch):
+// drei Ebenen fern → nah mit eigener Kachelgröße, Tropfenlänge, Deckkraft und Fallzeit (Parallaxe); Kachelmaße ohne gemeinsamen
+// Teiler, Tropfen zufällig mit festem Startwert gestreut (gleiches Bild bei jedem Neuzeichnen) – so entsteht kein sichtbares Raster.
+// Die Tropfen stehen in der Kachel senkrecht, `skewX` neigt sie und das Kachelgitter gleich mit: Fällt die Fläche um genau einen
+// Gittervektor (schräg nach unten), schließt die Schleife nahtlos. Stärke nach Wahrscheinlichkeit: leichter Regen nur die ferne
+// Ebene, je wahrscheinlicher, desto mehr kommen die nahen dazu; an den Rändern der Regenstunden weich ein- und ausgeblendet.
+// Bewegung nur per CSS-transform (kein JS je Frame), bei reduzierter Bewegung steht das Muster.
+const RAIN_SLANT = -12;   // Grad, leichter Wind von rechts
+const RAIN_LAYERS = [     // w/h Kachel (Bildpunkte bei 16px-Schrift), n Tropfen je Kachel, len Länge, wd Breite, op Deckkraft, s Sekunden je Kachel, k Stärke → Sichtbarkeit
+  {w: 53, h: 89, n: 11, len: [6, 9], wd: 1.2, op: .6, s: 2.1, k: k => .6 + .4 * k},
+  {w: 71, h: 127, n: 7, len: [10, 15], wd: 1.6, op: .8, s: 1.6, k: k => .35 + .65 * k},
+  {w: 97, h: 173, n: 4, len: [16, 22], wd: 2, op: .9, s: 1.25, k: k => clamp((k - .2) / .8)}];
+function seeded(a) { return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+function rain(d, g, id) {
+  const {L, T, PW, PH} = g, n = d.times.length, dt = (d.times[n - 1] - d.times[0]) / Math.max(1, n - 1) || 600;
+  const sc = (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) / 16, tan = Math.tan(RAIN_SLANT * Math.PI / 180);
+  // Anteil Regen (weicher Rand über ±40 min) und mittlere Stärke der Regenstunden in der Nähe (0 = 40 %, 1 = 100 %)
+  const wet = d.rain.map(Boolean), kraw = d.rain.map((r, i) => !r ? 0 : d.rain_p?.[i] != null ? clamp((d.rain_p[i] - 40) / 60) : .5);
+  const rad = Math.max(1, Math.round(2400 / dt)), pres = [], k = [];
+  for (let i = 0; i < n; i++) {
+    let w = 0, sw = 0, sk = 0;
+    for (let j = Math.max(0, i - rad); j <= Math.min(n - 1, i + rad); j++) { const f = 1 - Math.abs(i - j) / (rad + 1); sw += f; if (wet[j]) { w += f; sk += f * kraw[j]; } }
+    pres.push(w / sw); k.push(w ? sk / w : 0);
+  }
+  const smooth = x => x * x * (3 - 2 * x);
+  let defs = `<linearGradient id="${id}rv" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".25"/><stop offset=".14" stop-color="#fff"/><stop offset=".7" stop-color="#fff" stop-opacity=".75"/><stop offset="1" stop-color="#fff" stop-opacity=".2"/></linearGradient>
+    <mask id="${id}rf"><rect x="${L}" y="${T}" width="${PW}" height="${PH}" fill="url(#${id}rv)"/></mask>`
+    + ramp(`${id}rh`, d, g, 'tn-st-rain', i => smooth(pres[i]) * (.1 + .12 * k[i]));       // feuchter Dunst hinter den Tropfen
+  let layers = '';
+  RAIN_LAYERS.forEach((ly, li) => {
+    const rnd = seeded(7919 * (li + 1)), w = ly.w * sc, h = ly.h * sc, dx = h * tan;
+    let drops = '';
+    for (let j = 0; j < ly.n; j++) {     // je Tropfen ein eigenes Höhenband, damit nichts klumpt
+      const l = (ly.len[0] + rnd() * (ly.len[1] - ly.len[0])) * sc, r = ly.wd * sc / 2;
+      const x = r + rnd() * (w - 2 * r), y = (j + rnd() * .9) / ly.n * (h - l - r) ;
+      drops += `<path d="M${x.toFixed(1)} ${y.toFixed(1)}L${(x + r).toFixed(1)} ${(y + l - r).toFixed(1)}A${r.toFixed(2)} ${r.toFixed(2)} 0 0 1 ${(x - r).toFixed(1)} ${(y + l - r).toFixed(1)}Z" opacity="${(.55 + .45 * rnd()).toFixed(2)}"/>`;
+    }
+    defs += `<pattern id="${id}rp${li}" width="${w.toFixed(2)}" height="${h.toFixed(2)}" patternUnits="userSpaceOnUse" patternTransform="skewX(${RAIN_SLANT})"><g class="tn-rain-drops">${drops}</g></pattern>`
+      + ramp(`${id}rm${li}`, d, g, 'tn-st-white', i => smooth(pres[i]) * ly.k(k[i]))
+      + `<mask id="${id}rk${li}"><rect x="${L}" y="${T}" width="${PW}" height="${PH}" fill="url(#${id}rm${li})"/></mask>`;
+    // Fläche um einen Gittervektor größer als das Diagramm (oben und auf der Seite, zu der die Tropfen treiben); fällt genau diesen Vektor
+    const rw = PW + Math.abs(dx), rh = PH + h, rx = dx < 0 ? L : L - dx;
+    layers += `<g mask="url(#${id}rk${li})"><rect class="tn-rain l${li}" x="${rx.toFixed(1)}" y="${(T - h).toFixed(1)}" width="${rw.toFixed(1)}" height="${rh.toFixed(1)}" fill="url(#${id}rp${li})" opacity="${ly.op}"
+      style="--fx:${(dx / rw * 100).toFixed(3)}%;--fy:${(h / rh * 100).toFixed(3)}%;--fs:${ly.s}s"/></g>`;
+  });
+  return {defs, sky: `<g class="tn-rainfall"><title>Regen laut Vorhersage</title><rect x="${L}" y="${T}" width="${PW}" height="${PH}" fill="url(#${id}rh)"/><g mask="url(#${id}rf)">${layers}</g></g>`};
+}
+
 function chart(d, W, H, selected, hidden) {
   const g = geom(d, W, H), {L, T, PW, PH, X, Y} = g, id = `tn${++chartSeq}`;
   const path = a => a.map((v, i) => `${i ? 'L' : 'M'}${X(d.times[i]).toFixed(1)} ${Y(v).toFixed(1)}`).join('');
@@ -125,16 +173,7 @@ function chart(d, W, H, selected, hidden) {
     defs += ramp(`${id}cl`, d, g, 'tn-st-veil', i => d.cloud[i] == null ? 0 : d.cloud[i] / 100 * .38);
     sky += `<rect x="${L}" y="${T}" width="${PW}" height="${PH}" fill="url(#${id}cl)"/>`;
   }
-  // Regen: schräge Striche, nur in Regenstunden, Stärke nach Regenwahrscheinlichkeit; fallen per CSS (Ausstieg bei reduzierter Bewegung)
-  if (hasRain(d)) {
-    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16, tw = 22 / 16 * rem, th = 30 / 16 * rem;   // Kachel in rem, passt zur CSS-Fallstrecke 1,875rem
-    defs += ramp(`${id}rm`, d, g, 'tn-st-white', i => !d.rain[i] ? 0 : (d.rain_p?.[i] != null ? .3 + .5 * d.rain_p[i] / 100 : .6))
-      + `<pattern id="${id}rp" width="${tw.toFixed(1)}" height="${th.toFixed(1)}" viewBox="0 0 22 30" patternUnits="userSpaceOnUse"><path class="tn-rain-drop" d="M7 2l-2.5 8M18 17l-2.5 8"/></pattern>
-         <linearGradient id="${id}rv" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".8" stop-color="#fff" stop-opacity="0"/></linearGradient>
-         <mask id="${id}rk"><rect x="${L}" y="${T}" width="${PW}" height="${PH}" fill="url(#${id}rm)"/></mask>
-         <mask id="${id}rf"><rect x="${L}" y="${T}" width="${PW}" height="${PH}" fill="url(#${id}rv)"/></mask>`;
-    sky += `<g mask="url(#${id}rf)"><g mask="url(#${id}rk)"><rect class="tn-rain" x="${L}" y="${T - th}" width="${PW}" height="${PH + th}" fill="url(#${id}rp)"><title>Regen laut Vorhersage</title></rect></g></g>`;
-  }
+  if (hasRain(d)) { const r = rain(d, g, id); defs += r.defs; sky += r.sky; }
   let out = `<g clip-path="url(#${id}c)">${sky}`;
   // unter der Mindesthöhe: leicht abgedunkelt
   out += `<rect class="tn-below" x="${L}" y="${Y(d.min_alt)}" width="${PW}" height="${Y(0) - Y(d.min_alt)}"/>`;
@@ -301,8 +340,10 @@ const day = (t, tonight) => (tonight ? 'heute Nacht' : 'in der folgenden Nacht')
 // Meldung zur Lage – getrennt nach Ursache (bedeckt / teils bewölkt / Höhe / Nacht vorbei / keine Dunkelheit)
 // Wetterhinweise: Regen (Warnung), Modelle uneinig, hohe Schleierwolken, Messung des Teleskops
 // Hinweise als ruhige Meldungen (Nutzerwunsch 17.11.2026: keine Textbalken): Symbol, kurzer Titel, eine Zeile Erklärung
+// Regentropfen in Symbolen: je Tropfen ein eigener Strich, der versetzt weich fällt und verblasst (CSS .tn-drip, Reihenfolge Mitte zuerst)
+const drips = (pts, dx = 1, len = 3) => pts.map(([x, y], k) => `<path class="tn-drip" style="--k:${[0, 2, 1][k] ?? k}" d="M${x} ${y}l${-dx} ${len}"/>`).join('');
 const NOTE_ICO = {
-  rain: '<path d="M6 13.5h11a3.5 3.5 0 0 0 0-7 5.5 5.5 0 0 0-10.4 1.4A2.9 2.9 0 0 0 6 13.5z"/><path class="tn-kpi-drop" d="M8.5 16l-1 3M12.5 16l-1 3M16.5 16l-1 3"/>',
+  rain: '<path d="M6 13.5h11a3.5 3.5 0 0 0 0-7 5.5 5.5 0 0 0-10.4 1.4A2.9 2.9 0 0 0 6 13.5z"/>' + drips([[8.5, 16], [12.5, 16], [16.5, 16]]),
   cloudy: '<path d="M5.5 18h12a4 4 0 0 0 0-8 6 6 0 0 0-11.3 1.6A3.2 3.2 0 0 0 5.5 18z"/>',
   unsure: '<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.4"/><circle cx="12" cy="16.8" r=".4"/>',
   veil: '<path d="M4 8h12M7 12h13M4 16h10"/>',
@@ -375,7 +416,7 @@ const SKY_ICO = {
   clear: '<path d="M12 3l1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6z"/><circle cx="19" cy="18" r="1.2"/><circle cx="5" cy="19" r=".9"/>',
   partly: '<path d="M16 4.5l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/><path d="M6 19h10a3.5 3.5 0 0 0 0-7 5 5 0 0 0-9.5 1.4A2.9 2.9 0 0 0 6 19z"/>',
   overcast: '<path d="M5.5 18.5h12a4 4 0 0 0 0-8 6 6 0 0 0-11.3 1.6A3.3 3.3 0 0 0 5.5 18.5z"/>',
-  rain: '<path d="M5.5 14.5h12a4 4 0 0 0 0-8 6 6 0 0 0-11.3 1.6A3.3 3.3 0 0 0 5.5 14.5z"/><path class="tn-kpi-drop" d="M8 17l-1 3M12.5 17l-1 3M17 17l-1 3"/>'};
+  rain: '<path d="M5.5 14.5h12a4 4 0 0 0 0-8 6 6 0 0 0-11.3 1.6A3.3 3.3 0 0 0 5.5 14.5z"/>' + drips([[8, 17], [12.5, 17], [17, 17]])};
 function kpis(d) {
   const dev = d.device, tw = d.twilight || {}, mi = Math.round(+d.moon.illum) || 0, sky = d.sky, south = d.site?.[0] < 0;
   const moonSub = [d.moon.waxing ? 'zunehmend' : 'abnehmend', d.moon.rise ? `geht ${hm(d.moon.rise)} auf` : '', d.moon.set ? `geht ${hm(d.moon.set)} unter` : ''].filter(Boolean).join(' · ');
@@ -439,8 +480,8 @@ function weatherBars(d) {
     const c = h.cloud == null ? null : Math.round(h.cloud), dark = tw.dark_start && h.t >= tw.dark_start - 1800 && h.t < tw.dark_end;
     const veil = !h.rain && h.total != null && h.cover != null && h.total - h.cover >= 25;
     const title = `${hm(h.t)}: ${h.rain ? 'Regen' + (h.rain_p != null ? ` (${Math.round(h.rain_p)} %)` : '') : c == null ? 'keine Angabe' : c + ' % Wolken'}${veil ? `, gesamt ${Math.round(h.total)} % (hoch ${Math.round(h.high ?? 0)} %)` : ''}${h.wind != null ? `, Wind ${Math.round(h.wind)} km/h` : ''}`;
-    return `<div class="tn-wx-col${h.rain ? ' rain' : ''}${dark ? ' dark' : ''}${c == null && !h.rain ? ' none' : ''}" role="listitem" style="--v:${h.rain ? 100 : c ?? 0};--i:${i}" title="${esc(title)}">
-      <span class="tn-wx-val">${h.rain ? '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2L2.5 6M8 4L6.5 8M6 7L4.5 11"/></svg>' : c == null ? '–' : c + '%'}</span>
+    return `<div class="tn-wx-col${h.rain ? ' rain' : ''}${dark ? ' dark' : ''}${c == null && !h.rain ? ' none' : ''}" role="listitem" style="--v:${h.rain ? 100 : c ?? 0};--i:${i}${h.rain ? `;--p:${(clamp(((h.rain_p ?? 70) - 40) / 60)).toFixed(2)}` : ''}" title="${esc(title)}">
+      <span class="tn-wx-val">${h.rain ? `<svg viewBox="0 0 12 12" aria-hidden="true">${drips([[4.5, 2.5], [8.5, 3.5], [6.5, 6.5]], 1, 3)}</svg>` : c == null ? '–' : c + '%'}</span>
       <span class="tn-wx-bar"><i></i></span><span class="tn-wx-h">${hm(h.t).slice(0, 2)}</span></div>`;
   }).join('')}</div>
   <ul class="tn-wx-leg"><li><i class="tn-lg-sw cl" aria-hidden="true"></i>Wolken (Säulenhöhe)</li><li><i class="tn-lg-sw rn" aria-hidden="true"></i>Regen</li><li><i class="tn-lg-sw dk" aria-hidden="true"></i>astronomisch dunkel</li></ul>`;
