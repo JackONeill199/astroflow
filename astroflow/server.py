@@ -133,8 +133,8 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
     tabs_seen = {"visible": None}
 
     @app.get("/api/status")
-    async def status(tab: int = 0, visible: int = 0):
-        if tab and visible:
+    async def status(request: Request, tab: int = 0, visible: int = 0):
+        if tab and visible and security.is_loopback(request.client.host if request.client else ""):   # nur Tabs am Rechner selbst (Starter öffnet sonst den Browser)
             tabs_seen["visible"] = time.time()
         return await shared_status.aget()
 

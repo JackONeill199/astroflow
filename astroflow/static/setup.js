@@ -196,20 +196,23 @@
       catch (e) { toast(e.message, 'err'); }
     };
     // Standort direkt hier: Suche → Treffer anklicken → als Standard-Ort speichern (Höhe von Open-Meteo, sonst 0 m)
-    let siteRows = [];                                          // Treffer der letzten Suche (Knöpfe tragen den Index)
+    let siteRows = [], siteSeq = 0;                             // Treffer der letzten Suche (Knöpfe tragen den Index)
     el.onsubmit = async (e) => {
       if (e.target.id !== 'suSite') return;
       e.preventDefault();
       const q = $('#suSiteQ', el).value.trim();
       if (q.length < 2) { toast('Bitte einen Ort oder eine Adresse eingeben.', 'err'); return; }
       $('#suSiteRes', el).innerHTML = '<span class="mut sm">Suche …</span>';
+      const seq = ++siteSeq;                                    // überholte Antworten verwerfen
       try {
-        siteRows = await api('/sites/geocode?q=' + encodeURIComponent(q));
+        const rows = await api('/sites/geocode?q=' + encodeURIComponent(q));
+        if (seq !== siteSeq) return;
+        siteRows = rows;
         // Während Downloads zeichnet sich der Assistent neu (repaint) – Ergebnisbereich nach der Antwort frisch holen
         const res = el.isConnected && $('#suSiteRes', el);
         if (res) res.innerHTML = siteRows.length ? `<span class="mut sm">Treffer anklicken:</span>${siteRows.map((r, i) => `<button type="button" class="chip" data-site="${i}">${esc(r.name)}</button>`).join('')}`
           : '<span class="mut sm">Kein Ergebnis gefunden – anders schreiben oder unter Einstellungen → Standorte Koordinaten eintragen.</span>';
-      } catch (err) { const res = el.isConnected && $('#suSiteRes', el); if (res) res.innerHTML = ''; toast(err.message, 'err'); }
+      } catch (err) { if (seq !== siteSeq) return; const res = el.isConnected && $('#suSiteRes', el); if (res) res.innerHTML = ''; toast(err.message, 'err'); }
     };
     const addSite = async (r) => {
       const res = $('#suSiteRes', el);

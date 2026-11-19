@@ -86,6 +86,22 @@ def test_beenden_fragt_bei_download(monkeypatch):
     assert posted == ["/api/system/shutdown"]
 
 
+def test_beenden_bei_fehlender_aktivitaet(monkeypatch):
+    from astroflow.core import tray
+    t = tray.Tray(8799)
+    posted, closed = [], []
+
+    def get(path, timeout=5):
+        if "activity" in path:
+            raise OSError("kaputt")
+        return {"busy": 0}
+    monkeypatch.setattr(t, "get", get)
+    monkeypatch.setattr(t, "post", lambda path, body, timeout=10: posted.append(path))
+    monkeypatch.setattr(t, "close", lambda: closed.append(1))
+    t.quit()
+    assert posted == ["/api/system/shutdown"] and closed        # Server lebt: Shutdown wird trotzdem geschickt
+
+
 def test_pip_fortschritt_verstaendlich(home, monkeypatch):
     lines = ["Collecting torch==2.5.1", "Collecting scipy", "Downloading https://download.pytorch.org/whl/cpu/torch-2.5.1%2Bcpu-cp312-cp312-win_amd64.whl (204.3 MB)",
              "Downloading scipy-1.16.1-cp312-cp312-win_amd64.whl.metadata (60 kB)",
@@ -128,6 +144,10 @@ def test_graxpert_nach_erstem_bild(home, monkeypatch):
     assert c.get(f"/api/stacking/projects/{pid}").json()["ai_offer"] is True
     msg = app.state.setup._redevelop_with_ai()
     assert queued == [(pid, {"mode": "develop"})] and "neu entwickelt" in msg
+    # läuft für das Objekt schon ein Auftrag, wird die KI-Entwicklung vorgemerkt statt verschluckt
+    queued.clear()
+    eng.db.x("INSERT INTO jobs(project_id,state,created,options) VALUES(?,?,?,?)", (pid, "running", time.time(), "{}"))
+    assert eng.redevelop_with_ai() == ["M31 Andromedagalaxie"] and queued == [] and pid in eng.ai_after
 
 
 def test_jpeg_download_heisst_wie_das_bild(home, monkeypatch, tmp_path):
@@ -159,3 +179,7 @@ def test_kein_abgleichshinweis_ohne_analysen(tmp_path):
     (run / "videos.json").write_text("[]", encoding="utf-8")
     store.update("sites", {"list": [{"id": "a", "name": "A", "lat": 52, "lon": 10}], "default": "a", "periods": []})
     assert jobs.sites_changed() is True
+    gone = SiteJobs(SimpleNamespace(ctx=SimpleNamespace(store=store), ctl=SimpleNamespace(results=tmp_path / "weg" / "Ergebnisse")))
+    store.update("sites", {"list": [{"id": "a", "name": "A", "lat": 53, "lon": 10}], "default": "a", "periods": []})
+    assert gone.sites_changed() is False                     # Laufwerk getrennt: nichts melden …
+    assert jobs.sites_changed() is True                      # … und den alten Stand nicht überschreiben

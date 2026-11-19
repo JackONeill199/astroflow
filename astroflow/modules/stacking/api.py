@@ -99,6 +99,7 @@ class Engine:
         self.q: queue.Queue[int] = queue.Queue()
         self.dq: queue.Queue[int] = queue.Queue()      # gestackt, wartet auf die Endbearbeitung
         self._queue_lock = threading.Lock()
+        self.ai_after: set[int] = set()               # nach laufendem Auftrag mit KI neu entwickeln (GraXpert kam währenddessen)
         self.stop = threading.Event()
         self.cancel = threading.Event()               # laufenden Auftrag beim nächsten Fortschritt abbrechen
         self.paused: str | None = None                # Grund, falls die Warteschlange angehalten ist
@@ -283,6 +284,10 @@ class Engine:
                 self.sky.queue(job["project_id"])
             if self.s.auto and job["project_id"] in self.pending_projects():
                 self.enqueue(job["project_id"])
+            if job["project_id"] in self.ai_after:            # GraXpert kam während dieses Auftrags: mit KI nachentwickeln
+                self.ai_after.discard(job["project_id"])
+                if graxpert.graxpert_path() and self.without_ai(pid=job["project_id"]):
+                    self.enqueue(job["project_id"], {"mode": "develop"})
         except Exception as e:
             self._failed(jid, e)
 
@@ -404,7 +409,10 @@ class Engine:
             return []
         names = []
         for p in self.without_ai(max_age_s)[:limit]:
-            if self.enqueue(p["id"], {"mode": "develop"}):
+            if self.db.one("SELECT id FROM jobs WHERE project_id=? AND state IN ('queued','running')", (p["id"],)):
+                self.ai_after.add(p["id"])                # läuft schon: nach dessen Ende prüfen (_develop_job)
+                names.append(p["name"])
+            elif self.enqueue(p["id"], {"mode": "develop"}):
                 names.append(p["name"])
         return names
 

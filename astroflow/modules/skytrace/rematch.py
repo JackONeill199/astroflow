@@ -104,19 +104,25 @@ class SiteJobs:
     def signature(self) -> str:
         return sites_signature(self.mod.ctx.store.get("sites"))
 
-    def _has_runs(self) -> bool:
-        """Gibt es mindestens eine SkyTrace-Analyse (Ergebnisordner mit videos.json)? Bricht beim ersten Treffer ab."""
+    def _has_runs(self) -> bool | None:
+        """Gibt es mindestens eine SkyTrace-Analyse (Ergebnisordner mit videos.json)? Bricht beim ersten Treffer ab.
+        None = nicht feststellbar (Laufwerk getrennt, Lesefehler) – dann den gemerkten Stand nicht anfassen."""
         root = self.mod.ctl.results
         try:
-            return root.exists() and any(p.is_dir() and (p / "videos.json").is_file() for p in root.iterdir())
+            if not root.exists():
+                return False if root.parent.exists() else None
+            return any(p.is_dir() and (p / "videos.json").is_file() for p in root.iterdir())
         except OSError:
-            return False
+            return None
 
     def sites_changed(self) -> bool:
         """Haben sich Orte/Zeiträume seit dem letzten Abgleich aller Läufe geändert? Erster Aufruf merkt sich den Stand."""
         cfg = self.mod.ctx.store.get("skytrace")
         sig = self.signature()
-        if not self._has_runs():                   # noch keine Analysen: nichts abzugleichen, Stand still mitführen
+        runs = self._has_runs()
+        if runs is None:                           # Ergebnisse gerade nicht erreichbar: nichts melden, Stand behalten
+            return False
+        if not runs:                               # noch keine Analysen: nichts abzugleichen, Stand still mitführen
             if cfg.get("rematched_sites") != sig:
                 self.mod.ctx.store.update("skytrace", {"rematched_sites": sig})
             return False

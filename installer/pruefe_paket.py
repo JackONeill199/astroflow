@@ -103,7 +103,8 @@ def diagnose(port: int):
 
 
 def full_flow(port: int, times: dict, t0: float):
-    """Vollinstallation: Komponenten aus dem Installer-Auftrag laufen im Hintergrund durch (ASTAP, GraXpert, GPU, SkyTrace, Demo).
+    """Vollinstallation: Komponenten aus dem Installer-Auftrag laufen im Hintergrund durch (ASTAP, GraXpert, GPU, SkyTrace),
+    danach Demo-Daten per API.
     Danach: Demo-Bild mit GraXpert, SkyTrace-Lauf auf den Demodaten (automatisch nach dem Stack), GPU-Erkennung."""
     t1 = time.time()
 
@@ -123,6 +124,7 @@ def full_flow(port: int, times: dict, t0: float):
     print(json.dumps({k: v for k, v in times.items() if k.startswith("k_")}, indent=2, ensure_ascii=False), flush=True)
     for need in ("astap", "graxpert", "gpu", "skytrace"):
         assert times[f"k_{need}"]["zustand"] == "installed", f"{need}: {times[f'k_{need}']}"
+    call(port, "/setup/demo", {})                       # Installer bietet keine Demo mehr an – Prüfdaten hier anlegen
     res = wait(lambda: next((p["result"] for p in call(port, "/stacking/projects") if p.get("result")), None), 1800, 5)
     times["bis_erstes_bild_min"] = round((time.time() - t0) / 60, 2)
     gx = (res.get("stats") or {}).get("graxpert")

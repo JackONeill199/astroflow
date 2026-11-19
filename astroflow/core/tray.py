@@ -299,7 +299,9 @@ class Tray:
         try:
             self.post("/api/system/shutdown", {})
         except Exception:
-            pass
+            if self.refresh():                     # Server läuft noch: Symbol behalten, damit erneut beendet werden kann
+                inform("AstroFlow ließ sich gerade nicht beenden. Bitte gleich noch einmal versuchen.")
+                return
         self.close()
 
     def close(self):
@@ -311,10 +313,13 @@ class Tray:
     def refresh(self):
         try:
             self.status = self.get("/api/status")
-            self.activity = self.get("/api/activity?limit=15")
         except Exception:
             self.status = None
             return False
+        try:
+            self.activity = self.get("/api/activity?limit=15")
+        except Exception:                          # Server lebt, nur die Aktivität fehlt – nicht als „beendet“ werten
+            self.activity = []
         busy = bool(self.status.get("busy"))
         if self.icon:
             if busy != self.busy:
@@ -376,6 +381,15 @@ def quit_question(running: list[dict]) -> str:
     dl = any(str(a.get("key", "")).startswith("setup:") for a in running)
     return (f"Gerade läuft noch: {names}.\n\nTrotzdem beenden? "
             +("Downloads und Aufträge" if dl else "Aufträge") + " werden beim nächsten Start von AstroFlow fortgesetzt.")
+
+
+def inform(text: str) -> None:
+    if os.name == "nt":
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(None, text, "AstroFlow", 0x30 | 0x40000)   # Hinweis, oben
+        except Exception:
+            pass
 
 
 def ask(text: str) -> bool:

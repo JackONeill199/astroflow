@@ -772,6 +772,7 @@ function serverGone() {
   clearTimeout(pollTimer);
   document.title = 'AstroFlow – beendet';
   $('#jobpop')?.classList.remove('open');
+  const pal = $('#pal'); if (pal?.open) pal.close();         // modaler Dialog bliebe sonst über der Anzeige
   const o = document.createElement('div');
   o.className = 'offline'; o.setAttribute('role', 'alertdialog'); o.setAttribute('aria-labelledby', 'offT');
   o.innerHTML = `<div class="offline-box">${icon('stop')}<h2 id="offT">AstroFlow ist beendet</h2>
@@ -780,7 +781,9 @@ function serverGone() {
   document.body.append(o);
   $('#shell')?.setAttribute('inert', '');
   const again = async () => {
-    try { const r = await fetch('/api/status' + tabQuery(), { cache: 'no-store' }); if (r.ok) { location.reload(); return; } } catch { /* noch beendet */ }
+    try { const r = await fetch('/api/status' + tabQuery(), { cache: 'no-store' }); if (r.ok) { location.reload(); return; }
+      if (r.status === 401 && AF.app?.local === false) { location.replace('/'); return; }   // inzwischen entkoppelt → Kopplungsseite
+    } catch { /* noch beendet */ }
     setTimeout(again, 2000);
   };
   setTimeout(again, 2000);
