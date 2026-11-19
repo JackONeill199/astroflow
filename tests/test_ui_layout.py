@@ -409,7 +409,7 @@ def test_spinners_on_running_object_page(server, browser):
     activity = [{'key': 'stacking:999', 'module': 'stacking', 'title': 'Testobjekt', 'kind': 'Verarbeitung', 'detail': '',
                  'state': 'running', 'progress': .1, 'stage': 'Analyse', 'started': 0, 'finished': None, 'href': f'#/p/{pid}'}]
     page.route(f'**/api/stacking/projects/{pid}', project_response)
-    page.route('**/api/status', status_response)
+    page.route('**/api/status*', status_response)
     page.route('**/api/activity*', lambda route: route.fulfill(json=activity))
     page.goto(f'{base}/#/p/{pid}/bild')
     page.wait_for_selector('.sl-pulse')
