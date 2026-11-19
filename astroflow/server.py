@@ -134,7 +134,7 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
 
     @app.get("/api/status")
     async def status(request: Request, tab: int = 0, visible: int = 0):
-        if tab and visible and security.is_loopback(request.client.host if request.client else ""):   # nur Tabs am Rechner selbst (Starter öffnet sonst den Browser)
+        if tab and visible and security.is_loopback(request.client.host if request.client else "", strict=True):   # nur Tabs am Rechner selbst (auch nicht ASTROFLOW_TRUSTED_NETS) (Starter öffnet sonst den Browser)
             tabs_seen["visible"] = time.time()
         return await shared_status.aget()
 

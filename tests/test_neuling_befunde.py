@@ -61,6 +61,13 @@ def test_downloads_zaehlen_als_auftrag_und_tabs(home, monkeypatch):
     assert c.get("/api/tabs").json()["visible_age"] is not None
 
 
+def test_tab_am_starter_nur_echtes_loopback(monkeypatch):
+    from astroflow.core import security
+    monkeypatch.setenv("ASTROFLOW_TRUSTED_NETS", "172.16.0.0/12")
+    assert security.is_loopback("127.0.0.1", strict=True) and not security.is_loopback("172.17.0.5", strict=True)
+    assert security.is_loopback("172.17.0.5")                # Docker-Netz gilt sonst weiter als vertrauenswürdig
+
+
 def test_starter_ohne_server_oeffnet_wie_bisher(monkeypatch):
     # kein Server (bzw. älterer ohne /api/tabs): sofort „nicht verbunden“ → Browser öffnen
     assert launcher.tab_reconnected(1, wait=0.5) is False
