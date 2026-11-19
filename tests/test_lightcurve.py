@@ -34,7 +34,11 @@ def _g_from_v(v, c):
 @pytest.fixture(scope="module")
 def env(tmp_path_factory):
     root = tmp_path_factory.mktemp("lichtkurve")
+    mp = pytest.MonkeyPatch()                            # nie in den Eingangsordner einer Arbeitsinstanz schreiben
+    for k in ("ASTROFLOW_INPUT", "ASTROFLOW_OUTPUT", "ASTROFLOW_DATA"):
+        mp.delenv(k, raising=False)
     s = load_settings(root / "data")
+    mp.undo()
     s.delete_uploads = False
     _, truth = demo.generate_variable(s.input_dir / "feld")
     db = DB(s.db_path)
@@ -195,6 +199,34 @@ def test_minimum_comparison_stars_and_finite_json(result):
     assert all(math.isfinite(e["erwartet"]) for e in result["sterne"])
 
 
+def test_check_star_and_comparison_minimum_per_frame():
+    """Prüfstern wird reserviert (nicht im Ensemble der Ziele, CodeRabbit PR #152); fehlen in einer Aufnahme die meisten
+    Vergleichssterne, gibt es dort keinen Messpunkt statt eines Nullpunkts aus einem einzigen Stern."""
+    rng = np.random.default_rng(9)
+    nf, ns = 30, 12
+    v = rng.uniform(10, 12, ns)
+    col = rng.uniform(0.3, 1.5, ns)
+    F = 10 ** (-0.4 * (v - 20)) * (1 + rng.normal(0, 0.004, (nf, ns)))
+    F[4, 1:] = np.nan                                   # Aufnahme 4: nur Stern 0 messbar
+    d = lightcurve.differential(F, np.ones((nf, ns)), lightcurve.gaia_v(_g_from_v(v, col), col), col, rng.uniform(0, 900, (ns, 2)),
+                                np.ones(ns, bool), np.zeros(nf, int), np.zeros((nf, ns), bool))
+    assert d["check"] is not None and d["comp"][d["check"]]
+    assert np.isnan(d["mag"][4, 0])
+    assert np.isfinite(d["mag"][d["flags"] == "", 0]).sum() >= nf - 3
+
+
+def test_only_newest_version(env, fakes):
+    """Ältere Versionen gehören zu einem früheren Stack-Stand – keine Lichtkurven mit Aufnahmen des neuen Stands."""
+    s, db, pl, p, rid, truth, cat, vsx, geo = env
+    newer = db.x("INSERT INTO results(project_id, created, n_frames, exposure, files, stats) VALUES(?,?,?,?,?,?)",
+                 (p["id"], time.time(), 1, 1.0, "{}", "{}"))
+    try:
+        with pytest.raises(lightcurve.LightcurveError, match="neueste Version"):
+            lightcurve.compute(pl, rid)
+    finally:
+        db.x("DELETE FROM results WHERE id=?", (newer,))
+
+
 def test_short_exposure_is_not_a_cloud():
     """Halb so lange Belichtung = halber Fluss, aber kein Lichtverlust (Codex-Review PR #152)."""
     rng = np.random.default_rng(4)
@@ -250,6 +282,8 @@ def test_export_and_api(env, result, tmp_path, monkeypatch):
     data = tmp_path / "data"
     shutil.copytree(s.data_dir, data)
     monkeypatch.setenv("ASTROFLOW_AUTO", "0")
+    for k in ("ASTROFLOW_INPUT", "ASTROFLOW_OUTPUT"):
+        monkeypatch.delenv(k, raising=False)
     with TestClient(create_app(load_settings(data), only=("stacking",))) as c:
         g = c.get(f"/api/stacking/results/{rid}/lightcurves").json()
         assert g["state"] == "done" and g["sterne"]
@@ -262,6 +296,10 @@ def test_export_and_api(env, result, tmp_path, monkeypatch):
         aavso = c.get(f"/api/stacking/results/{rid}/lightcurves/export?fmt=aavso&star={e['i']}").text
         assert "#TYPE=EXTENDED" in aavso and "NICHT GEPRÜFT" in aavso and "V0001 Tst" in aavso and ",TG,NO,STD,ENSEMBLE," in aavso
         assert c.get(f"/api/stacking/results/{rid}/lightcurves/export?fmt=xls").status_code == 400
+        assert c.get(f"/api/stacking/results/{rid}/lightcurves/export?star=%C2%B2").status_code == 400     # „²“ ist isdigit()
+        # Kurvendatei fehlt → nicht „fertig“, sondern neu messen anbieten
+        (data / "work" / result["datei"]).unlink()
+        assert c.get(f"/api/stacking/results/{rid}/lightcurves").json()["state"] == "old"
         # Projektansicht bleibt schlank
         assert "lightcurves" not in json.dumps(c.get(f"/api/stacking/projects/{p['id']}").json().get("results", [{}])[0].get("stats", {}))
     db.x("UPDATE results SET stats=json_remove(stats,'$.lightcurves') WHERE id=?", (rid,))

@@ -80,13 +80,15 @@ class Insights:
                 from .depth import DepthError
                 from .hrd import HrdError
                 from .lightcurve import LightcurveError
-                if not isinstance(e, (DepthError, CompareError, HrdError, AsteroidError, LightcurveError)):
-                    traceback.print_exc()
+                known = isinstance(e, (DepthError, CompareError, HrdError, AsteroidError, LightcurveError))
+                if not known:
+                    traceback.print_exc()                # Details nur ins Protokoll
+                msg = str(e)[:300] if known else "Auswertung fehlgeschlagen – Details stehen im Protokoll."
                 retry = bool(getattr(e, "retry", False))   # vorübergehend (JPL zu langsam): „offen“, beim nächsten Lauf erneut
                 try:                                     # erst speichern, dann melden (Abfragen dazwischen sähen sonst nichts)
-                    self._store(rid, kind, {"v": 0, "ok": False, "error": str(e)[:300], "erstellt": time.time(), "retry": retry})
+                    self._store(rid, kind, {"v": 0, "ok": False, "error": msg, "erstellt": time.time(), "retry": retry})
                 finally:
-                    st.update(state="retry" if retry else "error", message=str(e)[:300], t=time.time())
+                    st.update(state="retry" if retry else "error", message=msg, t=time.time())
 
     def _store(self, rid: int, key: str, value: dict):
         self.eng.db.x(f"UPDATE results SET stats=json_set(COALESCE(stats,'{{}}'),'$.{key}',json(?)) WHERE id=?",

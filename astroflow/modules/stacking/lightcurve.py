@@ -25,6 +25,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -382,18 +383,22 @@ def _differential(F: np.ndarray, VB: np.ndarray, vcat: np.ndarray, col: np.ndarr
     k = float(np.clip(fit[0], -0.5, 0.5)) if fit else 0.0
     dz = vcat - k * c_fill                             # Katalogwert ohne Farbanteil
     # 1. globales Ensemble, schwankende Vergleichssterne iterativ verwerfen
+    def stats(use):
+        res = dz[None, :] - m_inst                     # = Z_f je Stern
+        Z = np.nanmedian(np.where(use[None, :], res, np.nan), axis=1)
+        r = res - Z[:, None]
+        return Z, r, _robust_std(r, axis=0)
+
     def glob(m_inst):
         use = comp.copy()
+        Z, r, rms = stats(use)
         for it in range(4):
-            res = dz[None, :] - m_inst                 # = Z_f je Stern
-            Z = np.nanmedian(np.where(use[None, :], res, np.nan), axis=1)
-            r = res - Z[:, None]
-            rms = _robust_std(r, axis=0)
             ref = _running_median(med_inst[use], rms[use])
             bad = use & (rms > 2.5 * ref(med_inst)) & (rms > 0.01)
-            if not bad.any() or (use & ~bad).sum() < MIN_COMP:
+            if not bad.any() or (use & ~bad).sum() < MIN_COMP + 1:     # wie die Anfangsprüfung (Selbstausschluss)
                 break
             use &= ~bad
+            Z, r, rms = stats(use)                     # Kennzahlen immer zur endgültigen Maske
         return use, Z, r, rms
 
     use, Z, r, rms = glob(m_inst)
@@ -436,8 +441,15 @@ def _differential(F: np.ndarray, VB: np.ndarray, vcat: np.ndarray, col: np.ndarr
     flags[(flags == "") & (scat > OUTLIER_K * np.nanmedian(scat))] = "ausreisser"
     flags[(flags == "") & (n_c < max(MIN_COMP, 0.5 * use.sum()))] = "wenig"
     fok = flags == ""
+    # Prüfstern (AAVSO „check star“): heller, ruhiger Vergleichsstern – aus dem Ensemble genommen, damit er unabhängig bleibt
+    check = None
+    cand_ck = np.nonzero(use & np.isfinite(rms))[0]
+    if len(cand_ck) >= MIN_COMP + 2:
+        hell = cand_ck[med_inst[cand_ck] <= np.nanpercentile(med_inst[cand_ck], 35)]
+        hell = hell if len(hell) else cand_ck
+        check = int(hell[np.argmin(rms[hell])])
     # 2. je Stern eigenes Ensemble: nächste Vergleichssterne in Helligkeit, Farbe und Ort
-    ci = np.nonzero(use)[0]
+    ci = np.nonzero(use & (np.arange(ns) != (check if check is not None else -1)))[0]
     span = float(np.ptp(xy[ci], axis=0).max()) or 1.0
     feats = np.c_[med_inst[ci] / 1.0, c_fill[ci] / 0.4, xy[ci] / (0.5 * span)]
     from scipy.spatial import cKDTree
@@ -461,11 +473,12 @@ def _differential(F: np.ndarray, VB: np.ndarray, vcat: np.ndarray, col: np.ndarr
             # Streuung des Ensembles um den Mittelwert (je Aufnahme) als Untergrenze der Nullpunkt-Unsicherheit
             sc = np.sqrt(np.nansum(ww * (np.where(ww > 0, rr, 0.0) - zf[:, None]) ** 2, 1) / sw / np.maximum((ww > 0).sum(1) - 1, 1))
         zerr = np.maximum(ze, sc)
-        mag[:, i] = m_inst[:, i] + zf + k * c_fill[i]
-        err[:, i] = np.hypot(e_phot[:, i], zerr)
+        few = (ww > 0).sum(1) < MIN_COMP                 # zu wenige Vergleichssterne in dieser Aufnahme: kein Messpunkt
+        mag[:, i] = np.where(few, np.nan, m_inst[:, i] + zf + k * c_fill[i])
+        err[:, i] = np.where(few, np.nan, np.hypot(e_phot[:, i], zerr))
     rmsm = _robust_std(np.where(fok[:, None], mag, np.nan), axis=0)
     return {"mag": mag, "err": err, "flags": flags, "loss": loss, "scatter": scat, "k": k, "comp": use, "rms": rmsm,
-            "med_inst": med_inst, "gain": gain, "sys": b_sys, "n_comp_used": int(use.sum()), "n_comp_rejected": int((comp & ~use).sum())}
+            "med_inst": med_inst, "gain": gain, "sys": b_sys, "check": check, "n_comp_used": int(use.sum()), "n_comp_rejected": int((comp & ~use).sum())}
 
 
 # ------------------------------------------------------------- Auswertung -- #
@@ -560,14 +573,15 @@ def common_pattern(idx: list[int], mag: np.ndarray, r_min: float = 0.7) -> set[i
     return out
 
 
-def bin_points(t, m, e, flags, n: int, gap: float = 0.02, also=()):
+def bin_points(t, m, e, flags, n: int, gap: float = 0.02, also=(), counts: bool = False):
     """Je n aufeinanderfolgende gute Messungen mitteln (gewichtet), nicht über Lücken > gap Tage (Nachtwechsel, Pausen).
-    also: weitere Zeitachsen (z. B. JD, HJD), die über dieselben Gruppen gemittelt und zusätzlich zurückgegeben werden."""
+    also: weitere Zeitachsen (z. B. JD, HJD), die über dieselben Gruppen gemittelt und zusätzlich zurückgegeben werden;
+    counts: zuletzt zusätzlich die Zahl der Aufnahmen je Gruppe."""
     ok = np.isfinite(m) & np.isfinite(e) & (e > 0) & (np.asarray(flags) == "")
     t, m, e = np.asarray(t)[ok], m[ok], e[ok]
     also = [np.asarray(a, float)[ok] for a in also]
     if n <= 1 or len(t) == 0:
-        return (t, m, e, *also)
+        return (t, m, e, *also, *([np.ones(len(t), int)] if counts else []))
     o = np.argsort(t)
     t, m, e = t[o], m[o], e[o]
     also = [a[o] for a in also]
@@ -586,7 +600,8 @@ def bin_points(t, m, e, flags, n: int, gap: float = 0.02, also=()):
         # Fehler: Mittelwertfehler, mindestens die Streuung der Gruppe / √n
         sd = float(np.std(m[g]) / math.sqrt(len(g))) if len(g) > 2 else 0.0
         be.append(max(float(math.sqrt(1 / w.sum())), sd))
-    return (np.array(bt), np.array(bm), np.array(be), *[np.array([float(np.mean(a[g])) for g in groups]) for a in also])
+    return (np.array(bt), np.array(bm), np.array(be), *[np.array([float(np.mean(a[g])) for g in groups]) for a in also],
+            *([np.array([len(g) for g in groups])] if counts else []))
 
 
 # --------------------------------------------------------- Gesamtablauf -- #
@@ -602,10 +617,19 @@ def _frames(pl, pid: int, meta: dict) -> list[dict]:
     return out
 
 
-def available_frames(pl, pid: int) -> int:
-    """Wie viele gestackte Rohbilder des Objekts noch auf dem Datenträger liegen (für die Ansicht)."""
-    rows = pl.db.q("SELECT path FROM frames WHERE project_id=? AND kind='light' AND stacked=1 AND deleted=0", (pid,))
-    return sum(1 for r in rows if r["path"] and Path(r["path"]).exists())
+def available_frames(pl, pid: int, nights=None) -> int:
+    """Wie viele Rohbilder die Messung nutzen würde (derselbe Stack-Zustand, dasselbe Band, dieselben Nächte wie compute)."""
+    try:
+        meta, band = _state_meta(pl, pid)
+    except LightcurveError:
+        return 0
+    from .pipeline import band_of_row
+    rows = _frames(pl, pid, meta)
+    if nights:
+        rows = [x for x in rows if (x["night"] or "") in set(nights)]
+    if band is not None:
+        rows = [x for x in rows if band_of_row(x) == band]
+    return len(rows)
 
 
 def _state_meta(pl, pid: int) -> tuple[dict, str | None]:
@@ -663,6 +687,10 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
         raise LightcurveError("Version nicht gefunden.")
     pid = r["project_id"]
     wd = pl.s.work_dir
+    newest = pl.db.one("SELECT MAX(id) AS i FROM results WHERE project_id=?", (pid,))
+    if newest and newest["i"] != rid:
+        raise LightcurveError("Lichtkurven gibt es nur für die neueste Version – ältere Versionen gehören zu einem früheren "
+                              "Stand des Stacks.")
     if not gaia:
         raise LightcurveError("Gaia-Abfragen sind ausgeschaltet (Einstellungen → Bilder → Fotometrische Farbkalibrierung) – "
                               "ohne Vergleichssterne keine Lichtkurven.")
@@ -670,6 +698,9 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
     if "comet" in meta:
         raise LightcurveError("Kometen-Stacks sind auf den Kern ausgerichtet – Lichtkurven gehen nur bei Sternfeldern.")
     rows = _frames(pl, pid, meta)
+    res_nights = set(json.loads(r["stats"] or "{}").get("nights") or [])
+    if res_nights:                                       # nur Aufnahmen aus den Nächten dieser Version
+        rows = [x for x in rows if (x["night"] or "") in res_nights]
     if band is not None:
         from .pipeline import band_of_row
         rows = [x for x in rows if band_of_row(x) == band]
@@ -881,6 +912,9 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
                      exptime=np.array([o["exptime"] for _, o in meas]))
     mag, err, flags = d["mag"], d["err"], d["flags"]
     fok = flags == ""
+    if fok.sum() < MIN_FRAMES:
+        raise LightcurveError(f"Nach dem Auslassen von Wolken- und Ausreißer-Aufnahmen bleiben nur {int(fok.sum())} gute Aufnahmen – "
+                              f"zu wenige für eine Lichtkurve (mindestens {MIN_FRAMES}).")
     jd, bjd, hjd = barycentric(unix, ra0, dec0)
 
     # Kennzahlen je Stern und erwartete Streuung bei dieser Helligkeit
@@ -925,7 +959,7 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
         e_ok = err[fok, i]
         p_cat = kv.get("period") if kv else None
         if p_cat and p_cat > 0:
-            _, amp, cover = fourier_fit(t_ok, m_ok, e_ok, p_cat, kv.get("epoch"))
+            _, amp, cover = fourier_fit(hjd[fok], m_ok, e_ok, p_cat, kv.get("epoch"))   # VSX-Epoche ist HJD
             span = float(np.nanmax(t_ok) - np.nanmin(t_ok))
             e["phase_abdeckung"] = round(cover, 2)
             e["zyklen"] = round(span / p_cat, 2)
@@ -957,7 +991,7 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
         s = st[i]
         if s is None or is_target[i] or blend[i] or sat_star[i]:
             continue
-        exp_ = float(ref(s["mittel"]))
+        exp_ = max(float(ref(s["mittel"])), SYS_FLOOR)
         if np.isfinite(vcat[i]) and abs(s["mittel"] - vcat[i]) > 0.75:
             continue                                    # Helligkeit passt nicht zu Gaia: Nachbarlicht/Artefakt, kein Kandidat
         if s["rms"] > VAR_RATIO * exp_ and s["chi2"] > VAR_CHI2 and s["eta"] < VAR_ETA and s["n"] >= 0.6 * fok.sum() \
@@ -976,12 +1010,8 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
             e["moeglich"] = True
             stars.append(e)
     # Prüfstern (AAVSO „check star“): heller, konstanter Vergleichsstern mittlerer Helligkeit
-    comp_idx = np.nonzero(d["comp"] & np.isfinite(rms))[0]
-    check = None
-    if len(comp_idx):
-        hell = comp_idx[vm[comp_idx] <= np.nanpercentile(vm[comp_idx], 35)]      # helleres Drittel: aussagekräftiger Prüfstern
-        hell = hell if len(hell) else comp_idx
-        check = int(hell[np.argmin(rms[hell])])
+    check = d["check"]                                  # nicht im Ensemble der Zielsterne (differential)
+    if check is not None:
         ce = entry(check)
         if ce:
             ce["pruefstern"] = True
@@ -996,10 +1026,19 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
                    "nacht": night_names[f], "flag": flags[f], "verlust": round(float(d["loss"][f]), 3),
                    "streuung": None if not np.isfinite(d["scatter"][f]) else round(float(d["scatter"][f]), 4),
                    "belichtung": meas[f][1]["exptime"], "id": meas[f][0]["id"]} for f in range(len(meas))]
-    datei = f"p{int(pid)}/lichtkurven_r{int(rid)}.json"
+    # eigener Dateiname je Lauf, atomar geschrieben: Zusammenfassung (DB) und Kurven bleiben ein Stand, auch während einer
+    # Neuberechnung; ältere Stände bleiben für laufende Abrufe lesbar (je Version die drei neuesten)
+    datei = f"p{int(pid)}/lichtkurven_r{int(rid)}_{int(time.time() * 1000):x}.json"
     path = wd / datei
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"v": LC_VERSION, "frames": frames_out, "curves": curves}), encoding="utf-8")
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"v": LC_VERSION, "frames": frames_out, "curves": curves}), encoding="utf-8")
+    os.replace(tmp, path)
+    for old in sorted(path.parent.glob(f"lichtkurven_r{int(rid)}_*.json"), key=lambda q: q.stat().st_mtime)[:-3]:
+        try:
+            old.unlink()
+        except OSError:
+            pass
 
     n_flag = {k: int((flags == k).sum()) for k in FLAG_TEXT if (flags == k).any()}
     if n_flag:
@@ -1013,8 +1052,10 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
         hinweise.append(f"{n_crowd} bekannte Veränderliche liegen im Gedränge (heller Nachbar in der Apertur) – bei dieser Auflösung "
                         "nicht vom Nachbarlicht zu trennen, ihre Kurven zeigen vor allem Rauschen.")
     span_h = float((unix.max() - unix.min()) / 3600)
-    filt = next((o["filter"] for _, o in meas if o.get("filter")), "")
-    schmal = narrowband(band, filt)
+    filts = sorted({o.get("filter") or "" for _, o in meas})
+    narrow_f = [f_ for f_ in filts if narrowband(band, f_)]
+    schmal = bool(narrow_f) or narrowband(band, "")       # eine Schmalband-Aufnahme genügt, um den AAVSO-Export zu sperren
+    filt = ", ".join(narrow_f) if narrow_f else next((f_ for f_ in filts if f_), "")
     fcode = filter_code(band, bool(color))
     if schmal:
         hinweise.append(f"Schmalband-Aufnahmen ({band or filt}): Die Helligkeiten sind an Gaia-V angehängt, aber keine V-Messung – "
@@ -1046,7 +1087,15 @@ def services_pos(geo, x, y) -> dict:
 
 
 # ------------------------------------------------------------- Ausgabe -- #
-_CURVE_FILE = re.compile(r"p[0-9]{1,9}/lichtkurven_r[0-9]{1,9}\.json")
+_CURVE_FILE = re.compile(r"p[0-9]{1,9}/lichtkurven_r[0-9]{1,9}(_[0-9a-f]{1,16})?\.json")
+
+
+def curves_exist(work_dir: Path, summary: dict) -> bool | None:
+    """Gibt es die Kurvendatei zur Zusammenfassung? None ohne Dateinamen (keine Messung)."""
+    name = str(summary.get("datei") or "")
+    if not _CURVE_FILE.fullmatch(name):
+        return None
+    return (Path(work_dir) / name).is_file()
 
 
 def load_curves(work_dir: Path, summary: dict) -> dict | None:
@@ -1082,13 +1131,15 @@ def star_curve(summary: dict, curves: dict, i: int, bin_n: int = 1) -> dict:
            if bin_n > 1 else None, "bin": bin_n, "naechte": nights}
     period = e.get("katalog_periode") or ((e.get("eigene_periode") or {}).get("periode"))
     if period:
-        ep = e.get("epoche") if e.get("katalog_periode") else None
-        t0 = ep if ep else float(np.nanmin(t))
-        pt, pm, pe = (bt, bm, be) if bin_n > 1 else (t[fl == ""], m[fl == ""], er[fl == ""])
+        kat = bool(e.get("katalog_periode"))
+        tp = np.array([f["hjd"] for f in fr]) if kat else t   # VSX-Epochen sind HJD; eigene Perioden auf BJD
+        ep = e.get("epoche") if kat else None
+        t0 = ep if ep else float(np.nanmin(tp))
+        pt, pm, pe = bin_points(tp, m, er, fl, bin_n) if bin_n > 1 else (tp[fl == ""], m[fl == ""], er[fl == ""])
         ok = np.isfinite(pm)
         ph = ((pt[ok] - t0) / period) % 1.0
         g_ok = (fl == "") & np.isfinite(m)
-        model, amp, cover = fourier_fit(t[g_ok], m[g_ok], er[g_ok], period, t0) if g_ok.sum() >= MIN_FRAMES else (None, None, 0)
+        model, amp, cover = fourier_fit(tp[g_ok], m[g_ok], er[g_ok], period, t0) if g_ok.sum() >= MIN_FRAMES else (None, None, 0)
         out["phase"] = {"periode": period, "epoche": t0, "quelle": "Katalog" if e.get("katalog_periode") else "eigene Schätzung",
                         "punkte": [[round(float(a), 4), round(float(b), 4), round(float(cc), 4)] for a, b, cc in zip(ph, pm[ok], pe[ok])],
                         "modell": [[round(float(p), 3), round(float(v), 4)] for p, v in zip(np.linspace(0, 1, 101), model(np.linspace(0, 1, 101)))]
@@ -1116,10 +1167,10 @@ def export_csv(summary: dict, curves: dict, ids: list[int], bin_n: int = 1) -> s
             t = np.array([f["bjd"] for f in fr])
             m = np.array([np.nan if v[0] is None else v[0] for v in c])
             er = np.array([np.nan if v[1] is None else v[1] for v in c])
-            bt, bm, be, bh, bj = bin_points(t, m, er, [f["flag"] for f in fr], bin_n,
-                                            also=([f["hjd"] for f in fr], [f["jd"] for f in fr]))
-            for a, b, cc, h, j in zip(bt, bm, be, bh, bj):     # JD/HJD aus denselben Aufnahmen gemittelt wie BJD
-                lines.append(f"{name},{a:.6f},{h:.6f},{j:.6f},{b:.4f},{cc:.4f},,gebinnt {bin_n}")
+            bt, bm, be, bh, bj, bn = bin_points(t, m, er, [f["flag"] for f in fr], bin_n,
+                                                also=([f["hjd"] for f in fr], [f["jd"] for f in fr]), counts=True)
+            for a, b, cc, h, j, nn_ in zip(bt, bm, be, bh, bj, bn):     # JD/HJD aus denselben Aufnahmen gemittelt wie BJD
+                lines.append(f"{name},{a:.6f},{h:.6f},{j:.6f},{b:.4f},{cc:.4f},,gebinnt {nn_}")
             continue
         for f, v in zip(fr, c):
             if v[0] is None:
@@ -1153,10 +1204,10 @@ def export_aavso(summary: dict, curves: dict, ids: list[int], version: str, bin_
             t = np.array([f["hjd"] for f in fr])
             m = np.array([np.nan if v[0] is None else v[0] for v in c])
             er = np.array([np.nan if v[1] is None else v[1] for v in c])
-            bt, bm, be = bin_points(t, m, er, [f["flag"] for f in fr], bin_n)
-            for a, b, cc in zip(bt, bm, be):
+            bt, bm, be, bn = bin_points(t, m, er, [f["flag"] for f in fr], bin_n, counts=True)
+            for a, b, cc, nn_ in zip(bt, bm, be, bn):
                 lines.append(f"{name},{a:.5f},{b:.3f},{cc:.3f},{summary['filter']},NO,STD,ENSEMBLE,na,{kname},na,na,na,na,"
-                             f"{note}|Mittel aus {bin_n} Aufnahmen")
+                             f"{note}|Mittel aus {nn_} Aufnahmen")
             continue
         for k, (f, v) in enumerate(zip(fr, c)):
             if v[0] is None or f["flag"]:

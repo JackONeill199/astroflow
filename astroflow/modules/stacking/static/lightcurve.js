@@ -11,7 +11,7 @@ const lcPeriod = (p) => p == null ? '–' : p < 0.1 ? `${de1(p * 24 * 60, 0)} mi
 
 function lightcurvePanel(host, r, opts = {}) {
   if (!host) return;
-  let timer = 0, sel = null, data = null;
+  let timer = 0, sel = null, data = null, req = 0;      // req: fortlaufende Kurvenanfrage (späte Antworten verwerfen)
   const head = (extra = '') => `<div class="panel-h"><h2>Lichtkurven veränderlicher Sterne</h2><span class="grow"></span>${extra}</div>`;
   const poll = async (force) => {
     clearTimeout(timer);
@@ -136,10 +136,10 @@ function lightcurvePanel(host, r, opts = {}) {
     links();
     const s = (data.sterne || []).find(x => x.i === sel);
     if (fb) fb.hidden = !(s?.x != null && data.bild && opts.onFocus);
-    const want = sel;
+    const want = ++req;
     let k;
-    try { k = await api(`/stacking/results/${r.id}/lightcurves/star/${sel}?bin=${LC_VIEW.bin}`); } catch (e) { plot.innerHTML = `<p class="mut sm">${esc(e.message)}</p>`; return; }
-    if (!host.isConnected || want !== sel) return;
+    try { k = await api(`/stacking/results/${r.id}/lightcurves/star/${sel}?bin=${LC_VIEW.bin}`); } catch (e) { if (want === req && host.isConnected) plot.innerHTML = `<p class="mut sm">${esc(e.message)}</p>`; return; }
+    if (!host.isConnected || want !== req) return;
     const phase = LC_VIEW.mode === 'phase' && k.phase;
     plot.innerHTML = phase ? lcPhaseSvg(k) : lcTimeSvg(k);
     const per = s.katalog_periode ? `Periode ${lcPeriod(s.katalog_periode)} (VSX)` : s.eigene_periode ? `Periode ${lcPeriod(s.eigene_periode.periode)} (eigene Schätzung${s.eigene_periode.alias ? ', mehrdeutig' : ''})` : 'keine Periode bekannt';

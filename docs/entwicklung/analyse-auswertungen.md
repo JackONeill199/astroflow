@@ -47,7 +47,8 @@
   `registration.find_transform(ref_stars, frame_stars)`, danach affine Feinanpassung an hellen Sternen (`measure_frame`).
 - **Laden:** `load_calibrated` = Dark/Flat wie `Pipeline._load`, Hotpixel-Kosmetik nur abseits der Sterne – `calibration.cosmetic` stutzte
   synthetisch ~40 Sternspitzen je Aufnahme (einige Prozent Fluss, Prüfstern-χ² 5,6 → 0,7 nach der Änderung).
-- **Fotometrie (`aperture`):** Subpixel-Mitte, weicher Rand, Ring 2–3 r (Median), Bayer: nur grüne Pixel (`green_weights`, Filter `TG`), Mono `CV`.
+- **Fotometrie (`aperture`):** Subpixel-Mitte, weicher Rand, Ring 2–3 r (Median), Bayer: nur grüne Pixel (`green_weights`, Filter `TG`); Mono: L/ohne Filter `CV`, G `TG`, R `TR`, B `TB`;
+  Schmalband (Ha/OIII/SII, Dual-/Schmalbandfilter in irgendeiner Aufnahme) sperrt den AAVSO-Export (`narrowband`).
   Radius `APER` = 1,0 × FWHM der Aufnahme: Stellina-Einzelbilder sind hintergrundbegrenzt (M3, 10 s, FWHM 7–9 px: V-11-Stern allein durch den
   Hintergrund ±0,15 mag bei 1,5 FWHM) – kleiner = besseres SNR, der Seeing-Verlust kürzt sich in der Differenz. Übersättigt: Spitze > 0,6 × hellste
   Spitze und Spitze/Fluss < 0,7 × Median (in > 20 % der Aufnahmen → ganzer Stern).

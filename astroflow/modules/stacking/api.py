@@ -1379,10 +1379,15 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.get("/results/{rid}/lightcurves")
     def get_lightcurves(rid: int):
-        from .lightcurve import LC_VERSION, MIN_FRAMES, available_frames
+        from .lightcurve import LC_VERSION, MIN_FRAMES, available_frames, curves_exist as load_curves_exists
         out = _insight(rid, "lightcurves", LC_VERSION)
-        x = db.one("SELECT project_id FROM results WHERE id=?", (rid,))
-        out["rohbilder"] = available_frames(eng.pl, x["project_id"])
+        x = db.one("SELECT project_id, stats FROM results WHERE id=?", (rid,))
+        if not x:                                        # parallel gelöscht
+            raise HTTPException(404)
+        st = json.loads(x["stats"] or "{}")
+        if out["state"] == "done" and load_curves_exists(eng.s.work_dir, st.get("lightcurves") or {}) is False:
+            out = {"state": "old", "solved": out.get("solved")}   # Kurvendatei fehlt: neu messen anbieten
+        out["rohbilder"] = available_frames(eng.pl, x["project_id"], st.get("nights"))
         out["min_rohbilder"] = MIN_FRAMES
         return out
 
@@ -1410,7 +1415,7 @@ def build_router(eng: Engine) -> APIRouter:
         summ, curves = _lc_ctx(rid)
         if star == "alle":
             ids = [s["i"] for s in summ.get("sterne", [])]
-        elif star.isdigit():
+        elif re.fullmatch(r"[0-9]{1,6}", star):          # nur kurze Dezimalzahlen (isdigit nähme auch „²“)
             ids = [int(star)]
         else:
             raise HTTPException(400, "Unbekannter Stern")
