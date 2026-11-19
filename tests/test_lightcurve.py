@@ -3,6 +3,7 @@ einem unbekannten Veränderlichen (bekannte Amplitude und Periode), einer Wolken
 VSX als Attrappen, kein Netz."""
 import json
 import math
+import os
 import shutil
 import time
 
@@ -225,6 +226,36 @@ def test_check_star_and_comparison_minimum_per_frame():
     others = np.arange(ns) != d["check"]
     assert np.allclose(d["mag"][:, others], d2["mag"][:, others], rtol=0, atol=1e-9, equal_nan=True)
     assert np.isfinite(d["mag"][d["flags"] == "", 0]).sum() >= nf - 3
+
+
+def test_stack_changed_after_version(env, fakes):
+    """Abbruch nach einem Stack-Checkpoint: Aufnahmen sind schon als gestackt markiert, die neue Version fehlt noch."""
+    s, db, pl, p, rid, truth, cat, vsx, geo = env
+    n = db.one("SELECT n_frames FROM results WHERE id=?", (rid,))["n_frames"]
+    db.x("UPDATE results SET n_frames=? WHERE id=?", (n - 1, rid))
+    try:
+        with pytest.raises(lightcurve.LightcurveError, match="Stack hat sich"):
+            lightcurve.compute(pl, rid)
+    finally:
+        db.x("UPDATE results SET n_frames=? WHERE id=?", (n, rid))
+
+
+def test_cleanup_keeps_published_file(env, fakes, result):
+    """Abgebrochene Läufe hinterlassen Dateien ohne DB-Eintrag – das Aufräumen darf die veröffentlichte Datei nie löschen."""
+    s, db, pl, p, rid, truth, cat, vsx, geo = env
+    db.x("UPDATE results SET stats=json_set(COALESCE(stats,'{}'),'$.lightcurves',json(?)) WHERE id=?", (json.dumps(result), rid))
+    try:
+        published = s.work_dir / result["datei"]
+        assert published.exists()
+        old = os.path.getmtime(published) - 100
+        os.utime(published, (old, old))                  # veröffentlichte Datei ist die älteste
+        for k in range(3):                               # drei weitere Läufe (jeweils ohne DB-Update)
+            lightcurve.compute(pl, rid)
+            time.sleep(0.01)
+        assert published.exists()
+        assert lightcurve.load_curves(s.work_dir, result) is not None
+    finally:
+        db.x("UPDATE results SET stats=json_remove(stats,'$.lightcurves') WHERE id=?", (rid,))
 
 
 def test_only_newest_version(env, fakes):

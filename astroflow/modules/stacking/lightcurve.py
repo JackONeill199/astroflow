@@ -697,6 +697,13 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
     if newest and newest["i"] != rid:
         raise LightcurveError("Lichtkurven gibt es nur für die neueste Version – ältere Versionen gehören zu einem früheren "
                               "Stand des Stacks.")
+    # Stack-Zustand gehört zur Version? Das Stacken markiert Aufnahmen schon vor dem Anlegen einer neuen Version – bricht ein
+    # Lauf danach ab, enthielte der Zustand Aufnahmen, die nicht in dieser Version stecken. n_frames = gestackte Aufnahmen
+    # beim Entwickeln (Pipeline.develop).
+    n_now = pl.db.one("SELECT COUNT(*) AS n FROM frames WHERE project_id=? AND kind='light' AND stacked=1", (pid,))["n"]
+    if r["n_frames"] is not None and int(r["n_frames"]) != int(n_now):
+        raise LightcurveError("Der Stack hat sich seit dieser Version geändert (z. B. ein abgebrochener Lauf) – bitte das Objekt "
+                              "erst neu verarbeiten bzw. entwickeln, dann die Lichtkurven messen.")
     if not gaia:
         raise LightcurveError("Gaia-Abfragen sind ausgeschaltet (Einstellungen → Bilder → Fotometrische Farbkalibrierung) – "
                               "ohne Vergleichssterne keine Lichtkurven.")
@@ -1043,7 +1050,12 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps({"v": LC_VERSION, "frames": frames_out, "curves": curves}), encoding="utf-8")
     os.replace(tmp, path)
-    for old in sorted(path.parent.glob(f"lichtkurven_r{int(rid)}_*.json"), key=lambda q: q.stat().st_mtime)[:-3]:
+    # aufräumen: nie die gerade veröffentlichte Datei (Zusammenfassung in der DB) und nie den neuen Stand
+    published = str((json.loads(r["stats"] or "{}").get("lightcurves") or {}).get("datei") or "")
+    keep_names = {path.name, published.rsplit("/", 1)[-1]}
+    olds = [q for q in sorted(path.parent.glob(f"lichtkurven_r{int(rid)}_*.json"), key=lambda q: q.stat().st_mtime)
+            if q.name not in keep_names]
+    for old in olds[:-1]:                                # zusätzlich den jüngsten älteren Stand für laufende Abrufe behalten
         try:
             old.unlink()
         except OSError:
