@@ -240,6 +240,44 @@ def test_stack_changed_after_version(env, fakes):
         db.x("UPDATE results SET n_frames=? WHERE id=?", (n, rid))
 
 
+
+def test_stack_membership_changed_after_version(env, fakes):
+    """Review PR #152: gleiche Anzahl gestackter Aufnahmen, aber andere Aufnahmen – der Fingerabdruck der Mitgliedschaft
+    (Pipeline.develop → results.stats.members) fällt auf. Alte Versionen ohne Fingerabdruck laufen weiter wie bisher."""
+    from astroflow.modules.stacking.pipeline import stack_fingerprint
+    s, db, pl, p, rid, truth, cat, vsx, geo = env
+    ids = [x["id"] for x in db.q("SELECT id FROM frames WHERE project_id=? AND kind='light' AND stacked=1", (p["id"],))]
+    stats = json.loads(db.one("SELECT stats FROM results WHERE id=?", (rid,))["stats"])
+    assert stats["members"] == stack_fingerprint(ids) == stack_fingerprint(reversed(ids))
+    other = stack_fingerprint(ids[1:] + [10 ** 9])            # gleich viele, eine Aufnahme ausgetauscht
+    db.x("UPDATE results SET stats=json_set(stats,'$.members',?) WHERE id=?", (other, rid))
+    try:
+        with pytest.raises(lightcurve.LightcurveError, match="Stack hat sich"):
+            lightcurve.compute(pl, rid)
+        db.x("UPDATE results SET stats=json_remove(stats,'$.members') WHERE id=?", (rid,))
+        assert lightcurve.compute(pl, rid)["ok"]               # alte Version ohne Fingerabdruck: keine Fehlermeldung
+    finally:
+        db.x("UPDATE results SET stats=json_set(stats,'$.members',?) WHERE id=?", (stats["members"], rid))
+
+
+def test_cleanup_waits_before_deleting_old_curves(env, fakes):
+    """Review PR #152: ältere Kurvendateien erst nach `KEEP_OLD_S` löschen – ein laufender Abruf liest sonst ins Leere."""
+    s, db, pl, p, rid, truth, cat, vsx, geo = env
+    d = s.work_dir / f"p{p['id']}"
+    d.mkdir(parents=True, exist_ok=True)
+    now = time.time()
+    made = {}
+    for name, age in (("aaaa", 20 * 60), ("bbbb", 5 * 60), ("cccc", 60)):
+        f = d / f"lichtkurven_r{rid}_{name}.json"
+        f.write_text("{}", encoding="utf-8")
+        os.utime(f, (now - age, now - age))
+        made[name] = f
+    lightcurve.compute(pl, rid)
+    assert not made["aaaa"].exists()                           # alt genug: weg
+    assert made["bbbb"].exists() and made["cccc"].exists()     # jünger als 10 Minuten: bleiben für laufende Abrufe
+    for f in made.values():
+        f.unlink(missing_ok=True)
+
 def test_cleanup_keeps_published_file(env, fakes, result):
     """Abgebrochene Läufe hinterlassen Dateien ohne DB-Eintrag – das Aufräumen darf die veröffentlichte Datei nie löschen."""
     s, db, pl, p, rid, truth, cat, vsx, geo = env

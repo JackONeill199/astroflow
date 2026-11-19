@@ -1,6 +1,7 @@
 """Gesamtablauf: scannen -> kalibrieren -> analysieren -> auswählen -> stacken -> bearbeiten -> prüfen."""
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
@@ -167,6 +168,12 @@ def resource_error(e: BaseException) -> bool:
     der Auftrag hält an bzw. wartet, statt gesunde Frames als „Lesefehler“ oder einen Teilschritt als gescheitert zu markieren."""
     return (isinstance(e, (InterruptedError, diskspace.DiskFull, calibration.SourceOffline, MemoryError))
             or diskspace.is_full(e))
+
+
+def stack_fingerprint(ids) -> str:
+    """Fingerabdruck der Stack-Mitgliedschaft (sortierte Frame-IDs): gleiche Anzahl, aber andere Aufnahmen fällt so auf."""
+    return hashlib.sha1(",".join(sorted(str(i) for i in ids)).encode()).hexdigest()[:16]
+
 
 class Pipeline:
     def __init__(self, settings: Settings, db: DB, review_cfg: reviewer.ReviewerConfig | None = None,
@@ -1297,7 +1304,8 @@ class Pipeline:
             stats["mosaic"] = mos_info
         stats.update({"profile": pname, "narrowband": narrow, "frames": len(stacked), "exposure_s": exposure,
                       "palette": palette, "bands": band_stats,
-                      "nights": sorted({r["night"] for r in stacked if r["night"]})})   # Bild-Tutor: nur Nächte dieses Ergebnisses
+                      "nights": sorted({r["night"] for r in stacked if r["night"]}),    # Bild-Tutor: nur Nächte dieses Ergebnisses
+                      "members": stack_fingerprint(r["id"] for r in stacked)})           # Lichtkurven: Stack seither unverändert?
 
         if source is not None:                         # Herkunft: Oberfläche zeigt Dateiname/Format wie beim Import
             stats["imported"] = source["info"]

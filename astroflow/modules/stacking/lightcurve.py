@@ -37,6 +37,7 @@ from . import photometry, registration, services
 from .fits_io import to_channels
 
 LC_VERSION = 1
+KEEP_OLD_S = 600         # ältere Kurvendateien erst so lange nach dem Schreiben löschen (laufende Abrufe)
 MIN_FRAMES = 12                    # so viele brauchbare Aufnahmen braucht eine Lichtkurve
 MAX_STARS = 2500                   # gemessene Gaia-Sterne (hellste zuerst)
 MAX_CANDIDATES = 40                # „mögliche Veränderliche“ höchstens
@@ -700,8 +701,12 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
     # Stack-Zustand gehört zur Version? Das Stacken markiert Aufnahmen schon vor dem Anlegen einer neuen Version – bricht ein
     # Lauf danach ab, enthielte der Zustand Aufnahmen, die nicht in dieser Version stecken. n_frames = gestackte Aufnahmen
     # beim Entwickeln (Pipeline.develop).
-    n_now = pl.db.one("SELECT COUNT(*) AS n FROM frames WHERE project_id=? AND kind='light' AND stacked=1", (pid,))["n"]
-    if r["n_frames"] is not None and int(r["n_frames"]) != int(n_now):
+    now_ids = [x["id"] for x in pl.db.q("SELECT id FROM frames WHERE project_id=? AND kind='light' AND stacked=1", (pid,))]
+    # zusätzlich der Fingerabdruck der Mitgliedschaft (gleiche Anzahl, andere Aufnahmen); alte Versionen haben keinen
+    members = json.loads(r["stats"] or "{}").get("members")
+    from .pipeline import stack_fingerprint
+    if ((r["n_frames"] is not None and int(r["n_frames"]) != len(now_ids))
+            or (members and members != stack_fingerprint(now_ids))):
         raise LightcurveError("Der Stack hat sich seit dieser Version geändert (z. B. ein abgebrochener Lauf) – bitte das Objekt "
                               "erst neu verarbeiten bzw. entwickeln, dann die Lichtkurven messen.")
     if not gaia:
@@ -1057,7 +1062,8 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
             if q.name not in keep_names]
     for old in olds[:-1]:                                # zusätzlich den jüngsten älteren Stand für laufende Abrufe behalten
         try:
-            old.unlink()
+            if time.time() - old.stat().st_mtime > KEEP_OLD_S:   # ein gerade gelesener Stand verschwindet nicht unter dem Abruf
+                old.unlink()
         except OSError:
             pass
 
