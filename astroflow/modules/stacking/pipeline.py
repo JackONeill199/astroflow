@@ -581,7 +581,7 @@ class Pipeline:
                     bad = calibration.defect_map([c for _, c, _ in res if c is not None], res[0][2])
                     dlib.add(key, night, bad if bad is not None else np.zeros(0, np.int64))
             if glow:
-                med, src = glib.medians(key, night)
+                med, src = glib.medians(key, night, checked_only=mono)
                 model = calibration.model_from(med)
                 if model:
                     cache[("glow", key, night)] = model

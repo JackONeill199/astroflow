@@ -629,13 +629,20 @@ class GlowLibrary:
                 out.add(n)
         return out
 
-    def medians(self, key: str, night: str) -> tuple[list | None, str]:
+    def medians(self, key: str, night: str, checked_only: bool = False) -> tuple[list | None, str]:
         """(Medianprofile, Quelle) – eigene Nacht, sonst Median aller Nächte der Kamera. Unplausible Nächte (`implausible`)
-        zählen weder für sich noch für den Median."""
+        zählen weder für sich noch für den Median. checked_only (Mono-Kameras): der Rückfall nimmt nur Nächte mit
+        Bewegungsvermerk – eine alte, ungeprüfte Nacht kann bei stehendem Himmel Himmel als Glühen gelernt haben (Review PR #157)."""
         data = self._read(key)
         bad = self.implausible(data) if len(data) > 1 else set()
         if night in data and night not in bad:
             return data[night], "nacht"
+        if checked_only:
+            try:
+                marks = json.loads(self._motion_file(key).read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                marks = {}
+            bad |= {n for n in data if not isinstance(marks.get(n), (int, float))}
         planes = [p for n, p in data.items() if n not in bad]
         if not planes:
             return None, ""
