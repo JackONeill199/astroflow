@@ -941,6 +941,9 @@ def test_teilen_dialog(server, browser, size):
     assert page.evaluate("(() => { const d = document.querySelector('#dlg'); return d.scrollWidth <= d.clientWidth + 1 })()")
     assert page.evaluate(FIND_OVERFLOW) == []
     page.keyboard.press("Escape")
+    # erst wirklich geschlossen: sonst kann das späte close-Ereignis den gleich wieder geöffneten #dlg treffen und
+    # shareDialog bricht ab (!d.open) – CI Ubuntu, PR #168
+    page.wait_for_function("() => !document.querySelector('#dlg')?.open")
     ipid = _imported_pid(base)
     import httpx
     irid = httpx.get(f"{base}/api/stacking/projects/{ipid}").json()["result"]["id"]

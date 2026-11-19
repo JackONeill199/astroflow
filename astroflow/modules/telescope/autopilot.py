@@ -16,7 +16,7 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from ...core import sites
 from . import fog, sky, skymap, skyscan
@@ -82,6 +82,7 @@ STALL_S = 90                # Ziel aktiv, Gerät tut nichts (kein GoTo/Astrometr
 SUB_MAX = 1800              # Ersatzziel höchstens so lange am Stück
 OPEN = ("geplant", "verdeckt", "uebersprungen")     # noch nicht erledigt (verdeckt/übersprungen: neuer Versuch, sobald frei)
 RETRY_HOLDS = ("clouds", "fog")   # gemessene Sperren, die „Erneut versuchen“ aufheben darf
+FOG_WHY = "Optik beschlagen?"     # Grund eines wegen Beschlag beendeten Ziels („Erneut versuchen“ öffnet es wieder)
 FREE_EVERY = 10 * 60        # gutes Bild eines Ziels: höchstens so oft ein freier Punkt für die Himmelskarte
 AUTO_GRACE_S = 60           # „Plane meine Nacht“ mit „gleich starten“: so viele echte Sekunden Frist zum Abbrechen
 REPLAN_EVERY = 10 * 60      # Rest der Nacht höchstens so oft neu planen (Ausfall, Wiederöffnen)
@@ -397,6 +398,18 @@ class Autopilot:
             self.good_since = None
             self.fail_marks.clear()                       # neuer Versuch: frühere Fehlschläge nicht als „Wolken“ mitzählen
             self.blocked = [b for b in self.blocked if b["sure"]]
+            if self.hold.kind == "fog":                   # wegen Beschlag beendete Ziele, deren Abschnitt noch läuft, wieder öffnen
+                for i in [x for x in self.items if x.status == "abgebrochen" and x.why == FOG_WHY and x.end > now]:
+                    if not (i.real_start or i.stacked):   # (sonst findet der Autopilot beim letzten/einzigen Ziel nichts mehr)
+                        i.status, i.why = "geplant", ""
+                        continue
+                    # schon Bilder gesammelt: der Versuch bleibt Verlauf (Zähler für Bilanz und Planung), der Rest des
+                    # Abschnitts wird ein neuer Eintrag – sonst setzte _start_item die Zähler zurück (Review PR #168)
+                    start = max(i.start, now)
+                    self.items.append(replace(i, start=start, hours=round((i.end - start) / 3600, 2), status="geplant", why="",
+                                              real_start=None, real_end=None, frames=0, stacked=0, rejected=0))
+                    i.end = max(i.start, min(i.end, now))
+                self.items.sort(key=lambda x: x.start)
             self.mode, self.hold = "laeuft", None
             self.log("Erneuter Versuch auf Wunsch – öffne wieder.", "info", now)
             return True
@@ -876,7 +889,7 @@ class Autopilot:
             return
         self.idle_since = None
         it.seen, it.restarts = False, 0
-        it.status, it.real_start, it.why = "aktiv", now, ""
+        it.status, it.real_start, it.real_end, it.why = "aktiv", now, None, ""   # kein Ende eines früheren Versuchs
         it.frames = it.stacked = it.rejected = 0
         self.samples.clear()
         self.bad_since = None
@@ -955,7 +968,7 @@ class Autopilot:
         self.log(fog.describe(it.name, r) + " bei klarer Vorhersage." + hint + " Ziel beendet – weitere Bilder wären unbrauchbar.",
                  "bad", now)
         self._cmd("stop", self.driver.stop, now=now)
-        self._end_item(it, "abgebrochen", "Optik beschlagen?", now)
+        self._end_item(it, "abgebrochen", FOG_WHY, now)
         self.fog_at = now
         self.fog.clear()
         self.samples.clear()

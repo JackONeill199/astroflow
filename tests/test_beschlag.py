@@ -177,6 +177,41 @@ def test_autopilot_resume_clears_fog_hold():
     assert p.fog_at is None and not any(h.kind == "fog" for h in p.conditions(clock.now()))
 
 
+def test_autopilot_retry_after_fog_reopens_last_target():
+    """Review PR #158: Endet das einzige Ziel wegen Beschlag, muss „Erneut versuchen“ es wieder aufnehmen –
+    sonst hebt der Knopf nur die Sperre auf und der Autopilot findet kein offenes Ziel mehr."""
+    p, d, clock = _pilot(forecast=_clear)
+    _run(p, clock, 1.5)
+    it = p.items[0]
+    assert it.status == "abgebrochen" and p.hold.kind == "fog"
+    before = it.stacked
+    assert before > 0
+    d.sc.dew_from = None                                       # Optik abgewischt bzw. Heizung an
+    assert p.retry_now(clock.now())
+    # der beschlagene Versuch bleibt Verlauf (Bilder zählen für Bilanz/Planung), der Rest des Abschnitts ist ein neuer Eintrag
+    assert it.status == "abgebrochen" and it.stacked == before and it.end <= clock.now()
+    new = next(i for i in p.items if i is not it and i.id == it.id)
+    assert new.status == "geplant" and new.stacked == 0 and new.real_start is None
+    _run(p, clock, 0.2)
+    assert new.status == "aktiv" and new.stacked > 0 and not d.parked
+    assert it.stacked == before                                # neuer Versuch setzt den alten Zähler nicht zurück
+    assert not p.retry_now(clock.now())                        # nichts mehr aufzuheben, kein weiterer Eintrag
+    assert sum(1 for i in p.items if i.id == it.id) == 2
+
+
+def test_autopilot_retry_after_fog_reopens_target_without_frames():
+    """Ohne gesammelte Bilder wird das Ziel einfach wieder geöffnet (kein leerer Verlaufseintrag)."""
+    p, d, clock = _pilot(forecast=_clear)
+    _run(p, clock, 1.5)
+    it = p.items[0]
+    it.stacked, it.real_start = 0, None                        # Beschlag kam vor dem ersten gestapelten Bild
+    assert p.retry_now(clock.now())
+    assert it.status == "geplant" and it.why == "" and len(p.items) == 1
+    d.sc.dew_from = None
+    _run(p, clock, 0.2)
+    assert it.status == "aktiv" and it.real_end is None       # kein altes Ende am wieder gestarteten Ziel
+
+
 def test_autopilot_cloudy_forecast_is_not_fog():
     def cloudy(site, t0, t1):
         return {"hours": [{"t": t, "cloud": 65, "wind": 5, "dew_spread": 5.0} for t in range(int(t0), int(t1), 3600)]}

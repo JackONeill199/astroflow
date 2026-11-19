@@ -32,14 +32,21 @@ def app(template, tmp_path, monkeypatch):
         yield c, ids, s
 
 
-def _wait(c, cond, timeout=60):
-    end = time.time() + timeout
+def _wait(c, cond, stall=60):
+    """Auf den Zustand des Sammelauftrags warten. Liest ihn direkt (`Batch.public`) statt über GET /analysis – das rechnet
+    nach jedem Schritt das ganze Dashboard neu und bremste den Auftrag auf ausgelasteten Windows-Läufern so, dass die frühere
+    feste Frist (60 s) mitten im Lauf ablief (CI 17.11.2026: 23/30 ohne Fehler). Die Frist zählt ab dem letzten Fortschritt:
+    ein hängender Auftrag fällt weiter auf, ein langsamer nicht."""
+    batch = c.app.state.modules["stacking"].eng.dashboard.batch
+    seen, end = None, time.time() + stall
     while time.time() < end:
-        d = c.get("/api/stacking/analysis").json()
-        if cond(d):
-            return d
-        time.sleep(0.1)
-    raise AssertionError(d["job"])
+        job = batch.public()
+        if cond({"job": job}):
+            return c.get("/api/stacking/analysis").json()
+        if (job.get("state"), job.get("done")) != seen:
+            seen, end = (job.get("state"), job.get("done")), time.time() + stall
+        time.sleep(0.05)
+    raise AssertionError(job)
 
 
 def test_summary_aggregates(app):

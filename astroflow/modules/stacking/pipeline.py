@@ -1,6 +1,7 @@
 """Gesamtablauf: scannen -> kalibrieren -> analysieren -> auswählen -> stacken -> bearbeiten -> prüfen."""
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
@@ -167,6 +168,12 @@ def resource_error(e: BaseException) -> bool:
     der Auftrag hält an bzw. wartet, statt gesunde Frames als „Lesefehler“ oder einen Teilschritt als gescheitert zu markieren."""
     return (isinstance(e, (InterruptedError, diskspace.DiskFull, calibration.SourceOffline, MemoryError))
             or diskspace.is_full(e))
+
+
+def stack_fingerprint(ids) -> str:
+    """Fingerabdruck der Stack-Mitgliedschaft (sortierte Frame-IDs): gleiche Anzahl, aber andere Aufnahmen fällt so auf."""
+    return hashlib.sha1(",".join(sorted(str(i) for i in ids)).encode()).hexdigest()[:16]
+
 
 class Pipeline:
     def __init__(self, settings: Settings, db: DB, review_cfg: reviewer.ReviewerConfig | None = None,
@@ -581,7 +588,7 @@ class Pipeline:
                     bad = calibration.defect_map([c for _, c, _ in res if c is not None], res[0][2])
                     dlib.add(key, night, bad if bad is not None else np.zeros(0, np.int64))
             if glow:
-                med, src = glib.medians(key, night)
+                med, src = glib.medians(key, night, checked_only=mono)
                 model = calibration.model_from(med)
                 if model:
                     cache[("glow", key, night)] = model
@@ -591,6 +598,10 @@ class Pipeline:
                     # Projekt dieselbe Kamera/Nacht schon entschieden hat (sonst sähe stack() die Änderung gegenüber einem
                     # alten glow_info nicht und würde nicht neu analysieren/stacken)
                     used[night] = {"quelle": "keine – Himmel stand still", "adu": 0.0, "bewegung_px": round(mv, 1)}
+                elif mono:
+                    # Mono ohne eigenes Profil und ohne bewegungsgeprüfte Nacht der Kamera: ein früherer Bibliotheksabzug
+                    # fällt weg – als Abzug 0 vermerken, sonst sähe stack() den Wegfall nicht (Review PR #168)
+                    used[night] = {"quelle": "keine – keine geprüfte Nacht der Kamera", "adu": 0.0}
             bad, src = dlib.get(key, night)
             if bad is not None and len(bad):
                 cache[("defects", key, night)] = bad
@@ -1297,7 +1308,8 @@ class Pipeline:
             stats["mosaic"] = mos_info
         stats.update({"profile": pname, "narrowband": narrow, "frames": len(stacked), "exposure_s": exposure,
                       "palette": palette, "bands": band_stats,
-                      "nights": sorted({r["night"] for r in stacked if r["night"]})})   # Bild-Tutor: nur Nächte dieses Ergebnisses
+                      "nights": sorted({r["night"] for r in stacked if r["night"]}),    # Bild-Tutor: nur Nächte dieses Ergebnisses
+                      "members": stack_fingerprint(r["id"] for r in stacked)})           # Lichtkurven: Stack seither unverändert?
 
         if source is not None:                         # Herkunft: Oberfläche zeigt Dateiname/Format wie beim Import
             stats["imported"] = source["info"]

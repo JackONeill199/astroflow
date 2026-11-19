@@ -3,6 +3,15 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.88.1 – 19.11.2026
+
+### Behoben
+- **Teleskop-Autopilot:** „Erneut versuchen“ nach einer Beschlag-Sperre nimmt das letzte bzw. einzige Ziel wieder auf, statt ohne offenes Ziel stehen zu bleiben.
+- **Sensorglühen (Mono-Kameras):** Steht der Himmel in einer Nacht still, greift der Rückfall nur noch auf bewegungsgeprüfte Nächte zurück; alte Stacks werden wieder korrekt neu vorgemerkt.
+- **Planer:** Ortsänderungen während „Neu berechnen“ bleiben als „Ort geändert“ markiert.
+- **GraXpert:** Wird es während der allerersten Entwicklung eines Objekts fertig, wird auch dieses Bild mit KI-Bearbeitung neu entwickelt.
+- **Lichtkurven:** erkennen ausgetauschte Aufnahmen im Stack; ältere Kurvenstände werden erst nach 10 Minuten aufgeräumt.
+
 ## 0.88.0 – 19.11.2026
 
 ### Neu

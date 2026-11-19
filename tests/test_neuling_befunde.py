@@ -168,6 +168,41 @@ def test_graxpert_nach_erstem_bild(home, monkeypatch):
     assert pid in eng.ai_after
 
 
+
+def test_graxpert_waehrend_allererster_entwicklung(home, monkeypatch):
+    """Review PR #166: GraXpert wird genau dann fertig, wenn ein Objekt zum allerersten Mal entwickelt wird (noch kein
+    Ergebnis) – auch dieses erste Bild muss nach dem Auftrag mit KI neu entwickelt werden; mit KI entstanden: nichts."""
+    from astroflow.modules.stacking import graxpert
+    app, c = _client(home / "Daten", monkeypatch)
+    eng = app.state.modules["stacking"].eng
+    monkeypatch.setattr(graxpert, "graxpert_path", lambda: "GraXpert.exe")
+    monkeypatch.setattr(eng, "insights", SimpleNamespace(after_develop=lambda rid: None))
+    monkeypatch.setattr("astroflow.modules.stacking.skyquality.auto_enabled", lambda: False)
+    queued = lambda: [(r["project_id"], json.loads(r["options"])) for r in eng.db.q("SELECT * FROM jobs WHERE state='queued' ORDER BY id")]
+    for stats, followup in (({}, True), ({"graxpert": {"bge": True}}, False)):
+        for t in ("jobs", "results", "projects"):
+            eng.db.x(f"DELETE FROM {t}")
+        eng.ai_after.clear()
+        pid = eng.db.x("INSERT INTO projects(key,name,kind,options,created) VALUES(?,?,?,?,?)",
+                       (f"neu{followup}", "M 81", "galaxy", "{}", time.time()))
+        jid = eng.db.x("INSERT INTO jobs(project_id,state,created,options) VALUES(?,?,?,?)", (pid, "running", time.time(), "{}"))
+        assert eng.redevelop_with_ai() == [] and pid in eng.ai_after            # kein Ergebnis, trotzdem vorgemerkt
+
+        def finish(p, *a, _stats=stats, **k):                                    # erstes Bild entsteht (mit/ohne KI)
+            return eng.db.x("INSERT INTO results(project_id,created,n_frames,exposure,files,stats) VALUES(?,?,?,?,?,?)",
+                            (p, time.time(), 30, 300.0, "{}", json.dumps(_stats)))
+        monkeypatch.setattr(eng, "pl", SimpleNamespace(finish=finish))
+        eng._develop_job(jid)
+        assert queued() == ([(pid, {"mode": "develop"})] if followup else []) and pid not in eng.ai_after
+    # Ergebnis existiert schon (z. B. eben gespeichert bzw. älter als die Frist), der Auftrag läuft aber noch: trotzdem vormerken
+    for t in ("jobs", "results", "projects"):
+        eng.db.x(f"DELETE FROM {t}")
+    eng.ai_after.clear()
+    pid, rid = _project(eng, "M 82")
+    eng.db.x("UPDATE results SET created=? WHERE id=?", (time.time() - 10 * 86400, rid))
+    eng.db.x("INSERT INTO jobs(project_id,state,created,options) VALUES(?,?,?,?)", (pid, "running", time.time(), "{}"))
+    assert eng.redevelop_with_ai() == [] and pid in eng.ai_after
+
 def test_jpeg_download_heisst_wie_das_bild(home, monkeypatch, tmp_path):
     app, c = _client(home / "Daten", monkeypatch, launched=False)
     jpg = tmp_path / "20261118-200500_24f.jpg"
