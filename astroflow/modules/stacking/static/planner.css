@@ -78,3 +78,16 @@
   .pl-block rect, .pl-opt, .obs-tabs a { transition: none }
   .obs-tabs a.on, .pl-in, .pl-in .pl-steps > li, .pl-out, .pl-grow .pl-block, .pl-grow .pl-dark, .pl-in .pl-bar b { animation: none }
 }
+
+/* Ort je Nacht (Zeile = Tag, Auswahl, Horizonthinweis) */
+.pl-sites { margin-top: 0.75rem }
+.pl-sites h3 { margin: 0 0 0.5rem; color: var(--mut); font-weight: 600 }
+.pl-site-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem }
+.pl-site-list li { display: grid; grid-template-columns: 8rem minmax(10rem, 18rem) 1fr; gap: 0.25rem 0.75rem; align-items: center; min-width: 0 }
+.pl-site-list label { color: var(--mut); font-size: 0.8125rem; font-weight: 600 }
+.pl-site-list select { min-width: 0; max-width: 100% }
+.pl-hz { display: inline-flex; align-items: center; gap: 0.375rem; min-width: 0 }
+.pl-hz.on { color: var(--fg) }
+.pl-stale { margin-bottom: 0.625rem; display: flex; align-items: center; gap: 0.625rem; flex-wrap: wrap }
+.pl-stale > div { flex: 1 1 12rem }
+@media (max-width: 640px) { .pl-site-list li { grid-template-columns: 1fr } }

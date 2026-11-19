@@ -175,3 +175,31 @@ def test_eq_mode_per_device_removes_rotation_penalty(tmp_path):
     (alt, h_alt), (eq, h_eq) = hours([]), hours(["seestar"])
     assert h_eq > h_alt and eq["devices"][0]["eq"] and not alt["devices"][0]["eq"]
     assert "EQ" in eq["devices"][0]["tracking"] and "Software" in alt["devices"][0]["tracking"]
+
+
+def test_horizon_per_night_and_header(tmp_path):
+    """Je Nacht: Ort + Horizont (Maske bzw. gemessen); Kopf zählt die Nächte mit Horizont."""
+    boxed = {**SITE, "id": "s2", "name": "Wald", "horizon": [20.0] * 36, "horizon_src": "gemessen vom Teleskop"}
+    p = planner.plan([M31], lambda night: boxed if night and night >= "2026-11-03" else SITE,
+                     planner.clean_wishes({"devices": ["stellina"], "nights": 3}, planner.device_options(None)),
+                     [planner.device_options(None)[0]], tmp_path, now=EVENING)
+    flags = [n["site"]["horizon"] for n in p["nights"]]
+    assert flags.count(True) == p["horizon_nights"]["with"] and p["horizon_nights"]["of"] == 3
+    assert p["nights"][-1]["site"]["horizon"] and p["nights"][-1]["site"]["horizon_src"] == "gemessen vom Teleskop"
+    assert not p["nights"][0]["site"]["horizon"] and p["horizon_nights"]["sites"] == 2
+
+
+def test_plan_api_reports_moved_nights(tmp_path):
+    """Ort einer Nacht nach der Berechnung geändert → GET /plan nennt die Nacht in stale_nights (Plan veraltet)."""
+    s = load_settings(tmp_path / "d")
+    s.auto = False
+    store = SettingsStore(s.data_dir / "settings.json")
+    other = {**SITE, "id": "s2", "name": "Zweit", "alt_m": 0, "accuracy_m": 2000}
+    store.update("sites", {"list": [{**SITE, "alt_m": 0, "accuracy_m": 2000}, other], "default": "s1", "periods": []})
+    with TestClient(create_app(s)) as c:
+        DB(s.db_path)
+        r = c.post("/api/stacking/plan", json={"nights": 2, "devices": ["stellina"], "mode": "new"})
+        night = r.json()["plan"]["nights"][1]["night"]
+        assert c.get("/api/stacking/plan").json()["stale_nights"] == []
+        c.post("/api/sites/night", json={"night": night, "site_id": "s2", "nights": False})
+        assert c.get("/api/stacking/plan").json()["stale_nights"] == [night]

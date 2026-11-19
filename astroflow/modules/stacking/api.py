@@ -1100,7 +1100,15 @@ def build_router(eng: Engine) -> APIRouter:
             det = {}
         found = [o["id"] for o in opts if (eq_lookup(det, o.get("model") or o["id"], o.get("lib_id") or o.get("mag_id") or o["id"]) or {}).get("eq")
                  and o.get("eq_mode")]
-        return {"plan": eng.ctx.store.get("observatory").get("plan"), "devices": opts, "eq_detected": found, "eq_default": found,
+        plan = eng.ctx.store.get("observatory").get("plan")
+        moved: list[str] = []          # Nächte, deren Ort sich seit der Berechnung geändert hat (Plan veraltet)
+        if plan:
+            site_for = _plan_site_for()
+            for n in plan.get("nights") or []:
+                cur = site_for(n.get("night")) or {}
+                if cur.get("id") != (n.get("site") or {}).get("id"):
+                    moved.append(n.get("night"))
+        return {"plan": plan, "stale_nights": moved, "devices": opts, "eq_detected": found, "eq_default": found,
                 "default_device": lib or next((k for k in (device.get("model"), device.get("id")) if k in {o["id"] for o in opts}), "stellina"),
                 "has_site": bool(_plan_site_for()(None)), "weather_on": bool(tutor.settings(eng.ctx.store).get("weather"))}
 
