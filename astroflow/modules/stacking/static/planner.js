@@ -96,8 +96,10 @@ async function planView(el) {
   if (!w.devices.length) w.devices = [d.devices[0].id];
   let wizard = !d.plan;
   const changed = new Set(d.stale_nights || []);        // Ort seit der Berechnung geändert (auch nach Seitenwechsel)
-  let sites = null, stale = changed.size > 0, siteSeq = 0;
-  const edits = new Map();                                // Nacht → Nummer der letzten Ortsänderung auf dieser Seite
+  let sites = null, stale = changed.size > 0, siteSeq = 0, savedSeq = 0;
+  // Nacht → Nummer der zuletzt *gespeicherten* Ortsänderung (beim Abschluss vergeben: auch eine Änderung, die vor
+  // „Neu berechnen“ begann, aber erst danach wirksam wurde, gilt als neuer als der Plan – Review PR #168)
+  const edits = new Map();
   // Nach dem Berechnen: veraltete Nächte laut Server (Plan-Zustand) plus Ortsänderungen, die während der Rechnung kamen –
   // die kennt der fertige Plan womöglich noch nicht (sonst gingen sie verloren, Review PR #163)
   async function restale(since) {
@@ -217,7 +219,7 @@ async function planView(el) {
     }
     if (a === 'run' || a === 'rerun') {
       const b = e.target.closest('button'); b.disabled = true; b.classList.add('pending');
-      const since = siteSeq;
+      const since = savedSeq;
       try { d.plan = (await send('/stacking/plan', a === 'rerun' && d.plan ? d.plan.wishes : w)).plan; wizard = false; await restale(since); draw(a === 'run' ? '#plBody > section' : null); toast('Plan berechnet.', 'ok'); }
       catch (err) { toast(err.message, 'err'); b.disabled = false; b.classList.remove('pending'); }
     }
@@ -229,7 +231,7 @@ async function planView(el) {
       try {
         const my = ++siteSeq, res = await send('/sites/night', { night: sn, site_id: e.target.value || null, nights: false });
         if (my === siteSeq) sites = res;          // nur die jüngste Antwort gilt (überholte Antworten verwerfen)
-        edits.set(sn, my); changed.add(sn); stale = true; draw();
+        edits.set(sn, ++savedSeq); changed.add(sn); stale = true; draw();
         $(`[data-site-night="${sn}"]`, el)?.focus();
       } catch (err) { toast(err.message, 'err'); draw(); }
       return;

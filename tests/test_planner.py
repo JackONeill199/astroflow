@@ -212,7 +212,7 @@ def test_site_change_during_rerun_keeps_stale_hint(server, browser, tmp_path):
     base, _ = server
     plan = _plan(tmp_path)
     nights = [n["night"] for n in plan["nights"]]
-    state = {"stale": [], "held": [], "site_calls": 0}
+    state = {"stale": [], "held": [], "site_calls": 0, "hold_site": False, "held_site": []}
     sites = {"list": [{"id": "a", "name": "Ort A"}, {"id": "b", "name": "Ort B"}, {"id": "c", "name": "Ort C"}], "periods": [], "default": "a"}
 
     def plan_route(route):
@@ -224,6 +224,9 @@ def test_site_change_during_rerun_keeps_stale_hint(server, browser, tmp_path):
 
     def night_route(route):
         state["site_calls"] += 1
+        if state["hold_site"]:
+            state["held_site"].append(route)                  # Speichern des Ortes dauert
+            return
         route.fulfill(json=sites)
 
     page = browser.new_page()
@@ -242,15 +245,20 @@ def test_site_change_during_rerun_keeps_stale_hint(server, browser, tmp_path):
     page.wait_for_selector(f'[data-site-night="{nights[0]}"]')
     page.select_option(f'[data-site-night="{nights[0]}"]', "b")
     page.wait_for_selector(".pl-stale")
+    state["hold_site"] = True
+    page.select_option(f'[data-site-night="{nights[1]}"]', "c")    # Ortsänderung beginnt vor „Neu berechnen“ …
+    until(lambda: state["held_site"])
     page.click('.pl-stale [data-act="rerun"]')
     until(lambda: state["held"])
-    page.select_option(f'[data-site-night="{nights[1]}"]', "c")    # Ort ändert sich während der Rechnung
-    until(lambda: state["site_calls"] == 2)
-    page.wait_for_timeout(150)
+    state["held_site"].pop().fulfill(json=sites)                    # … und wird erst während der Rechnung wirksam
+    page.wait_for_function("n => document.querySelector(`[data-site-night=\"${n}\"]`)?.closest('li')?.textContent.includes('gilt nach dem Neuberechnen')",
+                           arg=nights[1])
+    state["stale"] = [nights[2]]                                    # nur der Server kennt diese veraltete Nacht
     state["held"].pop().fulfill(json={"plan": json.loads(json.dumps(plan))})
     page.wait_for_selector(".toast >> text=Plan berechnet")
     assert page.locator(".pl-stale").count() == 1                   # Änderung während der Rechnung bleibt sichtbar
-    assert page.locator(".pl-hz", has_text="gilt nach dem Neuberechnen").count() == 1   # nur die zweite Nacht
+    marked = page.locator("li", has=page.locator(".pl-hz", has_text="gilt nach dem Neuberechnen"))
+    assert sorted(marked.locator("select").evaluate_all("els => els.map(e => e.dataset.siteNight)")) == sorted(nights[1:3])
     state["stale"] = [nights[1]]                                    # Server sieht die Nacht als veraltet
     page.goto(f"{base}/#/")
     page.goto(f"{base}/#/observatorium/plan")
