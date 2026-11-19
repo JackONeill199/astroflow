@@ -145,22 +145,22 @@ def test_graxpert_nach_erstem_bild(home, monkeypatch):
     assert sorted(p["id"] for p in eng.without_ai()) == [pid, pid2]
     eng.db.x("DELETE FROM results WHERE project_id=?", (pid2,))
     assert c.get(f"/api/stacking/projects/{pid}").json()["ai_offer"] is False          # GraXpert fehlt (Tests: abgeschaltet)
-    queued = []
     monkeypatch.setattr(graxpert, "graxpert_path", lambda: "GraXpert.exe")
-    monkeypatch.setattr(eng, "enqueue", lambda p, o=None: queued.append((p, o)) or 1)
+    queued = lambda: [(r["project_id"], json.loads(r["options"])) for r in eng.db.q("SELECT * FROM jobs WHERE state='queued' ORDER BY id")]
     assert c.get(f"/api/stacking/projects/{pid}").json()["ai_offer"] is True
     msg = app.state.setup._redevelop_with_ai()
-    assert queued == [(pid, {"mode": "develop"})] and "neu entwickelt" in msg
-    # läuft für das Objekt schon ein Auftrag, wird die KI-Entwicklung vorgemerkt statt verschluckt
-    queued.clear()
-    jid = eng.db.x("INSERT INTO jobs(project_id,state,created,options) VALUES(?,?,?,?)", (pid, "running", time.time(), '{"mode": "develop"}'))
-    assert eng.redevelop_with_ai() == ["M31 Andromedagalaxie"] and queued == [] and pid in eng.ai_after
-    # Ende des laufenden Auftrags: Bild weiter ohne KI → Folgeauftrag mit KI
-    monkeypatch.setattr(eng, "pl", SimpleNamespace(develop=lambda *a, **k: 1))
+    assert queued() == [(pid, {"mode": "develop"})] and "neu entwickelt" in msg
+    # läuft für das Objekt schon ein Auftrag (Entwickeln bzw. Plate-Solving), wird die KI-Entwicklung vorgemerkt statt verschluckt
+    monkeypatch.setattr(eng, "pl", SimpleNamespace(develop=lambda *a, **k: 1, solve_project=lambda *a, **k: {"moved": {}},
+                                                   begin_live=lambda *a, **k: None))
     monkeypatch.setattr(eng, "insights", SimpleNamespace(after_develop=lambda rid: None))
     monkeypatch.setattr("astroflow.modules.stacking.skyquality.auto_enabled", lambda: False)
-    eng._develop_job(jid)
-    assert queued == [(pid, {"mode": "develop"})] and pid not in eng.ai_after
+    for opts, run in (({"mode": "develop"}, eng._develop_job), ({"action": "solve"}, eng._stack_job)):
+        eng.db.x("DELETE FROM jobs")
+        jid = eng.db.x("INSERT INTO jobs(project_id,state,created,options) VALUES(?,?,?,?)", (pid, "running", time.time(), json.dumps(opts)))
+        assert eng.redevelop_with_ai() == ["M31 Andromedagalaxie"] and queued() == [] and pid in eng.ai_after
+        run(jid)                                             # Auftrag endet, Bild weiter ohne KI → Folgeauftrag mit KI
+        assert queued() == [(pid, {"mode": "develop"})] and pid not in eng.ai_after
 
 
 def test_jpeg_download_heisst_wie_das_bild(home, monkeypatch, tmp_path):
