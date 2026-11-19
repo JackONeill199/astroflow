@@ -161,6 +161,11 @@ def test_graxpert_nach_erstem_bild(home, monkeypatch):
         assert eng.redevelop_with_ai() == ["M31 Andromedagalaxie"] and queued() == [] and pid in eng.ai_after
         run(jid)                                             # Auftrag endet, Bild weiter ohne KI → Folgeauftrag mit KI
         assert queued() == [(pid, {"mode": "develop"})] and pid not in eng.ai_after
+    # zwischen Abschluss und Folgeauftrag kommt ein anderer Auftrag: Vormerkung bleibt bestehen
+    eng.db.x("DELETE FROM jobs")
+    eng.db.x("INSERT INTO jobs(project_id,state,created,options) VALUES(?,?,?,?)", (pid, "queued", time.time(), '{"action": "solve"}'))
+    eng._ai_followup(pid)
+    assert pid in eng.ai_after
 
 
 def test_jpeg_download_heisst_wie_das_bild(home, monkeypatch, tmp_path):

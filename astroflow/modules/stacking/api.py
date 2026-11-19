@@ -154,7 +154,10 @@ class Engine:
     def _ai_followup(self, project_id: int):
         """GraXpert kam während eines Auftrags dazu: Bild ohne KI-Bearbeitung jetzt mit KI neu entwickeln."""
         if graxpert.graxpert_path() and self.without_ai(pid=project_id):
-            self.enqueue(project_id, {"mode": "develop"})
+            with self._queue_lock:
+                jid, new = self._enqueue_locked(project_id, {"mode": "develop"})
+                if jid and not new:
+                    self.ai_after.add(project_id)            # inzwischen kam ein anderer Auftrag: nach dessen Ende erneut
 
     def pending_projects(self) -> set[int]:
         """Während laufender Jobs eingelesene Aufnahmen nachholen; Fehler nicht endlos neu versuchen. Nicht erreichbare
