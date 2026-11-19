@@ -25,7 +25,7 @@
   `setup.done` nicht gesetzt) und die Startseite aufgerufen wird; sonst über Einstellungen → Module & System (`setupSystemPanel`: Updates,
   Neu starten, Beenden). Schritte: Datenordner (Laufwerke + frei, `launcher.cloud_folder` warnt bei OneDrive/Dropbox/…; Wechsel legt im neuen
   Ordner `setup` an und startet neu – **alte Daten werden nicht verschoben**, DB-Pfade sind absolut), Teleskop (→ D05 bzw. D50 für „andere“),
-  Standort (Link), ASTAP, Demo, Extras (GPU per pip, GraXpert/StarNet nur Links, Heimnetz + Firewall-Regel wie `scripts/windows/Netzwerk-freigeben.bat` per UAC,
+  Standort, ASTAP, erstes Bild (nur eigene Aufnahmen – **keine Demo im Assistenten oder Installer**, Nutzerwunsch 19.11.2026; `/api/setup/demo` bleibt für `pruefe_paket.py`), Extras (GPU per pip, GraXpert/StarNet nur Links, Heimnetz + Firewall-Regel wie `scripts/windows/Netzwerk-freigeben.bat` per UAC,
   Update-Prüfung). Hintergrundaufgaben `Setup._run` → `tasks` + Aktivität (`setup:<key>`).
   **Neulingstest 18.11.2026** (Sandbox, `NEULING-TEST-2026-11-18.md`): Standort wird **im Assistenten** gesucht und gespeichert (Photon →
   Treffer → `POST /api/sites`, Höhe von Open-Meteo) statt nach Einstellungen → Standorte zu springen; von dort führt „Zurück zur Einrichtung“

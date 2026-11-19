@@ -60,7 +60,7 @@ def wait(fn, timeout: float, step: float = 1.0):
 
 
 def flow(port: int, times: dict, t0: float, astap: bool):
-    """Assistent wie in der Oberfläche: Teleskop, optional ASTAP + D05, Demo → erstes Bild."""
+    """Paketprüfung: Teleskop, optional ASTAP + D05, Demo-Daten per API → erstes Bild (der Assistent bietet keine Demo mehr an)."""
     call(port, "/setup", {"telescope": "stellina"})
     if astap:
         t2 = time.time()
@@ -87,7 +87,7 @@ def flow(port: int, times: dict, t0: float, astap: bool):
 
 
 
-FULL = "astap,astap\\d05,graxpert,gpu,skytrace,demo"
+FULL = "astap,astap\\d05,graxpert,gpu,skytrace"
 
 
 def diagnose(port: int):

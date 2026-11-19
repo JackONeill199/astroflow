@@ -1,4 +1,4 @@
-/* Einrichtung (#/willkommen): Datenordner, Teleskop, Standort, ASTAP auf Knopfdruck, Demo fürs erste Bild, Extras.
+/* Einrichtung (#/willkommen): Datenordner, Teleskop, Standort, ASTAP auf Knopfdruck, erstes Bild (eigene Aufnahmen), Extras.
    Erscheint beim ersten Start der installierten Version von selbst (AF.app.setup.pending), sonst unter Einstellungen → Module & System.
    Backend: core/setup.py (/api/setup…, /api/system/…). */
 (() => {
@@ -149,12 +149,9 @@
         <li class="panel su-step${doneSteps.pic ? ' done' : ''}"><h2>Erstes Bild${mark(doneSteps.pic)}</h2>
           ${doneSteps.pic ? `<p class="sm">${s.pictures === 1 ? 'Dein erstes Bild ist fertig.' : `${s.pictures} Bilder sind fertig.`} Weitere Aufnahmen ziehst du einfach auf die Seite oder importierst sie unter Import.</p>
           <div class="su-acts"><a class="btn sm" href="#/bilder">${icon('arrow')}Zu den Bildern</a><a class="btn ghost sm" href="#/import">${icon('folder')}Weitere Aufnahmen importieren</a></div>` : `
-          <p class="mut sm">Noch keine eigenen Aufnahmen zur Hand? Die Demo erzeugt eine künstliche Aufnahmeserie (30 Bilder, Darks, Flats) und verarbeitet sie wie echte.
-            Eigene Aufnahmen ziehst du einfach auf die Seite oder wählst unter Import → „Hauptordner durchsuchen“ die Teleskop-Festplatte.</p>
-          <div class="su-acts">${s.demo.exists ? `<a class="btn ghost sm" href="#/bilder">${icon('arrow')}Zu den Bildern</a>`
-            : `<button class="btn sm" id="suDemo" ${t.demo?.state === 'running' ? 'disabled' : ''}>${icon('play')}Demo verarbeiten</button>`}
-            <a class="btn ghost sm" href="#/import">${icon('folder')}Eigene Aufnahmen importieren</a></div>`}
-          ${taskLine(t.demo)}
+          <p class="mut sm">Zieh deine Aufnahmen (FITS-Rohbilder) einfach auf die Seite oder wähle unter Import → „Hauptordner durchsuchen“ die Teleskop-Festplatte.
+            AstroFlow sortiert, kalibriert, stapelt und entwickelt sie dann von selbst.</p>
+          <div class="su-acts"><a class="btn sm" href="#/import">${icon('folder')}Eigene Aufnahmen importieren</a></div>`}
         </li>
         <li class="panel su-step"><h2>Extras <span class="mut sm">(optional)</span></h2>
           <div id="suCompSlot"></div>
@@ -253,12 +250,11 @@
         }
         else if (b.closest('#suDb')) { db = b.dataset.v; repaint(); }
         else if (b.id === 'suAstap') { await send('/components/install', { id: 'astap', option: db }); await refresh(); watch(); }
-        else if (b.id === 'suDemo') { await send('/setup/demo'); await refresh(); watch(); }
         else if (b.id === 'suFw') { const r = await send('/setup/firewall'); toast(r.detail, r.ok ? 'ok' : 'err'); }
         else if (b.id === 'suDone') {
           const bg = busyNow();
           await send('/setup', { done: true });
-          if (bg) toast('Downloads laufen im Hintergrund weiter – Fortschritt unter Aufträge.', 'ok', { label: 'Aufträge', href: '#/activity' }); location.hash = s.demo.exists || s.pictures ? '#/bilder' : '#/'; }
+          if (bg) toast('Downloads laufen im Hintergrund weiter – Fortschritt unter Aufträge.', 'ok', { label: 'Aufträge', href: '#/activity' }); location.hash = s.pictures ? '#/bilder' : '#/'; }
       } catch (err) { toast(err.message, 'err'); }
     };
     el.onchange = async (e) => {
