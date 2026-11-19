@@ -146,8 +146,14 @@ def test_graxpert_nach_erstem_bild(home, monkeypatch):
     assert queued == [(pid, {"mode": "develop"})] and "neu entwickelt" in msg
     # läuft für das Objekt schon ein Auftrag, wird die KI-Entwicklung vorgemerkt statt verschluckt
     queued.clear()
-    eng.db.x("INSERT INTO jobs(project_id,state,created,options) VALUES(?,?,?,?)", (pid, "running", time.time(), "{}"))
+    jid = eng.db.x("INSERT INTO jobs(project_id,state,created,options) VALUES(?,?,?,?)", (pid, "running", time.time(), '{"mode": "develop"}'))
     assert eng.redevelop_with_ai() == ["M31 Andromedagalaxie"] and queued == [] and pid in eng.ai_after
+    # Ende des laufenden Auftrags: Bild weiter ohne KI → Folgeauftrag mit KI
+    monkeypatch.setattr(eng, "pl", SimpleNamespace(develop=lambda *a, **k: 1))
+    monkeypatch.setattr(eng, "insights", SimpleNamespace(after_develop=lambda rid: None))
+    monkeypatch.setattr("astroflow.modules.stacking.skyquality.auto_enabled", lambda: False)
+    eng._develop_job(jid)
+    assert queued == [(pid, {"mode": "develop"})] and pid not in eng.ai_after
 
 
 def test_jpeg_download_heisst_wie_das_bild(home, monkeypatch, tmp_path):
@@ -183,3 +189,10 @@ def test_kein_abgleichshinweis_ohne_analysen(tmp_path):
     store.update("sites", {"list": [{"id": "a", "name": "A", "lat": 53, "lon": 10}], "default": "a", "periods": []})
     assert gone.sites_changed() is False                     # Laufwerk getrennt: nichts melden …
     assert jobs.sites_changed() is True                      # … und den alten Stand nicht überschreiben
+    link = tmp_path / "Link-Ergebnisse"
+    try:
+        link.symlink_to(tmp_path / "Laufwerk-weg" / "Ergebnisse", target_is_directory=True)
+    except OSError:
+        return                                               # Windows ohne Symlink-Recht: Fall nicht prüfbar
+    via_link = SiteJobs(SimpleNamespace(ctx=SimpleNamespace(store=store), ctl=SimpleNamespace(results=link)))
+    assert via_link._has_runs() is None and via_link.sites_changed() is False

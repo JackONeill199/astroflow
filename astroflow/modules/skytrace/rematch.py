@@ -7,6 +7,7 @@ Zeiträume seit dem letzten Abgleich aller Läufe geändert haben, verrät `site
 from __future__ import annotations
 
 import hashlib
+import os
 import json
 import subprocess
 import threading
@@ -109,8 +110,8 @@ class SiteJobs:
         None = nicht feststellbar (Laufwerk getrennt, Lesefehler) – dann den gemerkten Stand nicht anfassen."""
         root = self.mod.ctl.results
         try:
-            if not root.exists():
-                return False if root.parent.exists() else None
+            if not root.exists():                  # Link auf getrenntes Laufwerk oder Elternordner fehlt: unbekannt
+                return None if os.path.lexists(root) or not root.parent.exists() else False
             return any(p.is_dir() and (p / "videos.json").is_file() for p in root.iterdir())
         except OSError:
             return None

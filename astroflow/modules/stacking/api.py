@@ -278,14 +278,16 @@ class Engine:
                 rid = self.pl.develop(job["project_id"], opts, prog, start=0.05)
             else:
                 rid = self.pl.finish(job["project_id"], opts, prog)
-            self.db.x("UPDATE jobs SET state='done', progress=1, finished=? WHERE id=?", (time.time(), jid))
+            with self._queue_lock:                        # zusammen mit der Vormerkung in redevelop_with_ai (kein Zeitrennen)
+                self.db.x("UPDATE jobs SET state='done', progress=1, finished=? WHERE id=?", (time.time(), jid))
+                ai_again = job["project_id"] in self.ai_after
+                self.ai_after.discard(job["project_id"])
             self.insights.after_develop(rid)
             if skyquality.auto_enabled():                 # Himmelsqualität der Nächte im Hintergrund nachrechnen
                 self.sky.queue(job["project_id"])
             if self.s.auto and job["project_id"] in self.pending_projects():
                 self.enqueue(job["project_id"])
-            if job["project_id"] in self.ai_after:            # GraXpert kam während dieses Auftrags: mit KI nachentwickeln
-                self.ai_after.discard(job["project_id"])
+            if ai_again:                                      # GraXpert kam während dieses Auftrags: mit KI nachentwickeln
                 if graxpert.graxpert_path() and self.without_ai(pid=job["project_id"]):
                     self.enqueue(job["project_id"], {"mode": "develop"})
         except Exception as e:
@@ -409,8 +411,11 @@ class Engine:
             return []
         names = []
         for p in self.without_ai(max_age_s)[:limit]:
-            if self.db.one("SELECT id FROM jobs WHERE project_id=? AND state IN ('queued','running')", (p["id"],)):
-                self.ai_after.add(p["id"])                # läuft schon: nach dessen Ende prüfen (_develop_job)
+            with self._queue_lock:                        # läuft schon: nach dessen Ende prüfen (_develop_job, gleiche Sperre)
+                busy = self.db.one("SELECT id FROM jobs WHERE project_id=? AND state IN ('queued','running')", (p["id"],))
+                if busy:
+                    self.ai_after.add(p["id"])
+            if busy:
                 names.append(p["name"])
             elif self.enqueue(p["id"], {"mode": "develop"}):
                 names.append(p["name"])

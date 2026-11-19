@@ -182,10 +182,10 @@ async function sitesSettings(el) {
             const b = e.target.closest('[data-i]'); if (!b) return;
             const r = rows[+b.dataset.i];
             fill(r); $('#siteRes', el).innerHTML = '';
-            const pick = ++altSeq, altBefore = E.alt_m.value;     // spätere Auswahl oder eigene Eingabe gewinnt
+            const pick = ++altSeq, altBefore = E.alt_m.value, at = E.lat.value + '|' + E.lon.value;   // spätere Auswahl oder eigene Eingabe gewinnt
             const note = $('#siteNote', el), map = `https://www.openstreetmap.org/?mlat=${encodeURIComponent(r.lat)}&mlon=${encodeURIComponent(r.lon)}#map=16/${encodeURIComponent(r.lat)}/${encodeURIComponent(r.lon)}`;
             note.innerHTML = `Übernommen – Höhe wird ermittelt … · <a href="${map}" target="_blank" rel="noreferrer">Lage auf der Karte prüfen ↗</a>`;
-            try { const h = await api(`/sites/elevation?lat=${+r.lat}&lon=${+r.lon}`); if (pick !== altSeq || !E.alt_m.isConnected || E.alt_m.value !== altBefore) return;
+            try { const h = await api(`/sites/elevation?lat=${+r.lat}&lon=${+r.lon}`); if (pick !== altSeq || !E.alt_m.isConnected || E.alt_m.value !== altBefore || E.lat.value + '|' + E.lon.value !== at) return;
               E.alt_m.value = Math.round(h.alt_m);
               if (note.isConnected) note.innerHTML = `Übernommen, Höhe ${Math.round(h.alt_m)} m (Open-Meteo) · <a href="${map}" target="_blank" rel="noreferrer">Lage auf der Karte prüfen ↗</a>`; }
             catch { if (pick === altSeq && note.isConnected) note.innerHTML = `Übernommen – Höhe bitte selbst eintragen · <a href="${map}" target="_blank" rel="noreferrer">Lage auf der Karte prüfen ↗</a>`; }
