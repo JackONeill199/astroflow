@@ -309,18 +309,22 @@ const NOTE_ICO = {
   fine: '<path d="M12 3l1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6z"/>',
   info: '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/>'};
 const note = (cls, title, text, alert) => `<div class="tn-note ${cls}"${alert ? ' role="alert"' : ''}><i class="tn-note-ico" aria-hidden="true"><svg viewBox="0 0 24 24">${NOTE_ICO[cls.split(' ').pop()] || NOTE_ICO.info}</svg></i><p><b>${title}</b><span>${text}</span></p></div>`;
-function weatherNotes(d) {
+function weatherNotes(d, inKpi) {
   const out = [], sky = d.sky, m = d.forecast?.models, ts = d.telescope_sky;
-  if (sky?.rain_hours > 0) out.push(note('rain', 'Regen erwartet', `Etwa ${num(sky.rain_hours)} h der dunklen Zeit sind unbrauchbar – egal wie die Wolkenzahl aussieht.`, true));
+  if (sky?.rain_hours > 0 && !inKpi) out.push(note('rain', 'Regen erwartet', `Etwa ${num(sky.rain_hours)} h der dunklen Zeit sind unbrauchbar – egal wie die Wolkenzahl aussieht.`, true));
   if (m?.disagree) out.push(note('unsure', 'Vorhersage unsicher', `Hauptmodell ${m.main_cmp} % Bewölkung, ${esc(m.alt_label)} ${m.alt} % – die Modelle sind uneinig.`));
   if (m?.veil && !sky?.rain_hours) out.push(note('veil', 'Meist hohe Schleierwolken', `Gesamt ${m.total} %, wirksam etwa ${m.main} % – Sterne evtl. sichtbar; hohe Wolken zählen nur schwach.`));
   if (ts) out.push(note(`scope ${ts.clear ? 'fine' : 'cloudy'}`, `Laut ${esc(ts.source)} ${ts.clear ? 'klar' : 'bewölkt'}`, `Messung ${hm(ts.t)} Uhr${d.cloud?.length ? ' – die Messung geht vor die Vorhersage.' : '.'}`));
   return out.join('');
 }
-function statusNote(d) {
-  const all = weatherNotes(d) + statusNote1(d);
+// kpi: Detailseite mit Kennzahlleiste – Regen und Bewölkung stehen dort schon im Wetterfeld (Nutzerwunsch 18.11.2026:
+// „brauche die Info nicht mehrmals“), es bleiben nur Hinweise, die die Leiste nicht zeigt (unsicher, Schleier, Messung, keine Dunkelheit …)
+function statusNote(d, kpi) {
+  const inKpi = !!(kpi && wxKind(d)), st = d.status?.code;
+  const all = weatherNotes(d, inKpi) + (inKpi && (st === 'overcast' || d.sky?.state === 'partly') ? '' : statusNote1(d));
   return all ? `<div class="tn-notes-row">${all}</div>` : '';
 }
+const wxKind = d => !d.weather_on || !d.sky?.state ? null : d.sky.rain_hours > 0 ? 'rain' : d.status?.code === 'overcast' ? 'overcast' : d.sky.state === 'partly' ? 'partly' : 'clear';
 function statusNote1(d) {
   const sky = d.sky, st = d.status?.code, nc = sky?.next_clear;
   const next = nc ? `Nächstes klares Fenster ${day(nc, nc.tonight)}.` : 'Die nächsten 48 Stunden zeigen kein klares Fenster.';
@@ -375,14 +379,21 @@ const SKY_ICO = {
 function kpis(d) {
   const dev = d.device, tw = d.twilight || {}, mi = Math.round(+d.moon.illum) || 0, sky = d.sky, south = d.site?.[0] < 0;
   const moonSub = [d.moon.waxing ? 'zunehmend' : 'abnehmend', d.moon.rise ? `geht ${hm(d.moon.rise)} auf` : '', d.moon.set ? `geht ${hm(d.moon.set)} unter` : ''].filter(Boolean).join(' · ');
-  const kind = !d.weather_on || !sky?.state ? null : sky.rain_hours > 0 ? 'rain' : d.status?.code === 'overcast' ? 'overcast' : sky.state === 'partly' ? 'partly' : 'clear';
+  const kind = wxKind(d), nc = sky?.next_clear;
+  // was vorher als eigene Meldung darunter stand, steht jetzt im Tooltip des Wetterfelds
+  const wxTitle = !kind ? '' : [sky.rain_hours > 0 ? `Regen erwartet: etwa ${num(sky.rain_hours)} h der dunklen Zeit sind unbrauchbar, egal wie die Wolkenzahl aussieht.` : '',
+    kind === 'overcast' || kind === 'rain' ? (nc ? `Nächstes klares Fenster ${day(nc, nc.tonight)}.` : 'Die nächsten 48 Stunden zeigen kein klares Fenster.') + ' Die Ziele gelten bei klarem Himmel.' : '',
+    kind === 'partly' ? `Etwa ${num(sky.usable_hours)} h klar nutzbar; gestrichelte Ziele gelten bei klarem Himmel.` : ''].filter(Boolean).join(' ');
   const wxText = {rain: 'Regen', overcast: 'Bedeckt', partly: 'Teils bewölkt', clear: 'Klar'}[kind];
   const wxSub = kind ? [`${sky.mean} % Wolken`, sky.rain_hours > 0 ? `${num(sky.rain_hours)} h Regen` : sky.usable_hours != null ? `${num(sky.usable_hours)} h klar` : ''].filter(Boolean).join(' · ') : '';
-  const tile = (cls, ico, label, value, sub, attrs = '') => `<div class="tn-kpi ${cls}"${attrs}>${ico ? `<i class="tn-kpi-ico" aria-hidden="true">${ico}</i>` : ''}<small>${label}</small><b data-count>${value}</b>${sub ? `<span class="tn-kpi-sub">${sub}</span>` : ''}</div>`;
+  const inner = (ico, label, value, sub) => `${ico ? `<i class="tn-kpi-ico" aria-hidden="true">${ico}</i>` : ''}<small>${label}</small><b data-count>${value}</b>${sub ? `<span class="tn-kpi-sub">${sub}</span>` : ''}`;
+  const tile = (cls, ico, label, value, sub, attrs = '') => `<div class="tn-kpi ${cls}"${attrs}>${inner(ico, label, value, sub)}</div>`;
+  // Wetter mit Erklärung: aufklappbar (Tastatur und Touch), nicht nur als Tooltip – die Meldung darunter entfällt ja
+  const more = (cls, ico, label, value, sub, text) => `<details class="tn-kpi ${cls}"${cls.includes('rain') ? ' role="alert"' : ''}><summary title="Erklärung zeigen">${inner(ico, label, value, sub)}<span class="tn-kpi-more" aria-hidden="true">${icon('chev')}</span></summary><p class="tn-kpi-pop">${esc(text)}</p></details>`;
   return `<div class="tn-kpis">
     ${tile('dark', '<svg viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></svg>', 'Dunkle Zeit', esc(dur(d.dark_hours * 3600)), tw.dark_start ? esc(period([tw.dark_start, tw.dark_end])) : '')}
     ${tile('moon', `<svg viewBox="0 0 24 24">${moonIcon(12, 12, 9, mi, d.moon.waxing, south)}</svg>`, 'Mond', `${mi} %`, esc(moonSub))}
-    ${kind ? tile(`wx ${kind}`, `<svg viewBox="0 0 24 24">${SKY_ICO[kind]}</svg>`, 'Wetter', wxText, esc(wxSub)) : ''}
+    ${kind ? (wxTitle ? more : tile)(`wx ${kind}`, `<svg viewBox="0 0 24 24">${SKY_ICO[kind]}</svg>`, 'Wetter', wxText, esc(wxSub), wxTitle) : ''}
     ${d.sky_quality?.sqm ? tile('sqm', '', 'Himmel hier', `${num((+d.sky_quality.sqm).toFixed(1))} mag/″²`, d.sky_quality.bortle ? esc(d.sky_quality.bortle.text) : '', ` title="Gemessen an deinen Aufnahmen an diesem Ort (${+d.sky_quality.n_site_nights || 0} Nächte)"`) : ''}
     ${tile('dev', '', 'Dein Gerät', esc(dev.name), dev.fov ? 'Bildfeld ' + dev.fov.map(v => num(v.toFixed(2)) + '°').join(' × ') : '')}
   </div>`;
@@ -438,7 +449,7 @@ function content(d, initial_target, full) {
   if (!d.site) return `<div class="tn-empty">${noSite()}</div>`;
   const dev = d.device;
   return `${full ? `<div class="tn-head"><div class="tn-head-sky" aria-hidden="true"></div>${nightNav(d)}${kpis(d)}</div>` : `<div class="tn-overview"><div><small>Dunkle Zeit</small><b>${dur(d.dark_hours * 3600)}</b></div><div><small>Mond beleuchtet</small><b>${d.moon.illum} %</b></div><div><small>Dein Gerät</small><b>${esc(dev.name)}</b></div>${window.AFsky?.tonightTile(d) || ''}</div>`}
-    ${statusNote(d)}
+    ${statusNote(d, full)}
     ${graph(d, initial_target)}
     ${planList(d, full)}
     <details class="tn-notes mut sm"><summary>Berechnung &amp; Bildfeld</summary><p>${esc(dev.name)}${dev.fov ? ` · Bildfeld ca. ${dev.fov.map(v => v.toFixed(2).replace('.', ',') + '°').join(' × ')} (${esc(dev.source)})` : ' · Bildfeld unbekannt, Größenfilter aus'}</p><p>Neue Ziele: Messier- und Caldwell-Katalog (fest eingebaut)${d.catalog?.astap_found ? ' plus auffällige Objekte aus ASTAPs deep_sky.csv (ohne Helligkeitsangabe, nach Größe und Name gewählt)' : ' – ohne ASTAPs deep_sky.csv keine weiteren Objekte'}. Helligkeitsgrenze für dieses Gerät etwa ${num(d.catalog?.mag_limit ?? 11)} mag; Größe 3–90 % der kurzen Bildfeldseite. ${d.catalog?.candidates ?? 0} Kandidaten passen zu Gerät und Bildfeld.</p><p>Rangfolge: nutzbare Stunden in der dunklen Zeit, gewichtet mit Mond (Phase × Abstand), Wolken (falls die Vorhersage im Tutor an ist) und Bildfelddrehung je Gerät (${rotNote(dev)}); dazu Kulmination im Dunkeln und Saison. „Mehr Zeit“ rechnet das Rauschen nach der 1/√Zeit-Regel. Freier Horizont wird vorausgesetzt.</p></details>`;
