@@ -177,6 +177,20 @@ def test_autopilot_resume_clears_fog_hold():
     assert p.fog_at is None and not any(h.kind == "fog" for h in p.conditions(clock.now()))
 
 
+def test_autopilot_retry_after_fog_reopens_last_target():
+    """Review PR #158: Endet das einzige Ziel wegen Beschlag, muss „Erneut versuchen“ es wieder aufnehmen –
+    sonst hebt der Knopf nur die Sperre auf und der Autopilot findet kein offenes Ziel mehr."""
+    p, d, clock = _pilot(forecast=_clear)
+    _run(p, clock, 1.5)
+    it = p.items[0]
+    assert it.status == "abgebrochen" and p.hold.kind == "fog"
+    d.sc.dew_from = None                                       # Optik abgewischt bzw. Heizung an
+    assert p.retry_now(clock.now())
+    assert it.status == "geplant" and it.why == ""
+    _run(p, clock, 0.2)
+    assert it.status == "aktiv" and not d.parked
+
+
 def test_autopilot_cloudy_forecast_is_not_fog():
     def cloudy(site, t0, t1):
         return {"hours": [{"t": t, "cloud": 65, "wind": 5, "dew_spread": 5.0} for t in range(int(t0), int(t1), 3600)]}

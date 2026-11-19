@@ -82,6 +82,7 @@ STALL_S = 90                # Ziel aktiv, Gerät tut nichts (kein GoTo/Astrometr
 SUB_MAX = 1800              # Ersatzziel höchstens so lange am Stück
 OPEN = ("geplant", "verdeckt", "uebersprungen")     # noch nicht erledigt (verdeckt/übersprungen: neuer Versuch, sobald frei)
 RETRY_HOLDS = ("clouds", "fog")   # gemessene Sperren, die „Erneut versuchen“ aufheben darf
+FOG_WHY = "Optik beschlagen?"     # Grund eines wegen Beschlag beendeten Ziels („Erneut versuchen“ öffnet es wieder)
 FREE_EVERY = 10 * 60        # gutes Bild eines Ziels: höchstens so oft ein freier Punkt für die Himmelskarte
 AUTO_GRACE_S = 60           # „Plane meine Nacht“ mit „gleich starten“: so viele echte Sekunden Frist zum Abbrechen
 REPLAN_EVERY = 10 * 60      # Rest der Nacht höchstens so oft neu planen (Ausfall, Wiederöffnen)
@@ -397,6 +398,10 @@ class Autopilot:
             self.good_since = None
             self.fail_marks.clear()                       # neuer Versuch: frühere Fehlschläge nicht als „Wolken“ mitzählen
             self.blocked = [b for b in self.blocked if b["sure"]]
+            if self.hold.kind == "fog":                   # wegen Beschlag beendete Ziele, deren Abschnitt noch läuft, wieder öffnen
+                for i in self.items:                      # (sonst findet der Autopilot beim letzten/einzigen Ziel nichts mehr)
+                    if i.status == "abgebrochen" and i.why == FOG_WHY and i.end > now:
+                        i.status, i.why = "geplant", ""
             self.mode, self.hold = "laeuft", None
             self.log("Erneuter Versuch auf Wunsch – öffne wieder.", "info", now)
             return True
@@ -955,7 +960,7 @@ class Autopilot:
         self.log(fog.describe(it.name, r) + " bei klarer Vorhersage." + hint + " Ziel beendet – weitere Bilder wären unbrauchbar.",
                  "bad", now)
         self._cmd("stop", self.driver.stop, now=now)
-        self._end_item(it, "abgebrochen", "Optik beschlagen?", now)
+        self._end_item(it, "abgebrochen", FOG_WHY, now)
         self.fog_at = now
         self.fog.clear()
         self.samples.clear()
