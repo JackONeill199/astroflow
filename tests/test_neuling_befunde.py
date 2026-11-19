@@ -194,6 +194,14 @@ def test_graxpert_waehrend_allererster_entwicklung(home, monkeypatch):
         monkeypatch.setattr(eng, "pl", SimpleNamespace(finish=finish))
         eng._develop_job(jid)
         assert queued() == ([(pid, {"mode": "develop"})] if followup else []) and pid not in eng.ai_after
+    # Ergebnis existiert schon (z. B. eben gespeichert bzw. älter als die Frist), der Auftrag läuft aber noch: trotzdem vormerken
+    for t in ("jobs", "results", "projects"):
+        eng.db.x(f"DELETE FROM {t}")
+    eng.ai_after.clear()
+    pid, rid = _project(eng, "M 82")
+    eng.db.x("UPDATE results SET created=? WHERE id=?", (time.time() - 10 * 86400, rid))
+    eng.db.x("INSERT INTO jobs(project_id,state,created,options) VALUES(?,?,?,?)", (pid, "running", time.time(), "{}"))
+    assert eng.redevelop_with_ai() == [] and pid in eng.ai_after
 
 def test_jpeg_download_heisst_wie_das_bild(home, monkeypatch, tmp_path):
     app, c = _client(home / "Daten", monkeypatch, launched=False)

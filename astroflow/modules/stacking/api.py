@@ -431,19 +431,19 @@ class Engine:
         if not graxpert.graxpert_path():
             return []
         names = []
-        for p in self.without_ai(max_age_s)[:limit]:
-            with self._queue_lock:                        # Prüfen und Einreihen/Vormerken in einem Schritt (gleiche Sperre wie der Abschluss)
+        # eine Sperrphase (wie der Abschluss in _done_locked): kein Auftrag kann zwischen Abfrage und Vormerkung fertig werden
+        with self._queue_lock:
+            # laufende Aufträge immer vormerken – auch ein Objekt, das gerade zum allerersten Mal entwickelt wird (noch kein
+            # Ergebnis, `without_ai` sieht es nicht); nach dem Auftrag prüft `_ai_followup`, ob das Bild ohne KI entstand
+            # (Review PR #166/#168)
+            for j in self.db.q("SELECT DISTINCT project_id FROM jobs WHERE state='running'"):
+                self.ai_after.add(j["project_id"])
+            for p in self.without_ai(max_age_s)[:limit]:
                 jid, new = self._enqueue_locked(p["id"], {"mode": "develop"})
                 if jid and not new:
-                    self.ai_after.add(p["id"])            # läuft schon: nach dessen Ende prüfen (_done_locked)
-            if jid:
-                names.append(p["name"])
-        # Objekt wird gerade zum allerersten Mal entwickelt (noch kein Ergebnis, `without_ai` sieht es nicht): vormerken –
-        # nach dem Auftrag prüft `_ai_followup`, ob das Bild ohne KI entstand (Review PR #166)
-        with self._queue_lock:
-            for j in self.db.q("SELECT DISTINCT j.project_id FROM jobs j WHERE j.state='running' "
-                               "AND NOT EXISTS (SELECT 1 FROM results r WHERE r.project_id=j.project_id)"):
-                self.ai_after.add(j["project_id"])
+                    self.ai_after.add(p["id"])            # läuft/wartet schon: nach dessen Ende prüfen (_done_locked)
+                if jid:
+                    names.append(p["name"])
         return names
 
     def activity(self, limit: int = 30) -> list[dict]:
