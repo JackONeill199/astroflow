@@ -96,7 +96,7 @@ async function planView(el) {
   if (!w.devices.length) w.devices = [d.devices[0].id];
   let wizard = !d.plan;
   const changed = new Set(d.stale_nights || []);        // Ort seit der Berechnung geändert (auch nach Seitenwechsel)
-  let sites = null, stale = changed.size > 0;
+  let sites = null, stale = changed.size > 0, siteSeq = 0;
   api('/sites?nights=false').then(s => { sites = s; if (d.plan && !wizard) draw(); }).catch(() => {});
 
   const chips = (key, list, multi) => list.map(([v, l]) => {
@@ -207,7 +207,7 @@ async function planView(el) {
     }
     if (a === 'run' || a === 'rerun') {
       const b = e.target.closest('button'); b.disabled = true; b.classList.add('pending');
-      try { d.plan = (await send('/stacking/plan', w)).plan; wizard = false; stale = false; changed.clear(); draw(a === 'run' ? '#plBody > section' : null); toast('Plan berechnet.', 'ok'); }
+      try { d.plan = (await send('/stacking/plan', a === 'rerun' && d.plan ? d.plan.wishes : w)).plan; wizard = false; stale = false; changed.clear(); draw(a === 'run' ? '#plBody > section' : null); toast('Plan berechnet.', 'ok'); }
       catch (err) { toast(err.message, 'err'); b.disabled = false; b.classList.remove('pending'); }
     }
   });
@@ -216,7 +216,8 @@ async function planView(el) {
     const sn = e.target.dataset?.siteNight;
     if (sn) {
       try {
-        sites = await send('/sites/night', { night: sn, site_id: e.target.value || null, nights: false });
+        const my = ++siteSeq, res = await send('/sites/night', { night: sn, site_id: e.target.value || null, nights: false });
+        if (my === siteSeq) sites = res;          // nur die jüngste Antwort gilt (überholte Antworten verwerfen)
         changed.add(sn); stale = true; draw();
         $(`[data-site-night="${sn}"]`, el)?.focus();
       } catch (err) { toast(err.message, 'err'); draw(); }
