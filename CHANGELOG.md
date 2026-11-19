@@ -3,10 +3,21 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
-## 0.87.1 – 18.11.2026
+## 0.88.0 – 19.11.2026
+
+### Neu
+- **Lichtkurven veränderlicher Sterne** (Analyse → Lichtkurven): misst aus den eigenen Einzelbildern die Helligkeit bekannter Veränderlicher (AAVSO VSX) per Differenzfotometrie gegen Gaia-Vergleichssterne, erkennt mögliche neue Veränderliche, zeigt Kurve über die Zeit und phasengefaltet (Periode aus dem Katalog, sonst eigene Schätzung) und exportiert CSV bzw. AAVSO-Format (mit Prüfhinweis).
+- **Planer: Ort und Horizont je Nacht** – unter der Zeitleiste lässt sich für jede Nacht der Standort wählen; angezeigt wird, ob dort ein Horizont gilt (gespeicherte Maske oder vom Teleskop gemessen). Nach einer Änderung berechnet „Neu berechnen“ den Plan mit den gespeicherten Wünschen.
+- **Hilfe-Seite** (`#/hilfe`, Seitenleiste und Suche): erste Schritte, häufige Fragen, Doku-Links, „Fehler melden“.
+- **Ersteinrichtung:** Standort direkt im Assistenten suchen (Höhe automatisch), „n von 5 erledigt“, Abschluss-Leiste bleibt sichtbar; die Einrichtung erscheint nicht mehr, sobald ein Bild fertig ist. Künstliche Demo-Aufnahmen werden nicht mehr angeboten.
+- **Nach der GraXpert-Installation** werden frische Bilder automatisch mit KI-Bearbeitung neu entwickelt; ältere Bilder bieten „Mit KI neu entwickeln“ an.
 
 ### Behoben
-- **Heute Nacht – kompakter Kopf:** Die Kennzahlen (Dunkle Zeit, Mond, Wetter, Gerät) stehen in einer schmalen Zeile, und Regen bzw. Bewölkung erscheinen nicht mehr doppelt als eigene Meldung – die Erklärung samt nächstem klarem Fenster steht im Tooltip des Wetterfelds. Das Diagramm rückt dadurch nach oben.
+- **Heute Nacht – kompakter Kopf:** Kennzahlen in einer schmalen Zeile, Regen bzw. Bewölkung nicht mehr doppelt; die Erklärung samt nächstem klarem Fenster klappt im Wetterfeld auf. Das Diagramm rückt nach oben.
+- **Heute Nacht – Regen:** fällt im Diagramm in mehreren Ebenen, Stärke nach Wahrscheinlichkeit, ruhige Regensäulen und weich fallende Tropfen (bei reduzierter Bewegung still).
+- **Beenden über das Infobereichssymbol** fragt nach, wenn noch Downloads oder Aufträge laufen; offene Tabs zeigen „AstroFlow ist beendet“ statt „Failed to fetch“ und verbinden sich nach dem Neustart selbst wieder (kein zweiter Tab).
+- **Fortschritt der Komponenten:** verständliche Schritte mit Lebenszeichen statt minutenlang 82 %; Kopfleiste und Balken zeigen dieselbe Zahl.
+- Export heißt `Objekt_Datum.jpg` statt `jpg.jpg`; Uhrzeit und Dauer getrennt („20:00 · 35 s“); ruhigere Hinweise beim ersten Standort; SkyTrace-Karte zeigt „Analyse-Engine wird installiert“; verständliche Meldung beim Entfernen hochgeladener Kopien.
 
 ## 0.87.0 – 18.11.2026
 
