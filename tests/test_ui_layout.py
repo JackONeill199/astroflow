@@ -1072,13 +1072,15 @@ def test_tonight_rain_layer(server, browser, size, scheme, tmp_path, monkeypatch
     page.route('**/api/stacking/tonight*', lambda route: route.fulfill(json=plans[state['p']]))
     page.goto(base + '/#/nacht')
     page.wait_for_selector('af-tonight-chart svg')
-    assert page.locator('.tn-chart rect.tn-rain').count() == 1
+    assert page.locator('.tn-chart rect.tn-rain').count() == 3                          # Ebenen fern, mittel, nah
     assert 'Regen' in page.locator('.tn-legend').inner_text()
-    assert page.evaluate("getComputedStyle(document.querySelector('rect.tn-rain')).animationName") == 'tn-rain-fall'
+    anim = "[...document.querySelectorAll('rect.tn-rain, .tn-drip')].map(e => getComputedStyle(e).animationName)"
+    assert set(page.evaluate(anim)) == {'tn-rain-fall', 'tn-drip'}                    # Diagramm und Tropfen im Wetterfeld
+    assert len(set(page.evaluate("[...document.querySelectorAll('rect.tn-rain')].map(e => getComputedStyle(e).animationDuration)"))) == 3
     assert not page.evaluate(FIND_OVERFLOW)
     page.screenshot(path=str(tmp_path / f'regen-{size}-{scheme}.png'))
     page.emulate_media(reduced_motion='reduce')
-    assert page.evaluate("getComputedStyle(document.querySelector('rect.tn-rain')).animationName") == 'none'
+    assert set(page.evaluate(anim)) == {'none'}                                         # Muster steht, bleibt sichtbar
     state['p'] = 'dry'
     page.goto(base + '/#/')
     page.goto(base + '/#/nacht')
