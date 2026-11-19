@@ -184,11 +184,29 @@ def test_autopilot_retry_after_fog_reopens_last_target():
     _run(p, clock, 1.5)
     it = p.items[0]
     assert it.status == "abgebrochen" and p.hold.kind == "fog"
+    before = it.stacked
+    assert before > 0
     d.sc.dew_from = None                                       # Optik abgewischt bzw. Heizung an
     assert p.retry_now(clock.now())
-    assert it.status == "geplant" and it.why == ""
+    # der beschlagene Versuch bleibt Verlauf (Bilder zählen für Bilanz/Planung), der Rest des Abschnitts ist ein neuer Eintrag
+    assert it.status == "abgebrochen" and it.stacked == before and it.end <= clock.now()
+    new = next(i for i in p.items if i is not it and i.id == it.id)
+    assert new.status == "geplant" and new.stacked == 0 and new.real_start is None
     _run(p, clock, 0.2)
-    assert it.status == "aktiv" and not d.parked
+    assert new.status == "aktiv" and new.stacked > 0 and not d.parked
+    assert it.stacked == before                                # neuer Versuch setzt den alten Zähler nicht zurück
+    assert not p.retry_now(clock.now())                        # nichts mehr aufzuheben, kein weiterer Eintrag
+    assert sum(1 for i in p.items if i.id == it.id) == 2
+
+
+def test_autopilot_retry_after_fog_reopens_target_without_frames():
+    """Ohne gesammelte Bilder wird das Ziel einfach wieder geöffnet (kein leerer Verlaufseintrag)."""
+    p, d, clock = _pilot(forecast=_clear)
+    _run(p, clock, 1.5)
+    it = p.items[0]
+    it.stacked, it.real_start = 0, None                        # Beschlag kam vor dem ersten gestapelten Bild
+    assert p.retry_now(clock.now())
+    assert it.status == "geplant" and it.why == "" and len(p.items) == 1
 
 
 def test_autopilot_cloudy_forecast_is_not_fog():

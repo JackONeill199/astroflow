@@ -16,7 +16,7 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from ...core import sites
 from . import fog, sky, skymap, skyscan
@@ -399,9 +399,17 @@ class Autopilot:
             self.fail_marks.clear()                       # neuer Versuch: frühere Fehlschläge nicht als „Wolken“ mitzählen
             self.blocked = [b for b in self.blocked if b["sure"]]
             if self.hold.kind == "fog":                   # wegen Beschlag beendete Ziele, deren Abschnitt noch läuft, wieder öffnen
-                for i in self.items:                      # (sonst findet der Autopilot beim letzten/einzigen Ziel nichts mehr)
-                    if i.status == "abgebrochen" and i.why == FOG_WHY and i.end > now:
+                for i in [x for x in self.items if x.status == "abgebrochen" and x.why == FOG_WHY and x.end > now]:
+                    if not (i.real_start or i.stacked):   # (sonst findet der Autopilot beim letzten/einzigen Ziel nichts mehr)
                         i.status, i.why = "geplant", ""
+                        continue
+                    # schon Bilder gesammelt: der Versuch bleibt Verlauf (Zähler für Bilanz und Planung), der Rest des
+                    # Abschnitts wird ein neuer Eintrag – sonst setzte _start_item die Zähler zurück (Review PR #168)
+                    start = max(i.start, now)
+                    self.items.append(replace(i, start=start, hours=round((i.end - start) / 3600, 2), status="geplant", why="",
+                                              real_start=None, real_end=None, frames=0, stacked=0, rejected=0))
+                    i.end = max(i.start, min(i.end, now))
+                self.items.sort(key=lambda x: x.start)
             self.mode, self.hold = "laeuft", None
             self.log("Erneuter Versuch auf Wunsch – öffne wieder.", "info", now)
             return True
