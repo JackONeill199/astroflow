@@ -557,6 +557,9 @@ async function projectView(el, id, tab = 'bild') {
       ${p.comet && /Plate-Solver/.test(r?.stats?.comet?.ephemeris_error || '') && !busy ? `<div class="notice">${icon('star')}<div><b>Kometenbahn aus dem Bild gemessen</b><div class="mut sm">Mit eingerichtetem Plate-Solver (z. B. ASTAP) holt AstroFlow die Bahn von ${esc(r.stats.comet.designation || 'diesem Kometen')} zusätzlich aus der JPL-Ephemeride – genauer bei schwachen oder sehr schnellen Kometen.</div></div><span class="grow"></span>
         <a class="btn ghost sm" href="#/settings/stacking">Einstellungen</a></div>` : ''}
       ${p.job?.state === 'error' && !busy ? `<div class="notice err">${icon('alert')}<div><b>Letzter Durchlauf fehlgeschlagen</b><div class="mut sm">${esc(p.job.message)}</div></div></div>` : ''}
+      ${p.ai_offer && !busy ? `<div class="notice" id="aiNote">${icon('sparkle')}<div><b>GraXpert ist inzwischen installiert</b><div class="mut sm">Dieses Bild entstand, bevor die KI-Bearbeitung (Hintergrund und Entrauschen) bereit war.
+        Neu entwickeln wendet sie an – ohne neu zu stacken, die bisherige Version bleibt erhalten.</div></div><span class="grow"></span>
+        <button class="btn sm" id="aiDev">${icon('sparkle')}Mit KI neu entwickeln</button></div>` : ''}
       <div class="pipe-viz" id="pipeViz" hidden></div>
       <div id="job" style="margin:-4px 0 14px">${jobLine(p.job)}</div>
       <nav class="tabs" id="tabs">${tabs().map(([k, l], i) => { const n = { aufnahmen: p.total, versionen: p.results.length, teleskopbilder: p.companions ?? p.options?.companion_ids?.length }[k];
@@ -575,6 +578,7 @@ async function projectView(el, id, tab = 'bild') {
       $('button', m).onclick = (e) => { e.stopPropagation(); $$('.menu.open').forEach(o => o !== m && o.classList.remove('open')); m.classList.toggle('open'); };
     });
     $('#dl .pop')?.addEventListener('click', (e) => {         // Teilen-Karte öffnet einen Dialog statt eines Downloads
+      if (e.target.closest('a') && !e.target.closest('[data-act=share]')) { setTimeout(() => $('#dl')?.classList.remove('open'), 0); return; }   // Download gestartet → Menü zu
       if (!e.target.closest('[data-act=share]')) return;
       e.preventDefault(); $('#dl').classList.remove('open'); shareDialog(p.result.id);
     });
@@ -584,6 +588,7 @@ async function projectView(el, id, tab = 'bild') {
       $('#more').classList.remove('open');
     };
     $('#solveBtn')?.addEventListener('click', solve);
+    $('#aiDev')?.addEventListener('click', develop);
     $('#psName')?.addEventListener('click', rename);
     $('#psHide')?.addEventListener('click', () => {
       store.set('bild.psSeen', [...psSeen().filter(i => i !== p.id), p.id].slice(-500));
@@ -1143,7 +1148,7 @@ ${capped ? `Hintergrund ${f.bg}` : `${f.n_stars} Sterne`} · FWHM ${f.fwhm ?? '�
       location.hash = '#/bilder';
       return;
     }
-    const s = JSON.stringify([p.name, p.total, p.results.map(r => r.id), p.job?.state, p.frames, p.coords, p.options?.picture_solve?.state, p.kind]);
+    const s = JSON.stringify([p.name, p.total, p.results.map(r => r.id), p.job?.state, p.frames, p.coords, p.options?.picture_solve?.state, p.kind, !!p.ai_offer]);
     if (force || s !== sig) {
       // Auftrag gerade fertig: echte Einblicke in die Bearbeitung erst zu Ende zeigen (live.js begrenzt das auf 20 s)
       if (!force && tab === 'bild' && liveView?.pending && !running(p.job)) {
@@ -1153,7 +1158,7 @@ ${capped ? `Hintergrund ${f.bg}` : `${f.n_stars} Sterne`} · FWHM ${f.fwhm ?? '�
       const old = sig ? JSON.parse(sig) : null, cur = JSON.parse(s);
       const changedResults = old && old[2]?.[0] !== p.results[0]?.id;
       // nur die Frame-Zähler haben sich geändert (Analyse läuft) → Bild und Formular nicht neu aufbauen
-      const framesOnly = old && !force && JSON.stringify([old[0], old[1], old[2], old[3], old[5], old[6], old[7]]) === JSON.stringify([cur[0], cur[1], cur[2], cur[3], cur[5], cur[6], cur[7]]);
+      const framesOnly = old && !force && JSON.stringify([old[0], old[1], old[2], old[3], old[5], old[6], old[7], old[8]]) === JSON.stringify([cur[0], cur[1], cur[2], cur[3], cur[5], cur[6], cur[7], cur[8]]);
       if (changedResults) {
         sel = null; cmp = null;
         const prevId = p.results[1]?.id;
@@ -1174,7 +1179,7 @@ ${capped ? `Hintergrund ${f.bg}` : `${f.n_stars} Sterne`} · FWHM ${f.fwhm ?? '�
       updateJob();
     }
   }
-  sig = JSON.stringify([p.name, p.total, p.results.map(r => r.id), p.job?.state, p.frames, p.coords, p.options?.picture_solve?.state, p.kind]);
+  sig = JSON.stringify([p.name, p.total, p.results.map(r => r.id), p.job?.state, p.frames, p.coords, p.options?.picture_solve?.state, p.kind, !!p.ai_offer]);
   const prev = window.__afSel;
   if (prev && prev.id === id) { sel = prev.sel; cmp = prev.cmp; }
   draw();
@@ -1617,6 +1622,10 @@ async function stackingSettings(el) {
   const [c, st, sv, sn, gx, gp, tu, ins] = await Promise.all([api('/stacking/reviewer'), api('/stacking/status'), api('/stacking/solver'), api('/stacking/starnet'),
     api('/stacking/graxpert'), api('/stacking/gpu'), api('/stacking/tutor'), api('/stacking/insights')]);
   const dist = await api('/stacking/distortion').catch(() => ({ mode: 'auto' }));
+  // GraXpert gerade im Download (Komponenten, core/setup.py): „wird installiert“ statt „nicht installiert“
+  const gxc = gx.found ? null : await api('/components').then(d => ({ ...d.items.find(i => i.id === 'graxpert'), active: d.queue_active })).catch(() => null);
+  const gxState = gx.found ? (gx.mode === 'off' ? ['', 'aus'] : ['ok', 'aktiv']) : gxc?.task?.state === 'running' ? ['acc', 'wird installiert']
+    : gxc?.pending && gxc.active && gxc.task?.state !== 'error' ? ['acc', 'wird gleich installiert'] : ['', 'nicht installiert'];
   const insBox = (k, title, text) => `<label class="modrow opt"><div><b>${title}</b><div class="mut sm">${text}</div></div><input type="checkbox" name="${k}" ${ins[k] ? 'checked' : ''}><span class="switch"></span></label>`;
   const astapOk = sv.astap && sv.astap_databases.length;
   el.innerHTML = `<div class="split"><div><form class="panel" id="tf">
@@ -1691,7 +1700,7 @@ async function stackingSettings(el) {
     </div>
     <form class="panel" id="gxp">
       <div class="panel-h"><h2>GraXpert (KI)</h2><span class="grow"></span>
-        <span class="chip ${gx.found && gx.mode !== 'off' ? 'ok' : ''}">${!gx.found ? 'nicht installiert' : gx.mode === 'off' ? 'aus' : 'aktiv'}</span></div>
+        <span class="chip ${gxState[0]}">${gxState[1]}</span></div>
       <p class="mut sm" style="margin:-6px 0 12px">Entfernt Lichtverschmutzungs-Verläufe per KI, ohne großflächige Nebel abzutragen, und entrauscht den linearen Stack –
         wie im Workflow vieler Smart-Teleskop-Fotografen. Läuft einmal je Entwicklung; ohne GraXpert nutzt AstroFlow die eigenen Verfahren.</p>
       ${gx.found ? `<dl class="kv" style="margin-bottom:12px"><dt>Programm</dt><dd style="word-break:break-all">${esc(gx.path)}</dd></dl>`

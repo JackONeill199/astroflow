@@ -27,6 +27,13 @@
   Ordner `setup` an und startet neu – **alte Daten werden nicht verschoben**, DB-Pfade sind absolut), Teleskop (→ D05 bzw. D50 für „andere“),
   Standort (Link), ASTAP, Demo, Extras (GPU per pip, GraXpert/StarNet nur Links, Heimnetz + Firewall-Regel wie `scripts/windows/Netzwerk-freigeben.bat` per UAC,
   Update-Prüfung). Hintergrundaufgaben `Setup._run` → `tasks` + Aktivität (`setup:<key>`).
+  **Neulingstest 18.11.2026** (Sandbox, `NEULING-TEST-2026-11-18.md`): Standort wird **im Assistenten** gesucht und gespeichert (Photon →
+  Treffer → `POST /api/sites`, Höhe von Open-Meteo) statt nach Einstellungen → Standorte zu springen; von dort führt „Zurück zur Einrichtung“
+  zurück (`sessionStorage` `af.fromSetup`). Jeder Schritt zeigt „erledigt“ (Teleskop, `state.sites`, ASTAP, `state.pictures`), oben „n von 5“,
+  die Abschlussleiste klebt unten (`.su-foot` sticky, auf Handys über der Navigationsleiste). `pending` endet auch ohne „Abschließen“, sobald
+  ein Bild fertig ist (`Setup.pictures`). Laufende Downloads zeichnen den Assistenten alle 1,2 s neu – Suchtext/Treffer/Fokus bleiben erhalten.
+  Windows + Starter: Hinweis auf das Infobereichssymbol (oft hinter „^“). Hilfe `#/hilfe` (`helpView` in `setup.js`): erste Schritte, FAQ,
+  Doku-Links, Fehler melden; in Seitenleiste und Suche (Strg+K).
 - **Komponenten** (`core/components.py`, seit 0.44.0, Nutzerwunsch „vollständiger Installer, auch GraXpert“): `astap` (Option d05/d50),
   `graxpert`, `gpu`, `skytrace`, `starnet` (nur Zustand + Link). `status()` → Zustand installed|partial|missing|unsupported, Version,
   Lizenz/Quelle; `install(name, prog, option, force)` (force = „Reparieren“), `remove()` nur für Selbstinstalliertes laut
@@ -49,6 +56,11 @@
     (plattformneutral; das frühere Windows-Lockfile `requirements.txt` ist seit 0.49.1 entfernt). Immer mit `-c <Werkzeuge>/constraints.txt` = Versionen
     der vom Server geladenen Pakete (numpy, scipy, astropy …) – sonst will pip sie ersetzen, unter Windows sind geladene .pyd gesperrt.
     Nur CPU-PyTorch (GPU-Variante nicht verlässlich ohne Hardwareprüfung). Danach `skytrace.Module.check_engine()`; `gpu._TRIED` zurück.
+    **Fortschritt** (`components.pip`, Neulingstest 18.11.2026: zehn Minuten „82 %“ mit Wheel-Namen): drei Schritte „zusammenstellen →
+    laden (bisher n MB, gerade torch 2.5.1) → einrichten“, im Einrichten-Schritt schleicht der Balken langsam weiter, ein Taktgeber hängt
+    alle 2 s „seit … min“ an. Downloads zeigen „74 von ~160 MB“ statt eines zweiten Prozentwerts (Kopfleiste = Balken = Gesamtfortschritt).
+    **GraXpert nach dem ersten Bild:** ist die Installation fertig, entwickelt `Setup._redevelop_with_ai` → `Engine.redevelop_with_ai` frische
+    Bilder (≤ 3 Tage, höchstens 3) ohne `stats.graxpert` neu; ältere bietet die Objektseite an (`ai_offer`, „Mit KI neu entwickeln“).
   - **Prüfsummen** (seit 0.46.0): ASTAP-CLI je System, `astapwin32.zip` (deep_sky.csv), D05/D50 nur mit SHA-256 aus `ASTAP_SHA256`
     (SourceForge hat keine versionierten Dateinamen → geprüfte Fassung vom 07.11.2026; neue ASTAP-Fassung = `ChecksumError` mit Hinweis,
     dann bewusst ergänzen), GraXpert `GRAXPERT_SHA256`, Paketbau `PBS_SHA256` (aus `SHA256SUMS` des Releases). Jede Anfrage der Kette
@@ -74,7 +86,12 @@
   ohne pystray/Infobereich bzw. `ASTROFLOW_NO_TRAY=1` kein Symbol. Abfrage alle 5 s `/api/status` (+ `/api/activity`): Symbol mit
   orangem Punkt bei `busy`, Tooltip ≤ 120 Zeichen, Benachrichtigung bei fertigem Bilder-Auftrag (`system.tray_notify`, auch im Menü).
   „Beim Anmelden starten“ = Registry `HKCU\…\Run\AstroFlow` (erkennt auch die Autostart-Verknüpfung der Installer-Aufgabe).
-  Beenden: Menü → Rückfrage bei laufendem Auftrag → `/api/system/shutdown`; Shutdown aus der Oberfläche und `astroflow stop` legen
+  Beenden: Menü → Rückfrage bei laufendem Auftrag **oder Komponenten-Download** (`/api/status` → `busy` zählt laufende `Setup.tasks` mit,
+  Text `tray.quit_question`) → `/api/system/shutdown`. Offene Tabs merken das Ende (zwei Abfragen ohne Antwort → `serverGone` in `app.js`:
+  deckende Seite „AstroFlow ist beendet“, kein „Failed to fetch“, keine stehenden Zustände), fragen alle 2 s nach und laden neu, sobald der Server
+  wieder läuft. Tabs melden sich mit `/api/status?tab=1&visible=…`; `launcher.start` wartet nach dem Start bis 6 s auf `GET /api/tabs` und öffnet
+  keinen zweiten Tab, wenn sich ein **sichtbarer** wieder verbunden hat (verborgene Tabs zählen nicht – sonst sähe man nach dem Start nichts).
+  Shutdown aus der Oberfläche und `astroflow stop` legen
   `tray.stop` ab (das Symbol endet sauber beim nächsten Abfragen, ohne Geistersymbol), `stop` beendet es notfalls hart (Deinstallation:
   sonst bliebe python gesperrt). Server länger als `GONE_S` 40 s weg → Symbol endet selbst; Neustart lässt es stehen.
 - **ASTAP auf Knopfdruck:** nur von SourceForge „astap-program“ (CLI je OS, `astapwin32.zip` nur für `deep_sky.csv` – laut Danksagung

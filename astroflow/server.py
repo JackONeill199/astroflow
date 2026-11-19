@@ -106,6 +106,8 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
                 st = {"error": str(e)}
             mods[m.id] = st
             busy += int(st.get("busy_jobs") or 0)
+        # Komponenten-Downloads und Demo zählen mit: Infobereich fragt dann vor dem Beenden, die Kopfleiste zeigt sie
+        busy += sum(1 for t in list(setup.tasks.values()) if t.get("state") == "running")
         upd = update_offer()                              # nur die Nummer: das Frontend holt Details, wenn sie sich ändert
         return {"version": VERSION, "busy": busy, "modules": mods, "update": upd["latest"] if upd else None}
 
@@ -126,9 +128,20 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
     shared_status = pollcache.Shared(_status, min_age=1.0)
     shared_activity = pollcache.Shared(_activity, min_age=1.0)
 
+    # Offene Tabs melden sich beim Abfragen (tab=1, visible=1 = Vordergrund). Der Starter fragt nach einem Neustart kurz nach
+    # (/api/tabs): hat sich ein sichtbarer Tab wieder verbunden, öffnet er keinen zweiten (Neulingstest 18.11.2026)
+    tabs_seen = {"visible": None}
+
     @app.get("/api/status")
-    async def status():
+    async def status(tab: int = 0, visible: int = 0):
+        if tab and visible:
+            tabs_seen["visible"] = time.time()
         return await shared_status.aget()
+
+    @app.get("/api/tabs")
+    def tabs():
+        seen = tabs_seen["visible"]
+        return {"visible_age": None if seen is None else round(time.time() - seen, 1)}
 
     @app.get("/api/activity")
     async def activity(limit: int = 40):

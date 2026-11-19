@@ -105,3 +105,4 @@ dialog.hz-dlg { width: min(50rem, 96vw) }
 @media (prefers-reduced-motion: reduce) { .hz-new .hz-shot, .hz-fit { animation: none } }
 .hz-fit { display: inline-flex; align-items: center; gap: 0.3125rem }
 .hz-fit svg { width: 0.8125rem; height: 0.8125rem }
+.site-back { margin: 0 0 0.875rem }

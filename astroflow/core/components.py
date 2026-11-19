@@ -462,7 +462,7 @@ def _install_astap(prog, option, force) -> str:
         mb = ASTAP_DBS[db][1]
         tmp = tools_dir() / f".{db}.zip.part"
         tmp.parent.mkdir(parents=True, exist_ok=True)
-        download(SF.format(ASTAP_DBS[db][0]), lambda f: prog(0.10 + 0.8 * f, f"Lade Sterndatenbank {db.upper()} (~{mb} MB) … {f*100:.0f} %"),
+        download(SF.format(ASTAP_DBS[db][0]), lambda f: prog(0.10 + 0.8 * f, f"Lade Sterndatenbank {db.upper()} … {mb_of(f, mb)}"),
                  to=tmp, resume=True)
         prog(0.91, "Prüfe Prüfsumme …")
         verify_astap(ASTAP_DBS[db][0], tmp)
@@ -524,7 +524,7 @@ def _install_graxpert(prog, option, force) -> str:
     msi = tools_dir() / f".graxpert-{GRAXPERT_VERSION}.msi.part"
     msi.parent.mkdir(parents=True, exist_ok=True)
     prog(0.01, f"Lade GraXpert {GRAXPERT_VERSION} (~{GRAXPERT_MB} MB) von GitHub …")
-    download(GRAXPERT_MSI, lambda f: prog(0.01 + 0.7 * f, f"Lade GraXpert {GRAXPERT_VERSION} (~{GRAXPERT_MB} MB) … {f*100:.0f} %"),
+    download(GRAXPERT_MSI, lambda f: prog(0.01 + 0.7 * f, f"Lade GraXpert {GRAXPERT_VERSION} … {mb_of(f, GRAXPERT_MB)}"),
              to=msi, resume=True)
     prog(0.72, "Prüfe Prüfsumme …")
     if sha256_of(msi) != GRAXPERT_SHA256:
@@ -562,7 +562,7 @@ def _install_graxpert_zip(prog, force, dest: Path) -> str:
     part.parent.mkdir(parents=True, exist_ok=True)
     label = f"Lade GraXpert {GRAXPERT_VERSION} (~{GRAXPERT_LINUX_MB} MB) von GitHub"
     prog(0.01, label + " …")
-    download(GRAXPERT_LINUX_ZIP, lambda f: prog(0.01 + 0.7 * f, f"{label} … {f*100:.0f} %"), to=part, resume=True)
+    download(GRAXPERT_LINUX_ZIP, lambda f: prog(0.01 + 0.7 * f, f"Lade GraXpert {GRAXPERT_VERSION} … {mb_of(f, GRAXPERT_LINUX_MB)}"), to=part, resume=True)
     prog(0.72, "Prüfe Prüfsumme …")
     if sha256_of(part) != GRAXPERT_LINUX_SHA256:
         part.unlink(missing_ok=True)
@@ -631,8 +631,43 @@ def _constraints() -> Path:
     return p
 
 
+def mb_of(f: float, total_mb: float) -> str:
+    """„74 von ~160 MB“ – Downloadstand in MB statt eines eigenen Prozentwerts (der Balken zeigt den Gesamtfortschritt)."""
+    return f"{min(total_mb, f * total_mb):.0f} von ~{total_mb:.0f} MB"
+
+
+def _fmt_age(sec: float) -> str:
+    sec = int(sec)
+    return f"{sec // 60} min {sec % 60:02d} s" if sec >= 60 else f"{sec} s"
+
+
+def _wheel_name(token: str) -> str:
+    """„…/torch-2.5.1%2Bcpu-cp312-cp312-win_amd64.whl“ → „torch 2.5.1“; Quellpakete „x-1.0.tar.gz“ → „x 1.0“."""
+    name = token.rsplit("/", 1)[-1].replace("%2B", "+")
+    for ext in (".whl", ".tar.gz", ".zip"):
+        if name.endswith(ext):
+            parts = name[: -len(ext)].split("-")
+            return f"{parts[0]} {parts[1].split('+')[0]}" if len(parts) > 1 else parts[0]
+    return name.split("==")[0].split(">=")[0][:40]
+
+
+def _size_mb(line: str) -> float:
+    """Größe aus „Downloading x.whl (204.3 MB)“ bzw. „(845 kB)“ in MB; 0, wenn keine Angabe."""
+    import re
+    m = re.search(r"\(([\d.]+)\s*(kB|MB|GB)\)\s*$", line)
+    if not m:
+        return 0.0
+    return float(m.group(1)) * {"kB": 0.001, "MB": 1.0, "GB": 1000.0}[m.group(2)]
+
+
 def pip(args: list[str], prog, start: float, end: float, expect: int, label: str) -> None:
-    """pip im Python von AstroFlow; Fortschritt grob über die Zahl der „Collecting“-Zeilen."""
+    """pip im Python von AstroFlow, in drei für Laien verständlichen Schritten (Neulingstest 18.11.2026: zehn Minuten
+    „82 %“ mit Wheel-Dateinamen wirkten wie hängengeblieben):
+      1. Pakete zusammenstellen („Collecting“)            → erstes Zehntel des Bereichs
+      2. Pakete laden („Downloading …whl (204 MB)“)       → bis 60 %, Text mit geladenen MB und dem aktuellen Paket
+      3. Pakete einrichten („Installing collected …“)     → Rest, schleicht langsam weiter (pip schweigt hier minutenlang)
+    Ein Taktgeber hängt alle 2 s „seit … min“ an, damit sichtbar bleibt, dass noch gearbeitet wird."""
+    import threading
     pk = packages_dir()
     target = ["--target", str(pk), "--upgrade"] if pk else []
     if pk:
@@ -642,16 +677,46 @@ def pip(args: list[str], prog, start: float, end: float, expect: int, label: str
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PIP_NO_INPUT": "1"}
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
                          env=env, creationflags=NO_WINDOW)
-    tail, n = [], 0
-    for line in p.stdout:
-        line = line.strip()
-        if not line:
-            continue
-        tail = (tail + [line])[-12:]
-        if line.startswith(("Collecting", "Downloading", "Installing collected")):
-            n += line.startswith("Collecting")
-            what = line.split()[1] if line.startswith(("Collecting", "Downloading")) else "Pakete"
-            prog(start + (end - start) * min(0.95, n / max(1, expect)), f"{label}: {what[:60]}")
+    tail, n, nd, got = [], 0, 0, 0.0
+    span = end - start
+    st = {"f": start, "text": f"{label}: Schritt 1 von 3 – Pakete werden zusammengestellt", "t": time.time(), "install": None}
+    t0 = time.time()
+    done = threading.Event()
+
+    def show():
+        f = st["f"]
+        if st["install"] is not None:              # Einrichten: langsam gegen das Ende des Bereichs (≈ 2/3 nach 4 min)
+            a = start + span * 0.6
+            f = a + (end - span * 0.03 - a) * (1 - pow(2.718, -(time.time() - st["install"]) / 240))
+        prog(f, f"{st['text']} · seit {_fmt_age(time.time() - t0)}")
+
+    def tick():
+        while not done.wait(2.0):
+            show()
+    threading.Thread(target=tick, daemon=True, name="pip-takt").start()
+    try:
+        for line in p.stdout:
+            line = line.strip()
+            if not line:
+                continue
+            tail = (tail + [line])[-12:]
+            if line.startswith("Collecting"):
+                n += 1
+                st.update(f=start + span * 0.1 * min(1.0, n / max(1, expect)),
+                          text=f"{label}: Schritt 1 von 3 – Pakete werden zusammengestellt ({n})")
+            elif line.startswith("Downloading") and ".metadata" not in line:
+                nd += 1
+                got += _size_mb(line)
+                st.update(f=start + span * (0.1 + 0.5 * min(1.0, nd / max(1, expect))),
+                          text=f"{label}: Schritt 2 von 3 – lade Pakete, bisher {got:,.0f} MB".replace(",", ".")
+                               + f" (gerade {_wheel_name(line.split()[1])})")
+            elif line.startswith("Installing collected"):
+                st.update(install=time.time(), text=f"{label}: Schritt 3 von 3 – Pakete werden eingerichtet, das dauert einige Minuten")
+            else:
+                continue
+            show()
+    finally:
+        done.set()
     if p.wait():
         raise RuntimeError("pip: " + " | ".join(tail[-3:])[-400:])
     if pk:

@@ -290,7 +290,11 @@ class Tray:
             pass
 
     def quit(self, *_):
-        if (self.status or {}).get("busy") and not ask("Auftrag läuft – trotzdem beenden? Er wird später fortgesetzt."):
+        if self.refresh() is False and not self.status:      # Server schon weg: nur das Symbol schließen
+            self.close()
+            return
+        running = [a for a in self.activity if a.get("state") == "running"]
+        if ((self.status or {}).get("busy") or running) and not ask(quit_question(running)):
             return
         try:
             self.post("/api/system/shutdown", {})
@@ -364,6 +368,14 @@ class Tray:
         threading.Thread(target=self.loop, daemon=True).start()
         self.icon.run(setup=lambda ic: (setattr(ic, "visible", True), self.refresh()))
         return 0
+
+
+def quit_question(running: list[dict]) -> str:
+    """Rückfrage beim Beenden: was gerade läuft, und dass es beim nächsten Start weitergeht."""
+    names = ", ".join(str(a.get("title") or "Auftrag") for a in running[:3]) or "Ein Auftrag"
+    dl = any(str(a.get("key", "")).startswith("setup:") for a in running)
+    return (f"Gerade läuft noch: {names}.\n\nTrotzdem beenden? "
+            +("Downloads und Aufträge" if dl else "Aufträge") + " werden beim nächsten Start von AstroFlow fortgesetzt.")
 
 
 def ask(text: str) -> bool:

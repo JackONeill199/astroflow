@@ -38,6 +38,13 @@ def revalidated(request: Request, path, **kw):
     return resp
 
 
+def download_name(name: str | None, created: float | None, path: str, suffix: str = "") -> str:
+    """Dateiname zum Herunterladen: „M31_Andromedagalaxie_2026-11-19.jpg“ (Objekt, Datum der Version, Endung der Datei)."""
+    stem = re.sub(r"[^\w.+-]+", "_", (name or "AstroFlow").strip(), flags=re.UNICODE).strip("._")[:80] or "AstroFlow"
+    day = dt.datetime.fromtimestamp(created).strftime("%Y-%m-%d") if created else ""
+    return f"{stem}{'_' + day if day else ''}{suffix}{Path(path).suffix.lower()}"
+
+
 def _copy_upload(src, path: Path):
     with open(path, "wb") as out:
         shutil.copyfileobj(src, out, 1 << 20)
@@ -373,6 +380,34 @@ class Engine:
                 "reviewer": {"enabled": self.review_cfg.enabled, "provider": self.review_cfg.provider, "model": self.review_cfg.model},
                 "solver": {"enabled": bool(chain := self.pl.solver_cfg.chain(wait=False)), "active": chain}}
 
+    def without_ai(self, max_age_s: float | None = None, pid: int | None = None) -> list[dict]:
+        """Objekte, deren neuestes Bild ohne GraXpert entwickelt wurde, obwohl GraXpert laut Einstellung laufen soll
+        (typisch: erstes Bild entstand, während GraXpert noch geladen wurde). Fertig importierte Bilder und Kometen nicht."""
+        out = []
+        since = time.time() - max_age_s if max_age_s else 0
+        for r in self.db.q("SELECT r.project_id, r.created, CASE WHEN json_valid(r.stats) THEN json_extract(r.stats,'$.graxpert') END gx, p.name, p.options FROM results r "
+                           "JOIN projects p ON p.id=r.project_id WHERE r.id IN (SELECT MAX(id) FROM results GROUP BY project_id) "
+                           "AND r.created>=?" + (" AND r.project_id=?" if pid is not None else ""),
+                           (since,) + ((pid,) if pid is not None else ())):
+            opts = json.loads(r["options"] or "{}")
+            if r["gx"] or opts.get("input_type") == "picture" or opts.get("comet_mode"):
+                continue
+            if graxpert.mode_for(opts.get("graxpert")) == "off":
+                continue
+            out.append({"id": r["project_id"], "name": r["name"]})
+        return out
+
+    def redevelop_with_ai(self, max_age_s: float = 3 * 86400, limit: int = 3) -> list[str]:
+        """Nach der GraXpert-Installation: frische Bilder ohne KI-Bearbeitung einmal neu entwickeln (höchstens `limit`,
+        damit eine große Sammlung nicht ungefragt stundenlang rechnet – ältere bietet die Objektseite an)."""
+        if not graxpert.graxpert_path():
+            return []
+        names = []
+        for p in self.without_ai(max_age_s)[:limit]:
+            if self.enqueue(p["id"], {"mode": "develop"}):
+                names.append(p["name"])
+        return names
+
     def activity(self, limit: int = 30) -> list[dict]:
         out = []
         for j in self.db.q("SELECT j.*, p.name project FROM jobs j LEFT JOIN projects p ON p.id=j.project_id "
@@ -653,6 +688,8 @@ def build_router(eng: Engine) -> APIRouter:
                          "views": [k for k in ("stars", "comet") if k in json.loads(x["files"] or "{}")]}
                         for x in db.q("SELECT * FROM results WHERE project_id=? ORDER BY COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC,id DESC", (pid,))]
         v["hotpixel_hint"] = not v.get("imported") and eng.pl.hotpixel_hint(pid)
+        # GraXpert kam erst nach dem Bild (z. B. Download noch nicht fertig): „Mit KI-Bearbeitung neu entwickeln“ anbieten
+        v["ai_offer"] = bool(v["results"] and graxpert.graxpert_path() and eng.without_ai(pid=pid))
         if v.get("imported"):                            # lineares TIFF/PNG mit Original: „Entwickeln“ anbieten
             from .picture_import import linear_source
             src = linear_source(db, pid)
@@ -1559,11 +1596,15 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.get("/results/{rid}/{kind}")
     def result_file(rid: int, kind: str, request: Request):
-        x = db.one("SELECT files FROM results WHERE id=?", (rid,))
+        x = db.one("SELECT r.files, r.created, p.name FROM results r LEFT JOIN projects p ON p.id=r.project_id WHERE r.id=?", (rid,))
         files = json.loads(x["files"]) if x else {}
         if kind not in files or not Path(files[kind]).exists():
             raise HTTPException(404)
-        return revalidated(request, files[kind], filename=Path(files[kind]).name if kind in ("tif", "fits", "fits_graxpert", "png", "original") else None)
+        if kind == "jpg":                                # Anzeige im Browser bleibt, „Herunterladen“ heißt wie das Bild statt „jpg.jpg“
+            return revalidated(request, files[kind], filename=download_name(x["name"], x["created"], files[kind]), content_disposition_type="inline")
+        if kind in ("tif", "fits", "fits_graxpert", "png"):
+            return revalidated(request, files[kind], filename=download_name(x["name"], x["created"], files[kind], "_graxpert" if kind == "fits_graxpert" else ""))
+        return revalidated(request, files[kind], filename=Path(files[kind]).name if kind == "original" else None)
 
     @r.get("/starnet")
     def get_starnet():

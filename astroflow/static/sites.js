@@ -11,7 +11,8 @@ const coords = (s) => `${deg(s.lat, 'N', 'S')} · ${deg(s.lon, 'O', 'W')}${s.alt
 const srcText = { override: 'Ausnahme', fits: 'aus FITS', period: 'Zeitraum', default: 'Standard' };
 const fixedBy = { skytrace: 'SkyTrace' };     // automatisch gepflegte Einzelnächte (`src`); Umstellen hier macht sie zur eigenen
 // Genauigkeit für SkyTrace einordnen: Satelliten brauchen ~200–500 m, Nachtplanung/Wetter nicht
-const accHint = (m) => m <= 300 ? ['ok', 'genau genug für Satelliten'] : m <= 1000 ? ['warn', 'Satelliten: Toleranz wird erweitert'] : ['bad', 'zu ungenau für sichere Satelliten-Zuordnung'];
+// Gröber als ~1 km ist kein Fehler (Nachtplanung, Wetter, Bild-Tutor reichen 10 km) – nur ein ruhiger Hinweis, keine rote Warnung
+const accHint = (m) => m <= 300 ? ['ok', 'genau genug für Satelliten'] : m <= 1000 ? ['', 'reicht · Satelliten: Toleranz wird erweitert'] : ['', 'reicht für Nachtplanung und Wetter · für die Satelliten-Zuordnung (SkyTrace) genauer angeben'];
 
 // Himmelsqualität des Ortes (Dienst site_sky des Bilder-Moduls; fehlt das Modul, bleibt die Zeile leer)
 const skyLine = (q) => q && q.sqm != null ? `<div class="sm site-sky">Himmel <b>${String(q.sqm.toFixed(2)).replace('.', ',')} mag/″²</b>${q.bortle ? ` · ${esc(q.bortle.text)}` : ''}${q.seeing != null ? ` · Schärfe ${String(q.seeing.toFixed(1)).replace('.', ',')}″` : ''} <span class="dim">(${q.n_site_nights} ${q.n_site_nights === 1 ? 'Nacht' : 'Nächte'})</span> · <a href="#/himmel">Himmelsqualität</a></div>` : '';
@@ -116,7 +117,11 @@ async function sitesSettings(el) {
 
   function draw() {
     const today = d.today_site;
-    el.innerHTML = `<div class="panel"><div class="panel-h"><h2>${icon('pin')}Standorte</h2><span class="grow"></span>
+    let fromSetup = false;
+    try { fromSetup = sessionStorage.getItem('af.fromSetup') === '1'; } catch { /* nur Komfort */ }
+    el.innerHTML = `${fromSetup ? `<div class="notice site-back">${icon('arrow')}<div><b>Aus der Einrichtung</b><div class="mut sm">Orte hier eintragen oder ändern, danach geht es in der Einrichtung weiter.</div></div>
+        <span class="grow"></span><a class="btn sm" href="#/willkommen">Zurück zur Einrichtung</a></div>` : ''}
+      <div class="panel"><div class="panel-h"><h2>${icon('pin')}Standorte</h2><span class="grow"></span>
         ${edit ? '' : `<button class="btn sm" id="siteAdd">${icon('plus')}Standort</button>`}</div>
       <p class="mut sm" style="margin:-4px 0 12px">Gilt für Heute Nacht, Bild-Tutor und SkyTrace. Für jede Aufnahmenacht wird der passende Ort gewählt:
         Ausnahme der Beobachtung (SkyTrace) → Standort in den FITS-Daten → Nacht/Zeitraum → Standard-Ort. Standorte bleiben auf diesem Rechner.</p>
@@ -172,7 +177,16 @@ async function sitesSettings(el) {
         try {
           const rows = await api('/sites/geocode?q=' + encodeURIComponent(q));
           $('#siteRes', el).innerHTML = rows.map((r, i) => `<button type="button" class="chip" data-i="${i}">${esc(r.name)}</button>`).join('') || '<span class="mut sm">Kein Ergebnis gefunden.</span>';
-          $('#siteRes', el).onclick = (e) => { const b = e.target.closest('[data-i]'); if (b) { fill(rows[+b.dataset.i]); $('#siteRes', el).innerHTML = ''; $('#siteNote', el).textContent = 'Übernommen – Lage auf der Karte und Höhe prüfen.'; } };
+          $('#siteRes', el).onclick = async (e) => {
+            const b = e.target.closest('[data-i]'); if (!b) return;
+            const r = rows[+b.dataset.i];
+            fill(r); $('#siteRes', el).innerHTML = '';
+            const note = $('#siteNote', el), map = `https://www.openstreetmap.org/?mlat=${encodeURIComponent(r.lat)}&mlon=${encodeURIComponent(r.lon)}#map=16/${encodeURIComponent(r.lat)}/${encodeURIComponent(r.lon)}`;
+            note.innerHTML = `Übernommen – Höhe wird ermittelt … · <a href="${map}" target="_blank" rel="noreferrer">Lage auf der Karte prüfen ↗</a>`;
+            try { const h = await api(`/sites/elevation?lat=${+r.lat}&lon=${+r.lon}`); if (E.alt_m.isConnected) E.alt_m.value = Math.round(h.alt_m);
+              if (note.isConnected) note.innerHTML = `Übernommen, Höhe ${Math.round(h.alt_m)} m (Open-Meteo) · <a href="${map}" target="_blank" rel="noreferrer">Lage auf der Karte prüfen ↗</a>`; }
+            catch { if (note.isConnected) note.innerHTML = `Übernommen – Höhe bitte selbst eintragen · <a href="${map}" target="_blank" rel="noreferrer">Lage auf der Karte prüfen ↗</a>`; }
+          };
         } catch (e) { toast(e.message, 'err'); }
       };
       $('#siteGo', el).onclick = search;
