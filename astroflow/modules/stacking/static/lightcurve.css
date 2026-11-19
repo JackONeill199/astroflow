@@ -1,0 +1,47 @@
+/* Lichtkurven im Reiter Analyse (lightcurve.js) – Tokens aus style.css; Raster/Achsen wie das HR-Diagramm (.hrd-grid). */
+.lc-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 0.75rem }
+.lc-kpis span { white-space: normal }
+.lc-wrap { display: grid; grid-template-columns: minmax(14rem, 1fr) minmax(0, 2fr); gap: 1rem; align-items: start }
+.lc-list { display: grid; gap: 0.25rem; max-height: 26rem; overflow-y: auto; padding-right: 0.25rem; min-width: 0 }
+.lc-row { display: grid; gap: 0.125rem; text-align: left; padding: 0.4375rem 0.625rem; border: 1px solid var(--border-soft); border-radius: var(--r-sm);
+  background-color: var(--surface); color: var(--fg); font: inherit; cursor: pointer; min-width: 0 }
+.lc-row:hover { border-color: var(--border) }
+.lc-row[aria-selected="true"] { border-color: var(--acc); background-color: color-mix(in srgb, var(--acc) 8%, var(--surface)) }
+.lc-n { display: flex; align-items: center; gap: 0.375rem; min-width: 0 }
+.lc-n b { font-weight: 600; font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0 }
+.lc-m { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.chip.lc-maybe { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); background: color-mix(in srgb, var(--warn) 10%, transparent) }
+.lc-crowd { display: grid; gap: 0.25rem; margin-top: 0.25rem }
+.lc-crowd > summary { cursor: pointer; color: var(--mut); padding: 0.25rem 0 }
+.lc-crowd > p { margin: 0 0 0.25rem }
+.lc-crowd .lc-row { opacity: .75 }
+.lc-main { min-width: 0 }
+.lc-tools { gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem }
+.lc-plot { border: 1px solid var(--border-soft); border-radius: var(--r-lg); background: var(--surface-2); padding: 0.375rem; min-height: 8rem }
+.lc-svg { display: block; width: 100%; height: auto }
+.lc-err line { stroke: var(--dim); stroke-width: 1; opacity: .55 }
+.lc-p { stroke: #0b0d10; stroke-width: .5 }
+.lc-p.n0 { fill: var(--acc) }
+.lc-p.n1 { fill: var(--data-3) }
+.lc-p.n2 { fill: var(--warn) }
+.lc-p.n3 { fill: var(--data-2) }
+.lc-svg.has-bin .lc-p { opacity: .35 }
+.lc-b { fill: var(--fg); stroke: #0b0d10; stroke-width: 1 }
+.lc-bad { fill: none; stroke: var(--dim); stroke-width: 1.2; stroke-dasharray: 2 2 }
+.lc-model { fill: none; stroke: var(--warn); stroke-width: 2; opacity: .9 }
+.lc-leg text { fill: var(--mut); font-size: 11px }
+.lc-info { margin-top: 0.5rem; color: var(--mut); line-height: 1.5 }
+.lc-export { margin-top: 0.875rem; display: grid; gap: 0.5rem }
+.lc-export .row { gap: 0.5rem; flex-wrap: wrap }
+.lc-warn { display: flex; gap: 0.5rem; align-items: flex-start; margin: 0; padding: 0.5rem 0.625rem; border-radius: var(--r-sm); color: var(--fg);
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); background-color: color-mix(in srgb, var(--warn) 10%, var(--surface)) }
+.lc-warn svg { flex: none; width: 1rem; height: 1rem; color: var(--warn); margin-top: 0.0625rem }
+.lc-acc { margin: 0.625rem 0 0 }
+.an-sec.in .lc-p { animation: hrdPop 420ms var(--ease) both 120ms }
+@media (prefers-reduced-motion: reduce) { .an-sec.in .lc-p { animation: none } }
+@media (max-width: 1100px) { .lc-wrap { grid-template-columns: minmax(0, 1fr) } .lc-list { max-height: 16rem } }
+@media (max-width: 860px) {
+  .lc-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+  .lc-kpis b { font-size: 1.125rem; white-space: normal }
+  .lc-kpis span { white-space: normal }
+}

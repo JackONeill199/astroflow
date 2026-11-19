@@ -123,6 +123,7 @@ wenn sie über der Grenzgröße beider Bilder liegen, und mit SIMBAD und JPL-Kle
 Weitere Auswertungen je Objekt, alle aus gespeicherten Daten:
 
 - **HR-Diagramm** bei Sternhaufen: Farben-Helligkeits-Diagramm aus deinem eigenen Bild mit Abknickpunkt, Entfernung, Rötung und grobem Alter – mit Gegenprobe gegen Gaia.
+- **Lichtkurven** veränderlicher Sterne aus den Einzelbildern (solange die Rohbilder vorhanden sind): Differenzfotometrie gegen Gaia-Vergleichssterne, bekannte Veränderliche aus dem AAVSO-Katalog VSX mit Periode und Phasenkurve, Genauigkeit je Stern, Wolkenbilder ausgelassen. Auffällige andere Sterne heißen nur „möglicher Veränderlicher“. Export als CSV und im AAVSO-Format – ungeprüft, vor dem Einreichen kontrollieren.
 - **Asteroiden:** welche bekannten Kleinplaneten im Feld lagen und welche du in den Einzelbildern wirklich erwischt hast, mit gemessener Helligkeit.
 - **Dein Gerät:** Nachführung (Drift, Verschmieren), Fokus über die Nacht, Schärfekarte des Bildfelds und der Verlauf über alle Nächte des Geräts.
 - **Himmel der Aufnahmenacht** (Bortle-Schätzung, Seeing, Lichtrichtung) und **Bild-Tutor** mit Tipps passend zum Gerät.

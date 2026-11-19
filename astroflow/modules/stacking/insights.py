@@ -1,6 +1,6 @@
 """Hintergrundauswertungen fertiger Bilder: „Wie tief schaust du?“ (`depth.py`), Vergleich mit einer Referenz
-(`compare.py`), HR-Diagramm von Sternhaufen (`hrd.py`) und Asteroiden im Bild (`asteroids.py`). Eigener Thread mit Warteschlange – Netzabfragen (Gaia, SIMBAD, DSS, JPL) halten so weder Stacking
-noch Entwicklung auf. Ergebnisse landen in `results.stats.depth`, `.compare`, `.hrd` bzw. `.asteroids` (mit Versionsnummer).
+(`compare.py`), HR-Diagramm von Sternhaufen (`hrd.py`), Asteroiden im Bild (`asteroids.py`) und Lichtkurven aus den Einzelbildern (`lightcurve.py`). Eigener Thread mit Warteschlange – Netzabfragen (Gaia, SIMBAD, DSS, JPL) halten so weder Stacking
+noch Entwicklung auf. Ergebnisse landen in `results.stats.depth`, `.compare`, `.hrd`, `.asteroids` bzw. `.lightcurves` (mit Versionsnummer).
 
 Einstellungen (`data/settings.json` → `insights`): `auto_depth` (nach jeder Entwicklung messen), `simbad`
 (Rotverschiebungen/Veränderliche), `survey` (Himmelsdurchmusterung DSS2 als Referenz), `small_bodies` (JPL-Kleinkörper).
@@ -75,7 +75,7 @@ class Insights:
             st.update(state="running", message="läuft", t=time.time())
             try:
                 fn = {"depth": self.depth, "compare": self.compare, "hrd": self.hrd, "asteroids": self.asteroids,
-                      "diagnose": self.diagnose}[kind]
+                      "diagnose": self.diagnose, "lightcurves": self.lightcurves}[kind]
                 fn(rid, lambda m: st.update(message=m), **opts)
                 self.state.pop((kind, rid), None)
             except Exception as e:
@@ -83,13 +83,16 @@ class Insights:
                 from .compare import CompareError
                 from .depth import DepthError
                 from .hrd import HrdError
-                if not isinstance(e, (DepthError, CompareError, HrdError, AsteroidError)):
-                    traceback.print_exc()
+                from .lightcurve import LightcurveError
+                known = isinstance(e, (DepthError, CompareError, HrdError, AsteroidError, LightcurveError))
+                if not known:
+                    traceback.print_exc()                # Details nur ins Protokoll
+                msg = str(e)[:300] if known else "Auswertung fehlgeschlagen – Details stehen im Protokoll."
                 retry = bool(getattr(e, "retry", False))   # vorübergehend (JPL zu langsam): „offen“, beim nächsten Lauf erneut
                 try:                                     # erst speichern, dann melden (Abfragen dazwischen sähen sonst nichts)
-                    self._store(rid, kind, {"v": 0, "ok": False, "error": str(e)[:300], "erstellt": time.time(), "retry": retry})
+                    self._store(rid, kind, {"v": 0, "ok": False, "error": msg, "erstellt": time.time(), "retry": retry})
                 finally:
-                    st.update(state="retry" if retry else "error", message=str(e)[:300], t=time.time())
+                    st.update(state="retry" if retry else "error", message=msg, t=time.time())
 
     def _store(self, rid: int, key: str, value: dict):
         self.eng.db.x(f"UPDATE results SET stats=json_set(COALESCE(stats,'{{}}'),'$.{key}',json(?)) WHERE id=?",
@@ -117,6 +120,13 @@ class Insights:
                           gaia=self.settings()["gaia"], log=log)
         out["erstellt"] = time.time()
         self._store(rid, "hrd", out)
+
+    def lightcurves(self, rid: int, log, **_):
+        """Lichtkurven aus den Einzelbildern (lightcurve.py) – nur auf Wunsch, liest alle vorhandenen Rohbilder."""
+        from . import lightcurve
+        cfg = self.settings()
+        out = lightcurve.compute(self.eng.pl, rid, gaia=cfg["gaia"], catalogs=cfg["simbad"], log=log)
+        self._store(rid, "lightcurves", out)
 
     def compare(self, rid: int, log, ref="auto", **_):
         from . import compare

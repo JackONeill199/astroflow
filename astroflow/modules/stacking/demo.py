@@ -315,6 +315,52 @@ def generate_asteroid(out: Path, n_lights=36, seed=11, rate=(0.9, 0.35), flux=90
     return out, truth
 
 
+VARIABLES = ({"flux": 15000.0, "amp": 0.5, "period": 0.020, "pos": (0.42, 0.45)},     # bekannt (Katalog-Attrappe)
+             {"flux": 12000.0, "amp": 0.35, "period": 0.030, "pos": (0.60, 0.56)})    # unbekannt: eigene Erkennung
+
+
+def generate_variable(out: Path, n_lights=48, seed=17, step_s=90.0, exptime=10.0, variables=VARIABLES, cloud_frame=20,
+                      n_saturated=2):
+    """Sternfeld mit veränderlichen Sternen für die Lichtkurven (lightcurve.py): Bayer, leichte Drift und Feldrotation.
+    Veränderliche: Helligkeit m(t) = m0 + amp/2 · sin(2π (t − t0)/P) (amp = Spitze-Spitze in mag, P in Tagen); eine Aufnahme
+    mit Wolken (45 % Licht), einige übersättigte Sterne. Gibt (Ordner, Wahrheit) zurück: Himmelsraster-Sterne (x, y, Fluss, Farbe),
+    Indizes der Veränderlichen, Lage je Aufnahme (Drehwinkel, Versatz) und Zeiten."""
+    rng = np.random.default_rng(seed)
+    out = Path(out)
+    d = out / "2026-09-21_21-30-00_observation_Feld" / "01-images-initial"
+    d.mkdir(parents=True, exist_ok=True)
+    stars, ext = _sky(rng)
+    ext = ext * 0.0
+    sh, sw = ext.shape[1:]
+    var_idx = []
+    for v in variables:                                    # an die gewünschte Stelle (Bruchteil der Bildmitte) setzen
+        stars = np.vstack([stars, [[sw / 2 + (v["pos"][0] - 0.5) * W, sh / 2 + (v["pos"][1] - 0.5) * H, v["flux"], 0.5]]])
+        var_idx.append(len(stars) - 1)
+    sat_idx = []
+    for k in range(n_saturated):
+        stars = np.vstack([stars, [[sw / 2 + (0.25 + 0.5 * k - 0.5) * W, sh / 2 + 0.2 * H, 3.0e6, 0.4]]])
+        sat_idx.append(len(stars) - 1)
+    t0 = dt.datetime(2026, 9, 21, 21, 30, 0)
+    jd0 = (t0.replace(tzinfo=dt.timezone.utc).timestamp()) / 86400 + 2440587.5
+    truth = {"stars": stars.tolist(), "var": var_idx, "sat": sat_idx, "variables": list(variables), "angle": [], "shift": [],
+             "time": [], "shape": (sh, sw), "frame": (H, W), "jd0": jd0, "cloud": cloud_frame}
+    for i in range(n_lights):
+        t = t0 + dt.timedelta(seconds=i * step_s)
+        jd = (t + dt.timedelta(seconds=exptime / 2)).replace(tzinfo=dt.timezone.utc).timestamp() / 86400 + 2440587.5
+        st = stars.copy()
+        for j, v in zip(var_idx, variables):
+            st[j, 2] = v["flux"] * 10 ** (-0.4 * v["amp"] / 2 * np.sin(2 * np.pi * (jd - jd0) / v["period"]))
+        ang, shift = i * 0.04, rng.normal(0, 2.5, 2)
+        img = _frame(rng, st, ext, ang, shift, rng.normal(3.6, 0.12), clouds=0.45 if i == cloud_frame else 1.0)
+        raw = _mosaic(img) + 300 + rng.normal(0, 12, (H, W))
+        write_fits(d / f"img-{i + 1:04d}r.fits", np.clip(raw, 0, 65535).astype(np.uint16),
+                   dict(INSTRUME="DemoScope", BAYERPAT="RGGB", EXPTIME=exptime, GAIN=100.0, **{"DATE-OBS": t.isoformat()}))
+        truth["angle"].append(ang)
+        truth["shift"].append(shift.tolist())
+        truth["time"].append(jd)
+    return out, truth
+
+
 def distort(p: np.ndarray, k: float, size: tuple[int, int]) -> np.ndarray:
     """Radiale Verzeichnung (Kissen bei k > 0) um die Bildmitte: r' = r·(1 + k·r²), p in Pixeln (N, 2)."""
     h, w = size

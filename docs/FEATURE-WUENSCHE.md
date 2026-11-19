@@ -13,7 +13,7 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md` (Details in `docs/entwicklung/
 | 5 | 04.11.2026 | Kometenmodus | umgesetzt in 0.22.0 |
 | 6 | 04.11.2026 | Planetenmodus (Lucky Imaging) | offen |
 | 7 | 04.11.2026 | Standorte nach Datum | umgesetzt in 0.23.0 (Kür Standort-Rückrechnung: Vorschlag, kein Automatismus) |
-| 8 | 05.11.2026 | Lichtkurven veränderlicher Sterne | offen |
+| 8 | 05.11.2026 | Lichtkurven veränderlicher Sterne | umgesetzt (Branch `feature/lichtkurven`, Version beim Merge; Reiter Analyse → „Lichtkurven“) |
 | 9 | 05.11.2026 | HR-Diagramm von Sternhaufen | umgesetzt in 0.41.0 (Erklärung im Abschnitt selbst, nicht über Sage) |
 | 10 | 05.11.2026 | Asteroiden in eigenen Bildern | umgesetzt in 0.42.0 |
 | 11 | 05.11.2026 | Exoplanet-Transits | offen |

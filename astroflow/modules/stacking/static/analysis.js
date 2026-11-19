@@ -97,13 +97,14 @@ async function analysisSummary(host, r, pid) {
 // Reiter Analyse. ctx: { p, r, viewerFor(host) → createViewer-Objekt } – gibt { viewer, destroy } zurück
 function analysisTab(t, ctx) {
   const { p, r } = ctx;
-  const secs = [['anDepth', 'Wie tief schaust du?', 'target'], ['anHrd', 'HR-Diagramm', 'star'], ['anCmp', 'Veränderungen', 'compare'], ['anAst', 'Asteroiden', 'orbit'], ['anSky', 'Der Himmel in dieser Nacht', 'globe'], ['anDiag', 'Dein Gerät', 'camera'], ['anTutor', 'Tutor', 'sparkle']];
+  const secs = [['anDepth', 'Wie tief schaust du?', 'target'], ['anHrd', 'HR-Diagramm', 'star'], ['anLc', 'Lichtkurven', 'pulse'], ['anCmp', 'Veränderungen', 'compare'], ['anAst', 'Asteroiden', 'orbit'], ['anSky', 'Der Himmel in dieser Nacht', 'globe'], ['anDiag', 'Dein Gerät', 'camera'], ['anTutor', 'Tutor', 'sparkle']];
   t.innerHTML = `<div class="an">
       <div class="an-top"><div id="anViewer"></div>
         <nav class="an-toc" aria-label="Abschnitte">${secs.map(([id, l, ic], i) => `<a href="#${id}" data-sec="${id}" style="--i:${i}"${id === 'anHrd' ? ' hidden' : ''}>${icon(ic)}<span>${l}</span></a>`).join('')}
           <p class="dim sm">Klick auf Sterne, Galaxien oder Kandidaten zeigt sie im Bild.</p></nav></div>
       <section class="panel an-sec depth-panel" id="anDepth"></section>
       <section class="panel an-sec depth-panel hrd-panel" id="anHrd" hidden></section>
+      <section class="panel an-sec depth-panel lc-panel" id="anLc"></section>
       <section class="panel an-sec" id="anCmpWrap"><div class="an-cmp"><div class="an-blink" id="anBlink"></div><div class="depth-panel" id="anCmp"></div></div></section>
       <section class="panel an-sec depth-panel" id="anAst"></section>
       <section class="panel an-sec" id="anSky"></section>
@@ -143,6 +144,8 @@ function analysisTab(t, ctx) {
   depthPanel($('#anDepth', t), r, viewer, { wide: true, onFocus: focus, onSolve: ctx.solve, on3d: set3d, onData });
   // HR-Diagramm: nur bei Sternhaufen (bzw. wenn eine Messung einen Haufen gefunden hat) – Abschnitt und Eintrag links erst dann zeigen
   if (typeof hrdPanel === 'function') hrdPanel($('#anHrd', t), r, { onFocus: focus, onShow: (on) => { const a = $('.an-toc [data-sec="anHrd"]', t); if (a) a.hidden = !on; } });
+  // Lichtkurven veränderlicher Sterne (lightcurve.js): Einzelbilder, nur auf Wunsch gemessen
+  if (typeof lightcurvePanel === 'function') lightcurvePanel($('#anLc', t), r, { onFocus: focus });
   // Veränderungen: Blink-Betrachter groß links, Kandidaten rechts
   let blink = null;
   const showBlink = (on, f) => {
