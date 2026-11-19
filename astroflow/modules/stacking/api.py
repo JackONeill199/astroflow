@@ -438,6 +438,12 @@ class Engine:
                     self.ai_after.add(p["id"])            # läuft schon: nach dessen Ende prüfen (_done_locked)
             if jid:
                 names.append(p["name"])
+        # Objekt wird gerade zum allerersten Mal entwickelt (noch kein Ergebnis, `without_ai` sieht es nicht): vormerken –
+        # nach dem Auftrag prüft `_ai_followup`, ob das Bild ohne KI entstand (Review PR #166)
+        with self._queue_lock:
+            for j in self.db.q("SELECT DISTINCT j.project_id FROM jobs j WHERE j.state='running' "
+                               "AND NOT EXISTS (SELECT 1 FROM results r WHERE r.project_id=j.project_id)"):
+                self.ai_after.add(j["project_id"])
         return names
 
     def activity(self, limit: int = 30) -> list[dict]:
