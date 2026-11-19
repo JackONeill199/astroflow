@@ -203,3 +203,56 @@ def test_plan_api_reports_moved_nights(tmp_path):
         assert c.get("/api/stacking/plan").json()["stale_nights"] == []
         c.post("/api/sites/night", json={"night": night, "site_id": "s2", "nights": False})
         assert c.get("/api/stacking/plan").json()["stale_nights"] == [night]
+
+
+def test_site_change_during_rerun_keeps_stale_hint(server, browser, tmp_path):
+    """Review PR #163: Ort einer Nacht ändern, während „Neu berechnen“ noch läuft – die Änderung darf nach der Antwort
+    nicht verloren gehen. Der Hinweis „Ort geändert“ übersteht auch einen Seitenwechsel (kommt aus dem Plan-Zustand)."""
+    import json
+    base, _ = server
+    plan = _plan(tmp_path)
+    nights = [n["night"] for n in plan["nights"]]
+    state = {"stale": [], "held": [], "site_calls": 0}
+    sites = {"list": [{"id": "a", "name": "Ort A"}, {"id": "b", "name": "Ort B"}, {"id": "c", "name": "Ort C"}], "periods": [], "default": "a"}
+
+    def plan_route(route):
+        if route.request.method == "POST":
+            state["held"].append(route)                       # Berechnung „läuft“, bis der Test sie freigibt
+            return
+        route.fulfill(json={"plan": plan, "stale_nights": state["stale"], "devices": planner.device_options(None),
+                            "default_device": "stellina", "has_site": True, "weather_on": False, "eq_detected": [], "eq_default": []})
+
+    def night_route(route):
+        state["site_calls"] += 1
+        route.fulfill(json=sites)
+
+    page = browser.new_page()
+    page.route("**/api/stacking/plan", plan_route)
+    page.route("**/api/sites/night", night_route)
+    page.route("**/api/sites?nights=false", lambda r: r.fulfill(json=sites))
+
+    def until(cond, ms=5000):
+        for _ in range(ms // 50):
+            if cond():
+                return
+            page.wait_for_timeout(50)
+        raise AssertionError("Zustand nicht erreicht")
+
+    page.goto(f"{base}/#/observatorium/plan")
+    page.wait_for_selector(f'[data-site-night="{nights[0]}"]')
+    page.select_option(f'[data-site-night="{nights[0]}"]', "b")
+    page.wait_for_selector(".pl-stale")
+    page.click('.pl-stale [data-act="rerun"]')
+    until(lambda: state["held"])
+    page.select_option(f'[data-site-night="{nights[1]}"]', "c")    # Ort ändert sich während der Rechnung
+    until(lambda: state["site_calls"] == 2)
+    page.wait_for_timeout(150)
+    state["held"].pop().fulfill(json={"plan": json.loads(json.dumps(plan))})
+    page.wait_for_selector(".toast >> text=Plan berechnet")
+    assert page.locator(".pl-stale").count() == 1                   # Änderung während der Rechnung bleibt sichtbar
+    assert page.locator(".pl-hz", has_text="gilt nach dem Neuberechnen").count() == 1   # nur die zweite Nacht
+    state["stale"] = [nights[1]]                                    # Server sieht die Nacht als veraltet
+    page.goto(f"{base}/#/")
+    page.goto(f"{base}/#/observatorium/plan")
+    page.wait_for_selector(".pl-stale")
+    page.close()

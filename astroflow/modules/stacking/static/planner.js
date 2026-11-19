@@ -97,6 +97,16 @@ async function planView(el) {
   let wizard = !d.plan;
   const changed = new Set(d.stale_nights || []);        // Ort seit der Berechnung geändert (auch nach Seitenwechsel)
   let sites = null, stale = changed.size > 0, siteSeq = 0;
+  const edits = new Map();                                // Nacht → Nummer der letzten Ortsänderung auf dieser Seite
+  // Nach dem Berechnen: veraltete Nächte laut Server (Plan-Zustand) plus Ortsänderungen, die während der Rechnung kamen –
+  // die kennt der fertige Plan womöglich noch nicht (sonst gingen sie verloren, Review PR #163)
+  async function restale(since) {
+    let srv = [];
+    try { srv = (await api('/stacking/plan')).stale_nights || []; } catch { /* Server-Abgleich ist nur Zugabe */ }
+    changed.clear();
+    [...srv, ...[...edits].filter(([, k]) => k > since).map(([n]) => n)].forEach(n => changed.add(n));
+    stale = changed.size > 0;
+  }
   api('/sites?nights=false').then(s => { sites = s; if (d.plan && !wizard) draw(); }).catch(() => {});
 
   const chips = (key, list, multi) => list.map(([v, l]) => {
@@ -207,7 +217,8 @@ async function planView(el) {
     }
     if (a === 'run' || a === 'rerun') {
       const b = e.target.closest('button'); b.disabled = true; b.classList.add('pending');
-      try { d.plan = (await send('/stacking/plan', a === 'rerun' && d.plan ? d.plan.wishes : w)).plan; wizard = false; stale = false; changed.clear(); draw(a === 'run' ? '#plBody > section' : null); toast('Plan berechnet.', 'ok'); }
+      const since = siteSeq;
+      try { d.plan = (await send('/stacking/plan', a === 'rerun' && d.plan ? d.plan.wishes : w)).plan; wizard = false; await restale(since); draw(a === 'run' ? '#plBody > section' : null); toast('Plan berechnet.', 'ok'); }
       catch (err) { toast(err.message, 'err'); b.disabled = false; b.classList.remove('pending'); }
     }
   });
@@ -218,7 +229,7 @@ async function planView(el) {
       try {
         const my = ++siteSeq, res = await send('/sites/night', { night: sn, site_id: e.target.value || null, nights: false });
         if (my === siteSeq) sites = res;          // nur die jüngste Antwort gilt (überholte Antworten verwerfen)
-        changed.add(sn); stale = true; draw();
+        edits.set(sn, my); changed.add(sn); stale = true; draw();
         $(`[data-site-night="${sn}"]`, el)?.focus();
       } catch (err) { toast(err.message, 'err'); draw(); }
       return;
