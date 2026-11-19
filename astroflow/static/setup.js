@@ -200,14 +200,16 @@
     el.onsubmit = async (e) => {
       if (e.target.id !== 'suSite') return;
       e.preventDefault();
-      const q = $('#suSiteQ', el).value.trim(), res = $('#suSiteRes', el);
+      const q = $('#suSiteQ', el).value.trim();
       if (q.length < 2) { toast('Bitte einen Ort oder eine Adresse eingeben.', 'err'); return; }
-      res.innerHTML = '<span class="mut sm">Suche …</span>';
+      $('#suSiteRes', el).innerHTML = '<span class="mut sm">Suche …</span>';
       try {
         siteRows = await api('/sites/geocode?q=' + encodeURIComponent(q));
-        if (res.isConnected) res.innerHTML = siteRows.length ? `<span class="mut sm">Treffer anklicken:</span>${siteRows.map((r, i) => `<button type="button" class="chip" data-site="${i}">${esc(r.name)}</button>`).join('')}`
+        // Während Downloads zeichnet sich der Assistent neu (repaint) – Ergebnisbereich nach der Antwort frisch holen
+        const res = el.isConnected && $('#suSiteRes', el);
+        if (res) res.innerHTML = siteRows.length ? `<span class="mut sm">Treffer anklicken:</span>${siteRows.map((r, i) => `<button type="button" class="chip" data-site="${i}">${esc(r.name)}</button>`).join('')}`
           : '<span class="mut sm">Kein Ergebnis gefunden – anders schreiben oder unter Einstellungen → Standorte Koordinaten eintragen.</span>';
-      } catch (err) { if (res.isConnected) res.innerHTML = ''; toast(err.message, 'err'); }
+      } catch (err) { const res = el.isConnected && $('#suSiteRes', el); if (res) res.innerHTML = ''; toast(err.message, 'err'); }
     };
     const addSite = async (r) => {
       const res = $('#suSiteRes', el);

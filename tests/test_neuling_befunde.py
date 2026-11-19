@@ -116,8 +116,11 @@ def test_graxpert_nach_erstem_bild(home, monkeypatch):
     pid, _ = _project(eng)
     _project(eng, "Mit KI", stats={"graxpert": {"bge": True, "denoise": 0.5}})
     _project(eng, "Fertiges Bild", options={"input_type": "picture"})
-    _project(eng, "C/2023 A3", options={"comet_mode": True})
-    assert [p["id"] for p in eng.without_ai()] == [pid]
+    _project(eng, "C/2023 A3")                                # Komet automatisch erkannt (ohne Option)
+    _project(eng, "M42 Orionnebel", options={"comet_mode": "on"})
+    pid2, _ = _project(eng, "M33 Dreiecksgalaxie", options={"comet_mode": "auto"})   # gespeicherte Optionen schließen nicht aus
+    assert sorted(p["id"] for p in eng.without_ai()) == [pid, pid2]
+    eng.db.x("DELETE FROM results WHERE project_id=?", (pid2,))
     assert c.get(f"/api/stacking/projects/{pid}").json()["ai_offer"] is False          # GraXpert fehlt (Tests: abgeschaltet)
     queued = []
     monkeypatch.setattr(graxpert, "graxpert_path", lambda: "GraXpert.exe")

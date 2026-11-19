@@ -385,12 +385,12 @@ class Engine:
         (typisch: erstes Bild entstand, während GraXpert noch geladen wurde). Fertig importierte Bilder und Kometen nicht."""
         out = []
         since = time.time() - max_age_s if max_age_s else 0
-        for r in self.db.q("SELECT r.project_id, r.created, CASE WHEN json_valid(r.stats) THEN json_extract(r.stats,'$.graxpert') END gx, p.name, p.options FROM results r "
+        for r in self.db.q("SELECT r.project_id, r.created, CASE WHEN json_valid(r.stats) THEN json_extract(r.stats,'$.graxpert') END gx, p.name, p.kind, p.options FROM results r "
                            "JOIN projects p ON p.id=r.project_id WHERE r.id IN (SELECT MAX(id) FROM results GROUP BY project_id) "
                            "AND r.created>=?" + (" AND r.project_id=?" if pid is not None else ""),
                            (since,) + ((pid,) if pid is not None else ())):
             opts = json.loads(r["options"] or "{}")
-            if r["gx"] or opts.get("input_type") == "picture" or opts.get("comet_mode"):
+            if r["gx"] or opts.get("input_type") == "picture" or comet.active(dict(r), opts):
                 continue
             if graxpert.mode_for(opts.get("graxpert")) == "off":
                 continue
