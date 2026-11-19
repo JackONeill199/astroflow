@@ -889,7 +889,7 @@ class Autopilot:
             return
         self.idle_since = None
         it.seen, it.restarts = False, 0
-        it.status, it.real_start, it.why = "aktiv", now, ""
+        it.status, it.real_start, it.real_end, it.why = "aktiv", now, None, ""   # kein Ende eines früheren Versuchs
         it.frames = it.stacked = it.rejected = 0
         self.samples.clear()
         self.bad_since = None

@@ -207,6 +207,9 @@ def test_autopilot_retry_after_fog_reopens_target_without_frames():
     it.stacked, it.real_start = 0, None                        # Beschlag kam vor dem ersten gestapelten Bild
     assert p.retry_now(clock.now())
     assert it.status == "geplant" and it.why == "" and len(p.items) == 1
+    d.sc.dew_from = None
+    _run(p, clock, 0.2)
+    assert it.status == "aktiv" and it.real_end is None       # kein altes Ende am wieder gestarteten Ziel
 
 
 def test_autopilot_cloudy_forecast_is_not_fog():
