@@ -206,12 +206,24 @@ def test_check_star_and_comparison_minimum_per_frame():
     nf, ns = 30, 12
     v = rng.uniform(10, 12, ns)
     col = rng.uniform(0.3, 1.5, ns)
+    v[-1] = 9.0                                         # klar hellster und ruhigster Stern: wird Prüfstern
     F = 10 ** (-0.4 * (v - 20)) * (1 + rng.normal(0, 0.004, (nf, ns)))
+    F[:, -1] = 10 ** (-0.4 * (v[-1] - 20))
     F[4, 1:] = np.nan                                   # Aufnahme 4: nur Stern 0 messbar
-    d = lightcurve.differential(F, np.ones((nf, ns)), lightcurve.gaia_v(_g_from_v(v, col), col), col, rng.uniform(0, 900, (ns, 2)),
+    xy = rng.uniform(0, 900, (ns, 2))
+    d = lightcurve.differential(F, np.ones((nf, ns)), lightcurve.gaia_v(_g_from_v(v, col), col), col, xy,
                                 np.ones(ns, bool), np.zeros(nf, int), np.zeros((nf, ns), bool))
-    assert d["check"] is not None and d["comp"][d["check"]]
+    assert d["check"] is not None and not d["comp"][d["check"]]
     assert np.isnan(d["mag"][4, 0])
+    # kein indirekter Einfluss: verändert sich nur der Prüfstern, bleiben alle anderen Helligkeiten gleich
+    F2 = F.copy()
+    assert d["check"] == ns - 1
+    F2[:, d["check"]] *= 1.05                           # fester Versatz: änderte früher Farbterm und Nullpunkte aller Sterne
+    d2 = lightcurve.differential(F2, np.ones((nf, ns)), lightcurve.gaia_v(_g_from_v(v, col), col), col, xy,
+                                 np.ones(ns, bool), np.zeros(nf, int), np.zeros((nf, ns), bool))
+    assert d2["check"] == d["check"]
+    others = np.arange(ns) != d["check"]
+    assert np.allclose(d["mag"][:, others], d2["mag"][:, others], rtol=0, atol=1e-9, equal_nan=True)
     assert np.isfinite(d["mag"][d["flags"] == "", 0]).sum() >= nf - 3
 
 

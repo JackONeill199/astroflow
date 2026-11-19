@@ -402,6 +402,19 @@ def _differential(F: np.ndarray, VB: np.ndarray, vcat: np.ndarray, col: np.ndarr
         return use, Z, r, rms
 
     use, Z, r, rms = glob(m_inst)
+    # Prüfstern (AAVSO „check star“): heller, ruhiger Vergleichsstern. Er wird ganz aus der Eichung genommen – Farbterm,
+    # globales Ensemble und lokale Ensembles werden ohne ihn neu bestimmt, damit er die Zielnullpunkte nicht beeinflusst.
+    check = None
+    cand_ck = np.nonzero(use & np.isfinite(rms))[0]
+    if len(cand_ck) >= MIN_COMP + 2:
+        hell = cand_ck[med_inst[cand_ck] <= np.nanpercentile(med_inst[cand_ck], 35)]
+        hell = hell if len(hell) else cand_ck
+        check = int(hell[np.argmin(rms[hell])])
+        comp[check] = False
+        fit = _robust_line(c_fill[comp], (vcat - med_inst)[comp], n_min=MIN_COMP)
+        k = float(np.clip(fit[0], -0.5, 0.5)) if fit else 0.0
+        dz = vcat - k * c_fill
+        use, Z, r, rms = glob(m_inst)
     s_int = np.where(np.isfinite(rms), rms, np.nan)
     # Fehlermodell aus den konstanten Sternen: Varianz = Hintergrundanteil + a·F (Photonen, a = 1/Verstärkung) + b·F²
     # (Flat, Szintillation, Unschärfe der Positionen) – a, b ≥ 0 über NNLS, relativ gewichtet
@@ -441,15 +454,8 @@ def _differential(F: np.ndarray, VB: np.ndarray, vcat: np.ndarray, col: np.ndarr
     flags[(flags == "") & (scat > OUTLIER_K * np.nanmedian(scat))] = "ausreisser"
     flags[(flags == "") & (n_c < max(MIN_COMP, 0.5 * use.sum()))] = "wenig"
     fok = flags == ""
-    # Prüfstern (AAVSO „check star“): heller, ruhiger Vergleichsstern – aus dem Ensemble genommen, damit er unabhängig bleibt
-    check = None
-    cand_ck = np.nonzero(use & np.isfinite(rms))[0]
-    if len(cand_ck) >= MIN_COMP + 2:
-        hell = cand_ck[med_inst[cand_ck] <= np.nanpercentile(med_inst[cand_ck], 35)]
-        hell = hell if len(hell) else cand_ck
-        check = int(hell[np.argmin(rms[hell])])
-    # 2. je Stern eigenes Ensemble: nächste Vergleichssterne in Helligkeit, Farbe und Ort
-    ci = np.nonzero(use & (np.arange(ns) != (check if check is not None else -1)))[0]
+    # 2. je Stern eigenes Ensemble: nächste Vergleichssterne in Helligkeit, Farbe und Ort (ohne Prüfstern, s. o.)
+    ci = np.nonzero(use)[0]
     span = float(np.ptp(xy[ci], axis=0).max()) or 1.0
     feats = np.c_[med_inst[ci] / 1.0, c_fill[ci] / 0.4, xy[ci] / (0.5 * span)]
     from scipy.spatial import cKDTree
@@ -919,6 +925,9 @@ def compute(pl, rid: int, gaia: bool = True, catalogs: bool = True, log=lambda m
 
     # Kennzahlen je Stern und erwartete Streuung bei dieser Helligkeit
     st = [curve_stats(bjd[fok], mag[fok, i], err[fok, i]) for i in range(ns)]
+    if not any(st):                                     # kein einziger Stern mit genug gültigen Messungen
+        raise LightcurveError(f"Kein Stern hat in mindestens {MIN_FRAMES} guten Aufnahmen eine gültige Messung – "
+                              "Lichtkurven lassen sich aus diesen Rohbildern nicht erstellen.")
     vm = np.array([s["mittel"] if s else np.nan for s in st])
     rms = np.array([s["rms"] if s else np.nan for s in st])
     _ref = _running_median(vm[d["comp"]], rms[d["comp"]])
