@@ -164,3 +164,29 @@ def test_medians_checked_only_uses_judged_nights(tmp_path):
     lib.set_motion("k", "2020-01-02", -1.0)                   # gemessen, Bewegung unbekannt – gilt als geprüft
     assert lib.medians("k", "2026-11-01", checked_only=True)[0] is not None
     assert lib.medians("k", "2020-01-01", checked_only=True)[1] == "nacht"   # eigene Nacht bleibt wie bisher
+
+
+def test_dropped_library_glow_marks_night_for_restack(tmp_path):
+    """Review PR #168: kurze Mono-Nacht ohne eigenes Profil, früher mit Bibliotheksabzug aus einer ungeprüften Nacht
+    entwickelt. Fällt dieser Abzug weg, muss das als Abzug 0 in glow_info stehen und die Nacht neu vorgemerkt werden."""
+    s = load_settings(tmp_path / "data")
+    db = DB(s.db_path)
+    pl = Pipeline(s, db, ReviewerConfig())
+    demo.generate_mono(s.input_dir / "m", bands=("L",), per_band=calibration.GLOW_MIN_FRAMES - 2)   # zu kurz zum Messen
+    pl.scan()
+    pid = db.one("SELECT id FROM projects")["id"]
+    r = db.one("SELECT info, night FROM frames WHERE project_id=? LIMIT 1", (pid,))
+    info, night = json.loads(r["info"]), r["night"]
+    lib = calibration.GlowLibrary(s.work_dir / "glow")
+    key = lib.key(info)
+    h, w = info["shape"][-2:]
+    lib.add(key, "2020-01-01", _fake(h, w))                   # einzige andere Nacht: ungeprüft
+    db.x("UPDATE projects SET options=json_set(COALESCE(options,'{}'),'$.glow_info',json(?)) WHERE id=?",
+         (json.dumps({night: {"quelle": "bibliothek (1 Nächte)", "adu": 80.0}}), pid))
+    calls = []
+    orig = pl._glow_pending
+    pl._glow_pending = lambda p, n: (calls.append(set(n)), orig(p, n))[1]
+    pl.stack(pid)
+    gi = _opts(db, pid)["glow_info"][night]
+    assert gi["adu"] == 0.0 and gi["quelle"].startswith("keine")
+    assert calls and night in calls[0]                         # Nacht neu analysieren/stacken

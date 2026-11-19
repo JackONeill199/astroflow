@@ -598,6 +598,10 @@ class Pipeline:
                     # Projekt dieselbe Kamera/Nacht schon entschieden hat (sonst sähe stack() die Änderung gegenüber einem
                     # alten glow_info nicht und würde nicht neu analysieren/stacken)
                     used[night] = {"quelle": "keine – Himmel stand still", "adu": 0.0, "bewegung_px": round(mv, 1)}
+                elif mono:
+                    # Mono ohne eigenes Profil und ohne bewegungsgeprüfte Nacht der Kamera: ein früherer Bibliotheksabzug
+                    # fällt weg – als Abzug 0 vermerken, sonst sähe stack() den Wegfall nicht (Review PR #168)
+                    used[night] = {"quelle": "keine – keine geprüfte Nacht der Kamera", "adu": 0.0}
             bad, src = dlib.get(key, night)
             if bad is not None and len(bad):
                 cache[("defects", key, night)] = bad
