@@ -68,15 +68,16 @@ def trusted_nets() -> list:
     return out
 
 
-def is_loopback(ip: str | None) -> bool:
-    """Anfrage vom eigenen Rechner (127.0.0.0/8, ::1, ::ffff:127.x) bzw. aus `ASTROFLOW_TRUSTED_NETS`."""
+def is_loopback(ip: str | None, strict: bool = False) -> bool:
+    """Anfrage vom eigenen Rechner (127.0.0.0/8, ::1, ::ffff:127.x) bzw. aus `ASTROFLOW_TRUSTED_NETS`
+    (`strict`: nur echtes Loopback, z. B. für „Tab am Starter-Rechner“)."""
     try:
         a = ipaddress.ip_address((ip or "").split("%", 1)[0])
     except ValueError:
         return False
     if getattr(a, "ipv4_mapped", None):
         a = a.ipv4_mapped
-    return a.is_loopback or any(a in n for n in trusted_nets())
+    return a.is_loopback or (not strict and any(a in n for n in trusted_nets()))
 
 
 _NAMES: tuple[float, set] = (0.0, set())

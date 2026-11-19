@@ -652,7 +652,10 @@ class Pipeline:
         if self.s.delete_uploads:
             n, freed = self.delete_stacked_uploads(project_id)
             if n:
-                progress(1.0, "Fertig", f"{n} hochgeladene Einzelbilder gelöscht ({freed / 1e9:.1f} GB frei)")
+                # „(0.0 GB frei)“ klang nach vollem Laufwerk und gelöschten Originalen – gemeint sind die hochgeladenen Kopien
+                size = f"{freed / 1e9:.1f} GB" if freed >= 1e8 else f"{max(1, round(freed / 1e6))} MB"
+                progress(1.0, "Fertig", f"Kopien von {n} hochgeladenen Einzelbildern entfernt, {size.replace('.', ',')} Speicher frei geworden – "
+                                        "die Originale bleiben, wo sie waren")
                 return rid
         progress(1.0, "Fertig")
         return rid

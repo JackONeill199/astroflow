@@ -67,7 +67,9 @@ async function api(u, opt = {}) {
   try { return await apiFetch(u, opt); } finally { if (b) { b.classList.remove('pending'); b.removeAttribute('aria-busy'); } }
 }
 async function apiFetch(u, opt) {
-  const r = await fetch('/api' + u, opt);
+  let r;
+  try { r = await fetch('/api' + u, opt); }
+  catch (e) { if (e?.name === 'AbortError') throw e; throw new Error('AstroFlow antwortet nicht – ist es noch gestartet?'); }   // statt „Failed to fetch“
   // Kopplung entfernt (Heimnetz-Gerät): Startseite zeigt dann die Kopplungsseite
   if (r.status === 401 && AF.app?.local === false) { location.replace('/'); throw new Error('Gerät nicht gekoppelt.'); }
   if (!r.ok) {
@@ -608,7 +610,8 @@ function buildNav() {
     for (const n of nav) all.push({ ...n, module: id, area: n === main ? 'work' : n.area, parent: n.area === 'library' || n === main ? null : n.parent || main?.key });
   }
   all.push({ href: '#/activity', label: 'Aufträge', icon: 'pulse', key: 'activity', area: 'system' },
-    { href: '#/settings', label: 'Einstellungen', icon: 'gear', key: 'settings', area: 'system', cls: 'lib-only' });
+    { href: '#/settings', label: 'Einstellungen', icon: 'gear', key: 'settings', area: 'system', cls: 'lib-only' },
+    { href: '#/hilfe', label: 'Hilfe', icon: 'book', key: 'help', area: 'system' });
   NAV.items = all;
   NAV.parent = Object.fromEntries(all.filter(n => n.parent).map(n => [n.key, n.parent]));
   const link = (n, sub = false) => `<a href="${n.href}" data-r="${n.key}" class="${sub ? 'sub' : ''} ${n.cls || ''}" title="${esc(n.label)}">${sub ? '' : icon(n.icon)}<span>${esc(n.label)}</span>${n.key === 'activity' ? '<b id="busy" hidden></b>' : `<b class="nb" data-nb="${n.key}" hidden></b>`}</a>`;
@@ -651,12 +654,13 @@ const coreRoutes = [
   [/^\/activity$/, 'activity', activityView],
   [/^\/settings(?:\/(\w+))?$/, 'settings', settingsView],
   [/^\/willkommen$/, 'settings', (el) => window.setupView(el)],          // Einrichtung (setup.js)
+  [/^\/hilfe$/, 'help', (el) => window.helpView(el)],                     // Hilfe & erste Schritte (setup.js)
 ];
 const allRoutes = () => [...coreRoutes, ...AF.order.flatMap(id => AF.modules[id].routes || [])];
 // Inhaltsbreite je Ansicht: Arbeitsflächen (Bild bearbeiten, Spuren prüfen, 3D) nutzen die Breite, Formulare/Import bleiben schmal,
 // alles andere ist zentriert auf --page-max begrenzt (style.css → .page)
 const PAGE_WIDE = [/^\/galerie\/\d+$/, /^\/analyse$/, /^\/skytrace\/(?!neu$|statistik$|erfolge$)[^/]+/];
-const PAGE_NARROW = [/^\/willkommen$/];
+const PAGE_NARROW = [/^\/willkommen$/, /^\/hilfe$/];
 // Weicher Seitenwechsel: Die bisherige Ansicht bleibt als stilles Abbild („Geist“, ohne IDs, nicht klickbar) stehen, bis die neue
 // fertig ist; dann blenden beide kurz ineinander über. Dauert das Laden länger als SKEL_AFTER, erscheint das Skelett.
 // So gibt es kein falsches Zwischen-Skelett und keinen leeren Moment. Bei „Bewegung reduzieren“ ohne Überblendung.
@@ -757,9 +761,39 @@ function schedulePoll() {
   clearTimeout(pollTimer);
   pollTimer = document.hidden ? 0 : setTimeout(poll, 2500);
 }
+// Server weg (Beenden über Infobereich/Startmenü, Absturz): deutsche Seite statt „Failed to fetch“ und veralteter Anzeige
+// („Automatik aktiv“, „GraXpert 36 %“). Die Seite fragt weiter nach und lädt neu, sobald AstroFlow wieder läuft – der Starter
+// sieht den Tab dann (/api/tabs) und öffnet keinen zweiten.
+let pollFails = 0, offline = false;
+const tabQuery = () => `?tab=1&visible=${document.visibilityState === 'visible' ? 1 : 0}`;
+function serverGone() {
+  if (offline || AF.restarting) return;
+  offline = true;
+  clearTimeout(pollTimer);
+  document.title = 'AstroFlow – beendet';
+  $('#jobpop')?.classList.remove('open');
+  const pal = $('#pal'); if (pal?.open) pal.close();         // modaler Dialog bliebe sonst über der Anzeige
+  const o = document.createElement('div');
+  o.className = 'offline'; o.setAttribute('role', 'alertdialog'); o.setAttribute('aria-labelledby', 'offT');
+  o.innerHTML = `<div class="offline-box">${icon('stop')}<h2 id="offT">AstroFlow ist beendet</h2>
+    <p class="mut">Neu starten über das Startmenü oder das Desktop-Symbol „AstroFlow“. Laufende Aufträge und Downloads setzen dort fort, wo sie aufgehört haben.</p>
+    <p class="dim sm"><span class="spinner" aria-hidden="true"></span> Diese Seite verbindet sich von selbst wieder, sobald AstroFlow läuft.</p></div>`;
+  document.body.append(o);
+  $('#shell')?.setAttribute('inert', '');
+  const again = async () => {
+    try { const r = await fetch('/api/status' + tabQuery(), { cache: 'no-store' }); if (r.ok) { location.reload(); return; }
+      if (r.status === 401 && AF.app?.local === false) { location.replace('/'); return; }   // inzwischen entkoppelt → Kopplungsseite
+    } catch { /* noch beendet */ }
+    setTimeout(again, 2000);
+  };
+  setTimeout(again, 2000);
+}
+AF.serverGone = serverGone;
 async function pollOnce() {
+  if (offline) return;
   try {
-    const st = AF.status = await api('/status');
+    const st = AF.status = await api('/status' + tabQuery());
+    pollFails = 0;
     const b = $('#busy');
     if (b) { b.hidden = !st.busy; b.textContent = st.busy; }
     for (const id of AF.order) AF.modules[id].status?.(st, navBadge);
@@ -767,7 +801,12 @@ async function pollOnce() {
     if (!AF.app.updateManual && (st.update || null) !== (AF.app.update?.latest || null)) api('/app').then(a => updateHint(a.update)).catch(() => {});   // Hintergrundprüfung fand etwas
     if (st.busy || lastActive?.size || $('#jobpop').classList.contains('open')) await pollActivity(); else { lastActive = new Map(); showJobPill(null); }
     await view?.update?.(st);
-  } catch { /* Server kurz weg – nächster Versuch */ }
+  } catch {
+    // Server kurz weg (Last) – nächster Versuch; antwortet er zweimal hintereinander gar nicht, ist er beendet
+    if (++pollFails >= 2) {
+      try { await fetch('/api/tabs', { cache: 'no-store' }); pollFails = 0; } catch { serverGone(); }
+    }
+  }
 }
 // Systemstatus: Fuß der Sidebar + Punkt in der Toolbar (grün = Automatik an, gelb = Aufträge warten, grau = Automatik aus)
 function sideFoot(st) {
@@ -789,7 +828,7 @@ async function pollActivity() {
       const a = items.find(x => x.key === key);
       if (!a || location.hash.startsWith(old.href || '##')) continue;      // die offene Ansicht meldet selbst
       if (a.state === 'error') toast(`„${a.title}“: fehlgeschlagen.`, 'err', { label: 'Details', href: a.href || '#/activity' });
-      else if (a.state === 'done') toast(`„${a.title}“ ist fertig.`, 'ok', { label: 'Ansehen', href: a.href || '#/activity' });
+      else if (a.state === 'done') toast(a.key?.startsWith('setup:') && a.detail ? a.detail : `„${a.title}“ ist fertig.`, 'ok', { label: 'Ansehen', href: a.href || '#/activity' });
     }
   }
   lastActive = now;
@@ -937,8 +976,9 @@ async function activityView(el) {
     : j.state === 'running' ? '<span class="ji run"><span class="spinner"></span></span>' : `<span class="ji">${icon('pulse')}</span>`;
   const msg = (j) => j.state === 'error' ? `<span class="bad">${esc(j.detail)}</span>` : running(j) ? esc(j.detail || (j.state === 'queued' ? 'wartet' : 'läuft'))
     : `${esc(j.kind || '')}${j.detail ? ' · ' + esc(j.detail) : ''}`;
-  const side = (j) => `${j.started ? `<span title="Start">${fdate(j.started)}</span>` : ''}${j.finished && j.started && j.finished - j.started > 1 ? `<span title="Dauer">${dur(j.finished - j.started)}</span>`
-    : j.state === 'running' && j.started ? `<span title="Läuft seit">seit ${dur(Date.now() / 1000 - j.started)}</span>` : ''}`;
+  // Uhrzeit · Dauer mit Trenner (vorher klebten sie zusammen: „20:0035 s“)
+  const side = (j) => [j.started ? `<span title="Start">${fdate(j.started)}</span>` : '', j.finished && j.started && j.finished - j.started > 1 ? `<span title="Dauer">${dur(j.finished - j.started)}</span>`
+    : j.state === 'running' && j.started ? `<span title="Läuft seit">seit ${dur(Date.now() / 1000 - j.started)}</span>` : ''].filter(Boolean).join('<span class="dim" aria-hidden="true"> · </span>');
   const row = (j, i) => `<a class="job ${running(j) ? 'running' : ''}" href="${j.href || '#/activity'}" data-j="${esc(j.key)}" style="--i:${i}">${ji(j)}
       <div style="min-width:0"><b style="color:var(--fg);font-weight:550">${esc(j.title)}</b> <span class="modtag">${esc(AF.info(j.module)?.name || j.module)}${j.stage && running(j) ? ' · ' + esc(j.stage) : ''}</span>
         <div class="mut sm jmsg">${msg(j)}</div></div>
@@ -1064,9 +1104,11 @@ async function openPalette() {
   d.showModal();
   const inp = $('input', d), ul = $('ul', d);
   const go = (h) => () => { location.hash = h; };
-  const base = [...NAV.items.map(n => [n.icon || 'arrow', n.label, n.module ? AF.info(n.module).name : n.key === 'home' ? 'Start' : 'System', go(n.href)]),
+  const base = [...NAV.items.filter(n => n.key !== 'help').map(n => [n.icon || 'arrow', n.label, n.module ? AF.info(n.module).name : n.key === 'home' ? 'Start' : 'System', go(n.href)]),
     ...(AF.on('stacking') ? [['upload', 'Dateien importieren', 'FITS, JPG, PNG, TIFF', go('#/import')]] : []),
-    ['pulse', 'Aufträge anzeigen', 'alle laufenden und fertigen Aufträge', go('#/activity')], ['gear', 'Einstellungen', 'Module, Solver, KI', go('#/settings')], ['pin', 'Standorte', 'Beobachtungsorte und Zeiträume', go('#/settings/standorte')],
+    ['pulse', 'Aufträge anzeigen', 'alle laufenden und fertigen Aufträge', go('#/activity')],
+    ['book', 'Hilfe & erste Schritte', 'Anleitung, häufige Fragen, Hilfe, FAQ, Doku', go('#/hilfe')], ['gear', 'Einrichtung', 'Einrichtungsassistent: Teleskop, Standort, Komponenten', go('#/willkommen')],
+    ['book', 'Dokumentation', 'Anleitung auf GitHub (README), Handbuch, Doku', () => open('https://github.com/JackONeill199/astroflow#readme', '_blank', 'noopener')], ['gear', 'Einstellungen', 'Module, Solver, KI', go('#/settings')], ['pin', 'Standorte', 'Beobachtungsorte und Zeiträume', go('#/settings/standorte')],
     ...(AF.app.report ? [['bug', 'Fehler melden', 'vorausgefülltes GitHub-Formular (Strg+Umschalt+F)', () => report.open()]] : [])];
   let extra = [], sel = 0, items = [];
   const draw = () => {

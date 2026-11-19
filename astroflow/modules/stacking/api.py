@@ -38,6 +38,13 @@ def revalidated(request: Request, path, **kw):
     return resp
 
 
+def download_name(name: str | None, created: float | None, path: str, suffix: str = "") -> str:
+    """Dateiname zum Herunterladen: „M31_Andromedagalaxie_2026-11-19.jpg“ (Objekt, Datum der Version, Endung der Datei)."""
+    stem = re.sub(r"[^\w.+-]+", "_", (name or "AstroFlow").strip(), flags=re.UNICODE).strip("._")[:80] or "AstroFlow"
+    day = dt.datetime.fromtimestamp(created).strftime("%Y-%m-%d") if created else ""
+    return f"{stem}{'_' + day if day else ''}{suffix}{Path(path).suffix.lower()}"
+
+
 def _copy_upload(src, path: Path):
     with open(path, "wb") as out:
         shutil.copyfileobj(src, out, 1 << 20)
@@ -92,6 +99,7 @@ class Engine:
         self.q: queue.Queue[int] = queue.Queue()
         self.dq: queue.Queue[int] = queue.Queue()      # gestackt, wartet auf die Endbearbeitung
         self._queue_lock = threading.Lock()
+        self.ai_after: set[int] = set()               # nach laufendem Auftrag mit KI neu entwickeln (GraXpert kam währenddessen)
         self.stop = threading.Event()
         self.cancel = threading.Event()               # laufenden Auftrag beim nächsten Fortschritt abbrechen
         self.paused: str | None = None                # Grund, falls die Warteschlange angehalten ist
@@ -119,15 +127,37 @@ class Engine:
     # ---- Jobs ----------------------------------------------------------------
     def enqueue(self, project_id: int, options: dict | None = None) -> int:
         with self._queue_lock:
-            if not self.db.one("SELECT id FROM projects WHERE id=?", (project_id,)):
-                return 0                                  # Objekt inzwischen gelöscht (Scan lief parallel zum Löschen)
-            busy = self.db.one("SELECT id FROM jobs WHERE project_id=? AND state IN ('queued','running')", (project_id,))
-            if busy:
-                return busy["id"]
-            jid = self.db.x("INSERT INTO jobs(project_id,state,created,options) VALUES(?,?,?,?)",
-                            (project_id, "queued", time.time(), json.dumps(options or {})))
-            self.q.put(jid)
-            return jid
+            return self._enqueue_locked(project_id, options)[0]
+
+    def _enqueue_locked(self, project_id: int, options: dict | None = None) -> tuple[int, bool]:
+        """(Auftrags-ID, neu angelegt?) – nur mit gehaltener `_queue_lock` aufrufen."""
+        if not self.db.one("SELECT id FROM projects WHERE id=?", (project_id,)):
+            return 0, False                               # Objekt inzwischen gelöscht (Scan lief parallel zum Löschen)
+        busy = self.db.one("SELECT id FROM jobs WHERE project_id=? AND state IN ('queued','running')", (project_id,))
+        if busy:
+            return busy["id"], False
+        jid = self.db.x("INSERT INTO jobs(project_id,state,created,options) VALUES(?,?,?,?)",
+                        (project_id, "queued", time.time(), json.dumps(options or {})))
+        self.q.put(jid)
+        return jid, True
+
+    def _done_locked(self, jid: int, project_id: int, message: str | None = None) -> bool:
+        """Auftrag abschließen (unter `_queue_lock`); True, wenn für das Objekt eine KI-Neuentwicklung vorgemerkt war."""
+        if message is None:
+            self.db.x("UPDATE jobs SET state='done', progress=1, finished=? WHERE id=?", (time.time(), jid))
+        else:
+            self.db.x("UPDATE jobs SET state='done', progress=1, finished=?, message=? WHERE id=?", (time.time(), message, jid))
+        again = project_id in self.ai_after
+        self.ai_after.discard(project_id)
+        return again
+
+    def _ai_followup(self, project_id: int):
+        """GraXpert kam während eines Auftrags dazu: Bild ohne KI-Bearbeitung jetzt mit KI neu entwickeln."""
+        if graxpert.graxpert_path() and self.without_ai(pid=project_id):
+            with self._queue_lock:
+                jid, new = self._enqueue_locked(project_id, {"mode": "develop"})
+                if jid and not new:
+                    self.ai_after.add(project_id)            # inzwischen kam ein anderer Auftrag: nach dessen Ende erneut
 
     def pending_projects(self) -> set[int]:
         """Während laufender Jobs eingelesene Aufnahmen nachholen; Fehler nicht endlos neu versuchen. Nicht erreichbare
@@ -247,10 +277,12 @@ class Engine:
             if opts.get("action") == "solve":
                 r = self.pl.solve_project(job["project_id"], prog)
                 n = sum(r["moved"].values())
-                self.db.x("UPDATE jobs SET state='done', progress=1, finished=?, message=? WHERE id=?",
-                          (time.time(), f"{n} Aufnahmen zugeordnet", jid))
+                with self._queue_lock:
+                    ai_again = self._done_locked(jid, job["project_id"], f"{n} Aufnahmen zugeordnet")
                 for pid in r["moved"]:
                     self.enqueue(pid)
+                if ai_again:
+                    self._ai_followup(job["project_id"])
                 return
             if opts.get("mode") != "develop":
                 self.pl.stack(job["project_id"], opts, prog)
@@ -270,12 +302,15 @@ class Engine:
                 rid = self.pl.develop(job["project_id"], opts, prog, start=0.05)
             else:
                 rid = self.pl.finish(job["project_id"], opts, prog)
-            self.db.x("UPDATE jobs SET state='done', progress=1, finished=? WHERE id=?", (time.time(), jid))
+            with self._queue_lock:                        # zusammen mit der Vormerkung in redevelop_with_ai (kein Zeitrennen)
+                ai_again = self._done_locked(jid, job["project_id"])
             self.insights.after_develop(rid)
             if skyquality.auto_enabled():                 # Himmelsqualität der Nächte im Hintergrund nachrechnen
                 self.sky.queue(job["project_id"])
             if self.s.auto and job["project_id"] in self.pending_projects():
                 self.enqueue(job["project_id"])
+            if ai_again:                                      # GraXpert kam während dieses Auftrags: mit KI nachentwickeln
+                self._ai_followup(job["project_id"])
         except Exception as e:
             self._failed(jid, e)
 
@@ -372,6 +407,38 @@ class Engine:
                 "delete_uploads": self.s.delete_uploads, "gaia": self.s.gaia, "star_shrink": self.s.star_shrink,
                 "reviewer": {"enabled": self.review_cfg.enabled, "provider": self.review_cfg.provider, "model": self.review_cfg.model},
                 "solver": {"enabled": bool(chain := self.pl.solver_cfg.chain(wait=False)), "active": chain}}
+
+    def without_ai(self, max_age_s: float | None = None, pid: int | None = None) -> list[dict]:
+        """Objekte, deren neuestes Bild ohne GraXpert entwickelt wurde, obwohl GraXpert laut Einstellung laufen soll
+        (typisch: erstes Bild entstand, während GraXpert noch geladen wurde). Fertig importierte Bilder und Kometen nicht."""
+        out = []
+        since = time.time() - max_age_s if max_age_s else 0
+        for r in self.db.q("SELECT r.project_id, r.created, CASE WHEN json_valid(r.stats) THEN json_extract(r.stats,'$.graxpert') END gx, p.name, p.kind, p.options FROM results r "
+                           "JOIN projects p ON p.id=r.project_id WHERE r.id IN (SELECT MAX(id) FROM results GROUP BY project_id) "
+                           "AND r.created>=?" + (" AND r.project_id=?" if pid is not None else ""),
+                           (since,) + ((pid,) if pid is not None else ())):
+            opts = json.loads(r["options"] or "{}")
+            if r["gx"] or opts.get("input_type") == "picture" or comet.active(dict(r), opts):
+                continue
+            if graxpert.mode_for(opts.get("graxpert")) == "off":
+                continue
+            out.append({"id": r["project_id"], "name": r["name"]})
+        return out
+
+    def redevelop_with_ai(self, max_age_s: float = 3 * 86400, limit: int = 3) -> list[str]:
+        """Nach der GraXpert-Installation: frische Bilder ohne KI-Bearbeitung einmal neu entwickeln (höchstens `limit`,
+        damit eine große Sammlung nicht ungefragt stundenlang rechnet – ältere bietet die Objektseite an)."""
+        if not graxpert.graxpert_path():
+            return []
+        names = []
+        for p in self.without_ai(max_age_s)[:limit]:
+            with self._queue_lock:                        # Prüfen und Einreihen/Vormerken in einem Schritt (gleiche Sperre wie der Abschluss)
+                jid, new = self._enqueue_locked(p["id"], {"mode": "develop"})
+                if jid and not new:
+                    self.ai_after.add(p["id"])            # läuft schon: nach dessen Ende prüfen (_done_locked)
+            if jid:
+                names.append(p["name"])
+        return names
 
     def activity(self, limit: int = 30) -> list[dict]:
         out = []
@@ -653,6 +720,8 @@ def build_router(eng: Engine) -> APIRouter:
                          "views": [k for k in ("stars", "comet") if k in json.loads(x["files"] or "{}")]}
                         for x in db.q("SELECT * FROM results WHERE project_id=? ORDER BY COALESCE(json_extract(stats,'$.imported.series.sequence'),0) DESC,id DESC", (pid,))]
         v["hotpixel_hint"] = not v.get("imported") and eng.pl.hotpixel_hint(pid)
+        # GraXpert kam erst nach dem Bild (z. B. Download noch nicht fertig): „Mit KI-Bearbeitung neu entwickeln“ anbieten
+        v["ai_offer"] = bool(v["results"] and graxpert.graxpert_path() and eng.without_ai(pid=pid))
         if v.get("imported"):                            # lineares TIFF/PNG mit Original: „Entwickeln“ anbieten
             from .picture_import import linear_source
             src = linear_source(db, pid)
@@ -1559,11 +1628,15 @@ def build_router(eng: Engine) -> APIRouter:
 
     @r.get("/results/{rid}/{kind}")
     def result_file(rid: int, kind: str, request: Request):
-        x = db.one("SELECT files FROM results WHERE id=?", (rid,))
+        x = db.one("SELECT r.files, r.created, p.name FROM results r LEFT JOIN projects p ON p.id=r.project_id WHERE r.id=?", (rid,))
         files = json.loads(x["files"]) if x else {}
         if kind not in files or not Path(files[kind]).exists():
             raise HTTPException(404)
-        return revalidated(request, files[kind], filename=Path(files[kind]).name if kind in ("tif", "fits", "fits_graxpert", "png", "original") else None)
+        if kind == "jpg":                                # Anzeige im Browser bleibt, „Herunterladen“ heißt wie das Bild statt „jpg.jpg“
+            return revalidated(request, files[kind], filename=download_name(x["name"], x["created"], files[kind]), content_disposition_type="inline")
+        if kind in ("tif", "fits", "fits_graxpert", "png"):
+            return revalidated(request, files[kind], filename=download_name(x["name"], x["created"], files[kind], "_graxpert" if kind == "fits_graxpert" else ""))
+        return revalidated(request, files[kind], filename=Path(files[kind]).name if kind == "original" else None)
 
     @r.get("/starnet")
     def get_starnet():

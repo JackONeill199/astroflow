@@ -192,7 +192,7 @@ def start(data: str | None = None, p: int | None = None, browser: bool = True, w
     while time.time() - t0 < timeout:
         if probe(p, 1.0):
             tray.ensure(p)                       # Symbol im Infobereich (eigener Prozess, je Benutzer einmal)
-            if browser:
+            if browser and not tab_reconnected(p):
                 webbrowser.open(url)
             return 0
         if proc.poll() is not None:
@@ -200,6 +200,22 @@ def start(data: str | None = None, p: int | None = None, browser: bool = True, w
         time.sleep(0.4)
     message(f"AstroFlow startet nicht. Details im Protokoll:\n{d / 'server.log.err'}", error=True)
     return 1
+
+
+def tab_reconnected(p: int, wait: float = 6.0) -> bool:
+    """Nach einem Neustart: verbindet sich ein noch offener, sichtbarer AstroFlow-Tab von selbst wieder (er fragt alle 2 s nach),
+    braucht es keinen zweiten Tab. Wartet höchstens `wait` Sekunden."""
+    import urllib.request
+    t0 = time.time()
+    while time.time() - t0 < wait:
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{p}/api/tabs", timeout=1.0) as r:
+                if json.loads(r.read().decode("utf-8")).get("visible_age") is not None:
+                    return True
+        except Exception:
+            return False                          # ältere Server ohne /api/tabs: wie bisher Browser öffnen
+        time.sleep(0.5)
+    return False
 
 
 def stop(p: int | None = None, timeout: float = 30) -> int:

@@ -81,15 +81,13 @@ Von der [Releases-Seite](https://github.com/JackONeill199/astroflow/releases/lat
   - **GraXpert**
   - GPU-Beschleunigung
   - SkyTrace-Analyse-Engine
-  - Demo-Aufnahmen
 
   Alles kommt aus dem Internet von der jeweiligen Originalquelle, der Fortschritt steht unter „Aufträge“. StarNet lädt AstroFlow
   aus Lizenzgründen nicht.
 - **Portables ZIP** – entpacken und `AstroFlow.cmd` starten; die Daten liegen im Ordner `Daten` daneben.
 
 Python und alle Pakete sind enthalten, es muss nichts weiter installiert werden. Beim ersten Start führt ein **Einrichtungsassistent** durch Datenordner
-(Standard `%USERPROFILE%\AstroFlow`), Teleskop, Standort, **ASTAP mit Sterndatenbank auf Knopfdruck**, eine **Demo für das erste Bild** (nach rund einer halben
-Minute fertig), GPU-Beschleunigung und Heimnetz-Freigabe. „AstroFlow beenden“ steht im Startmenü und unter Einstellungen → Module & System. Beim Deinstallieren
+(Standard `%USERPROFILE%\AstroFlow`), Teleskop, Standort, **ASTAP mit Sterndatenbank auf Knopfdruck**, das erste Bild aus eigenen Aufnahmen, GPU-Beschleunigung und Heimnetz-Freigabe. „AstroFlow beenden“ steht im Startmenü und unter Einstellungen → Module & System. Beim Deinstallieren
 bleiben die Daten erhalten.
 
 ### Linux: Paket mit Installationsskript (empfohlen)

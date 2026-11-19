@@ -7,6 +7,7 @@ Zeiträume seit dem letzten Abgleich aller Läufe geändert haben, verrät `site
 from __future__ import annotations
 
 import hashlib
+import os
 import json
 import subprocess
 import threading
@@ -104,10 +105,28 @@ class SiteJobs:
     def signature(self) -> str:
         return sites_signature(self.mod.ctx.store.get("sites"))
 
+    def _has_runs(self) -> bool | None:
+        """Gibt es mindestens eine SkyTrace-Analyse (Ergebnisordner mit videos.json)? Bricht beim ersten Treffer ab.
+        None = nicht feststellbar (Laufwerk getrennt, Lesefehler) – dann den gemerkten Stand nicht anfassen."""
+        root = self.mod.ctl.results
+        try:
+            if not root.exists():                  # Link auf getrenntes Laufwerk oder Elternordner fehlt: unbekannt
+                return None if os.path.lexists(root) or not root.parent.exists() else False
+            return any(p.is_dir() and (p / "videos.json").is_file() for p in root.iterdir())
+        except OSError:
+            return None
+
     def sites_changed(self) -> bool:
         """Haben sich Orte/Zeiträume seit dem letzten Abgleich aller Läufe geändert? Erster Aufruf merkt sich den Stand."""
         cfg = self.mod.ctx.store.get("skytrace")
         sig = self.signature()
+        runs = self._has_runs()
+        if runs is None:                           # Ergebnisse gerade nicht erreichbar: nichts melden, Stand behalten
+            return False
+        if not runs:                               # noch keine Analysen: nichts abzugleichen, Stand still mitführen
+            if cfg.get("rematched_sites") != sig:
+                self.mod.ctx.store.update("skytrace", {"rematched_sites": sig})
+            return False
         if not cfg.get("rematched_sites"):
             self.mod.ctx.store.update("skytrace", {"rematched_sites": sig})
             return False

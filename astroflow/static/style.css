@@ -962,3 +962,11 @@ input:focus-visible + .switch { outline: 2px solid var(--acc); outline-offset: 2
   .st-rv, .st-rv.in { opacity: 1; transform: none; transition: none; animation: none }
   .st-kpi, .st-kpi::before, .st-note, .st-info-body { animation: none !important }
 }
+
+/* Server beendet (app.js → serverGone): deckende Seite über allem, verbindet sich selbst wieder */
+.offline { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 1rem; background-color: var(--bg) }
+.offline-box { max-width: 30rem; text-align: center; display: grid; gap: 0.625rem; justify-items: center }
+.offline-box > svg { width: 2.5rem; height: 2.5rem; color: var(--mut) }
+.offline-box h2 { margin: 0; font-size: 1.25rem }
+.offline-box p { margin: 0 }
+.offline-box .spinner { vertical-align: -0.125rem; margin-right: 0.25rem }

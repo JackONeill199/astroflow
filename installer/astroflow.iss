@@ -1,7 +1,7 @@
 ; Inno-Setup-Skript für den Windows-Installer (gebaut von installer/build_windows.py, nicht direkt aufrufen).
 ; Installation pro Nutzer ohne Administratorrechte nach %LOCALAPPDATA%\Programs\AstroFlow; Daten liegen getrennt
 ; in %USERPROFILE%\AstroFlow (Einrichtungsassistent) und bleiben beim Deinstallieren erhalten.
-; Komponenten (seit 0.44.0): ASTAP, GraXpert, GPU, SkyTrace-Engine, Demo werden NICHT mitgeliefert, sondern nach der Installation
+; Komponenten (seit 0.44.0): ASTAP, GraXpert, GPU, SkyTrace-Engine werden NICHT mitgeliefert, sondern nach der Installation
 ; von AstroFlow selbst geladen (core/components.py, Fortschritt in „Aufträge“, Wiederaufnahme, erneut anbietbar). Der Installer
 ; schreibt dafür nur die Auswahl nach %APPDATA%\AstroFlow\komponenten-auftrag.txt. StarNet wird nie geladen (Lizenz).
 #ifndef AppVersion
@@ -55,7 +55,6 @@ Name: "astap\d50"; Description: "D50 – klassische Teleskope mit kleinem Bildfe
 Name: "graxpert"; Description: "GraXpert 3.0.2 – KI-Hintergrund und -Entrauschen (GPL-3, Download von GitHub)"; Types: full; ExtraDiskSpaceRequired: 435000000
 Name: "gpu"; Description: "GPU-Beschleunigung (pyopencl)"; Types: full; ExtraDiskSpaceRequired: 40000000
 Name: "skytrace"; Description: "SkyTrace-Analyse-Engine: Lichtspuren finden (OpenCV, PyTorch für den Prozessor)"; Types: full; ExtraDiskSpaceRequired: 1500000000
-Name: "demo"; Description: "Demo-Aufnahmen fürs erste Bild"; Types: full
 
 [Tasks]
 Name: "desktopicon"; Description: "Verknüpfung auf dem Desktop"; Flags: unchecked
@@ -123,7 +122,6 @@ begin
   if WizardIsComponentSelected('graxpert') then Add('graxpert');
   if WizardIsComponentSelected('gpu') then Add('gpu');
   if WizardIsComponentSelected('skytrace') then Add('skytrace');
-  if WizardIsComponentSelected('demo') then Add('demo');
   if N > 0 then
   begin
     ForceDirectories(ExpandConstant('{userappdata}\AstroFlow'));

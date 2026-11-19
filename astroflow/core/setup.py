@@ -17,6 +17,7 @@ import signal
 import sys
 import threading
 import time
+import traceback
 from pathlib import Path
 
 from fastapi import APIRouter, Body, HTTPException, Request
@@ -248,9 +249,11 @@ class Setup:
         astap = {"path": cfg_s.astap_path() if cfg_s else None, "databases": cfg_s.astap_databases() if cfg_s else [],
                  "target": str(astap_dir()), "supported": _system() in ASTAP_CLI}
         demo = st.input_dir / "demo"
+        pictures = self.pictures()
         return {
-            "pending": bool(self.launched and not sec.get("done")),
-            "done": bool(sec.get("done")), "launched": self.launched, "telescope": (self.telescopes() or [""])[0],
+            # Einrichtung erscheint beim Start nur, bis sie abgeschlossen ist oder das erste Bild fertig wurde
+            "pending": bool(self.launched and not sec.get("done") and not pictures),
+            "done": bool(sec.get("done")), "pictures": pictures, "sites": self.n_sites(), "launched": self.launched, "telescope": (self.telescopes() or [""])[0],
             "telescopes": self.telescopes(),
             "data": folder_info(st.data_dir), "default_data": str(launcher.default_data_dir()),
             "config": str(launcher.config_path()) if self.launched else None,
@@ -263,6 +266,17 @@ class Setup:
             "report_env_off": os.environ.get("ASTROFLOW_REPORT") == "0",
             "version": VERSION, "tasks": dict(self.tasks),
         }
+
+    def pictures(self) -> int:
+        """Anzahl fertiger Bilder (Bilder-Modul); 0, wenn das Modul fehlt."""
+        db = getattr(getattr(self.app_state.modules.get("stacking"), "eng", None), "db", None)
+        try:
+            return int(db.one("SELECT COUNT(*) n FROM results")["n"]) if db is not None else 0
+        except Exception:
+            return 0
+
+    def n_sites(self) -> int:
+        return len((self.ctx.store.get("sites") or {}).get("list") or [])
 
     def lan_state(self) -> dict:
         """Heimnetz: eingestellt (`lan`), gerade wirksam (`lan_active`), beim Update übernommen (`lan_migrated`).
@@ -394,7 +408,24 @@ class Setup:
                 self.app_state.modules["skytrace"].check_engine()      # Engine-Zustand sofort neu prüfen
             except Exception:
                 pass
+        if name == "graxpert":
+            msg += self._redevelop_with_ai()
         return msg
+
+    def _redevelop_with_ai(self) -> str:
+        """Erste Bilder entstehen oft, bevor GraXpert fertig geladen ist: frische Bilder ohne KI-Bearbeitung neu entwickeln."""
+        eng = getattr(self.app_state.modules.get("stacking"), "eng", None)
+        if eng is None or not hasattr(eng, "redevelop_with_ai"):
+            return ""
+        try:
+            names = eng.redevelop_with_ai()
+        except Exception:
+            traceback.print_exc()
+            return ""
+        if not names:
+            return ""
+        return (f" {names[0]} wird jetzt mit KI-Bearbeitung neu entwickelt." if len(names) == 1
+                else f" {len(names)} Bilder werden jetzt mit KI-Bearbeitung neu entwickelt.")
 
     def remove_component(self, name: str) -> dict:
         if (self.tasks.get(name) or {}).get("state") == "running":

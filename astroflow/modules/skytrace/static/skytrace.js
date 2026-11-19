@@ -27,6 +27,13 @@ function engineStatus(e, now = Date.now()) {
   const elapsed = last?.time ? Math.max(0, Math.floor(now / 1000 - last.time)) : 0;
   return 'JPL-Asteroiden' + (m ? ' · Kandidat ' + Number(m[1]) + (e.stats?.candidates ? '/' + e.stats.candidates : '') : '') + ' · warte auf Antwort seit ' + elapsed + ' s · Anhalten möglich';
 }
+// Übersichtskarte: Engine fehlt – während der Installer-Download läuft oder wartet, neutral „wird installiert“ statt einer Warnung
+async function engineLive() {
+  const c = await api('/components').then(d => ({ ...d.items.find(i => i.id === 'skytrace'), active: d.queue_active })).catch(() => null);
+  if (c?.task?.state === 'running') return `<span class="spinner"></span>Analyse-Engine wird installiert · ${Math.round((c.task.progress || 0) * 100)} %`;
+  if (c?.pending && c.active && c.state !== 'installed' && c.task?.state !== 'error') return 'Analyse-Engine wird gleich installiert';
+  return '<span class="warn">Analyse-Engine unvollständig</span>';
+}
 function engineNotice(eng) {
   if (!eng?.checked || eng.ok) return '';
   return `<div class="notice">${icon('alert')}<div><b>Analyse-Engine unvollständig</b><div class="mut sm">Der Python-Interpreter <code>${esc(eng.python || '')}</code>
@@ -1543,7 +1550,7 @@ AF.register('skytrace', {
     const s = st.modules.skytrace || {}, runs = await api(T + '/runs');
     return { title: 'SkyTrace', icon: 'orbit', href: '#/skytrace', sub: runs[0] ? `Zuletzt: ${shortName(runs[0].title)} · ${runDate(runs[0].id) || ago(runs[0].modified)}` : 'Noch keine Analysen',
       stats: [[nf.format(runs.length), 'Analysen'], [nf.format(runs.reduce((a, r) => a + r.candidates, 0)), 'Kandidaten'], [nf.format(runs.reduce((a, r) => a + r.frames, 0)), 'Aufnahmen']],
-      live: s.running ? `<span class="spinner"></span>Analyse läuft · ${esc(s.text || '')}` : !s.engine?.ok && s.engine?.checked ? '<span class="warn">Analyse-Engine unvollständig</span>' : '' };
+      live: s.running ? `<span class="spinner"></span>Analyse läuft · ${esc(s.text || '')}` : !s.engine?.ok && s.engine?.checked ? await engineLive() : '' };
   },
   async discoveries() {
     return (await api(T + '/runs')).filter(r => r.candidates).slice(0, 4).map(r => ({ img: r.preview ? media(r.preview) : null, icon: 'orbit', kicker: 'SkyTrace · Kandidaten',
