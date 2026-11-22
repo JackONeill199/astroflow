@@ -422,6 +422,9 @@ def test_fuehrung_vom_nahen_zum_fernen_mit_lichtlaufzeit(client):
     from astroflow.modules.sage import narrate
     mod, kb = client.app_mod, client.app_mod.kb
     _, sol = solution(ra=283.396, dec=33.029, scale=2.0)                       # M57 + IC 1296
+    if not any(o["name"] == "IC 1296" for o in sol["objects"]):               # nur im großen ASTAP-Katalog (CI ohne)
+        x, y = guide.sky2pix(sol["tan"], 283.4295, 33.0758)
+        sol["objects"].append({"name": "IC 1296", "kind_label": "Galaxie", "x": round(x, 1), "y": round(y, 1), "radius": 16})
     e = add_entry(mod, sol)
     if not kb.resolve("IC 1296"):                                              # nur im großen ASTAP-Katalog
         kb.upsert_entity("ic1296", kind="object", name="IC 1296", otype_label="Galaxie", status="stub")
