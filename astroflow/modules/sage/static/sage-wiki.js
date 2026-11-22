@@ -525,6 +525,7 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
         cleanup.push(() => v.destroy());
         cap.innerHTML = `<b>${esc(h.title)}</b> – eigene Aufnahme (${shotDate(g)}${g.minutes ? `, ${g.minutes} min` : ''}) · ${objs.length} Objekte markiert, antippen für Wissen${solved ? ' – freie Stelle antippen: Was liegt dort?' : ''} <a href="${g.href}">${icon('arrow')}</a>`;
         if (solved) spotButton(cap, v, h, setSpot);
+        if (objs.length) guideButton(v.el, h.id);
         return;
       }
     }
@@ -708,7 +709,6 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
     $('#swSList').onclick = (ev) => { const a = ev.target.closest('[data-s]'); if (!a) return; ev.preventDefault(); open(d.stories.find(s => s.id === +a.dataset.s)); };
     open(cur);
   }
-  const ttsSel = () => `<select class="sw-tts">${[['openrouter', 'OpenRouter'], ['qwen', 'Qwen3 (lokal)'], ['elevenlabs', 'ElevenLabs']].map(([k, l]) => `<option value="${k}" ${store.get('sage.tts', 'openrouter') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
   function reader(host, s) {
     host.innerHTML = `<article class="panel sg-story sw-reader"><div class="row sw-rd-h"><span class="chip acc">${esc(d.formats[s.format] || s.format)}</span><span class="dim sm">${esc(s.model)}</span><span class="grow"></span>
         ${ttsSel()}<button class="btn sm" id="swSpeak">${icon('play')}Vorlesen</button><button class="linkbtn" id="swSDel">Löschen</button></div><div id="swAud"></div>${md(s.body, C, d.sources)}</article>`;
@@ -722,103 +722,7 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
     };
     $('#swSDel').onclick = async () => { if (await confirmDlg('Erzählung löschen?', 'Text und Vertonung werden entfernt.', 'Löschen', true)) { await send(`${K}/stories/${s.id}`, null, 'DELETE'); d.stories = d.stories.filter(x => x.id !== s.id); show('geschichten'); } };
   }
-  // Geführte Tour (Wunsch 19): Schritte {Text, Ziel in Bildpixeln, Zoom} vom Server; der Betrachter fährt zum Objekt,
-  // markiert es (Pfeil/Kreis/Umriss) und zeigt den Text als Untertitel. Vor/Zurück, Pause, Tastatur; Vorlesen abschaltbar.
-  let tourCall = 0;
-  async function tour(host, s) {
-    const call = ++tourCall;
-    cleanup.push(() => { if (tourCall === call) tourCall++; });       // Ansicht verlassen → laufender Aufruf veraltet
-    const ton = store.get('sage.guide.ton', true);
-    host.innerHTML = `<div class="panel sw-tour"><div class="row sw-tour-h"><h2>${esc(s.title)}</h2><span class="grow"></span>${ttsSel()}
-        <label class="modrow sw-ton"><input type="checkbox" id="swTon" ${ton ? 'checked' : ''}><span class="switch"></span><span>Vorlesen</span></label></div>
-      <div class="sw-guide" tabindex="0" aria-label="Geführte Tour: Pfeiltasten blättern, Leertaste startet oder pausiert">
-        <div id="swTV"></div>
-        <div class="sw-sub" aria-live="polite"><small class="dim" id="swSubN">${s.segments.length} Schritte</small><p id="swSubT" class="mut">Starte die Führung – Sage fährt im Bild von Objekt zu Objekt.</p></div>
-        <div class="row sw-gctl"><button class="btn sm ghost" data-g="prev" title="Zurück (←)" aria-label="Zurück">${icon('back')}</button>
-          <button class="btn sm" data-g="play" id="swPlay">${icon('play')}Führung starten</button>
-          <button class="btn sm ghost" data-g="next" title="Weiter (→)" aria-label="Weiter">${icon('arrow')}</button>
-          <span class="grow"></span><button class="btn sm ghost" data-g="spot" title="Was liegt in der Mitte der Ansicht?" hidden>${icon('target')}Hier fragen</button></div>
-      </div>
-      <ol class="sw-segs">${s.segments.map((g, i) => `<li data-i="${i}" tabindex="0" role="button">${g.object ? `<b>${esc(g.object)}</b> ` : ''}${esc(g.text)}</li>`).join('')}</ol>
-      <p class="dim sm">${esc(s.model)} · Stelle im Bild antippen: Sage schlägt in den Katalogen nach, was dort liegt.</p></div>`;
-    const [g, h] = await Promise.all([api(`${K}/stories/${s.id}/guide`).catch(() => null), s.image?.entry ? api(`/sage/history/${s.image.entry}`).catch(() => null) : null]);
-    if (!host.isConnected || call !== tourCall) return;             // inzwischen andere Geschichte geöffnet
-    const steps = g?.steps?.length ? g.steps : s.segments.map(x => ({ text: x.text, object: x.object, zoom: 1 }));
-    let v = null, cur = -1, playing = false, audio = null, timer = 0, gen = 0, spot = null;
-    const W = g?.width || h?.width || 0, H = g?.height || h?.height || 0;
-    const reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const markFocus = (svg) => $$('g[data-n]', svg).forEach(n => n.classList.toggle('focus', cur >= 0 && n.dataset.n === steps[cur]?.object));
-    const setSpot = (sp) => { spot = sp; v?.redraw(); };
-    if (h) {
-      const objs = (h.objects || []).filter(o => o.x != null);
-      v = createViewer($('#swTV', host), h.image, null, undefined, null, {
-        overlay: (svg, w) => { labels(svg, w, h, objs, null); guideMarks(svg, w, h, cur >= 0 ? steps[cur] : null, spot); markFocus(svg); },
-        onTap: (t, ev) => { const n = pickStrict(v, ev)?.dataset.n; if (n) card(n, ev, { image: h.id }); else askSpot(h, spotAt(v, h, ev), setSpot, () => v.el.isConnected); } });
-      cleanup.push(() => v.destroy());
-      if (h.solution?.ra != null) $('[data-g=spot]', host).hidden = false;
-    } else $('#swTV', host).innerHTML = '<p class="mut sm">Das Bild zu dieser Führung gibt es nicht mehr – der Text bleibt lesbar.</p>';
-    const show = (i) => {
-      cur = Math.max(0, Math.min(steps.length - 1, i));
-      const st = steps[cur];
-      $$('.sw-segs li', host).forEach(li => li.classList.toggle('on', +li.dataset.i === cur));
-      const li = $('.sw-segs li.on', host), ol = li?.parentElement;   // nur die Liste rollen, nie die Seite
-      if (ol && (li.offsetTop < ol.scrollTop || li.offsetTop + li.offsetHeight > ol.scrollTop + ol.clientHeight)) ol.scrollTo({ top: li.offsetTop - ol.offsetTop, behavior: reduce() ? 'auto' : 'smooth' });
-      $('#swSubN', host).textContent = `${cur + 1} / ${steps.length}${st.object ? ' · ' + st.object : ''}${st.kind ? ' · ' + st.kind : ''}`;
-      const t = $('#swSubT', host); t.textContent = st.text; t.classList.remove('mut');
-      const vw = v?.view();
-      if (vw) { const sc = W ? vw.w / W : 1; v.zoomTo((st.x ?? W / 2) * sc, (st.y ?? H / 2) * sc, st.zoom || 1, reduce() ? 0 : 900); }
-      v?.redraw();
-    };
-    const halt = () => { gen++; clearTimeout(timer); if (audio) { audio.onended = audio.onerror = null; audio.pause(); } audio = null; };
-    const btn = () => { $('#swPlay', host).innerHTML = playing ? `${icon('pause')}Pause` : `${icon('play')}${cur < 0 ? 'Führung starten' : 'Abspielen'}`; };
-    // einen Schritt zeigen, vorlesen (oder Lesezeit abwarten) und weiter; gen bricht veraltete Läufe ab
-    const run = async () => {
-      const my = ++gen, alive = () => my === gen && playing && host.isConnected;
-      show(cur < 0 ? 0 : cur);
-      let spoke = false;
-      if ($('#swTon', host).checked) {
-        const prov = $('.sw-tts', host).value; store.set('sage.tts', prov);
-        try {
-          const r = await send(`${K}/stories/${s.id}/speak`, { provider: prov, segment: cur });
-          if (!alive()) return;
-          audio = new Audio(r.url);
-          spoke = await new Promise(res => { audio.onended = () => res(true); audio.onerror = () => res(false); audio.play().catch(() => res(false)); });
-        } catch (err) {
-          if (!alive()) return;
-          toast(`${err.message} – weiter ohne Vorlesen.`, 'err');
-          $('#swTon', host).checked = false; store.set('sage.guide.ton', false);
-        }
-      }
-      if (!alive()) return;
-      if (!spoke) await new Promise(res => { timer = setTimeout(res, Math.min(20000, Math.max(4000, steps[cur].text.length * 60))); });
-      if (!alive()) return;
-      if (cur >= steps.length - 1) { playing = false; btn(); return; }
-      cur++; run();
-    };
-    const play = () => {
-      if (playing) { playing = false; halt(); btn(); return; }
-      if (cur >= steps.length - 1) cur = -1;
-      playing = true; btn(); run();
-    };
-    const step = (d) => { halt(); show(cur < 0 ? 0 : cur + d); if (playing) run(); else btn(); };
-    host.querySelector('.sw-gctl').onclick = (ev) => {
-      const a = ev.target.closest('[data-g]')?.dataset.g;
-      if (a === 'play') play(); else if (a === 'prev') step(-1); else if (a === 'next') step(1);
-      else if (a === 'spot' && v && h) { const sp = viewSpot(v, h); if (sp) askSpot(h, sp, setSpot, () => v.el.isConnected); }
-    };
-    $('#swTon', host).onchange = (ev) => store.set('sage.guide.ton', ev.target.checked);
-    host.querySelector('.sw-guide').onkeydown = (ev) => {
-      if (ev.target.closest('input, select, textarea')) return;
-      if (ev.key === 'ArrowRight') { ev.preventDefault(); step(1); }
-      else if (ev.key === 'ArrowLeft') { ev.preventDefault(); step(-1); }
-      else if (ev.key === 'k' || (ev.key === ' ' && !ev.target.closest('button'))) { ev.preventDefault(); play(); }
-    };
-    $$('.sw-segs li', host).forEach(li => {
-      li.onclick = () => { halt(); show(+li.dataset.i); if (playing) run(); else btn(); };
-      li.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); li.click(); } };
-    });
-    cleanup.push(() => { playing = false; halt(); });
-  }
+  const tour = (host, s) => guideTour(host, s, { onCleanup: (f) => cleanup.push(f) });
 
   full();
   return {
@@ -846,6 +750,162 @@ function pick(svg, ev) {
   return best?.g || null;
 }
 const tapName = (viewer, ev) => pick(viewer?.overlay, ev)?.dataset.n;
+
+// ---------------------------------------------------------- Geführte Tour --- //
+let tourCall = 0;
+const ttsSel = () => `<select class="sw-tts">${[['openrouter', 'OpenRouter'], ['qwen', 'Qwen3 (lokal)'], ['elevenlabs', 'ElevenLabs']].map(([k, l]) => `<option value="${k}" ${store.get('sage.tts', 'openrouter') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+// Geführte Tour (Wunsch 19): Schritte {Text, Ziel in Bildpixeln, Zoom} vom Server; der Betrachter fährt zum Objekt,
+// markiert es (Pfeil/Kreis/Umriss) und zeigt den Text als Untertitel. Vor/Zurück, Pause, Tastatur; Vorlesen abschaltbar.
+async function guideTour(host, s, { onCleanup = () => {}, autoplay = false, cinema = false } = {}) {
+  const call = ++tourCall;
+  onCleanup(() => { if (tourCall === call) tourCall++; });       // Ansicht verlassen → laufender Aufruf veraltet
+  const ton = store.get('sage.guide.ton', true);
+  host.innerHTML = `<div class="panel sw-tour${cinema ? ' sw-cine-tour' : ''}"><div class="row sw-tour-h"><h2>${esc(s.title)}</h2><span class="grow"></span>${ttsSel()}
+      <label class="modrow sw-ton"><input type="checkbox" id="swTon" ${ton ? 'checked' : ''}><span class="switch"></span><span>Vorlesen</span></label></div>
+    <div class="sw-guide" tabindex="0" aria-label="Geführte Tour: Pfeiltasten blättern, Leertaste startet oder pausiert">
+      <div id="swTV"></div>
+      <div class="sw-sub" aria-live="polite"><small class="dim" id="swSubN">${s.segments.length} Schritte</small><p id="swSubT" class="mut">Starte die Führung – Sage fährt im Bild von Objekt zu Objekt.</p></div>
+      <div class="row sw-gctl"><button class="btn sm ghost" data-g="prev" title="Zurück (←)" aria-label="Zurück">${icon('back')}</button>
+        <button class="btn sm" data-g="play" id="swPlay">${icon('play')}Führung starten</button>
+        <button class="btn sm ghost" data-g="next" title="Weiter (→)" aria-label="Weiter">${icon('arrow')}</button>
+        <span class="grow"></span><button class="btn sm ghost" data-g="spot" title="Was liegt in der Mitte der Ansicht?" hidden>${icon('target')}Hier fragen</button></div>
+    </div>
+    <ol class="sw-segs">${s.segments.map((g, i) => `<li data-i="${i}" tabindex="0" role="button">${g.object ? `<b>${esc(g.object)}</b> ` : ''}${esc(g.text)}</li>`).join('')}</ol>
+    <p class="dim sm">${esc(s.model)} · Stelle im Bild antippen: Sage schlägt in den Katalogen nach, was dort liegt.</p></div>`;
+  const [g, h] = await Promise.all([api(`${K}/stories/${s.id}/guide`).catch(() => null), s.image?.entry ? api(`/sage/history/${s.image.entry}`).catch(() => null) : null]);
+  if (!host.isConnected || call !== tourCall) return;             // inzwischen andere Geschichte geöffnet
+  const steps = g?.steps?.length ? g.steps : s.segments.map(x => ({ text: x.text, object: x.object, zoom: 1 }));
+  let v = null, cur = -1, playing = false, audio = null, timer = 0, gen = 0, spot = null;
+  const W = g?.width || h?.width || 0, H = g?.height || h?.height || 0;
+  const reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const markFocus = (svg) => $$('g[data-n]', svg).forEach(n => n.classList.toggle('focus', cur >= 0 && n.dataset.n === steps[cur]?.object));
+  const setSpot = (sp) => { spot = sp; v?.redraw(); };
+  if (h) {
+    const objs = (h.objects || []).filter(o => o.x != null);
+    v = createViewer($('#swTV', host), h.image, null, undefined, null, {
+      overlay: (svg, w) => { labels(svg, w, h, objs, null); guideMarks(svg, w, h, cur >= 0 ? steps[cur] : null, spot); markFocus(svg); },
+      onTap: (t, ev) => { const n = pickStrict(v, ev)?.dataset.n; if (n) card(n, ev, { image: h.id }); else askSpot(h, spotAt(v, h, ev), setSpot, () => v.el.isConnected); } });
+    onCleanup(() => v.destroy());
+    if (h.solution?.ra != null) $('[data-g=spot]', host).hidden = false;
+  } else $('#swTV', host).innerHTML = '<p class="mut sm">Das Bild zu dieser Führung gibt es nicht mehr – der Text bleibt lesbar.</p>';
+  const show = (i) => {
+    cur = Math.max(0, Math.min(steps.length - 1, i));
+    const st = steps[cur];
+    $$('.sw-segs li', host).forEach(li => li.classList.toggle('on', +li.dataset.i === cur));
+    const li = $('.sw-segs li.on', host), ol = li?.parentElement;   // nur die Liste rollen, nie die Seite
+    if (ol && (li.offsetTop < ol.scrollTop || li.offsetTop + li.offsetHeight > ol.scrollTop + ol.clientHeight)) ol.scrollTo({ top: li.offsetTop - ol.offsetTop, behavior: reduce() ? 'auto' : 'smooth' });
+    $('#swSubN', host).textContent = `${cur + 1} / ${steps.length}${st.object ? ' · ' + st.object : ''}${st.kind ? ' · ' + st.kind : ''}`;
+    const t = $('#swSubT', host); t.textContent = st.text; t.classList.remove('mut');
+    const vw = v?.view();
+    if (vw) { const sc = W ? vw.w / W : 1; v.zoomTo((st.x ?? W / 2) * sc, (st.y ?? H / 2) * sc, st.zoom || 1, reduce() ? 0 : 900); }
+    v?.redraw();
+  };
+  const halt = () => { gen++; clearTimeout(timer); if (audio) { audio.onended = audio.onerror = null; audio.pause(); } audio = null; };
+  const btn = () => { $('#swPlay', host).innerHTML = playing ? `${icon('pause')}Pause` : `${icon('play')}${cur < 0 ? 'Führung starten' : 'Abspielen'}`; };
+  // einen Schritt zeigen, vorlesen (oder Lesezeit abwarten) und weiter; gen bricht veraltete Läufe ab
+  const run = async () => {
+    const my = ++gen, alive = () => my === gen && playing && host.isConnected;
+    show(cur < 0 ? 0 : cur);
+    let spoke = false;
+    if ($('#swTon', host).checked) {
+      const prov = $('.sw-tts', host).value; store.set('sage.tts', prov);
+      try {
+        const r = await send(`${K}/stories/${s.id}/speak`, { provider: prov, segment: cur });
+        if (!alive()) return;
+        audio = new Audio(r.url);
+        spoke = await new Promise(res => { audio.onended = () => res(true); audio.onerror = () => res(false); audio.play().catch(() => res(false)); });
+      } catch (err) {
+        if (!alive()) return;
+        toast(`${err.message} – weiter ohne Vorlesen.`, 'err');
+        $('#swTon', host).checked = false; store.set('sage.guide.ton', false);
+      }
+    }
+    if (!alive()) return;
+    if (!spoke) await new Promise(res => { timer = setTimeout(res, Math.min(20000, Math.max(4000, steps[cur].text.length * 60))); });
+    if (!alive()) return;
+    if (cur >= steps.length - 1) { playing = false; btn(); return; }
+    cur++; run();
+  };
+  const play = () => {
+    if (playing) { playing = false; halt(); btn(); return; }
+    if (cur >= steps.length - 1) cur = -1;
+    playing = true; btn(); run();
+  };
+  const step = (d) => { halt(); show(cur < 0 ? 0 : cur + d); if (playing) run(); else btn(); };
+  host.querySelector('.sw-gctl').onclick = (ev) => {
+    const a = ev.target.closest('[data-g]')?.dataset.g;
+    if (a === 'play') play(); else if (a === 'prev') step(-1); else if (a === 'next') step(1);
+    else if (a === 'spot' && v && h) { const sp = viewSpot(v, h); if (sp) askSpot(h, sp, setSpot, () => v.el.isConnected); }
+  };
+  $('#swTon', host).onchange = (ev) => store.set('sage.guide.ton', ev.target.checked);
+  host.querySelector('.sw-guide').onkeydown = (ev) => {
+    if (ev.target.closest('input, select, textarea')) return;
+    if (ev.key === 'ArrowRight') { ev.preventDefault(); step(1); }
+    else if (ev.key === 'ArrowLeft') { ev.preventDefault(); step(-1); }
+    else if (ev.key === 'k' || (ev.key === ' ' && !ev.target.closest('button'))) { ev.preventDefault(); play(); }
+  };
+  $$('.sw-segs li', host).forEach(li => {
+    li.onclick = () => { halt(); show(+li.dataset.i); if (playing) run(); else btn(); };
+    li.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); li.click(); } };
+  });
+  onCleanup(() => { playing = false; halt(); });
+  if (autoplay) play();
+}
+
+
+// „Führung starten“ direkt am Bild: Kino-Modus über der Seite; Sage nimmt die vorhandene Führung zu diesem Bild oder erzählt
+// eine neue (POST /kb/history/<id>/tour) und spielt sie sofort ab. Esc, × oder Seitenwechsel schließen.
+async function startGuide(hid) {
+  $('.sw-cine')?._close?.();
+  const back = document.activeElement, d = document.createElement('div');
+  d.className = 'sw-cine';
+  d.setAttribute('role', 'dialog'); d.setAttribute('aria-modal', 'true'); d.setAttribute('aria-label', 'Führung durch dein Bild');
+  d.innerHTML = `<div class="sw-cine-h">${icon('sparkle')}<b>Führung durch dein Bild</b><span class="grow"></span>
+      <button class="btn sm ghost" data-new title="Führung neu erzählen">${icon('refresh')}<span>Neu erzählen</span></button>
+      <button class="sw-x" data-x aria-label="Führung schließen">×</button></div><div class="sw-cine-b"></div>`;
+  document.body.append(d);
+  const body = $('.sw-cine-b', d);
+  let clean = [];
+  const onKey = (e) => { if (e.key === 'Escape' && !$('.viewer.full', d) && !floatEl && !$('#swChat.open')) { e.preventDefault(); close(); } };
+  const close = () => { clean.forEach(f => f()); clean = []; d.remove(); removeEventListener('hashchange', close); document.removeEventListener('keydown', onKey); back?.focus?.(); };
+  d._close = close;
+  addEventListener('hashchange', close);
+  document.addEventListener('keydown', onKey);
+  $('[data-x]', d).onclick = close;
+  const load = async (fresh) => {
+    clean.forEach(f => f()); clean = [];
+    body.innerHTML = `<div class="sw-cine-load"><span class="spinner"></span><span>Sage bereitet die Führung vor …</span></div>`;
+    $('[data-x]', d).focus();
+    try {
+      const s = await send(`${K}/history/${encodeURIComponent(hid)}/tour`, fresh ? { new: true } : {});
+      if (!d.isConnected) return;
+      await guideTour(body, s, { onCleanup: (f) => clean.push(f), autoplay: true, cinema: true });
+      if (d.isConnected) $('.sw-guide', body)?.focus();
+    } catch (err) {
+      if (d.isConnected) body.innerHTML = `<div class="sw-cine-load bad">${esc(err.message)}</div>`;
+    }
+  };
+  $('[data-new]', d).onclick = () => load(true);
+  load(false);
+}
+// Knopf „Führung starten“ an ein Bild hängen (Sage-Bildansicht, Objektseite, Bilder-Ansicht). Auf einem Betrachter (.viewer)
+// liegt er als Pille oben links auf dem Bild (data-vskip: kein Ziehen/Antippen des Bildes)
+function guideButton(host, hid, cls = 'btn sm') {
+  if (!host) return null;
+  const onImg = host.classList.contains('viewer');
+  host.insertAdjacentHTML('beforeend', `<button class="${onImg ? 'sw-guide-pill' : cls} sw-guidebtn" type="button" ${onImg ? 'data-vskip' : ''}>${icon('play')}Führung starten</button>`);
+  const b = host.lastElementChild;
+  b.onclick = () => startGuide(hid);
+  return b;
+}
+// Sage-Bestimmung zu einem Ergebnis des Bilder-Moduls (für den Knopf dort); null = noch nicht bestimmt
+// (Verlauf 30 s gemerkt – die Bilder-Ansicht zeichnet beim Umschalten öfter neu)
+let histCache = null;
+async function entryForResult(rid) {
+  if (!histCache || Date.now() - histCache.t > 30000) histCache = { t: Date.now(), list: api('/sage/history').catch(() => []) };
+  const list = await histCache.list;
+  return list.find(h => h.source?.type === 'project' && h.source.result === rid && h.objects)?.id || null;
+}
 
 // ------------------------------------------------------------ Bildführung --- //
 // Wunsch 19, Stufe 1. pickStrict liefert die getroffene Marke (g.tap). Antippen trifft eine Objektmarke nur über die Beschriftung oder einen kleinen Kreis (≤ 2,5 rem auf dem
@@ -1057,5 +1117,5 @@ if (M) {
       ['sparkle', 'Frag Sage', 'Assistent mit Werkzeugen', () => chat({ scope: 'global' })], ...ents.items.map(c => ['star', c.name, `${c.otype_label || ''} · Enzyklopädie`, `#/sage/o/${c.id}`, c.image]), ...base];
   };
 }
-window.SageWiki = { card, chat, pick, pickStrict, spotAt, askSpot, spotButton, guideMarks, research: startResearch, float: floatCard, closeFloat };
+window.SageWiki = { card, chat, pick, pickStrict, spotAt, askSpot, spotButton, guideMarks, startGuide, guideButton, entryForResult, research: startResearch, float: floatCard, closeFloat };
 })();

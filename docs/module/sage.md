@@ -138,6 +138,12 @@ Aus Enzyklopädie und deinen Daten erzählt Sage in sechs Formaten: **wissenscha
 **persönlicher Beobachtungsbericht**, **Einsteigererklärung**, **Deep Dive** und die **Audioführung durch dein Bild** – ein Abschnitt
 je Objekt. Alle Erzählungen sammeln sich unter „Deine Geschichten“.
 
+**Führung starten:** Auf jedem bestimmten Bild (Sage-Bildansicht, Titelbild der Objektseite und – wenn Sage das Bild schon bestimmt
+hat – auch in der Bilder-Ansicht) liegt oben links der Knopf **„Führung starten“**. Ein Klick öffnet den Kino-Modus, Sage erstellt die
+Führung zu diesem Bild (oder nimmt die vorhandene) und spielt sie sofort ab: kurz, vom nächsten zum fernsten Objekt, mit
+Lichtlaufzeit („das Licht ist um 270 v. Chr. losgeflogen“), wahrer Größe, deinen eigenen Aufnahmen und einem Tiefenvergleich – alles
+aus belegten Katalogwerten ausgerechnet. „Neu erzählen“ erstellt sie neu (mit Erzähl-KI lebendiger formuliert).
+
 Die Audioführung ist eine **geführte Tour**: Das Bild fährt zum besprochenen Objekt, zoomt hinein und markiert es (kleine Objekte mit
 einem Pfeil, mittlere mit einem Kreis, fast bildfüllende mit einem gestrichelten Umriss); der Text läuft als Untertitel mit. Mit
 **Zurück/Weiter**, **Abspielen/Pause** oder einem Klick in die Abschnittsliste springst du frei herum – auch per Tastatur (← →,

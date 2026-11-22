@@ -624,6 +624,28 @@ def extend(r, mod, url):
         h = mod.store.get(g["entry"])
         return {**g, "image": url(h.get("preview_file")), "title": s["title"]}
 
+    @r.post("/kb/history/{hid}/tour")
+    def history_tour(hid: str, body: dict = Body(default={})):
+        """„Führung starten“ direkt am Bild: vorhandene Führung zu diesem Bild wiederverwenden, sonst neu erzählen."""
+        h = mod.store.get(hid)
+        if not h:
+            raise HTTPException(404, "Bild nicht gefunden.")
+        if not body.get("new"):
+            s = kb.one("SELECT * FROM stories WHERE format='tour' AND json_extract(image, '$.entry')=? ORDER BY id DESC LIMIT 1", (hid,))
+            if s and s.get("segments"):
+                return story_view(s)
+        r = Researcher(mod)
+        names = [(h.get("source") or {}).get("name"), *(o["name"] for o in h.get("objects") or [] if o.get("x") is not None)]
+        e = next((x for x in (r.ensure_stub(n) for n in names if n) if x), None)
+        if not e:
+            raise HTTPException(409, "In diesem Bild kennt Sage noch kein Objekt – erst „Bild bestimmen“.")
+        try:
+            return story_view(narrate.generate(mod, e["id"], "tour", hid))
+        except agent.BudgetError as x:
+            raise HTTPException(402, str(x))
+        except clients.ServiceError as x:
+            raise HTTPException(409 if "braucht" in str(x) else 502, str(x))
+
     @r.post("/kb/history/{hid}/spot")
     def history_spot(hid: str, body: dict = Body(...)):
         h = mod.store.get(hid)

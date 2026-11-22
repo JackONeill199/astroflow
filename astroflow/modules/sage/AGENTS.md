@@ -27,6 +27,12 @@ insights/runs/usage/stories/chats/http_cache. Regeln: **Messwerte nur aus Fachqu
   `sage-wiki.js` (Untertitel, ← → Leertaste/K, „Vorlesen“ abschaltbar → Lesezeit), Klick ins Bild: `pickStrict` (Beschriftung oder
   kleiner Kreis ≤ 40 px = Wissenskarte, sonst `askSpot`), auch in der Bildansicht `sage.js` und im Titelbild der Objektseite.
   `createViewer` liefert dafür `view()` und `zoomTo(px, py, f, ms)`.
+  **„Führung starten“** (Nutzerwunsch 22.11.2026: ein Knopf am Bild, der alles automatisch erklärt): `POST /kb/history/<id>/tour`
+  (vorhandene Führung des Bildes wiederverwenden, `{new: true}` = neu) → `startGuide(hid)` = Kino-Modus `.sw-cine` mit `guideTour(…,
+  {autoplay, cinema})`. Knopf `guideButton(viewer.el, hid)` als Pille auf dem Bild (`data-vskip`: Betrachter ignoriert den Klick); in
+  der Bilder-Ansicht über `window.SageWiki.entryForResult(rid)` (nur wenn Sage genau dieses Ergebnis bestimmt hat). Inhalt
+  `narrate.template_tour`/`object_facts`: höchstens 6 Objekte nah → fern, Lichtlaufzeit (`light_age`), Durchmesser, eigene Daten,
+  Tiefenvergleich – nur ausgerechnet aus Fakten; mit KI dieselben Fakten im Prompt.
 - `kb_api.py` → `/api/sage/kb/…`; Oberfläche `static/sage-wiki.js|css` (Routen `#/sage/wiki`, `#/sage/o/<id>/<tab>`, `#/sage/entdeckungen`,
   `#/sage/netz[/<id>]`; Sammlung & Erfolge jetzt `#/sage/sammlung`). Klick ins Bild: Shell-`createViewer(…, {onTap})` + `SageWiki.pick`
   (geometrisch – Kreise sind ungefüllt). Beim Start `Module.backfill`: alte Bildbestimmungen/Aufnahmen verknüpfen, fehlende im Hintergrund aus SIMBAD.

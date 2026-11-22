@@ -165,6 +165,7 @@ async function entryView(el, id) {
     };
     viewer = createViewer($('#sgv'), e.image, null, undefined, null, marked.length || solved ? { overlay: (svg, w, h) => { drawLabels(svg, w, h, marked); SW?.guideMarks(svg, w, e, null, spot); }, onTap: tapObj } : {});
     if (solved && SW) SW.spotButton($('#labels').closest('.row'), viewer, e, setSpot);
+    if (marked.length && SW) SW.guideButton(viewer.el, e.id);
     $('#askImg').onclick = () => window.SageWiki?.chat({ scope: 'image:' + e.id, image: e.id, title: e.title });
     $('#labels').onchange = (ev) => { if (viewer.overlay) viewer.overlay.style.display = ev.target.checked ? '' : 'none'; };
     $('#retell').onclick = retell;

@@ -522,3 +522,24 @@ sup .cite { vertical-align: baseline }
   .sw-dhead { grid-template-columns: minmax(0, 1fr); gap: 1rem } .sw-dh-img { aspect-ratio: 16/9 } .sw-dh-main h1 { font-size: 1.875rem }
   .sw-strip { grid-template-columns: repeat(4, 1fr) }
 }
+
+/* „Führung starten“: Pille auf dem Bild und Kino-Modus (deckend, unter Chat/Schwebekarten, über der Seite) */
+.viewer .sw-guide-pill { position: absolute; left: 0.75rem; top: 0.75rem; z-index: 2; display: inline-flex; align-items: center; gap: 0.375rem;
+  padding: 0.4375rem 0.875rem 0.4375rem 0.625rem; border: 1px solid color-mix(in srgb, var(--mk-guide) 55%, transparent); border-radius: 6.1875rem;
+  background-color: var(--surface-2); color: var(--fg); font: inherit; font-size: 0.8125rem; font-weight: 600; cursor: pointer;
+  box-shadow: var(--shadow); transition: transform var(--t) var(--ease), border-color var(--t) }
+.viewer .sw-guide-pill svg { width: 0.875rem; height: 0.875rem; color: var(--mk-guide) }
+.viewer .sw-guide-pill:hover { transform: translateY(-1px); border-color: var(--mk-guide) }
+.viewer .sw-guide-pill:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px }
+.sw-cine { position: fixed; inset: 0; z-index: 70; display: flex; flex-direction: column; background-color: var(--bg); animation: fadeIn var(--t2) var(--ease) both }
+.sw-cine-h { display: flex; align-items: center; gap: 0.625rem; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border-soft) }
+.sw-cine-h > svg { width: 1.125rem; height: 1.125rem; color: var(--mk-guide) }
+.sw-cine-b { flex: 1; overflow: auto; padding: 0.75rem 1rem 1rem; min-height: 0 }
+.sw-cine-load { display: flex; align-items: center; justify-content: center; gap: 0.625rem; min-height: 50vh; color: var(--mut); text-align: center }
+.sw-cine-tour { max-width: 87.5rem; margin: 0 auto; border: 0; background-color: transparent; padding: 0 }
+.sw-cine-tour .sw-tour-h h2 { font-size: 1.125rem }
+.sw-cine-tour .viewer { aspect-ratio: auto; height: calc(100vh - 17rem); min-height: 15rem }
+.sw-cine-tour .sw-sub p { font-size: 1.0625rem }
+.sw-cine-tour .sw-segs, .sw-cine-tour > .dim { display: none }
+@media (max-width: 600px) { .sw-cine-h [data-new] span { display: none } .sw-cine-tour .viewer { height: 55vh } }
+@media (prefers-reduced-motion: reduce) { .sw-cine, .viewer .sw-guide-pill { animation: none; transition: none } }

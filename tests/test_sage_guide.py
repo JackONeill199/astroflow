@@ -398,3 +398,68 @@ def test_stack_loesung_nur_fuer_dieselbe_ergebnisversion(client):
         client.app_ctx.services["project_solution"] = lambda pid, f=fresh: f
         e = add_entry(mod, {**sol, "tan": None}, source={"type": "project", "project": 7, "result": 3})
         assert guide.tan_for(mod, e) != mirrored["tan"]
+
+
+# ------------------------------------------------ „Führung starten“ am Bild -- #
+def test_fuehrung_je_bild_wiederverwenden_und_neu(client):
+    mod = client.app_mod
+    _, sol = solution()
+    e = add_entry(mod, sol)
+    a = client.post(f"/api/sage/kb/history/{e['id']}/tour", json={}).json()
+    assert a["format"] == "tour" and a["image"]["entry"] == e["id"] and a["segments"]
+    b = client.post(f"/api/sage/kb/history/{e['id']}/tour", json={}).json()
+    assert b["id"] == a["id"]                                                     # vorhandene Führung wiederverwendet
+    c = client.post(f"/api/sage/kb/history/{e['id']}/tour", json={"new": True}).json()
+    assert c["id"] != a["id"]
+    bare = mod.store.add({"source": {"type": "upload"}, "preview_file": "uploads/x.jpg", "width": 100, "height": 80, "title": "x",
+                          "solution": {"ra": 10.0, "dec": 20.0}, "objects": []})
+    r = client.post(f"/api/sage/kb/history/{bare['id']}/tour", json={})
+    assert r.status_code == 409 and "kein Objekt" in r.json()["detail"]
+    assert client.post("/api/sage/kb/history/gibtsnicht/tour", json={}).status_code == 404
+
+
+def test_fuehrung_vom_nahen_zum_fernen_mit_lichtlaufzeit(client):
+    from astroflow.modules.sage import narrate
+    mod, kb = client.app_mod, client.app_mod.kb
+    _, sol = solution(ra=283.396, dec=33.029, scale=2.0)                       # M57 + IC 1296
+    e = add_entry(mod, sol)
+    if not kb.resolve("IC 1296"):                                              # nur im großen ASTAP-Katalog
+        kb.upsert_entity("ic1296", kind="object", name="IC 1296", otype_label="Galaxie", status="stub")
+        kb.add_alias("ic1296", "IC 1296")
+    m57, ic = kb.resolve("M57 Ringnebel"), kb.resolve("IC 1296")
+    kb.set_fact(m57["id"], "distance_ly", "2.300 Lichtjahre", num=2300, unit="ly")
+    kb.set_fact(ic["id"], "distance_ly", "240 Mio. Lichtjahre", num=2.4e8, unit="ly")
+    kb.set_fact(m57["id"], "diameter", "≈ 1,3 Lichtjahre", num=1.3, unit="ly", origin="derived")
+    s = client.post(f"/api/sage/kb/history/{e['id']}/tour", json={}).json()
+    objs = [x["object"] for x in s["segments"]]
+    assert objs.index("M57 Ringnebel") < objs.index("IC 1296")                  # nah → fern
+    m57_text = next(x["text"] for x in s["segments"] if x["object"] == "M57 Ringnebel")
+    assert "v. Chr." in m57_text and "Durchmesser: 1,3 Lichtjahre" in m57_text
+    ic_text = next(x["text"] for x in s["segments"] if x["object"] == "IC 1296" and not x["text"].startswith("Tiefenblick"))
+    assert "Dinosaurier" in ic_text
+    depth = next(x for x in s["segments"] if x["text"].startswith("Tiefenblick"))
+    assert depth["object"] == "IC 1296" and "100.000-mal" in depth["text"]
+    assert narrate.light_age(1344, 2026) == "Das Licht, das dein Sensor eingefangen hat, ist um das Jahr 680 losgeflogen."
+
+
+def test_fuehrung_starten_im_kino(guide_server, browser):
+    base = guide_server
+    hid = httpx.get(f"{base}/api/sage/history", timeout=10).json()[0]["id"]
+    ctx = browser.new_context(viewport={"width": 375, "height": 812}, reduced_motion="reduce")
+    page = ctx.new_page()
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{base}/#/sage/{hid}")
+    pill = page.locator("#sgv .sw-guide-pill")
+    pill.wait_for(timeout=20000)
+    pill.click()                                                               # ein Klick: Führung erstellen und abspielen
+    page.wait_for_selector(".sw-cine .sw-guide .viewer.ready", timeout=20000)
+    page.wait_for_function("document.querySelector('.sw-cine #swSubN')?.textContent.startsWith('1 /')", timeout=10000)
+    assert "Pause" in page.locator(".sw-cine #swPlay").inner_text()            # läuft von selbst
+    assert page.locator(".sw-cine #swSubT").inner_text().startswith("Dein Bild von")
+    page.keyboard.press("ArrowRight")
+    page.wait_for_function("document.querySelector('.sw-cine #swSubN').textContent.startsWith('2 /')")
+    page.keyboard.press("Escape")
+    page.wait_for_selector(".sw-cine", state="detached")
+    ctx.close()
+    assert not errors, errors

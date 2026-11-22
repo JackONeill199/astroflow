@@ -450,7 +450,7 @@ function createViewer(host, src, cmpSrc, labels = ['älter', 'neuer'], ph = null
   v.addEventListener('wheel', (e) => { e.preventDefault(); const r = v.getBoundingClientRect(); zoomAt(Math.exp(-e.deltaY * 0.0018), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
   v.addEventListener('dblclick', (e) => { const r = v.getBoundingClientRect(); smooth(() => { if (s > fitS * 1.05) fit(); else zoomAt(1 / s, e.clientX - r.left, e.clientY - r.top); }); });
   v.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('.vbar, [data-retry]')) return;
+    if (e.target.closest('.vbar, [data-retry], [data-vskip]')) return;          // data-vskip: eigene Knöpfe auf dem Bild (z. B. „Führung starten“)
     if (e.target === line) { const mv = (ev) => { const r = v.getBoundingClientRect(); split = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)); apply(); };
       const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); }; addEventListener('pointermove', mv); addEventListener('pointerup', up); return; }
     tap = ptrs.size ? null : { t: e.target, x: e.clientX, y: e.clientY };
