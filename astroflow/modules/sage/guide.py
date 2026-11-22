@@ -123,8 +123,9 @@ def tan_for(mod, entry: dict) -> dict | None:
         try:
             fresh = get(src["project"])
             # Der Dienst liefert die Lösung des *neuesten* Ergebnisses; der Eintrag hat womöglich eine ältere Bildkopie.
-            # Nur übernehmen, wenn die Objektmarken nachweislich an derselben Stelle liegen.
-            if fresh and fresh.get("tan") and same_view(entry, fresh):
+            # Nur übernehmen, wenn sie zur selben Ergebnisversion gehört (fehlt die Angabe: nie) und die Marken passen.
+            same = fresh and fresh.get("result") is not None and fresh.get("result") == src.get("result")
+            if same and fresh.get("tan") and same_view(entry, fresh):
                 tan = fresh["tan"]
         except Exception:
             traceback.print_exc()

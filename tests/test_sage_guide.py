@@ -187,8 +187,8 @@ def test_projektion_aus_stack_loesung_nachgeholt(client):
     mod = client.app_mod
     _, sol = solution()
     calls = []
-    client.app_ctx.services["project_solution"] = lambda pid: calls.append(pid) or sol
-    e = add_entry(mod, {**sol, "tan": None}, source={"type": "project", "project": 7})
+    client.app_ctx.services["project_solution"] = lambda pid: calls.append(pid) or {**sol, "result": 3}
+    e = add_entry(mod, {**sol, "tan": None}, source={"type": "project", "project": 7, "result": 3})
     assert client.post(f"/api/sage/kb/history/{e['id']}/spot", json={"x": 400, "y": 300}).status_code == 200
     assert calls == [7] and mod.store.get(e["id"])["solution"]["tan"] == sol["tan"]           # gemerkt …
     client.post(f"/api/sage/kb/history/{e['id']}/spot", json={"x": 400, "y": 300})
@@ -200,8 +200,8 @@ def test_stack_loesung_einer_anderen_version_wird_nicht_uebernommen(client):
     mod = client.app_mod
     _, sol = solution()
     _, newer = solution(ra=83.80, dec=-5.37)
-    client.app_ctx.services["project_solution"] = lambda pid: newer
-    e = add_entry(mod, {**sol, "tan": None}, source={"type": "project", "project": 7})
+    client.app_ctx.services["project_solution"] = lambda pid: {**newer, "result": 4}
+    e = add_entry(mod, {**sol, "tan": None}, source={"type": "project", "project": 7, "result": 3})
     assert not guide.same_view(e, newer) and guide.same_view(e, sol)
     tan = guide.tan_for(mod, e)
     assert tan != newer["tan"]
@@ -335,6 +335,21 @@ def test_fuehrung_im_browser(guide_server, browser, size):
     page.locator("#swChatX").click()
     page.locator("[data-g=spot]").click()
     page.wait_for_function("document.querySelectorAll('#swChat.open .sw-m.u').length >= 2", timeout=15000)
+    # veraltete Antwort: Abfrage anhalten, Ansicht verlassen, dann durchlassen → weder Marke noch Chat
+    page.locator("#swChatX").click()
+    held = []
+    page.route("**/history/*/spot", lambda r: held.append(r))
+    page.locator("[data-g=spot]").click()
+    for _ in range(50):
+        if held:
+            break
+        page.wait_for_timeout(100)
+    assert held
+    page.evaluate("location.hash = '#/sage/wiki'")
+    page.wait_for_selector(".sw-guide", state="detached")
+    held[0].continue_()
+    page.wait_for_timeout(1500)
+    assert not page.locator("#swChat.open").count()
     ctx.close()
     assert not errors, errors
 
@@ -372,3 +387,14 @@ def test_eine_gemeinsame_marke_reicht_nicht():
     assert not guide.same_view(near, dict(near))                              # zu dicht beieinander
     rotated = {**two, "objects": [{"name": "A", "x": 400, "y": 300}, {"name": "B", "x": 520, "y": 560}]}
     assert not guide.same_view(two, rotated)
+
+
+def test_stack_loesung_nur_fuer_dieselbe_ergebnisversion(client):
+    """Gleiche Marken, aber anderes Ergebnis (z. B. gespiegelte/gedrehte Neuentwicklung) oder ohne Angabe → nie übernehmen."""
+    mod = client.app_mod
+    _, sol = solution()
+    mirrored = {**sol, "tan": {**sol["tan"], "cd": [[-v for v in row] for row in sol["tan"]["cd"]]}}
+    for fresh in ({**mirrored, "result": 4}, mirrored):
+        client.app_ctx.services["project_solution"] = lambda pid, f=fresh: f
+        e = add_entry(mod, {**sol, "tan": None}, source={"type": "project", "project": 7, "result": 3})
+        assert guide.tan_for(mod, e) != mirrored["tan"]
