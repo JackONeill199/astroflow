@@ -5,7 +5,7 @@
     github: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.6a4.3 4.3 0 0 1 7.5 2.7c0 5.6-7.5 10.2-7.5 10.2z" fill="currentColor"/></svg>',
     kofi: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h12v6a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4zM16 9.5h1.5a2.5 2.5 0 0 1 0 5H16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   };
-  let shown = false, timer = 0, started = false;
+  let shown = false, started = false;
   const links = () => AF.app?.support || [];
 
   // Passt es gerade? Nie in der Einrichtung, über einem offenen Dialog, im Import oder während Aufträge laufen.
@@ -54,13 +54,19 @@
     } catch { /* kein Hinweis ist besser als ein Fehler */ }
   }
 
+  // Verkettet (nie setInterval für Serverabfragen): nächste Prüfung erst, wenn die vorige fertig ist; Schluss, sobald der Dialog kam
+  async function loop(wait) {
+    await new Promise(r => setTimeout(r, wait));
+    await check();
+    if (!shown) loop(60000);
+  }
+
   function start() {
     if (started) return;
     started = true;
-    setTimeout(check, 8000);
-    timer = setInterval(() => { if (shown) clearInterval(timer); else check(); }, 60000);
+    loop(8000);
   }
 
   window.support = { open, start, check };
-  if (window.AF?.app) start();
+  if (typeof AF !== 'undefined' && AF.app) start();   // AF ist eine const in app.js (keine window-Eigenschaft)
 })();
