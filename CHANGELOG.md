@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.88.2 – 22.11.2026
+
+### Neu
+- **AstroFlow unterstützen:** Nach dem dritten fertigen Bild erscheint einmalig ein freundlicher Hinweis mit Links zu GitHub Sponsors und Ko-fi. „Vielleicht später“ blendet ihn 30 Tage aus, „Nicht mehr zeigen“ für immer; nie während der Einrichtung, eines Imports oder laufender Aufträge. Dauerhaft erreichbar über die Hilfe-Seite und die Suche (Strg+K: „Unterstützen“, „Spenden“). AstroFlow bleibt kostenlos und sammelt keine Daten.
+
 ## 0.88.1 – 19.11.2026
 
 ### Behoben

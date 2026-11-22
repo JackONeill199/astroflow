@@ -1109,6 +1109,7 @@ async function openPalette() {
     ['pulse', 'Aufträge anzeigen', 'alle laufenden und fertigen Aufträge', go('#/activity')],
     ['book', 'Hilfe & erste Schritte', 'Anleitung, häufige Fragen, Hilfe, FAQ, Doku', go('#/hilfe')], ['gear', 'Einrichtung', 'Einrichtungsassistent: Teleskop, Standort, Komponenten', go('#/willkommen')],
     ['book', 'Dokumentation', 'Anleitung auf GitHub (README), Handbuch, Doku', () => open('https://github.com/JackONeill199/astroflow#readme', '_blank', 'noopener')], ['gear', 'Einstellungen', 'Module, Solver, KI', go('#/settings')], ['pin', 'Standorte', 'Beobachtungsorte und Zeiträume', go('#/settings/standorte')],
+    ...(AF.app.support?.length ? [['heart', 'AstroFlow unterstützen', 'Spenden, Sponsor, GitHub Sponsors, Ko-fi, unterstützen, Danke', () => window.support.open()]] : []),
     ...(AF.app.report ? [['bug', 'Fehler melden', 'vorausgefülltes GitHub-Formular (Strg+Umschalt+F)', () => report.open()]] : [])];
   let extra = [], sel = 0, items = [];
   const draw = () => {
@@ -1190,6 +1191,7 @@ async function boot() {
   $('#updBtn').onclick = () => updatePanel();
   await route();
   poll();
+  window.support?.start();                                 // „AstroFlow unterstützen“: erst nach dem 3. fertigen Bild, nie mitten in einer Arbeit
   document.addEventListener('visibilitychange', () => { if (document.hidden) clearTimeout(pollTimer); else poll(); });
 }
 boot();
