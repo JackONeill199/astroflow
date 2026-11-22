@@ -623,7 +623,9 @@ function updatePanel(offer) {
     try { last = (await api('/system/update/install')).task; fails = 0; }
     catch {                               // vorübergehend nicht erreichbar: weiter versuchen, Abstand wächst bis 10 s
       fails += 1;
-      if (last?.state === 'running' && paint(last, true)) setTimeout(follow, Math.min(10000, 1000 * 2 ** fails));
+      const wait = Math.min(10000, 1000 * 2 ** fails);
+      if (last?.state === 'running') { if (paint(last, true)) setTimeout(follow, wait); }
+      else if (!last && fails <= 6) setTimeout(follow, wait);   // Panel neu geöffnet, Stand noch unbekannt: weiter versuchen (~1 min)
       return;
     }
     if (paint(last)) setTimeout(follow, 1000);
