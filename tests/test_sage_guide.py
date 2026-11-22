@@ -360,3 +360,15 @@ def test_grosses_objekt_der_enzyklopaedie_umfasst_die_stelle(client, monkeypatch
     hits = {h["name"]: h for h in d["hits"]}
     assert hits["Riesenwolke"]["inside"]
     assert abs(hits["Nahes Objekt"]["x"] - 400) < 1 and abs(hits["Nahes Objekt"]["y"] - 298.75) < 1   # 5″ nördlich = 1,25 px nach oben
+
+
+def test_eine_gemeinsame_marke_reicht_nicht():
+    """Eine einzelne Marke an gleicher Stelle beweist nichts (Drehung um sie bliebe unbemerkt) – zwei getrennte schon."""
+    one = {"width": 800, "height": 600, "objects": [{"name": "A", "x": 400, "y": 300}]}
+    assert not guide.same_view(one, {**one, "tan": {}})
+    two = {"width": 800, "height": 600, "objects": [{"name": "A", "x": 400, "y": 300}, {"name": "B", "x": 650, "y": 420}]}
+    assert guide.same_view(two, dict(two))
+    near = {"width": 800, "height": 600, "objects": [{"name": "A", "x": 400, "y": 300}, {"name": "B", "x": 420, "y": 300}]}
+    assert not guide.same_view(near, dict(near))                              # zu dicht beieinander
+    rotated = {**two, "objects": [{"name": "A", "x": 400, "y": 300}, {"name": "B", "x": 520, "y": 560}]}
+    assert not guide.same_view(two, rotated)

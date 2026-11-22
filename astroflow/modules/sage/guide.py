@@ -99,12 +99,16 @@ def _coords(mod, name: str) -> tuple[float, float] | None:
 
 def same_view(entry: dict, fresh: dict, tol: float = 2.0) -> bool:
     """Gehört eine frische Stack-Lösung zur Bildkopie des Eintrags? Gleiche Bildgröße und alle gemeinsamen Objektmarken
-    höchstens `tol` Pixel versetzt (mindestens eine gemeinsame Marke)."""
+    höchstens `tol` Pixel versetzt – mindestens zwei, deutlich getrennt (≥ 10 % der Bildgröße): Eine einzelne Marke ließe eine
+    Drehung oder Maßstabsänderung um sie herum unbemerkt."""
     if (entry.get("width"), entry.get("height")) != (fresh.get("width"), fresh.get("height")):
         return False
     old = {o["name"]: o for o in entry.get("objects") or [] if o.get("x") is not None}
     common = [(old[o["name"]], o) for o in fresh.get("objects") or [] if o.get("x") is not None and o["name"] in old]
-    return bool(common) and all(abs(a["x"] - b["x"]) <= tol and abs(a["y"] - b["y"]) <= tol for a, b in common)
+    if not all(abs(a["x"] - b["x"]) <= tol and abs(a["y"] - b["y"]) <= tol for a, b in common):
+        return False
+    span = max((math.hypot(a["x"] - c["x"], a["y"] - c["y"]) for a, _ in common for c, _ in common), default=0.0)
+    return len(common) >= 2 and span >= 0.1 * max(entry.get("width") or 0, entry.get("height") or 0)
 
 
 def tan_for(mod, entry: dict) -> dict | None:

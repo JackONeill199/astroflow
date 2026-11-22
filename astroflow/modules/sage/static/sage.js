@@ -158,7 +158,11 @@ async function entryView(el, id) {
     const SW = window.SageWiki, solved = sol.ra != null;
     let spot = null;
     const setSpot = (sp) => { spot = sp; viewer?.redraw(); };
-    const tapObj = (t, ev) => { const g = SW?.pickStrict(viewer, ev); if (g) SW.card(objs[+g.dataset.i].name, ev, { image: e.id }); else if (solved && SW) SW.askSpot(e, SW.spotAt(viewer, e, ev), setSpot, () => viewer.el.isConnected); };
+    const tapObj = (t, ev) => {
+      const vv = viewer, g = SW?.pickStrict(vv, ev);                     // eigener Betrachter: „Neu erzählen“ ersetzt `viewer`
+      if (g) SW.card(objs[+g.dataset.i].name, ev, { image: e.id });
+      else if (solved && SW) SW.askSpot(e, SW.spotAt(vv, e, ev), setSpot, () => vv.el.isConnected && vv === viewer);
+    };
     viewer = createViewer($('#sgv'), e.image, null, undefined, null, marked.length || solved ? { overlay: (svg, w, h) => { drawLabels(svg, w, h, marked); SW?.guideMarks(svg, w, e, null, spot); }, onTap: tapObj } : {});
     if (solved && SW) SW.spotButton($('#labels').closest('.row'), viewer, e, setSpot);
     $('#askImg').onclick = () => window.SageWiki?.chat({ scope: 'image:' + e.id, image: e.id, title: e.title });
