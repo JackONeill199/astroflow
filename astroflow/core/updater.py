@@ -149,18 +149,37 @@ def extract_linux(tar: Path, dest: Path) -> Path:
 
 
 # Start des neuen Pakets – in Tests per monkeypatch ersetzt (nie einen echten Installer starten)
-def launch_windows(exe: Path) -> None:
+def launch_windows(exe: Path) -> int:
+    """Gibt die Prozessnummer zurück (der Inno-Installer wartet auf seinen Setup-Teil, lebt also bis zum Ende)."""
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-    subprocess.Popen([str(exe)], cwd=str(exe.parent), creationflags=flags, close_fds=True,
-                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return subprocess.Popen([str(exe)], cwd=str(exe.parent), creationflags=flags, close_fds=True,
+                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).pid
 
 
-def launch_linux(root: Path, prefix: Path, bindir: Path) -> None:
+def launch_linux(root: Path, prefix: Path, bindir: Path) -> int:
     """`install.sh` mit Programm- und Befehlsordner der laufenden Installation (auch eigene `--prefix`/`--bin`): nur so beendet es
     genau diesen Server über seinen Befehl und ersetzt genau diesen Programmordner."""
     log = open(root.parent / "install.log", "ab")
-    subprocess.Popen(["/bin/sh", str(root / "install.sh"), "--prefix", str(prefix), "--bin", str(bindir)], cwd=str(root),
-                     start_new_session=True, close_fds=True, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+    # install.sh ersetzt sich per `exec` durch linux_install.py – dieselbe Prozessnummer bis zum Ende der Installation
+    return subprocess.Popen(["/bin/sh", str(root / "install.sh"), "--prefix", str(prefix), "--bin", str(bindir)], cwd=str(root),
+                            start_new_session=True, close_fds=True, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT).pid
+
+
+PID_FILE = "installer.pid"               # im Laufordner: Prozess des gestarteten Installers – schützt den Ordner über Neustarts hinweg
+
+
+def installer_alive(run: Path) -> bool:
+    """Läuft der aus diesem Laufordner gestartete Installer noch? (prozessübergreifend, auch nach einem Serverneustart)"""
+    try:
+        pid = int((run / PID_FILE).read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return False
+    from .launcher import _alive
+    try:
+        return pid > 0 and _alive(pid)
+    except Exception:
+        traceback.print_exc()
+        return True                      # im Zweifel schützen
 
 
 LINUX_MARKER = ".astroflow-install"      # wie `installer/linux_install.MARKER`: Programmordner aus install.sh
@@ -216,7 +235,9 @@ class Updater:
             if self.running() or not base.is_dir():
                 return
             for d in base.iterdir():
-                if d.is_dir() and not d.is_symlink() and time.time() - d.stat().st_mtime > KEEP_SECONDS:
+                if not d.is_dir() or d.is_symlink() or installer_alive(d):
+                    continue                                         # Installer liest sein Paket noch
+                if (d / PID_FILE).exists() or time.time() - d.stat().st_mtime > KEEP_SECONDS:
                     shutil.rmtree(d, ignore_errors=True)
         except Exception:
             traceback.print_exc()
@@ -225,8 +246,17 @@ class Updater:
         return bool(self.task and self.task.get("state") == "running")
 
     def busy(self) -> bool:
-        """Läuft gerade – oder der Installer wurde schon gestartet und braucht sein Paket noch: dann kein zweiter Start."""
-        return self.running() or bool(self.task and self.task.get("launched"))
+        """Läuft gerade – oder ein Installer wurde schon gestartet (auch von einem früheren Serverprozess) und braucht sein Paket
+        noch: dann kein zweiter Start."""
+        return self.running() or bool(self.task and self.task.get("launched")) or self.installer_running()
+
+    @staticmethod
+    def installer_running() -> bool:
+        try:
+            base = work_dir()
+            return base.is_dir() and any(d.is_dir() and installer_alive(d) for d in base.iterdir())
+        except OSError:
+            return False
 
     def state(self) -> dict | None:
         return dict(self.task) if self.task else None
@@ -290,11 +320,11 @@ class Updater:
                 root = extract_linux(target, wd / "paket")
                 target.unlink(missing_ok=True)
                 self._commit(cancel, "Installation starten …")
-                launch_linux(root, *where)
+                self._pid(wd, launch_linux(root, *where))
                 msg = "Installation läuft – AstroFlow wird beendet und startet danach in der neuen Fassung."
             else:
                 self._commit(cancel, "Installer starten …")
-                launch_windows(target)
+                self._pid(wd, launch_windows(target))
                 msg = "Installer gestartet – er beendet AstroFlow kurz. Danach AstroFlow wieder öffnen; Daten und Einstellungen bleiben."
             self._set(state="done", progress=1.0, detail=msg, finished=time.time(), cancelable=False, launched=True)
         except Cancelled:
@@ -308,6 +338,13 @@ class Updater:
             self._drop(wd)
             self._set(state="error", detail="Update fehlgeschlagen (Netz oder Speicher) – nichts wurde geändert. Details im Protokoll.",
                       finished=time.time(), cancelable=False)
+
+    @staticmethod
+    def _pid(wd: Path, pid) -> None:
+        try:
+            (wd / PID_FILE).write_text(str(int(pid)), encoding="utf-8")
+        except (OSError, TypeError, ValueError):
+            traceback.print_exc()          # ohne Nummer schützt nur noch die Altersgrenze
 
     @staticmethod
     def _drop(wd: Path | None) -> None:

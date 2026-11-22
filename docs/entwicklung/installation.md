@@ -115,7 +115,8 @@
   sonst `manual_reason` (`source`/`portable`/`nodownload`/`nosha`) → bisheriger Download-Link bzw. Anleitung. Download (`updater.fetch`):
   Weiterleitungen von Hand, jede Adresse gegen `ALLOWED_HOSTS` (github.com, objects.githubusercontent.com, release-assets.githubusercontent.com;
   nur https, Port 443), Obergrenze 2 GB, Ablage nur für den eigenen Nutzer (`%LOCALAPPDATA%\AstroFlow\Update` bzw. `~/.cache/astroflow/update`, `ASTROFLOW_UPDATE_DIR`), je Lauf
-  ein privater `mkdtemp`-Ordner; beim Start werden Laufordner älter als 1 h gelöscht. Abbruch und Installer-Start unter derselben Sperre
+  ein privater `mkdtemp`-Ordner; der gestartete Installer schreibt seine Prozessnummer nach `installer.pid` – solange er lebt, bleibt der Ordner auch über
+  Serverneustarts erhalten und kein zweiter Auftrag startet; sonst löscht der Start Laufordner älter als 1 h bzw. mit beendetem Installer. Abbruch und Installer-Start unter derselben Sperre
   (`_commit`); nach dem Start nimmt der Server keinen zweiten Auftrag an (`busy`).
   Prüfsumme falsch, Fehler oder Abbruch **vor dem Installer-Start** → Laufordner gelöscht, nichts geändert (danach zählt der Installer). Windows: Installer losgelöst starten (`launch_windows`; er beendet
   den Server per `PrepareToInstall`). Linux: `tarfile` mit `filter="data"` entpacken, `install.sh --prefix --bin` der laufenden Installation (`linux_target`: Markierung `.astroflow-install` am Programmordner des laufenden Pythons, Befehl `astroflow` zeigt darauf; sonst `manual_reason` `unknown`) losgelöst (`launch_linux`, `start_new_session`,

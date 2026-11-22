@@ -595,7 +595,9 @@ class Setup:
     def install_update(self) -> dict:
         """„Jetzt aktualisieren“: Release frisch abfragen (Adresse und Prüfsumme nur vom Server), dann laden, prüfen, starten."""
         if self.updater.busy():
-            return self.updater.state()
+            if self.updater.state():
+                return self.updater.state()
+            raise HTTPException(409, "Der Installer eines Updates läuft noch – bitte warten, bis er fertig ist.")
         offer = update_offer(self.check_update(force=True))
         if not offer:
             raise HTTPException(409, "Keine neuere Version gefunden – AstroFlow ist aktuell oder GitHub ist nicht erreichbar.")

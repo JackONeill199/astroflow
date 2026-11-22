@@ -4,6 +4,8 @@ nie wird ein echtes oder kopiertes Programm ausgeführt."""
 import hashlib
 import io
 import os
+import subprocess
+import sys
 import tarfile
 import threading
 import time
@@ -65,9 +67,11 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(setup_mod, "VERSION", "0.1.0")
     monkeypatch.setattr(setup_mod, "install_kind", lambda: "windows")
     started = []
-    monkeypatch.setattr(updater, "launch_windows", lambda exe: started.append(("windows", exe, exe.read_bytes())))
-    monkeypatch.setattr(updater, "launch_linux",
-                        lambda root, prefix, bindir: started.append(("linux", root, (root / "install.sh").read_bytes(), prefix, bindir)))
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])           # Prozessnummer eines beendeten „Installers“
+    dead.wait()
+    monkeypatch.setattr(updater, "launch_windows", lambda exe: started.append(("windows", exe, exe.read_bytes())) or dead.pid)
+    monkeypatch.setattr(updater, "launch_linux", lambda root, prefix, bindir:
+                        started.append(("linux", root, (root / "install.sh").read_bytes(), prefix, bindir)) or dead.pid)
     return {"tmp": tmp_path, "started": started}
 
 
@@ -316,3 +320,26 @@ def test_linux_ziel_aus_laufender_installation(tmp_path, monkeypatch):
     assert updater.linux_target() == (prefix, bindir)
     wrapper.write_text("#!/bin/sh\nexec /anderswo/python3 -I -m astroflow\n", encoding="utf-8")
     assert updater.linux_target() is None                                  # Befehl gehört zu einer anderen Installation
+
+
+def test_laufender_installer_ueberlebt_serverneustart(env, monkeypatch):
+    """Installer läuft noch (Prozess lebt), Laufordner älter als 1 h, Server startet neu: Ordner bleibt, kein zweiter Auftrag."""
+    base = env["tmp"] / "upd"
+    run = base / "lauf-installer"
+    run.mkdir(parents=True)
+    (run / "paket.bin").write_bytes(b"x")
+    (run / updater.PID_FILE).write_text(str(os.getpid()), encoding="utf-8")   # dieser Testprozess lebt sicher
+    os.utime(run, (time.time() - 2 * updater.KEEP_SECONDS,) * 2)
+    c, net = _client(env, monkeypatch, _assets(), {EXE_NAME: EXE, EXE_NAME + ".sha256": _sha(EXE, EXE_NAME)})
+    assert run.exists()
+    r = c.post("/api/system/update/install")
+    assert r.status_code == 409 and "läuft noch" in r.json()["detail"] and net.seen == [] and env["started"] == []
+    (run / updater.PID_FILE).write_text(str(env_dead_pid()), encoding="utf-8")   # Installer fertig → nächster Start räumt auf
+    updater.Updater()
+    assert not run.exists()
+
+
+def env_dead_pid() -> int:
+    p = subprocess.Popen([sys.executable, "-c", "pass"])
+    p.wait()
+    return p.pid
