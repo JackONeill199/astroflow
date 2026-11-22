@@ -337,3 +337,26 @@ def test_fuehrung_im_browser(guide_server, browser, size):
     page.wait_for_function("document.querySelectorAll('#swChat.open .sw-m.u').length >= 2", timeout=15000)
     ctx.close()
     assert not errors, errors
+
+
+def test_sexagesimal_mit_uebertrag():
+    assert guide.sexa(14.999999, True) == "01h 00m 00s"
+    assert guide.sexa(359.99999, True) == "00h 00m 00s"
+    assert guide.sexa(-5.3999999, False) == "−05° 24′ 00″"
+    assert guide.sexa(83.82, True) == "05h 35m 17s"
+
+
+def test_grosses_objekt_der_enzyklopaedie_umfasst_die_stelle(client, monkeypatch):
+    """Mitte 1,2° entfernt, Objekt 3° groß: Vorauswahl berücksichtigt den Radius; Treffer bekommt eine Bildposition."""
+    monkeypatch.setattr(sources.Net, "fetch", offline_fetch)
+    mod, kb = client.app_mod, client.app_mod.kb
+    _, sol = solution()
+    ra, dec = guide.pix2sky(sol["tan"], 400, 300)
+    kb.upsert_entity("riesen", kind="object", name="Riesenwolke", ra=ra, dec=dec - 1.2, size=180.0, status="stub")
+    kb.upsert_entity("nah", kind="object", name="Nahes Objekt", ra=ra, dec=dec + 5 / 3600, size=0.1, status="stub")
+    e = mod.store.add({"source": {"type": "upload"}, "preview_file": "uploads/x.jpg", "width": 800, "height": 600, "title": "x",
+                       "solution": {k: v for k, v in sol.items() if k != "objects"}, "objects": []})
+    d = client.post(f"/api/sage/kb/history/{e['id']}/spot", json={"x": 400, "y": 300, "r": 5}).json()
+    hits = {h["name"]: h for h in d["hits"]}
+    assert hits["Riesenwolke"]["inside"]
+    assert abs(hits["Nahes Objekt"]["x"] - 400) < 1 and abs(hits["Nahes Objekt"]["y"] - 298.75) < 1   # 5″ nördlich = 1,25 px nach oben

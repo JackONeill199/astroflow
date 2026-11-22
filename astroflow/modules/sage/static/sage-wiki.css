@@ -145,19 +145,20 @@ sup .cite { vertical-align: baseline }
 .viewer .vov g.tap { pointer-events: auto; cursor: pointer }
 .viewer .vov g.tap:hover circle { stroke-width: 3 }
 .viewer .vov g.self circle { stroke: var(--data-2) }
-.viewer .vov g.focus circle { stroke: #fde68a; stroke-width: 4; animation: swPulse 1.2s ease-in-out infinite }
-.viewer .vov g.focus text { fill: #fde68a }
+.viewer .vov g.focus circle { stroke: var(--mk-guide); stroke-width: 4; animation: swPulse 1.2s ease-in-out infinite }
+.viewer .vov g.focus text { fill: var(--mk-guide) }
 @keyframes swPulse { 50% { stroke-opacity: .35 } }
 
 /* Bildführung (Wunsch 19): Tour-Markierungen (Kreis zeichnet sich, Umriss gestrichelt, Pfeil), gefragte Stelle, Untertitel */
-.vov .sw-mk circle, .vov .sw-mk path, .vov .sw-spot circle, .vov .sw-spot path { fill: none; stroke: #fde68a; stroke-width: 0.1875rem; vector-effect: non-scaling-stroke; stroke-linecap: round; opacity: 1 }
+.vov .sw-mk circle, .vov .sw-mk path, .vov .sw-spot circle, .vov .sw-spot path { fill: none; stroke: var(--mk-guide); stroke-width: 0.1875rem; vector-effect: non-scaling-stroke; stroke-linecap: round; opacity: 1 }
 .vov .sw-mk.circle circle { stroke-dasharray: 100; animation: swDraw .9s var(--ease) both }
 .vov .sw-mk.outline circle { stroke-dasharray: 1.2 0.8 }
 .vov .sw-mk.arrow { animation: fadeIn .5s var(--ease) both }
-.vov .sw-spot circle, .vov .sw-spot path { stroke: #7dd3fc }
+.vov .sw-spot circle, .vov .sw-spot path { stroke: var(--mk-spot) }
 .vov .sw-spot.busy > circle { animation: swPulse 1s ease-in-out infinite }
-.vov .sw-spot .hit { fill: #7dd3fc40; stroke-width: 0.125rem }
-.vov .sw-spot text { fill: #e0f2fe }
+.vov .sw-spot .hit { fill: color-mix(in srgb, var(--mk-spot) 25%, transparent); stroke-width: 0.125rem }
+.vov .sw-spot text { fill: var(--mk-spot-fg) }
+.sw-spotbtn { margin-left: 0.5rem; vertical-align: middle }
 @keyframes swDraw { from { stroke-dashoffset: 100 } to { stroke-dashoffset: 0 } }
 .sw-tour-h { flex-wrap: wrap; gap: 0.5rem }
 .sw-ton { margin: 0 }

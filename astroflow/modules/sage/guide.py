@@ -168,12 +168,22 @@ def tour_steps(mod, story: dict) -> dict:
 
 # ----------------------------------------------------------- Fragen per Klick -- #
 def sexa(v: float, hours: bool) -> str:
-    x = (v / 15) if hours else abs(v)
-    a = int(x)
-    m = (x - a) * 60
+    """Erst auf ganze Sekunden runden, dann zerlegen – sonst geht der Übertrag verloren (14,999999° → 00h 59m 00s)."""
+    total = round(((v % 360) / 15 if hours else abs(v)) * 3600)
     if hours:
-        return f"{a:02d}h {int(m):02d}m {int(round((m - int(m)) * 60)) % 60:02d}s"
-    return f"{'−' if v < 0 else '+'}{a:02d}° {int(m):02d}′ {int(round((m - int(m)) * 60)) % 60:02d}″"
+        total %= 24 * 3600
+    a, rest = divmod(total, 3600)
+    m, sec = divmod(rest, 60)
+    if hours:
+        return f"{a:02d}h {m:02d}m {sec:02d}s"
+    return f"{'−' if v < 0 else '+'}{a:02d}° {m:02d}′ {sec:02d}″"
+
+
+def _sep_deg(ra1: float, dec1: float, ra2: float, dec2: float) -> float:
+    """Winkelabstand (Grad, Haversine) – auch für große Objekte, wo die Gnomonische Projektion verzerrt."""
+    r1, d1, r2, d2 = map(math.radians, (ra1, dec1, ra2, dec2))
+    h = math.sin((d2 - d1) / 2) ** 2 + math.cos(d1) * math.cos(d2) * math.sin((r2 - r1) / 2) ** 2
+    return math.degrees(2 * math.asin(min(1.0, math.sqrt(h))))
 
 
 def _arc(sec: float) -> str:
@@ -207,16 +217,14 @@ def around(mod, entry: dict, x: float, y: float, r_px: float = 20.0) -> dict:
         if d <= max(float(o.get("radius") or 8), r_px):
             add(o["name"], o.get("kind_label"), d * sc, "bild", inside=d <= float(o.get("radius") or 8), x=o["x"], y=o["y"])
     # 2. Enzyklopädie (Einträge mit Koordinaten, auch ohne Bildmarke)
-    box = rad / 3600 + 1.0
-    for e in mod.kb.q("SELECT id, name, otype_label, ra, dec, size FROM entities WHERE ra IS NOT NULL AND dec BETWEEN ? AND ?",
-                      (dec - box, dec + box)):
-        try:
-            p = _std(ra, dec, e["ra"], e["dec"])
-        except ValueError:
-            continue
-        sep = math.hypot(*p) * 3600
+    # Vorauswahl über die Deklination inkl. halbem Objektdurchmesser (size in Bogenminuten → /120 Grad), damit große Objekte,
+    # deren Mitte weit weg liegt, die Stelle aber umfassen, nicht herausfallen
+    for e in mod.kb.q("SELECT id, name, otype_label, ra, dec, size FROM entities WHERE ra IS NOT NULL "
+                      "AND ABS(dec - ?) <= ? + COALESCE(size, 0) / 120.0", (dec, rad / 3600)):
+        sep = _sep_deg(ra, dec, e["ra"], e["dec"]) * 3600
         if sep <= max(rad, (e["size"] or 0) * 30):                 # size in Bogenminuten → halber Durchmesser in ″
-            add(e["name"], e["otype_label"], sep, "enzyklopaedie", entity=e["id"], inside=sep <= (e["size"] or 0) * 30)
+            add(e["name"], e["otype_label"], sep, "enzyklopaedie", entity=e["id"], inside=sep <= (e["size"] or 0) * 30,
+                ra=e["ra"], dec=e["dec"])
     # 3. SIMBAD-Umkreissuche (über den Antwort-Cache der Wissensbasis)
     note = None
     r = Researcher(mod)

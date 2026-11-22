@@ -11,6 +11,7 @@
   /* Text */
   --fg: #f0f2f5; --mut: #aab2bd; --dim: #828c99;
   /* Akzent + Status (sparsam) */
+  --mk-guide: #fde68a; --mk-spot: #7dd3fc; --mk-spot-fg: #e0f2fe;   /* Markierungen im Bild: Führung (Sage), gefragte Stelle */
   --acc: #4c9aff; --acc-strong: #2f86f5; --acc-soft: #4c9aff1f; --accfg: #ffffff;
   --ok: #42b883; --warn: #e5aa52; --bad: #e16b6b;
   /* Daten (nur in Grafiken): zweite und dritte Reihe */

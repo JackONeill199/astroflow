@@ -521,9 +521,10 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
         let v = null, spot = null;
         const solved = h.solution?.ra != null, setSpot = (sp) => { spot = sp; v?.redraw(); };
         v = createViewer(host, h.image, null, undefined, null, objs.length || solved ? { overlay: (svg, w) => { labels(svg, w, h, objs, e.name); guideMarks(svg, w, h, null, spot); },
-          onTap: (t, ev) => { const n = pickStrict(v, ev)?.dataset.n; if (n) card(n, ev, { image: h.id }); else if (solved) askSpot(h, spotAt(v, h, ev), setSpot); } } : {});
+          onTap: (t, ev) => { const n = pickStrict(v, ev)?.dataset.n; if (n) card(n, ev, { image: h.id }); else if (solved) askSpot(h, spotAt(v, h, ev), setSpot, () => v.el.isConnected); } } : {});
         cleanup.push(() => v.destroy());
         cap.innerHTML = `<b>${esc(h.title)}</b> – eigene Aufnahme (${shotDate(g)}${g.minutes ? `, ${g.minutes} min` : ''}) · ${objs.length} Objekte markiert, antippen für Wissen${solved ? ' – freie Stelle antippen: Was liegt dort?' : ''} <a href="${g.href}">${icon('arrow')}</a>`;
+        if (solved) spotButton(cap, v, h, setSpot);
         return;
       }
     }
@@ -723,7 +724,10 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
   }
   // Geführte Tour (Wunsch 19): Schritte {Text, Ziel in Bildpixeln, Zoom} vom Server; der Betrachter fährt zum Objekt,
   // markiert es (Pfeil/Kreis/Umriss) und zeigt den Text als Untertitel. Vor/Zurück, Pause, Tastatur; Vorlesen abschaltbar.
+  let tourCall = 0;
   async function tour(host, s) {
+    const call = ++tourCall;
+    cleanup.push(() => { if (tourCall === call) tourCall++; });       // Ansicht verlassen → laufender Aufruf veraltet
     const ton = store.get('sage.guide.ton', true);
     host.innerHTML = `<div class="panel sw-tour"><div class="row sw-tour-h"><h2>${esc(s.title)}</h2><span class="grow"></span>${ttsSel()}
         <label class="modrow sw-ton"><input type="checkbox" id="swTon" ${ton ? 'checked' : ''}><span class="switch"></span><span>Vorlesen</span></label></div>
@@ -738,7 +742,7 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
       <ol class="sw-segs">${s.segments.map((g, i) => `<li data-i="${i}" tabindex="0" role="button">${g.object ? `<b>${esc(g.object)}</b> ` : ''}${esc(g.text)}</li>`).join('')}</ol>
       <p class="dim sm">${esc(s.model)} · Stelle im Bild antippen: Sage schlägt in den Katalogen nach, was dort liegt.</p></div>`;
     const [g, h] = await Promise.all([api(`${K}/stories/${s.id}/guide`).catch(() => null), s.image?.entry ? api(`/sage/history/${s.image.entry}`).catch(() => null) : null]);
-    if (!host.isConnected) return;
+    if (!host.isConnected || call !== tourCall) return;             // inzwischen andere Geschichte geöffnet
     const steps = g?.steps?.length ? g.steps : s.segments.map(x => ({ text: x.text, object: x.object, zoom: 1 }));
     let v = null, cur = -1, playing = false, audio = null, timer = 0, gen = 0, spot = null;
     const W = g?.width || h?.width || 0, H = g?.height || h?.height || 0;
@@ -749,7 +753,7 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
       const objs = (h.objects || []).filter(o => o.x != null);
       v = createViewer($('#swTV', host), h.image, null, undefined, null, {
         overlay: (svg, w) => { labels(svg, w, h, objs, null); guideMarks(svg, w, h, cur >= 0 ? steps[cur] : null, spot); markFocus(svg); },
-        onTap: (t, ev) => { const n = pickStrict(v, ev)?.dataset.n; if (n) card(n, ev, { image: h.id }); else askSpot(h, spotAt(v, h, ev), setSpot); } });
+        onTap: (t, ev) => { const n = pickStrict(v, ev)?.dataset.n; if (n) card(n, ev, { image: h.id }); else askSpot(h, spotAt(v, h, ev), setSpot, () => v.el.isConnected); } });
       cleanup.push(() => v.destroy());
       if (h.solution?.ra != null) $('[data-g=spot]', host).hidden = false;
     } else $('#swTV', host).innerHTML = '<p class="mut sm">Das Bild zu dieser Führung gibt es nicht mehr – der Text bleibt lesbar.</p>';
@@ -800,7 +804,7 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
     host.querySelector('.sw-gctl').onclick = (ev) => {
       const a = ev.target.closest('[data-g]')?.dataset.g;
       if (a === 'play') play(); else if (a === 'prev') step(-1); else if (a === 'next') step(1);
-      else if (a === 'spot' && v && h) { const sp = viewSpot(v, h); if (sp) askSpot(h, sp, setSpot); }
+      else if (a === 'spot' && v && h) { const sp = viewSpot(v, h); if (sp) askSpot(h, sp, setSpot, () => v.el.isConnected); }
     };
     $('#swTon', host).onchange = (ev) => store.set('sage.guide.ton', ev.target.checked);
     host.querySelector('.sw-guide').onkeydown = (ev) => {
@@ -874,15 +878,23 @@ function viewSpot(viewer, h) {
   const k = (h.width || vw.w) / vw.w;
   return { x: vw.x * k, y: vw.y * k, r: 30 / (m?.a || 1) * k };
 }
-// Stelle → Himmelsort → Kataloge (Bildmarken, Enzyklopädie, SIMBAD mit Cache) → Antwort im Sage-Chat des Bildes
-async function askSpot(h, sp, mark) {
+// Stelle → Himmelsort → Kataloge (Bildmarken, Enzyklopädie, SIMBAD mit Cache) → Antwort im Sage-Chat des Bildes.
+// alive(): gehört die Antwort noch zur angezeigten Ansicht? Nur die jüngste Abfrage je Markierung zählt (mark._q).
+async function askSpot(h, sp, mark, alive = () => true) {
   if (!sp) return;
+  const my = mark._q = (mark._q || 0) + 1, ok = () => my === mark._q && alive();
   mark({ ...sp, busy: true, hits: [] });
   try {
     const r = await send(`${K}/history/${h.id}/spot`, { x: sp.x, y: sp.y, r: sp.r });
+    if (!ok()) return;
     mark({ ...sp, hits: r.hits || [] });
     chat({ scope: r.scope, image: h.id, title: h.title });
-  } catch (err) { mark(null); toast(err.message, 'err'); }
+  } catch (err) { if (!ok()) return; mark(null); toast(err.message, 'err'); }
+}
+// Tastatur: Knopf „Hier fragen“ (Mitte der Ansicht) für Bildansichten außerhalb der Tour
+function spotButton(host, viewer, h, mark) {
+  host.insertAdjacentHTML('beforeend', `<button class="btn sm ghost sw-spotbtn" type="button" title="Was liegt in der Mitte der Ansicht?">${icon('target')}Hier fragen</button>`);
+  host.lastElementChild.onclick = () => { const sp = viewSpot(viewer, h); if (sp) askSpot(h, sp, mark, () => viewer.el.isConnected); };
 }
 // Markierungen der Führung (Pfeil, Kreis, Umriss) und der gefragten Stelle – über die Objektmarken gezeichnet
 function guideMarks(svg, w, h, st, spot) {
@@ -1045,5 +1057,5 @@ if (M) {
       ['sparkle', 'Frag Sage', 'Assistent mit Werkzeugen', () => chat({ scope: 'global' })], ...ents.items.map(c => ['star', c.name, `${c.otype_label || ''} · Enzyklopädie`, `#/sage/o/${c.id}`, c.image]), ...base];
   };
 }
-window.SageWiki = { card, chat, pick, pickStrict, spotAt, askSpot, guideMarks, research: startResearch, float: floatCard, closeFloat };
+window.SageWiki = { card, chat, pick, pickStrict, spotAt, askSpot, spotButton, guideMarks, research: startResearch, float: floatCard, closeFloat };
 })();
