@@ -28,7 +28,7 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md` (Details in `docs/entwicklung/
 | 20 | 12.11.2026 | HOO/SHO für Farbkameras mit Dual-Band-Filter | offen |
 | 21 | 13.11.2026 | Geräte kombinieren (Stacks verschiedener Teleskope zu einem Bild) | offen |
 | 22 | 13.11.2026 | Echtes Drizzle | offen |
-| 23 | 13.11.2026 | „Jetzt aktualisieren“: Update auf Knopfdruck laden und starten | offen (Hinweis mit Download-Link seit Update-Chip) |
+| 23 | 13.11.2026 | „Jetzt aktualisieren“: Update auf Knopfdruck laden und starten | umgesetzt, Version beim Merge (Signatur offen) |
 
 ## 1. Bibliothek teilen (nur ansehen) – 03.11.2026
 
@@ -252,3 +252,12 @@ Download-Link; geladen und installiert wird bewusst nichts. Später denkbar, nur
 - Quellcode/Docker: kein Automatismus, nur Anleitung.
 - Offen: Signatur statt nur Prüfsumme (Prüfsumme aus derselben Quelle schützt nur vor kaputten Downloads), Fortschritt als Auftrag,
   Rückfall bei Abbruch, Neustart danach automatisch.
+- **Umgesetzt (Version beim Merge, 22.11.2026, `core/updater.py`):** Knopf „Jetzt aktualisieren“ im Update-Panel, nur am Rechner selbst.
+  Windows (installiert): Installer laden, SHA-256 gegen `.sha256` aus dem Release prüfen (der Paket-Workflow erzeugt sie jetzt für Installer und
+  ZIP), Installer starten. Linux (installiert): Paket laden, prüfen, sicher entpacken, `install.sh` ausführen (ersetzt über `.neu`/`.alt`,
+  startet neu). Portable Fassung, Quellcode/Docker und Releases ohne `.sha256`: wie bisher nur Download-Link bzw. Anleitung. Nur https,
+  nur GitHub-Hosts (jede Weiterleitung geprüft), Adresse nie vom Browser. Fortschritt als Auftrag in der Aktivität, Abbruch bis zum
+  Installer-Start; bei Fehler oder Abbruch bleibt alles beim Alten, Teile werden gelöscht. Windows: nach dem Installer startet AstroFlow über
+  dessen Haken „AstroFlow jetzt starten“.
+- **Weiter offen:** Signatur statt Prüfsumme – die `.sha256` liegt im selben Release wie das Paket und schützt daher **nur vor kaputten bzw.
+  abgeschnittenen Downloads**, nicht vor einem manipulierten Release.

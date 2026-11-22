@@ -107,7 +107,20 @@
   Frontend (`app.js` `updateHint`/`updatePanel`): Chip `#updBtn` in der Kopfleiste (mobil nur die Nummer), Klick → Kontextpanel mit
   Download, Release-Seite und „Was ist neu“ (alles über `esc()`); „Hinweis für diese Version ausblenden“ merkt `af.update.dismissed` im
   Browser, eine neuere Version erscheint wieder. Ein Banner wurde verglichen und verworfen (kostet auf jeder Seite Höhe). Einstellungen →
-  Module & System zeigt den Stand (`#sysUpdState`). `ASTROFLOW_UPDATE_CHECK=0` setzt `conftest.py`. Selbst laden/installieren: Wunsch 23.
+  Module & System zeigt den Stand (`#sysUpdState`). `ASTROFLOW_UPDATE_CHECK=0` setzt `conftest.py`.
+- **„Jetzt aktualisieren“ (Wunsch 23, `core/updater.py`):** nur auf Knopfdruck im Update-Panel (`#updGo`, `data-local-only`), Endpunkte
+  `GET/POST /system/update/install` und `POST /system/update/cancel` mit `require_local`. Der Client schickt **nichts** mit: `Setup.install_update`
+  fragt das Release frisch ab und nimmt Adresse + `sha256_url` (`release_assets`: `<Datei>.sha256` daneben, nur `https://github.com/`) aus der
+  Antwort. Automatik nur, wenn `update_offer` → `auto` (installiertes Windows/Linux, nicht portabel = `launcher.home()` leer, `.sha256` im Release);
+  sonst `manual_reason` (`source`/`portable`/`nodownload`/`nosha`) → bisheriger Download-Link bzw. Anleitung. Download (`updater.fetch`):
+  Weiterleitungen von Hand, jede Adresse gegen `ALLOWED_HOSTS` (github.com, objects.githubusercontent.com, release-assets.githubusercontent.com;
+  nur https, Port 443), Obergrenze 2 GB, Ablage `%TEMP%/AstroFlow-Update` (`ASTROFLOW_UPDATE_DIR`), beim nächsten Start aufgeräumt.
+  Prüfsumme falsch, Fehler oder Abbruch → Ordner gelöscht, nichts geändert. Windows: Installer losgelöst starten (`launch_windows`; er beendet
+  den Server per `PrepareToInstall`). Linux: `tarfile` mit `filter="data"` entpacken, `install.sh` losgelöst (`launch_linux`, `start_new_session`,
+  Protokoll `install.log`) – ersetzt über `.neu`/`.alt` und startet neu. Fortschritt als Auftrag `setup:update` in der Aktivität, Abbruch bis
+  zum Start des Installers. **Die Prüfsumme kommt aus derselben Quelle wie das Paket** – sie schützt nur vor kaputten Downloads; Signatur offen.
+  Tests ersetzen `launch_*` und nutzen `updater.TRANSPORT = httpx.MockTransport` (`tests/test_update_install.py`). Paket-Workflow: `build_windows.py`
+  schreibt `<Datei>.sha256` für ZIP und Installer, `windows-paket.yml` hängt sie an (bricht ab, wenn sie fehlen).
 - **Paket:** `pyproject.toml` (setuptools ≥ 77, alle Dateien unter `astroflow/` als Paketdaten, Abhängigkeiten = `requirements.txt`, Test prüft
   Gleichheit; noch nicht auf PyPI). `installer/build_windows.py`: python-build-standalone (fest `PBS_TAG`/`PBS_PY`) + Wheel + pip-Install,
   numpy/scipy-Tests entfernt, Symbol gezeichnet (Pillow), `AstroFlow.cmd`/`AstroFlow beenden.cmd` (portabel), ZIP; mit ISCC Inno-Installer

@@ -543,12 +543,22 @@ function ctxSync() {
 // ------------------------------------------------------------ Update-Hinweis --- //
 // Ruhiger Chip in der Kopfleiste, solange eine neuere Version gemeldet ist (`/api/app.update`, Server vergleicht mit der laufenden Version)
 // und sie in diesem Browser nicht weggeklickt wurde (`store` update.dismissed). Kommt eine neuere Version, erscheint er wieder.
-// Klick → Kontextpanel mit „Was ist neu“ (reiner Text vom Server, alles über esc()) und dem passenden Download – installiert wird nichts.
+// Klick → Kontextpanel mit „Was ist neu“ (reiner Text vom Server, alles über esc()) und dem passenden Download. „Jetzt aktualisieren“
+// (Wunsch 23, nur am Rechner selbst, `u.auto`): Server lädt Installer/Paket aus dem Release, prüft die SHA-256 und startet ihn –
+// Adresse und Prüfsumme kommen nur aus der Release-Abfrage des Servers, der Browser schickt nichts mit.
 const UPD_KIND = {
   windows: ['Windows-Installer laden', 'Den Installer ausführen – er beendet AstroFlow kurz, Daten und Einstellungen bleiben erhalten.'],
   linux: ['Linux-Paket laden', 'Paket entpacken und <code>./install.sh</code> ausführen – Daten und Einstellungen bleiben erhalten.'],
   docker: [null, 'Docker: im Projektordner <code>git pull</code> und <code>docker compose up -d --build</code>.'],
   source: [null, 'Aus dem Quellcode: <code>git pull</code>, dann <code>pip install -r requirements.txt</code> und AstroFlow neu starten. Fertige Pakete für Windows und Linux stehen auf der Release-Seite.'],
+};
+const UPD_AUTO = {
+  windows: 'AstroFlow lädt den Installer, prüft die Prüfsumme und startet ihn. Er beendet AstroFlow kurz; Daten und Einstellungen bleiben.',
+  linux: 'AstroFlow lädt das Paket, prüft die Prüfsumme, entpackt es und führt <code>install.sh</code> aus. AstroFlow startet danach neu; Daten und Einstellungen bleiben.',
+};
+const UPD_WHY = {
+  portable: 'Die portable Fassung aktualisiert sich nicht selbst – neues Paket entpacken.',
+  nosha: 'Dieses Release hat noch keine Prüfsumme – deshalb hier nur der Download.',
 };
 function updateHint(u, manual = false) {
   AF.app.update = u || null;
@@ -567,17 +577,47 @@ function updatePanel(offer) {
   if (!u?.latest) return;
   const [label, how] = UPD_KIND[u.kind] || UPD_KIND.source;
   const notes = (u.notes || []).map(n => n.h ? `<h4>${esc(n.t)}</h4>` : `<p>${esc(n.t)}</p>`).join('');
-  const dl = u.download;
+  const dl = u.download, auto = !!(u.auto && dl);
+  const why = UPD_WHY[u.manual_reason] ? ` ${UPD_WHY[u.manual_reason]}` : '';
   AF.ctx.open($('#updBtn'), { title: 'Update verfügbar', html: `<div class="upd-panel">
     <p class="upd-ver"><b>AstroFlow ${esc(u.latest)}</b><span class="mut sm">Du nutzt ${esc(u.current || AF.app.version)}${u.published ? ` · erschienen ${esc(fnight(u.published))}` : ''}</span></p>
     <div class="upd-acts">
-      ${label && dl ? `<a class="btn sm" href="${esc(dl.url)}" target="_blank" rel="noopener">${icon('down')}${esc(label)}</a>` : ''}
+      ${auto ? `<button class="btn sm" id="updGo" data-local-only>${icon('down')}Jetzt aktualisieren</button>` : ''}
+      ${label && dl ? `<a class="btn ${auto ? 'ghost ' : ''}sm" href="${esc(dl.url)}" target="_blank" rel="noopener">${auto ? 'Nur herunterladen' : icon('down') + esc(label)}</a>` : ''}
       <a class="btn ghost sm" href="${esc(u.url)}" target="_blank" rel="noopener">Release-Seite</a>
     </div>
-    <p class="mut sm">${dl || !label ? how : 'Fertige Pakete stehen auf der Release-Seite.'} AstroFlow lädt und installiert nichts selbst.</p>
+    <div class="upd-run" id="updRun" hidden></div>
+    <p class="mut sm">${auto ? UPD_AUTO[u.kind] : `${dl || !label ? how : 'Fertige Pakete stehen auf der Release-Seite.'}${why} AstroFlow lädt und installiert hier nichts selbst.`}</p>
     <button class="upd-dismiss" id="updDismiss">Hinweis für diese Version ausblenden</button>
     ${notes ? `<h3>Was ist neu</h3><div class="upd-notes">${notes}</div>` : ''}</div>` });
   AF.ctx.show();
+  const run = $('#updRun'), go = $('#updGo');
+  // Fortschritt des Update-Auftrags (auch in der Aktivität): Zeile mit Balken, Abbrechen bis zum Start des Installers
+  const paint = (t) => {
+    if (!run.isConnected) return false;
+    run.hidden = !t;
+    if (!t) return false;
+    const live = t.state === 'running';
+    if (go) go.disabled = live || t.state === 'done';      // Installer läuft schon – kein zweiter Start
+    run.innerHTML = live ? `${jobLine({ state: 'running', stage: t.detail, progress: t.progress })}
+        ${t.cancelable ? '<button class="btn ghost sm" id="updStop">Abbrechen</button>' : ''}`
+      : `<p class="sm ${t.state === 'error' ? 'bad' : 'mut'}">${esc(t.detail || '')}</p>`;
+    const stop = $('#updStop', run);
+    if (stop) stop.onclick = async () => { stop.disabled = true; try { paint((await send('/system/update/cancel')).task); } catch (e) { toast(e.message, 'err'); } };
+    return live;
+  };
+  const follow = async () => {          // verkettet statt setInterval: höchstens eine Abfrage gleichzeitig, endet mit dem Panel
+    let t = null;
+    try { t = (await api('/system/update/install')).task; } catch { return; }
+    if (paint(t)) setTimeout(follow, 1000);
+  };
+  if (auto && AF.app.local !== false) follow();
+  if (go) go.onclick = async () => {
+    if (!await confirmDlg(`Auf AstroFlow ${u.latest} aktualisieren?`, `${UPD_AUTO[u.kind] || ''} Laufende Aufträge werden dabei unterbrochen und nach dem Neustart fortgesetzt.`, 'Jetzt aktualisieren')) return;
+    go.disabled = true;
+    try { if (paint((await send('/system/update/install')).task)) setTimeout(follow, 1000); }
+    catch (e) { go.disabled = false; toast(e.message, 'err'); }
+  };
   $('#updDismiss').onclick = () => {
     store.set('update.dismissed', u.latest);
     updateHint(u);

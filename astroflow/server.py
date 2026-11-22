@@ -108,7 +108,7 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
             mods[m.id] = st
             busy += int(st.get("busy_jobs") or 0)
         # Komponenten-Downloads und Demo zählen mit: Infobereich fragt dann vor dem Beenden, die Kopfleiste zeigt sie
-        busy += sum(1 for t in list(setup.tasks.values()) if t.get("state") == "running")
+        busy += sum(1 for t in list(setup.tasks.values()) if t.get("state") == "running") + int(setup.updater.running())
         upd = update_offer()                              # nur die Nummer: das Frontend holt Details, wenn sie sich ändert
         return {"version": VERSION, "busy": busy, "modules": mods, "update": upd["latest"] if upd else None}
 

@@ -50,6 +50,7 @@ jobs:
           path: |
             dist/AstroFlow-*.zip
             dist/AstroFlow-Setup-*.exe
+            dist/AstroFlow-*.sha256
           retention-days: 14
 
   release:
@@ -78,7 +79,8 @@ jobs:
         shell: pwsh
         run: |
           $ver = $env:GITHUB_REF_NAME.TrimStart('v')
-          $files = Get-ChildItem dist\AstroFlow-*.zip, dist\AstroFlow-Setup-*.exe
+          $files = Get-ChildItem dist\AstroFlow-*.zip, dist\AstroFlow-Setup-*.exe, dist\AstroFlow-*.sha256   # Prüfsummen für „Jetzt aktualisieren“
+          if (@(Get-ChildItem dist\AstroFlow-*.sha256).Count -lt 2) { Write-Error "Prüfsummen (.sha256) für ZIP und Installer fehlen."; exit 1 }
           gh release view $env:GITHUB_REF_NAME --json isDraft --jq .isDraft > dist/entwurf.txt 2>$null
           if ($LASTEXITCODE -eq 0) {
             if ((Get-Content dist/entwurf.txt) -ne 'true') { Write-Error "Release $env:GITHUB_REF_NAME ist schon veröffentlicht – nichts angehängt."; exit 1 }
