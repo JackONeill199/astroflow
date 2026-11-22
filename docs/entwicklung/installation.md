@@ -114,8 +114,10 @@
   Antwort. Automatik nur, wenn `update_offer` → `auto` (installiertes Windows/Linux, nicht portabel = `launcher.home()` leer, `.sha256` im Release);
   sonst `manual_reason` (`source`/`portable`/`nodownload`/`nosha`) → bisheriger Download-Link bzw. Anleitung. Download (`updater.fetch`):
   Weiterleitungen von Hand, jede Adresse gegen `ALLOWED_HOSTS` (github.com, objects.githubusercontent.com, release-assets.githubusercontent.com;
-  nur https, Port 443), Obergrenze 2 GB, Ablage `%TEMP%/AstroFlow-Update` (`ASTROFLOW_UPDATE_DIR`), beim nächsten Start aufgeräumt.
-  Prüfsumme falsch, Fehler oder Abbruch → Ordner gelöscht, nichts geändert. Windows: Installer losgelöst starten (`launch_windows`; er beendet
+  nur https, Port 443), Obergrenze 2 GB, Ablage nur für den eigenen Nutzer (`%LOCALAPPDATA%\AstroFlow\Update` bzw. `~/.cache/astroflow/update`, `ASTROFLOW_UPDATE_DIR`), je Lauf
+  ein privater `mkdtemp`-Ordner; beim Start werden Laufordner älter als 1 h gelöscht. Abbruch und Installer-Start unter derselben Sperre
+  (`_commit`); nach dem Start nimmt der Server keinen zweiten Auftrag an (`busy`).
+  Prüfsumme falsch, Fehler oder Abbruch **vor dem Installer-Start** → Laufordner gelöscht, nichts geändert (danach zählt der Installer). Windows: Installer losgelöst starten (`launch_windows`; er beendet
   den Server per `PrepareToInstall`). Linux: `tarfile` mit `filter="data"` entpacken, `install.sh --prefix --bin` der laufenden Installation (`linux_target`: Markierung `.astroflow-install` am Programmordner des laufenden Pythons, Befehl `astroflow` zeigt darauf; sonst `manual_reason` `unknown`) losgelöst (`launch_linux`, `start_new_session`,
   Protokoll `install.log`) – ersetzt über `.neu`/`.alt` und startet neu. Fortschritt als Auftrag `setup:update` in der Aktivität, Abbruch bis
   zum Start des Installers. **Die Prüfsumme kommt aus derselben Quelle wie das Paket** – sie schützt nur vor kaputten Downloads; Signatur offen.

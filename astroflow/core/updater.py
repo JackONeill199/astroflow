@@ -9,7 +9,8 @@
 Die Download-Adresse kommt nie vom Client, sondern nur aus der Release-Abfrage des Servers. Jede Anfrage der Kette (auch jede Weiterleitung)
 muss https auf einen erlaubten GitHub-Host sein. Die Prüfsumme stammt aus derselben Quelle wie das Paket und schützt nur vor kaputten bzw.
 abgeschnittenen Downloads, nicht vor einem manipulierten Release – dafür bräuchte es eine Signatur (offen, `docs/FEATURE-WUENSCHE.md` Nr. 23).
-Bei Fehler oder Abbruch bleibt die Installation unverändert; heruntergeladene Teile werden gelöscht.
+Bei Fehler oder Abbruch **vor dem Start des Installers** bleibt die Installation unverändert; heruntergeladene Teile werden gelöscht.
+Was danach schiefgeht, liegt beim Installer bzw. `install.sh` (dort `.neu`/`.alt`).
 """
 from __future__ import annotations
 
@@ -44,8 +45,17 @@ class Cancelled(Exception):
 
 
 def work_dir() -> Path:
-    """Ablage für Download und Entpacken (Temp-Ordner, nie im Datenordner) – beim nächsten Start aufgeräumt."""
-    return Path(os.environ.get("ASTROFLOW_UPDATE_DIR") or Path(tempfile.gettempdir()) / "AstroFlow-Update")
+    """Basisordner für Downloads (nie im Datenordner) – **nur für den eigenen Nutzer**, nie ein gemeinsamer Temp-Ordner (CWE-377):
+    Windows `%LOCALAPPDATA%\\AstroFlow\\Update`, sonst `$XDG_CACHE_HOME/astroflow/update` bzw. `~/.cache/astroflow/update`.
+    Jeder Lauf bekommt darin einen eigenen, atomar und privat angelegten Unterordner (`tempfile.mkdtemp`)."""
+    if os.environ.get("ASTROFLOW_UPDATE_DIR"):
+        return Path(os.environ["ASTROFLOW_UPDATE_DIR"])
+    if os.name == "nt" and os.environ.get("LOCALAPPDATA"):
+        return Path(os.environ["LOCALAPPDATA"]) / "AstroFlow" / "Update"
+    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "astroflow" / "update"
+
+
+KEEP_SECONDS = 3600                      # jüngere Laufordner beim Start nicht löschen – ein Installer könnte sie noch brauchen
 
 
 def allowed(url: str) -> bool:
@@ -199,15 +209,24 @@ class Updater:
         self.cleanup()
 
     def cleanup(self) -> None:
-        """Reste eines früheren Laufs entfernen (der Installer ist dann längst durch)."""
+        """Reste früherer Läufe entfernen – nur Laufordner, die älter als `KEEP_SECONDS` sind (ein eben gestarteter Installer bzw.
+        `install.sh` liest sein Paket noch, auch wenn hier schon ein neuer Server startet)."""
         try:
-            if not self.running():
-                shutil.rmtree(work_dir(), ignore_errors=True)
+            base = work_dir()
+            if self.running() or not base.is_dir():
+                return
+            for d in base.iterdir():
+                if d.is_dir() and not d.is_symlink() and time.time() - d.stat().st_mtime > KEEP_SECONDS:
+                    shutil.rmtree(d, ignore_errors=True)
         except Exception:
             traceback.print_exc()
 
     def running(self) -> bool:
         return bool(self.task and self.task.get("state") == "running")
+
+    def busy(self) -> bool:
+        """Läuft gerade – oder der Installer wurde schon gestartet und braucht sein Paket noch: dann kein zweiter Start."""
+        return self.running() or bool(self.task and self.task.get("launched"))
 
     def state(self) -> dict | None:
         return dict(self.task) if self.task else None
@@ -215,7 +234,7 @@ class Updater:
     def start(self, info: dict, kind: str) -> dict:
         """`info` = Download-Eintrag des Servers (`name`, `url`, `sha256_url`, `latest`) – nie Werte vom Client."""
         with self._lock:
-            if self.running():
+            if self.busy():
                 return self.state()
             self._cancel = threading.Event()
             self.task = {"state": "running", "progress": 0.0, "detail": "Startet …", "started": time.time(),
@@ -224,21 +243,30 @@ class Updater:
         return self.state()
 
     def cancel(self) -> dict | None:
-        if self.running() and self.task.get("cancelable"):
-            self._cancel.set()
-            self.task.update(detail="Wird abgebrochen …")
+        with self._lock:                 # gleiche Sperre wie `_commit`: entweder wirkt der Abbruch, oder der Start ist schon fest
+            if self.running() and self.task.get("cancelable"):
+                self._cancel.set()
+                self.task.update(detail="Wird abgebrochen …")
         return self.state()
+
+    def _commit(self, cancel: threading.Event, detail: str) -> None:
+        """Letzter Punkt für einen Abbruch – danach wird der Installer gestartet."""
+        with self._lock:
+            if cancel.is_set():
+                raise Cancelled()
+            self._set(progress=0.99, detail=detail, cancelable=False)
 
     def _set(self, **kw):
         if self.task is not None:
             self.task.update(**kw)
 
     def _go(self, info: dict, kind: str, cancel: threading.Event):
-        wd = work_dir()
+        wd = None
         try:
             name = safe_name(info.get("name") or "")
-            shutil.rmtree(wd, ignore_errors=True)
-            wd.mkdir(parents=True, exist_ok=True)
+            base = work_dir()
+            base.mkdir(parents=True, exist_ok=True, mode=0o700)
+            wd = Path(tempfile.mkdtemp(prefix="lauf-", dir=base))                 # privat (0700) und atomar angelegt
             self._set(progress=0.01, detail="Prüfsumme laden …")
             raw = fetch(str(info.get("sha256_url") or ""), None, cancel=cancel, limit=MAX_SHA_BYTES)
             want = parse_sha256(raw.decode("utf-8", "replace"), name)
@@ -261,29 +289,30 @@ class Updater:
                     raise UpdateError("Die laufende Linux-Installation ließ sich nicht bestimmen – bitte das Paket von Hand installieren.")
                 root = extract_linux(target, wd / "paket")
                 target.unlink(missing_ok=True)
-                if cancel.is_set():
-                    raise Cancelled()
-                self._set(progress=0.99, detail="Installation starten …", cancelable=False)
+                self._commit(cancel, "Installation starten …")
                 launch_linux(root, *where)
                 msg = "Installation läuft – AstroFlow wird beendet und startet danach in der neuen Fassung."
             else:
-                if cancel.is_set():
-                    raise Cancelled()
-                self._set(progress=0.99, detail="Installer starten …", cancelable=False)
+                self._commit(cancel, "Installer starten …")
                 launch_windows(target)
                 msg = "Installer gestartet – er beendet AstroFlow kurz. Danach AstroFlow wieder öffnen; Daten und Einstellungen bleiben."
-            self._set(state="done", progress=1.0, detail=msg, finished=time.time(), cancelable=False)
+            self._set(state="done", progress=1.0, detail=msg, finished=time.time(), cancelable=False, launched=True)
         except Cancelled:
-            shutil.rmtree(wd, ignore_errors=True)
+            self._drop(wd)
             self._set(state="cancelled", detail="Abgebrochen – nichts wurde geändert.", finished=time.time(), cancelable=False)
         except UpdateError as e:
-            shutil.rmtree(wd, ignore_errors=True)
+            self._drop(wd)
             self._set(state="error", detail=str(e), finished=time.time(), cancelable=False)
         except Exception:
             traceback.print_exc()
-            shutil.rmtree(wd, ignore_errors=True)
+            self._drop(wd)
             self._set(state="error", detail="Update fehlgeschlagen (Netz oder Speicher) – nichts wurde geändert. Details im Protokoll.",
                       finished=time.time(), cancelable=False)
+
+    @staticmethod
+    def _drop(wd: Path | None) -> None:
+        if wd is not None:
+            shutil.rmtree(wd, ignore_errors=True)
 
     def activity(self) -> list[dict]:
         t = self.task

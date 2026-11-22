@@ -3,6 +3,7 @@ Abbruch/Fehler ohne Reste. Netz nur über httpx.MockTransport, der Start des Ins
 nie wird ein echtes oder kopiertes Programm ausgeführt."""
 import hashlib
 import io
+import os
 import tarfile
 import threading
 import time
@@ -93,6 +94,11 @@ def _wait(c, until=("done", "error", "cancelled"), timeout=15):
     raise AssertionError("Update-Auftrag endet nicht")
 
 
+def _leer(base: Path) -> bool:
+    """Keine Laufordner mehr übrig (Fehler/Abbruch räumen auf)."""
+    return not base.exists() or not any(base.iterdir())
+
+
 def _sha(data: bytes, name: str) -> bytes:
     return f"{hashlib.sha256(data).hexdigest()}  {name}\n".encode()
 
@@ -126,7 +132,7 @@ def test_release_mit_pruefsumme_bietet_automatik(env, monkeypatch):
 def test_windows_update_laedt_prueft_und_startet(env, monkeypatch):
     c, net = _client(env, monkeypatch, _assets(), {EXE_NAME: EXE, EXE_NAME + ".sha256": _sha(EXE, EXE_NAME)})
     r = c.post("/api/system/update/install")
-    assert r.status_code == 200 and r.json()["task"]["state"] == "running"
+    assert r.status_code == 200 and r.json()["task"]["state"] in ("running", "done")      # Attrappe kann schon fertig sein
     t = _wait(c)
     assert t["state"] == "done" and "Installer gestartet" in t["detail"], t
     kind, exe, data = env["started"][0]
@@ -141,7 +147,7 @@ def test_falsche_pruefsumme_startet_nichts_und_raeumt_auf(env, monkeypatch):
     c.post("/api/system/update/install")
     t = _wait(c)
     assert t["state"] == "error" and "Prüfsumme stimmt nicht" in t["detail"]
-    assert env["started"] == [] and not (env["tmp"] / "upd").exists()
+    assert env["started"] == [] and _leer(env["tmp"] / "upd")
 
 
 def test_ohne_sha256_kein_automatismus(env, monkeypatch):
@@ -194,13 +200,13 @@ def test_abbruch_raeumt_auf(env, monkeypatch):
     monkeypatch.setattr(updater, "TRANSPORT", httpx.MockTransport(handler))
     c.post("/api/system/update/install")
     end = time.time() + 10
-    while not (env["tmp"] / "upd" / EXE_NAME).exists() and time.time() < end:
+    while not list((env["tmp"] / "upd").glob("*/" + EXE_NAME)) and time.time() < end:
         time.sleep(0.02)
     assert c.post("/api/system/update/cancel").json()["task"]["detail"] == "Wird abgebrochen …"
     gate.set()
     t = _wait(c)
     assert t["state"] == "cancelled" and "nichts wurde geändert" in t["detail"]
-    assert env["started"] == [] and not (env["tmp"] / "upd").exists()
+    assert env["started"] == [] and _leer(env["tmp"] / "upd")
     act = [a for a in c.get("/api/activity").json() if a["key"] == "setup:update"][0]
     assert act["state"] == "done"                                                     # Abbruch ist kein Fehler
 
@@ -231,7 +237,7 @@ def test_linux_update_entpackt_und_startet_install_sh(env, monkeypatch, evil):
     c.post("/api/system/update/install")
     t = _wait(c)
     if evil:                                                    # Pfad außerhalb des Zielordners → tarfile-Filter verweigert
-        assert t["state"] == "error" and env["started"] == [] and not (env["tmp"] / "upd").exists()
+        assert t["state"] == "error" and env["started"] == [] and _leer(env["tmp"] / "upd")
         assert not (env["tmp"] / "ausserhalb.txt").exists()
         return
     assert t["state"] == "done" and "Installation läuft" in t["detail"], t
@@ -250,11 +256,38 @@ def test_quellcode_ohne_automatismus(env, monkeypatch):
 
 
 def test_reste_beim_start_aufgeraeumt(env, monkeypatch):
-    old = env["tmp"] / "upd"
-    old.mkdir()
-    (old / EXE_NAME).write_bytes(b"alt")
+    base = env["tmp"] / "upd"
+    old, young = base / "lauf-alt", base / "lauf-jung"
+    for d in (old, young):
+        d.mkdir(parents=True)
+        (d / EXE_NAME).write_bytes(b"alt")
+    os.utime(old, (time.time() - 2 * updater.KEEP_SECONDS,) * 2)
     _client(env, monkeypatch, _assets(), {})
-    assert not old.exists()
+    assert not old.exists() and young.exists()            # ein eben gestarteter Installer braucht sein Paket noch
+
+
+def test_nach_installer_start_kein_zweiter_auftrag(env, monkeypatch):
+    c, net = _client(env, monkeypatch, _assets(), {EXE_NAME: EXE, EXE_NAME + ".sha256": _sha(EXE, EXE_NAME)})
+    c.post("/api/system/update/install")
+    assert _wait(c)["state"] == "done"
+    n = len(net.seen)
+    assert c.post("/api/system/update/install").json()["task"]["launched"] and len(net.seen) == n and len(env["started"]) == 1
+
+
+def test_abbruch_und_start_unter_einer_sperre():
+    u = updater.Updater()
+    u.task = {"state": "running", "cancelable": True}
+    ev = threading.Event()
+    u._cancel = ev
+    u.cancel()
+    with pytest.raises(updater.Cancelled):                # Abbruch vor dem Start → Installer startet nicht
+        u._commit(ev, "Installer starten …")
+    u.task = {"state": "running", "cancelable": True}
+    ev2 = threading.Event()
+    u._cancel = ev2
+    u._commit(ev2, "Installer starten …")                 # Start fest → späterer Abbruch setzt nichts mehr
+    u.cancel()
+    assert not ev2.is_set() and u.task["cancelable"] is False
 
 
 def test_linux_installation_unbekannt_ohne_automatismus(env, monkeypatch):

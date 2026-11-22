@@ -22,6 +22,8 @@ os.environ.update({"ASTROFLOW_GAIA": "0", "ASTROFLOW_GRAXPERT": "0", "ASTROFLOW_
                    "ASTROFLOW_HORIZONS": "0", "ASTROFLOW_SKY": "0", "ASTROFLOW_UPDATE_CHECK": "0",
                    "ASTROFLOW_DIAG": "0", "ASTROFLOW_PICTURE_SOLVE": "0"})   # kein echtes ASTAP nach Bildimporten
 os.environ.pop("ASTROFLOW_LAUNCHER", None)           # Einrichtungsassistent nur in eigenen Tests (monkeypatch)
+# „Jetzt aktualisieren“: Laufordner nie im echten Nutzerordner anlegen/aufräumen (jeder Server räumt beim Start auf)
+os.environ.setdefault("ASTROFLOW_UPDATE_DIR", os.path.join(tempfile.gettempdir(), f"astroflow-test-update-{os.getpid()}"))
 
 
 def pytest_configure(config):

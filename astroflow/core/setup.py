@@ -594,7 +594,7 @@ class Setup:
 
     def install_update(self) -> dict:
         """„Jetzt aktualisieren“: Release frisch abfragen (Adresse und Prüfsumme nur vom Server), dann laden, prüfen, starten."""
-        if self.updater.running():
+        if self.updater.busy():
             return self.updater.state()
         offer = update_offer(self.check_update(force=True))
         if not offer:

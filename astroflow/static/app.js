@@ -593,30 +593,46 @@ function updatePanel(offer) {
     ${notes ? `<h3>Was ist neu</h3><div class="upd-notes">${notes}</div>` : ''}</div>` });
   AF.ctx.show();
   const run = $('#updRun'), go = $('#updGo');
-  // Fortschritt des Update-Auftrags (auch in der Aktivität): Zeile mit Balken, Abbrechen bis zum Start des Installers
-  const paint = (t) => {
+  // Fortschritt des Update-Auftrags (auch in der Aktivität): Zeile mit Balken, Abbrechen bis zum Start des Installers.
+  // Gerüst nur bei geänderter Signatur (Zustand, abbrechbar) neu bauen – sonst nur Text und Balken, der Abbruchknopf behält den Fokus.
+  let sig = '';
+  const paint = (t, offline = false) => {
     if (!run.isConnected) return false;
     run.hidden = !t;
     if (!t) return false;
     const live = t.state === 'running';
     if (go) go.disabled = live || t.state === 'done';      // Installer läuft schon – kein zweiter Start
-    run.innerHTML = live ? `${jobLine({ state: 'running', stage: t.detail, progress: t.progress })}
-        ${t.cancelable ? '<button class="btn ghost sm" id="updStop">Abbrechen</button>' : ''}`
-      : `<p class="sm ${t.state === 'error' ? 'bad' : 'mut'}">${esc(t.detail || '')}</p>`;
-    const stop = $('#updStop', run);
-    if (stop) stop.onclick = async () => { stop.disabled = true; try { paint((await send('/system/update/cancel')).task); } catch (e) { toast(e.message, 'err'); } };
+    const s = `${t.state}|${!!t.cancelable}|${t.state === 'running' ? '' : t.detail}`;
+    if (s !== sig) {
+      sig = s;
+      run.innerHTML = live ? `<div class="upd-line"></div><p class="sm mut upd-off" hidden>Verbindung unterbrochen – versuche es weiter …</p>
+          ${t.cancelable ? '<button class="btn ghost sm" id="updStop">Abbrechen</button>' : ''}`
+        : `<p class="sm ${t.state === 'error' ? 'bad' : 'mut'}">${esc(t.detail || '')}</p>`;
+      const stop = $('#updStop', run);
+      if (stop) stop.onclick = async () => { stop.disabled = true; try { paint((await send('/system/update/cancel')).task); } catch (e) { stop.disabled = false; toast(e.message, 'err'); } };
+    }
+    if (live) {
+      setJobLine($('.upd-line', run), { state: 'running', stage: t.detail, progress: t.progress });
+      $('.upd-off', run).hidden = !offline;
+    }
     return live;
   };
+  let last = null, fails = 0;
   const follow = async () => {          // verkettet statt setInterval: höchstens eine Abfrage gleichzeitig, endet mit dem Panel
-    let t = null;
-    try { t = (await api('/system/update/install')).task; } catch { return; }
-    if (paint(t)) setTimeout(follow, 1000);
+    if (!run.isConnected) return;
+    try { last = (await api('/system/update/install')).task; fails = 0; }
+    catch {                               // vorübergehend nicht erreichbar: weiter versuchen, Abstand wächst bis 10 s
+      fails += 1;
+      if (last?.state === 'running' && paint(last, true)) setTimeout(follow, Math.min(10000, 1000 * 2 ** fails));
+      return;
+    }
+    if (paint(last)) setTimeout(follow, 1000);
   };
   if (auto && AF.app.local !== false) follow();
   if (go) go.onclick = async () => {
     if (!await confirmDlg(`Auf AstroFlow ${u.latest} aktualisieren?`, `${UPD_AUTO[u.kind] || ''} Laufende Aufträge werden dabei unterbrochen und nach dem Neustart fortgesetzt.`, 'Jetzt aktualisieren')) return;
     go.disabled = true;
-    try { if (paint((await send('/system/update/install')).task)) setTimeout(follow, 1000); }
+    try { last = (await send('/system/update/install')).task; if (paint(last)) setTimeout(follow, 1000); }
     catch (e) { go.disabled = false; toast(e.message, 'err'); }
   };
   $('#updDismiss').onclick = () => {

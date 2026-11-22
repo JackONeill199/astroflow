@@ -257,7 +257,8 @@ Download-Link; geladen und installiert wird bewusst nichts. Später denkbar, nur
   ZIP), Installer starten. Linux (installiert): Paket laden, prüfen, sicher entpacken, `install.sh` ausführen (ersetzt über `.neu`/`.alt`,
   startet neu). Portable Fassung, Quellcode/Docker und Releases ohne `.sha256`: wie bisher nur Download-Link bzw. Anleitung. Nur https,
   nur GitHub-Hosts (jede Weiterleitung geprüft), Adresse nie vom Browser. Fortschritt als Auftrag in der Aktivität, Abbruch bis zum
-  Installer-Start; bei Fehler oder Abbruch bleibt alles beim Alten, Teile werden gelöscht. Windows: nach dem Installer startet AstroFlow über
+  Installer-Start; bei Fehler oder Abbruch **vor dem Start des Installers** bleibt alles beim Alten, Teile werden gelöscht (was danach
+  scheitert, fängt der Installer bzw. `install.sh` über `.neu`/`.alt` ab – ohne Garantie, dass AstroFlow dann wieder läuft). Windows: nach dem Installer startet AstroFlow über
   dessen Haken „AstroFlow jetzt starten“.
 - **Weiter offen:** Signatur statt Prüfsumme – die `.sha256` liegt im selben Release wie das Paket und schützt daher **nur vor kaputten bzw.
   abgeschnittenen Downloads**, nicht vor einem manipulierten Release.
