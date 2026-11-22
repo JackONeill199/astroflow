@@ -57,6 +57,7 @@ UPDATE_MANUAL = {   # warum es keinen Automatismus gibt (feste Texte, auch fürs
     "portable": "Die portable Fassung aktualisiert sich nicht selbst – bitte das neue Paket von der Release-Seite entpacken.",
     "nodownload": "Für dieses System liegt im Release kein Paket – bitte die Release-Seite öffnen.",
     "nosha": "Dieses Release hat keine Prüfsumme – bitte das Paket von Hand laden.",
+    "unknown": "Die laufende Linux-Installation ließ sich nicht bestimmen – bitte das Paket von Hand installieren.",
 }
 TASK_NAMES = {"astap": "ASTAP + Sterndatenbank", "demo": "Demo-Aufnahmen", "gpu": "GPU-Beschleunigung",
               "graxpert": "GraXpert", "skytrace": "SkyTrace-Analyse-Engine", "firewall": "Firewall-Freigabe"}

@@ -65,7 +65,8 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(setup_mod, "install_kind", lambda: "windows")
     started = []
     monkeypatch.setattr(updater, "launch_windows", lambda exe: started.append(("windows", exe, exe.read_bytes())))
-    monkeypatch.setattr(updater, "launch_linux", lambda root: started.append(("linux", root, (root / "install.sh").read_bytes())))
+    monkeypatch.setattr(updater, "launch_linux",
+                        lambda root, prefix, bindir: started.append(("linux", root, (root / "install.sh").read_bytes(), prefix, bindir)))
     return {"tmp": tmp_path, "started": started}
 
 
@@ -222,6 +223,8 @@ def _linux_pkg(evil: bool = False) -> bytes:
 @pytest.mark.parametrize("evil", [False, True])
 def test_linux_update_entpackt_und_startet_install_sh(env, monkeypatch, evil):
     monkeypatch.setattr(setup_mod, "install_kind", lambda: "linux")
+    where = (env["tmp"] / "eigenes" / "app", env["tmp"] / "eigenes" / "bin")      # eigene --prefix/--bin werden durchgereicht
+    monkeypatch.setattr(updater, "linux_target", lambda: where)
     n = "AstroFlow-99.0.0-Linux-x86_64.tar.gz"
     pkg = _linux_pkg(evil)
     c, _ = _client(env, monkeypatch, _assets(linux=True), {n: pkg, n + ".sha256": _sha(pkg, n)})
@@ -232,8 +235,8 @@ def test_linux_update_entpackt_und_startet_install_sh(env, monkeypatch, evil):
         assert not (env["tmp"] / "ausserhalb.txt").exists()
         return
     assert t["state"] == "done" and "Installation läuft" in t["detail"], t
-    kind, root, script = env["started"][0]
-    assert kind == "linux" and root.name == "AstroFlow" and script.startswith(b"#!/bin/sh")
+    kind, root, script, prefix, bindir = env["started"][0]
+    assert kind == "linux" and root.name == "AstroFlow" and script.startswith(b"#!/bin/sh") and (prefix, bindir) == where
     assert not (root.parent.parent / n).exists()                # Archiv nach dem Entpacken gelöscht
 
 
@@ -252,3 +255,31 @@ def test_reste_beim_start_aufgeraeumt(env, monkeypatch):
     (old / EXE_NAME).write_bytes(b"alt")
     _client(env, monkeypatch, _assets(), {})
     assert not old.exists()
+
+
+def test_linux_installation_unbekannt_ohne_automatismus(env, monkeypatch):
+    monkeypatch.setattr(setup_mod, "install_kind", lambda: "linux")
+    monkeypatch.setattr(updater, "linux_target", lambda: None)
+    c, net = _client(env, monkeypatch, _assets(linux=True), {})
+    up = c.post("/api/system/update/check").json()["update"]
+    assert up["auto"] is False and up["manual_reason"] == "unknown"
+    assert c.post("/api/system/update/install").status_code == 409 and net.seen == []
+
+
+def test_linux_ziel_aus_laufender_installation(tmp_path, monkeypatch):
+    prefix = (tmp_path / "eigen app").resolve()
+    py = prefix / "python" / "bin" / "python3"
+    py.parent.mkdir(parents=True)
+    py.write_bytes(b"")
+    monkeypatch.setattr(updater.sys, "executable", str(py))
+    monkeypatch.setattr(updater.Path, "home", lambda: tmp_path / "home")
+    bindir = tmp_path / "werkzeug"
+    bindir.mkdir()
+    wrapper = bindir / "astroflow"
+    wrapper.write_text(f"#!/bin/sh\nexec '{py}' -I -m astroflow \"$@\"\n", encoding="utf-8")
+    monkeypatch.setattr(updater.shutil, "which", lambda name: str(wrapper))
+    assert updater.linux_target() is None                                  # ohne Markierung (portabel/fremd) → kein Automatismus
+    (prefix / updater.LINUX_MARKER).write_text("x", encoding="utf-8")
+    assert updater.linux_target() == (prefix, bindir)
+    wrapper.write_text("#!/bin/sh\nexec /anderswo/python3 -I -m astroflow\n", encoding="utf-8")
+    assert updater.linux_target() is None                                  # Befehl gehört zu einer anderen Installation

@@ -116,7 +116,7 @@
   Weiterleitungen von Hand, jede Adresse gegen `ALLOWED_HOSTS` (github.com, objects.githubusercontent.com, release-assets.githubusercontent.com;
   nur https, Port 443), Obergrenze 2 GB, Ablage `%TEMP%/AstroFlow-Update` (`ASTROFLOW_UPDATE_DIR`), beim nächsten Start aufgeräumt.
   Prüfsumme falsch, Fehler oder Abbruch → Ordner gelöscht, nichts geändert. Windows: Installer losgelöst starten (`launch_windows`; er beendet
-  den Server per `PrepareToInstall`). Linux: `tarfile` mit `filter="data"` entpacken, `install.sh` losgelöst (`launch_linux`, `start_new_session`,
+  den Server per `PrepareToInstall`). Linux: `tarfile` mit `filter="data"` entpacken, `install.sh --prefix --bin` der laufenden Installation (`linux_target`: Markierung `.astroflow-install` am Programmordner des laufenden Pythons, Befehl `astroflow` zeigt darauf; sonst `manual_reason` `unknown`) losgelöst (`launch_linux`, `start_new_session`,
   Protokoll `install.log`) – ersetzt über `.neu`/`.alt` und startet neu. Fortschritt als Auftrag `setup:update` in der Aktivität, Abbruch bis
   zum Start des Installers. **Die Prüfsumme kommt aus derselben Quelle wie das Paket** – sie schützt nur vor kaputten Downloads; Signatur offen.
   Tests ersetzen `launch_*` und nutzen `updater.TRANSPORT = httpx.MockTransport` (`tests/test_update_install.py`). Paket-Workflow: `build_windows.py`

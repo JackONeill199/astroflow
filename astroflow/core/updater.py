@@ -145,10 +145,32 @@ def launch_windows(exe: Path) -> None:
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def launch_linux(root: Path) -> None:
+def launch_linux(root: Path, prefix: Path, bindir: Path) -> None:
+    """`install.sh` mit Programm- und Befehlsordner der laufenden Installation (auch eigene `--prefix`/`--bin`): nur so beendet es
+    genau diesen Server über seinen Befehl und ersetzt genau diesen Programmordner."""
     log = open(root.parent / "install.log", "ab")
-    subprocess.Popen(["/bin/sh", str(root / "install.sh")], cwd=str(root), start_new_session=True, close_fds=True,
-                     stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+    subprocess.Popen(["/bin/sh", str(root / "install.sh"), "--prefix", str(prefix), "--bin", str(bindir)], cwd=str(root),
+                     start_new_session=True, close_fds=True, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+
+
+LINUX_MARKER = ".astroflow-install"      # wie `installer/linux_install.MARKER`: Programmordner aus install.sh
+
+
+def linux_target() -> tuple[Path, Path] | None:
+    """Programmordner und Befehlsordner der laufenden Linux-Installation – oder None, wenn sie sich nicht sicher bestimmen lassen
+    (dann kein Automatismus). Programmordner = `<prefix>/python/bin/python3` des laufenden Pythons mit Markierungsdatei; der Befehl
+    `astroflow` muss auf genau diesen Ordner zeigen (Standard `~/.local/bin`, sonst der im PATH)."""
+    try:
+        prefix = Path(sys.executable).resolve().parents[2]
+        if not (prefix / LINUX_MARKER).is_file():
+            return None
+        found = shutil.which("astroflow")
+        for w in (Path.home() / ".local" / "bin" / "astroflow", Path(found) if found else None):
+            if w and w.is_file() and str(prefix / "python" / "bin" / "python3") in w.read_text(encoding="utf-8", errors="replace")[:4000]:
+                return prefix, w.parent
+    except (OSError, IndexError, ValueError):
+        traceback.print_exc()
+    return None
 
 
 def availability(offer: dict | None, kind: str, portable: bool) -> tuple[bool, str]:
@@ -157,6 +179,8 @@ def availability(offer: dict | None, kind: str, portable: bool) -> tuple[bool, s
         return False, "source"
     if portable:
         return False, "portable"
+    if kind == "linux" and linux_target() is None:
+        return False, "unknown"
     dl = (offer or {}).get("download") or {}
     if not dl.get("url"):
         return False, "nodownload"
@@ -232,12 +256,15 @@ class Updater:
                 raise UpdateError("Prüfsumme stimmt nicht – die Datei ist beschädigt. Nichts wurde geändert, bitte erneut versuchen.")
             if kind == "linux":
                 self._set(progress=0.94, detail="Paket entpacken …")
+                where = linux_target()
+                if where is None:
+                    raise UpdateError("Die laufende Linux-Installation ließ sich nicht bestimmen – bitte das Paket von Hand installieren.")
                 root = extract_linux(target, wd / "paket")
                 target.unlink(missing_ok=True)
                 if cancel.is_set():
                     raise Cancelled()
                 self._set(progress=0.99, detail="Installation starten …", cancelable=False)
-                launch_linux(root)
+                launch_linux(root, *where)
                 msg = "Installation läuft – AstroFlow wird beendet und startet danach in der neuen Fassung."
             else:
                 if cancel.is_set():

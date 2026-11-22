@@ -559,6 +559,7 @@ const UPD_AUTO = {
 const UPD_WHY = {
   portable: 'Die portable Fassung aktualisiert sich nicht selbst – neues Paket entpacken.',
   nosha: 'Dieses Release hat noch keine Prüfsumme – deshalb hier nur der Download.',
+  unknown: 'Die Installation ließ sich nicht sicher bestimmen – deshalb hier nur der Download.',
 };
 function updateHint(u, manual = false) {
   AF.app.update = u || null;
