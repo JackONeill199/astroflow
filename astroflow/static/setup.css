@@ -80,3 +80,25 @@
 p.su-task { display: block }                       /* fertig/Fehler: Haken und Text in einer Zeile (nicht einzeln darüber) */
 @media (max-width: 860px) { .su-foot { bottom: calc(3.625rem + env(safe-area-inset-bottom)) } }   /* über der Navigationsleiste unten */
 @media (max-width: 600px) { .su-foot .su-bg { display: none } .su-foot { justify-content: stretch } .su-foot .btn { flex: 1; justify-content: center } }
+
+/* „AstroFlow unterstützen“ (support.js): Dialog mit Herz, Markenfarben nur als Knopfhintergrund */
+.support-dlg { position: relative; width: min(30rem, 94vw); max-height: 94vh; overflow: auto }
+.support-dlg .sp-x { position: absolute; top: 0.5rem; right: 0.5rem; width: 2rem; height: 2rem; border: 0; border-radius: var(--r-sm); background: none; color: var(--mut); font-size: 1.25rem; line-height: 1; cursor: pointer }
+.support-dlg .sp-x:hover { background: var(--acc-soft); color: var(--fg) }
+.sp-head { display: flex; align-items: center; gap: 0.75rem; margin: 0 2rem 0.75rem 0 }
+.sp-head h2 { margin: 0; font-size: 1.125rem }
+.sp-heart { flex: none; width: 2.25rem; height: 2.25rem; display: grid; place-items: center; border-radius: var(--r); color: var(--bad); background: color-mix(in srgb, var(--bad) 16%, transparent) }
+.sp-heart svg { width: 1.25rem; height: 1.25rem }
+.support-dlg p { margin: 0 0 0.875rem }
+.sp-links { display: flex; flex-wrap: wrap; gap: 0.625rem; margin: 1rem 0 }
+.sp-btn { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.875rem; border-radius: var(--r-sm); color: #fff; font-weight: 600; font-size: 0.875rem; text-decoration: none; transition: filter var(--t), transform var(--t) }
+.sp-btn svg { width: 1.125rem; height: 1.125rem }
+.sp-btn:hover { filter: brightness(1.12) }
+.sp-btn:active { transform: scale(.97) }
+.sp-btn:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px }
+.sp-github { background: #bf3989 }
+.sp-kofi { background: #d9443f }
+.sp-note { margin-bottom: 0 }
+.sp-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 1rem; padding-top: 0.875rem; border-top: 1px solid var(--border-soft) }
+.sp-foot:has(> .btn:only-child) { justify-content: flex-end }
+@media (prefers-reduced-motion: reduce) { .sp-btn { transition: none } .sp-btn:active { transform: none } }

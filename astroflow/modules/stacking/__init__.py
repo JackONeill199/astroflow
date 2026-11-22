@@ -32,6 +32,7 @@ class Module(BaseModule):
             traceback.print_exc()
         ctx.services["plate_solver"] = PictureSolver(self.eng.pl.solver_cfg, ctx.settings.work_dir)
         ctx.services["project_picture"] = self.project_picture
+        ctx.services["finished_pictures"] = lambda: (self.eng.db.one("SELECT COUNT(*) AS n FROM results") or {"n": 0})["n"]   # Kern: „AstroFlow unterstützen“ erst nach dem 3. Bild
         ctx.services["project_solution"] = self.project_solution
         ctx.services["project_frames"] = self.project_frames
         ctx.services["observation_log"] = self.observation_log

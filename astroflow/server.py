@@ -20,6 +20,7 @@ from .core import pollcache
 from .core import qr
 from .core import report as report_mod
 from .core import security
+from .core import support as support_mod
 from .core import sites as sites_mod
 from .core import setup as setup_mod
 from . import __version__ as VERSION
@@ -93,7 +94,7 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
         return {"version": VERSION, "build": build, "modules": [m.info() for m in loaded],
                 "local": security.is_loopback(request.client.host if request.client else ""),
                 "setup": {"pending": setup.state()["pending"] if setup.launched else False, "launched": setup.launched},
-                "settings_problem": ctx.store.problem, "report": report_mod.enabled(ctx.store),
+                "settings_problem": ctx.store.problem, "report": report_mod.enabled(ctx.store), "support": support_mod.links(),
                 "update": update_offer()}
 
     # Status und Aktivität pollt jeder Tab alle 2,5 s: ein Ergebnis für alle (core/pollcache.py), eigene kleine Thread-Spur
@@ -311,6 +312,8 @@ def create_app(settings: Settings | None = None, only: tuple[str, ...] | None = 
 
     app.include_router(setup_mod.build_router(setup), prefix="/api", tags=["setup"])
     app.include_router(report_mod.build_router(ctx, app.state), prefix="/api", tags=["report"])   # Fehler melden (nur zusammenstellen)
+
+    app.include_router(support_mod.build_router(ctx), prefix="/api", tags=["support"])   # „AstroFlow unterstützen“
 
     for m in active:
         r = m.module.router()

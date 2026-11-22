@@ -193,6 +193,7 @@ def server(tmp_path_factory):
         mp.delenv("SKYTRACE_HOME", raising=False)          # SkyTrace setzt sie beim Laden prozessweit – danach wieder entfernen
         s = load_settings(root / "data")
         SettingsStore(s.data_dir / "settings.json").update("skytrace", {"home": str(root / "skytrace")})
+        SettingsStore(s.data_dir / "settings.json").update("support", {"never": True})   # „AstroFlow unterstützen“ stört die Layouttests nicht (test_support.py mockt die Antwort)
         SettingsStore(s.data_dir / "settings.json").update("sites", {       # erfundene Orte, langer Name für die Layoutprüfung
             "list": [{"id": "a", "name": LONG, "lat": 47.5, "lon": 10.25, "alt_m": 400, "accuracy_m": 30, "note": LONG},
                      {"id": "b", "name": "Beispielberg", "lat": 45.0, "lon": 6.0, "alt_m": 0, "accuracy_m": 2000, "note": ""},

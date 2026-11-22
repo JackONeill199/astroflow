@@ -372,6 +372,9 @@
         <p class="sm mut hl-keys">Suchen &amp; Befehle: <kbd>Strg</kbd> + <kbd>K</kbd> – findet Objekte, Ansichten und diese Hilfe.</p></div>
       <div class="panel hl-panel"><h2>Häufige Fragen</h2>
         <div class="hl-faq">${faq.map(([q, a]) => `<details><summary>${esc(q)}</summary><p class="sm">${a}</p></details>`).join('')}</div></div>
+      ${AF.app.support?.length ? `<div class="panel hl-panel"><h2>AstroFlow unterstützen</h2>
+        <p class="sm mut readable">AstroFlow ist kostenlos und entsteht in der Freizeit. Wenn es dir Zeit spart, freue ich mich über deine Unterstützung – ganz freiwillig.</p>
+        <div class="su-acts"><button class="btn ghost sm" data-support>${icon('heart')}Unterstützen</button></div></div>` : ''}
       <div class="panel hl-panel"><h2>Anleitung und Kontakt</h2>
         <div class="su-acts"><a class="btn ghost sm" href="${DOC}README.md" target="_blank" rel="noopener">${icon('book')}Anleitung (README)</a>
           <a class="btn ghost sm" href="${DOC}docs/module/bilder.md" target="_blank" rel="noopener">Bilder</a>
@@ -379,6 +382,7 @@
           <a class="btn ghost sm" href="${DOC}docs/module/sage.md" target="_blank" rel="noopener">Sage</a>
           ${AF.app.report ? `<button class="btn ghost sm" data-report>${icon('bug')}Fehler melden</button>` : ''}</div>
         <p class="dim sm hl-ver">AstroFlow ${esc(AF.app.version || '')} · Die Links öffnen GitHub im Browser.</p></div>`;
+    el.querySelector('[data-support]')?.addEventListener('click', () => window.support.open());
     api('/setup').then(s => { const d = $('#hlData', el); if (d?.isConnected) d.innerHTML = `<code>${esc(s.data.path)}</code>`; }).catch(() => {});
   }
 
