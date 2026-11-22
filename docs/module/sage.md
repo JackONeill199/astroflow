@@ -136,7 +136,19 @@ Beleg zählen nur Quellen, die Sage tatsächlich abgerufen hat – erfundene Ver
 
 Aus Enzyklopädie und deinen Daten erzählt Sage in sechs Formaten: **wissenschaftliche Dokumentation**, **spannende Geschichte**,
 **persönlicher Beobachtungsbericht**, **Einsteigererklärung**, **Deep Dive** und die **Audioführung durch dein Bild** – ein Abschnitt
-je Objekt, wobei beim Abspielen das jeweilige Objekt im Bild hervorgehoben wird. Alle Erzählungen sammeln sich unter „Deine Geschichten“.
+je Objekt. Alle Erzählungen sammeln sich unter „Deine Geschichten“.
+
+Die Audioführung ist eine **geführte Tour**: Das Bild fährt zum besprochenen Objekt, zoomt hinein und markiert es (kleine Objekte mit
+einem Pfeil, mittlere mit einem Kreis, fast bildfüllende mit einem gestrichelten Umriss); der Text läuft als Untertitel mit. Mit
+**Zurück/Weiter**, **Abspielen/Pause** oder einem Klick in die Abschnittsliste springst du frei herum – auch per Tastatur (← →,
+Leertaste oder K). Ohne „Vorlesen“ blättert die Tour nach Lesezeit weiter. Bei reduzierter Bewegung (Systemeinstellung) springt das
+Bild ohne Fahrt.
+
+**Was ist an dieser Stelle?** Tippst du in einem bestimmten Bild auf eine freie Stelle (nicht auf eine Objektmarke), rechnet Sage aus
+dem Plate-Solving den Himmelsort aus und schlägt in der Umgebung nach – in den Objektmarken des Bildes, der Enzyklopädie und, wenn
+Online-Quellen erlaubt sind, in SIMBAD. Die Antwort erscheint im Chat zum Bild, die Stelle und die gefundenen Objekte werden im Bild
+markiert. Ohne Maus: „Hier fragen“ fragt nach der Mitte der aktuellen Ansicht. Sage erfindet dabei nichts: Steht an der Stelle nichts
+in den Katalogen, sagt Sage genau das.
 
 Vorlesen funktioniert wahlweise über OpenRouter (z. B. ElevenLabs-Stimmen), direkt über ein eigenes ElevenLabs-Konto oder einen lokalen,
 OpenAI-kompatiblen Sprachserver. Die Vertonung wird gespeichert und nur bei einer anderen Stimme neu erzeugt.

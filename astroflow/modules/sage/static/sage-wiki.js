@@ -518,10 +518,12 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
       const h = await api(`/sage/history/${g.entry}`).catch(() => null);
       if (h) {
         const objs = (h.objects || []).filter(o => o.x != null);
-        let v = null;
-        v = createViewer(host, h.image, null, undefined, null, objs.length ? { overlay: (svg, w) => labels(svg, w, h, objs, e.name), onTap: (t, ev) => { const n = tapName(v, ev); if (n) card(n, ev, { image: h.id }); } } : {});
+        let v = null, spot = null;
+        const solved = h.solution?.ra != null, setSpot = (sp) => { spot = sp; v?.redraw(); };
+        v = createViewer(host, h.image, null, undefined, null, objs.length || solved ? { overlay: (svg, w) => { labels(svg, w, h, objs, e.name); guideMarks(svg, w, h, null, spot); },
+          onTap: (t, ev) => { const n = pickStrict(v, ev)?.dataset.n; if (n) card(n, ev, { image: h.id }); else if (solved) askSpot(h, spotAt(v, h, ev), setSpot); } } : {});
         cleanup.push(() => v.destroy());
-        cap.innerHTML = `<b>${esc(h.title)}</b> – eigene Aufnahme (${shotDate(g)}${g.minutes ? `, ${g.minutes} min` : ''}) · ${objs.length} Objekte markiert, antippen für Wissen <a href="${g.href}">${icon('arrow')}</a>`;
+        cap.innerHTML = `<b>${esc(h.title)}</b> – eigene Aufnahme (${shotDate(g)}${g.minutes ? `, ${g.minutes} min` : ''}) · ${objs.length} Objekte markiert, antippen für Wissen${solved ? ' – freie Stelle antippen: Was liegt dort?' : ''} <a href="${g.href}">${icon('arrow')}</a>`;
         return;
       }
     }
@@ -719,41 +721,99 @@ async function objectView(el, id, tab = 'uebersicht', opts = {}) {
     };
     $('#swSDel').onclick = async () => { if (await confirmDlg('Erzählung löschen?', 'Text und Vertonung werden entfernt.', 'Löschen', true)) { await send(`${K}/stories/${s.id}`, null, 'DELETE'); d.stories = d.stories.filter(x => x.id !== s.id); show('geschichten'); } };
   }
-  // Audioführung: Abschnitt für Abschnitt vertonen; das besprochene Objekt leuchtet im Bild auf
+  // Geführte Tour (Wunsch 19): Schritte {Text, Ziel in Bildpixeln, Zoom} vom Server; der Betrachter fährt zum Objekt,
+  // markiert es (Pfeil/Kreis/Umriss) und zeigt den Text als Untertitel. Vor/Zurück, Pause, Tastatur; Vorlesen abschaltbar.
   async function tour(host, s) {
-    host.innerHTML = `<div class="panel sw-tour"><div class="row"><h2>${esc(s.title)}</h2><span class="grow"></span>${ttsSel()}<button class="btn sm" id="swPlay">${icon('play')}Führung starten</button></div>
-        <div id="swTV" style="margin-top:12px"></div><ol class="sw-segs">${s.segments.map((g, i) => `<li data-i="${i}">${g.object ? `<b>${esc(g.object)}</b> ` : ''}${esc(g.text)}</li>`).join('')}</ol>
-        <div class="dim sm">${esc(s.model)}</div></div>`;
-    const h = s.image?.entry ? await api(`/sage/history/${s.image.entry}`).catch(() => null) : null;
-    let ov = null;
+    const ton = store.get('sage.guide.ton', true);
+    host.innerHTML = `<div class="panel sw-tour"><div class="row sw-tour-h"><h2>${esc(s.title)}</h2><span class="grow"></span>${ttsSel()}
+        <label class="modrow sw-ton"><input type="checkbox" id="swTon" ${ton ? 'checked' : ''}><span class="switch"></span><span>Vorlesen</span></label></div>
+      <div class="sw-guide" tabindex="0" aria-label="Geführte Tour: Pfeiltasten blättern, Leertaste startet oder pausiert">
+        <div id="swTV"></div>
+        <div class="sw-sub" aria-live="polite"><small class="dim" id="swSubN">${s.segments.length} Schritte</small><p id="swSubT" class="mut">Starte die Führung – Sage fährt im Bild von Objekt zu Objekt.</p></div>
+        <div class="row sw-gctl"><button class="btn sm ghost" data-g="prev" title="Zurück (←)" aria-label="Zurück">${icon('back')}</button>
+          <button class="btn sm" data-g="play" id="swPlay">${icon('play')}Führung starten</button>
+          <button class="btn sm ghost" data-g="next" title="Weiter (→)" aria-label="Weiter">${icon('arrow')}</button>
+          <span class="grow"></span><button class="btn sm ghost" data-g="spot" title="Was liegt in der Mitte der Ansicht?" hidden>${icon('target')}Hier fragen</button></div>
+      </div>
+      <ol class="sw-segs">${s.segments.map((g, i) => `<li data-i="${i}" tabindex="0" role="button">${g.object ? `<b>${esc(g.object)}</b> ` : ''}${esc(g.text)}</li>`).join('')}</ol>
+      <p class="dim sm">${esc(s.model)} · Stelle im Bild antippen: Sage schlägt in den Katalogen nach, was dort liegt.</p></div>`;
+    const [g, h] = await Promise.all([api(`${K}/stories/${s.id}/guide`).catch(() => null), s.image?.entry ? api(`/sage/history/${s.image.entry}`).catch(() => null) : null]);
+    if (!host.isConnected) return;
+    const steps = g?.steps?.length ? g.steps : s.segments.map(x => ({ text: x.text, object: x.object, zoom: 1 }));
+    let v = null, cur = -1, playing = false, audio = null, timer = 0, gen = 0, spot = null;
+    const W = g?.width || h?.width || 0, H = g?.height || h?.height || 0;
+    const reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const markFocus = (svg) => $$('g[data-n]', svg).forEach(n => n.classList.toggle('focus', cur >= 0 && n.dataset.n === steps[cur]?.object));
+    const setSpot = (sp) => { spot = sp; v?.redraw(); };
     if (h) {
       const objs = (h.objects || []).filter(o => o.x != null);
-      let v = null;
-      v = createViewer($('#swTV'), h.image, null, undefined, null, { overlay: (svg, w) => { labels(svg, w, h, objs, null); ov = svg; }, onTap: (t, ev) => { const n = tapName(v, ev); if (n) card(n, ev, { image: h.id }); } });
+      v = createViewer($('#swTV', host), h.image, null, undefined, null, {
+        overlay: (svg, w) => { labels(svg, w, h, objs, null); guideMarks(svg, w, h, cur >= 0 ? steps[cur] : null, spot); markFocus(svg); },
+        onTap: (t, ev) => { const n = pickStrict(v, ev)?.dataset.n; if (n) card(n, ev, { image: h.id }); else askSpot(h, spotAt(v, h, ev), setSpot); } });
       cleanup.push(() => v.destroy());
-    }
-    let playing = false, audio = null;
-    const focus = (i) => {
-      $$('.sw-segs li', host).forEach(li => li.classList.toggle('on', +li.dataset.i === i));
-      $('.sw-segs li.on', host)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      ov && $$('g', ov).forEach(g => g.classList.toggle('focus', i >= 0 && g.dataset.n === s.segments[i]?.object));
+      if (h.solution?.ra != null) $('[data-g=spot]', host).hidden = false;
+    } else $('#swTV', host).innerHTML = '<p class="mut sm">Das Bild zu dieser Führung gibt es nicht mehr – der Text bleibt lesbar.</p>';
+    const show = (i) => {
+      cur = Math.max(0, Math.min(steps.length - 1, i));
+      const st = steps[cur];
+      $$('.sw-segs li', host).forEach(li => li.classList.toggle('on', +li.dataset.i === cur));
+      const li = $('.sw-segs li.on', host), ol = li?.parentElement;   // nur die Liste rollen, nie die Seite
+      if (ol && (li.offsetTop < ol.scrollTop || li.offsetTop + li.offsetHeight > ol.scrollTop + ol.clientHeight)) ol.scrollTo({ top: li.offsetTop - ol.offsetTop, behavior: reduce() ? 'auto' : 'smooth' });
+      $('#swSubN', host).textContent = `${cur + 1} / ${steps.length}${st.object ? ' · ' + st.object : ''}${st.kind ? ' · ' + st.kind : ''}`;
+      const t = $('#swSubT', host); t.textContent = st.text; t.classList.remove('mut');
+      const vw = v?.view();
+      if (vw) { const sc = W ? vw.w / W : 1; v.zoomTo((st.x ?? W / 2) * sc, (st.y ?? H / 2) * sc, st.zoom || 1, reduce() ? 0 : 900); }
+      v?.redraw();
     };
-    const stop = () => { playing = false; audio?.pause(); focus(-1); $('#swPlay').innerHTML = `${icon('play')}Führung starten`; };
-    cleanup.push(stop);
-    $('#swPlay').onclick = async () => {
-      if (playing) { stop(); return; }
-      playing = true; $('#swPlay').innerHTML = `${icon('stop')}Anhalten`;
-      const prov = $('.sw-tts', host).value; store.set('sage.tts', prov);
-      for (let i = 0; i < s.segments.length && playing; i++) {
-        focus(i);
-        let r;
-        try { r = await send(`${K}/stories/${s.id}/speak`, { provider: prov, segment: i }); } catch (err) { toast(err.message, 'err'); stop(); return; }
-        if (!playing) return;
-        audio = new Audio(r.url);
-        await new Promise(res => { audio.onended = res; audio.onerror = res; audio.play().catch(res); });
+    const halt = () => { gen++; clearTimeout(timer); if (audio) { audio.onended = audio.onerror = null; audio.pause(); } audio = null; };
+    const btn = () => { $('#swPlay', host).innerHTML = playing ? `${icon('pause')}Pause` : `${icon('play')}${cur < 0 ? 'Führung starten' : 'Abspielen'}`; };
+    // einen Schritt zeigen, vorlesen (oder Lesezeit abwarten) und weiter; gen bricht veraltete Läufe ab
+    const run = async () => {
+      const my = ++gen, alive = () => my === gen && playing && host.isConnected;
+      show(cur < 0 ? 0 : cur);
+      let spoke = false;
+      if ($('#swTon', host).checked) {
+        const prov = $('.sw-tts', host).value; store.set('sage.tts', prov);
+        try {
+          const r = await send(`${K}/stories/${s.id}/speak`, { provider: prov, segment: cur });
+          if (!alive()) return;
+          audio = new Audio(r.url);
+          spoke = await new Promise(res => { audio.onended = () => res(true); audio.onerror = () => res(false); audio.play().catch(() => res(false)); });
+        } catch (err) {
+          if (!alive()) return;
+          toast(`${err.message} – weiter ohne Vorlesen.`, 'err');
+          $('#swTon', host).checked = false; store.set('sage.guide.ton', false);
+        }
       }
-      stop();
+      if (!alive()) return;
+      if (!spoke) await new Promise(res => { timer = setTimeout(res, Math.min(20000, Math.max(4000, steps[cur].text.length * 60))); });
+      if (!alive()) return;
+      if (cur >= steps.length - 1) { playing = false; btn(); return; }
+      cur++; run();
     };
+    const play = () => {
+      if (playing) { playing = false; halt(); btn(); return; }
+      if (cur >= steps.length - 1) cur = -1;
+      playing = true; btn(); run();
+    };
+    const step = (d) => { halt(); show(cur < 0 ? 0 : cur + d); if (playing) run(); else btn(); };
+    host.querySelector('.sw-gctl').onclick = (ev) => {
+      const a = ev.target.closest('[data-g]')?.dataset.g;
+      if (a === 'play') play(); else if (a === 'prev') step(-1); else if (a === 'next') step(1);
+      else if (a === 'spot' && v && h) { const sp = viewSpot(v, h); if (sp) askSpot(h, sp, setSpot); }
+    };
+    $('#swTon', host).onchange = (ev) => store.set('sage.guide.ton', ev.target.checked);
+    host.querySelector('.sw-guide').onkeydown = (ev) => {
+      if (ev.target.closest('input, select, textarea')) return;
+      if (ev.key === 'ArrowRight') { ev.preventDefault(); step(1); }
+      else if (ev.key === 'ArrowLeft') { ev.preventDefault(); step(-1); }
+      else if (ev.key === 'k' || (ev.key === ' ' && !ev.target.closest('button'))) { ev.preventDefault(); play(); }
+    };
+    $$('.sw-segs li', host).forEach(li => {
+      li.onclick = () => { halt(); show(+li.dataset.i); if (playing) run(); else btn(); };
+      li.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); li.click(); } };
+    });
+    cleanup.push(() => { playing = false; halt(); });
   }
 
   full();
@@ -782,6 +842,68 @@ function pick(svg, ev) {
   return best?.g || null;
 }
 const tapName = (viewer, ev) => pick(viewer?.overlay, ev)?.dataset.n;
+
+// ------------------------------------------------------------ Bildführung --- //
+// Wunsch 19, Stufe 1. pickStrict liefert die getroffene Marke (g.tap). Antippen trifft eine Objektmarke nur über die Beschriftung oder einen kleinen Kreis (≤ 2,5 rem auf dem
+// Schirm) – in großen Umrissen bleibt die Stelle frei für „Was ist an dieser Stelle?“ (Antwort enthält den Umriss trotzdem).
+function pickStrict(viewer, ev) {
+  const svg = viewer?.overlay;
+  if (!svg?.getScreenCTM) return null;
+  const m = svg.getScreenCTM(), p = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(m.inverse()), lim = 40 / (m.a || 1);
+  let best = null;
+  for (const g of svg.querySelectorAll('g.tap')) {
+    const c = g.querySelector('circle'), b = g.querySelector('text')?.getBBox();
+    if (b && p.x >= b.x - 4 && p.x <= b.x + b.width + 4 && p.y >= b.y - 4 && p.y <= b.y + b.height + 4) return g;
+    if (!c) continue;
+    const r = +c.getAttribute('r'), d = Math.hypot(p.x - c.getAttribute('cx'), p.y - c.getAttribute('cy'));
+    if (r <= lim && d <= Math.max(r, lim / 2) && (!best || r < best.r)) best = { g, r };
+  }
+  return best?.g || null;
+}
+// Bildstelle in Pixeln des Verlaufseintrags (wie die Objektmarken); r = Suchradius ≈ 18 Bildschirmpixel
+function spotAt(viewer, h, ev) {
+  const svg = viewer?.overlay, vw = viewer?.view();
+  if (!svg?.getScreenCTM || !vw) return null;
+  const m = svg.getScreenCTM(), p = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(m.inverse()), k = (h.width || vw.w) / vw.w;
+  return { x: p.x * k, y: p.y * k, r: 18 / (m.a || 1) * k };
+}
+// Tastatur: Mitte der aktuellen Ansicht (Zoomknöpfe + Tour-Schritte bringen die Stelle dorthin)
+function viewSpot(viewer, h) {
+  const vw = viewer?.view(), m = viewer?.overlay?.getScreenCTM();
+  if (!vw) return null;
+  const k = (h.width || vw.w) / vw.w;
+  return { x: vw.x * k, y: vw.y * k, r: 30 / (m?.a || 1) * k };
+}
+// Stelle → Himmelsort → Kataloge (Bildmarken, Enzyklopädie, SIMBAD mit Cache) → Antwort im Sage-Chat des Bildes
+async function askSpot(h, sp, mark) {
+  if (!sp) return;
+  mark({ ...sp, busy: true, hits: [] });
+  try {
+    const r = await send(`${K}/history/${h.id}/spot`, { x: sp.x, y: sp.y, r: sp.r });
+    mark({ ...sp, hits: r.hits || [] });
+    chat({ scope: r.scope, image: h.id, title: h.title });
+  } catch (err) { mark(null); toast(err.message, 'err'); }
+}
+// Markierungen der Führung (Pfeil, Kreis, Umriss) und der gefragten Stelle – über die Objektmarken gezeichnet
+function guideMarks(svg, w, h, st, spot) {
+  const W = h.width || w, sc = w / W, fs = Math.max(12, w / 70);
+  let out = '';
+  if (st?.mark && st.x != null) {
+    const x = st.x * sc, y = st.y * sc, r = Math.max(fs * .8, (st.r || 8) * sc);
+    if (st.mark === 'arrow') {
+      const a = r * .75 + fs * .4, L = fs * 3.2, tx = x - a, ty = y - a;
+      out += `<g class="sw-mk arrow"><path d="M${tx - L} ${ty - L} L${tx} ${ty} M${tx} ${ty} l${-fs * .9} 0 M${tx} ${ty} l0 ${-fs * .9}"/></g>`;
+    } else out += `<g class="sw-mk ${st.mark}"><circle cx="${x}" cy="${y}" r="${st.mark === 'circle' ? r * 1.25 : r}" pathLength="100"/></g>`;
+  }
+  if (spot) {
+    const x = spot.x * sc, y = spot.y * sc, R = Math.max(fs * .7, spot.r * sc), a = R * .45, b = R * 1.6;
+    out += `<g class="sw-spot ${spot.busy ? 'busy' : ''}"><circle cx="${x}" cy="${y}" r="${R}"/>
+      <path d="M${x - b} ${y}H${x - a}M${x + a} ${y}H${x + b}M${x} ${y - b}V${y - a}M${x} ${y + a}V${y + b}"/>
+      ${(spot.hits || []).filter(t => !t.inside && t.x != null).slice(0, 6).map(t => `<circle class="hit" cx="${t.x * sc}" cy="${t.y * sc}" r="${fs * .45}"/>
+        <text x="${t.x * sc + fs * .7}" y="${t.y * sc + fs * .3}" font-size="${fs * .8}">${esc(t.name)}</text>`).join('')}</g>`;
+  }
+  if (out) svg.insertAdjacentHTML('beforeend', out);
+}
 
 // Objektmarken im Bild (Anzeige-Pixel des Vorschaubilds); das Hauptobjekt wird hervorgehoben
 function labels(svg, w, h, objs, self) {
@@ -923,5 +1045,5 @@ if (M) {
       ['sparkle', 'Frag Sage', 'Assistent mit Werkzeugen', () => chat({ scope: 'global' })], ...ents.items.map(c => ['star', c.name, `${c.otype_label || ''} · Enzyklopädie`, `#/sage/o/${c.id}`, c.image]), ...base];
   };
 }
-window.SageWiki = { card, chat, pick, research: startResearch, float: floatCard, closeFloat };
+window.SageWiki = { card, chat, pick, pickStrict, spotAt, askSpot, guideMarks, research: startResearch, float: floatCard, closeFloat };
 })();

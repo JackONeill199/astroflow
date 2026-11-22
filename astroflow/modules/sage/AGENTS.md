@@ -16,6 +16,16 @@ insights/runs/usage/stories/chats/http_cache. Regeln: **Messwerte nur aus Fachqu
 - `insights.py`: Aufgaben fill/papers/field/region/stale/targets, `Scheduler` (Intervall `proactive_hours`, erst 90 s nach Start), KI nur mit
   `proactive_llm`. Dubletten über `insights.key`. Erster papers-Lauf meldet nur die letzten 60 Tage.
 - `assistant.py` (Chat mit Werkzeugen, sicherer Rechner), `narrate.py` (6 Formate; Audioführung = Segmente je Bildobjekt, ohne KI Vorlage).
+- `guide.py` – **Bildführung** (Wunsch 19, Stufe 1): Projektion Bildpixel ↔ Himmel in **Anzeige-Pixeln des Verlaufseintrags** (wie die
+  Objektmarken): `solution.tan` = {crpix, crval, cd} aus `stacking/services.display_tan` (neu bei jeder Bestimmung). Ältere Einträge:
+  `tan_for` holt sie über den Dienst `project_solution` nach (Galerie-Bilder) oder passt sie aus ≥ 3 Objektmarken mit Katalogkoordinaten
+  an (`fit_tan`, Probe ≤ 5 % Bildgröße) und merkt sie im Eintrag. `tour_steps` → `GET /kb/stories/<id>/guide` (Zoom relativ zur
+  eingepassten Ansicht, Markierung `arrow` < 2 % / `circle` / `outline` > 30 % der kurzen Bildseite). `ask_spot` → `POST
+  /kb/history/<id>/spot` {x, y, r} (Bildmarken, Enzyklopädie, `Simbad.around` – Koordinaten auf 0,36″ gerundet, damit der Cache
+  greift); schreibt Frage + Antwort **ohne KI** in den Chat-Scope `image:<id>` (Folgefragen knüpfen an). Frontend: `tour()` in
+  `sage-wiki.js` (Untertitel, ← → Leertaste/K, „Vorlesen“ abschaltbar → Lesezeit), Klick ins Bild: `pickStrict` (Beschriftung oder
+  kleiner Kreis ≤ 40 px = Wissenskarte, sonst `askSpot`), auch in der Bildansicht `sage.js` und im Titelbild der Objektseite.
+  `createViewer` liefert dafür `view()` und `zoomTo(px, py, f, ms)`.
 - `kb_api.py` → `/api/sage/kb/…`; Oberfläche `static/sage-wiki.js|css` (Routen `#/sage/wiki`, `#/sage/o/<id>/<tab>`, `#/sage/entdeckungen`,
   `#/sage/netz[/<id>]`; Sammlung & Erfolge jetzt `#/sage/sammlung`). Klick ins Bild: Shell-`createViewer(…, {onTap})` + `SageWiki.pick`
   (geometrisch – Kreise sind ungefüllt). Beim Start `Module.backfill`: alte Bildbestimmungen/Aufnahmen verknüpfen, fehlende im Hintergrund aus SIMBAD.

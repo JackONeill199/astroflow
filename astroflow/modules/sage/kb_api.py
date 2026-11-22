@@ -2,6 +2,7 @@
 Erzählformate und Himmelsbilder. Wird von `api.build_router` an den Sage-Router gehängt."""
 from __future__ import annotations
 
+import math
 import re
 import secrets
 import time
@@ -9,7 +10,7 @@ import time
 from fastapi import Body, HTTPException
 from fastapi.responses import Response
 
-from . import agent, clients, memory, narrate, sources
+from . import agent, clients, guide, memory, narrate, sources
 from .kb import ENTITY_STATUS, norm
 from .research import CONCEPTS, Researcher, seed_concepts
 from .sources import SourceError
@@ -609,6 +610,37 @@ def extend(r, mod, url):
                     (mod.store.root / f).unlink(missing_ok=True)
         kb.x("DELETE FROM stories WHERE id=?", (sid,))
         return {"ok": True}
+
+    # ---- Bildführung (Wunsch 19): Tour-Schritte und „Was ist an dieser Stelle?“ -------------
+    @r.get("/kb/stories/{sid}/guide")
+    def story_guide(sid: int):
+        s = kb.one("SELECT * FROM stories WHERE id=?", (sid,))
+        if not s:
+            raise HTTPException(404, "Erzählung nicht gefunden.")
+        try:
+            g = guide.tour_steps(mod, s)
+        except clients.ServiceError as x:
+            raise HTTPException(404, str(x))
+        h = mod.store.get(g["entry"])
+        return {**g, "image": url(h.get("preview_file")), "title": s["title"]}
+
+    @r.post("/kb/history/{hid}/spot")
+    def history_spot(hid: str, body: dict = Body(...)):
+        h = mod.store.get(hid)
+        if not h:
+            raise HTTPException(404, "Bild nicht gefunden.")
+        try:
+            x, y = float(body["x"]), float(body["y"])
+            rp = float(body.get("r") or 20)
+        except (KeyError, TypeError, ValueError):
+            raise HTTPException(400, "Bildstelle fehlt.")
+        W, H = h.get("width") or 0, h.get("height") or 0
+        if not (all(map(math.isfinite, (x, y, rp))) and (not W or -1 <= x <= W + 1) and (not H or -1 <= y <= H + 1)):
+            raise HTTPException(400, "Die Stelle liegt außerhalb des Bildes.")
+        try:
+            return guide.ask_spot(mod, h, x, y, min(200.0, max(2.0, rp)))
+        except clients.ServiceError as x:
+            raise HTTPException(409, str(x))
 
     SPEAK = {"elevenlabs": clients.eleven_speak, "openrouter": clients.openrouter_speak, "qwen": clients.qwen_speak}
 

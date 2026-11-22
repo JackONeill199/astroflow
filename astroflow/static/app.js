@@ -416,12 +416,13 @@ function createViewer(host, src, cmpSrc, labels = ['älter', 'neuer'], ph = null
   };
   // weiche Übergänge nur für Knöpfe/Doppelklick – Ziehen und Mausrad folgen direkt
   let animT = 0;
-  const smooth = (fn) => { v.classList.add('anim'); fn(); clearTimeout(animT); animT = setTimeout(() => v.classList.remove('anim'), 400); };
+  const smooth = (fn, ms = 300) => { v.style.setProperty('--vfly', ms + 'ms'); v.classList.add('anim'); fn(); clearTimeout(animT); animT = setTimeout(() => v.classList.remove('anim'), ms + 100); };
   const onload = () => {
     // Auflösung kann zwischen Live-Stufe und Endbild wechseln: relativen Zoom und Bildmittelpunkt erhalten.
-    const relative = iw ? s / fitS : 1;
-    const cx = iw ? (v.clientWidth / 2 - x) / (iw * s) : .5;
-    const cy = ih ? (v.clientHeight / 2 - y) / (ih * s) : .5;
+    const known = iw && fitS > 0 && s > 0;                       // beim ersten Laden ohne Größe (verdecktes Fenster) war fitS = s = 0
+    const relative = known ? s / fitS : 1;
+    const cx = known ? (v.clientWidth / 2 - x) / (iw * s) : .5;
+    const cy = known ? (v.clientHeight / 2 - y) / (ih * s) : .5;
     iw = main.naturalWidth; ih = main.naturalHeight;
     if (ov) { ov.setAttribute('viewBox', `0 0 ${iw} ${ih}`); ov.style.width = iw + 'px'; ov.style.height = ih + 'px'; opts.overlay(ov, iw, ih); }
     fitS = Math.min(v.clientWidth / iw, v.clientHeight / ih);
@@ -479,10 +480,12 @@ function createViewer(host, src, cmpSrc, labels = ['älter', 'neuer'], ph = null
     else if (a === 'full') { v.classList.toggle('full'); requestAnimationFrame(fit); }
   });
   // setSrc: Bild wechseln; auch bei anderer Pixelgröße bleiben relativer Zoom und Ausschnitt erhalten.
-  // setSplit: Vergleichslinie setzen (0 = nur „neu“, 1 = nur „alt“; Blinken); zoomTo: auf Bildpixel (px, py) zoomen; redraw: Overlay neu zeichnen
+  // setSplit: Vergleichslinie setzen (0 = nur „neu“, 1 = nur „alt“; Blinken); zoomTo: auf Bildpixel (px, py) zoomen; redraw: Overlay neu zeichnen;
+  // view: Bildpixel in der Mitte der Ansicht, Zoom relativ zur eingepassten Ansicht und Bildgröße (z. B. Sage-Bildführung)
   return { el: v, overlay: ov, setSrc: (u) => { if (main.getAttribute('src') !== u) main.src = u; },
+    view: () => (iw ? { x: (v.clientWidth / 2 - x) / s, y: (v.clientHeight / 2 - y) / s, zoom: s / fitS, w: iw, h: ih } : null),
     setSplit: (f) => { split = Math.min(1, Math.max(0, f)); apply(); },
-    zoomTo: (px, py, f = 4) => { if (!iw) return; smooth(() => { s = Math.min(8, fitS * f); x = v.clientWidth / 2 - px * s; y = v.clientHeight / 2 - py * s; clamp(); apply(); }); },
+    zoomTo: (px, py, f = 4, ms = 300) => { if (!iw) return; smooth(() => { s = Math.min(8, fitS * f); x = v.clientWidth / 2 - px * s; y = v.clientHeight / 2 - py * s; clamp(); apply(); }, ms); },
     redraw: () => { if (ov && iw) opts.overlay(ov, iw, ih); }, destroy:() => { clearTimeout(slowT); ro.disconnect(); main.removeEventListener('load', onload); document.removeEventListener('keydown', onKey); } };
 }
 

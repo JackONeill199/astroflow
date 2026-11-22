@@ -176,6 +176,15 @@ class Simbad:
                         f"WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', {float(ra)}, {float(dec)}, {float(radius)}))=1 "
                         f"AND otype='{_esc(otype)}' AND galdim_majaxis >= {float(min_size)} ORDER BY galdim_majaxis DESC")
 
+    def around(self, ra: float, dec: float, radius: float, limit: int = 12) -> list[dict]:
+        """Alle Objekte im Umkreis (Grad), nächstes zuerst, mit V-Helligkeit – für „Was ist an dieser Stelle?“.
+        Koordinaten auf 0,36″ gerundet, damit wiederholte Klicks auf dieselbe Stelle aus dem Cache kommen."""
+        ra, dec, radius = round(float(ra), 4), round(float(dec), 4), round(float(radius), 5)
+        return self.tap(f"SELECT TOP {int(limit)} b.main_id, b.otype, b.ra, b.dec, f.V, "
+                        f"DISTANCE(POINT('ICRS', b.ra, b.dec), POINT('ICRS', {ra}, {dec})) AS sep "
+                        "FROM basic AS b LEFT JOIN allfluxes AS f ON f.oidref=b.oid "
+                        f"WHERE CONTAINS(POINT('ICRS', b.ra, b.dec), CIRCLE('ICRS', {ra}, {dec}, {radius}))=1 ORDER BY sep")
+
 
 def best_distance(plx_mas: float | None, plx_err: float | None, measures: list[dict]) -> dict | None:
     """Entfernung: Parallaxe (wenn genau genug), sonst Median der Messungen ab 2000. Dazu Streuung und Widerspruchsflagge."""

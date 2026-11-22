@@ -154,8 +154,12 @@ async function entryView(el, id) {
             : '<p class="mut sm" style="margin:0">Keine Katalogobjekte im Bildfeld gefunden.</p>'}</div>
         <a class="panel sg-disc" href="#/sage/sammlung">${icon('medal')}<div><b>Sammlung & Erfolge</b><div class="mut sm">Gesammelte Objekte und Fortschritt</div></div>${icon('arrow')}</a></div></div>`;
     const marked = objs.filter(o => o.x != null);
-    const tapObj = (t, ev) => { const g = window.SageWiki?.pick(viewer?.overlay, ev); if (g) window.SageWiki.card(objs[+g.dataset.i].name, ev, { image: e.id }); };
-    viewer = createViewer($('#sgv'), e.image, null, undefined, null, marked.length ? { overlay: (svg, w, h) => drawLabels(svg, w, h, marked), onTap: tapObj } : {});
+    // Objektmarke (Beschriftung, kleiner Kreis) → Wissenskarte; freie Stelle → „Was liegt dort?“ (Kataloge → Sage-Chat, Wunsch 19)
+    const SW = window.SageWiki, solved = sol.ra != null;
+    let spot = null;
+    const setSpot = (sp) => { spot = sp; viewer?.redraw(); };
+    const tapObj = (t, ev) => { const g = SW?.pickStrict(viewer, ev); if (g) SW.card(objs[+g.dataset.i].name, ev, { image: e.id }); else if (solved && SW) SW.askSpot(e, SW.spotAt(viewer, e, ev), setSpot); };
+    viewer = createViewer($('#sgv'), e.image, null, undefined, null, marked.length || solved ? { overlay: (svg, w, h) => { drawLabels(svg, w, h, marked); SW?.guideMarks(svg, w, e, null, spot); }, onTap: tapObj } : {});
     $('#askImg').onclick = () => window.SageWiki?.chat({ scope: 'image:' + e.id, image: e.id, title: e.title });
     $('#labels').onchange = (ev) => { if (viewer.overlay) viewer.overlay.style.display = ev.target.checked ? '' : 'none'; };
     $('#retell').onclick = retell;

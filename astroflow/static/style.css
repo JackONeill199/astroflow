@@ -431,13 +431,15 @@ td .why { color: var(--mut); white-space: normal; font-size: 0.75rem }
 .viewer.tall { aspect-ratio: auto; height: max(22.5rem, calc(100vh - 18.75rem)) }
 .viewer.drag { cursor: grabbing }
 .viewer img { position: absolute; left: 0; top: 0; transform-origin: 0 0; max-width: none; image-rendering: auto; pointer-events: none }
-.viewer.anim img { transition: transform .3s var(--ease) }
+.viewer.anim img { transition: transform var(--vfly, .3s) var(--ease) }
 .viewer img.b, .viewer img.a { opacity: 0; transition: opacity .4s var(--ease) }
-.viewer.anim img.b, .viewer.anim img.a { transition: transform .3s var(--ease), opacity .4s var(--ease) }
+.viewer.anim img.b, .viewer.anim img.a { transition: transform var(--vfly, .3s) var(--ease), opacity .4s var(--ease) }
 .viewer.ready img.b, .viewer.ready img.a { opacity: 1 }
 /* Markierungen in Bildpixeln (createViewer opts.overlay) – Objektnamen aus dem Plate-Solving; mit .hover-labels nur beim Überfahren */
 .viewer .vov { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; overflow: visible; will-change: transform; opacity: 0; transition: opacity .25s var(--ease) }
 .viewer.ready .vov { opacity: 1 }
+.viewer.anim .vov { transition: transform var(--vfly, .3s) var(--ease), opacity .25s var(--ease) }   /* Marken fahren mit dem Bild (zoomTo) */
+@media (prefers-reduced-motion: reduce) { .viewer.anim img, .viewer.anim .vov { transition: none !important } }
 .vov circle { fill: none; stroke: #9fd4ff; stroke-width: 0.1562rem; vector-effect: non-scaling-stroke; opacity: .85 }
 .vov text { fill: #fff; font-family: var(--sans); font-weight: 600; paint-order: stroke; stroke: #000c; stroke-width: 0.1875rem; stroke-linejoin: round }
 .viewer.hover-labels.ready .vov { opacity: 0 }
