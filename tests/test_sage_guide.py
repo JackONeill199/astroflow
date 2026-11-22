@@ -195,6 +195,21 @@ def test_projektion_aus_stack_loesung_nachgeholt(client):
     assert calls == [7]                                                                        # … und nicht erneut geholt
 
 
+def test_stack_loesung_einer_anderen_version_wird_nicht_uebernommen(client):
+    """Neuere Version mit anderem Ausschnitt (Marken verschoben) darf die Projektion der alten Bildkopie nicht ersetzen."""
+    mod = client.app_mod
+    _, sol = solution()
+    _, newer = solution(ra=83.80, dec=-5.37)
+    client.app_ctx.services["project_solution"] = lambda pid: newer
+    e = add_entry(mod, {**sol, "tan": None}, source={"type": "project", "project": 7})
+    assert not guide.same_view(e, newer) and guide.same_view(e, sol)
+    tan = guide.tan_for(mod, e)
+    assert tan != newer["tan"]
+    if tan:                                                                    # Rückfall aus den Objektmarken des Eintrags
+        a, b = guide.pix2sky(tan, 400, 300), guide.pix2sky(sol["tan"], 400, 300)
+        assert math.hypot((a[0] - b[0]) * math.cos(math.radians(b[1])), a[1] - b[1]) * 3600 < 60
+
+
 def test_projektion_aus_objektmarken(client):
     mod, kb = client.app_mod, client.app_mod.kb
     _, sol = solution()

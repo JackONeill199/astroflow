@@ -97,6 +97,16 @@ def _coords(mod, name: str) -> tuple[float, float] | None:
     return (c["ra"], c["dec"]) if c else None
 
 
+def same_view(entry: dict, fresh: dict, tol: float = 2.0) -> bool:
+    """Gehört eine frische Stack-Lösung zur Bildkopie des Eintrags? Gleiche Bildgröße und alle gemeinsamen Objektmarken
+    höchstens `tol` Pixel versetzt (mindestens eine gemeinsame Marke)."""
+    if (entry.get("width"), entry.get("height")) != (fresh.get("width"), fresh.get("height")):
+        return False
+    old = {o["name"]: o for o in entry.get("objects") or [] if o.get("x") is not None}
+    common = [(old[o["name"]], o) for o in fresh.get("objects") or [] if o.get("x") is not None and o["name"] in old]
+    return bool(common) and all(abs(a["x"] - b["x"]) <= tol and abs(a["y"] - b["y"]) <= tol for a, b in common)
+
+
 def tan_for(mod, entry: dict) -> dict | None:
     """Projektion eines Verlaufseintrags: gespeichert → Stack-Lösung (einmal nachgeholt und gemerkt) → aus Objektmarken."""
     sol = entry.get("solution") or {}
@@ -108,7 +118,10 @@ def tan_for(mod, entry: dict) -> dict | None:
     if src.get("type") == "project" and get:
         try:
             fresh = get(src["project"])
-            tan = (fresh or {}).get("tan")
+            # Der Dienst liefert die Lösung des *neuesten* Ergebnisses; der Eintrag hat womöglich eine ältere Bildkopie.
+            # Nur übernehmen, wenn die Objektmarken nachweislich an derselben Stelle liegen.
+            if fresh and fresh.get("tan") and same_view(entry, fresh):
+                tan = fresh["tan"]
         except Exception:
             traceback.print_exc()
     if not tan:

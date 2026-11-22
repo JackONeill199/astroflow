@@ -18,7 +18,8 @@ insights/runs/usage/stories/chats/http_cache. Regeln: **Messwerte nur aus Fachqu
 - `assistant.py` (Chat mit Werkzeugen, sicherer Rechner), `narrate.py` (6 Formate; Audioführung = Segmente je Bildobjekt, ohne KI Vorlage).
 - `guide.py` – **Bildführung** (Wunsch 19, Stufe 1): Projektion Bildpixel ↔ Himmel in **Anzeige-Pixeln des Verlaufseintrags** (wie die
   Objektmarken): `solution.tan` = {crpix, crval, cd} aus `stacking/services.display_tan` (neu bei jeder Bestimmung). Ältere Einträge:
-  `tan_for` holt sie über den Dienst `project_solution` nach (Galerie-Bilder) oder passt sie aus ≥ 3 Objektmarken mit Katalogkoordinaten
+  `tan_for` holt sie über den Dienst `project_solution` nach (Galerie-Bilder; nur wenn die Marken zur Bildkopie passen, `same_view` –
+  der Dienst liefert das neueste Ergebnis) oder passt sie aus ≥ 3 Objektmarken mit Katalogkoordinaten
   an (`fit_tan`, Probe ≤ 5 % Bildgröße) und merkt sie im Eintrag. `tour_steps` → `GET /kb/stories/<id>/guide` (Zoom relativ zur
   eingepassten Ansicht, Markierung `arrow` < 2 % / `circle` / `outline` > 30 % der kurzen Bildseite). `ask_spot` → `POST
   /kb/history/<id>/spot` {x, y, r} (Bildmarken, Enzyklopädie, `Simbad.around` – Koordinaten auf 0,36″ gerundet, damit der Cache
