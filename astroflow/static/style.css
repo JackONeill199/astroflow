@@ -154,6 +154,9 @@ kbd { font-size: 0.6875rem; font-weight: 500; line-height: 1; padding: 0.1875rem
 .upd-ver { display: flex; flex-direction: column; gap: 0.125rem }
 .upd-ver b { font-size: 1rem; font-weight: 650 }
 .upd-acts { display: flex; flex-wrap: wrap; gap: 0.5rem }
+.upd-run { align-self: stretch; display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start }
+.upd-run .jobline { align-self: stretch }
+.upd-run p { margin: 0 }
 .upd-dismiss { margin-top: -0.25rem; padding: 0; border: 0; background: none; font: inherit; font-size: 0.75rem; color: var(--dim); cursor: pointer; text-decoration: underline;
   text-decoration-color: color-mix(in srgb, var(--dim) 45%, transparent); text-underline-offset: 0.1875rem; transition: color var(--t) }
 .upd-dismiss:hover { color: var(--fg) }

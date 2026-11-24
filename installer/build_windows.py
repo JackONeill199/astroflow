@@ -295,6 +295,9 @@ def build(out: Path, installer: bool = True, cache: Path | None = None) -> dict:
     for k in ("zip", "installer"):
         if k in res:
             res[k + "_sha256"] = hashlib.sha256(Path(res[k]).read_bytes()).hexdigest()
+            # `<Datei>.sha256` (sha256sum-Format) wie beim Linux-Paket – „Jetzt aktualisieren“ prüft den Download dagegen
+            (out / (Path(res[k]).name + ".sha256")).write_text(f"{res[k + '_sha256']}  {Path(res[k]).name}\n",
+                                                                encoding="utf-8")
     return res
 
 

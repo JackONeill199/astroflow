@@ -146,13 +146,15 @@ def test_gefaehrliche_endpunkte_nur_am_rechner(tmp_path, monkeypatch):
                            ("/api/stacking/graxpert", {"path": str(tmp_path / "GraXpert.exe")}),
                            ("/api/stacking/solver", {"astap": str(tmp_path / "astap_cli.exe")}),
                            ("/api/skytrace/engine", {"python": str(tmp_path / "python.exe")}),
-                           ("/api/pairing/code", None), ("/api/pairing/remove", {"id": "x"})]:
+                           ("/api/pairing/code", None), ("/api/pairing/remove", {"id": "x"}),
+                           ("/api/system/update/install", None), ("/api/system/update/cancel", None)]:
             r = ph.post(path, json=body or {})
             assert r.status_code == 403 and "Rechner selbst" in r.json()["detail"], (path, r.status_code, r.text)
         r = ph.post("/api/stacking/starnet/install", files={"file": ("starnet.zip", zipped.getvalue(), "application/zip")})
         assert r.status_code == 403
         assert ph.delete("/api/stacking/starnet").status_code == 403
         assert ph.get("/api/pairing").status_code == 403
+        assert ph.get("/api/system/update/install").status_code == 403         # Update-Auftrag nur am Rechner selbst
         # Harmloses geht weiter, auch wenn das Formular die Pfadfelder unverändert mitschickt
         assert ph.post("/api/setup", json={"telescope": "stellina"}).status_code == 200
         gx = ph.get("/api/stacking/graxpert").json()
