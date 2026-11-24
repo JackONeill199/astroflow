@@ -6,7 +6,8 @@
   (Windows `%LOCALAPPDATA%\\astap`, sonst `~/astap`). Vorhandene Dateien werden nicht überschrieben.
 * Update-Prüfung: höchstens einmal am Tag eine anonyme GET-Anfrage an die GitHub-Releases-API, abschaltbar
   (`settings.json` → `system.update_check`); jeder Fehler (auch 404 bei privatem Repo) bleibt still. Beim selben Abruf werden
-  „Was ist neu“ (Release-Text als reiner, gekürzter Text) und die Download-Adressen der Pakete mitgespeichert – heruntergeladen wird nichts.
+  „Was ist neu“ (Release-Text als reiner, gekürzter Text) und die Download-Adressen der Pakete (samt `.sha256`) mitgespeichert – heruntergeladen wird nichts.
+  „Jetzt aktualisieren“ (nur auf Knopfdruck, nur am Rechner selbst) lädt, prüft und startet das Paket: `core/updater.py`.
 """
 from __future__ import annotations
 
@@ -24,6 +25,7 @@ from fastapi import APIRouter, Body, HTTPException, Request
 
 from . import launcher
 from . import security
+from . import updater
 from .. import __version__ as VERSION
 
 REPO = "JackONeill199/astroflow"
@@ -50,6 +52,14 @@ def recommended_db(telescopes: list[str]) -> str:
     return "d50" if any(TELESCOPES.get(t) == "d50" for t in telescopes) else "d05"
 
 
+UPDATE_MANUAL = {   # warum es keinen Automatismus gibt (feste Texte, auch fürs Panel)
+    "source": "Bei Quellcode- und Docker-Installationen aktualisiert AstroFlow sich nicht selbst – bitte nach Anleitung aktualisieren.",
+    "portable": "Die portable Fassung aktualisiert sich nicht selbst – bitte das neue Paket von der Release-Seite entpacken.",
+    "nodownload": "Für dieses System liegt im Release kein Paket – bitte die Release-Seite öffnen.",
+    "nosha": "Dieses Release hat keine Prüfsumme – bitte das Paket von Hand laden.",
+    "unknown": "Die laufende Linux-Installation ließ sich nicht bestimmen – bitte das Paket von Hand installieren.",
+    "notinstaller": "Diese Installation stammt nicht aus dem Windows-Installer (z. B. pip/pipx/uv) – bitte auf demselben Weg aktualisieren.",
+}
 TASK_NAMES = {"astap": "ASTAP + Sterndatenbank", "demo": "Demo-Aufnahmen", "gpu": "GPU-Beschleunigung",
               "graxpert": "GraXpert", "skytrace": "SkyTrace-Analyse-Engine", "firewall": "Firewall-Freigabe"}
 
@@ -133,6 +143,12 @@ def release_assets(assets) -> dict:
         for key, (pre, suf) in _ASSETS.items():
             if name.startswith(pre) and name.endswith(suf) and key not in out:
                 out[key] = {"name": name[:120], "url": url[:500], "size": int(a.get("size") or 0)}
+    # Prüfsumme je Paket (`<Datei>.sha256`, seit Wunsch 23 auch für Windows) – nur dann ist „Jetzt aktualisieren“ möglich
+    sums = {str(a.get("name") or ""): str(a.get("browser_download_url") or "") for a in assets or [] if isinstance(a, dict)}
+    for d in out.values():
+        su = sums.get(d["name"] + ".sha256") or ""
+        if su.startswith("https://github.com/"):
+            d["sha256_url"] = su[:500]
     return out
 
 
@@ -152,9 +168,16 @@ def update_offer(info: dict) -> dict | None:
         return None
     kind = install_kind()
     dl = (info.get("downloads") or {}).get(kind) if kind in ("windows", "linux") else None
-    return {"latest": latest, "current": VERSION, "url": info.get("url") or RELEASES_PAGE, "newer": True,
-            "checked": info.get("checked"), "published": info.get("published"), "notes": info.get("notes") or [],
-            "kind": kind, "download": dl}
+    offer = {"latest": latest, "current": VERSION, "url": info.get("url") or RELEASES_PAGE, "newer": True,
+             "checked": info.get("checked"), "published": info.get("published"), "notes": info.get("notes") or [],
+             "kind": kind, "download": dl}
+    offer["auto"], offer["manual_reason"] = updater.availability(offer, kind, portable())
+    return offer
+
+
+def portable() -> bool:
+    """Portable Nutzung (ZIP/entpacktes Paket, `ASTROFLOW_HOME` gesetzt) – dort ersetzt „Jetzt aktualisieren“ nichts automatisch."""
+    return launcher.home() is not None
 
 
 def drives() -> list[dict]:
@@ -224,6 +247,7 @@ class Setup:
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self.order_active = False     # `run_order` arbeitet den Installer-Auftrag gerade ab
+        self.updater = updater.Updater()   # „Jetzt aktualisieren“ (räumt Reste eines früheren Laufs auf)
 
     def telescopes(self) -> list[str]:
         """Gewählte Teleskope; ältere Stände speicherten nur einen Einzelwert (`telescope`)."""
@@ -357,7 +381,7 @@ class Setup:
     def activity(self) -> list[dict]:
         return [{"key": f"setup:{k}", "title": TASK_NAMES.get(k, k), "kind": "Einrichtung", "detail": t.get("detail", ""),
                  "state": t["state"], "progress": t.get("progress"), "started": t.get("started"), "finished": t.get("finished"),
-                 "href": "#/willkommen"} for k, t in self.tasks.items()]
+                 "href": "#/willkommen"} for k, t in self.tasks.items()] + self.updater.activity()
 
     # Komponenten -----------------------------------------------------------------
     def _solver_cfg(self):
@@ -569,6 +593,19 @@ class Setup:
         self.ctx.store.update("system", {"update": info})
         return info
 
+    def install_update(self) -> dict:
+        """„Jetzt aktualisieren“: Release frisch abfragen (Adresse und Prüfsumme nur vom Server), dann laden, prüfen, starten."""
+        if self.updater.busy():
+            if self.updater.state():
+                return self.updater.state()
+            raise HTTPException(409, "Der Installer eines Updates läuft noch – bitte warten, bis er fertig ist.")
+        offer = update_offer(self.check_update(force=True))
+        if not offer:
+            raise HTTPException(409, "Keine neuere Version gefunden – AstroFlow ist aktuell oder GitHub ist nicht erreichbar.")
+        if not offer.get("auto"):
+            raise HTTPException(409, UPDATE_MANUAL.get(offer.get("manual_reason") or "", UPDATE_MANUAL["source"]))
+        return self.updater.start({**offer["download"], "latest": offer["latest"]}, offer["kind"])
+
     def update_loop(self):
         if os.environ.get("ASTROFLOW_UPDATE_CHECK") == "0":
             return
@@ -664,6 +701,22 @@ def build_router(setup: Setup) -> APIRouter:
         """„Jetzt prüfen“: fragt sofort an (auch wenn die tägliche Prüfung abgeschaltet ist)."""
         info = setup.check_update(force=True)
         return {"checked": info.get("checked"), "latest": info.get("latest"), "update": update_offer(info)}
+
+    @r.get("/system/update/install")
+    def get_update_install(request: Request):
+        security.require_local(request, "Update installieren")
+        return {"task": setup.updater.state()}
+
+    @r.post("/system/update/install")
+    def post_update_install(request: Request):
+        """„Jetzt aktualisieren“ – keine Adresse/kein Pfad vom Client, alles aus der Release-Abfrage des Servers."""
+        security.require_local(request, "Update installieren")
+        return {"task": setup.install_update()}
+
+    @r.post("/system/update/cancel")
+    def post_update_cancel(request: Request):
+        security.require_local(request, "Update installieren")
+        return {"task": setup.updater.cancel()}
 
     @r.post("/system/shutdown")
     def post_shutdown(request: Request):
