@@ -13,7 +13,7 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md` (Details in `docs/entwicklung/
 | 5 | 04.11.2026 | Kometenmodus | umgesetzt in 0.22.0 |
 | 6 | 04.11.2026 | Planetenmodus (Lucky Imaging) | offen |
 | 7 | 04.11.2026 | Standorte nach Datum | umgesetzt in 0.23.0 (Kür Standort-Rückrechnung: Vorschlag, kein Automatismus) |
-| 8 | 05.11.2026 | Lichtkurven veränderlicher Sterne | umgesetzt (Branch `feature/lichtkurven`, Version beim Merge; Reiter Analyse → „Lichtkurven“) |
+| 8 | 05.11.2026 | Lichtkurven veränderlicher Sterne | umgesetzt in 0.88.0 (Reiter Analyse → „Lichtkurven“) |
 | 9 | 05.11.2026 | HR-Diagramm von Sternhaufen | umgesetzt in 0.41.0 (Erklärung im Abschnitt selbst, nicht über Sage) |
 | 10 | 05.11.2026 | Asteroiden in eigenen Bildern | umgesetzt in 0.42.0 |
 | 11 | 05.11.2026 | Exoplanet-Transits | offen |
@@ -28,7 +28,7 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md` (Details in `docs/entwicklung/
 | 20 | 12.11.2026 | HOO/SHO für Farbkameras mit Dual-Band-Filter | offen |
 | 21 | 13.11.2026 | Geräte kombinieren (Stacks verschiedener Teleskope zu einem Bild) | offen |
 | 22 | 13.11.2026 | Echtes Drizzle | offen |
-| 23 | 13.11.2026 | „Jetzt aktualisieren“: Update auf Knopfdruck laden und starten | umgesetzt, Version beim Merge (Signatur offen) |
+| 23 | 13.11.2026 | „Jetzt aktualisieren“: Update auf Knopfdruck laden und starten | umgesetzt in 0.88.3 (Signatur offen) |
 
 ## 1. Bibliothek teilen (nur ansehen) – 03.11.2026
 
@@ -252,7 +252,7 @@ Download-Link; geladen und installiert wird bewusst nichts. Später denkbar, nur
 - Quellcode/Docker: kein Automatismus, nur Anleitung.
 - Offen: Signatur statt nur Prüfsumme (Prüfsumme aus derselben Quelle schützt nur vor kaputten Downloads), Fortschritt als Auftrag,
   Rückfall bei Abbruch, Neustart danach automatisch.
-- **Umgesetzt (Version beim Merge, 22.11.2026, `core/updater.py`):** Knopf „Jetzt aktualisieren“ im Update-Panel, nur am Rechner selbst.
+- **Umgesetzt (0.88.3, 22.11.2026, `core/updater.py`):** Knopf „Jetzt aktualisieren“ im Update-Panel, nur am Rechner selbst.
   Windows (installiert): Installer laden, SHA-256 gegen `.sha256` aus dem Release prüfen (der Paket-Workflow erzeugt sie jetzt für Installer und
   ZIP), Installer starten. Linux (installiert): Paket laden, prüfen, sicher entpacken, `install.sh` ausführen (ersetzt über `.neu`/`.alt`,
   startet neu). Portable Fassung, Quellcode/Docker und Releases ohne `.sha256`: wie bisher nur Download-Link bzw. Anleitung. Nur https,

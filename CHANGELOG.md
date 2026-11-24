@@ -3,6 +3,11 @@
 Neueste zuerst, je Version ein Abschnitt (Regeln: `AGENTS.md` → „Versionierung“). Technische Details
 stehen in `AGENTS.md` und `docs/entwicklung/`, die Bedienung in `README.md`.
 
+## 0.88.3 – 25.11.2026
+
+### Neu
+- **„Jetzt aktualisieren“:** Ist eine neue Version verfügbar, lädt AstroFlow das Update auf Knopfdruck selbst herunter, prüft die Prüfsumme und startet die Installation (Windows-Installer bzw. Linux-Paket). Nur am Rechner selbst, Fortschritt in der Aktivität, Abbrechen jederzeit bis zum Start des Installers; deine Daten bleiben erhalten. Portable Fassung, Quellcode und Docker behalten den Download-Link mit Anleitung.
+
 ## 0.88.2 – 22.11.2026
 
 ### Neu
