@@ -66,6 +66,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     monkeypatch.setattr(setup_mod, "VERSION", "0.1.0")
     monkeypatch.setattr(setup_mod, "install_kind", lambda: "windows")
+    monkeypatch.setattr(updater, "windows_installed", lambda: True)          # wie eine Inno-Installation (unins000.exe)
     started = []
     dead = subprocess.Popen([sys.executable, "-c", "pass"])           # Prozessnummer eines beendeten „Installers“
     dead.wait()
@@ -343,3 +344,24 @@ def env_dead_pid() -> int:
     p = subprocess.Popen([sys.executable, "-c", "pass"])
     p.wait()
     return p.pid
+
+
+def test_windows_ohne_inno_installation_kein_automatismus(env, monkeypatch):
+    """pip/pipx/uv unter Windows (auch mit ASTROFLOW_LAUNCHER=1): Installer würde eine zweite Installation daneben legen."""
+    monkeypatch.setattr(updater, "windows_installed", lambda: False)
+    c, net = _client(env, monkeypatch, _assets(), {})
+    up = c.post("/api/system/update/check").json()["update"]
+    assert up["auto"] is False and up["manual_reason"] == "notinstaller" and up["download"]["url"].endswith(EXE_NAME)
+    r = c.post("/api/system/update/install")
+    assert r.status_code == 409 and "Windows-Installer" in r.json()["detail"] and net.seen == [] and env["started"] == []
+
+
+def test_windows_installiert_erkennt_unins(tmp_path, monkeypatch):
+    app = tmp_path / "AstroFlow"
+    py = app / "python" / "pythonw.exe"
+    py.parent.mkdir(parents=True)
+    py.write_bytes(b"")
+    monkeypatch.setattr(updater.sys, "executable", str(py))
+    assert updater.windows_installed() is False                            # kein Deinstaller → nicht aus dem Installer
+    (app / "unins000.exe").write_bytes(b"")
+    assert updater.windows_installed() is True

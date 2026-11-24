@@ -58,6 +58,7 @@ UPDATE_MANUAL = {   # warum es keinen Automatismus gibt (feste Texte, auch fürs
     "nodownload": "Für dieses System liegt im Release kein Paket – bitte die Release-Seite öffnen.",
     "nosha": "Dieses Release hat keine Prüfsumme – bitte das Paket von Hand laden.",
     "unknown": "Die laufende Linux-Installation ließ sich nicht bestimmen – bitte das Paket von Hand installieren.",
+    "notinstaller": "Diese Installation stammt nicht aus dem Windows-Installer (z. B. pip/pipx/uv) – bitte auf demselben Weg aktualisieren.",
 }
 TASK_NAMES = {"astap": "ASTAP + Sterndatenbank", "demo": "Demo-Aufnahmen", "gpu": "GPU-Beschleunigung",
               "graxpert": "GraXpert", "skytrace": "SkyTrace-Analyse-Engine", "firewall": "Firewall-Freigabe"}

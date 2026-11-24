@@ -111,7 +111,8 @@
 - **„Jetzt aktualisieren“ (Wunsch 23, `core/updater.py`):** nur auf Knopfdruck im Update-Panel (`#updGo`, `data-local-only`), Endpunkte
   `GET/POST /system/update/install` und `POST /system/update/cancel` mit `require_local`. Der Client schickt **nichts** mit: `Setup.install_update`
   fragt das Release frisch ab und nimmt Adresse + `sha256_url` (`release_assets`: `<Datei>.sha256` daneben, nur `https://github.com/`) aus der
-  Antwort. Automatik nur, wenn `update_offer` → `auto` (installiertes Windows/Linux, nicht portabel = `launcher.home()` leer, `.sha256` im Release);
+  Antwort. Automatik nur, wenn `update_offer` → `auto` (installiertes Windows = `unins000.exe` neben `python\` des laufenden Pythons, sonst
+  `notinstaller` – pip/pipx/uv starten ebenfalls mit ASTROFLOW_LAUNCHER=1; installiertes Linux, nicht portabel = `launcher.home()` leer, `.sha256` im Release);
   sonst `manual_reason` (`source`/`portable`/`nodownload`/`nosha`) → bisheriger Download-Link bzw. Anleitung. Download (`updater.fetch`):
   Weiterleitungen von Hand, jede Adresse gegen `ALLOWED_HOSTS` (github.com, objects.githubusercontent.com, release-assets.githubusercontent.com;
   nur https, Port 443), Obergrenze 2 GB, Ablage nur für den eigenen Nutzer (`%LOCALAPPDATA%\AstroFlow\Update` bzw. `~/.cache/astroflow/update`, `ASTROFLOW_UPDATE_DIR`), je Lauf

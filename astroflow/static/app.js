@@ -560,6 +560,7 @@ const UPD_WHY = {
   portable: 'Die portable Fassung aktualisiert sich nicht selbst – neues Paket entpacken.',
   nosha: 'Dieses Release hat noch keine Prüfsumme – deshalb hier nur der Download.',
   unknown: 'Die Installation ließ sich nicht sicher bestimmen – deshalb hier nur der Download.',
+  notinstaller: 'Diese Installation stammt nicht aus dem Windows-Installer (pip/pipx/uv) – bitte auf demselben Weg aktualisieren, sonst entstünde eine zweite Installation.',
 };
 function updateHint(u, manual = false) {
   AF.app.update = u || null;

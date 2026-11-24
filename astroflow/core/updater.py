@@ -202,6 +202,15 @@ def linux_target() -> tuple[Path, Path] | None:
     return None
 
 
+def windows_installed() -> bool:
+    """Läuft das Python der Inno-Installation (`<App>\\python\\python(w).exe` mit `<App>\\unins000.exe`)? pip/pipx/uv-Installationen
+    starten über `astroflow` ebenfalls mit ASTROFLOW_LAUNCHER=1 – dort würde der Installer nur eine zweite Installation daneben legen."""
+    try:
+        return (Path(sys.executable).resolve().parents[1] / "unins000.exe").is_file()
+    except (OSError, IndexError):
+        return False
+
+
 def availability(offer: dict | None, kind: str, portable: bool) -> tuple[bool, str]:
     """Ob „Jetzt aktualisieren“ möglich ist – sonst der Grund (für den Hinweis im Panel)."""
     if kind not in ("windows", "linux"):
@@ -210,6 +219,8 @@ def availability(offer: dict | None, kind: str, portable: bool) -> tuple[bool, s
         return False, "portable"
     if kind == "linux" and linux_target() is None:
         return False, "unknown"
+    if kind == "windows" and not windows_installed():
+        return False, "notinstaller"
     dl = (offer or {}).get("download") or {}
     if not dl.get("url"):
         return False, "nodownload"
