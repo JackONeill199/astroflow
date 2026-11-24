@@ -228,13 +228,16 @@ class Module(BaseModule):
         return out
 
     def project_solution(self, pid: int) -> dict | None:
-        """Objekte im neuesten Bild eines Objekts aus der gespeicherten Stack-Lösung (None = keine Lösung gespeichert)."""
+        """Objekte im neuesten Bild eines Objekts aus der gespeicherten Stack-Lösung (None = keine Lösung gespeichert).
+        `result` = Ergebnis-ID, zu der die Lösung gehört (Sage übernimmt eine Projektion nur für dieselbe Version)."""
         from .services import project_solution
         pic = self.project_picture(pid)
         if pic and pic["imported"]:                               # fertiges Bild: Lösung aus dem Import-Plate-Solving
             from .picture_solve import stored_solution
-            return stored_solution(self.ctx.settings.work_dir, pid)
-        return pic and project_solution(self.ctx.settings.work_dir, pid, pic["files"])
+            sol = stored_solution(self.ctx.settings.work_dir, pid)
+        else:
+            sol = pic and project_solution(self.ctx.settings.work_dir, pid, pic["files"])
+        return {**sol, "result": pic["result_id"]} if sol else sol
 
 
 def _jx(col: str, key: str) -> str:

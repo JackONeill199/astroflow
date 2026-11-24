@@ -753,6 +753,11 @@ async function projectView(el, id, tab = 'bild') {
       : before && r.has_before ? createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, `/api/stacking/results/${r.id}/before`, ['vorher', 'nachher'], ph)
       : createViewer($('#viewer'), `/api/stacking/results/${r.id}/jpg`, null, undefined, ph, p.imported ? {} : { overlay: typeof depthOverlay === 'function' ? depthOverlay(r.id, plateLabels(r.id)) : plateLabels(r.id) }));
     viewer.el.classList.add('tall', 'hover-labels');
+    // Sage-Führung zu genau diesem Ergebnis, falls Sage es schon bestimmt hat (ohne Sage-Modul fällt der Knopf weg)
+    if (!c && cview === 'jpg' && !before && window.SageWiki?.entryForResult) {
+      const vv = viewer;
+      SageWiki.entryForResult(r.id).then(hid => { if (hid && vv.el.isConnected) SageWiki.guideButton(vv.el, hid); });
+    }
     $('#ba')?.addEventListener('click', (e) => { const b = e.target.closest('[data-b]'); if (b) { before = b.dataset.b === '1'; drawTab(false); } });
     $('#cview')?.addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); if (b && b.dataset.v !== cview) { cview = b.dataset.v; drawTab(false); } });
     if (stages.length > 1) {

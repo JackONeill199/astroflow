@@ -24,7 +24,7 @@ Laufende Arbeit und Grenzen stehen in `AGENTS.md` (Details in `docs/entwicklung/
 | 16 | 05.11.2026 | Seeing in Bogensekunden je Nacht und Standort | in Arbeit |
 | 17 | 05.11.2026 | Gerätediagnose: Nachführung, Fokusdrift, Sensorneigung | umgesetzt in 0.43.0 (ohne Rohbilder; Kippung aus Master-Stack) |
 | 18 | 05.11.2026 | SkyTrace: Satellitenhelligkeit und Satelliten pro Stunde | umgesetzt in 0.39.0 (Statistik; mag mit Nullpunkt aus den Bilder-Stacks, Rate je Belichtungsstunde) |
-| 19 | 05.11.2026 | Interaktive Bildführung: KI zeigt und erklärt im Bild | offen |
+| 19 | 05.11.2026 | Interaktive Bildführung: KI zeigt und erklärt im Bild | Stufe 1 umgesetzt (Version beim Merge) |
 | 20 | 12.11.2026 | HOO/SHO für Farbkameras mit Dual-Band-Filter | offen |
 | 21 | 13.11.2026 | Geräte kombinieren (Stacks verschiedener Teleskope zu einem Bild) | offen |
 | 22 | 13.11.2026 | Echtes Drizzle | offen |
@@ -187,6 +187,25 @@ Sage liefert belegtes Wissen je Objekt – verlässlich, nichts erfunden.
 - Strukturen ohne Katalogeintrag (Staubbänder, Nebelfilamente, Sternfarben) per Vision-LLM am Bildausschnitt, als
   „KI-Einschätzung“ deutlich getrennt vom belegten Wissen (Belegpflicht von Sage); Umrisse im Bild.
 - Risiko: lokale Vision-Modelle sind bei Astrofotos unzuverlässig und erfinden – nur mit Kennzeichnung und Rückfall auf Stufe 1.
+
+**Stand 22.11.2026 – Stufe 1 umgesetzt (Version beim Merge):** Audioführung als geführte Tour (Betrachter fährt hin, zoomt, Pfeil/Kreis/
+Umriss, Untertitel, Vor/Zurück/Pause, Tastatur, ohne Ton nach Lesezeit, reduzierte Bewegung ohne Fahrt) und „Was ist an dieser
+Stelle?“ (Klick bzw. „Hier fragen“ → Himmelsort aus `solution.tan` → Bildmarken, Enzyklopädie, SIMBAD-Umkreissuche mit Cache →
+Antwort im Chat zum Bild, Stelle markiert). Ohne KI, nur Katalogangaben; Details `astroflow/modules/sage/AGENTS.md` (`guide.py`).
+
+**Notizen für Stufe 2 (nicht umgesetzt):**
+- Ausschnitt um die gefragte Stelle (z. B. 256 px, gestreckt) an ein Vision-Modell geben, zusammen mit den Katalogtreffern aus Stufe 1
+  als Kontext („an dieser Stelle verzeichnen die Kataloge …“) – die Antwort als eigener Block „KI-Einschätzung (ungeprüft)“ unter
+  der belegten Antwort, nie vermischt; ohne Katalogtreffer ausdrücklich als Vermutung.
+- Umrisse: Modell liefert Polygon in Ausschnitt-Pixeln → in Bildpixel zurückrechnen, gestrichelt in einer eigenen Farbe zeichnen
+  (gleicher Overlay-Weg wie `guideMarks`). Plausibilitätsprüfung gegen das Bild selbst (Helligkeit/Farbe im Polygon vs. Umgebung),
+  sonst verwerfen.
+- Sternfarben brauchen kein Vision-Modell: Gaia-BP/RP aus `photometry.gaia_field` an der Stelle (Dienst nötig, Bilder-Modul) –
+  belegbar und damit eher Stufe 1½.
+- Kosten/Datenschutz: Bildausschnitt verlässt den Rechner nur mit ausdrücklicher Einstellung (wie das Online-Lösen); lokales
+  Vision-Modell als Standard, Budget über `agent.LLM`.
+- Tour mit KI-Beobachtungen: Vision-Modell schlägt zusätzliche Tour-Schritte („auffällige Struktur hier“) vor – nur als markierte
+  Zusatzschritte, die der Nutzer bestätigt.
 ## 14.–16. Himmel und Standort – Stand 05.11.2026
 
 (Ideen 14 Himmelshelligkeit, 15 Lichtverschmutzungs-Richtung, 16 Seeing aus der Liste „Was sich aus den Bilddaten noch berechnen lässt“.)

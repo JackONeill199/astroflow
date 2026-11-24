@@ -62,6 +62,10 @@ Ein Umstieg auf PostgreSQL bleibt möglich, weil der Zugriff in `kb.py` gekapsel
   Zusammenhänge · Geschichten & Audio, dazu der Chat am Rand.
 - **Erzählformate:** Dokumentation, Geschichte, Beobachtungsbericht, Einsteiger, Deep Dive, **Audioführung** (Abschnitte je
   Bildobjekt; beim Abspielen wird das jeweilige Objekt im Bild hervorgehoben). Ohne KI gibt es eine Führung aus Katalogdaten.
+- **Bildführung (Wunsch 19, Stufe 1, `guide.py`):** Die Audioführung wird zur geführten Tour (`GET /kb/stories/<id>/guide` →
+  Schritte {Text, Ziel in Bildpixeln, Zoom, Markierung}); „Was ist an dieser Stelle?“ (`POST /kb/history/<id>/spot` {x, y, r}) rechnet
+  Bildpixel über die gespeicherte Projektion (`solution.tan`) in Himmelskoordinaten um und sucht im Umkreis (Bildmarken, Enzyklopädie,
+  SIMBAD-Umkreissuche über den Antwort-Cache) – Antwort als Chat-Nachricht ohne KI, SIMBAD-Treffer mit Beleg [S<id>].
 
 ## Priorisierter Plan
 - **Phase 1 (umgesetzt):** Wissensbasis, SIMBAD/arXiv/ADS/SkyView mit Cache, Research Harness mit Validierung und Budget,

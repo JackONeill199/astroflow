@@ -72,18 +72,25 @@ def generate(mod, eid: str, fmt: str, history_id: str | None = None) -> dict:
         if not pic:
             raise clients.ServiceError("Für die Audioführung braucht es ein eigenes bestimmtes Bild mit Objektmarken (Sage → Bild bestimmen).")
         image = {"entry": pic["id"], "image": pic["image"], "width": pic["width"]}
-        objs = [o for o in pic["objects"] if o.get("x") is not None][:8]
+        # höchstens 6 Objekte, vom nächsten zum fernsten („Flug in die Tiefe“); ohne Entfernung ans Ende
+        facts = sorted((object_facts(mod, o) for o in pic["objects"] if o.get("x") is not None),
+                       key=lambda f: (f["ly"] is None, f["ly"] or 0))[:6]
+        objs = [f["obj"] for f in facts]
         if not llm.ready():
-            segs = template_tour(mod, e, objs)
+            segs = template_tour(mod, e, objs, facts)
             title, body, model = f"Rundgang durch dein Bild: {e['name']}", "\n\n".join(s["text"] for s in segs), "Vorlage (ohne KI)"
         else:
-            obj_txt = "\n".join(f"- {o['name']} ({o.get('kind_label') or ''}): {(kb.resolve(o['name']) or {}).get('summary') or ''}"[:400] for o in objs)
-            msg = llm.chat([{"role": "system", "content": "Du sprichst eine Audioführung durch ein Astrofoto. Nur belegte Fakten aus dem Kontext, "
-                                                          "keine erfundenen Zahlen. Deutsch, gesprochen klingend, ohne Markdown."},
-                            {"role": "user", "content": f"{text}\n\nObjekte im Bild (in dieser Reihenfolge besprechen):\n{obj_txt}\n\n"
+            obj_txt = "\n".join(f"- {f['name']} ({f['kind']})" + (f", Entfernung {f['dist']}" if f["dist"] else "")
+                                + (f", Durchmesser {f['diam']}" if f["diam"] else "") + (f", Sternbild {f['con']}" if f["con"] else "")
+                                + (f": {f['summary']}" if f["summary"] else "") for f in facts)
+            msg = llm.chat([{"role": "system", "content": "Du sprichst eine kurze, lebendige Führung durch ein Astrofoto. Nur Fakten aus dem Kontext, "
+                                                          "keine erfundenen Zahlen; Vergleiche nur, wenn sie sich aus den gegebenen Zahlen ausrechnen lassen. "
+                                                          "Deutsch, gesprochen klingend, ohne Markdown."},
+                            {"role": "user", "content": f"{text}\n\nObjekte im Bild (vom nächsten zum fernsten, in dieser Reihenfolge besprechen):\n{obj_txt}\n\n"
                                                         "Antworte nur mit JSON: {\"title\": \"…\", \"segments\": [{\"object\": \"Name aus der Liste oder null\", "
-                                                        "\"text\": \"2–4 Sätze\"}]} – erst eine Einleitung (object null), dann je Objekt ein Abschnitt, "
-                                                        "zum Schluss ein kurzer Ausklang."}], max_tokens=2500, json_mode=True)
+                                                        "\"text\": \"…\"}]} – Einleitung (object null, 1–2 Sätze), je Objekt 2–3 Sätze mit einem "
+                                                        "überraschenden, aber belegbaren Bild (Lichtlaufzeit, wahre Größe, Vergleich zu einem anderen Objekt im Bild), "
+                                                        "zum Schluss 1 Satz Ausklang. Insgesamt kurz – eine Führung von etwa zwei Minuten."}], max_tokens=2000, json_mode=True)
             d = agent.parse_json(msg.get("content") or "")
             names = {o["name"] for o in objs}
             segs = [{"object": s.get("object") if s.get("object") in names else None, "text": str(s.get("text") or "").strip()}
@@ -109,21 +116,76 @@ def generate(mod, eid: str, fmt: str, history_id: str | None = None) -> dict:
     return kb.one("SELECT * FROM stories WHERE id=?", (sid,))
 
 
-def template_tour(mod, e: dict, objs: list[dict]) -> list[dict]:
-    """Führung ohne Sprachmodell – nur aus Katalogwerten."""
+def object_facts(mod, o: dict) -> dict:
+    """Belegte Angaben zu einem Bildobjekt aus der Enzyklopädie (Entfernung, Durchmesser, Sternbild, Kurztext)."""
     kb = mod.kb
-    segs = [{"object": None, "text": f"Willkommen zu deinem Bild von {e['name']}. Wir gehen gemeinsam durch die {len(objs)} "
-                                     f"markierten Objekte."}]
-    for o in objs:
-        x = kb.resolve(o["name"])
-        d = x and kb.fact(x["id"], "distance_ly")
-        label = (x and x.get("otype_label")) or o.get("kind_label") or ""
-        t = f"Hier siehst du {o['name']}" + (f" ({label})" if label and label != "Allgemein" else "")
-        t += f" – rund {d['value']} entfernt." if d else "."
-        if x and x.get("summary") and (x["data"] or {}).get("summary_origin") != "catalog":
-            t += " " + re.sub(r"\s*\[S\d+\]", "", x["summary"])
-        segs.append({"object": o["name"], "text": t})
-    segs.append({"object": None, "text": "Das war die Führung durch dein Bild. Jedes Objekt kannst du anklicken, um mehr zu erfahren."})
+    x = kb.resolve(o["name"])
+    f = (lambda k: kb.fact(x["id"], k)) if x else (lambda k: None)
+    d = f("distance_ly")
+    summ = ""
+    if x and x.get("summary") and (x["data"] or {}).get("summary_origin") != "catalog":
+        summ = re.split(r"(?<=[.!?])\s", re.sub(r"\s*\[S\d+\]", "", x["summary"]).strip(), maxsplit=1)[0]
+    return {"obj": o, "name": o["name"], "entity": x and x["id"],
+            "kind": (x and x.get("otype_label")) or o.get("kind_label") or "",
+            "ly": float(d["num"]) if d and d.get("num") else None, "dist": d and d["value"],
+            "diam": (f("diameter") or {}).get("value"), "con": (f("constellation") or {}).get("value"), "summary": summ}
+
+
+def _round2(v: float) -> int:
+    """Auf zwei geltende Ziffern runden (1234 → 1200) – Entfernungen sind nie genauer."""
+    if v < 100:
+        return int(round(v))
+    k = 10 ** (len(str(int(v))) - 2)
+    return int(round(v / k) * k)
+
+
+def _dots(n: int) -> str:
+    return f"{n:,}".replace(",", ".")
+
+
+def light_age(ly: float, year: int | None = None) -> str:
+    """Wann ist das Licht losgeflogen? Reine Rechnung aus der Entfernung (Lichtjahre = Jahre Laufzeit)."""
+    year = year or time.localtime().tm_year
+    start = year - ly
+    if start > 0:
+        return f"Das Licht, das dein Sensor eingefangen hat, ist um das Jahr {_round2(start) if start >= 100 else int(start)} losgeflogen."
+    years = fmt_ly(ly).replace("Lichtjahre", "Jahre")
+    if ly < 300_000:
+        return f"Sein Licht war rund {_dots(_round2(ly))} Jahre unterwegs – es startete um {_dots(_round2(-start))} v. Chr."
+    if ly < 66e6:
+        return f"Sein Licht war {years} unterwegs – als es losflog, gab es noch keine Menschen."
+    return f"Sein Licht war {years} unterwegs – es startete noch vor dem Ende der Dinosaurier."
+
+
+def template_tour(mod, e: dict, objs: list[dict], facts: list[dict] | None = None) -> list[dict]:
+    """Führung ohne Sprachmodell – kurz, nur aus belegten Katalogwerten, vom nächsten zum fernsten Objekt; dazu
+    Lichtlaufzeit, wahre Größe, eigene Aufnahmen und ein Tiefenvergleich (alles ausgerechnet, nichts erfunden)."""
+    facts = facts or [object_facts(mod, o) for o in objs]
+    known = [f for f in facts if f["ly"]]
+    intro = f"Dein Bild von {e['name']}: {len(facts)} Objekt{'' if len(facts) == 1 else 'e'} im Bildfeld."
+    if len(known) >= 2:
+        intro += f" Wir fliegen vom nächsten ({known[0]['dist']}) bis zum fernsten ({known[-1]['dist']})."
+    segs = [{"object": None, "text": intro}]
+    for f in facts:
+        t = f["name"] + (f" – {f['kind']}" if f["kind"] and f["kind"] != "Allgemein" else "") + (f" im Sternbild {f['con']}" if f["con"] else "") + "."
+        if f["summary"]:
+            t += " " + f["summary"]
+        if f["ly"]:
+            t += " " + light_age(f["ly"])
+        if f["diam"]:
+            t += f" Durchmesser: {f['diam'].lstrip('≈ ')}."
+        if f["entity"]:
+            mine = memory.for_entity(mod, f["entity"]).get("derived") or []
+            if mine:
+                t += " " + mine[0]["text"]
+        segs.append({"object": f["name"], "text": t})
+    if len(known) >= 2 and known[-1]["ly"] / known[0]["ly"] >= 2:
+        near, far = known[0], known[-1]
+        ratio = far["ly"] / near["ly"]
+        rtxt = _dots(_round2(ratio)) if ratio >= 10 else f"{ratio:.1f}".replace(".", ",")
+        segs.append({"object": far["name"], "text": f"Tiefenblick: {far['name']} ist {rtxt}-mal so weit weg wie {near['name']}. "
+                                                    "Auf deinem Bild stehen beide nebeneinander – in Wirklichkeit liegen Welten dazwischen."})
+    segs.append({"object": None, "text": "Tipp: Tippe auf eine freie Stelle im Bild – Sage schaut in den Katalogen nach, was dort liegt."})
     return segs
 
 

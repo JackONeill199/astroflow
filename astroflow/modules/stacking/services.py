@@ -63,7 +63,33 @@ def describe(wcs, w: int, h: int, solver: str, max_objects: int = 30, offset=(0.
                           "radius": round(max(6.0, c.size * 60 / scale / 2), 1)}
     objs = sorted(found.values(), key=lambda o: -o["size"])[:max_objects]
     return {"ra": round(float(ra), 5), "dec": round(float(dec), 5), "scale": round(scale, 3), "rotation": round(rot, 2),
-            "fov_w": round(fov_w, 4), "fov_h": round(fov_h, 4), "width": vw, "height": vh, "solver": solver, "objects": objs}
+            "fov_w": round(fov_w, 4), "fov_h": round(fov_h, 4), "width": vw, "height": vh, "solver": solver, "objects": objs,
+            "tan": display_tan(wcs, x0, y0, vw, vh)}
+
+
+def display_tan(wcs, x0: float, y0: float, vw: int, vh: int) -> dict | None:
+    """Lineare Gnomonische Projektion um die Bildmitte in **Anzeige-Pixeln** (Zeile 0 = oben) – klein genug für den
+    Verlauf, genau genug für „Was ist an dieser Stelle?“ (Sage-Bildführung). Ableitung per Differenzen über ±d Pixel."""
+    try:
+        cx, cy = x0 + vw / 2 - 0.5, y0 + vh / 2 - 0.5
+        d = max(5.0, min(vw, vh) / 20)
+        pts = wcs.pixel_to_world_values([[cx, cy], [cx + d, cy], [cx - d, cy], [cx, cy + d], [cx, cy - d]])
+        ra0, dec0 = (math.radians(float(v)) for v in pts[0])
+
+        def std(ra, dec):                                  # Standardkoordinaten (Grad) um die Bildmitte
+            ra, dec = math.radians(float(ra)), math.radians(float(dec))
+            c = math.sin(dec0) * math.sin(dec) + math.cos(dec0) * math.cos(dec) * math.cos(ra - ra0)
+            return (math.degrees(math.cos(dec) * math.sin(ra - ra0) / c),
+                    math.degrees((math.cos(dec0) * math.sin(dec) - math.sin(dec0) * math.cos(dec) * math.cos(ra - ra0)) / c))
+        (a1, b1), (a2, b2), (a3, b3), (a4, b4) = (std(*p) for p in pts[1:])
+        # Anzeige-y läuft entgegen FITS-y → zweite Spalte mit umgekehrtem Vorzeichen
+        cd = [[(a1 - a2) / (2 * d), -(a3 - a4) / (2 * d)], [(b1 - b2) / (2 * d), -(b3 - b4) / (2 * d)]]
+        if not all(math.isfinite(v) for row in cd for v in row):
+            return None
+        return {"crpix": [vw / 2 - 0.5, vh / 2 - 0.5], "crval": [round(float(pts[0][0]), 7), round(float(pts[0][1]), 7)],
+                "cd": [[float(f"{v:.6e}") for v in row] for row in cd]}
+    except Exception:
+        return None
 
 
 def name_hint(name: str) -> objects.CatObject | None:
@@ -204,5 +230,6 @@ def project_solution(work_dir: Path, pid: int, files: dict) -> dict | None:
         sol = describe(geo["wcs"], geo["W"], geo["H"], "stack")
         for o in sol["objects"]:
             o["x"] = o["y"] = None
+        sol["tan"] = None                                         # Lage des JPGs unbekannt → keine Pixelzuordnung
         return sol
     return describe(geo["wcs"], geo["W"], geo["H"], "stack", offset=geo["offset"], view=geo["view"])

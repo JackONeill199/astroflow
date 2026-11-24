@@ -11,6 +11,7 @@
   /* Text */
   --fg: #f0f2f5; --mut: #aab2bd; --dim: #828c99;
   /* Akzent + Status (sparsam) */
+  --mk-guide: #fde68a; --mk-spot: #7dd3fc; --mk-spot-fg: #e0f2fe;   /* Markierungen im Bild: Führung (Sage), gefragte Stelle */
   --acc: #4c9aff; --acc-strong: #2f86f5; --acc-soft: #4c9aff1f; --accfg: #ffffff;
   --ok: #42b883; --warn: #e5aa52; --bad: #e16b6b;
   /* Daten (nur in Grafiken): zweite und dritte Reihe */
@@ -434,13 +435,15 @@ td .why { color: var(--mut); white-space: normal; font-size: 0.75rem }
 .viewer.tall { aspect-ratio: auto; height: max(22.5rem, calc(100vh - 18.75rem)) }
 .viewer.drag { cursor: grabbing }
 .viewer img { position: absolute; left: 0; top: 0; transform-origin: 0 0; max-width: none; image-rendering: auto; pointer-events: none }
-.viewer.anim img { transition: transform .3s var(--ease) }
+.viewer.anim img { transition: transform var(--vfly, .3s) var(--ease) }
 .viewer img.b, .viewer img.a { opacity: 0; transition: opacity .4s var(--ease) }
-.viewer.anim img.b, .viewer.anim img.a { transition: transform .3s var(--ease), opacity .4s var(--ease) }
+.viewer.anim img.b, .viewer.anim img.a { transition: transform var(--vfly, .3s) var(--ease), opacity .4s var(--ease) }
 .viewer.ready img.b, .viewer.ready img.a { opacity: 1 }
 /* Markierungen in Bildpixeln (createViewer opts.overlay) – Objektnamen aus dem Plate-Solving; mit .hover-labels nur beim Überfahren */
 .viewer .vov { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; overflow: visible; will-change: transform; opacity: 0; transition: opacity .25s var(--ease) }
 .viewer.ready .vov { opacity: 1 }
+.viewer.anim .vov { transition: transform var(--vfly, .3s) var(--ease), opacity .25s var(--ease) }   /* Marken fahren mit dem Bild (zoomTo) */
+@media (prefers-reduced-motion: reduce) { .viewer.anim img, .viewer.anim .vov { transition: none !important } }
 .vov circle { fill: none; stroke: #9fd4ff; stroke-width: 0.1562rem; vector-effect: non-scaling-stroke; opacity: .85 }
 .vov text { fill: #fff; font-family: var(--sans); font-weight: 600; paint-order: stroke; stroke: #000c; stroke-width: 0.1875rem; stroke-linejoin: round }
 .viewer.hover-labels.ready .vov { opacity: 0 }
